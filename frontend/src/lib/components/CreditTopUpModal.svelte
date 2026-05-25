@@ -38,6 +38,33 @@
   const creditBalance = $derived((page.data.creditBalance as number) ?? 0);
   const creditsNeeded = $derived(ctx ? Math.max(0, ctx.required - ctx.balance) : 0);
 
+  // Subscription-awareness — read from the (app) layout's page.data so call
+  // sites don't have to pass it.
+  const monthlyAllowance = $derived(
+    (page.data.monthlyAllowance as number) ?? 0,
+  );
+  const monthlyAllowancePeriodEnd = $derived(
+    (page.data.monthlyAllowancePeriodEnd as string | null) ?? null,
+  );
+  const subscription = $derived(
+    (page.data.subscription as { status?: string } | null) ?? null,
+  );
+  const isSubscriber = $derived(
+    subscription?.status === "ACTIVE" || subscription?.status === "TRIALING",
+  );
+  const monthlyResetDate = $derived(
+    monthlyAllowancePeriodEnd
+      ? new Date(monthlyAllowancePeriodEnd).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+        })
+      : null,
+  );
+  // A subscriber who has exhausted their monthly allowance.
+  const monthlyExhausted = $derived(
+    isSubscriber && monthlyAllowance === 0,
+  );
+
   // Show max 3 packages, sorted by credits ascending
   const displayPackages = $derived.by(() => {
     const sorted = [...packages].sort((a, b) => a.credits - b.credits);
@@ -315,6 +342,19 @@
           {#if ctx}
             <p class="text-sm text-text-muted mt-1">
               You need <span class="font-semibold tabular-nums text-accent">{creditsNeeded}</span> more for {ctx.stageName}
+            </p>
+          {/if}
+          {#if monthlyExhausted}
+            <p class="text-sm text-text-muted mt-2">
+              {#if monthlyResetDate}
+                Your monthly credits reset on <span class="font-medium text-text-secondary">{monthlyResetDate}</span>. Top up below to keep going now.
+              {:else}
+                Your monthly credits are used up. Top up below to keep going now.
+              {/if}
+            </p>
+          {:else if !isSubscriber}
+            <p class="text-sm text-text-muted mt-2">
+              <a href="/billing#plans" class="text-accent hover:underline">Subscribe to save</a> — get monthly credits + full catalog access.
             </p>
           {/if}
         </div>

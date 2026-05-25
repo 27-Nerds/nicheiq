@@ -17,7 +17,7 @@ import type { CategoryLandingPayload, IdeaPreview } from '$lib/types/catalog-lan
 import type { CatalogCollectionSummary } from '$lib/types/publicCatalog';
 import { findProgrammaticIdeaPage } from '$lib/data/programmaticIdeaPages';
 
-async function fetchLanding(slug: string): Promise<
+async function fetchLanding(slug: string, userId?: string): Promise<
   | { kind: 'ok'; payload: CategoryLandingPayload }
   | { kind: 'gone' }
   | { kind: 'missing' }
@@ -26,6 +26,7 @@ async function fetchLanding(slug: string): Promise<
   try {
     const res = await fetchBackend(
       `/api/public/catalog/landing/${encodeURIComponent(slug)}`,
+      userId ? { headers: { 'X-User-ID': userId } } : {},
     );
     if (res.status === 200) return { kind: 'ok', payload: await res.json() };
     if (res.status === 404) return { kind: 'missing' };
@@ -78,16 +79,22 @@ function pickFeaturedCollection(
   return null;
 }
 
-export const load: PageServerLoad = async ({ params, url, setHeaders }) => {
+export const load: PageServerLoad = async ({ params, url, setHeaders, locals }) => {
+  // Entitled users get the FULL list (per-user) → forward X-User-ID + private cache;
+  // anonymous visitors get the public, CDN-cacheable featured-only teaser.
+  const session = await locals?.auth?.();
+  const userId = session?.user?.id;
   setHeaders({
-    'Cache-Control': 'public, max-age=300, s-maxage=900, stale-while-revalidate=86400',
+    'Cache-Control': userId
+      ? 'private, no-store'
+      : 'public, max-age=300, s-maxage=900, stale-while-revalidate=86400',
   });
 
   // 1. Try real category landing. Fetch collections in parallel — the
   // featured-collection teaser is optional, so its failure shouldn't block
   // the page (fetchCollections already returns [] on error).
   const [landing, collections] = await Promise.all([
-    fetchLanding(params.niche),
+    fetchLanding(params.niche, userId),
     fetchCollections(),
   ]);
 

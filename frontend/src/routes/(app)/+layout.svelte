@@ -17,6 +17,28 @@
 
   const session = $derived(page.data.session);
   const creditBalance = $derived((page.data.creditBalance as number) ?? 0);
+  const monthlyAllowance = $derived(
+    (page.data.monthlyAllowance as number) ?? 0,
+  );
+  const purchasedBalance = $derived(
+    (page.data.purchasedBalance as number) ?? 0,
+  );
+  const monthlyAllowancePeriodEnd = $derived(
+    (page.data.monthlyAllowancePeriodEnd as string | null) ?? null,
+  );
+  const resetDate = $derived(
+    monthlyAllowancePeriodEnd
+      ? new Date(monthlyAllowancePeriodEnd).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+        })
+      : null,
+  );
+  const balanceTooltip = $derived(
+    monthlyAllowance > 0
+      ? `${monthlyAllowance} monthly${resetDate ? ` (resets ${resetDate})` : ""} + ${purchasedBalance} purchased`
+      : "Research Credits",
+  );
   let showUserMenu = $state(false);
   let imageError = $state(false);
 
@@ -58,7 +80,7 @@
           <a
             href="/billing"
             class="flex items-center gap-2 ml-2 px-3 py-1.5 rounded-lg hover:bg-bg-elevated transition-colors border border-transparent hover:border-border"
-            title="Research Credits"
+            title={balanceTooltip}
           >
             <Coins class="w-4 h-4 text-accent" />
             <span
@@ -73,6 +95,13 @@
               class="text-[10px] font-mono uppercase tracking-[0.08em] text-text-muted hidden sm:inline"
               >credits</span
             >
+            {#if monthlyAllowance > 0 && resetDate}
+              <span
+                class="text-[10px] font-mono text-accent/70 hidden md:inline"
+                title={balanceTooltip}
+                >· {monthlyAllowance} monthly</span
+              >
+            {/if}
           </a>
 
           <!-- User Menu -->

@@ -25,7 +25,11 @@
   import StatStrip, {
     type Stat,
   } from "$lib/components/catalog/seo/StatStrip.svelte";
-  import type { TokenPackage, FeatureItem } from "$lib/types/billing";
+  import type {
+    TokenPackage,
+    SubscriptionPlan,
+    UserSubscription,
+  } from "$lib/types/billing";
 
   interface Transaction {
     id: string;
@@ -38,6 +42,10 @@
 
   interface BillingData {
     balance: number;
+    available?: number;
+    monthlyAllowance?: number;
+    purchasedBalance?: number;
+    monthlyAllowancePeriodEnd?: string | null;
     totalPurchased: number;
     totalUsed: number;
     recentTransactions: Transaction[];
@@ -46,41 +54,79 @@
   let { data } = $props();
   const billing = $derived(data.billing as BillingData);
   const packages = $derived(data.packages as TokenPackage[]);
+  const plans = $derived((data.plans as SubscriptionPlan[]) ?? []);
+  // Center the grid when there are fewer than 3 plans (a fixed 3-col grid left-aligns 1–2 cards).
+  const planGridClass = $derived(
+    plans.length === 1
+      ? 'sm:grid-cols-1 max-w-sm mx-auto'
+      : plans.length === 2
+        ? 'sm:grid-cols-2 max-w-3xl mx-auto'
+        : 'sm:grid-cols-3',
+  );
+  const subscription = $derived(
+    (data.subscription as UserSubscription | null) ?? null,
+  );
   const success = $derived(data.success as boolean);
   const canceled = $derived(data.canceled as boolean);
+  const subSuccess = $derived(data.subSuccess as boolean);
+  const subCanceled = $derived(data.subCanceled as boolean);
   const stageCosts = $derived((data.stageCosts as StageCosts) ?? DEFAULT_STAGE_COSTS);
   const fullResearchCost = $derived(computeFullResearchCost(stageCosts));
 
-  const lastPurchaseAt = $derived(
-    billing.recentTransactions.find(
-      (t) => t.type === "PURCHASE" || t.type === "purchase",
-    )?.createdAt ?? null,
+  // Credit split — fall back to balance for back-compat.
+  const monthlyAllowance = $derived(billing.monthlyAllowance ?? 0);
+  const purchasedBalance = $derived(billing.purchasedBalance ?? billing.balance);
+
+  // Subscription state machine helpers.
+  const TERMINAL_STATUSES = ["CANCELED", "INCOMPLETE_EXPIRED"];
+  const subStatus = $derived(subscription?.status ?? null);
+  const isTerminal = $derived(
+    subStatus === null || TERMINAL_STATUSES.includes(subStatus),
   );
-  const daysSinceLastPurchase = $derived(
-    lastPurchaseAt
-      ? Math.floor(
-          (Date.now() - new Date(lastPurchaseAt).getTime()) / 86_400_000,
-        )
-      : null,
+  const isActiveLike = $derived(
+    subStatus === "ACTIVE" || subStatus === "TRIALING",
+  );
+  const willCancel = $derived(
+    !!subscription?.cancelAtPeriodEnd && isActiveLike,
+  );
+
+  function formatPlanDate(dateStr: string | null | undefined): string {
+    if (!dateStr) return "—";
+    return new Date(dateStr).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  }
+
+  const trialDaysLeft = $derived.by(() => {
+    if (subStatus !== "TRIALING" || !subscription?.currentPeriodEnd) return null;
+    const ms =
+      new Date(subscription.currentPeriodEnd).getTime() - Date.now();
+    return Math.max(0, Math.ceil(ms / 86_400_000));
+  });
+
+  const availableCredits = $derived(billing.available ?? billing.balance);
+
+  // Section numbering: plans (if any) + one-time packages (if any) precede
+  // the promo / activity / how-it-works dividers.
+  const baseSectionNum = $derived(
+    (plans.length > 0 ? 1 : 0) + (packages.length > 0 ? 1 : 0),
   );
   const heroKicker = $derived<KickerSegment[]>([
     { text: "BILLING", tone: "accent" },
-    { text: String(billing.balance), tone: "num" },
+    { text: String(availableCredits), tone: "num" },
     { text: "credits", tone: "muted" },
   ]);
   const balanceHeroStats = $derived<Stat[]>([
     {
-      value: billing.balance,
+      value: availableCredits,
       label: "Available",
-      tone: billing.balance === 0 ? "amber" : "default",
+      tone: availableCredits === 0 ? "amber" : "default",
     },
-    { value: billing.totalPurchased, label: "Earned", tone: "go" },
+    { value: monthlyAllowance, label: "Monthly", tone: "go" },
+    { value: purchasedBalance, label: "Purchased", tone: "default" },
     { value: billing.totalUsed, label: "Used", tone: "amber" },
-    {
-      value: daysSinceLastPurchase ?? "—",
-      label:
-        daysSinceLastPurchase == null ? "No purchases" : "Days since purchase",
-    },
   ]);
 
   // Promo code state
@@ -93,12 +139,69 @@
   let checkoutLoading = $state<string | null>(null);
   let checkoutError = $state<string | null>(null);
 
+  // Subscription state
+  let subscribeLoading = $state<string | null>(null);
+  let portalLoading = $state(false);
+  let subscriptionError = $state<string | null>(null);
+
   // Refresh state
   let isRefreshing = $state(false);
 
   // Dismiss success/canceled banners
   function dismissBanner() {
     goto("/billing", { replaceState: true });
+  }
+
+  // Open the Stripe Customer Portal (manage / cancel / switch).
+  async function openPortal() {
+    if (portalLoading) return;
+    portalLoading = true;
+    subscriptionError = null;
+    try {
+      const response = await fetch("/api/billing/portal", { method: "POST" });
+      const result = await response.json();
+      if (response.ok && result.url) {
+        window.location.href = result.url;
+      } else {
+        subscriptionError =
+          result.error || "Unable to open the billing portal. Please try again.";
+      }
+    } catch {
+      subscriptionError = "Network error. Please try again.";
+    } finally {
+      portalLoading = false;
+    }
+  }
+
+  // Subscribe to a plan; if already subscribed (409) open the portal instead.
+  async function subscribe(planId: string) {
+    if (subscribeLoading || portalLoading) return;
+    subscribeLoading = planId;
+    subscriptionError = null;
+    try {
+      const response = await fetch("/api/billing/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ planId }),
+      });
+      const result = await response.json();
+
+      if (response.status === 409) {
+        // Already has a live subscription — manage via portal.
+        await openPortal();
+        return;
+      }
+
+      if (response.ok && result.url) {
+        window.location.href = result.url;
+      } else {
+        subscriptionError = result.error || "Failed to start subscription.";
+      }
+    } catch {
+      subscriptionError = "Network error. Please try again.";
+    } finally {
+      subscribeLoading = null;
+    }
   }
 
   async function redeemPromoCode() {
@@ -257,6 +360,17 @@
   <!-- Balance Hero -->
   <div class="mb-8">
     <StatStrip stats={balanceHeroStats} emphasis />
+    {#if monthlyAllowance > 0 || subscription}
+      <p class="text-xs text-text-muted mt-3 flex items-center gap-1.5">
+        <Coins class="w-3.5 h-3.5 text-accent" />
+        <span class="font-mono tabular-nums text-text-secondary">{monthlyAllowance}</span> monthly
+        {#if billing.monthlyAllowancePeriodEnd}
+          <span>(resets {formatPlanDate(billing.monthlyAllowancePeriodEnd)})</span>
+        {/if}
+        <span class="text-text-muted/60">+</span>
+        <span class="font-mono tabular-nums text-text-secondary">{purchasedBalance}</span> purchased
+      </p>
+    {/if}
   </div>
 
   <!-- Success Banner -->
@@ -284,20 +398,149 @@
     />
   {/if}
 
+  <!-- Subscription Success Banner -->
+  {#if subSuccess}
+    <AlertBanner
+      variant="success"
+      title="Subscription active!"
+      message="Your plan is set up. Full catalog access is unlocked and monthly credits arrive on your first billing date."
+      dismissible
+      onDismiss={dismissBanner}
+      class="mb-8"
+    />
+  {/if}
+
+  <!-- Subscription Canceled (checkout abandoned) Banner -->
+  {#if subCanceled}
+    <AlertBanner
+      variant="warning"
+      title="Subscription not started"
+      message="No charges were made. You can subscribe again when ready."
+      dismissible
+      onDismiss={dismissBanner}
+      class="mb-8"
+    />
+  {/if}
+
+  <!-- Past Due Banner -->
+  {#if subStatus === "PAST_DUE"}
+    <AlertBanner
+      variant="error"
+      title="Payment failed — update your card"
+      message="Your last subscription payment didn't go through. Update your payment method to keep your access and monthly credits."
+      class="mb-8"
+    >
+      <SubmitButton
+        onclick={openPortal}
+        loading={portalLoading}
+        loadingText="Opening..."
+        label="Update payment method"
+        class="btn-primary mt-3"
+      />
+    </AlertBanner>
+  {/if}
+
   <!-- Info Banner (if no credits) -->
-  {#if billing.balance === 0 && !success}
+  {#if availableCredits === 0 && !success && !subSuccess}
     <AlertBanner
       variant="info"
       title="You need research credits to start new research"
-      message="Purchase a credit package below or redeem a promo code to get started."
+      message="Subscribe to a plan for monthly credits + full catalog access, buy a one-time credit package, or redeem a promo code."
       class="mb-8"
     />
+  {/if}
+
+  <!-- Subscription Plans Section -->
+  {#if plans.length > 0}
+    <div class="mb-8" id="plans">
+      <SectionDivider num={1} label="Subscription plans" />
+      <p class="text-sm text-text-muted mb-4">
+        Monthly credits that reset each cycle plus full catalog access. Manage,
+        switch, or cancel anytime via the billing portal.
+      </p>
+
+      {#if subscriptionError}
+        <InlineFeedback message={subscriptionError} variant="error" class="mb-4" />
+      {/if}
+
+      <!-- Current subscription summary -->
+      {#if subscription && isActiveLike}
+        <div class="card mb-4 flex flex-wrap items-center justify-between gap-3 py-3 px-4 border-l-2 border-l-accent/40">
+          <div class="text-sm">
+            {#if subStatus === "TRIALING"}
+              <span class="font-semibold text-text-primary">Trial — {trialDaysLeft} {trialDaysLeft === 1 ? "day" : "days"} left</span>
+              <span class="text-text-muted"> · monthly credits unlock on {formatPlanDate(subscription.currentPeriodEnd)}</span>
+            {:else if willCancel}
+              <span class="font-semibold text-warning">Access ends {formatPlanDate(subscription.currentPeriodEnd)}</span>
+              <span class="text-text-muted"> · resume anytime via the portal</span>
+            {:else}
+              <span class="font-semibold text-text-primary">{subscription.planName ?? "Active plan"}</span>
+              <span class="text-text-muted"> · renews {formatPlanDate(subscription.currentPeriodEnd)}</span>
+            {/if}
+          </div>
+          <SubmitButton
+            onclick={openPortal}
+            loading={portalLoading}
+            loadingText="Opening..."
+            label={willCancel ? "Resume via portal" : "Manage subscription"}
+            class="btn-secondary !py-1.5 !text-sm"
+          />
+        </div>
+      {/if}
+
+      <div class="grid gap-4 {planGridClass}">
+        {#each plans as plan (plan.id)}
+          {@const isCurrent = subscription?.planId === plan.id && isActiveLike}
+          <PricingCard {plan} variant="compact">
+            {#snippet actions()}
+              {#if isCurrent}
+                <SubmitButton
+                  type="button"
+                  disabled
+                  loadingText=""
+                  label="Current plan"
+                  class="btn-secondary w-full"
+                />
+              {:else if isActiveLike || subStatus === "PAST_DUE"}
+                <!-- Live subscription: switching / fixing goes through the portal -->
+                <SubmitButton
+                  onclick={openPortal}
+                  loading={portalLoading}
+                  loadingText="Opening..."
+                  label={subStatus === "PAST_DUE" ? "Manage via portal" : "Switch via portal"}
+                  class="{plan.isPopular ? 'btn-primary' : 'btn-secondary'} w-full"
+                />
+              {:else if isTerminal}
+                <!-- No / terminal subscription: a fresh checkout is allowed -->
+                <SubmitButton
+                  onclick={() => subscribe(plan.id)}
+                  disabled={subscribeLoading !== null || portalLoading}
+                  loading={subscribeLoading === plan.id}
+                  loadingText="Redirecting..."
+                  label={plan.ctaText || "Subscribe"}
+                  class="{plan.isPopular ? 'btn-primary' : 'btn-secondary'} w-full"
+                />
+              {:else}
+                <!-- Any other live status (INCOMPLETE / UNPAID / PAUSED) → portal -->
+                <SubmitButton
+                  onclick={openPortal}
+                  loading={portalLoading}
+                  loadingText="Opening..."
+                  label="Manage via portal"
+                  class="{plan.isPopular ? 'btn-primary' : 'btn-secondary'} w-full"
+                />
+              {/if}
+            {/snippet}
+          </PricingCard>
+        {/each}
+      </div>
+    </div>
   {/if}
 
   <!-- Buy Credits Section -->
   {#if packages.length > 0}
     <div class="mb-8">
-      <SectionDivider num={1} label="Buy credits" />
+      <SectionDivider num={plans.length > 0 ? 2 : 1} label="Buy credits (one-time)" />
 
       {#if checkoutError}
         <InlineFeedback message={checkoutError} variant="error" class="mb-4" />
@@ -374,7 +617,7 @@
   <div class="grid gap-8 md:grid-cols-2">
     <!-- Promo Code Section -->
     <div class="card">
-      <SectionDivider num={2} label="Redeem promo code" />
+      <SectionDivider num={baseSectionNum + 1} label="Redeem promo code" />
       <p class="text-sm text-text-muted mb-4">
         Enter your code to receive credits
       </p>
@@ -413,7 +656,7 @@
 
     <!-- Recent Transactions -->
     <div class="card">
-      <SectionDivider num={3} label="Recent activity" />
+      <SectionDivider num={baseSectionNum + 2} label="Recent activity" />
       <p class="text-sm text-text-muted mb-4">Your latest transactions</p>
 
       {#if billing.recentTransactions.length === 0}
@@ -470,14 +713,15 @@
 
   <!-- How Credits Work — closing colophon, mono step numbers (no tint circles) -->
   <div class="mt-12">
-    <SectionDivider num={4} label="How credits work" />
+    <SectionDivider num={baseSectionNum + 3} label="How credits work" />
     <div class="grid gap-6 sm:grid-cols-3 mt-2">
       <div class="flex items-start gap-3">
         <span class="hcw-num">01</span>
         <div>
           <p class="font-medium text-text-primary text-sm">Get credits</p>
           <p class="text-xs text-text-muted mt-1">
-            Redeem promo codes or purchase credit packages
+            Subscribe for monthly credits that reset each cycle, buy one-time
+            packages, or redeem a promo code
           </p>
         </div>
       </div>
@@ -486,7 +730,8 @@
         <div>
           <p class="font-medium text-text-primary text-sm">Use credits</p>
           <p class="text-xs text-text-muted mt-1">
-            Credits are deducted when each research step runs
+            Credits are deducted as each research step runs — monthly allowance
+            is spent first, then your purchased balance
           </p>
         </div>
       </div>

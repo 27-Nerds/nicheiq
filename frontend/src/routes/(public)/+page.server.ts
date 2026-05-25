@@ -1,6 +1,6 @@
 import type { PageServerLoad } from './$types';
 import { fetchBackend } from '$lib/backend';
-import type { TokenPackage } from '$lib/types/billing';
+import type { SubscriptionPlan } from '$lib/types/billing';
 import type { CatalogTopPainPoint, CatalogTotals } from '$lib/types/publicCatalog';
 
 export const load: PageServerLoad = async ({ setHeaders }) => {
@@ -9,19 +9,21 @@ export const load: PageServerLoad = async ({ setHeaders }) => {
   let reportsDelivered: number | null = null;
   let activeFounders: number | null = null;
   let hasSampleReport = false;
-  let packages: TokenPackage[] = [];
+  let plans: SubscriptionPlan[] = [];
   let topPainPoints: CatalogTopPainPoint[] = [];
   let commentsAnalyzed: number | null = null;
   let subNiches: number | null = null;
 
   try {
-    const [statsRes, settingsRes, packagesRes, topPainPointsRes, totalsRes] = await Promise.all([
+    const [statsRes, settingsRes, plansRes, topPainPointsRes, totalsRes] = await Promise.all([
       fetchBackend('/api/stats/public'),
       fetchBackend('/api/settings/sample-report-url'),
-      fetchBackend('/api/billing/packages', {
+      fetchBackend('/api/billing/plans', {
         signal: AbortSignal.timeout(3000),
       }).catch(() => null),
-      fetchBackend('/api/public/catalog/top-pain-points?limit=8', {
+      // freePreview=true → the "Sample Reports" marquee shows the items a non-subscriber can
+      // actually open (the free-preview pains), not the top-by-severity ones.
+      fetchBackend('/api/public/catalog/top-pain-points?limit=8&freePreview=true', {
         signal: AbortSignal.timeout(3000),
       }).catch((err) => {
         console.error('top-pain-points fetch failed', err);
@@ -46,9 +48,9 @@ export const load: PageServerLoad = async ({ setHeaders }) => {
       hasSampleReport = !!data.url;
     }
 
-    if (packagesRes?.ok) {
-      const data = await packagesRes.json();
-      packages = data.packages ?? [];
+    if (plansRes?.ok) {
+      const data = await plansRes.json();
+      plans = data.plans ?? [];
     }
 
     if (topPainPointsRes?.ok) {
@@ -69,7 +71,7 @@ export const load: PageServerLoad = async ({ setHeaders }) => {
     reportsDelivered,
     activeFounders,
     hasSampleReport,
-    packages,
+    plans,
     topPainPoints,
     commentsAnalyzed,
     subNiches,

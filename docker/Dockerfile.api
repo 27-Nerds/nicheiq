@@ -20,6 +20,10 @@ RUN npx prisma generate
 COPY backend/src ./src/
 COPY backend/tsconfig.json ./
 
+# Copy maintenance scripts (run via `docker compose exec api npm run <script>`),
+# e.g. assign:free-preview. They import from ./src and run with the same tsx + env.
+COPY backend/scripts ./scripts/
+
 # Create output directory
 RUN mkdir -p /app/output/jobs
 

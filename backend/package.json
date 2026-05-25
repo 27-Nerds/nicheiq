@@ -16,6 +16,8 @@
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "validate:pseo": "tsx scripts/validatePseoSlugs.ts",
+    "assign:free-preview": "tsx scripts/assignFreePreview.ts",
+    "seed:plans": "tsx scripts/seedSubscriptionPlans.ts",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit"
   },

@@ -4,8 +4,8 @@ import { prisma } from '../services/db.js';
 import { requireInternalAuth, AuthenticatedRequest } from '../middleware/auth.js';
 import {
   isEntitledUser,
-  resolveFeaturedIdeaId,
-  resolveFeaturedPainId,
+  resolveFreePreviewIdeaId,
+  resolveFreePreviewPainId,
 } from '../services/catalogService.js';
 
 export const savesRouter = Router();
@@ -33,7 +33,7 @@ async function canAccessIdea(user: AuthenticatedRequest['user'], ideaId: string)
   });
   if (!idea || !idea.isActive || !idea.slug) return 'notfound';
   if (await isEntitled(user)) return 'ok';
-  return idea.id === (await resolveFeaturedIdeaId(idea.categoryId)) ? 'ok' : 'forbidden';
+  return idea.id === (await resolveFreePreviewIdeaId(idea.categoryId)) ? 'ok' : 'forbidden';
 }
 
 async function canAccessPain(user: AuthenticatedRequest['user'], painPointId: string): Promise<AccessResult> {
@@ -43,7 +43,7 @@ async function canAccessPain(user: AuthenticatedRequest['user'], painPointId: st
   });
   if (!pp || !pp.isActive || !pp.slug) return 'notfound';
   if (await isEntitled(user)) return 'ok';
-  return pp.id === (await resolveFeaturedPainId(pp.categoryId)) ? 'ok' : 'forbidden';
+  return pp.id === (await resolveFreePreviewPainId(pp.categoryId)) ? 'ok' : 'forbidden';
 }
 
 /**
@@ -55,7 +55,7 @@ async function canAccessPain(user: AuthenticatedRequest['user'], painPointId: st
 async function applyIdeaLocks<T extends { idea: { id: string; category: { id: string } } }>(rows: T[]) {
   const catIds = [...new Set(rows.map((r) => r.idea.category.id))];
   const featured = new Map<string, string | null>();
-  await Promise.all(catIds.map(async (c) => void featured.set(c, await resolveFeaturedIdeaId(c))));
+  await Promise.all(catIds.map(async (c) => void featured.set(c, await resolveFreePreviewIdeaId(c))));
   return rows.map((r) =>
     r.idea.id === featured.get(r.idea.category.id)
       ? r
@@ -66,7 +66,7 @@ async function applyIdeaLocks<T extends { idea: { id: string; category: { id: st
 async function applyPainLocks<T extends { painPoint: { id: string; category: { id: string } } }>(rows: T[]) {
   const catIds = [...new Set(rows.map((r) => r.painPoint.category.id))];
   const featured = new Map<string, string | null>();
-  await Promise.all(catIds.map(async (c) => void featured.set(c, await resolveFeaturedPainId(c))));
+  await Promise.all(catIds.map(async (c) => void featured.set(c, await resolveFreePreviewPainId(c))));
   return rows.map((r) =>
     r.painPoint.id === featured.get(r.painPoint.category.id)
       ? r

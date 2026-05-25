@@ -846,6 +846,7 @@ export async function publishPainPoint(params: {
 export async function updateCatalogIdea(id: string, data: {
   categoryId?: string;
   isFeatured?: boolean;
+  isFreePreview?: boolean;
   isActive?: boolean;
 }) {
   // Capture original categoryId so we can invalidate both old and new on category change.
@@ -855,6 +856,19 @@ export async function updateCatalogIdea(id: string, data: {
   });
 
   const result = await prisma.$transaction(async (tx) => {
+    // Single-free-preview invariant: DEMOTE FIRST, then set. The partial unique index
+    // (one isFreePreview per category) is non-deferrable, so we must clear any existing
+    // free preview in the FINAL category before the update flips this row on.
+    if (data.isFreePreview === true) {
+      const finalCategoryId = data.categoryId ?? before?.categoryId;
+      if (finalCategoryId) {
+        await tx.catalogIdea.updateMany({
+          where: { categoryId: finalCategoryId, id: { not: id }, isFreePreview: true },
+          data: { isFreePreview: false },
+        });
+      }
+    }
+
     const idea = await tx.catalogIdea.update({
       where: { id },
       data,
@@ -863,7 +877,8 @@ export async function updateCatalogIdea(id: string, data: {
     // Single-featured invariant: if this row is now featured, demote any OTHER
     // featured idea in its (possibly new) category. Keying off the final state
     // (idea.isFeatured) rather than data.isFeatured also covers moving an already
-    // featured item into a category that already has one.
+    // featured item into a category that already has one. (isFeatured has no unique
+    // index, so set-then-demote is fine here.)
     if (idea.isFeatured) {
       await tx.catalogIdea.updateMany({
         where: { categoryId: idea.categoryId, id: { not: idea.id }, isFeatured: true },
@@ -904,6 +919,7 @@ export async function updateCatalogIdea(id: string, data: {
 export async function updateCatalogPainPoint(id: string, data: {
   categoryId?: string;
   isFeatured?: boolean;
+  isFreePreview?: boolean;
   isActive?: boolean;
 }) {
   const before = await prisma.catalogPainPoint.findUnique({
@@ -912,6 +928,17 @@ export async function updateCatalogPainPoint(id: string, data: {
   });
 
   const result = await prisma.$transaction(async (tx) => {
+    // Single-free-preview invariant — demote FIRST (partial unique index; see updateCatalogIdea).
+    if (data.isFreePreview === true) {
+      const finalCategoryId = data.categoryId ?? before?.categoryId;
+      if (finalCategoryId) {
+        await tx.catalogPainPoint.updateMany({
+          where: { categoryId: finalCategoryId, id: { not: id }, isFreePreview: true },
+          data: { isFreePreview: false },
+        });
+      }
+    }
+
     const pp = await tx.catalogPainPoint.update({
       where: { id },
       data,
@@ -2032,6 +2059,7 @@ async function aggregateParentSourcesMetric(args: {
 
 async function buildCategoryLandingPayload(
   categoryId: string,
+  opts: { entitled?: boolean } = {},
 ): Promise<CategoryLandingPayload | null> {
   const category = await prisma.catalogCategory.findUnique({
     where: { id: categoryId },
@@ -2065,6 +2093,24 @@ async function buildCategoryLandingPayload(
   const childIds = category.children.map((c) => c.id);
   const aggregateIds = [category.id, ...childIds];
 
+  // Entitled users (ADMIN / fullCatalogAccess / active subscription) see the FULL list;
+  // everyone else sees the featured-only teaser (one idea + one pain per category).
+  const ideaInclude = { category: { select: { id: true, name: true, slug: true } } } as const;
+  const ideaFetch = opts.entitled
+    ? prisma.catalogIdea.findMany({
+        where: { categoryId: { in: aggregateIds }, isActive: true, slug: { not: null } },
+        orderBy: FEATURED_IDEA_ORDER,
+        include: ideaInclude,
+      })
+    : Promise.all(aggregateIds.map((id) => freePreviewIdeaForCategory(id)));
+  const painFetch = opts.entitled
+    ? prisma.catalogPainPoint.findMany({
+        where: { categoryId: { in: aggregateIds }, isActive: true, slug: { not: null } },
+        orderBy: FEATURED_PAIN_ORDER,
+        include: ideaInclude,
+      })
+    : Promise.all(aggregateIds.map((id) => freePreviewPainForCategory(id)));
+
   const [
     topIdeasRaw,
     topPainPointsRaw,
@@ -2075,13 +2121,11 @@ async function buildCategoryLandingPayload(
     ideaMaxAgg,
     painMaxAgg,
   ] = await Promise.all([
-    // Featured-only visible set: exactly one idea (and one pain) per category in
-    // the subtree — leaf → its own featured; parent → one per child (+ self if it
-    // has direct items). Non-featured items NEVER enter the public payload (the
-    // server-side gate). `aggregateIds` = [self, ...activeChildIds]; categories
-    // with no items resolve to null and are filtered out below.
-    Promise.all(aggregateIds.map((id) => featuredIdeaForCategory(id))),
-    Promise.all(aggregateIds.map((id) => featuredPainForCategory(id))),
+    // Featured-only visible set (non-entitled): exactly one idea (and one pain) per
+    // category in the subtree. Entitled callers get the full slugged set instead.
+    // Non-featured items NEVER enter the public (non-entitled) payload.
+    ideaFetch,
+    painFetch,
     prisma.catalogIdea.count({ where: { isActive: true, categoryId: { in: aggregateIds } } }),
     prisma.catalogPainPoint.count({ where: { isActive: true, categoryId: { in: aggregateIds } } }),
     // Phase 15.5 — backend-aggregate count of GO-verdict ideas, not just visible
@@ -2376,17 +2420,22 @@ async function findMostRecentItemSourcePerCategory(
 export async function getCategoryLanding(args: {
   parentSlug: string;
   childSlug?: string | null;
+  entitled?: boolean;
 }): Promise<CategoryLandingPayload | { inactive: true } | null> {
   const cacheKey = landingCacheKey(args.parentSlug, args.childSlug);
   const redis = getRedis();
 
-  try {
-    const cached = await redis.get(cacheKey);
-    if (cached) {
-      return JSON.parse(cached) as CategoryLandingPayload;
+  // Entitled responses carry the FULL list (per-user), so they must NOT read from
+  // or write to the shared public (featured-only) cache.
+  if (!args.entitled) {
+    try {
+      const cached = await redis.get(cacheKey);
+      if (cached) {
+        return JSON.parse(cached) as CategoryLandingPayload;
+      }
+    } catch (err) {
+      console.error('Landing cache read failed:', err);
     }
-  } catch (err) {
-    console.error('Landing cache read failed:', err);
   }
 
   let category: { id: string; isActive: boolean } | null;
@@ -2410,13 +2459,15 @@ export async function getCategoryLanding(args: {
   if (!category) return null;
   if (!category.isActive) return { inactive: true };
 
-  const payload = await buildCategoryLandingPayload(category.id);
+  const payload = await buildCategoryLandingPayload(category.id, { entitled: args.entitled });
   if (!payload) return null;
 
-  try {
-    await redis.setex(cacheKey, jitteredTtl(), JSON.stringify(payload));
-  } catch (err) {
-    console.error('Landing cache write failed:', err);
+  if (!args.entitled) {
+    try {
+      await redis.setex(cacheKey, jitteredTtl(), JSON.stringify(payload));
+    } catch (err) {
+      console.error('Landing cache write failed:', err);
+    }
   }
 
   return payload;
@@ -2426,9 +2477,8 @@ export async function getCategoryLanding(args: {
 // Featured-item resolution (the one free idea + pain per category)
 // ============================================
 
-// Shared ordering: an admin pin (isFeatured) wins, else top-ranked. The trailing
-// `id` is a DETERMINISTIC tiebreaker so the landing list and the detail-page
-// "is this the featured one?" check always agree. marketFitScore is nullable, so
+// Display ordering for the ENTITLED full list (floats featured items + top scores first).
+// NOT the free-preview gate — that keys solely on `isFreePreview` (see resolvers below).
 // `nulls: 'last'` keeps null-score ideas from sorting ahead of scored ones.
 const FEATURED_IDEA_ORDER: Prisma.CatalogIdeaOrderByWithRelationInput[] = [
   { isFeatured: 'desc' },
@@ -2443,58 +2493,72 @@ const FEATURED_PAIN_ORDER: Prisma.CatalogPainPointOrderByWithRelationInput[] = [
   { id: 'asc' },
 ];
 
-/** Id of the featured (free) idea for a category — admin pin or top-ranked. */
-export async function resolveFeaturedIdeaId(categoryId: string): Promise<string | null> {
+// The free-preview gate keys ONLY on `isFreePreview` — no score-based fallback. A sub-niche
+// with nothing flagged has NO free item (fully gated) until the seed script or an admin pins one.
+// At most one flagged row per category (partial unique index + demote-first-then-set in the
+// upsert); the `id` order is just a determinism guard against transient duplicates.
+
+/** Id of the free-preview idea for a category, or null when none is flagged. */
+export async function resolveFreePreviewIdeaId(categoryId: string): Promise<string | null> {
   const r = await prisma.catalogIdea.findFirst({
-    where: { categoryId, isActive: true, slug: { not: null } },
-    orderBy: FEATURED_IDEA_ORDER,
+    where: { categoryId, isActive: true, slug: { not: null }, isFreePreview: true },
+    orderBy: { id: 'asc' },
     select: { id: true },
   });
   return r?.id ?? null;
 }
 
-/** Id of the featured (free) pain point for a category. */
-export async function resolveFeaturedPainId(categoryId: string): Promise<string | null> {
+/** Id of the free-preview pain point for a category, or null when none is flagged. */
+export async function resolveFreePreviewPainId(categoryId: string): Promise<string | null> {
   const r = await prisma.catalogPainPoint.findFirst({
-    where: { categoryId, isActive: true, slug: { not: null } },
-    orderBy: FEATURED_PAIN_ORDER,
+    where: { categoryId, isActive: true, slug: { not: null }, isFreePreview: true },
+    orderBy: { id: 'asc' },
     select: { id: true },
   });
   return r?.id ?? null;
 }
 
-/** Full featured-idea row for the landing payload (same ordering as the id resolver). */
-async function featuredIdeaForCategory(categoryId: string) {
+/** Full free-preview idea row for the landing payload (null when none is flagged). */
+async function freePreviewIdeaForCategory(categoryId: string) {
   return prisma.catalogIdea.findFirst({
-    where: { categoryId, isActive: true, slug: { not: null } },
-    orderBy: FEATURED_IDEA_ORDER,
+    where: { categoryId, isActive: true, slug: { not: null }, isFreePreview: true },
+    orderBy: { id: 'asc' },
     include: { category: { select: { id: true, name: true, slug: true } } },
   });
 }
 
-/** Full featured-pain row for the landing payload. */
-async function featuredPainForCategory(categoryId: string) {
+/** Full free-preview pain row for the landing payload (null when none is flagged). */
+async function freePreviewPainForCategory(categoryId: string) {
   return prisma.catalogPainPoint.findFirst({
-    where: { categoryId, isActive: true, slug: { not: null } },
-    orderBy: FEATURED_PAIN_ORDER,
+    where: { categoryId, isActive: true, slug: { not: null }, isFreePreview: true },
+    orderBy: { id: 'asc' },
     include: { category: { select: { id: true, name: true, slug: true } } },
   });
 }
 
 /**
- * Whether a user may view the full catalog — i.e. non-featured ideas/pain points
- * and their detail pages. Authoritative DB lookup of BOTH `role === 'ADMIN'` and the
- * manual `fullCatalogAccess` grant (real subscription billing is a later follow-up),
- * so it does NOT depend on a forwarded `X-User-Role` header — the saves proxies don't
- * forward it. Fresh read so grants/revocations take effect immediately.
+ * Whether a user may view the full catalog — i.e. non-featured ideas/pain points and
+ * their detail pages. Authoritative DB lookup (header-independent) of: `role === 'ADMIN'`,
+ * the manual `fullCatalogAccess` grant, OR an active subscription. The subscription check
+ * FAILS CLOSED on a null period (if we couldn't read the Stripe item period we don't grant
+ * forever). Fresh read so grants/revocations take effect immediately.
  */
 export async function isEntitledUser(userId: string | undefined): Promise<boolean> {
   if (!userId) return false;
   const u = await prisma.user.findUnique({
     where: { id: userId },
-    select: { role: true, fullCatalogAccess: true },
+    select: {
+      role: true,
+      fullCatalogAccess: true,
+      subscription: { select: { status: true, currentPeriodEnd: true } },
+    },
   });
-  return u?.role === 'ADMIN' || u?.fullCatalogAccess === true;
+  if (!u) return false;
+  if (u.role === 'ADMIN' || u.fullCatalogAccess === true) return true;
+  const sub = u.subscription;
+  if (!sub) return false;
+  const activeStatus = sub.status === 'ACTIVE' || sub.status === 'TRIALING';
+  return activeStatus && sub.currentPeriodEnd != null && sub.currentPeriodEnd.getTime() > Date.now();
 }
 
 // ============================================
@@ -2793,7 +2857,7 @@ export async function getIdeaBySlug(slug: string, opts: { entitled?: boolean } =
   });
   if (!idea) return null;
 
-  const featuredIdeaId = await resolveFeaturedIdeaId(idea.categoryId);
+  const featuredIdeaId = await resolveFreePreviewIdeaId(idea.categoryId);
   if (!entitled && idea.id !== featuredIdeaId) {
     return { locked: true as const };
   }
@@ -2828,7 +2892,7 @@ export async function getIdeaBySlug(slug: string, opts: { entitled?: boolean } =
     // MUST filter addressedPainTitles too — the frontend renders its pain table
     // from that array, so leaving non-featured titles would leak them as text.
     const allAddressed = await resolvePainPointSlugs(idea.addressedPainTitles ?? [], idea.categoryId);
-    const featuredPain = await featuredPainForCategory(idea.categoryId);
+    const featuredPain = await freePreviewPainForCategory(idea.categoryId);
     const featuredTitle = featuredPain?.title ?? null;
     if (featuredTitle && allAddressed[featuredTitle]) {
       addressedPains = { [featuredTitle]: allAddressed[featuredTitle] };
@@ -2889,7 +2953,7 @@ export async function getPainPointBySlug(slug: string, opts: { entitled?: boolea
   });
   if (!pp) return null;
 
-  const featuredPainId = await resolveFeaturedPainId(pp.categoryId);
+  const featuredPainId = await resolveFreePreviewPainId(pp.categoryId);
   if (!entitled && pp.id !== featuredPainId) {
     return { locked: true as const };
   }
@@ -2937,7 +3001,7 @@ export async function getPainPointBySlug(slug: string, opts: { entitled?: boolea
         addressedPainTitles: { has: pp.title },
       },
     });
-    const featuredIdeaRow = await featuredIdeaForCategory(pp.categoryId);
+    const featuredIdeaRow = await freePreviewIdeaForCategory(pp.categoryId);
     const featuredAddresses = (featuredIdeaRow?.addressedPainTitles ?? []).includes(pp.title);
     if (featuredIdeaRow && featuredAddresses) {
       const { sourceJobId: _fs, publishedById: _fp, ...frest } = featuredIdeaRow;
@@ -3223,15 +3287,22 @@ export interface CatalogTopPainPoint {
 // landing/tree Redis pattern: defensive try/catch around read+write, fall
 // through to DB on Redis errors.
 const TOPPAIN_CACHE_KEY = 'catalog:top-pain-points:v1';
+// Free-preview variant (only `isFreePreview` pains) — used by the landing "Sample Reports"
+// marquee so the showcased cards are the items a non-subscriber can actually open.
+const FREEPAIN_CACHE_KEY = 'catalog:free-pain-points:v1';
 const TOPPAIN_CACHE_TTL = 300; // 5 min, matches /top-pain-points Cache-Control header
 const TOPPAIN_CACHE_FETCH_SIZE = 25;
 
-export async function getTopCatalogPainPoints(limit = 10): Promise<CatalogTopPainPoint[]> {
+export async function getTopCatalogPainPoints(
+  limit = 10,
+  opts: { freeOnly?: boolean } = {},
+): Promise<CatalogTopPainPoint[]> {
   const safeLimit = Math.min(Math.max(1, Math.floor(limit)), 25);
   const redis = getRedis();
+  const cacheKey = opts.freeOnly ? FREEPAIN_CACHE_KEY : TOPPAIN_CACHE_KEY;
 
   try {
-    const cached = await redis.get(TOPPAIN_CACHE_KEY);
+    const cached = await redis.get(cacheKey);
     if (cached) {
       const all = JSON.parse(cached) as CatalogTopPainPoint[];
       return all.slice(0, safeLimit);
@@ -3241,7 +3312,7 @@ export async function getTopCatalogPainPoints(limit = 10): Promise<CatalogTopPai
   }
 
   const rows = await prisma.catalogPainPoint.findMany({
-    where: { isActive: true, slug: { not: null } },
+    where: { isActive: true, slug: { not: null }, ...(opts.freeOnly ? { isFreePreview: true } : {}) },
     select: {
       id: true,
       slug: true,
@@ -3274,7 +3345,7 @@ export async function getTopCatalogPainPoints(limit = 10): Promise<CatalogTopPai
   }));
 
   try {
-    await redis.setex(TOPPAIN_CACHE_KEY, TOPPAIN_CACHE_TTL, JSON.stringify(all));
+    await redis.setex(cacheKey, TOPPAIN_CACHE_TTL, JSON.stringify(all));
   } catch (err) {
     console.error('top-pain cache write failed:', err);
   }
@@ -3284,7 +3355,9 @@ export async function getTopCatalogPainPoints(limit = 10): Promise<CatalogTopPai
 
 export async function invalidateTopCatalogPainPoints(): Promise<void> {
   try {
-    await getRedis().del(TOPPAIN_CACHE_KEY);
+    // Clear both the top (severity-ranked) and free-preview variants so a re-seed or an
+    // admin free-preview change refreshes the landing marquee immediately.
+    await getRedis().del(TOPPAIN_CACHE_KEY, FREEPAIN_CACHE_KEY);
   } catch (err) {
     console.error('top-pain cache invalidate failed:', err);
   }

@@ -16,6 +16,7 @@
 	let scrolled = $state(false);
 
 	const navLinks = [
+		{ label: 'Idea Catalog', href: '/ideas' },
 		{ label: 'Features', href: '#how-it-works' },
 		{ label: 'Pricing', href: '#pricing' },
 		{ label: 'Sample Reports', href: '/sample-report' },

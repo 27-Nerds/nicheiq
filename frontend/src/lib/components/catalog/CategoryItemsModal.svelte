@@ -15,7 +15,7 @@
     title: string;
     severityScore: number;
     willingnessToPayScore: number;
-    isFeatured: boolean;
+    isFreePreview: boolean;
   }
 
   interface IdeaItem {
@@ -23,7 +23,7 @@
     solutionName: string;
     marketFitScore: number | null;
     noveltyScore: number | null;
-    isFeatured: boolean;
+    isFreePreview: boolean;
   }
 
   interface Props {
@@ -44,10 +44,10 @@
 
   let painPoints = $state<PainPointItem[]>([]);
   let ideas = $state<IdeaItem[]>([]);
-  // The current "featured" (free) item per type — admin pin if any, else the
-  // resolver's top-ranked pick. Returned by the backend so we don't re-derive it.
-  let effectiveFeaturedIdeaId = $state<string | null>(null);
-  let effectiveFeaturedPainPointId = $state<string | null>(null);
+  // The single free-preview (publicly visible) item per type — the admin pin, or null
+  // when none is set (the sub-niche is then fully gated). Returned by the backend.
+  let effectiveFreePreviewIdeaId = $state<string | null>(null);
+  let effectiveFreePreviewPainPointId = $state<string | null>(null);
   let loading = $state(false);
   let selectedPainPoints = $state(new SvelteSet<string>());
   let selectedIdeas = $state(new SvelteSet<string>());
@@ -104,12 +104,12 @@
       if (ppRes.ok) {
         const data = await ppRes.json();
         painPoints = data.painPoints ?? [];
-        effectiveFeaturedPainPointId = data.effectiveFeaturedPainPointId ?? null;
+        effectiveFreePreviewPainPointId = data.effectiveFreePreviewPainPointId ?? null;
       }
       if (ideasRes.ok) {
         const data = await ideasRes.json();
         ideas = data.ideas ?? [];
-        effectiveFeaturedIdeaId = data.effectiveFeaturedIdeaId ?? null;
+        effectiveFreePreviewIdeaId = data.effectiveFreePreviewIdeaId ?? null;
       }
     } catch (err) {
       console.error("Failed to fetch category items:", err);
@@ -118,10 +118,11 @@
     }
   }
 
-  // Pin (or unpin) the featured idea/pain for this category. The backend enforces
-  // the single-featured invariant (unsets other pins in the category); we refetch
-  // so the "Featured" highlight + effective pick reflect the new state.
-  async function setFeatured(type: "idea" | "pain-point", id: string, value: boolean) {
+  // Set (or clear) the free-preview idea/pain for this category. The backend enforces
+  // the single-free-preview invariant (clears any other pin in the category); we refetch
+  // so the highlight + effective pick reflect the new state. Clearing leaves the sub-niche
+  // fully gated (no free item).
+  async function setFreePreview(type: "idea" | "pain-point", id: string, value: boolean) {
     const path =
       type === "idea"
         ? `/api/admin/catalog/ideas/${id}`
@@ -129,7 +130,7 @@
     const res = await fetch(path, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ isFeatured: value }),
+      body: JSON.stringify({ isFreePreview: value }),
     });
     if (res.ok) {
       await fetchItems();
@@ -351,21 +352,19 @@
                         class="rounded border-border flex-shrink-0"
                       />
                       <span class="text-sm text-text-primary flex-1 truncate">{pp.title}</span>
-                      {#if pp.id === effectiveFeaturedPainPointId}
-                        <Badge variant="success" size="sm">Featured{pp.isFeatured ? "" : " (auto)"}</Badge>
+                      {#if pp.id === effectiveFreePreviewPainPointId}
+                        <Badge variant="success" size="sm">Free preview</Badge>
                       {/if}
                       <Badge variant="default" size="sm">Sev {formatScore(pp.severityScore)}</Badge>
                       <Badge variant="warning" size="sm">WTP {formatScore(pp.willingnessToPayScore)}</Badge>
                       <button
-                        class="p-1 rounded hover:bg-accent/10 transition-opacity flex-shrink-0 {pp.id === effectiveFeaturedPainPointId ? 'text-accent' : 'text-text-muted opacity-0 group-hover:opacity-100'}"
-                        title={pp.id === effectiveFeaturedPainPointId
-                          ? pp.isFeatured
-                            ? "Featured (pinned) — click to unpin"
-                            : "Featured (auto) — click to pin"
-                          : "Set as featured"}
-                        onclick={() => setFeatured("pain-point", pp.id, !pp.isFeatured)}
+                        class="p-1 rounded hover:bg-accent/10 transition-opacity flex-shrink-0 {pp.id === effectiveFreePreviewPainPointId ? 'text-accent' : 'text-text-muted opacity-0 group-hover:opacity-100'}"
+                        title={pp.id === effectiveFreePreviewPainPointId
+                          ? "Free preview — click to clear (sub-niche becomes fully gated)"
+                          : "Set as the free preview"}
+                        onclick={() => setFreePreview("pain-point", pp.id, !pp.isFreePreview)}
                       >
-                        <Star class="w-3.5 h-3.5" fill={pp.id === effectiveFeaturedPainPointId ? "currentColor" : "none"} />
+                        <Star class="w-3.5 h-3.5" fill={pp.id === effectiveFreePreviewPainPointId ? "currentColor" : "none"} />
                       </button>
                       <button
                         class="p-1 rounded hover:bg-error/10 text-text-muted hover:text-error opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
@@ -410,21 +409,19 @@
                         class="rounded border-border flex-shrink-0"
                       />
                       <span class="text-sm text-text-primary flex-1 truncate">{idea.solutionName}</span>
-                      {#if idea.id === effectiveFeaturedIdeaId}
-                        <Badge variant="success" size="sm">Featured{idea.isFeatured ? "" : " (auto)"}</Badge>
+                      {#if idea.id === effectiveFreePreviewIdeaId}
+                        <Badge variant="success" size="sm">Free preview</Badge>
                       {/if}
                       <Badge variant="success" size="sm">Fit {formatScore(idea.marketFitScore)}</Badge>
                       <Badge variant="info" size="sm">Nov {formatScore(idea.noveltyScore)}</Badge>
                       <button
-                        class="p-1 rounded hover:bg-accent/10 transition-opacity flex-shrink-0 {idea.id === effectiveFeaturedIdeaId ? 'text-accent' : 'text-text-muted opacity-0 group-hover:opacity-100'}"
-                        title={idea.id === effectiveFeaturedIdeaId
-                          ? idea.isFeatured
-                            ? "Featured (pinned) — click to unpin"
-                            : "Featured (auto) — click to pin"
-                          : "Set as featured"}
-                        onclick={() => setFeatured("idea", idea.id, !idea.isFeatured)}
+                        class="p-1 rounded hover:bg-accent/10 transition-opacity flex-shrink-0 {idea.id === effectiveFreePreviewIdeaId ? 'text-accent' : 'text-text-muted opacity-0 group-hover:opacity-100'}"
+                        title={idea.id === effectiveFreePreviewIdeaId
+                          ? "Free preview — click to clear (sub-niche becomes fully gated)"
+                          : "Set as the free preview"}
+                        onclick={() => setFreePreview("idea", idea.id, !idea.isFreePreview)}
                       >
-                        <Star class="w-3.5 h-3.5" fill={idea.id === effectiveFeaturedIdeaId ? "currentColor" : "none"} />
+                        <Star class="w-3.5 h-3.5" fill={idea.id === effectiveFreePreviewIdeaId ? "currentColor" : "none"} />
                       </button>
                       <button
                         class="p-1 rounded hover:bg-error/10 text-text-muted hover:text-error opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"

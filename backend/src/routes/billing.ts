@@ -1,7 +1,6 @@
 import { Router, Response } from 'express';
 import { requireInternalAuth, AuthenticatedRequest } from '../middleware/auth.js';
 import {
-  getOrCreateUserCredits,
   getCreditDetails,
   getTransactionHistory,
   redeemPromoCode,
@@ -10,6 +9,15 @@ import {
   getStageCost,
 } from '../services/creditService.js';
 import { getPackages, getPackageById, createCheckoutSession } from '../services/stripeService.js';
+import {
+  getActivePlans,
+  getPlanById,
+  getUserSubscription,
+  createSubscriptionCheckoutSession,
+  createBillingPortalSession,
+  ActiveSubscriptionError,
+  NoStripeCustomerError,
+} from '../services/subscriptionService.js';
 
 export const billingRouter = Router();
 
@@ -23,7 +31,11 @@ billingRouter.get('/', requireInternalAuth, async (req: AuthenticatedRequest, re
     const details = await getCreditDetails(userId);
 
     res.json({
-      balance: details.balance,
+      balance: details.balance, // = available (back-compat)
+      available: details.available,
+      monthlyAllowance: details.monthlyAllowance,
+      purchasedBalance: details.purchasedBalance,
+      monthlyAllowancePeriodEnd: details.monthlyAllowancePeriodEnd?.toISOString() ?? null,
       totalPurchased: details.totalPurchased,
       totalUsed: details.totalUsed,
       recentTransactions: details.recentTransactions.map((tx) => ({
@@ -144,10 +156,14 @@ billingRouter.post('/redeem', requireInternalAuth, async (req: AuthenticatedRequ
 billingRouter.get('/balance', requireInternalAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.id;
-    const credits = await getOrCreateUserCredits(userId);
+    const details = await getCreditDetails(userId);
 
     res.json({
-      balance: credits.balance,
+      balance: details.available, // = available (monthly spendable + purchased), back-compat
+      available: details.available,
+      monthlyAllowance: details.monthlyAllowance,
+      purchasedBalance: details.purchasedBalance,
+      monthlyAllowancePeriodEnd: details.monthlyAllowancePeriodEnd?.toISOString() ?? null,
     });
   } catch (error) {
     console.error('Failed to get balance:', error);
@@ -256,5 +272,118 @@ billingRouter.get('/stage-costs', requireInternalAuth, async (_req: Authenticate
   } catch (error) {
     console.error('Failed to get stage costs:', error);
     res.status(500).json({ error: 'Failed to get stage costs' });
+  }
+});
+
+// ============================================
+// Subscriptions
+// ============================================
+
+/** Map a SubscriptionPlan to the public card shape — never leak the Stripe coupon id. */
+function toPlanCard(plan: Awaited<ReturnType<typeof getActivePlans>>[number]) {
+  return {
+    id: plan.id,
+    name: plan.name,
+    description: plan.description,
+    monthlyCredits: plan.monthlyCredits,
+    priceInCents: plan.priceInCents,
+    interval: plan.interval,
+    trialDays: plan.trialDays,
+    isPopular: plan.isPopular,
+    tagline: plan.tagline,
+    includesLabel: plan.includesLabel,
+    creditsInfo: plan.creditsInfo,
+    features: Array.isArray(plan.features) ? plan.features : null,
+    ctaText: plan.ctaText,
+    badgeLabel: plan.badgeLabel,
+    promoLine: plan.promoLine,
+    promoPriceInCents: plan.promoPriceInCents,
+    promoBadge: plan.promoBadge,
+    ctaSubText: plan.ctaSubText,
+    ctaSubUrl: plan.ctaSubUrl,
+  };
+}
+
+/** GET /api/billing/plans — active subscription plans (public). */
+billingRouter.get('/plans', async (_req, res: Response) => {
+  try {
+    const plans = await getActivePlans();
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.json({ plans: plans.map(toPlanCard) });
+  } catch (error) {
+    console.error('Failed to get plans:', error);
+    res.status(500).json({ error: 'Failed to get plans' });
+  }
+});
+
+/** GET /api/billing/subscription — the current user's subscription summary. */
+billingRouter.get('/subscription', requireInternalAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const sub = await getUserSubscription(req.user!.id);
+    if (!sub) {
+      res.json({ subscription: null });
+      return;
+    }
+    res.json({
+      subscription: {
+        status: sub.status,
+        planId: sub.planId,
+        planName: sub.plan?.name ?? null,
+        monthlyCredits: sub.plan?.monthlyCredits ?? null,
+        interval: sub.plan?.interval ?? null,
+        currentPeriodEnd: sub.currentPeriodEnd?.toISOString() ?? null,
+        cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
+        canceledAt: sub.canceledAt?.toISOString() ?? null,
+      },
+    });
+  } catch (error) {
+    console.error('Failed to get subscription:', error);
+    res.status(500).json({ error: 'Failed to get subscription' });
+  }
+});
+
+/** POST /api/billing/subscribe — start a subscription checkout (409 if already live). */
+billingRouter.post('/subscribe', requireInternalAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const userEmail = req.user!.email || '';
+    const { planId } = req.body;
+    if (!planId || typeof planId !== 'string') {
+      res.status(400).json({ error: 'Plan ID is required', code: 'MISSING_PLAN_ID' });
+      return;
+    }
+    const plan = await getPlanById(planId);
+    if (!plan) {
+      res.status(404).json({ error: 'Plan not found', code: 'PLAN_NOT_FOUND' });
+      return;
+    }
+    if (!plan.isActive) {
+      res.status(400).json({ error: 'Plan is no longer available', code: 'PLAN_INACTIVE' });
+      return;
+    }
+    const { url } = await createSubscriptionCheckoutSession(userId, userEmail, planId);
+    res.json({ url });
+  } catch (error) {
+    if (error instanceof ActiveSubscriptionError) {
+      res.status(409).json({ error: 'Already subscribed — use Manage subscription', code: 'ALREADY_SUBSCRIBED' });
+      return;
+    }
+    console.error('Failed to create subscription checkout:', error);
+    res.status(500).json({ error: 'Failed to start subscription', code: 'SUBSCRIBE_FAILED' });
+  }
+});
+
+/** POST /api/billing/portal — Stripe Customer Portal session (400 if no customer). */
+billingRouter.post('/portal', requireInternalAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { url } = await createBillingPortalSession(req.user!.id);
+    res.json({ url });
+  } catch (error) {
+    if (error instanceof NoStripeCustomerError) {
+      res.status(400).json({ error: 'No active billing account', code: 'NO_CUSTOMER' });
+      return;
+    }
+    console.error('Failed to create portal session:', error);
+    res.status(500).json({ error: 'Failed to open billing portal', code: 'PORTAL_FAILED' });
   }
 });

@@ -27,6 +27,9 @@ This guide covers deploying NicheIQ to a production server using Docker Compose.
   - [DataForSEO Configuration](#dataforseo-configuration)
   - [Token Packages](#token-packages)
   - [Promo Codes](#promo-codes)
+  - [Subscription Plans](#subscription-plans)
+  - [Catalog SEO indexing (launch gate)](#catalog-seo-indexing-launch-gate)
+  - [Catalog Free Preview (1 free idea + pain per sub-niche)](#catalog-free-preview-1-free-idea--pain-per-sub-niche)
 
 ---
 
@@ -879,9 +882,17 @@ Webhooks notify your app when payments complete.
    - **Production:** `https://yourdomain.com/api/webhooks/stripe`
    - **Development:** Use [Stripe CLI](https://stripe.com/docs/stripe-cli) for local testing
 4. Select events to listen for:
-   - `checkout.session.completed`
+   - `checkout.session.completed` — one-time credit purchases **and** subscription checkout
    - `payment_intent.succeeded`
    - `payment_intent.payment_failed`
+   - **Subscriptions** (required for the subscription model — the backend routes all of these in
+     `stripeService.ts`):
+     - `customer.subscription.created`
+     - `customer.subscription.updated` — drives the **cancel automation** (cancel-at-period-end flag)
+     - `customer.subscription.deleted` — period-end revoke → user returns to free
+     - `invoice.paid` — grants the monthly credit allowance each cycle (NOT enabled by default)
+     - `invoice.payment_failed`
+     - `invoice.payment_action_required`
 5. Click "Add endpoint"
 6. Copy the **Signing secret** (starts with `whsec_`)
 7. Add to your `.env`:
@@ -889,6 +900,22 @@ Webhooks notify your app when payments complete.
 ```bash
 STRIPE_WEBHOOK_SECRET=whsec_...
 ```
+
+#### Step 4b: Customer Portal (subscription cancel)
+
+Cancellation is handled in the Stripe **Customer Portal**. The app configures the portal **in code** —
+`createBillingPortalSession` lazily creates and caches (in `AppSettings`, key `stripe_portal_config_id_v1`)
+a portal configuration with **cancel at end of billing period, no proration** — so users get a working
+Cancel option and the subscription stays active until cycle end, stops charging, then reverts to free
+(via the `customer.subscription.deleted` webhook above).
+
+- **Prereq:** this programmatic config requires the Stripe account to have a **public business profile**
+  (a privacy policy URL — the app uses `/privacy`). If the account lacks one, the code logs a warning and
+  falls back to the account-default portal config. In that case, enable cancellation manually:
+  Dashboard → **Settings → Billing → Customer portal** → **Cancellations: on**, **at end of billing
+  period**, **no proration**.
+- To roll out future portal-config changes, bump the version suffix in `PORTAL_CONFIG_KEY`
+  (`stripe_portal_config_id_v1` → `_v2`) so a fresh configuration is created.
 
 #### Local Development with Stripe CLI
 
@@ -1608,6 +1635,114 @@ docker exec -it nicheiq-postgres psql -U nicheiq nicheiq -c "INSERT INTO \"Token
 # List token packages
 docker exec -it nicheiq-postgres psql -U nicheiq nicheiq -c "SELECT name, credits, \"priceInCents\"/100.0 as price_usd, \"isActive\" FROM \"TokenPackage\" ORDER BY \"sortOrder\";"
 ```
+
+---
+
+### Subscription Plans
+
+Two starter plans can be seeded (idempotent — create-if-missing, keyed on fixed ids, never
+overwrites later admin edits): **Catalog Access** ($19/mo, launch-sale display $9, catalog access
+only) and **Pro** ($49/mo, catalog access + 25 monthly credits ≈ 5 Discovery runs).
+
+```bash
+# Production (api image must include backend/scripts — see the rebuild note below):
+docker exec -it nicheiq-api npm run seed:plans
+
+# Local/dev:
+cd backend && npm run seed:plans
+```
+
+> ⚠ The seed uses **placeholder `stripePriceId`s** (`price_seed_*`). Before checkout works you must,
+> in the admin **Plans** page: (1) set each plan's real recurring **Stripe Price id**; (2) for the $9
+> launch price on Catalog Access, attach a **Stripe coupon** (e.g. ~$10 off / 53% off, repeating) —
+> `promoPriceInCents` is display only. Admins can also create/edit plans entirely in that page.
+
+---
+
+### Catalog SEO indexing (launch gate)
+
+The public idea catalog (`/ideas/**`) ships **gated**: every catalog SSR route stamps `noindex, follow`
+and the sitemap omits the catalog branches. This is controlled by the **`SEO_LAUNCH_GATE`** env var read
+by the **frontend** (`$env/dynamic/private`, default `'true'` = gated). Flipping it to `false` opens the
+**entire** catalog to search engines in one go. It's a **runtime** var, so no rebuild is needed — just
+recreate the frontend container.
+
+**To enable indexing in production:**
+
+1. **Wire the var into the frontend container.** The prod compose frontend service does NOT pass
+   `SEO_LAUNCH_GATE` by default — add it to the `frontend` service `environment:` block in
+   `docker/docker-compose.prod.yml`:
+   ```yaml
+   services:
+     frontend:
+       environment:
+         # ...existing vars...
+         SEO_LAUNCH_GATE: ${SEO_LAUNCH_GATE:-true}
+   ```
+2. **Set the value** in the production `.env` (the file compose reads for `${...}` substitution):
+   ```bash
+   SEO_LAUNCH_GATE=false
+   ```
+3. **Recreate the frontend** (runtime env → recreate, no `--build` needed):
+   ```bash
+   docker compose -f docker/docker-compose.prod.yml up -d frontend
+   ```
+4. **Verify:**
+   ```bash
+   # Catalog pages should NO LONGER carry a noindex robots tag:
+   curl -s https://yourdomain.com/ideas | grep -i 'name="robots"'        # expect index/absent, not "noindex"
+   # Sitemap should now include catalog URLs:
+   curl -s https://yourdomain.com/sitemap.xml | grep -c '/ideas/'        # expect > 0
+   ```
+
+To re-gate (pull the catalog back out of the index), set `SEO_LAUNCH_GATE=true` (or remove the var) and
+recreate the frontend. Note: actual free content requires the **free-preview seed** (below) to be run, so
+non-subscribers — and crawlers — see the free idea/pain per sub-niche.
+
+---
+
+### Catalog Free Preview (1 free idea + pain per sub-niche)
+
+Each sub-niche exposes exactly **one idea + one pain point** for free (the teaser on the public
+`/ideas` listing, the only detail pages a non-subscriber can open, and the only items they can save).
+This is gated **solely** by the `isFreePreview` flag — there is **no score-based fallback**, so a
+sub-niche with nothing flagged is **fully gated** (no free item) until one is assigned. Assignment is
+explicit: a seed script picks a random idea + pain per category, or an admin pins one in the catalog
+admin modal. (`isFreePreview` is independent of `isFeatured`.)
+
+The schema migration `add_free_preview_flag` (adds the column + the one-per-category partial unique
+indexes) applies **automatically** when the `api` container starts — its entrypoint runs
+`npx prisma migrate deploy`. **After the first deploy of this change you must run the seed script once**,
+otherwise every sub-niche stays fully gated.
+
+> Prerequisite: the `api` image must include `backend/scripts/` (added to `docker/Dockerfile.api`).
+> If you deployed before that change, **rebuild the api image** first:
+> `docker compose -f docker/docker-compose.prod.yml up -d --build api`
+
+```bash
+# Seed the free preview — assign a RANDOM active idea + pain in every category that has none.
+# Idempotent + sticky: re-runs do NOT reshuffle already-seeded categories (and re-seed any whose
+# pick was deactivated). Run inside the running api container.
+docker exec -it nicheiq-api npm run assign:free-preview
+
+# Force RE-RANDOMIZE every category (e.g. to reshuffle all picks):
+docker exec -it nicheiq-api npm run assign:free-preview -- --reassign
+
+# Equivalent via compose (if you prefer not to hard-code the container name):
+docker compose -f docker/docker-compose.prod.yml exec api npm run assign:free-preview
+
+# Verify: how many ideas / pains are flagged as the free preview (should be ~1 per active category):
+docker exec -it nicheiq-postgres psql -U nicheiq nicheiq -c "SELECT (SELECT count(*) FROM \"CatalogIdea\" WHERE \"isFreePreview\") AS free_ideas, (SELECT count(*) FROM \"CatalogPainPoint\" WHERE \"isFreePreview\") AS free_pains;"
+```
+
+The script invalidates the landing cache for every category it touches, so the public teaser reflects
+the new picks immediately. To override an individual pick, use the **Free preview** star control in the
+admin catalog category modal (it PATCHes `isFreePreview` and clears any prior pick in that category).
+
+Re-run the seed after bulk-publishing into **new** categories (the default mode only fills categories
+that have no active free-preview item, so it's safe to run anytime).
+
+> Local/dev equivalent (outside Docker): `cd backend && npm run assign:free-preview [-- --reassign]`.
 
 ---
 

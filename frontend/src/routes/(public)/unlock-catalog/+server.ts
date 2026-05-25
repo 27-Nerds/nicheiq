@@ -7,12 +7,12 @@ import type { RequestHandler } from './$types';
  * redirect below is `no-store`, so the auth-dependent destination is never
  * cached.
  *
- * Destinations are placeholders until the subscription/pricing page lands
- * (follow-up): logged-in → billing, logged-out → register.
+ * Destinations: logged-in → the billing plans section (subscribe to unlock
+ * the full catalog), logged-out → register.
  */
 export const GET: RequestHandler = async ({ locals }) => {
   const session = await locals.auth?.();
-  const location = session?.user ? '/billing' : '/register?ref=catalog';
+  const location = session?.user ? '/billing#plans' : '/register?ref=catalog';
   return new Response(null, {
     status: 302,
     headers: {

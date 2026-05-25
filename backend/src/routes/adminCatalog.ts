@@ -17,8 +17,8 @@ import {
   depublishIdea,
   depublishPainPoint,
   invalidateCategoryLanding,
-  resolveFeaturedIdeaId,
-  resolveFeaturedPainId,
+  resolveFreePreviewIdeaId,
+  resolveFreePreviewPainId,
 } from '../services/catalogService.js';
 import {
   generateForCategory,
@@ -128,6 +128,7 @@ const PublishPainPointSchema = z.object({
 const UpdatePublishedItemSchema = z.object({
   categoryId: z.string().uuid().optional(),
   isFeatured: z.boolean().optional(),
+  isFreePreview: z.boolean().optional(),
   isActive: z.boolean().optional(),
 }).refine(d => Object.keys(d).length > 0, { message: 'At least one field required' });
 
@@ -896,10 +897,9 @@ adminCatalogRouter.get('/categories/:id/pain-points', async (req: AuthenticatedR
       ...pp,
       isLegacy: !hasMeaningfulResearchContext(researchContext),
     }));
-    // The effective "featured" pain (admin pin via isFeatured, else top-ranked) so
-    // the admin UI can show the current pick even when nothing is explicitly pinned.
-    const effectiveFeaturedPainPointId = await resolveFeaturedPainId(req.params.id);
-    res.json({ painPoints, effectiveFeaturedPainPointId });
+    // The free-preview pain for this category (null when none is flagged — fully gated).
+    const effectiveFreePreviewPainPointId = await resolveFreePreviewPainId(req.params.id);
+    res.json({ painPoints, effectiveFreePreviewPainPointId });
   } catch (error) {
     console.error('Failed to list pain points:', error);
     res.status(500).json({ error: 'Failed to list pain points' });
@@ -912,8 +912,8 @@ adminCatalogRouter.get('/categories/:id/ideas', async (req: AuthenticatedRequest
       where: { categoryId: req.params.id, isActive: true },
       orderBy: { createdAt: 'desc' },
     });
-    const effectiveFeaturedIdeaId = await resolveFeaturedIdeaId(req.params.id);
-    res.json({ ideas, effectiveFeaturedIdeaId });
+    const effectiveFreePreviewIdeaId = await resolveFreePreviewIdeaId(req.params.id);
+    res.json({ ideas, effectiveFreePreviewIdeaId });
   } catch (error) {
     console.error('Failed to list ideas:', error);
     res.status(500).json({ error: 'Failed to list ideas' });

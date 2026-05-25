@@ -406,6 +406,100 @@ adminRouter.patch('/packages/:id', async (req: AuthenticatedRequest, res: Respon
 });
 
 // ============================================
+// Subscription Plans (mirror Packages; v1 = monthly interval only)
+// ============================================
+
+const CreatePlanSchema = z.object({
+  name: z.string().min(1).max(100),
+  description: z.string().max(500).optional(),
+  monthlyCredits: z.number().int().min(0), // 0 = catalog-access-only
+  priceInCents: z.number().int().positive(),
+  interval: z.literal('month').optional(), // v1: monthly only
+  trialDays: z.number().int().positive().max(365).optional(),
+  stripePriceId: z.string().min(1).max(255),
+  stripeProductId: z.string().max(255).optional(),
+  stripeCouponId: z.string().max(255).optional(),
+  isActive: z.boolean().optional(),
+  isPopular: z.boolean().optional(),
+  sortOrder: z.number().int().optional(),
+  ...richPricingFields,
+});
+
+const UpdatePlanSchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  description: z.string().max(500).nullable().optional(),
+  monthlyCredits: z.number().int().min(0).optional(),
+  priceInCents: z.number().int().positive().optional(),
+  interval: z.literal('month').optional(),
+  trialDays: z.number().int().positive().max(365).nullable().optional(),
+  stripePriceId: z.string().min(1).max(255).optional(),
+  stripeProductId: z.string().max(255).nullable().optional(),
+  stripeCouponId: z.string().max(255).nullable().optional(),
+  isActive: z.boolean().optional(),
+  isPopular: z.boolean().optional(),
+  sortOrder: z.number().int().optional(),
+  tagline: z.string().max(200).nullable().optional(),
+  includesLabel: z.string().max(200).nullable().optional(),
+  creditsInfo: z.string().max(200).nullable().optional(),
+  features: z.array(FeatureItemSchema).max(20).nullable().optional(),
+  ctaText: z.string().max(100).nullable().optional(),
+  badgeLabel: z.string().max(50).nullable().optional(),
+  promoLine: z.string().max(200).nullable().optional(),
+  promoPriceInCents: z.number().int().positive().nullable().optional(),
+  promoBadge: z.string().max(50).nullable().optional(),
+  ctaSubText: z.string().max(100).nullable().optional(),
+  ctaSubUrl: z.string().max(500).nullable().optional(),
+});
+
+adminRouter.get('/plans', async (_req: AuthenticatedRequest, res: Response) => {
+  try {
+    const plans = await adminService.listAllPlans();
+    res.json({ plans });
+  } catch (error) {
+    console.error('Failed to list plans:', error);
+    res.status(500).json({ error: 'Failed to list plans' });
+  }
+});
+
+adminRouter.post('/plans', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const input = CreatePlanSchema.parse(req.body);
+    const plan = await adminService.createPlan(input);
+    res.status(201).json(plan);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation error', details: error.errors });
+      return;
+    }
+    console.error('Failed to create plan:', error);
+    res.status(500).json({ error: 'Failed to create plan' });
+  }
+});
+
+adminRouter.patch('/plans/:id', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const input = UpdatePlanSchema.parse(req.body);
+    const data: Record<string, unknown> = { ...input };
+    if (data.features === null) {
+      data.features = Prisma.DbNull;
+    }
+    const plan = await adminService.updatePlan(req.params.id, data as Prisma.SubscriptionPlanUpdateInput);
+    res.json(plan);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation error', details: error.errors });
+      return;
+    }
+    if ((error as { code?: string })?.code === 'P2025') {
+      res.status(404).json({ error: 'Plan not found' });
+      return;
+    }
+    console.error('Failed to update plan:', error);
+    res.status(500).json({ error: 'Failed to update plan' });
+  }
+});
+
+// ============================================
 // App Settings
 // ============================================
 

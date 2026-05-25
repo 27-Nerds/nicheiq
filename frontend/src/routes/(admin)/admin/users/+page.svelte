@@ -12,6 +12,7 @@
     searchInput = initialSearch;
   });
   let updatingRole = $state<string | null>(null);
+  let updatingAccess = $state<string | null>(null);
 
   // Credit modal state
   let creditModal = $state<{ userId: string; email: string } | null>(null);
@@ -119,6 +120,29 @@
       updatingRole = null;
     }
   }
+
+  async function toggleCatalogAccess(userId: string, current: boolean) {
+    if (
+      !confirm(
+        current
+          ? "Revoke this user's manual full-catalog access?"
+          : "Grant this user manual full-catalog access?",
+      )
+    ) {
+      return;
+    }
+    updatingAccess = userId;
+    try {
+      await fetch(`/api/admin/users/${userId}/access`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fullCatalogAccess: !current }),
+      });
+      await invalidateAll();
+    } finally {
+      updatingAccess = null;
+    }
+  }
 </script>
 
 <svelte:head>
@@ -160,6 +184,9 @@
               <th class="text-left py-3 px-4 text-text-muted font-medium"
                 >Role</th
               >
+              <th class="text-left py-3 px-4 text-text-muted font-medium"
+                >Access</th
+              >
               <th class="text-right py-3 px-4 text-text-muted font-medium"
                 >Credits</th
               >
@@ -188,6 +215,19 @@
                     {user.role}
                   </Badge>
                 </td>
+                <td class="py-3 px-4">
+                  {#if user.role === "ADMIN"}
+                    <Badge variant="accent" size="sm">ADMIN</Badge>
+                  {:else if user.subscriptionStatus}
+                    <Badge variant="success" size="sm">
+                      Subscribed: {user.subscriptionPlanName || "—"} ({user.subscriptionStatus})
+                    </Badge>
+                  {:else if user.fullCatalogAccess}
+                    <Badge variant="muted" size="sm">Catalog grant</Badge>
+                  {:else}
+                    <span class="text-text-muted">—</span>
+                  {/if}
+                </td>
                 <td class="py-3 px-4 text-right text-text-primary"
                   >{user.creditBalance}</td
                 >
@@ -205,6 +245,20 @@
                     >
                       + Credits
                     </button>
+                    {#if user.role !== "ADMIN"}
+                      <button
+                        class="text-xs px-2 py-1 rounded border border-border hover:bg-bg-elevated transition-colors text-text-secondary disabled:opacity-50"
+                        onclick={() => toggleCatalogAccess(user.id, user.fullCatalogAccess)}
+                        disabled={updatingAccess === user.id}
+                        title="Manual full-catalog access grant"
+                      >
+                        {updatingAccess === user.id
+                          ? "..."
+                          : user.fullCatalogAccess
+                            ? "Revoke access"
+                            : "Grant access"}
+                      </button>
+                    {/if}
                     <button
                       class="text-xs px-2 py-1 rounded border border-border hover:bg-bg-elevated transition-colors text-text-secondary disabled:opacity-50"
                       onclick={() => toggleRole(user.id, user.role)}

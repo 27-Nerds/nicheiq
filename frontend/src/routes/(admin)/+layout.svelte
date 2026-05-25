@@ -6,6 +6,7 @@
     Gift,
     Users,
     Package,
+    CreditCard,
     Settings,
     Shield,
     ArrowLeft,
@@ -29,6 +30,7 @@
     { href: "/admin/reddit-threads", label: "Reddit Threads", icon: MessageSquare },
     { href: "/admin/users", label: "Users", icon: Users },
     { href: "/admin/packages", label: "Packages", icon: Package },
+    { href: "/admin/plans", label: "Plans", icon: CreditCard },
     { href: "/admin/settings", label: "Settings", icon: Settings },
   ];
 

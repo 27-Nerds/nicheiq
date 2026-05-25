@@ -42,6 +42,21 @@ beforeEach(() => {
       findUnique: mockUserCreditsFindUnique,
       create: mockUserCreditsCreate,
       update: mockUserCreditsUpdate,
+      upsert: vi.fn().mockResolvedValue({}),
+    },
+    // _chargeForStageImpl now locks the row via `SELECT ... FOR UPDATE`. Derive the locked
+    // row from the same findUnique mock so per-test balances still apply (monthly bucket = 0
+    // in these tests, so available == balance).
+    $queryRaw: async () => {
+      const c = await mockUserCreditsFindUnique();
+      return [
+        {
+          balance: c?.balance ?? 0,
+          monthlyAllowance: c?.monthlyAllowance ?? 0,
+          monthlyAllowancePeriodStart: c?.monthlyAllowancePeriodStart ?? null,
+          monthlyAllowancePeriodEnd: c?.monthlyAllowancePeriodEnd ?? null,
+        },
+      ];
     },
     job: {
       create: mockJobCreate,
@@ -496,9 +511,9 @@ describe('chargeForResume', () => {
       .mockResolvedValueOnce([{ stage: 'discovery', cycle: 0, amount: -5, createdAt: new Date() }])
       .mockResolvedValueOnce([{ stage: 'discovery', cycle: 0, amount: 5, createdAt: new Date() }]);
 
-    const mockTopLevelUserCredits = vi.fn().mockResolvedValue({ userId: USER_ID, balance: 2 });
-    const { prisma: mockPrisma } = await import('../db.js');
-    (mockPrisma as any).userCredits = { findUnique: mockTopLevelUserCredits };
+    // Resume now routes through _chargeForStageImpl, which checks availability against the
+    // FOR-UPDATE-locked row (the tx-level findUnique the $queryRaw mock derives from).
+    mockUserCreditsFindUnique.mockResolvedValue({ userId: USER_ID, balance: 2, monthlyAllowance: 0 });
 
     const { chargeForResume, InsufficientCreditsError } = await import('../creditService.js');
 

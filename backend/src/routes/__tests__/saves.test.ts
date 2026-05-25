@@ -16,13 +16,13 @@ const UUID_A = '11111111-1111-1111-1111-111111111111';
 const UUID_FEATURED = '22222222-2222-2222-2222-222222222222';
 
 const mockIsEntitledUser = vi.fn();
-const mockResolveFeaturedIdeaId = vi.fn();
-const mockResolveFeaturedPainId = vi.fn();
+const mockResolveFreePreviewIdeaId = vi.fn();
+const mockResolveFreePreviewPainId = vi.fn();
 
 vi.mock('../../services/catalogService.js', () => ({
   isEntitledUser: (...a: any[]) => mockIsEntitledUser(...a),
-  resolveFeaturedIdeaId: (...a: any[]) => mockResolveFeaturedIdeaId(...a),
-  resolveFeaturedPainId: (...a: any[]) => mockResolveFeaturedPainId(...a),
+  resolveFreePreviewIdeaId: (...a: any[]) => mockResolveFreePreviewIdeaId(...a),
+  resolveFreePreviewPainId: (...a: any[]) => mockResolveFreePreviewPainId(...a),
 }));
 
 const mockIdeaFindUnique = vi.fn();
@@ -31,6 +31,8 @@ const mockSavedIdeaUpsert = vi.fn();
 const mockSavedIdeaFindUnique = vi.fn();
 const mockSavedIdeaUpdate = vi.fn();
 const mockSavedIdeaFindMany = vi.fn();
+const mockSavedPainUpsert = vi.fn();
+const mockSavedPainFindMany = vi.fn();
 
 vi.mock('../../services/db.js', () => ({
   prisma: {
@@ -44,10 +46,10 @@ vi.mock('../../services/db.js', () => ({
       deleteMany: vi.fn(),
     },
     savedPainPoint: {
-      upsert: vi.fn(),
+      upsert: (...a: any[]) => mockSavedPainUpsert(...a),
       findUnique: vi.fn(),
       update: vi.fn(),
-      findMany: vi.fn(),
+      findMany: (...a: any[]) => mockSavedPainFindMany(...a),
       deleteMany: vi.fn(),
     },
   },
@@ -83,7 +85,7 @@ describe('POST /api/saves/ideas — access control', () => {
   it('non-entitled user saving a NON-featured idea → 403', async () => {
     mockIsEntitledUser.mockResolvedValue(false);
     mockIdeaFindUnique.mockResolvedValue({ id: UUID_A, categoryId: 'cat-1', isActive: true, slug: 'an-idea' });
-    mockResolveFeaturedIdeaId.mockResolvedValue(UUID_FEATURED); // a different idea is featured
+    mockResolveFreePreviewIdeaId.mockResolvedValue(UUID_FEATURED); // a different idea is featured
 
     const res = await request(app).post('/api/saves/ideas').set(as('user-1')).send({ ideaId: UUID_A });
     expect(res.status).toBe(403);
@@ -93,7 +95,7 @@ describe('POST /api/saves/ideas — access control', () => {
   it('non-entitled user saving the FEATURED idea → 200', async () => {
     mockIsEntitledUser.mockResolvedValue(false);
     mockIdeaFindUnique.mockResolvedValue({ id: UUID_A, categoryId: 'cat-1', isActive: true, slug: 'an-idea' });
-    mockResolveFeaturedIdeaId.mockResolvedValue(UUID_A); // this idea IS featured
+    mockResolveFreePreviewIdeaId.mockResolvedValue(UUID_A); // this idea IS featured
 
     const res = await request(app).post('/api/saves/ideas').set(as('user-1')).send({ ideaId: UUID_A });
     expect(res.status).toBe(200);
@@ -103,12 +105,12 @@ describe('POST /api/saves/ideas — access control', () => {
   it('entitled user (ADMIN/fullCatalogAccess, NO X-User-Role) saving a non-featured idea → 200', async () => {
     mockIsEntitledUser.mockResolvedValue(true); // DB says entitled
     mockIdeaFindUnique.mockResolvedValue({ id: UUID_A, categoryId: 'cat-1', isActive: true, slug: 'an-idea' });
-    mockResolveFeaturedIdeaId.mockResolvedValue(UUID_FEATURED);
+    mockResolveFreePreviewIdeaId.mockResolvedValue(UUID_FEATURED);
 
     const res = await request(app).post('/api/saves/ideas').set(as('admin-1')).send({ ideaId: UUID_A });
     expect(res.status).toBe(200);
     // resolveFeaturedIdeaId is short-circuited when entitled.
-    expect(mockResolveFeaturedIdeaId).not.toHaveBeenCalled();
+    expect(mockResolveFreePreviewIdeaId).not.toHaveBeenCalled();
   });
 
   it('inactive / slug-less idea → 404 (notfound), not 403', async () => {
@@ -120,12 +122,46 @@ describe('POST /api/saves/ideas — access control', () => {
   });
 });
 
+describe('POST /api/saves/pain-points — access control', () => {
+  it('non-entitled user saving a NON-free pain → 403', async () => {
+    mockIsEntitledUser.mockResolvedValue(false);
+    mockPainFindUnique.mockResolvedValue({ id: UUID_A, categoryId: 'cat-1', isActive: true, slug: 'a-pain' });
+    mockResolveFreePreviewPainId.mockResolvedValue(UUID_FEATURED); // a different pain is the free one
+
+    const res = await request(app).post('/api/saves/pain-points').set(as('user-1')).send({ painPointId: UUID_A });
+    expect(res.status).toBe(403);
+    expect(mockSavedPainUpsert).not.toHaveBeenCalled();
+  });
+
+  it('non-entitled user saving the FREE-preview pain → 200', async () => {
+    mockIsEntitledUser.mockResolvedValue(false);
+    mockPainFindUnique.mockResolvedValue({ id: UUID_A, categoryId: 'cat-1', isActive: true, slug: 'a-pain' });
+    mockResolveFreePreviewPainId.mockResolvedValue(UUID_A); // this pain IS the free one
+    mockSavedPainUpsert.mockResolvedValue({ id: 'saved-pp-1', painPointId: UUID_A });
+
+    const res = await request(app).post('/api/saves/pain-points').set(as('user-1')).send({ painPointId: UUID_A });
+    expect(res.status).toBe(200);
+    expect(mockSavedPainUpsert).toHaveBeenCalledOnce();
+  });
+
+  it('entitled user saving a non-free pain → 200 (resolver short-circuited)', async () => {
+    mockIsEntitledUser.mockResolvedValue(true);
+    mockPainFindUnique.mockResolvedValue({ id: UUID_A, categoryId: 'cat-1', isActive: true, slug: 'a-pain' });
+    mockResolveFreePreviewPainId.mockResolvedValue(UUID_FEATURED);
+    mockSavedPainUpsert.mockResolvedValue({ id: 'saved-pp-1', painPointId: UUID_A });
+
+    const res = await request(app).post('/api/saves/pain-points').set(as('admin-1')).send({ painPointId: UUID_A });
+    expect(res.status).toBe(200);
+    expect(mockResolveFreePreviewPainId).not.toHaveBeenCalled();
+  });
+});
+
 describe('PATCH /api/saves/ideas/:ideaId — access control (Option B)', () => {
   it('a saved-but-now-locked idea by a non-entitled user → 403', async () => {
     mockSavedIdeaFindUnique.mockResolvedValue({ id: 'saved-1' }); // ownership ok
     mockIsEntitledUser.mockResolvedValue(false);
     mockIdeaFindUnique.mockResolvedValue({ id: UUID_A, categoryId: 'cat-1', isActive: true, slug: 'an-idea' });
-    mockResolveFeaturedIdeaId.mockResolvedValue(UUID_FEATURED);
+    mockResolveFreePreviewIdeaId.mockResolvedValue(UUID_FEATURED);
 
     const res = await request(app)
       .patch(`/api/saves/ideas/${UUID_A}`)
@@ -160,7 +196,7 @@ describe('GET /api/saves/ideas — locked redaction', () => {
 
   it('non-entitled: featured row full, non-featured row redacted to locked', async () => {
     mockIsEntitledUser.mockResolvedValue(false);
-    mockResolveFeaturedIdeaId.mockResolvedValue(UUID_FEATURED); // featured for cat-1
+    mockResolveFreePreviewIdeaId.mockResolvedValue(UUID_FEATURED); // featured for cat-1
     mockSavedIdeaFindMany.mockResolvedValue(rows);
 
     const res = await request(app).get('/api/saves/ideas').set(as('user-1'));
@@ -189,7 +225,7 @@ describe('GET /api/saves/ideas — locked redaction', () => {
     const body = JSON.stringify(res.body);
     expect(body).toContain('FeaturedIdeaTitle');
     expect(body).toContain('LockedSecretIdea');
-    expect(mockResolveFeaturedIdeaId).not.toHaveBeenCalled();
+    expect(mockResolveFreePreviewIdeaId).not.toHaveBeenCalled();
   });
 });
 

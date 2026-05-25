@@ -17,6 +17,9 @@ const mockUpdateUserRole = vi.fn();
 const mockListAllPackages = vi.fn();
 const mockCreatePackage = vi.fn();
 const mockUpdatePackage = vi.fn();
+const mockListAllPlans = vi.fn();
+const mockCreatePlan = vi.fn();
+const mockUpdatePlan = vi.fn();
 const mockGetAppSetting = vi.fn();
 const mockSetAppSetting = vi.fn();
 const mockDeleteAppSetting = vi.fn();
@@ -37,6 +40,9 @@ vi.mock('../../services/adminService.js', async (importOriginal) => {
     listAllPackages: (...args: any[]) => mockListAllPackages(...args),
     createPackage: (...args: any[]) => mockCreatePackage(...args),
     updatePackage: (...args: any[]) => mockUpdatePackage(...args),
+    listAllPlans: (...args: any[]) => mockListAllPlans(...args),
+    createPlan: (...args: any[]) => mockCreatePlan(...args),
+    updatePlan: (...args: any[]) => mockUpdatePlan(...args),
     getAppSetting: (...args: any[]) => mockGetAppSetting(...args),
     setAppSetting: (...args: any[]) => mockSetAppSetting(...args),
     deleteAppSetting: (...args: any[]) => mockDeleteAppSetting(...args),
@@ -535,5 +541,35 @@ describe('App Settings', () => {
     await request(app)
       .delete('/api/admin/settings/sample_report_url')
       .expect(401);
+  });
+});
+
+describe('Subscription plan CRUD', () => {
+  const ADMIN = { 'X-Internal-Service': 'test-secret', 'X-User-Id': 'admin', 'X-User-Role': 'ADMIN' };
+
+  it('POST /api/admin/plans accepts monthlyCredits:0 (catalog-only) and passes coupon through', async () => {
+    mockCreatePlan.mockResolvedValue({ id: 'plan_1' });
+    const res = await request(app)
+      .post('/api/admin/plans')
+      .set(ADMIN)
+      .send({ name: 'Catalog', monthlyCredits: 0, priceInCents: 900, stripePriceId: 'price_1', stripeCouponId: 'cpn_1' });
+    expect(res.status).toBe(201);
+    expect(mockCreatePlan).toHaveBeenCalledWith(expect.objectContaining({ monthlyCredits: 0, stripeCouponId: 'cpn_1' }));
+  });
+
+  it('POST /api/admin/plans rejects negative monthlyCredits (400)', async () => {
+    const res = await request(app)
+      .post('/api/admin/plans')
+      .set(ADMIN)
+      .send({ name: 'Bad', monthlyCredits: -5, priceInCents: 900, stripePriceId: 'price_2' });
+    expect(res.status).toBe(400);
+    expect(mockCreatePlan).not.toHaveBeenCalled();
+  });
+
+  it('GET /api/admin/plans returns the list', async () => {
+    mockListAllPlans.mockResolvedValue([{ id: 'plan_1' }]);
+    const res = await request(app).get('/api/admin/plans').set(ADMIN);
+    expect(res.status).toBe(200);
+    expect(res.body.plans).toHaveLength(1);
   });
 });

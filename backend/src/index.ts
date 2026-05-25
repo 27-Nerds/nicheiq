@@ -23,6 +23,7 @@ import { savesRouter } from './routes/saves.js';
 import { requireInternalAdmin, requireInternalService } from './middleware/auth.js';
 import { prisma } from './services/db.js';
 import { startHeartbeatMonitor, stopHeartbeatMonitor } from './services/heartbeatService.js';
+import { startSubscriptionReconciliation, stopSubscriptionReconciliation } from './services/subscriptionService.js';
 import { startSelectionReminderMonitor, stopSelectionReminderMonitor } from './services/selectionReminderService.js';
 
 // Validate configuration
@@ -107,6 +108,9 @@ const server = app.listen(CONFIG.port, () => {
 
   // Start the selection reminder monitor for interactive jobs
   startSelectionReminderMonitor();
+
+  // Daily backstop that reconciles lapsed/renewed subscriptions (webhooks are the primary path)
+  startSubscriptionReconciliation();
 });
 
 // Track connections for graceful shutdown
@@ -122,6 +126,7 @@ async function shutdown() {
   // Stop the heartbeat monitor
   stopHeartbeatMonitor();
   stopSelectionReminderMonitor();
+  stopSubscriptionReconciliation();
 
   // Stop accepting new connections
   server.close();

@@ -4,6 +4,7 @@ import { fetchBackend } from '$lib/backend';
 import { DEFAULT_STAGE_COSTS } from '$lib/types/job';
 import type { StageCosts } from '$lib/types/job';
 import type { SavedCounts } from '$lib/types/saved';
+import type { UserSubscription } from '$lib/types/billing';
 
 export const load: LayoutServerLoad = async (event) => {
   const session = await event.locals.auth?.();
@@ -21,21 +22,30 @@ export const load: LayoutServerLoad = async (event) => {
 
   // Fetch user's credit balance and stage costs for header display
   let creditBalance = 0;
+  let monthlyAllowance = 0;
+  let purchasedBalance = 0;
+  let monthlyAllowancePeriodEnd: string | null = null;
+  let subscription: UserSubscription | null = null;
   let stageCosts: StageCosts = { ...DEFAULT_STAGE_COSTS };
   let savedCounts: SavedCounts = { ideas: 0, painPoints: 0 };
 
   const headers = { 'X-User-ID': session.user.id };
 
   try {
-    const [balanceRes, costsRes, savedRes] = await Promise.all([
+    const [balanceRes, costsRes, savedRes, subRes] = await Promise.all([
       fetchBackend('/api/billing/balance', { headers }),
       fetchBackend('/api/billing/stage-costs', { headers }),
       fetchBackend('/api/saves/counts', { headers }),
+      fetchBackend('/api/billing/subscription', { headers }).catch(() => null),
     ]);
 
     if (balanceRes.ok) {
       const data = await balanceRes.json();
-      creditBalance = data.balance ?? 0;
+      // `balance` stays = available for back-compat.
+      creditBalance = data.available ?? data.balance ?? 0;
+      monthlyAllowance = data.monthlyAllowance ?? 0;
+      purchasedBalance = data.purchasedBalance ?? data.balance ?? 0;
+      monthlyAllowancePeriodEnd = data.monthlyAllowancePeriodEnd ?? null;
     }
     if (costsRes.ok) {
       const data = await costsRes.json();
@@ -44,9 +54,22 @@ export const load: LayoutServerLoad = async (event) => {
     if (savedRes.ok) {
       savedCounts = (await savedRes.json()) as SavedCounts;
     }
+    if (subRes?.ok) {
+      const data = await subRes.json();
+      subscription = data.subscription ?? null;
+    }
   } catch (error) {
     console.error('Failed to fetch layout data:', error);
   }
 
-  return { session, creditBalance, stageCosts, savedCounts };
+  return {
+    session,
+    creditBalance,
+    monthlyAllowance,
+    purchasedBalance,
+    monthlyAllowancePeriodEnd,
+    subscription,
+    stageCosts,
+    savedCounts,
+  };
 };

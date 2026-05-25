@@ -54,6 +54,19 @@ enum CreditTransactionType {
   PROMO_REDEMPTION // Promo code redeemed
   REFUND // Job failed - tokens refunded
   ADMIN_ADJUSTMENT // Manual admin adjustment
+  SUBSCRIPTION_GRANT // Monthly allowance granted by an active subscription
+}
+
+// Stripe subscription lifecycle status (mirrors Stripe's subscription.status).
+enum SubscriptionStatus {
+  ACTIVE
+  TRIALING
+  PAST_DUE
+  CANCELED
+  INCOMPLETE
+  INCOMPLETE_EXPIRED
+  UNPAID
+  PAUSED
 }
 
 // ============================================
@@ -74,10 +87,16 @@ model User {
   // Role
   role UserRole @default(USER)
 
-  // Full catalog access grant (manual, until subscription billing exists). When
-  // true (or role=ADMIN), the user can view non-featured catalog ideas/pain points
-  // and their detail pages; otherwise they only see the featured item per sub-niche.
+  // Full catalog access grant — MANUAL admin override (never webhook-synced, so
+  // cancellation logic can't clear it). Entitled = role=ADMIN || fullCatalogAccess ||
+  // an active subscription (see isEntitledUser); otherwise only the featured item per sub-niche.
   fullCatalogAccess Boolean @default(false)
+
+  // Stripe billing linkage. `stripeCustomerId` is created lazily at first subscription
+  // checkout. `hasActiveSubscription` is a denormalized, webhook-/cron-maintained flag for
+  // cheap reads — NOT authoritative (isEntitledUser does the definitive period check).
+  stripeCustomerId      String?  @unique @db.VarChar(255)
+  hasActiveSubscription Boolean  @default(false)
 
   // Timestamps
   createdAt DateTime @default(now())
@@ -88,12 +107,14 @@ model User {
   sessions                Session[]
   jobs                    Job[]
   credits                 UserCredits?
+  subscription            UserSubscription?
   notificationPreferences NotificationPreferences?
   savedIdeas              SavedIdea[]
   savedPainPoints         SavedPainPoint[]
 
   @@index([email])
   @@index([role])
+  @@index([stripeCustomerId])
 }
 
 // User notification preferences (one-to-one with User)
@@ -312,15 +333,26 @@ model JobAsset {
 // Credits & Billing Models
 // ============================================
 
-// User credit balance (one-to-one with User)
+// User credit balance (one-to-one with User).
+//
+// TWO buckets: `balance` is PURCHASED credits (persist forever); `monthlyAllowance` is the
+// subscription's per-cycle grant (use-it-or-lose-it). Charges spend monthly-first. The
+// charge path treats monthlyAllowance as 0 once `now >= monthlyAllowancePeriodEnd` (the
+// deterministic use-it-or-lose-it gate). A DB CHECK (monthlyAllowance >= 0), added in the
+// migration, backstops concurrent-charge underflow.
 model UserCredits {
   id     String @id @default(uuid())
   userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  balance        Int @default(0) // Current available credits
+  balance        Int @default(0) // Current available PURCHASED credits (persist)
   totalPurchased Int @default(0) // Lifetime purchased
   totalUsed      Int @default(0) // Lifetime used
+
+  // Subscription monthly allowance (reset each billing cycle by invoice.paid).
+  monthlyAllowance           Int       @default(0) // Remaining this cycle
+  monthlyAllowancePeriodStart DateTime? // Reset idempotency key (= invoice line period start)
+  monthlyAllowancePeriodEnd   DateTime? // Expiry + "resets on <date>" the UI shows
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -338,8 +370,8 @@ model CreditTransaction {
 
   type          CreditTransactionType
   amount        Int // Positive = add, Negative = deduct
-  balanceBefore Int
-  balanceAfter  Int
+  balanceBefore Int // Total AVAILABLE (monthly + purchased) before this tx
+  balanceAfter  Int // Total AVAILABLE after this tx
 
   description  String? @db.VarChar(500)
   stage        String  @default("unknown") @db.VarChar(50)
@@ -347,6 +379,17 @@ model CreditTransaction {
   relatedJobId String? // Link to job that used credits
   relatedJob   Job?    @relation(fields: [relatedJobId], references: [id], onDelete: SetNull)
   promoCodeId  String? // Link to promo code if redeemed
+
+  // Bucket split for a deduction: how much came from the monthly allowance (rest = purchased),
+  // and which monthly cycle it was drawn from — so refunds restore to the right bucket and never
+  // resurrect expired monthly credits into a new cycle.
+  fromMonthly      Int       @default(0)
+  monthlyPeriodStart DateTime?
+
+  // Durable money-idempotency keys for Stripe-driven grants (insert-and-catch-P2002), replacing
+  // the old description-string matching.
+  stripeCheckoutSessionId String? @unique @db.VarChar(255) // one-time purchase grant
+  stripeInvoiceId         String? @unique @db.VarChar(255) // subscription monthly grant
 
   createdAt DateTime @default(now())
 
@@ -430,6 +473,90 @@ model TokenPackage {
 
   @@index([isActive])
   @@index([sortOrder])
+}
+
+// ============================================
+// Stripe Subscriptions
+// ============================================
+
+// Admin-configured recurring subscription plan. Mirrors TokenPackage's rich-card fields so
+// the landing /#pricing table and /billing plans section render the same way. v1: monthly
+// Stripe prices only (interval stays "month"; validated at plan-create).
+model SubscriptionPlan {
+  id             String  @id @default(uuid())
+  name           String  @db.VarChar(100)
+  description    String? @db.VarChar(500)
+  monthlyCredits Int     @default(0) // 0 = catalog-access-only plan
+  priceInCents   Int
+  interval       String  @default("month") @db.VarChar(20)
+  trialDays      Int? // optional free-trial length
+  stripePriceId  String  @unique @db.VarChar(255) // recurring Stripe Price ID
+  stripeProductId String? @db.VarChar(255)
+  stripeCouponId String? @db.VarChar(255) // auto-applied at checkout (admin-attached)
+
+  isActive  Boolean @default(true)
+  isPopular Boolean @default(false)
+  sortOrder Int     @default(0)
+
+  // Rich pricing-card fields (same set as TokenPackage)
+  tagline           String? @db.VarChar(200)
+  includesLabel     String? @db.VarChar(200)
+  features          Json?
+  creditsInfo       String? @db.VarChar(200)
+  ctaText           String? @db.VarChar(100)
+  badgeLabel        String? @db.VarChar(50)
+  promoLine         String? @db.VarChar(200)
+  promoPriceInCents Int?
+  promoBadge        String? @db.VarChar(50)
+  ctaSubText        String? @db.VarChar(100)
+  ctaSubUrl         String? @db.VarChar(500)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subscriptions UserSubscription[]
+
+  @@index([isActive])
+  @@index([sortOrder])
+}
+
+// A user's Stripe subscription state (one row per user). Period fields come from
+// `sub.items.data[0].current_period_*`; `stripeCreatedAt` (= sub.created) drives the
+// out-of-order staleness guard. `stripeSubscriptionId` is @unique (Stripe ids are global).
+model UserSubscription {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  planId String?
+  plan   SubscriptionPlan? @relation(fields: [planId], references: [id], onDelete: SetNull)
+
+  stripeSubscriptionId String  @unique @db.VarChar(255)
+  stripeCustomerId     String  @db.VarChar(255)
+  stripePriceId        String? @db.VarChar(255)
+
+  status             SubscriptionStatus
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  cancelAtPeriodEnd  Boolean   @default(false)
+  canceledAt         DateTime?
+  stripeCreatedAt    DateTime? // Stripe sub.created — for the staleness guard
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([stripeCustomerId])
+  @@index([status])
+  @@index([stripeSubscriptionId])
+}
+
+// Durable webhook idempotency — event-level fast-skip (the money guarantee lives on the
+// unique CreditTransaction.stripe* columns; this row is written only after a handler succeeds).
+model ProcessedStripeEvent {
+  eventId   String   @id @db.VarChar(255)
+  type      String   @db.VarChar(100)
+  createdAt DateTime @default(now())
 }
 
 // ============================================
@@ -615,6 +742,10 @@ model CatalogIdea {
   publishedById           String                  @db.VarChar(100)
   isActive                Boolean                 @default(true)
   isFeatured              Boolean                 @default(false)
+  // The single free-preview item per sub-niche (gates the public teaser, detail access,
+  // and saves). At most one per category — enforced by a partial unique index (raw SQL in
+  // the migration) plus demote-first-then-set in updateCatalogIdea. Independent of isFeatured.
+  isFreePreview           Boolean                 @default(false)
   createdAt               DateTime                @default(now())
   updatedAt               DateTime                @updatedAt
   // Reverse relation — featured-collection memberships. Cascade on idea
@@ -673,6 +804,9 @@ model CatalogPainPoint {
   publishedById         String                  @db.VarChar(100)
   isActive              Boolean                 @default(true)
   isFeatured            Boolean                 @default(false)
+  // The single free-preview pain per sub-niche (see CatalogIdea.isFreePreview). At most one
+  // per category — partial unique index + demote-first-then-set. Independent of isFeatured.
+  isFreePreview         Boolean                 @default(false)
   createdAt             DateTime                @default(now())
   updatedAt             DateTime                @updatedAt
   // Reverse relation — featured-collection memberships.

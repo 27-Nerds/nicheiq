@@ -218,7 +218,10 @@ export async function listUsers(page: number, limit: number, search?: string) {
         image: true,
         role: true,
         createdAt: true,
-        credits: { select: { balance: true } },
+        fullCatalogAccess: true,
+        hasActiveSubscription: true,
+        credits: { select: { balance: true, monthlyAllowance: true } },
+        subscription: { select: { status: true, plan: { select: { name: true } } } },
         _count: { select: { jobs: true } },
       },
     }),
@@ -234,6 +237,10 @@ export async function listUsers(page: number, limit: number, search?: string) {
       role: u.role,
       createdAt: u.createdAt,
       creditBalance: u.credits?.balance ?? 0,
+      monthlyAllowance: u.credits?.monthlyAllowance ?? 0,
+      fullCatalogAccess: u.fullCatalogAccess,
+      subscriptionStatus: u.subscription?.status ?? null,
+      subscriptionPlanName: u.subscription?.plan?.name ?? null,
       jobCount: u._count.jobs,
     })),
     total,
@@ -256,7 +263,10 @@ export async function getUserDetail(userId: string) {
       image: true,
       role: true,
       createdAt: true,
-      credits: { select: { balance: true, totalPurchased: true, totalUsed: true } },
+      fullCatalogAccess: true,
+      hasActiveSubscription: true,
+      credits: { select: { balance: true, totalPurchased: true, totalUsed: true, monthlyAllowance: true } },
+      subscription: { select: { status: true, currentPeriodEnd: true, cancelAtPeriodEnd: true, plan: { select: { name: true } } } },
       _count: { select: { jobs: true } },
       jobs: {
         take: 10,
@@ -282,8 +292,19 @@ export async function getUserDetail(userId: string) {
     role: user.role,
     createdAt: user.createdAt,
     creditBalance: user.credits?.balance ?? 0,
+    monthlyAllowance: user.credits?.monthlyAllowance ?? 0,
     totalPurchased: user.credits?.totalPurchased ?? 0,
     totalUsed: user.credits?.totalUsed ?? 0,
+    fullCatalogAccess: user.fullCatalogAccess,
+    hasActiveSubscription: user.hasActiveSubscription,
+    subscription: user.subscription
+      ? {
+          status: user.subscription.status,
+          planName: user.subscription.plan?.name ?? null,
+          currentPeriodEnd: user.subscription.currentPeriodEnd,
+          cancelAtPeriodEnd: user.subscription.cancelAtPeriodEnd,
+        }
+      : null,
     jobCount: user._count.jobs,
     recentJobs: user.jobs,
   };
@@ -324,6 +345,22 @@ export async function updatePackage(id: string, data: Prisma.TokenPackageUpdateI
     where: { id },
     data,
   });
+}
+
+// ============================================
+// Subscription Plans
+// ============================================
+
+export async function listAllPlans() {
+  return prisma.subscriptionPlan.findMany({ orderBy: { sortOrder: 'asc' } });
+}
+
+export async function createPlan(data: Prisma.SubscriptionPlanCreateInput) {
+  return prisma.subscriptionPlan.create({ data });
+}
+
+export async function updatePlan(id: string, data: Prisma.SubscriptionPlanUpdateInput) {
+  return prisma.subscriptionPlan.update({ where: { id }, data });
 }
 
 // ============================================

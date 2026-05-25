@@ -15,15 +15,36 @@ import { PIPELINE_STAGES, DISCOVERY_PHASE_MAX_STAGE } from '../types/job.js';
 // ============================================
 
 export class InsufficientCreditsError extends Error {
+  /** Total AVAILABLE = spendable monthly allowance + purchased balance. */
   public currentBalance: number;
   public required: number;
+  public monthlyAllowance: number;
+  public purchasedBalance: number;
 
-  constructor(currentBalance: number, required: number) {
+  constructor(
+    currentBalance: number,
+    required: number,
+    opts?: { monthlyAllowance?: number; purchasedBalance?: number },
+  ) {
     super(`Insufficient credits: have ${currentBalance}, need ${required}`);
     this.name = 'InsufficientCreditsError';
     this.currentBalance = currentBalance;
     this.required = required;
+    this.monthlyAllowance = opts?.monthlyAllowance ?? 0;
+    this.purchasedBalance = opts?.purchasedBalance ?? currentBalance;
   }
+}
+
+// ============================================
+// Credit-bucket helpers (monthly allowance + purchased balance)
+// ============================================
+
+/** Monthly allowance is use-it-or-lose-it: spendable only while its period hasn't ended. */
+function spendableMonthly(c: { monthlyAllowance: number; monthlyAllowancePeriodEnd: Date | null }): number {
+  if (c.monthlyAllowancePeriodEnd && c.monthlyAllowancePeriodEnd.getTime() > Date.now()) {
+    return c.monthlyAllowance;
+  }
+  return 0;
 }
 
 export class PromoCodeError extends Error {
@@ -140,36 +161,53 @@ async function _chargeForStageImpl(
   description?: string,
   cycle: number = 0,
 ): Promise<CreditTransaction> {
-  // 1. Get or create credits record
-  let credits = await tx.userCredits.findUnique({ where: { userId } });
-  if (!credits) {
-    credits = await tx.userCredits.create({
-      data: { userId, balance: 0, totalPurchased: 0, totalUsed: 0 },
+  // 1. Ensure the row exists, then lock it FOR UPDATE so concurrent charges serialize
+  //    (prevents lost-update races + negative balances; the DB CHECK is a final backstop).
+  await tx.userCredits.upsert({
+    where: { userId },
+    create: { userId, balance: 0, totalPurchased: 0, totalUsed: 0, monthlyAllowance: 0 },
+    update: {},
+  });
+  const locked = await tx.$queryRaw<
+    Array<{ balance: number; monthlyAllowance: number; monthlyAllowancePeriodStart: Date | null; monthlyAllowancePeriodEnd: Date | null }>
+  >`SELECT "balance", "monthlyAllowance", "monthlyAllowancePeriodStart", "monthlyAllowancePeriodEnd"
+    FROM "UserCredits" WHERE "userId" = ${userId} FOR UPDATE`;
+  const row = locked[0];
+
+  // 2. Monthly-first, expiry-aware availability check.
+  const monthly = spendableMonthly(row);
+  const available = monthly + row.balance;
+  if (available < cost) {
+    throw new InsufficientCreditsError(available, cost, {
+      monthlyAllowance: monthly,
+      purchasedBalance: row.balance,
     });
   }
 
-  // 2. Check balance
-  if (credits.balance < cost) {
-    throw new InsufficientCreditsError(credits.balance, cost);
-  }
-
-  // 3. Deduct credits
-  const updatedCredits = await tx.userCredits.update({
+  // 3. Deduct monthly-first, then purchased. If the monthly period has expired, zero it out
+  //    (use-it-or-lose-it) in the same write.
+  const fromMonthly = Math.min(monthly, cost);
+  const fromPurchased = cost - fromMonthly;
+  const expired = monthly === 0 && row.monthlyAllowance > 0;
+  await tx.userCredits.update({
     where: { userId },
     data: {
-      balance: { decrement: cost },
+      monthlyAllowance: expired ? 0 : { decrement: fromMonthly },
+      balance: { decrement: fromPurchased },
       totalUsed: { increment: cost },
     },
   });
 
-  // 4. Create transaction record (unique constraint prevents double-charge)
+  // 4. Ledger row. balanceBefore/After = total AVAILABLE; record the bucket split + origin cycle.
   return tx.creditTransaction.create({
     data: {
       userId,
       type: CreditTransactionType.JOB_DEDUCTION,
       amount: -cost,
-      balanceBefore: credits.balance,
-      balanceAfter: updatedCredits.balance,
+      balanceBefore: available,
+      balanceAfter: available - cost,
+      fromMonthly,
+      monthlyPeriodStart: fromMonthly > 0 ? row.monthlyAllowancePeriodStart : null,
       relatedJobId: jobId,
       stage,
       cycle,
@@ -262,16 +300,35 @@ async function _refundForStageImpl(
 
   try {
     return await prisma.$transaction(async (tx) => {
-      const credits = await tx.userCredits.findUnique({
-        where: { userId: job.userId! },
-      });
+      const locked = await tx.$queryRaw<
+        Array<{ balance: number; monthlyAllowance: number; monthlyAllowancePeriodStart: Date | null; monthlyAllowancePeriodEnd: Date | null }>
+      >`SELECT "balance", "monthlyAllowance", "monthlyAllowancePeriodStart", "monthlyAllowancePeriodEnd"
+        FROM "UserCredits" WHERE "userId" = ${job.userId!} FOR UPDATE`;
+      const row = locked[0];
+      if (!row) return null;
 
-      if (!credits) return null;
+      // Restore to the ORIGINATING bucket. The monthly portion goes back to the monthly
+      // allowance ONLY if it's still the same (unexpired) cycle — otherwise those
+      // use-it-or-lose-it credits are gone and the whole refund lands in purchased. This
+      // closes the monthly→purchased laundering vector (same-cycle monthly stays monthly)
+      // without resurrecting expired monthly credits into a new cycle.
+      const fromMonthly = unrefundedCharge.fromMonthly ?? 0;
+      const sameCycle =
+        fromMonthly > 0 &&
+        unrefundedCharge.monthlyPeriodStart != null &&
+        row.monthlyAllowancePeriodStart != null &&
+        unrefundedCharge.monthlyPeriodStart.getTime() === row.monthlyAllowancePeriodStart.getTime() &&
+        row.monthlyAllowancePeriodEnd != null &&
+        row.monthlyAllowancePeriodEnd.getTime() > Date.now();
+      const monthlyRestore = sameCycle ? fromMonthly : 0;
+      const purchasedRestore = refundAmount - monthlyRestore;
+      const availableBefore = spendableMonthly(row) + row.balance;
 
-      const updatedCredits = await tx.userCredits.update({
+      await tx.userCredits.update({
         where: { userId: job.userId! },
         data: {
-          balance: { increment: refundAmount },
+          monthlyAllowance: { increment: monthlyRestore },
+          balance: { increment: purchasedRestore },
           totalUsed: { decrement: refundAmount },
         },
       });
@@ -281,8 +338,9 @@ async function _refundForStageImpl(
           userId: job.userId!,
           type: CreditTransactionType.REFUND,
           amount: refundAmount,
-          balanceBefore: credits.balance,
-          balanceAfter: updatedCredits.balance,
+          balanceBefore: availableBefore,
+          balanceAfter: availableBefore + refundAmount,
+          fromMonthly: monthlyRestore,
           relatedJobId: jobId,
           stage,
           cycle: unrefundedCharge.cycle,
@@ -418,38 +476,22 @@ export async function chargeForResume(
 
   const nextCycle = unmatchedRefund.cycle + 1;
   const refundAmount = Math.abs(unmatchedRefund.amount);
-
-  const credits = await prisma.userCredits.findUnique({ where: { userId } });
-  if (!credits || credits.balance < refundAmount) {
-    throw new InsufficientCreditsError(credits?.balance ?? 0, refundAmount);
-  }
+  const job = await prisma.job.findUnique({ where: { id: jobId }, select: { niche: true } });
 
   try {
     await prisma.$transaction(async (tx) => {
-      const creds = await tx.userCredits.findUnique({ where: { userId } });
-      if (!creds) throw new Error('Credits record not found');
-
-      const updated = await tx.userCredits.update({
-        where: { userId },
-        data: {
-          balance: { decrement: refundAmount },
-          totalUsed: { increment: refundAmount },
-        },
-      });
-
-      await tx.creditTransaction.create({
-        data: {
-          userId,
-          type: CreditTransactionType.JOB_DEDUCTION,
-          amount: -refundAmount,
-          balanceBefore: creds.balance,
-          balanceAfter: updated.balance,
-          relatedJobId: jobId,
-          stage: unmatchedRefund.stage,
-          cycle: nextCycle,
-          description: `Resume: re-charge ${STAGE_LABELS[unmatchedRefund.stage as StageName] ?? unmatchedRefund.stage}`,
-        },
-      });
+      // Route through the shared monthly-first deduction: it does the availability check,
+      // records the bucket split, and enforces the unique (job,stage,cycle) constraint.
+      await _chargeForStageImpl(
+        tx,
+        userId,
+        jobId,
+        unmatchedRefund.stage,
+        job?.niche ?? '',
+        refundAmount,
+        `Resume: re-charge ${STAGE_LABELS[unmatchedRefund.stage as StageName] ?? unmatchedRefund.stage}`,
+        nextCycle,
+      );
     });
 
     console.log(`[CreditService] Re-charged ${refundAmount} credits for job ${jobId} stage ${unmatchedRefund.stage} cycle ${nextCycle}`);
@@ -459,7 +501,7 @@ export async function chargeForResume(
       console.log(`[CreditService] Resume charge already exists for job ${jobId} (concurrent request)`);
       return { charged: false, amount: 0 };
     }
-    throw error;
+    throw error; // InsufficientCreditsError etc. propagate to the caller
   }
 }
 
@@ -479,20 +521,85 @@ export async function getOrCreateUserCredits(userId: string): Promise<UserCredit
       balance: 0,
       totalPurchased: 0,
       totalUsed: 0,
+      monthlyAllowance: 0,
     },
     update: {}, // No-op if exists
   });
 }
 
 /**
- * Get user's credit balance (returns 0 if no credits record exists)
+ * Get user's total AVAILABLE balance = spendable monthly allowance + purchased balance.
+ * (Expired monthly credits count as 0 — see spendableMonthly.) Returns 0 if no record.
  */
 export async function getUserBalance(userId: string): Promise<number> {
   const credits = await prisma.userCredits.findUnique({
     where: { userId },
-    select: { balance: true },
+    select: { balance: true, monthlyAllowance: true, monthlyAllowancePeriodEnd: true },
   });
-  return credits?.balance ?? 0;
+  if (!credits) return 0;
+  return spendableMonthly(credits) + credits.balance;
+}
+
+/**
+ * Reset the subscription monthly allowance to `amount` for a billing cycle.
+ * Idempotent on `monthlyAllowancePeriodStart` (re-delivered invoice → no-op). OVERWRITES the
+ * allowance (use-it-or-lose-it); never touches the purchased `balance`. Whole op is one
+ * transaction so the allowance update + audit ledger row commit together.
+ */
+export async function resetMonthlyAllowance(
+  userId: string,
+  amount: number,
+  periodStart: Date,
+  periodEnd: Date,
+  invoiceId: string | null,
+  reason: string,
+): Promise<{ applied: boolean }> {
+  return prisma.$transaction(async (tx) => {
+    await tx.userCredits.upsert({
+      where: { userId },
+      create: { userId, balance: 0, totalPurchased: 0, totalUsed: 0, monthlyAllowance: 0 },
+      update: {},
+    });
+
+    const before = await tx.userCredits.findUnique({ where: { userId } });
+
+    // Conditional update = idempotency guard (a re-delivered invoice has the same periodStart).
+    const res = await tx.userCredits.updateMany({
+      where: {
+        userId,
+        OR: [{ monthlyAllowancePeriodStart: null }, { monthlyAllowancePeriodStart: { not: periodStart } }],
+      },
+      data: {
+        monthlyAllowance: amount,
+        monthlyAllowancePeriodStart: periodStart,
+        monthlyAllowancePeriodEnd: periodEnd,
+      },
+    });
+    if (res.count === 0) return { applied: false }; // already granted for this cycle
+
+    if (amount > 0 && before) {
+      const availableBefore = spendableMonthly(before) + before.balance;
+      const availableAfter = amount + before.balance; // new monthly (period in future) + purchased
+      try {
+        await tx.creditTransaction.create({
+          data: {
+            userId,
+            type: CreditTransactionType.SUBSCRIPTION_GRANT,
+            amount,
+            balanceBefore: availableBefore,
+            balanceAfter: availableAfter,
+            stage: 'subscription',
+            description: reason,
+            stripeInvoiceId: invoiceId,
+          },
+        });
+      } catch (error) {
+        // Unique stripeInvoiceId → a concurrent delivery already wrote the grant ledger row.
+        if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')) throw error;
+      }
+    }
+    return { applied: true };
+  });
 }
 
 /**
@@ -665,65 +772,80 @@ export async function addCredits(
   userId: string,
   amount: number,
   description: string,
-  type: CreditTransactionType = CreditTransactionType.PURCHASE
+  type: CreditTransactionType = CreditTransactionType.PURCHASE,
+  opts?: { stripeCheckoutSessionId?: string; stripeInvoiceId?: string },
 ): Promise<{ credits: UserCredits; transaction: CreditTransaction }> {
   if (amount <= 0) {
     throw new Error(`addCredits requires a positive amount, got ${amount}`);
   }
 
-  return prisma.$transaction(async (tx) => {
-    // Get or create credits
-    let credits = await tx.userCredits.findUnique({
-      where: { userId },
-    });
+  const stage = type === CreditTransactionType.ADMIN_ADJUSTMENT ? 'admin' : 'purchase';
 
-    if (!credits) {
-      credits = await tx.userCredits.create({
+  try {
+    return await prisma.$transaction(async (tx) => {
+      await tx.userCredits.upsert({
+        where: { userId },
+        create: { userId, balance: 0, totalPurchased: 0, totalUsed: 0, monthlyAllowance: 0 },
+        update: {},
+      });
+      const before = (await tx.userCredits.findUnique({ where: { userId } }))!;
+      const availableBefore = spendableMonthly(before) + before.balance;
+
+      // Ledger FIRST so the unique stripe id (if any) rolls back the whole tx on a duplicate
+      // delivery — no double credit. balanceBefore/After = total AVAILABLE.
+      const transaction = await tx.creditTransaction.create({
         data: {
           userId,
-          balance: 0,
-          totalPurchased: 0,
-          totalUsed: 0,
+          type,
+          amount,
+          balanceBefore: availableBefore,
+          balanceAfter: availableBefore + amount,
+          stage,
+          description,
+          stripeCheckoutSessionId: opts?.stripeCheckoutSessionId ?? null,
+          stripeInvoiceId: opts?.stripeInvoiceId ?? null,
         },
       });
+
+      const credits = await tx.userCredits.update({
+        where: { userId },
+        data: {
+          balance: { increment: amount },
+          totalPurchased: { increment: amount },
+        },
+      });
+
+      return { credits, transaction };
+    });
+  } catch (error) {
+    // Duplicate Stripe-driven grant (unique stripeCheckoutSessionId/stripeInvoiceId) → already
+    // credited; return the existing row without double-crediting.
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002' &&
+      (opts?.stripeCheckoutSessionId || opts?.stripeInvoiceId)
+    ) {
+      const existing = await prisma.creditTransaction.findFirst({
+        where: opts.stripeCheckoutSessionId
+          ? { stripeCheckoutSessionId: opts.stripeCheckoutSessionId }
+          : { stripeInvoiceId: opts.stripeInvoiceId },
+      });
+      const credits = await getOrCreateUserCredits(userId);
+      if (existing) return { credits, transaction: existing };
     }
-
-    // Add credits
-    const updatedCredits = await tx.userCredits.update({
-      where: { userId },
-      data: {
-        balance: { increment: amount },
-        totalPurchased: { increment: amount },
-      },
-    });
-
-    // Determine stage based on type
-    const stage = type === CreditTransactionType.PURCHASE ? 'purchase'
-      : type === CreditTransactionType.ADMIN_ADJUSTMENT ? 'admin'
-      : 'purchase';
-
-    // Log transaction
-    const transaction = await tx.creditTransaction.create({
-      data: {
-        userId,
-        type,
-        amount,
-        balanceBefore: credits.balance,
-        balanceAfter: updatedCredits.balance,
-        stage,
-        description,
-      },
-    });
-
-    return { credits: updatedCredits, transaction };
-  });
+    throw error;
+  }
 }
 
 /**
  * Get full credit details for a user (balance + stats)
  */
 export async function getCreditDetails(userId: string): Promise<{
-  balance: number;
+  balance: number; // = available (back-compat: monthly spendable + purchased)
+  available: number;
+  monthlyAllowance: number; // spendable this cycle (0 if expired)
+  purchasedBalance: number;
+  monthlyAllowancePeriodEnd: Date | null; // "resets on"
   totalPurchased: number;
   totalUsed: number;
   recentTransactions: CreditTransaction[];
@@ -736,8 +858,14 @@ export async function getCreditDetails(userId: string): Promise<{
     take: 5,
   });
 
+  const monthly = spendableMonthly(credits);
+  const available = monthly + credits.balance;
   return {
-    balance: credits.balance,
+    balance: available,
+    available,
+    monthlyAllowance: monthly,
+    purchasedBalance: credits.balance,
+    monthlyAllowancePeriodEnd: credits.monthlyAllowancePeriodEnd,
     totalPurchased: credits.totalPurchased,
     totalUsed: credits.totalUsed,
     recentTransactions,

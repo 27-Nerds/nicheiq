@@ -57,7 +57,11 @@ publicCatalogRouter.get(
         res.status(400).json({ error: 'Invalid slug' });
         return;
       }
-      const result = await getCategoryLanding({ parentSlug: slugParse.data });
+      // Logged-in entitled users (ADMIN / fullCatalogAccess / active sub) get the FULL list;
+      // the loader forwards X-User-ID only when logged in (and marks the response private).
+      const userId = req.header('X-User-ID');
+      const entitled = userId ? await isEntitledUser(userId) : false;
+      const result = await getCategoryLanding({ parentSlug: slugParse.data, entitled });
       if (!result) {
         res.status(404).json({ error: 'Not found' });
         return;
@@ -85,9 +89,12 @@ publicCatalogRouter.get(
         res.status(400).json({ error: 'Invalid slug' });
         return;
       }
+      const userId = req.header('X-User-ID');
+      const entitled = userId ? await isEntitledUser(userId) : false;
       const result = await getCategoryLanding({
         parentSlug: parentParse.data,
         childSlug: childParse.data,
+        entitled,
       });
       if (!result) {
         res.status(404).json({ error: 'Not found' });
@@ -226,7 +233,9 @@ publicCatalogRouter.get(
     try {
       const raw = Number.parseInt(String(req.query.limit ?? '10'), 10);
       const limit = Number.isFinite(raw) ? raw : 10;
-      const painPoints = await getTopCatalogPainPoints(limit);
+      // `?freePreview=true` → only the free-preview pains (landing "Sample Reports" marquee).
+      const freeOnly = req.query.freePreview === 'true' || req.query.freePreview === '1';
+      const painPoints = await getTopCatalogPainPoints(limit, { freeOnly });
       res.setHeader('Cache-Control', 'public, max-age=300');
       res.json(painPoints);
     } catch (error) {

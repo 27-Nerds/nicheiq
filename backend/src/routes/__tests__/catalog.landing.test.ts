@@ -75,7 +75,7 @@ describe('GET /api/public/catalog/landing/:parentSlug', () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual(payload);
-    expect(mockGetCategoryLanding).toHaveBeenCalledWith({ parentSlug: 'saas' });
+    expect(mockGetCategoryLanding).toHaveBeenCalledWith({ parentSlug: 'saas', entitled: false });
   });
 
   it('returns 404 for an unknown slug', async () => {
@@ -109,6 +109,7 @@ describe('GET /api/public/catalog/landing/:parentSlug/:childSlug', () => {
     expect(mockGetCategoryLanding).toHaveBeenCalledWith({
       parentSlug: 'saas',
       childSlug: 'b2b-tools',
+      entitled: false,
     });
   });
 

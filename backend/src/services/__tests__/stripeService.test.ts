@@ -34,10 +34,17 @@ const mockPrismaCreditTransaction = {
   findFirst: vi.fn(),
 };
 
+const mockProcessedEventFindUnique = vi.fn().mockResolvedValue(null);
+const mockProcessedEventCreate = vi.fn().mockResolvedValue({});
+
 vi.mock('../db.js', () => ({
   prisma: {
     tokenPackage: mockPrismaTokenPackage,
     creditTransaction: mockPrismaCreditTransaction,
+    processedStripeEvent: {
+      findUnique: (...a: any[]) => mockProcessedEventFindUnique(...a),
+      create: (...a: any[]) => mockProcessedEventCreate(...a),
+    },
   },
 }));
 
@@ -45,6 +52,16 @@ vi.mock('../db.js', () => ({
 const mockAddCredits = vi.fn();
 vi.mock('../creditService.js', () => ({
   addCredits: mockAddCredits,
+  resetMonthlyAllowance: vi.fn(),
+}));
+
+// Mock subscriptionService (its handlers are exercised in subscriptionWebhook.test.ts).
+vi.mock('../subscriptionService.js', () => ({
+  handleSubscriptionCheckoutCompleted: vi.fn(),
+  upsertSubscriptionFromStripe: vi.fn(),
+  handleSubscriptionDeleted: vi.fn(),
+  handleInvoicePaid: vi.fn(),
+  handleInvoicePaymentFailed: vi.fn(),
 }));
 
 // Mock config
@@ -343,7 +360,9 @@ describe('stripeService', () => {
       expect(mockAddCredits).toHaveBeenCalledWith(
         'user-123',
         5,
-        expect.stringContaining('Purchased Starter')
+        expect.stringContaining('Purchased Starter'),
+        'PURCHASE',
+        expect.objectContaining({ stripeCheckoutSessionId: expect.any(String) }),
       );
     });
 
@@ -370,12 +389,10 @@ describe('stripeService', () => {
       expect(mockAddCredits).not.toHaveBeenCalled();
     });
 
-    it('skips duplicate session (idempotency)', async () => {
+    it('skips an already-processed event (durable event-level idempotency)', async () => {
       mockWebhooksConstructEvent.mockReturnValue(fixtures.webhookEvents.checkoutCompleted);
-      mockPrismaCreditTransaction.findFirst.mockResolvedValue({
-        id: 'existing-tx',
-        description: 'Already processed cs_test_xxx',
-      });
+      // Event already recorded in ProcessedStripeEvent → fast-skip, no handler runs.
+      mockProcessedEventFindUnique.mockResolvedValueOnce({ eventId: 'evt', type: 'checkout.session.completed' });
 
       const { handleWebhookEvent } = await import('../stripeService.js');
       const result = await handleWebhookEvent(validPayload, validSignature);
@@ -444,6 +461,36 @@ describe('stripeService', () => {
       expect(result.received).toBe(true);
       expect(result.event).toBe('unknown.event.type');
       expect(mockAddCredits).not.toHaveBeenCalled();
+    });
+
+    it('routes customer.subscription.updated to upsertSubscriptionFromStripe', async () => {
+      const subObject = { id: 'sub_routed' };
+      mockWebhooksConstructEvent.mockReturnValue({
+        id: 'evt_sub_updated',
+        type: 'customer.subscription.updated',
+        data: { object: subObject },
+      } as unknown as Stripe.Event);
+
+      const { handleWebhookEvent } = await import('../stripeService.js');
+      const { upsertSubscriptionFromStripe } = await import('../subscriptionService.js');
+      await handleWebhookEvent(validPayload, validSignature);
+
+      expect(upsertSubscriptionFromStripe).toHaveBeenCalledWith(subObject);
+    });
+
+    it('routes customer.subscription.deleted to handleSubscriptionDeleted', async () => {
+      const subObject = { id: 'sub_routed' };
+      mockWebhooksConstructEvent.mockReturnValue({
+        id: 'evt_sub_deleted',
+        type: 'customer.subscription.deleted',
+        data: { object: subObject },
+      } as unknown as Stripe.Event);
+
+      const { handleWebhookEvent } = await import('../stripeService.js');
+      const { handleSubscriptionDeleted } = await import('../subscriptionService.js');
+      await handleWebhookEvent(validPayload, validSignature);
+
+      expect(handleSubscriptionDeleted).toHaveBeenCalledWith(subObject);
     });
   });
 });

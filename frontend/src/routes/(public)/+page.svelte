@@ -48,6 +48,6 @@
 		subNiches={data.subNiches}
 	/>
 	<TestimonialsBlock ctaTexts={data.ctaTexts} />
-	<Pricing {session} ctaTexts={data.ctaTexts} packages={data.packages ?? []} />
+	<Pricing {session} ctaTexts={data.ctaTexts} plans={data.plans ?? []} />
 	<FAQBlock />
 </main>

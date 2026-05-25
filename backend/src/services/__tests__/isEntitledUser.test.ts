@@ -28,8 +28,36 @@ describe('isEntitledUser', () => {
     expect(await isEntitledUser('u1')).toBe(true);
   });
 
-  it('plain user → false', async () => {
-    mockUserFindUnique.mockResolvedValue({ role: 'USER', fullCatalogAccess: false });
+  it('plain user (no subscription) → false', async () => {
+    mockUserFindUnique.mockResolvedValue({ role: 'USER', fullCatalogAccess: false, subscription: null });
+    expect(await isEntitledUser('u1')).toBe(false);
+  });
+
+  const future = new Date(Date.now() + 86_400_000);
+  const past = new Date(Date.now() - 86_400_000);
+
+  it('ACTIVE subscription within period → true', async () => {
+    mockUserFindUnique.mockResolvedValue({ role: 'USER', fullCatalogAccess: false, subscription: { status: 'ACTIVE', currentPeriodEnd: future } });
+    expect(await isEntitledUser('u1')).toBe(true);
+  });
+
+  it('TRIALING subscription within period → true', async () => {
+    mockUserFindUnique.mockResolvedValue({ role: 'USER', fullCatalogAccess: false, subscription: { status: 'TRIALING', currentPeriodEnd: future } });
+    expect(await isEntitledUser('u1')).toBe(true);
+  });
+
+  it('ACTIVE but period in the past → false (lapsed)', async () => {
+    mockUserFindUnique.mockResolvedValue({ role: 'USER', fullCatalogAccess: false, subscription: { status: 'ACTIVE', currentPeriodEnd: past } });
+    expect(await isEntitledUser('u1')).toBe(false);
+  });
+
+  it('ACTIVE but null period → false (fail closed)', async () => {
+    mockUserFindUnique.mockResolvedValue({ role: 'USER', fullCatalogAccess: false, subscription: { status: 'ACTIVE', currentPeriodEnd: null } });
+    expect(await isEntitledUser('u1')).toBe(false);
+  });
+
+  it('PAST_DUE / CANCELED subscription → false', async () => {
+    mockUserFindUnique.mockResolvedValue({ role: 'USER', fullCatalogAccess: false, subscription: { status: 'PAST_DUE', currentPeriodEnd: future } });
     expect(await isEntitledUser('u1')).toBe(false);
   });
 

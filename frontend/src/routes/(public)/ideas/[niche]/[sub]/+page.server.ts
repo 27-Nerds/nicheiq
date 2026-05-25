@@ -13,15 +13,23 @@ import { buildMeta } from '$lib/seo/meta';
 import { LAUNCH_GATE_ON } from '$lib/seo/launchGate';
 import type { CategoryLandingPayload } from '$lib/types/catalog-landing';
 
-export const load: PageServerLoad = async ({ params, url, setHeaders }) => {
+export const load: PageServerLoad = async ({ params, url, setHeaders, locals }) => {
+  // Entitled users (ADMIN / subscriber / fullCatalogAccess) get the FULL list, so the
+  // response varies per user → forward X-User-ID and mark it private (uncacheable).
+  // Anonymous visitors get the public, CDN-cacheable featured-only teaser.
+  const session = await locals?.auth?.();
+  const userId = session?.user?.id;
   setHeaders({
-    'Cache-Control': 'public, max-age=300, s-maxage=900, stale-while-revalidate=86400',
+    'Cache-Control': userId
+      ? 'private, no-store'
+      : 'public, max-age=300, s-maxage=900, stale-while-revalidate=86400',
   });
 
   let res: Response;
   try {
     res = await fetchBackend(
       `/api/public/catalog/landing/${encodeURIComponent(params.niche)}/${encodeURIComponent(params.sub)}`,
+      userId ? { headers: { 'X-User-ID': userId } } : {},
     );
   } catch (err) {
     console.error('nested landing fetch failed', err);

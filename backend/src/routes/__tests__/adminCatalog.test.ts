@@ -6,6 +6,10 @@ import request from 'supertest';
 // Mocks (declared before router import so module-load wiring picks them up)
 // ============================================
 
+// Free-preview resolvers (handles so tests can assert the effectiveFreePreview* response).
+const mockResolveFreePreviewIdeaId = vi.fn().mockResolvedValue(null);
+const mockResolveFreePreviewPainId = vi.fn().mockResolvedValue(null);
+
 // prisma — only the methods the routes under test reach.
 const mockPrisma = {
   catalogPainPoint: { findMany: vi.fn(), groupBy: vi.fn() },
@@ -62,8 +66,8 @@ vi.mock('../../services/catalogService.js', () => ({
   depublishIdea: vi.fn(),
   depublishPainPoint: vi.fn(),
   invalidateCategoryLanding: vi.fn(),
-  resolveFeaturedIdeaId: vi.fn().mockResolvedValue(null),
-  resolveFeaturedPainId: vi.fn().mockResolvedValue(null),
+  resolveFreePreviewIdeaId: (...a: any[]) => mockResolveFreePreviewIdeaId(...a),
+  resolveFreePreviewPainId: (...a: any[]) => mockResolveFreePreviewPainId(...a),
 }));
 vi.mock('../../services/faqGeneratorService.js', () => ({
   generateForCategory: vi.fn(),
@@ -372,5 +376,19 @@ describe('GET /api/admin/catalog/categories/:id/pain-points', () => {
     // researchContext payload must not leak to the wire.
     expect(res.body.painPoints[0]).not.toHaveProperty('researchContext');
     expect(res.body.painPoints[1]).not.toHaveProperty('researchContext');
+  });
+
+  it('returns the resolved effectiveFreePreviewPainPointId', async () => {
+    mockPrisma.catalogPainPoint.findMany.mockResolvedValueOnce([
+      { id: painPointAId, title: 'p', severityScore: 0.5, willingnessToPayScore: 0.5, researchContext: {} },
+    ]);
+    mockHasMeaningfulResearchContext.mockReturnValueOnce(false);
+    mockResolveFreePreviewPainId.mockResolvedValueOnce(painPointAId);
+
+    const res = await request(app)
+      .get(`/api/admin/catalog/categories/${categoryId}/pain-points`)
+      .expect(200);
+
+    expect(res.body.effectiveFreePreviewPainPointId).toBe(painPointAId);
   });
 });
