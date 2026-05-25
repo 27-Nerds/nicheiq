@@ -97,8 +97,8 @@
 		document.getElementById(url.slice(1))?.scrollIntoView({ behavior: 'smooth' });
 	}
 
-	// Distinct founders who have completed at least one report. null when the
-	// real count is unavailable (or zero) — we hide the line rather than guess.
+	// Total registered users. null when the real count is unavailable (or zero)
+	// — we hide the line rather than guess.
 	const foundersCount = $derived(
 		typeof activeFounders === 'number' && activeFounders > 0 ? activeFounders : null,
 	);

@@ -1,7 +1,7 @@
 import { prisma } from './db.js';
 import { getRedis } from './redis.js';
 
-const CACHE_KEY = 'public_stats:v2';
+const CACHE_KEY = 'public_stats:v3';
 const CACHE_TTL = 300; // 5 minutes
 
 const redis = getRedis();
@@ -9,7 +9,7 @@ const redis = getRedis();
 export interface PublicStats {
   // Count of COMPLETED research jobs (used for "Reports run" achievement).
   completedJobs: number;
-  // Distinct users who have completed at least one report. null = unavailable
+  // Total registered users. null = unavailable
   // (the landing page hides the social-proof line rather than fabricate a number).
   activeFounders: number | null;
 }
@@ -21,17 +21,14 @@ export async function getPublicStats(): Promise<PublicStats> {
       return JSON.parse(cached) as PublicStats;
     }
 
-    const [completedJobs, founderGroups] = await Promise.all([
+    const [completedJobs, totalUsers] = await Promise.all([
       prisma.job.count({ where: { status: 'COMPLETED' } }),
-      prisma.job.groupBy({
-        by: ['userId'],
-        where: { status: 'COMPLETED', userId: { not: null } },
-      }),
+      prisma.user.count(),
     ]);
 
     const stats: PublicStats = {
       completedJobs,
-      activeFounders: founderGroups.length,
+      activeFounders: totalUsers,
     };
 
     await redis.setex(CACHE_KEY, CACHE_TTL, JSON.stringify(stats));

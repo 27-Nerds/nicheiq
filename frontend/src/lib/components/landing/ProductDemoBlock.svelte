@@ -1,17 +1,25 @@
 <script lang="ts">
 	let activeTab = $state(0);
 
+	// Facade pattern: show a thumbnail + custom play button at rest (no YouTube
+	// chrome, no player JS loaded). The real iframe mounts only after a click.
+	// Reset to the facade whenever the user switches tabs.
+	let playing = $state(false);
+
 	const tabs = [
 		{
 			label: 'Research',
+			videoId: 'YyHB-DlPcEI',
 			icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>`,
 		},
 		{
 			label: 'Niche Catalog',
+			videoId: '3IzhDAJbV5A',
 			icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>`,
 		},
 		{
 			label: 'My Reports',
+			videoId: 'HoUMFQr2rc4',
 			icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>`,
 		},
 	];
@@ -39,7 +47,10 @@
 					<button
 						class="tab-item"
 						class:tab-active={activeTab === i}
-						onclick={() => (activeTab = i)}
+						onclick={() => {
+							activeTab = i;
+							playing = false;
+						}}
 						role="tab"
 						aria-selected={activeTab === i}
 					>
@@ -60,11 +71,33 @@
 				"
 			>
 				<div style="position:relative; padding-bottom:56.25%; height:0; overflow:hidden;">
-					<img
-						src="/landing/video_placeholder_image.png"
-						alt="Product demo preview"
-						style="position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; display:block"
-					/>
+					{#if playing}
+						<iframe
+							src={`https://www.youtube-nocookie.com/embed/${tabs[activeTab].videoId}?autoplay=1&rel=0&playsinline=1`}
+							title={`${tabs[activeTab].label} demo`}
+							allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+							allowfullscreen
+							style="position:absolute; top:0; left:0; width:100%; height:100%; border:0; display:block"
+						></iframe>
+					{:else}
+						<button
+							type="button"
+							class="video-facade"
+							onclick={() => (playing = true)}
+							aria-label={`Play ${tabs[activeTab].label} demo`}
+						>
+							<img
+								src={`https://i.ytimg.com/vi_webp/${tabs[activeTab].videoId}/maxresdefault.webp`}
+								onerror={(e) =>
+									((e.currentTarget as HTMLImageElement).src = `https://i.ytimg.com/vi/${tabs[activeTab].videoId}/maxresdefault.jpg`)}
+								alt=""
+								loading="lazy"
+							/>
+							<span class="play-overlay" aria-hidden="true">
+								<svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+							</span>
+						</button>
+					{/if}
 				</div>
 			</div>
 		</div>
@@ -109,6 +142,55 @@
 
 	.tab-active {
 		background: rgba(255, 255, 255, 0.5);
+	}
+
+	.video-facade {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		padding: 0;
+		border: 0;
+		background: #000;
+		cursor: pointer;
+		display: block;
+	}
+
+	.video-facade img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		display: block;
+	}
+
+	.play-overlay {
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 72px;
+		height: 72px;
+		border-radius: 999px;
+		background: rgba(0, 0, 0, 0.55);
+		color: #fff;
+		padding-left: 4px;
+		transition:
+			background var(--duration-fast) var(--ease-default),
+			transform var(--duration-fast) var(--ease-default);
+	}
+
+	.video-facade:hover .play-overlay,
+	.video-facade:focus-visible .play-overlay {
+		background: var(--color-accent);
+		transform: translate(-50%, -50%) scale(1.06);
+	}
+
+	.video-facade:focus-visible {
+		outline: 2px solid var(--color-accent);
+		outline-offset: 2px;
 	}
 
 	@media (max-width: 640px) {

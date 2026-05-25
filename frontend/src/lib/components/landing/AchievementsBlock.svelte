@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { formatCompact } from '$lib/utils/format-numbers';
 
 	interface Props {
 		reportsDelivered?: number | null;
@@ -108,7 +109,7 @@
 									? 'color: var(--color-accent)'
 									: 'color: var(--color-text-secondary)'}
 							>
-								{displayed[i] ?? tile.value}{tile.suffix}
+								{formatCompact(displayed[i] ?? tile.value)}{tile.suffix}
 							</span>
 							<p class="step-title">{tile.title}</p>
 						</div>
