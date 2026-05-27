@@ -305,6 +305,21 @@ describe('stripeService', () => {
       });
     });
 
+    it('uses a valid returnUrl for success/cancel URLs (validator stays wired after extraction)', async () => {
+      mockPrismaTokenPackage.findUnique.mockResolvedValue(fixtures.packages.starter);
+      mockCheckoutSessionCreate.mockResolvedValue(fixtures.checkoutSession);
+
+      const { createCheckoutSession } = await import('../stripeService.js');
+      await createCheckoutSession('user-123', 'user@example.com', 'pkg-starter-123', '/ideas/saas-tools');
+
+      expect(mockCheckoutSessionCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success_url: 'http://localhost:3000/ideas/saas-tools?credits_added=true&session_id={CHECKOUT_SESSION_ID}',
+          cancel_url: 'http://localhost:3000/ideas/saas-tools?checkout_canceled=true',
+        }),
+      );
+    });
+
     it('throws error when package not found', async () => {
       mockPrismaTokenPackage.findUnique.mockResolvedValue(null);
 

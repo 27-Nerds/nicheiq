@@ -35,7 +35,6 @@
     <a class="locked-cta" href="/unlock-catalog">Subscribe to unlock</a>
   </div>
 
-  <span class="folio" aria-hidden="true"></span>
   <span class="saved-when" aria-hidden="true">Saved {formatDistanceToNow(createdAt)} ago</span>
 </div>
 
@@ -106,21 +105,6 @@
     color: var(--color-text-muted);
     font-feature-settings: "tnum";
   }
-  .folio {
-    position: absolute;
-    bottom: 14px;
-    left: 14px;
-    font-family: var(--font-mono);
-    font-size: 0.6875rem;
-    letter-spacing: 0.04em;
-    color: var(--color-text-muted);
-    font-feature-settings: "tnum";
-    counter-increment: folio;
-  }
-  .folio::before {
-    content: counter(folio, decimal-leading-zero);
-  }
-
   .saved-remove {
     position: absolute;
     top: 12px;

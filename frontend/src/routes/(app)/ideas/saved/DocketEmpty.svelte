@@ -1,7 +1,7 @@
 <script lang="ts">
   // Editorial empty-state for /ideas/saved. NO frame — no box, no hairlines,
-  // no border, no kicker. Left-aligned typography does the framing: folio
-  // `00` top-right + display headline + body + CTA. The kicker that earlier
+  // no border, no kicker. Left-aligned typography does the framing: a
+  // display headline + body + CTA. The kicker that earlier
   // revisions placed above the headline was dropped because in section mode
   // it duplicated the SectionDivider above ("01 · IDEAS · 0 saved" vs
   // "SUBJECT · IDEAS · NONE SAVED"), and in page mode it duplicated the
@@ -76,7 +76,6 @@
 </script>
 
 <aside class="docket-empty">
-  <span class="de-folio" aria-hidden="true">00</span>
   <h3 class="de-headline">{copy.headline}</h3>
   <p class="de-body-text">{copy.body}</p>
   {#if props.scope === "section" && props.mode === "filter"}
@@ -91,30 +90,13 @@
 <style>
   .docket-empty {
     width: 100%;
-    /* Acts as the positioning context for the absolute folio `00`. No box,
-       no rules — the surrounding SectionDivider lines (section mode) or
-       hero border-bottom (page mode) already separate this from the rest
+    /* No box, no rules — the surrounding SectionDivider lines (section mode)
+       or hero border-bottom (page mode) already separate this from the rest
        of the page. Margin keeps the same vertical rhythm as populated
        sections so layout doesn't shift between empty and populated states. */
-    position: relative;
     padding: 2rem 0 2.5rem;
     margin: 0 0 1rem;
     text-align: left;
-  }
-
-  /* Folio mark — visually rhymes with the bottom-left .folio on
-     SavedIdeaCard. Lives top-right of the empty block, baseline-aligned
-     with the headline's top edge so it reads as a small label next to a
-     chapter title rather than a floating accent. */
-  .de-folio {
-    position: absolute;
-    top: 2rem;
-    right: 0;
-    font-family: var(--font-mono);
-    font-size: 0.6875rem;
-    letter-spacing: 0.04em;
-    color: var(--color-text-muted);
-    font-feature-settings: "tnum";
   }
 
   .de-headline {

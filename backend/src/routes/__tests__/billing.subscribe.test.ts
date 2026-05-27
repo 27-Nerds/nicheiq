@@ -53,6 +53,28 @@ describe('POST /api/billing/subscribe', () => {
     expect(res.body.url).toContain('stripe');
   });
 
+  it('forwards a string returnUrl to the service as the 4th argument', async () => {
+    mockSubscribe.mockResolvedValue({ url: 'https://stripe/checkout' });
+    await request(app)
+      .post('/api/billing/subscribe')
+      .set(auth)
+      .send({ planId: 'plan_1', returnUrl: '/ideas/saas-tools' });
+    expect(mockSubscribe).toHaveBeenCalledWith('u1', expect.any(String), 'plan_1', '/ideas/saas-tools');
+  });
+
+  it('passes undefined returnUrl when omitted or non-string', async () => {
+    mockSubscribe.mockResolvedValue({ url: 'https://stripe/checkout' });
+    await request(app).post('/api/billing/subscribe').set(auth).send({ planId: 'plan_1' });
+    expect(mockSubscribe).toHaveBeenCalledWith('u1', expect.any(String), 'plan_1', undefined);
+
+    mockSubscribe.mockClear();
+    await request(app)
+      .post('/api/billing/subscribe')
+      .set(auth)
+      .send({ planId: 'plan_1', returnUrl: { evil: true } });
+    expect(mockSubscribe).toHaveBeenCalledWith('u1', expect.any(String), 'plan_1', undefined);
+  });
+
   it('409 when the user already has a live subscription', async () => {
     const { ActiveSubscriptionError } = await import('../../services/subscriptionService.js');
     mockSubscribe.mockRejectedValue(new ActiveSubscriptionError());

@@ -1,5 +1,7 @@
 <script lang="ts">
   import { ArrowRight } from "lucide-svelte";
+  import { page } from "$app/state";
+  import { subscribeUnlock } from "$lib/stores/subscribeUnlock.svelte";
 
   // Lock pattern. Renders summary-only — NO real data behind blur.
   // Security boundary: filter:blur is cosmetic (DevTools leaks blurred text);
@@ -19,15 +21,34 @@
     ctaHref,
     ctaLabel = "See the full research file",
   }: Props = $props();
+
+  // Logged-in non-subscribers get the in-place subscribe popup; logged-out
+  // visitors fall through to the href (/unlock-catalog → register). Progressive
+  // enhancement: with no JS, both anchors still navigate to the working link.
+  function handleUnlock(e: MouseEvent) {
+    if (page.data.session?.user) {
+      e.preventDefault();
+      subscribeUnlock.show();
+    }
+  }
 </script>
 
 <div class="cat-locked">
   <header class="cat-locked-header">
     <h2 class="cat-locked-title">{title}</h2>
-    <span class="cat-locked-badge">Subscribe to unlock</span>
+    <a
+      class="cat-locked-badge"
+      href={ctaHref}
+      aria-label="Subscribe to unlock"
+      onclick={handleUnlock}>Subscribe to unlock</a>
   </header>
   <p class="cat-locked-summary">{summary}</p>
-  <a class="cat-locked-cta" href={ctaHref} data-sveltekit-preload-data="hover">
+  <a
+    class="cat-locked-cta"
+    href={ctaHref}
+    aria-label={ctaLabel}
+    onclick={handleUnlock}
+  >
     <span class="cat-locked-cta-label">{ctaLabel}</span>
     <ArrowRight class="cat-locked-arrow" aria-hidden="true" />
   </a>
@@ -74,6 +95,12 @@
     background: transparent;
     box-shadow: inset 0 0 0 1px var(--color-accent);
     border-radius: 999px;
+    text-decoration: none;
+    transition: background-color 140ms ease;
+  }
+
+  .cat-locked-badge:hover {
+    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
   }
 
   .cat-locked-summary {

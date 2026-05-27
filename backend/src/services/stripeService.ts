@@ -4,6 +4,7 @@ import { CONFIG } from '../config.js';
 import { prisma } from './db.js';
 import { addCredits } from './creditService.js';
 import { getStripe } from './stripeClient.js';
+import { isValidReturnUrl } from '../utils/returnUrl.js';
 import {
   handleSubscriptionCheckoutCompleted,
   upsertSubscriptionFromStripe,
@@ -48,26 +49,6 @@ export async function getPackageById(packageId: string) {
   return prisma.tokenPackage.findUnique({
     where: { id: packageId },
   });
-}
-
-/**
- * Validate a return URL to prevent open redirect attacks.
- * Must be a relative path starting with / and resolving to our origin.
- */
-function isValidReturnUrl(url: string): boolean {
-  if (typeof url !== 'string') return false;
-  if (!url.startsWith('/')) return false;
-  if (url.startsWith('//')) return false;
-  if (url.includes('://')) return false;
-  if (url.includes('\\')) return false;
-  if (url.length > 500) return false;
-  try {
-    const parsed = new URL(url, CONFIG.baseUrl);
-    if (parsed.origin !== new URL(CONFIG.baseUrl).origin) return false;
-  } catch {
-    return false;
-  }
-  return true;
 }
 
 /**

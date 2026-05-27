@@ -59,7 +59,7 @@
 							>
 								<div class="card-bottom-overlay"></div>
 								<div class="card-body">
-									<span class="demand-badge">Demand Score · {scoreFor(pp)}</span>
+									<span class="demand-badge">Severity · {scoreFor(pp)}</span>
 									<div class="card-footer">
 										<h3 class="card-title">{pp.title}</h3>
 										<div class="card-arrow" aria-hidden="true">
@@ -82,7 +82,7 @@
 							>
 								<div class="card-bottom-overlay"></div>
 								<div class="card-body">
-									<span class="demand-badge">Demand Score · {scoreFor(pp)}</span>
+									<span class="demand-badge">Severity · {scoreFor(pp)}</span>
 									<div class="card-footer">
 										<h3 class="card-title">{pp.title}</h3>
 										<div class="card-arrow" aria-hidden="true">

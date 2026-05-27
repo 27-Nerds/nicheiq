@@ -77,9 +77,16 @@ async function fetchTopPainPoints(): Promise<CatalogTopPainPoint[]> {
   return [];
 }
 
-export const load: PageServerLoad = async ({ url, setHeaders, parent }) => {
+export const load: PageServerLoad = async ({ url, setHeaders, parent, locals }) => {
+  // Logged-in users get the dashboard chrome, which puts their per-user credit
+  // balance (from the public layout load) into the SSR payload — so their
+  // response must NOT be shared/CDN-cached. Anonymous visitors keep the public,
+  // cacheable policy. Mirrors the gate in (public)/ideas/[niche]/+page.server.ts.
+  const session = await locals?.auth?.();
   setHeaders({
-    'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=86400',
+    'Cache-Control': session?.user?.id
+      ? 'private, no-store'
+      : 'public, max-age=60, s-maxage=300, stale-while-revalidate=86400',
   });
 
   const collectionSlug = url.searchParams.get('collection');

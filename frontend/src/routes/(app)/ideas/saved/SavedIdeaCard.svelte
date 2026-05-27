@@ -44,16 +44,12 @@
     differentiation_factors: null,
     pricing_strategy: null,
     estimated_development_time: null,
-    market_fit_score:
-      item.idea.marketFitScore == null ? null : item.idea.marketFitScore / 100,
-    technical_feasibility_score:
-      item.idea.technicalFeasibility == null
-        ? null
-        : item.idea.technicalFeasibility / 100,
-    seo_scalability_score:
-      item.idea.seoScalabilityScore == null
-        ? null
-        : item.idea.seoScalabilityScore / 100,
+    // Scores are stored 0–1 in the DB; IdeaCardV2 multiplies by 100 for the
+    // dials. Pass them through raw — exactly as the public catalog projection
+    // does. (Dividing by 100 here collapsed every dial to "1".)
+    market_fit_score: item.idea.marketFitScore,
+    technical_feasibility_score: item.idea.technicalFeasibility,
+    seo_scalability_score: item.idea.seoScalabilityScore,
     novelty_score: null,
     solo_dev_feasibility: null,
     estimated_cac_organic: null,
@@ -113,7 +109,7 @@
     <span>Remove</span>
   </button>
 
-  <IdeaCardV2 idea={preview} subLabel={nichePath} />
+  <IdeaCardV2 idea={preview} subLabel={nichePath} flush />
 
   <!-- Notes block — sits below the card in its own row so it doesn't
        compete with the IdeaCardV2 internals. Italic with --accent left rail
@@ -152,12 +148,10 @@
     </button>
   {/if}
 
-  <!-- Editorial metadata at the card's bottom edge. Both spans are
-       non-interactive — the folio is auto-numbered via CSS counter on the
-       parent .cards-grid; the timestamp is formatted by formatDistanceToNow.
-       The remove action lives in .saved-remove (top-right) so the bottom
-       edge stays calm. -->
-  <span class="folio" aria-hidden="true"></span>
+  <!-- Saved-since byline — a single muted, right-aligned timestamp in normal
+       flow below the note. (The auto-numbered folio that used to sit on the
+       left was dropped: it was a volatile grid-position number with no stable
+       meaning.) The remove action lives in .saved-remove (top-right). -->
   <span class="saved-when" aria-hidden="true">
     Saved {formatDistanceToNow(item.createdAt)} ago
   </span>
@@ -166,8 +160,18 @@
 <style>
   .saved-card {
     position: relative;
-    /* The verdict rail rides on the IdeaCardV2 left edge. Add inset
-       padding so the rail doesn't overlap the card's own border. */
+    /* This is the card shell. IdeaCardV2 renders flush (frameless) inside it,
+       with the note + saved-since timestamp as a footer below — all within
+       this one border, so nothing floats outside the box. The verdict rail
+       (.saved-card::before) rides this left edge; the 16px padding keeps the
+       content clear of it. */
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: var(--color-surface, #fff);
+    padding: 16px;
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease;
     /* Stagger reveal — each <li> in .cards-grid sets `--i` (capped at 5).
        Opacity-only; movement-free per the editorial direction. Replays on
        optimistic remove → undo and on filter changes; that's the intended
@@ -175,6 +179,14 @@
     opacity: 0;
     animation: saved-docket-in 240ms ease-out forwards;
     animation-delay: calc(var(--i, 0) * 30ms);
+  }
+  /* Neutral elevation on hover — same idiom as IdeaCardV2 in the catalog
+     (no translateY lift, per the project anti-slop convention). */
+  .saved-card:hover {
+    border-color: var(--color-border-emphasis);
+    box-shadow:
+      0 1px 2px rgba(24, 24, 27, 0.04),
+      0 4px 12px rgba(24, 24, 27, 0.06);
   }
   @keyframes saved-docket-in {
     from { opacity: 0; }
@@ -298,36 +310,18 @@
     margin-top: 8px;
   }
 
-  /* Saved-since timestamp — non-interactive metadata at the card's
-     bottom-right. The destructive remove action lives in .saved-remove
-     (top-right) so the bottom edge reads as a research-log byline. */
+  /* Saved-since byline — a single muted, right-aligned timestamp in normal
+     flow beneath the note. (Replaces the folio + timestamp row; the
+     auto-numbered folio was dropped as a volatile, meaningless accent.) */
   .saved-when {
-    position: absolute;
-    bottom: 14px;
-    right: 14px;
+    display: block;
+    text-align: right;
+    margin-top: 12px;
     font-family: var(--font-mono);
     font-size: 0.6875rem;
     letter-spacing: 0.04em;
     color: var(--color-text-muted);
     font-feature-settings: "tnum";
-  }
-
-  /* Folio number — auto-numbered via the .cards-grid `counter-reset: folio`
-     in +page.svelte. Mirrors the bottom-right .saved-when across to the
-     bottom-left, framing the card as a numbered docket entry. */
-  .folio {
-    position: absolute;
-    bottom: 14px;
-    left: 14px;
-    font-family: var(--font-mono);
-    font-size: 0.6875rem;
-    letter-spacing: 0.04em;
-    color: var(--color-text-muted);
-    font-feature-settings: "tnum";
-    counter-increment: folio;
-  }
-  .folio::before {
-    content: counter(folio, decimal-leading-zero);
   }
 
   /* Explicit "Remove from saved" pill at the top-right corner. Always

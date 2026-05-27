@@ -11,6 +11,7 @@
   } from "$lib/components/catalog/seo/StatStrip.svelte";
   import SectionDivider from "$lib/components/catalog/seo/SectionDivider.svelte";
   import { CategoryBreadcrumbs } from "$lib/components/catalog/seo";
+  import { SeoHead, JsonLd } from "$lib/components/seo";
   import SavedIdeaCard from "./SavedIdeaCard.svelte";
   import LockedSavedCard from "./LockedSavedCard.svelte";
   import SavedPainTable from "./SavedPainTable.svelte";
@@ -202,10 +203,8 @@
   }
 </script>
 
-<svelte:head>
-  <title>Saved · NicheIQ</title>
-  <meta name="robots" content="noindex" />
-</svelte:head>
+<SeoHead {...data.meta} />
+<JsonLd data={data.jsonld} />
 
 <div class="saved-page">
   <CategoryBreadcrumbs
@@ -401,10 +400,6 @@
     list-style: none;
     padding: 0;
     margin: 0 0 24px;
-    /* Drives the per-card folio number rendered inside SavedIdeaCard
-       (`<span class="folio">::before { content: counter(folio, decimal-leading-zero); }`).
-       Auto-renumbers on optimistic remove + undo without any JS. */
-    counter-reset: folio;
   }
   @media (min-width: 768px) {
     .cards-grid {

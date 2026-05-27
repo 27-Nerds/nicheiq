@@ -1,0 +1,10 @@
+Sign in to NicheIQ
+
+We received a request to reset the password for your NicheIQ account.
+
+Your account doesn't have a password — you sign in with {{PROVIDER}}.
+Use the link below to sign in:
+
+{{LOGIN_URL}}
+
+If you didn't request this, you can safely ignore this email.

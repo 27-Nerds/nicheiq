@@ -348,6 +348,9 @@ billingRouter.post('/subscribe', requireInternalAuth, async (req: AuthenticatedR
     const userId = req.user!.id;
     const userEmail = req.user!.email || '';
     const { planId } = req.body;
+    // Normalize to a string so arrays/objects never reach the returnUrl?: string param;
+    // the service's isValidReturnUrl remains the security boundary.
+    const returnUrl = typeof req.body.returnUrl === 'string' ? req.body.returnUrl : undefined;
     if (!planId || typeof planId !== 'string') {
       res.status(400).json({ error: 'Plan ID is required', code: 'MISSING_PLAN_ID' });
       return;
@@ -361,7 +364,7 @@ billingRouter.post('/subscribe', requireInternalAuth, async (req: AuthenticatedR
       res.status(400).json({ error: 'Plan is no longer available', code: 'PLAN_INACTIVE' });
       return;
     }
-    const { url } = await createSubscriptionCheckoutSession(userId, userEmail, planId);
+    const { url } = await createSubscriptionCheckoutSession(userId, userEmail, planId, returnUrl);
     res.json({ url });
   } catch (error) {
     if (error instanceof ActiveSubscriptionError) {

@@ -90,6 +90,14 @@
       required
     />
 
+    <div class="text-right">
+      <a
+        href="/forgot-password"
+        class="text-sm text-text-muted transition-colors hover:text-text-primary"
+        >Forgot password?</a
+      >
+    </div>
+
     <SubmitButton loading={loading} loadingText="" label="Sign In" class="btn-primary w-full justify-center" />
   </form>
 

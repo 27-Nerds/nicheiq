@@ -4,6 +4,7 @@ import { prisma } from './db.js';
 import { CONFIG } from '../config.js';
 import { getStripe } from './stripeClient.js';
 import { resetMonthlyAllowance } from './creditService.js';
+import { isValidReturnUrl } from '../utils/returnUrl.js';
 
 // ============================================
 // Errors (mapped to HTTP status by the billing route)
@@ -104,6 +105,7 @@ export async function createSubscriptionCheckoutSession(
   userId: string,
   email: string,
   planId: string,
+  returnUrl?: string,
 ): Promise<{ url: string }> {
   // Guard: block a new checkout while any LIVE subscription exists (portal is the switch path).
   const current = await prisma.userSubscription.findUnique({ where: { userId }, select: { status: true } });
@@ -115,6 +117,19 @@ export async function createSubscriptionCheckoutSession(
   if (!plan || !plan.isActive) throw new Error('Plan not found or inactive');
 
   const customerId = await getOrCreateStripeCustomer(userId, email);
+
+  // Build return URLs — use returnUrl if valid (e.g. the catalog page the unlock
+  // popup opened from), otherwise default to /billing. Mirrors the token checkout.
+  let successUrl: string;
+  let cancelUrl: string;
+  if (returnUrl && isValidReturnUrl(returnUrl)) {
+    const sep = returnUrl.includes('?') ? '&' : '?';
+    successUrl = `${CONFIG.baseUrl}${returnUrl}${sep}sub_success=true&session_id={CHECKOUT_SESSION_ID}`;
+    cancelUrl = `${CONFIG.baseUrl}${returnUrl}${sep}sub_canceled=true`;
+  } else {
+    successUrl = `${CONFIG.baseUrl}/billing?sub_success=true&session_id={CHECKOUT_SESSION_ID}`;
+    cancelUrl = `${CONFIG.baseUrl}/billing?sub_canceled=true`;
+  }
 
   const session = await getStripe().checkout.sessions.create({
     mode: 'subscription',
@@ -129,8 +144,8 @@ export async function createSubscriptionCheckoutSession(
     // Auto-apply the admin-attached coupon if present. `discounts` and `allow_promotion_codes`
     // are mutually exclusive — when there's no coupon we set NEITHER (no user-entered codes).
     ...(plan.stripeCouponId ? { discounts: [{ coupon: plan.stripeCouponId }] } : {}),
-    success_url: `${CONFIG.baseUrl}/billing?sub_success=true&session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${CONFIG.baseUrl}/billing?sub_canceled=true`,
+    success_url: successUrl,
+    cancel_url: cancelUrl,
   });
 
   if (!session.url) throw new Error('Failed to create subscription checkout session');

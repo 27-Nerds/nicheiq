@@ -13,9 +13,13 @@
     idea: IdeaPreview;
     /** Optional sub-category label override; defaults to category.name. */
     subLabel?: string | null;
+    /** Render frameless (no border / background / padding) so a parent can
+     *  own the card shell — e.g. SavedIdeaCard wraps this in its own bordered
+     *  container with a note + timestamp footer, avoiding a card-in-card. */
+    flush?: boolean;
   }
 
-  let { idea, subLabel = null }: Props = $props();
+  let { idea, subLabel = null, flush = false }: Props = $props();
 
   const scores = $derived({
     demand: idea.market_fit_score == null ? null : idea.market_fit_score * 100,
@@ -48,7 +52,7 @@
   });
 </script>
 
-<a class="idea-card" href={`/idea/${idea.slug}`}>
+<a class="idea-card" class:flush href={`/idea/${idea.slug}`}>
   {#if meta}
     <div class="ic-meta">{meta}</div>
   {/if}
@@ -97,6 +101,24 @@
     outline: 2px solid var(--color-accent);
     outline-offset: 2px;
     border-color: var(--color-border-emphasis);
+  }
+  /* Frameless variant — the parent owns the card shell (see SavedIdeaCard),
+     so the box chrome is dropped to avoid a card-in-card double border. The
+     content and the internal .ic-foot divider stay intact. */
+  .idea-card.flush {
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    padding: 0;
+  }
+  .idea-card.flush:hover {
+    background: transparent;
+    box-shadow: none;
+  }
+  /* Hover affordance moves to the arrow since the box no longer reacts. */
+  .idea-card.flush:hover .ic-arrow {
+    color: var(--color-accent);
+    transform: translateX(2px);
   }
   .ic-meta {
     font-size: 10px;

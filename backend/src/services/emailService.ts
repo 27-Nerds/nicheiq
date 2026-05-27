@@ -381,6 +381,52 @@ export async function sendCreditBonusEmail(
 }
 
 /**
+ * Send password reset email with a one-time reset link
+ */
+export async function sendPasswordResetEmail(
+  to: string,
+  resetUrl: string
+): Promise<void> {
+  const vars = {
+    RESET_URL: resetUrl,
+  };
+
+  try {
+    const html = renderTemplate(loadTemplate('passwordReset.html'), vars);
+    const text = renderTemplate(loadTemplate('passwordReset.txt'), vars);
+
+    await sendEmail(to, 'Reset your NicheIQ password', text, html);
+    console.log(`Password reset email sent to ${to}`);
+  } catch (error) {
+    console.error('Failed to send password reset email:', error);
+  }
+}
+
+/**
+ * Send a reminder that the account uses social sign-in (no password to reset)
+ */
+export async function sendSocialLoginReminderEmail(
+  to: string,
+  providerLabel: string,
+  loginUrl: string
+): Promise<void> {
+  const vars = {
+    PROVIDER: providerLabel,
+    LOGIN_URL: loginUrl,
+  };
+
+  try {
+    const html = renderTemplate(loadTemplate('socialLoginReminder.html'), vars);
+    const text = renderTemplate(loadTemplate('socialLoginReminder.txt'), vars);
+
+    await sendEmail(to, 'Sign in to NicheIQ', text, html);
+    console.log(`Social login reminder email sent to ${to}`);
+  } catch (error) {
+    console.error('Failed to send social login reminder email:', error);
+  }
+}
+
+/**
  * Test email configuration
  */
 export async function verifyEmailConfig(): Promise<boolean> {

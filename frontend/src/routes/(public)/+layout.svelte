@@ -5,6 +5,10 @@
 	import type { CtaConfig } from '$lib/types/cta';
 	import CtaIcon from '$lib/components/ui/CtaIcon.svelte';
 	import Footer from '$lib/components/landing/Footer.svelte';
+	import AppHeader from '$lib/components/layout/AppHeader.svelte';
+	import AppFooter from '$lib/components/layout/AppFooter.svelte';
+	import SubscriptionUnlockModal from '$lib/components/SubscriptionUnlockModal.svelte';
+	import { isCatalogPath } from '$lib/utils/urls';
 
 	let { data, children } = $props();
 
@@ -12,8 +16,18 @@
 	const ctaHeader: CtaConfig | null = $derived(data.ctaTexts?.cta_header ?? null);
 	const hasSampleReport = $derived(Boolean(page.data.hasSampleReport));
 
+	// Logged-in users browsing the catalog get the dashboard chrome instead of the
+	// public marketing header/footer; anonymous visitors keep the marketing shell.
+	const useAppShell = $derived(isCatalogPath(page.url.pathname) && !!session?.user);
+
 	let menuOpen = $state(false);
 	let scrolled = $state(false);
+
+	// Close any stuck-open mobile menu when switching to the app shell so it can't
+	// reappear after navigating back to a marketing route.
+	$effect(() => {
+		if (useAppShell) menuOpen = false;
+	});
 
 	const navLinks = [
 		{ label: 'Idea Catalog', href: '/ideas' },
@@ -23,6 +37,8 @@
 	];
 
 	function onScroll() {
+		// The public header isn't rendered under the app shell — skip the work.
+		if (useAppShell) return;
 		scrolled = window.scrollY > 0;
 	}
 
@@ -46,6 +62,9 @@
 <svelte:window onscroll={onScroll} />
 
 <div class="min-h-screen flex flex-col public-shell">
+	{#if useAppShell}
+		<AppHeader />
+	{:else}
 	<header
 		class="public-header"
 		style={`border-color: ${scrolled ? 'var(--color-border)' : 'transparent'};`}
@@ -178,13 +197,20 @@
 			</div>
 		{/if}
 	</header>
+	{/if}
 
 	<main class="flex-1">
 		{@render children()}
 	</main>
 
-	<Footer {hasSampleReport} ctaTexts={data.ctaTexts} />
+	{#if useAppShell}
+		<AppFooter />
+	{:else}
+		<Footer {hasSampleReport} ctaTexts={data.ctaTexts} />
+	{/if}
 </div>
+
+<SubscriptionUnlockModal />
 
 <style>
 	/* Override the global app body bg (#FAFAFA + radial dot pattern from app.css). */

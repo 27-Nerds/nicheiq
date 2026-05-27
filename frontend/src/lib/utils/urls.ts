@@ -38,3 +38,14 @@ export function programmaticPath(slug: string): string {
 }
 
 export const IDEAS_HUB_PATH = '/ideas';
+
+/**
+ * True for any public catalog route: `/ideas`, `/ideas/*`, `/idea/*`,
+ * `/pain-point/*`. Anchored so it does NOT match unrelated paths like
+ * `/ideathing`. Single source of truth shared by the public layout (header
+ * swap) and its server load (credit fetch + cache gating) so the two can't
+ * drift.
+ */
+export function isCatalogPath(pathname: string): boolean {
+  return /^\/(ideas|idea|pain-point)(\/|$)/.test(pathname);
+}

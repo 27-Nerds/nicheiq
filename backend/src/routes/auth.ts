@@ -1,11 +1,14 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { prisma } from '../services/db.js';
 import { CreditTransactionType } from '@prisma/client';
-import { authLimiter } from '../middleware/rateLimit.js';
+import { CONFIG } from '../config.js';
+import { authLimiter, passwordResetLimiter } from '../middleware/rateLimit.js';
 import { addCredits } from '../services/creditService.js';
 import { getRegistrationCredits } from '../services/adminService.js';
+import { sendPasswordResetEmail, sendSocialLoginReminderEmail } from '../services/emailService.js';
 
 export const authRouter = Router();
 
@@ -23,6 +26,44 @@ const LoginSchema = z.object({
   email: z.string().email('Invalid email address'),
   password: z.string().min(1, 'Password is required'),
 });
+
+const ForgotPasswordSchema = z.object({
+  email: z.string().email('Invalid email address'),
+});
+
+const ResetPasswordSchema = z.object({
+  token: z.string().min(1, 'Token is required'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
+});
+
+// Password reset tokens are stored in the shared VerificationToken table, namespaced
+// with this prefix so they never collide with other Auth.js token uses.
+const RESET_TOKEN_PREFIX = 'pwreset:';
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+const sha256 = (s: string): string =>
+  crypto.createHash('sha256').update(s).digest('hex');
+
+const PROVIDER_LABELS: Record<string, string> = {
+  google: 'Google',
+  github: 'GitHub',
+};
+
+// Human-readable label for the OAuth provider(s) on an account (excludes credentials).
+function providerLabelFor(accounts: { provider: string }[]): string {
+  const labels = Array.from(
+    new Set(
+      accounts
+        .map((a) => a.provider)
+        .filter((p) => p !== 'credentials')
+        .map((p) => PROVIDER_LABELS[p] ?? p)
+    )
+  );
+  return labels.length > 0 ? labels.join(' or ') : 'social sign-in';
+}
+
+// Thrown inside the reset transaction when the token was already consumed by a concurrent request.
+class TokenRaceError extends Error {}
 
 /**
  * POST /api/auth/register
@@ -157,6 +198,126 @@ authRouter.post('/login', async (req: Request, res: Response) => {
 
     console.error('Login error:', error);
     res.status(500).json({ error: 'Failed to authenticate' });
+  }
+});
+
+/**
+ * POST /api/auth/forgot-password
+ * Begin a password reset. Always returns a generic 200 so the response never
+ * reveals whether an account exists or which provider it uses (no enumeration).
+ * The actual disclosure only happens in the email sent to the verified inbox.
+ */
+authRouter.post('/forgot-password', passwordResetLimiter, async (req: Request, res: Response) => {
+  try {
+    const input = ForgotPasswordSchema.parse(req.body);
+
+    const user = await prisma.user.findUnique({
+      where: { email: input.email },
+      select: {
+        passwordHash: true,
+        accounts: { select: { provider: true } },
+      },
+    });
+
+    if (user?.passwordHash) {
+      // Credentials user — issue a single-use reset token and email a reset link.
+      const identifier = `${RESET_TOKEN_PREFIX}${input.email}`;
+      await prisma.verificationToken.deleteMany({ where: { identifier } });
+
+      const rawToken = crypto.randomBytes(32).toString('hex');
+      await prisma.verificationToken.create({
+        data: {
+          identifier,
+          token: sha256(rawToken),
+          expires: new Date(Date.now() + RESET_TOKEN_TTL_MS),
+        },
+      });
+
+      const resetUrl = `${CONFIG.baseUrl}/reset-password?token=${rawToken}`;
+      // Send off the response path to avoid an email-latency timing oracle.
+      setImmediate(() => void sendPasswordResetEmail(input.email, resetUrl));
+    } else if (user) {
+      // OAuth-only user — no password to reset; remind them which provider to use.
+      const providerLabel = providerLabelFor(user.accounts);
+      const loginUrl = `${CONFIG.baseUrl}/login`;
+      setImmediate(() => void sendSocialLoginReminderEmail(input.email, providerLabel, loginUrl));
+    }
+    // else: no such user — do nothing (still respond generically below).
+
+    res.json({
+      message: "If an account exists for that email, we've sent instructions to get back in.",
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        error: 'Validation error',
+        details: error.errors,
+      });
+      return;
+    }
+
+    console.error('Forgot password error:', error);
+    res.status(500).json({ error: 'Failed to process request' });
+  }
+});
+
+/**
+ * POST /api/auth/reset-password
+ * Complete a password reset using a one-time token from the emailed link.
+ */
+authRouter.post('/reset-password', async (req: Request, res: Response) => {
+  try {
+    const input = ResetPasswordSchema.parse(req.body);
+    const hashed = sha256(input.token);
+
+    const row = await prisma.verificationToken.findUnique({
+      where: { token: hashed },
+    });
+
+    // Reject missing, expired, or non-reset (foreign Auth.js) tokens.
+    if (!row || row.expires < new Date() || !row.identifier.startsWith(RESET_TOKEN_PREFIX)) {
+      if (row) {
+        await prisma.verificationToken.deleteMany({ where: { token: hashed } });
+      }
+      res.status(400).json({ error: 'Invalid or expired reset link' });
+      return;
+    }
+
+    const email = row.identifier.slice(RESET_TOKEN_PREFIX.length);
+    const newHash = await bcrypt.hash(input.password, 12);
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        // Atomic consume: only the request that deletes the row proceeds.
+        const consumed = await tx.verificationToken.deleteMany({ where: { token: hashed } });
+        if (consumed.count !== 1) {
+          throw new TokenRaceError();
+        }
+        await tx.user.update({ where: { email }, data: { passwordHash: newHash } });
+        await tx.verificationToken.deleteMany({ where: { identifier: row.identifier } });
+      });
+    } catch (txError) {
+      // Lost the consume race, or the user no longer exists → treat as invalid link.
+      const code = (txError as { code?: string })?.code;
+      if (txError instanceof TokenRaceError || code === 'P2025') {
+        res.status(400).json({ error: 'Invalid or expired reset link' });
+        return;
+      }
+      throw txError;
+    }
+
+    res.json({ message: 'Password updated' });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        error: 'Validation error',
+        details: error.errors,
+      });
+      return;
+    }
+
+    console.error('Reset password error:', error);
+    res.status(500).json({ error: 'Failed to reset password' });
   }
 });
 
