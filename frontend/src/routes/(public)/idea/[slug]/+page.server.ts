@@ -32,8 +32,9 @@ export const load: PageServerLoad = async ({ params, url, setHeaders, locals }) 
     throw error(500, 'Failed to load');
   }
 
-  // 403 = a non-featured idea the user isn't entitled to → send them to subscribe.
-  if (res.status === 403) throw redirect(302, '/unlock-catalog');
+  // 403 = a non-featured idea the user isn't entitled to → send them to the
+  // catalog with the subscribe popup auto-opened (?unlock).
+  if (res.status === 403) throw redirect(302, '/ideas?unlock=1');
   if (res.status === 404) throw error(404, 'Not found');
   if (!res.ok) throw error(500, 'Failed to load');
 

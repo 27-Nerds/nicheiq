@@ -1,22 +1,25 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/svelte";
 import { goto } from "$app/navigation";
+import { subscribeUnlock } from "$lib/stores/subscribeUnlock.svelte";
 import SaveButton from "../SaveButton.svelte";
 
-// The save POST returns 403 when a non-entitled user tries to save a
-// non-featured item. The button should revert and route to /unlock-catalog
-// rather than fail silently (defence-in-depth — the button normally only
-// renders on accessible detail pages).
+// A 403 from the save POST (non-entitled user, non-featured item) should revert
+// the optimistic toggle and open the subscribe popup in place — not navigate
+// away to /unlock-catalog. (The button only renders on accessible detail pages,
+// so this is defence-in-depth; the user is authenticated here.)
 
 describe("SaveButton — 403 from save POST", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    subscribeUnlock.open = false;
   });
   afterEach(() => {
     vi.unstubAllGlobals();
+    subscribeUnlock.open = false;
   });
 
-  it("routes to /unlock-catalog and reverts on a 403", async () => {
+  it("opens the subscribe popup and reverts on a 403 (no navigation)", async () => {
     const itemId = "idea-123";
     const fetchMock = vi.fn((_url: string, init?: { method?: string }) => {
       const method = init?.method ?? "GET";
@@ -35,8 +38,10 @@ describe("SaveButton — 403 from save POST", () => {
     await fireEvent.click(btn);
 
     await vi.waitFor(() => {
-      expect(goto).toHaveBeenCalledWith("/unlock-catalog");
+      expect(subscribeUnlock.open).toBe(true);
     });
+    // No navigation to the unlock hub — the popup is the surface now.
+    expect(goto).not.toHaveBeenCalledWith("/unlock-catalog");
     // Reverted to not-saved (a POST that 403s must not leave it showing "Saved").
     expect(screen.queryByText("Saved")).toBeNull();
   });

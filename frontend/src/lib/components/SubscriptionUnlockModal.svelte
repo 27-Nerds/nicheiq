@@ -21,6 +21,7 @@
   let showSuccess = $state(false);
   let canceledNotice = $state(false);
   let stripeReturnHandled = $state(false);
+  let unlockParamHandled = $state(false);
 
   let modalEl: HTMLDivElement | undefined = $state();
   let triggerEl: HTMLElement | null = null;
@@ -63,18 +64,40 @@
       });
   });
 
-  // ── Stripe return detection ──────────────────────────────
+  // ── Stripe return + ?unlock detection ────────────────────
   $effect(() => {
-    if (stripeReturnHandled) return;
     const params = page.url.searchParams;
+    // Billing owns its own sub_success / sub_canceled banners — never auto-handle
+    // (or consume the guard) there now that this modal is mounted globally.
+    const onBilling = page.url.pathname === "/billing";
 
-    if (params.has("sub_success")) {
-      stripeReturnHandled = true;
-      handleSubSuccess();
-    } else if (params.has("sub_canceled")) {
-      stripeReturnHandled = true;
-      handleSubCanceled();
+    if (!stripeReturnHandled && !onBilling) {
+      if (params.has("sub_success")) {
+        stripeReturnHandled = true;
+        handleSubSuccess();
+      } else if (params.has("sub_canceled")) {
+        stripeReturnHandled = true;
+        handleSubCanceled();
+      }
     }
+
+    // Auto-open from a 403 redirect to /ideas?unlock=1. Separate one-shot guard so
+    // it can't consume Stripe-return handling. Logged-in only — the subscribe
+    // endpoint needs a session; logged-out visitors just get the URL cleaned.
+    if (!unlockParamHandled && params.has("unlock")) {
+      unlockParamHandled = true;
+      if (page.data.session?.user) subscribeUnlock.open = true;
+      stripParams("unlock");
+    }
+  });
+
+  // ── Lock background scroll while open (matches CategoryItemsModal) ──
+  $effect(() => {
+    if (!subscribeUnlock.open) return;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = "";
+    };
   });
 
   // ── Focus management ─────────────────────────────────────
@@ -132,6 +155,7 @@
       "credits_added",
       "checkout_canceled",
       "session_id",
+      "unlock",
     ]) {
       params.delete(p);
     }

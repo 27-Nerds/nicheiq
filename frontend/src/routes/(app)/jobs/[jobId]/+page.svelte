@@ -365,6 +365,7 @@
     ['RUNNING', 'QUEUED', 'PENDING'].includes(job?.status ?? '') && !isRegenQueued
   );
   const isGeneratingP2 = $derived(job?.status === 'RUNNING_PHASE2');
+  const isGenerating = $derived(isGeneratingP1 || isGeneratingP2);
 
   // Section open state driven by lifecycle (passes to ExpandableSection defaultOpen)
   const discoveryOpen = $derived(isSelectionPhase);
@@ -559,7 +560,7 @@
 </svelte:head>
 
 <div class="job-page-shell" class:has-sticky-bar={isSelectionPhase && showStickyBar}>
-  {#if job}
+  {#if job && !isGenerating}
     <PhaseNav jobStatus={job.status} />
   {/if}
   <main class="job-page-content">
@@ -578,6 +579,25 @@
         <Button onclick={() => goto("/new")} label="Start New Research" class="mt-6 btn-primary inline-block" />
       </div>
     {:else if job}
+      {#if isGenerating}
+        <!-- ═══ FOCUSED RESEARCH-IN-PROGRESS SCREEN (chrome hidden) ═══ -->
+        <ResearchProgressScreen
+          phase={isGeneratingP1 ? 'discovery' : 'deep_research'}
+          jobStatus={job.status}
+          niche={job.niche}
+          userEmail={data.userEmail}
+          progressPercent={job.progressPercent}
+          stagesCompleted={job.stagesCompleted ?? 0}
+          totalStages={job.totalStages ?? 0}
+          queuePosition={job.queuePosition ?? undefined}
+          catalogPainPoints={data.catalogPainPoints ?? []}
+          selectedNames={job.selectedSolutions ?? []}
+          solutionIdeas={job.solutionIdeas ?? []}
+          primaryWinner={job.selectedSolution}
+          onCancel={isGeneratingP1 ? cancelJob : undefined}
+          {cancelling}
+        />
+      {:else}
       <!-- ═══ EDITORIAL HERO (1fr | 320px grid) ═══ -->
       <div class="job-hero-grid">
         <div class="job-hero-main">
@@ -716,30 +736,6 @@
             <p class="mt-3 text-sm text-error">{resumeError}</p>
           {/if}
         </div>
-      {/if}
-
-      <!-- ═══ RESEARCH IN PROGRESS — Phase 1 (Discovery) ═══ -->
-      {#if isGeneratingP1}
-        <ResearchProgressScreen
-          phase="discovery"
-          jobStatus={job.status}
-          userEmail={data.userEmail}
-          catalogPainPoints={data.catalogPainPoints ?? []}
-          onCancel={cancelJob}
-          {cancelling}
-        />
-      {/if}
-
-      <!-- ═══ RESEARCH IN PROGRESS — Phase 2 (Deep Research) ═══ -->
-      {#if isGeneratingP2}
-        <ResearchProgressScreen
-          phase="deep_research"
-          jobStatus={job.status}
-          userEmail={data.userEmail}
-          selectedNames={job.selectedSolutions ?? []}
-          solutionIdeas={job.solutionIdeas ?? []}
-          primaryWinner={job.selectedSolution}
-        />
       {/if}
 
       <!-- ═══ DASHBOARD SECTIONS ═══ -->
@@ -1015,6 +1011,7 @@
           {/if}
         </div>
       </div>
+      {/if}
     {/if}
 
     {#if isSelectionPhase}

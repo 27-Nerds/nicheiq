@@ -2,6 +2,7 @@
   import Bookmark from "lucide-svelte/icons/bookmark";
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
+  import { subscribeUnlock } from "$lib/stores/subscribeUnlock.svelte";
 
   interface Props {
     itemType: "idea" | "painPoint";
@@ -79,11 +80,12 @@
         });
       }
       // 403 = the user isn't entitled to save this (non-featured) item. Revert
-      // and route to the unlock page instead of failing silently. (The button only
-      // renders on accessible detail pages, so this is defence-in-depth.)
+      // and open the subscribe popup in place instead of failing silently. (The
+      // button only renders on accessible detail pages, so this is defence-in-depth;
+      // the user is authenticated here, so the popup is the right surface.)
       if (res.status === 403) {
         saved = wasSaved;
-        goto("/unlock-catalog");
+        subscribeUnlock.show();
         return;
       }
       if (!res.ok) throw new Error(`Save failed: ${res.status}`);

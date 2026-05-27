@@ -1,13 +1,20 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/svelte";
 import type { SavedPainPointItem } from "$lib/types/saved";
+import { subscribeUnlock } from "$lib/stores/subscribeUnlock.svelte";
 import LockedSavedCard from "../LockedSavedCard.svelte";
 import SavedPainTable from "../SavedPainTable.svelte";
 
 // Saved items the user has lost access to are rendered as locked placeholders.
 // The backend strips the item + note, so these components must (a) render a
 // locked state + unlock link, (b) leak no content, and (c) not throw on the
-// `idea: null` / `painPoint: null` shape.
+// `idea: null` / `painPoint: null` shape. The unlock link keeps its
+// href="/unlock-catalog" (no-JS fallback) but opens the popup in place for
+// logged-in users (the saved page is auth-only).
+
+beforeEach(() => {
+  subscribeUnlock.open = false;
+});
 
 describe("LockedSavedCard", () => {
   it("renders the locked placeholder + unlock link and fires onRemove", async () => {
@@ -22,6 +29,16 @@ describe("LockedSavedCard", () => {
 
     await fireEvent.click(screen.getByRole("button", { name: /remove locked idea/i }));
     expect(onRemove).toHaveBeenCalledOnce();
+  });
+
+  it("opens the subscribe popup when the unlock link is clicked (keeps the href fallback)", async () => {
+    render(LockedSavedCard, {
+      props: { kind: "idea", createdAt: "2026-01-01T00:00:00Z", onRemove: vi.fn() },
+    });
+    const unlock = screen.getByRole("link", { name: /subscribe to unlock/i });
+    expect(unlock.getAttribute("href")).toBe("/unlock-catalog");
+    await fireEvent.click(unlock);
+    expect(subscribeUnlock.open).toBe(true);
   });
 });
 
@@ -74,5 +91,14 @@ describe("SavedPainTable — locked rows", () => {
     expect(screen.getByText("VisiblePainTitle")).toBeTruthy();
     const unlock = screen.getByRole("link", { name: /^unlock$/i });
     expect(unlock.getAttribute("href")).toBe("/unlock-catalog");
+  });
+
+  it("opens the subscribe popup when the locked-row Unlock link is clicked", async () => {
+    render(SavedPainTable, {
+      props: { items, onUnsave: vi.fn(), onNotesChange: vi.fn() },
+    });
+    const unlock = screen.getByRole("link", { name: /^unlock$/i });
+    await fireEvent.click(unlock);
+    expect(subscribeUnlock.open).toBe(true);
   });
 });

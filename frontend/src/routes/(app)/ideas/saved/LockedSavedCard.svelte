@@ -2,6 +2,7 @@
   import Lock from "lucide-svelte/icons/lock";
   import X from "lucide-svelte/icons/x";
   import { formatDistanceToNow } from "./formatRelative";
+  import { subscribeUnlock } from "$lib/stores/subscribeUnlock.svelte";
 
   // Placeholder for a saved item the user no longer has access to (non-featured
   // + not entitled). The backend strips the item content + note before sending,
@@ -32,7 +33,7 @@
     <span class="locked-icon" aria-hidden="true"><Lock size={18} /></span>
     <p class="locked-title">Locked {kind}</p>
     <p class="locked-sub">Part of the full catalog — subscribe to view this saved {kind}.</p>
-    <a class="locked-cta" href="/unlock-catalog">Subscribe to unlock</a>
+    <a class="locked-cta" href="/unlock-catalog" onclick={subscribeUnlock.requestUnlock}>Subscribe to unlock</a>
   </div>
 
   <span class="saved-when" aria-hidden="true">Saved {formatDistanceToNow(createdAt)} ago</span>

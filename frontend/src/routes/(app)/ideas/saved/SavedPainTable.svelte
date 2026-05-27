@@ -4,6 +4,7 @@
   import X from "lucide-svelte/icons/x";
   import NoteEditor from "./NoteEditor.svelte";
   import { formatDistanceToNow } from "./formatRelative";
+  import { subscribeUnlock } from "$lib/stores/subscribeUnlock.svelte";
 
   interface Props {
     items: SavedPainPointItem[];
@@ -56,7 +57,7 @@
         <span class="sev" role="cell"><span class="num">—</span></span>
         <span class="when" role="cell">Saved {formatDistanceToNow(item.createdAt)} ago</span>
         <span class="note-cell" role="cell">
-          <a class="unlock-link" href="/unlock-catalog">Unlock</a>
+          <a class="unlock-link" href="/unlock-catalog" onclick={subscribeUnlock.requestUnlock}>Unlock</a>
         </span>
         <button
           type="button"

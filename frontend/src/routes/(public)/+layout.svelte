@@ -7,7 +7,6 @@
 	import Footer from '$lib/components/landing/Footer.svelte';
 	import AppHeader from '$lib/components/layout/AppHeader.svelte';
 	import AppFooter from '$lib/components/layout/AppFooter.svelte';
-	import SubscriptionUnlockModal from '$lib/components/SubscriptionUnlockModal.svelte';
 	import { isCatalogPath } from '$lib/utils/urls';
 
 	let { data, children } = $props();
@@ -209,8 +208,6 @@
 		<Footer {hasSampleReport} ctaTexts={data.ctaTexts} />
 	{/if}
 </div>
-
-<SubscriptionUnlockModal />
 
 <style>
 	/* Override the global app body bg (#FAFAFA + radial dot pattern from app.css). */

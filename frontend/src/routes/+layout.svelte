@@ -2,6 +2,7 @@
   import "../app.css";
   import Analytics from "$lib/components/Analytics.svelte";
   import JsonLd from "$lib/components/seo/JsonLd.svelte";
+  import SubscriptionUnlockModal from "$lib/components/SubscriptionUnlockModal.svelte";
   import { organization, website } from "$lib/seo/jsonld";
 
   let { children } = $props();
@@ -17,3 +18,4 @@
 <JsonLd data={siteSchema} />
 <Analytics />
 {@render children()}
+<SubscriptionUnlockModal />

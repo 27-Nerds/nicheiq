@@ -1,14 +1,14 @@
 <script lang="ts">
-  // Lean in-page "while you wait" panel shown during research generation
-  // (Phase 1 Discovery + Phase 2 Deep Research). Deliberately NOT a hero: the
-  // job page already renders the niche title, spinning status badge, progress
-  // ring, Stage X/Y and Elapsed (PageHeader + JobHeroAside) above this block.
-  // This panel only adds what those lack — the "you can leave, we'll email you"
-  // reassurance, exit actions, and (Phase 1) a calm list of validated pain
-  // points to explore. Frameless editorial styling mirrors DocketEmpty /
-  // JobHeroAside; no shadows, no animation, no auto-scroll.
+  // Focused, full-screen "research in progress" view shown while a job generates
+  // (Phase 1 Discovery + Phase 2 Deep Research). The job page hides its own chrome
+  // (PhaseNav sidebar, hero, stepper, preview sections, meta footer) during
+  // generation, so this screen OWNS the niche title + progress. Niche-led
+  // hierarchy keeps it from reading as a generic loading splash; restrained
+  // editorial styling (Plus Jakarta + JetBrains mono, hairline borders, no
+  // shadows/animation/decoration) matches DocketEmpty / JobHeroAside.
   import Button from "$lib/components/ui/Button.svelte";
   import SelectedSolutionsSummary from "$lib/components/SelectedSolutionsSummary.svelte";
+  import ProgressRing from "$lib/components/ui/ProgressRing.svelte";
   import { LayoutDashboard, Library, ArrowRight } from "lucide-svelte";
   import { IDEAS_HUB_PATH, painPointPath } from "$lib/utils/urls";
   import { scaleSeverity, type CatalogTopPainPoint } from "$lib/types/publicCatalog";
@@ -17,7 +17,12 @@
   interface Props {
     phase: "discovery" | "deep_research";
     jobStatus: string;
+    niche?: string;
     userEmail?: string | null;
+    progressPercent?: number;
+    stagesCompleted?: number;
+    totalStages?: number;
+    queuePosition?: number;
     catalogPainPoints?: CatalogTopPainPoint[];
     selectedNames?: string[];
     solutionIdeas?: SolutionPreview[];
@@ -29,7 +34,12 @@
   let {
     phase,
     jobStatus,
+    niche = "",
     userEmail = null,
+    progressPercent = 0,
+    stagesCompleted = 0,
+    totalStages = 0,
+    queuePosition,
     catalogPainPoints = [],
     selectedNames = [],
     solutionIdeas = [],
@@ -41,50 +51,66 @@
   const isDiscovery = $derived(phase === "discovery");
   const isQueued = $derived(jobStatus === "QUEUED" || jobStatus === "PENDING");
 
-  const kicker = $derived(isDiscovery ? "While we work" : "Deep research");
-  const headline = $derived(
-    !isDiscovery
-      ? "Validating your top picks."
-      : isQueued
-        ? "You're in the queue."
-        : "Your research is underway.",
+  const kicker = $derived(
+    isQueued ? "Queued" : isDiscovery ? "Research in progress" : "Deep research",
   );
 
-  // Precompute the scaled severity so the template doesn't call scaleSeverity twice.
+  const ringValue = $derived(Math.min(Math.max((progressPercent ?? 0) / 100, 0), 1));
+  const pct = $derived(Math.round(progressPercent ?? 0));
+
+  // Static 3-phase orientation breadcrumb (replaces the hidden PhaseNav journey cue).
+  const phases = ["Discovery", "Deep Research", "Build"];
+  const activePhase = $derived(isDiscovery ? 0 : 1);
+
+  // Precompute scaled severity so the template doesn't call scaleSeverity twice.
   const painRows = $derived(
     catalogPainPoints.map((pp) => ({ pp, sev: scaleSeverity(pp.severityScore, "pain") })),
   );
 </script>
 
 <div class="research-progress">
-  {#if !isDiscovery && selectedNames.length > 0}
-    <div class="rp-selections">
-      <SelectedSolutionsSummary
-        {selectedNames}
-        {solutionIdeas}
-        {primaryWinner}
-        status={jobStatus}
-      />
-    </div>
-  {/if}
-
-  <section class="rp-reassure">
+  <section class="rp-hero">
     <p class="rp-kicker">{kicker}</p>
-    <h2 class="rp-headline">{headline}</h2>
+
+    {#if niche}
+      <h1 class="rp-niche">{niche}</h1>
+    {/if}
+
+    <nav class="rp-phases" aria-label="Research phases">
+      {#each phases as label, i}
+        {#if i > 0}<span class="rp-phase-sep" aria-hidden="true">·</span>{/if}
+        <span class="rp-phase" class:active={i === activePhase}>{label}</span>
+      {/each}
+    </nav>
+
+    <div class="rp-progress">
+      {#if isQueued}
+        <p class="rp-stage">Queued{#if queuePosition} · position {queuePosition}{/if}</p>
+      {:else}
+        <ProgressRing
+          value={ringValue}
+          color="accent"
+          size={72}
+          showValue={false}
+          showTooltip={false}
+          flat
+          glow={false}
+          label="Research progress"
+          class="rp-ring"
+        />
+        <p class="rp-stage">Stage {stagesCompleted} / {totalStages} · {pct}%</p>
+      {/if}
+    </div>
+
     <p class="rp-body">
       {#if isDiscovery}
-        {#if isQueued}
-          You're next in line. We'll start the moment a slot opens and email you{#if userEmail}
-            at <strong>{userEmail}</strong>{/if} when your report is ready.
-        {:else}
-          Discovery usually takes up to 15 minutes. We'll email you{#if userEmail}
-            at <strong>{userEmail}</strong>{/if} the moment your report is ready — feel free
-          to close this tab.
-        {/if}
+        This usually takes up to 15 minutes. You can safely close this tab — we'll email
+        you{#if userEmail} at <strong>{userEmail}</strong>{/if} the moment it's ready.
       {:else}
-        Deep research runs the full market validation — competitors, demand, and positioning.
-        We'll email you{#if userEmail} at <strong>{userEmail}</strong>{/if} when it's ready.
-        Your discovery preview is below.
+        We're validating your top picks — the full market validation runs now. You can
+        safely close this tab — we'll email you{#if userEmail} at <strong>{userEmail}</strong
+        >{/if} when it's ready. <strong>Your discovery findings are saved</strong> and will be
+        here with the full report.
       {/if}
     </p>
 
@@ -109,10 +135,16 @@
     </div>
   </section>
 
-  {#if isDiscovery && painRows.length > 0}
+  {#if !isDiscovery && selectedNames.length > 0}
+    <section class="rp-selections">
+      <SelectedSolutionsSummary {selectedNames} {solutionIdeas} {primaryWinner} status={jobStatus} />
+    </section>
+  {/if}
+
+  {#if painRows.length > 0}
     <section class="rp-explore">
-      <p class="rp-kicker">While you wait · Validated pain points</p>
-      <h2 class="rp-explore-title">Real problems founders are validating</h2>
+      <p class="rp-kicker">From the NicheIQ catalog</p>
+      <h2 class="rp-explore-title">Validated problems from other research</h2>
       <ul class="rp-list">
         {#each painRows as { pp, sev } (pp.id)}
           <li>
@@ -132,14 +164,21 @@
 
 <style>
   .research-progress {
-    margin-top: 1.5rem;
+    max-width: 640px;
+    margin: 0 auto;
   }
 
-  .rp-selections {
-    margin-bottom: 1.5rem;
+  /* ── Hero zone — deliberate vertical presence, centered ── */
+  .rp-hero {
+    min-height: 55vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 2.5rem 0 1.5rem;
   }
 
-  /* ── Mono kicker — matches JobHeroAside .kicker ── */
   .rp-kicker {
     font-family: var(--font-mono);
     font-size: 10px;
@@ -147,72 +186,114 @@
     letter-spacing: 0.08em;
     font-weight: 600;
     color: var(--color-text-muted);
-    margin: 0 0 8px;
+    margin: 0 0 0.75rem;
   }
 
-  /* ── Reassurance — frameless editorial, matches DocketEmpty ── */
-  .rp-headline {
-    margin: 0 0 0.625rem;
+  .rp-niche {
     font-family: var(--font-display);
-    font-size: 1.375rem;
-    font-weight: 600;
-    line-height: 1.25;
-    letter-spacing: -0.015em;
+    font-size: clamp(1.75rem, 4vw, 2.5rem);
+    font-weight: 700;
+    line-height: 1.12;
+    letter-spacing: -0.02em;
     color: var(--color-text-primary);
-    max-width: 40ch;
+    margin: 0 0 1rem;
+    max-width: 24ch;
+    text-wrap: balance;
   }
 
+  /* ── Phase breadcrumb (static orientation) ── */
+  .rp-phases {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+    margin: 0 0 1.75rem;
+  }
+  .rp-phase.active {
+    color: var(--color-accent);
+    font-weight: 600;
+  }
+  .rp-phase-sep {
+    opacity: 0.5;
+  }
+
+  /* ── Progress ── */
+  .rp-progress {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1.75rem;
+  }
+  /* The ring is a status indicator here, not the interactive score widget —
+     override ProgressRing's `cursor: help` (its `flat` variant doesn't reset it). */
+  .rp-progress :global(.progress-ring.rp-ring) {
+    cursor: default;
+  }
+  .rp-stage {
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+    color: var(--color-text-secondary);
+    margin: 0;
+  }
+
+  /* ── Reassurance ── */
   .rp-body {
-    margin: 0 0 1.5rem;
     font-size: 0.9375rem;
     line-height: 1.65;
     color: var(--color-text-secondary);
-    max-width: 56ch;
+    max-width: 52ch;
+    margin: 0 0 1.5rem;
   }
   .rp-body strong {
     color: var(--color-text-primary);
     font-weight: 600;
   }
 
+  /* ── Actions ── */
   .rp-actions {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 0.75rem;
     flex-wrap: wrap;
   }
-
-  /* Quiet, de-emphasized cancel — mono link, muted until hover. */
   .rp-cancel {
     font-family: var(--font-mono);
     font-size: 0.75rem;
     font-weight: 500;
-    color: var(--color-accent);
     letter-spacing: 0.04em;
-    text-decoration: none;
-    border: 0;
-    border-bottom: 1px solid currentColor;
+    color: var(--color-text-muted);
     background: transparent;
+    border: 0;
+    border-bottom: 1px solid transparent;
     cursor: pointer;
-    display: inline-block;
-    padding: 8px 0 9px;
-    margin: -8px 0 -9px;
+    padding: 8px 2px;
   }
   .rp-cancel:hover:not(:disabled) {
-    color: var(--color-accent-hover, var(--color-accent));
-  }
-  .rp-cancel:focus-visible {
-    outline: 2px solid var(--color-accent);
-    outline-offset: 4px;
-    border-radius: 2px;
+    color: var(--color-error, #ef4444);
+    border-bottom-color: currentColor;
   }
   .rp-cancel:disabled {
     opacity: 0.5;
     cursor: not-allowed;
   }
 
-  /* ── Explore list — calm, static, editorial (no cards/gradients/scroll) ── */
+  /* ── Phase-2 selected solutions ── */
+  .rp-selections {
+    margin: 1rem 0 0;
+  }
+
+  /* ── Explore list — calm, static, editorial ── */
   .rp-explore {
-    margin-top: 2.5rem;
+    margin-top: 3rem;
+    text-align: center;
   }
   .rp-explore-title {
     margin: 0 0 1rem;
@@ -226,6 +307,7 @@
     list-style: none;
     margin: 0;
     padding: 0;
+    text-align: left;
     border-top: 1px solid var(--color-border);
   }
   .rp-row {
@@ -275,6 +357,7 @@
     .rp-actions {
       flex-direction: column;
       align-items: stretch;
+      width: 100%;
     }
     .rp-row {
       flex-direction: column;

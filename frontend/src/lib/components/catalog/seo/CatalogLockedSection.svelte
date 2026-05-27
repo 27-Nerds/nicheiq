@@ -1,6 +1,5 @@
 <script lang="ts">
   import { ArrowRight } from "lucide-svelte";
-  import { page } from "$app/state";
   import { subscribeUnlock } from "$lib/stores/subscribeUnlock.svelte";
 
   // Lock pattern. Renders summary-only — NO real data behind blur.
@@ -21,16 +20,6 @@
     ctaHref,
     ctaLabel = "See the full research file",
   }: Props = $props();
-
-  // Logged-in non-subscribers get the in-place subscribe popup; logged-out
-  // visitors fall through to the href (/unlock-catalog → register). Progressive
-  // enhancement: with no JS, both anchors still navigate to the working link.
-  function handleUnlock(e: MouseEvent) {
-    if (page.data.session?.user) {
-      e.preventDefault();
-      subscribeUnlock.show();
-    }
-  }
 </script>
 
 <div class="cat-locked">
@@ -40,14 +29,14 @@
       class="cat-locked-badge"
       href={ctaHref}
       aria-label="Subscribe to unlock"
-      onclick={handleUnlock}>Subscribe to unlock</a>
+      onclick={subscribeUnlock.requestUnlock}>Subscribe to unlock</a>
   </header>
   <p class="cat-locked-summary">{summary}</p>
   <a
     class="cat-locked-cta"
     href={ctaHref}
     aria-label={ctaLabel}
-    onclick={handleUnlock}
+    onclick={subscribeUnlock.requestUnlock}
   >
     <span class="cat-locked-cta-label">{ctaLabel}</span>
     <ArrowRight class="cat-locked-arrow" aria-hidden="true" />

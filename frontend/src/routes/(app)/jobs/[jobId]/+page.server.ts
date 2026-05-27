@@ -38,7 +38,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
   const conditionalFetches: Promise<void>[] = [];
 
-  if (['QUEUED', 'PENDING', 'RUNNING'].includes(job.status)) {
+  if (['QUEUED', 'PENDING', 'RUNNING', 'RUNNING_PHASE2'].includes(job.status)) {
     conditionalFetches.push(
       fetchBackend('/api/public/catalog/top-pain-points?limit=8&freePreview=true', {
         signal: AbortSignal.timeout(3000),
