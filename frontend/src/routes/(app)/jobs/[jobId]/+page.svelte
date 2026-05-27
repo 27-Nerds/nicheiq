@@ -4,7 +4,6 @@
   import { goto, invalidateAll } from "$app/navigation";
   import {
     subscribeToProgress,
-    isTerminalStatus,
     shouldKeepSSEOpen,
     getReportSummary,
     getDiscoveryShareStatus,
@@ -15,9 +14,7 @@
     Loader2,
     AlertTriangle,
     XCircle,
-    Clock,
     CheckCircle,
-    X,
     ArrowRight,
     Telescope,
     RotateCw,
@@ -27,7 +24,7 @@
   } from "lucide-svelte";
   import { creditTopUp } from "$lib/stores/creditTopUp.svelte";
   import { mapVerdict } from "$lib/types/publicCatalog";
-  import type { Job, StageProgress, SolutionPreview, ReportSummary } from "$lib/types/job";
+  import type { Job, SolutionPreview, ReportSummary } from "$lib/types/job";
   import Button from "$lib/components/ui/Button.svelte";
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
   import SelectedSolutionsSummary from "$lib/components/SelectedSolutionsSummary.svelte";
@@ -42,8 +39,7 @@
   import PainPointSummaryCard from "$lib/components/preview/PainPointSummaryCard.svelte";
   import CommunitySourcesSection from "$lib/components/preview/CommunitySourcesSection.svelte";
   import PreviewSolutionSelector from "$lib/components/preview/PreviewSolutionSelector.svelte";
-  import GenerationSlideshow from "$lib/components/preview/GenerationSlideshow.svelte";
-  import DiscoveryGenerationOverlay from "$lib/components/preview/DiscoveryGenerationOverlay.svelte";
+  import ResearchProgressScreen from "$lib/components/preview/ResearchProgressScreen.svelte";
 
   import DeepResearchCTABlock from "$lib/components/preview/DeepResearchCTABlock.svelte";
   import SEOKeywordsPreview from "$lib/components/preview/SEOKeywordsPreview.svelte";
@@ -58,7 +54,6 @@
     placeholderCompetitors,
   } from "$lib/data/previewPlaceholders";
   import { stripLeadingArticle, titleCase } from "$lib/utils/format";
-  import { PHASES, PARALLEL_STAGE_GROUPS } from "$lib/components/job/phaseConfig";
   import { STAGE_MAP, REPORT_ICON } from "$lib/config/billable-stages";
   import { getSolutions } from "$lib/api";
   import ShareDiscoveryModal from "$lib/components/ShareDiscoveryModal.svelte";
@@ -356,77 +351,6 @@
     document.getElementById('solution-selector')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
-  function formatDuration(seconds: number | null): string {
-    if (!seconds) return "";
-    if (seconds < 60) return `${Math.round(seconds)}s`;
-    const totalSeconds = Math.round(seconds);
-    const mins = Math.floor(totalSeconds / 60);
-    const secs = totalSeconds % 60;
-    return `${mins}m ${secs}s`;
-  }
-
-  // Process stages for display (combine parallel stages)
-  function processStagesForDisplay(stages: StageProgress[], jobStatus: string): StageProgress[] {
-    const hiddenStages = new Set<number>();
-    for (const group of Object.values(PARALLEL_STAGE_GROUPS)) {
-      group.hide.forEach((s) => hiddenStages.add(s));
-    }
-    return stages
-      .filter((stage) => !hiddenStages.has(stage.stageNumber))
-      .map((stage) => {
-        const group = PARALLEL_STAGE_GROUPS[stage.stageNumber];
-        let processed = group ? { ...stage, stageName: group.combinedName } : stage;
-        if ((jobStatus === "FAILED" || jobStatus === "CANCELLED") && processed.status === "RUNNING") {
-          processed = { ...processed, status: "FAILED" };
-        }
-        // After failed regeneration, job reverts to AWAITING_SELECTION but stage 5 may still be RUNNING in DB
-        if (jobStatus === "AWAITING_SELECTION" && processed.status === "RUNNING") {
-          processed = { ...processed, status: "COMPLETED" };
-        }
-        return processed;
-      });
-  }
-
-  const displayStages = $derived(
-    job ? processStagesForDisplay(job.progress ?? [], job.status) : [],
-  );
-
-  // Adjusted counts
-  const adjustedStagesCompleted = $derived.by(() => {
-    if (!job) return 0;
-    const hiddenStageNumbers = Object.values(PARALLEL_STAGE_GROUPS).flatMap((g) => g.hide);
-    const hiddenCompleted = (job.progress ?? []).filter(
-      (s) => hiddenStageNumbers.includes(s.stageNumber) && s.status === "COMPLETED",
-    ).length;
-    return job.stagesCompleted - hiddenCompleted;
-  });
-
-  const adjustedTotalStages = $derived.by(() => {
-    if (!job) return 0;
-    const hiddenCount = Object.values(PARALLEL_STAGE_GROUPS).flatMap((g) => g.hide).length;
-    return job.totalStages - hiddenCount;
-  });
-
-  // Build artifact maps from stage progress
-  const stageArtifacts = $derived.by(() => {
-    const map: Record<number, Record<string, any>> = {};
-    for (const stage of job?.progress ?? []) {
-      if (stage.artifact && typeof stage.artifact === 'object') {
-        map[stage.stageNumber] = stage.artifact as Record<string, any>;
-      }
-    }
-    // When the final report is available, use its definitive SEO metrics
-    // (Stage 6 only validates ~10 seed keywords; the full report has all tiered keywords)
-    if (reportSummary && map[6]) {
-      map[6] = {
-        ...map[6],
-        total_volume: reportSummary.total_search_volume ?? map[6].total_volume,
-        validated_keywords: reportSummary.total_keywords ?? map[6].validated_keywords,
-      };
-    }
-    return map;
-  });
-
   const showSelectedSummary = $derived(
     (job?.selectedSolutions?.length ?? 0) > 0 &&
     (job?.solutionIdeas?.length ?? 0) > 0
@@ -444,7 +368,6 @@
 
   // Section open state driven by lifecycle (passes to ExpandableSection defaultOpen)
   const discoveryOpen = $derived(isSelectionPhase);
-  const deepResearchOpen = $derived(job?.status === 'COMPLETED');
 
   // Reset key: increments on major status transitions to clear user toggle state
   const sectionResetKey = $derived(
@@ -545,15 +468,6 @@
     (previewReport?.detailed_pain_points ?? [])
       .slice()
       .sort((a, b) => b.severity_score - a.severity_score)
-  );
-
-  // Display current stage name (with parallel group handling)
-  const displayCurrentStageName = $derived(
-    job
-      ? (job.currentStage === 3 || job.currentStage === 4
-          ? PARALLEL_STAGE_GROUPS[3].combinedName
-          : job.currentStageName || "Initializing...")
-      : ""
   );
 
   // Report-ready reveal: trigger once when job transitions to COMPLETED
@@ -804,52 +718,28 @@
         </div>
       {/if}
 
-      <!-- ═══ FULL-PAGE DISCOVERY OVERLAY (Phase 1) ═══ -->
+      <!-- ═══ RESEARCH IN PROGRESS — Phase 1 (Discovery) ═══ -->
       {#if isGeneratingP1}
-        <DiscoveryGenerationOverlay
-          niche={job.niche}
+        <ResearchProgressScreen
+          phase="discovery"
           jobStatus={job.status}
-          currentStage={job.currentStage}
-          progressPercent={job.progressPercent ?? 0}
-          stagesCompleted={adjustedStagesCompleted}
-          totalStages={adjustedTotalStages}
-          currentStageName={displayCurrentStageName}
-          queuePosition={job.queuePosition ?? undefined}
-          totalQueued={job.totalQueued ?? undefined}
+          userEmail={data.userEmail}
+          catalogPainPoints={data.catalogPainPoints ?? []}
           onCancel={cancelJob}
           {cancelling}
-          {cancelError}
         />
       {/if}
 
-      <!-- ═══ GENERATION SLIDESHOW (Phase 2) ═══ -->
+      <!-- ═══ RESEARCH IN PROGRESS — Phase 2 (Deep Research) ═══ -->
       {#if isGeneratingP2}
-        <div class="generation-area">
-          {#if showSelectedSummary}
-            <div class="mb-4">
-              <SelectedSolutionsSummary
-                selectedNames={job.selectedSolutions ?? []}
-                solutionIdeas={job.solutionIdeas ?? []}
-                primaryWinner={job.selectedSolution}
-                status={job.status}
-              />
-            </div>
-          {/if}
-          <div
-            class="progress-bar-track"
-            role="progressbar"
-            aria-valuemin="0"
-            aria-valuemax="100"
-            aria-valuenow={Math.round(job.progressPercent ?? 0)}
-            aria-label="Research progress"
-          >
-            <div class="progress-bar-fill" style:width="{job.progressPercent ?? 0}%"></div>
-          </div>
-          <p class="progress-stage" aria-live="polite">
-            Stage {adjustedStagesCompleted} of {adjustedTotalStages}{#if displayCurrentStageName}: {displayCurrentStageName}{/if}
-          </p>
-          <GenerationSlideshow currentStage={job.currentStage} phase="deep_research" />
-        </div>
+        <ResearchProgressScreen
+          phase="deep_research"
+          jobStatus={job.status}
+          userEmail={data.userEmail}
+          selectedNames={job.selectedSolutions ?? []}
+          solutionIdeas={job.solutionIdeas ?? []}
+          primaryWinner={job.selectedSolution}
+        />
       {/if}
 
       <!-- ═══ DASHBOARD SECTIONS ═══ -->
@@ -1000,11 +890,6 @@
 
         <!-- ═══ DEEP RESEARCH PREVIEW SECTIONS ═══ -->
         {#if !isCompleted}
-          <!-- Generation progress -->
-          {#if isGeneratingP2}
-            <p class="generation-status">Generating... stage {adjustedStagesCompleted}/{adjustedTotalStages}</p>
-          {/if}
-
           <!-- Capped preview: UnifiedHero with real blurred content -->
           <div class="preview-capped">
             <UnifiedHero
@@ -1259,39 +1144,6 @@
     }
   }
 
-  /* ═══ Generation area ═══ */
-  .generation-area {
-    padding: var(--space-8, 2rem);
-    margin-bottom: 1.5rem;
-    background: var(--color-bg-elevated);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg, 0.75rem);
-    text-align: center;
-  }
-
-  .progress-bar-track {
-    height: 6px;
-    background: var(--color-bg-surface);
-    border-radius: 3px;
-    overflow: hidden;
-    margin-bottom: 0.75rem;
-  }
-
-  .progress-bar-fill {
-    height: 100%;
-    background: var(--color-accent);
-    border-radius: 3px;
-    transition: width 100ms linear;
-  }
-
-  .progress-stage {
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
-    color: var(--color-text-muted);
-    font-variant-numeric: tabular-nums;
-    margin-bottom: 1rem;
-  }
-
   /* ═══ Section intro ═══ */
   .section-intro {
     font-size: 0.875rem;
@@ -1356,15 +1208,6 @@
 
   /* .preview-capped* classes moved to src/lib/styles/preview-capped.css
      (global; shared with SharedDiscoveryView). */
-
-  .generation-status {
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
-    color: var(--color-accent);
-    text-align: center;
-    padding: 0.5rem 0;
-    letter-spacing: 0.02em;
-  }
 
   /* ═══ Report summary (completed state) ═══ */
   .report-summary-card {

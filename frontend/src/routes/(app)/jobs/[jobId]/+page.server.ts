@@ -4,6 +4,7 @@ import { error } from '@sveltejs/kit';
 import type { ReportSummary, SolutionPreview } from '$lib/types/job';
 import type { DiscoveryData } from '$lib/types/discovery';
 import type { PreviewReport } from '$lib/types/previewReport';
+import type { CatalogTopPainPoint } from '$lib/types/publicCatalog';
 
 export const load: PageServerLoad = async ({ params, locals }) => {
   const session = await locals.auth();
@@ -30,8 +31,23 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   let solutionVotes: Record<string, number> = {};
   let discoveryData: DiscoveryData | null = null;
   let previewReport: PreviewReport | null = null;
+  // Free-preview pain points for the "explore while you wait" list, shown only
+  // while Phase 1 (discovery) is generating. Public endpoint; empty array hides
+  // the list. Mirrors the parsing in (public)/+page.server.ts.
+  let catalogPainPoints: CatalogTopPainPoint[] = [];
 
   const conditionalFetches: Promise<void>[] = [];
+
+  if (['QUEUED', 'PENDING', 'RUNNING'].includes(job.status)) {
+    conditionalFetches.push(
+      fetchBackend('/api/public/catalog/top-pain-points?limit=8&freePreview=true', {
+        signal: AbortSignal.timeout(3000),
+      })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { catalogPainPoints = Array.isArray(d) ? d : (d?.painPoints ?? []); })
+        .catch(() => {})
+    );
+  }
 
   if (job.status === 'COMPLETED') {
     const hasReport = (job.assets ?? []).some((a: { type: string }) => a.type === 'REPORT_JSON');
@@ -112,5 +128,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     solutionVotes,
     discoveryData,
     previewReport,
+    userEmail: session.user.email ?? null,
+    catalogPainPoints,
   };
 };
