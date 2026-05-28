@@ -13,7 +13,7 @@
 	import Pricing from '$lib/components/landing/Pricing.svelte';
 	import FAQBlock from '$lib/components/landing/FAQBlock.svelte';
 	import { SeoHead, JsonLd } from '$lib/components/seo';
-	import { canonicalUrl } from '$lib/seo/canonical';
+	import { canonicalUrl, siteOrigin } from '$lib/seo/canonical';
 	import { organization, website } from '$lib/seo/jsonld';
 
 	let { data } = $props();
@@ -25,7 +25,12 @@
 		'Two-phase AI research: discover pain points and solution ideas, then choose which to validate with competitive analysis, SEO strategy, and go/no-go verdict.';
 </script>
 
-<SeoHead title={homeTitle} description={homeDescription} canonical={canonicalUrl('/', '')} />
+<SeoHead
+	title={homeTitle}
+	description={homeDescription}
+	canonical={canonicalUrl('/', '')}
+	image={`${siteOrigin()}/og-img.png`}
+/>
 <JsonLd data={[organization(), website()]} />
 
 <main class="overflow-hidden">
