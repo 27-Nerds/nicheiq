@@ -1134,7 +1134,12 @@ interface BackendPainPointPreview {
   sourceGeneratedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
-  category: { id: string; name: string; slug: string };
+  category: {
+    id: string;
+    name: string;
+    slug: string;
+    parent: { slug: string; name: string } | null;
+  };
   // FAQ projection — same shape as idea preview, flowed through `...rest`
   // spread in getCategoryLanding/getPainPointBySlug. Drives both visible
   // <CategoryFAQ> and FAQPage JSON-LD on the public detail page.
@@ -1219,12 +1224,15 @@ export async function getDiscoverPainPoints(count: number = 4): Promise<Discover
 // (Phase 2 — public catalog SEO restructure)
 // ============================================
 
-// v6 — adds `latestModifiedAt` to the payload (max of category + active
-// children + active ideas + active pain-points in the subtree). Powers the
-// SEO `dateModified` / `lastReviewed` on CollectionPage. Bumped so the
+// v7 — adds `lockedPainCount` (server-authoritative) and includes
+// `category.parent: { slug, name }` on idea/pain previews. Bumped so the
 // deploy starts cold and every cached payload thereafter carries the new
-// field; old v5 keys age out via TTL.
-const LANDING_CACHE_PREFIX = 'catalog:landing:v6';
+// fields; old v6 keys age out via TTL (entitled responses bypass this cache
+// entirely, so only public payloads are at risk of staleness).
+// v6 — added `latestModifiedAt` to the payload (max of category + active
+// children + active ideas + active pain-points in the subtree). Powers the
+// SEO `dateModified` / `lastReviewed` on CollectionPage.
+const LANDING_CACHE_PREFIX = 'catalog:landing:v7';
 // Matches the edge `Cache-Control: s-maxage=900` on the landing routes — so
 // Redis and the CDN expire in the same window. Freshness on writes is
 // preserved by invalidation hooks; this just trims redundant backend roundtrips.
@@ -1470,6 +1478,12 @@ interface CategoryLandingPayload {
   topPainPoints: BackendPainPointPreview[];
   totalIdeas: number;
   totalPainPoints: number;
+  // Server-authoritative paywall count for pain points (see commentary at
+  // computation site in `buildCategoryLandingPayload`). Always present so the
+  // frontend loader can read it directly without re-deriving from arithmetic
+  // — which would be wrong on entitled+parent paths where the top-12 cap
+  // silently hides rows that are NOT paywalled.
+  lockedPainCount: number;
   sources: string[];
   // Phase 5.4 — flattened summaries for the new public catalog UI. Most are
   // sourced from the most-recent research context that backs `researchContext`.
@@ -2095,7 +2109,22 @@ async function buildCategoryLandingPayload(
 
   // Entitled users (ADMIN / fullCatalogAccess / active subscription) see the FULL list;
   // everyone else sees the featured-only teaser (one idea + one pain per category).
-  const ideaInclude = { category: { select: { id: true, name: true, slug: true } } } as const;
+  // `parent` is included so frontend `categoryPath({ slug, parentSlug })` can build
+  // nested URLs (/ideas/<parent>/<child>) for sub-niche links on parent landings.
+  const ideaInclude = {
+    category: {
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        parent: { select: { slug: true, name: true } },
+      },
+    },
+  } as const;
+  // Top-level parent landings (parentId === null AND has children) cap the
+  // aggregated pain list to 12. Aligns with the existing `isParentAggregationCandidate`
+  // gate further down; defensive against future nesting.
+  const isParentPage = category.parentId === null && category.children.length > 0;
   const ideaFetch = opts.entitled
     ? prisma.catalogIdea.findMany({
         where: { categoryId: { in: aggregateIds }, isActive: true, slug: { not: null } },
@@ -2103,11 +2132,16 @@ async function buildCategoryLandingPayload(
         include: ideaInclude,
       })
     : Promise.all(aggregateIds.map((id) => freePreviewIdeaForCategory(id)));
+  // Parent-aggregated cap path ranks by severity (NOT featured-first). Featured-
+  // first is the right policy for the non-entitled featured-only-mode (one per
+  // category); for an entitled top-N parent view, users expect "most severe in
+  // the subtree" so low-severity featured rows shouldn't crowd out higher-
+  // severity non-featured ones. See `paginatedPainFetchPolicyForLanding`.
   const painFetch = opts.entitled
     ? prisma.catalogPainPoint.findMany({
         where: { categoryId: { in: aggregateIds }, isActive: true, slug: { not: null } },
-        orderBy: FEATURED_PAIN_ORDER,
         include: ideaInclude,
+        ...paginatedPainFetchPolicyForLanding({ isParentPage }),
       })
     : Promise.all(aggregateIds.map((id) => freePreviewPainForCategory(id)));
 
@@ -2126,8 +2160,17 @@ async function buildCategoryLandingPayload(
     // Non-featured items NEVER enter the public (non-entitled) payload.
     ideaFetch,
     painFetch,
-    prisma.catalogIdea.count({ where: { isActive: true, categoryId: { in: aggregateIds } } }),
-    prisma.catalogPainPoint.count({ where: { isActive: true, categoryId: { in: aggregateIds } } }),
+    // Slug-predicate parity with the visible-set fetches above — without `slug:
+    // { not: null }`, the total counts overcount by the number of un-slugged
+    // (orphan / pre-publish) rows, which the visible fetch already filters out.
+    // Locked-count arithmetic on the frontend (and `lockedPainCount` below)
+    // depends on these counts matching the visible set.
+    prisma.catalogIdea.count({
+      where: { isActive: true, categoryId: { in: aggregateIds }, slug: { not: null } },
+    }),
+    prisma.catalogPainPoint.count({
+      where: { isActive: true, categoryId: { in: aggregateIds }, slug: { not: null } },
+    }),
     // Phase 15.5 — backend-aggregate count of GO-verdict ideas, not just visible
     // top set. Frontend hides the tile when 0; non-zero render is truthful.
     prisma.catalogIdea.count({
@@ -2177,6 +2220,18 @@ async function buildCategoryLandingPayload(
   const topPainPoints = topPainPointsRaw
     .filter((r): r is NonNullable<typeof r> => r !== null)
     .map(({ sourceJobId: _s, publishedById: _p, ...rest }) => rest);
+
+  // Server-authoritative paywall count for pain points. Entitled users see 0
+  // even when the parent cap silently hides rows (those un-shown rows live on
+  // sub-niche pages, not behind a paywall). Non-entitled users keep the
+  // featured-only-deficit semantic. `lockedIdeaCount` stays frontend-derived
+  // — ideas don't have a parent cap so the existing arithmetic is correct
+  // (revisit if ideas ever get capped on parent pages).
+  const lockedPainCount = computeLockedPainCount({
+    entitled: !!opts.entitled,
+    totalPainPoints,
+    visiblePainPoints: topPainPoints.length,
+  });
 
   // Phase 5: Attach the most-recent published item's research context so the
   // category landing renders the same Audience/Market/Trend sections as
@@ -2298,6 +2353,7 @@ async function buildCategoryLandingPayload(
     topPainPoints,
     totalIdeas,
     totalPainPoints,
+    lockedPainCount,
     // v1: hardcode the source platforms NicheIQ currently ingests from. Kept
     // for back-compat with existing landing-payload consumers — new UI uses
     // contentItemsMined + sourceCommunities below.
@@ -2493,6 +2549,46 @@ const FEATURED_PAIN_ORDER: Prisma.CatalogPainPointOrderByWithRelationInput[] = [
   { id: 'asc' },
 ];
 
+// Parent-aggregated landing pages (top-level category with children) cap the
+// entitled pain list at PARENT_PAIN_CAP and rank by severity directly — see
+// the comment on the `orderBy` in `painFetch` for why featured-first is wrong
+// here.
+const PARENT_PAIN_CAP = 12;
+const PARENT_PAIN_ORDER: Prisma.CatalogPainPointOrderByWithRelationInput[] = [
+  { severityScore: 'desc' },
+  { mentionCount: 'desc' },
+  { createdAt: 'desc' },
+  { id: 'asc' },
+];
+
+/** Pure policy helper — given whether the landing is a parent-aggregation
+ *  page, return the prisma orderBy + optional take to use for the entitled
+ *  pain fetch. Extracted for unit testing (the call site spreads this
+ *  directly into the prisma query). */
+export function paginatedPainFetchPolicyForLanding(opts: {
+  isParentPage: boolean;
+}): {
+  orderBy: Prisma.CatalogPainPointOrderByWithRelationInput[];
+  take?: number;
+} {
+  return opts.isParentPage
+    ? { orderBy: PARENT_PAIN_ORDER, take: PARENT_PAIN_CAP }
+    : { orderBy: FEATURED_PAIN_ORDER };
+}
+
+/** Pure helper for `lockedPainCount`. Entitled users always see 0 (their
+ *  un-shown rows live on sub-niche pages, not behind a paywall). Non-entitled
+ *  users see the deficit between the true total and what was sent. */
+export function computeLockedPainCount(opts: {
+  entitled: boolean;
+  totalPainPoints: number;
+  visiblePainPoints: number;
+}): number {
+  return opts.entitled
+    ? 0
+    : Math.max(0, opts.totalPainPoints - opts.visiblePainPoints);
+}
+
 // The free-preview gate keys ONLY on `isFreePreview` — no score-based fallback. A sub-niche
 // with nothing flagged has NO free item (fully gated) until the seed script or an admin pins one.
 // At most one flagged row per category (partial unique index + demote-first-then-set in the
@@ -2518,21 +2614,42 @@ export async function resolveFreePreviewPainId(categoryId: string): Promise<stri
   return r?.id ?? null;
 }
 
-/** Full free-preview idea row for the landing payload (null when none is flagged). */
+/** Full free-preview idea row for the landing payload (null when none is flagged).
+ *  `category.parent` is included so the frontend can build nested category
+ *  URLs (`/ideas/<parent>/<child>`) for sub-niche links without an extra round-trip. */
 async function freePreviewIdeaForCategory(categoryId: string) {
   return prisma.catalogIdea.findFirst({
     where: { categoryId, isActive: true, slug: { not: null }, isFreePreview: true },
     orderBy: { id: 'asc' },
-    include: { category: { select: { id: true, name: true, slug: true } } },
+    include: {
+      category: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          parent: { select: { slug: true, name: true } },
+        },
+      },
+    },
   });
 }
 
-/** Full free-preview pain row for the landing payload (null when none is flagged). */
+/** Full free-preview pain row for the landing payload (null when none is flagged).
+ *  See `freePreviewIdeaForCategory` for the rationale on including `category.parent`. */
 async function freePreviewPainForCategory(categoryId: string) {
   return prisma.catalogPainPoint.findFirst({
     where: { categoryId, isActive: true, slug: { not: null }, isFreePreview: true },
     orderBy: { id: 'asc' },
-    include: { category: { select: { id: true, name: true, slug: true } } },
+    include: {
+      category: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          parent: { select: { slug: true, name: true } },
+        },
+      },
+    },
   });
 }
 

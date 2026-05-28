@@ -71,6 +71,9 @@ function landingPayload() {
     ],
     totalIdeas: 2,
     totalPainPoints: 2,
+    // Server-authoritative locked-pain count. The fixture represents a
+    // non-entitled response where total=2 and visible=1, so the deficit is 1.
+    lockedPainCount: 1,
     contentItemsMined: 120,
     sourceCommunities: 3,
     themes: null,

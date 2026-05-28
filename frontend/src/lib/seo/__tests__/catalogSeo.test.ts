@@ -22,6 +22,7 @@ function makePayload(over: Partial<CategoryLandingPayload> = {}): CategoryLandin
     topPainPoints: [],
     totalIdeas: 27,
     totalPainPoints: 99,
+    lockedPainCount: 0,
     contentItemsMined: 120,
     sourceCommunities: 0,
     qualitySignals: null,

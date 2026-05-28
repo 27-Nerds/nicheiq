@@ -6,7 +6,7 @@
   import CatalogTable from "./CatalogTable.svelte";
   import LockedListSkeleton from "./LockedListSkeleton.svelte";
   import CatalogLockedSection from "./CatalogLockedSection.svelte";
-  import { painPointPath } from "$lib/utils/urls";
+  import { painPointPath, categoryPath } from "$lib/utils/urls";
 
   // Reusable ranked-pain-points table used on category and sub-category
   // landing pages. Wraps <CatalogTable> for shared chrome (border, header
@@ -37,6 +37,11 @@
     /** Uniform unlock destination (a per-request redirect endpoint) — must not
      *  be session-derived so the public-cached page stays identical for all. */
     unlockHref?: string;
+    /** Parent-category-landing only: render a plain-text Sub-niche column per
+     *  row, linking to the row's category page via `categoryPath()`. Mutually
+     *  exclusive with `themes` (themes = leaf-page concept). When both happen
+     *  to be passed, sub-niche wins. */
+    showSubNicheColumn?: boolean;
   }
 
   let {
@@ -46,6 +51,7 @@
     themes,
     lockedCount = 0,
     unlockHref = "/unlock-catalog",
+    showSubNicheColumn = false,
   }: Props = $props();
 
   const lockedTotal = $derived(painPoints.length + lockedCount);
@@ -59,7 +65,12 @@
     return map;
   });
 
-  const showTheme = $derived(themes != null);
+  // Component-level mutual exclusivity. Callers SHOULD only pass one (parent
+  // landings pass showSubNicheColumn; leaf landings pass themes), but enforce
+  // here so a caller mistake can't render two extra columns into one grid slot.
+  const showSubNiche = $derived(showSubNicheColumn);
+  const showTheme = $derived(themes != null && !showSubNicheColumn);
+  const showChip = $derived(showSubNiche || showTheme);
 
   function severityTier(scaledScore: number | null): "high" | "med" | "low" {
     if (scaledScore == null) return "low";
@@ -74,11 +85,12 @@
     <div
       class="ct-head ppr-head"
       class:with-rank={showRank}
-      class:with-theme={showTheme}
+      class:with-chip={showChip}
     >
       {#if showRank}<span class="head-rank">#</span>{/if}
       <span class="head-title">Pain point</span>
       {#if showTheme}<span class="head-theme">Theme</span>{/if}
+      {#if showSubNiche}<span class="head-sub">Sub-niche</span>{/if}
       <span class="head-mentions ar">Mentions</span>
       <span class="head-severity ar">Severity</span>
     </div>
@@ -89,7 +101,7 @@
       <div
         class="ct-row ppr-row"
         class:with-rank={showRank}
-        class:with-theme={showTheme}
+        class:with-chip={showChip}
         data-tier={tier}
       >
         {#if showRank}<span class="cell-rank">{String(i + 1).padStart(2, "0")}</span>{/if}
@@ -108,6 +120,15 @@
               <span class="theme-static" title={pp.themeId}>{pp.themeId.toUpperCase()}</span>
             {/if}
           </span>
+        {/if}
+        {#if showSubNiche}
+          <a
+            class="cell-sub"
+            href={categoryPath({ slug: pp.category.slug, parentSlug: pp.category.parent?.slug })}
+            title={pp.category.name}
+          >
+            {pp.category.name}
+          </a>
         {/if}
         <span class="mentions">{pp.mentionCount.toLocaleString()}</span>
         <span class="severity">
@@ -144,12 +165,15 @@
   .ct-row.with-rank {
     grid-template-columns: 44px 1fr 110px 170px;
   }
-  .ct-head.with-theme,
-  .ct-row.with-theme {
+  /* `.with-chip` activates the 140px middle slot for either the theme chip
+     (leaf pages) or the sub-niche cell (parent landings). The two are mutually
+     exclusive, so they share one grid column. */
+  .ct-head.with-chip,
+  .ct-row.with-chip {
     grid-template-columns: 1fr 140px 110px 170px;
   }
-  .ct-head.with-rank.with-theme,
-  .ct-row.with-rank.with-theme {
+  .ct-head.with-rank.with-chip,
+  .ct-row.with-rank.with-chip {
     grid-template-columns: 44px 1fr 140px 110px 170px;
   }
 
@@ -232,6 +256,32 @@
     padding: 0;
   }
 
+  /* Sub-niche cell (parent-landing only). Plain-text link, NOT a chip — the
+     mono-uppercase chip styling above is semantically reserved for themes.
+     `position: relative; z-index: 1` escapes the row's card-link ::after
+     overlay so the sub-niche link is independently clickable. */
+  .cell-sub {
+    position: relative;
+    z-index: 1;
+    font-size: 12.5px;
+    color: var(--color-text-secondary, var(--color-text-primary));
+    text-decoration: none;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cell-sub:hover {
+    color: var(--color-text-primary);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .cell-sub:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 1px;
+    border-radius: 2px;
+  }
+
   .mentions {
     font-family: var(--font-mono);
     font-size: 12px;
@@ -248,23 +298,25 @@
     margin-top: 20px;
   }
 
-  /* Mobile (≤900px): keep rank + title + severity; hide theme + mentions.
+  /* Mobile (≤900px): keep rank + title + severity; hide chip column + mentions.
      Severity is critical scanning context for pain points. */
   @media (max-width: 900px) {
     .ct-head,
     .ct-row,
-    .ct-head.with-theme,
-    .ct-row.with-theme {
+    .ct-head.with-chip,
+    .ct-row.with-chip {
       grid-template-columns: 1fr 100px;
     }
     .ct-head.with-rank,
     .ct-row.with-rank,
-    .ct-head.with-rank.with-theme,
-    .ct-row.with-rank.with-theme {
+    .ct-head.with-rank.with-chip,
+    .ct-row.with-rank.with-chip {
       grid-template-columns: 36px 1fr 100px;
     }
     .cell-theme,
     .head-theme,
+    .cell-sub,
+    .head-sub,
     .mentions,
     .head-mentions {
       display: none;

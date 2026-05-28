@@ -63,9 +63,11 @@ export const load: PageServerLoad = async ({ params, url, setHeaders, locals }) 
 
   // Public teaser: the backend already returns the featured-only visible set
   // (1 for a leaf sub-niche), so non-featured items never reach the browser.
-  // Locked counts = total − what the backend sent.
+  // `lockedIdeaCount` stays frontend-derived; `lockedPainCount` is server-
+  // authoritative (see commentary in the parent-niche loader and
+  // catalogService for why).
   const lockedIdeaCount = Math.max(0, payload.totalIdeas - payload.topIdeas.length);
-  const lockedPainCount = Math.max(0, payload.totalPainPoints - payload.topPainPoints.length);
+  const lockedPainCount = payload.lockedPainCount;
 
   // includeItemLists: false → JSON-LD must not enumerate the login-gated
   // idea/pain detail URLs (noindex + out of sitemap + robots Disallow).

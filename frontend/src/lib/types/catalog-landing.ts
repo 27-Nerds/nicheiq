@@ -315,6 +315,13 @@ export interface CategoryLandingPayload {
   topPainPoints: PainPointPreview[];
   totalIdeas: number;
   totalPainPoints: number;
+  /** Server-authoritative paywall count for pain points. On entitled
+   *  responses this is always 0 (even when a parent landing silently caps
+   *  the visible set to top 12 — those un-shown rows live on sub-niche
+   *  pages, not behind a paywall). On public responses this is the
+   *  featured-only deficit. Loaders should pass this through directly
+   *  rather than re-deriving from `totalPainPoints - topPainPoints.length`. */
+  lockedPainCount: number;
   sources: string[];
   // Phase 5.4 — flattened summaries derived from the most-recent
   // researchContext for the category subtree. All nullable; frontend hides

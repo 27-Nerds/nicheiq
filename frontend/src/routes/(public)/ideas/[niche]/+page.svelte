@@ -225,6 +225,7 @@
       <PainPointRankTable
         painPoints={data.payload.topPainPoints}
         lockedCount={data.lockedPainCount}
+        showSubNicheColumn={data.payload.children.length > 0}
       />
     </div>
   {/if}

@@ -68,6 +68,9 @@ function landingPayload() {
     ],
     totalIdeas: 2,
     totalPainPoints: 2,
+    // Server-authoritative locked-pain count. For a non-entitled response on
+    // a leaf, this equals totalPainPoints - topPainPoints.length.
+    lockedPainCount: 1,
     contentItemsMined: 80,
     sourceCommunities: 2,
     themes: null,

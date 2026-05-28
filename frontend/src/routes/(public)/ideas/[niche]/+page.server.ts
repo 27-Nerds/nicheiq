@@ -116,9 +116,13 @@ export const load: PageServerLoad = async ({ params, url, setHeaders, locals }) 
 
     // Public teaser: the backend already returns the featured-only visible set
     // (leaf → 1; parent → one featured per sub-niche), so non-featured items never
-    // reach the browser. Locked counts = total − what the backend sent.
+    // reach the browser. `lockedIdeaCount` is still frontend-derived (ideas are
+    // never silently capped, so arithmetic stays correct); `lockedPainCount`
+    // comes from the backend because entitled parent pages cap the visible pain
+    // set to 12 — re-deriving here would falsely show those 111 rows as
+    // paywalled when they're actually accessible on sub-niche pages.
     const lockedIdeaCount = Math.max(0, payload.totalIdeas - payload.topIdeas.length);
-    const lockedPainCount = Math.max(0, payload.totalPainPoints - payload.topPainPoints.length);
+    const lockedPainCount = payload.lockedPainCount;
 
     // includeItemLists: false → JSON-LD must not enumerate the login-gated
     // idea/pain detail URLs (they are noindex + out of the sitemap + robots
