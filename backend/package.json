@@ -18,6 +18,7 @@
     "validate:pseo": "tsx scripts/validatePseoSlugs.ts",
     "assign:free-preview": "tsx scripts/assignFreePreview.ts",
     "seed:plans": "tsx scripts/seedSubscriptionPlans.ts",
+    "prune:slugless": "tsx scripts/pruneSluglessCatalogRows.ts",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit"
   },
