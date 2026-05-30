@@ -167,14 +167,17 @@ export interface NoindexInputs {
  * 1. Phase 4.5 launch gate is on (default until baseline curation).
  * 2. Filter overlay query params (`?page>1`, `?sort=` non-default, `?tag=` etc.).
  * 3. Empty leaf (zero ideas + zero pain-points) — Google flags thin content.
- * 4. Pre-launch category with no `longDescription` set yet.
+ *
+ * Note: a curated `longDescription` is NOT required for indexing. Pages render a
+ * generated fallback (`categoryLongDescriptionFallback`) and carry unique
+ * idea/pain-point content, so requiring the raw field would keep the entire
+ * catalog `noindex` even after the launch gate opens.
  */
 export function categoryNoindex({ payload, searchParams, launchGateOn }: NoindexInputs): boolean {
   if (launchGateOn) return true;
   if (shouldNoindex(searchParams)) return true;
   if (!payload) return false;
   if (payload.totalIdeas + payload.totalPainPoints === 0) return true;
-  if (!payload.category.longDescription) return true;
   return false;
 }
 
