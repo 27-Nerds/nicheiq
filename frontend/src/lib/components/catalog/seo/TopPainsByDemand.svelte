@@ -9,6 +9,7 @@
   } from "$lib/types/publicCatalog.js";
   import CatalogTable from "./CatalogTable.svelte";
   import OpportunityBadge from "./OpportunityBadge.svelte";
+  import SeverityBar from "./SeverityBar.svelte";
 
   // Bottom-of-page SEO surface for /ideas. Renders an editorial intro
   // paragraph (capped to a 65ch reading window) followed by a 10-row table
@@ -70,7 +71,10 @@
             {pp.mentionCount.toLocaleString()}
           </span>
           <span class="cell-num cell-severity" role="cell">
-            {scaleSeverity(pp.severityScore, "pain") ?? "—"}
+            <SeverityBar
+              value={scaleSeverity(pp.severityScore, "pain")}
+              showTier={false}
+            />
           </span>
           <span class="cell-opp" role="cell">
             <OpportunityBadge level={pp.opportunityLevel} />
@@ -165,6 +169,13 @@
     color: var(--color-text-secondary, var(--color-text-primary));
     text-align: right;
     font-feature-settings: "tnum" 1;
+  }
+  /* Severity renders as SeverityBar (track + numeral); flex keeps it
+     right-aligned under the column header like the plain numerals. */
+  .cell-severity {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
   }
 
   .cell-opp {

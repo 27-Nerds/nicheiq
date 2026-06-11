@@ -680,13 +680,16 @@ class Settings(BaseSettings):
 
     # STRIVE market-sizing pre-check
     strive_talked_about_min_mentions: int = Field(
-        default=50,
+        default=30,
         ge=0,
         description=(
             "Minimum corpus-wide unique discussions for the STRIVE 'Talked About' "
-            "criterion. total_mentions is now evidence-grounded (unique post IDs "
-            "matched by quote vector search) instead of summed LLM estimates — "
-            "recalibrate this threshold from a before/after comparison run."
+            "criterion. total_mentions is evidence-grounded (unique post IDs "
+            "matched by quote vector search) instead of summed LLM estimates. "
+            "Recalibrated 2026-06-11 from the golden run: a GOLD-tier corpus "
+            "(123 relevant discussions, 910 comments) produced 44 corpus-unique "
+            "mentions, so the old default of 50 — tuned to inflated LLM sums — "
+            "failed strong data."
         )
     )
 

@@ -35,6 +35,7 @@ This document provides a comprehensive reference for the NicheIQ research report
 |-------|------|-------------|
 | `niche` | `string` | The niche being researched |
 | `generated_at` | `string` (ISO datetime) | Report generation timestamp |
+| `seeded_from_catalog` | `boolean` | `true` when the run was seeded from a catalog pain/idea (entry mode `pain_research` / `deep_idea`) instead of a fresh discovery scrape. Such reports have thinner community evidence; the UI shows a "seeded from catalog" badge. Defaults to `false`. |
 
 **Example:**
 ```json
@@ -386,7 +387,8 @@ Actionable GTM strategy for immediate execution.
 | Field | Type | Description |
 |-------|------|-------------|
 | `selected_solution_name` | `string` | Name of selected solution |
-| `selection_rationale` | `string` | Why selected over alternatives |
+| `selection_rationale` | `string` | Why selected over alternatives (carries an appended keyword-validation update when the winner pivoted) |
+| `original_selection_reasoning` | `string \| null` | Original strategic rationale, preserved verbatim when keyword validation pivoted the winner |
 | `recommended_focus` | `string` | Strategic focus recommendation |
 | `selected_solution_details` | `object` | Complete solution details (35 keys) |
 | `solution_user_journey` | `string` | Step-by-step user workflow |
@@ -760,6 +762,7 @@ Summary with severity/WTP insights.
   "severity_score": 0.85,
   "willingness_to_pay": 0.8,
   "opportunity_level": "high",
+  "opportunity_downgrade_reason": null,
   "representative_quotes": ["string"],
   "source_platforms": ["Reddit"],
   "categories": ["string"],
@@ -772,10 +775,11 @@ Summary with severity/WTP insights.
 |-------|------|-------------|
 | `title` | `string` | Short title |
 | `description` | `string` | Detailed description |
-| `mention_count` | `number` | Times mentioned |
-| `severity_score` | `number` (0-1) | Severity |
+| `mention_count` | `number` | Unique discussions matched by evidence vector search (LLM estimate only when enrichment unavailable) |
+| `severity_score` | `number` (0-1) | Severity (computed from evidence quotes; clamped ≤0.45 when zero quotes found) |
 | `willingness_to_pay` | `number` (0-1) | WTP indicator |
-| `opportunity_level` | `"high" \| "medium" \| "low"` | Overall opportunity |
+| `opportunity_level` | `"high" \| "medium" \| "low"` | Code-computed from severity/WTP formula (High: both ≥0.6; Medium: one ≥0.6; Low: both <0.6); LLM may only downgrade with justification |
+| `opportunity_downgrade_reason` | `string \| null` | Present when the LLM justifiably downgraded below the formula (universal-theme / niche-specificity cap) |
 | `representative_quotes` | `array[string]` | User quotes |
 | `source_platforms` | `array[string]` | Source platforms |
 | `categories` | `array[string]` | Categories |

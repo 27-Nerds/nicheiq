@@ -119,16 +119,25 @@ class TestMarketSizingGuardrail:
         assert "3-2-1" in msg
 
 
-def _pricing_output(arpu="$32/month", ltv="$384 - $960", ratio="4:1"):
+def _pricing_output(
+    arpu="$32/month",
+    ltv="$384 - $960",
+    ratio="4:1",
+    pricing_model="Subscription",
+    ad_revenue=None,
+    affiliate_revenue=None,
+):
     output = MagicMock()
     output.pydantic = None
     output.raw = json.dumps({
         "solution_name": "TestTool",
-        "pricing_model": "Subscription",
+        "pricing_model": pricing_model,
         "pricing_rationale": "Detailed rationale explaining the strategy choice in depth for the niche.",
         "estimated_arpu": arpu,
         "estimated_ltv": ltv,
         "ltv_to_cac_ratio": ratio,
+        "estimated_monthly_ad_revenue": ad_revenue,
+        "estimated_monthly_affiliate_revenue": affiliate_revenue,
         "price_vs_competitors": "10% below median",
         "value_proposition_delta": "More features at lower price",
         "pricing_confidence": "Medium",
@@ -177,6 +186,162 @@ class TestPricingGuardrail:
             cac="$30-60 (mixed organic + paid)",
         )
         assert ok
+
+    # --- Ad/affiliate models: the task YAML mandates "N/A - ..." for LTV and
+    # ratio, so the guardrail must validate the revenue fields instead.
+    # Regression for the 2026-06-11 golden run where prompt-compliant output
+    # was rejected and 2/3 solutions lost pricing analysis.
+
+    def test_ad_supported_with_na_ltv_passes(self):
+        """The exact failure case from the 2026-06-11 log."""
+        ok, _ = self._validate(_pricing_output(
+            pricing_model="Ad-Supported-Free",
+            arpu="$0.012 per pageview (ads + affiliate)",
+            ltv="N/A - traffic-based model",
+            ratio="N/A - SEO-driven traffic acquisition",
+            ad_revenue="$400-800/month",
+        ))
+        assert ok
+
+    def test_affiliate_only_with_affiliate_revenue_passes(self):
+        ok, _ = self._validate(_pricing_output(
+            pricing_model="Affiliate-Only",
+            arpu="N/A - free tool",
+            ltv="N/A - traffic-based model",
+            ratio="N/A",
+            affiliate_revenue="$200-400/month",
+        ))
+        assert ok
+
+    def test_ad_model_without_revenue_estimates_fails(self):
+        ok, msg = self._validate(_pricing_output(
+            pricing_model="Ad-Supported-Free",
+            ltv="N/A - traffic-based model",
+            ratio="N/A",
+        ))
+        assert not ok
+        assert "estimated_monthly_ad_revenue" in msg
+        assert "estimated_monthly_affiliate_revenue" in msg
+
+    def test_subscription_with_na_ltv_still_fails(self):
+        """The N/A escape hatch is for ad/affiliate models only."""
+        ok, msg = self._validate(_pricing_output(ltv="N/A - traffic-based model"))
+        assert not ok
+        assert "estimated_ltv" in msg
+
+    def test_ad_model_skips_cac_cross_check(self):
+        """The CAC anchor must not apply to models with no LTV to cross-check."""
+        ok, _ = self._validate(
+            _pricing_output(
+                pricing_model="Ad-Supported-Free",
+                ltv="N/A - traffic-based model",
+                ratio="N/A",
+                ad_revenue="$400-800/month",
+            ),
+            cac="$30-60 (mixed organic + paid)",
+        )
+        assert ok
+
+
+def _pricing_output_with_tiers(
+    starter=None, pro=None, enterprise=None, **kwargs
+):
+    """_pricing_output variant that also sets the recommended tier prices."""
+    output = _pricing_output(**kwargs)
+    payload = json.loads(output.raw)
+    payload["recommended_starter_price"] = starter
+    payload["recommended_pro_price"] = pro
+    payload["recommended_enterprise_price"] = enterprise
+    output.raw = json.dumps(payload)
+    return output
+
+
+class TestExampleAnchoring:
+    """The pricing LLM must not ship the YAML's fictional example numbers.
+
+    Regression for the 2026-06-11 catalog run where the final report carried
+    the full DevFlowTracker tuple ($19/$49/$149 tiers, $32 ARPU, $384-$960
+    LTV). Detection is numeric (>= 3 independent signals), not substring.
+    """
+
+    def _validate(self, output, cac=None):
+        from nicheiq.utils.validation.crew_guardrails import validate_pricing_strategy
+        return validate_pricing_strategy(output, suggested_cac_range=cac)
+
+    def test_full_devflowtracker_copy_rejected(self):
+        """The exact bca92a68 incident: 4 signals -> rejected."""
+        ok, msg = self._validate(_pricing_output_with_tiers(
+            starter="$19/month", pro="$49/month", enterprise="$149/month",
+            arpu="$32/month", ltv="$384 - $960 (12-30mo retention)",
+            ratio="8:1 (LTV $384 ÷ CAC $48)",
+        ))
+        assert not ok
+        assert "fictional example" in msg
+        assert "DevFlowTracker" in msg
+
+    def test_reformatted_copy_still_rejected(self):
+        """Numeric matching beats substring: em-dash + $1 tweak still counts."""
+        ok, msg = self._validate(_pricing_output_with_tiers(
+            starter="$19/month", pro="$49/month", enterprise="$149/month",
+            arpu="$32/month", ltv="$385–$960",
+            ratio="14:1",
+        ))
+        assert not ok
+        assert "fictional example" in msg
+
+    def test_two_coincidental_signals_pass(self):
+        """A real $19/$49 SaaS with its own economics must not be rejected."""
+        ok, _ = self._validate(_pricing_output_with_tiers(
+            starter="$19/month", pro="$49/month", enterprise=None,
+            arpu="$29/month", ltv="$348 - $870 (12-30mo retention)",
+            ratio="8:1",
+        ))
+        assert ok
+
+    def test_coupled_arpu_ltv_counts_as_one_signal(self):
+        """ARPU $32 forces LTV $384-$960 arithmetically, so the pair plus one
+        tier price (2 signals total) must pass — coupling-aware counting."""
+        ok, _ = self._validate(_pricing_output_with_tiers(
+            starter="$19/month", pro="$59/month", enterprise=None,
+            arpu="$32/month", ltv="$384 - $960 (12-30mo retention)",
+            ratio="14:1",
+        ))
+        assert ok
+
+    def test_plumbingcostcalc_ad_copy_rejected(self):
+        """Ad-model example copying: tiers absent, but ad+affiliate revenue
+        plus the e.g.-list signals trip the threshold."""
+        ok, msg = self._validate(_pricing_output_with_tiers(
+            starter="$19/month",
+            pricing_model="Ad-Supported-Free",
+            arpu="$0.012 per pageview",
+            ltv="N/A - traffic-based model",
+            ratio="N/A",
+            ad_revenue="$400-600/month",
+            affiliate_revenue="$150-300/month",
+        ))
+        assert not ok
+        assert "fictional example" in msg
+
+    def test_yaml_examples_match_fingerprints(self):
+        """Sync guard: if someone edits the YAML example numbers, this fails
+        and tells them to update _collect_example_matches."""
+        from pathlib import Path
+        yaml_path = (
+            Path(__file__).parents[2]
+            / "src" / "nicheiq" / "crews" / "config" / "pricing_strategy_tasks.yaml"
+        )
+        text = yaml_path.read_text()
+        for marker in (
+            "$19/month", "$49/month", "$149/month",  # DevFlowTracker tiers
+            "$32/month", "$384 - $960",              # DevFlowTracker ARPU/LTV
+            "$400-600/month", "$150-300/month",      # PlumbingCostCalc revenue
+        ):
+            assert marker in text, (
+                f"YAML example value {marker!r} not found in "
+                "pricing_strategy_tasks.yaml — the example numbers changed. "
+                "Update _collect_example_matches in crew_guardrails.py to match."
+            )
 
 
 def _traffic_output(pageviews="8,000-12,000", affiliate_programs=None):

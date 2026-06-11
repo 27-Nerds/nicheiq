@@ -1781,6 +1781,54 @@ def validate_traffic_monetization(task_output, traffic_ceiling_y1_high: int | No
     return (True, _guardrail_success_payload(task_output, result))
 
 
+# Numeric fingerprints of the fictional example products in
+# crews/config/pricing_strategy_tasks.yaml (DevFlowTracker subscription block,
+# PlumbingCostCalc ad block). The LLM sometimes copies these values wholesale
+# instead of deriving its own — observed 2026-06-11, when a report shipped the
+# full DevFlowTracker tuple ($19/$49/$149 tiers, $32 ARPU, $384-$960 LTV).
+# Matching is numeric with ±2% tolerance (not substring), so reformats and
+# ±$1 tweaks still count. A single coincidental match is plausible for a real
+# product; >= _EXAMPLE_REJECT_THRESHOLD independent signals is copying.
+# tests/unit/test_numeric_guardrails.py has a sync test that fails if the YAML
+# examples change without these fingerprints being updated.
+_EXAMPLE_REJECT_THRESHOLD = 3
+
+
+def _matches_example(text: str | None, target: float, tol: float = 0.02) -> bool:
+    from .numeric_parsers import parse_dollar_amount
+
+    parsed = parse_dollar_amount(text)
+    return parsed is not None and abs(parsed - target) <= target * tol
+
+
+def _collect_example_matches(result) -> list[tuple[str, str]]:
+    """Count independent signals that pricing fields copy the YAML examples.
+
+    Ranges compare by midpoint (parse_dollar_amount semantics): LTV
+    "$384 - $960" → 672, ad "$400-600" → 500, affiliate "$150-300" → 225.
+    """
+    matches: list[tuple[str, str]] = []
+    if _matches_example(result.recommended_starter_price, 19):
+        matches.append(("recommended_starter_price", str(result.recommended_starter_price)))
+    if _matches_example(result.recommended_pro_price, 49):
+        matches.append(("recommended_pro_price", str(result.recommended_pro_price)))
+    if _matches_example(result.recommended_enterprise_price, 149):
+        matches.append(("recommended_enterprise_price", str(result.recommended_enterprise_price)))
+    # Coupled pair: a legitimate $32 ARPU arithmetically forces LTV ≈
+    # $384-$960 via the task's own ×12-30 formula, so ARPU+LTV matching the
+    # example counts as ONE signal — and LTV alone is not counted.
+    if _matches_example(result.estimated_arpu, 32) and _matches_example(result.estimated_ltv, 672):
+        matches.append((
+            "estimated_arpu+estimated_ltv",
+            f"{result.estimated_arpu} / {result.estimated_ltv}",
+        ))
+    if _matches_example(result.estimated_monthly_ad_revenue, 500):
+        matches.append(("estimated_monthly_ad_revenue", str(result.estimated_monthly_ad_revenue)))
+    if _matches_example(result.estimated_monthly_affiliate_revenue, 225):
+        matches.append(("estimated_monthly_affiliate_revenue", str(result.estimated_monthly_affiliate_revenue)))
+    return matches
+
+
 def validate_pricing_strategy(task_output, suggested_cac_range: str | None = None) -> tuple[bool, Any]:
     """
     Guardrail for pricing_strategy_analysis_task (Stage 7).
@@ -1789,10 +1837,14 @@ def validate_pricing_strategy(task_output, suggested_cac_range: str | None = Non
     1. JSON parses into PricingStrategyResult
     2. solution_name present and non-empty
     3. pricing_rationale >= 50 chars
-    4. estimated_arpu / estimated_ltv parse to positive dollar amounts
-    5. Unit-economics sanity: LTV >= ARPU (at least one month of retention)
-    6. ltv_to_cac_ratio parses and meets the mandatory 2:1 floor
-    7. When the pre-computed CAC anchor is supplied: the stated ratio must be
+    4. Ad-Supported-Free / Affiliate-Only models: at least one of the ad /
+       affiliate revenue fields parses to a positive dollar amount. The
+       subscription checks below are SKIPPED — the task YAML mandates
+       "N/A - ..." for estimated_ltv and ltv_to_cac_ratio on these models.
+    5. estimated_arpu / estimated_ltv parse to positive dollar amounts
+    6. Unit-economics sanity: LTV >= ARPU (at least one month of retention)
+    7. ltv_to_cac_ratio parses and meets the mandatory 2:1 floor
+    8. When the pre-computed CAC anchor is supplied: the stated ratio must be
        within 2x of LTV ÷ CAC (catches fabricated ratios while tolerating the
        range formats both fields use)
 
@@ -1810,24 +1862,87 @@ def validate_pricing_strategy(task_output, suggested_cac_range: str | None = Non
     if not result.solution_name or not result.solution_name.strip():
         return (False, "solution_name is required.")
 
+    def _reject(field_name: str, field_value: Any, reason: str) -> tuple[bool, str]:
+        # Failure observability: the retry prompt gets `reason`, but without
+        # this line the log never shows WHAT the LLM produced — diagnosing
+        # the 2026-06-11 ad-model failures required reconstructing it from
+        # the task YAML.
+        logger.warning(
+            f"Pricing guardrail rejected '{result.solution_name}': "
+            f"{field_name}={field_value!r} — {reason}"
+        )
+        return (False, reason)
+
     if len(result.pricing_rationale) < 50:
-        return (
-            False,
+        return _reject(
+            "pricing_rationale",
+            result.pricing_rationale,
             f"pricing_rationale is only {len(result.pricing_rationale)} chars, need >= 50. "
             "Provide a detailed rationale explaining why this pricing strategy was chosen.",
         )
 
+    # Example-anchoring check — applies to BOTH model branches. See
+    # _collect_example_matches for the fingerprint rationale.
+    example_matches = _collect_example_matches(result)
+    if len(example_matches) >= _EXAMPLE_REJECT_THRESHOLD:
+        fields_desc = "; ".join(f"{name}={value}" for name, value in example_matches)
+        return _reject(
+            "example-anchoring",
+            fields_desc,
+            f"{len(example_matches)} of your figures ({fields_desc}) match the "
+            "fictional example products (DevFlowTracker / PlumbingCostCalc) in "
+            "the task instructions. Those numbers are fabricated format "
+            "illustrations for unrelated markets — slightly altered versions "
+            "will also be rejected. Recompute ALL pricing figures from THIS "
+            "task's inputs and show the arithmetic in your reasoning: "
+            "(1) tier prices from the competitor pricing data and WTP scores, "
+            "(2) ARPU from YOUR tier prices with a stated tier mix, "
+            "(3) LTV = ARPU × 12-30 months, "
+            "(4) ltv_to_cac_ratio = LTV ÷ the suggested CAC range provided.",
+        )
+
+    # Ad/affiliate models have no subscription unit economics — the task YAML
+    # explicitly instructs "N/A - ..." for estimated_ltv and ltv_to_cac_ratio,
+    # so requiring numerics there rejects prompt-compliant output (it cost 2/3
+    # solutions their pricing analysis on 2026-06-11). The economically
+    # meaningful number for these models is the ad/affiliate revenue estimate.
+    if result.pricing_model in ("Ad-Supported-Free", "Affiliate-Only"):
+        ad_rev = parse_dollar_amount(result.estimated_monthly_ad_revenue)
+        affiliate_rev = parse_dollar_amount(result.estimated_monthly_affiliate_revenue)
+        if not ((ad_rev and ad_rev > 0) or (affiliate_rev and affiliate_rev > 0)):
+            return _reject(
+                "estimated_monthly_ad_revenue / estimated_monthly_affiliate_revenue",
+                (result.estimated_monthly_ad_revenue, result.estimated_monthly_affiliate_revenue),
+                f"{result.pricing_model} model requires at least one of "
+                "estimated_monthly_ad_revenue or estimated_monthly_affiliate_revenue "
+                "to contain a positive dollar amount (e.g., '$350-700/month').",
+            )
+        logger.info(
+            f"✓ Pricing strategy guardrail passed: '{result.solution_name}' "
+            f"({result.pricing_model})"
+        )
+        return (True, _guardrail_success_payload(task_output, result))
+
     arpu = parse_dollar_amount(result.estimated_arpu)
     if arpu is None or arpu <= 0:
-        return (False, "estimated_arpu must contain a positive dollar amount (e.g., '$32/month').")
+        return _reject(
+            "estimated_arpu",
+            result.estimated_arpu,
+            "estimated_arpu must contain a positive dollar amount (e.g., '$24/month').",
+        )
 
     ltv = parse_dollar_amount(result.estimated_ltv)
     if ltv is None or ltv <= 0:
-        return (False, "estimated_ltv must contain a positive dollar amount (e.g., '$384 - $960').")
+        return _reject(
+            "estimated_ltv",
+            result.estimated_ltv,
+            "estimated_ltv must contain a positive dollar amount (e.g., '$420 - $1,050').",
+        )
 
     if ltv < arpu:
-        return (
-            False,
+        return _reject(
+            "estimated_ltv",
+            result.estimated_ltv,
             f"Unit-economics error: estimated_ltv ({result.estimated_ltv}) is below "
             f"estimated_arpu ({result.estimated_arpu}). LTV = retention months × ARPU, "
             "so it cannot be less than one month of ARPU. State your LTV calculation "
@@ -1836,11 +1951,16 @@ def validate_pricing_strategy(task_output, suggested_cac_range: str | None = Non
 
     stated_ratio = parse_ratio(result.ltv_to_cac_ratio)
     if stated_ratio is None:
-        return (False, "ltv_to_cac_ratio must contain a numeric ratio (e.g., '3:1').")
+        return _reject(
+            "ltv_to_cac_ratio",
+            result.ltv_to_cac_ratio,
+            "ltv_to_cac_ratio must contain a numeric ratio (e.g., '3:1').",
+        )
 
     if stated_ratio < 2.0:
-        return (
-            False,
+        return _reject(
+            "ltv_to_cac_ratio",
+            result.ltv_to_cac_ratio,
             f"ltv_to_cac_ratio ({result.ltv_to_cac_ratio}) is below the MANDATORY 2:1 minimum. "
             "Adjust pricing, retention assumptions, or acquisition strategy and recompute — "
             "state your LTV and CAC calculations explicitly before the final numbers.",
@@ -1852,8 +1972,9 @@ def validate_pricing_strategy(task_output, suggested_cac_range: str | None = Non
             computed_ratio = ltv / cac
             # Tolerate range-midpoint noise; fail only on egregious fabrication
             if stated_ratio > computed_ratio * 2 or stated_ratio < computed_ratio / 2:
-                return (
-                    False,
+                return _reject(
+                    "ltv_to_cac_ratio",
+                    result.ltv_to_cac_ratio,
                     f"ltv_to_cac_ratio ({result.ltv_to_cac_ratio}) is inconsistent with your own "
                     f"numbers: LTV {result.estimated_ltv} ÷ suggested CAC {suggested_cac_range} "
                     f"≈ {computed_ratio:.1f}:1, but you stated {stated_ratio:.1f}:1. "

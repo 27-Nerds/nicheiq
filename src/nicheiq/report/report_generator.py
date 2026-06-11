@@ -1308,7 +1308,29 @@ class ReportGenerator:
             quality_caveats: list[str] = []
 
             # Determine overall quality
-            if social_tier == "EXCELLENT" and pain_tier in ("GOLD", "SILVER"):
+            if self.state.seeded_from_catalog:
+                # Catalog-seeded runs skip the social scrape, so the social
+                # tier can never carry them past LOW under the standard
+                # ladder. Rate them on the evidence they DO have — keyword
+                # tiers + analyzed competitors — capped at MEDIUM (no fresh
+                # social evidence can mean HIGH). The >= 1 competitor bar is
+                # deliberately minimal; revisit if it proves too lenient.
+                has_tier_keywords = bool(
+                    self.state.seo_strategy_report
+                    and (
+                        self.state.seo_strategy_report.tier_0_keywords
+                        or self.state.seo_strategy_report.tier_1_keywords
+                    )
+                )
+                competitor_count = self.accessor.get_competitor_count()
+                overall = "MEDIUM" if (has_tier_keywords and competitor_count >= 1) else "LOW"
+                quality_caveats.append(
+                    "Catalog-seeded research: pain points and personas come "
+                    "from the catalog idea; fresh social evidence was not "
+                    "collected. Quality is rated on keyword and competitor "
+                    "evidence."
+                )
+            elif social_tier == "EXCELLENT" and pain_tier in ("GOLD", "SILVER"):
                 overall = "HIGH"
             elif social_tier in ("EXCELLENT", "GOOD") and pain_tier in ("GOLD", "SILVER", "BRONZE"):
                 overall = "MEDIUM"
@@ -2856,7 +2878,31 @@ It differentiates through {diff_text}.
         # Phase 2: Apply trend-based downgrades (downgrade-only, never upgrades)
         trend_context = None
         trend_data = self.state.trend_longevity
-        if trend_data is not None:
+        if trend_data is not None and getattr(trend_data, "is_fallback", False):
+            # Fallback trend data carries conservative placeholders (momentum
+            # 0.5, longevity "Risky") that the downgrade rules would treat as
+            # real analysis. Skip the rules, but don't pretend trend is fine:
+            # floor risk at Medium and surface an explicit concern.
+            if risk_level == "Low":
+                risk_level = "Medium"
+            if self.state.seeded_from_catalog:
+                trend_context = (
+                    "Catalog-seeded research: trend analysis requires a fresh "
+                    "social corpus, which catalog ideas skip — momentum and "
+                    "longevity are not validated. Risk floored at Medium."
+                )
+            else:
+                trend_context = (
+                    "Trend analysis used fallback data; trend-based verdict "
+                    "adjustments were skipped and risk floored at Medium."
+                )
+            if primary_concern is None:
+                primary_concern = (
+                    "Trend analysis unavailable — market momentum and "
+                    "longevity not validated"
+                )
+            logger.info(f"[Verdict Trend Adjustment] {trend_context}")
+        elif trend_data is not None:
             from ..validators.score_validators import ScoreThresholds, VerdictValidator
             trend_validator = VerdictValidator(ScoreThresholds.from_settings(settings))
             verdict, risk_level, primary_concern, trend_context = (
@@ -2987,6 +3033,56 @@ It differentiates through {diff_text}.
             logger.warning(f"Failed to generate GTM blueprint: {e}")
             return None
 
+    def _build_catalog_icp(self) -> "IdealCustomerProfile | None":
+        """Python-built ICP for catalog-seeded runs (no LLM call).
+
+        Catalog seeds have no content categorization or audience mapping —
+        only persona strings (niche_context.market_segments), pain titles,
+        and the solution itself. The soft persona fields can't be derived
+        honestly from that, so they carry explicit catalog-seeded sentinels
+        instead of LLM-invented demographics.
+        """
+        from ..models.marketing_blueprint import IdealCustomerProfile
+
+        personas = (
+            self.state.niche_context.market_segments
+            if self.state.niche_context and self.state.niche_context.market_segments
+            else []
+        )
+        if not personas:
+            return None
+
+        pain_points = []
+        sorted_pps = self.accessor.get_sorted_pain_points()
+        if sorted_pps:
+            pain_points = [pp.title for pp in sorted_pps[:5]]
+        if not pain_points:
+            pain_points = ["No specific pain points identified"]
+
+        selected_solution = self.accessor.get_selected_solution_details()
+        goals = []
+        if selected_solution and selected_solution.core_features:
+            goals = [f"Achieve {feature.lower()}" for feature in selected_solution.core_features[:5]]
+        if not goals:
+            goals = ["Goals not identified from solution features"]
+
+        sentinel = (
+            "Catalog-seeded estimate — not validated against collected "
+            "audience data; run full research for audience mapping."
+        )
+        logger.info(
+            f"[ICP] Built catalog-seeded ICP from {len(personas)} personas (no LLM)"
+        )
+        return IdealCustomerProfile(
+            persona_name=personas[0],
+            demographics=sentinel,
+            psychographics=sentinel,
+            pain_points=pain_points,
+            goals=goals,
+            buying_triggers=sentinel,
+            decision_criteria=sentinel,
+        )
+
     def _extract_ideal_customer_profile(self) -> "IdealCustomerProfile | None":
         """
         Generate ICP using LLM with rich audience, pain point, and solution data.
@@ -3006,6 +3102,15 @@ It differentiates through {diff_text}.
 
             # === Guard: need content categorization with user segments ===
             if not self.state.pain_point_analysis or not self.state.pain_point_analysis.content_categorization:
+                # Catalog-seeded runs skip content categorization entirely but
+                # carry the idea's personas in niche_context.market_segments.
+                # Build an honest Python ICP (no LLM — sparse inputs would
+                # invite fabricated demographics) so the GTM blueprint can
+                # still generate.
+                if self.state.seeded_from_catalog:
+                    catalog_icp = self._build_catalog_icp()
+                    if catalog_icp is not None:
+                        return catalog_icp
                 logger.warning("No content categorization available for ICP")
                 return None
 

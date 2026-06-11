@@ -903,10 +903,16 @@ KEYWORD_ENRICHMENT_BATCH_SIZE=12
 ### Coverage Thresholds
 
 ```bash
-# Minimum coverage for enrichment
-KEYWORD_ENRICHMENT_MIN_COVERAGE=0.7
-# Minimum coverage score (0.0-1.0) before enrichment stops
-# Coverage = how well keywords cover identified pain points
+# Minimum topic-cluster coverage (enrichment loop stopping condition)
+KEYWORD_CLUSTER_MIN_COVERAGE=0.7
+# Minimum percentage of topic clusters that must have keywords (0.0-1.0)
+# before the enrichment loop can stop. Renamed from
+# KEYWORD_ENRICHMENT_MIN_COVERAGE, which now exclusively means the
+# validated/total enrichment quality threshold (default 0.30).
+
+# Minimum enrichment validation coverage (quality gate)
+KEYWORD_ENRICHMENT_MIN_COVERAGE=0.30
+# Warn when fewer than this fraction of enriched keywords pass validation
 
 # Target coverage threshold
 KEYWORD_ENRICHMENT_TARGET_COVERAGE=0.60

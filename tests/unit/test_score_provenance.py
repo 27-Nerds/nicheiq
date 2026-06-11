@@ -174,6 +174,7 @@ class TestVerdictDowngradeReconciliation:
     def test_trend_downgrade_prepends_note(self, generator):
         _set_scores(generator, 0.9, 0.85, 0.9, 0.85)  # solid Go before downgrade
         generator.state.trend_longevity = MagicMock(
+            is_fallback=False,
             trend_direction="declining",
             momentum_score=0.2,
             timing_recommendation="Missed Window",

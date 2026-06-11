@@ -75,6 +75,15 @@
     );
     return own + childSum;
   }
+
+  function totalPainsIn(c: NicheTreeNode): number {
+    const own = c._count?.painPoints ?? 0;
+    const childSum = (c.children ?? []).reduce(
+      (s, k) => s + (k._count?.painPoints ?? 0),
+      0,
+    );
+    return own + childSum;
+  }
 </script>
 
 <div class="cat-grid">
@@ -84,6 +93,7 @@
     {@const visibleSubs = selectVisible(sortedSubs, peekKind)}
     {@const overflow = sortedSubs.length - visibleSubs.length}
     {@const subTotalIdeas = totalIdeasIn(cat)}
+    {@const subTotalPains = totalPainsIn(cat)}
     {@const Icon = categoryIcon(cat.slug)}
     <article class="grid-card">
       <a
@@ -99,10 +109,19 @@
         <h3>{cat.name}</h3>
         <span class="card-arrow"><ChevronRight size={14} /></span>
       </a>
+      <!-- Lead stat falls back to pain points when a category has no ideas
+           yet — leading with a bold "0" reads as an empty catalog. When both
+           counts are zero, only the sub-niche count renders. -->
       <div class="card-meta">
-        <span class="meta-num">{subTotalIdeas.toLocaleString()}</span>
-        <span class="meta-label">ideas</span>
-        <span class="meta-dot" aria-hidden="true">·</span>
+        {#if subTotalIdeas > 0}
+          <span class="meta-num">{subTotalIdeas.toLocaleString()}</span>
+          <span class="meta-label">ideas</span>
+          <span class="meta-dot" aria-hidden="true">·</span>
+        {:else if subTotalPains > 0}
+          <span class="meta-num">{subTotalPains.toLocaleString()}</span>
+          <span class="meta-label">pain points</span>
+          <span class="meta-dot" aria-hidden="true">·</span>
+        {/if}
         <span class="meta-num">{sortedSubs.length}</span>
         <span class="meta-label">sub-niches</span>
       </div>
@@ -278,13 +297,17 @@
      overflow > 0 or peekKind === 'none' so line-clamp can never hide it.
      Adaptive copy: "+N more →" (medium) or "Browse all N sub-niches →" (large). */
   .card-foot {
-    margin-top: 4px;
+    /* auto top margin bottom-aligns feet across a grid row — cards stretch
+       to the tallest sibling, so a fixed margin left feet ragged. */
+    margin-top: auto;
+    padding-top: 4px;
   }
   .foot-link {
     font-family: var(--font-mono);
     font-size: 11px;
-    color: var(--color-accent);
+    color: var(--color-text-muted);
     text-decoration: none;
+    transition: color 0.12s ease;
     display: inline-block;
     letter-spacing: 0.02em;
     /* Tap target — vertical padding gives ~28px effective hit area on
@@ -294,6 +317,7 @@
     margin: -6px 0;
   }
   .foot-link:hover {
+    color: var(--color-accent);
     text-decoration: underline;
     text-underline-offset: 2px;
   }
@@ -307,7 +331,8 @@
     .grid-card,
     .card-head h3,
     .card-arrow,
-    .card-peek a {
+    .card-peek a,
+    .foot-link {
       transition: none;
     }
   }

@@ -5938,6 +5938,7 @@ Return a valid JSON object with this structure:
             from ..models.research_state import TrendLongevityResult
             logger.warning(f"[Stage 11] ⚠️ Creating minimal trend analysis due to: {reason}")
             return TrendLongevityResult(
+                is_fallback=True,
                 trend_direction="Stable",  # Conservative default (valid Literal)
                 trend_confidence="Low",
                 momentum_score=0.5,  # Neutral

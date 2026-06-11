@@ -39,21 +39,21 @@ class TestComputeStrivePreCheck:
         assert f"Searchable (100K+ volume): {expected}" in result
 
     @pytest.mark.parametrize("mentions,expected", [
-        (49, "NO"),
-        (50, "YES"),
+        (29, "NO"),
+        (30, "YES"),
     ])
     def test_talked_about_threshold_boundary(self, mentions, expected):
-        """Threshold comes from settings.strive_talked_about_min_mentions (default 50)."""
+        """Threshold comes from settings.strive_talked_about_min_mentions (default 30)."""
         result = compute_strive_pre_check(0, mentions, 0)
-        assert f"Talked About (50+ unique discussions): {expected}" in result
+        assert f"Talked About (30+ unique discussions): {expected}" in result
 
     def test_talked_about_threshold_settings_backed(self, monkeypatch):
-        """The threshold must follow the setting, not a hardcoded 50."""
+        """The threshold must follow the setting, not a hardcoded default."""
         from nicheiq.config.settings import settings
 
-        monkeypatch.setattr(settings, "strive_talked_about_min_mentions", 30)
+        monkeypatch.setattr(settings, "strive_talked_about_min_mentions", 60)
         result = compute_strive_pre_check(0, 35, 0)
-        assert "Talked About (30+ unique discussions): YES" in result
+        assert "Talked About (60+ unique discussions): NO" in result
 
     @pytest.mark.parametrize("competitors,expected", [
         (4, "NO"),

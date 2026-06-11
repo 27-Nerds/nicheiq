@@ -1176,6 +1176,16 @@ class TrendLongevityResult(BaseModel):
 
     model_config = ConfigDict(extra='ignore')
 
+    # True when this result was synthesized by _create_minimal_trend_fallback
+    # (no social corpus / SEO data). The Literal fields below can't express
+    # "unknown", so fallback instances carry conservative placeholders — this
+    # flag lets consumers (verdict computation) avoid treating placeholders
+    # as real analysis. Defaults False so legacy checkpoints stay valid.
+    is_fallback: bool = Field(
+        default=False,
+        description="True if this is a minimal fallback result, not real trend analysis",
+    )
+
     # Overall Trend Assessment
     trend_direction: Literal["Growing", "Stable", "Declining"] = Field(
         ..., description="Overall market trend direction"

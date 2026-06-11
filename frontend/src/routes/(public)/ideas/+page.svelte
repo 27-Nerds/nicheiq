@@ -99,7 +99,7 @@
       if (!groups.has(key)) {
         groups.set(key, {
           id: key,
-          name: sg?.name ?? "Uncategorized",
+          name: sg?.name ?? "More",
           sortOrder: sg?.sortOrder ?? 999,
           niches: [],
         });
@@ -176,6 +176,12 @@
     return out;
   });
   const hasMatches = $derived(filteredGroups.length > 0);
+
+  // Anchor slug for super-group jump links — shared between the index strip
+  // hrefs and the .niche-group ids so they can never drift apart.
+  function groupSlug(name: string): string {
+    return `group-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+  }
   // Total niche count across all super-groups — distinct from
   // `filteredGroups.length` (which is the number of super-groups).
   const matchedNicheCount = $derived(
@@ -193,6 +199,8 @@
   const num1 = $derived(nextNum(0, hasCollections));
   const num2 = $derived(nextNum(num1, hasCategoriesTree));
   const num3 = $derived(nextNum(num2, hasTopPains));
+  // Closing "run your own research" section always renders.
+  const num4 = $derived(nextNum(num3, true));
   // Section label drops the month suffix when the freshness guardrail trips
   // ("Latest edition" stand-in), so we don't end up with the awkward
   // "Most In-Demand SaaS Niches — Latest edition" string.
@@ -251,6 +259,21 @@
 {#if hasCategoriesTree}
   <SectionDivider num={num2} label="Browse by category" metaText={browseMeta} />
 
+  <!-- Super-group index strip — single mono line of anchor links so the
+       (very long) category section is navigable without scrolling. Derived
+       from filteredGroups so it stays accurate under search/collection
+       filters; hidden when only one group remains. -->
+  {#if filteredGroups.length > 1}
+    <nav class="group-index" aria-label="Jump to category group">
+      {#each filteredGroups as group, i (group.id)}
+        <a class="gi-link" href={`#${groupSlug(group.name)}`}>
+          {group.name}
+          <span class="gi-count">{group.niches.length}</span>
+        </a>{#if i < filteredGroups.length - 1}<span class="gi-dot" aria-hidden="true">·</span>{/if}
+      {/each}
+    </nav>
+  {/if}
+
   {#if data.activeCollection || query.trim()}
     <div class="filter-cluster">
       {#if data.activeCollection}
@@ -294,10 +317,14 @@
 
   {#if hasMatches}
     {#each filteredGroups as group}
-      <div class="niche-group">
+      <div class="niche-group" id={groupSlug(group.name)}>
         <header class="group-header">
-          <span class="group-label">{group.name}</span>
-          <span class="group-count">{group.niches.length} niches</span>
+          <h3 class="group-label">{group.name}</h3>
+          <span class="group-line" aria-hidden="true"></span>
+          <span class="group-count"
+            >{group.niches.length}
+            {group.niches.length === 1 ? "niche" : "niches"}</span
+          >
         </header>
         <CategoryGrid categories={group.niches} />
       </div>
@@ -323,6 +350,7 @@
   />
 {/if}
 
+<SectionDivider num={num4} label="Run your own research" />
 <section class="inline-close" aria-label="Run your own research">
   <p>
     Ready to explore a niche we haven't covered yet?
@@ -353,29 +381,83 @@
     list-style: none;
   }
 
+  /* Super-group index strip — mono anchor line under the §01 divider so the
+     long category section is scannable without scrolling. Same kicker tokens
+     as CatalogIndexHero / SectionDivider. */
+  .group-index {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 10px;
+    margin: 0 0 14px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+  .gi-link {
+    color: var(--color-text-muted);
+    text-decoration: none;
+    transition: color 0.12s ease;
+  }
+  .gi-link:hover {
+    color: var(--color-accent);
+  }
+  .gi-link:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 3px;
+  }
+  .gi-count {
+    color: var(--color-text-primary);
+    font-weight: 700;
+    font-feature-settings: "tnum" 1, "calt" 1;
+    margin-left: 2px;
+  }
+  .gi-dot {
+    color: var(--color-text-muted);
+    opacity: 0.55;
+  }
+
   /* Niche group rail — preserves super-group taxonomy as a quiet sub-divider
      so the user can still read groups, without competing visually with
      SectionDivider above. Reduced weight + padding per the v2 audit. */
   .niche-group {
-    margin-bottom: 16px;
+    margin-bottom: 24px;
+    /* Clear the fixed site header when arriving via .group-index anchors. */
+    scroll-margin-top: 80px;
   }
   .niche-group:last-child {
     margin-bottom: 0;
   }
   .group-header {
     display: flex;
-    justify-content: space-between;
     align-items: baseline;
-    gap: 1rem;
-    padding: 8px 0 4px;
+    gap: 12px;
+    padding: 12px 0 10px;
   }
+  /* Group titles are the page's primary scanning anchors (and the index
+     strip's landing targets), so they carry display type — sized between
+     the H1 and the 15px card titles. The mono "almanac" voice stays in
+     the count and the index strip. */
   .group-label {
-    font-family: var(--font-mono);
-    font-size: 0.625rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--color-accent-muted);
+    margin: 0;
+    /* 19px — 4px above the 15px card titles at the same weight, so the
+       heading dominates by type, not just position. */
+    font-size: 1.1875rem;
     font-weight: 600;
+    letter-spacing: -0.015em;
+    color: var(--color-text-primary);
+  }
+  /* Hairline rule between label and count — same treatment as
+     SectionDivider's .line, so groups read as sub-rules rather than
+     floating captions. align-self centers the 1px line on the text box. */
+  .group-line {
+    flex: 1;
+    height: 1px;
+    background: var(--color-border);
+    align-self: center;
   }
   .group-count {
     font-family: var(--font-mono);
@@ -475,10 +557,11 @@
     outline-offset: 2px;
   }
 
+  /* Closing CTA — SectionDivider above provides the numbered rule, so no
+     border-top here. The link carries near-h1 weight to close the page with
+     the same confidence the hero opens it. */
   .inline-close {
-    margin-top: 4rem;
-    padding: 2.5rem 0;
-    border-top: 1px solid var(--color-border);
+    padding: 1.5rem 0 2.5rem;
     text-align: center;
   }
   .inline-close p {
@@ -492,8 +575,12 @@
     align-items: baseline;
     gap: 0.375rem;
     margin-left: 0.5rem;
-    font-size: 0.9375rem;
+    /* Escape the mono inherited from .inline-close p — the link carries
+       near-h1 display type to close the page with the hero's voice. */
+    font-family: var(--font-display);
+    font-size: 1.25rem;
     font-weight: 600;
+    letter-spacing: -0.02em;
     color: var(--color-text-primary);
     text-decoration: none;
     transition: color 140ms ease;
@@ -512,8 +599,8 @@
     background-size: 100% 1px;
   }
   :global(.inline-arrow) {
-    width: 0.875rem;
-    height: 0.875rem;
+    width: 1.125rem;
+    height: 1.125rem;
     align-self: center;
   }
 
