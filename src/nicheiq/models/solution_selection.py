@@ -6,7 +6,7 @@ This model represents the strategic decision of which solution to focus on for
 SEO strategy, keyword research, and implementation.
 """
 
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -28,10 +28,38 @@ class SolutionScores(BaseModel):
     solution_name: str = Field(..., description="Name of the solution")
     market_fit_score: float = Field(..., ge=0.0, le=1.0, description="Market fit score (0-1)")
     technical_feasibility_score: float = Field(..., ge=0.0, le=1.0, description="Technical feasibility score (0-1)")
-    competitive_advantage_score: float = Field(..., ge=0.0, le=1.0, description="Competitive advantage score (0-1)")
-    seo_growth_potential_score: float = Field(..., ge=0.0, le=1.0, description="SEO growth potential score (0-1)")
-    composite_score: float = Field(..., ge=0.0, le=1.0, description="Weighted composite score")
+    competitive_advantage_score: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Competitive advantage score (0-1). None when the source data has no "
+            "differentiation signal — never fabricated with a neutral default."
+        ),
+    )
+    seo_growth_potential_score: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "SEO growth potential score (0-1). None when the source data has no "
+            "SEO signal — never fabricated with a neutral default."
+        ),
+    )
+    composite_score: float = Field(
+        ..., ge=0.0, le=1.0,
+        description="Weighted composite score (mean of the PRESENT scores; missing scores are excluded, not defaulted)"
+    )
     rank: int = Field(..., description="Rank among all solutions (1 = best)")
+    score_source: Optional[Literal['llm', 'backfill', 'interactive']] = Field(
+        default=None,
+        description=(
+            "Provenance of these scores: 'llm' = Task 4 strategic selector, "
+            "'backfill' = computed from solution-idea fields after Task 4 missed "
+            "this solution, 'interactive' = computed because Task 4 was skipped. "
+            "None on legacy data."
+        ),
+    )
 
     # keyword validation: Keyword Validation Fields
     keyword_demand_score: Optional[float] = Field(
@@ -51,7 +79,9 @@ class SolutionScores(BaseModel):
         le=1.0,
         description=(
             "Adjusted composite score after keyword validation. "
-            "Formula: composite_score × keyword_demand_score. "
+            "Formula: 0.7 × composite_score + 0.3 × keyword_demand_score "
+            "(bounded blend — demand evidence can shift but not erase the "
+            "qualitative composite, preserving novel solutions). "
             "Used for final re-ranking in keyword validation."
         )
     )
@@ -80,6 +110,15 @@ class SolutionSelection(BaseModel):
             "2-3 paragraphs explaining WHY this solution was selected over alternatives. "
             "Should reference specific data points: market fit scores, competitive gaps, "
             "pain point alignment, and strategic advantages. (minimum 100 chars)"
+        )
+    )
+
+    original_selection_reasoning: Optional[str] = Field(
+        default=None,
+        description=(
+            "The strategic selector's original rationale, preserved verbatim when "
+            "keyword validation pivots the winner and appends evidence to "
+            "selection_rationale. None when no pivot occurred."
         )
     )
 

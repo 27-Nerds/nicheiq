@@ -199,6 +199,13 @@ divergent_exploration:
     platform APIs are relevant to this niche (Shopify, Stripe, GitHub, Notion, etc.).
     Platform leverage enhances SEO-first ideas with unique data access.
 
+    OPTIONAL WILDCARD: You MAY include up to ONE concept using a technique you
+    invent for this niche — label it "wildcard_<short-description>" in
+    ideation_technique. It counts toward the 4-technique quota only if genuinely
+    distinct from the six named techniques, and it must still pass the STEP 0.75
+    dedup gate. Use it when the niche suggests an unconventional wedge none of
+    the named techniques capture — never as filler.
+
     If you generate 8 concepts using only 2 techniques -> INVALID OUTPUT.
     Diversity in ideation technique leads to diversity in solutions.
 
@@ -222,20 +229,39 @@ divergent_exploration:
       BANNED phrases: "unique approach", "nobody has built this", "innovative solution"
     - **distribution_channel**: Primary channel: seo (default), platform_marketplace,
       or hybrid. SEO remains primary — platform distribution is a bonus accelerator.
+    - **mechanism_tag / data_source_tag / journey_tag** (REQUIRED): the same M/D/J
+      tags from your STEP 0.75 dedup gate, as short hyphenated phrases. These are
+      machine-checked for structural duplicates — within this batch AND against
+      prior runs — so tag honestly; rewording a tag does not change the structure.
+
+      Suggested tag vocabulary (use one, or extend with the same style when none fits):
+      - mechanism_tag: aggregates-public-records | platform-api-monitoring |
+        community-submitted-benchmarks | scheduled-automated-checks |
+        parametric-calculator | curated-comparison-pages | llm-content-extraction |
+        marketplace-matching
+      - data_source_tag: government-open-data | platform-api | self-reported-user-data |
+        scraped-web-pages | third-party-api | newsletters-and-bulletins |
+        public-court-records | proprietary-user-activity
+      - journey_tag: search-lands-on-page | enters-inputs-gets-calculation |
+        subscribes-gets-alerts | browses-comparison-table | submits-data-creates-value |
+        recurring-dashboard-checkin
 
     **EXAMPLES (showing non-trivial concepts with diverse techniques):**
 
     Each example uses a DIFFERENT ideation technique and shows a non-obvious angle.
-    These are architectural pattern illustrations only — do NOT reuse these names, verticals, or keywords in your output.
-    Generate concepts relevant to the actual niche: {niche_description}.
+    These are architectural pattern illustrations only — study the MECHANISM and the
+    why_non_obvious reasoning, NOT the domain. Do NOT reuse these names, verticals,
+    domains, or keywords in your output (two examples use deliberately absurd domains
+    precisely so they cannot be copied). Generate concepts relevant to the actual
+    niche: {niche_description}.
 
-    1. concept_name: "ShopifyDeadstock"
-       one_liner: "Shopify app predicting slow inventory via Inventory API before merchants notice, with '[product type] deadstock risk' SEO pages."
+    1. concept_name: "TerrariumTempSentry" (absurd domain on purpose — study the mechanism)
+       one_liner: "Exotic-terrarium app predicting habitat drift via the HabitatHub sensor API before keepers notice, with '[species] habitat anomaly' SEO pages."
        ideation_technique: "platform_leverage"
        project_type: "saas"
-       target_keywords: ["shopify deadstock alert", "slow inventory shopify", "shopify overstock management"]
-       data_source_hint: "Shopify Inventory API — sell-through velocity aggregated across stores"
-       why_non_obvious: "Shopify API exposes sell-through velocity data that merchants never monitor directly; aggregating across 1000s of stores enables predictive alerts no standalone tool can match."
+       target_keywords: ["terrarium humidity alert", "gecko habitat monitor", "terrarium temperature drift"]
+       data_source_hint: "HabitatHub sensor API — environmental telemetry aggregated across enclosures"
+       why_non_obvious: "The platform API exposes continuous telemetry that owners never monitor directly; aggregating across 1000s of enclosures enables predictive anomaly alerts no standalone tool can match because the data lives inside the platform ecosystem."
        distribution_channel: "hybrid"
        **Technique: platform_leverage — unique data from platform API + app store distribution**
 
@@ -249,15 +275,15 @@ divergent_exploration:
        distribution_channel: "seo"
        **Technique: data_source_inversion — public data nobody is productizing**
 
-    3. concept_name: "PermitTracker"
-       one_liner: "Monitors municipal meeting agendas and building permits via open data portals, generating '[neighborhood] development tracker' pages."
+    3. concept_name: "RegattaEntryRadar" (absurd domain on purpose — study the mechanism)
+       one_liner: "Monitors yacht-club newsletters and race-committee bulletins, generating '[boat class] regatta calendar [region]' pages."
        ideation_technique: "niche_drilling"
        project_type: "aggregator"
-       target_keywords: ["building permits near me", "neighborhood development tracker", "zoning changes map"]
-       data_source_hint: "Municipal open data portals — meeting agendas and building permit filings"
-       why_non_obvious: "Municipal agendas are published 48-72 hours before meetings but nobody reads them; a zoning variance signals development 6-12 months before construction — information asymmetry that real estate investors pay for."
+       target_keywords: ["dinghy regatta calendar", "laser class races near me", "regatta entry deadlines"]
+       data_source_hint: "Club newsletters and committee bulletins — published but never indexed"
+       why_non_obvious: "Entry windows are announced weeks before public listings but scattered across hundreds of club newsletters nobody indexes; an entry deadline is actionable months before the event — information asymmetry that serious competitors pay for."
        distribution_channel: "seo"
-       **Technique: niche_drilling — specific sub-niche (pre-construction intelligence)**
+       **Technique: niche_drilling — specific sub-niche (pre-announcement intelligence)**
 
     4. concept_name: "OneClickProposal"
        one_liner: "Extracts ONLY the proposal/quote feature from full PM suites as a standalone tool, generating '[industry] proposal template' and '[service] quote calculator' pages."
@@ -540,14 +566,14 @@ solution_refinement:
     - core_features (5-7 MVP features)
     - target_personas (2-4 aligned with user segments)
 
-    **HEADLINE + SHORT_DESCRIPTION EXAMPLES:**
-    - solution_name: "EvictionRiskMap"
-      headline: "Real-time eviction risk scores by neighborhood"
-      short_description: "See eviction probability for any US address. Aggregates county court filings into block-level risk scores updated weekly."
-    - solution_name: "OneClickProposal"
-      headline: "One-click proposals for independent contractors"
-      short_description: "Turn a project brief into a branded proposal in seconds. Auto-fills scope, timeline, and pricing from your past work."
-    Bad headlines: "EvictionRiskMap Tool" (code name), "A great tool" (vague)
+    **HEADLINE + SHORT_DESCRIPTION EXAMPLES** (absurd domains on purpose — copy the FORMAT, never the domain):
+    - solution_name: "RegattaEntryRadar"
+      headline: "Never miss a regatta entry deadline again"
+      short_description: "Tracks entry windows across 400+ yacht-club newsletters. Get alerts months before public race listings appear."
+    - solution_name: "TerrariumTempSentry"
+      headline: "Catch habitat drift before your gecko does"
+      short_description: "Monitors enclosure telemetry and flags anomalies early. Predictive alerts tuned per species from cross-enclosure data."
+    Bad headlines: "RegattaEntryRadar Tool" (code name), "A great tool" (vague)
     Bad short_descriptions: repeating the headline, or pasting the full 4-6 sentence description
 
     **Scores (from above criteria):**

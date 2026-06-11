@@ -57,7 +57,7 @@ categorize_content:
 
     **ANCHOR KEYWORDS** - What they are:
     Anchor keywords are SHORT PHRASES (2-6 words) that users use when discussing a theme.
-    They are NOT full quotes — they are searchable phrases for Task 4 vector search.
+    They are NOT full quotes — they are searchable phrases for the quote-enrichment vector search.
 
     Examples:
     - Theme "Setup Complexity" → ["took 3 hours", "no documentation", "gave up configuring"]
@@ -146,7 +146,7 @@ categorize_content:
          negative discussions can score higher than a large number of mild ones.
        - **primary_user_segments**: User types discussing this theme
        - **anchor_keywords**: 3-8 short phrases (2-6 words each) that users say when
-         discussing this theme. EXACT phrases from content for Task 4 vector search.
+         discussing this theme. EXACT phrases from content for the quote-enrichment vector search.
          Example: ["took 3 hours", "no documentation", "gave up configuring"]
 
     **user_segments**: List of all identified UserSegment objects:
@@ -167,7 +167,7 @@ extract_pain_points:
     **NICHE CONTEXT:** {niche_description}
 
     Transform Task 1's theme categories into specific pain points.
-    For each pain point, extract ANCHOR KEYWORDS for later quote search (Task 4).
+    For each pain point, extract ANCHOR KEYWORDS for the later quote-enrichment search.
 
     **CRITICAL FILTER STEP (Before Transformation):**
     Review Task 1 themes and SKIP any theme that:
@@ -231,7 +231,7 @@ extract_pain_points:
     - Ensure each anchor_keyword includes domain context to avoid ambiguity:
       BAD: "setup", "hours building" (too generic, matches unrelated topics)
       GOOD: "software setup", "hours configuring settings" (specific to the niche)
-    - DO NOT include full quotes - Task 4 will find them via vector search
+    - DO NOT include full quotes - the Python quote-enrichment phase finds them via vector search
     - mention_count grounded in Task 1 theme data; don't fabricate
 
     **CATEGORY COVERAGE REQUIREMENT:**
@@ -252,6 +252,8 @@ extract_pain_points:
     - Each pain point has a non-null parent_theme_id matching a Task 1 theme_id
     - All titles unique within the extraction
     - Minimum 3 pain points if sufficient data exists; max 5 per theme
+
+    {corrective_feedback}
 
   expected_output: >
     Return a single JSON object with this exact structure. Below shows two example
@@ -309,16 +311,16 @@ extract_pain_points:
     - short_summary: 1-2 punchy sentences, under 180 characters, different from title
     - 2-10 anchor_keywords per pain point (short phrases, 2-6 words each)
     - At least one anchor_keyword per pain point should appear in the parent theme's keywords
-    - anchor_keywords must be EXACT user phrases for Task 4 vector search
+    - anchor_keywords must be EXACT user phrases for the quote-enrichment vector search
     - mention_count grounded in actual theme/discussion data
-    - DO NOT include representative_quotes - Task 4 handles quote extraction
+    - DO NOT include representative_quotes - Python quote enrichment handles them
     - Max 5 pain points per theme; min 3 total pain points
 
 validate_pain_points:
   description: >
     ═══ TASK 3: VALIDATION & SCORING ═══
-    ✓ Generate ONLY validation scores for extracted pain points (Python will merge with Task 2)
-    ✓ Focus on evidence-based scoring using knowledge sources
+    ✓ Generate ONLY validation scores for the pain points listed below (Python will merge)
+    ✓ Score each pain point using the EVIDENCE QUOTES provided with it
     ✓ DO NOT copy pain point fields—only generate scores
 
     **NICHE CONTEXT:** {niche_description}
@@ -332,24 +334,25 @@ validate_pain_points:
 
     Use this metadata for context when scoring pain points. More diverse subreddit sources and higher engagement counts indicate stronger validation signals.
 
-    Pain points supported by evidence from high-engagement discussions
-    (20+ comments) carry stronger validation signals than those from
-    low-engagement posts.
+    **PAIN POINTS WITH EVIDENCE QUOTES:**
 
-    **HOW TO ACCESS CONTEXT:**
+    Each pain point below includes the evidence quotes retrieved for it via
+    vector search over the collected discussions, with [source: post_id]
+    attribution and the count of unique source discussions. These quotes are
+    your ONLY evidence — score from what they actually say.
 
-    Task 2 output (PainPointExtraction) is available in your context. Extract:
-    - From Task 2: extracted_pain_points list (titles, descriptions, quotes, mention counts)
-    - DO NOT copy these fields—reference pain_point_title only for matching
+    {pain_points_with_evidence}
 
     **YOUR TASK: Generate Validation Scores**
 
-    For EACH pain point in Task 2 extraction, generate scoring data:
-    - pain_point_title: The exact title from Task 2 (for Python matching)
-    - severity_score: Float 0.0-1.0 based on evidence
-    - willingness_to_pay: Float 0.0-1.0 based on financial signals
+    For EACH pain point listed above, generate scoring data:
+    - pain_point_title: The exact title as listed above (for Python matching)
+    - severity_score: Float 0.0-1.0 based on the provided quotes
+    - willingness_to_pay: Float 0.0-1.0 based on financial signals in the quotes
     - opportunity_level: OpportunityLevel enum (high/medium/low)
-    - scoring_rationale: Brief explanation (2-3 sentences)
+    - scoring_rationale: Brief explanation (2-3 sentences) citing specific quotes
+    - downgrade_reason: ONLY when you set opportunity_level BELOW what the formula
+      implies (see WORKFLOW step 4) — explain which cap applies and why (≥20 characters)
 
     **SCORING RUBRIC** (Apply your Evidence-Based Scoring Framework):
 
@@ -388,7 +391,8 @@ validate_pain_points:
     MUST have ALL THREE scores capped:
     - severity_score: CAPPED AT 0.4 (not higher, regardless of emotional intensity)
     - willingness_to_pay: CAPPED AT 0.15 (no tool solves emotional states)
-    - opportunity_level: CAPPED AT LOW (not MEDIUM, not HIGH)
+    - opportunity_level: CAPPED AT LOW (not MEDIUM, not HIGH) — supply downgrade_reason
+      naming this cap when the formula would imply a higher level
 
     RATIONALE: Emotional intensity ≠ severity. A user venting "I'm SO burnt out" shows
     emotional volume, NOT functional severity. Severity measures workflow blockage,
@@ -397,22 +401,37 @@ validate_pain_points:
     **NICHE-SPECIFICITY ADJUSTMENT FOR OPPORTUNITY LEVEL:**
     Pain points that are universal across ALL niches (would appear for gardeners, musicians,
     AND accountants identically) should be capped at MEDIUM opportunity level regardless of
-    severity/WTP scores. Only pain points with niche-specific mechanisms qualify for HIGH.
+    severity/WTP scores — supply downgrade_reason naming this cap. Only pain points with
+    niche-specific mechanisms qualify for HIGH.
 
     **WORKFLOW:**
-    1. Review extracted pain points from Task 2 context
-    2. Review quotes from Task 2 for severity/WTP indicators (knowledge sources may provide supplementary context)
+    1. Read each pain point and its evidence quotes above
+    2. Weigh the quotes for severity/WTP indicators
     3. Apply scoring rubric with quote-based justification
-    4. Calculate opportunity level (High: both scores ≥0.6, Medium: one score ≥0.6, Low: both <0.6)
+    4. Calculate opportunity level (High: both scores ≥0.6, Medium: one score ≥0.6, Low: both <0.6).
+       The system recomputes this formula in code — your opportunity_level is only
+       honored when it is BELOW the formula AND you supply a downgrade_reason
+       (universal-theme cap or niche-specificity cap). Upgrades above the formula
+       are ignored.
 
     **QUALITY STANDARDS:**
-    - Scores must be defensible with quotes from knowledge sources
+    - Scores must be defensible with the quotes provided above
     - Discriminate—not everything is 0.9
     - Score conservatively when uncertain
-    - Cross-reference Reddit + Twitter evidence
+    - Cross-reference Reddit + Twitter evidence where both are present
+
+    **EVIDENCE WEIGHT RULES (CRITICAL):**
+    - A pain point marked "Evidence quotes: NONE FOUND" → severity_score must be ≤ 0.45
+    - The PRESENCE of quotes does NOT raise a floor — quotes are pre-filtered for
+      topical relevance, so calibrate against what they actually SAY, not that they exist
+    - Quotes showing only frustration or general complaints (no specific workflow
+      blockage, no financial signal, no time/client impact) are WEAK evidence.
+      Scoring severity ≥0.7 requires at least one quote containing: a measurable
+      loss (clients, revenue, hours), an explicit workflow blocker, or a stated
+      inability to complete a core task.
 
     **WTP INFERENCE RULES** (When No Explicit Payment Signals):
-    When knowledge sources lack explicit money/budget mentions, INFER WTP based on:
+    When the provided quotes lack explicit money/budget mentions, INFER WTP based on:
     - severity ≥0.7 AND workflow-blocking problem → assign WTP 0.45-0.55 (high inference)
     - productivity/time loss explicitly mentioned → assign WTP 0.3-0.4 (medium inference)
     - Strong emotional language (frustration, anger) → assign WTP 0.15-0.25 (low inference)
@@ -420,24 +439,26 @@ validate_pain_points:
     - CRITICAL: NEVER assign identical WTP scores to all pain points - use the full range to differentiate
 
     **CRITICAL DATA ACCURACY RULES:**
-    - Scores MUST be based on evidence you can find in knowledge sources through queries
-    - If knowledge source queries return insufficient evidence for severity, assign 0.0 with note
+    - Scores MUST be based on the evidence quotes provided above - NO assumptions
+    - If a pain point's quotes provide insufficient evidence for severity, score it low with a note
     - DO NOT assign scores based on assumptions about what severity "should" be for this type of problem
-    - Every severity score ≥0.5 MUST have at least one direct quote showing strong emotional language or business impact
-    - WTP scores ≥0.6 require explicit payment mentions; WTP scores 0.1-0.55 can be INFERRED from severity/impact
+    - Every severity score ≥0.5 MUST be justified by at least one provided quote showing
+      functional impact (workflow blockage or business loss)
+    - WTP scores ≥0.6 require explicit payment mentions in the quotes; WTP scores 0.1-0.55 can be INFERRED from severity/impact
 
     **CRITICAL CONSTRAINT: 1:1 Mapping Required**
-    - You MUST score EXACTLY the pain points from Task 2—no more, no fewer
+    - You MUST score EXACTLY the pain points listed above—no more, no fewer
     - DO NOT add new pain points, merge, split, or remove pain points
-    - Use exact pain_point_title from Task 2 for matching
+    - Use the exact pain_point_title as listed above for matching
 
     ═══ CRITICAL RULES (Read Last - Recency Reminder) ═══
 
     **DATA ACCURACY:**
-    ✗ Scores MUST be based on evidence from knowledge sources - NO assumptions
-      ❌ Example: Scoring without querying knowledge sources (using assumptions about severity)
-    ✗ Every severity score ≥0.5 requires ≥1 quote showing strong emotional language/business impact
-      ❌ Example: Assigning 0.9 severity without quotes showing "critical", "nightmare", "can't work"
+    ✗ Scores MUST be based on the evidence quotes provided per pain point - NO assumptions
+      ❌ Example: Scoring from assumptions about what severity "should" be for this problem type
+    ✗ Every severity score ≥0.5 requires ≥1 provided quote showing functional impact
+      ❌ Example: Assigning 0.9 severity when the quotes only show venting like "so annoying"
+    ✗ Zero evidence quotes → severity_score ≤ 0.45 (no exceptions)
     ✗ WTP scores ≥0.6 require explicit payment mentions; WTP 0.1-0.55 can be INFERRED from severity/impact
       ✅ Example: High severity (0.8) + workflow blocker → infer WTP 0.45-0.55
       ✅ Example: Time/productivity loss mentioned → infer WTP 0.3-0.4
@@ -446,16 +467,16 @@ validate_pain_points:
       ✅ Example: WTP scores ranging from 0.15 to 0.55 based on inferred impact
 
     **OUTPUT REQUIREMENTS:**
-    ✗ pain_point_scores count MUST EXACTLY match Task 2 extraction count (1:1 mapping)
+    ✗ pain_point_scores count MUST EXACTLY match the pain points listed above (1:1 mapping)
       ❌ Example: Adding/removing/merging pain points (violates 1:1 constraint)
-    ✗ pain_point_title must be EXACT character-by-character match to Task 2
+    ✗ pain_point_title must be EXACT character-by-character match to the listing above
       ❌ Example: Slightly modifying title (must be exact match for Python merging)
     ✗ Discriminate scores - NOT all 0.8-0.9
       ❌ Example: Rounding all scores to 0.8-0.9 without differentiation
       ✅ Example: Range from 0.2 to 0.95 based on actual evidence strength
-    ✗ Scoring rationale must reference specific quotes
+    ✗ Scoring rationale must reference specific provided quotes
       ❌ Example: "This seems important" (generic)
-      ✅ Example: "3 users mentioned $X budget allocation for solutions"
+      ✅ Example: "Quote from [source: abc123] reports losing 2 clients to invoicing delays"
 
     # Brief Explanation (GPT-5 Pattern)
     Give a brief explanation (2-3 bullets) summarizing your scoring approach at the start of your answer, then output the structured validation results.
@@ -465,108 +486,21 @@ validate_pain_points:
 
     **niche**: The niche being analyzed
 
-    **pain_point_scores**: List[PainPointScoring] with EXACTLY one score per Task 2 pain point:
-    - pain_point_title: Exact title from Task 2 (for Python matching)
-    - severity_score: Float 0.0-1.0 based on evidence analysis
-    - willingness_to_pay: Float 0.0-1.0 based on financial signals
+    **pain_point_scores**: List[PainPointScoring] with EXACTLY one score per listed pain point:
+    - pain_point_title: Exact title as listed in the task (for Python matching)
+    - severity_score: Float 0.0-1.0 based on the provided evidence quotes
+    - willingness_to_pay: Float 0.0-1.0 based on financial signals in the quotes
     - opportunity_level: OpportunityLevel enum (high/medium/low) based on scores
-    - scoring_rationale: Brief explanation (2-3 sentences)
+    - scoring_rationale: Brief explanation (2-3 sentences) citing specific quotes
+    - downgrade_reason: Present ONLY when opportunity_level is set below the
+      severity/WTP formula (universal-theme or niche-specificity cap), ≥20 chars
 
     **validation_summary**: 4-6 sentence executive summary covering:
-    - Total pain points scored (MUST match Task 2 count)
+    - Total pain points scored (MUST match the listed count)
     - Distribution across opportunity levels (High/Medium/Low)
     - Key scoring patterns and insights
     - Top 3 recommended pain points for solution development
     - Overall market signal strength
 
-    NOTE: Python will merge these scores with Task 2 pain points. Focus on generating accurate, evidence-based scores.
+    NOTE: Python will merge these scores with the extracted pain points. Focus on generating accurate, evidence-based scores.
 
-enrich_pain_point_quotes:
-  description: >
-    ═══ TASK 4: QUOTE ENRICHMENT VIA VECTOR SEARCH ═══
-
-    **NICHE CONTEXT:** {niche_description}
-
-    For each pain point from Task 2, use the search_discussions tool to find
-    verbatim user quotes that support it. This task POPULATES representative_quotes
-    which Tasks 1-2 intentionally did not include.
-
-    **WORKFLOW (Per Pain Point):**
-
-    1. Read pain point from Task 2 context: title, description, anchor_keywords
-    2. For each anchor_keyword, call search_discussions tool
-    3. From results, extract VERBATIM quotes that:
-       - Express this specific pain point (relevant to title/description)
-       - Are 15+ words (skip "me too" / "same" / short replies)
-       - Come from unique discussions (deduplicate by post_id)
-    4. Record the post_id from each result header for attribution
-    5. Target 6-12 unique quotes per pain point
-
-    **SEARCH STRATEGY:**
-
-    For each pain point:
-    - Use anchor_keywords as primary search queries
-    - Try 2-3 searches per pain point minimum
-    - Also try: pain point title as query, related synonyms
-
-    Example for pain point "Manual Invoicing Burden":
-      anchor_keywords: ["hours on invoices", "manual billing", "invoice nightmare"]
-      → search_discussions("hours on invoices")
-      → search_discussions("manual billing")
-      → search_discussions("invoice nightmare")
-
-    **QUOTE EXTRACTION FROM RESULTS:**
-
-    Each search result has this format:
-    --- Result N (score: 0.XX, post_id: abc123, source: reddit) ---
-    [content text here]
-
-    From each result:
-    1. Read the post_id from the header (e.g., "post_id: abc123")
-    2. Find a verbatim quote in the content that expresses the pain point
-    3. Copy the quote EXACTLY - no paraphrasing
-    4. Create ExtractedQuote: {{"quote_text": "exact quote", "post_id": "abc123"}}
-
-    **CRITICAL RULES:**
-
-    ✓ Target 6-12 quotes per pain point (OK to have fewer if not found)
-    ✓ Every quote MUST have a post_id from the search result header
-    ✓ Copy quote text VERBATIM from results - NO paraphrasing
-    ✓ Deduplicate: skip if same quote already collected
-    ✓ Skip quotes < 15 words (not substantive)
-    ✓ pain_point_title must EXACTLY match Task 2 title (for Python merge)
-
-    ✗ NEVER fabricate quotes - only extract what search returns
-    ✗ NEVER guess post_ids - get from result header
-    ✗ NEVER paraphrase or summarize quotes
-
-    **OUTPUT FORMAT:**
-
-    For each pain point, create EnrichedPainPointQuotes:
-    {{
-      "pain_point_title": "Exact Title from Task 2",
-      "quotes": [
-        {{"quote_text": "verbatim quote from search result", "post_id": "abc123"}},
-        {{"quote_text": "another verbatim quote", "post_id": "def456"}}
-      ]
-    }}
-
-  expected_output: >
-    QuoteEnrichmentResult with:
-
-    **niche**: The niche being analyzed (string)
-
-    **enriched_pain_points**: List of EnrichedPainPointQuotes, one per Task 2 pain point:
-    - **pain_point_title**: EXACT title from Task 2 (for Python matching)
-    - **quotes**: List of ExtractedQuote objects:
-      - **quote_text**: Verbatim quote from search results (15+ words)
-      - **post_id**: From search result header "(post_id: xyz123)"
-
-    **total_quotes_found**: Integer count of all quotes across all pain points
-
-    **enrichment_summary**: 2-3 sentences describing search coverage and results
-
-    CRITICAL:
-    - pain_point_title must EXACTLY match Task 2 for Python merge
-    - Every quote must have post_id from search result header
-    - Quotes must be VERBATIM from search results

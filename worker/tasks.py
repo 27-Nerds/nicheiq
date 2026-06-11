@@ -1234,18 +1234,49 @@ def run_catalog_ideas(
             )
             return {"status": "completed", "job_id": job_id, "idea_count": 0}
 
-        # Post-hoc safety-net: filter out ideas whose names match existing ones (case-insensitive)
+        # Post-hoc safety-net: structural dedup against existing catalog ideas.
+        # Exact-name matching alone let RENAMED structural duplicates through —
+        # the precise threat for a regeneration feature (the crew blacklist is
+        # prompt-only and the backend insert dedup is exact-name too).
         if existing_ideas:
-            existing_names_lower = {i["name"].lower() for i in existing_ideas if i.get("name")}
-            filtered = [
-                s for s in idea_gen.solution_ideas
-                if getattr(s, "solution_name", "").lower() not in existing_names_lower
-            ]
-            if filtered:
-                logger.info(f"[Worker] Post-hoc filter: {len(idea_gen.solution_ideas)} → {len(filtered)} ideas (removed {len(idea_gen.solution_ideas) - len(filtered)} duplicates)")
-                idea_gen.solution_ideas = filtered
-            else:
-                logger.warning(f"[Worker] Post-hoc filter removed all ideas — keeping originals")
+            from nicheiq.utils.validation.crew_guardrails import detect_catalog_duplicate
+
+            filtered = []
+            duplicates: list[str] = []
+            for s in idea_gen.solution_ideas:
+                match = next(
+                    (i for i in existing_ideas if detect_catalog_duplicate(s, i)),
+                    None,
+                )
+                if match is None:
+                    filtered.append(s)
+                else:
+                    duplicates.append(
+                        f"{getattr(s, 'solution_name', '?')} ~ {match.get('name', '?')}"
+                    )
+            if duplicates:
+                logger.info(
+                    f"[Worker] Structural dedup: {len(idea_gen.solution_ideas)} → {len(filtered)} ideas "
+                    f"(removed: {'; '.join(duplicates)})"
+                )
+            if not filtered:
+                # Surface the honest outcome instead of silently keeping
+                # duplicates (the backend would re-dedup them to created=0 anyway)
+                logger.warning(
+                    f"[Worker] Regeneration produced only structural duplicates of existing "
+                    f"catalog ideas for job {job_id} — returning no new ideas."
+                )
+                notify_catalog_ideas_ready(
+                    job_id, category_id, [], niche,
+                    parent_source_job_id=parent_source_job_id,
+                )
+                return {
+                    "status": "completed",
+                    "job_id": job_id,
+                    "idea_count": 0,
+                    "note": "regeneration produced only duplicates of existing ideas",
+                }
+            idea_gen.solution_ideas = filtered
 
         # Serialize ideas
         idea_previews = [_solution_to_preview_dict(s) for s in idea_gen.solution_ideas]

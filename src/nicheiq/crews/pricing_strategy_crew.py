@@ -80,8 +80,16 @@ class PricingStrategyCrew:
             config=self.tasks_config["pricing_strategy_analysis"],
             agent=self.pricing_analyst(),
             output_pydantic=PricingStrategyResult,
-            guardrail=validate_pricing_strategy,
+            guardrail=self._pricing_guardrail,
             guardrail_max_retries=2,
+        )
+
+    def _pricing_guardrail(self, task_output):
+        """Bound guardrail wrapper: passes the pre-computed CAC anchor (set in
+        analyze()) so the numeric ratio cross-check can run."""
+        return validate_pricing_strategy(
+            task_output,
+            suggested_cac_range=getattr(self, '_suggested_cac_range', None),
         )
 
     @crew
@@ -279,6 +287,7 @@ class PricingStrategyCrew:
         wtp_summary, avg_wtp = compute_wtp_summary(pain_point_analysis)
         mfs = selected_solution.market_fit_score if hasattr(selected_solution, 'market_fit_score') else None
         suggested_cac_range = compute_cac_range(mfs)
+        self._suggested_cac_range = suggested_cac_range  # for the guardrail's ratio cross-check
 
         # New data formatting
         project_type = getattr(selected_solution, "project_type", None) or "Not specified"

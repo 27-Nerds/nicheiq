@@ -17,15 +17,23 @@ def compute_strive_pre_check(
     """Pre-evaluate 3 of 6 deterministic STRIVE criteria.
 
     Returns formatted summary string. Income/Velocity/Enterable left for LLM.
+
+    total_mentions is now the corpus-wide count of unique discussions matched
+    by evidence vector search (was: sum of LLM-estimated per-pain counts).
+    The threshold is settings-backed so it can be recalibrated against the
+    new counting semantics without a code change.
     """
+    from ...config.settings import settings
+
+    talked_about_min = settings.strive_talked_about_min_mentions
     searchable = keyword_volume >= 100_000
-    talked_about = total_mentions >= 50
+    talked_about = total_mentions >= talked_about_min
     rivalry = 5 <= competitor_count <= 15
     met = sum([searchable, talked_about, rivalry])
     return (
         f"STRIVE Pre-Check ({met}/3 deterministic criteria met):\n"
         f"- Searchable (100K+ volume): {'YES' if searchable else 'NO'} ({keyword_volume:,} searches)\n"
-        f"- Talked About (50+ mentions): {'YES' if talked_about else 'NO'} ({total_mentions} mentions)\n"
+        f"- Talked About ({talked_about_min}+ unique discussions): {'YES' if talked_about else 'NO'} ({total_mentions} mentions)\n"
         f"- Rivalry (5-15 competitors): {'YES' if rivalry else 'NO'} ({competitor_count} competitors)\n"
         f"- Income (SAM >$50M): LLM to evaluate after TAM/SAM calculation\n"
         f"- Velocity (10%+ growth): LLM to evaluate from trend data\n"

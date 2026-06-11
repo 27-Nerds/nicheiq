@@ -13,6 +13,9 @@ export interface Report {
 	pain_point_analytics?: PainPointAnalytics;
 	selected_solution_name: string;
 	selection_rationale: string;
+	/** Original strategic rationale, preserved verbatim when keyword validation
+	 *  pivoted the winner (selection_rationale then carries an appended update). */
+	original_selection_reasoning?: string | null;
 	// runner_up_solutions removed - extract names from alternative_solutions instead
 	// selection_criteria_scores removed - ScoreAccessor is single source of truth
 	recommended_focus?: string;
@@ -361,6 +364,9 @@ export interface DetailedPainPoint {
 	severity_score: number;
 	willingness_to_pay: number;
 	opportunity_level: 'high' | 'medium' | 'low';
+	/** Present when the LLM justifiably downgraded opportunity_level below the
+	 *  severity/WTP formula (universal-theme or niche-specificity cap). */
+	opportunity_downgrade_reason?: string | null;
 	representative_quotes: string[];
 	source_platforms: string[];
 	categories: string[];

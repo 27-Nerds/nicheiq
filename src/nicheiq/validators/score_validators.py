@@ -195,6 +195,23 @@ class ScoreThresholds(BaseModel):
         description="Phase 3: Weak market viability sets risk floor at Medium",
     )
 
+    @classmethod
+    def from_settings(cls, app_settings) -> "ScoreThresholds":
+        """Build thresholds from application settings (env-overridable).
+
+        Maps every field that exists under the same name on the settings
+        object; fields settings doesn't define keep their defaults here.
+        Behavior-neutral with default env (settings defaults match these
+        defaults) — it only makes deliberate env overrides effective, which
+        no-arg ``ScoreThresholds()`` construction silently ignored.
+        """
+        values = {
+            name: getattr(app_settings, name)
+            for name in cls.model_fields
+            if name != 'confidence' and hasattr(app_settings, name)
+        }
+        return cls(**values)
+
 
 class VerdictValidator:
     """

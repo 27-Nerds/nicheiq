@@ -225,6 +225,54 @@ def build_llm(
         return ChatOpenAI(**llm_kwargs)
 
 
+def build_crew_llm(
+    model: str,
+    temperature: float | None = None,
+    reasoning_effort: str | None = None,
+    api_key: str | None = None,
+    **extra_kwargs: Any,
+) -> Any:
+    """
+    Build an LLM instance for CrewAI Agents.
+
+    For reasoning models (GPT-5/o1/o3/o4) returns a crewai.llm.LLM directly:
+    CrewAI's create_llm() extracts only basic params (model/temperature/
+    max_tokens) from a ChatOpenAI instance and silently DROPS reasoning_effort
+    — which left the ideation pipeline with zero working creativity/depth
+    knobs (temperature is unsupported on reasoning models AND the substitute
+    never reached the API). The CrewAI LLM forwards reasoning_effort straight
+    to litellm (verified: llm.py _prepare_completion_params).
+
+    For non-reasoning models, returns ChatOpenAI via build_llm_kwargs
+    (unchanged behavior — temperature et al. survive CrewAI conversion).
+    """
+    if is_reasoning_model(model):
+        from crewai.llm import LLM as CrewAILLM
+
+        if temperature is not None and not reasoning_effort:
+            logger.warning(
+                f"'{model}' is a reasoning model: temperature={temperature} is unsupported "
+                "and no reasoning_effort substitute is configured — the call runs at model "
+                "defaults with no diversity/depth tuning. Set a reasoning_effort."
+            )
+        crew_llm_kwargs: dict[str, Any] = {
+            "model": model,
+            "api_key": api_key or settings.openai_api_key,
+        }
+        if reasoning_effort:
+            crew_llm_kwargs["reasoning_effort"] = reasoning_effort
+            logger.debug(f"build_crew_llm: {model} with reasoning_effort={reasoning_effort} (via CrewAI LLM)")
+        return CrewAILLM(**crew_llm_kwargs)
+
+    llm_kwargs = build_llm_kwargs(
+        model=model,
+        temperature=temperature,
+        api_key=api_key,
+        **extra_kwargs,
+    )
+    return ChatOpenAI(**llm_kwargs)
+
+
 class TokenUsage:
     """Token usage data from LLM invocation."""
 

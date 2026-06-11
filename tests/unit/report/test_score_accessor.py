@@ -75,23 +75,25 @@ class TestScoreAccessorFallbacks:
 
         assert score == 0.73
 
-    def test_get_competitive_advantage_uses_market_fit_proxy(self):
-        """Test competitive_advantage falls back to market_fit as proxy."""
-        # When no SolutionScores found, falls back to market_fit proxy
+    def test_get_competitive_advantage_uses_novelty_fallback(self):
+        """competitive_advantage falls back to novelty_score (the backfill's
+        mapping) — the market_fit proxy is gone (it double-counted market_fit
+        in the verdict average)."""
         solution_selection = None
 
         solution = MagicMock()
         solution.solution_name = "TestSolution"
         solution.market_fit_score = 0.80
+        solution.novelty_score = 0.65
 
         accessor = ScoreAccessor(solution_selection)
         score = accessor.get_competitive_advantage(solution)
 
-        # Should use market_fit as proxy
-        assert score == 0.80
+        assert score == 0.65
 
-    def test_get_competitive_advantage_uses_market_fit_proxy_when_ca_none(self):
-        """Test competitive_advantage falls back to market_fit when CA score is None."""
+    def test_get_competitive_advantage_novelty_fallback_when_ca_none(self):
+        """competitive_advantage falls back to the solution's novelty_score
+        when the SolutionScores entry has None — never to market_fit."""
         solution_selection = MagicMock()
         solution_score = MagicMock(spec=['solution_name', 'competitive_advantage_score', 'market_fit_score'])
         solution_score.solution_name = "TestSolution"
@@ -102,20 +104,22 @@ class TestScoreAccessorFallbacks:
         solution = MagicMock()
         solution.solution_name = "TestSolution"
         solution.market_fit_score = 0.80
+        solution.novelty_score = 0.55
 
         accessor = ScoreAccessor(solution_selection)
         score = accessor.get_competitive_advantage(solution)
 
-        # Should use market_fit as proxy (solution field, not SolutionScores)
-        assert score == 0.85
+        assert score == 0.55
 
     def test_get_competitive_advantage_returns_none_when_all_missing(self):
-        """Test competitive_advantage returns None when market_fit also None."""
+        """competitive_advantage returns None when no scores and no novelty —
+        no proxy fabrication."""
         solution_selection = None
 
         solution = MagicMock()
         solution.solution_name = "TestSolution"
         solution.market_fit_score = None
+        solution.novelty_score = None
 
         accessor = ScoreAccessor(solution_selection)
         score = accessor.get_competitive_advantage(solution)
@@ -185,12 +189,12 @@ class TestScoreAccessorFallbacks:
         solution = MagicMock()
         solution.solution_name = "TestSolution"
         solution.market_fit_score = 0.80
-        # No competitive_advantage, will use market_fit as proxy
+        solution.novelty_score = 0.80  # competitive_advantage falls back to novelty
 
         accessor = ScoreAccessor(solution_selection)
         confidence = accessor.get_confidence_score(solution)
 
-        # Average of 0.80 (market_fit) and 0.80 (competitive_adv proxy)
+        # Average of 0.80 (market_fit) and 0.80 (novelty fallback)
         assert confidence == 0.80
 
     def test_get_confidence_score_returns_none_when_scores_missing(self):
@@ -236,6 +240,7 @@ class TestScoreAccessorFallbacks:
         solution = MagicMock()
         solution.solution_name = "TestSolution"
         solution.market_fit_score = None
+        solution.novelty_score = None
         solution.technical_feasibility_score = None
         solution.seo_scalability_score = None
         solution.seo_scalability_score_refined = None
@@ -369,6 +374,7 @@ class TestScoreAccessorEdgeCases:
         solution = MagicMock()
         solution.solution_name = "TestSolution"
         solution.market_fit_score = None
+        solution.novelty_score = None
         solution.technical_feasibility_score = None
         solution.seo_scalability_score = None
         solution.seo_scalability_score_refined = None
@@ -463,6 +469,7 @@ class TestConfidenceScoreQualityAdjustment:
         solution = MagicMock()
         solution.solution_name = "TestSolution"
         solution.market_fit_score = market_fit
+        solution.novelty_score = market_fit  # competitive_advantage novelty fallback
         return solution
 
     def test_get_confidence_score_backward_compatible(self):
@@ -470,7 +477,7 @@ class TestConfidenceScoreQualityAdjustment:
         solution = self._make_solution(0.80)
         accessor = ScoreAccessor(None)
         score = accessor.get_confidence_score(solution)
-        # avg of 0.80 + 0.80 (proxy) = 0.80
+        # avg of 0.80 (market_fit) + 0.80 (novelty fallback) = 0.80
         assert score == pytest.approx(0.80)
 
     def test_get_confidence_score_all_none_kwargs(self):

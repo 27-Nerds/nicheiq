@@ -85,9 +85,15 @@ class ScoreAccessor:
         solution: "SolutionIdea",
     ) -> float | None:
         """
-        Get competitive advantage score with fallback.
+        Get competitive advantage score.
 
-        Resolution: all_solution_scores → market_fit proxy → None
+        Resolution: all_solution_scores → solution.novelty_score → None
+
+        The old market_fit proxy fallback is gone: it double-counted market_fit
+        in the verdict average and defeated the None-score guard. novelty_score
+        is the same semantic mapping the backfill uses; when neither exists the
+        honest answer is None (the verdict path then averages the present scores
+        and adds a caveat).
 
         Args:
             solution: SolutionIdea object
@@ -99,12 +105,19 @@ class ScoreAccessor:
         if scores and scores.competitive_advantage_score is not None:
             return scores.competitive_advantage_score
 
-        # Fallback: use market_fit as proxy (SolutionIdea has no competitive_advantage field)
-        logger.debug(
-            f"[ScoreAccessor] No competitive_advantage_score for '{solution.solution_name}' "
-            f"- using market_fit as proxy"
+        novelty = getattr(solution, 'novelty_score', None)
+        if novelty is not None:
+            logger.debug(
+                f"[ScoreAccessor] No competitive_advantage_score for '{solution.solution_name}' "
+                f"- using novelty_score (same mapping as backfill)"
+            )
+            return novelty
+
+        logger.warning(
+            f"[ScoreAccessor] No competitive_advantage_score or novelty_score for "
+            f"'{solution.solution_name}' - returning None (no proxy fabrication)"
         )
-        return self.get_market_fit(solution)
+        return None
 
     def get_technical_feasibility(
         self,

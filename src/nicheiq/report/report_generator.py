@@ -354,6 +354,9 @@ class ReportGenerator:
         # Extract solution selection (Stage 5)
         selected_solution_name = self.accessor.get_selected_solution_name()
         selection_rationale = self.accessor.get_selection_rationale()
+        original_selection_reasoning = getattr(
+            self.state.solution_selection, 'original_selection_reasoning', None
+        ) if self.state.solution_selection else None
         # runner_up_solutions removed - use alternative_solutions instead
         recommended_focus = self.accessor.get_recommended_focus()
 
@@ -547,9 +550,11 @@ class ReportGenerator:
                 ),
             ]
 
-            # Build model_copy update dict — always include methodology + growth trajectory
-            update_fields: dict[str, Any] = {
-                "traffic_methodology": (
+            # Build model_copy update dict — growth trajectory always; the
+            # evidence-based methodology label ONLY when the code projection
+            # actually replaces the LLM numbers (below), so LLM-fallback
+            # estimates are never labeled "evidence-based".
+            evidence_methodology = (
                     "Traffic projections are computed using evidence-based models rather than flat estimates. "
                     "Click-through rates by SERP position are based on the Backlinko & ClickFlow study "
                     "(874,000 URLs, 5 million queries, updated 2025). Keyword difficulty scores are mapped "
@@ -566,13 +571,9 @@ class ReportGenerator:
                     "affiliate click rates of 1-3% for commercial-intent traffic, "
                     "conversion rates of 1-3%, average SaaS commission of $50-$150, "
                     "and display CPMs of ${}-${} for {} verticals.".format(cpm_low, cpm_high, vertical)
-                ),
-                "traffic_data_sources": [
-                    "Backlinko & ClickFlow CTR Study (874K URLs)",
-                    "KD-to-Ranking Probability Model (calibrated estimates for new sites)",
-                    "Raptive/Mediavine Ad Network Thresholds (2025-2026)",
-                    "DataForSEO Keyword Metrics",
-                ],
+            )
+
+            update_fields: dict[str, Any] = {
                 # Growth trajectory fields
                 "year3_monthly_pageviews": f"{y3_pv_low:,}-{y3_pv_high:,}",
                 "year3_monthly_revenue": f"${y3_total_low:,}-${y3_total_high:,}/mo",
@@ -582,9 +583,18 @@ class ReportGenerator:
                 "revenue_milestones": revenue_milestones,
             }
 
-            # Override LLM numeric fields only if pre-computed values are non-zero
+            # Override LLM numeric fields only if pre-computed values are non-zero;
+            # the "evidence-based" methodology label ships ONLY with the code
+            # projection — LLM-fallback estimates get an honest provenance label.
             if y1_pv_low > 0:
                 update_fields.update({
+                    "traffic_methodology": evidence_methodology,
+                    "traffic_data_sources": [
+                        "Backlinko & ClickFlow CTR Study (874K URLs)",
+                        "KD-to-Ranking Probability Model (calibrated estimates for new sites)",
+                        "Raptive/Mediavine Ad Network Thresholds (2025-2026)",
+                        "DataForSEO Keyword Metrics",
+                    ],
                     "estimated_monthly_pageviews": f"{y1_pv_low:,}-{y1_pv_high:,}",
                     "estimated_cpm_rate": f"${cpm_low}-${cpm_high} CPM ({vertical})",
                     "estimated_monthly_ad_revenue": f"${y1_ad_low:,}-${y1_ad_high:,}",
@@ -592,6 +602,13 @@ class ReportGenerator:
                     "estimated_monthly_revenue_range": f"${y1_total_low:,}-${y1_total_high:,}",
                     "estimated_annual_revenue_range": f"${y1_total_low * 12:,}-${y1_total_high * 12:,}",
                 })
+            else:
+                update_fields["traffic_methodology"] = (
+                    "Traffic and revenue figures are LLM-modeled estimates from keyword and "
+                    "competitive context. The evidence-based projection model produced a zero "
+                    "Year-1 traffic ceiling for this keyword set, so these estimates could not "
+                    "be independently validated — treat them as directional, not measured."
+                )
 
             traffic_monetization = traffic_monetization.model_copy(update=update_fields)
 
@@ -696,6 +713,7 @@ class ReportGenerator:
             # Solution selection (Stage 5)
             selected_solution_name=selected_solution_name,
             selection_rationale=selection_rationale,
+            original_selection_reasoning=original_selection_reasoning,
             # runner_up_solutions removed - use alternative_solutions
             # selection_criteria_scores removed - ScoreAccessor is single source of truth
             recommended_focus=recommended_focus,
@@ -2759,11 +2777,17 @@ It differentiates through {diff_text}.
         tech_feasibility = self.score_accessor.get_technical_feasibility(solution)
         seo_potential = self.score_accessor.get_seo_score_canonical(solution)
 
-        # Validate scores are not None before calculations
+        # Average over the PRESENT scores (missing optional scores are no longer
+        # fabricated as 0.5, so competitive_adv/seo can legitimately be None).
+        # Hard requirements: market_fit and tech_feasibility (gate the verdict
+        # tiers individually) plus at least 3 of 4 scores overall.
+        score_names = ["market_fit", "competitive_advantage", "technical_feasibility", "seo_potential"]
         scores = [market_fit, competitive_adv, tech_feasibility, seo_potential]
-        if any(score is None for score in scores):
+        present_scores = [s for s in scores if s is not None]
+        missing_names = [name for name, s in zip(score_names, scores) if s is None]
+        if market_fit is None or tech_feasibility is None or len(present_scores) < 3:
             logger.warning(
-                f"[Verdict Calculation] One or more scores are None - insufficient data. "
+                f"[Verdict Calculation] Insufficient score data. "
                 f"Scores: market_fit={market_fit}, competitive_adv={competitive_adv}, "
                 f"tech_feasibility={tech_feasibility}, seo_potential={seo_potential}"
             )
@@ -2778,8 +2802,16 @@ It differentiates through {diff_text}.
                 primary_concern="Missing score data — review pipeline output quality",
             )
 
+        score_caveat = None
+        if missing_names:
+            score_caveat = (
+                f"Note: {', '.join(missing_names)} score(s) unavailable — "
+                f"verdict averages the {len(present_scores)} present scores."
+            )
+            logger.info(f"[Verdict Calculation] {score_caveat}")
+
         # Compute verdict
-        avg_score = (market_fit + competitive_adv + tech_feasibility + seo_potential) / 4
+        avg_score = sum(present_scores) / len(present_scores)
 
         # Phase 1.1: Use settings thresholds instead of hard-coded values
         if (avg_score >= settings.verdict_go_avg_score and
@@ -2807,18 +2839,26 @@ It differentiates through {diff_text}.
             rationale = narrative_rationale
         else:
             if verdict == "Go":
-                rationale = f"Strong scores across all criteria (avg {avg_score:.2f}). Market fit ({market_fit:.2f}) and competitive advantage ({competitive_adv:.2f}) indicate solid opportunity."
+                ca_text = f"{competitive_adv:.2f}" if competitive_adv is not None else "N/A"
+                rationale = f"Strong scores across all criteria (avg {avg_score:.2f}). Market fit ({market_fit:.2f}) and competitive advantage ({ca_text}) indicate solid opportunity."
             elif verdict == "Conditional":
                 rationale = f"Acceptable scores (avg {avg_score:.2f}) but requires validation. Proceed with MVP to test assumptions."
             else:
                 rationale = f"Scores below threshold (avg {avg_score:.2f}). {primary_concern}"
+        if score_caveat:
+            rationale = f"{rationale} {score_caveat}"
+
+        # Remember the score-based verdict so a Phase 2/3 downgrade can be
+        # reconciled into the rationale (the narrative was written before any
+        # downgrade existed and may argue for the original verdict).
+        pre_downgrade_verdict = verdict
 
         # Phase 2: Apply trend-based downgrades (downgrade-only, never upgrades)
         trend_context = None
         trend_data = self.state.trend_longevity
         if trend_data is not None:
-            from ..validators.score_validators import VerdictValidator
-            trend_validator = VerdictValidator()
+            from ..validators.score_validators import ScoreThresholds, VerdictValidator
+            trend_validator = VerdictValidator(ScoreThresholds.from_settings(settings))
             verdict, risk_level, primary_concern, trend_context = (
                 trend_validator.apply_trend_downgrade(
                     verdict=verdict,
@@ -2841,8 +2881,9 @@ It differentiates through {diff_text}.
             viability_verdict = getattr(market_sizing, 'market_viability_verdict', None) or ""
             entry_strategy = getattr(market_sizing, 'recommended_entry_strategy', None) or ""
             if viability_verdict:
+                from ..validators.score_validators import ScoreThresholds as _ST
                 from ..validators.score_validators import VerdictValidator as _VV
-                viability_validator = _VV()
+                viability_validator = _VV(_ST.from_settings(settings))
                 verdict, risk_level, primary_concern, market_viability_context = (
                     viability_validator.apply_market_viability_downgrade(
                         verdict=verdict,
@@ -2855,7 +2896,17 @@ It differentiates through {diff_text}.
                 if market_viability_context:
                     logger.info(f"[Verdict Viability Adjustment] {market_viability_context}")
 
-        return GoNoGoVerdict(
+        # Reconcile the rationale with post-rationale downgrades: the shipped
+        # text must not argue for a verdict the report no longer carries
+        # (the UI shows downgrade context, but the JSON must stand on its own).
+        if verdict != pre_downgrade_verdict:
+            downgrade_note = trend_context or market_viability_context or "post-verdict validation"
+            rationale = (
+                f"Note: verdict downgraded from {pre_downgrade_verdict} to {verdict} — "
+                f"{downgrade_note}\n\n{rationale}"
+            )
+
+        result = GoNoGoVerdict(
             verdict=verdict,
             rationale=rationale,
             risk_level=risk_level,
@@ -2863,6 +2914,10 @@ It differentiates through {diff_text}.
             trend_context=trend_context,
             market_viability_context=market_viability_context,
         )
+        # Cache for other sections (market_analytics derives its recommendation
+        # from the same verdict instead of maintaining parallel thresholds)
+        self._last_computed_verdict = result
+        return result
 
     # ==================================================================================
     # Go-to-Market Blueprint Generator (Phase 2 Enhancement)
@@ -3507,13 +3562,16 @@ It differentiates through {diff_text}.
                 else "High"
             )
 
-            # Recommendation
-            if overall_score >= 0.75:
-                recommendation = "Go"
-            elif overall_score >= 0.60:
-                recommendation = "Conditional"
+            # Recommendation: derived from the SAME verdict machinery as the
+            # executive dashboard (settings thresholds + trend/viability
+            # downgrades). The old inline 0.75/0.60 were stale pre-optimization
+            # thresholds (commit 0ef15e3 moved to 0.72/0.55) that could
+            # contradict the headline verdict in the same JSON.
+            cached_verdict = getattr(self, '_last_computed_verdict', None)
+            if cached_verdict is not None:
+                recommendation = cached_verdict.verdict
             else:
-                recommendation = "No-Go"
+                recommendation = self._compute_go_no_go_verdict(selected_solution).verdict
 
             # Selection confidence = same 4-score average as overall_score (matches hero %)
             selection_confidence = overall_score

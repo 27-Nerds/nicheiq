@@ -86,8 +86,12 @@ class Settings(BaseSettings):
         description="Model to use for solution brainstorming/ideation (gpt-5.2 recommended for creative thinking)"
     )
     brainstorm_reasoning_effort: str | None = Field(
-        default=None,
-        description="Reasoning effort for GPT-5 series models: 'none', 'minimal', 'low', 'medium', 'high', 'xhigh'. Leave unset for older models."
+        default="high",
+        description=(
+            "Reasoning effort for GPT-5 series models: 'none', 'minimal', 'low', 'medium', "
+            "'high', 'xhigh'. Default 'high' — this is the ONLY working creativity/depth "
+            "knob for reasoning models (temperature is unsupported). Ignored by older models."
+        )
     )
     keyword_validation_llm: str = Field(
         default="gpt-4.1-nano",
@@ -352,9 +356,15 @@ class Settings(BaseSettings):
         default=12,
         description="Number of seeds per DataForSEO API call (reduced for better quality)"
     )
-    keyword_enrichment_min_coverage: float = Field(
+    keyword_cluster_min_coverage: float = Field(
         default=0.7,
-        description="Minimum percentage of topic clusters that must have keywords (0.0-1.0)"
+        description=(
+            "Minimum percentage of topic clusters that must have keywords (0.0-1.0). "
+            "Renamed from keyword_enrichment_min_coverage: that name was defined TWICE "
+            "with different meanings, and Python silently kept the later 0.30 enrichment "
+            "threshold — so this 0.7 cluster threshold never actually applied. Restoring "
+            "it may add enrichment rounds (more DataForSEO calls)."
+        )
     )
 
     # Parallel Validation Settings
@@ -462,8 +472,13 @@ class Settings(BaseSettings):
 
     # Solution Validation Configuration
     top_solutions_for_validation: int = Field(
-        default=3,
-        description="Number of top solutions to validate with pricing, keywords, and competitive analysis"
+        default=5,
+        description=(
+            "Number of top solutions to validate with pricing, keywords, and competitive "
+            "analysis. Default 5 covers ALL refined solutions (3-5 generated) so novel "
+            "ideas aren't structurally excluded from demand validation; batched keyword "
+            "expansion keeps the API cost roughly flat vs the old top-3."
+        )
     )
 
     # keyword validation: Keyword Validation Configuration
@@ -471,17 +486,20 @@ class Settings(BaseSettings):
         default=True,
         description="Enable keyword demand validation for top N solutions before final selection"
     )
-    keyword_min_search_volume: int = Field(
-        default=50,
-        description="Minimum monthly search volume for a keyword to be considered 'validated'"
-    )
+    # NOTE: keyword_min_search_volume (used by validation too) is defined once
+    # in the Keyword Research Configuration section above — it was previously
+    # duplicated here with the same default, which Python silently collapsed.
     keyword_min_volume_threshold: int = Field(
         default=10,
         description="Minimum search volume threshold for relevance checking (lower than min_search_volume)"
     )
     keyword_pivot_max_attempts: int = Field(
-        default=4,
-        description="Maximum number of pivot attempts (different seed generation strategies) before accepting best result"
+        default=3,
+        description=(
+            "Maximum number of pivot attempts (different seed generation strategies) before "
+            "accepting best result. Most successful validations land on attempts 1-2; "
+            "3 keeps an adequate fallback at lower DataForSEO cost."
+        )
     )
     keyword_quick_expansion_size: int = Field(
         default=50,
@@ -575,7 +593,7 @@ class Settings(BaseSettings):
             raise ValueError("Temperature must be between 0.0 and 2.0")
         return v
 
-    @field_validator('keyword_enrichment_min_coverage', 'keyword_enrichment_target_coverage', 'keyword_tiering_min_coverage')
+    @field_validator('keyword_enrichment_min_coverage', 'keyword_enrichment_target_coverage', 'keyword_tiering_min_coverage', 'keyword_cluster_min_coverage')
     @classmethod
     def validate_coverage_percentage(cls, v):
         """Validate coverage percentages are between 0 and 1."""
@@ -658,6 +676,18 @@ class Settings(BaseSettings):
         ge=0.0,
         le=1.0,
         description="Minimum individual score for Conditional verdict"
+    )
+
+    # STRIVE market-sizing pre-check
+    strive_talked_about_min_mentions: int = Field(
+        default=50,
+        ge=0,
+        description=(
+            "Minimum corpus-wide unique discussions for the STRIVE 'Talked About' "
+            "criterion. total_mentions is now evidence-grounded (unique post IDs "
+            "matched by quote vector search) instead of summed LLM estimates — "
+            "recalibrate this threshold from a before/after comparison run."
+        )
     )
 
     # Pain Point & Competitive Thresholds

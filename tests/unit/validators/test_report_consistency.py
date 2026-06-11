@@ -410,7 +410,10 @@ class TestVerdictVsRecommendation:
         verdict_warnings = [w for w in warnings if "verdict" in w.message.lower() and "recommendation" in w.message.lower()]
         assert len(verdict_warnings) == 0
 
-    def test_conditional_vs_go_info_severity(self):
+    def test_conditional_vs_go_warning_severity(self):
+        """Both fields now derive from the same verdict computation, so any
+        divergence is a real bug (WARNING, surfaced in quality_caveats) —
+        not an expected trend adjustment (the old INFO misattribution)."""
         report = _make_report(
             dashboard_verdict="Conditional",
             analytics_recommendation="Go",
@@ -420,9 +423,9 @@ class TestVerdictVsRecommendation:
         warnings = validator.validate(report)
         verdict_warnings = [w for w in warnings if "verdict" in w.message.lower() and "recommendation" in w.message.lower()]
         assert len(verdict_warnings) == 1
-        assert verdict_warnings[0].severity == "INFO"
+        assert verdict_warnings[0].severity == "WARNING"
 
-    def test_nogo_vs_conditional_info_severity(self):
+    def test_nogo_vs_conditional_warning_severity(self):
         report = _make_report(
             dashboard_verdict="No-Go",
             analytics_recommendation="Conditional",
@@ -432,7 +435,7 @@ class TestVerdictVsRecommendation:
         warnings = validator.validate(report)
         verdict_warnings = [w for w in warnings if "verdict" in w.message.lower() and "recommendation" in w.message.lower()]
         assert len(verdict_warnings) == 1
-        assert verdict_warnings[0].severity == "INFO"
+        assert verdict_warnings[0].severity == "WARNING"
 
 
 # ======================================================================

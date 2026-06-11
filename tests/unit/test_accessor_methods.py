@@ -132,22 +132,37 @@ class TestScoreAccessorConfidenceScore:
         expected = (0.8 + 0.6) / 2
         assert result == expected, f"Expected {expected}, got {result}"
 
-    def test_without_solution_scores_uses_fallback(
+    def test_without_solution_scores_uses_novelty_fallback(
         self, mock_solution_selection_without_scores
     ):
-        """Test confidence score falls back to SolutionIdea fields."""
+        """Competitive advantage falls back to novelty_score (same mapping as
+        backfill) — the old market_fit proxy double-counted market_fit."""
         accessor = ScoreAccessor(mock_solution_selection_without_scores)
 
         solution = Mock()
         solution.solution_name = "TestSolution"
         solution.market_fit_score = 0.9
-        # No competitive_advantage in SolutionIdea, should use market_fit as proxy
+        solution.novelty_score = 0.7
 
         result = accessor.get_confidence_score(solution)
 
-        # Should average market_fit (0.9) and market_fit again (0.9) as proxy
-        expected = (0.9 + 0.9) / 2
+        expected = (0.9 + 0.7) / 2
         assert result == expected, f"Expected {expected}, got {result}"
+
+    def test_without_any_competitive_signal_returns_none(
+        self, mock_solution_selection_without_scores
+    ):
+        """No scores entry AND no novelty_score → None, never a proxy fabrication."""
+        accessor = ScoreAccessor(mock_solution_selection_without_scores)
+
+        solution = Mock()
+        solution.solution_name = "TestSolution"
+        solution.market_fit_score = 0.9
+        solution.novelty_score = None
+
+        assert accessor.get_competitive_advantage(solution) is None
+        # Confidence needs both inputs → None
+        assert accessor.get_confidence_score(solution) is None
 
     def test_with_none_values_returns_none(self):
         """Test confidence score with all None values returns None."""

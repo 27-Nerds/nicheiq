@@ -175,7 +175,9 @@ traffic_monetization_analysis:
        - affiliate_commission_rate: Typical rates for niche (e.g., "5-15%")
        - estimated_affiliate_ctr: Click-through rate estimate (e.g., "2-4% of pageviews")
        - estimated_monthly_affiliate_revenue: Range (e.g., "$50 - $200")
-       - recommended_affiliate_programs: List of 3-5 relevant programs
+       - recommended_affiliate_programs: List of up to 5 REAL, relevant programs.
+         An empty list is valid and preferred over invented programs — do NOT
+         fabricate affiliate programs for niches where none realistically exist.
 
     4. **B2B Options** (if applicable):
        - sponsored_listing_price: Suggested price (e.g., "$99/month")

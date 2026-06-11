@@ -10,6 +10,23 @@ from ..utils.slugify import slugify
 from .keyword_data import OpportunityLevel
 
 
+def compute_opportunity_level(severity_score: float, willingness_to_pay: float) -> OpportunityLevel:
+    """Deterministic opportunity_level formula (mirrors the Task 3 rubric).
+
+    High = severity ≥0.6 AND wtp ≥0.6; Medium = exactly one ≥0.6; Low = both <0.6.
+    The LLM may justifiably score BELOW this formula (universal-theme or
+    tool-addressability caps) by supplying a downgrade_reason — see the merge
+    logic in pain_point_crew.py. Upgrades above the formula are never honored.
+    """
+    high_severity = severity_score >= 0.6
+    high_wtp = willingness_to_pay >= 0.6
+    if high_severity and high_wtp:
+        return OpportunityLevel.HIGH
+    if high_severity or high_wtp:
+        return OpportunityLevel.MEDIUM
+    return OpportunityLevel.LOW
+
+
 class UnvalidatedPainPoint(BaseModel):
     """Pain point extracted by analyst without severity/WTP scores yet."""
 
@@ -211,6 +228,14 @@ class PainPointScoring(BaseModel):
     scoring_rationale: Optional[str] = Field(
         default=None, description="Brief explanation of why these scores were assigned"
     )
+    downgrade_reason: Optional[str] = Field(
+        default=None,
+        description=(
+            "Required ONLY when opportunity_level is set BELOW what the "
+            "severity/WTP formula implies (e.g., universal-theme cap or "
+            "tool-addressability cap). Minimum 20 characters explaining the downgrade."
+        ),
+    )
 
 class ValidationResult(BaseModel):
     """Task 3 output: Validation scores for all pain points (ONLY new scoring data)."""
@@ -249,6 +274,14 @@ class EnrichedPainPointQuotes(BaseModel):
         default_factory=list,
         description="Quotes with post_id attribution from vector search metadata"
     )
+    matched_post_ids: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Unique post IDs from ALL relevance-passing vector hits for this pain "
+            "point (pre top-12 quote cut). Wider than the kept quotes' post_ids; "
+            "used to compute an evidence-grounded mention_count."
+        ),
+    )
 
 
 class QuoteEnrichmentResult(BaseModel):
@@ -277,6 +310,13 @@ class SinglePainPointQuotesResult(BaseModel):
     quotes: list[ExtractedQuote] = Field(
         default_factory=list,
         description="Quotes found (6-12 target)"
+    )
+    matched_post_ids: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Unique post IDs from ALL relevance-passing vector hits "
+            "(pre top-12 cut), for evidence-grounded mention counting."
+        ),
     )
     search_summary: str = Field(
         default="",
@@ -322,6 +362,14 @@ class PainPoint(BaseModel):
     )
     opportunity_level: OpportunityLevel = Field(
         ..., description="Overall opportunity level (high/medium/low)"
+    )
+    opportunity_downgrade_reason: Optional[str] = Field(
+        default=None,
+        description=(
+            "Present when the LLM justifiably downgraded opportunity_level below "
+            "the severity/WTP formula (universal-theme or tool-addressability cap). "
+            "None when the level matches the code-computed formula."
+        ),
     )
     representative_quotes: list[str] = Field(
         ..., description="Real user quotes representing this pain point"

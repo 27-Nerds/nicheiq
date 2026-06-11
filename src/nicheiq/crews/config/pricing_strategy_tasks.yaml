@@ -116,7 +116,7 @@ pricing_strategy_analysis:
     - Estimate ARPU (Average Revenue Per User) based on tier mix
     - Calculate LTV estimate (12-30 month retention scenarios)
     - Estimate organic CAC from market_fit_score (higher fit = lower CAC)
-    - Validate LTV/CAC ratio is healthy (target 3:1 minimum)
+    - Validate LTV/CAC ratio is healthy (target 3:1; mandatory minimum 2:1)
 
     **For Traffic-Based Models (Ad-Supported-Free, Affiliate-Only):**
     - Estimate monthly pageviews needed for target revenue
@@ -242,8 +242,13 @@ pricing_strategy_analysis:
     **LTV/CAC Ratio (subscription models):**
     - Excellent: 10:1 or higher
     - Good: 3:1 to 10:1
-    - Acceptable: 2:1 to 3:1
-    - Poor: Below 2:1 (reconsider pricing or acquisition strategy)
+    - Acceptable: 2:1 to 3:1 (the 2:1 floor is MANDATORY — below it, change pricing or acquisition strategy)
+    - Target 3:1 or better
+
+    SELF-VERIFICATION (required): State your LTV calculation (retention months ×
+    ARPU) and the CAC you used explicitly in your reasoning BEFORE outputting the
+    final numbers, then verify ltv_to_cac_ratio = LTV ÷ CAC and that it is >= 2:1.
+    A stated ratio inconsistent with your own LTV and CAC numbers fails validation.
 
 
     **EXPECTED OUTPUT FORMAT:**
@@ -263,7 +268,7 @@ pricing_strategy_analysis:
     - **pro_tier_features:** Array of 5-8 advanced features (null for ad/affiliate models)
     - **estimated_arpu:** e.g., "$32/month"
     - **estimated_ltv:** e.g., "$384 - $960 (12-30mo retention)"
-    - **ltv_to_cac_ratio:** e.g., "12:1 to 48:1"
+    - **ltv_to_cac_ratio:** e.g., "4:1 (LTV $384 ÷ CAC $96)"
     - **price_vs_competitors:** e.g., "10% below median"
     - **value_proposition_delta:** e.g., "15% more features at 20% lower price"
     - **pricing_confidence:** "High", "Medium", or "Low"
@@ -326,7 +331,7 @@ pricing_strategy_analysis:
     pro_tier_features: ["Unlimited integrations", "Advanced analytics", "Team features", "API access", "Priority support"]
     estimated_arpu: "$32/month"
     estimated_ltv: "$384 - $960 (12-30mo retention)"
-    ltv_to_cac_ratio: "12:1 to 48:1"
+    ltv_to_cac_ratio: "4:1 (LTV $384 ÷ CAC $96)"
     pricing_confidence: "High"
     wtp_validation: "WTP of 0.72 supports premium positioning; pricing 35% below competitor median to accelerate acquisition"
 

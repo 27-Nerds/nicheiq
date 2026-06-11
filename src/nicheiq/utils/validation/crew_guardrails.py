@@ -183,30 +183,46 @@ def validate_diversity(
         return (False, f"Diversity validation error: {str(e)}")
 
 
+def _fuzzy_set_overlap(items_a, items_b) -> float:
+    """Stem-token Jaccard-style overlap between two free-text string lists.
+
+    Tokenizes + stems every entry, then computes overlap / min-size. Exact set
+    equality was trivially defeated by rewording ('county court records' vs
+    'court filings data') — the precise failure mode guardrail retries exploit.
+    """
+    from ..text_stemmer import stem_tokens
+
+    tokens_a = stem_tokens({t for item in items_a for t in str(item).lower().split()})
+    tokens_b = stem_tokens({t for item in items_b for t in str(item).lower().split()})
+    if not tokens_a or not tokens_b:
+        return 0.0
+    return len(tokens_a & tokens_b) / min(len(tokens_a), len(tokens_b))
+
+
 def detect_similarity(idea_a, idea_b) -> bool:
     """
     Detect if two solution ideas are too similar.
 
-    Uses a multi-signal approach: at least 2 of 3 signals must fire to
-    flag a pair as "too similar". This prevents false positives where
-    solutions share data sources but have genuinely different value
-    propositions and target audiences (common in single-type niches).
+    Uses a multi-signal approach: at least 2 of 3 signals must fire to flag a
+    pair as "too similar" — OR a single overwhelming value-proposition overlap
+    (>80%), which is a duplicate regardless of cosmetic differences elsewhere.
 
-    Signals:
-    1. Same data sources = likely similar mechanism
-    2. Value proposition keyword overlap > 60%
-    3. Identical target personas
+    Signals (1 and 3 use fuzzy stem-token overlap, not exact set equality —
+    an LLM retry can trivially reword a string without changing the structure):
+    1. Data source overlap ≥ 60%
+    2. Value proposition keyword overlap > 60% (alone fails at > 80%)
+    3. Target persona overlap ≥ 60%
 
     Returns:
-        bool: True if ideas are too similar (2+ signals detected)
+        bool: True if ideas are too similar
     """
     similarity_signals = 0
 
-    # Signal 1: Same data sources = likely similar mechanism
-    sources_a = set(idea_a.data_sources or [])
-    sources_b = set(idea_b.data_sources or [])
-    if sources_a and sources_b and sources_a == sources_b:
-        logger.debug(f"Similarity signal: Same data sources ({sources_a})")
+    # Signal 1: Overlapping data sources = likely similar mechanism (fuzzy)
+    sources_a = idea_a.data_sources or []
+    sources_b = idea_b.data_sources or []
+    if sources_a and sources_b and _fuzzy_set_overlap(sources_a, sources_b) >= 0.6:
+        logger.debug(f"Similarity signal: Overlapping data sources ({sources_a} ~ {sources_b})")
         similarity_signals += 1
 
     # Signal 2: Value proposition keyword overlap
@@ -271,16 +287,24 @@ def detect_similarity(idea_a, idea_b) -> bool:
 
         if vp_a and vp_b:
             overlap = len(vp_a & vp_b) / min(len(vp_a), len(vp_b))
+            if overlap > 0.8:
+                # Single-strong-signal failure: a near-identical value prop is a
+                # duplicate no matter how the other fields were reworded
+                logger.debug(
+                    f"Similarity detected between '{idea_a.solution_name}' and "
+                    f"'{idea_b.solution_name}': {overlap:.0%} value proposition overlap (single strong signal)"
+                )
+                return True
             if overlap > 0.6:  # >60% overlap in value prop
                 logger.debug(
                     f"Similarity signal: {overlap:.0%} value proposition overlap"
                 )
                 similarity_signals += 1
 
-    # Signal 3: Same target personas (exact match = likely duplicate)
+    # Signal 3: Overlapping target personas (fuzzy)
     if idea_a.target_personas and idea_b.target_personas:
-        if set(idea_a.target_personas) == set(idea_b.target_personas):
-            logger.debug("Similarity signal: Identical target personas")
+        if _fuzzy_set_overlap(idea_a.target_personas, idea_b.target_personas) >= 0.6:
+            logger.debug("Similarity signal: Overlapping target personas")
             similarity_signals += 1
 
     if similarity_signals >= 2:
@@ -289,6 +313,48 @@ def detect_similarity(idea_a, idea_b) -> bool:
             f"'{idea_b.solution_name}': {similarity_signals}/3 signals"
         )
         return True
+
+    return False
+
+
+def detect_catalog_duplicate(new_solution, existing_idea: dict) -> bool:
+    """Structural duplicate check between a regenerated solution and an existing
+    catalog idea (plain dict from the backend: name, description, and — when
+    available — value_proposition and target_personas).
+
+    Replaces the exact-name-only worker filter: renamed structural duplicates
+    passed every previous gate (the within-batch guardrail never compares
+    against the catalog, and the backend insert dedup is exact-name too).
+
+    Signals:
+    - Fuzzy name match (≥ 0.85 sequence ratio)
+    - Value-proposition stem-token overlap > 0.8 (falls back to description
+      text when value_proposition is absent on either side)
+    - Value-prop overlap > 0.6 AND persona overlap ≥ 0.6
+    """
+    from difflib import SequenceMatcher
+
+    new_name = (getattr(new_solution, 'solution_name', '') or '').lower().strip()
+    existing_name = (existing_idea.get('name') or '').lower().strip()
+    if new_name and existing_name:
+        if new_name == existing_name or SequenceMatcher(None, new_name, existing_name).ratio() >= 0.85:
+            return True
+
+    new_vp = (
+        getattr(new_solution, 'value_proposition', None)
+        or getattr(new_solution, 'description', None)
+        or ''
+    )
+    existing_vp = existing_idea.get('value_proposition') or existing_idea.get('description') or ''
+    vp_overlap = _fuzzy_set_overlap([new_vp], [existing_vp]) if new_vp and existing_vp else 0.0
+    if vp_overlap > 0.8:
+        return True
+
+    new_personas = getattr(new_solution, 'target_personas', None) or []
+    existing_personas = existing_idea.get('target_personas') or []
+    if vp_overlap > 0.6 and new_personas and existing_personas:
+        if _fuzzy_set_overlap(new_personas, existing_personas) >= 0.6:
+            return True
 
     return False
 
@@ -1063,6 +1129,25 @@ def _normalize_technique(technique: str) -> str:
     return re.sub(r'[\s-]', '_', technique.strip().lower())
 
 
+def _tags_match(tag_a: str | None, tag_b: str | None) -> bool:
+    """Fuzzy M/D/J tag equality: stem-token overlap ≥ 0.6.
+
+    Tags are short hyphenated phrases anchored by a suggested vocabulary in the
+    prompt; fuzzy matching catches synonym rewording ('scheduled-automated-checks'
+    vs 'periodic-automated-monitoring' share 'automated' + stems) that exact
+    equality misses while staying reliable on the canonical vocabulary.
+    """
+    if not tag_a or not tag_b:
+        return False
+    from ..text_stemmer import stem_tokens
+
+    tokens_a = stem_tokens(set(re.sub(r'[-_/]', ' ', str(tag_a).lower()).split()))
+    tokens_b = stem_tokens(set(re.sub(r'[-_/]', ' ', str(tag_b).lower()).split()))
+    if not tokens_a or not tokens_b:
+        return False
+    return len(tokens_a & tokens_b) / min(len(tokens_a), len(tokens_b)) >= 0.6
+
+
 def validate_raw_concepts(task_output) -> tuple[bool, Any]:
     """
     Guardrail for divergent_exploration_task to validate RawConceptList.
@@ -1214,9 +1299,45 @@ def validate_filtered_concepts(task_output) -> tuple[bool, Any]:
             "Summarize the project types and data sources represented."
         )
 
+    # M/D/J structural-dedup contract (code-checked, not LLM self-report):
+    # (a) every kept concept carries its dedup-gate tags;
+    # (b) no kept pair shares ≥2 fuzzy-equal tags (structural duplicate).
+    # Cross-run dedup against the catalog is enforced separately at the worker
+    # (detect_catalog_duplicate) — prior ideas don't carry stored tags.
+    missing_tags = [
+        c.concept_name for c in result.concepts
+        if not (
+            getattr(c, 'mechanism_tag', None)
+            and getattr(c, 'data_source_tag', None)
+            and getattr(c, 'journey_tag', None)
+        )
+    ]
+    if missing_tags:
+        return (
+            False,
+            f"Concepts missing mechanism_tag/data_source_tag/journey_tag: {missing_tags}. "
+            "Copy the M/D/J tags from the STEP 0.75 dedup gate into each kept concept's fields."
+        )
+
+    for i, concept_a in enumerate(result.concepts):
+        for concept_b in result.concepts[i + 1:]:
+            matched_dims = [
+                field for field in ('mechanism_tag', 'data_source_tag', 'journey_tag')
+                if _tags_match(getattr(concept_a, field, None), getattr(concept_b, field, None))
+            ]
+            if len(matched_dims) >= 2:
+                return (
+                    False,
+                    f"Structural duplicates kept: '{concept_a.concept_name}' and "
+                    f"'{concept_b.concept_name}' share {len(matched_dims)}/3 M/D/J dimensions "
+                    f"({', '.join(matched_dims)}). Remove one or replace it with a "
+                    "structurally distinct concept — rewording tags does not change structure."
+                )
+
     logger.info(
         f"✓ Filtered concepts guardrail passed: "
-        f"{len(result.concepts)} kept, {len(result.removed_concepts or [])} removed"
+        f"{len(result.concepts)} kept, {len(result.removed_concepts or [])} removed "
+        f"(M/D/J tag contract verified)"
     )
     return (True, _guardrail_success_payload(task_output, result))
 
@@ -1574,80 +1695,7 @@ def validate_qa_review_result(task_output) -> tuple[bool, Any]:
 # ========================================
 
 
-def validate_quote_enrichment(task_output) -> tuple[bool, Any]:
-    """
-    Guardrail for enrich_pain_point_quotes_task (Task 4) to validate QuoteEnrichmentResult.
 
-    Validates:
-    - JSON is parseable (via unified helper)
-    - Has enriched_pain_points list
-    - Each quote has post_id (from search result header)
-    - Quotes are substantive (>= 15 chars)
-
-    Returns:
-        tuple[bool, Any]: (success, raw_string_or_error)
-    """
-    # Parse using unified helper
-    result, error = _parse_pydantic_from_task_output(
-        task_output, QuoteEnrichmentResult, "Quote enrichment"
-    )
-    if error:
-        return (False, error)
-
-    # Validate enriched_pain_points list is not empty
-    if not result.enriched_pain_points:
-        return (
-            False,
-            "enriched_pain_points list is empty. "
-            "Use search_discussions tool to find quotes for each pain point from Task 2."
-        )
-
-    # Validate quotes have post_id and are substantive
-    invalid_quotes = []
-    short_quotes = []
-
-    for entry in result.enriched_pain_points:
-        for quote in entry.quotes:
-            if not quote.post_id or quote.post_id == "unknown":
-                invalid_quotes.append(
-                    f"'{entry.pain_point_title}': quote missing post_id"
-                )
-            if len(quote.quote_text) < 15:
-                short_quotes.append(
-                    f"'{entry.pain_point_title}': quote too short ({len(quote.quote_text)} chars)"
-                )
-
-    if invalid_quotes:
-        return (
-            False,
-            "Quotes missing post_id:\n  - " + "\n  - ".join(invalid_quotes[:5]) +
-            "\n\nGet post_id from the search result header: '(post_id: xyz123)'. "
-            "DO NOT fabricate post_ids - extract them from search results."
-        )
-
-    if short_quotes and len(short_quotes) > len(result.enriched_pain_points):
-        # Only fail if many quotes are too short (allow some short quotes)
-        return (
-            False,
-            "Too many short quotes (< 15 chars):\n  - " + "\n  - ".join(short_quotes[:5]) +
-            "\n\nSkip very short quotes like 'me too' or 'same'. "
-            "Extract substantive quotes (15+ words) that express the pain point."
-        )
-
-    # Log statistics
-    total_quotes = sum(len(e.quotes) for e in result.enriched_pain_points)
-    low_quote_pps = [e.pain_point_title for e in result.enriched_pain_points if len(e.quotes) < 3]
-
-    if low_quote_pps:
-        logger.warning(
-            f"Pain points with low quote count (<3): {low_quote_pps[:5]}"
-        )
-
-    logger.info(
-        f"✓ Quote enrichment guardrail passed: "
-        f"{total_quotes} quotes for {len(result.enriched_pain_points)} pain points"
-    )
-    return (True, _guardrail_success_payload(task_output, result))
 
 
 def validate_solution_selection(task_output) -> tuple[bool, Any]:
@@ -1685,7 +1733,7 @@ def validate_solution_selection(task_output) -> tuple[bool, Any]:
     return (True, _guardrail_success_payload(task_output, result))
 
 
-def validate_traffic_monetization(task_output) -> tuple[bool, Any]:
+def validate_traffic_monetization(task_output, traffic_ceiling_y1_high: int | None = None) -> tuple[bool, Any]:
     """
     Guardrail for traffic_monetization_analysis_task.
 
@@ -1694,8 +1742,15 @@ def validate_traffic_monetization(task_output) -> tuple[bool, Any]:
     2. solution_name present
     3. Key revenue fields non-empty
     4. At least 1 recommended_ad_networks entry
-    5. At least 1 recommended_affiliate_programs entry
+    5. When the evidence-based ceiling is supplied: estimated_monthly_pageviews
+       must not exceed it (the ceiling is shown in the prompt as a hard limit
+       but was previously never enforced)
+
+    The old mandatory ≥1 affiliate-program rule is gone — it forced the LLM to
+    invent affiliate programs in niches where none realistically exist.
     """
+    from .numeric_parsers import parse_dollar_amount
+
     result, error = _parse_pydantic_from_task_output(
         task_output, TrafficMonetizationResult, "Traffic monetization"
     )
@@ -1711,14 +1766,22 @@ def validate_traffic_monetization(task_output) -> tuple[bool, Any]:
     if not result.recommended_ad_networks:
         return (False, "recommended_ad_networks must contain at least 1 entry (e.g. 'Google AdSense').")
 
-    if not result.recommended_affiliate_programs:
-        return (False, "recommended_affiliate_programs must contain at least 1 entry.")
+    if traffic_ceiling_y1_high and result.estimated_monthly_pageviews:
+        # parse_dollar_amount handles plain numbers/ranges (returns midpoint)
+        claimed = parse_dollar_amount(result.estimated_monthly_pageviews)
+        if claimed and claimed > traffic_ceiling_y1_high * 1.1:  # 10% rounding tolerance
+            return (
+                False,
+                f"estimated_monthly_pageviews ({result.estimated_monthly_pageviews}) exceeds the "
+                f"evidence-based Year-1 ceiling of {traffic_ceiling_y1_high:,} visits/mo provided "
+                "in the task. Revise the projection to respect the ceiling.",
+            )
 
     logger.info(f"✓ Traffic monetization guardrail passed: '{result.solution_name}'")
     return (True, _guardrail_success_payload(task_output, result))
 
 
-def validate_pricing_strategy(task_output) -> tuple[bool, Any]:
+def validate_pricing_strategy(task_output, suggested_cac_range: str | None = None) -> tuple[bool, Any]:
     """
     Guardrail for pricing_strategy_analysis_task (Stage 7).
 
@@ -1726,9 +1789,18 @@ def validate_pricing_strategy(task_output) -> tuple[bool, Any]:
     1. JSON parses into PricingStrategyResult
     2. solution_name present and non-empty
     3. pricing_rationale >= 50 chars
-    4. estimated_arpu present and non-empty
-    5. estimated_ltv present and non-empty
+    4. estimated_arpu / estimated_ltv parse to positive dollar amounts
+    5. Unit-economics sanity: LTV >= ARPU (at least one month of retention)
+    6. ltv_to_cac_ratio parses and meets the mandatory 2:1 floor
+    7. When the pre-computed CAC anchor is supplied: the stated ratio must be
+       within 2x of LTV ÷ CAC (catches fabricated ratios while tolerating the
+       range formats both fields use)
+
+    The previous version only checked these fields were non-empty strings —
+    internally inconsistent dollar math shipped verbatim into the report.
     """
+    from .numeric_parsers import parse_dollar_amount, parse_ratio
+
     result, error = _parse_pydantic_from_task_output(
         task_output, PricingStrategyResult, "Pricing strategy"
     )
@@ -1745,11 +1817,48 @@ def validate_pricing_strategy(task_output) -> tuple[bool, Any]:
             "Provide a detailed rationale explaining why this pricing strategy was chosen.",
         )
 
-    if not result.estimated_arpu or not result.estimated_arpu.strip():
-        return (False, "estimated_arpu is required (e.g., '$32/month').")
+    arpu = parse_dollar_amount(result.estimated_arpu)
+    if arpu is None or arpu <= 0:
+        return (False, "estimated_arpu must contain a positive dollar amount (e.g., '$32/month').")
 
-    if not result.estimated_ltv or not result.estimated_ltv.strip():
-        return (False, "estimated_ltv is required (e.g., '$384 - $960').")
+    ltv = parse_dollar_amount(result.estimated_ltv)
+    if ltv is None or ltv <= 0:
+        return (False, "estimated_ltv must contain a positive dollar amount (e.g., '$384 - $960').")
+
+    if ltv < arpu:
+        return (
+            False,
+            f"Unit-economics error: estimated_ltv ({result.estimated_ltv}) is below "
+            f"estimated_arpu ({result.estimated_arpu}). LTV = retention months × ARPU, "
+            "so it cannot be less than one month of ARPU. State your LTV calculation "
+            "explicitly and recompute.",
+        )
+
+    stated_ratio = parse_ratio(result.ltv_to_cac_ratio)
+    if stated_ratio is None:
+        return (False, "ltv_to_cac_ratio must contain a numeric ratio (e.g., '3:1').")
+
+    if stated_ratio < 2.0:
+        return (
+            False,
+            f"ltv_to_cac_ratio ({result.ltv_to_cac_ratio}) is below the MANDATORY 2:1 minimum. "
+            "Adjust pricing, retention assumptions, or acquisition strategy and recompute — "
+            "state your LTV and CAC calculations explicitly before the final numbers.",
+        )
+
+    if suggested_cac_range:
+        cac = parse_dollar_amount(suggested_cac_range)
+        if cac and cac > 0:
+            computed_ratio = ltv / cac
+            # Tolerate range-midpoint noise; fail only on egregious fabrication
+            if stated_ratio > computed_ratio * 2 or stated_ratio < computed_ratio / 2:
+                return (
+                    False,
+                    f"ltv_to_cac_ratio ({result.ltv_to_cac_ratio}) is inconsistent with your own "
+                    f"numbers: LTV {result.estimated_ltv} ÷ suggested CAC {suggested_cac_range} "
+                    f"≈ {computed_ratio:.1f}:1, but you stated {stated_ratio:.1f}:1. "
+                    "Recompute the ratio from the LTV and CAC you used.",
+                )
 
     logger.info(f"✓ Pricing strategy guardrail passed: '{result.solution_name}'")
     return (True, _guardrail_success_payload(task_output, result))

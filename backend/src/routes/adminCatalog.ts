@@ -739,14 +739,18 @@ adminCatalogRouter.post('/categories/:id/generate-ideas', async (req: Authentica
       affectedSegments: pp.affectedSegments,
     }));
 
-    // Query existing ideas for this category to avoid regenerating duplicates
+    // Query existing ideas for this category to avoid regenerating duplicates.
+    // valueProposition/targetPersonas feed the worker's structural dedup
+    // (detect_catalog_duplicate) — name+description alone only catch renames.
     const existingIdeas = await prisma.catalogIdea.findMany({
       where: { categoryId },
-      select: { solutionName: true, description: true },
+      select: { solutionName: true, description: true, valueProposition: true, targetPersonas: true },
     });
     const existingIdeasMapped = existingIdeas.map(i => ({
       name: i.solutionName,
       description: i.description || '',
+      value_proposition: i.valueProposition || '',
+      target_personas: Array.isArray(i.targetPersonas) ? (i.targetPersonas as string[]) : [],
     }));
 
     await enqueueCatalogIdeasJob(

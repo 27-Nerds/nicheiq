@@ -160,32 +160,16 @@ class MarketSizingCrew:
             if result.market_timing_assessment not in valid_timing:
                 return (False, f"Timing assessment must be one of: {valid_timing}, got '{result.market_timing_assessment}'")
 
-            # Validate TAM/SAM/SOM hierarchy numerically (best effort)
+            # Validate TAM/SAM/SOM hierarchy numerically (best effort).
+            # Range-aware parsing: "$50-80M" → midpoint 65M (the old first-number
+            # regex parsed it as 50 with no multiplier, breaking comparisons).
             try:
-                import re
+                from ..utils.validation.numeric_parsers import parse_dollar_amount
 
-                def _extract_numeric_value(estimate: str) -> float:
-                    """Extract numeric value from market size estimate (e.g., '$500M' -> 500.0)."""
-                    if not estimate:
-                        return 0.0
-                    # Remove currency symbols, commas, and spaces
-                    cleaned = estimate.replace('$', '').replace(',', '').replace(' ', '').upper()
-                    # Extract number and multiplier (M, B, K)
-                    match = re.search(r'([\d.]+)([MBK])?', cleaned)
-                    if match:
-                        value = float(match.group(1))
-                        multiplier = match.group(2)
-                        if multiplier == 'B':
-                            value *= 1000  # Convert billions to millions for comparison
-                        elif multiplier == 'K':
-                            value /= 1000  # Convert thousands to millions
-                        return value
-                    return 0.0
-
-                tam_val = _extract_numeric_value(result.total_addressable_market)
-                sam_val = _extract_numeric_value(result.serviceable_available_market)
-                som_y1_val = _extract_numeric_value(result.serviceable_obtainable_market_y1)
-                som_y3_val = _extract_numeric_value(result.serviceable_obtainable_market_y3)
+                tam_val = parse_dollar_amount(result.total_addressable_market) or 0.0
+                sam_val = parse_dollar_amount(result.serviceable_available_market) or 0.0
+                som_y1_val = parse_dollar_amount(result.serviceable_obtainable_market_y1) or 0.0
+                som_y3_val = parse_dollar_amount(result.serviceable_obtainable_market_y3) or 0.0
 
                 # Validate TAM > SAM > SOM hierarchy
                 if tam_val > 0 and sam_val > 0:
@@ -201,14 +185,17 @@ class MarketSizingCrew:
                     if not (som_y3_val > som_y1_val):
                         return (False, f"SOM growth violated: SOM Y3 ({result.serviceable_obtainable_market_y3}) must be > SOM Y1 ({result.serviceable_obtainable_market_y1})")
 
-                # Warn if 3-2-1 Rule violated (not a hard failure, just a warning)
+                # 3-2-1 Rule: hard failure → LLM retry with the reason.
+                # (Deterministic arithmetic the LLM can reliably correct.
+                # Retry-thrash fallback if observed in practice: keep the
+                # hierarchy checks above hard, demote these two to warnings.)
                 if tam_val > 0 and sam_val > 0:
                     if tam_val < sam_val * 3:
-                        logger.warning(f"[Guardrail] 3-2-1 Rule: TAM ({result.total_addressable_market}) should be >3x SAM ({result.serviceable_available_market})")
+                        return (False, f"3-2-1 Rule violated: TAM ({result.total_addressable_market}) must be >3x SAM ({result.serviceable_available_market}). Recalculate with a realistic narrowing from TAM to SAM.")
 
                 if sam_val > 0 and som_y1_val > 0:
                     if sam_val < som_y1_val * 2:
-                        logger.warning(f"[Guardrail] 3-2-1 Rule: SAM ({result.serviceable_available_market}) should be >2x SOM Y1 ({result.serviceable_obtainable_market_y1})")
+                        return (False, f"3-2-1 Rule violated: SAM ({result.serviceable_available_market}) must be >2x SOM Y1 ({result.serviceable_obtainable_market_y1}). Recalculate with a realistic Year-1 obtainable share.")
 
             except Exception as numeric_error:
                 # Log but don't fail validation if numeric parsing fails

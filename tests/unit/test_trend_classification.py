@@ -1235,9 +1235,6 @@ class TestMergeIntegration:
             market_maturity="Growth",
             longevity_verdict="Sustainable",
             longevity_rationale="Sustainable because strong keyword growth.",
-            new_entrants_trend="Increasing",
-            competitive_activity_level="Moderate",
-            volume_growth_rate="+15% YoY",
             trend_duration="2+ years growth",
             peak_periods=None,
             community_growth_indicators=["Signal 1 - Stage 5", "Signal 2 - Stage 6", "Signal 3 - Stage 7"],
@@ -1264,9 +1261,9 @@ class TestMergeIntegration:
             market_maturity=narrative.market_maturity,
             longevity_verdict=narrative.longevity_verdict,
             longevity_rationale=narrative.longevity_rationale,
-            new_entrants_trend=narrative.new_entrants_trend,
-            competitive_activity_level=narrative.competitive_activity_level,
-            volume_growth_rate=narrative.volume_growth_rate,
+            new_entrants_trend=None,  # code-computed: no competitor-age data
+            competitive_activity_level="Moderate",  # code-computed from competitor count
+            volume_growth_rate="+15% over the 12-month window",  # code-computed aggregate
             trend_duration=narrative.trend_duration,
             peak_periods=narrative.peak_periods,
             community_growth_indicators=narrative.community_growth_indicators,
@@ -1289,8 +1286,6 @@ class TestMergeIntegration:
                 market_maturity="Growth",
                 longevity_verdict="Sustainable",
                 longevity_rationale="Test rationale.",
-                new_entrants_trend="Stable",
-                competitive_activity_level="Moderate",
                 community_growth_indicators=["s1", "s2", "s3"],
                 trend_reversal_risks=["r1", "r2", "r3"],
             )
@@ -1316,8 +1311,8 @@ class TestMergeIntegration:
                 market_maturity=narrative.market_maturity,
                 longevity_verdict=narrative.longevity_verdict,
                 longevity_rationale=narrative.longevity_rationale,
-                new_entrants_trend=narrative.new_entrants_trend,
-                competitive_activity_level=narrative.competitive_activity_level,
+                new_entrants_trend=None,  # code-computed: no competitor-age data
+                competitive_activity_level="Moderate",  # code-computed from competitor count
                 community_growth_indicators=narrative.community_growth_indicators,
                 trend_reversal_risks=narrative.trend_reversal_risks,
             )

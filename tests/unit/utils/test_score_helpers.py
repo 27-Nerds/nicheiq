@@ -44,15 +44,18 @@ class TestComputeSolutionScores:
         assert s.composite_score == round((0.8 + 0.6 + 0.7 + 0.9) / 4, 3)
         assert s.rank == 1
 
-    def test_none_fields_default_to_05(self):
+    def test_none_optional_fields_stay_none(self):
+        """novelty/seo stay None (never fabricated as 0.5); required mf/tf keep
+        the 0.5 safety-net default; composite averages the present scores."""
         idea = _FakeIdea("Bar")  # all scores None
         scores = compute_solution_scores([idea])
         s = scores[0]
         assert s.market_fit_score == 0.5
         assert s.technical_feasibility_score == 0.5
-        assert s.competitive_advantage_score == 0.5
-        assert s.seo_growth_potential_score == 0.5
-        assert s.composite_score == 0.5
+        assert s.competitive_advantage_score is None
+        assert s.seo_growth_potential_score is None
+        assert s.composite_score == 0.5  # mean of the two present scores
+        assert s.score_source == 'interactive'
 
     def test_zero_score_preserved(self):
         """Verifies 0.0 is NOT replaced by 0.5 (the 'x or 0.5' antipattern)."""

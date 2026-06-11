@@ -619,7 +619,10 @@ RULES:
             "trend_direction": trend_direction,
             "trend_score": round(trend_score, 2),
             "seasonality_index": round(seasonality_index, 2),
-            "is_evergreen": is_evergreen
+            "is_evergreen": is_evergreen,
+            # For market-level aggregate growth (volume_growth_rate)
+            "recent_avg": recent_avg,
+            "older_avg": older_avg,
         }
 
     def _aggregate_keyword_trends(self) -> dict | None:
@@ -646,6 +649,8 @@ RULES:
         rising_volume = 0
         seasonal_keywords = []
         evergreen_keywords = []
+        aggregate_recent = 0.0
+        aggregate_older = 0.0
 
         for kw in enriched_keywords:
             monthly_searches = kw.get("monthly_searches", [])
@@ -653,6 +658,8 @@ RULES:
             trends[metrics["trend_direction"]] += 1
             vol = kw.get("search_volume", 0)
             total_volume += vol
+            aggregate_recent += metrics.get("recent_avg", 0) or 0
+            aggregate_older += metrics.get("older_avg", 0) or 0
 
             if metrics["trend_direction"] == "rising":
                 rising_volume += vol
@@ -685,9 +692,26 @@ RULES:
             else:
                 market_momentum = "Stable"
 
+        # Market-level volume growth from the SAME ±20% + <50/mo noise-floor
+        # thresholds used per keyword (commit 0ef15e3's noise filtering) —
+        # replaces the LLM's "estimate from the trend data" guess.
+        if aggregate_recent < 50 and aggregate_older < 50:
+            volume_growth_rate = "Unknown"
+        elif aggregate_older > 0:
+            agg_pct = (aggregate_recent - aggregate_older) / aggregate_older * 100
+            if agg_pct > 20:
+                volume_growth_rate = f"+{agg_pct:.0f}% over the 12-month window"
+            elif agg_pct < -20:
+                volume_growth_rate = f"{agg_pct:.0f}% over the 12-month window"
+            else:
+                volume_growth_rate = "Stable"
+        else:
+            volume_growth_rate = "Unknown"
+
         return {
             "trend_distribution": trends,
             "rising_volume_pct": (rising_volume / total_volume * 100) if total_volume else 0,
+            "volume_growth_rate": volume_growth_rate,
             "total_keywords_analyzed": len(enriched_keywords),
             "top_seasonal_keywords": [kw["keyword"] for kw in seasonal_keywords[:5]],
             "top_evergreen_keywords": [kw["keyword"] for kw in evergreen_keywords[:10]],
@@ -3292,6 +3316,12 @@ Return a valid JSON object with this structure:
                 if (self.state.idea_generation
                         and self.state.idea_generation.solution_ideas):
                     from nicheiq.utils.score_helpers import backfill_solution_scores
+                    # Provenance: scores already present at this point came from
+                    # the Task 4 strategic selector (backfilled ones get tagged
+                    # 'backfill' inside the helper)
+                    for _score in (self.state.solution_selection.all_solution_scores or []):
+                        if _score.score_source is None:
+                            _score.score_source = 'llm'
                     self.state.solution_selection.all_solution_scores = backfill_solution_scores(
                         self.state.solution_selection.all_solution_scores,
                         self.state.idea_generation.solution_ideas,
@@ -3469,7 +3499,7 @@ Return a valid JSON object with this structure:
             # Stopping condition
             if (
                 len(quality_keywords) >= settings.keyword_enrichment_target_count
-                and coverage >= settings.keyword_enrichment_min_coverage
+                and coverage >= settings.keyword_cluster_min_coverage
             ):
                 logger.info(f"✓ Enrichment target reached after {round_num} rounds")
                 break
@@ -4492,7 +4522,13 @@ Return a valid JSON object with this structure:
 
         logger.info(f"[Stage 7] Pricing Strategy Validation Complete - {len(pricing_results)}/{len(top_n_scores)} solutions analyzed (PARALLEL)")
 
-    def _validate_solution_keywords(self, solution_name: str, audience_vocab: list | None) -> dict:
+    def _validate_solution_keywords(
+        self,
+        solution_name: str,
+        audience_vocab: list | None,
+        start_attempt: int = 1,
+        initial_state: dict | None = None,
+    ) -> dict:
         """
         Helper method to validate keywords for a single solution (thread-safe).
 
@@ -4501,6 +4537,10 @@ Return a valid JSON object with this structure:
         Args:
             solution_name: Name of the solution to validate
             audience_vocab: Audience vocabulary from Stage 6.5
+            start_attempt: First pivot attempt to run (2 when the batched
+                attempt-1 pre-pass already ran for this solution)
+            initial_state: Carry-over from the batched attempt-1 pre-pass:
+                {'validation_result', 'relevance_score', 'good_keywords'}
 
         Returns:
             Dict with 'solution_name', 'validation_result' (dict), 'attempts_made',
@@ -4534,17 +4574,22 @@ Return a valid JSON object with this structure:
             dataforseo_client=self.dataforseo_tool,
         )
 
-        # Adaptive keyword generation with pivot strategies
-        accumulated_good_keywords = []
-        accumulated_keyword_strings = set()
-        best_relevance_score = 0.0
-        best_validation_result = None
-        max_attempts = getattr(settings, 'keyword_pivot_max_attempts', 4)
+        # Adaptive keyword generation with pivot strategies.
+        # Seed from the batched attempt-1 pre-pass when provided so pivots
+        # build on (not discard) the batch evidence.
+        initial_state = initial_state or {}
+        accumulated_good_keywords = list(initial_state.get("good_keywords") or [])
+        accumulated_keyword_strings = {
+            kw.get('keyword', '').lower() for kw in accumulated_good_keywords
+        }
+        best_relevance_score = initial_state.get("relevance_score") or 0.0
+        best_validation_result = initial_state.get("validation_result")
+        max_attempts = getattr(settings, 'keyword_pivot_max_attempts', 3)
         relevance_threshold = getattr(settings, 'keyword_relevance_threshold', 0.6)
         keyword_validation_cache: dict[str, tuple] = {}
-        final_attempt = 0
+        final_attempt = max(0, start_attempt - 1)
 
-        for attempt in range(1, max_attempts + 1):
+        for attempt in range(start_attempt, max_attempts + 1):
             final_attempt = attempt
             logger.info(f"[Parallel] {solution_name} - Attempt {attempt}/{max_attempts}")
 
@@ -4639,6 +4684,124 @@ Return a valid JSON object with this structure:
             "accumulated_keywords_count": len(accumulated_good_keywords)
         }
 
+    def _batched_attempt_one_validation(
+        self,
+        solutions_to_validate: list[str],
+        audience_vocab: list | None,
+    ) -> dict[str, dict]:
+        """
+        Attempt-1 keyword validation for ALL solutions via ONE batched expansion.
+
+        Instead of one expand_keywords call per solution (5 solutions = 5 calls),
+        the diverse seeds of every solution are expanded in a single batched call
+        and the results distributed back per solution. Pivot attempts (2+) still
+        run per-solution, but only for solutions that fail relevance here.
+
+        Returns:
+            {solution_name: {'validation_result', 'relevance_score', 'good_keywords'}}
+            Empty dict on batch failure (callers fall back to per-solution attempt 1).
+        """
+        batch_states: dict[str, dict] = {}
+        solution_seeds: dict[str, list[str]] = {}
+        diverse_union: list[str] = []
+        seen_seeds: set[str] = set()
+        niche_context = self.state.niche_context if hasattr(self.state, 'niche_context') else None
+
+        for name in solutions_to_validate:
+            solution = find_solution_by_name(name, self.state.idea_generation.solution_ideas)
+            if not solution:
+                logger.warning(f"[Stage 6-KV] Solution '{name}' not found - skipping batch seed generation")
+                continue
+            seed_generator = SeedGenerator(
+                state=self.state,
+                niche_context=niche_context,
+                pain_point_analysis=self.state.pain_point_analysis if hasattr(self.state, 'pain_point_analysis') else None,
+                audience_vocabulary=audience_vocab,
+                dataforseo_client=self.dataforseo_tool,
+            )
+            seeds = seed_generator.generate_seeds_with_strategy(solution, attempt=1, count=20)
+            if not seeds:
+                continue
+            solution_seeds[name] = seeds
+            # Mirror expand_seeds_quick's diverse-seed selection (5 per solution)
+            step = max(1, len(seeds) // 5)
+            diverse = [seeds[i] for i in range(0, min(len(seeds), 20), step)][:5]
+            for s in diverse:
+                key = s.lower().strip()
+                if key not in seen_seeds:
+                    seen_seeds.add(key)
+                    diverse_union.append(s)
+
+        if not solution_seeds:
+            return batch_states
+
+        quick_size = getattr(settings, 'keyword_quick_expansion_size', 50)
+        try:
+            all_expanded = self.dataforseo_tool.expand_keywords(
+                seed_keywords=diverse_union,
+                location_code=settings.target_location,
+                max_results_per_batch=quick_size * max(len(solution_seeds), 1),
+            )
+        except Exception as e:
+            logger.warning(
+                f"[Stage 6-KV] Batched attempt-1 expansion failed ({e}) - "
+                "falling back to per-solution validation"
+            )
+            return batch_states
+
+        logger.info(
+            f"[Stage 6-KV] Batched attempt-1 expansion: {len(diverse_union)} seeds "
+            f"from {len(solution_seeds)} solutions → {len(all_expanded)} keywords (1 batched call)"
+        )
+
+        for name, seeds in solution_seeds.items():
+            solution = find_solution_by_name(name, self.state.idea_generation.solution_ideas)
+            if not solution:
+                continue
+            seed_generator = SeedGenerator(
+                state=self.state,
+                niche_context=niche_context,
+                pain_point_analysis=self.state.pain_point_analysis if hasattr(self.state, 'pain_point_analysis') else None,
+                audience_vocabulary=audience_vocab,
+                dataforseo_client=self.dataforseo_tool,
+            )
+            # Distribute: keep keywords overlapping this solution's seeds;
+            # fall back to the whole batch (all niche-relevant) when too few match
+            seed_terms = [s.lower() for s in seeds]
+            solution_keywords = [
+                kw for kw in all_expanded
+                if any(term in kw.get('keyword', '').lower() for term in seed_terms)
+            ]
+            if len(solution_keywords) < 20:
+                solution_keywords = list(all_expanded)
+            if len(solution_keywords) > quick_size:
+                solution_keywords = sorted(
+                    solution_keywords,
+                    key=lambda x: x.get('search_volume', 0),
+                    reverse=True,
+                )[:quick_size]
+
+            validation_result = seed_generator.calculate_validation_from_expansion(
+                solution_keywords, name, original_seed_count=len(seeds)
+            )
+            relevance_score, good_keywords, _issues = check_keyword_relevance(
+                solution_keywords,
+                solution,
+                niche_context=niche_context,
+                audience_vocabulary=audience_vocab,
+            )
+            batch_states[name] = {
+                "validation_result": validation_result,
+                "relevance_score": relevance_score,
+                "good_keywords": good_keywords,
+            }
+            logger.info(
+                f"[Stage 6-KV] Batched attempt 1: {name} relevance={relevance_score:.2f}, "
+                f"{len(good_keywords)} good keywords"
+            )
+
+        return batch_states
+
     def _run_integrated_keyword_validation(self):
         """
         Integrated Keyword Validation for Top N Solutions (Parallel)
@@ -4713,44 +4876,81 @@ Return a valid JSON object with this structure:
         if not solutions_to_validate:
             logger.info("[Stage 6-KV] All solutions already validated - skipping to post-processing")
         else:
-            logger.info(f"[Stage 6-KV] Validating {len(solutions_to_validate)} solutions in parallel (max_workers=2)")
+            # Batched attempt-1 pre-pass: one expand_keywords call for ALL
+            # solutions instead of one per solution. Solutions passing the
+            # relevance threshold here never enter the per-solution pivot loop.
+            relevance_threshold = getattr(settings, 'keyword_relevance_threshold', 0.6)
+            batch_states = self._batched_attempt_one_validation(solutions_to_validate, audience_vocab)
 
-            # Run keyword validation in parallel
-            with ThreadPoolExecutor(max_workers=2) as executor:
-                # Submit all keyword validation tasks
-                futures = {
-                    executor.submit(self._validate_solution_keywords, solution_name, audience_vocab): solution_name
-                    for solution_name in solutions_to_validate
-                }
+            def _record_validation(result_dict: dict, solution_name: str) -> None:
+                validation_result = result_dict["validation_result"]
+                if validation_result:
+                    validation_obj = CrewKeywordValidationResult(**validation_result)
+                    validation_results.append(validation_obj)
+                    logger.info(
+                        f"[Stage 6-KV] Keyword validation complete: {solution_name} "
+                        f"({result_dict['attempts_made']} attempts, relevance={result_dict['best_relevance_score']:.2f})"
+                    )
+                    # Incremental checkpoint (thread-safe: append only)
+                    self.state.keyword_validation_results = validation_results
+                    self.checkpoint_mgr.save_stage(
+                        "stage_6_keyword_validation_partial",
+                        [v.model_dump() for v in validation_results]
+                    )
+                else:
+                    logger.warning(f"[Stage 6-KV] Keyword validation failed: {solution_name}")
 
-                # Collect results as they complete
-                for future in as_completed(futures):
-                    solution_name = futures[future]
-                    try:
-                        result_dict = future.result()
-                        validation_result = result_dict["validation_result"]
+            needs_pivot: list[str] = []
+            for solution_name in solutions_to_validate:
+                state = batch_states.get(solution_name)
+                if state and state["validation_result"] and state["relevance_score"] >= relevance_threshold:
+                    vr = state["validation_result"]
+                    good_keywords = state["good_keywords"] or []
+                    vr["attempts_made"] = 1
+                    vr["best_relevance_score"] = state["relevance_score"]
+                    vr["accumulated_keywords_count"] = len(good_keywords)
+                    vr["niche_relevant_volume"] = (
+                        sum(kw.get('search_volume', 0) for kw in good_keywords)
+                        if state["relevance_score"] >= 0.3 else None
+                    )
+                    vr["validated_keywords"] = good_keywords
+                    _record_validation(
+                        {
+                            "validation_result": vr,
+                            "attempts_made": 1,
+                            "best_relevance_score": state["relevance_score"],
+                        },
+                        solution_name,
+                    )
+                else:
+                    needs_pivot.append(solution_name)
 
-                        if validation_result:
-                            # Convert dict to Pydantic object
-                            validation_obj = CrewKeywordValidationResult(**validation_result)
-                            validation_results.append(validation_obj)
+            if needs_pivot:
+                logger.info(
+                    f"[Stage 6-KV] {len(needs_pivot)} solution(s) below relevance threshold "
+                    f"after batched attempt 1 - running pivot attempts in parallel (max_workers=2)"
+                )
+                with ThreadPoolExecutor(max_workers=2) as executor:
+                    # Solutions covered by the batch start at attempt 2 (carrying
+                    # batch evidence); batch-failure solutions start fresh at 1.
+                    futures = {
+                        executor.submit(
+                            self._validate_solution_keywords,
+                            solution_name,
+                            audience_vocab,
+                            2 if solution_name in batch_states else 1,
+                            batch_states.get(solution_name),
+                        ): solution_name
+                        for solution_name in needs_pivot
+                    }
 
-                            logger.info(
-                                f"[Stage 6-KV] Keyword validation complete: {solution_name} "
-                                f"({result_dict['attempts_made']} attempts, relevance={result_dict['best_relevance_score']:.2f})"
-                            )
-
-                            # Incremental checkpoint (thread-safe: append only)
-                            self.state.keyword_validation_results = validation_results
-                            self.checkpoint_mgr.save_stage(
-                                "stage_6_keyword_validation_partial",
-                                [v.model_dump() for v in validation_results]
-                            )
-                        else:
-                            logger.warning(f"[Stage 6-KV] Keyword validation failed: {solution_name}")
-
-                    except Exception as e:
-                        logger.error(f"[Stage 6-KV] Keyword validation error for {solution_name}: {e}")
+                    # Collect results as they complete
+                    for future in as_completed(futures):
+                        solution_name = futures[future]
+                        try:
+                            _record_validation(future.result(), solution_name)
+                        except Exception as e:
+                            logger.error(f"[Stage 6-KV] Keyword validation error for {solution_name}: {e}")
 
         # Store validation results in state
         self.state.keyword_validation_results = validation_results
@@ -4920,6 +5120,10 @@ Return a valid JSON object with this structure:
 
         # Re-score solutions using keyword demand
         logger.info("[Stage 6-KV] Re-scoring solutions with keyword demand data")
+        from nicheiq.utils.score_helpers import (
+            blend_adjusted_composite,
+            rerank_solutions_by_adjusted_score,
+        )
 
         for validation in validation_results:
             # Find corresponding solution score
@@ -4928,26 +5132,24 @@ Return a valid JSON object with this structure:
                     # Store keyword demand score
                     solution_score.keyword_demand_score = validation.keyword_demand_score
 
-                    # Calculate adjusted composite score
+                    # Adjusted composite: bounded 0.7/0.3 blend, NOT multiplication
+                    # (see blend_adjusted_composite for rationale)
                     base_score = solution_score.composite_score
-                    keyword_multiplier = validation.keyword_demand_score
-                    solution_score.adjusted_composite_score = base_score * keyword_multiplier
+                    demand = validation.keyword_demand_score
+                    solution_score.adjusted_composite_score = blend_adjusted_composite(
+                        base_score, demand
+                    )
 
                     logger.info(
                         f"[Stage 6-KV] {solution_score.solution_name}: "
-                        f"base={base_score:.2f}, keyword_demand={keyword_multiplier:.2f}, "
+                        f"base={base_score:.2f}, keyword_demand={demand:.2f}, "
                         f"adjusted={solution_score.adjusted_composite_score:.2f}"
                     )
                     break
 
-        # Re-rank solutions by adjusted score (ONLY validated solutions)
-        # Bug fix: Previously included non-validated solutions which kept raw composite_score
-        # as adjusted_composite_score, giving them unfair advantage over validated ones
-        ranked_solutions = sorted(
-            [s for s in all_scores if s.solution_name in validated_names],
-            key=lambda s: s.adjusted_composite_score or 0.0,
-            reverse=True
-        )
+        # Re-rank validated solutions (novelty tiebreaker + stale-rank rewrite
+        # included — see rerank_solutions_by_adjusted_score)
+        ranked_solutions = rerank_solutions_by_adjusted_score(all_scores, validated_names)
 
         if ranked_solutions:
             new_winner = ranked_solutions[0].solution_name
@@ -4972,12 +5174,17 @@ Return a valid JSON object with this structure:
                     new_winner, self.state.idea_generation.solution_ideas
                 )
 
-                # Build replacement rationale (full rewrite, not append)
+                # Preserve the strategic selector's original rationale before
+                # mutating — the pivot APPENDS keyword evidence, never replaces
+                # the original multi-criteria reasoning.
+                original_rationale = self.state.solution_selection.selection_rationale
+                self.state.solution_selection.original_selection_reasoning = original_rationale
+
                 new_kd = new_winner_score.keyword_demand_score or 0.0
                 new_adj = new_winner_score.adjusted_composite_score or 0.0
                 rationale_parts = [
-                    f"**{new_winner}** emerged as the top solution after keyword validation "
-                    f"with an adjusted composite score of {new_adj:.2f} "
+                    f"**Keyword-validation update:** **{new_winner}** emerged as the top solution "
+                    f"after keyword validation with an adjusted composite score of {new_adj:.2f} "
                     f"(keyword demand score: {new_kd:.2f})."
                 ]
 
@@ -5013,8 +5220,23 @@ Return a valid JSON object with this structure:
                 )
 
                 self.state.solution_selection.selection_rationale = (
-                    "\n\n".join(rationale_parts)
+                    original_rationale + "\n\n" + "\n\n".join(rationale_parts)
                 )
+
+                # Refresh selection_criteria_scores to describe the NEW winner
+                # (they previously kept describing the dethroned original).
+                from ..models.solution_selection import SelectionCriteriaScore
+                pivot_note = "Carried from Stage 5 scoring after keyword-validation pivot"
+                self.state.solution_selection.selection_criteria_scores = [
+                    SelectionCriteriaScore(criterion=criterion, score=score, justification=pivot_note)
+                    for criterion, score in [
+                        ("market_fit", new_winner_score.market_fit_score),
+                        ("technical_feasibility", new_winner_score.technical_feasibility_score),
+                        ("competitive_advantage", new_winner_score.competitive_advantage_score),
+                        ("seo_growth_potential", new_winner_score.seo_growth_potential_score),
+                    ]
+                    if score is not None
+                ]
 
                 # Update recommended_focus
                 if new_winner_solution:

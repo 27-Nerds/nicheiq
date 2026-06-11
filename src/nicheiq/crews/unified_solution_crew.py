@@ -30,7 +30,7 @@ from langchain_openai import ChatOpenAI
 from loguru import logger
 
 from ..config.settings import settings
-from ..utils.llm_service import build_llm_kwargs
+from ..utils.llm_service import build_crew_llm, build_llm_kwargs
 from ..models.competitor import CompetitiveAnalysisResult
 from ..models.pain_point import PainPointAnalysisResult
 from ..models.research_state import AudienceMappingResult, NicheContext
@@ -278,21 +278,19 @@ class UnifiedSolutionCrew:
         GPT-5 series: reasoning_effort from settings (default: high for creative ideation)
         Older models: temperature=0.85, frequency_penalty=0.5, presence_penalty=0.3
         """
-        # Use build_llm_kwargs for automatic reasoning model detection
-        # For reasoning models: temperature/frequency_penalty/presence_penalty are ignored
-        # For older models: uses the specified sampling parameters
-        llm_kwargs = build_llm_kwargs(
-            model=settings.brainstorm_llm,
-            temperature=0.85,
-            frequency_penalty=0.5,
-            presence_penalty=0.3,
-        )
-        if settings.brainstorm_reasoning_effort:
-            llm_kwargs["reasoning_effort"] = settings.brainstorm_reasoning_effort
-
+        # build_crew_llm: for reasoning models this returns a crewai.LLM that
+        # actually forwards reasoning_effort to the API (a ChatOpenAI instance
+        # loses it in CrewAI's create_llm conversion — the ideation pipeline
+        # previously ran with ALL creativity knobs silently inert).
         return Agent(
             config=self.agents_config["solution_ideator"],
-            llm=ChatOpenAI(**llm_kwargs),
+            llm=build_crew_llm(
+                model=settings.brainstorm_llm,
+                temperature=0.85,
+                reasoning_effort=settings.brainstorm_reasoning_effort,
+                frequency_penalty=0.5,
+                presence_penalty=0.3,
+            ),
             verbose=True,
         )
 
@@ -306,17 +304,13 @@ class UnifiedSolutionCrew:
         GPT-5 series: reasoning_effort from settings
         Older models: temperature=0.2
         """
-        # Use build_llm_kwargs for automatic reasoning model detection
-        llm_kwargs = build_llm_kwargs(
-            model=settings.brainstorm_llm,
-            temperature=0.2,  # Ignored for reasoning models
-        )
-        if settings.brainstorm_reasoning_effort:
-            llm_kwargs["reasoning_effort"] = settings.brainstorm_reasoning_effort
-
         return Agent(
             config=self.agents_config["solution_evaluator"],
-            llm=ChatOpenAI(**llm_kwargs),
+            llm=build_crew_llm(
+                model=settings.brainstorm_llm,
+                temperature=0.2,  # Used for non-reasoning models only
+                reasoning_effort=settings.brainstorm_reasoning_effort,
+            ),
             verbose=True,
         )
 
@@ -344,20 +338,7 @@ class UnifiedSolutionCrew:
             verbose=True,
         )
 
-    @agent
-    def market_analyst(self) -> Agent:
-        """
-        Agent for market gap analysis and positioning strategy.
-        Moderate temperature for analytical insights.
-        """
-        return Agent(
-            config=self.agents_config["market_analyst"],
-            llm=ChatOpenAI(**build_llm_kwargs(
-                model=settings.openai_model_name,
-                temperature=0.4,
-            )),
-            verbose=True,
-        )
+    
 
     @agent
     def solution_refiner(self) -> Agent:
@@ -369,17 +350,13 @@ class UnifiedSolutionCrew:
         GPT-5 series: reasoning_effort from settings
         Older models: temperature=0.4
         """
-        # Use build_llm_kwargs for automatic reasoning model detection
-        llm_kwargs = build_llm_kwargs(
-            model=settings.brainstorm_llm,
-            temperature=0.4,  # Ignored for reasoning models
-        )
-        if settings.brainstorm_reasoning_effort:
-            llm_kwargs["reasoning_effort"] = settings.brainstorm_reasoning_effort
-
         return Agent(
             config=self.agents_config["solution_refiner"],
-            llm=ChatOpenAI(**llm_kwargs),
+            llm=build_crew_llm(
+                model=settings.brainstorm_llm,
+                temperature=0.4,  # Used for non-reasoning models only
+                reasoning_effort=settings.brainstorm_reasoning_effort,
+            ),
             verbose=True,
         )
 
@@ -580,6 +557,7 @@ class UnifiedSolutionCrew:
             from ..utils.pain_point_formatters import (
                 extract_pain_points_by_priority,
                 format_pain_points_for_agents,
+                select_diverse_pain_points,
             )
 
             # Extract pain points by priority
@@ -587,12 +565,18 @@ class UnifiedSolutionCrew:
                 self.pain_point_analysis
             )
 
+            # Diversified ideation funnel (top-7 severity + top-3 evidence
+            # mentions + up to 2 from unrepresented themes) — a pure
+            # top-10-by-severity slice fed ideation the same flavor of pain
+            # every run and discarded long-tail themes entirely.
+            high_priority = select_diverse_pain_points(high_priority)
+
             # Format using unified helper
             high_priority_list = format_pain_points_for_agents(
                 pain_points=high_priority,
                 format_type="detailed",
                 sort_by="severity",
-                limit=10,
+                limit=12,
                 include_quotes=True
             )
 

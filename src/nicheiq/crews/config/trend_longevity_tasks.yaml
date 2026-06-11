@@ -4,9 +4,9 @@ trend_longevity_analysis:
 
     **PRE-COMPUTED QUANTITATIVE SIGNALS (from Python — treat as facts):**
     - Keyword Volume Trend: {keyword_volume_trend}
-    - Momentum Score: {momentum_score} (0-1 scale; represents % of search
-      volume in growing keywords. >0.7 = strong growth, 0.4-0.6 = stable,
-      <0.3 = declining)
+    - Momentum Score: {momentum_score} (0-1 scale; banded piecewise-linear
+      interpolation over the rising-volume percentage, winsorized to
+      [0.10, 0.95]. >0.7 = strong growth, 0.4-0.6 = stable, <0.3 = declining)
     - Trend Direction: {trend_direction} (Confidence: {trend_confidence})
     - Seasonal Pattern: {seasonal_pattern}
     - Discussion Recency: {discussion_recency}
@@ -55,26 +55,17 @@ trend_longevity_analysis:
        Recent discussion activity. Competitive data shows N
        active competitors validating market demand..."
 
-    4. **new_entrants_trend** ("Increasing" / "Stable" / "Consolidating")
-       Based on competitive data: competitor count, market gaps, competitor
-       age mix. Many newer/smaller competitors = Increasing. Few large
-       established players = Consolidating.
+    NOTE: new_entrants_trend, competitive_activity_level, and
+    volume_growth_rate are now computed deterministically in Python from the
+    competitor counts and monthly keyword series — do NOT estimate them.
 
-    5. **competitive_activity_level** ("High" / "Moderate" / "Low")
-       Based on: total competitor count ({competitor_count}), market gap
-       count, competitor feature overlap. >15 competitors = High.
-       5-15 = Moderate. <5 = Low.
-
-    6. **volume_growth_rate**: "+X% YoY", "-X% YoY", "Stable", or "Unknown"
-       Estimate from the keyword trend data provided.
-
-    7. **trend_duration**: "2+ years growth", "6 months spike", etc.
+    4. **trend_duration**: "2+ years growth", "6 months spike", etc.
        Infer from discussion dates and keyword trend patterns.
 
-    8. **peak_periods**: ["Q4", "November-December"] or null if not seasonal.
+    5. **peak_periods**: ["Q4", "November-December"] or null if not seasonal.
        Only if seasonal_pattern is "Strong Seasonal" or "Mild Seasonal".
 
-    9. **community_growth_indicators**: 3-5 signals with stage citations.
+    6. **community_growth_indicators**: 3-5 signals with stage citations.
        Format: "[Signal] - Source: [data section] showing [metric]"
        ONLY cite data visible in the RAW DATA sections above: keyword data
        (volumes, trends, evergreen/seasonal keywords), discussion data
@@ -85,7 +76,7 @@ trend_longevity_analysis:
        quality metrics when citing community growth evidence.
        FORBIDDEN: Discord, Slack, subreddit creation dates, funding, conferences.
 
-    10. **trend_reversal_risks**: 3-5 risks with severity + evidence.
+    7. **trend_reversal_risks**: 3-5 risks with severity + evidence.
         Format: "[HIGH/MEDIUM/LOW] - [Risk] - Evidence: [metric from raw data]"
         Consider: technology shifts, regulatory changes, market saturation,
         dependence on single platform, declining search interest.

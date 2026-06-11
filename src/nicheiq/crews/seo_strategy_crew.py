@@ -97,7 +97,7 @@ def _hydrate_tiered_keyword(
     light: LightweightKeywordSelection,
     lookup: dict[str, dict],
     tier: int
-) -> TieredKeyword:
+) -> TieredKeyword | None:
     """
     Hydrate lightweight keyword selection with stats from CSV lookup.
 
@@ -107,18 +107,23 @@ def _hydrate_tiered_keyword(
         tier: Tier assignment (0, 1, 2)
 
     Returns:
-        Full TieredKeyword with stats hydrated from CSV
+        Full TieredKeyword with stats hydrated from CSV, or None when the
+        keyword has NO CSV entry at all (LLM hallucination) — such keywords
+        are DROPPED rather than shipped with fabricated default stats
+        (volume=0, "MEDIUM (50)") that pollute tier tables and avg_competition.
+        Keywords present in the CSV with individual fields missing keep
+        per-field defaults: they are real, just partially measured.
     """
     kw_key = light.keyword.lower().strip()
     stats = lookup.get(kw_key)
 
-    # WARN if keyword not found in CSV lookup - indicates LLM hallucination or mismatch
     if stats is None:
         logger.warning(
             f"⚠️ HYDRATION: Keyword '{light.keyword}' not found in CSV lookup "
-            f"(Tier {tier}). Using defaults - may indicate LLM hallucination."
+            f"(Tier {tier}) - dropping (likely LLM hallucination; fabricated "
+            f"default stats would pollute tier tables)."
         )
-        stats = {}
+        return None
 
     # Extract stats with warnings for missing values
     search_volume = stats.get('search_volume')
@@ -2939,13 +2944,20 @@ class SEOStrategyCrew:
             tier_0_light = task_1a_i_output.tier_0_keywords or []
             tier_0_keywords = []
             seen_t0 = set()
+            dropped_t0 = 0
             for light in tier_0_light:
                 kw_key = light.keyword.lower().strip()
                 if kw_key not in seen_t0:
-                    tier_0_keywords.append(_hydrate_tiered_keyword(light, lookup, tier=0))
+                    hydrated = _hydrate_tiered_keyword(light, lookup, tier=0)
+                    if hydrated is not None:
+                        tier_0_keywords.append(hydrated)
+                    else:
+                        dropped_t0 += 1
                     seen_t0.add(kw_key)
-            if len(tier_0_keywords) < len(tier_0_light):
-                logger.warning(f"⚠️ Removed {len(tier_0_light) - len(tier_0_keywords)} duplicate keywords from tier_0_keywords")
+            if dropped_t0:
+                logger.warning(f"⚠️ Data quality: dropped {dropped_t0} Tier-0 keyword(s) with no CSV entry (LLM hallucination)")
+            if len(tier_0_keywords) + dropped_t0 < len(tier_0_light):
+                logger.warning(f"⚠️ Removed {len(tier_0_light) - len(tier_0_keywords) - dropped_t0} duplicate keywords from tier_0_keywords")
             if not tier_0_keywords and not partitions.get("tier_0_remaining"):
                 logger.warning("⚠️ No Tier 0 premium keywords found - niche may lack high-opportunity keywords (opp_score > 200)")
 
@@ -2965,13 +2977,20 @@ class SEOStrategyCrew:
             tier_1_light = task_1a_ii_output.tier_1_keywords or []
             tier_1_keywords = []
             seen_t1 = set()
+            dropped_t1 = 0
             for light in tier_1_light:
                 kw_key = light.keyword.lower().strip()
                 if kw_key not in seen_t1:
-                    tier_1_keywords.append(_hydrate_tiered_keyword(light, lookup, tier=1))
+                    hydrated = _hydrate_tiered_keyword(light, lookup, tier=1)
+                    if hydrated is not None:
+                        tier_1_keywords.append(hydrated)
+                    else:
+                        dropped_t1 += 1
                     seen_t1.add(kw_key)
-            if len(tier_1_keywords) < len(tier_1_light):
-                logger.warning(f"⚠️ Removed {len(tier_1_light) - len(tier_1_keywords)} duplicate keywords from tier_1_keywords")
+            if dropped_t1:
+                logger.warning(f"⚠️ Data quality: dropped {dropped_t1} Tier-1 keyword(s) with no CSV entry (LLM hallucination)")
+            if len(tier_1_keywords) + dropped_t1 < len(tier_1_light):
+                logger.warning(f"⚠️ Removed {len(tier_1_light) - len(tier_1_keywords) - dropped_t1} duplicate keywords from tier_1_keywords")
             if not tier_1_keywords and not partitions.get("tier_1_remaining"):
                 logger.warning("⚠️ No Tier 1 quick-win keywords found - niche may lack mid-opportunity keywords (opp_score 100-200)")
 
@@ -2991,13 +3010,20 @@ class SEOStrategyCrew:
             tier_2_light = task_1b_output.tier_2_keywords or []
             tier_2_keywords = []
             seen_t2 = set()
+            dropped_t2 = 0
             for light in tier_2_light:
                 kw_key = light.keyword.lower().strip()
                 if kw_key not in seen_t2:
-                    tier_2_keywords.append(_hydrate_tiered_keyword(light, lookup, tier=2))
+                    hydrated = _hydrate_tiered_keyword(light, lookup, tier=2)
+                    if hydrated is not None:
+                        tier_2_keywords.append(hydrated)
+                    else:
+                        dropped_t2 += 1
                     seen_t2.add(kw_key)
-            if tier_2_keywords and len(tier_2_keywords) < len(tier_2_light):
-                logger.warning(f"⚠️ Removed {len(tier_2_light) - len(tier_2_keywords)} duplicate keywords from tier_2_keywords")
+            if dropped_t2:
+                logger.warning(f"⚠️ Data quality: dropped {dropped_t2} Tier-2 keyword(s) with no CSV entry (LLM hallucination)")
+            if tier_2_keywords and len(tier_2_keywords) + dropped_t2 < len(tier_2_light):
+                logger.warning(f"⚠️ Removed {len(tier_2_light) - len(tier_2_keywords) - dropped_t2} duplicate keywords from tier_2_keywords")
 
             # Hydrate remaining Tier 2 keywords (Python hydration)
             tier_2_remaining = partitions.get("strategic_remaining", [])

@@ -13,6 +13,7 @@ from crewai.project import CrewBase, agent, crew, task
 from loguru import logger
 
 from ..config.settings import settings
+from ..models.keyword_data import OpportunityLevel
 from ..models.pain_point import (
     ContentCategorizationReport,
     EnrichedPainPointQuotes,
@@ -22,8 +23,10 @@ from ..models.pain_point import (
     PainPointExtraction,
     QuoteEnrichmentResult,
     SinglePainPointQuotesResult,
+    ThemeCategory,
     UnvalidatedPainPoint,
     ValidationResult,
+    compute_opportunity_level,
 )
 from ..models.social_content import RedditComment, RedditPost, SocialPost, SocialResponse, TwitterThread, TwitterTweet
 from ..utils.parsing.json_extractor import clean_llm_response, extract_json_object_from_text
@@ -65,7 +68,6 @@ def _fence_content(text: str, platform: str, post_id: str) -> str:
     )
 from ..utils.validation.crew_guardrails import (
     validate_content_categorization,
-    validate_quote_enrichment,
 )
 
 # Fuzzy matching threshold for pain point title matching (0.0-1.0)
@@ -903,38 +905,7 @@ class PainPointCrew:
             verbose=True,
         )
 
-    @agent
-    def quote_enrichment_researcher(self) -> Agent:
-        """
-        Agent responsible for finding verbatim quotes via vector search (Task 4).
-
-        Uses QuoteSearchTool to search the enrichment knowledge base
-        (all raw posts with post_id metadata) and extract quotes with source attribution.
-
-        Uses low temperature (0.1) for consistent, literal quote extraction.
-        """
-        from langchain_openai import ChatOpenAI
-
-        from ..tools.quote_search_tool import QuoteSearchTool
-        from ..utils.llm_service import build_llm_kwargs
-
-        # Create search tool with enrichment knowledge (if available)
-        tools = []
-        if self._enrichment_knowledge:
-            tools.append(QuoteSearchTool(knowledge=self._enrichment_knowledge))
-        else:
-            logger.warning("quote_enrichment_researcher: No enrichment knowledge available")
-
-        return Agent(
-            config=self.agents_config["quote_enrichment_researcher"],
-            llm=ChatOpenAI(**build_llm_kwargs(
-                model=settings.quote_enrichment_llm,
-                temperature=0.1,  # Low temperature for literal extraction
-                max_tokens=16000,  # Large output for many quotes
-            )),
-            tools=tools,
-            verbose=True,
-        )
+    
 
     @task
     def categorize_content_task(self) -> Task:
@@ -976,7 +947,9 @@ class PainPointCrew:
         """
         Task: Score and validate extracted pain points.
 
-        Depends on: extract_pain_points_task
+        Runs in its own crew (Crew B) AFTER Python quote enrichment, so the
+        scorer sees real evidence quotes via the {pain_points_with_evidence}
+        template variable instead of cross-task context.
         Output: ValidationResult with severity and WTP scores (scores only, Python will merge).
 
         Includes guardrail to handle JSON parsing errors and validate score ranges.
@@ -984,35 +957,12 @@ class PainPointCrew:
         return Task(
             config=self.tasks_config["validate_pain_points"],
             agent=self.pain_point_validator(),
-            context=[self.extract_pain_points_task()],
             output_pydantic=ValidationResult,
             guardrail=validate_pain_point_scoring,
             guardrail_max_retries=2,  # Retry up to 2 times on JSON/validation failure
         )
 
-    @task
-    def enrich_pain_point_quotes_task(self) -> Task:
-        """
-        Task 4: Find verbatim quotes for each pain point via vector search.
-
-        Depends on: extract_pain_points_task (uses anchor_keywords)
-        Output: QuoteEnrichmentResult with quotes per pain point from vector search.
-
-        The agent uses QuoteSearchTool to search the enrichment knowledge base
-        (all raw posts with post_id metadata) and extracts quotes with source attribution.
-
-        NOTE: This task is kept for backward compatibility but is NOT used in the
-        main analyze() flow. Instead, _run_parallel_quote_enrichment() is called
-        directly after Tasks 1-3 complete.
-        """
-        return Task(
-            config=self.tasks_config["enrich_pain_point_quotes"],
-            agent=self.quote_enrichment_researcher(),
-            context=[self.extract_pain_points_task()],  # Only Task 2 needed, not Task 3
-            output_pydantic=QuoteEnrichmentResult,
-            guardrail=validate_quote_enrichment,
-            guardrail_max_retries=2,
-        )
+    
 
     # Stopwords for relevance scoring (common English words that don't carry topic signal)
     _STOPWORDS = frozenset({
@@ -1163,6 +1113,7 @@ class PainPointCrew:
         """
         seen_quote_texts: set[str] = set()
         scored_quotes: list[tuple[float, ExtractedQuote]] = []
+        matched_post_ids: set[str] = set()  # ALL relevance-passing hits (pre top-12 cut)
 
         # Precompute relevance terms once for this pain point
         relevance_terms = self._build_relevance_terms(pain_point)
@@ -1196,6 +1147,8 @@ class PainPointCrew:
                         continue
 
                     seen_quote_texts.add(normalized)
+                    if post_id:
+                        matched_post_ids.add(post_id)
                     # Combined ranking: weight vector similarity + keyword relevance
                     combined_score = vector_score * 0.6 + relevance * 0.4
                     scored_quotes.append((combined_score, ExtractedQuote(
@@ -1213,6 +1166,7 @@ class PainPointCrew:
             pain_point_title=pain_point.title,
             anchor_keywords_searched=pain_point.anchor_keywords[:3],
             quotes=final_quotes,
+            matched_post_ids=sorted(matched_post_ids),
             search_summary=(
                 f"Searched {len(all_queries)} queries (contextual), "
                 f"found {len(final_quotes)} quotes from {len(scored_quotes)} candidates"
@@ -1285,6 +1239,7 @@ class PainPointCrew:
                     enriched_results.append(EnrichedPainPointQuotes(
                         pain_point_title=result.pain_point_title,
                         quotes=result.quotes,
+                        matched_post_ids=result.matched_post_ids,
                     ))
                     logger.info(f"[OK] Enriched '{pp.title[:40]}': {len(result.quotes)} quotes")
                 except Exception as e:
@@ -1304,23 +1259,300 @@ class PainPointCrew:
             enrichment_summary=f"Parallel enrichment: {total_quotes} quotes for {len(enriched_results)} pain points"
         )
 
+    def _kickoff_with_quality_catch(self, crew: Crew, inputs: dict, phase_label: str):
+        """Kick off a crew, converting guardrail-validation exhaustion into None.
+
+        Both phase crews (A: categorize+extract, B: validate) need the same
+        handling: a guardrail failure after retries means the content can't
+        support the analysis, which the caller turns into an empty result for
+        the quality gate instead of a hard crash.
+        """
+        try:
+            return crew.kickoff(inputs=inputs)
+        except Exception as e:
+            error_msg = str(e)
+            if "guardrail validation" in error_msg.lower() or "representative_quotes" in error_msg:
+                logger.warning(
+                    f"[Stage 6] {phase_label}: guardrail validation failed after retries: "
+                    f"{error_msg[:200]}. Returning empty result for quality gate evaluation."
+                )
+                return None
+            raise
+
+    @staticmethod
+    def _validate_theme_linkage(
+        extraction_output: PainPointExtraction,
+        categorization_output: ContentCategorizationReport,
+    ) -> tuple[list[tuple[str, str]], list["ThemeCategory"]]:
+        """Validate Task 2 → Task 1 linkage; mutates extraction in place.
+
+        - Fuzzy-remaps parent_theme_ids that don't exactly match a Task 1
+          theme_id (LLM slug drift); clears unmatched ones to None.
+        - Computes coverage: every non-Low theme should have ≥1 pain point.
+
+        Returns:
+            (orphans, uncovered): orphans as (pain_title, bad_theme_id) tuples
+            whose parent_theme_id was cleared; uncovered as the non-Low
+            ThemeCategory objects with zero pain points.
+        """
+        valid_theme_ids = {t.theme_id for t in categorization_output.theme_categories if t.theme_id}
+        orphans: list[tuple[str, str]] = []
+        remapped: list[tuple[str, str, str]] = []
+        for pp in extraction_output.extracted_pain_points:
+            if not pp.parent_theme_id or pp.parent_theme_id in valid_theme_ids:
+                continue
+            best_tid = None
+            best_ratio = 0.0
+            for tid in valid_theme_ids:
+                ratio = SequenceMatcher(None, pp.parent_theme_id, tid).ratio()
+                if ratio > best_ratio:
+                    best_ratio = ratio
+                    best_tid = tid
+            if best_tid and best_ratio >= 0.7:
+                remapped.append((pp.title, pp.parent_theme_id, best_tid))
+                pp.parent_theme_id = best_tid
+            else:
+                orphans.append((pp.title, pp.parent_theme_id))
+        for title, src, dst in remapped:
+            logger.warning(
+                f"Theme linkage fuzzy-remapped: '{title}' "
+                f"parent_theme_id='{src}' → '{dst}'"
+            )
+        if orphans:
+            orphan_keys = set(orphans)
+            for title, bad in orphans:
+                logger.warning(
+                    f"Theme linkage orphan (no fuzzy match ≥0.7): '{title}' "
+                    f"parent_theme_id='{bad}' has no matching theme."
+                )
+            for pp in extraction_output.extracted_pain_points:
+                if (pp.title, pp.parent_theme_id) in orphan_keys:
+                    pp.parent_theme_id = None
+
+        covered_theme_ids = {
+            pp.parent_theme_id for pp in extraction_output.extracted_pain_points if pp.parent_theme_id
+        }
+        uncovered = [
+            t for t in categorization_output.theme_categories
+            if t.theme_id and t.theme_id not in covered_theme_ids and (t.frequency or "").lower() != "low"
+        ]
+        return orphans, uncovered
+
+    def _run_corrective_extraction(
+        self,
+        categorization_output: ContentCategorizationReport,
+        extraction_output: PainPointExtraction,
+        uncovered: list["ThemeCategory"],
+        orphans: list[tuple[str, str]],
+        base_inputs: dict,
+    ) -> PainPointExtraction | None:
+        """One corrective re-run of Task 2 ONLY (not Task 1) for coverage gaps.
+
+        Re-running Task 1 would be wasted cost and could regenerate different
+        theme_ids, invalidating the linkage check itself. Task 1's themes are
+        passed via corrective feedback since cross-crew context is unavailable.
+
+        Returns the regenerated PainPointExtraction, or None on failure.
+        """
+        theme_lines = []
+        for t in categorization_output.theme_categories:
+            theme_lines.append(
+                f"- theme_id={t.theme_id} | {t.category_name} | frequency={t.frequency} | "
+                f"mention_count={t.mention_count} | anchor_keywords={t.anchor_keywords} | "
+                f"definition: {t.definition}"
+            )
+        uncovered_names = ", ".join(f"'{t.category_name}' (theme_id={t.theme_id})" for t in uncovered)
+        prior_titles = "; ".join(pp.title for pp in extraction_output.extracted_pain_points)
+        orphan_lines = "; ".join(f"'{title}' had invalid parent_theme_id '{bad}'" for title, bad in orphans)
+
+        feedback = (
+            "\n\n═══ CORRECTIVE RE-EXTRACTION (no Task 1 context available — themes provided below) ═══\n"
+            "A previous extraction had coverage gaps. Regenerate the FULL extraction.\n\n"
+            "**TASK 1 THEMES (authoritative — use these exact theme_ids):**\n"
+            + "\n".join(theme_lines)
+            + f"\n\n**UNCOVERED High/Medium themes (zero pain points last time):** {uncovered_names or 'none'}\n"
+            + (f"**Pain points with INVALID parent_theme_id last time:** {orphan_lines}\n" if orphan_lines else "")
+            + f"\n**Previous extraction titles (for reference, improve on these):** {prior_titles}\n\n"
+            "**CORRECTION RULES:**\n"
+            "- For each uncovered theme, either extract ≥1 pain point grounded in that theme's "
+            "anchor_keywords/evidence, OR leave it uncovered and explain why in extraction_summary "
+            "('insufficient evidence' is a valid, honest outcome).\n"
+            "- Do NOT fabricate pain points to satisfy coverage. Themes with only weak or "
+            "tangential evidence should be skipped, not forced.\n"
+            "- Every parent_theme_id must be one of the exact theme_ids listed above."
+        )
+
+        try:
+            corrective_task = Task(
+                config=self.tasks_config["extract_pain_points"],
+                agent=self.pain_point_analyst(),
+                output_pydantic=PainPointExtraction,
+                guardrail=validate_pain_point_extraction,
+                guardrail_max_retries=1,
+            )
+            corrective_crew = Crew(
+                agents=[self.pain_point_analyst()],
+                tasks=[corrective_task],
+                verbose=True,
+                process_type="sequential",
+            )
+            self._phase_crews.append(corrective_crew)
+            crew_output = corrective_crew.kickoff(
+                inputs={**base_inputs, "corrective_feedback": feedback}
+            )
+            task_outputs = crew_output.tasks_output if hasattr(crew_output, 'tasks_output') else []
+            if not task_outputs:
+                return None
+            if task_outputs[0].pydantic is not None:
+                return task_outputs[0].pydantic
+            cleaned_raw = clean_llm_response(task_outputs[0].raw)
+            return PainPointExtraction.model_validate(json.loads(cleaned_raw))
+        except Exception as e:
+            logger.warning(f"[Stage 6] Corrective Task-2 re-extraction failed: {e}")
+            return None
+
+    @staticmethod
+    def _format_pain_points_with_evidence(
+        extracted_pain_points: list[UnvalidatedPainPoint],
+        enrichment_output: QuoteEnrichmentResult,
+        max_quotes_per_pain_point: int = 3,
+        max_quote_words: int = 100,
+    ) -> str:
+        """Serialize pain points + their enriched quotes for the Task 3 prompt.
+
+        Caps quotes per pain point and words per quote so 25 pain points can't
+        balloon the scoring prompt into tens of thousands of tokens (quality of
+        quote-reading degrades long before context limits are hit).
+        """
+        enrichment_by_title = {
+            e.pain_point_title.lower().strip(): e
+            for e in enrichment_output.enriched_pain_points
+        }
+
+        def find_enrichment(title: str):
+            key = title.lower().strip()
+            if key in enrichment_by_title:
+                return enrichment_by_title[key]
+            best, best_ratio = None, 0.0
+            for e in enrichment_output.enriched_pain_points:
+                ratio = SequenceMatcher(None, key, e.pain_point_title.lower().strip()).ratio()
+                if ratio > best_ratio:
+                    best_ratio, best = ratio, e
+            return best if best_ratio >= FUZZY_MATCH_THRESHOLD else None
+
+        sections = []
+        for i, pp in enumerate(extracted_pain_points, 1):
+            enrichment = find_enrichment(pp.title)
+            quotes = enrichment.quotes if enrichment else []
+            source_count = len(enrichment.matched_post_ids) if enrichment else 0
+            lines = [
+                f"### {i}. {pp.title}",
+                f"Description: {pp.description}",
+                f"Anchor keywords: {', '.join(pp.anchor_keywords)}",
+            ]
+            if quotes:
+                lines.append(
+                    f"Evidence quotes ({min(len(quotes), max_quotes_per_pain_point)} of "
+                    f"{len(quotes)} found; {source_count} unique source discussions):"
+                )
+                for q in quotes[:max_quotes_per_pain_point]:
+                    words = q.quote_text.split()
+                    text = " ".join(words[:max_quote_words])
+                    if len(words) > max_quote_words:
+                        text += " […]"
+                    lines.append(f'  - "{text}" [source: {q.post_id}]')
+            else:
+                lines.append(
+                    "Evidence quotes: NONE FOUND — zero supporting quotes. "
+                    "severity_score for this pain point must be ≤ 0.45."
+                )
+            sections.append("\n".join(lines))
+        return "\n\n".join(sections)
+
+    @staticmethod
+    def resolve_pain_point_scores(
+        unvalidated: UnvalidatedPainPoint,
+        matching_score: "PainPointScoring",
+        quotes: list[str],
+        matching_enrichment: EnrichedPainPointQuotes | None,
+        theme_mentions: dict[str, int],
+    ) -> tuple[int, float, OpportunityLevel, str | None]:
+        """Resolve the code-governed fields for one merged PainPoint.
+
+        Returns (mention_count, severity_score, opportunity_level, downgrade_reason):
+        - mention_count: unique post_ids from ALL relevance-passing vector hits;
+          the LLM estimate is only a fallback when enrichment was unavailable.
+          Bounded by the parent theme's mention_count.
+        - severity: clamped to ≤0.45 when the pain point has zero evidence quotes
+          (mirrors the Task 3 rubric's rule in code).
+        - opportunity_level: code-computed formula; the LLM value is honored only
+          when BELOW the formula AND accompanied by a ≥20-char downgrade_reason
+          (preserves universal-theme / niche-specificity cap semantics).
+          Upgrades above the formula are never honored.
+        """
+        _opportunity_rank = {
+            OpportunityLevel.LOW: 0,
+            OpportunityLevel.MEDIUM: 1,
+            OpportunityLevel.HIGH: 2,
+        }
+
+        if matching_enrichment and matching_enrichment.matched_post_ids:
+            mention_count = len(matching_enrichment.matched_post_ids)
+        else:
+            mention_count = unvalidated.mention_count
+        theme_cap = theme_mentions.get(unvalidated.parent_theme_id) if unvalidated.parent_theme_id else None
+        if theme_cap is not None and mention_count > theme_cap:
+            logger.warning(
+                f"mention_count clamp: '{unvalidated.title}' {mention_count} → {theme_cap} "
+                f"(parent theme bound)"
+            )
+            mention_count = theme_cap
+
+        severity = matching_score.severity_score
+        if not quotes and severity > 0.45:
+            logger.warning(
+                f"Zero-quote severity clamp: '{unvalidated.title}' severity "
+                f"{severity:.2f} → 0.45 (no supporting evidence quotes)"
+            )
+            severity = 0.45
+
+        formula_level = compute_opportunity_level(severity, matching_score.willingness_to_pay)
+        llm_level = matching_score.opportunity_level
+        downgrade_reason = None
+        if _opportunity_rank[llm_level] < _opportunity_rank[formula_level]:
+            llm_reason = (getattr(matching_score, 'downgrade_reason', None) or "").strip()
+            if len(llm_reason) >= 20:
+                final_level = llm_level
+                downgrade_reason = llm_reason
+            else:
+                logger.warning(
+                    f"Unjustified opportunity downgrade for '{unvalidated.title}' "
+                    f"({formula_level.value} → {llm_level.value} without downgrade_reason); using formula"
+                )
+                final_level = formula_level
+        else:
+            if _opportunity_rank[llm_level] > _opportunity_rank[formula_level]:
+                logger.warning(
+                    f"Opportunity upgrade rejected for '{unvalidated.title}' "
+                    f"(LLM said {llm_level.value}, formula says {formula_level.value})"
+                )
+            final_level = formula_level
+
+        return mention_count, severity, final_level, downgrade_reason
+
     @crew
     def crew(self) -> Crew:
         """
         Assemble the PainPointCrew with all agents and tasks.
 
-        NOTE: This method includes all 4 tasks for backward compatibility,
-        but the main analyze() flow uses a 2-phase approach:
-        - Phase 1: Tasks 1-3 via CrewAI (explicit Crew construction)
-        - Phase 2: Parallel quote enrichment via Python ThreadPoolExecutor
-
-        Architecture:
-        - Task 1 (content_researcher): NO RAG - uses direct injection only
-        - Tasks 2 & 3 (pain_point_analyst, pain_point_validator): HAVE RAG via crew-level knowledge
-        - Task 4 (quote_enrichment_researcher): Uses QuoteSearchTool (not used in analyze())
+        NOTE: Kept for backward compatibility (CrewBase surface). The main
+        analyze() flow does NOT use this — it runs:
+        - Crew A: Tasks 1-2 (categorize, extract) via explicit Crew construction
+        - Python phase: parallel quote enrichment via ThreadPoolExecutor
+        - Crew B: Task 3 (validate/score) with evidence quotes injected
 
         Returns:
-            Configured Crew instance with all 4 tasks
+            Configured Crew instance with Tasks 1-3
         """
         from ..utils.crew_helpers import create_knowledge
         from ..utils.helpers import sanitize_collection_name
@@ -1421,11 +1653,9 @@ class PainPointCrew:
                     f"- pain point extraction may be limited due to sparse discussion content"
                 )
 
-            # Execute crew in hybrid mode:
-            # - Task 1: Full content via direct injection (categorization)
-            # - Tasks 2 & 3: RAG via knowledge sources (quote retrieval)
-            crew_instance = self.crew()
-            self._last_crew = crew_instance  # Store for usage_metrics access
+            # Two-crew execution: Crew A (categorize+extract) → Python quote
+            # enrichment → Crew B (validate/score with evidence quotes injected).
+            self._phase_crews = []
 
             # Token monitoring: Log content size and check context limits
             monitor = ContentTokenMonitor()
@@ -1543,7 +1773,8 @@ class PainPointCrew:
             )
             rich_discussion_count = sum(1 for c in comment_counts if c >= 20)
 
-            # Phase 1: Create crew with Tasks 1-3 only (exclude Task 4)
+            # Crew A: Tasks 1-2 (categorize, extract). Task 3 runs in Crew B
+            # AFTER Python quote enrichment so it scores with real evidence.
             embedder_config = {
                 "provider": "openai",
                 "config": {
@@ -1551,70 +1782,65 @@ class PainPointCrew:
                 }
             }
 
-            phase1_crew = Crew(
+            # Shared template variables for ALL phase crews. Crew B has no
+            # cross-crew task context, so every {var} its YAML references must
+            # be present here (extras are ignored by interpolation).
+            base_inputs = {
+                "niche_description": self.niche_description,
+                "market_segments": market_segments_formatted,
+                "industry_boundaries": self.industry_boundaries or "Not specified",
+                "full_reddit_content": self.formatted_reddit_content,
+                "full_twitter_content": self.formatted_twitter_content,
+                "reddit_posts_count": len(self.reddit_posts),
+                "twitter_threads_count": len(self.twitter_threads),
+                "total_reddit_comments": total_reddit_comments,
+                "total_twitter_replies": total_twitter_replies,
+                "total_content": len(self.reddit_posts) + len(self.twitter_threads),
+                "subreddits": subreddits_formatted,
+                "collection_timestamp": collection_timestamp,
+                "avg_comments_per_post": avg_comments_per_post,
+                "rich_discussion_count": rich_discussion_count,
+                "corrective_feedback": "",  # populated only on Task-2 corrective re-run
+            }
+
+            crew_a = Crew(
                 agents=[
                     self.content_researcher(),
                     self.pain_point_analyst(),
-                    self.pain_point_validator(),
                 ],
                 tasks=[
                     self.categorize_content_task(),
                     self.extract_pain_points_task(),
-                    self.validate_pain_points_task(),
-                    # Task 4 removed - enrichment done via parallel Python
                 ],
                 verbose=True,
                 process_type="sequential",
                 embedder=embedder_config,
             )
-            self._last_crew = phase1_crew  # Store for usage_metrics access
+            self._phase_crews.append(crew_a)
 
             logger.info(
-                f"Phase 1: Running Tasks 1-3 (categorize, extract, validate) - "
-                f"Task 4 (quote enrichment) will run as parallel Python"
+                "Crew A: Running Tasks 1-2 (categorize, extract) - "
+                "quote enrichment runs next so Task 3 scores with evidence"
             )
 
-            try:
-                crew_output = phase1_crew.kickoff(inputs={
-                    "niche_description": self.niche_description,
-                    "market_segments": market_segments_formatted,
-                    "industry_boundaries": self.industry_boundaries or "Not specified",
-                    "full_reddit_content": self.formatted_reddit_content,
-                    "full_twitter_content": self.formatted_twitter_content,
-                    "reddit_posts_count": len(self.reddit_posts),
-                    "twitter_threads_count": len(self.twitter_threads),
-                    "total_reddit_comments": total_reddit_comments,
-                    "total_twitter_replies": total_twitter_replies,
-                    "total_content": len(self.reddit_posts) + len(self.twitter_threads),
-                    "subreddits": subreddits_formatted,
-                    "collection_timestamp": collection_timestamp,
-                    "avg_comments_per_post": avg_comments_per_post,
-                    "rich_discussion_count": rich_discussion_count,
-                })
-            except Exception as e:
-                error_msg = str(e)
-                # Check if this is a guardrail validation failure
-                if "guardrail validation" in error_msg.lower() or "representative_quotes" in error_msg:
-                    logger.warning(
-                        f"[Stage 6] Guardrail validation failed after retries: {error_msg[:200]}. "
-                        "Returning empty result for quality gate evaluation."
-                    )
-                    return PainPointAnalysisResult(
-                        niche=self.niche_description,
-                        pain_points=[],
-                        total_mentions=0,
-                        top_categories=[],
-                        analysis_summary=f"Pain point extraction failed guardrail validation: {error_msg[:300]}. "
-                                       "The source content may lack sufficient quotes to support identified themes."
-                    )
-                # Re-raise other exceptions
-                raise
+            crew_output = self._kickoff_with_quality_catch(
+                crew_a, base_inputs, "Crew A (categorize+extract)"
+            )
+            if crew_output is None:
+                return PainPointAnalysisResult(
+                    niche=self.niche_description,
+                    pain_points=[],
+                    total_mentions=0,
+                    top_categories=[],
+                    analysis_summary="Pain point extraction failed guardrail validation. "
+                                   "The source content may lack sufficient quotes to support identified themes."
+                )
 
-            # Parse Phase 1 outputs (Tasks 1-3)
+            # Parse Crew A outputs (Tasks 1-2)
             task_outputs = crew_output.tasks_output if hasattr(crew_output, 'tasks_output') else []
-            if len(task_outputs) < 3:
-                logger.error(f"Expected 3 task outputs from Phase 1, got {len(task_outputs)}")
-                raise ValueError("Incomplete task execution in pain point crew Phase 1")
+            if len(task_outputs) < 2:
+                logger.error(f"Expected 2 task outputs from Crew A, got {len(task_outputs)}")
+                raise ValueError("Incomplete task execution in pain point crew (Crew A)")
 
             # Helper to parse pydantic from raw when guardrails set pydantic=None
             def _parse_output(task_output, model_class, task_name: str):
@@ -1635,82 +1861,90 @@ class PainPointCrew:
 
             categorization_output = _parse_output(task_outputs[0], ContentCategorizationReport, "Task 1")
             extraction_output = _parse_output(task_outputs[1], PainPointExtraction, "Task 2")
-            validation_output = _parse_output(task_outputs[2], ValidationResult, "Task 3")
 
-            logger.info(f"Phase 1 complete: Task 2 extracted {len(extraction_output.extracted_pain_points)} pain points")
+            logger.info(f"Crew A complete: Task 2 extracted {len(extraction_output.extracted_pain_points)} pain points")
 
-            # Cross-task linkage check: every pain point's parent_theme_id should
-            # match a Task 1 theme_id. If it doesn't, fuzzy-remap to the closest
-            # theme by title slug similarity (LLM may produce a slightly different
-            # slug pattern than the auto-generated one).
-            valid_theme_ids = {t.theme_id for t in categorization_output.theme_categories if t.theme_id}
-            orphans: list[tuple[str, str]] = []  # (pain_title, bad_parent_theme_id)
-            remapped: list[tuple[str, str, str]] = []  # (pain_title, from, to)
-            for pp in extraction_output.extracted_pain_points:
-                if not pp.parent_theme_id:
-                    continue
-                if pp.parent_theme_id in valid_theme_ids:
-                    continue
-                # Try fuzzy remap to the closest theme_id.
-                best_tid = None
-                best_ratio = 0.0
-                for tid in valid_theme_ids:
-                    ratio = SequenceMatcher(None, pp.parent_theme_id, tid).ratio()
-                    if ratio > best_ratio:
-                        best_ratio = ratio
-                        best_tid = tid
-                if best_tid and best_ratio >= 0.7:
-                    remapped.append((pp.title, pp.parent_theme_id, best_tid))
-                    pp.parent_theme_id = best_tid
-                else:
-                    orphans.append((pp.title, pp.parent_theme_id))
-            if remapped:
-                for title, src, dst in remapped:
-                    logger.warning(
-                        f"Theme linkage fuzzy-remapped: '{title}' "
-                        f"parent_theme_id='{src}' → '{dst}'"
-                    )
-            if orphans:
-                for title, bad in orphans:
-                    logger.warning(
-                        f"Theme linkage orphan (no fuzzy match ≥0.7): '{title}' "
-                        f"parent_theme_id='{bad}' has no matching theme; "
-                        "field cleared so frontend places it in the Unclassified bucket."
-                    )
-                # Clear the bad parent_theme_id so the row falls into the
-                # frontend's Unclassified bucket rather than carrying a dead pointer.
-                for pp in extraction_output.extracted_pain_points:
-                    if (pp.title, pp.parent_theme_id) in orphans:
-                        pp.parent_theme_id = None
-
-            # Coverage check (soft warning): every High/Medium theme should produce ≥1 pain point.
-            covered_theme_ids = {
-                pp.parent_theme_id for pp in extraction_output.extracted_pain_points if pp.parent_theme_id
-            }
-            uncovered = [
-                t for t in categorization_output.theme_categories
-                if t.theme_id and t.theme_id not in covered_theme_ids and (t.frequency or "").lower() != "low"
-            ]
-            if uncovered:
+            # Cross-task linkage + theme coverage validation (enforced via one
+            # corrective Task-2 re-run, not warn-only).
+            orphans, uncovered = self._validate_theme_linkage(extraction_output, categorization_output)
+            coverage_caveat = None
+            if uncovered or orphans:
                 names = ", ".join(f"'{t.category_name}'" for t in uncovered)
                 logger.warning(
-                    f"Theme coverage gap: {len(uncovered)} non-Low theme(s) produced no pain points: {names}. "
-                    "Catalog UI will show them as empty groups."
+                    f"Theme coverage gap: {len(uncovered)} non-Low theme(s) with no pain points ({names}); "
+                    f"{len(orphans)} orphaned parent_theme_id(s). Running ONE corrective Task-2 re-extraction."
                 )
+                retry_extraction = self._run_corrective_extraction(
+                    categorization_output, extraction_output, uncovered, orphans, base_inputs
+                )
+                if retry_extraction is not None:
+                    retry_orphans, retry_uncovered = self._validate_theme_linkage(
+                        retry_extraction, categorization_output
+                    )
+                    # Keep whichever extraction covers more non-Low themes (original wins ties)
+                    if len(retry_uncovered) < len(uncovered):
+                        extraction_output = retry_extraction
+                        orphans, uncovered = retry_orphans, retry_uncovered
+                        logger.info(
+                            f"Corrective re-extraction adopted: {len(uncovered)} theme(s) still uncovered"
+                        )
+                    else:
+                        logger.info("Corrective re-extraction did not improve coverage; keeping original")
+                if uncovered:
+                    names = ", ".join(f"'{t.category_name}'" for t in uncovered)
+                    coverage_caveat = (
+                        f"Data quality note: {len(uncovered)} High/Medium theme(s) produced no pain points "
+                        f"after corrective retry ({names}) — insufficient supporting evidence."
+                    )
+                    logger.warning(coverage_caveat)
 
-            # Phase 2: Parallel quote enrichment (Python-driven, not LLM)
+            # Phase 2: Parallel quote enrichment (Python-driven, not LLM) — runs
+            # BEFORE Task 3 so severity/WTP scoring sees the actual evidence.
             logger.info("Phase 2: Starting parallel quote enrichment...")
             enrichment_output = self._run_parallel_quote_enrichment(
                 extraction_output.extracted_pain_points
             )
-
-            # Log quote enrichment stats
-            total_pain_points = len(extraction_output.extracted_pain_points)
-            total_enriched_quotes = enrichment_output.total_quotes_found
             logger.info(
-                f"Phase 2 complete: {total_enriched_quotes} quotes found "
+                f"Phase 2 complete: {enrichment_output.total_quotes_found} quotes found "
                 f"for {len(enrichment_output.enriched_pain_points)} pain points"
             )
+
+            # Crew B: Task 3 (validate/score) with evidence quotes injected into
+            # the prompt via {pain_points_with_evidence} (capped 3 quotes × 100
+            # words per pain point in the formatter).
+            pain_points_with_evidence = self._format_pain_points_with_evidence(
+                extraction_output.extracted_pain_points, enrichment_output
+            )
+            crew_b = Crew(
+                agents=[self.pain_point_validator()],
+                tasks=[self.validate_pain_points_task()],
+                verbose=True,
+                process_type="sequential",
+                embedder=embedder_config,
+            )
+            self._phase_crews.append(crew_b)
+
+            logger.info("Crew B: Running Task 3 (validate/score) with enriched evidence quotes")
+            crew_b_output = self._kickoff_with_quality_catch(
+                crew_b,
+                {**base_inputs, "pain_points_with_evidence": pain_points_with_evidence},
+                "Crew B (validate)",
+            )
+            if crew_b_output is None:
+                return PainPointAnalysisResult(
+                    niche=self.niche_description,
+                    pain_points=[],
+                    total_mentions=0,
+                    top_categories=[],
+                    analysis_summary="Pain point scoring failed guardrail validation. "
+                                   "Scores could not be validated against the extracted evidence."
+                )
+
+            crew_b_outputs = crew_b_output.tasks_output if hasattr(crew_b_output, 'tasks_output') else []
+            if len(crew_b_outputs) < 1:
+                logger.error("Expected 1 task output from Crew B, got 0")
+                raise ValueError("Incomplete task execution in pain point crew (Crew B)")
+            validation_output = _parse_output(crew_b_outputs[0], ValidationResult, "Task 3")
 
             logger.info(
                 f"Python merge: Combining {len(extraction_output.extracted_pain_points)} extracted pain points "
@@ -1718,10 +1952,15 @@ class PainPointCrew:
                 f"and {len(enrichment_output.enriched_pain_points)} quote enrichments"
             )
 
-            # Merge Task 2 (extraction with anchor_keywords) + Task 3 (validation scores) + Task 4 (quotes) → final PainPoint
+            # Merge Task 2 (extraction) + Task 3 (scores) + enrichment (quotes) → final PainPoint
             final_pain_points = []
             unmatched_scores = []
             unmatched_quotes = []
+            theme_mentions = {
+                t.theme_id: t.mention_count
+                for t in categorization_output.theme_categories
+                if t.theme_id
+            }
 
             for unvalidated in extraction_output.extracted_pain_points:
                 # Find matching score by title (using fuzzy matching)
@@ -1779,20 +2018,31 @@ class PainPointCrew:
                     )
                     unmatched_quotes.append(unvalidated.title)
 
-                # Build final PainPoint with quotes from Task 4 and scores from Task 3
+                mention_count, severity, final_level, downgrade_reason = (
+                    self.resolve_pain_point_scores(
+                        unvalidated=unvalidated,
+                        matching_score=matching_score,
+                        quotes=quotes,
+                        matching_enrichment=matching_enrichment,
+                        theme_mentions=theme_mentions,
+                    )
+                )
+
+                # Build final PainPoint with enrichment quotes and Task 3 scores
                 # Note: UnvalidatedPainPoint has anchor_keywords, not representative_quotes/source_post_ids
                 final_pain_points.append(PainPoint(
                     title=unvalidated.title,
                     parent_theme_id=unvalidated.parent_theme_id,
                     description=unvalidated.description,
-                    mention_count=unvalidated.mention_count,
-                    representative_quotes=quotes,  # From Task 4
-                    source_post_ids=source_ids,     # From Task 4
+                    mention_count=mention_count,
+                    representative_quotes=quotes,  # From Python enrichment
+                    source_post_ids=source_ids,     # From Python enrichment
                     source_platforms=unvalidated.source_platforms,
                     categories=unvalidated.categories,
-                    severity_score=matching_score.severity_score,
+                    severity_score=severity,
                     willingness_to_pay=matching_score.willingness_to_pay,
-                    opportunity_level=matching_score.opportunity_level,
+                    opportunity_level=final_level,
+                    opportunity_downgrade_reason=downgrade_reason,
                 ))
 
             # Validate merge completeness
@@ -1813,18 +2063,38 @@ class PainPointCrew:
                 f"({quote_coverage_pct:.1f}% coverage, {total_final_quotes} total quotes)"
             )
 
+            # Corpus-wide unique discussions (STRIVE 'talked_about' input).
+            # Summing per-pain mention_counts would double-count posts shared
+            # across pain points; the corpus-unique count is the honest total.
+            corpus_post_ids: set[str] = set()
+            for e in enrichment_output.enriched_pain_points:
+                corpus_post_ids.update(e.matched_post_ids)
+            total_mentions = (
+                len(corpus_post_ids) if corpus_post_ids
+                else sum(pp.mention_count for pp in final_pain_points)
+            )
+            logger.info(
+                f"Mention metrics: corpus-unique={len(corpus_post_ids)}, "
+                f"summed-per-pain={sum(pp.mention_count for pp in final_pain_points)}, "
+                f"LLM-estimated-sum={sum(pp.mention_count for pp in extraction_output.extracted_pain_points)}"
+            )
+
+            analysis_summary = validation_output.validation_summary
+            if coverage_caveat:
+                analysis_summary = f"{analysis_summary} {coverage_caveat}"
+
             # Create final result
             result = PainPointAnalysisResult(
                 niche=extraction_output.niche,
                 pain_points=final_pain_points,
-                total_mentions=sum(pp.mention_count for pp in final_pain_points),
+                total_mentions=total_mentions,
                 top_categories=list(set(
                     cat
                     for pp in final_pain_points
                     if pp.categories
                     for cat in pp.categories
                 ))[:10],  # Top 10 unique categories
-                analysis_summary=validation_output.validation_summary,
+                analysis_summary=analysis_summary,
                 content_categorization=categorization_output,  # From Task 1
             )
 
@@ -1860,11 +2130,29 @@ class PainPointCrew:
     @property
     def usage_metrics(self) -> dict | None:
         """
-        Get usage metrics from the last crew execution.
+        Get combined usage metrics across all phase crews from the last analyze().
+
+        analyze() runs two (sometimes three, with the corrective re-extraction)
+        crews; dropping any of them would under-report cost to the tracker.
 
         Returns:
             Dict with prompt_tokens, completion_tokens, total_tokens or None if not available
         """
-        if hasattr(self, '_last_crew') and self._last_crew:
-            return self._last_crew.usage_metrics
-        return None
+        crews = list(getattr(self, '_phase_crews', []) or [])
+        if not crews and getattr(self, '_last_crew', None):
+            crews = [self._last_crew]
+        totals = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        found = False
+        for crew_obj in crews:
+            metrics = getattr(crew_obj, 'usage_metrics', None)
+            if not metrics:
+                continue
+            found = True
+            for key in totals:
+                value = (
+                    getattr(metrics, key, None)
+                    if not isinstance(metrics, dict)
+                    else metrics.get(key)
+                )
+                totals[key] += value or 0
+        return totals if found else None

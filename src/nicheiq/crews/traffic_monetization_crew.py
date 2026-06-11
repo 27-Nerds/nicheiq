@@ -88,8 +88,16 @@ class TrafficMonetizationCrew:
             config=self.tasks_config["traffic_monetization_analysis"],
             agent=self.traffic_monetization_analyst(),
             output_pydantic=TrafficMonetizationResult,
-            guardrail=validate_traffic_monetization,
+            guardrail=self._traffic_guardrail,
             guardrail_max_retries=2,
+        )
+
+    def _traffic_guardrail(self, task_output):
+        """Bound guardrail wrapper: passes the evidence-based traffic ceiling
+        (set in analyze() when SEO data exists) so pageview claims are clamped."""
+        return validate_traffic_monetization(
+            task_output,
+            traffic_ceiling_y1_high=getattr(self, '_seo_traffic_ceiling_y1_high', None),
         )
 
     @crew
@@ -318,9 +326,14 @@ class TrafficMonetizationCrew:
             from ..utils.crew_helpers import compute_difficulty_weighted_traffic
             t1_low, t1_high = compute_difficulty_weighted_traffic(tier_1)
             t2_low, t2_high = compute_difficulty_weighted_traffic(tier_2)
-            y1_low = t1_low + int(t2_low * 0.6)
-            y1_high = t1_high + int(t2_high * 0.6)
+            # Apply the SAME 1.25 content-compounding multiplier the report-time
+            # projection uses — otherwise the final (code-overridden) numbers
+            # exceed the ceiling the LLM was told to respect.
+            compound = 1.25
+            y1_low = int((t1_low + t2_low * 0.6) * compound)
+            y1_high = int((t1_high + t2_high * 0.6) * compound)
             seo_traffic_ceiling_y1 = f"{y1_low:,}-{y1_high:,} visits/mo"
+            self._seo_traffic_ceiling_y1_high = y1_high  # for the guardrail clamp
 
             all_keywords = collect_all_tiered_keywords(seo_strategy_report)
             intent = compute_intent_breakdown(all_keywords)

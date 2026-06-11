@@ -488,6 +488,14 @@ class FinalReport(BaseModel):
     # Solution Selection (Stage 5)
     selected_solution_name: str = Field(..., description="Name of the selected solution to focus on")
     selection_rationale: str = Field(..., description="Why this solution was selected over alternatives")
+    original_selection_reasoning: Optional[str] = Field(
+        default=None,
+        description=(
+            "The strategic selector's original rationale, preserved verbatim when "
+            "keyword validation pivoted the winner (selection_rationale then carries "
+            "an appended evidence update). None when no pivot occurred."
+        ),
+    )
     # runner_up_solutions removed - use alternative_solutions instead
     # selection_criteria_scores removed - ScoreAccessor is single source of truth
     recommended_focus: Optional[str] = Field(
@@ -1143,16 +1151,11 @@ class TrendNarrativeOutput(BaseModel):
         ..., description="2-3 sentences explaining longevity verdict with specific trend data"
     )
 
-    new_entrants_trend: Literal["Increasing", "Stable", "Consolidating"] = Field(
-        ..., description="New competitor entry trend"
-    )
-    competitive_activity_level: Literal["High", "Moderate", "Low"] = Field(
-        ..., description="Level of competitive activity in the market"
-    )
+    # new_entrants_trend / competitive_activity_level / volume_growth_rate are
+    # no longer LLM outputs — they're computed deterministically (competitor
+    # count buckets, aggregate monthly-series growth) and merged in
+    # TrendLongevityCrew.analyze().
 
-    volume_growth_rate: Optional[str] = Field(
-        default=None, description="Estimated YoY growth rate (e.g., '+25% YoY', '-10% YoY', 'Stable', 'Unknown')"
-    )
     trend_duration: Optional[str] = Field(
         default=None, description="How long trend has been active (e.g., '2+ years growth', '6 months spike')"
     )
@@ -1199,8 +1202,21 @@ class TrendLongevityResult(BaseModel):
     community_growth_indicators: list[str] = Field(..., description="3-5 signals of community growth or decline (new subreddits, forum activity, etc.)")
 
     # Competitive Momentum
-    new_entrants_trend: Literal["Increasing", "Stable", "Consolidating"] = Field(..., description="'Increasing' (many new competitors), 'Stable', 'Consolidating' (exits/acquisitions)")
-    competitive_activity_level: Literal["High", "Moderate", "Low"] = Field(..., description="'High' (active launches), 'Moderate', 'Low' (stagnant market)")
+    new_entrants_trend: Optional[Literal["Increasing", "Stable", "Consolidating"]] = Field(
+        default=None,
+        description=(
+            "'Increasing' (many new competitors), 'Stable', 'Consolidating' (exits/acquisitions). "
+            "None when no competitor-age source data exists — never LLM-guessed "
+            "(the frontend hides the stat pill on None)."
+        ),
+    )
+    competitive_activity_level: Literal["High", "Moderate", "Low"] = Field(
+        ...,
+        description=(
+            "Computed from competitor count: >15 = High, 5-15 = Moderate, <5 = Low "
+            "(deterministic, not LLM-estimated)"
+        ),
+    )
 
     # Seasonality & Patterns
     seasonal_pattern: Optional[str] = Field(default=None, description="Seasonal behavior: 'Strong Seasonal', 'Mild Seasonal', 'Year-Round', 'Unknown'")

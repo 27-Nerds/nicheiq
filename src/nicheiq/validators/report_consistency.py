@@ -333,14 +333,17 @@ class ReportConsistencyValidator:
         recommendation = analytics.recommendation
 
         if verdict != recommendation:
+            # Both fields now derive from the same _compute_go_no_go_verdict
+            # machinery, so ANY divergence is a real bug (stale checkpoint data
+            # or a regression), not an expected trend adjustment.
             warnings.append(ConsistencyWarning(
                 field_path="market_analytics.recommendation",
-                severity="INFO",
+                severity="WARNING",
                 message=(
-                    f"Verdict/recommendation difference: executive dashboard verdict is '{verdict}' "
-                    f"(trend-adjusted) while market_analytics recommendation is '{recommendation}' "
-                    f"(score-based on overall_opportunity_score={analytics.overall_opportunity_score:.2f}). "
-                    f"This is expected when trend data adjusts the score-based verdict."
+                    f"Verdict/recommendation mismatch: executive dashboard verdict is '{verdict}' "
+                    f"but market_analytics recommendation is '{recommendation}'. Both derive from "
+                    f"the same verdict computation and must agree — this indicates stale data "
+                    f"or a regression."
                 ),
                 expected_value=verdict,
                 actual_value=recommendation,

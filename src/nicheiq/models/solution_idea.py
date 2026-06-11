@@ -662,6 +662,23 @@ class RawConcept(BaseModel):
         )
     )
 
+    # Structural-dedup tags (M/D/J): the same tags from the prompt's dedup gate,
+    # persisted as fields so code can verify the gate actually ran — within a
+    # batch and against the cross-run blacklist. Optional in the model for
+    # backward compatibility; the Task-2 guardrail enforces presence.
+    mechanism_tag: Optional[str] = Field(
+        default=None,
+        description="Short hyphenated phrase for the core value-production mechanism (e.g., 'aggregates-public-records')",
+    )
+    data_source_tag: Optional[str] = Field(
+        default=None,
+        description="Short hyphenated phrase for the primary data source (e.g., 'government-open-data')",
+    )
+    journey_tag: Optional[str] = Field(
+        default=None,
+        description="Short hyphenated phrase for the user journey (e.g., 'search-lands-on-page')",
+    )
+
 
 class RawConceptList(BaseModel):
     """

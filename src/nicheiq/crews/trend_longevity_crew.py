@@ -227,6 +227,23 @@ class TrendLongevityCrew:
                 deterministic["momentum_score"],
             )
 
+            # 6b. Code-computed competitive/growth fields (previously LLM-estimated
+            # from data the code already held — see audit finding B6):
+            # - competitive_activity_level: deterministic competitor-count buckets
+            # - volume_growth_rate: aggregate monthly-series growth (±20% + noise
+            #   floor thresholds, same as per-keyword classification)
+            # - new_entrants_trend: None — no competitor-age source data exists
+            competitor_count = inputs["competitor_count"]
+            if competitor_count > 15:
+                competitive_activity_level = "High"
+            elif competitor_count >= 5:
+                competitive_activity_level = "Moderate"
+            else:
+                competitive_activity_level = "Low"
+            volume_growth_rate = (
+                (enriched_keywords_trends or {}).get("volume_growth_rate") or "Unknown"
+            )
+
             # 7. Merge into TrendLongevityResult (UNCHANGED model)
             trend_result = TrendLongevityResult(
                 # Python-computed (deterministic)
@@ -240,13 +257,14 @@ class TrendLongevityCrew:
                 timing_recommendation=timing,
                 analysis_timeframe=deterministic["analysis_timeframe"],
                 data_sources_analyzed=deterministic["data_sources_analyzed"],
+                # Python-computed competitive/growth fields
+                new_entrants_trend=None,  # no competitor-age source data
+                competitive_activity_level=competitive_activity_level,
+                volume_growth_rate=volume_growth_rate,
                 # LLM-generated (narrative/judgment)
                 market_maturity=narrative.market_maturity,
                 longevity_verdict=narrative.longevity_verdict,
                 longevity_rationale=narrative.longevity_rationale,
-                new_entrants_trend=narrative.new_entrants_trend,
-                competitive_activity_level=narrative.competitive_activity_level,
-                volume_growth_rate=narrative.volume_growth_rate,
                 trend_duration=narrative.trend_duration,
                 peak_periods=narrative.peak_periods,
                 community_growth_indicators=narrative.community_growth_indicators,

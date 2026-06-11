@@ -147,7 +147,7 @@ export async function enqueueCatalogIdeasJob(
   painPoints: Record<string, unknown>[],
   niche: string,
   parentCategoryName: string,
-  existingIdeas: Array<{name: string, description: string}> = [],
+  existingIdeas: Array<{name: string, description: string, value_proposition?: string, target_personas?: string[]}> = [],
   parentSourceJobId?: string,
   contentCategorization?: unknown,
 ): Promise<void> {

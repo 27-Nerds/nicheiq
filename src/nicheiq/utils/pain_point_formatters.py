@@ -191,3 +191,52 @@ def extract_pain_points_by_priority(
     ]
 
     return high_priority, medium_priority, low_priority
+
+
+def select_diverse_pain_points(
+    pain_points: list,
+    severity_slots: int = 7,
+    mention_slots: int = 3,
+    theme_slots: int = 2,
+) -> list:
+    """Diversified pain-point selection for the ideation funnel.
+
+    A pure top-N-by-severity slice fed ideation the same flavor of pain every
+    run (and severity is LLM-judged). Mix three signals instead:
+    - top `severity_slots` by severity_score,
+    - top `mention_slots` by mention_count (evidence-grounded discussion volume)
+      not already selected,
+    - up to `theme_slots` highest-severity pain points from themes with ZERO
+      representation in the selection so far (long-tail themes reach ideation
+      as full pain points, not just theme keywords).
+
+    Returns at most severity_slots + mention_slots + theme_slots entries.
+    """
+    by_severity = sorted(pain_points, key=lambda p: p.severity_score, reverse=True)
+    selected = list(by_severity[:severity_slots])
+    selected_titles = {p.title for p in selected}
+
+    by_mentions = sorted(pain_points, key=lambda p: p.mention_count, reverse=True)
+    target = severity_slots + mention_slots
+    for pp in by_mentions:
+        if len(selected) >= target:
+            break
+        if pp.title not in selected_titles:
+            selected.append(pp)
+            selected_titles.add(pp.title)
+
+    represented_themes = {
+        pp.parent_theme_id for pp in selected if getattr(pp, 'parent_theme_id', None)
+    }
+    theme_extras = 0
+    for pp in by_severity:
+        if theme_extras >= theme_slots:
+            break
+        theme = getattr(pp, 'parent_theme_id', None)
+        if theme and theme not in represented_themes and pp.title not in selected_titles:
+            selected.append(pp)
+            selected_titles.add(pp.title)
+            represented_themes.add(theme)
+            theme_extras += 1
+
+    return selected
