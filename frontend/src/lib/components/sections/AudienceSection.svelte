@@ -379,7 +379,7 @@
   }
 
   .segment-card:hover {
-    border-color: var(--color-border-accent);
+    border-color: var(--color-border-emphasis);
   }
 
   /* primary card distinguished by badge only — no accent left-border */

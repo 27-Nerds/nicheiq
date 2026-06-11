@@ -703,16 +703,16 @@
   }
 
   .pain-card-enhanced:hover {
-    border-color: var(--color-border-error);
+    border-color: var(--color-border-emphasis);
   }
 
   .pain-card-severity-high {
-    border-left: 3px solid var(--color-error);
+    border-left: 3px solid var(--color-severity-critical);
     background: var(--color-bg-surface);
   }
 
   .pain-card-severity-medium {
-    border-left: 3px solid var(--color-warning);
+    border-left: 3px solid var(--color-severity-medium);
     background: var(--color-bg-surface);
   }
 
@@ -740,7 +740,7 @@
     font-family: var(--font-display);
     font-size: var(--text-xl);
     font-weight: 700;
-    color: var(--color-error);
+    color: var(--color-severity-critical);
     line-height: 1;
     font-variant-numeric: tabular-nums;
   }
@@ -1042,12 +1042,12 @@
   }
 
   .pain-point-card-enhanced.opportunity-high {
-    border-left: 3px solid var(--color-success);
+    border-left: 3px solid var(--color-opportunity);
     background: var(--color-bg-surface);
   }
 
   .pain-point-card-enhanced.opportunity-medium {
-    border-left: 3px solid var(--color-warning);
+    border-left: 3px solid var(--color-severity-medium);
     background: var(--color-bg-surface);
   }
 
@@ -1070,7 +1070,7 @@
     font-family: var(--font-mono);
     font-size: var(--text-base);
     font-weight: 700;
-    color: var(--color-accent);
+    color: var(--color-text-primary);
     flex-shrink: 0;
   }
 
@@ -1105,14 +1105,14 @@
   }
 
   .opportunity-badge-high {
-    background: var(--color-accent-glow);
-    color: var(--color-success);
-    border: 1px solid var(--color-border-accent);
+    background: var(--color-opportunity-bg);
+    color: var(--color-opportunity);
+    border: 1px solid var(--color-border-success);
   }
 
   .opportunity-badge-medium {
-    background: var(--color-warning-subtle);
-    color: var(--color-warning);
+    background: var(--color-severity-medium-bg);
+    color: var(--color-severity-medium);
     border: 1px solid var(--color-border-warning);
   }
 

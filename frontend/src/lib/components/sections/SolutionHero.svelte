@@ -653,6 +653,7 @@
     font-style: italic;
     margin-bottom: var(--space-4);
     line-height: 1.5;
+    max-width: 70ch;
   }
 
   /* Value Block - using InsightCard */
@@ -661,6 +662,7 @@
     color: var(--color-text-muted);
     line-height: 1.6;
     margin: 0;
+    max-width: 70ch;
   }
 
   /* =========================
@@ -931,6 +933,7 @@
     line-height: 1.65;
     color: var(--color-text-secondary);
     margin: 0;
+    max-width: 70ch;
   }
 
   /* =========================

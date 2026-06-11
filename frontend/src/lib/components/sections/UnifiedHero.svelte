@@ -2135,7 +2135,7 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: var(--space-5) var(--space-2);
+    padding: var(--space-4) var(--space-2);
     position: relative;
     transition: background 0.2s ease;
     /* Staggered entrance animation */
@@ -2157,7 +2157,7 @@
     top: 20%;
     height: 60%;
     width: 1px;
-    background: var(--color-border-emphasis);
+    background: var(--color-border);
   }
 
   @keyframes metric-cell-enter {

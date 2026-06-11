@@ -172,7 +172,6 @@
 	border-color: var(--color-accent);
 	color: var(--color-accent);
 	background: var(--color-bg-surface);
-	transform: translateY(-1px);
 }
 
 .btn-secondary:active {
@@ -397,14 +396,6 @@
 	margin-top: var(--space-2);
 }
 
-.stat-card-animated .stat-value {
-	transition: transform var(--duration-slow) var(--ease-spring), color var(--duration-slow) ease;
-}
-
-.stat-card-animated:hover .stat-value {
-	transform: scale(1.08);
-}
-
 /* ========================================
    Progress Bar Component
    ======================================== */
@@ -569,12 +560,14 @@
 
 /* ========================================
    Verdict Components
+   Color rule: orange is brand/interactive only; severity/risk uses the
+   severity palette (colors.css); positive verdicts use success/opportunity tokens.
    ======================================== */
 
 .verdict-go {
-	color: var(--color-success);
-	background-color: var(--color-accent-glow);
-	border: 2px solid rgba(234, 88, 12, 0.4);
+	color: var(--color-success-dark);
+	background-color: var(--color-success-subtle);
+	border: 2px solid var(--color-border-success);
 	padding: var(--space-2) var(--space-6);
 	font-family: var(--font-display);
 	font-weight: var(--font-bold);
@@ -599,8 +592,8 @@
 }
 
 .verdict-banner-go {
-	background: linear-gradient(135deg, rgba(234, 88, 12, 0.15) 0%, rgba(234, 88, 12, 0.05) 100%);
-	border: 1px solid rgba(234, 88, 12, 0.3);
+	background: linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(34, 197, 94, 0.05) 100%);
+	border: 1px solid var(--color-border-success);
 }
 
 .verdict-banner-no-go {

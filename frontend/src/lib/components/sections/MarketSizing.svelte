@@ -227,7 +227,7 @@
       />
       <div class="segments-grid">
         {#each data.segment_sizing as segment}
-          <InsightCard variant="muted" border="left" padding="md">
+          <InsightCard variant="muted" border="none" padding="md">
             {#snippet header()}
               <div class="segment-header">
                 <h4 class="segment-name">{segment.segment_name}</h4>
@@ -352,6 +352,7 @@
     color: var(--color-text-primary);
     line-height: 1.6;
     margin: 0;
+    max-width: 70ch;
   }
 
   /* Drivers & Risks - using IconListItem */
@@ -361,11 +362,22 @@
     gap: var(--space-2);
   }
 
-  /* Segments Grid */
+  /* Segments Grid — grouped list: one outer hairline, row dividers inside */
   .segments-grid {
     display: flex;
     flex-direction: column;
-    gap: 0.625rem;
+    gap: 0;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+
+  .segments-grid > :global(.insight-card) {
+    border-radius: 0;
+  }
+
+  .segments-grid > :global(.insight-card:not(:last-child)) {
+    border-bottom: 1px solid var(--color-border);
   }
 
   .segment-header {
@@ -438,6 +450,7 @@
     color: var(--color-text-muted);
     line-height: 1.65;
     margin-bottom: 0.875rem;
+    max-width: 70ch;
   }
 
   .methodology-content :global(p) {
@@ -486,6 +499,7 @@
     font-size: 0.8125rem;
     color: var(--color-text-muted);
     line-height: 1.65;
+    max-width: 70ch;
   }
 
   .rationale-content :global(p) {

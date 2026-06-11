@@ -70,7 +70,7 @@
 >
   <!-- Overall Competitive Insights - Hero Card -->
   {#if overallCompetitiveInsights}
-    <div class="insight-card insight-card--accent insight-hero">
+    <div class="insight-hero">
       <div class="insight-icon">
         <Shield class="icon-lg" />
       </div>
@@ -273,6 +273,10 @@
     display: flex;
     gap: var(--space-4);
     margin-bottom: var(--space-6);
+    padding: var(--space-5);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
   }
 
   .insight-icon {
@@ -310,6 +314,7 @@
     font-size: var(--text-base);
     color: var(--color-text-secondary);
     line-height: 1.6;
+    max-width: 70ch;
   }
 
   .insight-text :global(p) {

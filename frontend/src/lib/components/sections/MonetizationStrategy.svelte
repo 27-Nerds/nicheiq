@@ -130,7 +130,7 @@
       <div class="pricing-tier pricing-tier-recommended">
         <div class="text-center mb-4 pt-2">
           <div class="text-sm text-text-muted mb-1">Free Tool</div>
-          <div class="text-3xl font-bold text-accent">$0</div>
+          <div class="text-3xl font-bold text-accent tabular-nums">$0</div>
           <div class="text-xs text-text-muted mt-1">
             {#if pricingData.pricing_model === "Ad-Supported-Free"}
               Monetized via display ads
@@ -199,7 +199,7 @@
         <div class="pricing-tier">
           <div class="text-center mb-4">
             <div class="text-sm text-text-muted mb-1">Free</div>
-            <div class="text-3xl font-bold text-text-primary">$0</div>
+            <div class="text-3xl font-bold text-text-primary tabular-nums">$0</div>
             <div class="text-xs text-text-muted">forever</div>
           </div>
           <ul class="space-y-2">
@@ -219,7 +219,7 @@
       <div class="pricing-tier pricing-tier-recommended">
         <div class="text-center mb-4 pt-2">
           <div class="text-sm text-text-muted mb-1">Pro</div>
-          <div class="text-3xl font-bold text-accent">
+          <div class="text-3xl font-bold text-accent tabular-nums">
             {pricingData.recommended_pro_price ||
               pricingData.recommended_starter_price}
           </div>
@@ -230,7 +230,7 @@
               <li
                 class="text-sm text-text-secondary leading-relaxed flex items-start gap-2"
               >
-                <CheckCircle class="w-4 h-4 text-accent shrink-0 mt-0.5" />
+                <CheckCircle class="w-4 h-4 text-success shrink-0 mt-0.5" />
                 {feature}
               </li>
             {/each}
@@ -241,7 +241,7 @@
               <li
                 class="text-sm text-text-secondary leading-relaxed flex items-start gap-2"
               >
-                <CheckCircle class="w-4 h-4 text-accent shrink-0 mt-0.5" />
+                <CheckCircle class="w-4 h-4 text-success shrink-0 mt-0.5" />
                 {feature}
               </li>
             {/each}
@@ -257,7 +257,7 @@
         <div class="pricing-tier">
           <div class="text-center mb-4">
             <div class="text-sm text-text-muted mb-1">Free</div>
-            <div class="text-3xl font-bold text-text-primary">$0</div>
+            <div class="text-3xl font-bold text-text-primary tabular-nums">$0</div>
             <div class="text-xs text-text-muted">forever</div>
           </div>
           <ul class="space-y-2">
@@ -278,7 +278,7 @@
         <div class="pricing-tier pricing-tier-recommended">
           <div class="text-center mb-4 pt-2">
             <div class="text-sm text-text-muted mb-1">Starter</div>
-            <div class="text-3xl font-bold text-accent">
+            <div class="text-3xl font-bold text-accent tabular-nums">
               {pricingData.recommended_starter_price}
             </div>
           </div>
@@ -288,7 +288,7 @@
                 <li
                   class="text-sm text-text-secondary leading-relaxed flex items-start gap-2"
                 >
-                  <CheckCircle class="w-4 h-4 text-accent shrink-0 mt-0.5" />
+                  <CheckCircle class="w-4 h-4 text-success shrink-0 mt-0.5" />
                   {feature}
                 </li>
               {/each}
@@ -302,7 +302,7 @@
         <div class="pricing-tier pricing-tier-pro">
           <div class="text-center mb-4">
             <div class="text-sm text-text-muted mb-1">Pro</div>
-            <div class="text-3xl font-bold text-success">
+            <div class="text-3xl font-bold text-success tabular-nums">
               {pricingData.recommended_pro_price}
             </div>
           </div>
@@ -334,11 +334,11 @@
   {/if}
 
   <!-- Pricing Rationale -->
-  <InsightCard variant="accent" border="left" padding="lg" class="mb-6">
+  <InsightCard variant="muted" border="left" padding="lg" class="mb-6">
     {#snippet header()}
-      <SectionLabel text="Pricing Rationale" variant="accent" icon={FileText} />
+      <SectionLabel text="Pricing Rationale" variant="muted" icon={FileText} />
     {/snippet}
-    <div class="markdown-content">
+    <div class="markdown-content narrative">
       {@html renderMarkdown(pricingData.pricing_rationale)}
     </div>
   </InsightCard>
@@ -448,7 +448,7 @@
       defaultOpen={false}
       variant="muted"
     >
-      <div class="markdown-content">
+      <div class="markdown-content narrative">
         {@html renderMarkdown(cacBreakdown)}
       </div>
     </ExpandableSection>
@@ -461,7 +461,7 @@
       defaultOpen={false}
       variant="muted"
     >
-      <div class="markdown-content">
+      <div class="markdown-content narrative">
         {@html renderMarkdown(pricingData.wtp_validation)}
       </div>
     </ExpandableSection>
@@ -474,7 +474,7 @@
       defaultOpen={false}
       variant="muted"
     >
-      <div class="markdown-content">
+      <div class="markdown-content narrative">
         {@html renderMarkdown(pricingData.value_proposition_delta)}
       </div>
     </ExpandableSection>
@@ -500,7 +500,7 @@
             <TrendingUp class="w-5 h-5 text-accent" />
             <span class="text-xs uppercase tracking-wider text-text-muted">Revenue Potential at Scale</span>
           </div>
-          <div class="text-3xl font-bold text-accent">{lastMilestone.total_potential}</div>
+          <div class="text-3xl font-bold text-accent tabular-nums">{lastMilestone.total_potential}</div>
           <p class="text-sm text-text-muted mt-2">
             Starting from {trafficData.estimated_monthly_revenue_range}/mo with organic growth alone.
             These projections assume basic ad networks only — premium networks and diversified revenue add 2-4x.
@@ -545,7 +545,7 @@
             {@const isFirst = i === 0}
             <div class="relative pl-10 pb-6">
               <div class="absolute left-0 top-1.5 w-6 h-6 rounded-full flex items-center justify-center text-xs
-                {isLast ? 'bg-accent text-white' : isFirst ? 'border-2 border-accent bg-background' : 'border-2 border-border bg-background'}">
+                {isLast ? 'bg-accent text-white' : isFirst ? 'border-2 border-accent bg-bg-base' : 'border-2 border-border bg-bg-base'}">
                 {#if isLast}&#9733;{/if}
               </div>
               <div class="card {isLast ? 'bento-accent' : ''}">
@@ -912,6 +912,7 @@
     font-weight: 700;
     margin-top: var(--space-1);
     color: var(--color-text-primary);
+    font-variant-numeric: tabular-nums;
   }
 
   .metric-desc {

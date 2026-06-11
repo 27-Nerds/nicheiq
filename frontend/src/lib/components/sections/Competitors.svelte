@@ -590,6 +590,7 @@
     color: var(--color-text-secondary);
     line-height: 1.7;
     margin: 0;
+    max-width: 70ch;
   }
 
   .summary-text :global(p) {
@@ -976,6 +977,7 @@
     font-size: 0.9375rem;
     color: var(--color-text-secondary);
     line-height: 1.7;
+    max-width: 70ch;
   }
 
   .recommendations-content :global(p) {

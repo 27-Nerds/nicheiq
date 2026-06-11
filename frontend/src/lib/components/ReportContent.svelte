@@ -305,19 +305,29 @@
     margin-bottom: 1rem;
   }
 
-  /* Phase wayfinding: keep the phase accent ON THE DIVIDER NUMBER only
-     (color confined to structure). Scoped to the divider's .num span. */
-  .phase-decision :global(.section-divider .num) {
-    color: var(--color-accent);
+  /* Phase wayfinding: large neutral numeral acts as the landmark — size,
+     not color, carries the hierarchy. */
+  .phase-section :global(.section-divider) {
+    padding-top: var(--space-16);
   }
-  .phase-validate :global(.section-divider .num) {
-    color: var(--color-success-dark);
+
+  .phase-section :global(.section-divider .num) {
+    font-family: var(--font-display);
+    font-size: var(--text-4xl);
+    font-weight: 800;
+    line-height: 1;
+    color: var(--color-text-primary);
   }
-  .phase-execute :global(.section-divider .num) {
-    color: var(--color-secondary);
+
+  .phase-section :global(.section-divider .dot) {
+    display: none;
   }
-  .phase-reference :global(.section-divider .num) {
-    color: var(--color-text-muted);
+
+  /* Editorial measure for long-form analysis prose inside report sections.
+     Targets p/li only so markdown tables stay full-width. */
+  .report-content :global(.markdown-content p),
+  .report-content :global(.markdown-content li) {
+    max-width: 70ch;
   }
 
   @media (max-width: 768px) {
