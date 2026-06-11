@@ -64,11 +64,11 @@
         <div class="ms-bars">
           {#each trend as point, i}
             {@const pct = maxCount > 0 ? (point.count / maxCount * 100) : 0}
-            {@const minHeight = point.count > 0 ? Math.max(pct, 3) : 0}
             {@const intensity = trend.length > 1 ? (i / (trend.length - 1)) : 1}
             <div
               class="ms-bar"
-              style="height: {minHeight}%; opacity: {0.3 + intensity * 0.7}; animation-delay: {i * 25}ms"
+              class:ms-bar--zero={point.count === 0}
+              style="height: {point.count > 0 ? `${Math.max(pct, 3)}%` : '2px'}; --bar-mix: {Math.round(30 + intensity * 70)}%; animation-delay: {i * 25}ms"
               title="{formatMonth(point.month)}: {point.count} posts"
             ></div>
           {/each}
@@ -98,7 +98,7 @@
 
   .ms-growth-value {
     font-family: var(--font-display);
-    font-size: 1.5rem;
+    font-size: 1.875rem;
     font-weight: 700;
     color: var(--color-accent);
     font-variant-numeric: tabular-nums;
@@ -170,11 +170,16 @@
 
   .ms-bar {
     flex: 1;
-    background: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) var(--bar-mix, 100%), var(--color-bg-surface));
     border-radius: 2px 2px 0 0;
     transform-origin: bottom;
     animation: barGrow 300ms var(--ease-data-viz, cubic-bezier(0.4, 0, 0.2, 1)) backwards;
     min-width: 0;
+  }
+
+  .ms-bar--zero {
+    background: var(--color-border);
+    border-radius: 0;
   }
 
   @keyframes barGrow {

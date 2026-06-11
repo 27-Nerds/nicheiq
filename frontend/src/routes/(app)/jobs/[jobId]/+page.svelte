@@ -1040,7 +1040,7 @@
             {/each}
           </div>
         {:else}
-          <span class="sticky-bar-sub">Market Sizing, SEO, Competitors & {ADDITIONAL_LOCKED_SECTIONS.length} more · {page.data.stageCosts?.deep_research ?? 15} credits</span>
+          <span class="sticky-bar-sub">Market Sizing, SEO, Competitors & {ADDITIONAL_LOCKED_SECTIONS.length} more · {page.data.stageCosts?.deep_research ?? 15} credits · one-time per niche</span>
         {/if}
       </div>
       {#if stickySelectionCount > 0}
@@ -1049,7 +1049,7 @@
           onclick={() => { validateTrigger++; }}
         >
           {#if !stickyCanAfford}
-            Add credits
+            Add credits to start
           {:else}
             Start Deep Research · {page.data.stageCosts?.deep_research ?? 15} credits <ArrowRight class="w-3.5 h-3.5" aria-hidden="true" />
           {/if}
@@ -1170,10 +1170,6 @@
 
   /* ═══ Opportunities zone (warm wrapper during selection) ═══ */
   .opportunities-zone {
-    background: rgba(234, 88, 12, 0.04);
-    border: 1px solid rgba(234, 88, 12, 0.10);
-    border-radius: var(--radius-lg, 0.75rem);
-    padding: var(--space-4);
     margin-bottom: var(--space-4);
   }
 

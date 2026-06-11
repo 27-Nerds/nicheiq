@@ -73,7 +73,6 @@
   const superpower = $derived(getSuperpower(solution, SUPERPOWER_MAP));
   const displayTitle = $derived(solutionDisplayTitle(solution));
   const cardDesc = $derived(solutionCardDescription(solution));
-  const hasHeadline = $derived(!!solution.headline?.trim());
   const fit = $derived(fitLabel(solution.market_fit_score));
 
   // why_it_works_short with fallback
@@ -201,9 +200,6 @@
       <span class="text-xs font-mono text-text-muted tabular-nums">
         ~{solution.estimated_development_time}
       </span>
-    {/if}
-    {#if hasHeadline}
-      <span class="hidden sm:inline-block ml-auto text-[10px] font-mono text-text-muted/60 truncate max-w-[120px]">{solution.solution_name}</span>
     {/if}
   </div>
 

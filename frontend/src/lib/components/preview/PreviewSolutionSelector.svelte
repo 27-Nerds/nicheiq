@@ -247,7 +247,7 @@
         {#if selectionCount === 0}
           Choose 1–3 solutions to compare
         {:else}
-          {selectionCount} selected · {stageCosts.deep_research} credits
+          {selectionCount} selected · {stageCosts.deep_research} credits · one-time per niche
         {/if}
       </span>
 

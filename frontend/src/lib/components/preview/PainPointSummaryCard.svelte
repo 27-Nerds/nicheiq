@@ -45,9 +45,15 @@
       {/if}
       <h3 class="pp-title">{painPoint.title}</h3>
     </div>
-    <span class="pp-sev pp-sev--{severityLevel}">
-      {severityLabel}
-    </span>
+    {#if severityLevel === 'critical'}
+      <span class="pp-sev pp-sev--critical">
+        {severityLabel}
+      </span>
+    {:else}
+      <span class="pp-sev pp-sev--quiet">
+        {severityLevel}
+      </span>
+    {/if}
   </div>
 
   {#if painPoint.description}
@@ -90,7 +96,7 @@
       <span class="pp-mentions">{painPoint.mention_count} {painPoint.mention_count === 1 ? 'mention' : 'mentions'}</span>
     </div>
     {#if onViewOpportunity}
-      <button class="pp-action" onclick={onViewOpportunity}>
+      <button class="pp-action" class:pp-action--solid={isTop} onclick={onViewOpportunity}>
         Explore solutions
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
       </button>
@@ -185,14 +191,11 @@
     color: var(--color-severity-critical);
   }
 
-  .pp-sev--high {
-    background: var(--color-severity-high-bg);
-    color: var(--color-severity-high);
-  }
-
-  .pp-sev--medium {
-    background: var(--color-severity-medium-bg);
-    color: var(--color-severity-medium);
+  .pp-sev--quiet {
+    background: none;
+    padding: 0.25rem 0;
+    font-family: var(--font-mono);
+    color: var(--color-text-muted);
   }
 
   /* ── Body ── */
@@ -232,7 +235,7 @@
     font-family: var(--font-body);
     font-size: 0.75rem;
     font-weight: 500;
-    color: var(--color-accent);
+    color: var(--color-text-secondary);
     padding: 0.25rem 0;
     transition: color 150ms ease;
     display: inline-flex;
@@ -255,7 +258,7 @@
   .pp-evidence-trigger::marker { display: none; }
 
   .pp-evidence-trigger:hover {
-    color: var(--color-accent-dark, #D9562A);
+    color: var(--color-accent);
   }
 
   .pp-evidence-body {
@@ -299,6 +302,7 @@
     gap: 0.5rem;
     margin-top: 0.75rem;
     padding-top: 0.75rem;
+    border-top: 1px solid var(--color-border);
   }
 
   .pp-meta {
@@ -330,16 +334,27 @@
     gap: 0.375rem;
     font-size: 0.75rem;
     font-weight: 600;
-    color: white;
-    background: var(--color-accent);
+    color: var(--color-accent);
+    background: transparent;
     border: none;
-    padding: 0.375rem 0.75rem;
+    padding: 0.375rem 0;
     border-radius: var(--radius-sm);
     cursor: pointer;
-    transition: background-color 150ms ease;
+    transition: color 150ms ease, background-color 150ms ease;
   }
 
   .pp-action:hover {
+    color: var(--color-accent-dark, #D9562A);
+  }
+
+  .pp-action--solid {
+    color: white;
+    background: var(--color-accent);
+    padding: 0.375rem 0.75rem;
+  }
+
+  .pp-action--solid:hover {
+    color: white;
     background: var(--color-accent-dark, #D9562A);
   }
 
