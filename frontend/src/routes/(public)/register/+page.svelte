@@ -18,6 +18,13 @@
   let loading = $state(false);
   let error = $state("");
 
+  // Honor returnTo (set by catalog CTAs) like the login page does; accept only
+  // same-origin relative paths so the param can't be used as an open redirect.
+  const returnTo = $derived.by(() => {
+    const raw = page.url.searchParams.get("returnTo") || "";
+    return raw.startsWith("/") && !raw.startsWith("//") ? raw : "/dashboard";
+  });
+
   async function handleRegister(e: Event) {
     e.preventDefault();
     error = "";
@@ -50,14 +57,14 @@
       const result = await signIn("credentials", {
         email,
         password,
-        callbackUrl: "/dashboard",
+        callbackUrl: returnTo,
         redirect: false,
       });
 
       if (result?.url) {
         window.location.href = result.url;
       } else {
-        goto("/dashboard");
+        goto(returnTo);
       }
     } catch (err) {
       error = "An error occurred. Please try again.";
@@ -67,7 +74,7 @@
   }
 
   function handleOAuthLogin(provider: "google" | "github") {
-    signIn(provider, { callbackUrl: "/dashboard" });
+    signIn(provider, { callbackUrl: returnTo });
   }
 </script>
 

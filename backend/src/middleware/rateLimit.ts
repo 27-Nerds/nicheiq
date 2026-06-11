@@ -60,6 +60,10 @@ export const jobCreationLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  // Key by authenticated user (these routes run requireInternalAuth first) so
+  // shared-IP users aren't collectively throttled and a single user can't bypass
+  // the cap by hopping IPs. Falls back to IP for any unauthenticated caller.
+  keyGenerator: (req) => (req as { user?: { id?: string } }).user?.id || req.ip || 'unknown',
 });
 
 /**

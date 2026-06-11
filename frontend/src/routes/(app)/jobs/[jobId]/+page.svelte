@@ -23,6 +23,7 @@
     BarChart3,
   } from "lucide-svelte";
   import { creditTopUp } from "$lib/stores/creditTopUp.svelte";
+  import { getAdjustedStageCounts } from "$lib/utils/stages";
   import { mapVerdict } from "$lib/types/publicCatalog";
   import type { Job, SolutionPreview, ReportSummary } from "$lib/types/job";
   import Button from "$lib/components/ui/Button.svelte";
@@ -81,6 +82,10 @@
 
   // ── Merged: client overrides take precedence over server data ──
   const job = $derived(clientJob ?? serverJob);
+  // Hidden-stage-adjusted counts so the aside matches JobCard / progress screen.
+  const jobStageCounts = $derived(
+    job ? getAdjustedStageCounts(job) : { completed: 0, total: 0 },
+  );
   const localSolutions = $derived(clientSolutions ?? serverSolutions);
   const reportSummary = $derived(clientReportSummary ?? serverReportSummary);
   const discoveryData = $derived(clientDiscoveryData ?? serverDiscoveryData);
@@ -561,7 +566,7 @@
 
 <div class="job-page-shell" class:has-sticky-bar={isSelectionPhase && showStickyBar}>
   {#if job && !isGenerating}
-    <PhaseNav jobStatus={job.status} />
+    <PhaseNav jobStatus={job.status} entryMode={job.entryMode} />
   {/if}
   <main class="job-page-content">
     {#if loading}
@@ -585,10 +590,12 @@
           phase={isGeneratingP1 ? 'discovery' : 'deep_research'}
           jobStatus={job.status}
           niche={job.niche}
+          entryMode={job.entryMode}
           userEmail={data.userEmail}
           progressPercent={job.progressPercent}
           stagesCompleted={job.stagesCompleted ?? 0}
           totalStages={job.totalStages ?? 0}
+          currentStage={job.currentStage}
           queuePosition={job.queuePosition ?? undefined}
           catalogPainPoints={data.catalogPainPoints ?? []}
           selectedNames={job.selectedSolutions ?? []}
@@ -646,8 +653,8 @@
           <JobHeroAside
             state={asideState}
             progressPercent={job.progressPercent}
-            stagesCompleted={job.stagesCompleted ?? 0}
-            totalStages={job.totalStages ?? 0}
+            stagesCompleted={jobStageCounts.completed}
+            totalStages={jobStageCounts.total}
             startedAt={job.startedAt}
             selectionCount={displaySolutions.length}
             summary={reportSummary}

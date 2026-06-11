@@ -2,6 +2,9 @@ import type { LayoutServerLoad } from './$types';
 import { fetchBackend } from '$lib/backend';
 import { isCatalogPath } from '$lib/utils/urls';
 import type { CtaConfig } from '$lib/types/cta';
+import { DEFAULT_STAGE_COSTS } from '$lib/types/job';
+import type { StageCosts } from '$lib/types/job';
+import type { UserSubscription } from '$lib/types/billing';
 
 export const load: LayoutServerLoad = async (event) => {
   let ctaTexts: Record<string, CtaConfig | null> = {};
@@ -26,13 +29,20 @@ export const load: LayoutServerLoad = async (event) => {
   let monthlyAllowance = 0;
   let purchasedBalance = 0;
   let monthlyAllowancePeriodEnd: string | null = null;
+  let subscription: UserSubscription | null = null;
+  // Stage costs power the research confirmation modal on catalog detail pages
+  // ("this costs N credits") + CreditTopUpModal. Default until the per-user fetch lands.
+  let stageCosts: StageCosts = { ...DEFAULT_STAGE_COSTS };
 
   const session = await event.locals.auth?.();
   if (session?.user?.id && isCatalogPath(event.url.pathname)) {
+    const headers = { 'X-User-ID': session.user.id };
     try {
-      const balanceRes = await fetchBackend('/api/billing/balance', {
-        headers: { 'X-User-ID': session.user.id },
-      });
+      const [balanceRes, costsRes, subRes] = await Promise.all([
+        fetchBackend('/api/billing/balance', { headers }),
+        fetchBackend('/api/billing/stage-costs', { headers }),
+        fetchBackend('/api/billing/subscription', { headers }).catch(() => null),
+      ]);
       if (balanceRes.ok) {
         const data = await balanceRes.json();
         creditBalance = data.available ?? data.balance ?? 0;
@@ -40,8 +50,14 @@ export const load: LayoutServerLoad = async (event) => {
         purchasedBalance = data.purchasedBalance ?? data.balance ?? 0;
         monthlyAllowancePeriodEnd = data.monthlyAllowancePeriodEnd ?? null;
       }
+      if (costsRes.ok) {
+        stageCosts = { ...stageCosts, ...(await costsRes.json()) };
+      }
+      if (subRes?.ok) {
+        subscription = (await subRes.json()).subscription ?? null;
+      }
     } catch (error) {
-      console.error('Failed to fetch catalog header balance:', error);
+      console.error('Failed to fetch catalog header credit data:', error);
     }
   }
 
@@ -51,5 +67,7 @@ export const load: LayoutServerLoad = async (event) => {
     monthlyAllowance,
     purchasedBalance,
     monthlyAllowancePeriodEnd,
+    subscription,
+    stageCosts,
   };
 };

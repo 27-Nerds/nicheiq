@@ -3,6 +3,8 @@
 export interface Report {
 	niche: string;
 	executive_summary: string;
+	/** True when generated from a catalog-seeded run (thinner community evidence). */
+	seeded_from_catalog?: boolean;
 	executive_dashboard?: ExecutiveDashboard;
 	go_to_market_blueprint?: GoToMarketBlueprint;
 	market_analytics?: MarketAnalytics;

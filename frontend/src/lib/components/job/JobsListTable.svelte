@@ -6,6 +6,7 @@
   import CatalogTable from "$lib/components/catalog/seo/CatalogTable.svelte";
   import Trifecta from "$lib/components/catalog/seo/Trifecta.svelte";
   import VerdictBadge from "$lib/components/catalog/seo/VerdictBadge.svelte";
+  import CatalogProvenanceBadge from "$lib/components/ui/CatalogProvenanceBadge.svelte";
   import ArrowRight from "lucide-svelte/icons/arrow-right";
   import MoreVertical from "lucide-svelte/icons/more-vertical";
   import Download from "lucide-svelte/icons/download";
@@ -101,7 +102,10 @@
       <span class="cell-rank">{String(i + 1).padStart(2, "0")}</span>
 
       <div class="cell-idea">
-        <h4 class="idea-title">{rowTitle(job)}</h4>
+        <div class="idea-title-row">
+          <h4 class="idea-title">{rowTitle(job)}</h4>
+          <CatalogProvenanceBadge entryMode={job.entryMode} />
+        </div>
         {#if tagline}<p class="idea-tagline">{tagline}</p>{/if}
       </div>
 
@@ -188,6 +192,20 @@
 
   .cell-idea {
     min-width: 0;
+  }
+  .idea-title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    margin: 0 0 3px;
+  }
+  .idea-title-row .idea-title {
+    margin: 0;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .idea-title {
     font-size: 14.5px;

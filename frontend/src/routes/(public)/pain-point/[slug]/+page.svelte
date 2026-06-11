@@ -16,6 +16,7 @@
     CatalogLockedSection,
     LockedListSkeleton,
   } from "$lib/components/catalog/seo";
+  import ResearchCtaButton from "$lib/components/catalog/ResearchCtaButton.svelte";
   import { categoryPath } from "$lib/utils/urls";
   import { scaleSeverity } from "$lib/types/publicCatalog.js";
 
@@ -23,9 +24,6 @@
 
   const pp = $derived(data.painPoint);
   const parent = $derived(pp.category.parent ?? null);
-
-  const session = $derived(page.data.session);
-  const ctaHref = $derived(session?.user ? "/new" : "/register?ref=catalog");
 
   const trail = $derived.by<Array<{ label: string; href?: string }>>(() => {
     const stops: Array<{ label: string; href?: string }> = [
@@ -339,16 +337,18 @@
 {/if}
 
 <BuildCTA
-  {ctaHref}
   headline="Build a solution for this pain?"
-  body="Run research on a market you're exploring. Get pain points, audience segments, competitive landscape, and a launch plan — sourced from real Reddit and Hacker News conversations."
-  ctaLabel="Run your own research"
+  body="Generate and validate solution ideas for this exact pain point. You'll review the candidates and pick which to take into deep research — sourced from real Reddit and Hacker News conversations."
   secondaryLabel={`More in ${pp.category?.name ?? 'catalog'}`}
   secondaryHref={categoryPath({
     slug: pp.category.slug,
     parentSlug: parent?.slug ?? null,
   })}
-/>
+>
+  {#snippet primary()}
+    <ResearchCtaButton kind="pain" slug={pp.slug} label="Explore solutions for this pain" subject={pp.title} />
+  {/snippet}
+</BuildCTA>
 
 <style>
   /* Source-attribution strip under section 01 — community chips appear

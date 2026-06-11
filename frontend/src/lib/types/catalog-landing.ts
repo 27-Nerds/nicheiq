@@ -138,6 +138,8 @@ export interface IdeaPreview {
   // Phase 5: present on detail-page payloads (getIdeaBySlug); never on landing
   // top-N previews (those omit it to keep the payload compact).
   researchContext?: CatalogResearchContext | null;
+  // Distinct number of users who have run deep research on this idea (detail payload only).
+  researchCount?: number | null;
   // FAQ — flows through toIdeaPreview for both list and detail responses.
   // Drives visible <CategoryFAQ> + FAQPage JSON-LD on /idea/[slug] when
   // length >= 2.

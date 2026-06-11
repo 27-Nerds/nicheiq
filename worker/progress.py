@@ -8,6 +8,7 @@ This module publishes progress updates to the backend API, which then:
 """
 
 import os
+import time
 from typing import Any, Callable, Optional
 
 import requests
@@ -275,31 +276,59 @@ def notify_ideas_ready(job_id: str, solutions: list[dict], checkpoint_path: str,
         skip_validation: If True, skip validation step
         discovery_data_path: Path to materialized discovery data JSON
         preview_report_path: Path to materialized preview report JSON
+
+    Raises:
+        requests.exceptions.RequestException: after all retries are exhausted.
+        This delivery is the job's ONLY transition out of RUNNING, so a swallowed
+        failure would leave it stuck RUNNING forever; raising lets the task's
+        standard failure path take over (FAILED + refund) instead.
     """
-    try:
-        payload = {
-            "worker_id": _get_worker_id(),
-            "job_id": job_id,
-            "solutions": solutions,
-            "checkpoint_path": checkpoint_path,
-            "total_to_validate": total_to_validate,
-            "skip_validation": skip_validation,
-            "discovery_data_path": discovery_data_path,
-        }
-        if preview_report_path:
-            payload["preview_report_path"] = preview_report_path
+    payload = {
+        "worker_id": _get_worker_id(),
+        "job_id": job_id,
+        "solutions": solutions,
+        "checkpoint_path": checkpoint_path,
+        "total_to_validate": total_to_validate,
+        "skip_validation": skip_validation,
+        "discovery_data_path": discovery_data_path,
+    }
+    if preview_report_path:
+        payload["preview_report_path"] = preview_report_path
 
-        response = requests.post(
-            f"{_get_backend_url()}/api/workers/ideas-ready",
-            json=payload,
-            headers={"x-internal-service": _get_internal_secret()},
-            timeout=30,
-        )
-        response.raise_for_status()
-        logger.info(f"[Progress] Ideas ready notification sent for job {job_id} ({len(solutions)} solutions)")
+    retry_delays = (2.0, 5.0, 10.0)
+    last_error: Exception = RuntimeError("unreachable")
+    for attempt, delay in enumerate((*retry_delays, None), start=1):
+        try:
+            response = requests.post(
+                f"{_get_backend_url()}/api/workers/ideas-ready",
+                json=payload,
+                headers={"x-internal-service": _get_internal_secret()},
+                timeout=30,
+            )
+            # 409 = job no longer RUNNING: either a previous attempt landed but the
+            # response was lost (already AWAITING_SELECTION) or the job was
+            # cancelled. Either way, retrying can't help — treat as delivered.
+            if response.status_code == 409:
+                logger.warning(
+                    f"[Progress] Ideas-ready for job {job_id}: job no longer RUNNING "
+                    "(already delivered or cancelled) — not retrying"
+                )
+                return
+            response.raise_for_status()
+            logger.info(f"[Progress] Ideas ready notification sent for job {job_id} ({len(solutions)} solutions)")
+            return
+        except requests.exceptions.RequestException as e:
+            last_error = e
+            if delay is None:
+                break
+            logger.warning(
+                f"[Progress] Ideas-ready attempt {attempt} failed for job {job_id}, "
+                f"retrying in {delay}s: {e}"
+            )
+            time.sleep(delay)
 
-    except requests.exceptions.RequestException as e:
-        logger.error(f"[Progress] Failed to notify ideas ready: {e}")
+    logger.error(f"[Progress] Failed to notify ideas ready for job {job_id} after {attempt} attempts")
+    raise last_error
 
 
 

@@ -186,6 +186,10 @@ class Settings(BaseSettings):
         default=False,
         description="Enable/disable YouTube transcript collection (requires youtube-transcript-api)"
     )
+    enable_seed_enrichment: bool = Field(
+        default=True,
+        description="Best-effort live-evidence enrichment (Hacker News) for catalog-seeded jobs; failures never block the job"
+    )
     min_hn_points: int = Field(
         default=5, description="Minimum points for Hacker News stories"
     )

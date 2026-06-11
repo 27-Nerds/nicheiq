@@ -429,6 +429,14 @@ class FinalReport(BaseModel):
     niche: str = Field(..., description="Niche analyzed")
     executive_summary: str = Field(..., description="High-level executive summary")
 
+    # Transparency: True when the run was seeded from a catalog pain/idea (no fresh
+    # social-content scrape), so the report's community evidence is thinner. Drives
+    # a "seeded from catalog" badge in the UI.
+    seeded_from_catalog: bool = Field(
+        default=False,
+        description="True if this report was generated from a catalog-seeded run (pain_research / deep_idea)."
+    )
+
     # Executive Dashboard (Phase 1 Enhancement) - TOP-LEVEL SUMMARY
     executive_dashboard: Optional[ExecutiveDashboard] = Field(
         default=None,
@@ -1414,6 +1422,12 @@ class ResearchState(BaseModel):
     skipped_stages: list[float] = Field(
         default_factory=list,
         description="Stages that were skipped (e.g., stage 8 for SaaS solutions)"
+    )
+    seeded_from_catalog: bool = Field(
+        default=False,
+        description="True if seeded from a catalog pain/idea (pain_research / deep_idea), skipping "
+                    "the Stage-2 social scrape. Persisted to checkpoint metadata so it survives the "
+                    "awaiting-selection → Phase-2 boundary and reaches the final report."
     )
     filtering_stats: Optional[dict[str, Any]] = Field(
         default=None,

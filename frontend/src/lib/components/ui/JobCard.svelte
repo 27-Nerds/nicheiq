@@ -10,6 +10,8 @@
   import type { Job } from "$lib/types/job";
   import Button from "$lib/components/ui/Button.svelte";
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
+  import CatalogProvenanceBadge from "$lib/components/ui/CatalogProvenanceBadge.svelte";
+  import { getAdjustedStageCounts } from "$lib/utils/stages";
 
   // Completed jobs render in JobsListTable (dashboard). JobCard handles only
   // the active/queued/awaiting/regenerating/failed states.
@@ -31,8 +33,12 @@
     animationDelay = 0,
   }: Props = $props();
 
-  const TOTAL_STAGES = 17;
-  const HIDDEN_STAGES = [4];
+  // Ticks every 30s so "N min elapsed" / "Nm ago" don't go stale on screen.
+  let now = $state(Date.now());
+  $effect(() => {
+    const id = setInterval(() => (now = Date.now()), 30_000);
+    return () => clearInterval(id);
+  });
 
   // Derived state
   const statusUpper = $derived(job.status.toUpperCase());
@@ -118,20 +124,6 @@
     return STAGE_NAME_OVERRIDES[stageName] || stageName;
   }
 
-  function getAdjustedStageCounts(job: Job): {
-    completed: number;
-    total: number;
-  } {
-    const hiddenCount = HIDDEN_STAGES.length;
-    const total = (job.totalStages || TOTAL_STAGES) - hiddenCount;
-    const hiddenCompleted =
-      job.currentStage > 4 || job.status.toUpperCase() === "COMPLETED"
-        ? hiddenCount
-        : 0;
-    const completed = job.stagesCompleted - hiddenCompleted;
-    return { completed: Math.max(0, completed), total };
-  }
-
   function formatNicheTitle(niche: string): string {
     return niche
       .split(" ")
@@ -139,11 +131,10 @@
       .join(" ");
   }
 
-  function formatElapsedTime(startedAt: string | null): string {
+  function formatElapsedTime(startedAt: string | null, nowMs: number): string {
     if (!startedAt) return "";
     const start = new Date(startedAt);
-    const now = new Date();
-    const diffMs = now.getTime() - start.getTime();
+    const diffMs = nowMs - start.getTime();
     const diffMins = Math.floor(diffMs / 60000);
 
     if (diffMins < 1) return "just started";
@@ -151,10 +142,9 @@
     return `${diffMins} min elapsed`;
   }
 
-  function formatRelativeDate(dateStr: string): string {
+  function formatRelativeDate(dateStr: string, nowMs: number): string {
     const date = new Date(dateStr);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
+    const diffMs = nowMs - date.getTime();
     const diffMins = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMs / 3600000);
     const diffDays = Math.floor(diffMs / 86400000);
@@ -169,7 +159,7 @@
     return date.toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
-      year: date.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
+      year: date.getFullYear() !== new Date(nowMs).getFullYear() ? "numeric" : undefined,
     });
   }
 
@@ -350,32 +340,32 @@
   );
 </script>
 
-{#snippet projectTypeBadges()}
-  <div class="flex flex-wrap items-center gap-1.5 mt-1.5">
+{#snippet metaRow(showDate: boolean)}
+  <div class="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2 text-[11px] text-text-muted">
+    <CatalogProvenanceBadge entryMode={job.entryMode} />
+    <!-- Chips share the provenance pill's silhouette (rounded-full, same height)
+         but keep sentence case for readability on long labels. -->
     {#if showAllTypes}
       <span
-        class="text-[11px] px-2 py-0.5 rounded bg-bg-surface border border-border text-text-muted"
+        class="px-2 py-px rounded-full leading-[1.4] whitespace-nowrap text-[10.5px] bg-bg-surface border border-border text-text-muted"
         >All types</span
       >
     {:else}
       {#each job.allowedProjectTypes ?? [] as typeValue}
         <span
-          class="text-[11px] px-2 py-0.5 rounded bg-accent/5 border border-accent/20 text-accent"
+          class="px-2 py-px rounded-full leading-[1.4] whitespace-nowrap text-[10.5px] bg-accent/5 border border-accent/20 text-accent"
         >
           {PROJECT_TYPE_LABELS[typeValue] ?? typeValue}
         </span>
       {/each}
     {/if}
+    {#if showDate}
+      <span aria-hidden="true" class="text-text-muted/50">·</span>
+      <span class="font-mono tabular-nums" title={formatDate(job.createdAt)}>
+        {formatRelativeDate(job.createdAt, now)}
+      </span>
+    {/if}
   </div>
-{/snippet}
-
-{#snippet relativeDate(dateStr: string)}
-  <span
-    class="text-xs font-mono tabular-nums text-text-muted shrink-0"
-    title={formatDate(dateStr)}
-  >
-    {formatRelativeDate(dateStr)}
-  </span>
 {/snippet}
 
 {#snippet cancelButton()}
@@ -395,7 +385,7 @@
 {/snippet}
 
 {#snippet jobCardHeader(rightBadge: Snippet)}
-  <div class="flex items-center justify-between gap-4">
+  <div class="flex items-center justify-between gap-3">
     <div class="flex items-center gap-2.5 min-w-0 flex-1 w-0">
       <span class="w-2 h-2 rounded-full {dotClass} shrink-0"></span>
       <h3
@@ -404,7 +394,12 @@
         {formatNicheTitle(job.niche)}
       </h3>
     </div>
-    {@render rightBadge()}
+    <div class="flex items-center gap-2 shrink-0">
+      {@render rightBadge()}
+      {#if canCancel}
+        <span class="pointer-events-auto">{@render cancelButton()}</span>
+      {/if}
+    </div>
   </div>
 {/snippet}
 
@@ -430,15 +425,15 @@
           <span
             class="text-[11px] font-mono tabular-nums font-medium text-warning shrink-0"
           >
-            {formatElapsedTime(job.startedAt)}
+            {formatElapsedTime(job.startedAt, now)}
           </span>
         {/if}
       {/snippet}
       {@render jobCardHeader(runningBadge)}
-      {@render projectTypeBadges()}
+      {@render metaRow(false)}
 
-      <!-- Progress bar -->
-      <div class="flex items-center gap-3">
+      <!-- Progress bar (cancel lives in the header) -->
+      <div class="flex items-center gap-3 mt-3">
         <div class="flex-1 h-1.5 bg-bg-surface rounded-full overflow-hidden">
           <div
             class="h-full bg-warning rounded-full transition-all duration-300 animate-shimmer motion-reduce:animate-none"
@@ -452,11 +447,6 @@
           >
         </span>
       </div>
-
-      <!-- Footer -->
-      <div class="flex items-center justify-end gap-2 mt-3 pointer-events-auto">
-        {#if canCancel}{@render cancelButton()}{/if}
-      </div>
     {:else if isQueued}
       <!-- QUEUED STATE -->
       {#snippet queueBadge()}
@@ -467,12 +457,7 @@
         </span>
       {/snippet}
       {@render jobCardHeader(queueBadge)}
-      {@render projectTypeBadges()}
-
-      <!-- Footer -->
-      <div class="flex items-center justify-end gap-2 mt-3 pointer-events-auto">
-        {@render cancelButton()}
-      </div>
+      {@render metaRow(true)}
     {:else if isAwaitingSelection}
       <!-- AWAITING SELECTION STATE -->
       {#snippet awaitingBadge()}
@@ -483,15 +468,22 @@
         </span>
       {/snippet}
       {@render jobCardHeader(awaitingBadge)}
-      {@render projectTypeBadges()}
+      {@render metaRow(true)}
 
-      <p class="mt-2 text-sm text-text-secondary">
-        Solutions are ready for your review.
-      </p>
-
-      <!-- Footer -->
-      <div class="flex items-center justify-end gap-2 mt-3 pointer-events-auto">
-        <Button href="/jobs/{job.id}" label="Review Solutions" class="btn-primary text-sm py-2 px-4" />
+      <!-- Footer band: hairline divider ties status text (left) and action (right)
+           into one row even on very wide cards -->
+      <div class="flex items-center justify-between gap-3 mt-3 border-t border-border pt-3">
+        <p class="text-sm text-text-secondary min-w-0">
+          {#if job.solutionIdeasCount}
+            <strong class="font-semibold text-text-primary">{job.solutionIdeasCount}</strong>
+            solution candidate{job.solutionIdeasCount === 1 ? "" : "s"} ready for review.
+          {:else}
+            Solutions are ready for your review.
+          {/if}
+        </p>
+        <span class="pointer-events-auto shrink-0">
+          <Button href="/jobs/{job.id}" label="Review Solutions" class="btn-primary btn-sm" />
+        </span>
       </div>
     {:else if isRegenerating}
       <!-- REGENERATING STATE -->
@@ -502,19 +494,24 @@
         </span>
       {/snippet}
       {@render jobCardHeader(regeneratingBadge)}
-      {@render projectTypeBadges()}
+      {@render metaRow(true)}
 
-      <p class="mt-2 text-sm text-text-muted">
+      <p class="mt-3 text-sm text-text-muted">
         Generating new solutions...
       </p>
-
     {:else if isFailed}
       <!-- FAILED STATE -->
+      <!-- Muted text label (not a colored chip) — rail + dot + error box already
+           carry the severity color; this just completes the header pattern. -->
       {#snippet failedBadge()}
-        {@render relativeDate(job.createdAt)}
+        <span
+          class="text-[10px] font-mono font-semibold uppercase tracking-[0.06em] text-text-muted shrink-0"
+        >
+          {isQualityGate ? "Quality Gate" : "Failed"}
+        </span>
       {/snippet}
       {@render jobCardHeader(failedBadge)}
-      {@render projectTypeBadges()}
+      {@render metaRow(true)}
 
       <!-- Error box -->
       {#if job.errorMessage || job.stopReason}
@@ -545,9 +542,9 @@
         </div>
       {/if}
 
-      <!-- Footer -->
+      <!-- Footer band (matches the awaiting card's divider) -->
       <div
-        class="flex items-center justify-between gap-2 mt-3 pointer-events-auto"
+        class="flex items-center justify-between gap-2 mt-3 border-t border-border pt-3 pointer-events-auto"
       >
         <!-- Credit refund indicator -->
         <div>
@@ -562,7 +559,7 @@
         </div>
         <!-- Actions -->
         <div class="flex items-center gap-2">
-          <SubmitButton onclick={handleResume} disabled={isResuming} loading={isResuming} loadingText="Resuming..." icon={RotateCw} keepIconOnLoad label="Resume" title="Resume from last checkpoint (refunded credits will be re-charged)" class="btn-primary flex items-center gap-2" />
+          <SubmitButton onclick={handleResume} disabled={isResuming} loading={isResuming} loadingText="Resuming..." icon={RotateCw} keepIconOnLoad label="Resume" title="Resume from last checkpoint (refunded credits will be re-charged)" class="btn-primary btn-sm flex items-center gap-2" />
         </div>
       </div>
     {/if}

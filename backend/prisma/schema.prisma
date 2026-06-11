@@ -200,7 +200,7 @@ model Job {
 
   // Interactive job flow
   jobMode                String?   @db.VarChar(20) // 'interactive' or null (legacy one-shot)
-  entryMode              String?   @db.VarChar(20) // 'idea' | 'audience' | 'discovery'
+  entryMode              String?   @db.VarChar(20) // 'idea' | 'audience' | 'discovery' | 'pain_research' | 'pain_remix' | 'deep_idea'
   solutionIdeas          Json? // Array of solution preview objects
   selectedSolution       String?   @db.VarChar(255) // Name of winning solution (set by Phase 2 re-ranking)
   selectedSolutions      String[]  @default([]) // User's 1-3 selected solution names
@@ -746,6 +746,10 @@ model CatalogIdea {
   // and saves). At most one per category — enforced by a partial unique index (raw SQL in
   // the migration) plus demote-first-then-set in updateCatalogIdea. Independent of isFeatured.
   isFreePreview           Boolean                 @default(false)
+  // Engagement: distinct number of users who have run deep research on this idea.
+  // Denormalized display counter; source of truth is CatalogIdeaResearch rows.
+  // Incremented only when a new (ideaId,userId) research row is first created.
+  researchCount           Int                     @default(0)
   createdAt               DateTime                @default(now())
   updatedAt               DateTime                @updatedAt
   // Reverse relation — featured-collection memberships. Cascade on idea
@@ -754,6 +758,8 @@ model CatalogIdea {
   // User saves of this idea — cascade deletes saved rows when the idea
   // is removed from the catalog.
   savedBy                 SavedIdea[]
+  // Distinct-user deep-research records (powers researchCount + "you already researched this").
+  researchedBy            CatalogIdeaResearch[]
 
   @@unique([sourceJobId, solutionName])
   @@unique([slug])
@@ -765,6 +771,24 @@ model CatalogIdea {
   @@index([categoryId, createdAt(sort: Desc)])
   @@index([categoryId, marketFitScore(sort: Desc)])
   @@index([addressedPainTitles], type: Gin)
+}
+
+// Per-user record that a user ran a deep-research job seeded from a catalog idea.
+// One row per (idea, user); jobId is updated to the latest research job on repeat
+// runs (createdAt preserved). Drives CatalogIdea.researchCount (distinct users).
+// jobId is a plain id string, mirroring CatalogIdea.sourceJobId (catalog tables
+// reference jobs by id, not FK).
+model CatalogIdeaResearch {
+  id        String      @id @default(uuid())
+  ideaId    String
+  idea      CatalogIdea @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  userId    String
+  jobId     String      @db.VarChar(100)
+  createdAt DateTime    @default(now())
+
+  @@unique([ideaId, userId])
+  @@index([userId])
+  @@index([jobId])
 }
 
 model CatalogPainPoint {

@@ -19,6 +19,7 @@ import { statsRouter } from './routes/stats.js';
 import { sitemapRouter } from './routes/sitemap.js';
 import { adminCatalogRouter } from './routes/adminCatalog.js';
 import { publicCatalogRouter } from './routes/publicCatalog.js';
+import { catalogResearchRouter } from './routes/catalogResearch.js';
 import { savesRouter } from './routes/saves.js';
 import { requireInternalAdmin, requireInternalService } from './middleware/auth.js';
 import { prisma } from './services/db.js';
@@ -74,6 +75,8 @@ app.use('/api/admin/catalog', requireInternalAdmin, adminCatalogRouter);
 // Public-rendering surface: service secret only, no userId required (used by
 // SvelteKit (public) SSR loaders that have no session cookie).
 app.use('/api/public/catalog', requireInternalService, publicCatalogRouter);
+// User-initiated research seeded from catalog items (requireInternalAuth applied per-route).
+app.use('/api/catalog', catalogResearchRouter);
 // Saved-items surface: per-user bookmarks. requireInternalAuth applied
 // inside the router so the no-store cache header runs first.
 app.use('/api/saves', savesRouter);

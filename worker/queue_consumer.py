@@ -56,6 +56,8 @@ TASK_TYPE_RESEARCH_PHASE2 = "research_phase2"
 TASK_TYPE_REGENERATE_IDEAS = "regenerate_ideas"
 TASK_TYPE_CATALOG_PAIN_POINTS = "catalog_pain_points"
 TASK_TYPE_CATALOG_IDEAS = "catalog_ideas"
+TASK_TYPE_CATALOG_PAIN_RESEARCH = "catalog_pain_research"
+TASK_TYPE_CATALOG_DEEP_RESEARCH = "catalog_deep_research"
 JOB_MODE_INTERACTIVE = "interactive"
 STATUS_AWAITING_SELECTION = "awaiting_selection"
 
@@ -196,6 +198,25 @@ def process_job(job_data: dict) -> None:
                 # ideas inherit the same CatalogResearchContext.
                 parent_source_job_id=job_data.get("parent_source_job_id"),
                 content_categorization=job_data.get("content_categorization"),
+            )
+        elif task_type == TASK_TYPE_CATALOG_PAIN_RESEARCH:
+            from .tasks import run_catalog_pain_research
+
+            result = run_catalog_pain_research(
+                job_id=job_id,
+                pain_seeds=job_data["pain_seeds"],
+                niche=job_data.get("niche", ""),
+                user_id=job_data.get("user_id"),
+                allowed_project_types=job_data.get("allowed_project_types"),
+            )
+        elif task_type == TASK_TYPE_CATALOG_DEEP_RESEARCH:
+            from .tasks import run_catalog_deep_research
+
+            result = run_catalog_deep_research(
+                job_id=job_id,
+                idea_seed=job_data["idea_seed"],
+                niche=job_data.get("niche", ""),
+                user_id=job_data.get("user_id"),
             )
         else:
             # Default research task

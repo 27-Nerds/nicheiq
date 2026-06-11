@@ -20,7 +20,7 @@ export const CreateJobSchema = z.object({
       'Niche description contains invalid characters. Use letters, numbers, spaces, and common punctuation only.'
     ),
   allowedProjectTypes: z.array(z.enum(VALID_PROJECT_TYPES)).min(1).max(5).optional(),
-  entryMode: z.enum(['idea', 'audience', 'discovery']).optional(),
+  entryMode: z.enum(['idea', 'audience', 'discovery', 'pain_research', 'pain_remix', 'deep_idea']).optional(),
 });
 
 export type CreateJobInput = z.infer<typeof CreateJobSchema>;
@@ -143,6 +143,7 @@ export interface JobResponse {
   selectedSolutions: string[] | null;
   awaitingSelectionAt: string | null;
   ideasShownAt: string | null;
+  solutionIdeasCount?: number | null;
   // Optional fields (endpoint-dependent)
   createdAt?: string;
   progress?: StageProgress[];

@@ -170,11 +170,15 @@ export interface Job {
   landingPageStatus?: string | null;
   // Interactive job flow
   jobMode?: 'interactive' | 'auto' | null;
+  // Entry mode — how the job was created. 'pain_research' (single/remix, skips
+  // discovery stages 1-4) and 'deep_idea' (skips 1-5) drive shortened-flow UI.
+  entryMode?: 'idea' | 'audience' | 'discovery' | 'pain_research' | 'pain_remix' | 'deep_idea' | null;
   selectedSolution?: string | null;
   selectedSolutions?: string[] | null;
   selectionRationale?: string | null;
   awaitingSelectionAt?: string | null;
   ideasShownAt?: string | null;
   solutionIdeas?: SolutionPreview[] | null;
+  solutionIdeasCount?: number | null;
   canRegenerate?: boolean;
 }

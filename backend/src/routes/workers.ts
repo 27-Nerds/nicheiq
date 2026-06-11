@@ -371,12 +371,20 @@ workersRouter.post('/report-ready', async (req: Request, res: Response) => {
       select: { userId: true, niche: true, selectedSolutions: true },
     });
 
-    // Persist Phase 2 winner if provided
-    if (data.winner_name && job?.selectedSolutions?.includes(data.winner_name)) {
-      await prisma.job.update({
-        where: { id: data.job_id },
-        data: { selectedSolution: data.winner_name },
-      });
+    // Persist Phase 2 winner if provided. Normalized comparison (trim + collapse
+    // whitespace + casefold): the Python side may sanitize/echo the name with
+    // trivial drift, which must not silently drop winner persistence.
+    const normalizeName = (s: string) => s.trim().replace(/\s+/g, ' ').toLowerCase();
+    if (data.winner_name && job?.selectedSolutions?.length) {
+      const winnerNorm = normalizeName(data.winner_name);
+      const matched = job.selectedSolutions.find((s) => normalizeName(s) === winnerNorm);
+      if (matched) {
+        await prisma.job.update({
+          where: { id: data.job_id },
+          // Persist the user-selected spelling, not the worker echo.
+          data: { selectedSolution: matched },
+        });
+      }
     }
 
     if (isFirstDelivery && job?.userId) {

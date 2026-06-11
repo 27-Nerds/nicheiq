@@ -193,6 +193,10 @@ class CheckpointManager:
         if hasattr(self.state, 'social_content_metrics') and self.state.social_content_metrics:
             metadata["social_content_metrics"] = self.state.social_content_metrics
 
+        # Catalog-seeded flag (transparency badge; must survive Phase-2 resume)
+        if getattr(self.state, 'seeded_from_catalog', False):
+            metadata["seeded_from_catalog"] = True
+
         # Stage completion timestamps (for timing summary in final report)
         if hasattr(self.state, 'stage_completion_timestamps') and self.state.stage_completion_timestamps:
             metadata["stage_completion_timestamps"] = {
@@ -456,6 +460,10 @@ class CheckpointManager:
         # Restore social content metrics
         if metadata.get("social_content_metrics"):
             self.state.social_content_metrics = metadata["social_content_metrics"]
+
+        # Restore catalog-seeded flag (so Phase-2 reports keep the transparency badge)
+        if metadata.get("seeded_from_catalog"):
+            self.state.seeded_from_catalog = True
 
         # Restore stage completion timestamps
         if metadata.get("stage_completion_timestamps"):

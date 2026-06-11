@@ -6,6 +6,7 @@
   import IdeaHeroAside from "./IdeaHeroAside.svelte";
   import Chip from "./Chip.svelte";
   import Rocket from "lucide-svelte/icons/rocket";
+  import { IDEA_ICON as IdeaIcon } from "$lib/config/entity-icons";
   import SaveButton from "../SaveButton.svelte";
 
   // Two-column hero for the idea detail page.
@@ -110,6 +111,10 @@
 
 <header class="idea-hero">
   <div class="left">
+    <p class="entity-eyebrow">
+      <IdeaIcon size={14} aria-hidden="true" />
+      <span>Idea</span>
+    </p>
     <h1>{displayTitle}</h1>
     {#if showCodename}
       <p class="codename">{idea.solution_name}</p>
@@ -148,6 +153,12 @@
     {#if sourceCount != null && sourceCount > 0}
       <p class="source-line">Sourced from {sourceCount.toLocaleString()} discussions</p>
     {/if}
+    {#if (idea.researchCount ?? 0) > 0}
+      <p class="source-line">
+        🔬 {idea.researchCount!.toLocaleString()}
+        {idea.researchCount === 1 ? "founder has" : "founders have"} researched this idea
+      </p>
+    {/if}
   </div>
   <IdeaHeroAside {scores} {verdict} />
 </header>
@@ -162,6 +173,18 @@
   }
   .left {
     min-width: 0;
+  }
+  .entity-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 0 10px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-accent);
   }
   h1 {
     font-size: 32px;

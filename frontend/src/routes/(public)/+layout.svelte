@@ -7,6 +7,7 @@
 	import Footer from '$lib/components/landing/Footer.svelte';
 	import AppHeader from '$lib/components/layout/AppHeader.svelte';
 	import AppFooter from '$lib/components/layout/AppFooter.svelte';
+	import CreditTopUpModal from '$lib/components/CreditTopUpModal.svelte';
 	import { isCatalogPath } from '$lib/utils/urls';
 
 	let { data, children } = $props();
@@ -208,6 +209,13 @@
 		<Footer {hasSampleReport} ctaTexts={data.ctaTexts} />
 	{/if}
 </div>
+
+<!-- Credit top-up modal (store-driven + portal). Mounted here so the research
+     confirmation flow on catalog detail pages can open it; only renders when
+     `creditTopUp.open` (logged-in catalog users). -->
+{#if useAppShell}
+	<CreditTopUpModal />
+{/if}
 
 <style>
 	/* Override the global app body bg (#FAFAFA + radial dot pattern from app.css). */

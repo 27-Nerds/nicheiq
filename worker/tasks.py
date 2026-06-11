@@ -568,6 +568,293 @@ def run_research_phase2(
             logger.debug(f"Knowledge cleanup error (non-fatal): {cleanup_err}")
 
 
+def run_catalog_pain_research(
+    job_id: str,
+    pain_seeds: list[dict],
+    niche: str,
+    user_id: Optional[str] = None,
+    allowed_project_types: Optional[list[str]] = None,
+) -> dict:
+    """
+    Catalog "pain research" (single or remix): seed Phase-1 discovery with 1-5
+    catalog pain points, skip stages 1-4, run stage 5 only, land awaiting-selection.
+    The user then selects + pays for deep research via the existing select-solution path.
+    """
+    logger.info(f"[Worker] Starting catalog pain research job {job_id} ({len(pain_seeds)} pain(s))")
+
+    output_base = Path(os.environ.get("NICHEIQ_OUTPUT_DIR", "./output/jobs"))
+    output_dir = output_base / job_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    flow = None
+    try:
+        from nicheiq.flows.research_flow import ResearchFlow
+        from nicheiq.flows.catalog_seed import build_pain_seed_state, sanitize_label
+
+        progress_callback = create_progress_callback(job_id)
+        # The label arrives built from raw catalog titles — sanitize before it
+        # feeds crew inputs (the DB display label stays raw on the backend).
+        niche = sanitize_label(niche) or "Catalog research"
+        flow = ResearchFlow(
+            niche_description=niche,
+            allowed_project_types=allowed_project_types,
+            job_id=job_id,
+            entry_mode="pain_research",
+        )
+        flow.progress_callback = progress_callback
+        mark_job_running(job_id)
+
+        # Seed niche_context + pain_point_analysis; persist as checkpoints so the
+        # flow treats stages 1-4 as done, then emit SKIPPED progress for them.
+        niche_context, pain_point_analysis = build_pain_seed_state(pain_seeds, niche)
+        if len(pain_seeds) > 1:
+            # Remix: replace the template context with an LLM-synthesized
+            # cross-niche market definition; the template stays on any failure.
+            try:
+                from nicheiq.flows.seed_enrichment import synthesize_remix_niche_context
+
+                niche_context, usage = synthesize_remix_niche_context(pain_seeds, niche)
+                try:
+                    if getattr(flow, "cost_tracker", None):
+                        flow.cost_tracker.record_llm_usage(
+                            "Remix - Niche Context Synthesis", usage.to_dict()
+                        )
+                except Exception:
+                    pass  # cost bookkeeping must not discard a successful synthesis
+                logger.info(f"[Worker] Remix niche context synthesized for job {job_id}")
+            except Exception as e:
+                logger.warning(
+                    f"[Worker] Remix niche-context synthesis failed, keeping template: {e}"
+                )
+        flow.state.niche_context = niche_context
+        flow.state.pain_point_analysis = pain_point_analysis
+        # Set BEFORE the first save_stage so it persists to checkpoint metadata and
+        # survives into the Phase-2 report (transparency badge).
+        flow.state.seeded_from_catalog = True
+        flow.checkpoint_mgr.save_stage("stage_1_niche_context", niche_context)
+        flow.checkpoint_mgr.save_stage("stage_3_pain_points", pain_point_analysis)
+        for num, label in [
+            (1, "Niche Validation"),
+            (2, "Search & Discovery"),
+            (3, "Pain Point Analysis"),
+            (4, "Audience Mapping"),
+        ]:
+            flow._skip_stage(num, label, "Seeded from catalog")
+        flow.state.current_stage = 5
+
+        # Best-effort live-evidence enrichment (HN): populates social_content +
+        # the stage_2 checkpoint so stage 5 / Phase 2 don't run evidence-blind.
+        from nicheiq.flows.seed_enrichment import maybe_enrich_seed
+        from .heartbeat import check_cancellation
+
+        maybe_enrich_seed(
+            flow,
+            [p.title for p in pain_point_analysis.pain_points],
+            niche_context.niche_description,
+            cancel_check=check_cancellation,
+        )
+
+        # Run ONLY stage 5 (solution pipeline), then stop (interactive).
+        flow._execute_remaining_stages(stop_after_phase=1)
+
+        state = flow.state
+        idea_gen = getattr(state, "idea_generation", None)
+        if not idea_gen or not getattr(idea_gen, "solution_ideas", None):
+            raise RuntimeError("Pain research did not produce solution ideas")
+        solutions = idea_gen.solution_ideas
+        solution_previews = [_solution_to_preview_dict(s) for s in solutions]
+
+        checkpoint_path = ""
+        if flow.checkpoint_mgr and flow.checkpoint_mgr.checkpoint_folder:
+            checkpoint_path = str(flow.checkpoint_mgr.checkpoint_folder)
+
+        materialize_dir = str(settings.checkpoint_dir)
+        discovery_data_path = ""
+        preview_report_path = ""
+        try:
+            r = flow._materialize_discovery_data(materialize_dir)
+            if r:
+                discovery_data_path = r
+        except Exception as e:
+            logger.warning(f"[Worker] Failed to materialize discovery data: {e}")
+        try:
+            r = flow._materialize_preview_report(materialize_dir)
+            if r:
+                preview_report_path = r
+        except Exception as e:
+            logger.warning(f"[Worker] Failed to materialize preview report: {e}")
+
+        notify_ideas_ready(
+            job_id,
+            solution_previews,
+            checkpoint_path,
+            len(solutions),
+            skip_validation=True,
+            discovery_data_path=discovery_data_path,
+            preview_report_path=preview_report_path,
+        )
+        logger.info(f"[Worker] Pain research job {job_id} entering AWAITING_SELECTION")
+        return {"status": "awaiting_selection", "job_id": job_id}
+
+    except Exception as e:
+        from .heartbeat import JobCancelledException
+        from nicheiq.flows.research_flow import QualityGateStopException
+
+        if isinstance(e, JobCancelledException):
+            raise
+        if isinstance(e, QualityGateStopException):
+            notify_job_quality_gate_stop(job_id, e.reason, e.details, e.stage)
+            return None
+
+        logger.error(f"[Worker] Pain research job {job_id} failed: {e}\n{traceback.format_exc()}")
+        failed_stage = None
+        if hasattr(flow, "state") and flow.state:
+            failed_stage = flow.state.current_stage
+        e.failed_stage = failed_stage  # type: ignore
+        raise
+
+    finally:
+        try:
+            if flow is not None:
+                flow.cleanup_collections()
+        except Exception as cleanup_err:
+            logger.debug(f"Knowledge cleanup error (non-fatal): {cleanup_err}")
+
+
+def run_catalog_deep_research(
+    job_id: str,
+    idea_seed: dict,
+    niche: str,
+    user_id: Optional[str] = None,
+) -> dict:
+    """
+    Catalog "deep research on an idea": seed a solution from a catalog idea, skip
+    stages 1-5, run Phase 2 (5.5 Competitive Analysis -> 14) in one shot, produce
+    an owned report.
+    """
+    logger.info(f"[Worker] Starting catalog deep research job {job_id} for niche: {niche[:100]}...")
+
+    output_base = Path(os.environ.get("NICHEIQ_OUTPUT_DIR", "./output/jobs"))
+    output_dir = output_base / job_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    flow = None
+    try:
+        from nicheiq.flows.research_flow import ResearchFlow
+        from nicheiq.flows.catalog_seed import build_idea_seed_state, sanitize_label
+
+        progress_callback = create_progress_callback(job_id)
+        # The label arrives built from the raw catalog headline — sanitize before
+        # it feeds crew inputs (the DB display label stays raw on the backend).
+        niche = sanitize_label(niche) or "Catalog research"
+        flow = ResearchFlow(
+            niche_description=niche,
+            job_id=job_id,
+            entry_mode="deep_idea",
+        )
+        flow.progress_callback = progress_callback
+        mark_job_running(job_id)
+
+        niche_context, idea_generation, solution_selection, pain_point_analysis = build_idea_seed_state(
+            idea_seed, niche
+        )
+        flow.state.niche_context = niche_context
+        flow.state.idea_generation = idea_generation
+        flow.state.solution_selection = solution_selection
+        flow.state.pain_point_analysis = pain_point_analysis
+        # Guard for downstream keyword-validation (mirrors _run_phase2_continuation).
+        flow.state._user_selected_solutions = {solution_selection.selected_solution_name}
+        # Set before save_stage so report_generator emits the transparency badge.
+        flow.state.seeded_from_catalog = True
+
+        # Persist seeded artifacts so the flow treats stages 1-5 as done.
+        flow.checkpoint_mgr.save_stage("stage_1_niche_context", niche_context)
+        flow.checkpoint_mgr.save_stage("stage_3_pain_points", pain_point_analysis)
+        flow.checkpoint_mgr.save_stage("stage_5_6_selection", solution_selection)
+        for num, label in [
+            (1, "Niche Validation"),
+            (2, "Search & Discovery"),
+            (3, "Pain Point Analysis"),
+            (4, "Audience Mapping"),
+            (5, "Solution Pipeline"),
+        ]:
+            flow._skip_stage(num, label, "Seeded from catalog idea")
+        # current_stage is an int; the 5.5 competitive analysis auto-runs because
+        # solution_selection is seeded (gated by solution presence, not stage number).
+        flow.state.current_stage = 6
+
+        # Best-effort live-evidence enrichment (HN). Queries lead with the
+        # solution name + headline — the addressed-pain titles are symptom
+        # phrases that search poorly on their own.
+        from nicheiq.flows.seed_enrichment import maybe_enrich_seed
+        from .heartbeat import check_cancellation
+
+        enrich_candidates = [
+            solution_selection.selected_solution_name,
+            str(idea_seed.get("headline") or ""),
+            *[str(t) for t in (idea_seed.get("addressed_pain_titles") or [])[:2]],
+        ]
+        maybe_enrich_seed(
+            flow,
+            enrich_candidates,
+            niche_context.niche_description,
+            cancel_check=check_cancellation,
+        )
+
+        report_path = flow._execute_remaining_stages(skip_bulk_replay=True)
+        if not report_path or not Path(report_path).exists():
+            raise RuntimeError("Deep research did not produce a report")
+
+        job_report_path = output_dir / "report.json"
+        with open(report_path) as src:
+            report_data = json.load(src)
+        # seeded_from_catalog is set on the report by report_generator (state flag),
+        # so no manual injection here — single source of truth.
+        with open(job_report_path, "w") as dst:
+            json.dump(report_data, dst, indent=2)
+
+        final_winner = (
+            flow.state.solution_selection.selected_solution_name
+            if flow.state.solution_selection
+            else solution_selection.selected_solution_name
+        )
+        publish_report_ready(job_id, str(job_report_path), winner_name=final_winner)
+        publish_job_completed(job_id, str(job_report_path), None)
+
+        return {"status": "completed", "job_id": job_id, "report_path": str(job_report_path)}
+
+    except Exception as e:
+        from .heartbeat import JobCancelledException
+        from nicheiq.flows.research_flow import QualityGateStopException
+
+        if isinstance(e, JobCancelledException):
+            raise
+        if isinstance(e, QualityGateStopException):
+            notify_job_quality_gate_stop(job_id, e.reason, e.details, e.stage)
+            return None
+
+        logger.error(f"[Worker] Deep research job {job_id} failed: {e}\n{traceback.format_exc()}")
+        failed_stage = None
+        if hasattr(flow, "state") and flow.state:
+            failed_stage = flow.state.current_stage
+        # A deep_idea job only ever charged 'deep_research'. current_stage defaults
+        # to 1 until the seed block finishes, and a stage <= 5 makes the backend
+        # resolve the refund to 'discovery' — a charge this job never made, so the
+        # refund would silently no-op and the user would keep paying 15 credits
+        # for a failed job. Floor to Phase 2 so the refund maps to 'deep_research'.
+        if failed_stage is not None and failed_stage <= 5:
+            failed_stage = 6
+        e.failed_stage = failed_stage  # type: ignore
+        raise
+
+    finally:
+        try:
+            if flow is not None:
+                flow.cleanup_collections()
+        except Exception as cleanup_err:
+            logger.debug(f"Knowledge cleanup error (non-fatal): {cleanup_err}")
+
+
 def run_regenerate_ideas(
     job_id: str,
     checkpoint_path: str,

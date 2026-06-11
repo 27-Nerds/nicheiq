@@ -3020,6 +3020,8 @@ export async function getIdeaBySlug(slug: string, opts: { entitled?: boolean } =
 
   return {
     ...preview,
+    // Engagement: distinct users who have run deep research on this idea.
+    researchCount: idea.researchCount ?? 0,
     researchContext,
     themes: flattenThemes(ctx),
     audienceSegments: flattenAudienceSegments(ctx),

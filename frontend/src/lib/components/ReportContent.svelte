@@ -113,6 +113,18 @@
       </div>
     </div>
 
+    <!-- Seeded-from-catalog transparency badge -->
+    {#if report.seeded_from_catalog}
+      <div class="mb-4 p-3 rounded-lg border border-border bg-bg-base flex items-start gap-3">
+        <Info class="w-4 h-4 text-text-muted shrink-0 mt-0.5" />
+        <p class="text-sm text-text-secondary">
+          <span class="font-medium text-text-primary">Seeded from the catalog.</span>
+          This report was generated from a catalog entry without a fresh community scrape, so
+          live quotes and the evidence appendix are lighter than a full discovery run.
+        </p>
+      </div>
+    {/if}
+
     <!-- Unified Hero Section (merged header + executive summary) -->
     {#if report.executive_dashboard}
       <UnifiedHero

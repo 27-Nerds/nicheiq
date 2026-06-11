@@ -25,18 +25,22 @@
     headline?: string;
     body?: string;
     ctaLabel?: string;
-    ctaHref: string;
+    ctaHref?: string;
     secondaryLabel?: string | null;
     secondaryHref?: string | null;
+    // Optional primary-action snippet. When provided it replaces the default
+    // link (used to render an interactive <ResearchCtaButton> instead).
+    primary?: import("svelte").Snippet;
   }
 
   let {
     headline = "Ready to build?",
     body = "Run research on a niche or audience you're curious about. Get pain points, solution ideas, audience segments, and a 30-day launch plan — all sourced from real community discussions.",
     ctaLabel = "Run your own research",
-    ctaHref,
+    ctaHref = "",
     secondaryLabel = null,
     secondaryHref = null,
+    primary,
   }: Props = $props();
 </script>
 
@@ -46,10 +50,14 @@
     <p>{body}</p>
   </div>
   <div class="actions">
-    <a class="btn-accent" href={ctaHref} data-sveltekit-preload-data="hover">
-      <Sparkles size={14} />
-      <span>{ctaLabel}</span>
-    </a>
+    {#if primary}
+      {@render primary()}
+    {:else}
+      <a class="btn-accent" href={ctaHref} data-sveltekit-preload-data="hover">
+        <Sparkles size={14} />
+        <span>{ctaLabel}</span>
+      </a>
+    {/if}
     {#if secondaryLabel && secondaryHref}
       <a class="btn-ghost" href={secondaryHref}>
         <span>{secondaryLabel}</span>

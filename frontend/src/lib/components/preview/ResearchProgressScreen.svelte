@@ -7,21 +7,25 @@
   // editorial styling (Plus Jakarta + JetBrains mono, hairline borders, no
   // shadows/animation/decoration) matches DocketEmpty / JobHeroAside.
   import Button from "$lib/components/ui/Button.svelte";
+  import Breadcrumb from "$lib/components/ui/Breadcrumb.svelte";
   import SelectedSolutionsSummary from "$lib/components/SelectedSolutionsSummary.svelte";
-  import ProgressRing from "$lib/components/ui/ProgressRing.svelte";
   import { LayoutDashboard, Library, ArrowRight } from "lucide-svelte";
   import { IDEAS_HUB_PATH, painPointPath } from "$lib/utils/urls";
   import { scaleSeverity, type CatalogTopPainPoint } from "$lib/types/publicCatalog";
+  import { IDEA_ICON, PAIN_ICON } from "$lib/config/entity-icons";
+  import { getAdjustedStageCounts } from "$lib/utils/stages";
   import type { SolutionPreview } from "$lib/types/job";
 
   interface Props {
     phase: "discovery" | "deep_research";
     jobStatus: string;
     niche?: string;
+    entryMode?: string | null;
     userEmail?: string | null;
     progressPercent?: number;
     stagesCompleted?: number;
     totalStages?: number;
+    currentStage?: number;
     queuePosition?: number;
     catalogPainPoints?: CatalogTopPainPoint[];
     selectedNames?: string[];
@@ -35,10 +39,12 @@
     phase,
     jobStatus,
     niche = "",
+    entryMode = null,
     userEmail = null,
     progressPercent = 0,
     stagesCompleted = 0,
     totalStages = 0,
+    currentStage = 0,
     queuePosition,
     catalogPainPoints = [],
     selectedNames = [],
@@ -55,12 +61,42 @@
     isQueued ? "Queued" : isDiscovery ? "Research in progress" : "Deep research",
   );
 
-  const ringValue = $derived(Math.min(Math.max((progressPercent ?? 0) / 100, 0), 1));
+  // Catalog provenance caption (reuses the shared entity icons; self-hides otherwise).
+  const provenance = $derived.by(() => {
+    switch (entryMode) {
+      case "deep_idea":
+        return { Icon: IDEA_ICON, text: "Seeded from a catalog idea" };
+      case "pain_research":
+        return { Icon: PAIN_ICON, text: "Seeded from a catalog pain point" };
+      case "pain_remix":
+        return { Icon: PAIN_ICON, text: "Seeded from catalog pain points" };
+      default:
+        return null;
+    }
+  });
+
   const pct = $derived(Math.round(progressPercent ?? 0));
 
-  // Static 3-phase orientation breadcrumb (replaces the hidden PhaseNav journey cue).
+  // Same hidden-stage adjustment as the dashboard JobCard, so both surfaces
+  // show identical "Stage N / M" numbers for the same job.
+  const stageCounts = $derived(
+    getAdjustedStageCounts({ stagesCompleted, totalStages, currentStage, status: jobStatus }),
+  );
+
+  // 3-phase pipeline track (replaces the hidden PhaseNav journey cue + the ring):
+  // each segment renders done / active / queued / pending, with a fill bar.
   const phases = ["Discovery", "Deep Research", "Build"];
   const activePhase = $derived(isDiscovery ? 0 : 1);
+  const phaseState = (i: number): "done" | "active" | "queued" | "pending" =>
+    i < activePhase
+      ? "done"
+      : i === activePhase
+        ? isQueued
+          ? "queued"
+          : "active"
+        : "pending";
+  const phaseFill = (i: number): number =>
+    i < activePhase ? 100 : i === activePhase && !isQueued ? Math.max(pct, 4) : 0;
 
   // Precompute scaled severity so the template doesn't call scaleSeverity twice.
   const painRows = $derived(
@@ -69,6 +105,8 @@
 </script>
 
 <div class="research-progress">
+  <Breadcrumb items={[{ label: "Dashboard", href: "/dashboard" }]} current="Research" />
+
   <section class="rp-hero">
     <p class="rp-kicker">{kicker}</p>
 
@@ -76,57 +114,63 @@
       <h1 class="rp-niche">{niche}</h1>
     {/if}
 
-    <nav class="rp-phases" aria-label="Research phases">
-      {#each phases as label, i}
-        {#if i > 0}<span class="rp-phase-sep" aria-hidden="true">·</span>{/if}
-        <span class="rp-phase" class:active={i === activePhase}>{label}</span>
-      {/each}
-    </nav>
+    {#if provenance}
+      {@const Icon = provenance.Icon}
+      <p class="rp-provenance">
+        <Icon size={14} aria-hidden="true" />
+        <span>{provenance.text}</span>
+      </p>
+    {/if}
 
-    <div class="rp-progress">
-      {#if isQueued}
-        <p class="rp-stage">Queued{#if queuePosition} · position {queuePosition}{/if}</p>
-      {:else}
-        <ProgressRing
-          value={ringValue}
-          color="accent"
-          size={72}
-          showValue={false}
-          showTooltip={false}
-          flat
-          glow={false}
-          label="Research progress"
-          class="rp-ring"
-        />
-        <p class="rp-stage">Stage {stagesCompleted} / {totalStages} · {pct}%</p>
-      {/if}
+    <div class="rp-track" role="group" aria-label="Research progress">
+      {#each phases as label, i}
+        <div class="rp-seg" data-state={phaseState(i)}>
+          <div class="rp-seg-meta">
+            <span class="rp-seg-idx">{String(i + 1).padStart(2, "0")}</span>
+            <span class="rp-seg-label">{label}</span>
+          </div>
+          <div class="rp-seg-bar">
+            <div class="rp-seg-fill" style="width:{phaseFill(i)}%"></div>
+          </div>
+        </div>
+      {/each}
     </div>
+
+    <p class="rp-stage">
+      {#if isQueued}
+        In&nbsp;queue{#if queuePosition}&nbsp;· position {queuePosition}{/if}
+      {:else}
+        Stage {stageCounts.completed} / {stageCounts.total} · {pct}%
+      {/if}
+    </p>
 
     <p class="rp-body">
       {#if isDiscovery}
         This usually takes up to 15 minutes. You can safely close this tab — we'll email
-        you{#if userEmail} at <strong>{userEmail}</strong>{/if} the moment it's ready.
+        you{#if userEmail}&nbsp;at <strong>{userEmail}</strong>{/if} the moment it's ready.
       {:else}
         We're validating your top picks — the full market validation runs now. You can
-        safely close this tab — we'll email you{#if userEmail} at <strong>{userEmail}</strong
+        safely close this tab — we'll email you{#if userEmail}&nbsp;at <strong>{userEmail}</strong
         >{/if} when it's ready. <strong>Your discovery findings are saved</strong> and will be
         here with the full report.
       {/if}
     </p>
 
     <div class="rp-actions">
-      <Button
-        href="/dashboard"
-        icon={LayoutDashboard}
-        label="Return to Dashboard"
-        class="btn-primary"
-      />
-      <Button
-        href={IDEAS_HUB_PATH}
-        icon={Library}
-        label="Browse Ideas Catalog"
-        class="btn-secondary"
-      />
+      <div class="rp-nav">
+        <Button
+          href="/dashboard"
+          icon={LayoutDashboard}
+          label="Return to Dashboard"
+          class="btn-secondary"
+        />
+        <Button
+          href={IDEAS_HUB_PATH}
+          icon={Library}
+          label="Browse Ideas Catalog"
+          class="btn-secondary"
+        />
+      </div>
       {#if onCancel}
         <button type="button" class="rp-cancel" onclick={onCancel} disabled={cancelling}>
           {cancelling ? "Cancelling…" : "Cancel research"}
@@ -169,14 +213,14 @@
   }
 
   /* ── Hero zone — deliberate vertical presence, centered ── */
+  /* Top-anchored (not vertically centered in a tall band) so the content sits
+     just below the breadcrumb instead of floating mid-viewport. */
   .rp-hero {
-    min-height: 55vh;
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
     text-align: center;
-    padding: 2.5rem 0 1.5rem;
+    padding: 2rem 0 1.5rem;
   }
 
   .rp-kicker {
@@ -196,51 +240,187 @@
     line-height: 1.12;
     letter-spacing: -0.02em;
     color: var(--color-text-primary);
-    margin: 0 0 1rem;
+    margin: 0 0 0.75rem;
     max-width: 24ch;
     text-wrap: balance;
   }
 
-  /* ── Phase breadcrumb (static orientation) ── */
-  .rp-phases {
-    display: flex;
+  /* ── Catalog provenance caption (entity icon + phrase) ── */
+  .rp-provenance {
+    display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.4rem;
+    margin: 0 0 1.25rem;
     font-family: var(--font-mono);
     font-size: 11px;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
+    letter-spacing: 0.02em;
     color: var(--color-text-muted);
-    margin: 0 0 1.75rem;
   }
-  .rp-phase.active {
+  .rp-provenance :global(svg) {
     color: var(--color-accent);
-    font-weight: 600;
-  }
-  .rp-phase-sep {
-    opacity: 0.5;
+    flex-shrink: 0;
   }
 
-  /* ── Progress ── */
-  .rp-progress {
+  /* ── Pipeline track (Discovery / Deep Research / Build) ── */
+  .rp-track {
+    display: flex;
+    align-items: stretch;
+    gap: 0.75rem;
+    width: 100%;
+    max-width: 480px;
+    margin: 0 0 1rem;
+  }
+  .rp-seg {
+    flex: 1 1 0;
+    min-width: 0;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 1.75rem;
+    gap: 0.5rem;
+    text-align: left;
   }
-  /* The ring is a status indicator here, not the interactive score widget —
-     override ProgressRing's `cursor: help` (its `flat` variant doesn't reset it). */
-  .rp-progress :global(.progress-ring.rp-ring) {
-    cursor: default;
+  .rp-seg-meta {
+    display: flex;
+    align-items: baseline;
+    gap: 0.35rem;
+    font-family: var(--font-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
   }
+  .rp-seg-idx {
+    font-size: 9px;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    opacity: 0.6;
+  }
+  .rp-seg-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .rp-seg-bar {
+    position: relative;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--color-border);
+    overflow: hidden;
+  }
+  .rp-seg-fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    height: 100%;
+    border-radius: 2px;
+    background: var(--color-accent);
+    transition: width 600ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  /* state coloring */
+  .rp-seg[data-state="done"] .rp-seg-label {
+    color: var(--color-text-secondary);
+  }
+  .rp-seg[data-state="active"] .rp-seg-label,
+  .rp-seg[data-state="active"] .rp-seg-idx {
+    color: var(--color-accent);
+    opacity: 1;
+  }
+  .rp-seg[data-state="queued"] .rp-seg-label {
+    color: var(--color-text-secondary);
+  }
+  /* active = directional sweep over the fill → reads as "working / progressing" */
+  .rp-seg[data-state="active"] .rp-seg-bar::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in srgb, var(--color-accent) 50%, transparent),
+      transparent
+    );
+    transform: translateX(-100%);
+    animation: rp-sweep 1.8s ease-in-out infinite;
+  }
+  @keyframes rp-sweep {
+    to {
+      transform: translateX(100%);
+    }
+  }
+  /* queued = a gentle, non-directional idle pulse → reads as "waiting", not running */
+  .rp-seg[data-state="queued"] .rp-seg-bar::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+    animation: rp-pulse 2.4s ease-in-out infinite;
+  }
+  @keyframes rp-pulse {
+    0%,
+    100% {
+      opacity: 0.3;
+    }
+    50% {
+      opacity: 0.85;
+    }
+  }
+
   .rp-stage {
     font-family: var(--font-mono);
     font-size: 0.8125rem;
     font-variant-numeric: tabular-nums;
     letter-spacing: 0.02em;
     color: var(--color-text-secondary);
-    margin: 0;
+    margin: 0 0 1.75rem;
+  }
+
+  /* ── Orchestrated load reveal (one staggered cascade) ── */
+  .rp-hero > * {
+    animation: rp-rise 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  }
+  .rp-hero > *:nth-child(1) {
+    animation-delay: 0.04s;
+  }
+  .rp-hero > *:nth-child(2) {
+    animation-delay: 0.1s;
+  }
+  .rp-hero > *:nth-child(3) {
+    animation-delay: 0.16s;
+  }
+  .rp-hero > *:nth-child(4) {
+    animation-delay: 0.22s;
+  }
+  .rp-hero > *:nth-child(5) {
+    animation-delay: 0.28s;
+  }
+  .rp-hero > *:nth-child(6) {
+    animation-delay: 0.34s;
+  }
+  /* 7th child exists when the provenance caption renders (seeded jobs) —
+     without this the actions block gets 0 delay and pops in first. */
+  .rp-hero > *:nth-child(7) {
+    animation-delay: 0.4s;
+  }
+  @keyframes rp-rise {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .rp-seg-fill {
+      transition: none;
+    }
+    .rp-seg-bar::after {
+      animation: none;
+    }
+    .rp-hero > * {
+      animation: none;
+    }
   }
 
   /* ── Reassurance ── */
@@ -256,29 +436,42 @@
     font-weight: 600;
   }
 
-  /* ── Actions ── */
+  /* ── Actions — nav pair (centered row) + a set-apart cancel ── */
   .rp-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+  }
+  .rp-nav {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 0.75rem;
     flex-wrap: wrap;
   }
+  /* Lighter than the default btn-secondary for this calm waiting screen, and no
+     hover lift (keep the accent border/colour hover). */
+  .rp-nav :global(.btn-secondary) {
+    padding: 0.625rem 1.125rem;
+    font-size: var(--text-sm, 0.875rem);
+  }
+  .rp-nav :global(.btn-secondary:hover) {
+    transform: none;
+  }
   .rp-cancel {
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
+    font-family: var(--font-body);
+    font-size: 0.8125rem;
     font-weight: 500;
-    letter-spacing: 0.04em;
     color: var(--color-text-muted);
     background: transparent;
     border: 0;
-    border-bottom: 1px solid transparent;
     cursor: pointer;
-    padding: 8px 2px;
+    padding: 6px 10px;
+    transition: color var(--duration-fast, 150ms) ease;
   }
   .rp-cancel:hover:not(:disabled) {
     color: var(--color-error, #ef4444);
-    border-bottom-color: currentColor;
   }
   .rp-cancel:disabled {
     opacity: 0.5;
@@ -354,7 +547,7 @@
   }
 
   @media (max-width: 480px) {
-    .rp-actions {
+    .rp-nav {
       flex-direction: column;
       align-items: stretch;
       width: 100%;

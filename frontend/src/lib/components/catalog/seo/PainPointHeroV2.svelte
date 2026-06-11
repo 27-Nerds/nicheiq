@@ -8,6 +8,7 @@
   import type { QualitySignals, Theme } from "$lib/types/publicCatalog.js";
   import { page } from "$app/state";
   import PainPointHeroAside from "./PainPointHeroAside.svelte";
+  import { PAIN_ICON as PainIcon } from "$lib/config/entity-icons";
   import SaveButton from "../SaveButton.svelte";
 
   interface Props {
@@ -84,6 +85,10 @@
 
 <header class="pp-hero">
   <div class="left">
+    <p class="entity-eyebrow">
+      <PainIcon size={14} aria-hidden="true" />
+      <span>Pain point</span>
+    </p>
     {#if rankInfo}
       <div class="rank-row">
         {#if rankInfo.rank === 1}
@@ -161,6 +166,18 @@
     font-size: 10px;
     letter-spacing: 0.08em;
     text-transform: uppercase;
+  }
+  .entity-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 0 10px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-accent);
   }
   .top-flag {
     color: var(--color-accent);

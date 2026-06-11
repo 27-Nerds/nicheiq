@@ -174,6 +174,55 @@ export async function enqueueCatalogIdeasJob(
 }
 
 /**
+ * Enqueue a catalog "pain research" job: seed Phase-1 discovery with one or more
+ * (remix) catalog pain points, skip stages 1-4, run stage 5, land awaiting-selection.
+ * Seeds travel in the payload (the worker has no DB access).
+ */
+export async function enqueuePainResearchJob(
+  jobId: string,
+  painSeeds: Record<string, unknown>[],
+  niche: string,
+  userId?: string,
+  allowedProjectTypes?: string[],
+): Promise<void> {
+  const jobData = JSON.stringify({
+    job_id: jobId,
+    pain_seeds: painSeeds,
+    niche,
+    user_id: userId,
+    allowed_project_types: allowedProjectTypes,
+    task_type: 'catalog_pain_research',
+    created_at: new Date().toISOString(),
+  });
+
+  await redis.lpush(QUEUE_NAME, jobData);
+  console.log(`Enqueued catalog pain research job ${jobId} (${painSeeds.length} pain(s)) to ${QUEUE_NAME}`);
+}
+
+/**
+ * Enqueue a catalog "deep research" job: seed a solution from a catalog idea,
+ * skip stages 1-5, run Phase 2 (5.5 -> 14) in one shot. Seed travels in the payload.
+ */
+export async function enqueueDeepIdeaResearchJob(
+  jobId: string,
+  ideaSeed: Record<string, unknown>,
+  niche: string,
+  userId?: string,
+): Promise<void> {
+  const jobData = JSON.stringify({
+    job_id: jobId,
+    idea_seed: ideaSeed,
+    niche,
+    user_id: userId,
+    task_type: 'catalog_deep_research',
+    created_at: new Date().toISOString(),
+  });
+
+  await redis.lpush(QUEUE_NAME, jobData);
+  console.log(`Enqueued catalog deep idea research job ${jobId} to ${QUEUE_NAME}`);
+}
+
+/**
  * Remove a job from the Redis queue (e.g. when cancelled while QUEUED)
  */
 export async function removeJobFromQueue(jobId: string): Promise<boolean> {

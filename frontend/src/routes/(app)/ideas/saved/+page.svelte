@@ -2,6 +2,8 @@
   import { goto, invalidateAll } from "$app/navigation";
   import { page } from "$app/state";
   import { untrack } from "svelte";
+  import { SvelteSet } from "svelte/reactivity";
+  import ResearchConfirmModal from "$lib/components/catalog/ResearchConfirmModal.svelte";
   import type {
     SavedIdeaItem,
     SavedPainPointItem,
@@ -127,7 +129,107 @@
     if (idx === -1) return;
     painPoints = painPoints.filter((p) => p.id !== item.id);
     counts = { ...counts, painPoints: counts.painPoints - 1 };
+    // Drop from the remix selection if it was selected.
+    const slug = !item.locked ? item.painPoint?.slug : null;
+    if (slug) selectedPainSlugs.delete(slug);
     pendingUndo = { kind: "painPoint", item, index: idx };
+  }
+
+  // ============================================
+  // Remix: select 2-5 saved pains -> one research job
+  // ============================================
+  const REMIX_MAX = 5;
+  const selectedPainSlugs = new SvelteSet<string>();
+  let remixLoading = $state(false);
+  let remixError = $state("");
+  let remixConfirmOpen = $state(false);
+  let remixBalanceOverride = $state<number | null>(null);
+
+  const remixCount = $derived(selectedPainSlugs.size);
+  const canRemix = $derived(remixCount >= 2 && remixCount <= REMIX_MAX);
+  const remixCost = $derived(data.stageCosts?.discovery ?? 5);
+  const remixBalance = $derived(remixBalanceOverride ?? data.creditBalance ?? 0);
+  const remixSubject = $derived(`${remixCount} pain points`);
+  // Distinct source niches of the selected pains — the confirm modal shows a
+  // cross-niche advisory at >=2 (locked items carry no painPoint, so narrow first).
+  const remixSourceNiches = $derived.by(() => {
+    const niches = new Set<string>();
+    for (const p of painPoints) {
+      if (!p.locked && p.painPoint?.slug && selectedPainSlugs.has(p.painPoint.slug)) {
+        niches.add(p.painPoint.sourceNiche);
+      }
+    }
+    return [...niches];
+  });
+  // Remix needs ≥2 selectable (unlocked) pains; otherwise the bar is hidden.
+  const unlockedPainCount = $derived(painPoints.filter((p) => !p.locked).length);
+
+  function toggleRemix(slug: string) {
+    if (selectedPainSlugs.has(slug)) {
+      selectedPainSlugs.delete(slug);
+    } else if (selectedPainSlugs.size < REMIX_MAX) {
+      selectedPainSlugs.add(slug);
+    }
+  }
+
+  function openRemixConfirm() {
+    if (!canRemix) return;
+    remixBalanceOverride = null;
+    remixError = "";
+    remixConfirmOpen = true;
+  }
+
+  async function runRemix() {
+    if (!canRemix || remixLoading) return;
+    remixLoading = true;
+    remixError = "";
+    try {
+      const res = await fetch("/api/catalog/pain-research", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ painSlugs: [...selectedPainSlugs] }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) {
+        goto(`/jobs/${d.id}`, { invalidateAll: true });
+        return;
+      }
+      switch (res.status) {
+        case 401: {
+          // Session expired mid-page — existing account, so login (not register).
+          const returnTo = encodeURIComponent(page.url.pathname);
+          goto(`/login?returnTo=${returnTo}`);
+          return;
+        }
+        case 402:
+          remixBalanceOverride = d.balance ?? Math.max(0, remixCost - 1);
+          remixError = "";
+          break;
+        case 403:
+        case 404: {
+          // Backend names the offending slug — surface its title and drop it from
+          // the selection so a retry isn't a guaranteed identical failure.
+          const offendingTitle = painPoints.find((p) => p.painPoint?.slug === d.slug)
+            ?.painPoint?.title;
+          if (d.slug) selectedPainSlugs.delete(d.slug);
+          remixError = offendingTitle
+            ? `"${offendingTitle}" is no longer available — it was deselected, try again.`
+            : res.status === 404
+              ? "A selected pain point was removed from the catalog — it was deselected, try again."
+              : "One or more selected pains are no longer available.";
+          break;
+        }
+        case 400:
+          remixError = d.error || "Select 2–5 pains to remix.";
+          break;
+        default:
+          remixError = "Something went wrong — please try again.";
+      }
+    } catch {
+      remixError = "Something went wrong — please try again.";
+    } finally {
+      remixLoading = false;
+    }
   }
 
   function undoLast() {
@@ -288,10 +390,33 @@
       metaText={`${counts.painPoints} saved`}
     />
     {#if !painsEmpty}
+      {#if unlockedPainCount >= 2}
+        <div class="remix-bar" class:active={remixCount > 0}>
+          <div class="remix-copy">
+            <strong>Remix research</strong>
+            <span>Select 2–5 pains to ideate solutions across the mix ({remixCost} credits).</span>
+          </div>
+          <div class="remix-actions">
+            <span class="remix-count">{remixCount} selected</span>
+            <button
+              type="button"
+              class="remix-btn"
+              onclick={openRemixConfirm}
+              disabled={!canRemix}
+              title={canRemix ? "" : "Select 2–5 pains"}
+            >
+              {`Remix ${remixCount || ""} pains`.trim()}
+            </button>
+          </div>
+        </div>
+      {/if}
       <SavedPainTable
         items={painPoints}
         onUnsave={unsavePainPoint}
         onNotesChange={patchPainNotes}
+        selectable
+        selectedSlugs={selectedPainSlugs}
+        onToggleSelect={toggleRemix}
       />
     {:else if counts.painPoints === 0}
       <DocketEmpty scope="section" subject="PAIN POINTS" mode="discover" />
@@ -305,6 +430,18 @@
     {/if}
   {/if}
 </div>
+
+<ResearchConfirmModal
+  bind:open={remixConfirmOpen}
+  kind="remix"
+  subject={remixSubject}
+  cost={remixCost}
+  balance={remixBalance}
+  loading={remixLoading}
+  error={remixError}
+  crossNiches={remixSourceNiches}
+  onConfirm={runRemix}
+/>
 
 {#if pendingUndo}
   <UndoToast
@@ -391,6 +528,65 @@
     background: var(--color-text-primary);
     color: var(--color-surface, #fff);
     border-color: var(--color-text-primary);
+  }
+
+  .remix-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 12px 16px;
+    margin-bottom: 12px;
+    border: 1px dashed var(--color-border-emphasis);
+    border-radius: 8px;
+    background: var(--color-bg-base, #fafafa);
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+  .remix-bar.active {
+    border-style: solid;
+    border-color: var(--color-border-accent, var(--color-accent));
+  }
+  .remix-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .remix-copy strong {
+    font-size: 13px;
+    color: var(--color-text-primary);
+  }
+  .remix-copy span {
+    font-size: 12px;
+    color: var(--color-text-muted);
+  }
+  .remix-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .remix-count {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--color-text-muted);
+  }
+  .remix-btn {
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    background: var(--color-accent);
+    color: var(--color-surface, #fff);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .remix-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .remix-btn:hover:not(:disabled) {
+    background: var(--color-accent-hover, var(--color-accent-dark));
   }
 
   .cards-grid {

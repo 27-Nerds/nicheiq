@@ -18,6 +18,7 @@
     CatalogLockedSection,
     LockedListSkeleton,
   } from "$lib/components/catalog/seo";
+  import ResearchCtaButton from "$lib/components/catalog/ResearchCtaButton.svelte";
   import type { PainPointPreview } from "$lib/types/catalog-landing";
   import { categoryPath } from "$lib/utils/urls";
   import { renderTechnicalContent } from "$lib/utils/format";
@@ -358,15 +359,23 @@
 {/if}
 
 <BuildCTA
-  {ctaHref}
-  body="Run research on a niche or audience you're curious about. Get pain points, solution ideas, audience segments, and a 30-day launch plan — all sourced from real community discussions."
-  ctaLabel="Run your market research"
+  headline="Go deeper on this idea"
+  body="Run a full deep-research report on this exact idea — SEO opportunity, market sizing, pricing, competitive landscape, and a go/no-go verdict, delivered to your dashboard."
   secondaryLabel={`More in ${idea.category?.name ?? 'catalog'}`}
   secondaryHref={categoryPath({
     slug: idea.category.slug,
     parentSlug: parent?.slug ?? null,
   })}
-/>
+>
+  {#snippet primary()}
+    <ResearchCtaButton
+      kind="idea"
+      slug={idea.slug}
+      label="Deep research on this idea"
+      subject={idea.headline || idea.solution_name}
+    />
+  {/snippet}
+</BuildCTA>
 
 <style>
   /* Source attribution strip — sits directly under the "Pain points addressed"

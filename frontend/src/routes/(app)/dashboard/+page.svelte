@@ -101,9 +101,17 @@
     },
   ]);
 
-  // Group jobs by category for visual separation
+  // Group jobs by category for visual separation.
+  // "In Progress" is sorted strictly newest-first (by createdAt desc) so a job you
+  // just launched always appears at the top — independent of the status-priority
+  // ordering used for the global list/stats above.
   const activeJobs = $derived(
-    jobs.filter((j) => ACTIVE_STATUSES.includes(j.status.toUpperCase())),
+    jobs
+      .filter((j) => ACTIVE_STATUSES.includes(j.status.toUpperCase()))
+      .sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      ),
   );
   const completedJobs = $derived(
     jobs.filter((j) => j.status.toUpperCase() === "COMPLETED"),

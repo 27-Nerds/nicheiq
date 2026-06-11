@@ -10,9 +10,21 @@
     items: SavedPainPointItem[];
     onUnsave: (item: SavedPainPointItem) => void;
     onNotesChange: (item: SavedPainPointItem, notes: string | null) => void;
+    // Remix selection (opt-in): renders a checkbox in the rank cell for unlocked
+    // rows that have a slug. Locked rows are never selectable.
+    selectable?: boolean;
+    selectedSlugs?: Set<string>;
+    onToggleSelect?: (slug: string) => void;
   }
 
-  let { items, onUnsave, onNotesChange }: Props = $props();
+  let {
+    items,
+    onUnsave,
+    onNotesChange,
+    selectable = false,
+    selectedSlugs,
+    onToggleSelect,
+  }: Props = $props();
 
   let editingId = $state<string | null>(null);
 
@@ -75,7 +87,18 @@
       {@const tier = severityTier(item.painPoint.severityScore)}
       {@const sevPct = severityPercent(item.painPoint.severityScore)}
       <div class="pt-row t-{tier}" role="row" style="--i: {Math.min(i, 5)}">
-      <span class="rank" role="cell">{String(i + 1).padStart(2, "0")}</span>
+      {#if selectable && item.painPoint.slug}
+        <span class="sel" role="cell">
+          <input
+            type="checkbox"
+            checked={selectedSlugs?.has(item.painPoint.slug) ?? false}
+            onchange={() => onToggleSelect?.(item.painPoint.slug!)}
+            aria-label={`Select "${item.painPoint.title}" for remix research`}
+          />
+        </span>
+      {:else}
+        <span class="rank" role="cell">{String(i + 1).padStart(2, "0")}</span>
+      {/if}
       <a
         class="ttl"
         role="cell"
@@ -240,6 +263,17 @@
     font-size: 11px;
     color: var(--color-text-muted);
     font-weight: 600;
+  }
+  .sel {
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+  }
+  .sel input {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: var(--color-accent);
   }
   .ttl {
     display: flex;

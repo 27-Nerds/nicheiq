@@ -685,6 +685,9 @@ class ReportGenerator:
         return FinalReport(
             # Basic info
             niche=self.state.niche_context.niche_description,
+            # Transparency: catalog-seeded runs (pain_research / deep_idea) have thinner
+            # community evidence; the flag drives the "seeded from catalog" UI badge.
+            seeded_from_catalog=getattr(self.state, 'seeded_from_catalog', False),
             executive_summary=f"Market research completed for {self.state.niche_context.niche_description}. "
             f"Identified {len(self.state.pain_point_analysis.pain_points) if self.state.pain_point_analysis else 0} validated pain points and "
             f"{len(recommended_solutions)} solution concepts. "

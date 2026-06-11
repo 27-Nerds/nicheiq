@@ -40,10 +40,14 @@ export function formatJobResponse(job: JobWithRelations, options: FormatOptions 
     landingPageStatus: job.landingPageStatus || null,
     // Interactive job flow
     jobMode: job.jobMode || null,
+    // Entry mode — drives shortened-flow rendering (pain_research / deep_idea).
+    entryMode: job.entryMode || null,
     selectedSolution: job.selectedSolution || null,
     selectedSolutions: job.selectedSolutions?.length ? job.selectedSolutions : null,
     awaitingSelectionAt: job.awaitingSelectionAt?.toISOString() || null,
     ideasShownAt: job.ideasShownAt?.toISOString() || null,
+    // Lean count so list payloads can show "N candidates ready" without the full array
+    solutionIdeasCount: Array.isArray(job.solutionIdeas) ? job.solutionIdeas.length : null,
   };
 
   // Optional fields based on endpoint needs

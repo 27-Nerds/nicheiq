@@ -11,9 +11,12 @@
   interface Props {
     jobStatus: string;
     activeSection?: string;
+    /** Seeded-flow mode. 'deep_idea' skips discovery (stages 1-5) and runs deep-research
+     *  immediately, so its discovery phase shows as seeded/done while deep-research is active. */
+    entryMode?: string | null;
   }
 
-  let { jobStatus, activeSection = "" }: Props = $props();
+  let { jobStatus, activeSection = "", entryMode = null }: Props = $props();
 
   let scrollProgress = $state(0);
   let trackedSection = $state("");
@@ -30,23 +33,42 @@
     variant: "success" | "secondary" | "muted";
   }
 
+  // Catalog-seeded flows replace discovery's "WHAT" journey tag with "SEEDED":
+  // deep_idea never ran discovery at all (muted); pain_research/pain_remix ran an
+  // abbreviated discovery (stages 1-4 seeded, stage 5 real), so the badge keeps
+  // the success treatment but tells the user where the inputs came from.
+  const isSeeded = $derived(
+    entryMode === "deep_idea" || entryMode === "pain_research" || entryMode === "pain_remix",
+  );
+  const discoveryLabel = $derived(isSeeded ? "SEEDED" : "WHAT");
+
   const phaseBadges = $derived.by((): Record<string, PhaseBadge> => {
+    // deep_idea jobs skip discovery (stages 1-5) and run deep-research straight away —
+    // they never enter RUNNING_PHASE2, so without this the default case would wrongly show
+    // discovery "active" / deep-research "locked". Mark discovery SEEDED and deep-research active.
+    if (entryMode === "deep_idea" && jobStatus !== "COMPLETED") {
+      return {
+        discovery: { label: "SEEDED", state: "done", variant: "muted" },
+        "deep-research": { label: "HOW", state: "active", variant: "secondary" },
+        build: { label: "GO", state: "locked", variant: "muted" },
+      };
+    }
     switch (jobStatus) {
       case "RUNNING_PHASE2":
         return {
-          discovery: { label: "WHAT", state: "done", variant: "success" },
+          discovery: { label: discoveryLabel, state: "done", variant: "success" },
           "deep-research": { label: "HOW", state: "active", variant: "secondary" },
           build: { label: "GO", state: "locked", variant: "muted" },
         };
       case "COMPLETED":
         return {
-          discovery: { label: "WHAT", state: "done", variant: "success" },
+          discovery: { label: discoveryLabel, state: "done", variant: entryMode === "deep_idea" ? "muted" : "success" },
           "deep-research": { label: "HOW", state: "done", variant: "secondary" },
           build: { label: "GO", state: "active", variant: "secondary" },
         };
       default:
         return {
-          discovery: { label: "WHAT", state: "active", variant: "success" },
+          discovery: { label: discoveryLabel, state: "active", variant: "success" },
           "deep-research": { label: "HOW", state: "locked", variant: "muted" },
           build: { label: "GO", state: "locked", variant: "muted" },
         };
