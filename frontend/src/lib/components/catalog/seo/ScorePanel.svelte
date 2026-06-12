@@ -25,6 +25,10 @@
     composite: number | null;
     /** Tier line under the composite (e.g. "Top quartile · build now"). */
     tier?: string | null;
+    /** One-line provenance note under the composite (e.g. "avg of severity +
+     *  willingness-to-pay"). Only pass copy that matches the ACTUAL
+     *  computation feeding `composite` — trace it before writing. */
+    formulaNote?: string | null;
     /** CSS color for the composite number; themes the panel. Default accent. */
     accent?: string;
     /** Optional verdict pill rendered under the tier line. */
@@ -43,6 +47,7 @@
     label,
     composite,
     tier = null,
+    formulaNote = null,
     accent = "var(--color-accent)",
     verdict = null,
     headerExtra,
@@ -82,6 +87,9 @@
       </div>
       {#if tier}
         <div class="sp-tier">{tier}</div>
+      {/if}
+      {#if formulaNote}
+        <div class="sp-formula">{formulaNote}</div>
       {/if}
       {#if verdict}
         <div class="sp-verdict" data-verdict={verdict.toLowerCase()}>{verdict}</div>
@@ -200,6 +208,15 @@
     color: var(--color-text-secondary, var(--color-text-primary));
     margin-top: 6px;
     font-weight: 500;
+  }
+  /* Composite provenance note — quiet mono line so the big number can't be
+     misread against its strongest component (e.g. 70 next to severity 85). */
+  .sp-formula {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    color: var(--color-text-muted);
+    margin-top: 4px;
   }
   /* Verdict pill under the tier line. */
   .sp-verdict {

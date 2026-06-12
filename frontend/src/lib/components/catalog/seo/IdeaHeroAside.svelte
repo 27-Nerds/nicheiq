@@ -90,7 +90,7 @@
 </script>
 
 <ScorePanel
-  label="Niche score"
+  label="Idea score"
   composite={computedComposite}
   tier={tierLabel}
   accent="var(--color-accent)"

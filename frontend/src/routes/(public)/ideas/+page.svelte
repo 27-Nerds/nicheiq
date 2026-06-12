@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ArrowRight, X } from "lucide-svelte";
+  import { X } from "lucide-svelte";
   import { page } from "$app/state";
   import { goto } from "$app/navigation";
   import { SeoHead, JsonLd } from "$lib/components/seo";
@@ -9,6 +9,7 @@
   import CollectionCard from "$lib/components/catalog/seo/CollectionCard.svelte";
   import SectionDivider from "$lib/components/catalog/seo/SectionDivider.svelte";
   import TopPainsByDemand from "$lib/components/catalog/seo/TopPainsByDemand.svelte";
+  import BuildCTA from "$lib/components/catalog/seo/BuildCTA.svelte";
   import { isFallbackEdition } from "$lib/seo/edition";
 
   let { data } = $props();
@@ -199,15 +200,13 @@
   const num1 = $derived(nextNum(0, hasCollections));
   const num2 = $derived(nextNum(num1, hasCategoriesTree));
   const num3 = $derived(nextNum(num2, hasTopPains));
-  // Closing "run your own research" section always renders.
-  const num4 = $derived(nextNum(num3, true));
   // Section label drops the month suffix when the freshness guardrail trips
   // ("Latest edition" stand-in), so we don't end up with the awkward
-  // "Most In-Demand SaaS Niches — Latest edition" string.
+  // "Most In-Demand Pain Points — Latest edition" string.
   const topPainsLabel = $derived(
     isFallbackEdition(data.editionLabel)
-      ? "Most In-Demand SaaS Niches"
-      : `Most In-Demand SaaS Niches — ${data.editionLabel}`,
+      ? "Most In-Demand Pain Points"
+      : `Most In-Demand Pain Points — ${data.editionLabel}`,
   );
 
   // Lightweight relative-time helper for the section-02 metaText. Reads the
@@ -326,7 +325,10 @@
             {group.niches.length === 1 ? "niche" : "niches"}</span
           >
         </header>
-        <CategoryGrid categories={group.niches} />
+        <CategoryGrid
+          categories={group.niches}
+          variant={group.niches.length === 1 ? "row" : "grid"}
+        />
       </div>
     {/each}
   {:else if data.activeCollection}
@@ -350,16 +352,14 @@
   />
 {/if}
 
-<SectionDivider num={num4} label="Run your own research" />
-<section class="inline-close" aria-label="Run your own research">
-  <p>
-    Ready to explore a niche we haven't covered yet?
-    <a class="inline-cta" href={ctaHref} data-sveltekit-preload-data="hover">
-      <span class="inline-cta-label">Run your own research</span>
-      <ArrowRight class="inline-arrow" aria-hidden="true" />
-    </a>
-  </p>
-</section>
+<!-- Closing CTA — same shared band as niche/idea/pain pages. Not a numbered
+     section (no page renders its CTA band under a SectionDivider). -->
+<BuildCTA
+  headline="Ready to explore a niche we haven't covered yet?"
+  body="Run research on your exact niche. Get pain points, solution ideas, audience segments, and SEO keywords — all sourced from real community discussions."
+  ctaLabel="Run your own research"
+  {ctaHref}
+/>
 
 <style>
   /* Featured collections grid — admin-curated CatalogCollection rows.
@@ -557,57 +557,6 @@
     outline-offset: 2px;
   }
 
-  /* Closing CTA — SectionDivider above provides the numbered rule, so no
-     border-top here. The link carries near-h1 weight to close the page with
-     the same confidence the hero opens it. */
-  .inline-close {
-    padding: 1.5rem 0 2.5rem;
-    text-align: center;
-  }
-  .inline-close p {
-    margin: 0;
-    font-family: var(--font-mono);
-    font-size: 0.8125rem;
-    color: var(--color-text-muted);
-  }
-  .inline-cta {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 0.375rem;
-    margin-left: 0.5rem;
-    /* Escape the mono inherited from .inline-close p — the link carries
-       near-h1 display type to close the page with the hero's voice. */
-    font-family: var(--font-display);
-    font-size: 1.25rem;
-    font-weight: 600;
-    letter-spacing: -0.02em;
-    color: var(--color-text-primary);
-    text-decoration: none;
-    transition: color 140ms ease;
-  }
-  .inline-cta-label {
-    background-image: linear-gradient(currentColor, currentColor);
-    background-position: 0 100%;
-    background-size: 0% 1px;
-    background-repeat: no-repeat;
-    transition: background-size 200ms ease;
-  }
-  .inline-cta:hover {
-    color: var(--color-accent);
-  }
-  .inline-cta:hover .inline-cta-label {
-    background-size: 100% 1px;
-  }
-  :global(.inline-arrow) {
-    width: 1.125rem;
-    height: 1.125rem;
-    align-self: center;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .inline-cta,
-    .inline-cta-label {
-      transition: none;
-    }
-  }
+  /* Closing CTA renders via the shared <BuildCTA> band (same as niche /
+     idea / pain pages); no page-local CTA styles remain. */
 </style>

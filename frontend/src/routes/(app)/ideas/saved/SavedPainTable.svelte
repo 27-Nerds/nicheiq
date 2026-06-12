@@ -5,6 +5,8 @@
   import NoteEditor from "./NoteEditor.svelte";
   import { formatDistanceToNow } from "./formatRelative";
   import { subscribeUnlock } from "$lib/stores/subscribeUnlock.svelte";
+  import SeverityBar from "$lib/components/catalog/seo/SeverityBar.svelte";
+  import { scaleSeverity, severityRailTier } from "$lib/types/publicCatalog";
 
   interface Props {
     items: SavedPainPointItem[];
@@ -27,16 +29,6 @@
   }: Props = $props();
 
   let editingId = $state<string | null>(null);
-
-  function severityTier(score: number): "high" | "med" | "low" {
-    if (score >= 0.7) return "high";
-    if (score >= 0.4) return "med";
-    return "low";
-  }
-
-  function severityPercent(score: number): number {
-    return Math.round(score * 100);
-  }
 
   function handleNoteCommit(item: SavedPainPointItem, value: string) {
     const trimmed = value.trim();
@@ -84,8 +76,8 @@
         </button>
       </div>
     {:else}
-      {@const tier = severityTier(item.painPoint.severityScore)}
-      {@const sevPct = severityPercent(item.painPoint.severityScore)}
+      {@const sev = scaleSeverity(item.painPoint.severityScore, "pain")}
+      {@const tier = severityRailTier(sev)}
       <div class="pt-row t-{tier}" role="row" style="--i: {Math.min(i, 5)}">
       {#if selectable && item.painPoint.slug}
         <span class="sel" role="cell">
@@ -117,8 +109,7 @@
       </a>
       <span class="men" role="cell">{item.painPoint.mentionCount}</span>
       <span class="sev" role="cell">
-        <span class="bar" style="--w: {sevPct}%"></span>
-        <span class="num">{sevPct}</span>
+        <SeverityBar value={sev} showTier={false} />
       </span>
       <!-- Non-interactive timestamp cell (was a button — split into
            passive metadata + an explicit remove button at the row end so
@@ -310,31 +301,9 @@
     gap: 10px;
     justify-content: flex-end;
   }
-  .sev .bar {
-    width: 90px;
-    height: 6px;
-    background: var(--color-bg-subtle, #f0f0f0);
-    border-radius: 3px;
-    position: relative;
-    overflow: hidden;
-  }
-  .sev .bar::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    width: var(--w, 50%);
-    background: var(--color-text-muted);
-    border-radius: 3px;
-  }
-  .pt-row.t-high .bar::after {
-    background: var(--color-error-dark, #dc2626);
-  }
-  .pt-row.t-med .bar::after {
-    background: var(--color-accent);
-  }
-  .pt-row.t-low .bar::after {
-    background: var(--color-secondary, #2563eb);
-  }
+  /* Bar rendering now delegates to the shared <SeverityBar> (same component
+     as the public catalog tables). `.sev .num` remains for the locked-row
+     em-dash placeholder. */
   .sev .num {
     font-family: var(--font-mono);
     font-size: 12.5px;

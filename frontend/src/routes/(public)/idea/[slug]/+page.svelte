@@ -17,6 +17,7 @@
     CategoryFAQ,
     CatalogLockedSection,
     LockedListSkeleton,
+    TriLegend,
   } from "$lib/components/catalog/seo";
   import ResearchCtaButton from "$lib/components/catalog/ResearchCtaButton.svelte";
   import type { PainPointPreview } from "$lib/types/catalog-landing";
@@ -194,13 +195,16 @@
   const hasKeywordClusters = $derived(
     Array.isArray(data.idea.keywordClusters) && data.idea.keywordClusters.length > 0,
   );
-  // Discovery queries, keyword clusters, and the SEO-opportunity markdown
-  // share Section 5 — it renders when any of the three is truthy.
+  // Discovery queries and keyword clusters justify a full numbered "Search
+  // opportunity" section. SEO-opportunity prose ALONE doesn't — a numbered
+  // section holding two lines of text undersells itself; that case folds
+  // into the Build sketch as a "Search angle" sub-block instead.
   const hasDiscoveryQueries = $derived(
     Array.isArray(idea.organic_discovery_queries) && idea.organic_discovery_queries.length > 0,
   );
-  const hasSection5 = $derived(
-    hasKeywordClusters || hasDiscoveryQueries || !!idea.programmatic_seo_opportunity,
+  const hasSection5 = $derived(hasKeywordClusters || hasDiscoveryQueries);
+  const searchProseOnly = $derived(
+    !hasSection5 && !!idea.programmatic_seo_opportunity,
   );
   // Source-of-truth communities for the addressed pains. Used as an
   // attribution strip directly under the "Pain points addressed" divider,
@@ -274,6 +278,20 @@
 {#if hasBuildSketch}
   <SectionDivider num={num2} label="Build sketch" />
   <IdeaBuildSketch {idea} />
+  {#if searchProseOnly}
+    <!-- Prose-only search note — too thin for its own numbered section, so
+         it closes the Build sketch as a labeled sub-block. -->
+    <aside class="search-angle">
+      <span class="search-angle-kicker">
+        Search angle{#if indexablePagesFmt}<span class="search-angle-pages">· {indexablePagesFmt} pages</span>{/if}
+      </span>
+      <div class="catalog-deck-note markdown-content">
+        <div class="catalog-deck-text">
+          {@html renderTechnicalContent(idea.programmatic_seo_opportunity)}
+        </div>
+      </div>
+    </aside>
+  {/if}
 {/if}
 
 {#if hasAudience || hasAudienceSignals}
@@ -330,7 +348,10 @@
 {#if showSiblings}
   {@const siblings = data.idea.siblingIdeas ?? []}
   {#snippet sibCount()}
-    <span>{siblings.length + siblingsLocked} more</span>
+    <span class="sib-right">
+      <span class="sib-legend"><TriLegend /></span>
+      <span>{siblings.length + siblingsLocked} more</span>
+    </span>
   {/snippet}
   <SectionDivider num={num6} label={`Other ideas in ${idea.category?.name ?? 'this niche'}`} right={sibCount} />
   <div class="idea-grid">
@@ -454,6 +475,25 @@
     font-weight: 600;
     margin: 12px 0 6px;
   }
+  /* "Search angle" sub-block closing the Build sketch (prose-only fallback
+     for the Search opportunity section). Mono kicker matches .discovery-label. */
+  .search-angle {
+    margin: 18px 0 24px;
+  }
+  .search-angle-kicker {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 600;
+    color: var(--color-accent-muted);
+    margin: 0 0 8px;
+  }
+  .search-angle-pages {
+    color: var(--color-text-muted);
+    margin-left: 4px;
+  }
   .discovery-block {
     margin: 18px 0 24px;
     padding: 14px 18px;
@@ -488,9 +528,19 @@
     gap: 14px;
     margin-bottom: 36px;
   }
+  /* Ring-color legend + count in the section divider's right slot. Legend
+     hides on narrow widths where the slot can't fit three labels. */
+  .sib-right {
+    display: inline-flex;
+    align-items: center;
+    gap: 14px;
+  }
   @media (max-width: 768px) {
     .idea-grid {
       grid-template-columns: 1fr;
+    }
+    .sib-legend {
+      display: none;
     }
   }
 </style>

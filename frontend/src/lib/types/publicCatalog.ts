@@ -54,6 +54,24 @@ export function severityTier(score: number | null | undefined): SeverityTier | n
   return 'medium';
 }
 
+/**
+ * Catalog pain-table rail/row tier from a 0-100 SCALED severity (i.e. the
+ * output of `scaleSeverity()`). Cutoffs match SeverityBar's bar-color tones
+ * (>=75 error red, >=60 accent orange, else info blue) so a row's left rail
+ * and its severity bar can never disagree.
+ *
+ * NOT the same as `severityTier()` above — that one takes the RAW 0-1 score
+ * and feeds the job-page Critical/High/Medium labels. Don't swap them.
+ */
+export type SeverityRailTier = 'high' | 'med' | 'low';
+
+export function severityRailTier(scaled: number | null | undefined): SeverityRailTier {
+  if (scaled == null || !Number.isFinite(scaled)) return 'low';
+  if (scaled >= 75) return 'high';
+  if (scaled >= 60) return 'med';
+  return 'low';
+}
+
 /** Difficulty bucket assigned server-side by `bucketKeywordDifficulty`. */
 export type DifficultyBucket = 'easy' | 'medium' | 'hard';
 

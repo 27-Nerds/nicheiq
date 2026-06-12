@@ -32,7 +32,7 @@ describe("DocketEmpty — page scope (globally empty docket)", () => {
       screen.getByText(/Bookmark ideas and pain points from the catalog/),
     ).toBeTruthy();
 
-    const cta = screen.getByRole("link", { name: /Browse the catalog/ });
+    const cta = screen.getByRole("link", { name: /Browse ideas/ });
     expect(cta.getAttribute("href")).toBe("/ideas");
 
     assertNoKicker();
@@ -98,7 +98,7 @@ describe("DocketEmpty — section/discover scope (mixed-empty)", () => {
 
     // Discover mode renders an anchor, NOT a button — clicking takes
     // the user to the catalog rather than firing a callback.
-    const cta = screen.getByRole("link", { name: /Browse the catalog/ });
+    const cta = screen.getByRole("link", { name: /Browse ideas/ });
     expect(cta.getAttribute("href")).toBe("/ideas");
     expect(screen.queryByRole("button", { name: /Browse/ })).toBeNull();
 
@@ -116,7 +116,7 @@ describe("DocketEmpty — section/discover scope (mixed-empty)", () => {
     ).toBeTruthy();
     expect(screen.getByText(/pair with your saved ideas/)).toBeTruthy();
 
-    const cta = screen.getByRole("link", { name: /Browse the catalog/ });
+    const cta = screen.getByRole("link", { name: /Browse ideas/ });
     expect(cta.getAttribute("href")).toBe("/ideas");
 
     assertNoKicker();

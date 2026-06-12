@@ -6,9 +6,13 @@
 
   interface Props {
     level: string | null | undefined;
+    /** Quiet variant for dense table rows: neutral border, tone on text
+     *  only — no tinted fill. Used by the /ideas index pain table where a
+     *  filled green chip next to a red severity bar reads as noise. */
+    muted?: boolean;
   }
 
-  let { level }: Props = $props();
+  let { level, muted = false }: Props = $props();
 
   const normalized = $derived(
     typeof level === "string" ? level.trim().toLowerCase() : "",
@@ -37,7 +41,7 @@
 </script>
 
 {#if label}
-  <span class="opp-badge tone-{tone}">{label}</span>
+  <span class="opp-badge tone-{tone}" class:muted>{label}</span>
 {/if}
 
 <style>
@@ -67,5 +71,17 @@
   }
   .tone-muted {
     color: var(--color-text-muted);
+  }
+  /* Quiet variant — text-only tone on a neutral chip. Greens/ambers use the
+     darker readable tokens (#22C55E at 11px on white fails AA). */
+  .opp-badge.muted {
+    border-color: var(--color-border);
+    background: var(--color-surface, #fff);
+  }
+  .opp-badge.muted.tone-success {
+    color: var(--color-opportunity, #1a7f5a);
+  }
+  .opp-badge.muted.tone-warn {
+    color: var(--color-warning, #ca8a04);
   }
 </style>

@@ -15,6 +15,7 @@
     CategoryFAQ,
     CatalogLockedSection,
     LockedListSkeleton,
+    TriLegend,
   } from "$lib/components/catalog/seo";
   import ResearchCtaButton from "$lib/components/catalog/ResearchCtaButton.svelte";
   import { categoryPath } from "$lib/utils/urls";
@@ -308,7 +309,10 @@
 {#if showRelatedIdeas}
   {@const related = data.painPoint.relatedIdeas}
   {#snippet relCount()}
-    <span>{related.length + relatedIdeasLocked} idea{related.length + relatedIdeasLocked === 1 ? "" : "s"}</span>
+    <span class="rel-right">
+      <span class="rel-legend"><TriLegend /></span>
+      <span>{related.length + relatedIdeasLocked} idea{related.length + relatedIdeasLocked === 1 ? "" : "s"}</span>
+    </span>
   {/snippet}
   <SectionDivider num={num5} label="Ideas built for this pain" right={relCount} />
   <div class="idea-grid">
@@ -482,9 +486,19 @@
     gap: 14px;
     margin-bottom: 36px;
   }
+  /* Ring-color legend + count in the section divider's right slot. Legend
+     hides on narrow widths where the slot can't fit three labels. */
+  .rel-right {
+    display: inline-flex;
+    align-items: center;
+    gap: 14px;
+  }
   @media (max-width: 768px) {
     .idea-grid {
       grid-template-columns: 1fr;
+    }
+    .rel-legend {
+      display: none;
     }
   }
 </style>

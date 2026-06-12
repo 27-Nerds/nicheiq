@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { PainPointPreview } from "$lib/types/catalog-landing.js";
   import type { Theme } from "$lib/types/publicCatalog.js";
-  import { scaleSeverity } from "$lib/types/publicCatalog.js";
+  import { scaleSeverity, severityRailTier } from "$lib/types/publicCatalog.js";
   import SeverityBar from "./SeverityBar.svelte";
   import CatalogTable from "./CatalogTable.svelte";
   import LockedListSkeleton from "./LockedListSkeleton.svelte";
@@ -72,12 +72,6 @@
   const showTheme = $derived(themes != null && !showSubNicheColumn);
   const showChip = $derived(showSubNiche || showTheme);
 
-  function severityTier(scaledScore: number | null): "high" | "med" | "low" {
-    if (scaledScore == null) return "low";
-    if (scaledScore >= 75) return "high";
-    if (scaledScore >= 60) return "med";
-    return "low";
-  }
 </script>
 
 {#if painPoints.length > 0}
@@ -96,7 +90,7 @@
     </div>
     {#each painPoints as pp, i}
       {@const sev = scaleSeverity(pp.severityScore, "pain")}
-      {@const tier = severityTier(sev)}
+      {@const tier = severityRailTier(sev)}
       {@const themeTitle = pp.themeId ? themeTitleById.get(pp.themeId) : undefined}
       <div
         class="ct-row ppr-row"

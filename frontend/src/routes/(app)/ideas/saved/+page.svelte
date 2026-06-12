@@ -19,7 +19,7 @@
   import SavedPainTable from "./SavedPainTable.svelte";
   import DocketEmpty from "./DocketEmpty.svelte";
   import UndoToast from "./UndoToast.svelte";
-  import { formatDistanceToNow } from "./formatRelative";
+  import { formatDistanceToNowLong } from "./formatRelative";
 
   let { data } = $props();
 
@@ -73,7 +73,7 @@
     return ts.sort().reverse()[0];
   });
   const lastAddedRelative = $derived(
-    lastAddedIso ? formatDistanceToNow(lastAddedIso) : null,
+    lastAddedIso ? formatDistanceToNowLong(lastAddedIso) : null,
   );
 
   // Stat strip composition. First cell is the total (emphasized via
@@ -312,14 +312,14 @@
   <CategoryBreadcrumbs
     trail={[
       { label: "Home", href: "/" },
-      { label: "Catalog", href: "/ideas" },
+      { label: "Ideas", href: "/ideas" },
       { label: "Saved" },
     ]}
   />
 
   <header class="hero">
     <span class="eyebrow">SAVED · YOUR DOCKET</span>
-    <h1>Your research docket.</h1>
+    <h1>Your research docket</h1>
     <p class="lede">
       Ideas and pain points you've kept for later validation. Each entry stays
       here until you remove it.
@@ -327,8 +327,11 @@
     <div class="strip-wrap">
       <StatStrip {stats} emphasis />
     </div>
-    <!-- Filter row — single chip in v1; expand to verdict/sort chips later. -->
+    <!-- Filter row — single chip in v1; expand to verdict/sort chips later.
+         The mono FILTER kicker anchors the lone chip so it doesn't float
+         unlabeled between the stat strip and the sections. -->
     <div class="filter-row" aria-label="Filter saved items">
+      <span class="filter-kicker" aria-hidden="true">Filter</span>
       <button
         type="button"
         class="chip"
@@ -499,8 +502,17 @@
 
   .filter-row {
     display: flex;
-    gap: 6px;
+    align-items: center;
+    gap: 10px;
     flex-wrap: wrap;
+  }
+  .filter-kicker {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 600;
+    color: var(--color-text-muted);
   }
   .chip {
     display: inline-flex;

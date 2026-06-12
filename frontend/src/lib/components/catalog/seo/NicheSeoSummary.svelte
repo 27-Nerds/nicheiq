@@ -6,7 +6,7 @@
     QualitySignals,
     SubredditSource,
   } from "$lib/types/publicCatalog.js";
-  import { scaleSeverity } from "$lib/types/publicCatalog.js";
+  import { scaleSeverity, severityRailTier } from "$lib/types/publicCatalog.js";
   import type { PainPointPreview } from "$lib/types/catalog-landing.js";
   import { editionLabel, isFallbackEdition } from "$lib/seo/edition";
   import SeverityBar from "./SeverityBar.svelte";
@@ -85,9 +85,11 @@
   const isStale = $derived(isFallbackEdition(edition));
   const editionUpper = $derived(edition.toUpperCase());
 
-  const confidence = $derived(
+  // Percent form — matches the QualityTierBadge's "GOLD · 91%" voice; a raw
+  // 0-1 decimal ("0.89") reads as an internal value in user-facing prose.
+  const confidencePct = $derived(
     qualitySignals?.confidenceScore != null
-      ? qualitySignals.confidenceScore.toFixed(2)
+      ? Math.round(qualitySignals.confidenceScore * 100)
       : null,
   );
 
@@ -95,12 +97,6 @@
 
   const hasContent = $derived(previewPainCount > 0 && communities > 0);
 
-  function severityTier(scaled: number | null): "high" | "med" | "low" {
-    if (scaled == null) return "low";
-    if (scaled >= 75) return "high";
-    if (scaled >= 60) return "med";
-    return "low";
-  }
 </script>
 
 {#if hasContent}
@@ -128,28 +124,34 @@
 
     <!-- Pain ledger — wraps CatalogTable so the chrome (mono uppercase header
          bar, hairline rows, tier rail) matches the canonical
-         PainPointRankTable used in the body of the page. -->
+         PainPointRankTable used in the body of the page. Theme attribution
+         renders as a mono sub-line under the title (saved-table idiom) —
+         a dedicated 160px column truncated every real theme name and showed
+         em-dashes on legacy rows with null themeIds. -->
     <div class="nss-ledger" aria-label="Top ranked pain points">
       <CatalogTable>
         <div class="ct-head nss-row">
           <span class="cell-rank">#</span>
           <span>Pain point</span>
-          <span class="ar">Mentions</span>
+          <span class="ar head-mentions">Mentions</span>
           <span class="ar">Severity</span>
-          <span>Theme</span>
         </div>
         {#each topPains as pp, i (pp.id)}
           {@const sev = scaleSeverity(pp.severityScore, "pain")}
-          {@const tier = severityTier(sev)}
+          {@const tier = severityRailTier(sev)}
           {@const themeTitle = pp.themeId
             ? themeTitleById.get(pp.themeId)
             : null}
           <div class="ct-row nss-row" data-tier={tier}>
             <span class="cell-rank">{String(i + 1).padStart(2, "0")}</span>
-            <span class="cell-title">{pp.title}</span>
+            <span class="cell-title">
+              {pp.title}
+              {#if themeTitle}
+                <span class="cell-theme-sub">{themeTitle}</span>
+              {/if}
+            </span>
             <span class="cell-mentions">{pp.mentionCount.toLocaleString()}</span>
             <span class="cell-severity"><SeverityBar value={sev} showTier={false} /></span>
-            <span class="cell-theme">{themeTitle ?? "—"}</span>
           </div>
         {/each}
       </CatalogTable>
@@ -167,7 +169,7 @@
     <!-- Research-metadata footer sentence. Quiet mono baseline so it reads
          as a colophon under the editorial body without competing. -->
     <p class="nss-meta">
-      {#if confidence}Research confidence: <span class="nss-fig">{confidence}</span>.{" "}{/if}{#if discussions > 0}Based on <span class="nss-fig">{discussions.toLocaleString()}</span> items analyzed across <span class="nss-fig">{communities.toLocaleString()}</span> {communities === 1 ? "community" : "communities"}.{" "}{/if}Updated <em>{isStale ? "recently" : edition}</em>.
+      {#if confidencePct != null}Research confidence: <span class="nss-fig">{confidencePct}%</span>.{" "}{/if}{#if discussions > 0}Based on <span class="nss-fig">{discussions.toLocaleString()}</span> items analyzed across <span class="nss-fig">{communities.toLocaleString()}</span> {communities === 1 ? "community" : "communities"}.{" "}{/if}Updated <em>{isStale ? "recently" : edition}</em>.
     </p>
   </section>
 {/if}
@@ -187,25 +189,10 @@
     border-radius: 10px;
     position: relative;
   }
-  /* Accent rail along the top edge — visual signature that ties to the
-     hero's `.k-edition` accent color. Thin (2px) so it feels like a
-     printed almanac binding, not a hard banner. */
-  .nss::before {
-    content: "";
-    position: absolute;
-    top: -1px;
-    left: -1px;
-    right: -1px;
-    height: 2px;
-    background: linear-gradient(
-      90deg,
-      var(--color-accent) 0%,
-      var(--color-accent) 22%,
-      transparent 22%,
-      transparent 100%
-    );
-    border-radius: 10px 10px 0 0;
-  }
+  /* No top accent stripe — the partial-width orange rail read as a stray
+     loading bar above the card, and accent stripes on wrapper zones are
+     against the catalog conventions. The ◆ EDITION kicker carries the
+     orange signature. */
 
   /* ── Kicker (top dateline) ───────────────────────────────────── */
   .nss-kicker {
@@ -254,17 +241,12 @@
     color: var(--color-text-secondary, var(--color-text-primary));
     max-width: 760px;
   }
+  /* Plain semibold — the orange mono figures carry the sentence's accent
+     rhythm; a highlighter smear behind the name competed with them and was
+     a one-off device (everything else here uses dotted-underline em). */
   .nss-name {
     font-weight: 600;
     color: var(--color-text-primary);
-    background: linear-gradient(
-      to bottom,
-      transparent 65%,
-      var(--color-accent-glow) 65%,
-      var(--color-accent-glow) 92%,
-      transparent 92%
-    );
-    padding: 0 2px;
   }
   .nss-fig {
     font-family: var(--font-mono);
@@ -288,10 +270,10 @@
     margin: 0 0 24px;
   }
   /* Grid template shared by header + body rows. Compact-but-honest
-     proportions; pain title takes the bulk, mentions / severity tight
-     on the right, theme trails. */
+     proportions; pain title (with optional theme sub-line) takes the bulk,
+     mentions / severity tight on the right. */
   .nss-row {
-    grid-template-columns: 28px 1fr 72px 130px 160px;
+    grid-template-columns: 28px 1fr 72px 130px;
     gap: 14px;
   }
   .ar {
@@ -305,10 +287,24 @@
     font-feature-settings: "tnum" 1;
   }
   .cell-title {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
     font-size: 13.5px;
     color: var(--color-text-primary);
     font-weight: 500;
     line-height: 1.4;
+    min-width: 0;
+  }
+  /* Theme attribution sub-line — same idiom as the saved table's
+     category sub-label. Full row width means real theme names fit. */
+  .cell-theme-sub {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+    font-weight: 500;
   }
   .cell-mentions {
     font-family: var(--font-mono);
@@ -321,18 +317,6 @@
     display: flex;
     align-items: center;
     justify-content: flex-end;
-  }
-  .cell-theme {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--color-text-muted);
-    font-weight: 600;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    line-height: 1.3;
   }
 
   /* ── Meta sentence (footer) ──────────────────────────────────── */
@@ -363,8 +347,7 @@
       grid-template-columns: 24px 1fr 80px;
     }
     .cell-mentions,
-    .cell-theme,
-    .ar:not(:nth-last-child(2)) {
+    .head-mentions {
       display: none;
     }
     .k-label {

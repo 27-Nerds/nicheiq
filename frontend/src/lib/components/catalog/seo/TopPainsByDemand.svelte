@@ -4,6 +4,7 @@
   import { isFallbackEdition } from "$lib/seo/edition";
   import {
     scaleSeverity,
+    severityRailTier,
     type CatalogTotals,
     type CatalogTopPainPoint,
   } from "$lib/types/publicCatalog.js";
@@ -45,18 +46,21 @@
   {#if painPoints.length > 0}
     <CatalogTable>
       <div class="ct-head" role="row" id="top-pains-heading">
+        <span class="col-rank" role="columnheader">#</span>
         <span role="columnheader">Pain Point</span>
         <span class="col-niche" role="columnheader">Niche</span>
         <span class="col-num" role="columnheader">Mentions</span>
         <span class="col-num" role="columnheader">Severity</span>
         <span class="col-opp" role="columnheader">Opportunity</span>
       </div>
-      {#each painPoints as pp (pp.id)}
+      {#each painPoints as pp, i (pp.id)}
         {@const href = categoryPath({
           slug: pp.category.slug,
           parentSlug: pp.category.parent?.slug ?? null,
         })}
-        <div class="ct-row" role="row">
+        {@const sev = scaleSeverity(pp.severityScore, "pain")}
+        <div class="ct-row" role="row" data-tier={severityRailTier(sev)}>
+          <span class="cell-rank" role="cell">{String(i + 1).padStart(2, "0")}</span>
           <span class="cell-title" role="cell">{pp.title}</span>
           <span class="cell-niche" role="cell">
             <a
@@ -71,13 +75,13 @@
             {pp.mentionCount.toLocaleString()}
           </span>
           <span class="cell-num cell-severity" role="cell">
-            <SeverityBar
-              value={scaleSeverity(pp.severityScore, "pain")}
-              showTier={false}
-            />
+            <SeverityBar value={sev} showTier={false} />
           </span>
+          <!-- Opportunity column is an index-level discovery affordance;
+               detail-page pain tables (PainPointRankTable) carry severity
+               only. Intentional asymmetry — don't propagate this column. -->
           <span class="cell-opp" role="cell">
-            <OpportunityBadge level={pp.opportunityLevel} />
+            <OpportunityBadge level={pp.opportunityLevel} muted />
           </span>
         </div>
       {/each}
@@ -111,8 +115,16 @@
      remaining columns are fixed so the right edge stays predictable. */
   .ct-head,
   .ct-row {
-    grid-template-columns: minmax(0, 1fr) 200px 80px 100px 100px;
+    grid-template-columns: 44px minmax(0, 1fr) 200px 80px 100px 100px;
     gap: 14px;
+  }
+
+  .cell-rank,
+  .col-rank {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--color-text-muted);
+    font-weight: 600;
   }
 
   /* Header cell alignment — numeric + opportunity columns right-align so
@@ -201,6 +213,9 @@
       column-gap: 12px;
       row-gap: 6px;
       padding: 14px 16px;
+    }
+    .cell-rank {
+      display: none;
     }
     .cell-title {
       grid-area: title;

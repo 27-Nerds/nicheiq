@@ -123,9 +123,10 @@
   // Phase 3: unified Audience section renders when EITHER segments or signals
   // exist — so theme persona chips can always anchor to #section-audience.
   const hasAudienceSection = $derived(hasAudienceSegments || hasAudienceSignals);
-  const hasRankedPains = $derived(
-    hasResearch && data.payload.topPainPoints.length > 0,
-  );
+  // Pain points render even pre-research: catalog cards and pain detail pages
+  // already advertise these counts, so hiding them here was a dead end. Only
+  // themes/audience stay gated on hasResearch.
+  const hasRankedPains = $derived(data.payload.topPainPoints.length > 0);
   const hasIdeasSection = $derived(data.payload.topIdeas.length > 0);
   // Chain follows visual order: ideas → ranked pain → themes → audience.
   // "About this niche" continues to use `num4 + 1` as the methodology footer.
@@ -143,6 +144,9 @@
 <CategoryHeroV2
   name={data.payload.category.name}
   slug={data.payload.category.slug}
+  kicker={data.payload.parent?.name
+    ? `${data.payload.parent.name} · Sub-niche`
+    : "Sub-niche"}
   description={data.payload.category.description}
   growthPercent={data.payload.growthPercent}
   stats={heroStats}
@@ -203,7 +207,7 @@
     />
     <PainPointRankTable
       painPoints={data.payload.topPainPoints}
-      themes={allThemes}
+      themes={allThemes.length > 0 ? allThemes : undefined}
       lockedCount={data.lockedPainCount}
     />
   </div>

@@ -193,6 +193,9 @@
   <CategoryHeroV2
     name={data.payload.category.name}
     slug={data.payload.category.slug}
+    kicker={data.payload.superGroup?.name
+      ? `Category · ${data.payload.superGroup.name}`
+      : "Category"}
     description={parentLede}
     parentChip={data.payload.parent}
     growthPercent={data.payload.growthPercent}
@@ -259,10 +262,10 @@
       label="Sub-niches"
       metaText={subNicheDirectoryCounts.researched > 0 &&
       subNicheDirectoryCounts.atlas > 0
-        ? `${subNicheDirectoryCounts.researched} researched · ${subNicheDirectoryCounts.atlas} mapped`
+        ? `${subNicheDirectoryCounts.researched} researched · ${subNicheDirectoryCounts.atlas} mapped · research pending`
         : subNicheDirectoryCounts.researched > 0
           ? `${subNicheDirectoryCounts.researched} researched`
-          : `${subNicheDirectoryCounts.atlas} mapped`}
+          : `${subNicheDirectoryCounts.atlas} mapped · research pending`}
     />
     <SubNicheDirectory
       subNiches={data.payload.children}

@@ -33,7 +33,7 @@ export const load: PageServerLoad = async ({ url, parent, setHeaders }) => {
   const jsonld = [
     breadcrumbList([
       { name: 'Home', url: `${origin}/` },
-      { name: 'Catalog', url: `${origin}/ideas` },
+      { name: 'Ideas', url: `${origin}/ideas` },
       { name: 'Saved', url: canonical },
     ]),
     collectionPage({ name: 'Your research docket', description, url: canonical }),

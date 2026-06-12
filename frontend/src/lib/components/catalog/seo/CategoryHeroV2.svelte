@@ -10,6 +10,13 @@
   interface Props {
     name: string;
     slug: string;
+    /** Mono uppercase eyebrow above the H1 (e.g. "Category · Technology",
+     *  "AI & Machine Learning · Sub-niche"). Mirrors the entity-eyebrow on
+     *  idea/pain heroes so all catalog heroes share the same opening move.
+     *  Must NOT carry edition labels — edition voice lives in the index hero
+     *  dateline and the NicheSeoSummary backmatter only. Renders nothing
+     *  when null. */
+    kicker?: string | null;
     description?: string | null;
     /** "Sub-niche of X" pill content. Parent context now lives in the
      *  breadcrumb only, so this prop renders nothing today. Kept on the
@@ -54,6 +61,7 @@
   let {
     name,
     slug: _slug,
+    kicker = null,
     description = null,
     parentChip: _parentChip = null,
     growthPercent: _growthPercent = null,
@@ -106,6 +114,9 @@
 <header class="page-hero">
   <div class="hero-row">
     <div class="hero-main">
+      {#if kicker}
+        <p class="entity-eyebrow">{kicker}</p>
+      {/if}
       <h1>{headline}</h1>
       {#if lede}
         <p class="lede">{lede}</p>
@@ -207,6 +218,20 @@
       flex-basis: auto;
       width: 100%;
     }
+  }
+  /* Entity eyebrow — same recipe as PainPointHeroV2 / IdeaHeroV2 so every
+     catalog hero opens with the same mono-uppercase move. */
+  .entity-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 0 10px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-accent);
   }
   h1 {
     margin: 6px 0 14px;

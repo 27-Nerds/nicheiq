@@ -74,7 +74,7 @@
 
 {#if idLessThemes.length > 0}
   <aside class="empty-themes">
-    <span class="empty-label">Legacy themes without IDs</span>
+    <span class="empty-label">Additional themes</span>
     <ul class="empty-list">
       {#each idLessThemes as theme}
         <li>

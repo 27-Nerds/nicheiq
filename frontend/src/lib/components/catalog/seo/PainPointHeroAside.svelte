@@ -49,6 +49,16 @@
     computedComposite == null ? null : Math.round(computedComposite),
   );
 
+  // Provenance note for the big number — only when the frontend mean path
+  // computed it (composite prop absent). A backend-supplied composite may use
+  // a different formula, so no claim is made for it. Prevents the "why is a
+  // 70 'critical' when severity is 85?" misread.
+  const formulaNote = $derived(
+    composite == null && compositeRounded != null
+      ? "avg of severity + willingness-to-pay"
+      : null,
+  );
+
   const tierLabel = $derived.by<string | null>(() => {
     if (compositeRounded == null) return null;
     if (compositeRounded >= 70) return "Critical pain · ship this";
@@ -95,6 +105,7 @@
   label="Pain score"
   composite={computedComposite}
   tier={tierLabel}
+  {formulaNote}
   accent="var(--color-error, #dc2626)"
   headerExtra={qualitySignals ? qualityBadge : undefined}
   {rows}

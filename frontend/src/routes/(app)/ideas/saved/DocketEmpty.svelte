@@ -50,7 +50,7 @@
         headline: "An empty docket.",
         body:
           "Bookmark ideas and pain points from the catalog. Each save lives here until you remove it. Add notes to track your thinking as you validate.",
-        cta: "Browse the catalog →",
+        cta: "Browse ideas →",
       };
     }
     const subjectNoun = props.subject === "IDEAS" ? "ideas" : "pain points";
@@ -70,7 +70,7 @@
     return {
       headline: `No ${subjectNoun} in this docket yet.`,
       body,
-      cta: "Browse the catalog →",
+      cta: "Browse ideas →",
     };
   });
 </script>
@@ -118,16 +118,16 @@
     max-width: 56ch;
   }
 
-  /* CTA visual treatment is verbatim from the old .docket-empty-cta on
-     +page.svelte. The padding/margin trick (8/9px padding + matching
+  /* CTA is a primary action, so it follows the action-link convention:
+     sans (body) face in accent — mono+arrow styling is reserved for muted
+     meta-navigation. The padding/margin trick (8/9px padding + matching
      negative margin) expands the click target to ~28px tall without
      shifting layout — the underline baseline stays in the same pixel row. */
   .de-cta {
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
-    font-weight: 500;
+    font-family: inherit;
+    font-size: 0.875rem;
+    font-weight: 600;
     color: var(--color-accent);
-    letter-spacing: 0.04em;
     text-decoration: none;
     border: 0;
     border-bottom: 1px solid currentColor;

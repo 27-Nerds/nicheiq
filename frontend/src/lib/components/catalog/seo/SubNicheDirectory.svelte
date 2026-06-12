@@ -115,7 +115,9 @@
           </li>
         {/each}
       </ol>
-      <p class="atlas-foot">Research pending.</p>
+      <!-- "Research pending" now lives in the section divider's metaText on
+           the consuming page — a trailing widow line under a 51-row list
+           floated unanchored. -->
     </div>
   {/if}
 </div>
@@ -358,14 +360,6 @@
       grid-template-columns: 1fr;
     }
   }
-  .atlas-foot {
-    margin: 16px 0 0;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    color: var(--color-text-muted);
-    letter-spacing: 0.02em;
-  }
-
   @media (prefers-reduced-motion: reduce) {
     .card,
     .card-title,

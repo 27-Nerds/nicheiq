@@ -27,17 +27,69 @@ import Home from "lucide-svelte/icons/home";
 import Truck from "lucide-svelte/icons/truck";
 import Leaf from "lucide-svelte/icons/leaf";
 import Music from "lucide-svelte/icons/music";
+import Calculator from "lucide-svelte/icons/calculator";
+import Tractor from "lucide-svelte/icons/tractor";
+import Glasses from "lucide-svelte/icons/glasses";
+import Car from "lucide-svelte/icons/car";
+import ClipboardList from "lucide-svelte/icons/clipboard-list";
+import MessagesSquare from "lucide-svelte/icons/messages-square";
+import Clapperboard from "lucide-svelte/icons/clapperboard";
+import UserCheck from "lucide-svelte/icons/user-check";
+import Headset from "lucide-svelte/icons/headset";
+import Shield from "lucide-svelte/icons/shield";
+import ChartNoAxesCombined from "lucide-svelte/icons/chart-no-axes-combined";
+import ShoppingCart from "lucide-svelte/icons/shopping-cart";
+import Atom from "lucide-svelte/icons/atom";
+import Server from "lucide-svelte/icons/server";
+import Umbrella from "lucide-svelte/icons/umbrella";
+import MonitorCog from "lucide-svelte/icons/monitor-cog";
+import Fuel from "lucide-svelte/icons/fuel";
+import HeartHandshake from "lucide-svelte/icons/heart-handshake";
+import Handshake from "lucide-svelte/icons/handshake";
+import ListChecks from "lucide-svelte/icons/list-checks";
+import RadioTower from "lucide-svelte/icons/radio-tower";
+import Boxes from "lucide-svelte/icons/boxes";
+import Warehouse from "lucide-svelte/icons/warehouse";
 
 import type { ComponentType } from "svelte";
 
+// Rules are checked in order; first match wins. Specific multi-word slugs go
+// before the broad concept-family rules so e.g. "customer-success" doesn't
+// fall through to Layers. Patterns are matched against REAL hyphenated DB
+// slugs — when adding a category, test the actual slug, not the display name.
 const SLUG_RULES: Array<[RegExp, ComponentType]> = [
+  // Specific top-level category slugs (audited against the live catalog).
+  [/^accounting/, Calculator],
+  [/^(agriculture|agtech|farming)/, Tractor],
+  [/^(ar-vr|vr-|xr-|spatial)/, Glasses],
+  [/^(automotive|auto-)/, Car],
+  [/^business-operations/, ClipboardList],
+  [/^(communication|collaboration)/, MessagesSquare],
+  [/^creator/, Clapperboard],
+  [/^customer-success/, UserCheck],
+  [/^customer-support/, Headset],
+  [/^(cybersecurity|security)/, Shield],
+  [/^(data-analytics|data-|analytics)/, ChartNoAxesCombined],
+  [/^(e-commerce|ecommerce)/, ShoppingCart],
+  [/^emerging/, Atom],
+  [/^(hardware|networking)/, Server],
+  [/^(insurtech|insurance)/, Umbrella],
+  [/^it-management/, MonitorCog],
+  [/^(mining|oil|gas)/, Fuel],
+  [/^(non-profit|nonprofit|social-impact)/, HeartHandshake],
+  [/^professional-services/, Handshake],
+  [/^(project|work-management)/, ListChecks],
+  [/^(telecom|connectivity)/, RadioTower],
+  [/^(web3|blockchain|crypto)/, Boxes],
+  [/^(wholesale|distribution)/, Warehouse],
+  // Broad concept families (original rules).
   [/^(b2b|saas|software)/, Cloud],
-  [/^(fintech|banking|finance|payments|wealth|insurance)/, Wallet],
+  [/^(fintech|banking|finance|payments|wealth)/, Wallet],
   [/^(health|medical|wellness|mental)/, Heart],
   [/^(marketing|sales|content|crm|growth|ads|advertising)/, Megaphone],
   [/^(industry|infrastructure|manufacturing|logistics|construction|energy)/, Factory],
-  [/^(public|gov|legal|nonprofit)/, Landmark],
-  [/^(consumer|lifestyle|commerce|ecommerce|d2c|retail)/, ShoppingBag],
+  [/^(public|gov|legal)/, Landmark],
+  [/^(consumer|lifestyle|commerce|d2c|retail)/, ShoppingBag],
   [/^(edtech|education|learning|tutor)/, GraduationCap],
   [/(care|telehealth|clinic)/, Stethoscope],
   [/^(hr|recruit|talent|career|jobs)/, Briefcase],
@@ -48,7 +100,7 @@ const SLUG_RULES: Array<[RegExp, ComponentType]> = [
   [/^(food|restaurant|dining|kitchen)/, UtensilsCrossed],
   [/^(real-estate|proptech|housing|home)/, Home],
   [/^(supply|delivery|fleet|trucking)/, Truck],
-  [/^(climate|sustain|green|cleantech|agtech)/, Leaf],
+  [/^(climate|sustain|green|cleantech)/, Leaf],
   [/^(music|audio|podcast|sound)/, Music],
 ];
 

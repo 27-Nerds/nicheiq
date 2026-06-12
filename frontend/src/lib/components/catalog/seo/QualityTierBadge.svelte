@@ -43,10 +43,20 @@
   );
 
   const visible = $derived(tier != null || confidencePct != null);
+
+  // Plain-language tooltip — "GOLD · 91%" alone is opaque to first-time
+  // visitors. Built dynamically so it only explains the parts present.
+  const tooltip = $derived.by(() => {
+    const parts: string[] = [];
+    if (tier) parts.push(`Evidence quality tier: ${tier}`);
+    if (confidencePct != null) parts.push(`extraction confidence ${confidencePct}%`);
+    return parts.join(" · ");
+  });
 </script>
 
 {#if visible}
-  <span class="quality-pill" data-tone={tone} title="Data quality signals">
+  <span class="quality-pill" data-tone={tone} title={tooltip}>
+    <span class="pill-label">Quality</span>
     {#if tier}<span class="tier">{tier}</span>{/if}
     {#if tier && confidencePct != null}<span class="dot">·</span>{/if}
     {#if confidencePct != null}<span class="conf">{confidencePct}%</span>{/if}
@@ -81,6 +91,12 @@
   .quality-pill[data-tone="bronze"] {
     color: #92400e;
     border-color: rgba(146, 64, 14, 0.3);
+  }
+  /* Visible "QUALITY" prefix names the metric; stays muted so the tier word
+     keeps the color emphasis. */
+  .pill-label {
+    color: var(--color-text-muted);
+    font-weight: 600;
   }
   .dot {
     color: var(--color-text-muted);

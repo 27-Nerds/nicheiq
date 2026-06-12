@@ -31,9 +31,14 @@
 
   interface Props {
     categories: NicheTreeNode[];
+    /** `row` renders each category as a full-width compact horizontal row
+     *  (icon · name · meta · peek · arrow). Used by the index for groups
+     *  with a single niche, where a lone 320px card leaves a ~2/3-empty
+     *  grid row. Default `grid` keeps the standard card grid. */
+    variant?: "grid" | "row";
   }
 
-  let { categories }: Props = $props();
+  let { categories, variant = "grid" }: Props = $props();
 
   // Peek thresholds — module-level constants. Tuned for ~320px-wide cards
   // and the catalog's typical sub-niche name lengths (~15–35 chars).
@@ -86,7 +91,7 @@
   }
 </script>
 
-<div class="cat-grid">
+<div class="cat-grid" class:cat-grid--rows={variant === "row"}>
   {#each categories as cat (cat.id)}
     {@const sortedSubs = sortSubsByDensity(cat.children ?? [])}
     {@const peekKind = classifyPeek(sortedSubs.length)}
@@ -109,17 +114,19 @@
         <h3>{cat.name}</h3>
         <span class="card-arrow"><ChevronRight size={14} /></span>
       </a>
-      <!-- Lead stat falls back to pain points when a category has no ideas
-           yet — leading with a bold "0" reads as an empty catalog. When both
-           counts are zero, only the sub-niche count renders. -->
+      <!-- Both research counts render when present — the metric's meaning
+           must not silently switch between ideas and pains card-to-card.
+           Zero counts are omitted (leading with a bold "0" reads as an
+           empty catalog); when both are zero, only sub-niches renders. -->
       <div class="card-meta">
         {#if subTotalIdeas > 0}
           <span class="meta-num">{subTotalIdeas.toLocaleString()}</span>
           <span class="meta-label">ideas</span>
           <span class="meta-dot" aria-hidden="true">·</span>
-        {:else if subTotalPains > 0}
+        {/if}
+        {#if subTotalPains > 0}
           <span class="meta-num">{subTotalPains.toLocaleString()}</span>
-          <span class="meta-label">pain points</span>
+          <span class="meta-label">pains</span>
           <span class="meta-dot" aria-hidden="true">·</span>
         {/if}
         <span class="meta-num">{sortedSubs.length}</span>
@@ -162,6 +169,50 @@
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
     gap: 12px;
+  }
+
+  /* Row variant — one full-width horizontal row per category. The peek list
+     drops to a single clamped line and flexes to fill the width the lone
+     card used to leave empty. */
+  .cat-grid--rows {
+    grid-template-columns: 1fr;
+  }
+  .cat-grid--rows .grid-card {
+    flex-direction: row;
+    align-items: center;
+    gap: 18px;
+    padding: 12px 16px;
+  }
+  .cat-grid--rows .card-head {
+    flex: 0 0 auto;
+    max-width: 300px;
+  }
+  .cat-grid--rows .card-meta {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+  .cat-grid--rows .card-peek {
+    flex: 1 1 auto;
+    min-width: 0;
+    -webkit-line-clamp: 1;
+    line-clamp: 1;
+  }
+  .cat-grid--rows .card-foot {
+    flex: 0 0 auto;
+  }
+  @media (max-width: 768px) {
+    .cat-grid--rows .grid-card {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 8px;
+    }
+    .cat-grid--rows .card-head {
+      max-width: none;
+    }
+    .cat-grid--rows .card-peek {
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
+    }
   }
 
   .grid-card {

@@ -130,9 +130,10 @@
 
 	body {
 		font-family: var(--font-body);
+		/* Flat paper canvas — the dot-grid texture was removed (June 2026):
+		   public catalog pages covered it with surfaces while app pages showed
+		   it, so the two halves read as different products. */
 		background-color: var(--color-bg-base);
-		background-image: radial-gradient(circle at 1px 1px, var(--color-border) 1px, transparent 0);
-		background-size: 24px 24px;
 		color: var(--color-text-secondary);
 		font-size: 1.0625rem;
 		line-height: 1.65;
