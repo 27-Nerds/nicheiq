@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { invalidateAll, goto } from "$app/navigation";
+  import { onMount } from "svelte";
+  import { invalidateAll, goto, replaceState } from "$app/navigation";
   import {
     Coins,
     Gift,
@@ -22,6 +23,7 @@
   import SectionDivider from "$lib/components/catalog/seo/SectionDivider.svelte";
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
   import PricingCard from "$lib/components/ui/PricingCard.svelte";
+  import PlanCard from "$lib/components/ui/PlanCard.svelte";
   import StatStrip, {
     type Stat,
   } from "$lib/components/catalog/seo/StatStrip.svelte";
@@ -56,12 +58,13 @@
   const packages = $derived(data.packages as TokenPackage[]);
   const plans = $derived((data.plans as SubscriptionPlan[]) ?? []);
   // Center the grid when there are fewer than 3 plans (a fixed 3-col grid left-aligns 1–2 cards).
+  // Max-widths match the landing pricing grid so the shared PlanCard renders at the same size.
   const planGridClass = $derived(
     plans.length === 1
-      ? 'sm:grid-cols-1 max-w-sm mx-auto'
+      ? 'sm:grid-cols-1 max-w-md mx-auto'
       : plans.length === 2
         ? 'sm:grid-cols-2 max-w-3xl mx-auto'
-        : 'sm:grid-cols-3',
+        : 'sm:grid-cols-3 max-w-4xl mx-auto',
   );
   const subscription = $derived(
     (data.subscription as UserSubscription | null) ?? null,
@@ -203,6 +206,24 @@
       subscribeLoading = null;
     }
   }
+
+  // Auto-start checkout when arriving with ?plan=<id> (set by the landing
+  // pricing CTA via returnTo). One-shot: the param is stripped via shallow
+  // replaceState before the redirect so back-navigation from Stripe can't
+  // re-trigger. Reads window.location, not page.url — the hash is never sent
+  // to the server, so page.url.hash can be empty at hydration.
+  onMount(() => {
+    const url = new URL(window.location.href);
+    const planId = url.searchParams.get("plan");
+    if (!planId) return;
+    url.searchParams.delete("plan");
+    replaceState(`${url.pathname}${url.search}${url.hash}`, {});
+
+    if (!plans.some((p) => p.id === planId)) return;
+    // Live subscription — never auto-redirect; the Switch-via-portal CTAs are visible.
+    if (!isTerminal) return;
+    subscribe(planId);
+  });
 
   async function redeemPromoCode() {
     if (!promoCode.trim() || isRedeeming) return;
@@ -491,7 +512,7 @@
       <div class="grid gap-4 {planGridClass}">
         {#each plans as plan (plan.id)}
           {@const isCurrent = subscription?.planId === plan.id && isActiveLike}
-          <PricingCard {plan} variant="compact">
+          <PlanCard {plan}>
             {#snippet actions()}
               {#if isCurrent}
                 <SubmitButton
@@ -531,7 +552,7 @@
                 />
               {/if}
             {/snippet}
-          </PricingCard>
+          </PlanCard>
         {/each}
       </div>
     </div>

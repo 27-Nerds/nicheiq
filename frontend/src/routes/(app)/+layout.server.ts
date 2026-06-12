@@ -10,8 +10,9 @@ export const load: LayoutServerLoad = async (event) => {
   const session = await event.locals.auth?.();
 
   if (!session?.user) {
-    // Store intended destination for post-login redirect
-    const returnTo = encodeURIComponent(event.url.pathname);
+    // Store intended destination for post-login redirect (query included so
+    // intent params like /billing?plan=<id> survive the login bounce).
+    const returnTo = encodeURIComponent(event.url.pathname + event.url.search);
     throw redirect(302, `/login?returnTo=${returnTo}`);
   }
 
