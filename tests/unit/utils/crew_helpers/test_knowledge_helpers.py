@@ -2,9 +2,14 @@
 
 from unittest.mock import MagicMock, patch
 
+import openai
 import pytest
+from tenacity import wait_none
 
-from nicheiq.utils.crew_helpers.knowledge_helpers import create_knowledge
+from nicheiq.utils.crew_helpers.knowledge_helpers import (
+    _add_sources_with_retry,
+    create_knowledge,
+)
 
 
 class TestCreateKnowledge:
@@ -113,3 +118,54 @@ class TestCreateKnowledge:
 
         call_kwargs = mock_knowledge_cls.call_args[1]
         assert len(call_kwargs["sources"]) == 3
+
+
+def _make_openai_api_error(message: str = "Request headers are too large.") -> openai.APIError:
+    """Build a real openai.APIError (base class of the 431 APIStatusError)."""
+    import httpx
+
+    request = httpx.Request("POST", "https://api.openai.com/v1/embeddings")
+    return openai.APIError(message, request, body=None)
+
+
+class TestAddSourcesWithRetry:
+    """Test the retry wrapper around knowledge.add_sources()."""
+
+    @pytest.fixture(autouse=True)
+    def _no_wait(self):
+        """Strip the exponential backoff so tests don't actually sleep."""
+        original = _add_sources_with_retry.retry.wait
+        _add_sources_with_retry.retry.wait = wait_none()
+        yield
+        _add_sources_with_retry.retry.wait = original
+
+    def test_succeeds_first_try(self):
+        knowledge = MagicMock()
+        _add_sources_with_retry(knowledge)
+        knowledge.add_sources.assert_called_once()
+
+    def test_retries_then_succeeds_on_transient_openai_error(self):
+        knowledge = MagicMock()
+        knowledge.add_sources.side_effect = [_make_openai_api_error(), None]
+
+        _add_sources_with_retry(knowledge)
+
+        assert knowledge.add_sources.call_count == 2
+
+    def test_reraises_after_exhausting_retries(self):
+        knowledge = MagicMock()
+        knowledge.add_sources.side_effect = _make_openai_api_error()
+
+        with pytest.raises(openai.APIError):
+            _add_sources_with_retry(knowledge)
+
+        assert knowledge.add_sources.call_count == 3
+
+    def test_does_not_retry_non_openai_errors(self):
+        knowledge = MagicMock()
+        knowledge.add_sources.side_effect = ValueError("bad config")
+
+        with pytest.raises(ValueError):
+            _add_sources_with_retry(knowledge)
+
+        knowledge.add_sources.assert_called_once()

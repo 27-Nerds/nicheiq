@@ -11,6 +11,7 @@ This module provides create_knowledge() which builds Knowledge with a custom bat
 
 from typing import Optional
 
+import openai
 from crewai.knowledge.knowledge import Knowledge
 from crewai.knowledge.source.base_knowledge_source import BaseKnowledgeSource
 from crewai.knowledge.storage.knowledge_storage import KnowledgeStorage
@@ -19,6 +20,20 @@ from crewai.rag.embeddings.factory import build_embedder
 from crewai.rag.embeddings.types import EmbedderConfig
 from crewai.rag.factory import create_client
 from loguru import logger
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type(openai.APIError),
+    reraise=True,
+)
+def _add_sources_with_retry(knowledge: Knowledge) -> None:
+    # OpenAI's edge occasionally rejects normal embedding requests with
+    # transient 4xx errors (e.g. 431 request_headers_too_large) that the SDK
+    # does not auto-retry. The underlying ChromaDB upsert is idempotent.
+    knowledge.add_sources()
 
 
 def create_knowledge(
@@ -63,7 +78,7 @@ def create_knowledge(
         sources=sources,
         storage=storage,
     )
-    knowledge.add_sources()
+    _add_sources_with_retry(knowledge)
 
     logger.info(
         f"Knowledge created: collection={collection_name}, "
