@@ -9,6 +9,7 @@ Routes from research_flow.py when:
 """
 
 from crewai import Agent, Crew, Task
+from .safe_task import SafeTask
 from crewai.project import CrewBase, agent, crew, task
 from langchain_openai import ChatOpenAI
 from loguru import logger
@@ -84,7 +85,7 @@ class TrafficMonetizationCrew:
         Analyzes keyword volumes, niche CPM rates, and affiliate opportunities
         to recommend optimal traffic monetization strategy.
         """
-        return Task(
+        return SafeTask(
             config=self.tasks_config["traffic_monetization_analysis"],
             agent=self.traffic_monetization_analyst(),
             output_pydantic=TrafficMonetizationResult,

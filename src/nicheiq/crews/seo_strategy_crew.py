@@ -7,6 +7,7 @@ import re
 from typing import TYPE_CHECKING, Any
 
 from crewai import Agent, Crew, Task
+from .safe_task import SafeTask
 from crewai.project import CrewBase, agent, crew, task
 from loguru import logger
 
@@ -1056,7 +1057,7 @@ class SEOStrategyCrew:
         Depends on: All previous keyword tasks (1a, 1b, 1c)
         Output: KeywordSummaryResult with totals, findings, and positioning.
         """
-        return Task(
+        return SafeTask(
             config=self.tasks_config["synthesize_keyword_summary"],
             agent=self.keyword_summary_analyst(),
             context=[
@@ -1144,7 +1145,7 @@ class SEOStrategyCrew:
 
         Guardrail: Validates JSON completeness and detects repetition loops.
         """
-        return Task(
+        return SafeTask(
             config=self.tasks_config["analyze_strategic_tier"],
             agent=self.strategic_tier_analyst(),
             output_pydantic=StrategicLightResult,  # Lightweight output - Python hydrates stats
@@ -1166,7 +1167,7 @@ class SEOStrategyCrew:
 
         Guardrail: Validates JSON completeness and detects repetition loops.
         """
-        return Task(
+        return SafeTask(
             config=self.tasks_config["analyze_geographic_tier_parallel"],
             agent=self.geographic_tier_analyst(),
             output_pydantic=GeographicLightResult,  # Lightweight output - Python hydrates stats
@@ -1189,7 +1190,7 @@ class SEOStrategyCrew:
         Guardrail: Validates JSON completeness and detects repetition loops.
         This task is most susceptible to repetition issues due to large dataset size.
         """
-        return Task(
+        return SafeTask(
             config=self.tasks_config["analyze_category_tier_parallel"],
             agent=self.category_tier_analyst(),
             output_pydantic=CategoryLightResult,  # Lightweight output - Python hydrates stats
@@ -1209,7 +1210,7 @@ class SEOStrategyCrew:
         Waits for: All parallel tasks via context
         Output: KeywordSummaryResult with totals, findings, and positioning.
         """
-        return Task(
+        return SafeTask(
             config=self.tasks_config["synthesize_keyword_summary_parallel"],
             agent=self.keyword_summary_analyst(),
             context=[
@@ -1264,7 +1265,7 @@ class SEOStrategyCrew:
         Depends on: synthesize_keyword_summary_task (legacy sequential summary)
         Output: ContentStrategyResultLight - Python will hydrate to ContentStrategyResult
         """
-        return Task(
+        return SafeTask(
             config=self.tasks_config["develop_content_technical_strategy"],
             agent=self.content_strategist(),
             context=[self.synthesize_keyword_summary_task()],  # Depends on Task 1d (summary of 1a-1c)
@@ -1288,7 +1289,7 @@ class SEOStrategyCrew:
         Depends on: synthesize_keyword_summary_task (legacy), develop_content_technical_strategy_task
         Output: ImplementationPlanResult with roadmap, metrics, timeline.
         """
-        return Task(
+        return SafeTask(
             config=self.tasks_config["create_implementation_plan"],
             agent=self.seo_specialist(),
             context=[
@@ -2713,7 +2714,7 @@ class SEOStrategyCrew:
             # The @task-decorated methods cache Task objects with context pointing to
             # synthesize_keyword_summary_task() (the legacy sequential task), which is NOT
             # in this crew's task list. Using inline Task() ensures correct context wiring.
-            task_2 = Task(
+            task_2 = SafeTask(
                 config=self.tasks_config["develop_content_technical_strategy"],
                 agent=self.content_strategist(),
                 context=[task_1e],  # Parallel flow: depends on parallel summary task
@@ -2721,7 +2722,7 @@ class SEOStrategyCrew:
                 guardrail=validate_content_strategy_output,
                 guardrail_max_retries=2,
             )
-            task_3 = Task(
+            task_3 = SafeTask(
                 config=self.tasks_config["create_implementation_plan"],
                 agent=self.seo_specialist(),
                 context=[task_1e, task_2],  # Parallel flow: depends on parallel summary + task 2
@@ -2879,7 +2880,7 @@ class SEOStrategyCrew:
                         f"Expected {expected_type}."
                     )
                 output = task.output
-                # CrewAI 1.7.0+: When guardrails exist, pydantic may be None - parse from raw
+                # CrewAI 1.8.1+: When guardrails exist, pydantic may be None - parse from raw
                 if output.pydantic is None and output.raw:
                     logger.debug(f"{task_name}: pydantic is None, will parse from raw")
                 return output

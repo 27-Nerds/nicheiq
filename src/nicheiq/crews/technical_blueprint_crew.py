@@ -8,6 +8,7 @@ the selected solution's features, personas, and project type.
 from typing import Any
 
 from crewai import Agent, Crew, Task
+from .safe_task import SafeTask
 from crewai.project import CrewBase, agent, crew, task
 from langchain_openai import ChatOpenAI
 from loguru import logger
@@ -80,7 +81,7 @@ class TechnicalBlueprintCrew:
         Creates a complete site structure with sections, pages, URLs,
         and MVP prioritization.
         """
-        return Task(
+        return SafeTask(
             config=self.tasks_config["site_structure_task"],
             agent=self.product_architect(),
             output_pydantic=SiteStructure,
@@ -96,7 +97,7 @@ class TechnicalBlueprintCrew:
         Creates 2-3 realistic user flows showing how personas discover,
         use, and convert on the product.
         """
-        return Task(
+        return SafeTask(
             config=self.tasks_config["user_flows_task"],
             agent=self.ux_designer(),
             output_pydantic=UserFlowsSection,

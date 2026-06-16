@@ -4,6 +4,7 @@ Single-agent crew for strategic refinement of selected solution using keyword va
 """
 
 from crewai import Agent, Crew, Task
+from .safe_task import SafeTask
 from crewai.project import CrewBase, agent, crew, task
 from langchain_openai import ChatOpenAI
 from loguru import logger
@@ -62,7 +63,7 @@ class SolutionRefinementCrew:
         Analyzes keyword demand data to provide actionable strategic recommendations
         across geographic expansion, category positioning, feature priorities, and content strategy.
         """
-        return Task(
+        return SafeTask(
             config=self.tasks_config["refine_solution_strategy"],
             agent=self.strategic_advisor(),
             output_pydantic=SolutionRefinement,

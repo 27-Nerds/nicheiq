@@ -8,6 +8,7 @@ Validates monetization strategy by determining optimal pricing based on:
 """
 
 from crewai import Agent, Crew, Task
+from .safe_task import SafeTask
 from crewai.project import CrewBase, agent, crew, task
 from langchain_openai import ChatOpenAI
 from loguru import logger
@@ -76,7 +77,7 @@ class PricingStrategyCrew:
         Analyzes competitor pricing, pain point WTP scores, and solution features
         to recommend optimal pricing strategy.
         """
-        return Task(
+        return SafeTask(
             config=self.tasks_config["pricing_strategy_analysis"],
             agent=self.pricing_analyst(),
             output_pydantic=PricingStrategyResult,

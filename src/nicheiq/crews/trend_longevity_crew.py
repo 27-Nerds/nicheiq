@@ -11,6 +11,7 @@ TrendNarrativeOutput. Both are merged into the unchanged TrendLongevityResult.
 """
 
 from crewai import Agent, Crew, Task
+from .safe_task import SafeTask
 from crewai.project import CrewBase, agent, crew, task
 from langchain_openai import ChatOpenAI
 from loguru import logger
@@ -78,7 +79,7 @@ class TrendLongevityCrew:
         Analyzes keyword trends, discussion momentum, and competitive activity
         to determine market timing and trend sustainability.
         """
-        return Task(
+        return SafeTask(
             config=self.tasks_config["trend_longevity_analysis"],
             agent=self.trend_analyst(),
             output_pydantic=TrendNarrativeOutput,

@@ -10,6 +10,8 @@ from typing import Any
 
 from crewai import Agent, Crew, Task
 from crewai.project import CrewBase, agent, crew, task
+
+from .safe_task import SafeTask
 from loguru import logger
 
 from ..config.settings import settings
@@ -114,7 +116,7 @@ def validate_pain_point_extraction(task_output) -> tuple[bool, Any]:
     """
     Guardrail for extract_pain_points_task to handle JSON parsing errors.
 
-    CrewAI 1.7.0 Compatibility: When guardrails exist, pydantic=None by design.
+    CrewAI 1.8.1 Compatibility: When guardrails exist, pydantic=None by design.
     Must parse from .raw and return (True, clean_json_string) on success.
 
     Validates:
@@ -129,7 +131,7 @@ def validate_pain_point_extraction(task_output) -> tuple[bool, Any]:
         tuple[bool, Any]: (success, model_dump_json_or_error)
     """
     try:
-        # CrewAI 1.7.0: When guardrails exist, pydantic is intentionally None
+        # CrewAI 1.8.1: When guardrails exist, pydantic is intentionally None
         result = task_output.pydantic
         if result is None:
             if not hasattr(task_output, 'raw') or not task_output.raw:
@@ -247,7 +249,7 @@ def validate_pain_point_scoring(task_output) -> tuple[bool, Any]:
     """
     Guardrail for validate_pain_points_task to handle JSON parsing errors.
 
-    CrewAI 1.7.0 Compatibility: When guardrails exist, pydantic=None by design.
+    CrewAI 1.8.1 Compatibility: When guardrails exist, pydantic=None by design.
     Must parse from .raw and return (True, raw_string) on success.
 
     Validates:
@@ -915,7 +917,10 @@ class PainPointCrew:
         Output: Structured categorization of discussions by theme and user segment.
         Guardrail: Validates 4+ themes with 2+ quotes each, and 3+ user segments.
         """
-        return Task(
+        # SafeTask keeps output_pydantic (so CrewAI injects the JSON schema into
+        # the agent prompt) but degrades a malformed-JSON conversion to (None,None)
+        # instead of crashing in the guardrail retry loop. See crews/safe_task.py.
+        return SafeTask(
             config=self.tasks_config["categorize_content"],
             agent=self.content_researcher(),
             output_pydantic=ContentCategorizationReport,
@@ -933,7 +938,7 @@ class PainPointCrew:
 
         Includes guardrail to handle JSON parsing errors and validate output structure.
         """
-        return Task(
+        return SafeTask(
             config=self.tasks_config["extract_pain_points"],
             agent=self.pain_point_analyst(),
             context=[self.categorize_content_task()],
@@ -954,7 +959,7 @@ class PainPointCrew:
 
         Includes guardrail to handle JSON parsing errors and validate score ranges.
         """
-        return Task(
+        return SafeTask(
             config=self.tasks_config["validate_pain_points"],
             agent=self.pain_point_validator(),
             output_pydantic=ValidationResult,
@@ -1383,7 +1388,7 @@ class PainPointCrew:
         )
 
         try:
-            corrective_task = Task(
+            corrective_task = SafeTask(
                 config=self.tasks_config["extract_pain_points"],
                 agent=self.pain_point_analyst(),
                 output_pydantic=PainPointExtraction,

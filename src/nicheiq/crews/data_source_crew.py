@@ -4,6 +4,7 @@ Deep research on data sources, APIs, and integrations for the SELECTED solution 
 """
 
 from crewai import Agent, Crew, Task
+from .safe_task import SafeTask
 from crewai.project import CrewBase, agent, crew, task
 from crewai_tools import SerperDevTool
 from langchain_openai import ChatOpenAI
@@ -123,7 +124,7 @@ class DataSourceResearchCrew:
         Output: SourceEvaluationReport with priority tiers and quality metrics.
         Guardrail: Validates 1+ high_priority_source with quality_metrics.
         """
-        return Task(
+        return SafeTask(
             config=self.tasks_config["evaluate_data_sources"],
             agent=self.data_quality_analyst(),
             context=[self.discover_data_sources_task()],
@@ -138,7 +139,7 @@ class DataSourceResearchCrew:
         Task: Create implementation roadmap for data integration.
         Output: DataImplementationPlan (implementation fields only, Python will merge with Task 2).
         """
-        return Task(
+        return SafeTask(
             config=self.tasks_config["create_data_roadmap"],
             agent=self.data_quality_analyst(),
             context=[self.discover_data_sources_task(), self.evaluate_data_sources_task()],

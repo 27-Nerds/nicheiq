@@ -1,7 +1,7 @@
 """
 Crew Guardrails - Validation functions for CrewAI task outputs.
 
-NOTE: CrewAI 1.7.0 intentionally sets task_output.pydantic = None when guardrails exist.
+NOTE: CrewAI 1.8.1 intentionally sets task_output.pydantic = None when guardrails exist.
 Most validation has been migrated to Pydantic model validators (the recommended approach).
 Only complex cross-solution comparisons remain here as guardrails.
 
@@ -78,7 +78,7 @@ def validate_diversity(
     NOTE: This guardrail must remain (not moved to Pydantic) because it performs
     cross-solution comparisons that cannot be expressed as single-field validators.
 
-    CrewAI 1.7.0 Compatibility: When guardrails exist, pydantic=None by design.
+    CrewAI 1.8.1 Compatibility: When guardrails exist, pydantic=None by design.
     We must parse .raw directly and return (True, raw_string) on success.
 
     Adaptive rules based on allowed_project_types:
@@ -94,11 +94,11 @@ def validate_diversity(
         tuple[bool, Any]: (success, result_or_error)
     """
     try:
-        # CrewAI 1.7.0: When guardrails exist, pydantic is intentionally None
+        # CrewAI 1.8.1: When guardrails exist, pydantic is intentionally None
         # Try pydantic first, then fall back to parsing .raw
         result = task_output.pydantic
         if result is None:
-            # CrewAI 1.7.0 behavior: parse from .raw
+            # CrewAI 1.8.1 behavior: parse from .raw
             if not hasattr(task_output, 'raw') or not task_output.raw:
                 return (False, "Solution refinement returned empty output (no pydantic or raw)")
 
@@ -176,7 +176,7 @@ def validate_diversity(
                     )
 
         logger.info(f"✓ Diversity guardrail passed: {len(ideas)} unique solutions")
-        # CrewAI 1.7.0: Return raw string for CrewAI to re-parse
+        # CrewAI 1.8.1: Return raw string for CrewAI to re-parse
         return (True, _guardrail_success_payload(task_output, result))
 
     except Exception as e:
@@ -380,7 +380,7 @@ def validate_competitive_analysis(task_output) -> tuple[bool, Any]:
     """
     Guardrail for competitive_analysis_task to detect truncated JSON output.
 
-    CrewAI 1.7.0 Compatibility: When guardrails exist, pydantic=None by design.
+    CrewAI 1.8.1 Compatibility: When guardrails exist, pydantic=None by design.
     Must parse from .raw and return (True, raw_string) on success.
 
     Validates:
@@ -393,7 +393,7 @@ def validate_competitive_analysis(task_output) -> tuple[bool, Any]:
         tuple[bool, Any]: (success, raw_string_or_error)
     """
     try:
-        # CrewAI 1.7.0: When guardrails exist, pydantic is intentionally None
+        # CrewAI 1.8.1: When guardrails exist, pydantic is intentionally None
         result = task_output.pydantic
         if result is None:
             if not hasattr(task_output, 'raw') or not task_output.raw:
@@ -449,7 +449,7 @@ def validate_competitive_analysis(task_output) -> tuple[bool, Any]:
             )
 
         logger.info(f"✓ Competitive analysis guardrail passed: {len(result.solution_landscapes)} landscapes")
-        # CrewAI 1.7.0: Return raw string for CrewAI to re-parse
+        # CrewAI 1.8.1: Return raw string for CrewAI to re-parse
         return (True, _guardrail_success_payload(task_output, result))
 
     except Exception as e:
@@ -1012,7 +1012,7 @@ def _parse_pydantic_from_task_output(task_output, model_class, task_name: str) -
     """
     Unified helper to parse Pydantic model from task output.
 
-    CrewAI 1.7.0 Compatibility: When guardrails exist, pydantic=None by design.
+    CrewAI 1.8.1 Compatibility: When guardrails exist, pydantic=None by design.
     This helper attempts to parse from .raw when .pydantic is None.
 
     Args:
@@ -1033,7 +1033,7 @@ def _parse_pydantic_from_task_output(task_output, model_class, task_name: str) -
                 return (result, None)
             return (None, f"Invalid type: expected {model_class.__name__}, got {type(result)}")
 
-        # CrewAI 1.7.0: pydantic is None when guardrails exist, parse from .raw
+        # CrewAI 1.8.1: pydantic is None when guardrails exist, parse from .raw
         if not hasattr(task_output, 'raw') or not task_output.raw:
             return (None, f"{task_name} returned empty output (no pydantic or raw)")
 
@@ -1702,7 +1702,7 @@ def validate_solution_selection(task_output) -> tuple[bool, Any]:
     """
     Guardrail for solution_selection_task to catch malformed JSON.
 
-    CrewAI 1.7.0 Compatibility: When guardrails exist, pydantic=None by design.
+    CrewAI 1.8.1 Compatibility: When guardrails exist, pydantic=None by design.
     Must parse from .raw and return (True, raw_string) on success.
 
     Validates:

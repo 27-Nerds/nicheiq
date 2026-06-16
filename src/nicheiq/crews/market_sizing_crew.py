@@ -9,6 +9,7 @@ import json
 from typing import Any
 
 from crewai import Agent, Crew, Task
+from .safe_task import SafeTask
 from crewai.project import CrewBase, agent, crew, task
 from langchain_openai import ChatOpenAI
 from loguru import logger
@@ -84,7 +85,7 @@ class MarketSizingCrew:
 
         Calculates TAM/SAM/SOM estimates and assesses market viability.
         """
-        return Task(
+        return SafeTask(
             config=self.tasks_config["market_sizing_analysis"],
             agent=self.market_analyst(),
             output_pydantic=MarketSizingResult,
@@ -98,7 +99,7 @@ class MarketSizingCrew:
         NOTE: This guardrail must remain (not moved to Pydantic) because it performs
         complex TAM > SAM > SOM hierarchy validation that requires cross-field comparison.
 
-        CrewAI 1.7.0 Compatibility: When guardrails exist, pydantic=None by design.
+        CrewAI 1.8.1 Compatibility: When guardrails exist, pydantic=None by design.
         We must parse .raw directly and return (True, raw_string) on success.
 
         Checks:
@@ -113,11 +114,11 @@ class MarketSizingCrew:
             (True, raw_string) if validation passes, (False, error_message) if fails
         """
         try:
-            # CrewAI 1.7.0: When guardrails exist, pydantic is intentionally None
+            # CrewAI 1.8.1: When guardrails exist, pydantic is intentionally None
             # Try pydantic first, then fall back to parsing .raw
             result = task_output.pydantic
             if result is None:
-                # CrewAI 1.7.0 behavior: parse from .raw
+                # CrewAI 1.8.1 behavior: parse from .raw
                 if not hasattr(task_output, 'raw') or not task_output.raw:
                     return (False, "Market sizing returned empty output (no pydantic or raw)")
 
@@ -201,7 +202,7 @@ class MarketSizingCrew:
                 # Log but don't fail validation if numeric parsing fails
                 logger.warning(f"[Guardrail] Could not validate numeric hierarchy: {str(numeric_error)}")
 
-            # CrewAI 1.7.0: Return raw string for CrewAI to re-parse
+            # CrewAI 1.8.1: Return raw string for CrewAI to re-parse
             return (True, task_output.raw)
         except Exception as e:
             return (False, f"Validation error: {str(e)}")

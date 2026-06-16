@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Optional
 
 from crewai import Agent, Crew, Task
+from .safe_task import SafeTask
 from crewai.project import CrewBase, agent, crew, task
 from langchain_openai import ChatOpenAI
 from loguru import logger
@@ -275,7 +276,7 @@ class LandingPageCrew:
     @task
     def generate_html_page_task(self) -> Task:
         """Task 5: Generate complete HTML implementing visual design spec."""
-        return Task(
+        return SafeTask(
             config=self.tasks_config["generate_html_page"],
             agent=self.html_developer(),
             context=[
@@ -293,7 +294,7 @@ class LandingPageCrew:
     @task
     def enhance_animations_task(self) -> Task:
         """Task 6: Enhance HTML with premium animations and micro-interactions."""
-        return Task(
+        return SafeTask(
             config=self.tasks_config["enhance_animations"],
             agent=self.animation_enhancer(),
             context=[
@@ -311,7 +312,7 @@ class LandingPageCrew:
     @task
     def qa_review_task(self) -> Task:
         """Task 7: QA review and fix visual design issues."""
-        return Task(
+        return SafeTask(
             config=self.tasks_config["qa_review_html"],
             agent=self.qa_reviewer(),
             context=[

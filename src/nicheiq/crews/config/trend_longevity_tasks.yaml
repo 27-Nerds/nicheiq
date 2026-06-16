@@ -102,3 +102,12 @@ trend_longevity_analysis:
     A TrendNarrativeOutput with all fields populated based on the raw data
     and pre-computed signals provided. Every narrative claim must reference
     specific data from the keyword, discussion, or competitive data sections.
+
+    Required fields:
+    - market_maturity: one of "Emerging" | "Growth" | "Mature"
+    - longevity_verdict: one of "Sustainable" | "Risky" | "Fad"
+    - longevity_rationale: string, 2-3 sentences citing specific trend data
+    - trend_duration: optional string (e.g., "2+ years growth", "6 months spike")
+    - peak_periods: optional list of strings if seasonal (e.g., ["Q4", "November-December"])
+    - community_growth_indicators: list of 3-5 strings, each a growth/decline signal with a citation
+    - trend_reversal_risks: list of 3-5 strings, each a reversal factor with severity and evidence

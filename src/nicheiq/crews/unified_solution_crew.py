@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from ..flows.checkpoint_manager import CheckpointManager
 
 from crewai import Agent, Crew, Task
+from .safe_task import SafeTask
 from crewai.project import CrewBase, agent, crew, task
 from langchain_openai import ChatOpenAI
 from loguru import logger
@@ -387,7 +388,7 @@ class UnifiedSolutionCrew:
         Output: RawConceptList with 8-12 lightweight concepts.
         Guardrail: Validates 6+ concepts with name, one_liner, target_keywords.
         """
-        return Task(
+        return SafeTask(
             config=self.tasks_config["divergent_exploration"],
             agent=self.solution_ideator(),  # High temp (0.85) for creativity
             output_pydantic=RawConceptList,
@@ -405,7 +406,7 @@ class UnifiedSolutionCrew:
         Output: FilteredConceptList with 5-7 unique concepts.
         Guardrail: Validates 3+ filtered concepts with diversity_summary.
         """
-        return Task(
+        return SafeTask(
             config=self.tasks_config["diversity_filtering"],
             agent=self.solution_evaluator(),  # Low temp (0.2) for objective filtering
             context=[self.divergent_exploration_task()],
@@ -424,7 +425,7 @@ class UnifiedSolutionCrew:
         Includes diversity guardrail to catch similar solutions.
         Output: IdeaGenerationResult with 3-5 complete solutions.
         """
-        return Task(
+        return SafeTask(
             config=self.tasks_config["solution_refinement"],
             agent=self.solution_refiner(),  # Moderate temp (0.4) for structured creativity
             context=[self.diversity_filtering_task()],
@@ -443,7 +444,7 @@ class UnifiedSolutionCrew:
 
         Guardrail validates JSON completeness to catch truncation from large outputs.
         """
-        return Task(
+        return SafeTask(
             config=self.tasks_config["competitive_analysis"],
             agent=self.competitive_researcher(),
             context=[self.solution_refinement_task()],
@@ -464,7 +465,7 @@ class UnifiedSolutionCrew:
         NOTE: Must include solution_refinement_task in context to provide complete solution
         specs with numeric scores (market_fit_score, technical_feasibility_score, etc.).
         """
-        return Task(
+        return SafeTask(
             config=self.tasks_config["solution_selection"],
             agent=self.strategic_selector(),
             context=[self.solution_refinement_task()],

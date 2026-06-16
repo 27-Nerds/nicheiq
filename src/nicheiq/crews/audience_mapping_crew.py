@@ -9,6 +9,7 @@ enabling extraction of ACTUAL usernames, vocabulary, and tools mentioned.
 """
 
 from crewai import Agent, Crew, Task
+from .safe_task import SafeTask
 from crewai.project import CrewBase, agent, crew, task
 from langchain_openai import ChatOpenAI
 from loguru import logger
@@ -319,7 +320,7 @@ class AudienceMappingCrew:
         segments, influencers, vocabulary, and messaging frameworks.
         Guardrail: Validates 2+ segments, 3+ influencers, 2+ community hubs.
         """
-        return Task(
+        return SafeTask(
             config=self.tasks_config["audience_mapping_analysis"],
             agent=self.audience_researcher(),
             output_pydantic=AudienceMappingResult,
