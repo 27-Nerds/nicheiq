@@ -62,9 +62,9 @@ def _tokenize_name(name: str) -> list[str]:
     Order: strip hyphens between alnum → split camelCase → split whitespace/underscores
     → lowercase → filter stop words and short tokens.
     """
-    # 1. Strip hyphens between alphanumeric chars (GLP-1 → GLP1, BPC-157 → BPC157)
+    # 1. Strip hyphens between alphanumeric chars (e.g. "Model-3" → "Model3")
     result = re.sub(r"(?<=[A-Za-z0-9])-(?=[A-Za-z0-9])", "", name)
-    # 2. Split camelCase boundaries (SideEffect → Side Effect, GLP1Side → GLP1 Side)
+    # 2. Split camelCase boundaries (SideEffect → Side Effect)
     result = re.sub(r"([a-z])([A-Z])", r"\1 \2", result)
     result = re.sub(r"([0-9])([A-Z])", r"\1 \2", result)
     # 3. Split on whitespace/underscores
@@ -136,6 +136,9 @@ class UnifiedSolutionCrew:
 
         # Create diversity guardrail with allowed project types
         self._diversity_guardrail = create_diversity_guardrail(allowed_project_types)
+
+        # Caveats from post-crew pain-coverage enforcement (set in execute_pipeline).
+        self.coverage_caveats: list[str] = []
 
         logger.info(
             f"UnifiedSolutionCrew initialized with {len(pain_point_analysis.pain_points)} pain points "
@@ -240,14 +243,19 @@ class UnifiedSolutionCrew:
             # Name with optional project type
             name_part = f"{name} ({project_type})" if project_type else name
 
+            # M/D/J structural tags (when persisted) so the cross-run dedup gate can
+            # catch a reworded idea with the same mechanism+data+journey.
+            m, d, j = idea.get("mechanism_tag"), idea.get("data_source_tag"), idea.get("journey_tag")
+            mdj = f" [M/D/J: {m or '?'} | {d or '?'} | {j or '?'}]" if (m or d or j) else ""
+
             if compact:
-                lines.append(f"- {name_part} | summary: {summary}")
+                lines.append(f"- {name_part}{mdj} | summary: {summary}")
             else:
                 if max_desc_len > 0 and desc:
                     desc_truncated = desc[:max_desc_len] + ("..." if len(desc) > max_desc_len else "")
-                    lines.append(f"- {name_part} [summary: {summary}]: {desc_truncated}")
+                    lines.append(f"- {name_part}{mdj} [summary: {summary}]: {desc_truncated}")
                 else:
-                    lines.append(f"- {name_part} [summary: {summary}]")
+                    lines.append(f"- {name_part}{mdj} [summary: {summary}]")
 
         # --- Assemble output ---
         parts: list[str] = []
@@ -267,6 +275,43 @@ class UnifiedSolutionCrew:
         parts.append("\n".join(lines))
 
         return "\n\n".join(parts)
+
+    def _format_regeneration_directive(self) -> str:
+        """Regeneration-only block: re-approach the SAME pains from new ANGLES.
+
+        Empty string on first generation. On regeneration it reframes the task
+        from "avoid the previous ideas" (pure blacklist) to "deliberately explore
+        the dimensions the previous batch did NOT" — different mechanism, persona,
+        journey moment, data source, or a contrarian framing — so the new batch is
+        genuinely additive rather than reworded cousins of what already exists.
+        """
+        if not self.existing_ideas:
+            return ""
+        n = len(self.existing_ideas)
+        return (
+            "## STEP 0.6: REGENERATION — Explore NEW ANGLES (this is a 'generate more' run)\n\n"
+            f"The user already has the {n} ideas listed above and asked for MORE. They do\n"
+            "NOT want the same concepts reworded — they want genuinely different angles on\n"
+            "the same validated pains. Avoiding the blacklist is necessary but NOT enough.\n\n"
+            "Before generating, do this in writing:\n"
+            "1. ANGLE MAP: for the existing ideas, note which (pain × mechanism × data\n"
+            "   source × user-journey moment × persona) combinations they already cover.\n"
+            "2. FIND THE GAPS: for each high-value pain, identify angles the existing set\n"
+            "   did NOT take. Deliberately shift AT LEAST ONE dimension per new concept:\n"
+            "   - Different MECHANISM (if a pain was solved by a calculator, try an\n"
+            "     aggregator, a monitor/alert, a community-data loop, or a directory).\n"
+            "   - Different USER-JOURNEY MOMENT (before buying vs during use vs\n"
+            "     troubleshooting-after-a-mistake vs ongoing monitoring).\n"
+            "   - Different PERSONA/segment within the niche (e.g. first-timer vs\n"
+            "     power user vs the person who advises others).\n"
+            "   - Different DATA SOURCE or wedge.\n"
+            "   - A CONTRARIAN / inverted framing of the same pain.\n"
+            "3. Also cover any UNDER-SERVED pain the previous batch barely touched.\n\n"
+            "Each new concept's why_non_obvious must state WHICH angle it takes that the\n"
+            "existing ideas did not. A concept that shares M+D, M+J, or all three with any\n"
+            "existing idea (see its [M/D/J: ...] tags above) is a reworded cousin — REJECT it\n"
+            "in the STEP 0.75 gate and replace it with one that shifts a real dimension.\n"
+        )
 
     # ========== AGENTS ==========
 
@@ -332,10 +377,12 @@ class UnifiedSolutionCrew:
                 temperature=0.3,
                 # max_completion_tokens=30000,  # Disabled: CrewAI doesn't forward this properly for reasoning models
             )),
-            function_calling_llm=ChatOpenAI(**build_llm_kwargs(
+            # build_crew_llm forwards reasoning_effort to the API for GPT-5 models
+            # (a ChatOpenAI instance would have it dropped by CrewAI's create_llm).
+            function_calling_llm=build_crew_llm(
                 model=settings.function_calling_llm,
-                temperature=0.1,
-            )),
+                reasoning_effort="minimal",  # Fast/cheap tool-arg synthesis
+            ),
             verbose=True,
         )
 
@@ -651,6 +698,10 @@ class UnifiedSolutionCrew:
             else:
                 existing_ideas_blacklist = "None (first generation — no previously generated ideas)"
                 existing_ideas_blacklist_compact = existing_ideas_blacklist
+            # Regeneration-only directive: actively re-approach the SAME pains from
+            # different angles (mechanism/persona/journey/data source) rather than
+            # merely avoiding the prior ideas. Empty on first generation.
+            regeneration_directive = self._format_regeneration_directive()
 
             crew_output = self._last_crew.kickoff(inputs={
                 "analysis_summary": self.pain_point_analysis.analysis_summary,
@@ -671,6 +722,7 @@ class UnifiedSolutionCrew:
                 # Existing ideas blacklist for dedup across regeneration runs
                 "existing_ideas_blacklist": existing_ideas_blacklist,
                 "existing_ideas_blacklist_compact": existing_ideas_blacklist_compact,
+                "regeneration_directive": regeneration_directive,
                 # Direct context injection (replaces RAG)
                 "competitor_mentions": self._format_competitor_mentions(),
                 "theme_categories": theme_categories_formatted,
@@ -744,6 +796,37 @@ class UnifiedSolutionCrew:
             # Use base solutions directly (no enhancement merging)
             from copy import deepcopy
             refined_solutions = deepcopy(base_solutions)
+
+            # Carry M/D/J structural tags from the filtered concepts onto the refined
+            # solutions (refinement drops them). Match on whitespace-normalized name
+            # ("BPC Lot Mapper" -> "bpclotmapper" == "BPCLotMapper"). Persisted so the
+            # regeneration dedup can catch reworded structural duplicates.
+            if filtered_concepts and filtered_concepts.concepts:
+                def _norm(n: str) -> str:
+                    return "".join((n or "").lower().split())
+                tag_lookup = {
+                    _norm(c.concept_name): (c.mechanism_tag, c.data_source_tag, c.journey_tag)
+                    for c in filtered_concepts.concepts
+                }
+                for sol in refined_solutions.solution_ideas:
+                    tags = tag_lookup.get(_norm(getattr(sol, "solution_name", "")))
+                    if tags:
+                        sol.mechanism_tag, sol.data_source_tag, sol.journey_tag = tags
+
+            # Post-crew pain-coverage enforcement (deterministic, never crashes):
+            # restore coverage of high-severity on-niche pains the diversity filter
+            # may have dropped, by re-injecting the best-covering divergent concept;
+            # otherwise record a caveat. Coverage outranks structural spread.
+            try:
+                from ..utils.validation.crew_guardrails import enforce_pain_coverage
+                self.coverage_caveats = enforce_pain_coverage(
+                    refined_solutions.solution_ideas,
+                    raw_concepts.concepts if raw_concepts else [],
+                    self.pain_point_analysis.pain_points,
+                )
+            except Exception as e:
+                logger.warning(f"Pain-coverage enforcement skipped: {e}")
+                self.coverage_caveats = []
 
             # Log pipeline summary
             removed_count = len(filtered_concepts.removed_concepts) if filtered_concepts else 0

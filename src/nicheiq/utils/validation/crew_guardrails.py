@@ -70,7 +70,8 @@ def _guardrail_success_payload(task_output, parsed_result: Any | None = None) ->
 
 
 def validate_diversity(
-    task_output, allowed_project_types: list[str] | None = None
+    task_output, allowed_project_types: list[str] | None = None,
+    nudge_diversity: bool = False,
 ) -> tuple[bool, Any]:
     """
     Guardrail for solution_refinement_task to enforce diversity.
@@ -129,17 +130,27 @@ def validate_diversity(
         # Get allowed project types
         allowed_types = allowed_project_types or []
 
-        # Rule 1: If multiple types allowed, check type diversity (advisory only —
-        # allowing a type doesn't mean the niche suits it; the LLM may
-        # legitimately generate solutions of one type for a niche that
-        # doesn't lend itself to others)
+        # Rule 1: If multiple types allowed, nudge toward type diversity.
+        # SELF-LIMITING: on the FIRST guardrail invocation we may fail once to
+        # nudge a regeneration toward >=2 project types (the all-SEO-hub monotony
+        # fix); on any subsequent invocation we only warn and proceed. This can
+        # never loop/crash (allowing a type doesn't mean the niche suits it).
         if len(allowed_types) >= 2:
             used_types = set(idea.project_type for idea in ideas if idea.project_type)
             if len(used_types) < 2:
+                if nudge_diversity:
+                    return (
+                        False,
+                        f"Project-type monotony: {len(allowed_types)} types allowed "
+                        f"({allowed_types}) but only {used_types} used across "
+                        f"{len(ideas)} solutions. Regenerate so the set spans at least 2 "
+                        f"distinct project_types. A calculator and a content-hub are the "
+                        f"SAME architecture — vary the product mechanism, don't return "
+                        f"variations of one SEO page-factory."
+                    )
                 logger.warning(
                     f"Low project type diversity: {len(allowed_types)} types allowed "
-                    f"but only {used_types} used. "
-                    f"Proceeding — pairwise similarity check will catch true duplicates."
+                    f"but only {used_types} used. Proceeding (nudge already spent)."
                 )
             else:
                 logger.info(f"✓ Project type diversity check passed: {used_types}")
@@ -340,6 +351,24 @@ def detect_catalog_duplicate(new_solution, existing_idea: dict) -> bool:
         if new_name == existing_name or SequenceMatcher(None, new_name, existing_name).ratio() >= 0.85:
             return True
 
+    # Structural duplicate: same mechanism + data + journey, even when the idea was
+    # REWORDED (text-based signals below miss those). Only fires when BOTH sides
+    # carry M/D/J tags, so callers passing legacy/tag-less ideas are unaffected.
+    new_m = getattr(new_solution, 'mechanism_tag', None)
+    new_d = getattr(new_solution, 'data_source_tag', None)
+    new_j = getattr(new_solution, 'journey_tag', None)
+    ex_m = existing_idea.get('mechanism_tag')
+    ex_d = existing_idea.get('data_source_tag')
+    ex_j = existing_idea.get('journey_tag')
+    if (new_m or new_d or new_j) and (ex_m or ex_d or ex_j):
+        matched = sum((
+            _tags_match(new_m, ex_m),
+            _tags_match(new_d, ex_d),
+            _tags_match(new_j, ex_j),
+        ))
+        if matched >= 2:
+            return True
+
     new_vp = (
         getattr(new_solution, 'value_proposition', None)
         or getattr(new_solution, 'description', None)
@@ -359,6 +388,142 @@ def detect_catalog_duplicate(new_solution, existing_idea: dict) -> bool:
     return False
 
 
+# ── Post-crew pain-coverage enforcement (deterministic; never crashes) ──────────
+# High-severity on-niche pains must each be addressed by >=1 final solution. The
+# old behaviour let the diversity filter delete the only on-niche idea covering a
+# pain. This runs AFTER the crew (not as a guardrail) so it can RESTORE coverage
+# by re-injecting the best-covering divergent concept, degrading to a caveat when
+# no concept covers the pain — it can never loop or raise.
+_COVERAGE_SEVERITY_FLOOR = 0.6
+_COVERAGE_MENTION_FLOOR = 8
+_COVERAGE_MAX_PAINS = 4
+_COVERAGE_MATCH_THRESHOLD = 0.5   # pain considered covered by a solution
+_REINJECT_MATCH_THRESHOLD = 0.34  # min concept↔pain overlap to re-inject
+
+
+def _pain_terms(pain) -> list[str]:
+    terms = [getattr(pain, "title", "") or ""]
+    terms.extend(getattr(pain, "categories", None) or [])
+    return [t for t in terms if t]
+
+
+def _idea_blob_terms(idea) -> list[str]:
+    parts = [
+        getattr(idea, "solution_name", "") or "",
+        getattr(idea, "value_proposition", "") or "",
+        getattr(idea, "headline", "") or "",
+    ]
+    parts.extend(getattr(idea, "pain_points_addressed", None) or [])
+    return [p for p in parts if p]
+
+
+def _concept_blob_terms(concept) -> list[str]:
+    parts = [
+        getattr(concept, "concept_name", "") or "",
+        getattr(concept, "one_liner", "") or "",
+        getattr(concept, "why_non_obvious", "") or "",
+    ]
+    parts.extend(getattr(concept, "target_keywords", None) or [])
+    return [p for p in parts if p]
+
+
+def _high_severity_pains(pain_points: list) -> list:
+    eligible = [
+        p for p in (pain_points or [])
+        if (getattr(p, "severity_score", 0) or 0) >= _COVERAGE_SEVERITY_FLOOR
+        or (getattr(p, "mention_count", 0) or 0) >= _COVERAGE_MENTION_FLOOR
+    ]
+    eligible.sort(
+        key=lambda p: (getattr(p, "severity_score", 0) or 0, getattr(p, "mention_count", 0) or 0),
+        reverse=True,
+    )
+    return eligible[:_COVERAGE_MAX_PAINS]
+
+
+def _synthesize_idea_from_concept(concept, pain):
+    """Build a minimal-but-valid BaseSolutionIdea from a divergent concept.
+
+    Conservative defaults; flags itself as a coverage re-injection so the report
+    can treat it appropriately. Never invents scores beyond a neutral midpoint.
+    """
+    from ...models.solution_idea import BaseSolutionIdea
+
+    one_liner = getattr(concept, "one_liner", "") or getattr(concept, "concept_name", "")
+    features = list(getattr(concept, "target_keywords", None) or [])[:3] or ["Core MVP feature"]
+    diff = getattr(concept, "why_non_obvious", None)
+    return BaseSolutionIdea(
+        solution_name=getattr(concept, "concept_name", "Untitled concept"),
+        description=(
+            f"{one_liner} (Re-injected to keep coverage of the high-severity pain "
+            f"\"{getattr(pain, 'title', '')}\"; expand before shipping.)"
+        ),
+        value_proposition=one_liner,
+        pain_points_addressed=[getattr(pain, "title", "") or "high-severity pain"],
+        core_features=features,
+        target_personas=["Primary niche audience"],
+        differentiation_factors=[diff] if diff else None,
+        project_type=getattr(concept, "project_type", None),
+        organic_discovery_queries=list(getattr(concept, "target_keywords", None) or []) or None,
+        market_fit_score=0.5,
+        technical_feasibility_score=0.5,
+    )
+
+
+def enforce_pain_coverage(final_ideas: list, raw_concepts: list, pain_points: list) -> list:
+    """Ensure every high-severity on-niche pain is covered by a final solution.
+
+    Mutates `final_ideas` in place (appends re-injected concepts) and returns a
+    list of human-readable caveat strings for pains that could not be covered.
+    Pure/deterministic; any internal error is swallowed (coverage is best-effort).
+    """
+    caveats: list[str] = []
+    try:
+        pains = _high_severity_pains(pain_points)
+        if not pains:
+            return caveats
+        existing_names = {
+            (getattr(i, "solution_name", "") or "").lower().strip() for i in final_ideas
+        }
+        for pain in pains:
+            pterms = _pain_terms(pain)
+            if not pterms:
+                continue
+            covered = any(
+                _fuzzy_set_overlap(pterms, _idea_blob_terms(i)) >= _COVERAGE_MATCH_THRESHOLD
+                for i in final_ideas
+            )
+            if covered:
+                continue
+            # Find the best divergent concept that covers this pain and is new.
+            best, best_score = None, 0.0
+            for c in raw_concepts or []:
+                cname = (getattr(c, "concept_name", "") or "").lower().strip()
+                if cname in existing_names:
+                    continue
+                score = _fuzzy_set_overlap(pterms, _concept_blob_terms(c))
+                if score > best_score:
+                    best, best_score = c, score
+            if best is not None and best_score >= _REINJECT_MATCH_THRESHOLD:
+                synthesized = _synthesize_idea_from_concept(best, pain)
+                final_ideas.append(synthesized)
+                existing_names.add((synthesized.solution_name or "").lower().strip())
+                logger.warning(
+                    f"[COVERAGE] Re-injected '{synthesized.solution_name}' to cover "
+                    f"high-severity pain '{getattr(pain, 'title', '')}' "
+                    f"(overlap={best_score:.2f})"
+                )
+            else:
+                msg = (
+                    f"High-severity pain '{getattr(pain, 'title', '')}' is not addressed "
+                    f"by any generated solution."
+                )
+                caveats.append(msg)
+                logger.warning(f"[COVERAGE] {msg}")
+    except Exception as e:  # never let coverage enforcement break the run
+        logger.warning(f"[COVERAGE] enforcement skipped due to error: {e}")
+    return caveats
+
+
 def create_diversity_guardrail(allowed_project_types: list[str] | None = None):
     """
     Factory function to create a diversity guardrail with specific project types.
@@ -370,8 +535,15 @@ def create_diversity_guardrail(allowed_project_types: list[str] | None = None):
         Guardrail function with project types bound
     """
 
+    # Mutable cell so the closure can track its own invocation count across
+    # CrewAI retries (the closure can't read CrewAI's retry counter). This makes
+    # the project-type nudge SELF-LIMITING: fail at most once, then always pass.
+    state = {"calls": 0}
+
     def guardrail(task_output) -> tuple[bool, Any]:
-        return validate_diversity(task_output, allowed_project_types)
+        state["calls"] += 1
+        nudge = state["calls"] == 1
+        return validate_diversity(task_output, allowed_project_types, nudge_diversity=nudge)
 
     return guardrail
 
@@ -1299,11 +1471,9 @@ def validate_filtered_concepts(task_output) -> tuple[bool, Any]:
             "Summarize the project types and data sources represented."
         )
 
-    # M/D/J structural-dedup contract (code-checked, not LLM self-report):
-    # (a) every kept concept carries its dedup-gate tags;
-    # (b) no kept pair shares ≥2 fuzzy-equal tags (structural duplicate).
-    # Cross-run dedup against the catalog is enforced separately at the worker
-    # (detect_catalog_duplicate) — prior ideas don't carry stored tags.
+    # M/D/J tag presence contract (code-checked, not LLM self-report): every kept
+    # concept must carry its dedup-gate tags so downstream stages can reason about
+    # structure. (This is satisfiable by the model — it's a presence check.)
     missing_tags = [
         c.concept_name for c in result.concepts
         if not (
@@ -1319,6 +1489,12 @@ def validate_filtered_concepts(task_output) -> tuple[bool, Any]:
             "Copy the M/D/J tags from the STEP 0.75 dedup gate into each kept concept's fields."
         )
 
+    # Structural near-duplicates (≥2 shared M/D/J tags) are now a WARNING, not a
+    # hard reject. Rationale: the old hard-reject deleted genuinely on-niche ideas
+    # (two recovery-focused concepts share tags yet serve distinct pains), and an
+    # unsatisfiable guardrail crashes the whole run after CrewAI retry exhaustion.
+    # Pain-point COVERAGE is enforced deterministically post-crew instead; coverage
+    # outranks structural spread.
     for i, concept_a in enumerate(result.concepts):
         for concept_b in result.concepts[i + 1:]:
             matched_dims = [
@@ -1326,18 +1502,17 @@ def validate_filtered_concepts(task_output) -> tuple[bool, Any]:
                 if _tags_match(getattr(concept_a, field, None), getattr(concept_b, field, None))
             ]
             if len(matched_dims) >= 2:
-                return (
-                    False,
-                    f"Structural duplicates kept: '{concept_a.concept_name}' and "
-                    f"'{concept_b.concept_name}' share {len(matched_dims)}/3 M/D/J dimensions "
-                    f"({', '.join(matched_dims)}). Remove one or replace it with a "
-                    "structurally distinct concept — rewording tags does not change structure."
+                logger.warning(
+                    f"Structural near-duplicate kept (allowed for coverage): "
+                    f"'{concept_a.concept_name}' ~ '{concept_b.concept_name}' share "
+                    f"{len(matched_dims)}/3 M/D/J ({', '.join(matched_dims)}). "
+                    f"Acceptable when each covers a distinct pain."
                 )
 
     logger.info(
         f"✓ Filtered concepts guardrail passed: "
         f"{len(result.concepts)} kept, {len(result.removed_concepts or [])} removed "
-        f"(M/D/J tag contract verified)"
+        f"(M/D/J tag presence verified; structural dups warned, coverage enforced post-crew)"
     )
     return (True, _guardrail_success_payload(task_output, result))
 

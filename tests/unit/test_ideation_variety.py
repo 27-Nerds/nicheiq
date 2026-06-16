@@ -11,6 +11,7 @@ Covers:
 """
 
 import json
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from nicheiq.utils.llm_service import build_crew_llm
@@ -151,16 +152,30 @@ class TestFilteredConceptsTagContract:
         assert not ok
         assert "mechanism_tag" in msg
 
-    def test_structural_duplicates_rejected(self):
-        """Two kept concepts sharing M+D dimensions fail the contract."""
+    def test_structural_duplicates_now_warn_not_reject(self):
+        """Structural near-duplicates (≥2 shared M/D/J) are now a WARNING, not a hard
+        reject — the old hard-reject deleted genuinely on-niche ideas and could crash
+        the run on retry exhaustion. Coverage is enforced deterministically post-crew.
+        """
         output = _filtered_concepts_output([
             _concept("A", "aggregates-public-records", "government-open-data", "search-lands-on-page"),
             _concept("B", "aggregates-public-records", "government-open-data", "subscribes-gets-alerts"),
             _concept("C", "parametric-calculator", "scraped-web-pages", "enters-inputs-gets-calculation"),
         ])
-        ok, msg = validate_filtered_concepts(output)
+        ok, _msg = validate_filtered_concepts(output)
+        assert ok  # passes now (warning logged), does not hard-reject
+
+    def test_missing_tags_still_rejected(self):
+        """The satisfiable presence check (every concept carries M/D/J tags) still fails."""
+        concepts = [
+            _concept("A", "aggregates-public-records", "government-open-data", "search-lands-on-page"),
+            _concept("B", "parametric-calculator", "scraped-web-pages", "enters-inputs-gets-calculation"),
+            _concept("C", "community-submitted-benchmarks", "self-reported-user-data", "submits-data-creates-value"),
+        ]
+        del concepts[0]["data_source_tag"]
+        ok, msg = validate_filtered_concepts(_filtered_concepts_output(concepts))
         assert not ok
-        assert "Structural duplicates" in msg
+        assert "data_source_tag" in msg
 
 
 class TestDetectCatalogDuplicate:
@@ -216,6 +231,66 @@ class TestDetectCatalogDuplicate:
             "target_personas": ["renters"],
         }
         assert detect_catalog_duplicate(new, existing) is False
+
+    def _tagged(self, name, vp, m, d, j):
+        return SimpleNamespace(
+            solution_name=name, value_proposition=vp, description="",
+            target_personas=[], mechanism_tag=m, data_source_tag=d, journey_tag=j,
+        )
+
+    def test_reworded_structural_duplicate_caught_via_mdj(self):
+        """The 'generate more' threat: same mechanism+data+journey, totally reworded
+        value prop (low text overlap) — text dedup misses it, M/D/J catches it."""
+        new = self._tagged(
+            "BPCLotMapper",
+            "Turn COA trust from read-a-PDF-and-hope into an objective cross-vendor check",
+            "llm-content-extraction", "scraped-web-pages", "search-lands-on-page",
+        )
+        existing = {
+            "name": "COABatchChecker",
+            "description": "Verify peptide COAs and spot reused batch IDs",
+            "value_proposition": "Spot reused and tampered COA batch IDs across vendors",
+            "mechanism_tag": "llm-content-extraction",
+            "data_source_tag": "scraped-web-pages",
+            "journey_tag": "search-lands-on-page",
+        }
+        assert detect_catalog_duplicate(new, existing) is True
+
+    def test_one_shared_mdj_dim_not_duplicate(self):
+        new = self._tagged("A", "alpha", "llm-content-extraction", "platform-api", "subscribes-gets-alerts")
+        existing = {
+            "name": "B", "description": "", "value_proposition": "wholly different idea",
+            "mechanism_tag": "llm-content-extraction",  # only M matches
+            "data_source_tag": "scraped-web-pages",
+            "journey_tag": "search-lands-on-page",
+        }
+        assert detect_catalog_duplicate(new, existing) is False
+
+    def test_mdj_skipped_when_existing_has_no_tags(self):
+        """Backward compat: legacy catalog ideas without tags must not be affected."""
+        new = self._tagged("A", "completely unique value prop here", "m1", "d1", "j1")
+        existing = {"name": "B", "description": "", "value_proposition": "different idea entirely"}
+        assert detect_catalog_duplicate(new, existing) is False
+
+
+class TestRegenerationDirective:
+    """The 'generate more' prompt should actively push NEW ANGLES, not just blacklist."""
+
+    def _fn(self):
+        from nicheiq.crews.unified_solution_crew import UnifiedSolutionCrew
+        return UnifiedSolutionCrew._format_regeneration_directive
+
+    def test_empty_on_first_generation(self):
+        assert self._fn()(SimpleNamespace(existing_ideas=[])) == ""
+
+    def test_angle_diversification_on_regeneration(self):
+        out = self._fn()(SimpleNamespace(existing_ideas=[{"name": "A"}, {"name": "B"}]))
+        assert "NEW ANGLES" in out and "ANGLE MAP" in out
+        # mentions different dimensions to shift
+        for dim in ("MECHANISM", "USER-JOURNEY", "PERSONA", "DATA SOURCE", "CONTRARIAN"):
+            assert dim in out
+        # safe for CrewAI single-pass .format() interpolation
+        assert "{" not in out and "}" not in out
 
 
 def _pain(title, severity, mentions, theme=None):

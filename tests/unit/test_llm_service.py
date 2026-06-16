@@ -143,6 +143,38 @@ class TestInvokeStructured:
         assert call_kwargs['model'] == "gpt-4o-mini"
 
     @patch('nicheiq.utils.llm_service.ChatOpenAI')
+    def test_reasoning_effort_forwarded_for_gpt5(self, mock_chat_openai):
+        """reasoning_effort is forwarded (and temperature omitted) for GPT-5 models."""
+        mock_llm = Mock()
+        mock_llm.invoke.return_value = _make_structured_response(TestModel(name="test", value=1))
+        mock_chat_openai.return_value.with_structured_output.return_value = mock_llm
+
+        LLMService.invoke_structured(
+            "Test", TestModel, temperature=0, model_name="gpt-5-nano",
+            reasoning_effort="minimal",
+        )
+
+        call_kwargs = mock_chat_openai.call_args[1]
+        assert call_kwargs['reasoning_effort'] == "minimal"
+        assert 'temperature' not in call_kwargs  # reasoning models reject temperature
+
+    @patch('nicheiq.utils.llm_service.ChatOpenAI')
+    def test_reasoning_effort_ignored_for_non_reasoning(self, mock_chat_openai):
+        """reasoning_effort is dropped for non-reasoning models; temperature kept."""
+        mock_llm = Mock()
+        mock_llm.invoke.return_value = _make_structured_response(TestModel(name="test", value=1))
+        mock_chat_openai.return_value.with_structured_output.return_value = mock_llm
+
+        LLMService.invoke_structured(
+            "Test", TestModel, temperature=0, model_name="gpt-4.1-mini",
+            reasoning_effort="minimal",
+        )
+
+        call_kwargs = mock_chat_openai.call_args[1]
+        assert 'reasoning_effort' not in call_kwargs
+        assert call_kwargs['temperature'] == 0
+
+    @patch('nicheiq.utils.llm_service.ChatOpenAI')
     @patch('nicheiq.utils.llm_service.settings')
     def test_uses_settings_model_by_default(self, mock_settings, mock_chat_openai):
         """Verify settings.openai_model_name is used when model_name=None."""

@@ -1,12 +1,12 @@
 # Thread Relevance Validation Prompt
 # Used by: ThreadRelevanceValidator.validate_batch()
-# Variables: niche_description, threads_text, batch_size
+# Variables: niche_description, threads_text, batch_size, anchor_guidance
 
 template: |
   You are a relevance classifier. Determine if each thread is DIRECTLY relevant to this niche:
 
   Niche: {niche_description}
-
+  {anchor_guidance}
   Threads to evaluate:
   {threads_text}
 
@@ -18,6 +18,8 @@ template: |
   A thread is NOT RELEVANT if it:
   - Only tangentially mentions the niche (keyword match but wrong context)
   - Discusses unrelated topics that happened to use similar words
+  - Is primarily about an OUT-OF-SCOPE topic listed above (shares vocabulary with
+    the niche but is a different subject/audience)
   - Is spam, promotional content, or off-topic
 
   Additionally, note the ENGAGEMENT QUALITY of each thread:

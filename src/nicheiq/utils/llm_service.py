@@ -320,7 +320,8 @@ class LLMService:
         output_model: Type[T],
         temperature: float = 0.6,
         timeout: int = 120,
-        model_name: str | None = None
+        model_name: str | None = None,
+        reasoning_effort: str | None = None
     ) -> tuple[T, TokenUsage]:
         """
         Invoke LLM with structured Pydantic output.
@@ -331,6 +332,10 @@ class LLMService:
             temperature: Temperature setting (0.0-1.0), default 0.6
             timeout: Timeout in seconds, default 120
             model_name: Override default model, optional
+            reasoning_effort: Reasoning effort for GPT-5/o-series models
+                ('none', 'minimal', 'low', 'medium', 'high', 'xhigh'). Ignored
+                for non-reasoning models. Use 'minimal' for fast, low-cost
+                structured calls so hidden reasoning tokens don't blow up cost.
 
         Returns:
             Tuple of (result, TokenUsage) where result is output_model instance
@@ -346,7 +351,10 @@ class LLMService:
                 "api_key": settings.openai_api_key,
                 "timeout": timeout,
             }
-            if not is_reasoning_model(model):
+            if is_reasoning_model(model):
+                if reasoning_effort:
+                    llm_kwargs["reasoning_effort"] = reasoning_effort
+            else:
                 llm_kwargs["temperature"] = temperature
 
             llm = ChatOpenAI(**llm_kwargs)
@@ -359,6 +367,16 @@ class LLMService:
             raw_result = structured_llm.invoke(prompt)
             parsed = raw_result['parsed']
             raw_response = raw_result['raw']
+
+            # Reasoning models can exhaust the output budget on hidden reasoning
+            # before emitting any visible content, leaving parsed=None. Surface
+            # this as a clear error (the caller's retry/except path handles it)
+            # instead of returning None downstream.
+            if parsed is None:
+                raise ValueError(
+                    f"Structured output for {output_model.__name__} was empty "
+                    f"(model={model}); likely truncated before visible output."
+                )
 
             usage = LLMService._extract_usage(
                 raw_response.response_metadata if hasattr(raw_response, 'response_metadata') else {},
@@ -380,7 +398,8 @@ class LLMService:
         prompt: str,
         temperature: float = 0.7,
         timeout: int = 120,
-        model_name: str | None = None
+        model_name: str | None = None,
+        reasoning_effort: str | None = None
     ) -> tuple[str, TokenUsage]:
         """
         Invoke LLM with plain text output.
@@ -390,6 +409,9 @@ class LLMService:
             temperature: Temperature setting (0.0-1.0), default 0.7
             timeout: Timeout in seconds, default 120
             model_name: Override default model, optional
+            reasoning_effort: Reasoning effort for GPT-5/o-series models
+                ('none', 'minimal', 'low', 'medium', 'high', 'xhigh'). Ignored
+                for non-reasoning models.
 
         Returns:
             Tuple of (content, TokenUsage) where content is the string response
@@ -405,7 +427,10 @@ class LLMService:
                 "api_key": settings.openai_api_key,
                 "timeout": timeout,
             }
-            if not is_reasoning_model(model):
+            if is_reasoning_model(model):
+                if reasoning_effort:
+                    llm_kwargs["reasoning_effort"] = reasoning_effort
+            else:
                 llm_kwargs["temperature"] = temperature
 
             llm = ChatOpenAI(**llm_kwargs)

@@ -906,12 +906,20 @@ def run_regenerate_ideas(
                     idea_lookup[name.lower()] = {
                         "description": getattr(s, "description", ""),
                         "project_type": getattr(s, "project_type", ""),
+                        # M/D/J structural tags enable catching REWORDED duplicates
+                        # (text-based dedup misses those).
+                        "mechanism_tag": getattr(s, "mechanism_tag", None),
+                        "data_source_tag": getattr(s, "data_source_tag", None),
+                        "journey_tag": getattr(s, "journey_tag", None),
                     }
         existing_ideas_for_crew = [
             {
                 "name": n,
                 "description": idea_lookup.get(n.lower(), {}).get("description", ""),
                 "project_type": idea_lookup.get(n.lower(), {}).get("project_type", ""),
+                "mechanism_tag": idea_lookup.get(n.lower(), {}).get("mechanism_tag"),
+                "data_source_tag": idea_lookup.get(n.lower(), {}).get("data_source_tag"),
+                "journey_tag": idea_lookup.get(n.lower(), {}).get("journey_tag"),
             }
             for n in existing_solution_names
         ]
@@ -937,13 +945,23 @@ def run_regenerate_ideas(
         if not idea_gen or not hasattr(idea_gen, "solution_ideas"):
             raise RuntimeError("Regeneration did not produce solution ideas")
 
-        # Post-hoc safety-net: filter out solutions with names matching existing ones (case-insensitive)
+        # Post-hoc safety-net: filter out solutions that duplicate existing ones.
+        # Exact-name match (cheap) PLUS structural duplicate detection (a renamed
+        # same-idea passed the exact-name filter before — detect_catalog_duplicate
+        # compares mechanism/value-prop/personas against the existing catalog).
+        from nicheiq.utils.validation.crew_guardrails import detect_catalog_duplicate
         existing_names_lower = {n.lower() for n in existing_solution_names}
-        new_solutions = [
-            s for s in idea_gen.solution_ideas
-            if (getattr(s, "solution_name", "").lower() not in existing_names_lower
-                and getattr(s, "name", "").lower() not in existing_names_lower)
-        ]
+
+        def _is_dup(s) -> bool:
+            name = getattr(s, "solution_name", "") or getattr(s, "name", "")
+            if name.lower() in existing_names_lower:
+                return True
+            try:
+                return any(detect_catalog_duplicate(s, e) for e in existing_ideas_for_crew)
+            except Exception:
+                return False  # never drop on error
+
+        new_solutions = [s for s in idea_gen.solution_ideas if not _is_dup(s)]
 
         if not new_solutions:
             # If all were duplicates, keep them anyway (best effort)

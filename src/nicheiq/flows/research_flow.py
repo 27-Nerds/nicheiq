@@ -720,6 +720,41 @@ RULES:
             "market_momentum": market_momentum
         }
 
+    def _record_pain_anchor_coverage(self, analysis) -> None:
+        """Record dataset-level niche-anchor coverage into drift telemetry.
+
+        NON-SCORING: computes the fraction of pain-point evidence quotes that
+        contain a niche-anchor term and stores it on state for the Stage-10 caveat.
+        Never raises; no-op when anchors inactive.
+        """
+        try:
+            ctx = self.state.niche_context
+            # Coverage vocabulary = compound/entity names PLUS audience jargon
+            # (reconstitution, pinning, subq, BAC water...). On-niche quotes very
+            # often use jargon without naming a specific compound, so entity-only
+            # matching badly under-counts coverage and would emit a false drift caveat.
+            anchor_terms = list(getattr(ctx, "anchor_entities", []) or []) if ctx else []
+            jargon = list(getattr(ctx, "audience_jargon", []) or []) if ctx else []
+            coverage_terms = anchor_terms + jargon
+            if len(anchor_terms) < 3 or not analysis or not analysis.pain_points:
+                return
+            from ..utils.validation.niche_anchor import anchor_coverage, build_anchor_matchers
+            matchers = build_anchor_matchers(coverage_terms)
+            quotes = [
+                q for pp in analysis.pain_points
+                for q in (getattr(pp, "representative_quotes", None) or [])
+            ]
+            if not quotes:
+                return
+            coverage = anchor_coverage(quotes, matchers)
+            self.state.niche_drift_telemetry["pain_evidence_anchor_coverage"] = round(coverage, 3)
+            logger.info(
+                f"[DRIFT] Pain-evidence niche-anchor coverage: {coverage:.0%} "
+                f"({len(quotes)} quotes)"
+            )
+        except Exception as e:
+            logger.debug(f"[DRIFT] anchor coverage telemetry skipped: {e}")
+
     def _validate_pain_point_quality(self, analysis) -> tuple[str, float]:
         """
         Validate pain point analysis quality and return tier classification.
@@ -2282,7 +2317,107 @@ Return a valid JSON object with this structure:
 
         # Add niche_input to the context
         context.niche_input = niche_input
+
+        # Second, ISOLATED call: extract niche-anchor entities/exclusions on the
+        # reasoning-tier model. Disambiguation needs world knowledge + reasoning
+        # (the weakest model is what previously caused niche drift). This call is
+        # fully fault-tolerant: any failure falls back to empty anchor lists and
+        # the run continues with anchor-based drift protection inactive.
+        self._extract_niche_anchors(niche_input, context)
         return context
+
+    def _extract_niche_anchors(self, niche_input: str, context: "NicheContext") -> None:
+        """Populate context.anchor_* fields via an isolated reasoning-model call.
+
+        Never raises: on any failure the anchor fields stay empty (already their
+        default) and a telemetry flag marks drift-protection as inactive.
+        """
+        from pydantic import BaseModel, ConfigDict, Field
+        from ..utils.llm_service import LLMService
+
+        class _NicheAnchors(BaseModel):
+            model_config = ConfigDict(extra='ignore')
+            anchor_entities: list[str] = Field(default_factory=list)
+            disambiguation_exclusions: list[str] = Field(default_factory=list)
+            anchor_communities: list[str] = Field(default_factory=list)
+            audience_jargon: list[str] = Field(default_factory=list)
+
+        # Outcome-oriented prompt + explicit output contract. Two FORMAT-ONLY
+        # illustrations from maximally-different, unrelated domains calibrate the
+        # required precision level without biasing the content toward any domain.
+        prompt = f"""You disambiguate a niche by extracting its anchor vocabulary.
+
+**Niche Input:** {niche_input}
+**Refined Description:** {context.niche_description}
+
+Extract four lists. Be specific and derive EVERYTHING from the niche above.
+
+1. **anchor_entities** (8-20): SPECIFIC named entities — proper-noun products,
+   compounds, models, brands, or named techniques/protocols — that an on-topic
+   discussion in THIS niche will usually reference and an adjacent-but-different
+   niche will NOT. Each MUST be a specific named item, never a broad category word.
+2. **disambiguation_exclusions**: other audiences/senses/adjacent fields that share
+   this niche's words but are OUT of scope (list the out-of-scope meanings). Empty
+   list if the niche is genuinely unambiguous.
+3. **anchor_communities** (3-8): specific online communities/forums where this niche
+   concentrates. Prefer specific over general.
+4. **audience_jargon** (8-12): insider terms/phrases the audience actually uses.
+
+COMPLETION CHECK before answering: verify every anchor_entities item is a specific
+named item (proper noun / compound / model / branded technique), NOT a category word.
+
+--- FORMAT ILLUSTRATIONS (unrelated domains — show the PRECISION LEVEL only; never
+reuse this content, derive everything from the niche above) ---
+• Niche "home espresso enthusiasts": anchor_entities ~ [Niche Zero, Gaggia Classic,
+  Niche grinders, 58mm portafilter, James Hoffmann, VST basket]; exclusions ~
+  [commercial café equipment, pod/capsule machines].
+• Niche "indie iOS game developers": anchor_entities ~ [SpriteKit, TestFlight,
+  App Store Connect, StoreKit 2, GameplayKit]; exclusions ~ [Android/Unity-only devs,
+  AAA console studios].
+--- END ILLUSTRATIONS ---
+
+Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
+"anchor_communities": [...], "audience_jargon": [...]}}"""
+
+        try:
+            anchors, usage = LLMService.invoke_structured(
+                prompt=prompt,
+                output_model=_NicheAnchors,
+                timeout=120,
+                model_name=settings.brainstorm_llm,
+                reasoning_effort="medium",
+            )
+            context.anchor_entities = anchors.anchor_entities or []
+            context.disambiguation_exclusions = anchors.disambiguation_exclusions or []
+            context.anchor_communities = anchors.anchor_communities or []
+            context.audience_jargon = anchors.audience_jargon or []
+            if hasattr(self, 'cost_tracker') and self.cost_tracker:
+                self.cost_tracker.record_llm_usage("Stage 1 - Niche Anchors", usage.to_dict())
+        except Exception as e:
+            # Fault-tolerant: keep empty anchors, continue with protection inactive.
+            logger.warning(
+                f"Niche-anchor extraction failed (non-fatal, drift protection "
+                f"inactive for this run): {e}"
+            )
+
+        # Telemetry: anchors are 'active' only with enough named entities to be
+        # meaningful. Below the threshold, every downstream anchor gate is a no-op
+        # (fail-open) so generic niches are never starved.
+        anchors_active = len(context.anchor_entities) >= 3
+        self.state.niche_drift_telemetry["anchors_active"] = anchors_active
+        self.state.niche_drift_telemetry["anchor_entity_count"] = len(context.anchor_entities)
+        if anchors_active:
+            logger.info(
+                f"[OK] Niche anchors: {len(context.anchor_entities)} entities, "
+                f"{len(context.disambiguation_exclusions)} exclusions "
+                f"(e.g. {', '.join(context.anchor_entities[:5])})"
+            )
+        else:
+            logger.warning(
+                f"[WARN] Niche-anchor extraction produced only "
+                f"{len(context.anchor_entities)} entities (<3) — drift protection "
+                f"inactive for this run."
+            )
 
     # ── Platform search pipeline methods (Stage 2 parallel execution) ──────
 
@@ -2370,10 +2505,12 @@ Return a valid JSON object with this structure:
 
             # LLM validation
             logger.info("[Reddit] Validating thread relevance...")
+            from ..utils.validation.niche_anchor import format_anchor_block
             validated = validator.validate_batch_parallel(
                 niche_description=niche_description,
                 search_results=unique_reddit_results,
                 batch_size=10,
+                anchor_guidance=format_anchor_block(self.state.niche_context),
             )
             reddit_urls = [result.url for result, is_relevant in validated if is_relevant]
             filtered_count = len(unique_reddit_results) - len(reddit_urls)
@@ -2424,10 +2561,12 @@ Return a valid JSON object with this structure:
 
             # LLM validation
             logger.info("[Twitter] Validating thread relevance...")
+            from ..utils.validation.niche_anchor import format_anchor_block
             validated = validator.validate_batch_parallel(
                 niche_description=niche_description,
                 search_results=unique_twitter_results,
                 batch_size=10,
+                anchor_guidance=format_anchor_block(self.state.niche_context),
             )
             twitter_urls = [result.url for result, is_relevant in validated if is_relevant]
             filtered_count = len(unique_twitter_results) - len(twitter_urls)
@@ -2548,6 +2687,10 @@ Return a valid JSON object with this structure:
             niche_context=self.state.niche_context,
             enabled_platforms=enabled_platforms if enabled_platforms else None,
         )
+
+        # Capture niche-anchor query telemetry for the Stage-10 drift caveat.
+        if getattr(query_gen, "anchor_telemetry", None):
+            self.state.niche_drift_telemetry.update(query_gen.anchor_telemetry)
 
         # Convert to SearchQuery objects
         from ..models.research_state import SearchQuery
@@ -2780,6 +2923,10 @@ Return a valid JSON object with this structure:
             niche_description=self.niche_description,
             market_segments=self.state.niche_context.market_segments,
             industry_boundaries=self.state.niche_context.industry_boundaries,
+            niche_anchor_terms=(
+                (self.state.niche_context.anchor_entities or [])
+                + (self.state.niche_context.audience_jargon or [])
+            ),
             job_id=self.state.job_id,
         )
 
@@ -2982,6 +3129,11 @@ Return a valid JSON object with this structure:
         quality_tier, confidence_score = self._validate_pain_point_quality(self.state.pain_point_analysis)
         self.state.pain_point_quality_tier = quality_tier
         self.state.pain_point_confidence_score = confidence_score
+
+        # Niche-drift OBSERVABILITY (non-scoring): record what fraction of pain-point
+        # evidence actually mentions the niche's anchor vocabulary. Does NOT alter the
+        # tier/confidence above — it only feeds a human-readable caveat in the report.
+        self._record_pain_anchor_coverage(self.state.pain_point_analysis)
 
         # Decision: Proceed based on quality tier
         if quality_tier == "INSUFFICIENT":
@@ -3244,6 +3396,10 @@ Return a valid JSON object with this structure:
             # Save results to state
             self.state.idea_generation = refined_solutions
             self.state.solution_selection = solution_selection
+            # Surface any uncovered high-severity pains (post-crew coverage check).
+            self.state.idea_coverage_caveats = list(
+                getattr(unified_crew, "coverage_caveats", None) or []
+            )
 
             if solution_selection is not None:
                 # DEFENSIVE: Validate solution selection - detect error strings

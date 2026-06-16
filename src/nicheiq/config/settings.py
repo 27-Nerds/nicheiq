@@ -68,14 +68,14 @@ class Settings(BaseSettings):
 
     # OpenAI Configuration
     openai_api_key: str = Field(..., description="OpenAI API key")
-    openai_model_name: str = Field(default="gpt-4o", description="OpenAI model to use")
+    openai_model_name: str = Field(default="gpt-4.1-mini", description="OpenAI model to use (safe non-reasoning default; prod overrides via env)")
     function_calling_llm: str = Field(
         default="gpt-4o-mini",
         description="Model to use for function/tool calling (cheaper model recommended)"
     )
     content_analysis_llm: str = Field(
-        default="gpt-4o",
-        description="Model to use for content analysis and categorization tasks (gpt-4o or gpt-4o-mini recommended)"
+        default="gpt-4.1-mini",
+        description="Model for content analysis (gpt-4.1-mini: needs 1M context for large Reddit content; gpt-4o is only 128K)"
     )
     thread_validation_llm: str = Field(
         default="gpt-4o-mini",
@@ -94,8 +94,8 @@ class Settings(BaseSettings):
         )
     )
     keyword_validation_llm: str = Field(
-        default="gpt-4.1-nano",
-        description="Model to use for keyword relevance validation in Phase 6c (gpt-4.1-nano recommended for cost efficiency)"
+        default="gpt-5-nano",
+        description="Model to use for keyword relevance validation in Phase 6c (gpt-5-nano at minimal reasoning effort for cost efficiency)"
     )
     keyword_research_llm: str = Field(
         default="gpt-4o-mini",
@@ -106,12 +106,12 @@ class Settings(BaseSettings):
         description="Model for pain point analysis/validation in Stage 6 (use non-reasoning model to allow max_tokens)"
     )
     competitor_extraction_llm: str = Field(
-        default="gpt-4o-mini",
+        default="gpt-4.1-mini",
         description="Model for extracting product/brand/tool names from social discussion sentences"
     )
     pain_solution_mapping_llm: str = Field(
-        default="gpt-4o-mini",
-        description="Model for pain-to-solution mapping in Stage 10 report generation (gpt-4o-mini recommended for cost efficiency)"
+        default="gpt-4.1-mini",
+        description="Model for pain-to-solution mapping in Stage 10 report generation (gpt-4.1-mini: non-reasoning, good instruction-following)"
     )
     quote_enrichment_llm: str = Field(
         default="gpt-4.1-mini",

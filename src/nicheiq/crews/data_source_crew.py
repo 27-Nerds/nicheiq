@@ -11,7 +11,7 @@ from langchain_openai import ChatOpenAI
 from loguru import logger
 
 from ..config.settings import settings
-from ..utils.llm_service import build_llm_kwargs
+from ..utils.llm_service import build_crew_llm, build_llm_kwargs
 from ..models.competitor import CompetitiveLandscape
 from ..models.data_source import (
     DataImplementationPlan,
@@ -85,10 +85,12 @@ class DataSourceResearchCrew:
                 temperature=0.2,  # Low temperature for consistent factual research (ignored for reasoning models)
             )),
             verbose=True,
-            function_calling_llm=ChatOpenAI(**build_llm_kwargs(
+            # build_crew_llm forwards reasoning_effort to the API for GPT-5 models
+            # (a ChatOpenAI instance would have it dropped by CrewAI's create_llm).
+            function_calling_llm=build_crew_llm(
                 model=settings.function_calling_llm,
-                temperature=0.1,  # Low temperature for reliable searches (ignored for reasoning models)
-            )),
+                reasoning_effort="minimal",  # Fast/cheap tool-arg synthesis
+            ),
         )
 
     @agent

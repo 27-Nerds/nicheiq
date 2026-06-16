@@ -330,7 +330,7 @@ class PainPointCrew:
     agents_config = "config/pain_point_agents.yaml"
     tasks_config = "config/pain_point_tasks.yaml"
 
-    def __init__(self, reddit_posts: list[RedditPost] = None, twitter_threads: list[TwitterThread] = None, generic_posts: list[SocialPost] = None, niche_description: str = "", market_segments: list[str] = None, industry_boundaries: str = "", job_id: str | None = None):
+    def __init__(self, reddit_posts: list[RedditPost] = None, twitter_threads: list[TwitterThread] = None, generic_posts: list[SocialPost] = None, niche_description: str = "", market_segments: list[str] = None, industry_boundaries: str = "", job_id: str | None = None, niche_anchor_terms: list[str] | None = None):
         """
         Initialize PainPointCrew with social content as knowledge sources.
 
@@ -403,6 +403,10 @@ class PainPointCrew:
         self.niche_description = niche_description
         self.market_segments = market_segments or []
         self.industry_boundaries = industry_boundaries
+        self.niche_anchor_terms = list(niche_anchor_terms or [])
+        # Anchor matchers for evidence ranking (empty => fail-open no-op).
+        from ..utils.validation.niche_anchor import build_anchor_matchers
+        self._anchor_matchers = build_anchor_matchers(self.niche_anchor_terms)
         self.job_id = job_id
         self.knowledge_sources = []
 
@@ -1163,8 +1167,19 @@ class PainPointCrew:
             except Exception as e:
                 logger.warning(f"Search failed for query '{query[:60]}': {e}")
 
-        # Sort by combined score descending, take best 12
-        scored_quotes.sort(key=lambda x: x[0], reverse=True)
+        # Sort by combined score descending; when niche anchors are configured,
+        # float quotes that contain niche-anchor vocabulary to the top so the best
+        # ON-NICHE evidence is what gets shown (quality only — does NOT change any
+        # score). No-op when no anchors configured.
+        anchor_matchers = getattr(self, "_anchor_matchers", None)
+        if anchor_matchers:
+            from ..utils.validation.niche_anchor import text_has_anchor
+            scored_quotes.sort(
+                key=lambda x: (text_has_anchor(x[1].quote_text, anchor_matchers), x[0]),
+                reverse=True,
+            )
+        else:
+            scored_quotes.sort(key=lambda x: x[0], reverse=True)
         final_quotes = [q for _, q in scored_quotes[:12]]
 
         return SinglePainPointQuotesResult(
@@ -1794,6 +1809,11 @@ class PainPointCrew:
                 "niche_description": self.niche_description,
                 "market_segments": market_segments_formatted,
                 "industry_boundaries": self.industry_boundaries or "Not specified",
+                "niche_anchor_terms": (
+                    ", ".join(self.niche_anchor_terms)
+                    if self.niche_anchor_terms
+                    else "(none provided — apply universality test only)"
+                ),
                 "full_reddit_content": self.formatted_reddit_content,
                 "full_twitter_content": self.formatted_twitter_content,
                 "reddit_posts_count": len(self.reddit_posts),

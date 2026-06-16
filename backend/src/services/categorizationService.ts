@@ -1,6 +1,6 @@
 import { CONFIG } from '../config.js';
 import { prisma } from './db.js';
-import { openai } from './openai.js';
+import { chatComplete } from './openai.js';
 
 interface CategorizeItem {
   id: string;
@@ -452,15 +452,15 @@ async function callOpenAIWithRetry(
 ): Promise<string | null> {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const completion = await openai.chat.completions.create({
+      const completion = await chatComplete({
         model: CONFIG.categorizeModel,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
         ],
         temperature: 0.0,
-        max_tokens: maxTokens,
-        response_format: { type: 'json_object' },
+        maxTokens,
+        responseFormat: { type: 'json_object' },
       });
 
       return completion.choices[0]?.message?.content || null;

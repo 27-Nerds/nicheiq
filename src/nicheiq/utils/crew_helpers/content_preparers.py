@@ -428,7 +428,7 @@ RULES:
 Sentences:
 {numbered}"""
 
-    model = getattr(settings, 'competitor_extraction_llm', 'gpt-4o-mini')
+    model = getattr(settings, 'competitor_extraction_llm', 'gpt-4.1-mini')
 
     # Single retry on failure before raising
     last_error: Exception | None = None

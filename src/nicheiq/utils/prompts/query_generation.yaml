@@ -16,6 +16,15 @@ template: |
 
   **TASK: Generate {num_queries} search queries**
 
+  ## CRITICAL RULES (read first; full detail below)
+
+  1. Each query is 3-6 words.
+  2. Every query contains a NICHE-DOMAIN ANCHOR (a role/activity/process unique to the niche).
+  3. **If ANCHOR ENTITIES are listed in the NICHE CONTEXT above:** at least 40% of
+     NON-discovery queries must contain one of them verbatim; NEVER write a query about
+     any OUT-OF-SCOPE topic listed there.
+  4. No solution-seeking language ("best", "tool for", "app for", "alternative to").
+
   ## CRITICAL: QUERY LENGTH RULES
 
   **Target: 3-6 words per query (20-40 characters)**
@@ -138,10 +147,10 @@ template: |
 
   ---
 
-  ## DOMAIN ANCHOR RULE (Required for Every Query)
+  ## NICHE-DOMAIN ANCHOR RULE (Required for Every Query)
 
-  Every query MUST contain a **domain anchor** — a term that ties the query to this specific niche.
-  A domain anchor is a role, activity, tool category, or process unique to the niche.
+  Every query MUST contain a **niche-domain anchor** — a term that ties the query to this specific niche.
+  A niche-domain anchor is a role, activity, tool category, or process unique to the niche.
 
   **Mechanical test**: Cover the emotional/pain word. Do the remaining words identify the niche?
   - "freelancer invoicing late payments" → cover "late" → "freelancer invoicing payments" → YES, niche identified ✓
@@ -160,20 +169,39 @@ template: |
 
   ---
 
+  ## ENTITY ANCHOR QUOTA (only when ANCHOR ENTITIES are provided)
+
+  When the NICHE CONTEXT lists **ANCHOR ENTITIES** (specific named items), these are the
+  terms that distinguish this niche from adjacent niches that share generic vocabulary.
+
+  - **At least 40% of your NON-discovery queries MUST contain one ANCHOR ENTITY verbatim.**
+    (Discovery queries are exempt — they stay open-ended.)
+  - NEVER write a query about any term in the **OUT-OF-SCOPE** list — those are a different topic.
+  - Do NOT invent named entities that are not in the provided list.
+
+  **Anchored adjacency (use entities to find MORE related themes without drifting):**
+  For 3-4 ANCHOR ENTITIES, write one query each exploring an adjacent pain —
+  side-effects, combining/stacking, sourcing/legitimacy, cost, or setup — always
+  keeping the entity in the query. Example shape: "[entity] [adjacent pain]".
+
+  ---
+
   ## STEP 3: BIAS PREVENTION (CRITICAL)
 
-  ### A. No Technology/Brand Names
+  ### A. Entity Anchoring vs. Inventing Brand Names
 
-  **DO NOT inject specific technologies, tools, brands, or products.**
+  Use the provided **ANCHOR ENTITIES** when they exist — they are REQUIRED for
+  disambiguation (see the Entity Anchor Quota above). Do NOT, however, invent or import
+  specific technologies/tools/brands that are NOT in that list; for everything outside the
+  anchor list the goal is DISCOVERY — let the data reveal what people actually use.
 
-  The goal is DISCOVERY - let the data reveal what people actually use.
-
-  **Transformations:**
+  **Transformations (when NO anchor entities are provided):**
   - ❌ "debugging JavaScript errors" → ✅ "frustrated debugging code"
   - ❌ "should I learn Python or JavaScript" → ✅ "overwhelmed choosing programming language"
   - ❌ "VSCode vs Atom slow" → ✅ "code editor frustrations beginner"
 
-  **EXCEPTION**: Only include specific names if the niche itself IS that technology/brand.
+  **Rule:** named entities from the provided ANCHOR ENTITIES list are REQUIRED;
+  invented/unrelated brands are still banned; OUT-OF-SCOPE terms are never used.
 
   ### B. No Solution-Seeking Queries
 
@@ -225,11 +253,14 @@ template: |
   Before outputting, verify EACH query:
   - [ ] 3-6 words? (Count them!)
   - [ ] Would this query find content ONLY in this niche? (key test!)
-  - [ ] Does it include WHO has the problem or WHAT specific activity?
-  - [ ] No specific tech/tool/brand names?
+  - [ ] Does it include WHO has the problem or WHAT specific activity? (niche-domain anchor)
+  - [ ] No INVENTED tech/tool/brand names (entities from the ANCHOR ENTITIES list are OK)?
+  - [ ] No OUT-OF-SCOPE terms?
   - [ ] Discovery-focused (not leading)?
   - [ ] No solution-seeking language? (no "best", "recommended", "tool for", "app for")
-  - [ ] Contains at least one term from your niche vocabulary (Step 1)?
+
+  And across the whole set:
+  - [ ] If ANCHOR ENTITIES were provided: at least 40% of non-discovery queries contain one verbatim.
 
   <brief_explanation>
   First, state the core niche topic and primary pain expression pattern you'll use.
@@ -241,7 +272,9 @@ template: |
   Before returning, verify:
   - Array has exactly {num_queries} queries
   - Each query is 3-6 words (count them!)
-  - No technology/tool/brand names (unless niche IS that tech)
+  - No invented tech/tool/brand names; provided ANCHOR ENTITIES are allowed/required
+  - If ANCHOR ENTITIES were provided: ≥40% of non-discovery queries contain one verbatim, and
+    ZERO queries reference an OUT-OF-SCOPE term
   - Platform distribution matches instructions in Step 5
   - Query type distribution: ~25% pain, ~20% help, ~15% role, ~20% progress, ~20% discovery
   - You completed ALL {num_queries} queries before returning

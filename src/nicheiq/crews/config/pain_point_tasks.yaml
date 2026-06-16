@@ -18,6 +18,10 @@ categorize_content:
     - Market Segments:
       {market_segments}
     - Industry Boundaries: {industry_boundaries}
+    - NICHE-ANCHOR TERMS (mandatory niche vocabulary): {niche_anchor_terms}
+      A theme whose supporting discussions reference NONE of these terms is almost
+      certainly an ADJACENT audience, not this niche — exclude it (see the
+      Niche-Membership Test below). Generic category words are NOT anchors.
 
     Analyze ALL provided social discussions to identify ALL recurring themes present in the discussions. Be comprehensive — extract every distinct theme supported by the data, no matter how many.
     For each theme, extract ANCHOR KEYWORDS - short phrases (2-6 words) that
@@ -106,6 +110,20 @@ categorize_content:
     - If YES → EXCLUDE the theme (do not reframe, do not include)
     - If NO → Keep as-is
 
+    **Niche-Membership Test (apply to ALL themes — IN ADDITION to the test above):**
+    NICHE-ANCHOR TERMS for this niche: {niche_anchor_terms}
+    A theme is ON-NICHE only if its supporting discussions actually reference this
+    niche's vocabulary. Apply this mechanic:
+    - PASS if ≥1 of the theme's anchor_keywords appears in the NICHE-ANCHOR TERMS list,
+      OR the majority of the discussions supporting the theme explicitly name a term
+      from that list.
+    - If a theme is supported ONLY by discussions that never mention any niche-anchor
+      term, it is ADJACENT-AUDIENCE DRIFT (a different audience that merely shares
+      generic words) → EXCLUDE it.
+    - FALLBACK: if NICHE-ANCHOR TERMS is empty or "(none provided ...)", SKIP this
+      membership test and rely on the Niche Specificity Test above only.
+    Keep a theme only if it PASSES membership AND is NOT universal.
+
     ═══ CRITICAL RULES ═══
 
     **STOP CONDITIONS:**
@@ -170,10 +188,14 @@ extract_pain_points:
     For each pain point, extract ANCHOR KEYWORDS for the later quote-enrichment search.
 
     **CRITICAL FILTER STEP (Before Transformation):**
+    NICHE-ANCHOR TERMS: {niche_anchor_terms}
     Review Task 1 themes and SKIP any theme that:
     - Contains "burnout", "mental health", "stress", "loneliness" in category_name
     - Has >50% of anchor_keywords being emotional terms (stressed, overwhelmed, etc.)
     - Would appear identically for gardeners, musicians, AND accountants
+    - References NONE of the NICHE-ANCHOR TERMS in its anchor_keywords or supporting
+      discussions (adjacent-audience drift) — UNLESS the anchor list is empty/"(none
+      provided ...)", in which case skip this particular check.
 
     Do NOT transform these themes into pain points. Proceed only with niche-specific themes.
 

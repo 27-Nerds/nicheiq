@@ -152,18 +152,21 @@ class ThreadRelevanceValidator:
     def _cached_validation(
         niche_description: str,
         threads_text: str,
-        batch_size: int
+        batch_size: int,
+        anchor_guidance: str = ""
     ) -> BatchValidationResponse:
         """
         Cached LLM validation call to avoid duplicate API requests.
 
         Uses LRU cache with maxsize=1000 to cache validation results.
-        Cache key is (niche_description, threads_text, batch_size).
+        Cache key is (niche_description, threads_text, batch_size, anchor_guidance).
 
         Args:
             niche_description: Description of the niche
             threads_text: Formatted thread text for validation
             batch_size: Number of threads in batch
+            anchor_guidance: Optional anchor-entity / out-of-scope block to
+                disambiguate adjacent senses (empty when no anchors configured)
 
         Returns:
             BatchValidationResponse from LLM
@@ -172,16 +175,18 @@ class ThreadRelevanceValidator:
             "thread_validation",
             niche_description=niche_description,
             threads_text=threads_text,
-            batch_size=batch_size
+            batch_size=batch_size,
+            anchor_guidance=anchor_guidance,
         )
 
         # Use centralized LLM service for structured output
         result, _usage = LLMService.invoke_structured(
             prompt=prompt,
             output_model=BatchValidationResponse,
-            temperature=0,  # Deterministic for consistency
+            temperature=0,  # Deterministic for consistency (non-reasoning models)
             timeout=120,
-            model_name=settings.thread_validation_llm
+            model_name=settings.thread_validation_llm,
+            reasoning_effort="minimal",  # Fast/cheap binary classification on GPT-5 models
         )
         return result
 
@@ -189,7 +194,8 @@ class ThreadRelevanceValidator:
         self,
         niche_description: str,
         search_results: list['SearchResultItem'],
-        batch_size: int = 10
+        batch_size: int = 10,
+        anchor_guidance: str = ""
     ) -> list[tuple['SearchResultItem', bool]]:
         """
         Validate multiple search results in batches.
@@ -220,7 +226,8 @@ class ThreadRelevanceValidator:
                 response = self._cached_validation(
                     niche_description=niche_description,
                     threads_text=threads_text,
-                    batch_size=len(batch)
+                    batch_size=len(batch),
+                    anchor_guidance=anchor_guidance,
                 )
 
                 # Track which threads were validated
@@ -278,7 +285,8 @@ class ThreadRelevanceValidator:
         niche_description: str,
         search_results: list['SearchResultItem'],
         batch_size: int = 10,
-        max_workers: int | None = None
+        max_workers: int | None = None,
+        anchor_guidance: str = ""
     ) -> list[tuple['SearchResultItem', bool]]:
         """
         Validate multiple search results in parallel using ThreadPoolExecutor.
@@ -314,7 +322,8 @@ class ThreadRelevanceValidator:
             return self.validate_batch(
                 niche_description=niche_description,
                 search_results=search_results,
-                batch_size=batch_size
+                batch_size=batch_size,
+                anchor_guidance=anchor_guidance,
             )
 
         # Guard against empty input
@@ -341,7 +350,8 @@ class ThreadRelevanceValidator:
                     chunk,
                     chunk_num,
                     niche_description,
-                    batch_size
+                    batch_size,
+                    anchor_guidance,
                 ): chunk_num
                 for chunk_num, chunk in enumerate(chunks, 1)
             }
@@ -377,7 +387,8 @@ class ThreadRelevanceValidator:
         chunk: list['SearchResultItem'],
         chunk_num: int,
         niche_description: str,
-        batch_size: int
+        batch_size: int,
+        anchor_guidance: str = ""
     ) -> list[tuple['SearchResultItem', bool]]:
         """
         Worker method for parallel validation of a search result chunk.
@@ -401,7 +412,8 @@ class ThreadRelevanceValidator:
             results = self.validate_batch(
                 niche_description=niche_description,
                 search_results=chunk,
-                batch_size=batch_size
+                batch_size=batch_size,
+                anchor_guidance=anchor_guidance,
             )
 
             logger.debug(f"[Thread Worker {chunk_num}] Complete - validated {len(results)} threads")

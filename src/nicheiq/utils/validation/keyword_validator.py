@@ -235,9 +235,10 @@ class KeywordRelevanceValidator:
                 response, _usage = LLMService.invoke_structured(
                     prompt=prompt,
                     output_model=KeywordBatchValidation,
-                    temperature=0,  # Deterministic for consistency
+                    temperature=0,  # Deterministic for consistency (non-reasoning models)
                     timeout=120,  # 2 minute timeout to prevent indefinite hangs
-                    model_name=settings.keyword_validation_llm
+                    model_name=settings.keyword_validation_llm,
+                    reasoning_effort="minimal",  # Fast/cheap binary classification on GPT-5 models
                 )
 
                 # Build keyword-to-index mapping for accurate matching

@@ -226,6 +226,20 @@ class BaseSolutionIdea(BaseModel):
         description="Project type category: saas, directory, aggregator, comparison-tool, marketplace"
     )
 
+    # Structural-dedup tags (M/D/J) carried over from the source RawConcept during
+    # refinement. Persisted so the cross-run/regeneration dedup can catch a
+    # structurally-identical idea that was merely REWORDED (text-based dedup misses
+    # those). Populated in code (UnifiedSolutionCrew.execute_pipeline), not by the LLM.
+    mechanism_tag: Optional[str] = Field(
+        default=None, description="Core value-production mechanism (hyphenated phrase)"
+    )
+    data_source_tag: Optional[str] = Field(
+        default=None, description="Primary data source (hyphenated phrase)"
+    )
+    journey_tag: Optional[str] = Field(
+        default=None, description="User journey (hyphenated phrase)"
+    )
+
     # SEO & Organic Acquisition Fields (Stage 7 estimates - before keyword research)
     programmatic_seo_opportunity: Optional[str] = Field(
         default=None,
@@ -677,6 +691,23 @@ class RawConcept(BaseModel):
     journey_tag: Optional[str] = Field(
         default=None,
         description="Short hyphenated phrase for the user journey (e.g., 'search-lands-on-page')",
+    )
+
+    # Verbalized-Sampling self-estimate of how OBVIOUS this concept is (anti
+    # mode-collapse). Sentinel -1.0 means "not scored" — distinguishable from a
+    # genuine mid value so the filter can treat missing as a soft warning, not a
+    # real score. Lower = more novel.
+    obviousness_score: float = Field(
+        default=-1.0,
+        description=(
+            "0.0-1.0 estimate of how likely a generic competent builder would ALSO "
+            "propose this concept (lower = more novel). Bands: "
+            "0.0-0.2 = highly novel (<5% of builders would generate it); "
+            "0.3-0.5 = somewhat novel (needs a specific insight); "
+            "0.6-0.8 = mildly obvious (standard technique applied to the niche); "
+            "0.8-1.0 = cached first-thought (would appear on the anti-obvious blacklist). "
+            "Leave at the -1.0 default only if genuinely unable to estimate."
+        ),
     )
 
 

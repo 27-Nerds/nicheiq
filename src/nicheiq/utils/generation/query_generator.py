@@ -13,6 +13,11 @@ from ...config.settings import settings
 from ..llm_service import LLMService
 from ..parsing.json_extractor import extract_json_array_from_text
 from ..prompts import get_prompt
+from ..validation.niche_anchor import (
+    build_anchor_matchers,
+    format_anchor_block,
+    text_has_anchor,
+)
 
 if TYPE_CHECKING:
     from ...models.research_state import NicheContext
@@ -20,8 +25,58 @@ if TYPE_CHECKING:
 class QueryGenerator:
     """LLM-based search query generator for finding niche pain points."""
 
+    # Anchor-grounding is "active" only with enough named entities to be
+    # meaningful; below this every anchor gate is a no-op (fail-open).
+    MIN_ANCHORS_ACTIVE = 3
+    # Regenerate once if fewer than this share of non-discovery queries are anchored.
+    ANCHOR_PCT_FLOOR = 0.5
+
     def __init__(self):
-        pass  # No longer need to initialize LLM instance
+        # Per-run telemetry consumed by the flow for the Phase-4 drift caveat.
+        self.anchor_telemetry: dict = {}
+
+    def _anchors_active(self, niche_context: "NicheContext | None") -> bool:
+        return bool(
+            niche_context
+            and len(getattr(niche_context, "anchor_entities", []) or []) >= self.MIN_ANCHORS_ACTIVE
+        )
+
+    def _apply_anchor_drift_guard(
+        self, queries: list[dict], niche_context: "NicheContext | None"
+    ) -> tuple[list[dict], float, int]:
+        """Drop off-niche queries and tag anchored ones (code-level enforcement).
+
+        - Drops any query whose text matches a `disambiguation_exclusions` term
+          (word-boundary/stem, never naive substring).
+        - Tags each surviving query with `has_anchor` (contains an anchor entity).
+        Returns (kept_queries, anchor_pct_of_non_discovery, dropped_count).
+        No-op (returns unchanged, anchor_pct=1.0) when anchors are inactive.
+        """
+        if not self._anchors_active(niche_context):
+            return queries, 1.0, 0
+
+        entity_matchers = build_anchor_matchers(niche_context.anchor_entities)
+        exclusion_matchers = build_anchor_matchers(niche_context.disambiguation_exclusions)
+
+        kept: list[dict] = []
+        dropped = 0
+        for q in queries:
+            text = q.get("query", "")
+            if exclusion_matchers and text_has_anchor(text, exclusion_matchers):
+                logger.warning(f"[DRIFT] Dropped off-niche query (exclusion term): {text}")
+                dropped += 1
+                continue
+            q["has_anchor"] = text_has_anchor(text, entity_matchers)
+            kept.append(q)
+
+        # Entity-anchor quota applies to NON-discovery queries (discovery is
+        # intentionally open-ended and exempt).
+        non_discovery = [q for q in kept if q.get("type") != "discovery"]
+        if non_discovery:
+            anchor_pct = sum(1 for q in non_discovery if q.get("has_anchor")) / len(non_discovery)
+        else:
+            anchor_pct = 1.0
+        return kept, anchor_pct, dropped
 
     def _sanitize_for_prompt(self, text: str, max_length: int = 1000) -> str:
         """
@@ -128,6 +183,7 @@ class QueryGenerator:
         niche_context: "NicheContext | None" = None,
         num_queries: int = 20,
         enabled_platforms: list[str] | None = None,
+        _is_retry: bool = False,
     ) -> list[dict]:
         """
         Generate strategic search queries for a niche using LLM.
@@ -160,7 +216,7 @@ Market Segments:
 {segments_formatted}
 
 Industry Boundaries: {sanitized_boundaries}
-"""
+{format_anchor_block(niche_context)}"""
         else:
             # Fallback mode: minimal context (sanitized)
             sanitized_niche = self._sanitize_for_prompt(niche_description)
@@ -204,6 +260,15 @@ Industry Boundaries: [Not provided - use general heuristics]
             platform_instructions = (
                 'Set platform to "both" for every query.\n'
                 'Use general search language suitable for any platform.'
+            )
+
+        # On a regeneration retry, prepend a stronger entity-anchoring directive.
+        if _is_retry and self._anchors_active(niche_context):
+            context_section = (
+                "**RETRY — STRENGTHEN NICHE ANCHORING:** the previous attempt was "
+                "insufficiently anchored. At least 50% of non-discovery queries MUST "
+                "contain one of the ANCHOR ENTITIES verbatim, and NONE may reference "
+                "the OUT-OF-SCOPE topics.\n" + context_section
             )
 
         prompt = get_prompt(
@@ -362,6 +427,38 @@ Industry Boundaries: [Not provided - use general heuristics]
                 if low_specificity_count > len(queries) * 0.2:  # More than 20% low specificity
                     logger.warning(f"[WARN] {low_specificity_count}/{len(queries)} queries have low specificity (<3/5)")
 
+                # Code-level anchor drift guard: drop off-niche queries, tag anchored
+                # ones, and record telemetry for the Phase-4 caveat.
+                queries, anchor_pct, dropped = self._apply_anchor_drift_guard(queries, niche_context)
+                if self._anchors_active(niche_context):
+                    self.anchor_telemetry = {
+                        "query_anchor_pct": round(anchor_pct, 3),
+                        "dropped_offniche_queries": dropped,
+                    }
+                    logger.info(
+                        f"[DRIFT] {anchor_pct:.0%} of non-discovery queries anchored; "
+                        f"dropped {dropped} off-niche"
+                    )
+
+                    # Single regeneration when anchoring is too weak (real drift risk).
+                    if anchor_pct < self.ANCHOR_PCT_FLOOR and not _is_retry:
+                        logger.warning(
+                            f"[DRIFT] anchor_pct={anchor_pct:.0%} below "
+                            f"{self.ANCHOR_PCT_FLOOR:.0%} — regenerating once with "
+                            f"strengthened entity anchoring"
+                        )
+                        retry = self.generate_queries(
+                            niche_description, niche_context, num_queries,
+                            enabled_platforms, _is_retry=True,
+                        )
+                        # Merge: keep all anchored queries from both attempts, then
+                        # top up with non-anchored ones, deduped by query text.
+                        merged: dict[str, dict] = {}
+                        for q in sorted(queries + retry,
+                                        key=lambda x: x.get("has_anchor", False), reverse=True):
+                            merged.setdefault(q.get("query", "").strip().lower(), q)
+                        queries = list(merged.values())[:num_queries]
+
                 return queries
             else:
                 logger.error("Could not extract valid JSON array from LLM response")
@@ -468,7 +565,7 @@ Niche Description: {sanitized_description}
 
 Market Segments:
 {segments_formatted}
-"""
+{format_anchor_block(niche_context)}"""
         else:
             sanitized_niche = self._sanitize_for_prompt(niche_description)
             context_section = f"""
@@ -506,6 +603,11 @@ Niche Description: {sanitized_niche}
             q.setdefault("type", "topic")
             q["platform"] = platform
             valid.append(q)
+
+        # Anchor drift guard (drop off-niche queries; tag anchored). No regen here.
+        valid, _pct, dropped = self._apply_anchor_drift_guard(valid, niche_context)
+        if dropped:
+            logger.info(f"[QueryGen] {platform}: dropped {dropped} off-niche queries")
 
         logger.info(f"[QueryGen] {platform}: {len(valid)} valid queries")
         return valid

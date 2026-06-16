@@ -1162,7 +1162,7 @@ class ReportGenerator:
         """
         Generate LLM-based explanations of how the solution addresses each pain point.
 
-        Uses gpt-4o-mini for cost-effectiveness (~$0.0003 per report).
+        Uses settings.pain_solution_mapping_llm (gpt-4.1-mini) for structured output.
 
         Args:
             pain_points: List of PainPoint objects (top 10 used)
@@ -1368,6 +1368,37 @@ class ReportGenerator:
                 filter_rate = self.state.filtering_stats.get("overall_filtering_rate", 0)
                 if filter_rate > 0.7:
                     quality_caveats.append(f"High content filtering rate ({filter_rate:.0%}) - niche may be hard to research")
+
+            # Niche-fidelity caveats (NON-scoring observability; tier/confidence
+            # above are unchanged). Surface possible off-niche drift for review.
+            drift = getattr(self.state, "niche_drift_telemetry", None)
+            if not isinstance(drift, dict):
+                drift = {}
+            if drift.get("anchors_active") is False:
+                quality_caveats.append(
+                    "Niche-anchor extraction produced insufficient terms — drift "
+                    "protection inactive for this run; verify results match the niche."
+                )
+            # Threshold 0.15 calibrated on real runs: a clearly-drifted run (GLP-1 /
+            # generic-fitness evidence) scored ~0.05 here, while a clearly on-niche run
+            # scored ~0.29. On-niche evidence often omits a literal anchor token
+            # (contextually on-topic), so a higher bar produces false positives.
+            ev_cov = drift.get("pain_evidence_anchor_coverage")
+            if ev_cov is not None and ev_cov < 0.15:
+                quality_caveats.append(
+                    f"Niche-fidelity: only {ev_cov:.0%} of supporting evidence mentions "
+                    f"niche-specific terms — review for possible off-topic drift."
+                )
+            q_pct = drift.get("query_anchor_pct")
+            if q_pct is not None and q_pct < 0.4:
+                quality_caveats.append(
+                    f"Only {q_pct:.0%} of search queries were niche-anchored — "
+                    f"collected content may include adjacent topics."
+                )
+            # Coverage gaps from idea generation (high-severity pains left uncovered).
+            cov_caveats = getattr(self.state, "idea_coverage_caveats", None)
+            if isinstance(cov_caveats, list):
+                quality_caveats.extend(c for c in cov_caveats if isinstance(c, str))
 
             return DataQualitySummary(
                 social_content_quality_tier=social_tier,

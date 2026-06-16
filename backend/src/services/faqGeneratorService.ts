@@ -9,7 +9,7 @@
 //     per entity type. Notably, idea pages anchor on the niche name (real
 //     search term), NOT the solution_name codename (internal, no search intent).
 
-import { openai } from './openai.js';
+import { chatComplete } from './openai.js';
 import { prisma } from './db.js';
 import { CONFIG } from '../config.js';
 import { FaqArraySchema, type FaqEntry } from '../types/faq.js';
@@ -97,14 +97,14 @@ async function callLLM(userPrompt: string): Promise<{
   model: string;
 }> {
   const model = CONFIG.faqGenerationModel;
-  const completion = await openai.chat.completions.create({
+  const completion = await chatComplete({
     model,
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: userPrompt },
     ],
     temperature: 0.3,
-    response_format: { type: 'json_object' },
+    responseFormat: { type: 'json_object' },
   });
 
   const raw = completion.choices[0]?.message?.content ?? '';

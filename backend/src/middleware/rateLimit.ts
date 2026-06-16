@@ -1,4 +1,4 @@
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { CONFIG } from '../config.js';
 import { getRedis } from '../services/redis.js';
 
@@ -63,7 +63,9 @@ export const jobCreationLimiter = rateLimit({
   // Key by authenticated user (these routes run requireInternalAuth first) so
   // shared-IP users aren't collectively throttled and a single user can't bypass
   // the cap by hopping IPs. Falls back to IP for any unauthenticated caller.
-  keyGenerator: (req) => (req as { user?: { id?: string } }).user?.id || req.ip || 'unknown',
+  keyGenerator: (req) =>
+    (req as { user?: { id?: string } }).user?.id ||
+    (req.ip ? ipKeyGenerator(req.ip) : 'unknown'),
 });
 
 /**

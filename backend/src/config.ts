@@ -52,7 +52,7 @@ export const CONFIG = {
 
   // Niche suggestion settings
   openaiApiKey: process.env.OPENAI_API_KEY || '',
-  suggestModel: process.env.SUGGEST_LLM_MODEL || 'gpt-4.1-nano',
+  suggestModel: process.env.SUGGEST_LLM_MODEL || 'gpt-5-nano',
   suggestRateHourly: parseInt(process.env.SUGGEST_RATE_HOURLY || '25', 10),
   suggestRateDaily: parseInt(process.env.SUGGEST_RATE_DAILY || '50', 10),
 
@@ -63,14 +63,14 @@ export const CONFIG = {
   },
 
   // Catalog categorization
-  categorizeModel: process.env.CATEGORIZE_LLM_MODEL || 'gpt-4.1-nano',
+  categorizeModel: process.env.CATEGORIZE_LLM_MODEL || 'gpt-5-nano',
   categorizeItemRateHourly: parseInt(process.env.CATEGORIZE_ITEM_RATE_HOURLY || '500', 10),
 
   // Catalog FAQ generation (admin-triggered LLM Q&A from page data; see
   // plans/pure-giggling-beacon.md Phase B). Production deploys should set
   // OPENAI_FAQ_MODEL explicitly so SEO/ops can swap models without a code
   // release. Code-level fallback `gpt-4o-mini` keeps dev/local startup smooth.
-  faqGenerationModel: process.env.OPENAI_FAQ_MODEL || 'gpt-4o-mini',
+  faqGenerationModel: process.env.OPENAI_FAQ_MODEL || 'gpt-4.1-mini',
   faqGenerateRateHourly: parseInt(process.env.FAQ_GENERATE_RATE_HOURLY || '30', 10),
   faqSaveRateHourly: parseInt(process.env.FAQ_SAVE_RATE_HOURLY || '60', 10),
 

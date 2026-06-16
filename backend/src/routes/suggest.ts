@@ -4,7 +4,7 @@ import OpenAI from 'openai';
 import { CONFIG } from '../config.js';
 import { requireInternalAuth, AuthenticatedRequest } from '../middleware/auth.js';
 import { checkSuggestRateLimit } from '../middleware/rateLimit.js';
-import { openai } from '../services/openai.js';
+import { chatComplete } from '../services/openai.js';
 
 export const suggestRouter = Router();
 
@@ -353,15 +353,17 @@ suggestRouter.post('/', requireInternalAuth, async (req: AuthenticatedRequest, r
     }
 
     // Call OpenAI API
-    const completion = await openai.chat.completions.create({
+    const completion = await chatComplete({
       model: CONFIG.suggestModel,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
       temperature: mode === 'feeling_lucky' ? 1.0 : 0.7,
-      max_tokens: 500,
-      response_format: { type: 'json_object' },
+      // Reasoning models (e.g. gpt-5-nano) share this budget with hidden
+      // reasoning tokens, so keep generous headroom above the visible JSON.
+      maxTokens: 2000,
+      responseFormat: { type: 'json_object' },
     });
 
     // Parse response

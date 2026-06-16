@@ -61,7 +61,23 @@ divergent_exploration:
     4. If pain point data is sparse: Note this and proceed with available evidence
     </long_context_handling>
 
-    ## STEP 0: Anti-Obvious Blacklist (DO THIS FIRST)
+    ## STEP -1: Mine Non-Obvious Insights (DO THIS FIRST — do NOT generate concepts yet)
+
+    Before anything else, read the pain points, quotes, and competitor mentions and
+    extract 4-6 NON-OBVIOUS INSIGHTS — the kind a smart founder would say "huh, I
+    hadn't considered that" about. Look specifically for:
+    - Workarounds people hack together (a hand-rolled spreadsheet, a manual ritual)
+    - Say-vs-do contradictions (what they claim vs what they actually do/pay for)
+    - Unmet jobs-to-be-done hiding under a surface complaint
+    - Identity / emotional drivers and "hair-on-fire" moments
+    - Willingness-to-pay signals (what they already pay for, or beg for)
+    - Where existing tools conspicuously fail or are abandoned
+
+    Output a short ranked insight list (one line each). EVERY concept you generate
+    later must trace to one of these named insights. Do NOT generate concepts in this
+    step — insights only.
+
+    ## STEP 0: Anti-Obvious Blacklist (DO THIS SECOND, right after STEP -1)
 
     Before generating concepts, list 3-5 OBVIOUS ideas that any lazy builder would
     generate for "{niche_description}". These are the cached first-thought ideas.
@@ -90,6 +106,8 @@ divergent_exploration:
     insufficient — that is a cosmetic variant, not a structural alternative.
 
     {existing_ideas_blacklist}
+
+    {regeneration_directive}
 
     Before writing any concept to your output, you MUST complete the STEP 0.75
     dedup gate below. Any concept that fails the gate must be replaced.
@@ -209,6 +227,16 @@ divergent_exploration:
     If you generate 8 concepts using only 2 techniques -> INVALID OUTPUT.
     Diversity in ideation technique leads to diversity in solutions.
 
+    ## MANDATORY PROJECT-TYPE SPREAD
+
+    Across your 8-12 concepts, use AT LEAST 3 different project_types from the
+    Allowed Types: {allowed_project_types}. Do NOT make every concept a SaaS
+    calculator or a content-hub. Map techniques to varied PRODUCT architectures —
+    e.g. data_source_inversion → aggregator/directory, community_flip →
+    marketplace/aggregator, cross_industry_template → comparison-tool, atomic_feature
+    → saas. A set where >60% of concepts share one project_type is too monotone.
+    Indexable SEO pages are how users FIND the product — not what the product IS.
+
     ═══════════════════════════════════════════════════════════════════════════
 
     **OUTPUT REQUIREMENTS (RawConceptList):**
@@ -245,6 +273,21 @@ divergent_exploration:
       - journey_tag: search-lands-on-page | enters-inputs-gets-calculation |
         subscribes-gets-alerts | browses-comparison-table | submits-data-creates-value |
         recurring-dashboard-checkin
+    - **obviousness_score** (0.0-1.0): estimate the fraction of competent builders who
+      would ALSO propose this concept (lower = more novel). Bands: 0.0-0.2 highly novel
+      (<5% would), 0.3-0.5 somewhat novel, 0.6-0.8 mildly obvious, 0.8-1.0 cached
+      first-thought. Be honest — do not score everything 0.4. **At least 2 of your
+      concepts MUST score ≤ 0.3** (genuinely novel long-tail); if you cannot, say why
+      and substitute the least-obvious concepts you have.
+    - **why_non_obvious** (REQUIRED, doubles as the INSIGHT + WEDGE): name the STEP -1
+      insight this concept rests on AND its defensible wedge (proprietary data / a real
+      tool / a community loop) — not just "indexable pages". A concept whose only moat
+      is "it ranks in SEO" is not interesting.
+
+    **ANTI-CLICHÉ — banned generic shapes** (regardless of niche): do NOT propose
+    "a marketplace for X", "an AI chatbot/assistant for X", or "a tracking app for X"
+    unless the why_non_obvious cites a specific insight/quote that makes that shape
+    non-obvious here.
 
     **EXAMPLES (showing non-trivial concepts with diverse techniques):**
 
@@ -345,7 +388,20 @@ diversity_filtering:
 
     ═══════════════════════════════════════════════════════════════════════════
 
-    **FILTERING WORKFLOW:**
+    **FILTERING WORKFLOW (apply in order — coverage BEFORE de-dup):**
+
+    0. **COVERAGE LOCK (do this FIRST).** List the high-severity on-niche pains from
+       the analysis (severity ≥ 0.6 OR high mention count). For EACH, identify which
+       Task-1 concept(s) address it and mark one as LOCKED — it must survive filtering.
+       NEVER remove the only concept covering a high-severity on-niche pain just to
+       "balance" the set or because it shares structure with another concept.
+       On-niche coverage outranks structural spread.
+
+    0b. **INTEREST AUDIT.** Look at each concept's obviousness_score. If the most
+       obvious surviving concept scores > 0.7 AND a less-obvious Task-1 concept
+       (tied to an unexplored STEP -1 insight) was about to be cut, prefer the
+       less-obvious one. When two concepts tie on everything else, keep the lower
+       obviousness_score.
 
     1. **CLUSTER SIMILAR CONCEPTS**
        Group concepts that share >50% of these characteristics:
@@ -536,21 +592,25 @@ solution_refinement:
       push at least one concept to explore a non-obvious angle even if it scores slightly
       lower on market fit. Generic ideas in crowded markets struggle regardless of fit score.
 
-    ## DIVERSITY REQUIREMENT: Different SEO Acquisition Patterns
+    ## DIVERSITY REQUIREMENT: span SEO patterns AND product architectures
 
-    Your final 3-5 solutions MUST include AT LEAST 2 DIFFERENT SEO patterns from:
+    Your final 3-5 solutions MUST satisfy BOTH:
 
+    (A) AT LEAST 2 DIFFERENT SEO patterns from:
     1. **Location + Service pages**: "[City] [service]", "[Country] [provider]"
     2. **Comparison pages**: "[Product A] vs [Product B]", "best [category] 2025"
     3. **Calculator/Tool pages**: "[Thing] calculator", "[Metric] estimator"
     4. **Template/Resource pages**: "[Use case] template", "[Topic] checklist"
     5. **Data/Benchmark pages**: "[Industry] benchmarks", "[Product] pricing"
 
-    If top 5 by merit all use the SAME SEO pattern (e.g., all "[City] + [Service]"):
-    → KEEP top 2, ADD next-best solutions with DIFFERENT SEO patterns
+    (B) AT LEAST 2 DIFFERENT project_types from {allowed_project_types} (when more than
+    one is allowed). A calculator and a content-hub are the SAME architecture (both
+    programmatic-SEO page factories) — they do NOT satisfy (B). If your top-merit set is
+    all SaaS calculators/hubs, KEEP the top 2 and SWAP IN the next-best directory /
+    aggregator / comparison-tool / marketplace.
 
-    INVALID: 5 solutions all targeting "[Location] + [Service]" pattern
-    VALID: 2 location directories + 1 comparison tool + 1 calculator + 1 data aggregator
+    INVALID: 5 solutions all targeting "[Location] + [Service]" pattern, OR all one project_type.
+    VALID: 2 location directories + 1 comparison tool + 1 calculator + 1 data aggregator.
 
     This ensures the final selection offers architectural diversity, not just vertical diversity.
 
@@ -562,7 +622,9 @@ solution_refinement:
 
     **Basic Info:**
     - solution_name, headline (5-12 word human-readable title — NOT the code name), short_description (1-2 punchy sentences for card display, <180 chars), description (4-6 sentence HOW IT WORKS), value_proposition
-    - pain_points_addressed (MUST include the #1 highest-severity pain point from {high_priority_list}; use exact titles from data)
+    - pain_points_addressed (use exact titles from data; the SET of final solutions must
+      COLLECTIVELY cover every high-severity on-niche pain in {high_priority_list} — name
+      the specific pain(s) each solution covers)
     - core_features (5-7 MVP features)
     - target_personas (2-4 aligned with user segments)
 

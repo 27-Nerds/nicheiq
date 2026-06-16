@@ -41,6 +41,37 @@ class NicheContext(BaseModel):
     niche_description: str = Field(..., description="LLM-generated niche description")
     market_segments: list[str] = Field(..., description="Key market segments")
     industry_boundaries: str = Field(..., description="Industry boundaries definition")
+    # Niche-anchor fields (added for niche-fidelity / drift prevention).
+    # All optional with defaults so legacy checkpoints deserialize unchanged.
+    anchor_entities: list[str] = Field(
+        default_factory=list,
+        description=(
+            "8-20 specific named entities that uniquely identify this niche — "
+            "proper-noun products, compounds, models, brands, or named "
+            "techniques/protocols that an on-topic discussion in this niche will "
+            "typically reference and an adjacent-but-different niche will not. "
+            "Each entry must be a specific named item, NOT a broad category word."
+        ),
+    )
+    disambiguation_exclusions: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Other audiences, senses, or adjacent fields that share this niche's "
+            "vocabulary but are OUT of scope, so search/validation can exclude them. "
+            "List the out-of-scope meanings, not the overlapping words themselves."
+        ),
+    )
+    anchor_communities: list[str] = Field(
+        default_factory=list,
+        description=(
+            "3-8 specific online communities / forums where this niche concentrates "
+            "(e.g. a specialized subreddit). Prefer specific over general."
+        ),
+    )
+    audience_jargon: list[str] = Field(
+        default_factory=list,
+        description="Insider terms/phrases the audience actually uses, for query/keyword vocabulary.",
+    )
 
 class SearchQuery(BaseModel):
     """A single search query."""
@@ -51,7 +82,7 @@ class SearchQuery(BaseModel):
     query_type: str = Field(
         ..., description="Type: problem/alternative/frustration/solution"
     )
-    platform: str = Field(..., description="Target platform: reddit/twitter")
+    platform: str = Field(..., description="Target platform: reddit/twitter/hackernews/youtube/both")
 
 class SearchResultItem(BaseModel):
     """A single search result with metadata for relevance validation."""
@@ -1297,6 +1328,15 @@ class ResearchState(BaseModel):
         default=None,
         description="User-specified project type constraints: saas, directory, aggregator, comparison-tool, marketplace"
     )
+
+    # Niche-fidelity telemetry (non-scoring; surfaced as report caveats in Stage 10).
+    # Keys may include: anchors_active (bool), anchor_entity_count (int),
+    # query_anchor_pct (float), dropped_offniche_queries (int),
+    # pain_evidence_anchor_coverage (float).
+    niche_drift_telemetry: dict = Field(default_factory=dict)
+    # Caveats from post-crew pain-coverage enforcement (high-severity pains a
+    # solution set could not cover). Surfaced in the data-quality summary.
+    idea_coverage_caveats: list[str] = Field(default_factory=list)
 
     # Stage 2: Query Generation
     search_queries: list[SearchQuery] = Field(default_factory=list)
