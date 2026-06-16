@@ -60,6 +60,56 @@ export function solutionCardDescription(s: { short_description?: string | null; 
   return s.short_description?.trim() || s.description;
 }
 
+/**
+ * Adaptive originality metric for the bar that replaces the old "Novelty" display.
+ *
+ * - When the idea has the independent novelty critic's `obviousness_score` (lower = more
+ *   original), we surface **Originality** = `1 - obviousness_score`.
+ * - For legacy data with only `novelty_score` (older reports / catalog rows published before
+ *   obviousness existed, or a concept name that didn't match in carry-through), we fall back to
+ *   the refiner's score AND keep the honest **Novelty** label — we never relabel a pure novelty
+ *   score as originality.
+ * - When neither exists, `value`/`label` are null → callers render "—" or hide the row.
+ */
+export type OriginalityMetric = {
+  /** 0-1, higher = better. Null when no source score exists. */
+  value: number | null;
+  /** Full label: "Originality" (obviousness-derived) | "Novelty" (legacy) | null. */
+  label: 'Originality' | 'Novelty' | null;
+  /** Compact label for dense scorecards: "Orig" | "Nov" | null. */
+  short: 'Orig' | 'Nov' | null;
+  /** True only when the value came from obviousness_score (real originality signal). */
+  isOriginality: boolean;
+};
+
+export function originalityMetric(
+  idea: { obviousness_score?: number | null; novelty_score?: number | null },
+): OriginalityMetric {
+  if (idea?.obviousness_score != null) {
+    return {
+      value: Math.max(0, Math.min(1, 1 - idea.obviousness_score)),
+      label: 'Originality',
+      short: 'Orig',
+      isOriginality: true,
+    };
+  }
+  if (idea?.novelty_score != null) {
+    return { value: idea.novelty_score, label: 'Novelty', short: 'Nov', isOriginality: false };
+  }
+  return { value: null, label: null, short: null, isOriginality: false };
+}
+
+/**
+ * Value-only convenience wrapper over {@link originalityMetric} — returns the 0-1 score
+ * (obviousness-derived, falling back to novelty), or null → renders "—". Use
+ * `originalityMetric()` when you also need the adaptive label.
+ */
+export function originalityScore(
+  idea: { obviousness_score?: number | null; novelty_score?: number | null },
+): number | null {
+  return originalityMetric(idea).value;
+}
+
 /** Human-readable fit label from market_fit_score (0-1 scale) */
 export function fitLabel(score: number | null | undefined): { text: string; variant: 'success' | 'warning' | 'muted' } {
   if (score == null) return { text: '', variant: 'muted' };

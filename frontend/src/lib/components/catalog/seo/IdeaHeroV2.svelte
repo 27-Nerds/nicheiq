@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { IdeaPreview } from "$lib/types/catalog-landing.js";
   import { mapVerdict } from "$lib/types/publicCatalog.js";
-  import { solutionDisplayTitle } from "$lib/utils/solution-utils.js";
+  import { solutionDisplayTitle, originalityMetric } from "$lib/utils/solution-utils.js";
   import { page } from "$app/state";
   import IdeaHeroAside from "./IdeaHeroAside.svelte";
   import Chip from "./Chip.svelte";
@@ -71,7 +71,7 @@
   );
 
   // Niche score panel: 3 primary bars (demand/feasibility/opportunity) drive
-  // the composite + tier label. Novelty + solo-dev render as a secondary
+  // the composite + tier label. Originality + solo-dev render as a secondary
   // "Founder fit" pair beneath a hairline divider — surfaced but excluded
   // from composite math so the niche score stays comparable across ideas.
   const scores = $derived({
@@ -82,7 +82,11 @@
         : idea.technical_feasibility_score * 100,
     opportunity:
       idea.seo_scalability_score == null ? null : idea.seo_scalability_score * 100,
-    novelty: idea.novelty_score == null ? null : idea.novelty_score * 100,
+    originality: (() => {
+      const m = originalityMetric(idea);
+      return m.value == null ? null : m.value * 100;
+    })(),
+    originalityLabel: originalityMetric(idea).label,
     soloDev:
       idea.solo_dev_feasibility == null ? null : idea.solo_dev_feasibility * 100,
   });

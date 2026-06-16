@@ -723,6 +723,9 @@ model CatalogIdea {
   technicalFeasibility    Float?
   seoScalabilityScore     Float?
   noveltyScore            Float?
+  // Independent novelty critic's obviousness (0-1, lower = more original).
+  // Surfaced in the UI as "Originality" (= 1 - obviousnessScore). Null on older rows.
+  obviousnessScore        Float?
   soloDevFeasibility      Float?
   // SEO data
   estimatedCacOrganic     String?                 @db.Text

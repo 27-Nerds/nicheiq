@@ -3,6 +3,7 @@
   import { portal } from "$lib/actions/portal";
   import { SvelteSet } from "svelte/reactivity";
   import Badge from "$lib/components/ui/Badge.svelte";
+  import { originalityMetric } from "$lib/utils/solution-utils";
   import {
     X,
     Trash2,
@@ -23,6 +24,7 @@
     solutionName: string;
     marketFitScore: number | null;
     noveltyScore: number | null;
+    obviousnessScore: number | null;
     isFreePreview: boolean;
   }
 
@@ -398,6 +400,7 @@
                 </div>
                 <div class="space-y-1">
                   {#each ideas as idea}
+                    {@const orig = originalityMetric({ obviousness_score: idea.obviousnessScore, novelty_score: idea.noveltyScore })}
                     <div class="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-bg-elevated group">
                       <input
                         type="checkbox"
@@ -413,7 +416,7 @@
                         <Badge variant="success" size="sm">Free preview</Badge>
                       {/if}
                       <Badge variant="success" size="sm">Fit {formatScore(idea.marketFitScore)}</Badge>
-                      <Badge variant="info" size="sm">Nov {formatScore(idea.noveltyScore)}</Badge>
+                      <Badge variant="info" size="sm">{orig.short ?? "Orig"} {formatScore(orig.value)}</Badge>
                       <button
                         class="p-1 rounded hover:bg-accent/10 transition-opacity flex-shrink-0 {idea.id === effectiveFreePreviewIdeaId ? 'text-accent' : 'text-text-muted opacity-0 group-hover:opacity-100'}"
                         title={idea.id === effectiveFreePreviewIdeaId

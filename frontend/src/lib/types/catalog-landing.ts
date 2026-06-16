@@ -116,6 +116,7 @@ export interface IdeaPreview {
   technical_feasibility_score: number | null;
   seo_scalability_score: number | null;
   novelty_score: number | null;
+  obviousness_score?: number | null; // 0-1, lower = more original; shown as "Originality" (1 - this)
   solo_dev_feasibility: number | null;
   estimated_cac_organic: string | null;
   programmatic_seo_opportunity: string | null;

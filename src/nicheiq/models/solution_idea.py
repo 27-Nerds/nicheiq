@@ -390,6 +390,20 @@ class BaseSolutionIdea(BaseModel):
             "0.0-0.3: Complex infrastructure, >6 months, or requires team/enterprise sales."
         )
     )
+    obviousness_score: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Independent novelty critic's estimate of how OBVIOUS this idea is "
+            "(0-1, LOWER = more original): the fraction of competent builders who would "
+            "also propose essentially this concept. Carried from the source RawConcept "
+            "during refinement (same name-match pattern as the M/D/J tags). Bands: "
+            "0.0-0.2 highly novel (<5% would), 0.3-0.5 somewhat novel, 0.6-0.8 mildly "
+            "obvious, 0.8-1.0 cached first-thought. Surfaced in the UI as 'Originality' "
+            "(= 1 - obviousness_score)."
+        )
+    )
 
 
 class SolutionIdea(BaseSolutionIdea):

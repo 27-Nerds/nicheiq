@@ -60,6 +60,13 @@ def test_uncovered_pain_reinjects_best_concept():
     names = [i.solution_name for i in ideas]
     assert "ReconCardBuilder" in names  # re-injected
     assert caveats == []
+    # Re-injected idea must render completely (no blank "--" cards in the UI).
+    injected = next(i for i in ideas if i.solution_name == "ReconCardBuilder")
+    assert injected.short_description and injected.headline
+    assert injected.seo_scalability_score is not None
+    assert injected.solo_dev_feasibility is not None
+    assert injected.novelty_score is not None
+    assert injected.market_fit_score is not None and injected.technical_feasibility_score is not None
 
 
 def test_covered_pain_is_noop():

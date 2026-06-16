@@ -155,6 +155,20 @@ export const glossary: Record<string, GlossaryTerm> = {
 		fullName: 'Go-To-Market',
 		definition: 'Strategy and plan for launching a product and acquiring customers',
 		category: 'technical'
+	},
+	ORIGINALITY: {
+		term: 'Originality',
+		fullName: 'Idea Originality',
+		definition: 'How non-obvious this idea is versus what most competent builders would propose for the same niche — higher means fewer people would independently arrive at it',
+		calculation: '1 − obviousness_score, where an independent novelty critic estimates the fraction of builders who would also propose the idea (falls back to the novelty score when obviousness is unavailable)',
+		category: 'market'
+	},
+	NOVELTY: {
+		term: 'Novelty',
+		fullName: 'Idea Novelty',
+		definition: 'How fresh or differentiated this idea is. Shown on older reports that predate the Originality signal; newer ideas display Originality instead',
+		calculation: "The refiner's novelty_score (0-1, higher = more novel)",
+		category: 'market'
 	}
 };
 

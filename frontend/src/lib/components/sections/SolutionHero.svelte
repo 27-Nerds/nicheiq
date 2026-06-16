@@ -45,7 +45,7 @@
   import CheckListItem from "$lib/components/ui/CheckListItem.svelte";
   import SectionLabel from "$lib/components/ui/SectionLabel.svelte";
   import ExpandableSection from "$lib/components/ui/ExpandableSection.svelte";
-  import { solutionDisplayTitle } from "$lib/utils/solution-utils";
+  import { solutionDisplayTitle, originalityMetric } from "$lib/utils/solution-utils";
 
   interface Props {
     solution: SolutionDetails;
@@ -65,6 +65,7 @@
 
   const solutionName = $derived(solutionDisplayTitle({ ...solution, solution_name: solution.solution_name || "Solution" }) || "Solution");
   const hasHeadline = $derived(!!solution.headline?.trim());
+  const origMetric = $derived(originalityMetric(solution));
   const snapshot = $derived(dashboard.recommended_solution_snapshot);
   const verdict = $derived(dashboard.go_no_go_verdict);
 
@@ -346,8 +347,8 @@
     </InsightCard>
   {/if}
 
-  <!-- Innovation Score Card -->
-  {#if solution.novelty_score != null && !isNaN(solution.novelty_score)}
+  <!-- Originality / Novelty Score Card -->
+  {#if origMetric.value != null}
     <InsightCard
       variant="warning"
       border="left"
@@ -358,11 +359,11 @@
         <div class="innovation-header">
           <div class="innovation-label">
             <Puzzle class="innovation-icon" />
-            <span>INNOVATION</span>
+            <span>{origMetric.label?.toUpperCase()}</span>
           </div>
           <div class="innovation-score">
             <span class="score-value"
-              >{formatScoreOn10(solution.novelty_score)}</span
+              >{formatScoreOn10(origMetric.value)}</span
             >
             <span class="score-max">/10</span>
           </div>

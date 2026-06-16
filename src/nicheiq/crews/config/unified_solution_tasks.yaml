@@ -61,11 +61,13 @@ divergent_exploration:
     4. If pain point data is sparse: Note this and proceed with available evidence
     </long_context_handling>
 
+    {lens_directive}
+
     ## STEP -1: Mine Non-Obvious Insights (DO THIS FIRST — do NOT generate concepts yet)
 
     Before anything else, read the pain points, quotes, and competitor mentions and
     extract 4-6 NON-OBVIOUS INSIGHTS — the kind a smart founder would say "huh, I
-    hadn't considered that" about. Look specifically for:
+    hadn't considered that" about. Apply the CREATIVE LENS above while mining. Look for:
     - Workarounds people hack together (a hand-rolled spreadsheet, a manual ritual)
     - Say-vs-do contradictions (what they claim vs what they actually do/pay for)
     - Unmet jobs-to-be-done hiding under a surface complaint
@@ -73,9 +75,9 @@ divergent_exploration:
     - Willingness-to-pay signals (what they already pay for, or beg for)
     - Where existing tools conspicuously fail or are abandoned
 
-    Output a short ranked insight list (one line each). EVERY concept you generate
-    later must trace to one of these named insights. Do NOT generate concepts in this
-    step — insights only.
+    Output a short ranked insight list, NUMBERED and LABELED (e.g. "Insight 3 —
+    hand-rolled spreadsheet workaround"). EVERY concept you generate later must trace
+    to one of these named insights. Do NOT generate concepts in this step — insights only.
 
     ## STEP 0: Anti-Obvious Blacklist (DO THIS SECOND, right after STEP -1)
 
@@ -279,10 +281,16 @@ divergent_exploration:
       first-thought. Be honest — do not score everything 0.4. **At least 2 of your
       concepts MUST score ≤ 0.3** (genuinely novel long-tail); if you cannot, say why
       and substitute the least-obvious concepts you have.
-    - **why_non_obvious** (REQUIRED, doubles as the INSIGHT + WEDGE): name the STEP -1
-      insight this concept rests on AND its defensible wedge (proprietary data / a real
-      tool / a community loop) — not just "indexable pages". A concept whose only moat
-      is "it ranks in SEO" is not interesting.
+    - **why_non_obvious** (REQUIRED — INSIGHT + EVIDENCE ANCHOR + WEDGE): you MUST cite
+      (a) the numbered STEP -1 insight this concept rests on (e.g. "Insight 3"), AND
+      (b) ONE specific detail from the provided pain points / quotes / competitor
+      mentions / audience context that only someone who actually read the evidence would
+      know — a workaround pattern, a named tool being abandoned, a specific frustration,
+      or a willingness-to-pay signal — AND (c) its defensible wedge (proprietary data /
+      a real tool / a community loop), not just "indexable pages". The evidence detail
+      must come from the context ABOVE — do NOT invent or paraphrase a quote you can't
+      point to. A concept that cannot cite a concrete evidence anchor is generic →
+      replace it. A concept whose only moat is "it ranks in SEO" is not interesting.
 
     **ANTI-CLICHÉ — banned generic shapes** (regardless of niche): do NOT propose
     "a marketplace for X", "an AI chatbot/assistant for X", or "a tracking app for X"
@@ -372,12 +380,17 @@ diversity_filtering:
   description: >
     **TASK 2: DIVERSITY FILTERING (Filter to 5-7 Unique Concepts)**
 
-    Filter raw concepts from Task 1 to ensure diversity and remove duplicates.
+    Filter the pooled raw concepts below to ensure diversity and remove duplicates.
     This is the CONVERGENT phase - apply strict diversity criteria.
 
-    ## Context from Task 1
+    ## Pooled concepts to filter
 
-    You have access to RawConceptList with 8-12 concepts.
+    These concepts were pooled from several independent generation passes (different
+    creative lenses) and deduplicated. Filter them down — output the surviving
+    RawConcept objects UNCHANGED (keep every field exactly, including obviousness_score
+    and the mechanism_tag/data_source_tag/journey_tag).
+
+    {pooled_concepts}
 
     <output_verbosity_spec>
     - concepts: Pass through 5-7 RawConcept objects unchanged
@@ -591,6 +604,15 @@ solution_refinement:
     - If ALL top concepts have novelty_score < 0.4, flag this as a quality concern —
       push at least one concept to explore a non-obvious angle even if it scores slightly
       lower on market fit. Generic ideas in crowded markets struggle regardless of fit score.
+
+    **BOLD SLOT (mandatory):** ONE of your final 3-5 solutions MUST be the genuinely
+    novel/original option — the one built on the lowest-obviousness source concept (the
+    most non-obvious insight) — and you MUST keep it EVEN IF its market_fit_score is
+    slightly lower than a safer alternative. Give it a real novelty_score ≥ 0.6 with
+    substantive conventional_approach / innovation_angle / why_it_works text. A final set
+    of only "safe" ideas is INVALID — generic ideas fail in crowded markets regardless of
+    fit. (A deterministic check after you finish will re-inject the boldest concept if you
+    omit one, so include it yourself.)
 
     ## DIVERSITY REQUIREMENT: span SEO patterns AND product architectures
 

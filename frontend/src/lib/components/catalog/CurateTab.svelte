@@ -12,6 +12,7 @@
     Check,
     HelpCircle,
   } from "lucide-svelte";
+  import { originalityMetric } from "$lib/utils/solution-utils";
 
   let { data, categories }: {
     data: any;
@@ -813,9 +814,10 @@
               </td>
               <td class="py-3 px-4 text-center text-text-secondary">
                 {#if currentType === "ideas" && item.itemScores}
+                  {@const orig = originalityMetric({ obviousness_score: item.itemScores.obviousness, novelty_score: item.itemScores.novelty })}
                   <span title="Market Fit">{formatScore(item.itemScores.market_fit)}</span>
                   <span class="text-text-muted mx-0.5">/</span>
-                  <span title="Novelty">{formatScore(item.itemScores.novelty)}</span>
+                  <span title={orig.label ?? "Originality"}>{formatScore(orig.value)}</span>
                 {:else if item.itemScores}
                   <span title="Severity">{formatScore(item.itemScores.severity)}</span>
                   <span class="text-text-muted mx-0.5">/</span>

@@ -17,7 +17,7 @@
   import Tooltip from "$lib/components/ui/Tooltip.svelte";
   import Section from "$lib/components/ui/Section.svelte";
   import { getTermTooltip } from "$lib/stores/glossary";
-  import { solutionDisplayTitle } from "$lib/utils/solution-utils";
+  import { solutionDisplayTitle, originalityScore, originalityMetric } from "$lib/utils/solution-utils";
 
   interface Props {
     data: AlternativeSolution[];
@@ -102,7 +102,7 @@
           </div>
 
           <!-- Scores Grid -->
-          {#if solution.market_fit_score || solution.technical_feasibility_score || solution.novelty_score || solution.competitive_advantage_score}
+          {#if solution.market_fit_score || solution.technical_feasibility_score || originalityScore(solution) != null || solution.competitive_advantage_score}
             <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
               {#if solution.market_fit_score != null}
                 <div class="text-center">
@@ -156,16 +156,17 @@
                   </div>
                 </div>
               {/if}
-              {#if solution.novelty_score !== undefined}
+              {#if originalityMetric(solution).value != null}
+                {@const orig = originalityMetric(solution)}
                 <div class="text-center">
-                  <div class="text-xs text-text-muted mb-1">Novelty</div>
+                  <div class="text-xs text-text-muted mb-1">{orig.label}</div>
                   <ProgressBar
-                    value={solution.novelty_score * 100}
+                    value={(orig.value ?? 0) * 100}
                     max={100}
                     showValue={false}
                   />
                   <div class="text-sm font-medium text-text-primary mt-1">
-                    {formatScorePercent(solution.novelty_score)}
+                    {formatScorePercent(orig.value)}
                   </div>
                 </div>
               {/if}

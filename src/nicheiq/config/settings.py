@@ -93,6 +93,67 @@ class Settings(BaseSettings):
             "knob for reasoning models (temperature is unsupported). Ignored by older models."
         )
     )
+    num_divergent_samples: int = Field(
+        default=2,
+        ge=1,
+        description=(
+            "Number of INDEPENDENT divergent concept-generation calls (each under a "
+            "different creative lens) pooled before filtering. Independent contexts break "
+            "single-call mode collapse (temperature is inert on reasoning models). "
+            "Cost scales linearly with this on the expensive brainstorm model."
+        )
+    )
+    divergent_pool_cap: int = Field(
+        default=12,
+        ge=6,
+        le=15,
+        description=(
+            "Max concepts kept after pooling/dedup of the divergent samples, fed to the "
+            "diversity filter. Hard-capped at 15 so the pooled RawConceptList never "
+            "violates its max_length; floored at 6 (the RawConceptList minimum)."
+        )
+    )
+    # Ideation reasoning tiers — decouple the convergent steps from the expensive creative
+    # model. `brainstorm_llm`/`brainstorm_reasoning_effort` still drive the CREATIVE tier
+    # (divergent generation + ideator), the only place raw model capability sets idea
+    # originality. The two tiers below cover the convergent steps:
+    #   JUDGE  = novelty critic + concept evaluator/filter (scoring/classification — no
+    #            creativity needed; safe on a cheaper reasoning mini).
+    #   REFINE = final-idea refiner + single-concept (re-injected) refiner (structured
+    #            enhancement; writes user-facing copy, so keeps the full model by default).
+    ideation_judge_llm: str = Field(
+        default="gpt-5.4-mini",
+        description=(
+            "Model for convergent JUDGE steps (novelty critic + concept evaluator/filter). "
+            "A reasoning mini is enough — these are scoring/classification tasks, not creative "
+            "generation. Cheaper than brainstorm_llm; must be a reasoning model so "
+            "reasoning_effort is honored (gpt-5*/o-series)."
+        )
+    )
+    ideation_judge_reasoning_effort: str = Field(
+        default="low",
+        description=(
+            "Reasoning effort for the JUDGE tier (novelty critic + evaluator). 'low' default — "
+            "objective scoring against fixed criteria. Bump toward 'medium' if obviousness "
+            "discrimination degrades on the cheaper judge model."
+        )
+    )
+    ideation_refine_llm: str = Field(
+        default="gpt-5.2",
+        description=(
+            "Model for the REFINE tier (final solution refiner + single-concept/re-injected "
+            "refiner). Defaults to the full brainstorm model because it writes the user-facing "
+            "idea copy (innovation_angle, why_it_works, value prop); drop to a reasoning mini "
+            "to cut cost once a run confirms the articulation quality holds."
+        )
+    )
+    ideation_refine_reasoning_effort: str = Field(
+        default="medium",
+        description=(
+            "Reasoning effort for the REFINE tier. 'medium' default — structured enhancement, "
+            "not divergent ideation, so it doesn't need the creative tier's 'high'."
+        )
+    )
     keyword_validation_llm: str = Field(
         default="gpt-5-nano",
         description="Model to use for keyword relevance validation in Phase 6c (gpt-5-nano at minimal reasoning effort for cost efficiency)"

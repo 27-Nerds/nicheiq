@@ -11,7 +11,7 @@
   import ProgressRing from "$lib/components/ui/ProgressRing.svelte";
   import SolutionDetailContent from "$lib/components/SolutionDetailContent.svelte";
   import type { SolutionPreview } from "$lib/types/job";
-  import { computeCompositeScore, getSuperpower, SUPERPOWER_MAP_DETAILED, solutionDisplayTitle } from "$lib/utils/solution-utils";
+  import { computeCompositeScore, getSuperpower, SUPERPOWER_MAP_DETAILED, solutionDisplayTitle, originalityMetric } from "$lib/utils/solution-utils";
 
   interface Props {
     open: boolean;
@@ -73,11 +73,13 @@
     return 'var(--color-error)';
   }
 
+  const origMetric = $derived(originalityMetric(solution));
+
   const individualScores = $derived([
     { label: "MF", value: solution.market_fit_score },
     { label: "Feas", value: solution.technical_feasibility_score },
     { label: "SEO", value: solution.seo_scalability_score },
-    { label: "Nov", value: solution.novelty_score },
+    { label: origMetric.short ?? "Orig", value: origMetric.value },
     { label: "Solo", value: solution.solo_dev_feasibility },
   ]);
 

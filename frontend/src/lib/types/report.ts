@@ -691,6 +691,7 @@ export interface SolutionDetails {
 	seo_scalability_score_refined?: number;
 	estimated_indexable_pages?: number;
 	novelty_score?: number;
+	obviousness_score?: number | null; // 0-1, lower = more original; shown as "Originality" (1 - this)
 	conventional_approach?: string;
 	innovation_angle?: string;
 	why_it_works?: string;
@@ -797,6 +798,7 @@ export interface AlternativeSolution {
 
 	// Additional scores and feasibility
 	novelty_score?: number;
+	obviousness_score?: number | null; // 0-1, lower = more original; shown as "Originality" (1 - this)
 	solo_dev_feasibility?: number; // 0-1 scale matching Python float
 
 	// Competitive landscape for this solution

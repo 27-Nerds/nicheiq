@@ -45,6 +45,7 @@ export interface SolutionPreview {
   technical_feasibility_score?: number | null;
   seo_scalability_score?: number | null;
   novelty_score?: number | null;
+  obviousness_score?: number | null; // 0-1, lower = more original; shown as "Originality" (1 - this)
   programmatic_seo_opportunity?: string | null;
   estimated_cac_organic?: string | null;
   estimated_cac_paid?: string | null;

@@ -2,7 +2,7 @@
   // Horizontal labeled progress bar — alt for the Trifecta dial in dense
   // layouts (e.g., idea-detail dashboard variant). 0-100 input.
 
-  type BarType = "demand" | "feasibility" | "opportunity" | "novelty" | "soloDev";
+  type BarType = "demand" | "feasibility" | "opportunity" | "originality" | "soloDev";
 
   interface Props {
     label: string;
@@ -21,7 +21,7 @@
       case "demand": return "var(--color-accent)";
       case "feasibility": return "var(--color-info)";
       case "opportunity": return "var(--color-success)";
-      case "novelty": return "var(--color-secondary, #6366F1)";
+      case "originality": return "var(--color-secondary, #6366F1)";
       case "soloDev": return "var(--color-text-secondary, #52525B)";
     }
   });

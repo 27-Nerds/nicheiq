@@ -1733,6 +1733,7 @@ RULES:
                         novelty = getattr(solution, "novelty_score", None)
                         solo_dev = getattr(solution, "solo_dev_feasibility", None)
                         seo_score = getattr(solution, "seo_scalability_score", None)
+                        obviousness = getattr(solution, "obviousness_score", None)
 
                         alt = {
                             "solution_name": solution.solution_name,
@@ -1749,6 +1750,7 @@ RULES:
                             "competitive_advantage_score": None,  # Not available in Phase 1
                             "seo_growth_potential_score": float(seo_score) if seo_score is not None else None,
                             "novelty_score": float(novelty) if novelty is not None else None,
+                            "obviousness_score": float(obviousness) if obviousness is not None else None,
                             "solo_dev_feasibility": float(solo_dev) if solo_dev is not None else None,
                             "key_differentiator": key_diff or "Unique approach to this market",
                             "best_suited_for": personas[0] if personas else "General market",

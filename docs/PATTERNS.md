@@ -545,6 +545,35 @@ def task_2_enhance_data(self) -> Task:
 - Type safety with Pydantic validation
 - Prevents field loss during multi-stage processing
 
+### Tag / Score Carry-Through Pattern
+
+**Problem**: A field is computed on an early-stage object (e.g. a `RawConcept`) but the
+refinement LLM produces a *new* object that doesn't echo it back, and context chaining can't
+guarantee the model re-emits a non-prompted scalar. Examples: `mechanism_tag` /
+`data_source_tag` / `journey_tag` and `obviousness_score` in `UnifiedSolutionCrew`.
+
+**Solution**: After refinement, copy the field from the source object onto the refined one in
+**code**, matched by a whitespace-normalized name key — don't rely on the LLM:
+
+```python
+tag_lookup = {
+    _norm(c.concept_name): (c.mechanism_tag, c.data_source_tag, c.journey_tag, c.obviousness_score)
+    for c in filtered_concepts.concepts
+}
+for sol in refined_solutions.solution_ideas:
+    tags = tag_lookup.get(_norm(getattr(sol, "solution_name", "")))
+    if tags:
+        sol.mechanism_tag, sol.data_source_tag, sol.journey_tag = tags[:3]
+        if tags[3] is not None and tags[3] >= 0:   # skip the -1.0 unscored sentinel
+            sol.obviousness_score = tags[3]
+```
+
+**Notes**:
+- The match is by name, and refinement can rename a concept — so the consumer must tolerate a
+  miss (the UI's Originality bar falls back to `novelty_score` when `obviousness_score` is null).
+- Re-injected (coverage / bold-slot) ideas run the same single-concept refinement, so they
+  carry the field too.
+
 ### Multi-Agent Sequential Crew Pattern
 
 **Problem**: Complex tasks require multiple specialized agents working together.

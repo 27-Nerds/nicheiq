@@ -448,11 +448,18 @@ def _synthesize_idea_from_concept(concept, pain):
     """
     from ...models.solution_idea import BaseSolutionIdea
 
-    one_liner = getattr(concept, "one_liner", "") or getattr(concept, "concept_name", "")
+    one_liner = (getattr(concept, "one_liner", "") or getattr(concept, "concept_name", "")).strip()
     features = list(getattr(concept, "target_keywords", None) or [])[:3] or ["Core MVP feature"]
     diff = getattr(concept, "why_non_obvious", None)
+    # Clean display fields so a re-injected idea renders completely (not blank "--").
+    short_desc = (one_liner[:175] + "…") if len(one_liner) > 176 else one_liner
+    headline = " ".join(one_liner.split()[:12]) or getattr(concept, "concept_name", "")
+    obv = getattr(concept, "obviousness_score", -1.0)
+    novelty = round(max(0.0, min(1.0, 1.0 - obv)), 2) if (obv is not None and obv >= 0) else 0.5
     return BaseSolutionIdea(
         solution_name=getattr(concept, "concept_name", "Untitled concept"),
+        headline=headline,
+        short_description=short_desc,
         description=(
             f"{one_liner} (Re-injected to keep coverage of the high-severity pain "
             f"\"{getattr(pain, 'title', '')}\"; expand before shipping.)"
@@ -464,18 +471,38 @@ def _synthesize_idea_from_concept(concept, pain):
         differentiation_factors=[diff] if diff else None,
         project_type=getattr(concept, "project_type", None),
         organic_discovery_queries=list(getattr(concept, "target_keywords", None) or []) or None,
+        # Neutral placeholder scores so the card isn't blank; the description flags it
+        # as a re-injected concept to refine. Novelty derived from the concept's
+        # independent obviousness when available.
         market_fit_score=0.5,
         technical_feasibility_score=0.5,
+        seo_scalability_score=0.5,
+        solo_dev_feasibility=0.5,
+        novelty_score=novelty,
+        # Carry the concept's M/D/J tags so the regeneration ("generate more") dedup
+        # can still catch a reworded duplicate of this re-injected idea later.
+        mechanism_tag=getattr(concept, "mechanism_tag", None),
+        data_source_tag=getattr(concept, "data_source_tag", None),
+        journey_tag=getattr(concept, "journey_tag", None),
+        # Independent obviousness signal (skip the -1.0 sentinel) for the Originality UI.
+        obviousness_score=obv if (obv is not None and obv >= 0) else None,
     )
 
 
-def enforce_pain_coverage(final_ideas: list, raw_concepts: list, pain_points: list) -> list:
+def enforce_pain_coverage(
+    final_ideas: list, raw_concepts: list, pain_points: list, synthesize_fn=None
+) -> list:
     """Ensure every high-severity on-niche pain is covered by a final solution.
 
     Mutates `final_ideas` in place (appends re-injected concepts) and returns a
     list of human-readable caveat strings for pains that could not be covered.
     Pure/deterministic; any internal error is swallowed (coverage is best-effort).
+
+    `synthesize_fn(concept, pain) -> BaseSolutionIdea` builds the re-injected idea.
+    Defaults to the lightweight stub; the crew passes a full LLM refiner so re-injected
+    ideas are as complete as the rest.
     """
+    synthesize_fn = synthesize_fn or _synthesize_idea_from_concept
     caveats: list[str] = []
     try:
         pains = _high_severity_pains(pain_points)
@@ -504,7 +531,7 @@ def enforce_pain_coverage(final_ideas: list, raw_concepts: list, pain_points: li
                 if score > best_score:
                     best, best_score = c, score
             if best is not None and best_score >= _REINJECT_MATCH_THRESHOLD:
-                synthesized = _synthesize_idea_from_concept(best, pain)
+                synthesized = synthesize_fn(best, pain)
                 final_ideas.append(synthesized)
                 existing_names.add((synthesized.solution_name or "").lower().strip())
                 logger.warning(
@@ -1320,101 +1347,92 @@ def _tags_match(tag_a: str | None, tag_b: str | None) -> bool:
     return len(tokens_a & tokens_b) / min(len(tokens_a), len(tokens_b)) >= 0.6
 
 
+_BANNED_WNO_PHRASES = [
+    "unique approach", "nobody has built", "innovative solution",
+    "first of its kind", "novel concept", "groundbreaking",
+    "no one else does this", "completely new",
+]
+
+
+def raw_concept_quality_error(concept) -> str | None:
+    """Per-concept quality check (name, one_liner, keywords, why_non_obvious).
+
+    Returns an error string if the concept is below quality bar, else None.
+    Reusable for per-sample validation of direct-LLM divergent calls.
+    """
+    if not concept.concept_name or len(concept.concept_name.strip()) < 3:
+        return "missing or too short concept_name"
+    if not concept.one_liner or len(concept.one_liner.strip()) < 20:
+        return (
+            f"'{concept.concept_name}' has missing/short one_liner "
+            f"(needs 20+ chars, got {len(concept.one_liner or '')})"
+        )
+    if not concept.target_keywords or len(concept.target_keywords) < 2:
+        return (
+            f"'{concept.concept_name}' needs at least 2 target_keywords, "
+            f"got {len(concept.target_keywords or [])}"
+        )
+    wno = (getattr(concept, 'why_non_obvious', None) or "").strip()
+    if len(wno) < 50:
+        return (
+            f"'{concept.concept_name}' missing/short why_non_obvious "
+            f"(needs 50+ chars, got {len(wno)})"
+        )
+    if len(wno) < 80:
+        wno_lower = wno.lower()
+        for phrase in _BANNED_WNO_PHRASES:
+            if phrase in wno_lower:
+                return f"'{concept.concept_name}' why_non_obvious too generic (contains '{phrase}')"
+    return None
+
+
+def validate_raw_concept_list(
+    result, *, min_concepts: int = 6, check_technique_diversity: bool = True
+) -> tuple[bool, str | None]:
+    """Validate a PARSED RawConceptList. Returns (ok, error_or_None).
+
+    Parametrized so it serves both the CrewAI guardrail (min 6 + technique diversity)
+    and per-sample direct-LLM validation (lenient: min 1, no cross-concept diversity —
+    a single lens may legitimately cluster techniques; diversity is enforced on the pool).
+    """
+    if not result.concepts or len(result.concepts) < min_concepts:
+        return (
+            False,
+            f"Need at least {min_concepts} concepts, got {len(result.concepts or [])}. "
+            "Generate more diverse solution concepts using different ideation techniques."
+        )
+    for concept in result.concepts:
+        err = raw_concept_quality_error(concept)
+        if err:
+            return (False, err)
+    if check_technique_diversity:
+        techniques_used = {
+            _normalize_technique(c.ideation_technique)
+            for c in result.concepts if c.ideation_technique
+        }
+        if len(techniques_used) < 3:
+            return (
+                False,
+                f"Technique diversity violation: only {len(techniques_used)} techniques "
+                f"({', '.join(sorted(techniques_used))}). Need 3+. Available: niche_drilling, "
+                "data_source_inversion, cross_industry_template, atomic_feature, "
+                "community_flip, platform_leverage."
+            )
+        if "platform_leverage" not in techniques_used:
+            logger.warning("No platform_leverage concepts generated.")
+    return (True, None)
+
+
 def validate_raw_concepts(task_output) -> tuple[bool, Any]:
-    """
-    Guardrail for divergent_exploration_task to validate RawConceptList.
-
-    Validates:
-    - JSON is parseable (via unified helper)
-    - Has 8-12 concepts (minimum 6)
-    - Each concept has name, one_liner, target_keywords (2-5)
-
-    Returns:
-        tuple[bool, Any]: (success, raw_string_or_error)
-    """
-    # Parse using unified helper
+    """CrewAI guardrail for divergent_exploration_task (parses + full validation)."""
     result, error = _parse_pydantic_from_task_output(
         task_output, RawConceptList, "Divergent exploration"
     )
     if error:
         return (False, error)
-
-    # Validate concept count (8-12 expected, minimum 6)
-    if not result.concepts or len(result.concepts) < 6:
-        return (
-            False,
-            f"Need at least 6 concepts (target 8-12), got {len(result.concepts or [])}. "
-            "Generate more diverse solution concepts using different ideation techniques."
-        )
-
-    # Validate each concept has required fields
-    for i, concept in enumerate(result.concepts):
-        if not concept.concept_name or len(concept.concept_name.strip()) < 3:
-            return (False, f"Concept {i+1} missing or too short concept_name")
-        if not concept.one_liner or len(concept.one_liner.strip()) < 20:
-            return (
-                False,
-                f"Concept '{concept.concept_name}' has missing or too short one_liner "
-                f"(needs 20+ chars, got {len(concept.one_liner or '')}). "
-                "Describe what the solution does and why it's interesting."
-            )
-        if not concept.target_keywords or len(concept.target_keywords) < 2:
-            return (
-                False,
-                f"Concept '{concept.concept_name}' needs at least 2 target_keywords, "
-                f"got {len(concept.target_keywords or [])}. "
-                "Add specific SEO keywords this solution would target."
-            )
-
-        # Validate why_non_obvious (Optional in model, enforced here for better per-concept feedback)
-        wno = getattr(concept, 'why_non_obvious', None) or ""
-        if len(wno.strip()) < 50:
-            return (
-                False,
-                f"Concept '{concept.concept_name}' missing/short why_non_obvious "
-                f"(needs 50+ chars, got {len(wno.strip())}). Explain the specific structural "
-                "insight: what would a naive builder try, and why is THIS approach better?"
-            )
-
-        # Check for generic phrases only when text is short (< 80 chars = likely just the phrase)
-        _banned_wno_phrases = [
-            "unique approach", "nobody has built", "innovative solution",
-            "first of its kind", "novel concept", "groundbreaking",
-            "no one else does this", "completely new",
-        ]
-        wno_lower = wno.lower()
-        if len(wno.strip()) < 80:
-            for phrase in _banned_wno_phrases:
-                if phrase in wno_lower:
-                    return (
-                        False,
-                        f"Concept '{concept.concept_name}' why_non_obvious is too generic: "
-                        f"contains '{phrase}' without sufficient specifics. Describe the SPECIFIC "
-                        "data asymmetry, workflow insight, or structural advantage."
-                    )
-
-    # Validate technique diversity (at least 3 different techniques)
-    techniques_used: set[str] = set()
-    for concept in result.concepts:
-        if concept.ideation_technique:
-            techniques_used.add(_normalize_technique(concept.ideation_technique))
-
-    if len(techniques_used) < 3:
-        return (
-            False,
-            f"Technique diversity violation: Only {len(techniques_used)} techniques used "
-            f"({', '.join(sorted(techniques_used))}). Need 3+ different techniques. "
-            "Available: niche_drilling, data_source_inversion, cross_industry_template, "
-            "atomic_feature, community_flip, platform_leverage."
-        )
-
-    # Soft check: log warning if no platform_leverage (not a hard failure)
-    if "platform_leverage" not in techniques_used:
-        logger.warning(
-            "No platform_leverage concepts generated. Consider if platform APIs "
-            "could enhance ideas for this niche."
-        )
-
+    ok, err = validate_raw_concept_list(result, min_concepts=6, check_technique_diversity=True)
+    if not ok:
+        return (False, err)
     logger.info(f"✓ Raw concepts guardrail passed: {len(result.concepts)} concepts")
     return (True, _guardrail_success_payload(task_output, result))
 

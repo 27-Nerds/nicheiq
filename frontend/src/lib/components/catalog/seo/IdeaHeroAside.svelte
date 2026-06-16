@@ -3,7 +3,7 @@
 
   // Right rail of IdeaHeroV2 — niche-score panel. Thin wrapper over the shared
   // <ScorePanel>: maps the 3 niche-score axes (demand/feasibility/opportunity)
-  // plus the optional founder-fit axes (novelty/solo-dev) into score rows, and
+  // plus the optional founder-fit axes (originality/solo-dev) into score rows, and
   // themes the composite with the brand accent.
 
   interface Props {
@@ -11,13 +11,17 @@
       demand: number | null;
       feasibility: number | null;
       opportunity: number | null;
-      /** Optional 4th axis: how differentiated the idea is (novelty_score). */
-      novelty?: number | null;
+      /** Optional 4th axis: how non-obvious the idea is (1 − obviousness_score,
+       *  falling back to novelty_score). */
+      originality?: number | null;
+      /** Adaptive label for the 4th axis: "Originality" (obviousness-derived) or
+       *  "Novelty" (legacy fallback). Defaults to "Originality" when omitted. */
+      originalityLabel?: string | null;
       /** Optional 5th axis: can a solo dev ship it (solo_dev_feasibility). */
       soloDev?: number | null;
     };
     /** Optional composite 0-100. When omitted, computed as mean of the 3 PRIMARY
-     *  bars. Novelty + solo-dev are personal-fit context, excluded from it. */
+     *  bars. Originality + solo-dev are personal-fit context, excluded from it. */
     composite?: number | null;
     /** Optional verdict label rendered as a pill under the tier line. */
     verdict?: "GO" | "CONDITIONAL" | "NO-GO" | null;
@@ -66,7 +70,7 @@
   });
 
   const hasFitRow = $derived(
-    (scores.novelty != null && Number.isFinite(scores.novelty)) ||
+    (scores.originality != null && Number.isFinite(scores.originality)) ||
       (scores.soloDev != null && Number.isFinite(scores.soloDev)),
   );
 
@@ -78,8 +82,8 @@
     ];
     if (hasFitRow) {
       out.push({ kind: "subhead", label: "Founder fit" });
-      if (scores.novelty != null && Number.isFinite(scores.novelty)) {
-        out.push({ kind: "bar", label: "Novelty", value: scores.novelty, tone: "var(--color-text-muted)" });
+      if (scores.originality != null && Number.isFinite(scores.originality)) {
+        out.push({ kind: "bar", label: scores.originalityLabel || "Originality", value: scores.originality, tone: "var(--color-text-muted)" });
       }
       if (scores.soloDev != null && Number.isFinite(scores.soloDev)) {
         out.push({ kind: "bar", label: "Solo-dev", value: scores.soloDev, tone: "var(--color-text-muted)" });
