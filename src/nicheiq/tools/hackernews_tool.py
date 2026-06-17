@@ -79,7 +79,6 @@ class HackerNewsCollectorTool(BaseTool):
             try:
                 results = self._search_algolia(
                     query, max_results=max_results_per_query,
-                    min_points=min_points,
                 )
             except Exception as exc:
                 logger.warning(f"[HN] Search failed for '{query}': {exc}")
@@ -163,15 +162,18 @@ class HackerNewsCollectorTool(BaseTool):
         self,
         query: str,
         max_results: int = 10,
-        min_points: int = 5,
     ) -> list[dict]:
         """Execute a single Algolia HN search with retry."""
         three_years_ago = int(time.time()) - (3 * 365 * 24 * 3600)
+        # Algolia's HN index only allows created_at_i in numericFilters; points
+        # and num_comments were dropped from numericAttributesForFiltering and
+        # now cause a 400. Points/comments thresholds are enforced client-side
+        # in search_stories() instead.
         params = {
             "query": query,
             "tags": "story",
             "hitsPerPage": max_results,
-            "numericFilters": f"points>={min_points},created_at_i>{three_years_ago}",
+            "numericFilters": f"created_at_i>{three_years_ago}",
         }
         for attempt in range(_MAX_RETRIES + 1):
             try:
