@@ -28,12 +28,11 @@ if TYPE_CHECKING:
 from crewai import Agent, Crew, Task
 from .safe_task import SafeTask
 from crewai.project import CrewBase, agent, crew, task
-from langchain_openai import ChatOpenAI
 from loguru import logger
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..config.settings import settings
-from ..utils.llm_service import LLMService, build_crew_llm, build_llm_kwargs
+from ..utils.llm_service import LLMService, build_crew_llm
 from ..models.competitor import CompetitiveAnalysisResult
 from ..models.pain_point import PainPointAnalysisResult
 from ..models.research_state import AudienceMappingResult, NicheContext
@@ -792,11 +791,11 @@ class UnifiedSolutionCrew:
         return Agent(
             config=self.agents_config["competitive_researcher"],
             tools=[self.query_tool, self.search_tool],
-            llm=ChatOpenAI(**build_llm_kwargs(
+            llm=build_crew_llm(
                 model=settings.openai_model_name,
                 temperature=0.3,
                 # max_completion_tokens=30000,  # Disabled: CrewAI doesn't forward this properly for reasoning models
-            )),
+            ),
             # build_crew_llm forwards reasoning_effort to the API for GPT-5 models
             # (a ChatOpenAI instance would have it dropped by CrewAI's create_llm).
             function_calling_llm=build_crew_llm(
@@ -837,10 +836,10 @@ class UnifiedSolutionCrew:
         """
         return Agent(
             config=self.agents_config["strategic_selector"],
-            llm=ChatOpenAI(**build_llm_kwargs(
+            llm=build_crew_llm(
                 model=settings.openai_model_name,
                 temperature=0.2,
-            )),
+            ),
             verbose=True,
         )
 

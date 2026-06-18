@@ -4,7 +4,7 @@ Tests for token monitoring utilities.
 
 import pytest
 from unittest.mock import MagicMock, patch
-from nicheiq.utils.token_monitor import ContentTokenMonitor
+from nicheiq.utils.token_monitor import ContentTokenMonitor, CostTracker
 
 
 class TestContentTokenMonitor:
@@ -105,13 +105,24 @@ class TestContentTokenMonitor:
         cost = monitor.estimate_cost(1_000_000, model="gpt-4o-mini")
         assert cost == 0.15
 
-    def test_estimate_cost_unknown_model_uses_default(self):
-        """Test that unknown model uses default GPT-4o pricing."""
+    def test_estimate_cost_unknown_model_records_zero(self):
+        """Unknown models record $0 (with a warning), NOT fabricated gpt-4o pricing."""
         monitor = ContentTokenMonitor()
 
-        # Unknown model should use default gpt-4o pricing ($2.50)
         cost = monitor.estimate_cost(1_000_000, model="unknown-model")
-        assert cost == 2.50
+        assert cost == 0.0
+
+    def test_estimate_cost_openrouter_prefix_normalized(self):
+        """'openrouter/<id>' prices the same as the bare id, via OPENROUTER_PRICING."""
+        monitor = ContentTokenMonitor()
+        bare = monitor.estimate_cost(1_000_000, model="google/gemma-2-27b-it")
+        prefixed = monitor.estimate_cost(1_000_000, model="openrouter/google/gemma-2-27b-it")
+        assert prefixed == bare == 0.27
+
+    def test_estimate_cost_unknown_openrouter_records_zero(self):
+        """Unlisted OpenRouter models record $0, not gpt-4o pricing."""
+        monitor = ContentTokenMonitor()
+        assert monitor.estimate_cost(1_000_000, model="openrouter/some/unlisted-model") == 0.0
 
     def test_estimate_cost_various_models(self):
         """Test cost estimation for various model types."""
@@ -224,3 +235,65 @@ class TestContentTokenMonitor:
         # No warnings should be logged
         assert not mock_logger.warning.called
         assert not mock_logger.critical.called
+
+
+class TestCostTrackerActualCost:
+    """Cost tracking prefers provider-reported actual cost over estimates."""
+
+    def test_actual_cost_preferred(self):
+        ct = CostTracker()
+        u = ct.record_llm_usage(
+            "S",
+            {"prompt_tokens": 1000, "completion_tokens": 500,
+             "model": "openrouter/google/gemma-2-27b-it", "cost": 0.012},
+        )
+        assert u.total_cost == 0.012
+        assert u.actual_cost == 0.012
+        assert u.cost_source == "actual"
+        # model name normalized (prefix stripped) when stored
+        assert u.model == "google/gemma-2-27b-it"
+
+    def test_estimate_fallback_when_no_cost(self):
+        ct = CostTracker()
+        u = ct.record_llm_usage(
+            "S", {"prompt_tokens": 1_000_000, "completion_tokens": 0, "model": "gpt-4o"}
+        )
+        assert u.cost_source == "estimated"
+        assert u.total_cost == 2.50  # gpt-4o input price
+
+    def test_summary_reports_source_split(self):
+        ct = CostTracker()
+        ct.record_llm_usage(
+            "actual", {"prompt_tokens": 0, "completion_tokens": 0,
+                       "model": "google/gemma-2-27b-it", "cost": 0.01}
+        )
+        ct.record_llm_usage(
+            "est", {"prompt_tokens": 1_000_000, "completion_tokens": 0, "model": "gpt-4o"}
+        )
+        s = ct.get_summary()
+        assert s["total_cost"] == pytest.approx(2.51)
+        assert s["total_cost_source"] == "mixed"
+        assert s["actual_cost_total"] == pytest.approx(0.01)
+        assert s["estimated_cost_total"] == pytest.approx(2.50)
+
+    @patch("nicheiq.utils.token_monitor.logger")
+    def test_zero_token_crew_usage_warns(self, mock_logger):
+        ct = CostTracker()
+
+        class M:
+            prompt_tokens = 0
+            completion_tokens = 0
+
+        ct.record_crew_usage("Stage X", M(), "gpt-4o")
+        assert mock_logger.warning.called
+
+    @patch("nicheiq.utils.token_monitor.logger")
+    def test_nonzero_crew_usage_does_not_warn(self, mock_logger):
+        ct = CostTracker()
+
+        class M:
+            prompt_tokens = 100
+            completion_tokens = 50
+
+        ct.record_crew_usage("Stage X", M(), "gpt-4o")
+        assert not mock_logger.warning.called

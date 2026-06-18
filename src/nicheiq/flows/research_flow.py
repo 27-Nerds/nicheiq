@@ -92,6 +92,11 @@ class ResearchFlow(Flow[ResearchState]):
         """
         super().__init__()
 
+        # Fail fast if any tier is pointed at an OpenRouter model that can't run there
+        # (landing-page tiers raise; other UNSAFE tiers warn). Covers worker + CLI runs.
+        from ..utils.llm_service import validate_openrouter_tier_compatibility
+        validate_openrouter_tier_compatibility()
+
         # Store niche description for use in flow methods
         self.niche_description = niche_description
         self.allowed_project_types = allowed_project_types
@@ -6553,11 +6558,17 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
         from ..report.report_generator import ReportGenerator
 
         try:
-            # Delegate to ReportGenerator for all report generation logic
-            report_generator = ReportGenerator(self.state)
+            # Delegate to ReportGenerator for all report generation logic.
+            # Pass the cost tracker so Stage-14 LLM calls are recorded.
+            report_generator = ReportGenerator(self.state, cost_tracker=self.cost_tracker)
             final_report = report_generator.generate_report()
 
             self.state.final_report = final_report
+
+            # Finalize the cost summary BEFORE saving the raw-state file below, so the
+            # persisted JSON actually contains it (all recording is complete here,
+            # including the Stage-14 report calls). Previously this ran after the save.
+            self.state.cost_summary = self.cost_tracker.get_summary()
 
         except Exception as e:
             logger.error(f"Failed to generate final report: {e}")
@@ -6598,13 +6609,10 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             logger.warning(f"  Stages with fallback data: {sorted(self.state.fallback_stages)}")
         logger.info("=" * 80)
 
-        # Log cost summary
+        # Log cost summary (state.cost_summary was already assigned above, before the
+        # file saves, so the persisted raw-state JSON includes it).
         if settings.cost_logging_enabled:
             self.cost_tracker.log_summary()
-
-        # Store cost summary in state for report
-        cost_summary = self.cost_tracker.get_summary()
-        self.state.cost_summary = cost_summary
 
     # NOTE: Score refinement methods moved to utils/score_refinement.py
     # - refine_scalability_score

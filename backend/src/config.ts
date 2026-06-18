@@ -52,6 +52,13 @@ export const CONFIG = {
 
   // Niche suggestion settings
   openaiApiKey: process.env.OPENAI_API_KEY || '',
+  // OpenRouter (optional, per-model): point any *_LLM_MODEL at an
+  // 'openrouter/<vendor>/<model>' id to route that feature through OpenRouter.
+  // OPENAI_API_KEY stays required (supplemental model); OpenRouter is an override.
+  openrouterApiKey: process.env.OPENROUTER_API_KEY || '',
+  openrouterBaseUrl: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
+  openrouterSiteUrl: process.env.OPENROUTER_SITE_URL || '',
+  openrouterAppName: process.env.OPENROUTER_APP_NAME || '',
   suggestModel: process.env.SUGGEST_LLM_MODEL || 'gpt-5-nano',
   suggestRateHourly: parseInt(process.env.SUGGEST_RATE_HOURLY || '25', 10),
   suggestRateDaily: parseInt(process.env.SUGGEST_RATE_DAILY || '50', 10),

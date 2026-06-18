@@ -110,8 +110,43 @@ class ContentTokenMonitor:
         "text-embedding-ada-002": {"input": 0.10, "output": 0.0},
     }
 
+    # OpenRouter model pricing (per 1M tokens, USD). Keyed by the BARE OpenRouter
+    # model id (i.e. with the 'openrouter/' prefix already stripped). Approximate
+    # public prices — extend as new OpenRouter tiers are used. Anything not listed
+    # here (and not in MODEL_PRICING) is treated as cost 0 with a one-time warning,
+    # NOT silently priced as gpt-4o.
+    OPENROUTER_PRICING = {
+        "google/gemma-2-27b-it": {"input": 0.27, "output": 0.27},
+        "google/gemma-2-9b-it": {"input": 0.06, "output": 0.06},
+        "google/gemma-3-27b-it": {"input": 0.10, "output": 0.20},
+        "google/gemma-3-12b-it": {"input": 0.05, "output": 0.10},
+        "meta-llama/llama-3.3-70b-instruct": {"input": 0.12, "output": 0.30},
+        "mistralai/mistral-small-3.2-24b-instruct": {"input": 0.05, "output": 0.10},
+    }
+
     # Backward compatibility: input-only cost lookup (for existing estimate_cost usage)
     MODEL_COSTS = {k: v["input"] for k, v in MODEL_PRICING.items()}
+    OPENROUTER_COSTS = {k: v["input"] for k, v in OPENROUTER_PRICING.items()}
+
+    # Tracks unknown models already warned about, so warnings fire once per model.
+    _warned_unknown_models: set[str] = set()
+
+    @staticmethod
+    def normalize_model_name(model: str) -> str:
+        """Strip a leading 'openrouter/' marker so pricing/encoding lookups use the
+        bare model id (e.g. 'openrouter/google/gemma-2-27b-it' -> 'google/gemma-2-27b-it')."""
+        if model and model.lower().startswith("openrouter/"):
+            return model[len("openrouter/"):]
+        return model
+
+    @classmethod
+    def _warn_unknown_model_once(cls, model: str) -> None:
+        if model not in cls._warned_unknown_models:
+            cls._warned_unknown_models.add(model)
+            logger.warning(
+                f"No pricing for model '{model}'; recording cost as $0 "
+                "(add it to MODEL_PRICING / OPENROUTER_PRICING for accurate cost tracking)."
+            )
 
     def __init__(self):
         """Initialize token monitor."""
@@ -141,10 +176,18 @@ class ContentTokenMonitor:
         if not self.tiktoken or not text:
             return 0
 
+        # Normalize OpenRouter ids; tiktoken only knows OpenAI model names, so for
+        # non-OpenAI models fall back to a modern encoding (cached) instead of
+        # re-raising and char-estimating (and log-spamming) on every call.
+        model = self.normalize_model_name(model)
         try:
             # Get or create encoding for model
             if model not in self.encoding_cache:
-                self.encoding_cache[model] = self.tiktoken.encoding_for_model(model)
+                try:
+                    self.encoding_cache[model] = self.tiktoken.encoding_for_model(model)
+                except KeyError:
+                    # Unknown (non-OpenAI) model — use a reasonable default encoding
+                    self.encoding_cache[model] = self.tiktoken.get_encoding("o200k_base")
 
             encoding = self.encoding_cache[model]
             return len(encoding.encode(text))
@@ -164,7 +207,14 @@ class ContentTokenMonitor:
         Returns:
             Estimated cost in USD
         """
-        cost_per_million = self.MODEL_COSTS.get(model, 2.50)  # Default to gpt-4o
+        model = self.normalize_model_name(model)
+        cost_per_million = self.MODEL_COSTS.get(model)
+        if cost_per_million is None:
+            cost_per_million = self.OPENROUTER_COSTS.get(model)
+        if cost_per_million is None:
+            # Unknown model — record 0 (do NOT fabricate gpt-4o pricing) + warn once.
+            self._warn_unknown_model_once(model)
+            return 0.0
         return (tokens / 1_000_000) * cost_per_million
 
     def log_content_stats(
@@ -565,6 +615,10 @@ class StageUsage:
     input_cost: float = 0.0
     output_cost: float = 0.0
     total_cost: float = 0.0
+    # Provider-reported actual cost (USD) when available (e.g. OpenRouter); None means
+    # total_cost is the price-table estimate. cost_source records which it is.
+    actual_cost: float | None = None
+    cost_source: str = "estimated"
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -592,9 +646,6 @@ class CostTracker:
         tracker.log_summary()
         summary = tracker.get_summary()
     """
-
-    # Default pricing for unknown models (gpt-4o equivalent)
-    DEFAULT_PRICING = {"input": 2.50, "output": 10.00}
 
     def __init__(self):
         """Initialize empty cost tracker."""
@@ -629,6 +680,14 @@ class CostTracker:
             prompt_tokens = usage_metrics.get('prompt_tokens', 0)
             completion_tokens = usage_metrics.get('completion_tokens', 0)
 
+        # A crew that ran but reported no tokens is a silent-zero signal (lost cost),
+        # distinct from a legitimately-skipped crew (callers guard on truthy usage_metrics).
+        if usage_metrics is not None and (prompt_tokens + completion_tokens) == 0:
+            logger.warning(
+                f"[CostTracker] '{stage}' reported usage but 0 tokens — "
+                f"its LLM cost is not being counted (model={model})."
+            )
+
         return self._record_usage(stage, model, prompt_tokens, completion_tokens)
 
     def record_llm_usage(
@@ -649,15 +708,19 @@ class CostTracker:
         prompt_tokens = usage_dict.get('prompt_tokens', 0)
         completion_tokens = usage_dict.get('completion_tokens', 0)
         model = usage_dict.get('model', 'gpt-4o')
+        actual_cost = usage_dict.get('cost')  # provider-reported (OpenRouter); None for OpenAI
 
-        return self._record_usage(stage, model, prompt_tokens, completion_tokens)
+        return self._record_usage(
+            stage, model, prompt_tokens, completion_tokens, actual_cost=actual_cost
+        )
 
     def _record_usage(
         self,
         stage: str,
         model: str,
         prompt_tokens: int,
-        completion_tokens: int
+        completion_tokens: int,
+        actual_cost: float | None = None,
     ) -> StageUsage:
         """
         Internal method to record usage and calculate costs.
@@ -671,9 +734,26 @@ class CostTracker:
         Returns:
             StageUsage record
         """
-        pricing = ContentTokenMonitor.MODEL_PRICING.get(model, self.DEFAULT_PRICING)
+        # Normalize OpenRouter ids so the stored name + pricing lookup use the bare id.
+        model = ContentTokenMonitor.normalize_model_name(model)
+        pricing = (
+            ContentTokenMonitor.MODEL_PRICING.get(model)
+            or ContentTokenMonitor.OPENROUTER_PRICING.get(model)
+        )
+        if pricing is None:
+            # Unknown model — record $0 (do NOT fabricate gpt-4o pricing) + warn once.
+            ContentTokenMonitor._warn_unknown_model_once(model)
+            pricing = {"input": 0.0, "output": 0.0}
         input_cost = (prompt_tokens / 1_000_000) * pricing["input"]
         output_cost = (completion_tokens / 1_000_000) * pricing["output"]
+
+        # Prefer the provider's actual cost when available; else use the estimate.
+        if actual_cost is not None:
+            total_cost = actual_cost
+            cost_source = "actual"
+        else:
+            total_cost = input_cost + output_cost
+            cost_source = "estimated"
 
         usage = StageUsage(
             stage=stage,
@@ -682,7 +762,9 @@ class CostTracker:
             completion_tokens=completion_tokens,
             input_cost=input_cost,
             output_cost=output_cost,
-            total_cost=input_cost + output_cost
+            total_cost=total_cost,
+            actual_cost=actual_cost,
+            cost_source=cost_source,
         )
         self.stage_usages.append(usage)
 
@@ -690,7 +772,7 @@ class CostTracker:
         if settings.cost_logging_enabled:
             logger.debug(
                 f"Cost [{stage}]: {prompt_tokens:,} in + {completion_tokens:,} out = "
-                f"${usage.total_cost:.4f} ({model})"
+                f"${usage.total_cost:.4f} ({model}, {cost_source})"
             )
 
         return usage
@@ -706,6 +788,19 @@ class CostTracker:
         total_completion = sum(u.completion_tokens for u in self.stage_usages)
         total_input_cost = sum(u.input_cost for u in self.stage_usages)
         total_output_cost = sum(u.output_cost for u in self.stage_usages)
+        # total_cost uses each stage's total_cost, which is the actual provider cost
+        # where available (e.g. OpenRouter) and the price-table estimate otherwise.
+        total_cost = sum(u.total_cost for u in self.stage_usages)
+        actual_total = sum(u.total_cost for u in self.stage_usages if u.cost_source == "actual")
+        estimated_total = sum(u.total_cost for u in self.stage_usages if u.cost_source != "actual")
+
+        sources = {u.cost_source for u in self.stage_usages}
+        if sources == {"actual"}:
+            total_cost_source = "actual"
+        elif sources == {"estimated"} or not sources:
+            total_cost_source = "estimated"
+        else:
+            total_cost_source = "mixed"
 
         return {
             "total_prompt_tokens": total_prompt,
@@ -713,7 +808,10 @@ class CostTracker:
             "total_tokens": total_prompt + total_completion,
             "total_input_cost": round(total_input_cost, 4),
             "total_output_cost": round(total_output_cost, 4),
-            "total_cost": round(total_input_cost + total_output_cost, 4),
+            "total_cost": round(total_cost, 4),
+            "total_cost_source": total_cost_source,
+            "actual_cost_total": round(actual_total, 4),
+            "estimated_cost_total": round(estimated_total, 4),
             "stage_breakdown": [u.to_dict() for u in self.stage_usages]
         }
 
@@ -737,7 +835,12 @@ class CostTracker:
             f"  - Output tokens: {summary['total_completion_tokens']:,} "
             f"(${summary['total_output_cost']:.4f})"
         )
-        logger.info(f"Total Cost: ${summary['total_cost']:.4f}")
+        logger.info(
+            f"Total Cost: ${summary['total_cost']:.4f} "
+            f"(source: {summary['total_cost_source']}; "
+            f"actual ${summary['actual_cost_total']:.4f} / "
+            f"estimated ${summary['estimated_cost_total']:.4f})"
+        )
         logger.info("-" * 60)
         logger.info("Per-Stage Breakdown:")
 

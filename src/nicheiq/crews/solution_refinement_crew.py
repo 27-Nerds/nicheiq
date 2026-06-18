@@ -6,11 +6,10 @@ Single-agent crew for strategic refinement of selected solution using keyword va
 from crewai import Agent, Crew, Task
 from .safe_task import SafeTask
 from crewai.project import CrewBase, agent, crew, task
-from langchain_openai import ChatOpenAI
 from loguru import logger
 
 from ..config.settings import settings
-from ..utils.llm_service import build_llm_kwargs
+from ..utils.llm_service import build_crew_llm
 from ..models.solution_idea import SolutionIdea
 from ..models.solution_refinement import SolutionRefinement
 from ..utils.validation.crew_guardrails import validate_solution_refinement
@@ -48,10 +47,10 @@ class SolutionRefinementCrew:
         """
         return Agent(
             config=self.agents_config["strategic_advisor"],
-            llm=ChatOpenAI(**build_llm_kwargs(
+            llm=build_crew_llm(
                 model=settings.openai_model_name,
                 temperature=0.5,  # Balanced creativity for strategic thinking (ignored for reasoning models)
-            )),
+            ),
             verbose=True,
         )
 

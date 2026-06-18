@@ -119,6 +119,44 @@ NicheContext → QueryGenerator → Search Queries
 
 ---
 
+### Seeded research flows (catalog pain / idea)
+
+Catalog detail pages (`/pain-point/[slug]`, `/idea/[slug]`) and the saved-pains page can launch
+research **seeded** from existing catalog data, skipping discovery stages. Three entry modes
+(`Job.entryMode`), dispatched by Redis `task_type`; seeds travel in the payload (the worker has no DB):
+
+| Mode (`entryMode`) | Trigger | Skips | Runs | Charge |
+|---|---|---|---|---|
+| `pain_research` (single) | pain page CTA (`painSlugs:[slug]`) | stages 1–4 | stage 5 → **awaiting-selection** → existing Phase 2 | `discovery` |
+| `pain_remix` (2–5 pains) | saved-pains multi-select (2–5 slugs) | stages 1–4 | merged `pain_point_analysis` across pains → stage 5 → … | `discovery` |
+| `deep_idea` | idea page CTA | stages 1–5 | Phase 2 (5.5 Competitive → 14) one-shot | `deep_research` |
+
+**Mechanics:** the worker builds a minimal `ResearchState` (`flows/catalog_seed.py`), persists the
+seeded artifacts as checkpoints, calls `_skip_stage(...)` for bypassed stages (emits SKIPPED
+progress), sets `current_stage`, then runs `_execute_remaining_stages(...)` directly. Catalog text is
+sanitized (injection patterns stripped via `_sanitize_social_content`); the Stage-2/3 delimiter
+fencing is not applied — it belongs to raw-social-content ingestion, which seeded runs skip, and
+Stage 5 consumes the same unfenced structured shapes in the normal pipeline.
+
+**Quality passes (`flows/seed_enrichment.py`, both best-effort):** remix jobs (>1 pain) get an
+LLM-synthesized cross-niche `niche_context` (one structured call; the deterministic template from
+`catalog_seed.py` is the fallback on any failure). All seeded modes then run a targeted Hacker News
+evidence pass (`enable_seed_enrichment`, default on): pain/idea-derived queries → relevance
+post-filter + dedup → if ≥3 posts survive, `state.social_content` is set and checkpointed as
+`stage_2_social_content` (so Phase-2 resume keeps it, the stage-11 trend crew gets real data
+instead of its "Risky" missing-data fallback, and the report's evidence appendix has sources).
+Fewer than 3 posts → nothing is persisted (the checkpoint loader's quality gate would discard a
+thinner collection and reset the resume stage). Note: stage 2 still reads SKIPPED in job progress —
+enrichment is an internal pass, not a stage run. Reports without a fresh full social scrape →
+`FinalReport.seeded_from_catalog=True` (persisted through the Phase-2 checkpoint), surfaced as a
+"seeded from catalog" badge. Idea runs also bump `CatalogIdea.researchCount` (distinct users).
+
+**Telemetry (no events table):** adoption is queryable from `Job.entryMode`
+(`pain_research`/`deep_idea`) and `CatalogIdeaResearch` rows; endpoints also emit structured
+`console.log` events (`{event, userId, jobId, …}`).
+
+---
+
 ### Stages 7-8.75: Solution Pipeline (UnifiedSolutionCrew)
 
 **Responsibility**: Generate, analyze, and select SaaS solutions
@@ -151,6 +189,38 @@ def task_2_competitive(self) -> Task:
 **Benefits**: Automatic field preservation, no manual JSON formatting, type safety
 
 **Guardrails**: Validation functions prevent field loss during refinement
+
+#### Originality pipeline (Stage 7 ideation internals)
+
+Ideation does **not** run a single brainstorm task. To fight mode collapse on reasoning
+models (where temperature is inert and prompt technique is the only diversity lever), the
+crew generates concepts through an originality pipeline before the convergent
+filter/refine/select tasks above:
+
+1. **N independent divergent samples** (`num_divergent_samples`, default 2) — each runs the
+   ideator under a different *orthogonal lens* (`_DIVERGENT_LENSES`: e.g. power-user gap,
+   structural inversion + cross-domain transfer). The lenses are **domain-neutral** so the
+   system works for any niche. Each sample is an independent LLM call (no shared context),
+   so the samples can't collapse onto one another.
+2. **Independent novelty critic** (`_score_pool_novelty`) — scores every concept's
+   `obviousness_score` (0-1, **lower = more original** = the fraction of competent builders
+   who'd also propose it) and **drops ideas that already exist** as shipping products. This
+   critic's score *overwrites* the ideator's own obviousness estimate — it is the system's
+   trustworthy originality signal.
+3. **Pool + dedup** (`_pool_and_dedup_raw_concepts`) across all samples, capped at
+   `divergent_pool_cap` (default 12). Falls back to a single divergent sample if the pool
+   comes back too small.
+4. **Convergent tasks** (filter → refine → select) run on the pooled concepts. The
+   M/D/J-tag carry-through also copies `obviousness_score` from the pooled `RawConcept` onto
+   the final refined idea by whitespace-normalized name.
+5. **Deterministic coverage + bold-slot re-injection** — after refinement, code (not the
+   LLM) guarantees pain-point coverage and a single **bold slot** (the most original unused
+   concept). Re-injected ideas are fully refined via `_refine_single_concept` (not stubs) so
+   they carry the same fields and scores as the rest.
+
+`obviousness_score` is surfaced in the UI as **Originality** (= 1 − obviousness_score,
+falling back to `novelty_score`). `novelty_score` stays the refiner's separate signal and
+continues to drive the composite score and the "Innovator" superpower.
 
 ---
 

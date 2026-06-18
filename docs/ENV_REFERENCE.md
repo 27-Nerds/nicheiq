@@ -517,6 +517,59 @@ The `reasoning_effort` parameter is ignored (only applies to GPT-5 series).
 LANDING_PAGE_EXECUTION_LLM=gpt-5.1-codex-max
 ```
 
+### OpenRouter (Alternative Provider, Per-Tier)
+
+Point any chat-completion tier at an OpenRouter-hosted model by prefixing the
+model id with `openrouter/`. When NicheIQ sees the prefix it routes that tier to
+`https://openrouter.ai/api/v1` using `OPENROUTER_API_KEY` (the prefix is stripped
+before the bare id, e.g. `google/gemma-2-27b-it`, is sent).
+
+```bash
+OPENROUTER_API_KEY=your_openrouter_api_key_here   # https://openrouter.ai/keys
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1   # default
+OPENROUTER_SITE_URL=                                # optional HTTP-Referer header (attribution)
+OPENROUTER_APP_NAME=                                # optional X-Title header (attribution)
+
+# Example: run the cheap competitor-extraction tier on gemma
+COMPETITOR_EXTRACTION_LLM=openrouter/google/gemma-2-27b-it
+```
+
+**`OPENAI_API_KEY` stays required.** OpenRouter is supplemental: embeddings (CrewAI
+knowledge/RAG) have no OpenRouter endpoint, the Codex landing-page tier needs the
+OpenAI Responses API, and any non-overridden tier still uses OpenAI.
+
+**Tier safety** (which tiers tolerate a weaker OpenRouter model):
+
+| Class | Tiers | Notes |
+|-------|-------|-------|
+| Conditionally safe | `THREAD_VALIDATION_LLM`, `KEYWORD_VALIDATION_LLM`, `COMPETITOR_EXTRACTION_LLM`, `PAIN_SOLUTION_MAPPING_LLM` | Native structured output — needs a **tool-capable** OpenRouter model (gemma may fail) |
+| Risky | `OPENAI_MODEL_NAME` (shared by ~23 agents), `PAIN_POINT_VALIDATION_LLM` | CrewAI prompt-based JSON; weak models may lose data, retry, or hard-fail on plain-`Task` steps |
+| Unsafe (avoid) | `CONTENT_ANALYSIS_LLM` (needs ~150K context), `FUNCTION_CALLING_LLM` (tool calls), `BRAINSTORM_LLM`/`IDEATION_*` | `reasoning_effort` is a no-op on non-reasoning OpenRouter models |
+| Blocked (raises at startup) | `LANDING_PAGE_LLM`, `LANDING_PAGE_EXECUTION_LLM` | Plain-`Task` creative steps + Codex/Responses-API only |
+
+Backend features also accept `openrouter/*` ids: `SUGGEST_LLM_MODEL`,
+`CATEGORIZE_LLM_MODEL`, `OPENAI_FAQ_MODEL` (backend `OPENAI_API_KEY` likewise stays
+required). Note: `KEYWORD_RESEARCH_LLM` and `QUOTE_ENRICHMENT_LLM` are defined but
+not currently read by any code — overriding them has no effect.
+
+**How it works:** model-name prefix routing, mirroring the Kimi/Moonshot pattern.
+
+**Cost tracking:**
+- LangChain-direct calls (`LLMService.invoke_structured`/`invoke_plain` — e.g. thread/
+  keyword validation, competitor extraction, pain-solution mapping, and all Stage-14
+  report generation) use OpenRouter's **actual** returned `usage.cost` when present
+  (`cost_source: "actual"` in the per-stage breakdown). OpenAI returns no cost, so those
+  fall back to the price-table estimate (`cost_source: "estimated"`).
+- CrewAI crew agents are always **estimated** from the price table — CrewAI's
+  `usage_metrics` exposes tokens only, not the provider's cost. Unlisted models are
+  recorded at $0 with a one-time warning (never mispriced as gpt-4o).
+- `cost_summary` (in the saved `research_state_raw_*.json` and run logs) reports
+  `total_cost` plus `total_cost_source` and an actual-vs-estimated split.
+
+**Known untracked LLM cost** (lower bound caveat): thread/keyword validators and
+query/seed generators discard their usage; embeddings (OpenAI) and external APIs
+(Serper/Reddit/etc.) are not counted.
+
 **Cost Impact Example** (expat relocation niche):
 - All gpt-4o: ~$2.20 per run
 - Multi-model (default): ~$0.85 per run (60% savings)

@@ -94,16 +94,27 @@ class ReportGenerator:
         score_accessor: ScoreAccessor for score extraction with fallbacks
     """
 
-    def __init__(self, state: ResearchState):
+    def __init__(self, state: ResearchState, cost_tracker=None):
         """
         Initialize report generator.
 
         Args:
             state: Complete ResearchState containing all stage results
+            cost_tracker: Optional CostTracker; when provided, the Stage-14 LLM
+                calls record their token usage/cost into it (otherwise no-op).
         """
         self.state = state
         self.accessor = StateAccessor(state)
         self.score_accessor = ScoreAccessor(state.solution_selection)
+        self.cost_tracker = cost_tracker
+
+    def _record_cost(self, stage: str, usage) -> None:
+        """Record a direct-LLM TokenUsage into the cost tracker (no-op if absent)."""
+        if self.cost_tracker and usage:
+            try:
+                self.cost_tracker.record_llm_usage(stage, usage.to_dict())
+            except Exception:
+                pass
 
     def generate_report(self) -> FinalReport:
         """
@@ -1062,6 +1073,7 @@ class ReportGenerator:
             narrative, _usage = LLMService.invoke_structured(
                 prompt=prompt, output_model=MarketNarrative, temperature=0.7
             )
+            self._record_cost("Stage 14 - Market Narrative", _usage)
             base_report.executive_summary = narrative.executive_summary
             base_report.acquisition_strategy_summary = narrative.acquisition_strategy_summary
             logger.info("[OK] Market narrative complete")
@@ -1101,6 +1113,7 @@ class ReportGenerator:
                 prompt=prompt, output_model=NextStepsResult, temperature=0.7,
                 model_name=settings.function_calling_llm
             )
+            self._record_cost("Stage 14 - Next Steps", _usage)
             base_report.next_steps = result.next_steps
             logger.info("[OK] Next steps complete")
         except Exception as e:
@@ -1146,6 +1159,7 @@ class ReportGenerator:
                 prompt=prompt, output_model=ImplementationPlanning, temperature=0.7,
                 model_name=settings.function_calling_llm
             )
+            self._record_cost("Stage 14 - Implementation Planning", _usage)
             base_report.solution_implementation_overview = planning.solution_implementation_overview
             base_report.mvp_scope_definition = planning.mvp_scope_definition
             logger.info("[OK] Implementation planning complete")
@@ -1222,6 +1236,7 @@ class ReportGenerator:
                 temperature=0.5,  # Lower for consistency
                 model_name=settings.pain_solution_mapping_llm
             )
+            self._record_cost("Stage 14 - Pain-Solution Mapping", _usage)
 
             # Convert list to dict
             mappings_dict = {item.pain_point_title: item.solution_approach for item in result.mappings}
@@ -2689,6 +2704,7 @@ It differentiates through {diff_text}.
                 output_model=ExecutiveNarrative,
                 temperature=0.5
             )
+            self._record_cost("Stage 14 - Executive Narrative", _usage)
 
             # Validate output
             if self._validate_executive_narrative(result, selected_solution, core_pain_point):
@@ -3260,6 +3276,7 @@ It differentiates through {diff_text}.
                 output_model=IdealCustomerProfile,
                 temperature=0.2,
             )
+            self._record_cost("Stage 14 - Ideal Customer Profile", _usage)
             logger.info(f"[OK] LLM ICP generation successful: persona={result.persona_name}")
             return result
 
@@ -3456,6 +3473,7 @@ It differentiates through {diff_text}.
                 output_model=MarketingNarrative,
                 temperature=0.6
             )
+            self._record_cost("Stage 14 - Marketing Narrative", _usage)
             logger.info("[OK] LLM marketing narrative generation successful")
             return result
 
@@ -3530,6 +3548,7 @@ It differentiates through {diff_text}.
                 output_model=First30DaysPlaybook,
                 temperature=0.6
             )
+            self._record_cost("Stage 14 - First 30 Days Playbook", _usage)
             logger.info("Successfully generated 30-day playbook via LLM")
             return playbook
         except Exception as e:
@@ -3630,6 +3649,7 @@ It differentiates through {diff_text}.
                 output_model=BudgetEstimateResult,
                 temperature=0.5
             )
+            self._record_cost("Stage 14 - Budget Estimate", _usage)
             logger.info(
                 f"Successfully generated budget estimate: "
                 f"${budget_result.monthly_budget_min}-${budget_result.monthly_budget_max}/month"
@@ -3923,6 +3943,7 @@ Return valid JSON with this structure:
                 temperature=0.1,
                 timeout=60
             )
+            self._record_cost("Stage 14 - Feature Comparison", usage)
 
             # Update computed fields
             result.total_unique_groups = len(result.feature_groups)

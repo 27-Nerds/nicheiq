@@ -7,13 +7,35 @@ import type {
 import { CONFIG } from '../config.js';
 
 /**
- * Shared OpenAI client. Kept module-private on purpose: every chat completion
- * must go through `chatComplete()` so reasoning-model parameter rules are
- * applied uniformly. Do NOT export this — add call sites via `chatComplete`.
+ * Provider clients, cached as module singletons so connection pooling /
+ * keep-alive is preserved (do NOT construct a client per request). Kept
+ * module-private on purpose: every chat completion must go through
+ * `chatComplete()` so reasoning-model parameter rules are applied uniformly.
  */
-const client = new OpenAI({
-  apiKey: CONFIG.openaiApiKey,
-});
+const OPENROUTER_PREFIX = 'openrouter/';
+
+type Provider = 'openai' | 'openrouter';
+const clientCache = new Map<Provider, OpenAI>();
+
+function getClient(provider: Provider): OpenAI {
+  let c = clientCache.get(provider);
+  if (!c) {
+    if (provider === 'openrouter') {
+      const defaultHeaders: Record<string, string> = {};
+      if (CONFIG.openrouterSiteUrl) defaultHeaders['HTTP-Referer'] = CONFIG.openrouterSiteUrl;
+      if (CONFIG.openrouterAppName) defaultHeaders['X-Title'] = CONFIG.openrouterAppName;
+      c = new OpenAI({
+        apiKey: CONFIG.openrouterApiKey,
+        baseURL: CONFIG.openrouterBaseUrl,
+        ...(Object.keys(defaultHeaders).length ? { defaultHeaders } : {}),
+      });
+    } else {
+      c = new OpenAI({ apiKey: CONFIG.openaiApiKey });
+    }
+    clientCache.set(provider, c);
+  }
+  return c;
+}
 
 /**
  * GPT-5 series and o1/o3/o4 reasoning models reject `temperature` != 1 (hard
@@ -52,10 +74,17 @@ export interface ChatCompleteOpts {
  */
 export async function chatComplete(opts: ChatCompleteOpts): Promise<ChatCompletion> {
   const { model, messages, temperature, maxTokens, responseFormat } = opts;
-  const params: ChatCompletionCreateParamsNonStreaming = { model, messages };
+
+  // Route by 'openrouter/' prefix. Strip the prefix FIRST so both the model sent
+  // to the API and the reasoning-model detection use the bare id.
+  const isOpenRouter = model.toLowerCase().startsWith(OPENROUTER_PREFIX);
+  const baseModel = isOpenRouter ? model.slice(OPENROUTER_PREFIX.length) : model;
+  const clientForCall = getClient(isOpenRouter ? 'openrouter' : 'openai');
+
+  const params: ChatCompletionCreateParamsNonStreaming = { model: baseModel, messages };
   if (responseFormat) params.response_format = responseFormat;
 
-  if (isReasoningModel(model)) {
+  if (isReasoningModel(baseModel)) {
     if (maxTokens !== undefined) params.max_completion_tokens = maxTokens;
     // 'minimal' is valid for GPT-5 at the API level; the installed SDK's
     // ReasoningEffort union predates it, so cast via `string` to keep TS happy.
@@ -66,5 +95,5 @@ export async function chatComplete(opts: ChatCompleteOpts): Promise<ChatCompleti
     if (maxTokens !== undefined) params.max_tokens = maxTokens;
   }
 
-  return client.chat.completions.create(params);
+  return clientForCall.chat.completions.create(params);
 }

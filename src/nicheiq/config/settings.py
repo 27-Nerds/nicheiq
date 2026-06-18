@@ -214,6 +214,26 @@ class Settings(BaseSettings):
         description="Enable Kimi thinking mode (deeper reasoning, temp=1.0). Default: False (instant mode, temp=0.6, faster and cheaper)."
     )
 
+    # OpenRouter Configuration (optional alternative provider, per-tier)
+    # Point any chat-completion tier at an 'openrouter/<vendor>/<model>' model to route it
+    # through OpenRouter. OpenAI key stays required (embeddings + Codex have no OpenRouter path).
+    openrouter_api_key: str | None = Field(
+        default=None,
+        description="OpenRouter API key for 'openrouter/*' models (get from openrouter.ai/keys)"
+    )
+    openrouter_base_url: str = Field(
+        default="https://openrouter.ai/api/v1",
+        description="OpenRouter OpenAI-compatible base URL"
+    )
+    openrouter_site_url: str | None = Field(
+        default=None,
+        description="Optional HTTP-Referer header for OpenRouter attribution/ranking"
+    )
+    openrouter_app_name: str | None = Field(
+        default=None,
+        description="Optional X-Title header for OpenRouter attribution/ranking"
+    )
+
     # CrewAI+ (Enterprise) - Optional
     crewai_api_key: str | None = Field(default=None, description="CrewAI+ API key")
 

@@ -710,16 +710,15 @@ class SEOStrategyCrew:
 
         Uses zero temperature for data-driven keyword analysis (no creativity needed).
         """
-        from langchain_openai import ChatOpenAI
-        from ..utils.llm_service import build_llm_kwargs
+        from ..utils.llm_service import build_crew_llm
 
         return Agent(
             config=self.agents_config["keyword_strategist"],
             tools=[],  # No tools needed - analyzes CSV data provided in task context
-            llm=ChatOpenAI(**build_llm_kwargs(
+            llm=build_crew_llm(
                 model=settings.openai_model_name,
                 temperature=0.1,  # Low temperature to avoid repetition loops
-            )),
+            ),
             verbose=True,
         )
 
@@ -738,16 +737,15 @@ class SEOStrategyCrew:
 
         Uses zero temperature for data-driven keyword analysis.
         """
-        from langchain_openai import ChatOpenAI
-        from ..utils.llm_service import build_llm_kwargs
+        from ..utils.llm_service import build_crew_llm
 
         return Agent(
             config=self.agents_config["premium_tier_analyst"],
             tools=[],  # No tools needed - analyzes CSV data
-            llm=ChatOpenAI(**build_llm_kwargs(
+            llm=build_crew_llm(
                 model=settings.openai_model_name,
                 temperature=0.1,  # Low temperature to avoid repetition loops
-            )),
+            ),
             verbose=True,
         )
 
@@ -768,16 +766,15 @@ class SEOStrategyCrew:
         NOTE: This agent is kept for backward compatibility. For new implementations,
         use tier_0_analyst and tier_1_analyst for better token management.
         """
-        from langchain_openai import ChatOpenAI
-        from ..utils.llm_service import build_llm_kwargs
+        from ..utils.llm_service import build_crew_llm
 
         return Agent(
             config=self.agents_config["high_priority_analyst"],
             tools=[],  # No tools needed - analyzes pre-filtered CSV data
-            llm=ChatOpenAI(**build_llm_kwargs(
+            llm=build_crew_llm(
                 model=settings.openai_model_name,
                 temperature=0.1,  # Low temperature to avoid repetition loops
-            )),
+            ),
             verbose=True,
         )
 
@@ -791,16 +788,15 @@ class SEOStrategyCrew:
 
         Uses zero temperature for data-driven keyword analysis.
         """
-        from langchain_openai import ChatOpenAI
-        from ..utils.llm_service import build_llm_kwargs
+        from ..utils.llm_service import build_crew_llm
 
         return Agent(
             config=self.agents_config["tier_0_analyst"],
             tools=[],  # No tools needed - analyzes pre-filtered CSV data
-            llm=ChatOpenAI(**build_llm_kwargs(
+            llm=build_crew_llm(
                 model=settings.openai_model_name,
                 temperature=0.1,  # Low temperature to avoid repetition loops
-            )),
+            ),
             verbose=True,
         )
 
@@ -814,16 +810,15 @@ class SEOStrategyCrew:
 
         Uses zero temperature for data-driven keyword analysis.
         """
-        from langchain_openai import ChatOpenAI
-        from ..utils.llm_service import build_llm_kwargs
+        from ..utils.llm_service import build_crew_llm
 
         return Agent(
             config=self.agents_config["tier_1_analyst"],
             tools=[],  # No tools needed - analyzes pre-filtered CSV data
-            llm=ChatOpenAI(**build_llm_kwargs(
+            llm=build_crew_llm(
                 model=settings.openai_model_name,
                 temperature=0.1,  # Low temperature to avoid repetition loops
-            )),
+            ),
             verbose=True,
         )
 
@@ -838,18 +833,17 @@ class SEOStrategyCrew:
         Uses low temperature for data-driven keyword analysis.
         Uses frequency_penalty to prevent infinite repetition loops in JSON output.
         """
-        from langchain_openai import ChatOpenAI
-        from ..utils.llm_service import build_llm_kwargs
+        from ..utils.llm_service import build_crew_llm
 
         return Agent(
             config=self.agents_config["strategic_tier_analyst"],
             tools=[],  # No tools needed - analyzes pre-filtered CSV data
-            llm=ChatOpenAI(**build_llm_kwargs(
+            llm=build_crew_llm(
                 model=settings.openai_model_name,
                 temperature=0.1,  # Slight randomness to prevent repetition loops
                 frequency_penalty=0.5,  # Discourage repeating the same tokens
                 presence_penalty=0.3,  # Discourage repeating topics
-            )),
+            ),
             verbose=True,
         )
 
@@ -864,18 +858,17 @@ class SEOStrategyCrew:
         Uses low temperature for precise geographic segmentation.
         Uses frequency_penalty to prevent infinite repetition loops in JSON output.
         """
-        from langchain_openai import ChatOpenAI
-        from ..utils.llm_service import build_llm_kwargs
+        from ..utils.llm_service import build_crew_llm
 
         return Agent(
             config=self.agents_config["geographic_tier_analyst"],
             tools=[],  # No tools needed - analyzes CSV data
-            llm=ChatOpenAI(**build_llm_kwargs(
+            llm=build_crew_llm(
                 model=settings.openai_model_name,
                 temperature=0.1,  # Slight randomness to prevent repetition loops
                 frequency_penalty=0.5,  # Discourage repeating the same tokens
                 presence_penalty=0.3,  # Discourage repeating topics
-            )),
+            ),
             verbose=True,
         )
 
@@ -890,18 +883,17 @@ class SEOStrategyCrew:
         Uses low temperature for systematic categorization.
         Uses frequency_penalty to prevent infinite repetition loops in JSON output.
         """
-        from langchain_openai import ChatOpenAI
-        from ..utils.llm_service import build_llm_kwargs
+        from ..utils.llm_service import build_crew_llm
 
         return Agent(
             config=self.agents_config["category_tier_analyst"],
             tools=[],  # No tools needed - analyzes CSV data
-            llm=ChatOpenAI(**build_llm_kwargs(
+            llm=build_crew_llm(
                 model=settings.openai_model_name,
                 temperature=0.1,  # Slight randomness to prevent repetition loops
                 frequency_penalty=0.5,  # Discourage repeating the same tokens
                 presence_penalty=0.3,  # Discourage repeating topics
-            )),
+            ),
             verbose=True,
         )
 
@@ -915,16 +907,15 @@ class SEOStrategyCrew:
 
         Uses low temperature for strategic synthesis with data grounding.
         """
-        from langchain_openai import ChatOpenAI
-        from ..utils.llm_service import build_llm_kwargs
+        from ..utils.llm_service import build_crew_llm
 
         return Agent(
             config=self.agents_config["keyword_summary_analyst"],
             tools=[],  # No tools needed - synthesizes from context
-            llm=ChatOpenAI(**build_llm_kwargs(
+            llm=build_crew_llm(
                 model=settings.openai_model_name,
                 temperature=0.2,  # Slightly higher for strategic synthesis
-            )),
+            ),
             verbose=True,
         )
 
@@ -936,15 +927,14 @@ class SEOStrategyCrew:
 
         Uses moderate temperature (0.5) for balanced creative strategy with structure.
         """
-        from langchain_openai import ChatOpenAI
-        from ..utils.llm_service import build_llm_kwargs
+        from ..utils.llm_service import build_crew_llm
 
         return Agent(
             config=self.agents_config["content_strategist"],
-            llm=ChatOpenAI(**build_llm_kwargs(
+            llm=build_crew_llm(
                 model=settings.openai_model_name,
                 temperature=0.5,  # Moderate temperature (ignored for reasoning models)
-            )),
+            ),
             verbose=True,
         )
 
@@ -958,17 +948,16 @@ class SEOStrategyCrew:
         Slightly higher than 0.3 to encourage solution-specific examples while maintaining accuracy.
         Uses max_tokens=20000 to prevent truncation of large SEO strategy outputs.
         """
-        from langchain_openai import ChatOpenAI
-        from ..utils.llm_service import build_llm_kwargs
+        from ..utils.llm_service import build_crew_llm
 
         return Agent(
             config=self.agents_config["seo_specialist"],
-            llm=ChatOpenAI(**build_llm_kwargs(
+            llm=build_crew_llm(
                 model=settings.openai_model_name,
                 temperature=0.4,  # Moderate temperature (ignored for reasoning models)
                 timeout=180,
                 # max_completion_tokens=20000,  # Disabled: CrewAI doesn't forward this properly for reasoning models
-            )),
+            ),
             verbose=True,
         )
 

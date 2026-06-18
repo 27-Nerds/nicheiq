@@ -10,7 +10,7 @@ from langchain_openai import ChatOpenAI
 from loguru import logger
 
 from ..config.settings import settings
-from .llm_service import build_llm_kwargs
+from .llm_service import build_llm_kwargs, is_openrouter_model
 from ..tools.dataforseo_tool import DataForSEOBaseClient
 from .keyword_filtering import filter_single_word_keywords
 from .prompts import load_prompt, safe_format
@@ -462,7 +462,9 @@ class SeedGenerator:
                 temperature=0.7,  # Creative for seed generation (ignored for reasoning models)
             )).with_structured_output(
                 KeywordSeedResult,
-                method="json_schema"  # Explicit constrained decoding for guaranteed schema adherence
+                # OpenRouter models often lack strict json_schema support; fall back to
+                # function_calling. OpenAI keeps strict constrained decoding.
+                method="function_calling" if is_openrouter_model(settings.openai_model_name) else "json_schema",
             )
 
             prompt_context = {

@@ -847,15 +847,14 @@ class PainPointCrew:
         Uses dedicated content_analysis_llm with temperature=0 for
         consistent, structured categorization output.
         """
-        from langchain_openai import ChatOpenAI
-        from ..utils.llm_service import build_llm_kwargs
+        from ..utils.llm_service import build_crew_llm
 
         return Agent(
             config=self.agents_config["content_researcher"],
-            llm=ChatOpenAI(**build_llm_kwargs(
+            llm=build_crew_llm(
                 model=settings.content_analysis_llm,
                 temperature=0,  # Deterministic for categorization (ignored for reasoning models)
-            )),
+            ),
             verbose=True,
         )
 
@@ -869,18 +868,17 @@ class PainPointCrew:
         Has knowledge_sources attached for RAG-based quote retrieval.
         Uses dedicated pain_point_validation_llm (non-reasoning) to allow max_tokens.
         """
-        from langchain_openai import ChatOpenAI
-        from ..utils.llm_service import build_llm_kwargs
+        from ..utils.llm_service import build_crew_llm
 
         from crewai.knowledge.knowledge_config import KnowledgeConfig
 
         return Agent(
             config=self.agents_config["pain_point_analyst"],
-            llm=ChatOpenAI(**build_llm_kwargs(
+            llm=build_crew_llm(
                 model=settings.pain_point_validation_llm,  # Non-reasoning model (gpt-4o)
                 temperature=0.3,  # Low-moderate for consistent pattern extraction
                 max_tokens=16000,  # Prevent truncation of large extraction outputs
-            )),
+            ),
             knowledge_config=KnowledgeConfig(results_limit=20),  # More tagged content available
             verbose=True,
         )
@@ -895,18 +893,17 @@ class PainPointCrew:
         Uses crew-level knowledge for RAG-based evidence validation.
         Uses dedicated pain_point_validation_llm (non-reasoning) to allow max_tokens.
         """
-        from langchain_openai import ChatOpenAI
-        from ..utils.llm_service import build_llm_kwargs
+        from ..utils.llm_service import build_crew_llm
 
         from crewai.knowledge.knowledge_config import KnowledgeConfig
 
         return Agent(
             config=self.agents_config["pain_point_validator"],
-            llm=ChatOpenAI(**build_llm_kwargs(
+            llm=build_crew_llm(
                 model=settings.pain_point_validation_llm,  # Non-reasoning model (gpt-4o)
                 temperature=0.2,  # Low temperature for consistent scoring
                 max_tokens=8192,  # Prevent truncation of large validation outputs
-            )),
+            ),
             knowledge_config=KnowledgeConfig(results_limit=5),  # Evidence validation
             verbose=True,
         )

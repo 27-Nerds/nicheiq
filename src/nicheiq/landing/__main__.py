@@ -119,6 +119,9 @@ Examples:
     logger.info("  - HTML Developer will generate custom layout")
 
     try:
+        # Fail fast if landing-page tiers are pointed at an unsupported OpenRouter model.
+        from ..utils.llm_service import validate_openrouter_tier_compatibility
+        validate_openrouter_tier_compatibility()
         crew = LandingPageCrew()
         result = crew.generate(report, page_mode=args.mode)
     except Exception as e:

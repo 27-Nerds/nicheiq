@@ -27,12 +27,11 @@ from typing import Optional
 from crewai import Agent, Crew, Task
 from .safe_task import SafeTask
 from crewai.project import CrewBase, agent, crew, task
-from langchain_openai import ChatOpenAI
 from loguru import logger
 
 from ..config.settings import settings
 from ..tools import CachedSerperDevTool
-from ..utils.llm_service import build_llm, build_llm_kwargs
+from ..utils.llm_service import build_crew_llm, build_llm
 from ..models.landing_page import (
     AnimatedHTMLResult,
     BrandIdentity,
@@ -90,10 +89,10 @@ class LandingPageCrew:
         """
         return Agent(
             config=self.agents_config["marketing_strategist"],
-            llm=ChatOpenAI(**build_llm_kwargs(
+            llm=build_crew_llm(
                 model=settings.landing_page_llm,
                 reasoning_effort=settings.landing_page_creative_reasoning_effort,
-            )),
+            ),
             verbose=True,
         )
 
@@ -106,10 +105,10 @@ class LandingPageCrew:
         """
         return Agent(
             config=self.agents_config["creative_director"],
-            llm=ChatOpenAI(**build_llm_kwargs(
+            llm=build_crew_llm(
                 model=settings.landing_page_llm,
                 reasoning_effort=settings.landing_page_creative_reasoning_effort,
-            )),
+            ),
             tools=[CachedSerperDevTool()],  # Enable inspiration search
             verbose=True,
         )
@@ -123,10 +122,10 @@ class LandingPageCrew:
         """
         return Agent(
             config=self.agents_config["visual_designer"],
-            llm=ChatOpenAI(**build_llm_kwargs(
+            llm=build_crew_llm(
                 model=settings.landing_page_llm,
                 reasoning_effort=settings.landing_page_creative_reasoning_effort,
-            )),
+            ),
             verbose=True,
         )
 
@@ -138,10 +137,10 @@ class LandingPageCrew:
         """
         return Agent(
             config=self.agents_config["brand_designer"],
-            llm=ChatOpenAI(**build_llm_kwargs(
+            llm=build_crew_llm(
                 model=settings.landing_page_llm,
                 reasoning_effort=settings.landing_page_creative_reasoning_effort,
-            )),
+            ),
             verbose=True,
         )
 
@@ -153,10 +152,10 @@ class LandingPageCrew:
         """
         return Agent(
             config=self.agents_config["landing_page_copywriter"],
-            llm=ChatOpenAI(**build_llm_kwargs(
+            llm=build_crew_llm(
                 model=settings.landing_page_llm,
                 reasoning_effort=settings.landing_page_creative_reasoning_effort,
-            )),
+            ),
             verbose=True,
         )
 

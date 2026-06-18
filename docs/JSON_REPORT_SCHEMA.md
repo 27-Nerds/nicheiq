@@ -475,7 +475,8 @@ Actionable GTM strategy for immediate execution.
 | `estimated_cac_paid` | `string` | Paid CAC estimate |
 | `seo_scalability_score` | `number` (0-1) | SEO scalability |
 | `estimated_indexable_pages` | `number` | Year 1 pages |
-| `novelty_score` | `number` (0-1) | Novelty assessment |
+| `novelty_score` | `number` (0-1) | Refiner's novelty assessment; drives the composite score and the "Innovator" superpower |
+| `obviousness_score` | `number\|null` (0-1) | Independent novelty critic's estimate of how OBVIOUS the idea is — **lower = more original**. Carried from the source `RawConcept` by whitespace-normalized name (M/D/J-tag pattern); `null` when the concept name didn't survive refinement. Surfaced in the UI as **Originality** (= 1 − obviousness_score). When absent (legacy data), the UI falls back to `novelty_score` **and** keeps the honest **Novelty** label rather than relabeling it as Originality |
 | `conventional_approach` | `string` | What most builders would try |
 | `innovation_angle` | `string` | How this solution diverges |
 | `why_it_works` | `string` | Evidence-based reason it succeeds |
@@ -1524,6 +1525,7 @@ Array of 7 recommended next steps.
 | `momentum_score` | 0.0 - 1.0 | 0=declining, 0.5=stable, 1=strong growth |
 | `confidence_score` | 0.0 - 1.0 | Higher = more confident |
 | `novelty_score` | 0.0 - 1.0 | Higher = more novel |
+| `obviousness_score` | 0.0 - 1.0 | **Lower = more original** (independent novelty critic). Shown as Originality = 1 − this |
 | `solo_dev_feasibility` | 0.0 - 1.0 | Higher = easier for solo dev |
 | `relevance_score` | 0.0 - 1.0 | Higher = more relevant |
 | `avg_competition` | 0 - 100 | Lower = less competitive |

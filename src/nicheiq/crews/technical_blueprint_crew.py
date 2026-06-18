@@ -10,12 +10,11 @@ from typing import Any
 from crewai import Agent, Crew, Task
 from .safe_task import SafeTask
 from crewai.project import CrewBase, agent, crew, task
-from langchain_openai import ChatOpenAI
 from loguru import logger
 
 from ..config.settings import settings
 from ..models.technical_blueprint import SiteStructure, UserFlowsSection
-from ..utils.llm_service import build_llm_kwargs
+from ..utils.llm_service import build_crew_llm
 from ..utils.validation.crew_guardrails import validate_site_structure, validate_user_flows
 
 
@@ -49,10 +48,10 @@ class TechnicalBlueprintCrew:
         """
         return Agent(
             config=self.agents_config["product_architect"],
-            llm=ChatOpenAI(**build_llm_kwargs(
+            llm=build_crew_llm(
                 model=settings.openai_model_name,
                 temperature=0.4,  # Balanced: structured but creative
-            )),
+            ),
             verbose=True,
         )
 
@@ -66,10 +65,10 @@ class TechnicalBlueprintCrew:
         """
         return Agent(
             config=self.agents_config["ux_designer"],
-            llm=ChatOpenAI(**build_llm_kwargs(
+            llm=build_crew_llm(
                 model=settings.openai_model_name,
                 temperature=0.5,  # Slightly higher for flow variety
-            )),
+            ),
             verbose=True,
         )
 

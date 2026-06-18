@@ -7,11 +7,10 @@ from crewai import Agent, Crew, Task
 from .safe_task import SafeTask
 from crewai.project import CrewBase, agent, crew, task
 from crewai_tools import SerperDevTool
-from langchain_openai import ChatOpenAI
 from loguru import logger
 
 from ..config.settings import settings
-from ..utils.llm_service import build_crew_llm, build_llm_kwargs
+from ..utils.llm_service import build_crew_llm
 from ..models.competitor import CompetitiveLandscape
 from ..models.data_source import (
     DataImplementationPlan,
@@ -80,10 +79,10 @@ class DataSourceResearchCrew:
         return Agent(
             config=self.agents_config["data_source_researcher"],
             tools=[self.search_tool],
-            llm=ChatOpenAI(**build_llm_kwargs(
+            llm=build_crew_llm(
                 model=settings.openai_model_name,
                 temperature=0.2,  # Low temperature for consistent factual research (ignored for reasoning models)
-            )),
+            ),
             verbose=True,
             # build_crew_llm forwards reasoning_effort to the API for GPT-5 models
             # (a ChatOpenAI instance would have it dropped by CrewAI's create_llm).
@@ -102,10 +101,10 @@ class DataSourceResearchCrew:
         return Agent(
             config=self.agents_config["data_quality_analyst"],
             verbose=True,
-            llm=ChatOpenAI(**build_llm_kwargs(
+            llm=build_crew_llm(
                 model=settings.openai_model_name,
                 temperature=0.3,  # Balanced for quality assessment (ignored for reasoning models)
-            )),
+            ),
         )
 
     @task

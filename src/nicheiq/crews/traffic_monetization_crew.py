@@ -11,11 +11,10 @@ Routes from research_flow.py when:
 from crewai import Agent, Crew, Task
 from .safe_task import SafeTask
 from crewai.project import CrewBase, agent, crew, task
-from langchain_openai import ChatOpenAI
 from loguru import logger
 
 from ..config.settings import settings
-from ..utils.llm_service import build_llm_kwargs
+from ..utils.llm_service import build_crew_llm
 from ..models.research_state import TrafficMonetizationResult
 from ..utils.validation.crew_guardrails import validate_traffic_monetization
 from ..utils.crew_helpers import (
@@ -70,10 +69,10 @@ class TrafficMonetizationCrew:
         """
         return Agent(
             config=self.agents_config["traffic_monetization_analyst"],
-            llm=ChatOpenAI(**build_llm_kwargs(
+            llm=build_crew_llm(
                 model=settings.openai_model_name,
                 temperature=0.4,  # Balanced for creative revenue suggestions (ignored for reasoning models)
-            )),
+            ),
             verbose=True,
         )
 

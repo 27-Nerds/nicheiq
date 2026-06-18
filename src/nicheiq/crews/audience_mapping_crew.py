@@ -11,7 +11,6 @@ enabling extraction of ACTUAL usernames, vocabulary, and tools mentioned.
 from crewai import Agent, Crew, Task
 from .safe_task import SafeTask
 from crewai.project import CrewBase, agent, crew, task
-from langchain_openai import ChatOpenAI
 from loguru import logger
 
 from ..config.settings import settings
@@ -300,14 +299,14 @@ class AudienceMappingCrew:
         Identifies distinct audience segments, influencers, and communities
         from social media discussions using knowledge source queries.
         """
-        from ..utils.llm_service import build_llm_kwargs
+        from ..utils.llm_service import build_crew_llm
 
         return Agent(
             config=self.agents_config["audience_researcher"],
-            llm=ChatOpenAI(**build_llm_kwargs(
+            llm=build_crew_llm(
                 model=settings.openai_model_name,
                 temperature=0.4,  # Moderate creativity (ignored for reasoning models)
-            )),
+            ),
             verbose=True,
         )
 

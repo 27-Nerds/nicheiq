@@ -13,7 +13,6 @@ TrendNarrativeOutput. Both are merged into the unchanged TrendLongevityResult.
 from crewai import Agent, Crew, Task
 from .safe_task import SafeTask
 from crewai.project import CrewBase, agent, crew, task
-from langchain_openai import ChatOpenAI
 from loguru import logger
 
 from ..config.settings import settings
@@ -22,7 +21,7 @@ from ..models.keyword_data import CrewKeywordValidationResult
 from ..models.pain_point import PainPointAnalysisResult
 from ..models.research_state import TrendLongevityResult, TrendNarrativeOutput
 from ..models.social_content import SocialContentCollection
-from ..utils.llm_service import build_llm_kwargs
+from ..utils.llm_service import build_crew_llm
 from ..utils.token_monitor import ContentTokenMonitor
 from ..utils.validation.crew_guardrails import validate_trend_narrative
 from ..utils.trend_scoring import compute_deterministic_signals, compute_timing
@@ -64,10 +63,10 @@ class TrendLongevityCrew:
         """
         return Agent(
             config=self.agents_config["trend_analyst"],
-            llm=ChatOpenAI(**build_llm_kwargs(
+            llm=build_crew_llm(
                 model=settings.openai_model_name,
                 temperature=0.3,  # Low-medium temperature for trend analysis (ignored for reasoning models)
-            )),
+            ),
             verbose=True,
         )
 

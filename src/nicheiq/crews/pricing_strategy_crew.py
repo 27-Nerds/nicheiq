@@ -10,11 +10,10 @@ Validates monetization strategy by determining optimal pricing based on:
 from crewai import Agent, Crew, Task
 from .safe_task import SafeTask
 from crewai.project import CrewBase, agent, crew, task
-from langchain_openai import ChatOpenAI
 from loguru import logger
 
 from ..config.settings import settings
-from ..utils.llm_service import build_llm_kwargs
+from ..utils.llm_service import build_crew_llm
 from ..utils.validation.crew_guardrails import validate_pricing_strategy
 from ..models.competitor import find_landscape_for_solution
 from ..models.research_state import PricingStrategyResult
@@ -62,10 +61,10 @@ class PricingStrategyCrew:
         """
         return Agent(
             config=self.agents_config["pricing_analyst"],
-            llm=ChatOpenAI(**build_llm_kwargs(
+            llm=build_crew_llm(
                 model=settings.openai_model_name,
                 temperature=0.3,  # Low temperature for consistent pricing analysis (ignored for reasoning models)
-            )),
+            ),
             verbose=True,
         )
 

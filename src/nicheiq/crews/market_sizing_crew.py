@@ -11,11 +11,10 @@ from typing import Any
 from crewai import Agent, Crew, Task
 from .safe_task import SafeTask
 from crewai.project import CrewBase, agent, crew, task
-from langchain_openai import ChatOpenAI
 from loguru import logger
 
 from ..config.settings import settings
-from ..utils.llm_service import build_llm_kwargs
+from ..utils.llm_service import build_crew_llm
 from ..models.competitor import CompetitiveAnalysisResult, find_landscape_for_solution
 from ..models.keyword_data import CrewKeywordValidationResult
 from ..models.pain_point import PainPointAnalysisResult
@@ -71,10 +70,10 @@ class MarketSizingCrew:
         """
         return Agent(
             config=self.agents_config["market_analyst"],
-            llm=ChatOpenAI(**build_llm_kwargs(
+            llm=build_crew_llm(
                 model=settings.openai_model_name,
                 temperature=0.2,  # Low temperature for numerical accuracy (ignored for reasoning models)
-            )),
+            ),
             verbose=True,
         )
 
