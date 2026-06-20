@@ -16,7 +16,7 @@ class DataSource(BaseModel):
     url: Optional[str] = Field(default=None, description="URL to API documentation or provider website")
     access_model: str = Field(
         ...,
-        description="Access model: 'free', 'freemium', 'paid', 'application-required', 'restricted', 'partner-only'"
+        description="Access model: 'free', 'freemium', 'paid', 'unofficial', 'application-required', 'restricted', 'partner-only' ('unofficial' = unofficial API / scraping library, ToS-gray but obtainable)"
     )
     cost_estimate: Optional[str] = Field(
         default=None,
@@ -81,6 +81,10 @@ class EvaluatedDataSource(BaseModel):
         ..., description="Why this priority (SEO keywords, pain points, competitive advantage)"
     )
     quality_metrics: DataQualityMetrics = Field(..., description="5D quality matrix scores")
+    access_model: str = Field(
+        default="paid",
+        description="Access model: free | freemium | paid | unofficial | application-required | restricted | partner-only",
+    )
     mvp_cost_estimate: Optional[str] = Field(
         default=None, description="Cost at 1k-10k users"
     )

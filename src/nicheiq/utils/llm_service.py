@@ -1,5 +1,6 @@
 """LLM invocation utilities for report generation."""
 
+import json
 from typing import Any, Type, TypeVar
 
 from langchain_openai import ChatOpenAI
@@ -100,6 +101,42 @@ def openrouter_headers() -> dict | None:
     return headers or None
 
 
+# Effort levels that ENABLE reasoning on OpenRouter (its unified reasoning.effort
+# accepts low|medium|high; xhigh maps to high).
+_OPENROUTER_EFFORT_ENABLE = {
+    "low": "low",
+    "medium": "medium",
+    "high": "high",
+    "xhigh": "high",
+}
+
+
+def openrouter_reasoning_body(reasoning_effort: str | None) -> dict:
+    """Build OpenRouter's unified ``reasoning`` request param (passed via extra_body).
+
+    Policy: on OpenRouter, reasoning is **OFF by default** and only turned on when a
+    tier explicitly asks for ``low``/``medium``/``high``/``xhigh``. Everything else
+    (``none``/``minimal``/``off``/unset/unknown) returns an explicit DISABLE
+    (``{"reasoning": {"enabled": False}}``).
+
+    Why default-off:
+      * Reasoning-capable models that think BY DEFAULT (Kimi K2.6, DeepSeek "think"
+        mode, ...) otherwise burn the output budget on hidden reasoning and TRUNCATE
+        structured/tool-call output — the failure we hit on the validation tiers.
+      * OpenRouter normalizes ``reasoning`` per provider and SILENTLY IGNORES it for
+        models that don't support reasoning, so the disable is safe on plain models
+        (gemma, DeepSeek V4 Flash non-think, ...).
+
+    This both **supports reasoning models** (set an effort to turn it on) and gives
+    an explicit **ability to disable** reasoning. Always returns a dict to attach as
+    ``extra_body`` on OpenRouter calls.
+    """
+    mapped = _OPENROUTER_EFFORT_ENABLE.get((reasoning_effort or "").lower())
+    if mapped:
+        return {"reasoning": {"effort": mapped}}
+    return {"reasoning": {"enabled": False}}
+
+
 def validate_openrouter_tier_compatibility() -> None:
     """Fail fast on tier settings that cannot run on OpenRouter.
 
@@ -127,16 +164,17 @@ def validate_openrouter_tier_compatibility() -> None:
     risky = {
         "CONTENT_ANALYSIS_LLM": settings.content_analysis_llm,   # needs very large context
         "FUNCTION_CALLING_LLM": settings.function_calling_llm,   # needs reliable tool calls
-        "BRAINSTORM_LLM": settings.brainstorm_llm,               # reasoning_effort is a no-op on OR
+        "BRAINSTORM_LLM": settings.brainstorm_llm,               # needs a reasoning-capable model
         "IDEATION_JUDGE_LLM": settings.ideation_judge_llm,
         "IDEATION_REFINE_LLM": settings.ideation_refine_llm,
     }
     for name, value in risky.items():
         if is_openrouter_model(value):
             logger.warning(
-                f"{name} is set to an OpenRouter model ('{value}') — this tier is "
-                "UNSAFE for weak models (large context / tool calling / reasoning_effort). "
-                "Quality may degrade or output may be incomplete."
+                f"{name} is set to an OpenRouter model ('{value}') — verify it suits this "
+                "tier (large context / tool calling / reasoning). The tier's *_reasoning_effort "
+                "is forwarded to OpenRouter (ignored by non-reasoning models); quality may "
+                "degrade if the model lacks the needed capability."
             )
 
 
@@ -176,11 +214,14 @@ def build_llm_kwargs(
     if resolved_base_url:
         kwargs["base_url"] = resolved_base_url
 
-    # OpenRouter attribution/ranking headers (only when configured)
+    # OpenRouter attribution/ranking headers (only when configured) + reasoning
     if is_openrouter:
         headers = openrouter_headers()
         if headers:
             kwargs["default_headers"] = headers
+        reasoning_body = openrouter_reasoning_body(reasoning_effort)
+        if reasoning_body:
+            kwargs["extra_body"] = reasoning_body
 
     if timeout:
         kwargs["timeout"] = timeout
@@ -364,9 +405,14 @@ def build_crew_llm(
         for param in ("max_tokens", "top_p", "frequency_penalty", "presence_penalty", "timeout"):
             if param in extra_kwargs:
                 or_kwargs[param] = extra_kwargs[param]
-        # reasoning_effort is intentionally NOT forwarded: non-reasoning OpenRouter
-        # models (e.g. gemma) reject unknown params, and reasoning-capable OpenRouter
-        # tiers are classified UNSAFE/blocked.
+        # Forward reasoning via OpenRouter's unified `reasoning` param (extra_body).
+        # Safe on any model (OpenRouter ignores it for non-reasoning models), so a
+        # reasoning-capable OR model honors the tier's effort while plain workhorse
+        # models are unaffected. extra_body reaches the completion call via CrewAI's
+        # additional_params (same mechanism as the Kimi `extra_body` path).
+        reasoning_body = openrouter_reasoning_body(reasoning_effort)
+        if reasoning_body:
+            or_kwargs["extra_body"] = reasoning_body
         headers = openrouter_headers()
         if headers:
             or_kwargs["default_headers"] = headers
@@ -397,6 +443,86 @@ def build_crew_llm(
         **extra_kwargs,
     )
     return ChatOpenAI(**llm_kwargs)
+
+
+def _recover_structured_output(raw_response: Any, output_model: Type["T"]) -> Any:
+    """Best-effort recovery of a structured object from a response's TEXT content
+    when native structured parsing (tool-call / json_schema) returned None.
+
+    Handles models that answer in ``content`` instead of emitting a tool call, or
+    that prefix reasoning before the JSON. Reuses the project's json_extractor
+    (its ``clean_llm_response`` strips ``<think>…</think>`` and other paired tags).
+    Returns a validated ``output_model`` instance, or None when there is nothing
+    usable (genuinely empty/truncated content) — in which case the caller still
+    raises/degrades exactly as before.
+    """
+    content = getattr(raw_response, "content", None)
+    if isinstance(content, list):  # multimodal content blocks -> join text parts
+        content = " ".join(
+            (part.get("text", "") if isinstance(part, dict) else str(part))
+            for part in content
+        )
+    if not isinstance(content, str) or not content.strip():
+        return None
+    from .parsing.json_extractor import extract_json_object_from_text
+
+    obj = extract_json_object_from_text(content)
+    if not isinstance(obj, dict):
+        return None
+    try:
+        return output_model.model_validate(obj)
+    except Exception:
+        return None
+
+
+def _structured_from_message(msg: Any, output_model: Type["T"]) -> Any:
+    """Universal multi-channel extraction of a structured object from an OpenRouter
+    chat-completion message.
+
+    Tries, in priority order: tool-call arguments -> content -> reasoning (plaintext)
+    -> reasoning_details[].text/.summary. Returns a validated ``output_model`` or None.
+
+    Why every channel: with a forced tool_choice, several OpenRouter models put the
+    tool payload in a NON-standard place — DeepSeek (reasoning ON) emits the JSON into
+    the ``reasoning`` channel instead of ``tool_calls`` (proven live), and langchain's
+    ChatOpenAI silently DROPS ``reasoning``. Reading the raw SDK message and scanning
+    all channels makes structured output robust across DeepSeek / Kimi / GLM regardless
+    of where the model stashes the call. Per OpenRouter docs ``reasoning`` /
+    ``reasoning_details`` are returned by default when the model reasons.
+    """
+    from .parsing.json_extractor import extract_json_object_from_text
+
+    candidates: list[str] = []
+    for tc in (getattr(msg, "tool_calls", None) or []):
+        fn = getattr(tc, "function", None)
+        args = getattr(fn, "arguments", None) if fn else None
+        if args:
+            candidates.append(args)
+    content = getattr(msg, "content", None)
+    if isinstance(content, str) and content.strip():
+        candidates.append(content)
+    reasoning = getattr(msg, "reasoning", None)
+    if isinstance(reasoning, str) and reasoning.strip():
+        candidates.append(reasoning)
+    for d in (getattr(msg, "reasoning_details", None) or []):
+        if isinstance(d, dict):
+            txt = d.get("text") or d.get("summary")
+        else:
+            txt = getattr(d, "text", None) or getattr(d, "summary", None)
+        if isinstance(txt, str) and txt.strip():
+            candidates.append(txt)
+
+    for raw in candidates:
+        try:
+            obj = json.loads(raw)
+        except Exception:
+            obj = extract_json_object_from_text(raw)
+        if isinstance(obj, dict):
+            try:
+                return output_model.model_validate(obj)
+            except Exception:
+                continue
+    return None
 
 
 class TokenUsage:
@@ -457,6 +583,118 @@ class LLMService:
         )
 
     @staticmethod
+    def _invoke_structured_openrouter(
+        prompt: str,
+        output_model: Type[T],
+        temperature: float,
+        timeout: int,
+        clean_model: str,
+        api_key: str,
+        base_url: str | None,
+        reasoning_effort: str | None,
+    ) -> tuple[T, TokenUsage]:
+        """OpenRouter structured-output path via the direct OpenAI SDK (not langchain).
+
+        langchain's ``with_structured_output`` forces tool_choice and then DROPS the
+        provider ``reasoning`` field — but several OpenRouter models emit the tool-call
+        JSON into that field under a forced tool choice (proven for DeepSeek with
+        reasoning ON), so the payload is lost and surfaces as a false "empty output".
+        Calling the SDK directly lets ``_structured_from_message`` read the payload from
+        WHEREVER the model put it (tool_calls -> content -> reasoning ->
+        reasoning_details). Universal across DeepSeek / Kimi / GLM (verified live).
+        """
+        from openai import OpenAI
+        from langchain_core.utils.function_calling import convert_to_openai_tool
+
+        tool = convert_to_openai_tool(output_model)
+        tool_name = tool["function"]["name"]
+
+        client_kwargs: dict = {"api_key": api_key, "timeout": timeout}
+        if base_url:
+            client_kwargs["base_url"] = base_url
+        headers = openrouter_headers()
+        if headers:
+            client_kwargs["default_headers"] = headers
+
+        # tool_choice policy: a FORCED tool choice gives the strictest structured
+        # compliance, BUT constrained decoding conflicts with a model's thinking mode
+        # — DeepSeek (reasoning ON + forced) intermittently aborts after a few tokens
+        # or leaks the call into 'reasoning' (proven live: 'required' is worst, 0/3).
+        # So when reasoning is ENABLED, relax to tool_choice='auto' (reliable across
+        # DeepSeek/Kimi/GLM); the universal reader still parses whichever channel the
+        # payload lands in. When reasoning is OFF, keep the forced choice.
+        reasoning_body = openrouter_reasoning_body(reasoning_effort)
+        reasoning_on = "effort" in reasoning_body.get("reasoning", {})
+        tool_choice = "auto" if reasoning_on else {"type": "function", "function": {"name": tool_name}}
+
+        create_kwargs: dict = {
+            "model": clean_model,
+            "messages": [{"role": "user", "content": prompt}],
+            "tools": [tool],
+            "tool_choice": tool_choice,
+            "extra_body": reasoning_body,
+        }
+        if not is_reasoning_model(clean_model):
+            create_kwargs["temperature"] = temperature
+
+        # Retry once on TRANSIENT failures. Slow/large reasoning responses (e.g. GLM)
+        # are held open with keep-alive padding and occasionally arrive truncated ->
+        # the SDK raises json.JSONDecodeError parsing the body; connection/timeout/5xx
+        # are likewise transient. A single retry recovers these for every tier (proven
+        # rare, <1/14). Non-transient errors (bad request, auth) propagate immediately.
+        try:
+            from openai import APIConnectionError, APITimeoutError, InternalServerError
+            transient = (json.JSONDecodeError, APIConnectionError, APITimeoutError, InternalServerError)
+        except Exception:
+            transient = (json.JSONDecodeError,)
+
+        client = OpenAI(**client_kwargs)
+        response = None
+        last_exc = None
+        for attempt in range(2):
+            try:
+                response = client.chat.completions.create(**create_kwargs)
+                break
+            except transient as e:
+                last_exc = e
+                logger.warning(
+                    f"OpenRouter transient error for {output_model.__name__} "
+                    f"(model={clean_model}, attempt {attempt + 1}/2): "
+                    f"{type(e).__name__}: {str(e)[:120]}"
+                )
+        if response is None:
+            raise last_exc
+
+        msg = response.choices[0].message
+        parsed = _structured_from_message(msg, output_model)
+
+        if parsed is None:
+            finish = response.choices[0].finish_reason
+            raise ValueError(
+                f"Structured output for {output_model.__name__} not found in any "
+                f"channel (model={clean_model}, finish_reason={finish}); checked "
+                f"tool_calls/content/reasoning/reasoning_details."
+            )
+
+        usage_obj = response.usage
+        cost = None
+        if usage_obj is not None:
+            cost = getattr(usage_obj, "cost", None)
+            if cost is None:
+                cost = (getattr(usage_obj, "model_extra", None) or {}).get("cost")
+        usage = TokenUsage(
+            prompt_tokens=getattr(usage_obj, "prompt_tokens", 0) or 0,
+            completion_tokens=getattr(usage_obj, "completion_tokens", 0) or 0,
+            model=clean_model,
+            cost=cost,
+        )
+        logger.debug(
+            f"OpenRouter structured OK for {output_model.__name__} "
+            f"({usage.prompt_tokens} in / {usage.completion_tokens} out, cost={cost})"
+        )
+        return parsed, usage
+
+    @staticmethod
     def invoke_structured(
         prompt: str,
         output_model: Type[T],
@@ -491,6 +729,21 @@ class LLMService:
         # honor base_url, so OpenRouter works here without CrewAI.
         clean_model, resolved_key, resolved_base_url = resolve_endpoint(model)
         try:
+            # OpenRouter: use the direct OpenAI-SDK path (not langchain) so we can read
+            # the structured payload from EVERY channel (tool_calls/content/reasoning).
+            # langchain drops `reasoning`, where some models (DeepSeek under reasoning
+            # ON + forced tool_choice) put the tool call -> false "empty output".
+            if is_openrouter:
+                return LLMService._invoke_structured_openrouter(
+                    prompt=prompt,
+                    output_model=output_model,
+                    temperature=temperature,
+                    timeout=timeout,
+                    clean_model=clean_model,
+                    api_key=resolved_key,
+                    base_url=resolved_base_url,
+                    reasoning_effort=reasoning_effort,
+                )
             # Build kwargs - exclude temperature for reasoning models (GPT-5, o1/o3/o4)
             llm_kwargs = {
                 "model": clean_model,
@@ -503,6 +756,9 @@ class LLMService:
                 headers = openrouter_headers()
                 if headers:
                     llm_kwargs["default_headers"] = headers
+                reasoning_body = openrouter_reasoning_body(reasoning_effort)
+                if reasoning_body:
+                    llm_kwargs["extra_body"] = reasoning_body
             if is_reasoning_model(clean_model):
                 if reasoning_effort:
                     llm_kwargs["reasoning_effort"] = reasoning_effort
@@ -523,11 +779,36 @@ class LLMService:
             parsed = raw_result['parsed']
             raw_response = raw_result['raw']
 
-            # Reasoning models can exhaust the output budget on hidden reasoning
-            # before emitting any visible content, leaving parsed=None. Surface
-            # this as a clear error (the caller's retry/except path handles it)
-            # instead of returning None downstream.
+            # Native structured parse can return None when a model answers in
+            # `content` instead of a clean tool call, or prefixes reasoning. Try to
+            # recover the JSON from the raw content before failing.
             if parsed is None:
+                parsed = _recover_structured_output(raw_response, output_model)
+                if parsed is not None:
+                    logger.warning(
+                        f"Recovered {output_model.__name__} via content fallback "
+                        f"(model={clean_model}; native structured parse returned None)"
+                    )
+
+            # Genuinely empty/unparseable output. Distinguish the two real causes so
+            # the error is actionable (the caller's retry/except path handles either):
+            #   * finish_reason == 'tool_calls' but no tool_call/content reached us:
+            #     the model emitted the call into a channel langchain drops (e.g.
+            #     OpenRouter's 'reasoning' field). Proven for DeepSeek under reasoning
+            #     ON + forced tool_choice. Fix = run that tier with reasoning OFF.
+            #   * otherwise: truncated/empty before any visible output.
+            if parsed is None:
+                meta = raw_response.response_metadata if hasattr(raw_response, "response_metadata") else {}
+                finish = (meta or {}).get("finish_reason")
+                if finish == "tool_calls":
+                    raise ValueError(
+                        f"Structured output for {output_model.__name__} was lost "
+                        f"(model={clean_model}, finish_reason=tool_calls but no tool "
+                        f"call/content reached the client). This model likely emitted "
+                        f"the tool call into a 'reasoning' channel under forced "
+                        f"tool_choice — disable reasoning for this tier "
+                        f"(set its *_REASONING_EFFORT=none)."
+                    )
                 raise ValueError(
                     f"Structured output for {output_model.__name__} was empty "
                     f"(model={clean_model}); likely truncated before visible output."
@@ -590,6 +871,9 @@ class LLMService:
                 headers = openrouter_headers()
                 if headers:
                     llm_kwargs["default_headers"] = headers
+                reasoning_body = openrouter_reasoning_body(reasoning_effort)
+                if reasoning_body:
+                    llm_kwargs["extra_body"] = reasoning_body
             if is_reasoning_model(clean_model):
                 if reasoning_effort:
                     llm_kwargs["reasoning_effort"] = reasoning_effort

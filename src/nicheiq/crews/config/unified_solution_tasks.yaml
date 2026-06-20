@@ -584,11 +584,13 @@ solution_refinement:
 
     ## Evaluation Criteria (score 0-1)
 
-    Evaluate each concept on:
-    - **market_fit_score** - How well does this address validated pain points?
+    Evaluate each concept on (anchored bands are in each field's description):
+    - **market_fit_score** - How well does it address the VALIDATED pains? Set proportional
+      to the addressed pain's severity (high-severity ⇒ ≥0.7; low-severity/thin evidence ⇒ ≤0.5).
     - **novelty_score** - How differentiated is this from existing solutions?
-    - **solo_dev_feasibility** - Can one developer build this in 2-3 months?
-    - **seo_scalability_score** - What's the organic traffic potential?
+    - **technical_feasibility_score** - Can it be BUILT AT ALL with available tech+data? (capability; gates the verdict)
+    - **solo_dev_feasibility** - Can ONE developer ship an MVP in ~2-3 months? (scope/effort; stricter than technical)
+    - **seo_scalability_score** - Organic traffic potential (use the bands in the field description).
 
     Weight factors based on what matters most for THIS specific niche.
     Market fit and feasibility typically matter most, but use your judgment.

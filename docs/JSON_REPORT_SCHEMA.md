@@ -481,6 +481,9 @@ Actionable GTM strategy for immediate execution.
 | `innovation_angle` | `string` | How this solution diverges |
 | `why_it_works` | `string` | Evidence-based reason it succeeds |
 | `solo_dev_feasibility` | `number` (0-1) | Solo developer feasibility |
+| `data_feasibility_score` | `number\|null` (0-1) | How readily a solo dev can OBTAIN the required data (annotate-only; from the independent feasibility critic). Higher = easier. |
+| `data_access_model` | `string\|null` | `public` \| `freemium` \| `paywalled` \| `unofficial` (unofficial API / scraping lib, ToS-gray) \| `restricted`. `blocked` concepts are dropped, never surfaced. |
+| `data_acquisition_notes` | `string\|null` | Data source/route + access model + cost/ToS risk (≤120 chars). |
 | `keyword_geographic_priorities` | `array[string]` | Geographic priorities |
 | `keyword_feature_priorities` | `array[string]` | Feature priorities |
 | `keyword_strategic_insights` | `string` | Strategic insights |
@@ -1527,6 +1530,7 @@ Array of 7 recommended next steps.
 | `novelty_score` | 0.0 - 1.0 | Higher = more novel |
 | `obviousness_score` | 0.0 - 1.0 | **Lower = more original** (independent novelty critic). Shown as Originality = 1 − this |
 | `solo_dev_feasibility` | 0.0 - 1.0 | Higher = easier for solo dev |
+| `data_feasibility_score` | 0.0 - 1.0 | Higher = data easier to obtain (annotate-only) |
 | `relevance_score` | 0.0 - 1.0 | Higher = more relevant |
 | `avg_competition` | 0 - 100 | Lower = less competitive |
 | `keyword_diversity_score` | 0.0 - 1.0 | Higher = more diverse |

@@ -216,10 +216,59 @@ class BaseSolutionIdea(BaseModel):
         default=None, description="Detailed pricing model and monetization strategy"
     )
     market_fit_score: Optional[float] = Field(
-        default=None, ge=0.0, le=1.0, description="Product-market fit evaluation score (0-1)"
+        default=None, ge=0.0, le=1.0,
+        description=(
+            "Product-market fit (0-1), anchored to the addressed VALIDATED pains. "
+            "0.85-1.0: directly addresses a high-severity (≥0.6) / high-mention / GOLD-tier "
+            "pain with no dominant incumbent; 0.5-0.7: 1-2 high-severity pains or a crowded "
+            "but addressable market; ≤0.4: low-severity / thin-evidence pain, or a pain not "
+            "in the validated set. Set proportional to the addressed pain's severity."
+        ),
     )
     technical_feasibility_score: Optional[float] = Field(
-        default=None, ge=0.0, le=1.0, description="Technical feasibility assessment score (0-1)"
+        default=None, ge=0.0, le=1.0,
+        description=(
+            "Can this be BUILT AT ALL with currently available tech and data? (0-1; capability, "
+            "distinct from solo_dev_feasibility which is scope/effort). 0.85-1.0: every component "
+            "has a production library or hosted API; 0.65-0.84: one component needs careful "
+            "architecture but documented solutions exist; 0.40-0.64: 2+ components have no "
+            "off-the-shelf solution or data availability is uncertain; 0.10-0.39: needs unreliable "
+            "AI capability, exotic infra, or unobtainable data. Gates the verdict (<0.60 ⇒ No-Go)."
+        ),
+    )
+    # Data feasibility — can a solo dev actually OBTAIN the data this idea needs?
+    # Distinct from technical_feasibility_score (can it be BUILT). Populated in code via
+    # carry-over from the independent feasibility critic, not by the convergent LLM.
+    # Surfaced in the report/UI; annotate-only (does NOT gate the verdict).
+    data_feasibility_score: Optional[float] = Field(
+        default=None, ge=0.0, le=1.0,
+        description=(
+            "How readily a solo dev can obtain the required data (0-1). 0.9-1.0 free/public; "
+            "0.6-0.8 paywalled-but-affordable or unofficial-API (ToS-gray, obtainable); "
+            "0.3-0.5 expensive/restricted; 0.0-0.2 no obtainable route. Annotate-only."
+        ),
+    )
+    data_access_model: Optional[str] = Field(
+        default=None,
+        description=(
+            "How the required data is obtained: 'public' | 'freemium' | 'paywalled' | "
+            "'unofficial' (unofficial API / scraping lib, ToS-gray — kept + flagged) | "
+            "'restricted'. ('blocked' concepts are dropped, never surfaced.)"
+        ),
+    )
+    data_acquisition_notes: Optional[str] = Field(
+        default=None,
+        description=(
+            "Short note: what data the idea needs, the source/route, access model + rough "
+            "cost; for 'unofficial'/'paywalled' name the tool + the ToS/cost risk."
+        ),
+    )
+    # Independent build-feasibility estimate from the critic. Carried for the downgrade-only
+    # verdict cap (min(technical_feasibility_score, build_feasibility_score)); NOT part of the
+    # composite ranking (score_helpers reads only market_fit/tech_feas/novelty/seo).
+    build_feasibility_score: Optional[float] = Field(
+        default=None, ge=0.0, le=1.0,
+        description="Independent critic estimate of build feasibility (0-1); caps the verdict tech gate (downgrade-only).",
     )
     project_type: Optional[str] = Field(
         default=None,
@@ -722,6 +771,27 @@ class RawConcept(BaseModel):
             "0.8-1.0 = cached first-thought (would appear on the anti-obvious blacklist). "
             "Leave at the -1.0 default only if genuinely unable to estimate."
         ),
+    )
+
+    # Feasibility-critic outputs (sentinel -1.0 = not scored, like obviousness_score).
+    # Carried onto the final idea; build_feasibility_score caps the verdict, the data_*
+    # fields are surfaced. ToS-gray-but-obtainable data => 'unofficial' (kept + flagged),
+    # never dropped for ToS alone.
+    data_feasibility_score: float = Field(
+        default=-1.0,
+        description="0-1 ease of obtaining the required data (lower = harder); -1.0 = not scored.",
+    )
+    build_feasibility_score: float = Field(
+        default=-1.0,
+        description="0-1 independent build-feasibility estimate; -1.0 = not scored.",
+    )
+    data_access_model: Optional[str] = Field(
+        default=None,
+        description="public | freemium | paywalled | unofficial | restricted | blocked.",
+    )
+    data_acquisition_notes: Optional[str] = Field(
+        default=None,
+        description="Short note: data source/route, access model + cost/ToS risk (≤120 chars).",
     )
 
 

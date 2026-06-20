@@ -106,6 +106,25 @@
   const hasDataSources = $derived(
     solution.data_sources && solution.data_sources.length > 0,
   );
+
+  // Data-access model → human label + risk-palette variant (severity ramp, never accent).
+  const ACCESS_LABELS: Record<string, string> = {
+    public: "Public API",
+    freemium: "Freemium API",
+    paywalled: "Paid Data",
+    unofficial: "Scraping / Unofficial",
+    restricted: "Access Restricted",
+  };
+  function accessLabel(m: string | undefined): string {
+    return m ? (ACCESS_LABELS[m.toLowerCase()] ?? m) : "";
+  }
+  function accessVariant(m: string | undefined): "success" | "warning" | "error" | "muted" {
+    const k = (m ?? "").toLowerCase();
+    if (k === "public" || k === "freemium") return "success";
+    if (k === "paywalled" || k === "unofficial") return "warning";
+    if (k === "restricted" || k === "blocked") return "error";
+    return "muted";
+  }
 </script>
 
 <Section
@@ -189,6 +208,35 @@
             <span class="text-xs text-text-muted uppercase tracking-wider"
               >Tech Feasibility</span
             >
+          </div>
+        </div>
+      {/if}
+
+      <!-- Data Acquisition Readiness (annotate-only; from the feasibility critic / Stage-13 reconcile) -->
+      {#if solution.data_feasibility_score != null}
+        <div class="bento-card stat-card-animated">
+          <div class="flex flex-col items-center gap-3">
+            <ProgressRing
+              value={solution.data_feasibility_score}
+              size={72}
+              strokeWidth={5}
+              color="auto"
+              showValue={true}
+              showLabel={true}
+              label="Data"
+            />
+            <span class="text-xs text-text-muted uppercase tracking-wider"
+              >Data Feasibility</span
+            >
+            {#if solution.data_access_model}
+              <Badge
+                variant={accessVariant(solution.data_access_model)}
+                size="sm"
+                title={solution.data_acquisition_notes || undefined}
+              >
+                {accessLabel(solution.data_access_model)}
+              </Badge>
+            {/if}
           </div>
         </div>
       {/if}

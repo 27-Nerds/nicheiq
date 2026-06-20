@@ -1890,6 +1890,10 @@ It differentiates through {diff_text}.
                     # NEW: Additional scores and feasibility
                     novelty_score=getattr(solution, 'novelty_score', None),
                     solo_dev_feasibility=solo_dev_feasibility_val,  # Pass-through float
+                    # Data feasibility (annotate-only; from the ideation critic, may be None)
+                    data_feasibility_score=getattr(solution, 'data_feasibility_score', None),
+                    data_access_model=getattr(solution, 'data_access_model', None),
+                    data_acquisition_notes=getattr(solution, 'data_acquisition_notes', None),
 
                     # NEW: Competitive landscape for this solution
                     top_competitors=top_competitors,
@@ -2816,6 +2820,57 @@ It differentiates through {diff_text}.
             pain_point_confidence_score=self.state.pain_point_confidence_score,
         )
 
+    @staticmethod
+    def _norm_terms(s: str) -> set:
+        import re as _re
+        return set(_re.sub(r"[^a-z0-9 ]", " ", (s or "").lower()).split())
+
+    def _market_fit_ceiling(self, solution) -> float:
+        """Downgrade-only ceiling for market_fit from the addressed pains' opportunity.
+
+        Matches each `pain_points_addressed` entry to a validated pain (normalized title
+        or ≥0.5 token overlap), takes the MAX ceiling over all that clear; 0.45 when none
+        clear (idea addresses no validated pain strongly). high→1.0 / medium→0.70 / low→0.55.
+        """
+        addressed = getattr(solution, "pain_points_addressed", None) or []
+        pa = getattr(self.state, "pain_point_analysis", None)
+        pains = getattr(pa, "pain_points", None) or [] if pa else []
+        ladder = {"high": 1.0, "medium": 0.70, "low": 0.55}
+        best, matched = 0.0, False
+        for a in addressed:
+            at = self._norm_terms(a)
+            if not at:
+                continue
+            for p in pains:
+                pt = self._norm_terms(getattr(p, "title", ""))
+                if not pt:
+                    continue
+                overlap = len(at & pt) / min(len(at), len(pt))
+                if at == pt or overlap >= 0.5:
+                    lvl = str(getattr(p, "opportunity_level", "") or "").lower()
+                    best = max(best, ladder.get(lvl, 0.55))
+                    matched = True
+        return best if matched else 0.45
+
+    def _apply_verdict_data_caps(self, solution, market_fit, tech_feasibility):
+        """Apply the downgrade-only caps; return (market_fit, tech_feasibility, note)."""
+        note_bits = []
+        # tech_feasibility capped by the critic's independent build estimate (sentinel-guarded).
+        bf = getattr(solution, "build_feasibility_score", None)
+        if bf is not None and bf >= 0:
+            if tech_feasibility is None:
+                tech_feasibility = bf
+            elif bf < tech_feasibility:
+                note_bits.append(f"build feasibility independently assessed at {bf:.2f}")
+                tech_feasibility = bf
+        # market_fit capped by the addressed pain's opportunity ceiling.
+        if market_fit is not None:
+            ceiling = self._market_fit_ceiling(solution)
+            if ceiling < market_fit:
+                note_bits.append(f"market fit bounded to {ceiling:.2f} by the addressed pain's evidence")
+                market_fit = ceiling
+        return market_fit, tech_feasibility, ("; ".join(note_bits) or None)
+
     def _compute_go_no_go_verdict(
         self,
         selected_solution,
@@ -2845,6 +2900,15 @@ It differentiates through {diff_text}.
         competitive_adv = self.score_accessor.get_competitive_advantage(solution)
         tech_feasibility = self.score_accessor.get_technical_feasibility(solution)
         seo_potential = self.score_accessor.get_seo_score_canonical(solution)
+
+        # Verdict-boundary downgrade-only caps (flagged OFF by default). These ground the
+        # two gating scores WITHOUT mutating the stored fields (composite ranking is
+        # untouched — it reads the raw scores via score_helpers, not these locals).
+        cap_note = None
+        if settings.enable_verdict_data_caps:
+            market_fit, tech_feasibility, cap_note = self._apply_verdict_data_caps(
+                solution, market_fit, tech_feasibility
+            )
 
         # Average over the PRESENT scores (missing optional scores are no longer
         # fabricated as 0.5, so competitive_adv/seo can legitimately be None).
@@ -2902,6 +2966,14 @@ It differentiates through {diff_text}.
                 primary_concern = f"Low technical feasibility ({tech_feasibility:.2f}) indicates implementation challenges"
             else:
                 primary_concern = "Overall scores below confidence threshold for recommended pursuit"
+
+        # Transparency: when a data/feasibility cap lowered a gating score and the verdict
+        # is not a clean Go, surface why (reuses primary_concern; no schema change).
+        if cap_note and verdict != "Go":
+            primary_concern = (
+                f"{primary_concern}. Grounded check: {cap_note}." if primary_concern
+                else f"Grounded check: {cap_note}."
+            )
 
         # Use LLM rationale if available, otherwise template
         if narrative_rationale:

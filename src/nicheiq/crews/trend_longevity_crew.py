@@ -26,6 +26,26 @@ from ..utils.token_monitor import ContentTokenMonitor
 from ..utils.validation.crew_guardrails import validate_trend_narrative
 from ..utils.trend_scoring import compute_deterministic_signals, compute_timing
 
+# Longevity ordering for the downgrade-only reconcile: better → worse.
+_LONGEVITY_RANK = {"Sustainable": 3, "Risky": 2, "Fad": 1}
+
+
+def reconcile_longevity_verdict(suggested: str, llm_verdict: str) -> str:
+    """Downgrade-only reconcile of the LLM longevity verdict against the grounded suggestion.
+
+    The Python score-first suggester (compute_longevity_suggestion) is grounded in real
+    momentum/volume data and returns only {Sustainable, Risky, Undetermined} — never
+    "Fad" (LLM-only). The LLM may make the verdict WORSE than the grounded suggestion but
+    never BETTER (mirrors resolve_pain_point_scores / opportunity_level). "Undetermined"
+    (or any unknown suggestion) does not participate — keep the LLM verdict.
+    Ordering: Sustainable > Risky > Fad.
+    """
+    if suggested not in _LONGEVITY_RANK:
+        return llm_verdict
+    if _LONGEVITY_RANK.get(llm_verdict, 3) > _LONGEVITY_RANK[suggested]:
+        return suggested  # LLM tried to raise above grounded → clamp down
+    return llm_verdict
+
 
 @CrewBase
 class TrendLongevityCrew:
@@ -210,15 +230,15 @@ class TrendLongevityCrew:
 
             narrative: TrendNarrativeOutput = result.pydantic
 
-            # 5. Post-merge consistency: log if LLM overrides suggested verdict
-            if (
-                deterministic["suggested_longevity_verdict"] != "Undetermined"
-                and narrative.longevity_verdict != deterministic["suggested_longevity_verdict"]
-            ):
-                logger.warning(
-                    f"LLM overrode suggested verdict: "
-                    f"{deterministic['suggested_longevity_verdict']} → {narrative.longevity_verdict}"
+            # 5. Downgrade-only reconcile of the LLM verdict against the grounded suggestion.
+            suggested = deterministic["suggested_longevity_verdict"]
+            reconciled = reconcile_longevity_verdict(suggested, narrative.longevity_verdict)
+            if reconciled != narrative.longevity_verdict:
+                logger.info(
+                    f"[Stage 11] Downgrade-only reconcile: LLM '{narrative.longevity_verdict}' "
+                    f"raised above grounded '{suggested}' → keeping '{reconciled}'."
                 )
+                narrative.longevity_verdict = reconciled
 
             # 6. Compute timing_recommendation (needs LLM's longevity_verdict)
             timing = compute_timing(

@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from ...models.pain_point import PainPointAnalysisResult
 from ...models.social_content import SocialContentCollection
+from ...utils.content_security import fence_content, sanitize_social_content
 from ...utils.token_monitor import ContentTokenMonitor
 
 # Known prompt injection patterns to strip from scraped content
@@ -580,7 +581,7 @@ def format_competitor_mentions_for_prompt(
             if entry_count >= max_entries or total_chars >= max_chars:
                 break
             best = max(sents, key=lambda x: x[2])
-            line = f"- **{name}** ({len(sents)} mentions): \"{best[0][:150]}\" [{best[1]}]"
+            line = f"- **{name}** ({len(sents)} mentions): \"{sanitize_social_content(best[0])[:150]}\" [{best[1]}]"
             if total_chars + len(line) > max_chars:
                 break
             lines.append(line)
@@ -594,7 +595,7 @@ def format_competitor_mentions_for_prompt(
             if entry_count >= max_entries or total_chars >= max_chars:
                 break
             best = max(sents, key=lambda x: x[2])
-            line = f"- **{name}**: \"{best[0][:150]}\" [{best[1]}]"
+            line = f"- **{name}**: \"{sanitize_social_content(best[0])[:150]}\" [{best[1]}]"
             if total_chars + len(line) > max_chars:
                 break
             lines.append(line)
@@ -606,4 +607,7 @@ def format_competitor_mentions_for_prompt(
         f"Formatted {entry_count} competitor mentions for direct injection "
         f"({len(result)} chars, {len(frequent)} frequent, {len(occasional)} occasional)"
     )
-    return result
+    # Delimiter-fence: this block contains scraped (untrusted) snippets reaching the
+    # competitive + pricing prompts. Sanitized above; fence so injected instructions
+    # inside a snippet are treated as data, not commands.
+    return fence_content(result, source="community-competitor-mentions")

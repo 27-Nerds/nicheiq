@@ -697,6 +697,10 @@ export interface SolutionDetails {
 	why_it_works?: string;
 	why_it_works_short?: string;
 	solo_dev_feasibility?: number;
+	// Data feasibility (annotate-only; from the ideation feasibility critic)
+	data_feasibility_score?: number;
+	data_access_model?: string; // public | freemium | paywalled | unofficial | restricted
+	data_acquisition_notes?: string;
 	keyword_geographic_priorities?: string[];
 	keyword_feature_priorities?: string[];
 	keyword_strategic_insights?: string;
@@ -800,6 +804,10 @@ export interface AlternativeSolution {
 	novelty_score?: number;
 	obviousness_score?: number | null; // 0-1, lower = more original; shown as "Originality" (1 - this)
 	solo_dev_feasibility?: number; // 0-1 scale matching Python float
+	// Data feasibility (annotate-only; from the ideation feasibility critic)
+	data_feasibility_score?: number;
+	data_access_model?: string; // public | freemium | paywalled | unofficial | restricted
+	data_acquisition_notes?: string;
 
 	// Competitive landscape for this solution
 	top_competitors?: string[];

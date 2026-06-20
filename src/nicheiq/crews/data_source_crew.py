@@ -24,6 +24,37 @@ from ..utils.validation.crew_guardrails import (
     validate_data_source_evaluation,
 )
 
+# Access-model hardness (higher = easier) bridging the critic enum (public/freemium/
+# paywalled/unofficial/restricted/blocked) and the Stage-13 DataSource enum (free/
+# freemium/paid/unofficial/application-required/restricted/partner-only).
+_ACCESS_RANK = {
+    "public": 5, "free": 5, "freemium": 4, "paywalled": 3, "paid": 3,
+    "unofficial": 2, "application-required": 2, "restricted": 1, "partner-only": 1, "blocked": 0,
+}
+_VERIFIED_FEAS = {5: 0.95, 4: 0.8, 3: 0.65, 2: 0.55, 1: 0.4, 0: 0.2}
+
+
+def reconcile_data_feasibility(critic_score, critic_access, verified_access):
+    """Downgrade-only reconcile of the ideation critic's data estimate against Stage-13's
+    verified finding. Returns (new_score, new_access, caveat) — only LOWERS; if Stage-13
+    is not harder than the estimate, returns (critic_score, critic_access, None).
+    """
+    if not verified_access:
+        return critic_score, critic_access, None
+    v = _ACCESS_RANK.get(verified_access.strip().lower())
+    if v is None:
+        return critic_score, critic_access, None
+    c = _ACCESS_RANK.get((critic_access or "").strip().lower())
+    # Harder = lower rank. Only act when Stage-13 is strictly harder than the estimate
+    # (or the estimate is unknown but Stage-13 is meaningfully constrained).
+    if c is not None and v >= c:
+        return critic_score, critic_access, None
+    verified_feas = _VERIFIED_FEAS[v]
+    new_score = verified_feas if critic_score is None else min(critic_score, verified_feas)
+    est = critic_access or "unknown"
+    caveat = f"Data access verified harder than initial estimate: {est} → {verified_access} (feasibility {new_score:.2f})."
+    return new_score, verified_access.strip().lower(), caveat
+
 
 @CrewBase
 class DataSourceResearchCrew:
@@ -192,6 +223,14 @@ class DataSourceResearchCrew:
                 "niche_description": self.niche_description,
                 "competitive_data_notes": competitive_data_notes,
                 "seo_priorities": seo_priorities,
+                # Seed: the ideation feasibility critic's per-idea ESTIMATE (priors to
+                # confirm/refine, not facts — Stage 13 is the authoritative deep research).
+                "prior_data_access_model": getattr(self.solution, "data_access_model", None) or "unknown",
+                "prior_data_feasibility": (
+                    f"{self.solution.data_feasibility_score:.2f}"
+                    if getattr(self.solution, "data_feasibility_score", None) is not None else "unknown"
+                ),
+                "prior_data_notes": getattr(self.solution, "data_acquisition_notes", None) or "none",
             })
 
             # Python merge: Extract all task outputs and merge Task 2 + Task 3
@@ -232,7 +271,7 @@ class DataSourceResearchCrew:
                 primary_sources.append(DataSource(
                     provider=src.provider,
                     url=src.url,
-                    access_model="TBD",  # Not in EvaluatedDataSource, placeholder
+                    access_model=(src.access_model or "paid").strip().lower(),
                     integration_complexity=src.quality_metrics.integration_complexity.lower(),
                     priority="HIGH",
                     priority_rationale=src.priority_rationale,
@@ -247,7 +286,7 @@ class DataSourceResearchCrew:
                 fallback_sources.append(DataSource(
                     provider=src.provider,
                     url=src.url,
-                    access_model="TBD",
+                    access_model=(src.access_model or "paid").strip().lower(),
                     integration_complexity=src.quality_metrics.integration_complexity.lower(),
                     priority="MEDIUM" if src in evaluation_output.medium_priority_sources else "LOW",
                     priority_rationale=src.priority_rationale,

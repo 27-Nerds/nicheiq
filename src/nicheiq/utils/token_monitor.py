@@ -116,12 +116,23 @@ class ContentTokenMonitor:
     # here (and not in MODEL_PRICING) is treated as cost 0 with a one-time warning,
     # NOT silently priced as gpt-4o.
     OPENROUTER_PRICING = {
+        # Gemma
         "google/gemma-2-27b-it": {"input": 0.27, "output": 0.27},
         "google/gemma-2-9b-it": {"input": 0.06, "output": 0.06},
         "google/gemma-3-27b-it": {"input": 0.10, "output": 0.20},
         "google/gemma-3-12b-it": {"input": 0.05, "output": 0.10},
+        "google/gemma-4-31b-it:free": {"input": 0.0, "output": 0.0},  # free tier (rate-limited upstream)
         "meta-llama/llama-3.3-70b-instruct": {"input": 0.12, "output": 0.30},
         "mistralai/mistral-small-3.2-24b-instruct": {"input": 0.05, "output": 0.10},
+        # 2026 models under evaluation (prices verified 2026-06-18; vary by routed
+        # provider — usage.cost is the source of truth for the invoke_* paths).
+        "moonshotai/kimi-k2.6": {"input": 0.68, "output": 3.41},
+        "mistralai/mistral-small-2603": {"input": 0.15, "output": 0.60},
+        "minimax/minimax-m3": {"input": 0.30, "output": 1.20},   # promo; list ~0.60/2.40
+        "deepseek/deepseek-v4-flash": {"input": 0.09, "output": 0.18},
+        "deepseek/deepseek-v4-pro": {"input": 0.435, "output": 0.87},
+        "google/gemini-3.1-flash-lite": {"input": 0.25, "output": 1.50},
+        "qwen/qwen3.7-plus": {"input": 0.32, "output": 1.28},
     }
 
     # Backward compatibility: input-only cost lookup (for existing estimate_cost usage)

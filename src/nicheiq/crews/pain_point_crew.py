@@ -34,40 +34,17 @@ from ..models.social_content import RedditComment, RedditPost, SocialPost, Socia
 from ..utils.parsing.json_extractor import clean_llm_response, extract_json_object_from_text
 from ..utils.token_monitor import ContentTokenMonitor
 
-# Known prompt injection patterns to strip from scraped content
-_INJECTION_PATTERNS = re.compile(
-    r"(?i)(ignore\s+(all\s+)?previous\s+instructions|"
-    r"you\s+are\s+now\s+|"
-    r"^SYSTEM:|^ASSISTANT:|^USER:|"
-    r"<\|(?:im_start|im_end|endoftext)\|>|"
-    r"\bdo\s+not\s+follow\s+any\s+(?:other|previous)\b)",
-)
-
-
-def _sanitize_social_content(text: str) -> str:
-    """Strip control characters and known prompt injection patterns from scraped text."""
-    if not text:
-        return ""
-    # Remove control characters except standard whitespace
-    sanitized = "".join(c for c in text if ord(c) >= 32 or c in "\n\r\t")
-    # Strip known injection patterns
-    sanitized = _INJECTION_PATTERNS.sub("[REDACTED]", sanitized)
-    return sanitized
+# Prompt-injection defenses now live in utils.content_security (shared with the
+# feasibility/novelty critic, solution reinjection, and competitor mentions).
+# Re-exported here under the original names so existing importers (e.g. catalog_seed)
+# keep working and pain-extraction fencing stays byte-identical.
+from ..utils.content_security import sanitize_social_content as _sanitize_social_content
+from ..utils.content_security import fence_content as _fence_content_shared
 
 
 def _fence_content(text: str, platform: str, post_id: str) -> str:
-    """Wrap user-generated content in delimiter-based fencing for prompt injection defense.
-
-    Uses delimiters instead of XML tags because CrewAI's StringKnowledgeSource
-    chunks text for embedding — XML tags get severed across chunk boundaries.
-    Delimiter lines survive chunking as they appear on their own lines.
-    """
-    sanitized = _sanitize_social_content(text)
-    return (
-        f"======== UNTRUSTED SOCIAL CONTENT (source={platform}, id={post_id}) ========\n"
-        f"{sanitized}\n"
-        f"======== END UNTRUSTED CONTENT ========"
-    )
+    """Pain-extraction fence (preserves the original 'UNTRUSTED SOCIAL CONTENT' header)."""
+    return _fence_content_shared(text, platform, post_id, label="UNTRUSTED SOCIAL CONTENT")
 from ..utils.validation.crew_guardrails import (
     validate_content_categorization,
 )

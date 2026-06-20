@@ -1739,6 +1739,7 @@ RULES:
                         solo_dev = getattr(solution, "solo_dev_feasibility", None)
                         seo_score = getattr(solution, "seo_scalability_score", None)
                         obviousness = getattr(solution, "obviousness_score", None)
+                        data_feas = getattr(solution, "data_feasibility_score", None)
 
                         alt = {
                             "solution_name": solution.solution_name,
@@ -1757,6 +1758,9 @@ RULES:
                             "novelty_score": float(novelty) if novelty is not None else None,
                             "obviousness_score": float(obviousness) if obviousness is not None else None,
                             "solo_dev_feasibility": float(solo_dev) if solo_dev is not None else None,
+                            "data_feasibility_score": float(data_feas) if data_feas is not None else None,
+                            "data_access_model": getattr(solution, "data_access_model", None),
+                            "data_acquisition_notes": getattr(solution, "data_acquisition_notes", None),
                             "key_differentiator": key_diff or "Unique approach to this market",
                             "best_suited_for": personas[0] if personas else "General market",
                             "pivot_trigger": "Consider if primary solution faces execution barriers",
@@ -6503,6 +6507,29 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             logger.info(f"Starting data source discovery for {selected_solution_name}...")
             data_source_research = data_crew.research()
             self.state.data_source_research = data_source_research
+
+            # Downgrade-only reconcile: if Stage-13's verified primary source is HARDER to
+            # access than the ideation critic estimated, lower the selected solution's
+            # surfaced data_feasibility (never raise) and record the estimate→verified delta
+            # as a data-quality risk. Non-gating (annotate-only).
+            try:
+                from ..crews.data_source_crew import reconcile_data_feasibility
+                primary = (data_source_research.primary_data_sources or [])
+                verified_access = primary[0].access_model if primary else None
+                new_score, new_access, caveat = reconcile_data_feasibility(
+                    getattr(selected_solution, "data_feasibility_score", None),
+                    getattr(selected_solution, "data_access_model", None),
+                    verified_access,
+                )
+                if caveat:
+                    selected_solution.data_feasibility_score = new_score
+                    selected_solution.data_access_model = new_access
+                    if data_source_research.data_quality_risks is None:
+                        data_source_research.data_quality_risks = []
+                    data_source_research.data_quality_risks.append(caveat)
+                    logger.info(f"[Stage 13] {caveat}")
+            except Exception as e:
+                logger.warning(f"[Stage 13] data-feasibility reconcile skipped: {str(e)[:120]}")
 
             # Record crew cost
             if data_crew.usage_metrics:

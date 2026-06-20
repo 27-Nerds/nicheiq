@@ -452,13 +452,15 @@ validate_pain_points:
       loss (clients, revenue, hours), an explicit workflow blocker, or a stated
       inability to complete a core task.
 
-    **WTP INFERENCE RULES** (When No Explicit Payment Signals):
-    When the provided quotes lack explicit money/budget mentions, INFER WTP based on:
-    - severity ≥0.7 AND workflow-blocking problem → assign WTP 0.45-0.55 (high inference)
-    - productivity/time loss explicitly mentioned → assign WTP 0.3-0.4 (medium inference)
-    - Strong emotional language (frustration, anger) → assign WTP 0.15-0.25 (low inference)
-    - Only assign WTP 0.0-0.1 when problem is minor inconvenience with NO productivity impact
-    - CRITICAL: NEVER assign identical WTP scores to all pain points - use the full range to differentiate
+    **WTP INFERENCE RULES** (anchor to CONCRETE signals, strongest first):
+    - Names a paid tool they currently pay for / asks "where do I pay" / mentions a budget or
+      current spend on an inadequate solution → WTP 0.6-0.8 (explicit commercial signal).
+    - B2B / professional context where the pain costs billable time or clients (time-is-money) →
+      WTP 0.45-0.6.
+    - severity ≥0.7 AND workflow-blocking, no payment signal → WTP 0.35-0.5 (inferred).
+    - productivity/time loss mentioned (hobby/casual context) → WTP 0.25-0.4.
+    - Emotional complaint only, no functional/financial impact → WTP 0.1-0.25.
+    - CRITICAL: NEVER assign identical WTP across pain points — use the full range to differentiate.
 
     **CRITICAL DATA ACCURACY RULES:**
     - Scores MUST be based on the evidence quotes provided above - NO assumptions
@@ -500,8 +502,9 @@ validate_pain_points:
       ❌ Example: "This seems important" (generic)
       ✅ Example: "Quote from [source: abc123] reports losing 2 clients to invoicing delays"
 
-    # Brief Explanation (GPT-5 Pattern)
-    Give a brief explanation (2-3 bullets) summarizing your scoring approach at the start of your answer, then output the structured validation results.
+    OUTPUT FORMAT: Return ONLY the structured ValidationResult object — no preamble,
+    no explanation, no text before the JSON. Put any summary of your scoring approach
+    in the `validation_summary` field.
 
   expected_output: >
     ValidationResult Pydantic model with scoring data ONLY:

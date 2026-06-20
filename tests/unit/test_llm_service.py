@@ -9,6 +9,7 @@ import pytest
 from unittest.mock import Mock, patch, MagicMock
 from pydantic import BaseModel, Field
 
+from nicheiq.utils import llm_service
 from nicheiq.utils.llm_service import LLMService, TokenUsage
 
 
@@ -37,7 +38,15 @@ def _make_structured_response(parsed_result, response_metadata: dict | None = No
 
 
 class TestInvokeStructured:
-    """Test LLMService.invoke_structured() method."""
+    """Test LLMService.invoke_structured() method (the ChatOpenAI / OpenAI path)."""
+
+    @pytest.fixture(autouse=True)
+    def _default_openai_model(self, monkeypatch):
+        # These tests assert the ChatOpenAI-path contract. Pin a non-OpenRouter
+        # default model so the ambient .env (which may set an openrouter/* default)
+        # doesn't reroute them through the separate OpenRouter SDK path. Tests that
+        # @patch settings themselves override this for their own body.
+        monkeypatch.setattr(llm_service.settings, "openai_model_name", "gpt-4o", raising=False)
 
     @patch('nicheiq.utils.llm_service.ChatOpenAI')
     @patch('nicheiq.utils.llm_service.logger')

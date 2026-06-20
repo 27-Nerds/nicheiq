@@ -206,7 +206,12 @@ filter/refine/select tasks above:
    `obviousness_score` (0-1, **lower = more original** = the fraction of competent builders
    who'd also propose it) and **drops ideas that already exist** as shipping products. This
    critic's score *overwrites* the ideator's own obviousness estimate — it is the system's
-   trustworthy originality signal.
+   trustworthy originality signal. When `enable_feasibility_critic` is on, this SAME pass also
+   scores **build feasibility** + **data feasibility** (`data_access_model`: public/freemium/
+   paywalled/unofficial/restricted), keeping ToS-gray-but-obtainable (`unofficial`) ideas and
+   dropping only genuine no-route ones. Build feasibility later **downgrade-only caps** the
+   verdict's technical_feasibility (when `enable_verdict_data_caps` is on); the data fields are
+   surfaced and, post-selection, reconciled against Stage-13's verified findings (estimate→verified).
 3. **Pool + dedup** (`_pool_and_dedup_raw_concepts`) across all samples, capped at
    `divergent_pool_cap` (default 12). Falls back to a single divergent sample if the pool
    comes back too small.

@@ -405,6 +405,49 @@ BRAINSTORM_LLM=gpt-4o
 # Leave UNSET for older models (gpt-4o, etc.) - they use temperature
 # Note: Passing reasoning_effort to non-GPT-5 models causes API errors
 
+# Divergent Ideation Diversity (reduce duplicate / theme-clustered ideas)
+# BRAINSTORM_LLMS=
+# Comma-separated MODEL POOL round-robined across divergent samples for MODEL DIVERSITY.
+# Empty (default) => every sample uses BRAINSTORM_LLM (single model -> shared priors -> dup-prone).
+# Use decorrelated, REASONING-GRADE models (the divergent prompt is dense; weak models under-comply).
+# Set NUM_DIVERGENT_SAMPLES >= the pool size to actually use every model.
+# Each entry MAY carry an inline '@<effort>' for PER-MODEL reasoning effort
+# (none/minimal/low/medium/high/xhigh); entries without '@' inherit BRAINSTORM_REASONING_EFFORT.
+# Why per-model: under a forced tool_choice (how structured output is requested), some OpenRouter
+# models behave badly with reasoning ON — DeepSeek emits the tool call into the 'reasoning' channel
+# and/or under-generates, so use '@none'; Kimi returns empty with reasoning OFF, so use '@medium'.
+# (The OpenRouter structured path now reads tool_calls -> content -> reasoning -> reasoning_details,
+# so a misbehaving sample degrades gracefully instead of hard-failing — but '@effort' still controls
+# reliability and cost.) Example:
+#   openrouter/moonshotai/kimi-k2.6@medium,openrouter/deepseek/deepseek-v4-pro@none,openrouter/z-ai/glm-5.2@medium
+
+# NUM_DIVERGENT_SAMPLES=2
+# Number of INDEPENDENT divergent concept-generation calls pooled before filtering.
+# Independent contexts break single-call mode collapse. Cost scales linearly on the brainstorm model.
+
+# DIVERGENT_SAMPLE_DEADLINE_SECONDS=360
+# Wall-clock cap for the parallel divergent fan-out. Once it elapses, the pool stops waiting for any
+# still-running sample and proceeds with whatever finished. Guards against a runaway model — a reasoning
+# model held open by OpenRouter keep-alive bytes, which the per-call read-timeout does NOT cap — stalling
+# the whole pipeline. Allows a sample's 2x retry (~180s each) before abandoning.
+
+# DIVERGENT_KEEP_FRACTION=0.5
+# Fraction of the GENERATED divergent concepts to keep through the first dedup/clamp step (before the LLM
+# diversity filter). 0.5 = keep at least half of what the samples produced, so good ideas aren't discarded
+# before the filter sees them. The kept count is floored at 6 (so a small single-model pool isn't starved)
+# and capped at DIVERGENT_POOL_CAP. Dedup may leave fewer; duplicates are never re-added to hit the target.
+# Example: 31 generated -> keep 15 (half, capped); 10 generated -> keep 6 (floor); 20 -> keep 10.
+
+# DIVERGENT_POOL_CAP=15
+# Upper bound (ceiling) on concepts kept after pooling/dedup, fed to the diversity filter. Hard-capped at 15
+# (the RawConceptList max_length). The ACTUAL count scales with DIVERGENT_KEEP_FRACTION — this is the ceiling.
+
+# DIVERGENT_DEDUP_SIMILARITY_THRESHOLD=0.85
+# Cosine threshold for the embedding-based SEMANTIC dedup of pooled concepts
+# (over concept name + one_liner + why_non_obvious). At/above it => near-duplicate, keep the most-novel.
+# Catches cross-model / cross-wording dups the name + M/D/J-tag dedup misses. 0.0 disables; floor-guarded
+# to 6 concepts; FAIL-OPEN on embedding error. Embeddings always use OpenAI (no OpenRouter endpoint).
+
 # Keyword Relevance Validation (90% cost reduction)
 KEYWORD_VALIDATION_LLM=gpt-4.1-nano
 # Used for: Quick keyword relevance checks
@@ -544,7 +587,8 @@ OpenAI Responses API, and any non-overridden tier still uses OpenAI.
 |-------|-------|-------|
 | Conditionally safe | `THREAD_VALIDATION_LLM`, `KEYWORD_VALIDATION_LLM`, `COMPETITOR_EXTRACTION_LLM`, `PAIN_SOLUTION_MAPPING_LLM` | Native structured output — needs a **tool-capable** OpenRouter model (gemma may fail) |
 | Risky | `OPENAI_MODEL_NAME` (shared by ~23 agents), `PAIN_POINT_VALIDATION_LLM` | CrewAI prompt-based JSON; weak models may lose data, retry, or hard-fail on plain-`Task` steps |
-| Unsafe (avoid) | `CONTENT_ANALYSIS_LLM` (needs ~150K context), `FUNCTION_CALLING_LLM` (tool calls), `BRAINSTORM_LLM`/`IDEATION_*` | `reasoning_effort` is a no-op on non-reasoning OpenRouter models |
+| Needs strong/large-context model | `CONTENT_ANALYSIS_LLM` (needs ~400K context), `FUNCTION_CALLING_LLM` (tool calls) | Pick a model with the matching capability |
+| Reasoning tiers | `BRAINSTORM_LLM`/`IDEATION_*` | Use a reasoning-capable OpenRouter model — the tier's `*_REASONING_EFFORT` IS forwarded (see below) |
 | Blocked (raises at startup) | `LANDING_PAGE_LLM`, `LANDING_PAGE_EXECUTION_LLM` | Plain-`Task` creative steps + Codex/Responses-API only |
 
 Backend features also accept `openrouter/*` ids: `SUGGEST_LLM_MODEL`,
@@ -553,6 +597,29 @@ required). Note: `KEYWORD_RESEARCH_LLM` and `QUOTE_ENRICHMENT_LLM` are defined b
 not currently read by any code — overriding them has no effect.
 
 **How it works:** model-name prefix routing, mirroring the Kimi/Moonshot pattern.
+
+**Reasoning on OpenRouter (default OFF):** reasoning is controlled per tier via
+`*_REASONING_EFFORT` and forwarded through OpenRouter's unified `reasoning` request param
+(`extra_body`), which OpenRouter normalizes to each provider's native thinking format and
+**silently ignores** for models that don't support it. The policy is **off by default**:
+
+| `*_REASONING_EFFORT` value | What we send | Effect |
+|---|---|---|
+| `low` / `medium` / `high` / `xhigh` (→high) | `{"reasoning": {"effort": …}}` | **Reasoning ON** at that effort |
+| `none` / `minimal` / unset | `{"reasoning": {"enabled": false}}` | **Reasoning OFF** (explicit disable) |
+
+This **supports both reasoning and non-reasoning models** and gives an explicit way to
+**disable reasoning**:
+- Reasoning-capable models (DeepSeek V4 Pro, GLM-5.2, Gemini 3.x Pro, Kimi K2.6) are valid
+  for the reasoning tiers — set `low/medium/high` to engage thinking.
+- Models that reason *by default* (Kimi, DeepSeek "think") are forced OFF on tiers that
+  don't request reasoning, so they can't burn the output budget on hidden thinking and
+  **truncate structured/tool-call output** (the failure seen on the validation tiers).
+- Plain models (gemma, DeepSeek V4 Flash non-think) ignore the disable — no effect.
+
+Applies uniformly across every OpenRouter path (crew agents, `invoke_structured`/`invoke_plain`,
+raw `ChatOpenAI`/seed generation). The OpenAI path is unaffected (it uses `reasoning_effort`
+natively).
 
 **Cost tracking:**
 - LangChain-direct calls (`LLMService.invoke_structured`/`invoke_plain` — e.g. thread/

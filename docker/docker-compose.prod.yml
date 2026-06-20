@@ -117,6 +117,14 @@ services:
       SUGGEST_LLM_MODEL: ${SUGGEST_LLM_MODEL:-gpt-4.1-nano}
       SUGGEST_RATE_HOURLY: ${SUGGEST_RATE_HOURLY:-40}
       SUGGEST_RATE_DAILY: ${SUGGEST_RATE_DAILY:-50}
+      # Other backend LLM features (niche categorization, FAQ generation)
+      CATEGORIZE_LLM_MODEL: ${CATEGORIZE_LLM_MODEL:-gpt-5-nano}
+      OPENAI_FAQ_MODEL: ${OPENAI_FAQ_MODEL:-gpt-4.1-mini}
+      # OpenRouter (optional — lets SUGGEST/CATEGORIZE/FAQ models use openrouter/* ids)
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+      OPENROUTER_SITE_URL: ${OPENROUTER_SITE_URL:-}
+      OPENROUTER_APP_NAME: ${OPENROUTER_APP_NAME:-}
     volumes:
       - job_output:/app/output
     networks:
@@ -169,6 +177,7 @@ services:
       FUNCTION_CALLING_LLM: ${FUNCTION_CALLING_LLM:-gpt-4o-mini}
       CONTENT_ANALYSIS_LLM: ${CONTENT_ANALYSIS_LLM:-gpt-4o}
       THREAD_VALIDATION_LLM: ${THREAD_VALIDATION_LLM:-gpt-4o-mini}
+      COMPETITOR_EXTRACTION_LLM: ${COMPETITOR_EXTRACTION_LLM:-gpt-4o-mini}
       BRAINSTORM_LLM: ${BRAINSTORM_LLM:-gpt-4o}
       KEYWORD_VALIDATION_LLM: ${KEYWORD_VALIDATION_LLM:-gpt-4o-mini}
       KEYWORD_RESEARCH_LLM: ${KEYWORD_RESEARCH_LLM:-gpt-4o-mini}
@@ -176,6 +185,13 @@ services:
       PAIN_SOLUTION_MAPPING_LLM: ${PAIN_SOLUTION_MAPPING_LLM:-gpt-4o-mini}
       LANDING_PAGE_LLM: ${LANDING_PAGE_LLM:-gpt-4o}
       BRAINSTORM_REASONING_EFFORT: ${BRAINSTORM_REASONING_EFFORT:-high}
+      # Divergent-ideation diversity (multi-model pool + embedding semantic dedup)
+      BRAINSTORM_LLMS: ${BRAINSTORM_LLMS:-}
+      NUM_DIVERGENT_SAMPLES: ${NUM_DIVERGENT_SAMPLES:-2}
+      DIVERGENT_SAMPLE_DEADLINE_SECONDS: ${DIVERGENT_SAMPLE_DEADLINE_SECONDS:-360}
+      DIVERGENT_POOL_CAP: ${DIVERGENT_POOL_CAP:-15}
+      DIVERGENT_KEEP_FRACTION: ${DIVERGENT_KEEP_FRACTION:-0.5}
+      DIVERGENT_DEDUP_SIMILARITY_THRESHOLD: ${DIVERGENT_DEDUP_SIMILARITY_THRESHOLD:-0.85}
       # Ideation convergent tiers: judge = novelty critic + evaluator; refine = idea refiner
       IDEATION_JUDGE_LLM: ${IDEATION_JUDGE_LLM:-gpt-5.4-mini}
       IDEATION_JUDGE_REASONING_EFFORT: ${IDEATION_JUDGE_REASONING_EFFORT:-low}
@@ -186,6 +202,14 @@ services:
       LANDING_PAGE_EXECUTION_REASONING_EFFORT: ${LANDING_PAGE_EXECUTION_REASONING_EFFORT:-medium}
       LANDING_PAGE_VALIDATION_REASONING_EFFORT: ${LANDING_PAGE_VALIDATION_REASONING_EFFORT:-low}
       CHROMA_OPENAI_API_KEY: ${OPENAI_API_KEY}
+      # OpenRouter (optional alternative provider — required if any *_LLM tier uses an openrouter/* id)
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+      OPENROUTER_SITE_URL: ${OPENROUTER_SITE_URL:-}
+      OPENROUTER_APP_NAME: ${OPENROUTER_APP_NAME:-}
+      # Moonshot AI (Kimi) — required if any tier uses a kimi-* model id
+      MOONSHOT_API_KEY: ${MOONSHOT_API_KEY:-}
+      KIMI_THINKING: ${KIMI_THINKING:-false}
       # Serper (Google Search)
       SERPER_API_KEY: ${SERPER_API_KEY:?SERPER_API_KEY is required}
       # Reddit

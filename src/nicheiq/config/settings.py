@@ -85,6 +85,23 @@ class Settings(BaseSettings):
         default="gpt-5.2",
         description="Model to use for solution brainstorming/ideation (gpt-5.2 recommended for creative thinking)"
     )
+    brainstorm_llms: str = Field(
+        default="",
+        description=(
+            "Comma-separated models to round-robin across divergent idea-generation "
+            "samples for MODEL DIVERSITY (decorrelates ideas to reduce duplicates). "
+            "Empty => use brainstorm_llm for all samples. Use decorrelated, "
+            "REASONING-GRADE families (the divergent prompt is dense; weak/cheap models "
+            "under-comply). Each entry MAY carry an inline '@<effort>' to set that "
+            "model's reasoning effort (none/minimal/low/medium/high/xhigh); entries "
+            "without '@' inherit brainstorm_reasoning_effort. This matters because some "
+            "OpenRouter models leak the tool-call into the dropped 'reasoning' channel "
+            "under forced tool_choice when reasoning is ON (e.g. DeepSeek -> use '@none'), "
+            "while others need reasoning ON (e.g. Kimi -> '@medium'). Example: "
+            "'openrouter/moonshotai/kimi-k2.6@medium,openrouter/deepseek/deepseek-v4-pro@none,"
+            "openrouter/z-ai/glm-5.2@medium'. Set num_divergent_samples >= the model count."
+        )
+    )
     brainstorm_reasoning_effort: str | None = Field(
         default="high",
         description=(
@@ -103,16 +120,99 @@ class Settings(BaseSettings):
             "Cost scales linearly with this on the expensive brainstorm model."
         )
     )
+    divergent_sample_deadline_seconds: int = Field(
+        default=360,
+        ge=30,
+        description=(
+            "Wall-clock cap for the parallel divergent fan-out. Once this elapses, the "
+            "pool stops waiting for any still-running sample and proceeds with whatever "
+            "completed. Guards against a single runaway model (e.g. a reasoning model "
+            "held open by OpenRouter keep-alive bytes, which the per-call read-timeout "
+            "does NOT cap) stalling the whole pipeline. Allows a sample's 2x retry "
+            "(~180s each) before abandoning."
+        )
+    )
     divergent_pool_cap: int = Field(
-        default=12,
+        default=15,
         ge=6,
         le=15,
         description=(
-            "Max concepts kept after pooling/dedup of the divergent samples, fed to the "
-            "diversity filter. Hard-capped at 15 so the pooled RawConceptList never "
-            "violates its max_length; floored at 6 (the RawConceptList minimum)."
+            "Upper bound on concepts kept after pooling/dedup of the divergent samples, "
+            "fed to the diversity filter. Hard-capped at 15 so the pooled RawConceptList "
+            "never violates its max_length; floored at 6 (the RawConceptList minimum). "
+            "The ACTUAL number kept scales with divergent_keep_fraction (see below) and "
+            "is only capped here — this is the ceiling, not a fixed count."
         )
     )
+    divergent_keep_fraction: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Fraction of the GENERATED divergent concepts to keep through the first "
+            "dedup/clamp step (before the LLM diversity filter). Default 0.5 keeps at "
+            "least half of what the samples produced, so good ideas aren't discarded "
+            "before the filter sees them. The kept count is floored at 6 (so a small "
+            "single-model pool isn't starved) and capped at divergent_pool_cap. Dedup "
+            "may still leave fewer; duplicates are never re-added to hit this target."
+        )
+    )
+    enable_feasibility_critic: bool = Field(
+        default=False,
+        description=(
+            "Enable the merged novelty+feasibility critic (adds build_feasibility / "
+            "data_feasibility / data_access_model + drop_names to the independent critic "
+            "pass). Default OFF so it can land dark and be validated before it can drop "
+            "or annotate concepts. When OFF the critic behaves as the novelty-only critic."
+        )
+    )
+    enable_verdict_data_caps: bool = Field(
+        default=False,
+        description=(
+            "Enable the downgrade-only verdict-boundary caps (technical_feasibility capped "
+            "by the critic's build_feasibility; market_fit capped by the addressed pain's "
+            "opportunity ceiling). Default OFF; flip on only after the rank-stability + "
+            "calibration gates. Caps NEVER mutate stored scores — ranking is unaffected."
+        )
+    )
+    divergent_dedup_similarity_threshold: float = Field(
+        default=0.85,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Cosine-similarity threshold for the embedding-based SEMANTIC dedup of pooled "
+            "divergent concepts (over name + one_liner + why_non_obvious). Concepts at or "
+            "above this are treated as near-duplicates and the most-novel is kept. Catches "
+            "cross-model/cross-wording dups the name/tag dedup misses. 0.0 disables it; "
+            "raise toward 0.90 for fewer merges, lower toward 0.80 for more."
+        )
+    )
+
+    @property
+    def brainstorm_pool_resolved(self) -> list[tuple[str, str | None]]:
+        """Divergent pool as (model, reasoning_effort) pairs.
+
+        Each brainstorm_llms entry may carry an inline '@<effort>'
+        (e.g. '.../deepseek-v4-pro@none'); entries without one inherit
+        brainstorm_reasoning_effort. Splitting on '@' is safe — model ids use '/'
+        and ':' (e.g. ':free'), never '@'. Falls back to the single brainstorm_llm."""
+        out: list[tuple[str, str | None]] = []
+        for entry in self.brainstorm_llms.split(","):
+            entry = entry.strip()
+            if not entry:
+                continue
+            if "@" in entry:
+                model, _, eff = entry.rpartition("@")
+                out.append((model.strip(), eff.strip() or self.brainstorm_reasoning_effort))
+            else:
+                out.append((entry, self.brainstorm_reasoning_effort))
+        return out or [(self.brainstorm_llm, self.brainstorm_reasoning_effort)]
+
+    @property
+    def brainstorm_model_pool(self) -> list[str]:
+        """Divergent-sample model pool (model ids only, '@effort' stripped). Falls
+        back to the single brainstorm_llm when brainstorm_llms is unset."""
+        return [m for m, _ in self.brainstorm_pool_resolved]
     # Ideation reasoning tiers — decouple the convergent steps from the expensive creative
     # model. `brainstorm_llm`/`brainstorm_reasoning_effort` still drive the CREATIVE tier
     # (divergent generation + ideator), the only place raw model capability sets idea

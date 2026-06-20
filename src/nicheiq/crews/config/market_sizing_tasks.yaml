@@ -99,6 +99,10 @@ market_sizing_analysis:
     **A. Keyword-Based Sizing (Primary Method for Digital Markets):**
     - Use niche-relevant monthly search volume ({total_keyword_volume}) as demand signal (semantically filtered to exclude broad/off-topic keywords)
     - Estimate market value: Monthly volume × avg customer value × 12 months
+    - ANCHOR the avg customer value to evidence, do NOT invent it: derive it from the audience's
+      willingness-to-pay signals and any competitor pricing in the context above. Higher WTP / paid
+      incumbents ⇒ higher value; hobby/low-WTP audiences ⇒ low value. State which signal you used.
+    - These are MODEL ESTIMATES, not measured figures — keep them defensible and conservative.
     - Provide TAM estimate with calculation shown
 
     **B. Top-Down Analysis (Secondary Validation):**

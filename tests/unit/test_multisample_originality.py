@@ -57,7 +57,7 @@ def test_synthesized_idea_carries_obviousness():
 # ── pool dedup ──────────────────────────────────────────────────────────────
 
 def test_pool_dedup_name_keeps_lower_obviousness():
-    fake = SimpleNamespace()
+    fake = SimpleNamespace(_semantic_dedup=lambda concepts, threshold: concepts)
     concepts = [_rc("Same Idea", obv=0.6), _rc("SameIdea", obv=0.2)]  # normalized-name collision
     out = UnifiedSolutionCrew._pool_and_dedup_raw_concepts(fake, concepts)
     assert len(out) == 1
@@ -65,23 +65,39 @@ def test_pool_dedup_name_keeps_lower_obviousness():
 
 
 def test_pool_dedup_structural_floor_guard():
-    fake = SimpleNamespace()
+    fake = SimpleNamespace(_semantic_dedup=lambda concepts, threshold: concepts)
     # 8 concepts all sharing M/D/J -> structural dups, but floor (6) must be preserved.
     concepts = [_rc(f"Idea{i}", obv=0.3 + i * 0.05) for i in range(8)]
     out = UnifiedSolutionCrew._pool_and_dedup_raw_concepts(fake, concepts)
     assert len(out) >= 6  # not collapsed below floor despite structural collisions
 
 
-def test_pool_dedup_clamps_to_cap():
-    fake = SimpleNamespace()
-    # distinct names + distinct tags -> no dedup; should clamp to divergent_pool_cap (12)
+def test_pool_dedup_keeps_half_of_generated():
+    fake = SimpleNamespace(_semantic_dedup=lambda concepts, threshold: concepts)
+    # 20 distinct generated, keep_fraction 0.5 -> keep 10 (under the cap ceiling)
     concepts = [_rc(f"Idea{i}", obv=0.2, m=f"m{i}", d=f"d{i}", j=f"j{i}") for i in range(20)]
+    out = UnifiedSolutionCrew._pool_and_dedup_raw_concepts(fake, concepts)
+    assert len(out) == 10
+
+
+def test_pool_dedup_clamps_to_cap_ceiling():
+    fake = SimpleNamespace(_semantic_dedup=lambda concepts, threshold: concepts)
+    # 40 distinct generated, half=20 -> bounded by divergent_pool_cap (15)
+    concepts = [_rc(f"Idea{i}", obv=0.2, m=f"m{i}", d=f"d{i}", j=f"j{i}") for i in range(40)]
     out = UnifiedSolutionCrew._pool_and_dedup_raw_concepts(fake, concepts)
     assert len(out) == M.settings.divergent_pool_cap
 
 
+def test_pool_dedup_floor_when_few_generated():
+    fake = SimpleNamespace(_semantic_dedup=lambda concepts, threshold: concepts)
+    # Single-model style: only 8 generated. half=4 but floor (6) keeps it from going too low.
+    concepts = [_rc(f"Idea{i}", obv=0.2, m=f"m{i}", d=f"d{i}", j=f"j{i}") for i in range(8)]
+    out = UnifiedSolutionCrew._pool_and_dedup_raw_concepts(fake, concepts)
+    assert len(out) == 6  # floored at MIN_KEEP, not 4
+
+
 def test_pool_dedup_sentinel_not_treated_as_most_novel():
-    fake = SimpleNamespace()
+    fake = SimpleNamespace(_semantic_dedup=lambda concepts, threshold: concepts)
     concepts = [_rc("Scored", obv=0.2, m="m1", d="d1", j="j1"),
                 _rc("Unscored", obv=-1.0, m="m2", d="d2", j="j2")]
     out = UnifiedSolutionCrew._pool_and_dedup_raw_concepts(fake, concepts)

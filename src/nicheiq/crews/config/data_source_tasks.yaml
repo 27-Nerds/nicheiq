@@ -18,6 +18,10 @@ discover_data_sources:
     **Competitive Context:**
     {competitive_data_notes}
 
+    **PRIOR ESTIMATE (from the ideation feasibility critic — a hypothesis to CONFIRM or REFINE,
+    not a fact):** access model {prior_data_access_model}, data feasibility {prior_data_feasibility}.
+    Notes: {prior_data_notes}. Your verified research overrides this; flag where you disagree.
+
     **RESEARCH WORKFLOW**: Apply your 3-Tier Verification Protocol:
 
     1. **Data Need Identification** → List specific data types solution requires from features
@@ -103,6 +107,8 @@ evaluate_data_sources:
         - integration_complexity: "LOW", "MEDIUM", or "HIGH"
         - cost_viability: "FREE", "LOW", "MEDIUM", or "HIGH"
         - quality_assessment: Reliability notes and known issues
+    - access_model: one of free | freemium | paid | unofficial | application-required | restricted | partner-only
+      ('unofficial' = reachable via an unofficial API / scraping library / reverse-engineered endpoint — ToS-gray but obtainable)
     - mvp_cost_estimate: "$0-100/mo" or similar (Optional)
     - scale_cost_estimate: "$500-1000/mo" or similar (Optional)
     - identified_risks: List of 2-4 specific risks

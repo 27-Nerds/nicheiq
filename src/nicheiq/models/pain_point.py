@@ -217,7 +217,7 @@ class PainPointScoring(BaseModel):
         ..., description="Title reference key to match with UnvalidatedPainPoint"
     )
     severity_score: float = Field(
-        ..., ge=0.0, le=1.0, description="Severity score (0-1) based on emotional language"
+        ..., ge=0.0, le=1.0, description="Severity score (0-1) based on functional workflow impact (not emotional volume)"
     )
     willingness_to_pay: float = Field(
         ..., ge=0.0, le=1.0, description="Indicator of willingness to pay for solution (0-1)"
@@ -352,7 +352,7 @@ class PainPoint(BaseModel):
         description="Total UNIQUE discussions mentioning this problem - typically much larger than quote count"
     )
     severity_score: float = Field(
-        ..., ge=0.0, le=1.0, description="Severity score (0-1) based on emotional language"
+        ..., ge=0.0, le=1.0, description="Severity score (0-1) based on functional workflow impact (not emotional volume)"
     )
     willingness_to_pay: float = Field(
         ...,

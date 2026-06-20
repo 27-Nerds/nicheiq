@@ -33,6 +33,26 @@
     if (lower === "high") return "text-error";
     return "text-warning";
   }
+
+  // Data-access model → human label + risk-palette variant (severity ramp, never accent).
+  const ACCESS_LABELS: Record<string, string> = {
+    public: "Public API",
+    freemium: "Freemium API",
+    paywalled: "Paid Data",
+    unofficial: "Scraping / Unofficial",
+    restricted: "Access Restricted",
+  };
+  function accessLabel(m: string | undefined): string {
+    if (!m) return "";
+    return ACCESS_LABELS[m.toLowerCase()] ?? m;
+  }
+  function accessVariant(m: string | undefined): "success" | "warning" | "error" | "muted" {
+    const k = (m ?? "").toLowerCase();
+    if (k === "public" || k === "freemium") return "success";
+    if (k === "paywalled" || k === "unofficial") return "warning";
+    if (k === "restricted") return "error";
+    return "muted";
+  }
 </script>
 
 <Section
@@ -88,6 +108,15 @@
                     Solo Dev: {formatScorePercent(feasibility, 0, "-")}
                   </Badge>
                 {/if}
+              {/if}
+              {#if solution.data_access_model}
+                <Badge
+                  variant={accessVariant(solution.data_access_model)}
+                  size="sm"
+                  title={solution.data_acquisition_notes || undefined}
+                >
+                  Data: {accessLabel(solution.data_access_model)}
+                </Badge>
               {/if}
               {#if solution.competitive_intensity}
                 <Badge variant="muted" size="sm">

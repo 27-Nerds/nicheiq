@@ -302,6 +302,11 @@ class AlternativeSolution(BaseModel):
     novelty_score: Optional[float] = Field(None, ge=0.0, le=1.0, description="Innovation/novelty score")
     solo_dev_feasibility: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="Solo developer feasibility score (0-1)")
 
+    # Data feasibility (from the ideation feasibility critic; annotate-only, surfaced in UI)
+    data_feasibility_score: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="Ease of obtaining required data (0-1)")
+    data_access_model: Optional[str] = Field(default=None, description="public | freemium | paywalled | unofficial | restricted")
+    data_acquisition_notes: Optional[str] = Field(default=None, description="Data source/route + access model + cost/ToS risk")
+
     # NEW: Competitive landscape for this solution
     top_competitors: Optional[list[str]] = Field(default=None, description="Top 3 competitors for this solution")
     market_gaps: Optional[list[str]] = Field(default=None, description="Key market gaps this solution addresses")

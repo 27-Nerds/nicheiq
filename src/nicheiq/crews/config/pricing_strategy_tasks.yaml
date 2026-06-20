@@ -93,6 +93,15 @@ pricing_strategy_analysis:
     | **Affiliate-Only** | Purchase-intent traffic, product comparisons | Comparison-tools, high commercial intent keywords |
     | **Hybrid (Freemium + Ads)** | Mixed WTP signals, tool with broad + niche audiences | Free tier monetized by ads, paid tier for power users |
 
+    **WTP → PRICE-RANGE ANCHOR (paid tiers; align with the WTP scores above, not a guess):**
+    | Avg WTP | Indicative paid entry (B2C / prosumer) | B2B / professional |
+    |---|---|---|
+    | 0.7-1.0 | $15-40/mo | $50-200+/mo |
+    | 0.45-0.7 | $7-15/mo | $20-60/mo |
+    | 0.25-0.45 | $3-9/mo or free+ads | freemium, paid $15-40/mo |
+    | < 0.25 | free (ads/affiliate), no paid tier expected | lead-gen / free |
+    Adjust within a band for competitor pricing + project type. A paid tier far above the WTP band fails validation.
+
     **DO NOT default to 3-tier Freemium.** Match model to:
     1. WTP signals from pain point analysis (low WTP favors ad/affiliate/free models)
     2. Project type: {project_type} (SaaS vs directory vs tool vs aggregator vs comparison-tool)
@@ -245,10 +254,10 @@ pricing_strategy_analysis:
     - Acceptable: 2:1 to 3:1 (the 2:1 floor is MANDATORY — below it, change pricing or acquisition strategy)
     - Target 3:1 or better
 
-    SELF-VERIFICATION (required): State your LTV calculation (retention months ×
-    ARPU) and the CAC you used explicitly in your reasoning BEFORE outputting the
-    final numbers, then verify ltv_to_cac_ratio = LTV ÷ CAC and that it is >= 2:1.
-    A stated ratio inconsistent with your own LTV and CAC numbers fails validation.
+    SELF-VERIFICATION (required, internal): compute LTV (retention months × ARPU) and
+    CAC, then ensure the `ltv_to_cac_ratio` you output equals LTV ÷ CAC and is >= 2:1.
+    Do this silently — output ONLY the structured result (no reasoning text before the
+    JSON); the ratio field must be consistent with the ltv and cac fields you emit.
 
 
     **WARNING — EXAMPLE NUMBERS ARE FABRICATED:** Every dollar amount, ratio,
