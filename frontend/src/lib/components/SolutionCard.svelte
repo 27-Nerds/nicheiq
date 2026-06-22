@@ -7,6 +7,8 @@
   import { fly } from "svelte/transition";
   import Badge from "$lib/components/ui/Badge.svelte";
   import CategoryBadge from "$lib/components/catalog/CategoryBadge.svelte";
+  import Tooltip from "$lib/components/ui/Tooltip.svelte";
+  import { scoreRationale } from "$lib/utils/scoreRationale";
   import type { SolutionPreview } from "$lib/types/job";
   import { computeCompositeScore, getSuperpower, SUPERPOWER_MAP, solutionDisplayTitle, solutionCardDescription, fitLabel } from "$lib/utils/solution-utils";
 
@@ -70,6 +72,7 @@
 
   // Derived display data
   const compositeScore = $derived(computeCompositeScore(solution));
+  const compositeWhy = $derived(scoreRationale(solution, "composite"));
   const superpower = $derived(getSuperpower(solution, SUPERPOWER_MAP));
   const displayTitle = $derived(solutionDisplayTitle(solution));
   const cardDesc = $derived(solutionCardDescription(solution));
@@ -82,6 +85,14 @@
   const whyFallback = $derived(
     !whyShort && solution.why_it_works?.trim() ? solution.why_it_works.trim() : null
   );
+
+  // Grounded generation provenance: the (pain × segment) cell that produced this idea.
+  const provenance = $derived.by(() => {
+    const pain = solution.source_pain?.trim() || solution.pain_points_addressed?.[0]?.trim();
+    if (!pain) return null;
+    const seg = solution.source_segment?.trim();
+    return seg ? `Generated for ${pain} — ${seg} audience` : `Addresses ${pain}`;
+  });
 
   // Score color
   const scoreColor = $derived.by(() => {
@@ -175,7 +186,15 @@
   <!-- Metrics row -->
   <div class="flex items-center gap-2 mt-1.5 flex-wrap">
     <span class="score-anchor">
-      <span class="text-sm font-bold font-display tabular-nums" style:color={scoreColor}>{Math.round(compositeScore * 100)}</span>
+      {#if compositeWhy}
+        <Tooltip content={compositeWhy} position="bottom" class="cursor-help">
+          {#snippet children()}
+            <span class="text-sm font-bold font-display tabular-nums" style:color={scoreColor}>{Math.round(compositeScore * 100)}</span>
+          {/snippet}
+        </Tooltip>
+      {:else}
+        <span class="text-sm font-bold font-display tabular-nums" style:color={scoreColor}>{Math.round(compositeScore * 100)}</span>
+      {/if}
       {#if voteCount > 0 && !actionSlot}
         <span class="vote-mark" title="{voteCount} community vote{voteCount === 1 ? '' : 's'}">
           <Heart class="w-2.5 h-2.5 shrink-0" fill="currentColor" aria-hidden="true" />
@@ -217,6 +236,11 @@
     <p class="mt-1.5 text-xs text-text-muted leading-relaxed truncate-1 pl-2 border-l-2 border-border-emphasis">
       &#x21B3; {whyFallback}
     </p>
+  {/if}
+
+  <!-- Grounded provenance: the pain × segment this idea was generated for -->
+  {#if provenance}
+    <p class="mt-1.5 text-[11px] text-text-muted font-mono truncate-1">{provenance}</p>
   {/if}
 
   <!-- Category badge -->

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { SvelteSet } from "svelte/reactivity";
   import SolutionGrid from "$lib/components/solutions/SolutionGrid.svelte";
+  import CoverageNotes from "$lib/components/CoverageNotes.svelte";
   import SolutionDetail from "$lib/components/SolutionDetail.svelte";
   import SelectSolutionModal from "$lib/components/SelectSolutionModal.svelte";
   import { selectSolution, regenerateIdeas, ApiError } from "$lib/api";
@@ -26,6 +27,8 @@
     externalValidate?: number;
     selectedSolutions?: string[];
     solutionVotes?: Record<string, number>;
+    /** Informational coverage/pain-concentration notes for the whole set. */
+    coverageNotes?: string[] | null;
   }
 
   let {
@@ -42,6 +45,7 @@
     externalValidate = $bindable(0),
     selectedSolutions,
     solutionVotes = {},
+    coverageNotes = [],
   }: Props = $props();
 
   // Multi-select state
@@ -207,6 +211,11 @@
       <a href="/jobs/{jobId}" class="fallback-link">Go to job page</a>
     </p>
   {:else}
+    <!-- Idea-set coverage notes (concentration / uncovered pains) -->
+    {#if coverageNotes && coverageNotes.length}
+      <CoverageNotes notes={coverageNotes} compact />
+    {/if}
+
     <!-- Solutions grid (top-pick + remaining, shared with visitor view) -->
     <SolutionGrid
       {solutions}

@@ -4,8 +4,8 @@ Implements 6-task divergent-convergent architecture for solution ideation.
 
 Architecture:
 1. Divergent Exploration - Generate 8-12 raw concepts with forced ideation
-2. Diversity Filtering - Filter to 5-7 unique concepts
-3. Solution Refinement - Expand to 3-5 full specifications
+2. Diversity Filtering - Filter to up to ~10 unique concepts
+3. Solution Refinement - Expand to up to ~10 full specifications
 4. Competitive Analysis - Analyze competitive landscape
 5. Competitive Refinement - Enhance with competitive insights
 6. Solution Selection - Select best solution
@@ -17,6 +17,7 @@ Benefits:
 - Solo-dev feasibility weighted in scoring
 """
 
+import json
 import re
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -120,6 +121,228 @@ _DIVERGENT_LENSES = [
 ]
 
 
+# --- Pain-partitioned divergent ideation (settings.enable_pain_partitioned_divergent) ----
+# Ordinary, niche-grounded personas (NOT "famous genius" — that backfires; arXiv 2602.20408).
+# Rotated one per narrow generator so each agent reasons from a different real user's vocabulary.
+_DIVERGENT_PERSONAS = [
+    "a 5+ year power user of this niche who knows exactly where every existing tool falls short",
+    "a budget-constrained newcomer who finds current options too expensive or too complex",
+    "a professional who SERVES this audience (coach, consultant, vendor) and sees their pains daily",
+    "someone who tried the popular existing solutions and CHURNED — they know why they quit",
+    "a data/tooling tinkerer who already rigs spreadsheets and scripts to cope today",
+    "a time-poor buyer who just wants the outcome done-for-them and will pay to skip the work",
+]
+
+
+def _format_segment_persona(s) -> str:
+    """Turn a real research AudienceSegment into a grounded persona directive."""
+    bits = [getattr(s, "segment_name", None) or "a user from this niche"]
+    exp = getattr(s, "expertise_level", None)
+    if exp:
+        bits.append(f"{exp} level")
+    budget = getattr(s, "budget_sensitivity", None)
+    if budget:
+        bits.append(f"{budget} budget-sensitivity")
+    out = "a real audience from this niche — " + ", ".join(str(b) for b in bits)
+    motiv = getattr(s, "motivation_drivers", None) or []
+    if motiv:
+        out += "; they want " + ", ".join(str(m) for m in motiv[:3])
+    return out
+# Full project_type vocabulary (used when the UI imposes no restriction).
+_ALL_PROJECT_TYPES = ["saas", "directory", "aggregator", "comparison-tool", "marketplace", "other"]
+
+
+def _archetype_directive(allowed_types: list[str] | None, preferred_type: str | None = None) -> str:
+    """Product-shape steer that RESPECTS the UI's project-type selection (allowed_project_types).
+
+    NOTE: info-products (directory / aggregator / comparison) are FIRST-CLASS outcomes — the system's
+    job is a monetizable solo side-project and programmatic-SEO info-products are often the best
+    build-effort-to-revenue play. We want VARIETY (the per-pain partition drives that), NOT a bias away
+    from info-products. But the chosen shape MUST stay within the user's allowed types.
+    """
+    allowed = [t for t in (allowed_types or []) if t] or _ALL_PROJECT_TYPES
+    allowed_str = " / ".join(allowed)
+    restricted = bool(allowed_types) and set(allowed) != set(_ALL_PROJECT_TYPES)
+    base = (
+        f"Pick the product_type that best fits THIS pain — it MUST be one of the user's ALLOWED types: "
+        f"{allowed_str}."
+    )
+    if not restricted:
+        base += (
+            " Info-products (directory / aggregator / comparison) are first-class — often the strongest "
+            "programmatic-SEO + low-maintenance ad/affiliate play for a solo creator."
+        )
+    base += (
+        " Choose the shape with the best build-effort-to-revenue ratio for a solo creator; do NOT force a "
+        "'novel' shape if a simpler allowed type would earn more. Use ONLY an allowed type."
+    )
+    # Soft per-cell nudge toward a target shape (pool-level diversity across cells) — only when it's
+    # an allowed type; never override fit.
+    if preferred_type and preferred_type in allowed:
+        base += (
+            f" For THIS generator, LEAN toward a '{preferred_type}' shape if it genuinely fits this "
+            "pain (this spreads product types across the pool); otherwise pick the best allowed type."
+        )
+    return base
+
+
+def _format_one_pain(pain, n_quotes: int = 5) -> str:
+    """Rich single-pain block for a partitioned generator's pain focus (§6b inputs)."""
+    title = getattr(pain, "title", "") or ""
+    desc = getattr(pain, "description", "") or ""
+    sev = getattr(pain, "severity_score", None)
+    wtp = getattr(pain, "willingness_to_pay", None)
+    opp = getattr(pain, "opportunity_level", None)
+    opp = getattr(opp, "value", opp)  # enum -> str
+    mentions = getattr(pain, "mention_count", None)
+    segs = getattr(pain, "affected_segments", None) or []
+    quotes = (getattr(pain, "representative_quotes", None) or [])[:n_quotes]
+    lines = [f"PAIN: {title}"]
+    if desc:
+        lines.append(f"  {desc}")
+    meta = []
+    if isinstance(sev, (int, float)):
+        meta.append(f"severity {sev * 10:.1f}/10")
+    if isinstance(wtp, (int, float)):
+        meta.append(f"WTP {wtp * 10:.1f}/10")
+    if opp:
+        meta.append(f"opportunity {opp}")
+    if isinstance(mentions, int):
+        meta.append(f"{mentions} mentions")
+    if meta:
+        lines.append("  (" + " | ".join(meta) + ")")
+    if segs:
+        lines.append(f"  Felt by: {', '.join(str(s) for s in segs[:3])}")
+    for q in quotes:
+        qt = " ".join(str(q).split())
+        if qt:
+            lines.append(f'  - "{qt[:200]}"')
+    return "\n".join(lines)
+
+
+def _build_partitioned_block(
+    pain_focus: str, persona: str, concepts_target: int, allow_zero: bool,
+    allowed_types: list[str] | None = None, preferred_type: str | None = None,
+) -> str:
+    """The per-agent override prefix injected at the TOP of the divergent task as
+    {partitioned_mode_block}. Empty string => byte-identical legacy prompt. When present it
+    redirects this generator to ONE pain and explicitly overrides the pool-level quotas
+    (8-12 concepts / >=4 pains / >=4 techniques / >=3 project types) that don't apply to a
+    single narrow agent. The archetype steer RESPECTS the UI's allowed_project_types."""
+    archetype = _archetype_directive(allowed_types, preferred_type=preferred_type)
+    zero_clause = (
+        "If — and ONLY if — there is genuinely no strong product fit for this pain, you may "
+        "return an empty concept list. Do NOT invent a weak idea to fill a quota."
+        if allow_zero else
+        "Return at least 1 concept."
+    )
+    return (
+        "**PARTITIONED MODE — you are ONE of several parallel generators.**\n"
+        f"Generate ~{concepts_target} solution concepts for the SINGLE pain below — and ONLY this "
+        "pain. Technique diversity, project-type spread, and covering multiple pains are handled "
+        "ACROSS the pool, NOT by you: IGNORE any instruction below to 'generate 8-12 concepts', "
+        "'cover >=4 distinct pains', use '>=4 techniques', or span '>=3 project types'. Go DEEP on "
+        "this one pain instead.\n"
+        f"Reason from this viewpoint: {persona}. Think step by step about their day before each concept.\n"
+        f"{archetype}\n"
+        f"{zero_clause}\n\n"
+        "THE ONE PAIN TO SOLVE:\n"
+        f"{pain_focus}\n\n"
+        "═══════════════════════════════════════════════════════════════════════════\n\n"
+    )
+
+
+# Per-cell archetype nudge rotation (pool-level project-type spread; filtered by allowed_types).
+_ARCHETYPE_ROTATION = ["saas", "comparison-tool", "marketplace", "directory", "aggregator"]
+_OPPORTUNITY_RANK = {"high": 3, "medium": 2, "low": 1}
+
+
+def _opportunity_rank(pain) -> int:
+    lvl = getattr(pain, "opportunity_level", None)
+    return _OPPORTUNITY_RANK.get(str(getattr(lvl, "value", lvl) or "").strip().lower(), 0)
+
+
+def _candidate_segments_for_pain(pain, segments: list) -> list:
+    """Segments most relevant to a pain, in affinity order: named `affected_segments`,
+    else `pain_point_alignment` overlap with the pain title, else all (round-robin fallback)."""
+    affected = {str(a).strip().lower() for a in (getattr(pain, "affected_segments", None) or [])}
+    if affected:
+        named = [s for s in segments
+                 if (getattr(s, "segment_name", "") or "").strip().lower() in affected]
+        if named:
+            return named
+    ptitle = set((getattr(pain, "title", "") or "").lower().split())
+    scored = []
+    for s in segments:
+        sa = set(" ".join(getattr(s, "pain_point_alignment", None) or []).lower().split())
+        ov = len(ptitle & sa)
+        if ov > 0:
+            scored.append((ov, s))
+    if scored:
+        scored.sort(key=lambda x: -x[0])
+        return [s for _, s in scored]
+    return list(segments)
+
+
+def _assign_generator_cells(pains: list, segments: list, *, target: int, max_gen: int) -> list:
+    """Assign divergent generator cells from the (pain × segment) affinity graph.
+
+    One cell per real (pain × affected-segment) edge, de-clustered by a BUILD-TIME per-segment
+    cap (a dominant segment can't take more than ceil(target/distinct_segments) cells before a
+    pain's next segment is tried), every pain covered >=1, filling toward `target`, ordered
+    high->low opportunity (so the allow_zero tail lands on the weakest). Returns up to `max_gen`
+    dicts {pain, segment}; `segment` is None when no audience segments exist (persona falls back
+    to the generic archetypes). Pure function — no I/O, deterministic for a given input order."""
+    if not pains:
+        return []
+    pains_ordered = sorted(
+        pains, key=lambda p: (-_opportunity_rank(p), -(getattr(p, "severity_score", 0) or 0)))
+    if not segments:
+        return [{"pain": p, "segment": None} for p in pains_ordered[:max_gen]]
+
+    distinct = len({(getattr(s, "segment_name", "") or "") for s in segments}) or 1
+    per_seg_cap = max(1, -(-target // distinct))  # ceil(target / distinct_segments)
+    cand = {id(p): _candidate_segments_for_pain(p, segments) for p in pains_ordered}
+    seg_count: dict = {}
+    per_pain_used: dict = {}
+    cells: list = []
+    limit = min(max(target, 1), max_gen)
+
+    def _pick(pain):
+        used = per_pain_used.setdefault(id(pain), set())
+        opts = [s for s in cand[id(pain)] if (getattr(s, "segment_name", "") or "") not in used]
+        if not opts:
+            return None
+        under_cap = [s for s in opts
+                     if seg_count.get(getattr(s, "segment_name", "") or "", 0) < per_seg_cap]
+        chosen_from = under_cap or opts  # relax the cap only when every option is already capped
+        chosen_from.sort(key=lambda s: seg_count.get(getattr(s, "segment_name", "") or "", 0))
+        return chosen_from[0]
+
+    def _take(pain, seg):
+        name = getattr(seg, "segment_name", "") or ""
+        cells.append({"pain": pain, "segment": seg})
+        seg_count[name] = seg_count.get(name, 0) + 1
+        per_pain_used.setdefault(id(pain), set()).add(name)
+
+    for p in pains_ordered:                 # Round 1: coverage (1 cell per pain)
+        s = _pick(p)
+        if s is not None:
+            _take(p, s)
+    while len(cells) < limit:                # Rounds 2+: fill toward target (segment-first)
+        progressed = False
+        for p in pains_ordered:
+            if len(cells) >= limit:
+                break
+            s = _pick(p)
+            if s is not None:
+                _take(p, s)
+                progressed = True
+        if not progressed:
+            break
+    return cells[:max_gen]
+
+
 # Interpolate only `{identifier}` tokens (CrewAI's _VARIABLE_PATTERN), leaving JSON
 # braces and unknown tokens untouched — so rendering the divergent prompt for direct
 # LLM calls is safe where str.format would crash on the prompt's literal JSON examples.
@@ -131,6 +354,43 @@ def _interpolate_template(template: str, values: dict) -> str:
         key = m.group(1)
         return str(values[key]) if key in values else m.group(0)
     return _TEMPLATE_VAR.sub(_sub, template)
+
+
+def _norm_name(n: str) -> str:
+    """Normalize a concept/solution name for cross-stage matching (lowercase, no spaces)."""
+    return "".join((n or "").lower().split())
+
+
+def _cap_feasibility_scores(
+    data_access_model: str,
+    data_feasibility: float,
+    build_feasibility: float,
+    *,
+    restricted_cap: float,
+    margin: float,
+) -> tuple[float, float]:
+    """Deterministic downgrade-only feasibility caps (mirrors the novelty cap pattern).
+
+    Returns (data_feasibility, build_feasibility) after applying, in order:
+      1. data cap by access model — 'restricted' (per-ID/unverified) -> <= restricted_cap;
+         'blocked' -> <= 0.2.
+      2. build <= data + margin — you can't build on data you can't get. If build is scored
+         but data is the -1.0 sentinel (unscored), treat as suspicious and cap build at
+         restricted_cap + margin (closes the 'build 0.9 / data unscored' hole).
+    Sentinel -1.0 scores (not scored by the critic) pass through untouched.
+    """
+    dm = (data_access_model or "").strip().lower()
+    df, bf = data_feasibility, build_feasibility
+    if df >= 0:
+        if dm == "restricted" and df > restricted_cap:
+            df = restricted_cap
+        elif dm == "blocked" and df > 0.2:
+            df = 0.2
+    if bf >= 0:
+        cap = (df + margin) if df >= 0 else (restricted_cap + margin)
+        if bf > cap:
+            bf = cap
+    return df, bf
 
 
 class _LooseConceptBatch(BaseModel):
@@ -155,6 +415,10 @@ class _NoveltyVerdict(BaseModel):
     data_feasibility: float = -1.0
     data_access_model: str = ""
     data_notes: str = ""
+    # Bulk-access route the data is REALLY obtainable through (downloadable dump / list-or-index
+    # endpoint / official API), or the literal "NO-BULK". Empty/NO-BULK => unverified source =>
+    # data_feasibility is capped in code (a named source is a claim, not a fact).
+    bulk_route: str = ""
 
 
 class _NoveltyVerdicts(BaseModel):
@@ -250,10 +514,26 @@ class UnifiedSolutionCrew:
                 "tools_currently_used": "Not available",
             }
 
-        # Format audience segments
+        # Format audience segments WITH economics (§6b: budget/motivation/discovery were
+        # dropped before — they ground WTP and product shape in who actually pays).
+        def _seg_line(s) -> str:
+            parts = [f"- {s.segment_name}: {', '.join(s.pain_point_alignment)} ({s.expertise_level})"]
+            extras = []
+            budget = getattr(s, "budget_sensitivity", None)
+            if budget:
+                extras.append(f"budget-sensitivity {budget}")
+            disc = getattr(s, "discovery_channels", None) or []
+            if disc:
+                extras.append(f"found via {', '.join(str(d) for d in disc[:3])}")
+            motiv = getattr(s, "motivation_drivers", None) or []
+            if motiv:
+                extras.append(f"wants {', '.join(str(m) for m in motiv[:3])}")
+            if extras:
+                parts.append("    (" + " | ".join(extras) + ")")
+            return "\n".join(parts)
+
         segments = "\n".join(
-            f"- {s.segment_name}: {', '.join(s.pain_point_alignment)} ({s.expertise_level})"
-            for s in self.audience_mapping.audience_segments[:5]
+            _seg_line(s) for s in self.audience_mapping.audience_segments[:5]
         ) if self.audience_mapping.audience_segments else "Not available"
 
         return {
@@ -261,9 +541,9 @@ class UnifiedSolutionCrew:
             "audience_segments_summary": segments,
             "common_vocabulary": ", ".join(self.audience_mapping.common_vocabulary[:12]) if self.audience_mapping.common_vocabulary else "Not available",
             "frustrations_with_existing": "\n".join(
-                f"- {f}" for f in self.audience_mapping.frustrations_with_existing[:5]
+                f"- {f}" for f in self.audience_mapping.frustrations_with_existing[:8]
             ) if self.audience_mapping.frustrations_with_existing else "Not available",
-            "tools_currently_used": ", ".join(self.audience_mapping.tools_currently_used[:8]) if self.audience_mapping.tools_currently_used else "Not available",
+            "tools_currently_used": ", ".join(self.audience_mapping.tools_currently_used[:12]) if self.audience_mapping.tools_currently_used else "Not available",
         }
 
     # ========== COMPETITOR MENTIONS HELPER ==========
@@ -407,85 +687,86 @@ class UnifiedSolutionCrew:
 
     # ========== MULTI-SAMPLE DIVERGENT GENERATION ==========
 
-    def _render_divergent_prompt(self, inputs: dict, lens: str) -> str:
+    def _render_divergent_prompt(self, inputs: dict, lens: str, *, partitioned_mode_block: str = "") -> str:
         """Render the divergent task description for a direct LLM call under one lens.
 
         Uses identifier-only interpolation (CrewAI-faithful) — never str.format, which
-        crashes on the prompt's literal JSON braces.
+        crashes on the prompt's literal JSON braces. ``partitioned_mode_block`` is the
+        per-agent override prefix ("" => byte-identical legacy prompt).
         """
         template = self.tasks_config["divergent_exploration"]["description"]
-        return _interpolate_template(template, {**inputs, "lens_directive": lens})
+        return _interpolate_template(template, {
+            **inputs,
+            "lens_directive": lens,
+            "partitioned_mode_block": partitioned_mode_block,
+        })
 
-    def _generate_divergent_pool(self, inputs: dict) -> tuple[list, object]:
-        """Run N INDEPENDENT divergent calls under different lenses (parallel), validate
-        each leniently with one re-prompt, and return (pooled_concepts, total_usage).
-
-        Pure over locals — no self.* writes inside threads (thread-safety).
-        """
-        n = max(1, settings.num_divergent_samples)
-        lenses = [_DIVERGENT_LENSES[i % len(_DIVERGENT_LENSES)] for i in range(n)]
-        # MODEL DIVERSITY: round-robin a (model, reasoning_effort) pool across samples
-        # (orthogonal to lenses) so independent samples come from decorrelated models,
-        # not just different prompts on one model. Per-model effort matters: some
-        # OpenRouter models leak the tool-call into the dropped 'reasoning' channel
-        # under forced tool_choice when reasoning is ON (DeepSeek -> '@none'), others
-        # need it ON (Kimi -> '@medium'). Empty pool -> [(brainstorm_llm, effort)].
-        pool = settings.brainstorm_pool_resolved
-        assignments = [pool[i % len(pool)] for i in range(n)]
-
-        def _one_sample(idx: int, lens: str, model: str, effort: str | None):
-            prompt = self._render_divergent_prompt(inputs, lens)
-            usages = []
-            last_err = None
-            for attempt in range(2):  # validate + one re-prompt
-                p = prompt if attempt == 0 else (
-                    prompt + f"\n\nYOUR PREVIOUS ATTEMPT FAILED VALIDATION: {last_err}. "
-                    "Fix it and return the full concept list again."
+    def _one_sample(self, inputs: dict, idx: int, lens: str, model: str, effort: str | None,
+                    *, partitioned_block: str = "", min_concepts: int = 1,
+                    allow_zero: bool = False, timeout: int = 180,
+                    source_pain: str | None = None, source_segment: str | None = None):
+        """One divergent generator call (validate + at most one re-prompt). Shared by the
+        legacy broad path and the pain-partitioned path. In partitioned mode, stamps each
+        returned concept with its (pain × segment) cell provenance (per-cell boundary — the
+        flat fanout pool would otherwise lose which cell produced which concept)."""
+        prompt = self._render_divergent_prompt(inputs, lens, partitioned_mode_block=partitioned_block)
+        usages: list = []
+        last_err = None
+        for attempt in range(2):  # validate + one re-prompt
+            p = prompt if attempt == 0 else (
+                prompt + f"\n\nYOUR PREVIOUS ATTEMPT FAILED VALIDATION: {last_err}. "
+                "Fix it and return the full concept list again."
+            )
+            try:
+                batch, usage = LLMService.invoke_structured(
+                    prompt=p,
+                    output_model=_LooseConceptBatch,
+                    temperature=0.85,
+                    timeout=timeout,
+                    model_name=model,
+                    reasoning_effort=effort,
+                    creative=True,  # brainstorm pool (grok/minimax/hy3): keep reasoning + free
+                                    # provider routing; opt out of the qwen json_schema/deepinfra pin.
                 )
-                try:
-                    batch, usage = LLMService.invoke_structured(
-                        prompt=p,
-                        output_model=_LooseConceptBatch,
-                        temperature=0.85,
-                        timeout=180,
-                        model_name=model,
-                        reasoning_effort=effort,
-                    )
-                    usages.append(usage)
-                except Exception as e:  # parse/timeout — retry once then give up
-                    last_err = str(e)[:160]
-                    logger.warning(f"[Divergent sample {idx}] {model} (reasoning={effort}) call failed (attempt {attempt+1}): {last_err}")
-                    continue
-                # lenient validation, but DROP per-concept low-quality items
-                valid = [c for c in batch.concepts if raw_concept_quality_error(c) is None]
-                ok, err = validate_raw_concept_list(
-                    batch, min_concepts=1, check_technique_diversity=False
-                )
-                if ok and valid:
-                    logger.info(f"[Divergent sample {idx}] {model} (reasoning={effort}) lens-{idx % len(lenses)}: {len(valid)} concepts")
-                    return valid, usages
-                last_err = err or "all concepts failed per-concept quality"
-                if valid:  # keep whatever passed even if the batch as a whole was thin
-                    logger.info(f"[Divergent sample {idx}] {model} (reasoning={effort}) kept {len(valid)} valid concepts (batch flagged: {last_err})")
-                    return valid, usages
-            logger.warning(f"[Divergent sample {idx}] {model} (reasoning={effort}) produced no valid concepts")
-            return [], usages
+                usages.append(usage)
+            except Exception as e:  # parse/timeout — retry once then give up
+                last_err = str(e)[:160]
+                logger.warning(f"[Divergent sample {idx}] {model} (reasoning={effort}) call failed (attempt {attempt+1}): {last_err}")
+                continue
+            # A LEGITIMATE empty batch (allow_zero, "no strong fit") is a valid result —
+            # do NOT re-prompt it (that wastes a call and fights the no-fit signal).
+            if allow_zero and not batch.concepts:
+                logger.info(f"[Divergent sample {idx}] {model} returned 0 concepts (no-fit, allowed)")
+                return [], usages
+            # lenient validation, but DROP per-concept low-quality items
+            valid = [c for c in batch.concepts if raw_concept_quality_error(c) is None]
+            for c in valid:  # stamp grounded (pain × segment) provenance per cell
+                if source_pain is not None:
+                    c.source_pain = source_pain
+                if source_segment is not None:
+                    c.source_segment = source_segment
+            ok, err = validate_raw_concept_list(
+                batch, min_concepts=min_concepts, check_technique_diversity=False
+            )
+            if ok and valid:
+                logger.info(f"[Divergent sample {idx}] {model} (reasoning={effort}): {len(valid)} concepts")
+                return valid, usages
+            last_err = err or "all concepts failed per-concept quality"
+            if valid:  # keep whatever passed even if the batch as a whole was thin
+                logger.info(f"[Divergent sample {idx}] {model} (reasoning={effort}) kept {len(valid)} valid concepts (batch flagged: {last_err})")
+                return valid, usages
+        logger.warning(f"[Divergent sample {idx}] {model} (reasoning={effort}) produced no valid concepts")
+        return [], usages
 
+    def _run_divergent_fanout(self, jobs: list[dict], deadline: int, max_workers: int) -> tuple[list, list]:
+        """Run a list of generator jobs in parallel under a wall-clock deadline; collect
+        whatever finishes. A runaway sample (OpenRouter keep-alive) must not stall the pool,
+        so we shut down without joining and let the abandoned HTTP call die on its timeout."""
         pooled: list = []
         all_usages: list = []
-        # Wall-clock DEADLINE: a runaway sample (e.g. a reasoning model held open by
-        # OpenRouter keep-alive bytes — the per-call read-timeout does NOT cap that)
-        # must not stall the whole pool. After the deadline we proceed with whatever
-        # finished. Don't use `with` (its __exit__ joins threads -> would block on the
-        # hung one); shut down without waiting and let the abandoned HTTP call die on
-        # its own timeout.
-        deadline = settings.divergent_sample_deadline_seconds
-        ex = ThreadPoolExecutor(max_workers=min(n, 4))
+        ex = ThreadPoolExecutor(max_workers=max_workers)
         try:
-            futures = {
-                ex.submit(_one_sample, i, lens, assignments[i][0], assignments[i][1]): i
-                for i, lens in enumerate(lenses)
-            }
+            futures = {ex.submit(self._one_sample, **job): i for i, job in enumerate(jobs)}
             try:
                 for fut in as_completed(futures, timeout=deadline):
                     concepts, usages = fut.result()
@@ -495,11 +776,193 @@ class UnifiedSolutionCrew:
                 done = sum(1 for f in futures if f.done())
                 logger.warning(
                     f"[Divergent] deadline {deadline}s reached — proceeding with "
-                    f"{done}/{n} samples ({len(pooled)} concepts); abandoning slow sample(s)"
+                    f"{done}/{len(jobs)} samples ({len(pooled)} concepts); abandoning slow sample(s)"
                 )
         finally:
             ex.shutdown(wait=False, cancel_futures=True)
+        return pooled, all_usages
+
+    def _generate_divergent_pool(self, inputs: dict, partition_cells: list | None = None) -> tuple[list, object]:
+        """Run INDEPENDENT divergent calls in parallel, validate each leniently, and return
+        (pooled_concepts, usages). Two modes:
+        - PARTITIONED (enable_pain_partitioned_divergent + partition_cells): one narrow
+          generator per (pain × segment) cell — grounded persona from the affinity graph,
+          dynamic per-cell count, allow-zero for a capped subset.
+        - LEGACY (default): N broad samples over the same pains under rotating lenses.
+        Pure over locals — no self.* writes inside threads.
+        """
+        pool = settings.brainstorm_pool_resolved
+        deadline = settings.divergent_sample_deadline_seconds
+
+        if settings.enable_pain_partitioned_divergent and partition_cells:
+            return self._generate_divergent_pool_partitioned(inputs, partition_cells, pool, deadline)
+
+        # ---- LEGACY broad-sample path (unchanged behavior) ----
+        n = max(1, settings.num_divergent_samples)
+        lenses = [_DIVERGENT_LENSES[i % len(_DIVERGENT_LENSES)] for i in range(n)]
+        assignments = [pool[i % len(pool)] for i in range(n)]
+        jobs = [
+            {"inputs": inputs, "idx": i, "lens": lenses[i],
+             "model": assignments[i][0], "effort": assignments[i][1]}
+            for i in range(n)
+        ]
+        pooled, all_usages = self._run_divergent_fanout(jobs, deadline, max_workers=min(n, 4))
         logger.info(f"[Divergent] {n} samples → {len(pooled)} pooled concepts (pre-dedup)")
+        return pooled, all_usages
+
+    def _persona_for_pain(self, pain, idx: int) -> str:
+        """Grounded persona for a partitioned generator: prefer a REAL research audience
+        segment that actually experiences this pain; fall back to the generic stance
+        archetypes when audience mapping is unavailable/thin."""
+        am = getattr(self, "audience_mapping", None)
+        segs = getattr(am, "audience_segments", None) if am else None
+        if not segs:
+            return _DIVERGENT_PERSONAS[idx % len(_DIVERGENT_PERSONAS)]
+        chosen = None
+        # 1. a segment named in this pain's affected_segments
+        affected = {str(a).strip().lower() for a in (getattr(pain, "affected_segments", None) or [])}
+        if affected:
+            chosen = next((s for s in segs
+                           if (getattr(s, "segment_name", "") or "").strip().lower() in affected), None)
+        # 2. else the segment whose pain_point_alignment best overlaps the pain title
+        if chosen is None:
+            ptitle = set((getattr(pain, "title", "") or "").lower().split())
+            best, best_ov = None, 0
+            for s in segs:
+                sa = set(" ".join(getattr(s, "pain_point_alignment", None) or []).lower().split())
+                ov = len(ptitle & sa)
+                if ov > best_ov:
+                    best_ov, best = ov, s
+            chosen = best
+        # 3. else round-robin across the real segments
+        if chosen is None:
+            chosen = segs[idx % len(segs)]
+        return _format_segment_persona(chosen)
+
+    def _grounded_pains_for(self, source_pain_title: str | None,
+                            source_segment_name: str | None, cap: int = 5) -> list:
+        """Code-fill value for `pain_points_addressed`: the generating cell's pain first, then
+        other VALIDATED pains whose `affected_segments` include the cell's segment (cap 5). Every
+        entry is an exact `PainPoint.title`, so the title-keyed consumers (coverage, keyword-seed,
+        report_consistency) stay reliable. Grounded — never the LLM's self-reported titles."""
+        titles: list = []
+        if source_pain_title:
+            titles.append(source_pain_title)
+        pains = getattr(getattr(self, "pain_point_analysis", None), "pain_points", None) or []
+        seg = (source_segment_name or "").strip().lower()
+        if seg:
+            for p in pains:
+                t = getattr(p, "title", None)
+                if not t or t in titles:
+                    continue
+                aff = {str(a).strip().lower() for a in (getattr(p, "affected_segments", None) or [])}
+                if seg in aff:
+                    titles.append(t)
+                if len(titles) >= cap:
+                    break
+        return titles[:cap]
+
+    def _build_partition_cells(self, selected_pains: list, extra_pains: list) -> list:
+        """Build (pain × segment) generator cells from the audience affinity graph, WIDENING the
+        pain set (medium → low priority) until the generator target is met. Segment-first:
+        `_assign_generator_cells` exhausts (pain × segment) edges for the current pains before we
+        add another pain. Returns the cell list (the caller drops to legacy if < 2)."""
+        am = getattr(self, "audience_mapping", None)
+        segments = list(getattr(am, "audience_segments", None) or []) if am else []
+        target = settings.divergent_target_generators
+        cap = settings.divergent_max_generators
+        pains = list(selected_pains)
+        cells = _assign_generator_cells(pains, segments, target=target, max_gen=cap)
+        extra = list(extra_pains or [])
+        widened = 0
+        while len(cells) < target and widened < len(extra):
+            pains.append(extra[widened])
+            widened += 1
+            cells = _assign_generator_cells(pains, segments, target=target, max_gen=cap)
+        logger.info(
+            f"[Divergent][partitioned] cells={len(cells)} "
+            f"(segments={len(segments)}, widened_pains={widened}, target={target})")
+        return cells
+
+    def _generate_divergent_pool_partitioned(self, inputs, cells, pool, deadline) -> tuple[list, object]:
+        """Pain-partitioned divergent generation: one narrow generator per (pain × segment) cell.
+
+        `cells` is the output of `_assign_generator_cells` (dicts {pain, segment}), already
+        ordered high->low opportunity and capped at divergent_max_generators. Per-cell concept
+        count is dynamic to a stable raw-pool target; provenance is stamped per cell."""
+        cells = list(cells)[:settings.divergent_max_generators]
+        n = len(cells)
+        # Dynamic per-cell count: keep the raw pool ~stable (~target_pool) regardless of cell
+        # count. Floor 3 (the binding constraint is >=6 surviving dedup), cap 4 (narrow-cell
+        # quality ceiling). per_cell is a PROMPT TARGET only — min_concepts stays 1/0.
+        per_cell = max(3, min(4, round(settings.divergent_target_pool / max(n, 1))))
+        n_zero_allowed = n // 3          # grounded cells: only the weakest tail may return 0
+        per_call_timeout = min(settings.divergent_sample_deadline_seconds, 90)
+        allowed_types = getattr(self, "allowed_project_types", None)
+
+        briefs, jobs = [], []
+        for i, cell in enumerate(cells):
+            pain = cell["pain"]
+            seg = cell.get("segment")
+            persona = (_format_segment_persona(seg) if seg is not None
+                       else _DIVERGENT_PERSONAS[i % len(_DIVERGENT_PERSONAS)])
+            seg_name = getattr(seg, "segment_name", None) if seg is not None else None
+            model, effort = pool[i % len(pool)]
+            lens = _DIVERGENT_LENSES[i % len(_DIVERGENT_LENSES)]
+            archetype_pref = _ARCHETYPE_ROTATION[i % len(_ARCHETYPE_ROTATION)]
+            allow_zero = i >= n - n_zero_allowed
+            block = _build_partitioned_block(
+                pain_focus=_format_one_pain(pain), persona=persona,
+                concepts_target=per_cell, allow_zero=allow_zero,
+                allowed_types=allowed_types, preferred_type=archetype_pref,
+            )
+            briefs.append({"idx": i, "pain": getattr(pain, "title", "?"), "segment": seg_name,
+                           "persona": persona, "model": model, "archetype": archetype_pref,
+                           "per_cell": per_cell, "allow_zero": allow_zero})
+            jobs.append({"inputs": inputs, "idx": i, "lens": lens, "model": model, "effort": effort,
+                         "partitioned_block": block, "min_concepts": 0 if allow_zero else 1,
+                         "allow_zero": allow_zero, "timeout": per_call_timeout,
+                         "source_pain": getattr(pain, "title", None), "source_segment": seg_name})
+
+        pooled, all_usages = self._run_divergent_fanout(
+            jobs, deadline, max_workers=min(n, settings.divergent_max_workers))
+
+        # Iterative pre-dedup top-up: post-dedup abort floor is 6 (dedup only lowers), so keep
+        # topping up the strongest cells (no zero) until the pool reaches ~9, at most 2 extra.
+        topped_up = 0
+        while len(pooled) < 9 and topped_up < 2 and cells:
+            cell = cells[topped_up % len(cells)]   # rotate from the highest-opportunity cells
+            seg = cell.get("segment")
+            persona = (_format_segment_persona(seg) if seg is not None
+                       else _DIVERGENT_PERSONAS[0])
+            block = _build_partitioned_block(
+                pain_focus=_format_one_pain(cell["pain"]), persona=persona,
+                concepts_target=4, allow_zero=False, allowed_types=allowed_types)
+            extra, eu = self._one_sample(
+                inputs, idx=90 + topped_up, lens=_DIVERGENT_LENSES[0], model=pool[0][0],
+                effort=pool[0][1], partitioned_block=block, min_concepts=1, allow_zero=False,
+                timeout=per_call_timeout,
+                source_pain=getattr(cell["pain"], "title", None),
+                source_segment=getattr(seg, "segment_name", None) if seg is not None else None)
+            pooled.extend(extra)
+            all_usages.extend(eu)
+            topped_up += 1
+
+        # De-clustering metric: share of concepts from the single most common segment.
+        seg_counts: dict = {}
+        for c in pooled:
+            seg_counts[getattr(c, "source_segment", None) or "?"] = (
+                seg_counts.get(getattr(c, "source_segment", None) or "?", 0) + 1)
+        max_seg_share = (max(seg_counts.values()) / len(pooled)) if pooled else 0.0
+        logger.info(
+            "[Divergent][partitioned] telemetry: "
+            + json.dumps({"n_generators": n, "per_cell": per_cell, "n_zero_allowed": n_zero_allowed,
+                          "pool_pre_dedup": len(pooled), "topped_up": topped_up,
+                          "distinct_segments": len([k for k in seg_counts if k != "?"]),
+                          "max_segment_share": round(max_seg_share, 2),
+                          "fallback_fired": len(pooled) < 6, "briefs": briefs}, default=str)[:2200]
+        )
+        logger.info(f"[Divergent][partitioned] {n} cells → {len(pooled)} pooled concepts (pre-dedup)")
         return pooled, all_usages
 
     def _score_pool_novelty(self, concepts: list) -> list:
@@ -529,7 +992,8 @@ class UnifiedSolutionCrew:
         listing = "\n".join(
             f"- {sanitize_social_content(c.concept_name or '')}: "
             f"{sanitize_social_content(c.one_liner or '')[:160]}"
-            + (f" [data hint: {sanitize_social_content(getattr(c, 'data_source_hint', '') or 'n/a')[:80]}]"
+            + (f" [data hint: {sanitize_social_content(getattr(c, 'data_source_hint', '') or 'n/a')[:80]}"
+               f"; claimed bulk route: {sanitize_social_content(getattr(c, 'data_route', '') or 'unstated')[:80]}]"
                if feas_on else "")
             for c in concepts
         )
@@ -553,21 +1017,43 @@ class UnifiedSolutionCrew:
             )
         if feas_on:
             parts.append(
-                "\nFEASIBILITY — for each concept estimate:\n"
-                "- build_feasibility (0.0-1.0): can a competent solo dev build this with available "
-                "tech? Apply ANTI-PATTERN PENALTIES (cap ≤0.4): needs AI capability not yet reliable; "
-                "real-time at scale; multi-sided marketplace cold-start; HIPAA/PCI/financial compliance; "
-                "'complex proprietary algorithm' with no stated approach; 5+ third-party integrations.\n"
-                "- data_feasibility (0.0-1.0): can a solo dev OBTAIN the required data? 0.9-1.0 free/public "
-                "(open data, public API, scraping public pages, user submissions); 0.6-0.8 paywalled-affordable "
-                "OR unofficial API / scraping library (ToS-gray but obtainable); 0.3-0.5 expensive/restricted; "
-                "0.0-0.2 no obtainable route.\n"
+                "\nFEASIBILITY — be a rigorous skeptic; a confident concept is not a feasible one. "
+                "For each concept, FIRST write data_notes + bulk_route + reason, THEN the numeric scores "
+                "(reason before number keeps you honest).\n"
+                "- bulk_route: name the CONCRETE route the data is obtainable in BULK — a downloadable "
+                "dump, a list/index/search endpoint, an official API, or first-party user submissions. If "
+                "the data is only a per-record/per-ID lookup (you must already know the key), behind "
+                "login/CAPTCHA, or you cannot name a bulk route, write the literal 'NO-BULK'. A named "
+                "source is a CLAIM, not a fact — a 'scrapeable public ledger' requires an enumerable index, "
+                "not lookup-by-known-ID.\n"
+                "- data_feasibility (0.0-1.0): can a solo dev OBTAIN the required data? 0.9-1.0 ONLY for a "
+                "real enumerable public index / bulk export / official API / first-party user submissions; "
+                "0.6-0.8 paywalled-affordable OR unofficial API / scraping library (ToS-gray but a bulk route "
+                "exists); 0.3-0.5 expensive/restricted OR per-ID-lookup-only/unverified source; 0.0-0.2 no "
+                "obtainable route. Do NOT award 0.9 'public' on a source's NAME alone.\n"
+                "- build_feasibility (0.0-1.0): can a competent solo dev build AND operate this? Apply "
+                "ANTI-PATTERN PENALTIES (cap ≤0.4): needs AI capability not yet reliable; real-time at scale; "
+                "multi-sided marketplace cold-start; HIPAA/PCI/financial compliance; 'complex proprietary "
+                "algorithm' with no stated approach; 5+ third-party integrations; ongoing MANUAL MODERATION "
+                "of user-generated content; DEFAMATION / legal exposure (publishing claims about named "
+                "people/businesses as the core mechanism); COLD-START corpus the solo dev must hand-create "
+                "before launch. build_feasibility cannot exceed data_feasibility — you can't build on data "
+                "you can't get.\n"
                 "- data_access_model: one of public | freemium | paywalled | unofficial | restricted | blocked. "
-                "Use 'unofficial' for ToS-gray data reachable via an unofficial API / scraping library / "
-                "reverse-engineered endpoint — KEEP these (do NOT drop for ToS alone); name the tool + risk in data_notes.\n"
+                "Use 'unofficial' for ToS-gray data with a real bulk route; use 'restricted' for per-ID-lookup-only "
+                "/ login-gated / unverified sources. Keep ToS-gray-but-obtainable concepts (do NOT drop for ToS "
+                "alone); name the tool + risk in data_notes.\n"
                 "- data_notes (≤120 chars): the data source/route + access model + cost/ToS risk.\n"
                 "Add a concept to drop_names ONLY when there is genuinely NO obtainable data route, OR it requires "
-                "circumventing access controls on PRIVATE data. Classify by ACCESS CHARACTERISTICS, not legality.\n"
+                "circumventing access controls on PRIVATE data. Classify the DROP by ACCESS CHARACTERISTICS, not "
+                "legality — but legality/moderation/cold-start DO lower the build_feasibility SCORE.\n"
+                "\nCALIBRATION ANCHORS (score new concepts relative to these):\n"
+                "- LOW example — 'verify vendor lab certificates against LabX's published results': the source "
+                "is a per-certificate lookup needing a pre-known ID with no bulk index => bulk_route='NO-BULK', "
+                "data_access_model='restricted', data_feasibility≈0.3, build_feasibility≈0.4.\n"
+                "- HIGH example — 'parametric dosage/cost calculator with a built-in reference table from "
+                "public-domain references': no external data dependency, pure computation => bulk_route='not-"
+                "data-dependent', data_feasibility≈0.9, build_feasibility≈0.85.\n"
             )
         parts.append(f"\nCONCEPTS:\n{fenced_concepts}\n")
         prompt = "".join(parts)
@@ -600,6 +1086,7 @@ class UnifiedSolutionCrew:
         kept: list = []
         no_route: list = []     # feasibility no-route drops (refill candidates)
         exists: list = []       # novelty already-exists drops (refill candidates)
+        crit_feas: dict = {}    # authoritative capped feasibility, re-asserted on final ideas
         for c in concepts:
             name = (c.concept_name or "").strip().lower()
             v = by_name.get(name)
@@ -615,6 +1102,30 @@ class UnifiedSolutionCrew:
                         c.data_access_model = v.data_access_model.strip().lower()
                     if v.data_notes:
                         c.data_acquisition_notes = v.data_notes[:120]
+                    # bulk_route gate: a source with no nameable bulk route is UNVERIFIED ->
+                    # 'restricted' regardless of the model's own label (a named source is a
+                    # claim, not a fact). 'not-data-dependent' / a real route pass through.
+                    _route = (getattr(v, "bulk_route", "") or "").strip().lower()
+                    if _route in ("", "no-bulk", "none", "n/a"):
+                        c.data_access_model = "restricted"
+                    # Deterministic feasibility caps. The critic is the feasibility AUTHORITY;
+                    # the downstream diversity-filter / refiner LLMs re-emit their own (uncapped)
+                    # feasibility, so we also stash the capped values here and re-assert them on
+                    # the final ideas in _finalize_feasibility().
+                    c.data_feasibility_score, c.build_feasibility_score = _cap_feasibility_scores(
+                        c.data_access_model,
+                        c.data_feasibility_score,
+                        c.build_feasibility_score,
+                        restricted_cap=settings.feasibility_restricted_data_cap,
+                        margin=settings.feasibility_build_data_coupling_margin,
+                    )
+                    if c.data_feasibility_score >= 0 or c.build_feasibility_score >= 0:
+                        crit_feas[_norm_name(c.concept_name)] = {
+                            "data": c.data_feasibility_score,
+                            "build": c.build_feasibility_score,
+                            "access": c.data_access_model,
+                            "notes": c.data_acquisition_notes,
+                        }
                 if has_anchor and v.already_exists:
                     exists.append(c)
                     continue
@@ -622,6 +1133,10 @@ class UnifiedSolutionCrew:
                 no_route.append(c)
                 continue
             kept.append(c)
+
+        # Stash the authoritative capped feasibility so _finalize_feasibility can re-assert it
+        # on the final ideas (the filter/refiner LLMs overwrite these with uncapped values).
+        self._critic_feasibility = crit_feas
 
         # Floor-guard to MIN_KEEP: never starve the downstream dedup. Only applies to a
         # real pool (≥ MIN_KEEP inputs) — small pools keep the simple "never empty" rule
@@ -640,7 +1155,7 @@ class UnifiedSolutionCrew:
             )
         return kept if kept else concepts  # never drop everything
 
-    def _pool_and_dedup_raw_concepts(self, concepts: list) -> list:
+    def _pool_and_dedup_raw_concepts(self, concepts: list, keep_fraction: float | None = None) -> list:
         """Dedup the pooled concepts and clamp to a DYNAMIC cap.
 
         Name dedup first (exact/normalized, keep lower INDEPENDENT obviousness), then
@@ -659,10 +1174,11 @@ class UnifiedSolutionCrew:
 
         MIN_KEEP = 6
         n_generated = len(concepts)
+        kf = settings.divergent_keep_fraction if keep_fraction is None else keep_fraction
         # Dynamic cap: >= fraction of generated, floored at MIN_KEEP, capped at pool_cap.
         cap = min(
             settings.divergent_pool_cap,
-            max(MIN_KEEP, math.ceil(n_generated * settings.divergent_keep_fraction)),
+            max(MIN_KEEP, math.ceil(n_generated * kf)),
         )
 
         def _obv(c) -> float:
@@ -678,6 +1194,32 @@ class UnifiedSolutionCrew:
             if key not in by_norm or _obv(c) < _obv(by_norm[key]):
                 by_norm[key] = c
         deduped = sorted(by_norm.values(), key=_obv)  # most-novel first
+
+        # 1.5. (pain × data_source) near-duplicate dedup — collapse concepts that solve the SAME
+        # pain from the SAME data source (the ≥2-of-3 M/D/J gate misses these when journey_tag
+        # differs, e.g. PurityRouter vs VendorAudit both on Janoshik/COA). Keep the most-novel
+        # (deduped is already obviousness-sorted), floor-guarded. NO-OP when source_pain is
+        # absent (legacy broad path) — never bucket all None together.
+        if settings.enable_pain_source_dedup:
+            ps_seen: set = set()
+            ps_kept: list = []
+            ps_dropped: list = []
+            for c in deduped:
+                sp = (getattr(c, "source_pain", None) or "").strip().lower()
+                if not sp:
+                    ps_kept.append(c)
+                    continue
+                key = (sp, "".join((getattr(c, "data_source_tag", None) or "").lower().split()))
+                if key in ps_seen:
+                    ps_dropped.append(c)
+                else:
+                    ps_seen.add(key)
+                    ps_kept.append(c)
+            while len(ps_kept) < MIN_KEEP and ps_dropped:
+                ps_kept.append(ps_dropped.pop(0))
+            if len(ps_kept) < len(deduped):
+                logger.info(f"[Divergent] pain×source dedup: {len(deduped)} -> {len(ps_kept)}")
+            deduped = ps_kept
 
         # 2. Advisory structural dedup, floor-guarded
         kept: list = []
@@ -708,7 +1250,7 @@ class UnifiedSolutionCrew:
         result = sorted(kept, key=_obv)[:cap]
         logger.info(
             f"[Divergent] dedup/clamp: {n_generated} generated → {len(kept)} after dedup "
-            f"→ {len(result)} kept (cap {cap} = {settings.divergent_keep_fraction:.0%} of "
+            f"→ {len(result)} kept (cap {cap} = {kf:.0%} of "
             f"generated, floor {MIN_KEEP}, max {settings.divergent_pool_cap})"
         )
         return result
@@ -871,8 +1413,16 @@ class UnifiedSolutionCrew:
                 idea.market_fit_score = 0.5
             if idea.technical_feasibility_score is None:
                 idea.technical_feasibility_score = 0.5
-            if not idea.pain_points_addressed:
-                idea.pain_points_addressed = [pain_title or "high-severity pain"]
+            # Grounded provenance + CODE-FILLED pain_points_addressed (override the LLM): prefer
+            # the concept's stamped cell, else the pain passed in. Direct-refine path (bold-slot /
+            # coverage / reinjection), so the concept→idea link is exact (no rename join needed).
+            src_pain = getattr(concept, "source_pain", None) or pain_title
+            src_seg = getattr(concept, "source_segment", None)
+            idea.source_pain = src_pain
+            idea.source_segment = src_seg
+            grounded = self._grounded_pains_for(src_pain, src_seg)
+            idea.pain_points_addressed = (
+                grounded or idea.pain_points_addressed or [pain_title or "high-severity pain"])
             return idea
         except Exception as e:
             logger.warning(f"[REINJECT] full refinement of '{concept.concept_name}' failed, "
@@ -897,6 +1447,303 @@ class UnifiedSolutionCrew:
     # OR it traces to a low-obviousness pooled concept.
     _BOLD_NOVELTY = 0.6
     _BOLD_OBVIOUSNESS = 0.35
+    # Provenance fuzzy-fallback (rename recovery): when an idea's name doesn't exact-match a
+    # pooled concept (refiner renamed it), match on text-blob overlap. Conservative — an
+    # ambiguous match (below margin) changes nothing, leaving the refiner's own value.
+    _PROV_FUZZY_MIN = 0.45
+    _PROV_FUZZY_MARGIN = 0.12
+
+    def _carry_provenance(self, refined_solutions, raw_concepts) -> int:
+        """Carry M/D/J tags + (pain × segment) provenance from the divergent pool onto the
+        refined ideas (refinement drops them). raw_concepts is code-built and keeps the
+        divergent-stamped cell; the filter LLM drops source_pain/source_segment, so we source
+        from raw, NOT filtered_concepts.
+
+        Match strategy (two passes, each concept claimed by at most one idea):
+          1. exact whitespace-normalized name ("BPC Lot Mapper" -> "bpclotmapper").
+          2. for refiner-RENAMED ideas (exact miss), a fuzzy text-blob match against the
+             UNCLAIMED concepts only — accepted only if the best overlap clears _PROV_FUZZY_MIN
+             AND beats the runner-up by _PROV_FUZZY_MARGIN. Excluding claimed concepts stops a
+             renamed idea from stealing the provenance of a sibling that already exact-matched
+             its own idea (ambiguous / nothing left -> no change, idea keeps its own value).
+        On a match: carries tags, the independent obviousness score (skips the -1.0 sentinel),
+        and CODE-FILLS pain_points_addressed from the grounded cell. Returns the fuzzy-hit count.
+        Mutates ideas in place; never raises."""
+        if not (raw_concepts and raw_concepts.concepts):
+            return 0
+        from ..utils.validation.crew_guardrails import (
+            _fuzzy_set_overlap, _idea_blob_terms, _concept_blob_terms)
+
+        def _norm(n: str) -> str:
+            return "".join((n or "").lower().split())
+
+        def _assign(sol, c) -> None:
+            sol.mechanism_tag, sol.data_source_tag, sol.journey_tag = (
+                c.mechanism_tag, c.data_source_tag, c.journey_tag)
+            obv = getattr(c, "obviousness_score", None)
+            if obv is not None and obv >= 0:
+                sol.obviousness_score = obv
+            src_pain = getattr(c, "source_pain", None)
+            if src_pain:
+                sol.source_pain = src_pain
+                sol.source_segment = getattr(c, "source_segment", None)
+                grounded = self._grounded_pains_for(src_pain, sol.source_segment)
+                if grounded:
+                    sol.pain_points_addressed = grounded
+
+        by_name: dict = {}
+        for c in raw_concepts.concepts:
+            by_name.setdefault(_norm(c.concept_name), c)  # keep first (highest-priority sample)
+
+        # Pass 1: exact name match (claims the concept).
+        claimed: set = set()
+        unmatched: list = []
+        for sol in refined_solutions.solution_ideas:
+            c = by_name.get(_norm(getattr(sol, "solution_name", "")))
+            if c is not None:
+                _assign(sol, c)
+                claimed.add(id(c))
+            else:
+                unmatched.append(sol)
+
+        # Pass 2: fuzzy match renamed ideas against UNCLAIMED concepts only.
+        fuzzy_hits = 0
+        for sol in unmatched:
+            cands = [rc for rc in raw_concepts.concepts if id(rc) not in claimed]
+            if not cands:
+                continue
+            try:
+                scored = sorted(
+                    ((_fuzzy_set_overlap(_idea_blob_terms(sol), _concept_blob_terms(rc)), rc)
+                     for rc in cands),
+                    key=lambda t: t[0], reverse=True)
+            except Exception:
+                scored = []
+            if scored and scored[0][0] >= self._PROV_FUZZY_MIN and (
+                    len(scored) == 1 or scored[0][0] - scored[1][0] >= self._PROV_FUZZY_MARGIN):
+                c = scored[0][1]
+                claimed.add(id(c))
+                fuzzy_hits += 1
+                logger.info(
+                    f"[PROVENANCE] fuzzy-matched renamed idea '{getattr(sol, 'solution_name', '?')}' "
+                    f"-> concept '{getattr(c, 'concept_name', '?')}' (overlap={scored[0][0]:.2f})")
+                _assign(sol, c)
+        return fuzzy_hits
+
+    def _enforce_diversity_caps(self, ideas: list) -> None:
+        """Diversity-aware final selection: de-concentrate the kept set with per-bucket caps
+        (drop-only, floor-protected). Caps (settings): ≤ max_per_segment by source_segment,
+        ≤ max_per_mechanism by mechanism FAMILY (greedy pairwise via _tags_match), ≤
+        max_per_project_type by project_type, ≤ max_final total. Walks strongest-first, drops
+        the weakest excess; re-admits the best dropped (least-represented bucket first) up to
+        the floor. NEVER drops the bold idea or the sole coverage of a high-severity pain.
+        Mutates `ideas` in place; never raises."""
+        if not settings.enable_diversity_caps or not ideas or len(ideas) <= settings.diversity_min_final_ideas:
+            return
+
+        def _composite(idea) -> float:
+            vals = [getattr(idea, k, None) for k in
+                    ("market_fit_score", "technical_feasibility_score", "novelty_score", "seo_scalability_score")]
+            present = [v for v in vals if isinstance(v, (int, float)) and not isinstance(v, bool)]
+            return sum(present) / len(present) if present else -1.0  # missing -> worst
+
+        # PROTECTED: the SINGLE most-novel idea + sole coverage of a high-severity pain.
+        # The bold slot guarantees >=1 genuinely novel idea; protecting EVERY idea above the
+        # novelty threshold neuters the caps when the refiner inflates novelty (observed: 7/8
+        # ideas >= 0.6 -> caps could drop nothing). Protect only the top-1 by novelty.
+        protected: set = set()
+        bold_thresh = getattr(self, "_BOLD_NOVELTY", 0.6)
+        bold = [i for i in ideas
+                if isinstance(getattr(i, "novelty_score", None), (int, float))
+                and not isinstance(getattr(i, "novelty_score"), bool)
+                and getattr(i, "novelty_score") >= bold_thresh]
+        if bold:
+            protected.add(id(max(bold, key=lambda i: getattr(i, "novelty_score", 0.0))))
+        try:
+            from ..utils.validation.crew_guardrails import (
+                _high_severity_pains, _pain_terms, _idea_blob_terms, _fuzzy_set_overlap,
+                _COVERAGE_MATCH_THRESHOLD)
+            for p in _high_severity_pains(getattr(self.pain_point_analysis, "pain_points", None) or []):
+                covering = [i for i in ideas
+                            if _fuzzy_set_overlap(_idea_blob_terms(i), _pain_terms(p)) >= _COVERAGE_MATCH_THRESHOLD]
+                if len(covering) == 1:
+                    protected.add(id(covering[0]))
+        except Exception as e:
+            logger.warning(f"[DIVERSITY] sole-coverage protection skipped: {e}")
+
+        # Mechanism FAMILIES — greedy pairwise (strongest-first anchors), NOT transitive clustering.
+        order = sorted(ideas, key=lambda i: -_composite(i))
+        fam_of: dict = {}
+        fam_anchor: list = []
+        for i in order:
+            mt = getattr(i, "mechanism_tag", None)
+            fam = None
+            if mt:
+                for fi, anchor in enumerate(fam_anchor):
+                    if _tags_match(mt, anchor):
+                        fam = fi
+                        break
+            if fam is None:
+                fam = len(fam_anchor)
+                fam_anchor.append(mt or f"__none_{id(i)}")  # untagged ideas each own a family
+            fam_of[id(i)] = fam
+
+        def _seg(i): return getattr(i, "source_segment", None) or "?"
+        def _pt(i): return getattr(i, "project_type", None) or "?"
+        seg_c: dict = {}
+        pt_c: dict = {}
+        mech_c: dict = {}
+
+        def _tally(i):
+            seg_c[_seg(i)] = seg_c.get(_seg(i), 0) + 1
+            pt_c[_pt(i)] = pt_c.get(_pt(i), 0) + 1
+            mech_c[fam_of[id(i)]] = mech_c.get(fam_of[id(i)], 0) + 1
+
+        keep: list = []
+        dropped: list = []
+        for i in order:
+            if id(i) in protected:
+                keep.append(i)
+                _tally(i)  # protected still counts so others respect the bucket
+                continue
+            if (len(keep) >= settings.diversity_max_final_ideas
+                    or seg_c.get(_seg(i), 0) >= settings.diversity_max_per_segment
+                    or pt_c.get(_pt(i), 0) >= settings.diversity_max_per_project_type
+                    or mech_c.get(fam_of[id(i)], 0) >= settings.diversity_max_per_mechanism):
+                dropped.append(i)
+                continue
+            keep.append(i)
+            _tally(i)
+
+        # Floor: re-admit best dropped, least-represented bucket first.
+        if len(keep) < settings.diversity_min_final_ideas and dropped:
+            def _readmit_key(i):
+                rep = seg_c.get(_seg(i), 0) + pt_c.get(_pt(i), 0) + mech_c.get(fam_of[id(i)], 0)
+                return (rep, -_composite(i))
+            dropped.sort(key=_readmit_key)
+            while len(keep) < settings.diversity_min_final_ideas and dropped:
+                x = dropped.pop(0)
+                keep.append(x)
+                _tally(x)
+
+        kept_ids = {id(i) for i in keep}
+        removed = [i for i in ideas if id(i) not in kept_ids]
+        if removed:
+            ideas[:] = [i for i in ideas if id(i) in kept_ids]  # preserve refiner order minus drops
+            logger.info(
+                f"[DIVERSITY] caps: {len(ideas) + len(removed)} -> {len(ideas)} (dropped: "
+                + ", ".join(getattr(r, "solution_name", "?") for r in removed)
+                + f"; seg≤{settings.diversity_max_per_segment} mech≤{settings.diversity_max_per_mechanism} "
+                + f"type≤{settings.diversity_max_per_project_type})")
+
+        def _max_share(key_fn) -> float:
+            c: dict = {}
+            for i in ideas:
+                c[key_fn(i)] = c.get(key_fn(i), 0) + 1
+            return (max(c.values()) / len(ideas)) if ideas else 0.0
+        logger.info(
+            f"[DIVERSITY] final={len(ideas)} max_project_type_share={_max_share(_pt):.2f} "
+            f"max_segment_share={_max_share(_seg):.2f}")
+
+    def _finalize_feasibility(self, ideas: list) -> None:
+        """Re-assert the critic's authoritative (capped) feasibility on the FINAL ideas.
+
+        The diversity-filter and refiner LLMs re-emit their own UNCAPPED data/build
+        feasibility, discarding the critic's values (verified: scores drift across the
+        divergent->filtered->refined checkpoints). The critic is the feasibility authority,
+        so we: (1) restore its capped data/build/access by concept name where it scored the
+        concept, then (2) apply the deterministic cap as a guarantee for ALL ideas (covers
+        unmatched ideas + the build-scored/data-unscored hole). Gated; mutates in place."""
+        if not settings.enable_feasibility_critic or not ideas:
+            return
+        crit = getattr(self, "_critic_feasibility", None) or {}
+        for idea in ideas:
+            src = crit.get(_norm_name(getattr(idea, "solution_name", "") or ""))
+            if src:
+                idea.data_feasibility_score = src["data"]
+                idea.build_feasibility_score = src["build"]
+                if src.get("access"):
+                    idea.data_access_model = src["access"]
+                if src.get("notes"):
+                    idea.data_acquisition_notes = src["notes"]
+            # Invariant guarantee regardless of source (None -> -1.0 sentinel passthrough).
+            df = idea.data_feasibility_score
+            bf = idea.build_feasibility_score
+            df_in = df if isinstance(df, (int, float)) else -1.0
+            bf_in = bf if isinstance(bf, (int, float)) else -1.0
+            df2, bf2 = _cap_feasibility_scores(
+                idea.data_access_model or "", df_in, bf_in,
+                restricted_cap=settings.feasibility_restricted_data_cap,
+                margin=settings.feasibility_build_data_coupling_margin,
+            )
+            if df_in >= 0:
+                idea.data_feasibility_score = df2
+            if bf_in >= 0:
+                idea.build_feasibility_score = bf2
+
+    def _finalize_seo_realism(self, ideas: list) -> None:
+        """Apply the downgrade-only SEO-realism cap to the stored seo_scalability_score of each
+        idea (preview path — see the call site for the ranking-safety reasoning). Rules A
+        (account-gated SaaS) + C (hand-seeded, if enabled) bite here; Rule B (page counts) is a
+        no-op pre-Stage-12. Caller gates on settings.enable_seo_realism_caps. Mutates in place."""
+        from ..utils.seo_helpers import cap_idea_seo_realism
+        capped_n = 0
+        for idea in ideas:
+            new_seo, note = cap_idea_seo_realism(idea, settings)
+            if note is not None and new_seo is not None:
+                logger.info(
+                    f"[SEO-REALISM] '{getattr(idea, 'solution_name', '?')}' "
+                    f"{idea.seo_scalability_score:.2f} -> {new_seo:.2f} ({note})")
+                idea.seo_scalability_score = new_seo
+                capped_n += 1
+        if capped_n:
+            logger.info(f"[SEO-REALISM] capped {capped_n}/{len(ideas)} idea SEO scores")
+
+    def _pain_coverage_summary(self, ideas: list) -> None:
+        """Informational pain-coverage signal (NO drops, NO reorder). Appends a caveat to
+        self.coverage_caveats describing (a) concentration — when many final ideas share one
+        source_pain — and (b) validated (high/medium) pains with no idea in the final set. Lets
+        the user judge concentration rather than the system forcing spread via a pain quota.
+        Mutates self.coverage_caveats; never raises."""
+        from collections import Counter
+        pains = getattr(self.pain_point_analysis, "pain_points", None) or []
+        if not ideas or not pains:
+            return
+
+        def _norm(s: str) -> str:
+            return "".join((s or "").lower().split())
+
+        counts: Counter = Counter()
+        for i in ideas:
+            sp = (getattr(i, "source_pain", None) or "").strip()
+            if sp:
+                counts[sp] += 1
+        if not counts:
+            return
+        n = len(ideas)
+        top_pain, top_n = counts.most_common(1)[0]
+
+        covered_norm = {_norm(p) for p in counts}
+        uncovered = [
+            getattr(p, "title", "")
+            for p in pains
+            if getattr(getattr(p, "opportunity_level", None), "value", "") in ("high", "medium")
+            and _norm(getattr(p, "title", "")) not in covered_norm
+            and getattr(p, "title", "")
+        ]
+
+        notes: list[str] = []
+        # Concentration: only flag when it's genuinely lopsided (>=3 ideas AND >=half the set).
+        if top_n >= 3 and top_n / n >= 0.5:
+            notes.append(f'{top_n} of {n} ideas address "{top_pain}"')
+        if uncovered:
+            notes.append("validated pains with no idea: " + "; ".join(uncovered[:4]))
+        if not notes:
+            return
+        msg = ("Idea-set coverage — " + "; ".join(notes)
+               + ". Concentration may reflect where the real opportunity is, not a defect — shown for your judgment.")
+        self.coverage_caveats = list(getattr(self, "coverage_caveats", None) or []) + [msg]
+        logger.info(f"[PAIN-COVERAGE] {msg}")
 
     def _enforce_bold_slot(self, final_ideas: list, raw_concepts) -> None:
         """Ensure the final set has >=1 genuinely original idea; else re-inject the
@@ -1046,6 +1893,9 @@ class UnifiedSolutionCrew:
                 model=settings.ideation_refine_llm,
                 temperature=0.4,  # Used for non-reasoning models only
                 reasoning_effort=settings.ideation_refine_reasoning_effort,
+                # Refinement expands up to ~12 full specs in one call; the 16384 backstop
+                # truncates the JSON past ~6 ideas (the count we raised it to). XL budget.
+                max_tokens=settings.ideation_refine_max_tokens,
             ),
             verbose=True,
         )
@@ -1092,7 +1942,7 @@ class UnifiedSolutionCrew:
 
         Convergent phase - apply strict diversity criteria.
         Clusters similar concepts, enforces architectural variety.
-        Output: FilteredConceptList with 5-7 unique concepts.
+        Output: FilteredConceptList with up to ~10 unique concepts.
         Guardrail: Validates 3+ filtered concepts with diversity_summary.
         """
         return SafeTask(
@@ -1111,9 +1961,9 @@ class UnifiedSolutionCrew:
         Task 3: Expand filtered concepts into full specifications.
 
         Scores each on market fit, novelty, solo-dev feasibility, SEO.
-        Selects top 3-5 for detailed specification.
+        Selects up to ~10 for detailed specification.
         Includes diversity guardrail to catch similar solutions.
-        Output: IdeaGenerationResult with 3-5 complete solutions.
+        Output: IdeaGenerationResult with up to ~10 complete solutions.
         """
         return SafeTask(
             config=self.tasks_config["solution_refinement"],
@@ -1174,8 +2024,8 @@ class UnifiedSolutionCrew:
 
         Tasks:
         1. divergent_exploration - Generate 8-12 raw concepts (high creativity)
-        2. diversity_filtering - Filter to 5-7 unique concepts
-        3. solution_refinement - Expand to full specifications (3-5 solutions)
+        2. diversity_filtering - Filter to up to ~10 unique concepts
+        3. solution_refinement - Expand to full specifications (up to ~10 solutions)
         4. solution_selection - Select best solution
 
         Competitive analysis is run on-demand per-solution (not in pipeline).
@@ -1194,7 +2044,7 @@ class UnifiedSolutionCrew:
         # 4-task divergent-convergent pipeline
         pipeline_tasks = [
             self.divergent_exploration_task(),   # Task 1: Generate 8-12 raw concepts
-            self.diversity_filtering_task(),     # Task 2: Filter to 5-7 unique
+            self.diversity_filtering_task(),     # Task 2: Filter to up to ~10 unique
             self.solution_refinement_task(),     # Task 3: Expand to full specs
             self.solution_selection_task(),      # Task 4: Select best
         ]
@@ -1244,7 +2094,9 @@ class UnifiedSolutionCrew:
             process_type="sequential",
             embedder={"provider": "openai", "config": {"model_name": "text-embedding-3-small"}},
         )
-        out = crew.kickoff(inputs={**inputs, "lens_directive": ""})
+        # CrewAI's interpolator raises KeyError on any missing {var}; supply the partitioned
+        # var (legacy fallback never partitions, so it's always empty).
+        out = crew.kickoff(inputs={**inputs, "lens_directive": "", "partitioned_mode_block": ""})
         try:
             rcl = out.tasks_output[0].pydantic if getattr(out, "tasks_output", None) else None
             return list(rcl.concepts) if rcl else []
@@ -1263,8 +2115,8 @@ class UnifiedSolutionCrew:
 
         Architecture:
         1. Divergent Exploration - Generate 8-12 raw concepts with forced ideation
-        2. Diversity Filtering - Filter to 5-7 unique concepts
-        3. Solution Refinement - Expand to 3-5 full specifications
+        2. Diversity Filtering - Filter to up to ~10 unique concepts
+        3. Solution Refinement - Expand to up to ~10 full specifications
         4. Solution Selection - Select best solution (skipped when skip_selection=True)
 
         Competitive analysis is run on-demand per-solution (not in pipeline).
@@ -1304,6 +2156,19 @@ class UnifiedSolutionCrew:
             # top-10-by-severity slice fed ideation the same flavor of pain
             # every run and discarded long-tail themes entirely.
             high_priority = select_diverse_pain_points(high_priority)
+
+            # Pain-partitioned divergent: build (pain × segment) cells from the audience
+            # affinity graph, widening the pain set (medium then low) until the generator
+            # target is met. Below 2 cells -> None (legacy broad-sample path).
+            partition_cells = None
+            if settings.enable_pain_partitioned_divergent:
+                cells = self._build_partition_cells(
+                    list(high_priority), list(medium_priority) + list(low_priority))
+                partition_cells = cells if len(cells) >= 2 else None
+                if partition_cells is None:
+                    logger.warning(
+                        f"[Divergent][partitioned] only {len(cells)} cell(s) available — "
+                        "falling back to legacy broad-sample path")
 
             # Format using unified helper
             high_priority_list = format_pain_points_for_agents(
@@ -1402,6 +2267,10 @@ class UnifiedSolutionCrew:
                 # Direct context injection (replaces RAG)
                 "competitor_mentions": self._format_competitor_mentions(),
                 "theme_categories": theme_categories_formatted,
+                # Partitioned-mode prefix var: empty here (legacy/CrewAI paths); the direct
+                # per-agent path overrides it per generator. Present so any crew.kickoff that
+                # includes the divergent task never KeyErrors on the new {var}.
+                "partitioned_mode_block": "",
             }
 
             # ── DIVERGENT: N independent samples → critic → pool/dedup ──
@@ -1410,10 +2279,13 @@ class UnifiedSolutionCrew:
                 f"Executing Pipeline: {n}× independent Divergent → novelty critic → pool "
                 f"→ Filter → Refinement{'' if skip_selection else ' → Selection'}..."
             )
-            pooled, divergent_usages = self._generate_divergent_pool(crew_inputs)
+            pooled, divergent_usages = self._generate_divergent_pool(
+                crew_inputs, partition_cells=partition_cells)
             self._record_divergent_usage(divergent_usages)
             pooled = self._score_pool_novelty(pooled)            # independent critic (before dedup)
-            pooled = self._pool_and_dedup_raw_concepts(pooled)   # dedup + clamp [6, cap]
+            # Partitioned narrow concepts are far less redundant -> keep more before the filter.
+            _keep_frac = settings.divergent_partitioned_keep_fraction if partition_cells else None
+            pooled = self._pool_and_dedup_raw_concepts(pooled, keep_fraction=_keep_frac)   # dedup + clamp [6, cap]
             # Fail-open: if the pool is too small for the filter, use the guarded
             # single-call divergent task instead of feeding the filter a degenerate pool.
             if len(pooled) < 6:
@@ -1502,27 +2374,10 @@ class UnifiedSolutionCrew:
             from copy import deepcopy
             refined_solutions = deepcopy(base_solutions)
 
-            # Carry M/D/J structural tags from the filtered concepts onto the refined
-            # solutions (refinement drops them). Match on whitespace-normalized name
-            # ("BPC Lot Mapper" -> "bpclotmapper" == "BPCLotMapper"). Persisted so the
-            # regeneration dedup can catch reworded structural duplicates.
-            if filtered_concepts and filtered_concepts.concepts:
-                def _norm(n: str) -> str:
-                    return "".join((n or "").lower().split())
-                tag_lookup = {
-                    _norm(c.concept_name): (
-                        c.mechanism_tag, c.data_source_tag, c.journey_tag,
-                        c.obviousness_score,
-                    )
-                    for c in filtered_concepts.concepts
-                }
-                for sol in refined_solutions.solution_ideas:
-                    tags = tag_lookup.get(_norm(getattr(sol, "solution_name", "")))
-                    if tags:
-                        sol.mechanism_tag, sol.data_source_tag, sol.journey_tag = tags[:3]
-                        # Carry the independent obviousness score (skip the -1.0 sentinel).
-                        if tags[3] is not None and tags[3] >= 0:
-                            sol.obviousness_score = tags[3]
+            # Carry M/D/J structural tags + (pain × segment) provenance from raw_concepts onto
+            # the refined solutions (refinement drops them). Exact name match, then a fuzzy
+            # blob fallback for refiner-renamed ideas. See _carry_provenance.
+            self._carry_provenance(refined_solutions, raw_concepts)
 
             # Carry feasibility-critic outputs from the critic-scored pool (raw_concepts,
             # code-controlled) onto the refined solutions: the 3 data fields are SURFACED;
@@ -1569,6 +2424,42 @@ class UnifiedSolutionCrew:
                 self._enforce_bold_slot(refined_solutions.solution_ideas, raw_concepts)
             except Exception as e:
                 logger.warning(f"Bold-slot enforcement skipped: {e}")
+
+            # Diversity-aware final selection: de-concentrate (per-segment / mechanism /
+            # project-type caps, drop-only, floor-protected). Runs AFTER coverage + bold so
+            # those re-injected ideas are protected, BEFORE finalize so caps see the full set.
+            try:
+                self._enforce_diversity_caps(refined_solutions.solution_ideas)
+            except Exception as e:
+                logger.warning(f"Diversity caps skipped: {e}")
+
+            # Re-assert the critic's authoritative (capped) feasibility on the final ideas —
+            # the filter/refiner LLMs overwrite it with uncapped values. Runs AFTER the bold
+            # slot so re-injected ideas are normalized too.
+            try:
+                self._finalize_feasibility(refined_solutions.solution_ideas)
+            except Exception as e:
+                logger.warning(f"Feasibility finalization skipped: {e}")
+
+            # SEO-realism caps (downgrade-only). PREVIEW PATH ONLY: with skip_selection there is
+            # no Task-4 selection / flow-level backfill, so capping the stored seo_scalability_score
+            # here cannot reorder anything. In the full pipeline ranking is locked AFTER this crew
+            # (flow backfill), so the cap is applied later — at Stage 12 for the selected solution.
+            if skip_selection and settings.enable_seo_realism_caps:
+                try:
+                    self._finalize_seo_realism(refined_solutions.solution_ideas)
+                except Exception as e:
+                    logger.warning(f"SEO-realism caps skipped: {e}")
+
+            # Pain-coverage transparency (informational; NEVER drops/reorders): surface how
+            # concentrated the FINAL set is on one pain + which validated pains have no idea, so
+            # the user can judge whether concentration is real opportunity or tunnel-vision. We
+            # deliberately do NOT cap by pain — pain is the one axis where concentration may
+            # signal where the value is, not a lazy set.
+            try:
+                self._pain_coverage_summary(refined_solutions.solution_ideas)
+            except Exception as e:
+                logger.warning(f"Pain-coverage summary skipped: {e}")
 
             # Log pipeline summary
             removed_count = len(filtered_concepts.removed_concepts) if filtered_concepts else 0

@@ -189,6 +189,14 @@ class BaseSolutionIdea(BaseModel):
     pain_points_addressed: list[str] = Field(
         ..., description="List of pain points this solution addresses"
     )
+    # Grounded generation provenance (code-filled from the divergent (pain × segment) cell
+    # that produced this idea; NOT an LLM self-report). Surfaced on the Stage-1 selection UI.
+    source_pain: Optional[str] = Field(
+        default=None, description="Title of the pain point the generating cell focused on"
+    )
+    source_segment: Optional[str] = Field(
+        default=None, description="Name of the audience segment the generating cell reasoned as"
+    )
     core_features: list[str] = Field(
         ..., description="Key features for minimum viable product"
     )
@@ -221,8 +229,10 @@ class BaseSolutionIdea(BaseModel):
             "Product-market fit (0-1), anchored to the addressed VALIDATED pains. "
             "0.85-1.0: directly addresses a high-severity (≥0.6) / high-mention / GOLD-tier "
             "pain with no dominant incumbent; 0.5-0.7: 1-2 high-severity pains or a crowded "
-            "but addressable market; ≤0.4: low-severity / thin-evidence pain, or a pain not "
-            "in the validated set. Set proportional to the addressed pain's severity."
+            "but addressable market; ≤0.4: low-severity / thin-evidence pain, a pain not "
+            "in the validated set, OR the solution's core mechanism/data route is unverified "
+            "(a real pain solved by a product that can't actually be built/sourced is not a fit). "
+            "Set proportional to the addressed pain's severity."
         ),
     )
     technical_feasibility_score: Optional[float] = Field(
@@ -230,10 +240,11 @@ class BaseSolutionIdea(BaseModel):
         description=(
             "Can this be BUILT AT ALL with currently available tech and data? (0-1; capability, "
             "distinct from solo_dev_feasibility which is scope/effort). 0.85-1.0: every component "
-            "has a production library or hosted API; 0.65-0.84: one component needs careful "
-            "architecture but documented solutions exist; 0.40-0.64: 2+ components have no "
-            "off-the-shelf solution or data availability is uncertain; 0.10-0.39: needs unreliable "
-            "AI capability, exotic infra, or unobtainable data. Gates the verdict (<0.60 ⇒ No-Go)."
+            "has a production library or hosted API AND the required data is confirmed obtainable "
+            "in bulk; 0.65-0.84: one component needs careful architecture but documented solutions "
+            "exist; 0.40-0.64: 2+ components have no off-the-shelf solution or data availability is "
+            "uncertain/unverified; 0.10-0.39: needs unreliable AI capability, exotic infra, or "
+            "unobtainable data. Gates the verdict (<0.60 ⇒ No-Go)."
         ),
     )
     # Data feasibility — can a solo dev actually OBTAIN the data this idea needs?
@@ -349,7 +360,10 @@ class BaseSolutionIdea(BaseModel):
         description=(
             "SEO scalability assessment (0-1 scale). "
             "How easily can this solution scale organic traffic through content? "
-            "0.8-1.0: High programmatic SEO potential (directories, aggregators) "
+            "0.8-1.0: High programmatic SEO potential (directories, aggregators) — REQUIRES a real, "
+            "enumerable content corpus and a non-cold-start seeding path (programmatically generatable "
+            "pages alone don't count if the underlying data is restricted/unverified or must be "
+            "hand-seeded; cap at 0.5 in that case). "
             "0.5-0.7: Moderate content generation (comparison tools, marketplaces) "
             "0.2-0.4: Limited content scaling (traditional SaaS) "
             "0.0-0.1: Minimal SEO leverage (tool-only products)"
@@ -432,11 +446,15 @@ class BaseSolutionIdea(BaseModel):
         ge=0.0,
         le=1.0,
         description=(
-            "Feasibility for a solo developer to build and launch (0-1 scale). "
-            "0.9-1.0: Static site + APIs, <2 months, no complex backend. "
+            "Feasibility for a solo developer to build AND OPERATE (0-1 scale; includes ongoing run "
+            "cost, not just build time). "
+            "0.9-1.0: Static site + APIs, <2 months, no complex backend, no ongoing human ops. "
             "0.7-0.8: Simple backend, 2-3 months, standard tech stack. "
-            "0.4-0.6: Moderate complexity, 3-6 months, some specialized skills needed. "
-            "0.0-0.3: Complex infrastructure, >6 months, or requires team/enterprise sales."
+            "0.4-0.6: Moderate complexity, 3-6 months, OR needs a seeded corpus / human-in-the-loop. "
+            "0.0-0.3: Complex infrastructure, >6 months, or requires team/enterprise sales. "
+            "DEMOTE by ~0.2 for any ongoing operational burden a solo dev can't sustain — manual "
+            "content moderation, community management, or continuous hand-seeding (a maintenance-heavy "
+            "product is NOT solo-feasible at 0.8+)."
         )
     )
     obviousness_score: Optional[float] = Field(
@@ -718,6 +736,23 @@ class RawConcept(BaseModel):
             "Examples: 'Reddit discussions', 'Government APIs', 'User submissions', 'Web scraping [sites]'"
         )
     )
+    data_route: Optional[str] = Field(
+        default=None,
+        description=(
+            "The CONCRETE bulk route this concept's data is obtainable through — a downloadable "
+            "dump, a list/index/search endpoint, an official API, or first-party user submissions. "
+            "Write 'not-data-dependent' for pure-computation products, or 'NO-BULK' if the source is "
+            "only a per-record lookup / login-gated / unverified. The critic verifies this claim."
+        )
+    )
+    # Generation provenance — stamped by code with the (pain × segment) cell that generated this
+    # concept (declared so model_dump/deepcopy preserve them; models are extra='ignore').
+    source_pain: Optional[str] = Field(
+        default=None, description="Title of the pain point the generating cell focused on"
+    )
+    source_segment: Optional[str] = Field(
+        default=None, description="Name of the audience segment the generating cell reasoned as"
+    )
     why_non_obvious: Optional[str] = Field(
         default=None,
         description=(
@@ -834,8 +869,8 @@ class FilteredConceptList(BaseModel):
     concepts: list[RawConcept] = Field(
         ...,
         min_length=3,
-        max_length=8,
-        description="5-7 unique concepts after filtering (minimum 3, maximum 8)"
+        max_length=12,
+        description="unique concepts after filtering (minimum 3, up to ~10 — capped at 12 to leave headroom)"
     )
     removed_concepts: list[str] = Field(
         ...,

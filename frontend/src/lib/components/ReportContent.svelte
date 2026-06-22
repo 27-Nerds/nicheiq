@@ -24,6 +24,7 @@
   // PHASE 4: REFERENCE (Appendix)
   import AlternativesSection from "$lib/components/sections/AlternativesSection.svelte";
   import EvidenceAppendix from "$lib/components/sections/EvidenceAppendix.svelte";
+  import CoverageNotes from "$lib/components/CoverageNotes.svelte";
 
   // UI components
   import SectionNav from "$lib/components/ui/SectionNav.svelte";
@@ -255,6 +256,12 @@
 
       {#if report.evidence_appendix}
         <EvidenceAppendix data={report.evidence_appendix} />
+      {/if}
+
+      {#if report.data_quality_summary?.quality_caveats?.length}
+        <section class="report-section">
+          <CoverageNotes notes={report.data_quality_summary.quality_caveats} />
+        </section>
       {/if}
     </div>
   </main>

@@ -143,7 +143,7 @@ class TestFormatPainPointsForAgents:
         assert "Quote 1" in result
 
     def test_compact_format_is_concise(self, sample_pain_points):
-        """Test that compact format is concise with inline metrics."""
+        """Test that compact format is concise: inline metrics + ONE short quote per pain."""
         result = format_pain_points_for_agents(
             sample_pain_points, format_type="compact"
         )
@@ -152,9 +152,11 @@ class TestFormatPainPointsForAgents:
         assert "High Priority Issue" in result
         assert "Severity:" in result or "8" in result  # Metrics present
 
-        # Should NOT include full description or quotes
+        # Stays concise: NO full description, and only the FIRST quote per pain (§6b) —
+        # not the full quote list.
         assert "Critical problem affecting users" not in result
-        assert "Quote 1" not in result
+        assert "Quote 1" in result   # one short voice-of-customer quote now included
+        assert "Quote 2" not in result  # but only one — not the whole quote list
 
     def test_metrics_only_format(self, sample_pain_points):
         """Test that metrics_only format shows title and standardized metrics."""

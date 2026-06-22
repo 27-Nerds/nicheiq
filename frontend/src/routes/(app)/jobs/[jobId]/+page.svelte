@@ -787,6 +787,7 @@
               <PreviewSolutionSelector
                 jobId={jobId ?? ''}
                 solutions={displaySolutions}
+                coverageNotes={previewReport?.data_quality_summary?.quality_caveats ?? []}
                 creditBalance={page.data.creditBalance ?? 0}
                 stageCosts={page.data.stageCosts ?? { discovery: 5, deep_research: 15, landing_page: 5, regenerate_ideas: 2 }}
                 canRegenerate={job.canRegenerate ?? false}

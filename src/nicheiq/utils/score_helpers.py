@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from nicheiq.models.solution_idea import BaseSolutionIdea
 
+from nicheiq.config.settings import settings
 from nicheiq.models.solution_selection import SolutionScores
 
 logger = logging.getLogger(__name__)
@@ -48,6 +49,90 @@ def _composite_of_present(*scores: float | None) -> float:
     return round(sum(present) / len(present), 3) if present else 0.0
 
 
+def feasibility_adjusted_composite(
+    composite_score: float,
+    market_fit: float | None,
+    technical_feasibility: float | None,
+    competitive_advantage: float | None,
+    seo: float | None,
+    build_feasibility: float | None,
+) -> float:
+    """Downgrade-only feasibility adjustment to a composite ranking score.
+
+    The independent critic's ``build_feasibility`` can only LOWER the ranked technical
+    feasibility (you can't ship what you can't build). We subtract the *marginal drop*
+    that capping technical_feasibility at build_feasibility would cause inside the
+    mean-of-present composite — so ONLY ideas where build < technical_feasibility move,
+    and only downward. The LLM-assigned composite of unaffected ideas is preserved, and
+    the stored technical_feasibility_score is never mutated (the verdict reads it raw).
+
+    No-op when the feasibility critic is off, build is unscored (sentinel -1.0 / None),
+    or build >= technical_feasibility.
+    """
+    if not settings.enable_feasibility_critic:
+        return composite_score
+    # Defensive: only adjust when both scores are real numbers (bool excluded). A non-numeric
+    # build (e.g. unset/sentinel) or build < 0 means "not scored" -> no-op.
+    if not isinstance(build_feasibility, (int, float)) or isinstance(build_feasibility, bool):
+        return composite_score
+    if not isinstance(technical_feasibility, (int, float)) or isinstance(technical_feasibility, bool):
+        return composite_score
+    if build_feasibility < 0 or build_feasibility >= technical_feasibility:
+        return composite_score
+    n_present = sum(
+        1 for s in (market_fit, technical_feasibility, competitive_advantage, seo) if s is not None
+    )
+    if n_present == 0:
+        return composite_score
+    drop = (technical_feasibility - build_feasibility) / n_present
+    return round(max(0.0, composite_score - drop), 3)
+
+
+def apply_feasibility_to_scores(
+    all_scores: list[SolutionScores] | None,
+    solution_ideas: list[BaseSolutionIdea] | None,
+) -> list[SolutionScores] | None:
+    """Re-apply the downgrade-only feasibility adjustment to the Task-4 SELECTOR LLM's
+    composites and re-rank.
+
+    The selector LLM emits ``composite_score`` directly (``score_source='llm'``) and it
+    never sees the critic's ``build_feasibility`` — so without this pass the ranking can't
+    reflect a low build estimate (the cause of the ranking inversion). ONLY 'llm'-sourced
+    entries are adjusted; 'backfill'/'interactive' composites were already adjusted at
+    compute time (re-applying would double-subtract). No-op when the critic is off.
+    """
+    if not settings.enable_feasibility_critic or not all_scores:
+        return all_scores
+    bf_by_name = {
+        idea.solution_name: getattr(idea, "build_feasibility_score", None)
+        for idea in (solution_ideas or [])
+    }
+    changed = False
+    for s in all_scores:
+        if getattr(s, "score_source", None) != "llm":
+            continue
+        before = s.composite_score
+        s.composite_score = feasibility_adjusted_composite(
+            before,
+            s.market_fit_score,
+            s.technical_feasibility_score,
+            s.competitive_advantage_score,
+            s.seo_growth_potential_score,
+            bf_by_name.get(s.solution_name),
+        )
+        if s.composite_score != before:
+            changed = True
+            logger.info(
+                f"[FEASIBILITY] composite '{s.solution_name}' {before:.3f} -> "
+                f"{s.composite_score:.3f} (build_feasibility={bf_by_name.get(s.solution_name)})"
+            )
+    if changed:
+        all_scores.sort(key=lambda s: s.composite_score, reverse=True)
+        for i, s in enumerate(all_scores, 1):
+            s.rank = i
+    return all_scores
+
+
 def compute_solution_scores(solution_ideas: list[BaseSolutionIdea]) -> list[SolutionScores]:
     """Compute SolutionScores for ALL solutions from BaseSolutionIdea Task 3 fields.
 
@@ -61,7 +146,10 @@ def compute_solution_scores(solution_ideas: list[BaseSolutionIdea]) -> list[Solu
         # novelty_score is best available proxy for competitive_advantage_score
         ca = _extract_optional_score(idea, "novelty_score")
         seo = _extract_optional_score(idea, "seo_scalability_score")
-        composite = _composite_of_present(mf, tf, ca, seo)
+        bf = _extract_optional_score(idea, "build_feasibility_score")
+        composite = feasibility_adjusted_composite(
+            _composite_of_present(mf, tf, ca, seo), mf, tf, ca, seo, bf
+        )
         scores.append(
             SolutionScores(
                 solution_name=idea.solution_name,
@@ -98,7 +186,10 @@ def backfill_solution_scores(
             tf = _extract_score(idea, "technical_feasibility_score")
             ca = _extract_optional_score(idea, "novelty_score")
             seo = _extract_optional_score(idea, "seo_scalability_score")
-            composite = _composite_of_present(mf, tf, ca, seo)
+            bf = _extract_optional_score(idea, "build_feasibility_score")
+            composite = feasibility_adjusted_composite(
+                _composite_of_present(mf, tf, ca, seo), mf, tf, ca, seo, bf
+            )
             result.append(
                 SolutionScores(
                     solution_name=idea.solution_name,

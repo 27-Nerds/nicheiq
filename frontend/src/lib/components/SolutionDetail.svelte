@@ -10,6 +10,8 @@
   import Badge from "$lib/components/ui/Badge.svelte";
   import ProgressRing from "$lib/components/ui/ProgressRing.svelte";
   import SolutionDetailContent from "$lib/components/SolutionDetailContent.svelte";
+  import Tooltip from "$lib/components/ui/Tooltip.svelte";
+  import { scoreRationale } from "$lib/utils/scoreRationale";
   import type { SolutionPreview } from "$lib/types/job";
   import { computeCompositeScore, getSuperpower, SUPERPOWER_MAP_DETAILED, solutionDisplayTitle, originalityMetric } from "$lib/utils/solution-utils";
 
@@ -76,11 +78,11 @@
   const origMetric = $derived(originalityMetric(solution));
 
   const individualScores = $derived([
-    { label: "MF", value: solution.market_fit_score },
-    { label: "Feas", value: solution.technical_feasibility_score },
-    { label: "SEO", value: solution.seo_scalability_score },
-    { label: origMetric.short ?? "Orig", value: origMetric.value },
-    { label: "Solo", value: solution.solo_dev_feasibility },
+    { label: "MF", value: solution.market_fit_score, why: scoreRationale(solution, "market_fit") },
+    { label: "Feas", value: solution.technical_feasibility_score, why: scoreRationale(solution, "technical_feasibility") },
+    { label: "SEO", value: solution.seo_scalability_score, why: scoreRationale(solution, "seo") },
+    { label: origMetric.short ?? "Orig", value: origMetric.value, why: scoreRationale(solution, "novelty") },
+    { label: "Solo", value: solution.solo_dev_feasibility, why: scoreRationale(solution, "solo_dev") },
   ]);
 
   const superpower = $derived(getSuperpower(solution, SUPERPOWER_MAP_DETAILED));
@@ -177,9 +179,20 @@
             {/if}
             <!-- Individual score breakdown -->
             <span class="hidden sm:inline w-px h-3 bg-border-emphasis"></span>
-            {#each individualScores as s}
-              <span class="hidden sm:inline text-[10px] text-text-muted">
+            {#snippet scoreBadge(s: { label: string; value: number | null | undefined })}
+              <span class="text-[10px] text-text-muted">
                 {s.label}:<span class="font-semibold tabular-nums ml-0.5" style:color={individualScoreColor(s.value)}>{s.value != null ? (s.value * 100).toFixed(0) : '--'}</span>
+              </span>
+            {/snippet}
+            {#each individualScores as s}
+              <span class="hidden sm:inline-flex items-center">
+                {#if s.why}
+                  <Tooltip content={s.why} position="bottom" class="cursor-help">
+                    {#snippet children()}{@render scoreBadge(s)}{/snippet}
+                  </Tooltip>
+                {:else}
+                  {@render scoreBadge(s)}
+                {/if}
               </span>
             {/each}
           </div>

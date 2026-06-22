@@ -118,33 +118,45 @@ def format_pain_points_for_agents(
                 f"- Severity: {pp.severity_score * 10:.1f}/10 | WTP: {pp.willingness_to_pay * 10:.1f}/10",
                 f"- Mentions: {pp.mention_count}"
             ]
+            # §6b: surface the grounded opportunity tier + who feels it (dropped before).
+            opp = getattr(pp, "opportunity_level", None)
+            opp = getattr(opp, "value", opp)
+            if opp:
+                parts.append(f"- Opportunity: {opp}")
+            segs = getattr(pp, "affected_segments", None) or []
+            if segs:
+                parts.append(f"- Felt by: {', '.join(str(s) for s in segs[:3])}")
             if include_quotes and pp.representative_quotes:
-                # Select 2 diverse quotes: pick longest, then longest non-overlapping
-                quotes = pp.representative_quotes
-                sorted_by_len = sorted(quotes, key=len, reverse=True)
+                # §6b: select up to 4 DIVERSE quotes (greedy least-overlap) — voice-of-
+                # customer is the richest fuel for non-obvious ideas; 2 starved it.
+                sorted_by_len = sorted(pp.representative_quotes, key=len, reverse=True)
                 selected = [sorted_by_len[0]]
-                if len(sorted_by_len) > 1:
-                    # Pick second quote with least word overlap
-                    first_words = set(sorted_by_len[0].lower().split())
-                    best_idx, best_overlap = 1, 1.0
-                    for i, q in enumerate(sorted_by_len[1:], 1):
-                        q_words = set(q.lower().split())
-                        overlap = len(first_words & q_words) / max(len(q_words), 1)
-                        if overlap < best_overlap:
-                            best_overlap = overlap
-                            best_idx = i
-                    selected.append(sorted_by_len[best_idx])
+                remaining = sorted_by_len[1:]
+                while len(selected) < 4 and remaining:
+                    sel_words = set(" ".join(selected).lower().split())
+                    best, best_overlap = remaining[0], 2.0
+                    for q in remaining:
+                        qw = set(q.lower().split())
+                        ov = len(sel_words & qw) / max(len(qw), 1)
+                        if ov < best_overlap:
+                            best_overlap, best = ov, q
+                    selected.append(best)
+                    remaining.remove(best)
                 for q in selected:
                     parts.append(f"  - \"{q}\"")
             lines.append("\n".join(parts))
         return "\n\n".join(lines) if lines else ""
 
     elif format_type == "compact":
-        # Medium priority format: Inline metrics
-        lines = [
-            f"**{pp.title}** (Severity: {pp.severity_score * 10:.1f}/10, WTP: {pp.willingness_to_pay * 10:.1f}/10)"
-            for pp in filtered
-        ]
+        # Medium priority format: inline metrics + ONE short quote (§6b — voice-of-customer
+        # even for secondary pains; capped to a single truncated quote to stay concise).
+        lines = []
+        for pp in filtered:
+            line = f"**{pp.title}** (Severity: {pp.severity_score * 10:.1f}/10, WTP: {pp.willingness_to_pay * 10:.1f}/10)"
+            q = (pp.representative_quotes or [None])[0]
+            if q:
+                line += f' — e.g. "{" ".join(str(q).split())[:140]}"'
+            lines.append(line)
         return "\n".join(lines) if lines else ""
 
     elif format_type == "metrics_only":

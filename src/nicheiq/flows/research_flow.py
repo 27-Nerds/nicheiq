@@ -1856,6 +1856,9 @@ RULES:
                     "social_content_quality_tier": getattr(state, "social_content_quality_tier", None),
                     "pain_point_confidence_score": getattr(state, "pain_point_confidence_score", None),
                     "social_content_metrics": getattr(state, "social_content_metrics", None),
+                    # Coverage/pain-concentration notes (informational) so the preview can surface
+                    # them next to the ideas the user is choosing among.
+                    "quality_caveats": list(getattr(state, "idea_coverage_caveats", None) or []),
                 }
             except Exception as e:
                 logger.debug(f"[Preview Report] Metadata section failed: {e}")
@@ -3490,6 +3493,14 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                         if _score.score_source is None:
                             _score.score_source = 'llm'
                     self.state.solution_selection.all_solution_scores = backfill_solution_scores(
+                        self.state.solution_selection.all_solution_scores,
+                        self.state.idea_generation.solution_ideas,
+                    )
+                    # De-invert the ranking: the Task-4 selector LLM's composite never saw the
+                    # critic's build_feasibility, so a low-buildability idea can rank too high.
+                    # Apply the downgrade-only feasibility adjustment to the LLM-scored entries.
+                    from nicheiq.utils.score_helpers import apply_feasibility_to_scores
+                    self.state.solution_selection.all_solution_scores = apply_feasibility_to_scores(
                         self.state.solution_selection.all_solution_scores,
                         self.state.idea_generation.solution_ideas,
                     )
@@ -6338,6 +6349,32 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             page_count = refined_programmatic_result.get('page_count', 0)
             refined_programmatic = refined_programmatic_result.get('assessment', '')
 
+            # SEO-realism cap on the refined score (downgrade-only). Pages are NOW known, so
+            # Rule B engages here (in addition to A/C). Stage 12 runs AFTER ranking is locked,
+            # so capping the selected solution's displayed/verdict SEO cannot reorder anything.
+            refined_seo_score = refined_scalability['score']
+            if settings.enable_seo_realism_caps:
+                from ..utils.seo_helpers import cap_seo_realism_score
+                _capped, _note = cap_seo_realism_score(
+                    refined_seo_score,
+                    project_type=getattr(selected_solution, "project_type", None),
+                    data_access_model=getattr(selected_solution, "data_access_model", None),
+                    content_generation_model=getattr(selected_solution, "content_generation_model", None),
+                    estimated_indexable_pages=page_count,
+                    require_saas_for_gating=settings.seo_cap_require_saas_for_gating,
+                    gated_saas_ceiling=settings.seo_cap_gated_saas_ceiling,
+                    thin_pages_threshold=settings.seo_cap_thin_pages_threshold,
+                    thin_pages_ceiling=settings.seo_cap_thin_pages_ceiling,
+                    high_score_min_pages=settings.seo_cap_high_score_min_pages,
+                    moderate_pages_ceiling=settings.seo_cap_moderate_pages_ceiling,
+                    handseed_ceiling=(settings.seo_cap_handseed_ceiling
+                                      if settings.enable_seo_handseed_cap else None),
+                )
+                if _note:
+                    logger.info(f"[Stage 12][SEO-REALISM] {selected_solution_name}: "
+                                f"{refined_seo_score:.2f} -> {_capped:.2f} ({_note})")
+                    refined_seo_score = _capped
+
             # Update CAC metadata with page count
             refined_cac['metadata']['estimated_year1_pages'] = page_count
 
@@ -6350,7 +6387,7 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
 
             seo_enrichment = SolutionSEORefinement(
                 solution_name=selected_solution_name,
-                seo_scalability_score_refined=refined_scalability['score'],
+                seo_scalability_score_refined=refined_seo_score,
                 estimated_cac_organic_refined=refined_cac['cac_range'],
                 programmatic_seo_opportunity_refined=refined_programmatic,
                 estimated_indexable_pages=page_count,
@@ -6384,8 +6421,8 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                         idea._original_estimated_cac_organic = idea.estimated_cac_organic
                         idea._original_programmatic_seo_opportunity = idea.programmatic_seo_opportunity
 
-                    # Apply refined values inline
-                    idea.seo_scalability_score = refined_scalability['score']
+                    # Apply refined values inline (seo already SEO-realism-capped above)
+                    idea.seo_scalability_score = refined_seo_score
                     idea.estimated_cac_organic = refined_cac['cac_range']
                     idea.programmatic_seo_opportunity = refined_programmatic
 

@@ -1,281 +1,82 @@
-# Query Generation Prompt
+# Query Generation Prompt — balanced discovery (v2)
 # Used by: QueryGenerator.generate_queries()
 # Variables: context_section (pre-built), num_queries, platform_instructions
 #
-# DESIGN PRINCIPLES:
-# 1. SHORT queries (3-6 words) - long queries return no results
-# 2. UNIVERSAL patterns - no technology/tool bias
-# 3. DISCOVERY-focused - find what exists, don't confirm assumptions
-
+# DESIGN PRINCIPLES (evidence-based — see docs / research):
+# 1. SHORT queries (3-6 words) — long queries return no results.
+# 2. HYPOTHESIS-TESTING, not confirmation: actively seek disconfirming evidence
+#    (satisfaction, "not a problem", already-solved), not just complaints.
+# 3. COVERAGE over quota: cover multiple intents & user vocabularies; no rigid ratios.
+# 4. AVOID PRODUCT LOCK-IN: cap specific named entities to <=~40%; majority category-level
+#    so the research can discover compounds/vendors/pains Stage-1 did not pre-list.
+# 5. Niche-anchored but recall-first: precision is enforced downstream, not by dropping breadth here.
 template: |
-  You are a search query strategist. Generate SHORT, NATURAL search queries to find pain points on social media.
-
+  You are a search-query strategist for unbiased market research. Your job is to discover what
+  people in a niche ACTUALLY experience — both problems AND non-problems — so a business idea can be
+  honestly validated OR invalidated. You are testing a hypothesis, not confirming it.
+  
   {context_section}
-
+  
   ---
-
-  **TASK: Generate {num_queries} search queries**
-
-  ## CRITICAL RULES (read first; full detail below)
-
-  1. Each query is 3-6 words.
-  2. Every query contains a NICHE-DOMAIN ANCHOR (a role/activity/process unique to the niche).
-  3. **If ANCHOR ENTITIES are listed in the NICHE CONTEXT above:** at least 40% of
-     NON-discovery queries must contain one of them verbatim; NEVER write a query about
-     any OUT-OF-SCOPE topic listed there.
-  4. No solution-seeking language ("best", "tool for", "app for", "alternative to").
-
-  ## CRITICAL: QUERY LENGTH RULES
-
-  **Target: 3-6 words per query (20-40 characters)**
-
-  Search engines work best with concise queries. Long queries = no results.
-
-  **Format**: [pain word] + [domain term] + [optional: role/context]
-
-  **GOOD examples (3-6 words):**
-  - "frustrated learning to code" (4 words)
-  - "beginner programmer stuck" (3 words)
-  - "coding bootcamp overwhelming" (3 words)
-  - "career change coding advice" (4 words)
-  - "anyone else struggle coding" (4 words)
-  - "is learning to code worth it" (6 words)
-
-  **BAD examples (too long - will fail):**
-  - ❌ "working professionals struggling to balance coding practice with full-time jobs" (11 words)
-  - ❌ "career changers confused choosing the best path to learn coding" (10 words)
-  - ❌ "solo founder customer onboarding taking 5+ hours per signup" (9 words)
-
-  ---
-
-  ## STEP 1: EXTRACT NICHE VOCABULARY
-
-  Before generating, identify from the context:
-  - **Segment roles**: Words describing users (beginner, career changer, working professional)
-  - **Domain activities**: Key actions (learning, building, planning, choosing)
-  - **Pain expressions**: How people express frustration (stuck, overwhelmed, frustrated)
-
-  ---
-
-  ## CRITICAL: NICHE-SPECIFIC CONTEXT
-
-  Queries must find discussions **specific to this niche**, not generic complaints.
-
-  **GOOD queries** (niche-specific):
-  - "freelancer overwhelmed by invoicing" ← specific WHO + WHAT
-  - "beginner piano hand position pain" ← specific activity
-  - "home gardener pest control frustration" ← specific domain
-
-  **BAD queries** (too generic - will match anyone):
-  - ❌ "burnt out doing everything" ← any job, parenting, school
-  - ❌ "anyone struggling with burnout" ← universal complaint
-  - ❌ "fed up with admin" ← admin of what? Too vague
-  - ❌ "overwhelmed and exhausted" ← life complaint, not niche pain
-
-  **The key test**: Could this query match discussions OUTSIDE your niche?
-  - If yes → too generic, add niche context
-  - If no → good, specific to niche
-
-  Transform generic → niche-specific:
-  - ❌ "frustrated with scheduling" → ✅ "freelancer scheduling clients struggle"
-  - ❌ "invoicing problems" → ✅ "freelancer invoicing late payments"
-  - ❌ "overwhelmed by tasks" → ✅ "solopreneur juggling everything alone"
-
-  ---
-
-  ## STEP 2: GENERATE QUERIES (5 PATTERNS)
-
-  ### 1. Pain Expression (25%)
-  **Pattern**: [emotion] + [niche-specific activity]
-  **3-5 words**
-
-  Examples:
-  - "freelancer overwhelmed invoicing clients"
-  - "entrepreneur customer support nightmare"
-  - "solopreneur no work life balance"
-
-  ### 2. Help-Seeking (20%)
-  **Pattern**: "anyone else" / "how do you" + [niche pain]
-  **4-6 words**
-
-  Examples:
-  - "freelancer anyone else hate invoicing"
-  - "entrepreneur how do you find clients"
-  - "guitarist how do you practice daily"
-
-  ### 3. Role + Pain (15%)
-  **Pattern**: [segment role] + [pain/question]
-  **3-5 words**
-
-  Examples:
-  - "beginner programmer frustrated"
-  - "career changer coding advice"
-  - "freelancer budgeting struggles"
-
-  ### 4. Progress Barrier (20%)
-  **Pattern**: [milestone/time] + stuck/help
-  **4-6 words**
-
-  Examples:
-  - "stuck after coding tutorials"
-  - "3 months coding no progress"
-  - "plateau after initial weight loss"
-
-  ### 5. Discovery (20%)
-  **Pattern**: neutral probes that let people describe problems in their own words
-  **3-6 words**
-
-  Examples:
-  - "biggest challenge [niche topic]"
-  - "what went wrong [niche activity]"
-  - "hardest part [niche]"
-  - "complaints about [niche topic]"
-  - "wish i knew before [niche activity]"
-  - "too expensive [niche activity]"
-  - "not worth the money [niche]"
-  - "switching from [niche tool/approach]"
-  - "gave up on [niche activity]"
-
-  Discovery queries do NOT assume a specific emotion or problem — they ask open-ended questions that surface whatever pain exists.
-
-  ### Financial Pain Emphasis
-  At least 3-4 queries should target financial/cost discussions:
-  - "[niche] too expensive"
-  - "[niche role] budget struggle"
-  - "paying too much [niche activity]"
-  These surface willingness-to-pay signals that are critical for market validation.
-
-  ---
-
-  ## NICHE-DOMAIN ANCHOR RULE (Required for Every Query)
-
-  Every query MUST contain a **niche-domain anchor** — a term that ties the query to this specific niche.
-  A niche-domain anchor is a role, activity, tool category, or process unique to the niche.
-
-  **Mechanical test**: Cover the emotional/pain word. Do the remaining words identify the niche?
-  - "freelancer invoicing late payments" → cover "late" → "freelancer invoicing payments" → YES, niche identified ✓
-  - "burnout stress" → cover "burnout" → "stress" → NO, could be anyone ✗
-  - "solopreneur client revision cycles" → cover nothing needed → clearly niche-specific ✓
-
-  **Domain anchors by query type:**
-  - Role anchor: "freelancer", "solopreneur", "beginner guitarist", "home gardener"
-  - Activity anchor: "invoicing", "client onboarding", "meal prep", "chord transitions"
-  - Process anchor: "revision cycles", "tax filing", "inventory tracking"
-
-  **Transformation examples:**
-  - "burnout stress" (no anchor) → "solopreneur burnt out client work" (role + activity anchor)
-  - "motivation struggle" (no anchor) → "freelancer motivation working alone" (role + context anchor)
-  - "overwhelmed tasks" (no anchor) → "entrepreneur overwhelmed wearing all hats" (role anchor)
-
-  ---
-
-  ## ENTITY ANCHOR QUOTA (only when ANCHOR ENTITIES are provided)
-
-  When the NICHE CONTEXT lists **ANCHOR ENTITIES** (specific named items), these are the
-  terms that distinguish this niche from adjacent niches that share generic vocabulary.
-
-  - **At least 40% of your NON-discovery queries MUST contain one ANCHOR ENTITY verbatim.**
-    (Discovery queries are exempt — they stay open-ended.)
-  - NEVER write a query about any term in the **OUT-OF-SCOPE** list — those are a different topic.
-  - Do NOT invent named entities that are not in the provided list.
-
-  **Anchored adjacency (use entities to find MORE related themes without drifting):**
-  For 3-4 ANCHOR ENTITIES, write one query each exploring an adjacent pain —
-  side-effects, combining/stacking, sourcing/legitimacy, cost, or setup — always
-  keeping the entity in the query. Example shape: "[entity] [adjacent pain]".
-
-  ---
-
-  ## STEP 3: BIAS PREVENTION (CRITICAL)
-
-  ### A. Entity Anchoring vs. Inventing Brand Names
-
-  Use the provided **ANCHOR ENTITIES** when they exist — they are REQUIRED for
-  disambiguation (see the Entity Anchor Quota above). Do NOT, however, invent or import
-  specific technologies/tools/brands that are NOT in that list; for everything outside the
-  anchor list the goal is DISCOVERY — let the data reveal what people actually use.
-
-  **Transformations (when NO anchor entities are provided):**
-  - ❌ "debugging JavaScript errors" → ✅ "frustrated debugging code"
-  - ❌ "should I learn Python or JavaScript" → ✅ "overwhelmed choosing programming language"
-  - ❌ "VSCode vs Atom slow" → ✅ "code editor frustrations beginner"
-
-  **Rule:** named entities from the provided ANCHOR ENTITIES list are REQUIRED;
-  invented/unrelated brands are still banned; OUT-OF-SCOPE terms are never used.
-
-  ### B. No Solution-Seeking Queries
-
-  Queries must find PROBLEMS, not people shopping for solutions.
-
-  **BANNED patterns** — do NOT use these words/phrases in queries:
-  - "best", "recommended", "top"
-  - "how to solve", "tool for", "app for", "software for", "alternative to"
-
-  **Transformations:**
-  - ❌ "best invoicing tool freelancer" → ✅ "freelancer invoicing taking forever"
-  - ❌ "recommended app for meal prep" → ✅ "meal prep planning overwhelming"
-  - ❌ "software for tracking expenses" → ✅ "losing track of expenses freelancer"
-
-  ---
-
-  ## STEP 4: USE SEGMENT VOCABULARY
-
-  Pull exact words from the Market Segments provided:
-  - If segment says "Career changers aged 25-40" → use "career changer" in queries
-  - If segment says "Working professionals" → use "working professional"
-  - If segment says "Beginners" → use "beginner"
-  - If segment says "Adult learners 40+" → use "adult learner"
-
-  ---
-
-  ## STEP 5: PLATFORM SELECTION
-
+  
+  TASK: Generate {num_queries} short search queries.
+  
+  ## NON-NEGOTIABLE RULES
+  1. Each query is 3-6 words (search engines fail on long queries).
+  2. Each query needs a NICHE-DOMAIN anchor — a role, activity, or process unique to this niche
+     (e.g. "peptide cycling", "athlete recovery", "peptide sourcing") — so it stays on-topic and does
+     not drift to adjacent niches. A specific PRODUCT/brand name is NOT required for this.
+  3. Vary the vocabulary; avoid near-duplicate queries.
+  
+  ## ANCHOR vs. PRODUCT LOCK-IN (critical — these queries select ALL content the rest of the research sees)
+  CAP specific named products: AT MOST ~40% of queries may contain a specific named entity/compound.
+  The MAJORITY must be CATEGORY-LEVEL (the activity/role/process, with NO specific product named), because:
+  - over-naming the products you already know BLINDS the research to compounds, vendors, and pains you
+    did NOT pre-list — the search becomes "what people say about these 15 things" instead of "what this
+    audience actually needs";
+  - category-level queries (e.g. "peptides for tendon repair", "what peptides for recovery",
+    "peptide sourcing legit", "is peptide cycling worth it") let REAL users name the products and
+    surface the long tail you would otherwise miss.
+  When you DO name an entity, spread them across DIFFERENT items in the provided list — never lean on the
+  same 1-2. If ANCHOR ENTITIES are provided they MAY be used (verbatim) for that minority; NEVER write a
+  query about an OUT-OF-SCOPE term. Do NOT invent brand/product names not in the list.
+  
+  ## SEEK BOTH SIDES (this is the point — do not skip)
+  A complaint-only search always finds complaints, which proves nothing. To test whether a pain is real
+  and unmet, you MUST include queries that could DISCONFIRM it. Cover all five intents below as rough
+  coverage guidance, NOT hard quotas:
+  - neutral (~35%): open-ended, no valence — "how do you [activity]", "[activity] routine".
+  - problem (~25%): the pain itself; keep loaded emotional words ("frustrated") a SMALL minority.
+  - satisfaction / not-a-problem (~20%, DISCONFIRMING): "[activity] works fine", "is [pain] even real".
+  - already-solved / shopping (~10%, DISCONFIRMING): solution-seeking allowed — "what do you use for [activity]", "best [category] approach".
+  - past-behavior (~10%): concrete past actions — "switched from [approach]", "what I tried for [activity]".
+  
+  If satisfaction/solved queries return as much signal as problem queries, the pain is likely already
+  met — a valid, valuable finding, not a failure.
+  
+  ## GENERATE FROM MULTIPLE PERSPECTIVES
+  Picture 2-3 different people in this niche (beginner vs. veteran; churned vs. stayed) and write from
+  their differing vocabulary so the set is not one voice.
+  
+  ## PLATFORM SELECTION
   {platform_instructions}
-
-  ---
-
-  ## STEP 6: OUTPUT FORMAT
-
+  
+  ## OUTPUT FORMAT
   Return ONLY a valid JSON array:
-
+  
   [
     {{
-      "query": "3-6 word query here",
-      "type": "pain|help|role|progress|discovery",
-      "platform": "reddit|twitter|both"
+      "query": "3-6 word query",
+      "type": "neutral|problem|satisfaction|solved|past|discovery",
+      "platform": "reddit|twitter|both",
+      "rationale": "intent/persona; category-level or which entity"
     }}
   ]
-
-  ---
-
-  ## FINAL CHECKLIST
-
-  Before outputting, verify EACH query:
-  - [ ] 3-6 words? (Count them!)
-  - [ ] Would this query find content ONLY in this niche? (key test!)
-  - [ ] Does it include WHO has the problem or WHAT specific activity? (niche-domain anchor)
-  - [ ] No INVENTED tech/tool/brand names (entities from the ANCHOR ENTITIES list are OK)?
-  - [ ] No OUT-OF-SCOPE terms?
-  - [ ] Discovery-focused (not leading)?
-  - [ ] No solution-seeking language? (no "best", "recommended", "tool for", "app for")
-
-  And across the whole set:
-  - [ ] If ANCHOR ENTITIES were provided: at least 40% of non-discovery queries contain one verbatim.
-
-  <brief_explanation>
-  First, state the core niche topic and primary pain expression pattern you'll use.
-  </brief_explanation>
-
-  Generate {num_queries} SHORT queries now. Count words before including each one.
-
-  <verification>
-  Before returning, verify:
-  - Array has exactly {num_queries} queries
-  - Each query is 3-6 words (count them!)
-  - No invented tech/tool/brand names; provided ANCHOR ENTITIES are allowed/required
-  - If ANCHOR ENTITIES were provided: ≥40% of non-discovery queries contain one verbatim, and
-    ZERO queries reference an OUT-OF-SCOPE term
-  - Platform distribution matches instructions in Step 5
-  - Query type distribution: ~25% pain, ~20% help, ~15% role, ~20% progress, ~20% discovery
-  - You completed ALL {num_queries} queries before returning
-  </verification>
+  
+  ## SELF-CHECK (before returning)
+  - Exactly {num_queries} queries, each 3-6 words.
+  - AT MOST ~40% name a specific product; the MAJORITY are category-level (activity/role/process only).
+  - All five intents appear; problem queries are NOT the majority; >=~30% disconfirming (satisfaction+solved).
+  - Every query has a niche-domain anchor; no invented brands; no OUT-OF-SCOPE terms; not near-duplicates.
+  
+  Generate {num_queries} queries now.

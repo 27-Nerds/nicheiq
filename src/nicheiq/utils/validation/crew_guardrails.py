@@ -175,6 +175,11 @@ def validate_diversity(
                     f"✓ Within-type diversity check passed: {unique_sources} unique data source combinations"
                 )
 
+        # NOTE: info-products (directory/aggregator/comparison) are intentionally NOT penalized —
+        # they are first-class, often-best monetizable side-project outcomes (programmatic SEO).
+        # Variety across the pool is driven by the pain-partition + the type-spread nudge above
+        # (Rule 1), which is type-NEUTRAL; we do not force away from info-products.
+
         # Rule 3: Always check for duplicate value propositions
         for i, idea_a in enumerate(ideas):
             for idea_b in ideas[i + 1 :]:

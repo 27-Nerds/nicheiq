@@ -28,8 +28,13 @@ class QueryGenerator:
     # Anchor-grounding is "active" only with enough named entities to be
     # meaningful; below this every anchor gate is a no-op (fail-open).
     MIN_ANCHORS_ACTIVE = 3
-    # Regenerate once if fewer than this share of non-discovery queries are anchored.
-    ANCHOR_PCT_FLOOR = 0.5
+    # Entity-anchor floor DISABLED (0.0). Forcing >=50% of queries to contain a NAMED
+    # entity caused PRODUCT LOCK-IN: the search pre-committed the whole research to the
+    # entities Stage-1 happened to list, blinding it to unlisted compounds/vendors and
+    # category-level pains. Drift is still prevented by the disambiguation_exclusions drop
+    # (below) + the prompt's required niche-domain anchor. has_anchor is still tagged for
+    # telemetry; the regeneration that "strengthened entity anchoring" no longer fires.
+    ANCHOR_PCT_FLOOR = 0.0
 
     def __init__(self):
         # Per-run telemetry consumed by the flow for the Phase-4 drift caveat.
@@ -326,16 +331,18 @@ Industry Boundaries: [Not provided - use general heuristics]
                     # Ensure all expected fields exist with defaults
                     # Support current and legacy type names for backwards compatibility
                     valid_types = [
-                        # Current archetypes (short universal prompt)
-                        'pain', 'help', 'role', 'progress', 'discovery',
+                        # Balanced-discovery intents (v2 prompt)
+                        'neutral', 'problem', 'satisfaction', 'solved', 'past', 'discovery',
+                        # Current archetypes (legacy short universal prompt)
+                        'pain', 'help', 'role', 'progress',
                         # Legacy archetypes (for backwards compatibility)
                         'workflow_friction', 'decision_paralysis', 'gap_limitation',
                         'comparative_frustration', 'temporal_threshold',
-                        'problem', 'segment', 'question', 'tool', 'struggle'
+                        'segment', 'question', 'tool', 'struggle'
                     ]
                     if q.get('type') not in valid_types:
-                        q['type'] = 'pain'  # Default to pain expression type
-                    q.setdefault('type', 'pain')
+                        q['type'] = 'neutral'  # Default to NEUTRAL (not 'pain' — avoids re-biasing unknown types)
+                    q.setdefault('type', 'neutral')
                     q.setdefault('platform', 'reddit')  # 60% target
                     q.setdefault('rationale', '')
 
@@ -413,12 +420,13 @@ Industry Boundaries: [Not provided - use general heuristics]
                             logger.warning(f"[WARN] Suspicious query (B2B terms for B2C niche): {q.get('query')}")
                             suspicious_count += 1
 
-                    # Check for solution-seeking patterns (should find problems, not solutions)
+                    # Solution-seeking is INTENTIONAL for the 'solved' disconfirming intent
+                    # (it reveals the pain may already be met). Only flag it for other types.
                     solution_patterns = [
                         'best ', 'recommended', 'top ', 'how to solve',
                         'tool for', 'app for', 'software for', 'alternative to'
                     ]
-                    if any(pat in query_text for pat in solution_patterns):
+                    if q.get('type') != 'solved' and any(pat in query_text for pat in solution_patterns):
                         logger.warning(f"[WARN] Solution-seeking query (should find problems, not solutions): {q.get('query')}")
                         suspicious_count += 1
 

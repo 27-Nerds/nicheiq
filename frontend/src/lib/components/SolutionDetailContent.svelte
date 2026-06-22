@@ -17,6 +17,13 @@
   let expandedSections = new SvelteSet<string>();
   let descExpanded = $state(false);
 
+  // Grounded generation provenance: the (pain × segment) cell that produced this idea.
+  const provenance = $derived.by(() => {
+    const pain = solution.source_pain?.trim() || solution.pain_points_addressed?.[0]?.trim();
+    if (!pain) return null;
+    return { pain, seg: solution.source_segment?.trim() || null };
+  });
+
   // Reset description expansion on solution change
   $effect(() => {
     solution;
@@ -107,6 +114,13 @@
 
 <!-- Single-column layout -->
 <div class="space-y-5">
+  <!-- Grounded provenance: the pain × segment this idea was generated for -->
+  {#if provenance}
+    <p class="text-xs text-text-muted font-mono">
+      Generated for <span class="text-text-secondary">{provenance.pain}</span>{#if provenance.seg} — {provenance.seg} audience{/if}
+    </p>
+  {/if}
+
   <!-- Description (truncated to ~4 lines with expand) -->
   <div>
     <p class="text-sm text-text-secondary leading-relaxed {descExpanded ? '' : 'truncate-4'}">

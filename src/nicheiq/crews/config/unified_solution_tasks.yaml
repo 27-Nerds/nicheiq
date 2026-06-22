@@ -9,7 +9,7 @@
 
 divergent_exploration:
   description: >
-    **TASK 1: DIVERGENT EXPLORATION (Generate 8-12 Raw Concepts)**
+    {partitioned_mode_block}**TASK 1: DIVERGENT EXPLORATION (Generate 8-12 Raw Concepts)**
 
     Generate diverse solution concepts for micro/mini SaaS with SEO traffic focus.
     This is the DIVERGENT phase - prioritize quantity and variety over polish.
@@ -120,13 +120,14 @@ divergent_exploration:
     IN WRITING before moving to the next concept:
 
     CANDIDATE: [concept_name]
+    Pain served: [one primary pain from the lists] — concepts already on this pain: [N of 2]
     M-tag: [one phrase describing the mechanism]
     D-tag: [one phrase describing the data source]
     J-tag: [one phrase describing the user journey]
     Competitor check: [tool name or "none identified"] → gap exploited: [specific gap or "N/A"]
     Most similar blacklisted idea: [name it, or "none"]
     Overlap: M=yes/no, D=yes/no, J=yes/no → match count: [0-3]
-    VERDICT: PASS (match count <= 1) or REJECT (match count >= 2)
+    VERDICT: PASS (match count <= 1 AND this pain has < 2 concepts) or REJECT (else — target a different pain)
 
     If REJECT: state which blacklisted idea triggered the rejection, which two
     dimensions matched, then generate a replacement concept and re-run this gate.
@@ -239,6 +240,22 @@ divergent_exploration:
     → saas. A set where >60% of concepts share one project_type is too monotone.
     Indexable SEO pages are how users FIND the product — not what the product IS.
 
+    ## MANDATORY PAIN-COVERAGE SPREAD (third diversity axis — the others are not enough)
+
+    Technique / project-type / mechanism diversity does NOT prevent every concept serving
+    the SAME pain via a different mechanism (e.g. five ways to "verify product authenticity").
+    That is theme clustering — the failure this axis prevents.
+
+    Assign each concept to exactly ONE primary pain (from STEP -1 insights / the pain lists):
+    - COVER AT LEAST 4 DISTINCT pains across your 8-12 concepts.
+    - CAP: at most 2 concepts may share the same primary pain.
+    - If your first 3 concepts trace to the same pain, STOP and pivot the next concept to an
+      UNUSED pain regardless of technique.
+    - EXCEPTION: if the analysis genuinely has fewer than 4 distinct pains, cover ALL of them
+      and note it (do not invent pains to hit the number).
+    Self-check before output: count unique pains served. If < 4 (and >=4 exist) -> INVALID;
+    replace the weakest same-pain duplicate with one targeting an under-served pain.
+
     ═══════════════════════════════════════════════════════════════════════════
 
     **OUTPUT REQUIREMENTS (RawConceptList):**
@@ -252,11 +269,12 @@ divergent_exploration:
     - **target_keywords**: 2-5 specific SEO queries. PRIORITY: use community-vocabulary
       phrases from Discussion Themes above before inventing new terms.
     - **data_source_hint**: Primary data source or mechanism
-    - **why_non_obvious**: 1-2 sentences explaining the SPECIFIC insight that makes this
-      non-trivial. What would a naive builder try instead, and why is THIS better?
-      If competing with a tool from the Competitor Mentions above,
-      include the specific gap (e.g., "unlike ToolX which lacks offline access, this...")
-      BANNED phrases: "unique approach", "nobody has built this", "innovative solution"
+    - **data_route**: name the CONCRETE bulk route the data is obtainable through — a downloadable
+      dump, a list/index/search endpoint, an official API, or first-party user submissions. Write
+      'not-data-dependent' for pure-computation products, or 'NO-BULK' if the only access is a
+      per-record lookup / login-gated / unverified source. PREFER concepts whose data has a real
+      bulk route; a concept that can only say 'NO-BULK' is a weak bet (the critic will downgrade it).
+    - **why_non_obvious**: see the REQUIRED format spec below (PAIN + INSIGHT + EVIDENCE + WEDGE).
     - **distribution_channel**: Primary channel: seo (default), platform_marketplace,
       or hybrid. SEO remains primary — platform distribution is a bonus accelerator.
     - **mechanism_tag / data_source_tag / journey_tag** (REQUIRED): the same M/D/J
@@ -281,21 +299,33 @@ divergent_exploration:
       first-thought. Be honest — do not score everything 0.4. **At least 2 of your
       concepts MUST score ≤ 0.3** (genuinely novel long-tail); if you cannot, say why
       and substitute the least-obvious concepts you have.
-    - **why_non_obvious** (REQUIRED — INSIGHT + EVIDENCE ANCHOR + WEDGE): you MUST cite
-      (a) the numbered STEP -1 insight this concept rests on (e.g. "Insight 3"), AND
-      (b) ONE specific detail from the provided pain points / quotes / competitor
-      mentions / audience context that only someone who actually read the evidence would
-      know — a workaround pattern, a named tool being abandoned, a specific frustration,
-      or a willingness-to-pay signal — AND (c) its defensible wedge (proprietary data /
-      a real tool / a community loop), not just "indexable pages". The evidence detail
-      must come from the context ABOVE — do NOT invent or paraphrase a quote you can't
-      point to. A concept that cannot cite a concrete evidence anchor is generic →
-      replace it. A concept whose only moat is "it ranks in SEO" is not interesting.
+    - **why_non_obvious** (REQUIRED — 4 labelled components, in this order):
+      "Pain served: [short pain label]. Insight [N]: [the STEP -1 insight it rests on].
+      Evidence: [ONE concrete detail lifted verbatim/near-verbatim from the pain points /
+      quotes / competitor mentions / audience context above — a workaround, a named tool
+      being abandoned, a specific frustration phrase, or a WTP signal — that only someone
+      who read the evidence would know]. Wedge: [ONE structural advantage a competitor
+      could NOT copy within 3 months — a data route that is BOTH defensible AND really
+      bulk-obtainable (name it in data_route; a phantom 'proprietary' source you can't
+      actually access in bulk is NOT a wedge), platform-API exclusivity, a community data
+      flywheel (only if you can state how it overcomes cold-start cheaply), or a process
+      that compounds with scale]."
+      Banned wedges/phrases: "indexable pages", "it ranks in SEO", "unique approach",
+      "nobody has built this", "innovative solution". Do NOT invent evidence you can't
+      point to. A concept missing ANY of the four components is generic → replace it.
 
     **ANTI-CLICHÉ — banned generic shapes** (regardless of niche): do NOT propose
     "a marketplace for X", "an AI chatbot/assistant for X", or "a tracking app for X"
     unless the why_non_obvious cites a specific insight/quote that makes that shape
     non-obvious here.
+
+    **DISCOURAGED — hard-to-ship shapes** (avoid unless the wedge is exceptional, because
+    they score poorly on feasibility): products whose CORE mechanism is publishing claims/
+    accusations about NAMED people or businesses (defamation/legal exposure); products that
+    need a large corpus the solo dev must HAND-SEED before launch (cold-start); and products
+    that depend on a data source with no real bulk route (NO-BULK). Prefer concepts grounded
+    in genuinely obtainable data — favor the `government-open-data | platform-api |
+    self-reported-user-data` data_source_tags over scraping a named third party.
 
     **EXAMPLES (showing non-trivial concepts with diverse techniques):**
 
@@ -378,7 +408,7 @@ divergent_exploration:
 
 diversity_filtering:
   description: >
-    **TASK 2: DIVERSITY FILTERING (Filter to 5-7 Unique Concepts)**
+    **TASK 2: DIVERSITY FILTERING (Filter to up to ~10 Unique Concepts)**
 
     Filter the pooled raw concepts below to ensure diversity and remove duplicates.
     This is the CONVERGENT phase - apply strict diversity criteria.
@@ -393,7 +423,7 @@ diversity_filtering:
     {pooled_concepts}
 
     <output_verbosity_spec>
-    - concepts: Pass through 5-7 RawConcept objects unchanged
+    - concepts: Pass through up to ~10 RawConcept objects unchanged
     - removed_concepts: List of names only
     - removal_reasons: 1 sentence per removal (format: "[Name]: [reason]")
     - diversity_summary: 2-3 sentences max
@@ -403,12 +433,19 @@ diversity_filtering:
 
     **FILTERING WORKFLOW (apply in order — coverage BEFORE de-dup):**
 
-    0. **COVERAGE LOCK (do this FIRST).** List the high-severity on-niche pains from
-       the analysis (severity ≥ 0.6 OR high mention count). For EACH, identify which
-       Task-1 concept(s) address it and mark one as LOCKED — it must survive filtering.
-       NEVER remove the only concept covering a high-severity on-niche pain just to
-       "balance" the set or because it shares structure with another concept.
+    0. **COVERAGE LOCK + PER-PAIN CAP (do this FIRST).** List the distinct high-severity
+       on-niche pains (severity ≥ 0.6 OR high mention count) — the PAIN REGISTRY. For EACH,
+       identify which Task-1 concepts address it and mark the STRONGEST one LOCKED (it must
+       survive). NEVER remove the only concept covering a high-severity on-niche pain.
        On-niche coverage outranks structural spread.
+       **PER-PAIN CAP:** after locking, no single pain may keep MORE THAN 2 concepts in the
+       final set. If a pain has 3+ survivors, remove the weakest extras for THAT pain first
+       (even if structurally distinct) until it holds ≤2 — the goal is maximum DISTINCT-pain
+       coverage, not maximum concepts per pain. Record: "[Name]: per-pain cap — '[pain]' already at 2".
+
+    0c. **PAIN-SPREAD AUDIT (before step 1).** Tally surviving concepts per pain. Re-apply the
+       per-pain cap if any pain exceeds 2. If a PAIN REGISTRY pain has ZERO coverage, note it in
+       diversity_summary (enforce_pain_coverage re-injects post-crew).
 
     0b. **INTEREST AUDIT.** Look at each concept's obviousness_score. If the most
        obvious surviving concept scores > 0.7 AND a less-obvious Task-1 concept
@@ -416,12 +453,17 @@ diversity_filtering:
        less-obvious one. When two concepts tie on everything else, keep the lower
        obviousness_score.
 
-    1. **CLUSTER SIMILAR CONCEPTS**
-       Group concepts that share >50% of these characteristics:
+    1. **CLUSTER SIMILAR CONCEPTS (pain-first)**
+       First note which pain each concept primarily serves. Then group concepts sharing
+       >50% of these characteristics:
        - Same primary data source
        - Same target audience segment
        - Same core mechanism (how value is delivered)
        - Same monetization model
+
+       Resolve clusters by pain: if two similar concepts serve the SAME pain, keep only the
+       more novel one; if they serve DIFFERENT pains, prefer keeping both (subject to the
+       step-0 cap) — structural similarity alone is NOT a reason to drop a distinct-pain concept.
 
        If 2 concepts differ ONLY in:
        - Target industry (same product, different vertical)
@@ -489,7 +531,7 @@ diversity_filtering:
 
     **OUTPUT REQUIREMENTS (FilteredConceptList):**
 
-    - **concepts**: 5-7 unique RawConcept objects (passed from Task 1)
+    - **concepts**: up to ~10 unique RawConcept objects (passed from Task 1)
     - **removed_concepts**: List of concept names that were filtered out
     - **removal_reasons**: Explanation for each removal (format: "[Name]: [reason]")
     - **diversity_summary**: Summary of diversity achieved
@@ -519,7 +561,7 @@ diversity_filtering:
 
   expected_output: >
     FilteredConceptList with:
-    - concepts: 5-7 unique RawConcept objects
+    - concepts: up to ~10 unique RawConcept objects
     - removed_concepts: Names of filtered concepts
     - removal_reasons: Explanations for removals
     - diversity_summary: Summary of diversity achieved
@@ -530,11 +572,11 @@ solution_refinement:
 
     Expand filtered concepts from Task 2 into complete solution specifications.
     Score each on market fit, novelty, solo-dev feasibility, and SEO potential.
-    Select top 3-5 for detailed specification.
+    Select up to ~10 for detailed specification.
 
     ## Context from Task 2
 
-    You have access to FilteredConceptList with 5-7 unique concepts.
+    You have access to FilteredConceptList with up to ~10 unique concepts.
 
     ## Pain Points Context
 
@@ -552,15 +594,10 @@ solution_refinement:
     {theme_categories}
 
     <long_context_handling>
-    Before scoring and expanding:
-    1. List pain point themes from above context
-    2. Re-state selection criteria: Top 3-5 by composite score
-    3. Anchor each solution's market_fit_score to specific pain points
-    4. List the 3 most frequently mentioned competitor tools from the Competitor & Tool
-       Mentions section. For each solution you expand, note which (if any) of these tools
-       it competes with and what the differentiation claim will be.
-    5. From Discussion Themes above, identify 2-3 keyword clusters with the highest mention counts.
-       Use at least one cluster's keywords verbatim in organic_discovery_queries for each solution.
+    Before scoring: (1) list the distinct pain themes + the top 3 competitor tools from context;
+    (2) for each solution, note which competitor it displaces and the differentiation claim;
+    (3) use ≥1 high-mention keyword cluster verbatim in organic_discovery_queries.
+    Anchor each market_fit_score to a specific pain; select up to ~10 by composite (see DIVERSITY REQUIREMENT).
     </long_context_handling>
 
     <output_verbosity_spec>
@@ -587,14 +624,22 @@ solution_refinement:
     Evaluate each concept on (anchored bands are in each field's description):
     - **market_fit_score** - How well does it address the VALIDATED pains? Set proportional
       to the addressed pain's severity (high-severity ⇒ ≥0.7; low-severity/thin evidence ⇒ ≤0.5).
+      Drop to ≤0.4 if the core mechanism/data route is unverified — an unbuildable answer to a real pain is not a fit.
     - **novelty_score** - How differentiated is this from existing solutions?
     - **technical_feasibility_score** - Can it be BUILT AT ALL with available tech+data? (capability; gates the verdict)
-    - **solo_dev_feasibility** - Can ONE developer ship an MVP in ~2-3 months? (scope/effort; stricter than technical)
-    - **seo_scalability_score** - Organic traffic potential (use the bands in the field description).
+      Score AT MOST equal to data obtainability — uncertain/unverified data caps this at 0.6.
+    - **solo_dev_feasibility** - Can ONE developer build AND OPERATE an MVP in ~2-3 months? (scope/effort + ongoing run cost)
+      Subtract for ongoing operational burden (manual moderation, community management, continuous hand-seeding) — a maintenance-heavy product is NOT solo-feasible at 0.8+.
+    - **seo_scalability_score** - Organic traffic potential = the realistic count of DISTINCT, INDEXABLE, non-thin pages this can rank (page count × page quality). This is a PRELIMINARY estimate — real page counts are validated later by keyword research, so do NOT inflate. Score the SEO surface itself; do NOT dock SEO for how the data is *sourced* (scraping vs official API is a feasibility concern, scored separately — it does not change whether a page ranks).
+      BEFORE scoring above 0.7, name the actual content corpus and roughly how many UNIQUE, non-thin pages it yields. Then apply these limits:
+        - "Pages" are combinatorial filler (e.g. contaminant × peptide grids) with near-duplicate thin content rather than genuinely distinct value → cap 0.6 (Google won't rank thin/duplicate pages, so a big page count alone is a mirage).
+        - Account-gated SaaS whose OUTPUT pages sit behind a login (not publicly crawlable) → cap 0.5.
+        - Cold-start corpus that is hand-seeded / user-submitted / community-grown (zero content on day one, slow/uncertain ramp) → discount toward 0.6 — judge realized, not theoretical, scale.
+      Reserve 0.8+ ONLY for a public, already-existing, enumerable dataset that yields hundreds+ of genuinely distinct pages with no seeding problem.
 
     Weight factors based on what matters most for THIS specific niche.
     Market fit and feasibility typically matter most, but use your judgment.
-    Select top 3-5 concepts by overall merit.
+    Select up to ~10 concepts by overall merit.
 
     ═══════════════════════════════════════════════════════════════════════════
 
@@ -607,18 +652,20 @@ solution_refinement:
       push at least one concept to explore a non-obvious angle even if it scores slightly
       lower on market fit. Generic ideas in crowded markets struggle regardless of fit score.
 
-    **BOLD SLOT (mandatory):** ONE of your final 3-5 solutions MUST be the genuinely
+    **BOLD SLOT (mandatory):** ONE of your final solutions MUST be the genuinely
     novel/original option — the one built on the lowest-obviousness source concept (the
     most non-obvious insight) — and you MUST keep it EVEN IF its market_fit_score is
     slightly lower than a safer alternative. Give it a real novelty_score ≥ 0.6 with
     substantive conventional_approach / innovation_angle / why_it_works text. A final set
     of only "safe" ideas is INVALID — generic ideas fail in crowded markets regardless of
     fit. (A deterministic check after you finish will re-inject the boldest concept if you
-    omit one, so include it yourself.)
+    omit one, so include it yourself.) The bold slot must ALSO serve a DIFFERENT pain than
+    your top-scoring solution; if the lowest-obviousness concept shares your #1's pain, pick
+    the next-lowest-obviousness concept that covers a distinct pain.
 
     ## DIVERSITY REQUIREMENT: span SEO patterns AND product architectures
 
-    Your final 3-5 solutions MUST satisfy BOTH:
+    Your final solutions MUST satisfy BOTH:
 
     (A) AT LEAST 2 DIFFERENT SEO patterns from:
     1. **Location + Service pages**: "[City] [service]", "[Country] [provider]"
@@ -633,10 +680,18 @@ solution_refinement:
     all SaaS calculators/hubs, KEEP the top 2 and SWAP IN the next-best directory /
     aggregator / comparison-tool / marketplace.
 
-    INVALID: 5 solutions all targeting "[Location] + [Service]" pattern, OR all one project_type.
-    VALID: 2 location directories + 1 comparison tool + 1 calculator + 1 data aggregator.
+    (C) AT LEAST 2 DIFFERENT pains from {high_priority_list} must be represented across the
+    final set. If your top-merit set all serve the SAME pain (likely, since same-pain concepts
+    score similarly on market_fit), KEEP the top 2 for that pain and SWAP IN the next-best
+    solution that serves a DIFFERENT pain — even if its composite is slightly lower. A
+    pain-monotone slate is INVALID regardless of score gap.
 
-    This ensures the final selection offers architectural diversity, not just vertical diversity.
+    INVALID: 5 solutions all targeting "[Location] + [Service]" pattern, OR all one project_type,
+    OR all serving the same pain.
+    VALID: 2 location directories + 1 comparison tool + 1 calculator + 1 data aggregator,
+    spanning ≥2 distinct pains.
+
+    This ensures the final selection offers architectural AND pain diversity, not just vertical diversity.
 
     ═══════════════════════════════════════════════════════════════════════════
 
@@ -646,9 +701,9 @@ solution_refinement:
 
     **Basic Info:**
     - solution_name, headline (5-12 word human-readable title — NOT the code name), short_description (1-2 punchy sentences for card display, <180 chars), description (4-6 sentence HOW IT WORKS), value_proposition
-    - pain_points_addressed (use exact titles from data; the SET of final solutions must
-      COLLECTIVELY cover every high-severity on-niche pain in {high_priority_list} — name
-      the specific pain(s) each solution covers)
+    - pain_points_addressed (a best-effort exact pain title is fine — this field is RESET in
+      code from the solution's grounded generation provenance, so don't over-optimize it; keep
+      it present and parseable)
     - core_features (5-7 MVP features)
     - target_personas (2-4 aligned with user segments)
 
@@ -696,6 +751,7 @@ solution_refinement:
     - programmatic_seo_opportunity, content_generation_model
     - organic_discovery_queries (5-10 queries)
     - estimated_cac_organic, estimated_cac_paid
+    - estimated_indexable_pages — your realistic estimate of the number of DISTINCT, indexable, non-thin pages the content corpus yields (an integer). This is the backbone of seo_scalability_score, so estimate it FIRST, then score: a few dozen pages is a low SEO play, a few hundred is moderate, low-thousands+ of genuinely distinct pages is high. Count only real, differentiated pages — exclude near-duplicate combinatorial filler and any pages gated behind a login. Provisional (keyword research refines it later for the chosen idea); estimate honestly, do not inflate.
     - seo_scalability_score
 
     ═══════════════════════════════════════════════════════════════════════════
@@ -757,7 +813,7 @@ solution_refinement:
 
   expected_output: >
     IdeaGenerationResult with:
-    - solution_ideas: 3-5 complete BaseSolutionIdea objects with all 25+ fields
+    - solution_ideas: up to ~10 complete BaseSolutionIdea objects with all 25+ fields
     - recommended_solution: null (will be set in Task 6)
 
     Each solution must include:

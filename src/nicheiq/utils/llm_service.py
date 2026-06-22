@@ -137,6 +137,120 @@ def openrouter_reasoning_body(reasoning_effort: str | None) -> dict:
     return {"reasoning": {"enabled": False}}
 
 
+# --- max_tokens safety caps -------------------------------------------------
+# OpenRouter defaults max_tokens to 65536 when a request omits it, so any model
+# can run away/loop to the 64K cap and truncate structured output. These bound
+# every OpenRouter request. Capping does NOT reduce normal-case cost (you pay for
+# tokens generated, not the cap) — it only bounds the worst case.
+MAX_TOKENS_SMALL = 4096      # optional trim for guaranteed-small NON-reasoning calls
+MAX_TOKENS_MEDIUM = 8192
+MAX_TOKENS_LARGE = 16384
+MAX_TOKENS_XL = 32768        # convergent refinement of up to ~12 full idea specs in one call
+_DEFAULT_MAX_TOKENS = MAX_TOKENS_LARGE  # backstop — >= every current real output
+
+
+def _resolve_max_tokens(max_tokens: int | None, *, reasoning_enabled: bool) -> int:
+    """Single source of truth for the 'never unbounded' invariant.
+
+    - ``None`` -> backstop (LARGE), so a caller that forgets to size still gets a
+      safe, non-truncating cap (never OpenRouter's 65536 default).
+    - reasoning-ON -> floor at LARGE: reasoning tokens count against ``max_tokens``,
+      so a low cap makes the model burn its budget on hidden thinking and truncate
+      the structured output. ``is_reasoning_model`` does NOT recognize the
+      OpenRouter reasoning models in use (kimi/deepseek/glm), so this floor — keyed
+      on whether reasoning is actually enabled for the call — is what protects them.
+    """
+    eff = max_tokens or _DEFAULT_MAX_TOKENS
+    if reasoning_enabled:
+        eff = max(eff, MAX_TOKENS_LARGE)
+    return eff
+
+
+# Vendors that serve their OWN models on a single OpenRouter provider. A third-party
+# allowlist (e.g. deepinfra, meant for open-weight roulette) would 404 these, so the
+# `only` pin is skipped for them — they don't need it (one vendor, no parser roulette).
+_FIRST_PARTY_VENDOR_PREFIXES = ("google/", "openai/", "anthropic/", "x-ai/")
+
+
+def _structured_provider_routing(clean_model: str = "", *, pin: bool = True) -> dict:
+    """OpenRouter `provider` routing for the structured-output SDK path. Always
+    require_parameters (route only to providers that honor the request params — tools/
+    tool_choice OR response_format). Optionally restrict to an allowlist
+    (settings.openrouter_structured_providers) to pin known-good providers for OPEN-WEIGHT
+    models whose vLLM/SGLang parser/guided-decoder is provider-dependent. The allowlist is
+    skipped for first-party models (google/openai/anthropic/x-ai): they live on ONE provider,
+    so a third-party allowlist would route them to nothing (404). Load-balancing still
+    happens within the allowlist for open-weight models.
+
+    ``pin=False`` skips the allowlist entirely (creative calls): the divergent/brainstorm
+    pool uses open-weight models (minimax/hy3) that the qwen allowlist provider (deepinfra)
+    does NOT serve, so pinning them would 404. Those calls free-route among capable providers."""
+    allow = settings.openrouter_structured_providers_list
+    is_first_party = any(clean_model.startswith(p) for p in _FIRST_PARTY_VENDOR_PREFIXES)
+    if pin and allow and not is_first_party:
+        # Pin to the vetted providers — and do NOT also set require_parameters. require_parameters
+        # filters on EVERY request param, including `reasoning` (we always send
+        # reasoning:{enabled:false}); a non-reasoning provider like DeepInfra/qwen doesn't advertise
+        # `reasoning`, so require_parameters would exclude it and `only` then leaves ZERO endpoints
+        # -> 404 "no endpoints found that can handle the requested parameters" (observed live). The
+        # allowlist IS the routing decision: these providers are verified to support response_format/
+        # tools, and any param they don't support (reasoning) is silently ignored without it.
+        return {"only": allow}
+    # No allowlist (or first-party): require_parameters routes among ALL providers to one that
+    # honors the structured params (tools/tool_choice OR response_format), excluding silent droppers.
+    return {"require_parameters": True}
+
+
+# --- json_schema (guided-decoding) structured path -------------------------
+# JSON-Schema keywords vLLM's guided decoder (xgrammar — DeepInfra/Together/Fireworks)
+# cannot compile; leaving them in forces a slower/erroring fallback. Strip them from
+# the wire schema and let the Pydantic reader enforce them after parsing instead.
+_GUIDED_UNSUPPORTED_KEYS = frozenset({
+    "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf",
+    "minLength", "maxLength", "pattern", "format",
+    "minItems", "maxItems", "uniqueItems",
+})
+
+
+def _shape_json_schema(schema: dict) -> dict:
+    """Rewrite a Pydantic json-schema into a guided-decoding-friendly shape.
+
+    xgrammar (vLLM's default guided-json backend) can't compile ``$ref``/``$defs``,
+    ``oneOf``, or numeric/string/array bounds, and degrades to a slower/erroring
+    decoder on them. We:
+      * inline every ``$ref`` and drop ``$defs`` (no references survive),
+      * rewrite ``oneOf`` -> ``anyOf`` (xgrammar handles anyOf via EBNF alternation),
+      * strip the unsupported validation keywords (the Pydantic reader still enforces
+        them post-parse).
+    Pure-data transform that builds fresh dicts/lists; the model class is untouched.
+    """
+    defs = {**schema.get("$defs", {}), **schema.get("definitions", {})}
+
+    def resolve(node: Any, seen: frozenset) -> Any:
+        if isinstance(node, list):
+            return [resolve(n, seen) for n in node]
+        if not isinstance(node, dict):
+            return node
+        ref = node.get("$ref")
+        if isinstance(ref, str) and ref.startswith("#/"):
+            key = ref.split("/")[-1]
+            if key in seen:                       # recursion guard (models aren't recursive)
+                return {}
+            merged = dict(resolve(defs.get(key, {}), seen | {key}))
+            for k, v in node.items():             # honor sibling keys alongside $ref
+                if k != "$ref":
+                    merged[k] = resolve(v, seen)
+            return merged
+        out: dict = {}
+        for k, v in node.items():
+            if k in ("$defs", "definitions") or k in _GUIDED_UNSUPPORTED_KEYS:
+                continue
+            out["anyOf" if k == "oneOf" else k] = resolve(v, seen)
+        return out
+
+    return resolve(schema, frozenset())
+
+
 def validate_openrouter_tier_compatibility() -> None:
     """Fail fast on tier settings that cannot run on OpenRouter.
 
@@ -402,7 +516,7 @@ def build_crew_llm(
             or_kwargs["temperature"] = temperature
         # Forward the sampling kwargs the non-reasoning ChatOpenAI path also supports,
         # so a migrated agent behaves the same on OpenRouter as it would on OpenAI.
-        for param in ("max_tokens", "top_p", "frequency_penalty", "presence_penalty", "timeout"):
+        for param in ("top_p", "frequency_penalty", "presence_penalty", "timeout"):
             if param in extra_kwargs:
                 or_kwargs[param] = extra_kwargs[param]
         # Forward reasoning via OpenRouter's unified `reasoning` param (extra_body).
@@ -413,6 +527,12 @@ def build_crew_llm(
         reasoning_body = openrouter_reasoning_body(reasoning_effort)
         if reasoning_body:
             or_kwargs["extra_body"] = reasoning_body
+        # Always bound max_tokens so a CrewAI agent can't inherit OpenRouter's 65536
+        # default and run away. Floored to LARGE when reasoning is on.
+        reasoning_on = "effort" in reasoning_body.get("reasoning", {})
+        or_kwargs["max_tokens"] = _resolve_max_tokens(
+            extra_kwargs.get("max_tokens"), reasoning_enabled=reasoning_on
+        )
         headers = openrouter_headers()
         if headers:
             or_kwargs["default_headers"] = headers
@@ -436,6 +556,9 @@ def build_crew_llm(
             logger.debug(f"build_crew_llm: {model} with reasoning_effort={reasoning_effort} (via CrewAI LLM)")
         return CrewAILLM(**crew_llm_kwargs)
 
+    # Bound output for non-reasoning ChatOpenAI agents too (build_llm_kwargs converts
+    # max_tokens -> max_completion_tokens). Harmless on OpenAI; keeps the invariant uniform.
+    extra_kwargs.setdefault("max_tokens", _resolve_max_tokens(None, reasoning_enabled=False))
     llm_kwargs = build_llm_kwargs(
         model=model,
         temperature=temperature,
@@ -592,6 +715,8 @@ class LLMService:
         api_key: str,
         base_url: str | None,
         reasoning_effort: str | None,
+        max_tokens: int | None = None,
+        creative: bool = False,
     ) -> tuple[T, TokenUsage]:
         """OpenRouter structured-output path via the direct OpenAI SDK (not langchain).
 
@@ -604,10 +729,6 @@ class LLMService:
         reasoning_details). Universal across DeepSeek / Kimi / GLM (verified live).
         """
         from openai import OpenAI
-        from langchain_core.utils.function_calling import convert_to_openai_tool
-
-        tool = convert_to_openai_tool(output_model)
-        tool_name = tool["function"]["name"]
 
         client_kwargs: dict = {"api_key": api_key, "timeout": timeout}
         if base_url:
@@ -616,24 +737,69 @@ class LLMService:
         if headers:
             client_kwargs["default_headers"] = headers
 
-        # tool_choice policy: a FORCED tool choice gives the strictest structured
-        # compliance, BUT constrained decoding conflicts with a model's thinking mode
-        # — DeepSeek (reasoning ON + forced) intermittently aborts after a few tokens
-        # or leaks the call into 'reasoning' (proven live: 'required' is worst, 0/3).
-        # So when reasoning is ENABLED, relax to tool_choice='auto' (reliable across
-        # DeepSeek/Kimi/GLM); the universal reader still parses whichever channel the
-        # payload lands in. When reasoning is OFF, keep the forced choice.
-        reasoning_body = openrouter_reasoning_body(reasoning_effort)
+        # Creative calls (divergent/brainstorm ideation) opt OUT of the structured-workhorse
+        # overrides: they keep tool_choice transport (reasoning honored) and free provider
+        # routing. Forcing them onto json_schema would strip reasoning, and the deepinfra pin
+        # would 404 their non-deepinfra models (minimax/hy3). Extraction tiers keep both.
+        use_json_schema = (not creative) and settings.openrouter_structured_mode == "json_schema"
+        # Guided-decoding json_schema is for DETERMINISTIC structured extraction; an active
+        # reasoning effort on this path breaks open-weight providers (qwen@deepinfra returns
+        # empty `{...: []}` with ~9 output tokens, observed live) and adds no value for the
+        # extraction/classification/mapping tiers that use it. A tier may still pass an effort
+        # (e.g. thread_validation hardcodes 'minimal' for GPT-5-nano) — force it OFF here.
+        effective_effort = None if use_json_schema else reasoning_effort
+        reasoning_body = openrouter_reasoning_body(effective_effort)
         reasoning_on = "effort" in reasoning_body.get("reasoning", {})
-        tool_choice = "auto" if reasoning_on else {"type": "function", "function": {"name": tool_name}}
 
         create_kwargs: dict = {
             "model": clean_model,
             "messages": [{"role": "user", "content": prompt}],
-            "tools": [tool],
-            "tool_choice": tool_choice,
-            "extra_body": reasoning_body,
+            # Merge reasoning + provider routing into extra_body (do NOT overwrite reasoning_body).
+            # provider.require_parameters=True routes ONLY to providers that honor the request params
+            # (tools/tool_choice OR response_format) — avoids silently dropping to a provider that
+            # ignores them. An OPTIONAL provider.only allowlist (settings.openrouter_structured_providers)
+            # further pins known-good providers (e.g. deepinfra for qwen guided-json) since a CLAIMED
+            # capability can still hide a flaky vLLM/SGLang parser. Load-balancing stays within the allowlist.
+            "extra_body": {**reasoning_body, "provider": _structured_provider_routing(clean_model, pin=not creative)},
+            # Always bound max_tokens (a real wire param on OpenRouter) so the request
+            # can never inherit OpenRouter's 65536 default and run away. Floored to LARGE
+            # when reasoning is on (reasoning tokens count against this cap).
+            "max_tokens": _resolve_max_tokens(max_tokens, reasoning_enabled=reasoning_on),
         }
+
+        if use_json_schema:
+            # response_format json_schema => guided/constrained decoding, NO tool calls.
+            # The grammar masks logits to schema-valid tokens, so this sidesteps BOTH the
+            # open-weight tool-parser failure (qwen finish_reason=tool_calls/empty-args) and
+            # the Gemini-3 thought_signature 400 — the JSON lands in `content`, which the
+            # universal reader already parses. Schema is shaped for xgrammar (no $ref/oneOf/
+            # bounds); strict=False because Pydantic schemas use optionals/unions that the
+            # strict all-required+nullable contract would reject (guided decoding still constrains).
+            create_kwargs["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": output_model.__name__,
+                    "schema": _shape_json_schema(output_model.model_json_schema()),
+                    "strict": False,
+                },
+            }
+        else:
+            from langchain_core.utils.function_calling import convert_to_openai_tool
+
+            tool = convert_to_openai_tool(output_model)
+            tool_name = tool["function"]["name"]
+            # tool_choice policy: a FORCED tool choice gives the strictest structured
+            # compliance, BUT constrained decoding conflicts with a model's thinking mode
+            # — DeepSeek (reasoning ON + forced) intermittently aborts after a few tokens
+            # or leaks the call into 'reasoning' (proven live: 'required' is worst, 0/3).
+            # So when reasoning is ENABLED, relax to tool_choice='auto' (reliable across
+            # DeepSeek/Kimi/GLM); the universal reader still parses whichever channel the
+            # payload lands in. When reasoning is OFF, keep the forced choice.
+            create_kwargs["tools"] = [tool]
+            create_kwargs["tool_choice"] = (
+                "auto" if reasoning_on else {"type": "function", "function": {"name": tool_name}}
+            )
+
         if not is_reasoning_model(clean_model):
             create_kwargs["temperature"] = temperature
 
@@ -650,26 +816,69 @@ class LLMService:
 
         client = OpenAI(**client_kwargs)
         response = None
-        last_exc = None
-        for attempt in range(2):
-            try:
-                response = client.chat.completions.create(**create_kwargs)
-                break
-            except transient as e:
-                last_exc = e
+        parsed = None
+        # Outer loop: retry ONCE on genuine truncation (finish_reason == 'length') —
+        # a fresh call may re-route to a healthier provider or complete within the cap.
+        # Inner loop: retry once on TRANSIENT failures (see below).
+        for parse_attempt in range(2):
+            response = None
+            last_exc = None
+            for attempt in range(2):
+                try:
+                    response = client.chat.completions.create(**create_kwargs)
+                    break
+                except transient as e:
+                    last_exc = e
+                    logger.warning(
+                        f"OpenRouter transient error for {output_model.__name__} "
+                        f"(model={clean_model}, attempt {attempt + 1}/2): "
+                        f"{type(e).__name__}: {str(e)[:120]}"
+                    )
+            if response is None:
+                raise last_exc
+
+            # Some providers (e.g. minimax:nitro) intermittently return a 200 with choices=None
+            # or []. Treat that as a no-output (retry once on a fresh call) rather than letting
+            # `choices[0]` raise a bare "'NoneType' object is not subscriptable".
+            choices = getattr(response, "choices", None) or []
+            if not choices:
                 logger.warning(
-                    f"OpenRouter transient error for {output_model.__name__} "
-                    f"(model={clean_model}, attempt {attempt + 1}/2): "
-                    f"{type(e).__name__}: {str(e)[:120]}"
+                    f"OpenRouter returned no choices for {output_model.__name__} "
+                    f"(model={clean_model}); retrying once." if parse_attempt == 0 else
+                    f"OpenRouter returned no choices for {output_model.__name__} (model={clean_model})."
                 )
-        if response is None:
-            raise last_exc
+                if parse_attempt == 0:
+                    continue
+                raise ValueError(
+                    f"OpenRouter returned no choices for {output_model.__name__} (model={clean_model}).")
 
-        msg = response.choices[0].message
-        parsed = _structured_from_message(msg, output_model)
+            msg = choices[0].message
+            parsed = _structured_from_message(msg, output_model)
+            if parsed is not None:
+                break
 
-        if parsed is None:
-            finish = response.choices[0].finish_reason
+            finish = choices[0].finish_reason
+            if parse_attempt == 0:
+                # (a) Truncation: a fresh call may re-route or complete within the cap.
+                if finish == "length":
+                    logger.warning(
+                        f"OpenRouter structured output truncated (finish_reason=length) "
+                        f"for {output_model.__name__} (model={clean_model}); retrying once."
+                    )
+                    continue
+                # (b) Forced tool_choice produced nothing parseable (the qwen/OpenRouter case:
+                # finish_reason=tool_calls but empty/malformed args from a flaky provider parser).
+                # Relax to tool_choice='auto' so the model can emit the JSON into `content`, which the
+                # universal reader handles. Only for the reasoning-OFF (forced) tool path — reasoning-ON
+                # is already 'auto', and json_schema mode has no tool_choice to relax, so both fail fast.
+                if not reasoning_on and not use_json_schema:
+                    logger.warning(
+                        f"OpenRouter structured output not parseable for {output_model.__name__} "
+                        f"(model={clean_model}, finish_reason={finish}); retrying once with "
+                        f"tool_choice='auto'."
+                    )
+                    create_kwargs["tool_choice"] = "auto"
+                    continue
             raise ValueError(
                 f"Structured output for {output_model.__name__} not found in any "
                 f"channel (model={clean_model}, finish_reason={finish}); checked "
@@ -701,7 +910,9 @@ class LLMService:
         temperature: float = 0.6,
         timeout: int = 120,
         model_name: str | None = None,
-        reasoning_effort: str | None = None
+        reasoning_effort: str | None = None,
+        max_tokens: int | None = None,
+        creative: bool = False,
     ) -> tuple[T, TokenUsage]:
         """
         Invoke LLM with structured Pydantic output.
@@ -716,6 +927,14 @@ class LLMService:
                 ('none', 'minimal', 'low', 'medium', 'high', 'xhigh'). Ignored
                 for non-reasoning models. Use 'minimal' for fast, low-cost
                 structured calls so hidden reasoning tokens don't blow up cost.
+            max_tokens: Output cap. None -> safe backstop (never OpenRouter's 65536
+                default); floored up when reasoning is enabled. Override upward only
+                for genuinely large outputs.
+            creative: True for divergent/brainstorm ideation — opts OUT of the OpenRouter
+                structured-workhorse overrides (json_schema mode + provider allowlist pin),
+                keeping tool_choice transport with reasoning honored and free provider
+                routing. Needed because the brainstorm pool (minimax/hy3) isn't served by
+                the qwen allowlist provider and would otherwise 404.
 
         Returns:
             Tuple of (result, TokenUsage) where result is output_model instance
@@ -743,6 +962,8 @@ class LLMService:
                     api_key=resolved_key,
                     base_url=resolved_base_url,
                     reasoning_effort=reasoning_effort,
+                    max_tokens=max_tokens,
+                    creative=creative,
                 )
             # Build kwargs - exclude temperature for reasoning models (GPT-5, o1/o3/o4)
             llm_kwargs = {
@@ -762,8 +983,11 @@ class LLMService:
             if is_reasoning_model(clean_model):
                 if reasoning_effort:
                     llm_kwargs["reasoning_effort"] = reasoning_effort
+                # OpenAI reasoning models: max_tokens is dropped here by design (see
+                # build_llm_kwargs) — they rely on their own server-side limits.
             else:
                 llm_kwargs["temperature"] = temperature
+                llm_kwargs["max_tokens"] = _resolve_max_tokens(max_tokens, reasoning_enabled=False)
 
             llm = ChatOpenAI(**llm_kwargs)
             structured_llm = llm.with_structured_output(
@@ -835,7 +1059,8 @@ class LLMService:
         temperature: float = 0.7,
         timeout: int = 120,
         model_name: str | None = None,
-        reasoning_effort: str | None = None
+        reasoning_effort: str | None = None,
+        max_tokens: int | None = None,
     ) -> tuple[str, TokenUsage]:
         """
         Invoke LLM with plain text output.
@@ -848,6 +1073,8 @@ class LLMService:
             reasoning_effort: Reasoning effort for GPT-5/o-series models
                 ('none', 'minimal', 'low', 'medium', 'high', 'xhigh'). Ignored
                 for non-reasoning models.
+            max_tokens: Output cap. None -> safe backstop (never OpenRouter's 65536
+                default); floored up when reasoning is enabled.
 
         Returns:
             Tuple of (content, TokenUsage) where content is the string response
@@ -867,18 +1094,25 @@ class LLMService:
             }
             if resolved_base_url:
                 llm_kwargs["base_url"] = resolved_base_url
+            reasoning_on = False
             if is_openrouter:
                 headers = openrouter_headers()
                 if headers:
                     llm_kwargs["default_headers"] = headers
                 reasoning_body = openrouter_reasoning_body(reasoning_effort)
+                reasoning_on = "effort" in reasoning_body.get("reasoning", {})
                 if reasoning_body:
                     llm_kwargs["extra_body"] = reasoning_body
             if is_reasoning_model(clean_model):
                 if reasoning_effort:
                     llm_kwargs["reasoning_effort"] = reasoning_effort
+                # OpenAI reasoning models: max_tokens dropped by design (server-side limits).
             else:
                 llm_kwargs["temperature"] = temperature
+                # Bound output so an OpenRouter plain call can't inherit the 65536 default.
+                llm_kwargs["max_tokens"] = _resolve_max_tokens(
+                    max_tokens, reasoning_enabled=reasoning_on
+                )
 
             llm = ChatOpenAI(**llm_kwargs)
 

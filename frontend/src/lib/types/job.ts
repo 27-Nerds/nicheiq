@@ -59,6 +59,16 @@ export interface SolutionPreview {
   why_it_works_short?: string | null;
   innovation_angle?: string | null;
   conventional_approach?: string | null;
+  // Feasibility rationale — already emitted in the preview dict (BaseSolutionIdea.model_dump),
+  // declared here so the per-score "why" tooltips can read them type-safely.
+  technical_approach?: string | null;
+  data_acquisition_notes?: string | null;
+  data_access_model?: string | null;
+  data_feasibility_score?: number | null;
+  build_feasibility_score?: number | null;
+  // Grounded generation provenance — the (pain × segment) cell that produced this idea.
+  source_pain?: string | null;
+  source_segment?: string | null;
 }
 
 export interface ReportSummary {

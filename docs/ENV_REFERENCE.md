@@ -448,6 +448,85 @@ BRAINSTORM_LLM=gpt-4o
 # Catches cross-model / cross-wording dups the name + M/D/J-tag dedup misses. 0.0 disables; floor-guarded
 # to 6 concepts; FAIL-OPEN on embedding error. Embeddings always use OpenAI (no OpenRouter endpoint).
 
+# --- Pain-partitioned divergent ideation -----------------------------------------------------
+# ENABLE_PAIN_PARTITIONED_DIVERGENT=false
+# When ON, divergent generation runs ONE narrow generator per selected diverse pain (capped at
+# DIVERGENT_MAX_GENERATORS) instead of N broad samples over the same pain list. Each generator focuses on
+# its single pain, reasons as a REAL audience segment (Stage 6.5; falls back to generic stance archetypes),
+# and targets ~DIVERGENT_CONCEPTS_PER_SAMPLE concepts. Pain coverage is guaranteed by construction and idea
+# clustering is broken. Info-products (directory/aggregator/comparison) are NOT penalized — they are
+# first-class SEO monetization outcomes; variety comes from the per-pain partition, not a type bias.
+# Auto-falls back to the legacy broad-sample path when fewer than 2 distinct pains are available.
+# DIVERGENT_CONCEPTS_PER_SAMPLE=3   # concepts each narrow generator targets (may return fewer, or 0 if no fit)
+# DIVERGENT_MAX_GENERATORS=8        # ceiling on generators (~1 per diverse pain); 5-8 is the sweet spot
+# DIVERGENT_MIN_PAINS=3             # below this, augment from medium-priority pains; below 2 -> legacy path
+# DIVERGENT_MAX_WORKERS=8           # parallel generator threads in partitioned mode (legacy path stays at 4)
+# DIVERGENT_PARTITIONED_KEEP_FRACTION=0.67  # keep-fraction override (narrow pain-separated concepts dedup
+#                                   # far less than broad samples, so 0.5 over-discards them)
+
+# --- Diversity-aware final selection -----------------------------------------------------------
+# ENABLE_DIVERSITY_CAPS=false
+# When ON, the convergent stage keeps MORE diverse ideas instead of squeezing to ~5. The post-crew
+# enforcement (after the bold slot, before feasibility finalize) applies drop-only per-bucket caps:
+# <= DIVERSITY_MAX_PER_SEGMENT by source_segment, <= DIVERSITY_MAX_PER_MECHANISM by mechanism family
+# (greedy pairwise via _tags_match, strongest-composite anchors first), <= DIVERSITY_MAX_PER_PROJECT_TYPE
+# by project_type, and a hard ceiling of DIVERSITY_MAX_FINAL_IDEAS. Weakest excess (lowest composite ->
+# novelty -> market_fit) is dropped; ideas are never swapped or re-refined. The bold idea and any idea
+# that is the SOLE coverage of a high-severity pain are PROTECTED (never dropped). A floor
+# (DIVERSITY_MIN_FINAL_IDEAS) re-admits the best dropped ideas, least-represented bucket first, so the set
+# never goes thin. Logs a project_type / source_segment concentration metric per run.
+# ENABLE_PAIN_SOURCE_DEDUP=false
+# Extra dedup stage in the raw-concept pool: collapses concepts sharing (norm(source_pain), norm(data_source_tag))
+# -- same pain attacked via the same data source -- which the >=2-of-3 mechanism/data/journey gate misses
+# when journey_tag differs. Keeps the lowest-obviousness concept, floor-guarded (MIN_KEEP=6). No-op for
+# concepts with no source_pain (legacy broad path) -- they are never bucketed together.
+# DIVERSITY_MAX_FINAL_IDEAS=10      # ceiling on the Stage-1 selection set (caps make ~6-8 typical)
+# DIVERSITY_MIN_FINAL_IDEAS=5       # floor: re-admit best dropped ideas to here
+# DIVERSITY_MAX_PER_SEGMENT=2       # max ideas per source_segment
+# DIVERSITY_MAX_PER_MECHANISM=2     # max ideas per mechanism family
+# DIVERSITY_MAX_PER_PROJECT_TYPE=3  # lenient (info-products first-class); set 2 to force type-spread
+
+# --- SEO-realism caps (downgrade-only; mirror the feasibility caps) -----------------------------
+# ENABLE_SEO_REALISM_CAPS=false
+# SEO scalability = realistic count of distinct, indexable, non-thin pages. These caps key ONLY on
+# that — page count, page quality, and indexability. They do NOT penalize data sourcing (official vs
+# unofficial/scraping): that affects feasibility/durability, not whether a page ranks, and is already
+# scored by the feasibility critic — folding it in here would double-count. Lowers seo_scalability_score
+# where the "thousands of indexable pages" story doesn't hold:
+#   Rule A — account-gated SaaS whose output pages sit behind a login (not crawlable). Proxy:
+#            project_type==saas AND data_access_model==restricted (no real account_gated flag exists)
+#            -> ceiling SEO_CAP_GATED_SAAS_CEILING (0.5).
+#   Rule B — thin/few page counts (the core SEO signal), ONLY post-Stage-12 when estimated_indexable_pages
+#            is known: < SEO_CAP_THIN_PAGES_THRESHOLD (50) -> SEO_CAP_THIN_PAGES_CEILING (0.4);
+#            < SEO_CAP_HIGH_SCORE_MIN_PAGES (300) -> SEO_CAP_MODERATE_PAGES_CEILING (0.7).
+#   Rule C — hand-seeded/non-programmatic content (string heuristic on content_generation_model),
+#            gated separately by ENABLE_SEO_HANDSEED_CAP (default off; validated unreliable) -> SEO_CAP_HANDSEED_CEILING (0.6).
+# NEVER raises a score and NEVER recomputes the composite: applied on the Stage-1 preview (no Task-4
+# ranking exists there) and on the selected solution at Stage 12 (after ranking is locked), so solution
+# RANKING is unaffected — only the displayed score + the Go/No-Go verdict become realistic. Fail-open.
+# Land dark; validate on a golden run before flipping ENABLE_SEO_REALISM_CAPS=true.
+# SEO_CAP_REQUIRE_SAAS_FOR_GATING=true   # Rule A: require saas, not just restricted data
+# SEO_CAP_GATED_SAAS_CEILING=0.5
+# SEO_CAP_THIN_PAGES_THRESHOLD=50
+# SEO_CAP_THIN_PAGES_CEILING=0.4
+# SEO_CAP_HIGH_SCORE_MIN_PAGES=300
+# SEO_CAP_MODERATE_PAGES_CEILING=0.7
+# SEO_CAP_HANDSEED_CEILING=0.6
+# ENABLE_SEO_HANDSEED_CAP=false
+# (Data sourcing — unofficial/ToS-gray — is intentionally NOT an SEO cap; it's a feasibility concern.)
+
+# Feasibility grounding (BOTH default false — turn on only after a calibration / rank-stability run)
+# ENABLE_FEASIBILITY_CRITIC=false
+# Merges build + data feasibility into the independent critic: scores build_feasibility / data_feasibility,
+# classifies data_access_model (public | freemium | paywalled | unofficial | restricted), KEEPS ToS-gray
+# 'unofficial' ideas (unofficial API / scraping lib) and drops only genuine no-route ones. Surfaces the data
+# fields in the report (alternatives badge + the selected-solution "Data Feasibility" ring). Fail-open.
+# ENABLE_VERDICT_DATA_CAPS=false
+# Downgrade-only verdict-boundary caps: technical_feasibility capped by the critic's independent build estimate;
+# market_fit capped by the addressed pain's opportunity ceiling. Caps NEVER mutate stored scores — composite
+# ranking and the selected idea are unchanged; only the Go/No-Go verdict becomes more conservative. Requires
+# ENABLE_FEASIBILITY_CRITIC for the build cap to have data.
+
 # Keyword Relevance Validation (90% cost reduction)
 KEYWORD_VALIDATION_LLM=gpt-4.1-nano
 # Used for: Quick keyword relevance checks

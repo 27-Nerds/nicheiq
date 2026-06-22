@@ -1115,6 +1115,21 @@ class AudienceMappingResult(BaseModel):
     recommended_channels: list[str] = Field(..., description="Top 3-5 marketing channels for this audience")
     early_adopter_tactics: Optional[str] = Field(default=None, description="Tactics to acquire first 100 users")
 
+    @field_validator("common_vocabulary", "key_influencers", "audience_segments", mode="before")
+    @classmethod
+    def _truncate_overproduced_lists(cls, v, info):
+        """Truncate LLM over-production to the field's max BEFORE max_length validation.
+
+        The model otherwise hard-fails (too_long → guardrail re-prompt + wasted call) when
+        the LLM returns, e.g., 20 vocabulary terms against the 15 cap. Keep-first-N is safe
+        for these ranked lists; genuine UNDER-production still fails min_length (rare; retry).
+        """
+        caps = {"common_vocabulary": 15, "key_influencers": 10, "audience_segments": 5}
+        cap = caps.get(info.field_name)
+        if cap and isinstance(v, list) and len(v) > cap:
+            return v[:cap]
+        return v
+
 
 # Stage 9: Market Sizing & Validation
 class MarketSegmentSizing(BaseModel):

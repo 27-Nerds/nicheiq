@@ -27,6 +27,8 @@ class ContentTokenMonitor:
     # Cost per 1M tokens (USD) - Standard tier pricing
     # Structure: {"input": input_cost, "output": output_cost}
     MODEL_PRICING = {
+        # GPT-5.4 series
+        "gpt-5.4-mini": {"input": 0.75, "output": 4.50},  # ideation_judge_llm default
         # GPT-5.2 series
         "gpt-5.2": {"input": 1.75, "output": 14.00},
         "gpt-5.2-chat-latest": {"input": 1.75, "output": 14.00},
@@ -131,8 +133,13 @@ class ContentTokenMonitor:
         "minimax/minimax-m3": {"input": 0.30, "output": 1.20},   # promo; list ~0.60/2.40
         "deepseek/deepseek-v4-flash": {"input": 0.09, "output": 0.18},
         "deepseek/deepseek-v4-pro": {"input": 0.435, "output": 0.87},
+        "google/gemini-2.5-flash-lite": {"input": 0.10, "output": 0.40},  # workhorse default (first-party, reliable tool calls)
         "google/gemini-3.1-flash-lite": {"input": 0.25, "output": 1.50},
         "qwen/qwen3.7-plus": {"input": 0.32, "output": 1.28},
+        "qwen/qwen3-235b-a22b-2507": {"input": 0.09, "output": 0.10},  # workhorse default
+        "tencent/hy3-preview": {"input": 0.063, "output": 0.21},        # brainstorm pool (preview)
+        "x-ai/grok-4.3": {"input": 1.25, "output": 2.50},               # brainstorm pool (grok-4.1-fast deprecated 2026-06; usage.cost is source of truth)
+        "z-ai/glm-4.7-flash": {"input": 0.06, "output": 0.40},          # GLM fast fallback
     }
 
     # Backward compatibility: input-only cost lookup (for existing estimate_cost usage)
@@ -144,10 +151,18 @@ class ContentTokenMonitor:
 
     @staticmethod
     def normalize_model_name(model: str) -> str:
-        """Strip a leading 'openrouter/' marker so pricing/encoding lookups use the
-        bare model id (e.g. 'openrouter/google/gemma-2-27b-it' -> 'google/gemma-2-27b-it')."""
-        if model and model.lower().startswith("openrouter/"):
-            return model[len("openrouter/"):]
+        """Strip a leading 'openrouter/' marker and trailing routing shortcuts (':nitro' /
+        ':floor', which select a provider but don't change a model's per-token price) so
+        pricing/encoding lookups use the bare model id. ':free' is intentionally KEPT
+        (it denotes the $0 endpoint)."""
+        if not model:
+            return model
+        if model.lower().startswith("openrouter/"):
+            model = model[len("openrouter/"):]
+        for suffix in (":nitro", ":floor"):
+            if model.lower().endswith(suffix):
+                model = model[: -len(suffix)]
+                break
         return model
 
     @classmethod

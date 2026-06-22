@@ -6,6 +6,8 @@ verdict caps via the static/instance helpers on ReportGenerator with a stub stat
 
 from types import SimpleNamespace
 
+import pytest
+
 import nicheiq.crews.unified_solution_crew as usc
 from nicheiq.models.solution_idea import RawConcept
 
@@ -46,20 +48,37 @@ class TestMergedCriticFlagOn:
 
     def test_writes_feasibility_fields_and_keeps_unofficial(self, monkeypatch):
         concepts = [_rc("A"), _rc("B")]
+        # bulk_route is now required to keep a source verified (no route => 'restricted').
         result = _verdicts([
             {"name": "A", "independent_obviousness": 0.2, "build_feasibility": 0.7,
              "data_feasibility": 0.65, "data_access_model": "unofficial",
-             "data_notes": "via community scraper; ToS-gray"},
+             "bulk_route": "community scraper list endpoint", "data_notes": "via community scraper; ToS-gray"},
             {"name": "B", "independent_obviousness": 0.3, "build_feasibility": 0.8,
-             "data_feasibility": 0.9, "data_access_model": "public", "data_notes": "public API"},
+             "data_feasibility": 0.9, "data_access_model": "public",
+             "bulk_route": "official public API", "data_notes": "public API"},
         ])
         out = self._run(monkeypatch, concepts, result)
         names = {c.concept_name for c in out}
         assert names == {"A", "B"}  # unofficial KEPT, nothing dropped
         a = next(c for c in out if c.concept_name == "A")
+        # build 0.7 <= data 0.65 + 0.15 margin, so coupling does not fire; values preserved
         assert a.build_feasibility_score == 0.7
         assert a.data_feasibility_score == 0.65
         assert a.data_access_model == "unofficial"
+
+    def test_no_bulk_route_downgrades_to_restricted_and_caps(self, monkeypatch):
+        # The bulk_route gate: a source with no named route is UNVERIFIED -> 'restricted',
+        # data capped to restricted cap (0.45), build coupled to data+margin (0.60).
+        concepts = [_rc("A")]
+        result = _verdicts([
+            {"name": "A", "independent_obviousness": 0.2, "build_feasibility": 0.9,
+             "data_feasibility": 0.9, "data_access_model": "public", "bulk_route": "NO-BULK"},
+        ])
+        out = self._run(monkeypatch, concepts, result)
+        a = out[0]
+        assert a.data_access_model == "restricted"
+        assert a.data_feasibility_score == 0.45
+        assert a.build_feasibility_score == pytest.approx(0.6)
 
     def test_drop_names_allowlisted_and_applied(self, monkeypatch):
         concepts = [_rc(f"c{i}") for i in range(8)]  # >= MIN_KEEP so a drop survives

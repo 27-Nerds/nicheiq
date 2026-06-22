@@ -129,7 +129,143 @@ class Settings(BaseSettings):
             "completed. Guards against a single runaway model (e.g. a reasoning model "
             "held open by OpenRouter keep-alive bytes, which the per-call read-timeout "
             "does NOT cap) stalling the whole pipeline. Allows a sample's 2x retry "
-            "(~180s each) before abandoning."
+            "before abandoning. NOTE: in pain-partitioned mode (enable_pain_partitioned_"
+            "divergent) the fan-out runs up to divergent_max_generators (8) agents in "
+            "parallel; with the lowered per-sample timeout each finishes fast, but set "
+            "this to >=600 when using slower models so a straggler isn't abandoned early."
+        )
+    )
+    enable_pain_partitioned_divergent: bool = Field(
+        default=False,
+        description=(
+            "Pain-partitioned divergent ideation: instead of N broad samples each "
+            "generating 8-12 concepts off the same pain list, run ONE narrow generator "
+            "per selected diverse pain (capped at divergent_max_generators), each asked "
+            "for ~divergent_concepts_per_sample concepts under a distinct persona + a "
+            "hard-reserved non-info-product slot. Guarantees pain coverage by construction "
+            "and breaks the info-product monoculture. Default OFF (land dark); flip on to "
+            "A/B vs the legacy broad-sample path."
+        )
+    )
+    divergent_concepts_per_sample: int = Field(
+        default=3,
+        ge=1,
+        le=8,
+        description=(
+            "Target concepts per narrow generator in pain-partitioned mode. Small counts "
+            "avoid intra-call mode collapse (the best ideas are a call's first few). "
+            "Agents may return fewer (or 0 if no strong fit, capped to floor(n/2) agents)."
+        )
+    )
+    divergent_max_generators: int = Field(
+        default=8,
+        ge=2,
+        le=12,
+        description=(
+            "Cap on the number of narrow generators in pain-partitioned mode (≈ one per "
+            "selected diverse pain). ~5-8 is the sweet spot before cross-agent overlap / "
+            "diminishing returns. Bounds parallel fan-out cost."
+        )
+    )
+    divergent_min_pains: int = Field(
+        default=3,
+        ge=1,
+        description=(
+            "Below this many distinct pains, fall back to the legacy broad-sample path "
+            "(< 2 distinct pains). NOT the generator-count target — generators now scale "
+            "with (pain × segment) edges; see divergent_target_generators."
+        )
+    )
+    divergent_target_generators: int = Field(
+        default=6,
+        ge=2,
+        le=12,
+        description=(
+            "Target number of (pain × segment) generator cells in pain-partitioned mode. "
+            "Cells are built from the audience affinity graph; if the selected high-priority "
+            "pains yield fewer edges than this, the pain set is WIDENED (medium then low) "
+            "until the target is met. Hard-capped by divergent_max_generators."
+        )
+    )
+    divergent_target_pool: int = Field(
+        default=15,
+        ge=6,
+        le=40,
+        description=(
+            "Target RAW concept-pool size driving the dynamic per-cell count: "
+            "per_cell = clamp(round(divergent_target_pool / n_cells), 3, 4). Keeps the pool "
+            "~stable (~12-16) regardless of how many cells the affinity graph yields, so the "
+            "filter has headroom without exploding cost."
+        )
+    )
+    # --- Diversity-aware final selection (keep more ideas, de-concentrate) ---
+    enable_diversity_caps: bool = Field(
+        default=False,
+        description=(
+            "Enable diversity-aware final selection: raise the final idea count toward "
+            "diversity_max_final_ideas and enforce per-segment / per-mechanism / per-project-type "
+            "caps (drop-only, floor-protected). Land dark; enable after the calibration run."
+        )
+    )
+    enable_pain_source_dedup: bool = Field(
+        default=False,
+        description=(
+            "Enable the (source_pain × data_source_tag) near-duplicate dedup in the divergent "
+            "pool — collapses concepts solving the same pain from the same data source that the "
+            "M/D/J structural gate misses (no-op in the legacy broad path where source_pain is None)."
+        )
+    )
+    diversity_max_final_ideas: int = Field(
+        default=10,
+        ge=3,
+        le=15,
+        description=(
+            "Ceiling on the final idea set when enable_diversity_caps is on. The per-bucket caps "
+            "make ~6-8 the practical landing; raise/lower to taste. Stay under RawConceptList.max_length (15)."
+        )
+    )
+    diversity_min_final_ideas: int = Field(
+        default=5,
+        ge=2,
+        description=(
+            "Floor on the final idea set after diversity caps: re-admit the highest-composite "
+            "dropped ideas (least-represented bucket first) until this many remain, so the caps "
+            "never thin the set below a useful number."
+        )
+    )
+    diversity_max_per_segment: int = Field(
+        default=2, ge=1,
+        description="Max final ideas per source_segment (de-concentrates the persona skew)."
+    )
+    diversity_max_per_mechanism: int = Field(
+        default=2, ge=1,
+        description="Max final ideas per mechanism family (greedy pairwise grouping of mechanism_tag)."
+    )
+    diversity_max_per_project_type: int = Field(
+        default=3, ge=1,
+        description=(
+            "Max final ideas per project_type. Lenient default (3) keeps info-products first-class; "
+            "set to 2 to force stronger project-type spread."
+        )
+    )
+    divergent_max_workers: int = Field(
+        default=8,
+        ge=1,
+        le=16,
+        description=(
+            "Max concurrent divergent generator threads in pain-partitioned mode (legacy "
+            "broad path stays at min(n,4)). Raise with divergent_max_generators so the "
+            "extra narrow agents actually run in parallel rather than serializing."
+        )
+    )
+    divergent_partitioned_keep_fraction: float = Field(
+        default=0.67,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Keep-fraction override for the pain-partitioned path (vs divergent_keep_"
+            "fraction=0.5 for the broad path). Pain-separated narrow concepts are far less "
+            "redundant by construction, so the 0.5 default over-discards them."
         )
     )
     divergent_pool_cap: int = Field(
@@ -174,6 +310,77 @@ class Settings(BaseSettings):
             "opportunity ceiling). Default OFF; flip on only after the rank-stability + "
             "calibration gates. Caps NEVER mutate stored scores — ranking is unaffected."
         )
+    )
+    feasibility_build_data_coupling_margin: float = Field(
+        default=0.15,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Critic feasibility coupling: build_feasibility_score may not exceed "
+            "data_feasibility_score by more than this margin (you can't build on data you "
+            "can't obtain). Kills the 'build 0.9 on phantom data 0.3' inflation."
+        )
+    )
+    feasibility_restricted_data_cap: float = Field(
+        default=0.45,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Critic data-feasibility ceiling when the data source is 'restricted' (per-record "
+            "lookup needing a pre-known key, login/CAPTCHA, or no nameable bulk route). Also "
+            "the build-feasibility ceiling when build is scored but data was left unscored."
+        )
+    )
+    # --- SEO-realism caps (downgrade-only, mirrors the feasibility caps) -------------------
+    enable_seo_realism_caps: bool = Field(
+        default=False,
+        description=(
+            "Enable downgrade-only SEO-realism caps on seo_scalability_score (account-gated "
+            "SaaS, thin/combinatorial page counts, hand-seeded content). Default OFF; land dark "
+            "and validate on a golden run before flipping on. NEVER raises a score and NEVER "
+            "recomputes the composite, so solution RANKING is unaffected (caps the displayed "
+            "score + the verdict, applied after ranking is locked)."
+        )
+    )
+    enable_seo_handseed_cap: bool = Field(
+        default=False,
+        description=(
+            "Enable Rule C (hand-seeded / non-programmatic content cap) — a brittle substring "
+            "heuristic on the free-text content_generation_model. Off by default so v1 ships the "
+            "structured-field rules (A account-gating + B page counts) only."
+        )
+    )
+    seo_cap_require_saas_for_gating: bool = Field(
+        default=True,
+        description=(
+            "Rule A: require project_type=='saas' (not just data_access_model=='restricted') to "
+            "apply the account-gating cap. True = precise/fewer false positives; False = cap any "
+            "restricted-data idea."
+        )
+    )
+    seo_cap_gated_saas_ceiling: float = Field(
+        default=0.5, ge=0.0, le=1.0,
+        description="Rule A ceiling: account-gated SaaS (restricted data can't seed public indexable pages)."
+    )
+    seo_cap_thin_pages_threshold: int = Field(
+        default=50, ge=0,
+        description="Rule B lower band: estimated_indexable_pages below this is 'thin' (post-Stage-12 only)."
+    )
+    seo_cap_thin_pages_ceiling: float = Field(
+        default=0.4, ge=0.0, le=1.0,
+        description="Rule B ceiling for thin page counts (< seo_cap_thin_pages_threshold)."
+    )
+    seo_cap_high_score_min_pages: int = Field(
+        default=300, ge=0,
+        description="Rule B: minimum estimated_indexable_pages required to keep a score in the 0.8+ band."
+    )
+    seo_cap_moderate_pages_ceiling: float = Field(
+        default=0.7, ge=0.0, le=1.0,
+        description="Rule B ceiling for moderate page counts (threshold <= pages < high_score_min_pages)."
+    )
+    seo_cap_handseed_ceiling: float = Field(
+        default=0.6, ge=0.0, le=1.0,
+        description="Rule C ceiling: hand-seeded / non-programmatic content (only when enable_seo_handseed_cap)."
     )
     divergent_dedup_similarity_threshold: float = Field(
         default=0.85,
@@ -252,6 +459,15 @@ class Settings(BaseSettings):
         description=(
             "Reasoning effort for the REFINE tier. 'medium' default — structured enhancement, "
             "not divergent ideation, so it doesn't need the creative tier's 'high'."
+        )
+    )
+    ideation_refine_max_tokens: int = Field(
+        default=32768,
+        ge=16384,
+        description=(
+            "Output token cap for the final solution-refinement task. It expands up to "
+            "diversity_max_final_ideas full idea specs in ONE call, so the default 16384 backstop "
+            "truncates the JSON once the kept set exceeds ~6 ideas. 32768 covers ~12 full specs."
         )
     )
     keyword_validation_llm: str = Field(
@@ -333,6 +549,35 @@ class Settings(BaseSettings):
         default=None,
         description="Optional X-Title header for OpenRouter attribution/ranking"
     )
+    openrouter_structured_providers: str = Field(
+        default="",
+        description=(
+            "Comma-separated OpenRouter provider allowlist for the STRUCTURED-output SDK path "
+            "(invoke_structured). Empty => no restriction (just require_parameters). When set, the "
+            "structured request adds provider.only=[...] so tool/JSON calls route ONLY to these "
+            "providers — used to dodge providers whose vLLM/SGLang parser drops tool calls (e.g. an "
+            "open-weight model where 'works on deepinfra/baseten/parasail, fails on cerebras'). Keep "
+            "2-3 known-good providers for failover; revisit if a tier flaps (the allowlist can drift "
+            "as providers/parsers change). Provider slugs are MODEL-SPECIFIC — match your workhorse."
+        )
+    )
+
+    openrouter_structured_mode: str = Field(
+        default="tool_choice",
+        description=(
+            "Structured-output transport for the OpenRouter SDK path (invoke_structured): "
+            "'tool_choice' (default) forces a function tool-call; 'json_schema' uses response_format "
+            "json_schema (guided/constrained decoding). json_schema emits NO tool calls, so it sidesteps "
+            "the open-weight vLLM tool-parser failure (qwen finish_reason=tool_calls/empty-args) AND the "
+            "Gemini-3 thought_signature 400 — making cheap open-weight models (e.g. qwen3-235b @ deepinfra) "
+            "reliable structured workhorses. Pair with OPENROUTER_STRUCTURED_PROVIDERS to pin a true "
+            "guided-decoding provider; the schema is auto-shaped for xgrammar (no $ref/oneOf/bounds)."
+        )
+    )
+
+    @property
+    def openrouter_structured_providers_list(self) -> list[str]:
+        return [p.strip() for p in self.openrouter_structured_providers.split(",") if p.strip()]
 
     # CrewAI+ (Enterprise) - Optional
     crewai_api_key: str | None = Field(default=None, description="CrewAI+ API key")
