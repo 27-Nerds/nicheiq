@@ -20,7 +20,7 @@ class TestPainPointModel:
             description="Users spend 3-5 hours daily on manual data entry",
             mention_count=15,
             severity_score=0.8,
-            willingness_to_pay=0.7,
+            commercial_intent=0.7,
             representative_quotes=["I waste so much time on this", "Need automation ASAP"],
             source_platforms=["reddit", "twitter"],
             categories=["workflow inefficiency"],
@@ -30,7 +30,7 @@ class TestPainPointModel:
         assert pain_point.title == "Manual data entry is time-consuming"
         assert pain_point.mention_count == 15
         assert 0.0 <= pain_point.severity_score <= 1.0
-        assert 0.0 <= pain_point.willingness_to_pay <= 1.0
+        assert 0.0 <= pain_point.commercial_intent <= 1.0
 
     def test_pain_point_score_validation(self):
         """Test that scores are validated within 0-1 range."""
@@ -40,7 +40,7 @@ class TestPainPointModel:
                 description="Test description",
                 mention_count=5,
                 severity_score=1.5,  # Invalid: > 1.0
-                willingness_to_pay=0.5,
+                commercial_intent=0.5,
                 representative_quotes=["quote"],
                 source_platforms=["reddit"],
                 categories=["test"],
@@ -54,7 +54,7 @@ class TestPainPointModel:
                 description="Description 1",
                 mention_count=10,
                 severity_score=0.8,
-                willingness_to_pay=0.7,
+                commercial_intent=0.7,
                 representative_quotes=["quote"],
                 source_platforms=["reddit"],
                 categories=["category1"],
@@ -65,7 +65,7 @@ class TestPainPointModel:
                 description="Description 2",
                 mention_count=5,
                 severity_score=0.6,
-                willingness_to_pay=0.5,
+                commercial_intent=0.5,
                 representative_quotes=["quote"],
                 source_platforms=["twitter"],
                 categories=["category2"],

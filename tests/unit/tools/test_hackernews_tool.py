@@ -1,10 +1,14 @@
 """Tests for Hacker News collector tool."""
 
-import pytest
-from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
+import re
+
+import responses
 
 from nicheiq.tools.hackernews_tool import HackerNewsCollectorTool, _VALID_STORY_ID
+
+# Algolia endpoints matched by URL suffix (search vs. item lookup).
+_SEARCH = re.compile(r".*/api/v1/search.*")
+_ITEM = re.compile(r".*/api/v1/items/.+")
 
 
 # Fixture: Algolia search response
@@ -86,13 +90,9 @@ class TestStoryIdValidation:
 
 
 class TestSearchStories:
-    @patch("nicheiq.tools.hackernews_tool.requests.get")
-    def test_search_returns_filtered_stories(self, mock_get):
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = SEARCH_RESPONSE
-        mock_resp.raise_for_status = MagicMock()
-        mock_get.return_value = mock_resp
+    @responses.activate
+    def test_search_returns_filtered_stories(self):
+        responses.add(responses.GET, _SEARCH, json=SEARCH_RESPONSE, status=200)
 
         tool = HackerNewsCollectorTool()
         stories = tool.search_stories(
@@ -104,13 +104,10 @@ class TestSearchStories:
         assert len(stories) == 1
         assert stories[0]["objectID"] == "12345"
 
-    @patch("nicheiq.tools.hackernews_tool.requests.get")
-    def test_search_deduplicates_across_queries(self, mock_get):
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = SEARCH_RESPONSE
-        mock_resp.raise_for_status = MagicMock()
-        mock_get.return_value = mock_resp
+    @responses.activate
+    def test_search_deduplicates_across_queries(self):
+        responses.add(responses.GET, _SEARCH, json=SEARCH_RESPONSE, status=200)
+        responses.add(responses.GET, _SEARCH, json=SEARCH_RESPONSE, status=200)
 
         tool = HackerNewsCollectorTool()
         stories = tool.search_stories(
@@ -120,9 +117,9 @@ class TestSearchStories:
         )
         assert len(stories) == 1  # deduplicated by objectID
 
-    @patch("nicheiq.tools.hackernews_tool.requests.get")
-    def test_search_handles_api_error(self, mock_get):
-        mock_get.side_effect = Exception("Connection error")
+    @responses.activate
+    def test_search_handles_api_error(self):
+        responses.add(responses.GET, _SEARCH, body=Exception("Connection error"))
 
         tool = HackerNewsCollectorTool()
         stories = tool.search_stories(queries=["test"], min_points=1, min_comments=0)
@@ -130,13 +127,9 @@ class TestSearchStories:
 
 
 class TestCollectPosts:
-    @patch("nicheiq.tools.hackernews_tool.requests.get")
-    def test_collect_returns_social_posts(self, mock_get):
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = ITEM_RESPONSE
-        mock_resp.raise_for_status = MagicMock()
-        mock_get.return_value = mock_resp
+    @responses.activate
+    def test_collect_returns_social_posts(self):
+        responses.add(responses.GET, _ITEM, json=ITEM_RESPONSE, status=200)
 
         tool = HackerNewsCollectorTool()
         posts = tool.collect_posts([{"objectID": "12345"}])
@@ -152,29 +145,20 @@ class TestCollectPosts:
         assert post.responses[0].replies  # First comment has a nested reply
         assert post.raw_engagement["points"] == 150
 
-    @patch("nicheiq.tools.hackernews_tool.requests.get")
-    def test_collect_rejects_invalid_story_id(self, mock_get):
+    @responses.activate
+    def test_collect_rejects_invalid_story_id(self):
         tool = HackerNewsCollectorTool()
         posts = tool.collect_posts([{"objectID": "../etc/passwd"}])
         assert posts == []
-        mock_get.assert_not_called()
+        assert len(responses.calls) == 0  # no HTTP call made for invalid id
 
 
 class TestSearchAndCollect:
-    @patch("nicheiq.tools.hackernews_tool.requests.get")
-    def test_end_to_end(self, mock_get):
+    @responses.activate
+    def test_end_to_end(self):
         """Search → filter → collect in one call."""
-        def side_effect(url, **kwargs):
-            resp = MagicMock()
-            resp.status_code = 200
-            resp.raise_for_status = MagicMock()
-            if "search" in url:
-                resp.json.return_value = SEARCH_RESPONSE
-            else:
-                resp.json.return_value = ITEM_RESPONSE
-            return resp
-
-        mock_get.side_effect = side_effect
+        responses.add(responses.GET, _SEARCH, json=SEARCH_RESPONSE, status=200)
+        responses.add(responses.GET, _ITEM, json=ITEM_RESPONSE, status=200)
 
         tool = HackerNewsCollectorTool()
         posts = tool.search_and_collect(

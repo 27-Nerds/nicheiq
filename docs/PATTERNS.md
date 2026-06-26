@@ -558,7 +558,7 @@ guarantee the model re-emits a non-prompted scalar. Examples: `mechanism_tag` /
 ```python
 tag_lookup = {
     _norm(c.concept_name): (c.mechanism_tag, c.data_source_tag, c.journey_tag, c.obviousness_score)
-    for c in filtered_concepts.concepts
+    for c in raw_concepts.concepts  # the code-built deduped pool (never the LLM's output)
 }
 for sol in refined_solutions.solution_ideas:
     tags = tag_lookup.get(_norm(getattr(sol, "solution_name", "")))

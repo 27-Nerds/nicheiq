@@ -14,7 +14,7 @@ from pydantic import Field
 from ...models.social_content import TwitterThread
 
 if TYPE_CHECKING:
-    from crewai.rag.types import BaseRecord
+    pass
 
 
 class TwitterKnowledgeSource(BaseKnowledgeSource):

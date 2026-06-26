@@ -1,54 +1,45 @@
-# Thread Relevance Validation Prompt
+# Thread Relevance Validation Prompt (graded — TREC/UMBRELA 0-3)
 # Used by: ThreadRelevanceValidator.validate_batch()
 # Variables: niche_description, threads_text, batch_size, anchor_guidance
 
 template: |
-  You are a relevance classifier. Determine if each thread is DIRECTLY relevant to this niche:
+  You are a relevance grader. Grade how relevant EACH thread is to this niche, on the TREC/UMBRELA
+  0-3 scale, using only its title and snippet.
 
   Niche: {niche_description}
   {anchor_guidance}
   Threads to evaluate:
   {threads_text}
 
-  A thread is RELEVANT if it:
-  - Discusses problems, pain points, or needs in this niche
-  - Contains user experiences or frustrations related to the niche
-  - Asks for solutions, tools, or recommendations for niche-related problems
+  Grade scale (relevance_grade):
+  - 3 Perfectly relevant: a first-person discussion of a problem, need, experience, or question by
+    someone IN this niche — squarely on-topic.
+  - 2 Highly relevant: clearly about this niche (its people, activity, products, or pains), even if
+    not a personal account.
+  - 1 Related: brushes the broad area but isn't really about this niche's people/problems (adjacent,
+    generic, or only loosely connected).
+  - 0 Irrelevant: nothing to do with the niche — a keyword match in the wrong context, an OUT-OF-SCOPE
+    topic listed above (shares vocabulary, different subject/audience), spam, or promotion.
 
-  A thread is NOT RELEVANT if it:
-  - Only tangentially mentions the niche (keyword match but wrong context)
-  - Discusses unrelated topics that happened to use similar words
-  - Is primarily about an OUT-OF-SCOPE topic listed above (shares vocabulary with
-    the niche but is a different subject/audience)
-  - Is spam, promotional content, or off-topic
+  Judge the SUBJECT and AUDIENCE, not surface keywords: a thread that merely shares a word with the
+  niche but is about a different subject is 0, even if the word appears in the title.
 
-  Additionally, note the ENGAGEMENT QUALITY of each thread:
-  - Threads with many comments and high scores contain richer pain point signals
-  - Factor engagement into confidence: high-engagement relevant threads → confidence 0.8-1.0,
-    low-engagement relevant threads → confidence 0.5-0.7
-
-  Evaluate ALL {batch_size} threads and return a JSON object with a 'results' array containing {batch_size} validation objects.
+  Evaluate ALL {batch_size} threads and return a JSON object with a 'results' array containing
+  {batch_size} objects.
 
   **CRITICAL: Include Thread Index**
-  Each validation object MUST include the thread_index to ensure proper alignment with the input threads.
+  Each object MUST include the thread_index to ensure proper alignment with the input threads.
 
-  Each validation object must have:
-  - thread_index: the index number (0, 1, 2, etc.) of the thread being validated
-  - is_relevant: true/false
-  - confidence: 0.0-1.0
+  Each object must have:
+  - thread_index: the index number (0, 1, 2, etc.) of the thread being graded
+  - relevance_grade: an integer 0, 1, 2, or 3
   - reason: "brief explanation"
-
-  Be strict - only mark as relevant if the thread clearly discusses niche-related problems or needs.
-
-  <brief_explanation>
-  First, write one sentence summarizing your relevance criteria for this niche.
-  </brief_explanation>
 
   <verification>
   Before returning, verify:
   - Results array has exactly {batch_size} items
-  - Each item has: thread_index, is_relevant, confidence, reason
+  - Each item has: thread_index, relevance_grade (0-3 integer), reason
   - No thread_index is missing or duplicated
   - thread_index values are 0 to {batch_size}-1
-  - You completed ALL threads before returning
+  - You graded ALL threads before returning
   </verification>

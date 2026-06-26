@@ -2,7 +2,7 @@
 Pydantic models for pain point analysis (Stage 6).
 """
 
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -10,19 +10,27 @@ from ..utils.slugify import slugify
 from .keyword_data import OpportunityLevel
 
 
-def compute_opportunity_level(severity_score: float, willingness_to_pay: float) -> OpportunityLevel:
+def compute_opportunity_level(
+    severity_score: float,
+    commercial_intent: float,
+    *,
+    high_severity: float = 0.6,
+    high_commercial_intent: float = 0.6,
+) -> OpportunityLevel:
     """Deterministic opportunity_level formula (mirrors the Task 3 rubric).
 
-    High = severity ≥0.6 AND wtp ≥0.6; Medium = exactly one ≥0.6; Low = both <0.6.
-    The LLM may justifiably score BELOW this formula (universal-theme or
-    tool-addressability caps) by supplying a downgrade_reason — see the merge
-    logic in pain_point_crew.py. Upgrades above the formula are never honored.
+    High = severity ≥ high_severity AND commercial_intent ≥ high_commercial_intent;
+    Medium = exactly one ≥ its cutoff; Low = neither. The cutoffs default to 0.6 but are
+    HEURISTIC PRIORS (not outcome-calibrated) — callers in the pipeline pass the configurable
+    `settings.opportunity_high_*_threshold` values. The LLM may justifiably score BELOW this
+    formula (universal-theme / tool-addressability caps) via a downgrade_reason; upgrades are
+    never honored (see the merge logic in pain_point_crew.py).
     """
-    high_severity = severity_score >= 0.6
-    high_wtp = willingness_to_pay >= 0.6
-    if high_severity and high_wtp:
+    is_high_severity = severity_score >= high_severity
+    is_high_intent = commercial_intent >= high_commercial_intent
+    if is_high_severity and is_high_intent:
         return OpportunityLevel.HIGH
-    if high_severity or high_wtp:
+    if is_high_severity or is_high_intent:
         return OpportunityLevel.MEDIUM
     return OpportunityLevel.LOW
 
@@ -219,8 +227,15 @@ class PainPointScoring(BaseModel):
     severity_score: float = Field(
         ..., ge=0.0, le=1.0, description="Severity score (0-1) based on functional workflow impact (not emotional volume)"
     )
-    willingness_to_pay: float = Field(
-        ..., ge=0.0, le=1.0, description="Indicator of willingness to pay for solution (0-1)"
+    commercial_intent: float = Field(
+        ..., ge=0.0, le=1.0,
+        description=(
+            "Commercial-intent / buying-signal strength (0-1): an ORDINAL indicator of how strongly "
+            "the discussion shows commercial intent (paid-tool mentions, budget/spend signals, "
+            "billable-time impact). NOT a calibrated willingness-to-pay or dollar value — text from "
+            "self-selected public discussion cannot yield a true WTP (which needs conjoint/BDM-style "
+            "elicitation). Use it to RANK relative buying signal, not to predict price."
+        )
     )
     opportunity_level: OpportunityLevel = Field(
         ..., description="Overall opportunity level (high/medium/low)"
@@ -234,6 +249,15 @@ class PainPointScoring(BaseModel):
             "Required ONLY when opportunity_level is set BELOW what the "
             "severity/WTP formula implies (e.g., universal-theme cap or "
             "tool-addressability cap). Minimum 20 characters explaining the downgrade."
+        ),
+    )
+    tool_addressable: str = Field(
+        default="full",
+        description=(
+            "Result of the TOOL-ADDRESSABILITY TEST already applied for the WTP cap: "
+            "'full' (a software product could reduce this pain >=50%), 'partial' (helps but "
+            "root cause is human/structural), or 'none' (lifestyle/mindset/emotional/structural "
+            "problem with no software solution). 'none' pains are excluded from idea generation."
         ),
     )
 
@@ -264,6 +288,34 @@ class ExtractedQuote(BaseModel):
     post_id: str = Field(..., description="Post ID from search result metadata")
 
 
+class StanceVerdict(BaseModel):
+    """Stance classification for a single candidate quote against a pain claim."""
+
+    model_config = ConfigDict(extra='ignore')
+
+    index: int = Field(..., description="1-based index of the quote in the prompt list")
+    stance: Literal["SUPPORTS", "NEUTRAL", "CONTRADICTS"] = Field(
+        ...,
+        description=(
+            "SUPPORTS: the quote genuinely expresses/evidences the pain. "
+            "NEUTRAL: on-topic but states no complaint. "
+            "CONTRADICTS: positive or denies the pain."
+        ),
+    )
+    reason: str = Field(default="", description="Short justification for the stance")
+
+
+class BatchStanceResponse(BaseModel):
+    """Stance verdicts for all candidate quotes of one pain point (single LLM call)."""
+
+    model_config = ConfigDict(extra='ignore')
+
+    verdicts: list[StanceVerdict] = Field(
+        default_factory=list,
+        description="One verdict per candidate quote, by 1-based index",
+    )
+
+
 class EnrichedPainPointQuotes(BaseModel):
     """Quotes found via vector search for one pain point."""
 
@@ -279,7 +331,7 @@ class EnrichedPainPointQuotes(BaseModel):
         description=(
             "Unique post IDs from ALL relevance-passing vector hits for this pain "
             "point (pre top-12 quote cut). Wider than the kept quotes' post_ids; "
-            "used to compute an evidence-grounded mention_count."
+            "drives the discussion-volume mention_count (count broad, show narrow)."
         ),
     )
 
@@ -315,7 +367,7 @@ class SinglePainPointQuotesResult(BaseModel):
         default_factory=list,
         description=(
             "Unique post IDs from ALL relevance-passing vector hits "
-            "(pre top-12 cut), for evidence-grounded mention counting."
+            "(pre top-12 cut). Drives the discussion-volume mention_count."
         ),
     )
     search_summary: str = Field(
@@ -354,11 +406,16 @@ class PainPoint(BaseModel):
     severity_score: float = Field(
         ..., ge=0.0, le=1.0, description="Severity score (0-1) based on functional workflow impact (not emotional volume)"
     )
-    willingness_to_pay: float = Field(
+    commercial_intent: float = Field(
         ...,
         ge=0.0,
         le=1.0,
-        description="Indicator of willingness to pay for solution (0-1)",
+        description=(
+            "Commercial-intent / buying-signal strength (0-1): an ORDINAL signal of commercial intent "
+            "read from the discussion (paid-tool mentions, budget/spend, billable-time impact), after "
+            "the code-enforced tool-addressability cap. NOT a calibrated willingness-to-pay/dollar value "
+            "(public text can't yield true WTP). Use to rank relative buying signal, not to predict price."
+        ),
     )
     opportunity_level: OpportunityLevel = Field(
         ..., description="Overall opportunity level (high/medium/low)"
@@ -401,6 +458,24 @@ class PainPoint(BaseModel):
     solution_approach: Optional[str] = Field(
         default=None,
         description="1-2 sentence explanation of how the selected solution addresses this pain point."
+    )
+
+    low_evidence: bool = Field(
+        default=False,
+        description=(
+            "True when fewer than the minimum number of stance-verified quotes "
+            "survived enrichment. Internal signal: triggers the severity clamp so a "
+            "pain point with near-zero supporting evidence cannot keep a high score."
+        ),
+    )
+
+    tool_addressable: str = Field(
+        default="full",
+        description=(
+            "Tool-addressability verdict carried from scoring ('full' | 'partial' | 'none'). "
+            "'none' pains (lifestyle/cultural/structural, no software solution) are excluded "
+            "from idea generation by the addressability gate; they still appear in the catalog."
+        ),
     )
 
 class PainPointAnalysisResult(BaseModel):

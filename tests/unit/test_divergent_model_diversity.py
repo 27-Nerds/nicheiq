@@ -17,6 +17,15 @@ import nicheiq.crews.unified_solution_crew as usc
 from nicheiq.config.settings import Settings
 
 
+@pytest.fixture(autouse=True)
+def _no_inline_critic(monkeypatch):
+    """These tests exercise divergent GENERATION mechanics (round-robin, deadline, dedup, cells).
+    The per-sample novelty/feasibility critic now runs inline in _one_sample; it has its own tests
+    and would otherwise add critic-model invoke_structured calls that pollute the exact-call
+    assertions here. Disabling it makes _score_concepts early-exit (no anchor + feasibility off)."""
+    monkeypatch.setattr(usc.settings, "enable_feasibility_critic", False, raising=False)
+
+
 def _raw(name, obv=-1.0, one_liner=None, why=None):
     """A RawConcept-shaped stub (semantic dedup only reads these four attrs)."""
     return SimpleNamespace(
@@ -118,14 +127,21 @@ class TestDivergentModelRoundRobin:
         assert calls == ["solo-model", "solo-model"]
 
     def test_deadline_abandons_hung_sample(self, monkeypatch):
+        import threading
         import time
 
         crew = usc.UnifiedSolutionCrew.__new__(usc.UnifiedSolutionCrew)
         monkeypatch.setattr(crew, "_render_divergent_prompt", lambda inputs, lens, **kw: "P", raising=False)
 
+        # The 'slow' sample blocks past the deadline so the fanout abandons it (shutdown(wait=False)).
+        # Block on a releasable Event (not a bare sleep) so we can drain the abandoned worker WHILE the
+        # mocks are still active — otherwise it wakes after teardown and runs real code (a real LLM
+        # call via score_inline, or logging to a closed stream).
+        release = threading.Event()
+
         def fake_invoke(prompt, output_model, **kw):
             if kw["model_name"] == "slow":
-                time.sleep(5)  # exceeds the deadline -> must be abandoned
+                release.wait(timeout=10)  # held open past the deadline; released + drained below
             return SimpleNamespace(concepts=[_raw("A")]), SimpleNamespace()
 
         monkeypatch.setattr(usc.LLMService, "invoke_structured", staticmethod(fake_invoke))
@@ -139,7 +155,12 @@ class TestDivergentModelRoundRobin:
         pooled, _usages = crew._generate_divergent_pool({})
         elapsed = time.time() - t
 
-        assert elapsed < 4  # returned at the deadline, did NOT wait for the 5s sample
+        # Drain the abandoned 'slow' worker UNDER the mocks before asserting, so it finishes
+        # (early-exits the inline critic — feasibility is off here) instead of leaking real work.
+        release.set()
+        time.sleep(0.5)
+
+        assert elapsed < 4  # returned at the deadline, did NOT wait for the slow sample
         assert len(pooled) == 2  # the two fast samples; the hung one was abandoned
 
 
@@ -240,7 +261,7 @@ class TestSemanticDedup:
 def _pain(title):
     return SimpleNamespace(
         title=title, description=f"desc {title}", severity_score=0.8,
-        willingness_to_pay=0.7, opportunity_level="high", mention_count=10,
+        commercial_intent=0.7, opportunity_level="high", mention_count=10,
         affected_segments=["Seg"], representative_quotes=["q1", "q2"],
     )
 
@@ -430,6 +451,44 @@ class TestCellAssignment:
         assert len(cells) == 8
         assert len({c["pain"].title for c in cells}) == 5  # >=1 per pain preserved under the cap
 
+    def test_per_theme_cap_prevents_one_theme_monopolizing(self):
+        # Regression for run 5825a327: 3 high-opportunity pains in ONE theme would take 3 of 4
+        # cells without a theme cap. With cap=ceil(target/distinct_themes), each theme gets <=1.
+        segs = [_seg("Perf"), _seg("Aes")]
+
+        def themed(title, theme, sev):
+            p = _pain_seg(title, ["Perf", "Aes"], "high", sev)
+            p.parent_theme_id = theme
+            return p
+
+        pains = [
+            themed("verify purity", "contamination", 0.90),
+            themed("contamination fears", "contamination", 0.88),
+            themed("supplier QC", "contamination", 0.86),
+            themed("injection pain", "ghk-cu", 0.80),
+            themed("stack ratios", "stacking", 0.75),
+            themed("cognitive sourcing", "cognitive", 0.70),
+        ]
+        cells = usc._assign_generator_cells(pains, segs, target=4, max_gen=8)
+        from collections import Counter
+        themes = [c["pain"].parent_theme_id for c in cells]
+        assert len(cells) == 4
+        assert max(Counter(themes).values()) == 1   # contamination no longer takes 3 of 4
+        assert len(set(themes)) == 4                 # 4 distinct themes covered
+
+    def test_theme_cap_relaxes_to_reach_target_when_themes_few(self):
+        # Only 2 themes but target 4 -> cap=ceil(4/2)=2; cell count must still reach target.
+        segs = [_seg("Perf"), _seg("Aes")]
+
+        def themed(title, theme):
+            p = _pain_seg(title, ["Perf", "Aes"], "high", 0.8)
+            p.parent_theme_id = theme
+            return p
+
+        pains = [themed("a", "T1"), themed("b", "T1"), themed("c", "T2"), themed("d", "T2")]
+        cells = usc._assign_generator_cells(pains, segs, target=4, max_gen=8)
+        assert len(cells) == 4   # reaches target with few themes (cap relaxes as needed)
+
     def test_widening_adds_pains_to_reach_target(self, monkeypatch):
         crew = usc.UnifiedSolutionCrew.__new__(usc.UnifiedSolutionCrew)
         crew.audience_mapping = SimpleNamespace(audience_segments=[_seg("Solo")])
@@ -439,6 +498,37 @@ class TestCellAssignment:
         extra = [_pain_seg(f"E{i}", ["Solo"]) for i in range(6)]
         cells = crew._build_partition_cells(high, extra)
         assert len(cells) >= 6  # widened from 1 cell toward the target
+
+    def test_widening_spreads_across_themes_not_just_count(self, monkeypatch):
+        # Regression for run 5825a327: high-priority pains all share 1-2 themes; widening on cell
+        # COUNT reaches target via segment depth and never pulls in the diverse long tail (so every
+        # idea is a near-duplicate). Widening on THEME count keeps going until themes are diverse.
+        crew = usc.UnifiedSolutionCrew.__new__(usc.UnifiedSolutionCrew)
+        crew.audience_mapping = SimpleNamespace(audience_segments=[_seg("Perf"), _seg("Aes")])
+        monkeypatch.setattr(usc.settings, "divergent_target_generators", 6)
+        monkeypatch.setattr(usc.settings, "divergent_max_generators", 8)
+
+        def themed(title, theme, sev, opp="high"):
+            p = _pain_seg(title, ["Perf", "Aes"], opp, sev)
+            p.parent_theme_id = theme
+            return p
+
+        high = [  # 4 high-priority pains but only 2 themes (the run 5825a327 shape)
+            themed("verify purity", "contamination", 0.90),
+            themed("contamination fears", "contamination", 0.88),
+            themed("supplier QC", "business", 0.80),
+            themed("payment shutdowns", "business", 0.70),
+        ]
+        extra = [  # diverse long tail, one new theme each
+            themed("injection pain", "ghk-cu", 0.75, "medium"),
+            themed("stack ratios", "stacking", 0.60, "medium"),
+            themed("cognitive sourcing", "cognitive", 0.55, "low"),
+            themed("glp-1 GI distress", "glp1", 0.50, "low"),
+        ]
+        cells = crew._build_partition_cells(high, extra)
+        themes = {c["pain"].parent_theme_id for c in cells}
+        # Before the fix this stalled at 2 themes (contamination + business); now it widens out.
+        assert len(themes) >= 5, f"expected diverse themes, got {sorted(themes)}"
 
     def test_grounded_pains_for_uses_validated_titles(self):
         crew = usc.UnifiedSolutionCrew.__new__(usc.UnifiedSolutionCrew)

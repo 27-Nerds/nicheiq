@@ -16,6 +16,7 @@ from collections import defaultdict
 from typing import Any
 
 from ...models.social_content import RedditComment, RedditPost, TwitterThread
+from ..content_security import sanitize_social_content
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +129,7 @@ def _walk_comments(
         a["_raw_name"] = author  # preserve original case
 
         a["top_posts"].append({
-            "title": _truncate(comment.body),
+            "title": _truncate(sanitize_social_content(comment.body)),
             "subreddit": subreddit,
             "score": comment.score,
             "url": post_url,
@@ -158,7 +159,7 @@ def _collect_reddit_authors(
             a["_raw_name"] = author
 
             a["top_posts"].append({
-                "title": post.title,
+                "title": sanitize_social_content(post.title),
                 "subreddit": subreddit,
                 "score": post.score,
                 "url": post.url,
@@ -294,8 +295,8 @@ def aggregate_author_metrics(
         # Derive top posts
         all_posts = sorted(a["top_posts"], key=lambda x: x["score"], reverse=True)[:TOP_POSTS_N]
 
-        # Determine display name
-        raw_name = a.get("_raw_name", username)
+        # Determine display name (sanitize: a scraped username can carry injection bytes)
+        raw_name = sanitize_social_content(a.get("_raw_name", username))
         platform = a["platform"]
         if platform == "Twitter":
             display_name = f"@{raw_name}"

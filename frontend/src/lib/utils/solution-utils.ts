@@ -2,6 +2,7 @@ import type { SolutionPreview, ReportSummary } from '$lib/types/job';
 import {
   getSuperpower as _getSuperpower,
   computeCompositeScore as _computeComposite,
+  strengthEntry,
   SUPERPOWERS,
   SUPERPOWERS_DETAILED,
   SOLUTION_PREVIEW_KEYS,
@@ -133,4 +134,20 @@ export function getSuperpower(
     return _getSuperpower(solution as unknown as Record<string, unknown>, SOLUTION_PREVIEW_KEYS, canonicalMap);
   }
   return _getSuperpower(solution as unknown as Record<string, unknown>, SOLUTION_PREVIEW_KEYS, map);
+}
+
+/**
+ * Card strength badge. Prefers the backend-computed `tags.primary_strength` (margin above
+ * standardized cutoffs — see docs/IDEA_TAGS.md); falls back to the legacy client-side argmax
+ * only for older reports that predate tags. Returns null when no strength clears its cutoff.
+ */
+export function solutionStrengthBadge(
+  solution: SolutionPreview,
+  detailed = false,
+): SuperpowerEntry | null {
+  const primary = solution.tags?.primary_strength;
+  if (primary) return strengthEntry(primary, detailed ? SUPERPOWERS_DETAILED : SUPERPOWERS);
+  // Legacy fallback (pre-tags reports): client-side selection.
+  if (solution.tags) return null; // tags present but no strength cleared → honestly show none
+  return getSuperpower(solution, detailed ? SUPERPOWER_MAP_DETAILED : SUPERPOWER_MAP);
 }

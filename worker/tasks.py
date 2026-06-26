@@ -7,7 +7,6 @@ These tasks are enqueued by the Node.js backend and processed by RQ workers.
 import json
 import os
 import traceback
-from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -373,7 +372,6 @@ def _run_phase2_continuation(
     Continue from Phase 1 to Phase 2 with the selected solution(s).
     Runs stages 8.55→10 and optionally stage 11 (landing page).
     """
-    from nicheiq.models.research_state import FinalReport
 
     logger.info(f"[Worker] Running Phase 2 for job {job_id} with solutions: {selected_solutions}")
 

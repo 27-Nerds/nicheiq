@@ -108,6 +108,14 @@ NicheContext → QueryGenerator → Search Queries
 **Task Flow**:
 1. Extract pain points (with severity/WTP scoring)
 2. Validate and deduplicate
+3. **Coverage rebalance (one corrective re-extraction):** two grounded checks run after the first
+   extraction — theme coverage (every non-Low theme has ≥1 pain) and **audience coverage** (an
+   external critic, `utils/audience_coverage.py`, compares the extracted pains against the target
+   audience and a sample of what the community actually discusses, flagging audience sub-groups the
+   corpus contains but the extraction crowded out — e.g. spectators/collectors lost under a flood of
+   player-rant pains). If either check finds a gap, ONE corrective Task-2 re-extraction runs with the
+   gap directive folded in. The retry is **adopted only if it doesn't lose theme coverage AND improves
+   theme- or audience-coverage** (original wins ties) — it can only help or no-op, never regress.
 
 **Knowledge Sources Strategy**:
 - **What**: 400+ social media posts/comments formatted as RAG chunks
@@ -215,13 +223,29 @@ filter/refine/select tasks above:
 3. **Pool + dedup** (`_pool_and_dedup_raw_concepts`) across all samples, capped at
    `divergent_pool_cap` (default 12). Falls back to a single divergent sample if the pool
    comes back too small.
-4. **Convergent tasks** (filter → refine → select) run on the pooled concepts. The
-   M/D/J-tag carry-through also copies `obviousness_score` from the pooled `RawConcept` onto
-   the final refined idea by whitespace-normalized name.
+4. **Convergent tasks** (refine → select) run on the deduped pooled concepts — the refiner
+   consumes `{pooled_concepts}` directly (the LLM diversity filter was removed; deterministic
+   dedup before + the refine diversity guardrail + caps after replace it). The M/D/J-tag
+   carry-through also copies `obviousness_score` from the pooled `RawConcept` onto the final
+   refined idea by whitespace-normalized name.
 5. **Deterministic coverage + bold-slot re-injection** — after refinement, code (not the
    LLM) guarantees pain-point coverage and a single **bold slot** (the most original unused
    concept). Re-injected ideas are fully refined via `_refine_single_concept` (not stubs) so
    they carry the same fields and scores as the rest.
+6. **Mentor improvement loop** (`_run_improvement_loop`, after calibration) — a below-bar idea
+   is refined through a short ideator↔reviewer dialog where the reviewer is a *creative mentor*
+   (a different model, gpt-5.4-mini) that pushes for a sharper, more original, on-pain idea and
+   forbids scope-inflation. The loop scores only the soft dimensions; the ideator flags any
+   uncertain data route as `[NEEDS-VERIFY: …]` instead of asserting an API, and a **separate
+   web-search verification step** resolves each route and sets `data_access_model` — so the
+   model never confabulates an API the loop then rewards. Cost-gated: ideas already strong on
+   calibrated scores with an obtainable route skip the loop (no LLM cost); only weak/unverified
+   ideas enter, capped at 2 rounds. Validated +0.21/+0.97 mean-composite vs baseline across two
+   runs (independent Opus judges). The deterministic backstop (below) then caps `market_fit` on
+   any route the verifier couldn't confirm — honest scores, not confabulated ones.
+7. **Deterministic score backstop** (`_validate_idea_scores`) — downgrade-only invariants the
+   LLM doesn't reliably hold: `novelty ≤ 1 − obviousness`, and `market_fit ≤ 0.4` when the data
+   route is unverified/unbuildable. Never inflates.
 
 `obviousness_score` is surfaced in the UI as **Originality** (= 1 − obviousness_score,
 falling back to `novelty_score`). `novelty_score` stays the refiner's separate signal and
@@ -446,16 +470,20 @@ The `pain_point_quality_tier` (GOLD/SILVER/BRONZE/INSUFFICIENT) measures **resea
 |--------|-------------|
 | `unique_source_count` | Distinct Reddit posts cited across all pain points |
 | `subreddit_diversity` | Unique subreddits represented in evidence |
-| `quote_density` | Average direct quotes per pain point |
+| `quote_density` | Average **stance-verified** quotes per pain point |
 | `pain_point_count` | Total pain points extracted |
+
+Quotes are stance-verified (each must genuinely express its pain) and per-post
+capped, so density reflects honest evidence depth (typical range ~1–5), not the
+legacy pad-to-12. Thresholds below were recalibrated to that scale.
 
 **Tier thresholds:**
 
 | Tier | Sources | Subreddits | Pain Points | Quote Density |
 |------|---------|------------|-------------|---------------|
-| GOLD | >= 20 | >= 4 | >= 5 | >= 8.0 |
-| SILVER | >= 10 | >= 2 | >= 3 | >= 5.0 |
-| BRONZE | >= 5 | — | >= 2 | >= 3.0 |
+| GOLD | >= 20 | >= 4 | >= 5 | >= 4.0 |
+| SILVER | >= 10 | >= 2 | >= 3 | >= 2.0 |
+| BRONZE | >= 5 | — | >= 2 | >= 1.0 |
 | INSUFFICIENT | below BRONZE — pipeline stops |
 
 **Confidence score** is a weighted composite: `unique_source_count` (0.30), `subreddit_diversity` (0.25), `quote_density` (0.25), `pain_point_count` (0.20).

@@ -13,7 +13,7 @@
     /** 0-100 (already scaled at the route). */
     severity: number | null;
     /** 0-100 (already scaled at the route). */
-    willingnessToPay: number | null;
+    commercialIntent: number | null;
     /** Pre-normalized at the route — high/medium/low/null. */
     opportunity: "high" | "medium" | "low" | null;
     /** Quality signals from the research context. Drives the tier badge. */
@@ -28,7 +28,7 @@
 
   let {
     severity,
-    willingnessToPay,
+    commercialIntent,
     opportunity,
     qualitySignals = null,
     composite = null,
@@ -38,7 +38,7 @@
 
   const computedComposite = $derived.by<number | null>(() => {
     if (composite != null && Number.isFinite(composite)) return composite;
-    const vals = [severity, willingnessToPay].filter(
+    const vals = [severity, commercialIntent].filter(
       (v): v is number => v != null && Number.isFinite(v),
     );
     if (vals.length === 0) return null;
@@ -76,7 +76,7 @@
   const rows = $derived.by<ScoreRow[]>(() => {
     const out: ScoreRow[] = [
       { kind: "bar", label: "Severity", value: severity, tone: "var(--color-error, #dc2626)" },
-      { kind: "bar", label: "Willingness to pay", value: willingnessToPay, tone: "var(--color-accent)" },
+      { kind: "bar", label: "Commercial intent", value: commercialIntent, tone: "var(--color-accent)" },
     ];
     if (opportunity) {
       out.push({ kind: "pill", label: "Opportunity", text: opportunity, tier: opportunity });

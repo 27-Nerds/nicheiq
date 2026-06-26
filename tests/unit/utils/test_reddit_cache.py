@@ -1,12 +1,32 @@
 """Tests for RedditThreadCache."""
 
+import json
+import re
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
+import responses
 
 from nicheiq.models.social_content import RedditComment, RedditPost
 from nicheiq.utils.reddit_cache import RedditThreadCache
+
+# Backend endpoints (matched by URL suffix so the test doesn't depend on the resolved backend host).
+_BATCH_LOOKUP = re.compile(r".+/reddit-threads/batch-lookup$")
+_STORE = re.compile(r".+/reddit-threads$")
+
+_FOUND_POST = {
+    "postId": "abc123",
+    "url": "https://www.reddit.com/r/SaaS/comments/abc123/test/",
+    "title": "Test",
+    "selftext": "Body",
+    "author": "user",
+    "subreddit": "SaaS",
+    "score": 50,
+    "numComments": 10,
+    "comments": None,
+    "redditCreatedAt": "2025-01-15T10:00:00+00:00",
+}
 
 
 @pytest.fixture
@@ -56,28 +76,10 @@ def _make_post(post_id: str = "abc123", score: int = 50, num_comments: int = 10)
 
 
 class TestBatchGet:
-    @patch("nicheiq.utils.reddit_cache.requests.post")
-    def test_all_hits(self, mock_post, cache):
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {
-            "found": {
-                "abc123": {
-                    "postId": "abc123",
-                    "url": "https://www.reddit.com/r/SaaS/comments/abc123/test/",
-                    "title": "Test",
-                    "selftext": "Body",
-                    "author": "user",
-                    "subreddit": "SaaS",
-                    "score": 50,
-                    "numComments": 10,
-                    "comments": None,
-                    "redditCreatedAt": "2025-01-15T10:00:00+00:00",
-                }
-            },
-            "missing": [],
-        }
-        mock_post.return_value = mock_resp
+    @responses.activate
+    def test_all_hits(self, cache):
+        responses.add(responses.POST, _BATCH_LOOKUP,
+                      json={"found": {"abc123": _FOUND_POST}, "missing": []}, status=200)
 
         urls = ["https://www.reddit.com/r/SaaS/comments/abc123/test/"]
         result = cache.batch_get(urls)
@@ -86,40 +88,19 @@ class TestBatchGet:
         assert urls[0] in result
         assert result[urls[0]].post_id == "abc123"
 
-    @patch("nicheiq.utils.reddit_cache.requests.post")
-    def test_all_misses(self, mock_post, cache):
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {"found": {}, "missing": ["abc123"]}
-        mock_post.return_value = mock_resp
+    @responses.activate
+    def test_all_misses(self, cache):
+        responses.add(responses.POST, _BATCH_LOOKUP, json={"found": {}, "missing": ["abc123"]}, status=200)
 
         urls = ["https://www.reddit.com/r/SaaS/comments/abc123/test/"]
         result = cache.batch_get(urls)
 
         assert len(result) == 0
 
-    @patch("nicheiq.utils.reddit_cache.requests.post")
-    def test_partial_hits(self, mock_post, cache):
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {
-            "found": {
-                "abc123": {
-                    "postId": "abc123",
-                    "url": "https://www.reddit.com/r/SaaS/comments/abc123/test/",
-                    "title": "Test",
-                    "selftext": "Body",
-                    "author": "user",
-                    "subreddit": "SaaS",
-                    "score": 50,
-                    "numComments": 10,
-                    "comments": None,
-                    "redditCreatedAt": "2025-01-15T10:00:00+00:00",
-                }
-            },
-            "missing": ["xyz789"],
-        }
-        mock_post.return_value = mock_resp
+    @responses.activate
+    def test_partial_hits(self, cache):
+        responses.add(responses.POST, _BATCH_LOOKUP,
+                      json={"found": {"abc123": _FOUND_POST}, "missing": ["xyz789"]}, status=200)
 
         urls = [
             "https://www.reddit.com/r/SaaS/comments/abc123/test/",
@@ -131,21 +112,19 @@ class TestBatchGet:
         assert urls[0] in result
         assert urls[1] not in result
 
-    @patch("nicheiq.utils.reddit_cache.requests.post")
-    def test_network_error_returns_empty(self, mock_post, cache):
-        import requests as req
-        mock_post.side_effect = req.exceptions.ConnectionError("Connection refused")
+    @responses.activate
+    def test_network_error_returns_empty(self, cache):
+        responses.add(responses.POST, _BATCH_LOOKUP,
+                      body=requests.exceptions.ConnectionError("Connection refused"))
 
         urls = ["https://www.reddit.com/r/SaaS/comments/abc123/test/"]
         result = cache.batch_get(urls)
 
         assert len(result) == 0
 
-    @patch("nicheiq.utils.reddit_cache.requests.post")
-    def test_5xx_returns_empty(self, mock_post, cache):
-        mock_resp = MagicMock()
-        mock_resp.status_code = 500
-        mock_post.return_value = mock_resp
+    @responses.activate
+    def test_5xx_returns_empty(self, cache):
+        responses.add(responses.POST, _BATCH_LOOKUP, json={}, status=500)
 
         urls = ["https://www.reddit.com/r/SaaS/comments/abc123/test/"]
         result = cache.batch_get(urls)
@@ -162,48 +141,37 @@ class TestBatchGet:
 
 
 class TestStorePost:
-    @patch("nicheiq.utils.reddit_cache.requests.post")
-    def test_store_success(self, mock_post, cache):
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_post.return_value = mock_resp
+    @responses.activate
+    def test_store_success(self, cache):
+        responses.add(responses.POST, _STORE, json={}, status=200)
 
         post = _make_post()
         cache.store_post(post)
 
-        mock_post.assert_called_once()
-        call_kwargs = mock_post.call_args
-        payload = call_kwargs.kwargs.get("json") or call_kwargs[1].get("json")
+        assert len(responses.calls) == 1
+        payload = json.loads(responses.calls[0].request.body)
         assert payload["postId"] == "abc123"
         assert payload["subreddit"] == "SaaS"
 
-    @patch("nicheiq.utils.reddit_cache.requests.post")
-    def test_store_network_error_no_raise(self, mock_post, cache):
-        import requests as req
-        mock_post.side_effect = req.exceptions.ConnectionError("Connection refused")
+    @responses.activate
+    def test_store_network_error_no_raise(self, cache):
+        responses.add(responses.POST, _STORE,
+                      body=requests.exceptions.ConnectionError("Connection refused"))
 
         post = _make_post()
-        # Should not raise
-        cache.store_post(post)
+        cache.store_post(post)  # Should not raise
 
-    @patch("nicheiq.utils.reddit_cache.requests.post")
-    def test_store_4xx_logs_error(self, mock_post, cache):
-        mock_resp = MagicMock()
-        mock_resp.status_code = 400
-        mock_resp.text = "Bad request"
-        mock_post.return_value = mock_resp
+    @responses.activate
+    def test_store_4xx_logs_error(self, cache):
+        responses.add(responses.POST, _STORE, body="Bad request", status=400)
 
         post = _make_post()
-        # Should not raise
-        cache.store_post(post)
+        cache.store_post(post)  # Should not raise
 
-    @patch("nicheiq.utils.reddit_cache.requests.post")
-    def test_store_with_comments(self, mock_post, cache):
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_post.return_value = mock_resp
+    @responses.activate
+    def test_store_with_comments(self, cache):
+        responses.add(responses.POST, _STORE, json={}, status=200)
 
-        post = _make_post()
         post = RedditPost(
             post_id="abc123",
             title="Test",
@@ -228,7 +196,7 @@ class TestStorePost:
         )
         cache.store_post(post)
 
-        call_kwargs = mock_post.call_args
-        payload = call_kwargs.kwargs.get("json") or call_kwargs[1].get("json")
+        assert len(responses.calls) == 1
+        payload = json.loads(responses.calls[0].request.body)
         assert payload["comments"] is not None
         assert len(payload["comments"]) == 1

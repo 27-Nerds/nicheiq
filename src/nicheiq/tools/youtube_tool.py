@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any
 import requests
 from crewai.tools import BaseTool
 from loguru import logger
-from pydantic import Field, PrivateAttr
+from pydantic import PrivateAttr
 
 from ..config.settings import settings
 from ..models.social_content import SocialPost, SocialResponse
@@ -31,7 +31,7 @@ from ..utils.snippet_extraction import best_evidence_window
 from .webshare_client import WebshareProxy, WebshareProxyPool, _sanitize_proxy_url
 
 if TYPE_CHECKING:
-    from ..models.research_state import SearchResultItem
+    pass
 
 # Video ID: exactly 11 base64url characters
 _VALID_VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")

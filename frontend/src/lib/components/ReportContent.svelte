@@ -206,7 +206,10 @@
     <div class="phase-section phase-execute">
       <SectionDivider num={3} label="Execute" />
       {#if report.audience_mapping}
-        <AudienceSection data={report.audience_mapping} />
+        <AudienceSection
+          data={report.audience_mapping}
+          targetAudience={report.niche_context?.user_target_audience ?? null}
+        />
       {/if}
 
       {#if report.content_categorization || report.overall_competitive_insights}

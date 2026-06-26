@@ -31,6 +31,7 @@ from ..tools.reddit_tool import RedditCollectorTool
 from ..tools.twitter_tool import TwitterCollectorTool
 from ..utils.helpers import find_solution_by_name
 from ..utils.keyword_filtering import check_keyword_relevance
+from ..utils.segment_matching import match_pain_to_segments
 from ..utils.score_refinement import (
     refine_cac_organic,
     refine_programmatic_opportunity,
@@ -55,6 +56,27 @@ class QualityGateStopException(Exception):
         self.reason = reason
         self.details = details
         super().__init__(f"Quality gate at stage {stage}: {reason}")
+
+
+def _best_segment_match(audience: str, names: list[str], threshold: float = 0.40) -> str | None:
+    """Fuzzy-match an audience string to the best segment name (stem-token overlap,
+    reusing crew_guardrails._fuzzy_set_overlap). Returns the matched name when it clears
+    `threshold`, else None.
+
+    Module-level (NOT a ResearchFlow method) on purpose: the CrewAI Flow metaclass wraps
+    class methods as flow steps, which breaks a plain @staticmethod helper.
+    """
+    if not audience or not names:
+        return None
+    from ..utils.validation.crew_guardrails import _fuzzy_set_overlap
+    best_name, best_score = None, 0.0
+    for name in names:
+        if not name:
+            continue
+        score = _fuzzy_set_overlap([audience], [name])
+        if score > best_score:
+            best_name, best_score = name, score
+    return best_name if (best_name is not None and best_score >= threshold) else None
 
 
 @dataclass
@@ -136,7 +158,8 @@ class ResearchFlow(Flow[ResearchState]):
             niche_description=niche_description,
             state=self.state,
             allowed_project_types=allowed_project_types,
-            job_id=self.job_id
+            job_id=self.job_id,
+            entry_mode=self.entry_mode,
         )
 
         # Optional progress callback for web worker integration
@@ -237,12 +260,15 @@ class ResearchFlow(Flow[ResearchState]):
                     raise
                 logger.warning(f"Progress callback failed for stage {stage_num}: {e}")
 
-    def resume_from_checkpoint(self, checkpoint_path: Path | None = None) -> bool:
+    def resume_from_checkpoint(self, checkpoint_path: Path | None = None,
+                               allow_cross_job: bool = False) -> bool:
         """
         Resume research flow from checkpoint.
 
         Args:
             checkpoint_path: Explicit checkpoint folder path, or None to auto-detect
+            allow_cross_job: Permit auto-detect to fall back to a different job's checkpoint
+                for the same niche (CLI --resume only). Ignored when checkpoint_path is given.
 
         Returns:
             True if resumed successfully, False otherwise
@@ -252,7 +278,8 @@ class ResearchFlow(Flow[ResearchState]):
             return False
 
         # Find checkpoint
-        checkpoint = Path(checkpoint_path) if isinstance(checkpoint_path, str) else (checkpoint_path or self.checkpoint_mgr.find_latest_checkpoint())
+        checkpoint = Path(checkpoint_path) if isinstance(checkpoint_path, str) else (
+            checkpoint_path or self.checkpoint_mgr.find_latest_checkpoint(allow_cross_job=allow_cross_job))
         if not checkpoint:
             logger.info("No checkpoint found for this niche")
             return False
@@ -261,25 +288,35 @@ class ResearchFlow(Flow[ResearchState]):
         if not self.checkpoint_mgr.load_checkpoint_folder(checkpoint):
             return False
 
+        # Re-sync entry_mode restored from checkpoint metadata onto the flow (load only
+        # restores ResearchState; the flow attr won't update by itself). Keeps audience
+        # framing correct if Stage 1 re-runs on resume. (Regenerate/phase-2 read framing from
+        # the restored niche_context, which already carries the resolved fields.)
+        if getattr(self.checkpoint_mgr, "entry_mode", None) is not None:
+            self.entry_mode = self.checkpoint_mgr.entry_mode
+
         # Cleanup old checkpoints
         self.checkpoint_mgr.cleanup_old_checkpoints()
 
         logger.info(f"Resume from stage {self.state.current_stage}")
         return True
 
-    def run_with_resume(self, auto_resume: bool = True, stop_after_phase: int | None = None) -> str:
+    def run_with_resume(self, auto_resume: bool = True, stop_after_phase: int | None = None,
+                        allow_cross_job: bool = False) -> str:
         """
         Execute research pipeline with checkpoint resume support.
 
         Args:
             auto_resume: If True, automatically resume from latest checkpoint if available
             stop_after_phase: If set, stop execution after this phase completes (1 = after solution pipeline)
+            allow_cross_job: Permit auto-resume to adopt a different job's checkpoint for the
+                same niche (CLI --resume only; worker retries keep the default False).
 
         Returns:
             Path to final report
         """
         # Try to resume from checkpoint
-        if auto_resume and self.resume_from_checkpoint():
+        if auto_resume and self.resume_from_checkpoint(allow_cross_job=allow_cross_job):
             logger.info("Resuming from checkpoint - skipping completed stages")
 
             # Emit progress for the stage we're resuming from
@@ -314,7 +351,7 @@ class ResearchFlow(Flow[ResearchState]):
         Returns:
             Dict with solution_name, analyzed flag, and competitive_landscape data.
         """
-        from crewai import Agent, Crew, Task
+        from crewai import Crew, Task
         from ..models.competitor import CompetitiveLandscape, CompetitiveAnalysisResult
 
         solution = find_solution_by_name(solution_name, self.state.idea_generation.solution_ideas)
@@ -871,11 +908,14 @@ RULES:
                 "pain_point_count": 0.20,
             }
 
-        # Calculate confidence score (0-1) with normalized metrics
+        # Calculate confidence score (0-1) with normalized metrics.
+        # quote_density is normalized by 5 (not 12): quotes are now stance-verified
+        # and per-post-capped, so the realistic ceiling is ~5 genuine quotes/pain,
+        # not the old pad-to-12 target. Full marks at 5 validated quotes/pain.
         confidence_score = (
             min(unique_source_count / 30, 1.0) * weights["unique_source_count"] +
             min(subreddit_diversity / 5, 1.0) * weights["subreddit_diversity"] +
-            min(quote_density / 12, 1.0) * weights["quote_density"] +
+            min(quote_density / 5, 1.0) * weights["quote_density"] +
             (cross_platform_count / max(total_count, 1)) * weights["cross_platform"] +
             min(total_count / 8, 1.0) * weights["pain_point_count"]
         )
@@ -885,7 +925,7 @@ RULES:
         logger.info("PAIN POINT QUALITY ASSESSMENT (Evidence-Based)")
         logger.info("=" * 60)
         logger.info(f"Pain point count: {total_count}")
-        logger.info(f"Quote density: {quote_density:.1f} quotes/pain point (target: ≥8 for GOLD)")
+        logger.info(f"Quote density: {quote_density:.1f} stance-verified quotes/pain point (target: ≥4 for GOLD)")
         logger.info(f"Unique source posts: {unique_source_count} (target: ≥20 for GOLD)")
         logger.info(f"Subreddit diversity: {subreddit_diversity} subreddits ({', '.join(sorted(subreddits_found)) if subreddits_found else 'none'})")
         if not single_platform_mode:
@@ -898,7 +938,7 @@ RULES:
             unique_source_count >= 20 and
             subreddit_diversity >= 4 and
             total_count >= 5 and
-            quote_density >= 8 and
+            quote_density >= 4 and
             gold_cross_platform_ok
         ):
             tier = "GOLD"
@@ -908,7 +948,7 @@ RULES:
             unique_source_count >= 10 and
             subreddit_diversity >= 2 and
             total_count >= 3 and
-            quote_density >= 5
+            quote_density >= 2
         ):
             tier = "SILVER"
             logger.info(f"✅ Quality Tier: {tier} (Standard Research - Adequate evidence)")
@@ -918,7 +958,7 @@ RULES:
         elif (
             unique_source_count >= 5 and
             total_count >= 2 and
-            quote_density >= 3
+            quote_density >= 1
         ):
             tier = "BRONZE"
             logger.warning(f"⚠️  Quality Tier: {tier} (Basic Research - Minimum viable evidence)")
@@ -931,7 +971,7 @@ RULES:
             logger.error(
                 f"    Gaps: unique_sources={unique_source_count} (need ≥5), "
                 f"pain_points={total_count} (need ≥2), "
-                f"quote_density={quote_density:.1f} (need ≥3)"
+                f"quote_density={quote_density:.1f} (need ≥1)"
             )
 
         logger.info("=" * 60)
@@ -1066,7 +1106,7 @@ RULES:
                         "title": p.title,
                         "short_summary": p.short_summary or p.description,
                         "severity": p.severity_score,
-                        "wtp": p.willingness_to_pay,
+                        "wtp": p.commercial_intent,
                         "opportunity": p.opportunity_level.value if hasattr(p.opportunity_level, 'value') else str(p.opportunity_level),
                         "mentions": p.mention_count,
                         "categories": (p.categories or [])[:3],
@@ -1604,7 +1644,7 @@ RULES:
                     }
                     for pp in pain_points:
                         sev_high = pp.severity_score >= 0.5
-                        wtp_high = pp.willingness_to_pay >= 0.5
+                        wtp_high = pp.commercial_intent >= 0.5
                         if sev_high and wtp_high:
                             quadrants["high_severity_high_wtp"] += 1
                         elif sev_high:
@@ -1615,7 +1655,7 @@ RULES:
                             quadrants["low_severity_low_wtp"] += 1
 
                     avg_severity = sum(pp.severity_score for pp in pain_points) / total
-                    avg_wtp = sum(pp.willingness_to_pay for pp in pain_points) / total
+                    avg_wtp = sum(pp.commercial_intent for pp in pain_points) / total
 
                     # Category distribution
                     category_counts: dict[str, int] = {}
@@ -1626,7 +1666,7 @@ RULES:
                     # Top pain point by combined score
                     sorted_pps = sorted(
                         pain_points,
-                        key=lambda p: p.severity_score + p.willingness_to_pay,
+                        key=lambda p: p.severity_score + p.commercial_intent,
                         reverse=True,
                     )
                     top_title = sorted_pps[0].title if sorted_pps else "N/A"
@@ -1637,7 +1677,7 @@ RULES:
                         "high_opportunity_count": high_opportunity,
                         "quadrant_distribution": quadrants,
                         "avg_severity": round(avg_severity, 3),
-                        "avg_willingness_to_pay": round(avg_wtp, 3),
+                        "avg_commercial_intent": round(avg_wtp, 3),
                         "top_pain_point_title": top_title,
                         "category_distribution": category_counts,
                     }
@@ -1761,6 +1801,12 @@ RULES:
                             "data_feasibility_score": float(data_feas) if data_feas is not None else None,
                             "data_access_model": getattr(solution, "data_access_model", None),
                             "data_acquisition_notes": getattr(solution, "data_acquisition_notes", None),
+                            # Audience-framing inputs (the frontend splits the grid on
+                            # source_segment; project_type drives the type chip). Without these the
+                            # "For {audience}" split can never fire on the preview surface.
+                            "source_segment": getattr(solution, "source_segment", None),
+                            "project_type": getattr(solution, "project_type", None),
+                            "audience_fit": getattr(solution, "audience_fit", None),
                             "key_differentiator": key_diff or "Unique approach to this market",
                             "best_suited_for": personas[0] if personas else "General market",
                             "pivot_trigger": "Consider if primary solution faces execution barriers",
@@ -1773,6 +1819,11 @@ RULES:
                             # Phase 8 of detail-page IA rework — copy through
                             # so /pain-point/[slug] can cross-link to alts.
                             "pain_points_addressed": list(getattr(solution, "pain_points_addressed", []) or []),
+                            # Closed-vocabulary filter facets (chips + future filtering).
+                            "tags": (
+                                solution.tags.model_dump()
+                                if getattr(solution, "tags", None) else None
+                            ),
                         }
                         alternative_solutions.append(alt)
 
@@ -1899,44 +1950,15 @@ RULES:
         if not self.state.pain_point_analysis:
             return
 
-        # Build lookup: lowercase keywords from segments → segment names
-        segment_keyword_map: dict[str, list[str]] = {}
-        for segment in audience_result.audience_segments:
-            segment_name = segment.segment_name
-            # Use primary_concerns as matching keywords
-            for concern in (segment.pain_point_alignment or []):
-                keywords = concern.lower().split()
-                for keyword in keywords:
-                    if len(keyword) > 3:  # Skip short words
-                        if keyword not in segment_keyword_map:
-                            segment_keyword_map[keyword] = []
-                        if segment_name not in segment_keyword_map[keyword]:
-                            segment_keyword_map[keyword].append(segment_name)
-
-        # Map pain points to segments
+        # Token-overlap match across the full segment vocab (name + alignment + motivations) vs
+        # the full pain text (title + categories + description); leaves a pain null only when
+        # nothing overlaps. See utils/segment_matching for why exact-token matching under-mapped.
+        segments = audience_result.audience_segments
         mapped_count = 0
         for pain_point in self.state.pain_point_analysis.pain_points:
-            matching_segments = set()
-
-            # Match against pain point title and categories
-            title_words = pain_point.title.lower().split()
-            categories = [c.lower() for c in (pain_point.categories or [])]
-
-            # Check title keywords
-            for word in title_words:
-                if word in segment_keyword_map:
-                    matching_segments.update(segment_keyword_map[word])
-
-            # Check category keywords
-            for cat in categories:
-                cat_words = cat.split()
-                for word in cat_words:
-                    if word in segment_keyword_map:
-                        matching_segments.update(segment_keyword_map[word])
-
-            # Update affected_segments
-            if matching_segments:
-                pain_point.affected_segments = list(matching_segments)
+            matched = match_pain_to_segments(pain_point, segments)
+            if matched:
+                pain_point.affected_segments = matched
                 mapped_count += 1
 
         if mapped_count > 0:
@@ -2284,45 +2306,101 @@ RULES:
         from ..models.research_state import NicheContext
         from ..utils.llm_service import LLMService
 
-        prompt = f"""You are a market research analyst analyzing a niche market.
+        # entry_mode is only a HINT (a prior nudge) — the input is classified on its own
+        # merits below, so an unknown/new/None mode degrades safely to "no signal". Map each
+        # known mode to its prior; the classifier is what actually decides audience_scope.
+        _mode = (self.entry_mode or "").strip().lower()
+        _niche_prior = ("the input is likely a plain niche — but still detect an audience if the "
+                        "input clearly names one")
+        entry_hint = {
+            "audience": ('the user picked the "audience" entry mode ("Who are you building for?"), '
+                         "so the input is LIKELY a target audience"),
+            "idea": f"the user picked the idea/niche entry mode, so {_niche_prior}",
+            "discovery": ("the user picked discovery mode, so the input may be either a niche or an "
+                          "audience — classify it on its own merits"),
+            # Catalog/seed-derived modes mostly bypass this call; if reached, the input is a
+            # catalog topic, so treat it like a plain niche.
+            "pain_research": f"this is a catalog topic, so {_niche_prior}",
+            "deep_idea": f"this is a catalog topic, so {_niche_prior}",
+            "pain_remix": f"this is a catalog topic, so {_niche_prior}",
+        }.get(_mode, "there is no entry-mode signal — classify the input purely on its own merits")
 
-**Niche Input:** {niche_input}
+        prompt = f"""You are a market research analyst. First CLASSIFY the input, then map the
+FULL market it belongs to. Work in THIS EXACT ORDER — each step constrains the next.
 
-**Your Task:**
-Generate a structured analysis of this niche with the following:
+**Input:** {niche_input}
+Entry-mode hint: {entry_hint}
 
-1. **niche_description**:
-   - 2-3 sentence refined description of this niche
-   - Clarify what this market encompasses
-   - Make it specific and actionable
+**STEP 1 — Classify the input (fill audience_scope, then user_target_audience):**
+The input may name a product/market, a target audience (who someone builds for), or both.
+- audience_scope — exactly one of:
+  - "niche": a product/market/topic with NO specific buyer named.
+  - "segment_of_niche": a specific buyer/role/use-case INSIDE one clear product market (you can name the market and its sibling buyers).
+  - "community": a buyer group that is its OWN audience spanning MANY unrelated product markets (you cannot pick one market for them).
+  - "too_broad": a demographic so general it implies no focusable market.
+  Decision pivot — applies ONLY when the input names a buyer/audience. If it names just a product, topic, or market with NO buyer — even when narrowed by a descriptor, attribute, or qualifier — choose niche and skip this pivot.
+  When a buyer IS named, choose segment_of_niche vs community by classifying from the FULL phrase, not a single keyword:
+  - is this group simply ONE buyer-type of a single nameable product/service category (which has other buyer-types)? → segment_of_niche.
+  - or is it defined by a shared identity, passion, hobby, profession, or affiliation whose members get MANY DIFFERENT jobs done across unrelated categories? → community.
+  Tie-break: when you cannot name one category without it feeling forced, choose community — never fabricate a parent market the audience merely participates in.
+- user_target_audience — the audience string whenever audience_scope is NOT "niche" (verbatim or lightly normalized). It is null ONLY when audience_scope is "niche". If the whole input IS the audience, set this to that input.
 
-2. **market_segments**:
-   - List 3-7 distinct market segments within this niche
-   - Be specific (e.g., "Small e-commerce businesses with 10-50 employees" not just "small businesses")
-   - Focus on segments that might have different needs or buying patterns
+**STEP 2 — Name the BROAD market to research (think before writing the niche fields):**
+- audience_scope="niche" → the market IS the input.
+- audience_scope="segment_of_niche" → the FULL underlying product market the audience sits in (e.g. "athletes interested in peptides" → the peptide-supplements market AS A WHOLE). The stated audience is ONE segment of that market, never the whole market.
+- audience_scope="community"/"too_broad" → the AUDIENCE ITSELF is the subject; describe their world. Do NOT invent one product niche for them.
 
-3. **industry_boundaries**:
-   - 2-3 sentences defining what is IN scope vs OUT of scope for this niche
-   - Clarify adjacent markets or related areas that are NOT part of this niche
-   - Help focus the research on the right target market
+**STEP 3 — niche_description:** 2-3 specific, actionable sentences describing the BROAD market from Step 2 — what it encompasses — NOT just the stated audience's slice of it.
 
-Be specific and actionable. Provide strategic insights.
+**STEP 4 — market_segments:** 3-7 distinct segments of the SAME subject named in Step 2. Each segment is a GROUP OF PEOPLE defined by the job/outcome they are trying to get done (Jobs-To-Be-Done), specific in needs/context (e.g. "Small e-commerce businesses with 10-50 employees", not "small businesses").
+- segment_of_niche → the OTHER major buyer groups across the parent product market (the named audience is at most ONE of them), not only sub-groups of it.
+- community / too_broad → distinct sub-groups WITHIN the audience's own world, split by the different jobs/contexts they pursue — not a parent industry's buyers.
+- DEMAND-SIDE ONLY: every segment must be phrased as the END-USER group you would build FOR. NEVER list a role that sells to, serves, monetizes, or supplies the audience — exclude platforms, vendors, marketplaces, organizers, sponsors, agencies, producers, AND advisors/planners/coaches/consultants and creators-as-businesses. If a label names a profession that profits from the audience rather than the audience itself, it is WRONG.
 
-Return a valid JSON object with this structure:
+**STEP 5 — industry_boundaries:** 2-3 sentences on what is IN vs OUT of the broad market; name adjacent markets that are NOT part of it.
+
+**WORKED EXAMPLE — input "athletes and serious gym-goers interested in peptides":**
+- audience_scope = "segment_of_niche"
+- user_target_audience = "athletes and serious gym-goers interested in peptides"
+- niche_description = the peptide-supplements market overall (research/therapeutic peptides for performance, recovery, longevity, weight management, skin, cognition)
+- market_segments (BROAD — note the non-athlete types):
+    ["Performance athletes & bodybuilders", "Anti-aging / longevity users",
+     "Weight-loss / GLP-1 users", "Injury-recovery & rehab patients",
+     "Biohackers & nootropic users", "Skin / cosmetic peptide users"]
+- WRONG (silently narrowed to the audience — do NOT do this):
+    ["Competitive bodybuilders", "CrossFit athletes", "Natural bodybuilders"]
+    — all three are sub-types of the stated audience; the rest of the market is missing.
+
+**More classification examples:**
+- "peptide supplements" → audience_scope="niche", user_target_audience=null
+- "experienced tirzepatide users" → audience_scope="segment_of_niche", user_target_audience="experienced tirzepatide users" (broad market = peptide/GLP-1 supplements)
+- "peptide supplements for bodybuilders" → audience_scope="segment_of_niche", user_target_audience="bodybuilders"
+- "porsche owners" → audience_scope="community", user_target_audience="porsche owners"
+- "older adults" → audience_scope="too_broad", user_target_audience="older adults"
+
+**HARD RULES (never break):**
+1. Never invent an audience from a plain niche → audience_scope="niche", user_target_audience=null.
+2. Never fabricate a single product niche for a community/too_broad audience — leave the market open and describe the audience's world.
+3. When audience_scope is NOT "niche", describe the BROADER subject from Step 2 (segment_of_niche → the parent product market; community/too_broad → the audience's whole world), never only the literal stated label.
+
+Return a valid JSON object with this structure (emit the fields in this order):
 {{
+  "audience_scope": "<niche | segment_of_niche | community | too_broad>",
+  "user_target_audience": "<the audience, or null only when audience_scope is niche>",
   "niche_description": "...",
   "market_segments": ["segment 1", "segment 2", "..."],
   "industry_boundaries": "..."
 }}"""
 
-        # Use centralized LLM service for structured output
-        # Moderate temperature (0.5) for balanced understanding + structured strategy
+        # Use centralized LLM service for structured output. Structured-classification tier
+        # (first-party model via json_schema) — see settings.niche_context_llm.
+        # Moderate temperature (0.5) for balanced understanding + structured strategy.
         context, usage = LLMService.invoke_structured(
             prompt=prompt,
             output_model=NicheContext,
             temperature=0.5,
             timeout=120,
-            model_name=settings.openai_model_name
+            model_name=settings.niche_context_llm
         )
 
         # Record cost if tracker is available
@@ -2331,6 +2409,27 @@ Return a valid JSON object with this structure:
 
         # Add niche_input to the context
         context.niche_input = niche_input
+
+        # Post-parse guards (two directions):
+        #  - niche/empty scope → never frame a plain niche: clear any echoed audience.
+        #  - focusable scope (segment_of_niche/community/too_broad) → MUST carry an audience
+        #    label. The classifier occasionally sets a focusable scope but leaves
+        #    user_target_audience null (esp. when the whole input IS the audience, as in
+        #    "solve for a group" mode). Fall back to the user's literal input so framing +
+        #    audience-aware research actually engage.
+        scope = (context.audience_scope or "").strip().lower()
+        if scope in ("", "niche"):
+            context.audience_scope = "niche"
+            context.user_target_audience = None
+        else:
+            if not (context.user_target_audience or "").strip():
+                context.user_target_audience = niche_input.strip()
+                logger.info(
+                    "[Stage 1] classifier left user_target_audience null on a "
+                    f"{scope!r} input — falling back to the literal input")
+        logger.info(
+            f"[Stage 1] audience_scope={context.audience_scope!r} "
+            f"user_target_audience={context.user_target_audience!r}")
 
         # Second, ISOLATED call: extract niche-anchor entities/exclusions on the
         # reasoning-tier model. Disambiguation needs world knowledge + reasoning
@@ -2526,13 +2625,18 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                 batch_size=10,
                 anchor_guidance=format_anchor_block(self.state.niche_context),
             )
-            reddit_urls = [result.url for result, is_relevant in validated if is_relevant]
+            # Keep threads at/above the relevance grade; carry the grade so collect_posts can
+            # relax engagement thresholds for more-relevant threads and tag posts for the
+            # relevance-weighted token budget downstream.
+            min_grade = settings.thread_relevance_min_grade
+            grade_by_url = {result.url: g for result, g in validated if g >= min_grade}
+            reddit_urls = list(grade_by_url)
             filtered_count = len(unique_reddit_results) - len(reddit_urls)
             logger.info(f"[Reddit] Filtered {filtered_count} irrelevant, kept {len(reddit_urls)} relevant discussions")
 
             # Collect full posts
             logger.info("[Reddit] Collecting posts and comments...")
-            reddit_posts = self.reddit_tool.collect_posts(reddit_urls)
+            reddit_posts = self.reddit_tool.collect_posts(reddit_urls, grade_by_url=grade_by_url)
             logger.info(f"[Reddit] Collected {len(reddit_posts)} quality posts")
 
             return PlatformSearchResult(
@@ -2582,7 +2686,7 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                 batch_size=10,
                 anchor_guidance=format_anchor_block(self.state.niche_context),
             )
-            twitter_urls = [result.url for result, is_relevant in validated if is_relevant]
+            twitter_urls = [result.url for result, g in validated if g >= settings.thread_relevance_min_grade]
             filtered_count = len(unique_twitter_results) - len(twitter_urls)
             logger.info(f"[Twitter] Filtered {filtered_count} irrelevant, kept {len(twitter_urls)} relevant discussions")
 
@@ -2696,10 +2800,14 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             enabled_platforms.append("youtube")
 
         logger.info(f"Generating search queries for {len(enabled_platforms)} platforms: {enabled_platforms}...")
+        _aud = self._audience_for_research()
+        if _aud:
+            logger.info(f"[Part C] Audience-aware research ENGAGED — soft, additive bias for: {_aud!r}")
         queries = query_gen.generate_all_platform_queries(
             niche_description=self.niche_description,
             niche_context=self.state.niche_context,
             enabled_platforms=enabled_platforms if enabled_platforms else None,
+            target_audience=_aud,
         )
 
         # Capture niche-anchor query telemetry for the Stage-10 drift caveat.
@@ -2941,6 +3049,7 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                 (self.state.niche_context.anchor_entities or [])
                 + (self.state.niche_context.audience_jargon or [])
             ),
+            target_audience=self._audience_for_research(),
             job_id=self.state.job_id,
         )
 
@@ -2976,12 +3085,18 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
 
         logger.info("[Parallel] Starting AudienceMappingCrew...")
 
+        _nc = getattr(self.state, "niche_context", None)
         audience_crew = AudienceMappingCrew(
             reddit_posts=self.state.social_content.reddit_posts if self.state.social_content else [],
             twitter_threads=self.state.social_content.twitter_threads if self.state.social_content else [],
             generic_posts=self.state.social_content.generic_posts if self.state.social_content else [],
             niche_description=self.niche_description,
             job_id=self.state.job_id,
+            # Part D: Stage-1 resolution as a grounding prior + boundary guard (used only when
+            # enable_audience_segment_grounding is on; degrade-safe to [] / "" without niche_context).
+            market_segments=getattr(_nc, "market_segments", None),
+            industry_boundaries=getattr(_nc, "industry_boundaries", "") or "",
+            disambiguation_exclusions=getattr(_nc, "disambiguation_exclusions", None),
         )
 
         # Use provided pain_point_analysis or create empty placeholder for parallel execution
@@ -3137,7 +3252,7 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
         if high_opp:
             logger.info(f"[OK] High-opportunity pain points: {len(high_opp)}")
             for pp in high_opp[:3]:
-                logger.info(f"  - {pp.title} (Severity: {pp.severity_score:.2f}, WTP: {pp.willingness_to_pay:.2f})")
+                logger.info(f"  - {pp.title} (Severity: {pp.severity_score:.2f}, WTP: {pp.commercial_intent:.2f})")
 
         # Quality Gate: Validate pain point analysis quality
         quality_tier, confidence_score = self._validate_pain_point_quality(self.state.pain_point_analysis)
@@ -3315,7 +3430,166 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
         logger.info(f"  Community Hubs: {len(audience_result.community_hubs)}")
         logger.info(f"  Recommended Channels: {', '.join(audience_result.recommended_channels[:3])}")
 
+    def _audience_for_research(self) -> str | None:
+        """Part C gate. Returns the user's target audience for SOFT, ADDITIVE research
+        bias (queries + pain mining) ONLY when:
+          - settings.enable_audience_aware_research is on, AND
+          - Stage-1 classified a focusable audience (segment_of_niche | community).
+        Excludes 'niche' (no audience) and 'too_broad' (biasing would broaden, not focus).
+        Returns None otherwise → research stays fully broad (default). Never narrows.
+        """
+        if not settings.enable_audience_aware_research:
+            return None
+        nc = getattr(self.state, "niche_context", None)
+        if nc is None:
+            return None
+        scope = (getattr(nc, "audience_scope", None) or "").strip().lower()
+        if scope not in ("segment_of_niche", "community"):
+            return None
+        audience = (getattr(nc, "user_target_audience", None) or "").strip()
+        return audience or None
+
+    def _refine_audience_against_ideas(self) -> None:
+        """Post-generation re-resolution of resolved_primary_audience against the ACTUAL
+        generated idea source_segments — the namespace the frontend matches cards on.
+
+        The Stage-4 pass (_resolve_primary_audience) matches audience_mapping persona segments,
+        but the refiner relabels each idea's source_segment to a buyer-type vocabulary, so the
+        two namespaces diverge and the frontend split could never fire. This upgrades the label
+        to a real, matchable source_segment when the audience maps to one; otherwise it leaves
+        the Stage-4 value untouched (frontend then shows a single 'For {audience}' eyebrow)."""
+        nc = getattr(self.state, "niche_context", None)
+        if nc is None:
+            return
+        if (getattr(nc, "audience_scope", None) or "").strip().lower() != "segment_of_niche":
+            return
+        audience = (getattr(nc, "user_target_audience", None) or "").strip()
+        if not audience:
+            return
+        ig = getattr(self.state, "idea_generation", None)
+        ideas = (getattr(ig, "solution_ideas", None) or []) if ig else []
+        segs = sorted({(getattr(i, "source_segment", None) or "").strip() for i in ideas} - {""})
+        matched = _best_segment_match(audience, segs)
+        if matched and matched != getattr(nc, "resolved_primary_audience", None):
+            nc.resolved_primary_audience = matched
+            logger.info(
+                f"[Audience] refined against idea segments -> resolved_primary_audience={matched!r}")
+            try:
+                self.checkpoint_mgr.save_stage("stage_1_niche_context", self.state.niche_context)
+            except Exception as e:
+                logger.warning(f"Re-checkpoint of niche_context (idea refine) skipped: {e}")
+
+    def _tag_audience_fit(self) -> None:
+        """Part A (OUTPUT framing only): tag each generated idea with audience_fit — does it
+        primarily serve the user's stated audience? A single FAIL-OPEN structured LLM judgment
+        over the ideas' personas (token overlap can't tell that "Bodybuilders & Performance
+        Athletes" serves "gym-goers"). PURE post-processing: never changes scores or which
+        pains/segments were researched.
+
+        Only runs for segment_of_niche. On any failure it leaves audience_fit=None, so the
+        frontend falls back to the source_segment match (_refine_audience_against_ideas). If the
+        judgment returns an empty set it is treated as inconclusive (left None) rather than
+        marking every idea non-fit."""
+        nc = getattr(self.state, "niche_context", None)
+        if nc is None or (getattr(nc, "audience_scope", None) or "").strip().lower() != "segment_of_niche":
+            return
+        audience = (getattr(nc, "user_target_audience", None) or "").strip()
+        ig = getattr(self.state, "idea_generation", None)
+        ideas = (getattr(ig, "solution_ideas", None) or []) if ig else []
+        if not audience or not ideas:
+            return
+
+        digest = []
+        for it in ideas:
+            nm = getattr(it, "solution_name", "") or ""
+            seg = getattr(it, "source_segment", "") or ""
+            persona = (getattr(it, "target_personas", None) or [""])[0] or ""
+            digest.append(f"- {nm} (segment: {seg}; serves: {persona[:160]})")
+        prompt = (
+            f'The user is building products FOR this target audience: "{audience}".\n\n'
+            "For EACH idea below, decide whether it primarily serves THAT audience or a close "
+            "sub-group of it — judge by WHO it serves (the persona), not by exact wording. "
+            "Return only the solution_name values that fit.\n\nIDEAS:\n" + "\n".join(digest)
+        )
+        try:
+            from ..models.solution_idea import AudienceFitResult
+            from ..utils.llm_service import LLMService
+            result, _usage = LLMService.invoke_structured(
+                prompt=prompt, output_model=AudienceFitResult, temperature=0.0,
+                timeout=60, model_name=settings.niche_context_llm,
+            )
+            fits = {str(n).strip().lower() for n in (result.serves_audience or []) if str(n).strip()}
+        except Exception as e:
+            logger.warning(f"[Audience] audience_fit tagging failed (fail-open, no tags): {e}")
+            return
+        if not fits:
+            logger.info("[Audience] audience_fit inconclusive (empty) — leaving untagged")
+            return
+        tagged = 0
+        for it in ideas:
+            fit = (getattr(it, "solution_name", "") or "").strip().lower() in fits
+            try:
+                it.audience_fit = bool(fit)
+            except Exception:
+                pass
+            tagged += int(fit)
+        logger.info(f"[Audience] audience_fit: {tagged}/{len(ideas)} ideas serve {audience!r}")
+        try:
+            self.checkpoint_mgr.save_stage("stage_5_3_refinement", self.state.idea_generation)
+        except Exception as e:
+            logger.warning(f"Re-checkpoint of idea_generation (audience_fit) skipped: {e}")
+
     @listen(stage_4_audience_mapping)
+    def _resolve_primary_audience(self) -> None:
+        """Resolve the audience-framing label (OUTPUT framing only — NEVER mutate
+        audience_mapping.primary_target_segment, which feeds generation). Idempotent.
+
+        - segment_of_niche: set niche_context.resolved_primary_audience to the discovered
+          audience_segments.segment_name best-matching user_target_audience (fuzzy >= 0.40);
+          fall back to the raw audience string if none clears / no audience_mapping.
+        - community / too_broad: leave resolved_primary_audience=None (banner uses
+          user_target_audience directly); for too_broad append a breadth caveat to
+          idea_coverage_caveats.
+        - niche / None: no-op.
+        Re-checkpoints niche_context so resolved fields survive resume/regenerate.
+        """
+        nc = getattr(self.state, "niche_context", None)
+        if nc is None:
+            return
+        scope = (getattr(nc, "audience_scope", None) or "").strip().lower()
+        audience = (getattr(nc, "user_target_audience", None) or "").strip()
+        if not scope or scope == "niche" or not audience:
+            return
+
+        if scope == "segment_of_niche":
+            am = getattr(self.state, "audience_mapping", None)
+            segs = (getattr(am, "audience_segments", None) or []) if am else []
+            names = [getattr(s, "segment_name", None) for s in segs]
+            # First guess from audience-mapping segments; raw fallback when none clears (the
+            # frontend renders a single "For {audience}" eyebrow when nothing matches). This is
+            # re-resolved post-generation against the real idea source_segments — see
+            # _refine_audience_against_ideas (the namespace the frontend actually matches).
+            resolved = _best_segment_match(audience, [n for n in names if n]) or audience
+            nc.resolved_primary_audience = resolved
+            logger.info(f"[Audience] segment framing -> resolved_primary_audience={resolved!r}")
+        else:
+            # community / too_broad — no per-segment tagging; the banner uses user_target_audience.
+            nc.resolved_primary_audience = None
+            if scope == "too_broad":
+                caveat = (f'Very broad audience ("{audience}") — research spans many unrelated '
+                          f'needs; narrow it (e.g. "{audience} + a specific problem") for sharper '
+                          f'opportunities.')
+                existing = list(getattr(self.state, "idea_coverage_caveats", None) or [])
+                if caveat not in existing:
+                    existing.append(caveat)
+                self.state.idea_coverage_caveats = existing
+            logger.info(f"[Audience] {scope} -> banner for {audience!r} (no segment tagging)")
+
+        try:
+            self.checkpoint_mgr.save_stage("stage_1_niche_context", self.state.niche_context)
+        except Exception as e:
+            logger.warning(f"Re-checkpoint of niche_context skipped: {e}")
+
     def stage_5_unified_solution_pipeline(self, skip_selection: bool = False):
         """
         Stage 7: Unified Solution Pipeline (CrewAI Best Practice)
@@ -3333,6 +3607,14 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
         logger.info("STAGE 5: Unified Solution Pipeline")
         logger.info("=" * 80)
         self._emit_progress(5, "Solution Pipeline", "running")
+
+        # Resolve the audience-framing label here (idempotent) — Stage 5 runs after EVERY
+        # Stage-4 exit path (success + all early returns), so this single call covers them all,
+        # including the audience_mapping-is-None fallback. OUTPUT framing only.
+        try:
+            self._resolve_primary_audience()
+        except Exception as e:
+            logger.warning(f"Primary-audience resolution skipped: {e}")
 
         # Prerequisites check
         if not self.state.pain_point_analysis or not self.state.pain_point_analysis.pain_points:
@@ -3410,10 +3692,19 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             # Save results to state
             self.state.idea_generation = refined_solutions
             self.state.solution_selection = solution_selection
+            # Re-resolve the audience label against the real generated idea segments so the
+            # frontend grid can actually split (the Stage-4 guess used a different namespace),
+            # then tag each idea's audience_fit (semantic primary/adjacent signal).
+            self._refine_audience_against_ideas()
+            self._tag_audience_fit()
             # Surface any uncovered high-severity pains (post-crew coverage check).
-            self.state.idea_coverage_caveats = list(
-                getattr(unified_crew, "coverage_caveats", None) or []
-            )
+            # MERGE (don't overwrite) — preserve any earlier caveat (e.g. the Stage-4 breadth
+            # caveat for a too_broad audience) added before this stage.
+            _crew_caveats = list(getattr(unified_crew, "coverage_caveats", None) or [])
+            _existing_caveats = list(getattr(self.state, "idea_coverage_caveats", None) or [])
+            self.state.idea_coverage_caveats = _existing_caveats + [
+                c for c in _crew_caveats if c not in _existing_caveats
+            ]
 
             if solution_selection is not None:
                 # DEFENSIVE: Validate solution selection - detect error strings

@@ -36,7 +36,7 @@ export function placeholderExecutiveDashboard(niche: string): Report {
       core_pain_point: {
         title: `Fragmented ${niche} workflows`,
         severity_score: 0.78,
-        willingness_to_pay_score: 0.65,
+        commercial_intent_score: 0.65,
         representative_quote: `I spend hours every week trying to piece together ${niche} data from different sources.`,
         source_platform: 'Reddit',
       },
@@ -51,7 +51,7 @@ export function placeholderExecutiveDashboard(niche: string): Report {
         high_severity_pain_points: 4,
         primary_competitor_count: 6,
         avg_pain_point_severity: 7.2,
-        avg_willingness_to_pay: 6.1,
+        avg_commercial_intent: 6.1,
         social_evidence_threads: 79,
         market_fit_score: 0.72,
         competitive_advantage_score: 0.65,

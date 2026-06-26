@@ -103,8 +103,8 @@ class TestComputeWtpStats:
         assert result["avg_wtp"] == "0.00"
 
     def test_mixed_pain_points(self):
-        pp1 = MagicMock(severity_score=0.8, willingness_to_pay=0.6)
-        pp2 = MagicMock(severity_score=0.5, willingness_to_pay=0.3)
+        pp1 = MagicMock(severity_score=0.8, commercial_intent=0.6)
+        pp2 = MagicMock(severity_score=0.5, commercial_intent=0.3)
         mock = MagicMock()
         mock.pain_points = [pp1, pp2]
         result = compute_wtp_stats(mock)

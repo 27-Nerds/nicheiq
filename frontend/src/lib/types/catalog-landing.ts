@@ -155,7 +155,7 @@ export interface PainPointPreview {
   description: string;
   mentionCount: number;
   severityScore: number;
-  willingnessToPayScore: number;
+  commercialIntentScore: number;
   opportunityLevel: string;
   representativeQuotes: string[] | null;
   sourcePlatforms: string[] | null;

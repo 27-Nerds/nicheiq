@@ -8,7 +8,6 @@ On graceful shutdown (SIGTERM/SIGINT), notifies the backend immediately.
 import os
 import socket
 import threading
-import time
 import uuid
 from typing import Optional
 

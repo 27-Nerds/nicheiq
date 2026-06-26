@@ -19,8 +19,8 @@ class TestComputeWtpSummary:
 
     def test_high_wtp_premium(self):
         """Average >= 0.70 should map to Premium tolerance."""
-        pp1 = MagicMock(willingness_to_pay=0.8)
-        pp2 = MagicMock(willingness_to_pay=0.9)
+        pp1 = MagicMock(commercial_intent=0.8)
+        pp2 = MagicMock(commercial_intent=0.9)
         mock = MagicMock()
         mock.pain_points = [pp1, pp2]
         summary, avg = compute_wtp_summary(mock)
@@ -29,8 +29,8 @@ class TestComputeWtpSummary:
 
     def test_mid_wtp_market_rate(self):
         """Average 0.50-0.69 should map to Market Rate."""
-        pp1 = MagicMock(willingness_to_pay=0.5)
-        pp2 = MagicMock(willingness_to_pay=0.6)
+        pp1 = MagicMock(commercial_intent=0.5)
+        pp2 = MagicMock(commercial_intent=0.6)
         mock = MagicMock()
         mock.pain_points = [pp1, pp2]
         summary, _ = compute_wtp_summary(mock)
@@ -38,8 +38,8 @@ class TestComputeWtpSummary:
 
     def test_low_wtp_discount(self):
         """Average 0.30-0.49 should map to Discount."""
-        pp1 = MagicMock(willingness_to_pay=0.3)
-        pp2 = MagicMock(willingness_to_pay=0.4)
+        pp1 = MagicMock(commercial_intent=0.3)
+        pp2 = MagicMock(commercial_intent=0.4)
         mock = MagicMock()
         mock.pain_points = [pp1, pp2]
         summary, _ = compute_wtp_summary(mock)
@@ -47,8 +47,8 @@ class TestComputeWtpSummary:
 
     def test_very_low_wtp_free(self):
         """Average < 0.30 should map to Free/Near-Free."""
-        pp1 = MagicMock(willingness_to_pay=0.1)
-        pp2 = MagicMock(willingness_to_pay=0.2)
+        pp1 = MagicMock(commercial_intent=0.1)
+        pp2 = MagicMock(commercial_intent=0.2)
         mock = MagicMock()
         mock.pain_points = [pp1, pp2]
         summary, _ = compute_wtp_summary(mock)

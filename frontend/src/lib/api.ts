@@ -369,13 +369,16 @@ export interface SharedPreviewReport {
     niche_description?: string;
     market_segments?: string[];
     industry_boundaries?: unknown;
+    user_target_audience?: string | null;
+    resolved_primary_audience?: string | null;
+    audience_scope?: string | null;
   } | null;
   detailed_pain_points?: Array<{
     title: string;
     description?: string;
     mention_count?: number;
     severity_score?: number;
-    willingness_to_pay?: number;
+    commercial_intent?: number;
     opportunity_level?: 'high' | 'medium' | 'low';
     representative_quotes?: string[];
     source_platforms?: string[];
@@ -394,7 +397,7 @@ export interface SharedPreviewReport {
       low_severity_low_wtp: number;
     };
     avg_severity?: number;
-    avg_willingness_to_pay?: number;
+    avg_commercial_intent?: number;
     top_pain_point_title?: string;
   } | null;
   audience_mapping?: {

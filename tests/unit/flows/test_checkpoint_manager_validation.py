@@ -10,9 +10,141 @@ import pytest
 from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 
-from nicheiq.flows.checkpoint_manager import CheckpointManager
+from nicheiq.flows.checkpoint_manager import (
+    CHECKPOINT_SCHEMA_VERSION,
+    CheckpointManager,
+    _stage_num_from_filename,
+)
 from nicheiq.models.research_state import ResearchState
 from nicheiq.utils.validation import CheckpointValidator
+
+
+_REWIND_NICHE = "AI-powered productivity tools"
+
+
+def _build_checkpoint(folder, *, current_stage, completed_stages, stage_files,
+                      schema_version=CHECKPOINT_SCHEMA_VERSION, job_id=None):
+    """Write a checkpoint folder with a REAL (loadable) metadata + stage files."""
+    folder.mkdir(parents=True, exist_ok=True)
+    metadata = {
+        "niche_description": _REWIND_NICHE,
+        "started_at": "2026-01-01T12:00:00",
+        "current_stage": current_stage,
+        "completed_stages": list(completed_stages),
+        "errors": [],
+        "schema_version": schema_version,
+    }
+    if job_id is not None:
+        metadata["job_id"] = job_id
+    (folder / "metadata.json").write_text(json.dumps(metadata, indent=2))
+    for name, body in stage_files.items():
+        (folder / name).write_text(json.dumps(body, indent=2))
+    return folder
+
+
+class TestReconstructionFailureReset:
+    """A stage whose data fails Pydantic reconstruction (schema drift) is cleared and the
+    pipeline rewinds to re-run it, instead of silently keeping a poisoned raw dict."""
+
+    def _manager(self, sample_research_state, job_id=None):
+        return CheckpointManager(
+            niche_description=_REWIND_NICHE, state=sample_research_state, job_id=job_id,
+        )
+
+    def test_stage3_mismatch_clears_and_rewinds(self, checkpoint_temp_dir, sample_research_state):
+        folder = _build_checkpoint(
+            checkpoint_temp_dir / "checkpoint_ai_powered_productivity_tools_j_20260101",
+            current_stage=5,
+            completed_stages=["stage_3_pain_points"],
+            stage_files={"stage_3_pain_points.json": {"bogus": 1}},  # missing required fields
+        )
+        manager = self._manager(sample_research_state)
+        with patch("nicheiq.flows.checkpoint_manager.settings") as mock_settings:
+            mock_settings.checkpoint_enabled = True
+            mock_settings.checkpoint_dir = checkpoint_temp_dir
+            assert manager.load_checkpoint_folder(folder) is True
+        # Poisoned dict is NOT retained, and progress rewinds to the producing stage (3 < 5).
+        assert manager.state.pain_point_analysis is None
+        assert manager.state.current_stage == 3
+
+    def test_stage9_mismatch_reruns(self, checkpoint_temp_dir, sample_research_state):
+        # Stages >= 6 gate on completed_stages (read from disk), not current_stage — the case
+        # the first draft of this fix got wrong.
+        folder = _build_checkpoint(
+            checkpoint_temp_dir / "checkpoint_ai_powered_productivity_tools_k_20260101",
+            current_stage=10,
+            completed_stages=["stage_3_pain_points", "stage_9_market_sizing"],
+            stage_files={"stage_9_market_sizing.json": {"bogus": 1}},
+        )
+        manager = self._manager(sample_research_state)
+        with patch("nicheiq.flows.checkpoint_manager.settings") as mock_settings:
+            mock_settings.checkpoint_enabled = True
+            mock_settings.checkpoint_dir = checkpoint_temp_dir
+            assert manager.load_checkpoint_folder(folder) is True
+            completed = manager.get_completed_stages()  # re-reads metadata.json from disk
+        assert manager.state.market_sizing is None
+        assert manager.state.current_stage == 9
+        assert "stage_9_market_sizing" not in completed   # pruned -> will re-run
+        assert "stage_3_pain_points" in completed         # earlier stage preserved
+
+    def test_successful_reconstruction_unaffected(self, checkpoint_temp_dir, sample_research_state):
+        # Skipped markers + no failing files -> no rewind, current_stage untouched.
+        folder = _build_checkpoint(
+            checkpoint_temp_dir / "checkpoint_ai_powered_productivity_tools_v_20260101",
+            current_stage=5,
+            completed_stages=["stage_3_pain_points"],
+            stage_files={"stage_3_pain_points.json": {"skipped": True, "reason": "test"}},
+        )
+        manager = self._manager(sample_research_state)
+        with patch("nicheiq.flows.checkpoint_manager.settings") as mock_settings:
+            mock_settings.checkpoint_enabled = True
+            mock_settings.checkpoint_dir = checkpoint_temp_dir
+            assert manager.load_checkpoint_folder(folder) is True
+            assert manager.get_completed_stages() == ["stage_3_pain_points"]
+        assert manager.state.current_stage == 5
+
+    @pytest.mark.parametrize("name,expected", [
+        ("stage_3_pain_points.json", 3),
+        ("stage_5_3_refinement.json", 5),
+        ("stage_6a_seed_expansion.json", 6),
+        ("stage_9_market_sizing", 9),
+        ("metadata.json", None),
+        ("not_a_stage", None),
+    ])
+    def test_stage_num_derivation(self, name, expected):
+        assert _stage_num_from_filename(name) == expected
+
+
+class TestSchemaVersion:
+    """Cross-job adoption of a stale-schema checkpoint is refused; current-version loads."""
+
+    def test_mismatched_version_refuses_cross_job(self, checkpoint_temp_dir, sample_research_state):
+        folder = _build_checkpoint(
+            checkpoint_temp_dir / "checkpoint_ai_powered_productivity_tools_old-job_20260101",
+            current_stage=3, completed_stages=[], stage_files={},
+            schema_version=CHECKPOINT_SCHEMA_VERSION - 1, job_id="old-job",
+        )
+        manager = CheckpointManager(
+            niche_description=_REWIND_NICHE, state=sample_research_state, job_id="new-job",
+        )
+        with patch("nicheiq.flows.checkpoint_manager.settings") as mock_settings:
+            mock_settings.checkpoint_enabled = True
+            mock_settings.checkpoint_dir = checkpoint_temp_dir
+            assert manager.load_checkpoint_folder(folder) is False
+
+    def test_matching_version_loads(self, checkpoint_temp_dir, sample_research_state):
+        folder = _build_checkpoint(
+            checkpoint_temp_dir / "checkpoint_ai_powered_productivity_tools_old-job_20260102",
+            current_stage=3, completed_stages=[], stage_files={},
+            schema_version=CHECKPOINT_SCHEMA_VERSION, job_id="old-job",
+        )
+        manager = CheckpointManager(
+            niche_description=_REWIND_NICHE, state=sample_research_state, job_id="new-job",
+        )
+        with patch("nicheiq.flows.checkpoint_manager.settings") as mock_settings:
+            mock_settings.checkpoint_enabled = True
+            mock_settings.checkpoint_dir = checkpoint_temp_dir
+            assert manager.load_checkpoint_folder(folder) is True  # forks (cross-job, same version)
 
 
 class TestCheckpointManagerValidatorIntegration:

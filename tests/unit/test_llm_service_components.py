@@ -204,7 +204,7 @@ class TestValidatorsIntegration:
         from nicheiq.utils.validation.thread_validator import ValidationResult
 
         mock_result = BatchValidationResponse(
-            results=[ValidationResult(thread_index=0, is_relevant=True, confidence=0.9, reason="test")]
+            results=[ValidationResult(thread_index=0, relevance_grade=2, reason="test")]
         )
         mock_invoke_structured.return_value = (mock_result, _mock_token_usage())
 
@@ -229,11 +229,12 @@ class TestValidatorsIntegration:
         """Verify settings.thread_validation_llm is used."""
         # Setup
         mock_settings.thread_validation_llm = "gpt-4o-mini"
+        mock_settings.thread_relevance_min_grade = 1
         from nicheiq.models.research_state import SearchResultItem
         from nicheiq.utils.validation.thread_validator import ValidationResult
 
         mock_result = BatchValidationResponse(
-            results=[ValidationResult(thread_index=0, is_relevant=True, confidence=0.9, reason="test")]
+            results=[ValidationResult(thread_index=0, relevance_grade=2, reason="test")]
         )
         mock_invoke_structured.return_value = (mock_result, _mock_token_usage())
 
@@ -261,7 +262,7 @@ class TestValidatorsIntegration:
         from nicheiq.utils.validation.thread_validator import ValidationResult
 
         mock_result = BatchValidationResponse(
-            results=[ValidationResult(thread_index=0, is_relevant=True, confidence=0.9, reason="test")]
+            results=[ValidationResult(thread_index=0, relevance_grade=2, reason="test")]
         )
         mock_invoke_structured.return_value = (mock_result, _mock_token_usage())
 
@@ -276,6 +277,30 @@ class TestValidatorsIntegration:
         # Assert
         call_kwargs = mock_invoke_structured.call_args[1]
         assert call_kwargs['temperature'] == 0
+
+    @patch('nicheiq.utils.validation.thread_validator.LLMService.invoke_structured')
+    def test_thread_validator_returns_grades(self, mock_invoke_structured):
+        """validate_batch returns the 0-3 relevance grade per thread (callers apply the keep gate)."""
+        from nicheiq.models.research_state import SearchResultItem
+        from nicheiq.utils.validation.thread_validator import ValidationResult
+
+        mock_invoke_structured.return_value = (BatchValidationResponse(results=[
+            ValidationResult(thread_index=0, relevance_grade=0, reason="x"),
+            ValidationResult(thread_index=1, relevance_grade=1, reason="x"),
+            ValidationResult(thread_index=2, relevance_grade=3, reason="x"),
+        ]), _mock_token_usage())
+        items = [SearchResultItem(url=f"http://t{i}", title="T", snippet="s") for i in range(3)]
+        out = {it.url: g for it, g in ThreadRelevanceValidator().validate_batch("niche", items)}
+        assert out == {"http://t0": 0, "http://t1": 1, "http://t2": 3}
+
+    @patch('nicheiq.utils.validation.thread_validator.LLMService.invoke_structured')
+    def test_thread_validator_fail_open_grade_two(self, mock_invoke_structured):
+        """On LLM error, fail-open keeps threads with a relevant-default grade of 2."""
+        from nicheiq.models.research_state import SearchResultItem
+        mock_invoke_structured.side_effect = RuntimeError("boom")
+        items = [SearchResultItem(url="http://t", title="T", snippet="s")]
+        out = ThreadRelevanceValidator().validate_batch("niche", items)
+        assert out == [(items[0], 2)]
 
     @patch('nicheiq.utils.validation.keyword_validator.LLMService.invoke_structured')
     def test_keyword_validator_uses_llm_service(self, mock_invoke_structured):

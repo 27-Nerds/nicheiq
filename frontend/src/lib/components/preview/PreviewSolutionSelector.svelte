@@ -29,6 +29,9 @@
     solutionVotes?: Record<string, number>;
     /** Informational coverage/pain-concentration notes for the whole set. */
     coverageNotes?: string[] | null;
+    /** Audience framing (output lens): label for the "For {x}" eyebrow + resolved segment to split on. */
+    primaryAudience?: string | null;
+    audienceLabel?: string | null;
   }
 
   let {
@@ -46,6 +49,8 @@
     selectedSolutions,
     solutionVotes = {},
     coverageNotes = [],
+    primaryAudience = null,
+    audienceLabel = null,
   }: Props = $props();
 
   // Multi-select state
@@ -219,6 +224,8 @@
     <!-- Solutions grid (top-pick + remaining, shared with visitor view) -->
     <SolutionGrid
       {solutions}
+      {primaryAudience}
+      {audienceLabel}
       onSelect={handleToggle}
       {selectedNames}
       maxSelections={MAX_SELECTIONS}

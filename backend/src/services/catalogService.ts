@@ -461,7 +461,7 @@ export async function populateItemCache(jobId: string) {
             itemDescription: pp.description || '',
             itemScores: {
               severity: pp.severity_score,
-              willingness_to_pay: pp.willingness_to_pay,
+              commercial_intent: pp.commercial_intent,
               mention_count: pp.mention_count,
             },
             verdict: pp.opportunity_level || null,
@@ -472,7 +472,7 @@ export async function populateItemCache(jobId: string) {
             itemDescription: pp.description || '',
             itemScores: {
               severity: pp.severity_score,
-              willingness_to_pay: pp.willingness_to_pay,
+              commercial_intent: pp.commercial_intent,
               mention_count: pp.mention_count,
             },
             verdict: pp.opportunity_level || null,
@@ -811,7 +811,7 @@ export async function publishPainPoint(params: {
           description: pp.description || '',
           mentionCount: pp.mention_count ?? 0,
           severityScore: pp.severity_score ?? 0,
-          willingnessToPayScore: pp.willingness_to_pay ?? 0,
+          commercialIntentScore: pp.commercial_intent ?? 0,
           opportunityLevel: pp.opportunity_level || 'medium',
           representativeQuotes: safeStringArray(pp.representative_quotes) || undefined,
           sourcePlatforms: safeStringArray(pp.source_platforms) || undefined,
@@ -1087,7 +1087,7 @@ export async function depublishPainPoint(id: string) {
           itemDescription: pp.description,
           itemScores: {
             severityScore: pp.severityScore,
-            willingnessToPayScore: pp.willingnessToPayScore,
+            commercialIntentScore: pp.commercialIntentScore,
           },
           verdict: null,
           isPublished: false,
@@ -1123,7 +1123,7 @@ interface BackendPainPointPreview {
   description: string;
   mentionCount: number;
   severityScore: number;
-  willingnessToPayScore: number;
+  commercialIntentScore: number;
   opportunityLevel: string;
   // Prisma serializes JSON columns as `JsonValue`. Frontend coerces to the
   // strict shapes (string[] | null) at parse time.

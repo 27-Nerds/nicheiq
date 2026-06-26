@@ -17,7 +17,7 @@ from unittest.mock import patch
 
 import pytest
 
-from nicheiq.flows.checkpoint_manager import CheckpointManager
+from nicheiq.flows.checkpoint_manager import CHECKPOINT_SCHEMA_VERSION, CheckpointManager
 from nicheiq.flows.research_flow import ResearchFlow
 from nicheiq.models.research_state import ResearchState
 
@@ -32,6 +32,9 @@ def _write_checkpoint(
     stage_files: dict[str, dict] | None = None,
 ) -> Path:
     folder.mkdir(parents=True, exist_ok=True)
+    # Default to the current schema_version so checkpoints represent up-to-date data; tests
+    # exercising drift can pass schema_version explicitly in `metadata`.
+    metadata = {"schema_version": CHECKPOINT_SCHEMA_VERSION, **metadata}
     (folder / "metadata.json").write_text(json.dumps(metadata, indent=2))
     for name, body in (stage_files or {}).items():
         (folder / name).write_text(json.dumps(body, indent=2))
@@ -234,6 +237,47 @@ class TestSameJobResume:
             if p.is_dir() and p != folder
         ]
         assert forks == []
+
+
+class TestCrossJobOptIn:
+    """find_latest_checkpoint must not adopt another job's checkpoint unless opted in.
+
+    Regression guard for the incident where a worker retry (same job_id, no checkpoint of
+    its own after a Stage-1 failure) silently forked an unrelated older job's stale-schema
+    checkpoint via the niche-only Tier-2 fallback.
+    """
+
+    NICHE_SLUG = "ai_productivity_tools_for_indie_hackers"
+
+    def _other_job_checkpoint(self, checkpoint_temp_dir):
+        folder = checkpoint_temp_dir / f"checkpoint_{self.NICHE_SLUG}_other-job_20260101_120000"
+        return _write_checkpoint(folder, metadata={
+            "niche_description": NICHE, "job_id": "other-job",
+            "current_stage": 5, "completed_stages": [], "errors": [],
+        })
+
+    def test_worker_retry_does_not_adopt_other_job(self, checkpoint_temp_dir, sample_research_state):
+        other = self._other_job_checkpoint(checkpoint_temp_dir)
+        manager = CheckpointManager(niche_description=NICHE, state=sample_research_state, job_id="my-job")
+        with patch("nicheiq.flows.checkpoint_manager.settings") as mock_settings:
+            mock_settings.checkpoint_enabled = True
+            mock_settings.checkpoint_dir = checkpoint_temp_dir
+            # Default (worker retry): no own checkpoint -> start fresh, do NOT adopt other-job.
+            assert manager.find_latest_checkpoint() is None
+            # Opt-in (CLI --resume): the niche-only fallback returns the other-job folder.
+            assert manager.find_latest_checkpoint(allow_cross_job=True) == other
+
+    def test_tier1_still_found_with_default(self, checkpoint_temp_dir, sample_research_state):
+        own = checkpoint_temp_dir / f"checkpoint_{self.NICHE_SLUG}_my-job_20260101_120000"
+        _write_checkpoint(own, metadata={
+            "niche_description": NICHE, "job_id": "my-job", "completed_stages": [], "errors": [],
+        })
+        manager = CheckpointManager(niche_description=NICHE, state=sample_research_state, job_id="my-job")
+        with patch("nicheiq.flows.checkpoint_manager.settings") as mock_settings:
+            mock_settings.checkpoint_enabled = True
+            mock_settings.checkpoint_dir = checkpoint_temp_dir
+            # The job's OWN checkpoint is still found by the job-scoped Tier-1 search.
+            assert manager.find_latest_checkpoint() == own
 
 
 class TestLegacyCheckpointWithoutJobIdInMetadata:

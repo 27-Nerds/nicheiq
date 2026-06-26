@@ -3,9 +3,24 @@ Pydantic models for solution ideas (Stage 7).
 """
 
 
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+class AudienceFitResult(BaseModel):
+    """Output of the post-generation audience-fit judgment (output framing only).
+
+    `serves_audience` holds the solution_name values the LLM judged to primarily serve the
+    user's stated audience. Used to set SolutionIdea.audience_fit; never affects scores.
+    """
+
+    model_config = ConfigDict(extra='ignore')
+
+    serves_audience: list[str] = Field(
+        default_factory=list,
+        description="solution_name values of the ideas that primarily serve the stated audience",
+    )
 
 
 class SEORefinementMetadata(BaseModel):
@@ -135,6 +150,69 @@ class EvaluationResult(BaseModel):
     )
 
 
+# ---------------------------------------------------------------------------
+# Idea tag facets (closed vocabularies) — see docs/IDEA_TAGS.md
+# These Literal aliases are the single source of truth for the tag vocabulary,
+# reused by IdeaTags below and by the LLM tagging output model (SolutionTagBatch).
+# ---------------------------------------------------------------------------
+ProjectTypeTag = Literal[
+    "aggregator", "saas", "comparison-tool", "directory", "marketplace", "other"
+]
+TargetMarketTag = Literal["b2b", "b2c", "prosumer", "b2b2c"]
+MonetizationTag = Literal[
+    "subscription", "one-time", "commission", "usage-based",
+    "advertising", "affiliate", "licensing",
+]
+GrowthChannelTag = Literal[
+    "programmatic-seo", "content", "community", "paid-ads",
+    "network-effects", "integrations",
+]
+RiskFlagTag = Literal["regulatory", "tos-risk", "grey-market", "trust-dependent"]
+DataAccessTag = Literal[
+    "public", "freemium", "paywalled", "unofficial", "restricted", "blocked"
+]
+BuildComplexityTag = Literal["low", "medium", "high"]
+NoveltyLevelTag = Literal["conventional", "moderate", "novel"]
+StrengthTag = Literal[
+    "market-fit", "seo-power", "innovator", "quick-build", "solo-friendly"
+]
+
+
+class IdeaTags(BaseModel):
+    """
+    Closed-vocabulary filter facets for an idea, displayed as chips (now) and used
+    for filtering (later). Assembled in `utils.idea_tags.derive_tag_facets()`:
+    LLM-generated semantic facets are merged with code-derived buckets and facets
+    reused from existing idea fields. See docs/IDEA_TAGS.md.
+    """
+
+    model_config = ConfigDict(extra='ignore')
+
+    # Reused verbatim from existing idea fields (cross-job filters)
+    project_type: Optional[ProjectTypeTag] = Field(default=None)
+    data_access: Optional[DataAccessTag] = Field(default=None)
+
+    # LLM-generated semantic facets
+    target_market: Optional[TargetMarketTag] = Field(default=None)
+    monetization: Optional[MonetizationTag] = Field(
+        default=None, description="Primary revenue model"
+    )
+    monetization_secondary: Optional[MonetizationTag] = Field(default=None)
+    growth_channels: list[GrowthChannelTag] = Field(default_factory=list)
+    risk_flags: list[RiskFlagTag] = Field(default_factory=list)
+
+    # Code-derived from scores
+    build_complexity: Optional[BuildComplexityTag] = Field(default=None)
+    novelty_level: Optional[NoveltyLevelTag] = Field(default=None)
+    # All earned strengths (modal + future filtering)
+    strengths: list[StrengthTag] = Field(default_factory=list)
+    # The single most-exceptional strength (max margin above cutoff), or None — card badge
+    primary_strength: Optional[StrengthTag] = Field(default=None)
+
+    # LLM's one-sentence justification of the non-obvious (semantic) tag calls — "Why these tags".
+    rationale: Optional[str] = Field(default=None)
+
+
 class BaseSolutionIdea(BaseModel):
     """
     Solution idea as output by Stage 7 (UnifiedSolutionCrew).
@@ -196,6 +274,14 @@ class BaseSolutionIdea(BaseModel):
     )
     source_segment: Optional[str] = Field(
         default=None, description="Name of the audience segment the generating cell reasoned as"
+    )
+    audience_fit: Optional[bool] = Field(
+        default=None,
+        description=(
+            "OUTPUT-framing only: True when this idea serves the user's stated target audience "
+            "(set post-generation by ResearchFlow._tag_audience_fit; None when no audience). "
+            "Never influences generation or scores; drives the frontend primary/adjacent split."
+        ),
     )
     core_features: list[str] = Field(
         ..., description="Key features for minimum viable product"
@@ -299,6 +385,11 @@ class BaseSolutionIdea(BaseModel):
     journey_tag: Optional[str] = Field(
         default=None, description="User journey (hyphenated phrase)"
     )
+
+    # Closed-vocabulary filter facets (chips + future filtering). Populated in code
+    # (UnifiedSolutionCrew tagging step → utils.idea_tags.derive_tag_facets), not by the
+    # refinement LLM. See docs/IDEA_TAGS.md.
+    tags: Optional[IdeaTags] = Field(default=None)
 
     # SEO & Organic Acquisition Fields (Stage 7 estimates - before keyword research)
     programmatic_seo_opportunity: Optional[str] = Field(
@@ -470,6 +561,36 @@ class BaseSolutionIdea(BaseModel):
             "obvious, 0.8-1.0 cached first-thought. Surfaced in the UI as 'Originality' "
             "(= 1 - obviousness_score)."
         )
+    )
+
+    # Realism-calibration provenance (Stage 7 post-refinement). When the independent realism
+    # critic re-scores an idea, the generator's ORIGINAL self-scores are preserved here so the
+    # change is auditable (and the A/B harness can compare raw vs calibrated). These MUST be
+    # declared fields — BaseSolutionIdea is extra='ignore', so undeclared extras would be dropped
+    # on the next model_validate / checkpoint reload. None until the critic runs (flag-gated).
+    market_fit_score_raw: Optional[float] = Field(
+        default=None, ge=0.0, le=1.0,
+        description="Generator's original market_fit_score before realism calibration (audit/A-B only).",
+    )
+    technical_feasibility_score_raw: Optional[float] = Field(
+        default=None, ge=0.0, le=1.0,
+        description="Generator's original technical_feasibility_score before realism calibration.",
+    )
+    novelty_score_raw: Optional[float] = Field(
+        default=None, ge=0.0, le=1.0,
+        description="Generator's original novelty_score before realism calibration.",
+    )
+    seo_scalability_score_raw: Optional[float] = Field(
+        default=None, ge=0.0, le=1.0,
+        description="Generator's original seo_scalability_score before realism calibration.",
+    )
+    obviousness_score_raw: Optional[float] = Field(
+        default=None, ge=0.0, le=1.0,
+        description="Pre-refinement critic's original obviousness_score before realism re-score.",
+    )
+    calibration_notes: Optional[str] = Field(
+        default=None,
+        description="Realism critic's per-criterion 1-line reasons (audit/transparency; not user-facing).",
     )
 
 
@@ -829,6 +950,13 @@ class RawConcept(BaseModel):
         description="Short note: data source/route, access model + cost/ToS risk (≤120 chars).",
     )
 
+    # Internal critic drop-marks set during per-sample scoring (_score_concepts) and consumed by
+    # the post-barrier finalizer (_finalize_critic_pool). exclude=True keeps them out of every
+    # model_dump so they never leak into the report/frontend — they only carry the drop decision
+    # from the threaded scorer to the single-threaded finalizer.
+    critic_already_exists: bool = Field(default=False, exclude=True)  # novelty: close equivalent exists
+    critic_no_route: bool = Field(default=False, exclude=True)        # feasibility: no obtainable data route
+
 
 class RawConceptList(BaseModel):
     """
@@ -853,42 +981,4 @@ class RawConceptList(BaseModel):
     pain_points_referenced: list[str] = Field(
         ...,
         description="Pain point titles that informed the concept generation"
-    )
-
-
-class FilteredConceptList(BaseModel):
-    """
-    Output of diversity filtering task (Task 2).
-
-    Contains 5-7 unique concepts after removing duplicates and enforcing diversity.
-    Includes transparency about what was removed and why.
-    """
-
-    model_config = ConfigDict(extra='ignore')
-
-    concepts: list[RawConcept] = Field(
-        ...,
-        min_length=3,
-        max_length=12,
-        description="unique concepts after filtering (minimum 3, up to ~10 — capped at 12 to leave headroom)"
-    )
-    removed_concepts: list[str] = Field(
-        ...,
-        description="Names of concepts removed as duplicates or too similar"
-    )
-    removal_reasons: list[str] = Field(
-        ...,
-        description=(
-            "Explanations for why each removed concept was filtered. "
-            "Format: '[ConceptName]: [reason]' "
-            "Example: 'VendorCompare: Too similar to VendorMatch (same data source + mechanism)'"
-        )
-    )
-    diversity_summary: str = Field(
-        ...,
-        description=(
-            "Summary of diversity achieved: project types represented, "
-            "data sources variety, niche specificity distribution. "
-            "Example: '3 directories, 2 aggregators, 1 comparison tool across 4 unique data sources'"
-        )
     )

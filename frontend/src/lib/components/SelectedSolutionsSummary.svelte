@@ -6,7 +6,7 @@
   import SolutionDetail from "./SolutionDetail.svelte";
   import { ListChecks, Clock } from "lucide-svelte";
   import type { SolutionPreview } from "$lib/types/job";
-  import { computeCompositeScore, getSuperpower, SUPERPOWER_MAP_DETAILED } from "$lib/utils/solution-utils";
+  import { computeCompositeScore, solutionStrengthBadge } from "$lib/utils/solution-utils";
 
   interface Props {
     selectedNames: string[];
@@ -55,7 +55,7 @@
   <div class="grid grid-cols-1 {selectedSolutions.length > 1 ? `sm:grid-cols-${Math.min(selectedSolutions.length, 3)}` : ''} gap-3">
     {#each selectedSolutions as solution, i}
       {@const score = computeCompositeScore(solution)}
-      {@const superpower = getSuperpower(solution, SUPERPOWER_MAP_DETAILED)}
+      {@const superpower = solutionStrengthBadge(solution, true)}
       <button
         type="button"
         class="flex items-center gap-3 p-3 rounded-lg border border-border text-left cursor-pointer transition-colors hover:border-border-hover

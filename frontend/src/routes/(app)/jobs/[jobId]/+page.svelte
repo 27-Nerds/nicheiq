@@ -439,7 +439,7 @@
       core_pain_point: topRealPain ? {
         title: topRealPain.title,
         severity_score: topRealPain.severity_score,
-        willingness_to_pay_score: topRealPain.willingness_to_pay ?? 0,
+        commercial_intent_score: topRealPain.commercial_intent ?? (topRealPain as any).willingness_to_pay ?? 0,
       } : placeholderExec.executive_dashboard?.core_pain_point,
     },
   } as import('$lib/types/report').Report);
@@ -788,6 +788,8 @@
                 jobId={jobId ?? ''}
                 solutions={displaySolutions}
                 coverageNotes={previewReport?.data_quality_summary?.quality_caveats ?? []}
+                primaryAudience={previewReport?.niche_context?.resolved_primary_audience ?? null}
+                audienceLabel={previewReport?.niche_context?.user_target_audience ?? null}
                 creditBalance={page.data.creditBalance ?? 0}
                 stageCosts={page.data.stageCosts ?? { discovery: 5, deep_research: 15, landing_page: 5, regenerate_ideas: 2 }}
                 canRegenerate={job.canRegenerate ?? false}
@@ -846,7 +848,7 @@
             resetKey={sectionResetKey}
             id="pain-points"
           >
-            <p class="section-intro">What are people struggling with? Each pain point scored by frequency, emotional intensity, and willingness to pay.</p>
+            <p class="section-intro">What are people struggling with? Each pain point scored by how much it blocks real work (severity) and its commercial-intent signal.</p>
             {#each topPainPoints as pp, i}
               <PainPointSummaryCard painPoint={pp} rank={i + 1} isTop={i === 0} onViewOpportunity={scrollToSolutions} />
             {/each}

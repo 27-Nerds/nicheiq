@@ -170,8 +170,8 @@ class PricingStrategyCrew:
             if hasattr(pain_point, 'severity_score'):
                 wtp_str += f" (Severity: {pain_point.severity_score:.2f})"
 
-            if hasattr(pain_point, 'willingness_to_pay'):
-                wtp_str += f" - WTP Score: {pain_point.willingness_to_pay:.2f}"
+            if hasattr(pain_point, 'commercial_intent'):
+                wtp_str += f" - WTP Score: {pain_point.commercial_intent:.2f}"
 
             wtp_info.append(wtp_str)
 

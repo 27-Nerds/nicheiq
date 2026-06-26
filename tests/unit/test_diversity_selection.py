@@ -1,7 +1,6 @@
 """Tests for diversity-aware final selection:
 - `_enforce_diversity_caps` (drop-only, floor-protected, bold/sole-coverage protected, greedy mechanism families)
 - the (pain × data_source) dedup stage in `_pool_and_dedup_raw_concepts`
-- FilteredConceptList accepts the raised count
 """
 from types import SimpleNamespace
 
@@ -148,6 +147,158 @@ class TestPainSourceDedup:
         assert len(out) == 7  # nothing collapsed despite all source_pain=None
 
 
+class TestValidateIdeaScores:
+    """Deterministic downgrade-only score backstop (wired after calibration in execute_pipeline):
+    novelty ≤ 1−obviousness, market_fit ≤ 0.4 on unverified data, per-pain concentration caveat.
+    Never inflates; zero false positives on clean ideas.
+    """
+    def _crew(self):
+        crew = usc.UnifiedSolutionCrew.__new__(usc.UnifiedSolutionCrew)
+        crew.coverage_caveats = []
+        return crew
+
+    def _i(self, name, nov=0.4, obv=0.6, mf=0.3, dam=None, bf=0.8, pain="P"):
+        return SimpleNamespace(solution_name=name, novelty_score=nov, obviousness_score=obv,
+                               market_fit_score=mf, data_access_model=dam,
+                               build_feasibility_score=bf, source_pain=pain)
+
+    def test_caps_novelty_to_one_minus_obviousness(self):
+        crew = self._crew()
+        idea = self._i("Over", nov=0.8, obv=0.5)   # originality 0.5, novelty overstates by 0.3 (>0.25)
+        flags = crew._validate_idea_scores([idea])
+        assert idea.novelty_score == 0.5 and "Over" in flags
+
+    def test_caps_market_fit_on_unverified_data(self):
+        crew = self._crew()
+        idea = self._i("Gray", mf=0.85, dam="unofficial")
+        crew._validate_idea_scores([idea])
+        assert idea.market_fit_score == 0.4
+
+    def test_caps_market_fit_on_low_build_feasibility(self):
+        crew = self._crew()
+        idea = self._i("Hard", mf=0.7, dam="official", bf=0.3)   # buildable route but bf<0.5
+        crew._validate_idea_scores([idea])
+        assert idea.market_fit_score == 0.4
+
+    def test_clean_idea_untouched_no_false_positive(self):
+        crew = self._crew()
+        idea = self._i("Clean", nov=0.4, obv=0.6, mf=0.4, dam="official", bf=0.8)
+        flags = crew._validate_idea_scores([idea])
+        assert flags == {} and idea.novelty_score == 0.4 and idea.market_fit_score == 0.4
+
+    def test_never_inflates(self):
+        crew = self._crew()
+        idea = self._i("Low", nov=0.2, obv=0.1, mf=0.3, dam="official")  # 1−obv=0.9 but nov stays 0.2
+        crew._validate_idea_scores([idea])
+        assert idea.novelty_score == 0.2
+
+    def test_per_pain_concentration_caveat(self):
+        crew = self._crew()
+        cap = usc.settings.diversity_max_per_segment
+        ideas = [self._i(f"id{i}", pain="same pain") for i in range(cap + 1)]
+        crew._validate_idea_scores(ideas)
+        assert any("share" not in c and "address one pain" in c for c in crew.coverage_caveats)
+
+
+class TestImprovementLoopGate:
+    """Cost-gate + grounding for the wired mentor improvement loop (no LLM)."""
+    def _crew(self, **attrs):
+        crew = usc.UnifiedSolutionCrew.__new__(usc.UnifiedSolutionCrew)
+        for k, v in attrs.items():
+            setattr(crew, k, v)
+        return crew
+
+    def _i(self, mf=0.8, nov=0.7, tf=0.8, dam="official", **kw):
+        return SimpleNamespace(market_fit_score=mf, novelty_score=nov, technical_feasibility_score=tf,
+                               data_access_model=dam, **kw)
+
+    def test_strong_obtainable_idea_skips_loop(self):
+        crew = self._crew()
+        assert crew._idea_already_strong(self._i(mf=0.8, nov=0.7, tf=0.8, dam="official")) is True
+
+    def test_weak_idea_enters_loop(self):
+        crew = self._crew()
+        assert crew._idea_already_strong(self._i(mf=0.3, nov=0.4, tf=0.5, dam="official")) is False
+
+    def test_strong_but_unverified_data_enters_loop(self):
+        # high scores but a blocked/unofficial route → still needs the loop (don't skip)
+        crew = self._crew()
+        assert crew._idea_already_strong(self._i(mf=0.9, nov=0.8, tf=0.9, dam="blocked")) is False
+
+    def test_build_cell_grounding_pulls_pain_and_segment(self):
+        pain = SimpleNamespace(title="ticket scalping", description="fans priced out",
+                               representative_quotes=["scalpers ruin it"], opportunity_level="high",
+                               severity_score=0.8)
+        seg = SimpleNamespace(segment_name="Fans", motivation_drivers=["watch live"],
+                              expertise_level="casual", budget_sensitivity="high")
+        crew = self._crew(
+            niche_context=SimpleNamespace(niche_description="esports"),
+            pain_point_analysis=SimpleNamespace(pain_points=[pain]),
+            audience_mapping=SimpleNamespace(audience_segments=[seg]),
+            competitor_mentions_text="SeatGeek, StubHub")
+        idea = SimpleNamespace(source_pain="ticket scalping", source_segment="Fans")
+        g = crew._build_cell_grounding(idea)
+        assert g.pain_title == "ticket scalping" and "fans priced out" in g.pain_evidence
+        assert "scalpers ruin it" in g.pain_evidence and g.audience_segment == "Fans"
+        assert "watch live" in g.segment_profile and g.pain_severity == "high"
+        assert "StubHub" in g.competitor_mentions
+
+
+class TestMergeLoopResult:
+    """Crew merge of an adopted loop revision: surface pitch fields come from the revision as a unit
+    (never the original's stale pitch); non-surface fields keep the original on an empty improved value."""
+    def _crew(self):
+        return usc.UnifiedSolutionCrew.__new__(usc.UnifiedSolutionCrew)
+
+    def _idea(self, **kw):
+        base = dict(solution_name="Old", headline="Old headline", short_description="old pitch",
+                    description="old desc", value_proposition="old vp", why_it_works="old wiw",
+                    why_it_works_short="old s", innovation_angle="old ia", technical_approach="old tech",
+                    data_sources=["old-src"], market_fit_score=0.5, novelty_score=0.5,
+                    obviousness_score=0.4, seo_scalability_score=0.6)
+        base.update(kw)
+        return SimpleNamespace(**base)
+
+    def test_surface_fields_taken_from_revision(self):
+        crew = self._crew()
+        orig = self._idea()
+        improved = self._idea(solution_name="New", headline="New headline", short_description="new pitch",
+                              description="new desc", value_proposition="new vp", why_it_works="new wiw")
+        crew._merge_loop_result(orig, improved)
+        assert orig.solution_name == "New" and orig.headline == "New headline"
+        assert orig.short_description == "new pitch" and orig.value_proposition == "new vp"
+
+    def test_blank_surface_field_never_keeps_stale_original(self):
+        # improved blanked headline / short_description / value_proposition / why_it_works while the
+        # mechanism changed → must NOT retain the original's old pitch
+        crew = self._crew()
+        orig = self._idea()
+        improved = self._idea(solution_name="RigCheck", headline="", short_description="",
+                              description="A binary triage tool that flags rigged lobbies.",
+                              value_proposition="", why_it_works="", innovation_angle="")
+        crew._merge_loop_result(orig, improved)
+        assert orig.headline == "RigCheck"                                  # derived from the new name
+        assert orig.short_description.startswith("A binary triage tool")    # derived from NEW description
+        assert orig.value_proposition.startswith("A binary triage tool")    # derived from NEW description
+        assert orig.why_it_works is None and orig.innovation_angle is None  # cleared, not stale
+        assert "old" not in (orig.headline + orig.short_description + orig.value_proposition).lower()
+
+    def test_non_surface_field_keeps_original_when_improved_empty(self):
+        # a non-surface field (technical_approach) blanked by the improver → keep original (degrade-safe)
+        crew = self._crew()
+        orig = self._idea(technical_approach="real original tech")
+        improved = self._idea(solution_name="New", technical_approach="")
+        crew._merge_loop_result(orig, improved)
+        assert orig.technical_approach == "real original tech"
+
+    def test_preserves_non_loop_fields(self):
+        crew = self._crew()
+        orig = self._idea(obviousness_score=0.33, seo_scalability_score=0.77)
+        improved = self._idea(solution_name="New")
+        crew._merge_loop_result(orig, improved)
+        assert orig.obviousness_score == 0.33 and orig.seo_scalability_score == 0.77  # untouched by the loop
+
+
 class TestCarryProvenance:
     def _rc(self, name, **kw):
         from nicheiq.models.solution_idea import RawConcept
@@ -178,6 +329,28 @@ class TestCarryProvenance:
         assert sol.source_segment == "Skincare Enthusiasts"
         assert sol.mechanism_tag == "aggregates-coa"
         assert sol.pain_points_addressed == ["the real pain"]  # code-filled
+
+    def test_filter_paraphrase_of_source_pain_is_restored(self, monkeypatch):
+        # Regression: the Stage-5_2 filter LLM PARAPHRASES source_pain ("...overwhelm grassroots
+        # organizers" -> "LAN party infrastructure logistics"), which alone would break the title-
+        # keyed joins (coverage / keyword-seed / report_consistency). _carry_provenance re-asserts
+        # the CANONICAL concept title via exact name match, so the refined idea rejoins Stage-3.
+        # Verified on run 947eb269: 7/7 restored, 0 fuzzy — the audit's "ideas join to no title"
+        # was an artifact of inspecting the pre-carry stage_5_3 checkpoint (saved before this runs).
+        canonical = "LAN party infrastructure and logistics overwhelm grassroots organizers"
+        crew = self._crew_pc(monkeypatch, grounded=[canonical])
+        rc = self._rc("CircuitStrike", source_pain=canonical, source_segment="Casual Community Builders")
+        raw = SimpleNamespace(concepts=[rc])
+        sol = SimpleNamespace(solution_name="CircuitStrike", value_proposition="", headline="",
+                              pain_points_addressed=[],
+                              source_pain="LAN party infrastructure logistics",  # the filter paraphrase
+                              source_segment="Casual Community Builders",
+                              mechanism_tag=None, data_source_tag=None, journey_tag=None,
+                              obviousness_score=None)
+        refined = SimpleNamespace(solution_ideas=[sol])
+        hits = crew._carry_provenance(refined, raw)
+        assert hits == 0                          # exact name match (no fuzzy needed)
+        assert sol.source_pain == canonical       # paraphrase overwritten with the canonical title
 
     def test_renamed_idea_fuzzy_matches(self, monkeypatch):
         crew = self._crew_pc(monkeypatch, grounded=["purity pain"])
@@ -303,13 +476,3 @@ class TestPainCoverageSummary:
         crew._pain_coverage_summary(ideas)
         assert "pre-existing caveat" in crew.coverage_caveats
         assert len(crew.coverage_caveats) == 2   # original + the new note
-
-
-class TestFilteredConceptCount:
-    def test_accepts_up_to_12(self):
-        from nicheiq.models.solution_idea import FilteredConceptList, RawConcept
-        rc = lambda n: RawConcept(concept_name=n, one_liner="x y", ideation_technique="atomic_feature",
-                                  project_type="saas", target_keywords=["a", "b"])
-        fcl = FilteredConceptList(concepts=[rc(f"c{i}") for i in range(12)],
-                                  removed_concepts=[], removal_reasons=[], diversity_summary="x" * 40)
-        assert len(fcl.concepts) == 12

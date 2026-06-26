@@ -14,7 +14,7 @@ from pydantic import Field
 from ...models.social_content import RedditPost
 
 if TYPE_CHECKING:
-    from crewai.rag.types import BaseRecord
+    pass
 
 
 class RedditKnowledgeSource(BaseKnowledgeSource):

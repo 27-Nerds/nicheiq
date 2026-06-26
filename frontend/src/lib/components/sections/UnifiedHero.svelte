@@ -99,7 +99,9 @@
     heroPain?.severity_score ?? corePain?.severity_score ?? 0,
   );
   const heroPainWTP = $derived(
-    heroPain?.willingness_to_pay ?? corePain?.willingness_to_pay_score ?? 0,
+    // commercial_intent (was willingness_to_pay); legacy fallback keeps pre-rename reports rendering
+    heroPain?.commercial_intent ?? (heroPain as any)?.willingness_to_pay ??
+      corePain?.commercial_intent_score ?? (corePain as any)?.willingness_to_pay_score ?? 0,
   );
   const heroPainOpportunity = $derived(heroPain?.opportunity_level ?? null);
   const heroPainSolutionApproach = $derived(

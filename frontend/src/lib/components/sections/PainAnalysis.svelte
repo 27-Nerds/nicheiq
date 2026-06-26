@@ -57,6 +57,11 @@
   let { painPoints, analytics, solution, topPainPointsSummary, previewMode = false, onUnlockClick }: Props =
     $props();
 
+  // commercial_intent (was willingness_to_pay): read with a legacy fallback so reports
+  // generated before the rename still show this metric.
+  const ciOf = (p: { commercial_intent?: number }): number =>
+    p?.commercial_intent ?? (p as { willingness_to_pay?: number })?.willingness_to_pay ?? 0;
+
   // Tab state
   let activeTab: "journey" | "analysis" = $state("journey");
 
@@ -76,7 +81,7 @@
 
   const avgWtp = $derived(
     topPainPoints.length > 0
-      ? topPainPoints.reduce((sum, p) => sum + p.willingness_to_pay, 0) /
+      ? topPainPoints.reduce((sum, p) => sum + ciOf(p), 0) /
           topPainPoints.length
       : 0,
   );
@@ -195,7 +200,7 @@
 
       <HeroMetric
         value={analytics.quadrant_distribution.high_severity_low_wtp}
-        label="High Sev / Low WTP"
+        label="High Sev / Low Intent"
         color="warning"
         icon={AlertTriangle}
       />
@@ -350,7 +355,7 @@
       {/if}
 
       <!-- Willingness to Pay Insight -->
-      {#if topPainPoints.some((p) => p.willingness_to_pay > 0.5)}
+      {#if topPainPoints.some((p) => ciOf(p) > 0.5)}
         <AnimateOnScroll animation="fade-up" delay={600}>
           <div class="wtp-insight">
             <div class="wtp-header">
@@ -358,13 +363,13 @@
               <h4>Monetization Signal</h4>
             </div>
             <p class="wtp-text">
-              {topPainPoints.filter((p) => p.willingness_to_pay > 0.5).length} of
+              {topPainPoints.filter((p) => ciOf(p) > 0.5).length} of
               {topPainPoints.length} top pain points show high willingness-to-pay
               indicators, suggesting strong market demand for a paid solution.
             </p>
             <div class="wtp-scores">
               {#each topPainPoints
-                .filter((p) => p.willingness_to_pay > 0.5)
+                .filter((p) => ciOf(p) > 0.5)
                 .slice(0, 3) as point}
                 <div class="wtp-item">
                   <span class="wtp-name"
@@ -373,7 +378,7 @@
                       : ""}</span
                   >
                   <span class="wtp-value"
-                    >{formatScorePercent(point.willingness_to_pay)} WTP</span
+                    >{formatScorePercent(ciOf(point))} Buying Signal</span
                   >
                 </div>
               {/each}
@@ -494,7 +499,7 @@
                   </div>
                   <div class="score-ring-item">
                     <ProgressRing
-                      value={point.willingness_to_pay}
+                      value={ciOf(point)}
                       size={56}
                       strokeWidth={4}
                       color="auto"
@@ -518,8 +523,8 @@
                 />
                 <MetaItem
                   icon={DollarSign}
-                  value={formatScorePercent(point.willingness_to_pay)}
-                  label="WTP"
+                  value={formatScorePercent(ciOf(point))}
+                  label="Commercial Intent"
                   iconClass="w-4 h-4 text-success"
                 />
                 <MetaItem
@@ -561,7 +566,8 @@
                     <MessageSquare class="w-4 h-4" />
                     <span
                       >{expandedQuotes[index] ? "Hide" : "Show"}
-                      {point.representative_quotes.length} quotes</span
+                      {point.representative_quotes.length}
+                      {point.representative_quotes.length === 1 ? "quote" : "quotes"}</span
                     >
                     {#if expandedQuotes[index]}
                       <ChevronUp class="w-4 h-4" />

@@ -5,7 +5,7 @@ Covers:
 - build_crew_llm: reasoning models get a crewai.LLM with reasoning_effort
   (ChatOpenAI loses it in CrewAI's create_llm conversion — audit V1)
 - detect_similarity: fuzzy signals 1/3 + single-strong-signal failure
-- _tags_match + validate_filtered_concepts: the M/D/J tag contract
+- _tags_match: the M/D/J tag contract
 - detect_catalog_duplicate: renamed structural duplicates are caught
 - select_diverse_pain_points: severity + mentions + unrepresented-theme mix
 """
@@ -20,7 +20,6 @@ from nicheiq.utils.validation.crew_guardrails import (
     _tags_match,
     detect_catalog_duplicate,
     detect_similarity,
-    validate_filtered_concepts,
 )
 
 
@@ -104,78 +103,6 @@ class TestTagsMatch:
 
     def test_none_never_matches(self):
         assert not _tags_match(None, "platform-api")
-
-
-def _filtered_concepts_output(concepts):
-    output = MagicMock()
-    output.pydantic = None
-    output.raw = json.dumps({
-        "concepts": concepts,
-        "removed_concepts": [],
-        "removal_reasons": [],
-        "diversity_summary": "Three structurally distinct concepts across different data sources and journeys.",
-    })
-    return output
-
-
-def _concept(name, mech, data, journey):
-    return {
-        "concept_name": name,
-        "one_liner": f"{name} does something interesting with a unique angle on the problem.",
-        "ideation_technique": "niche_drilling",
-        "project_type": "aggregator",
-        "target_keywords": ["keyword one", "keyword two"],
-        "mechanism_tag": mech,
-        "data_source_tag": data,
-        "journey_tag": journey,
-    }
-
-
-class TestFilteredConceptsTagContract:
-    def test_valid_diverse_tags_pass(self):
-        output = _filtered_concepts_output([
-            _concept("A", "aggregates-public-records", "government-open-data", "search-lands-on-page"),
-            _concept("B", "parametric-calculator", "scraped-web-pages", "enters-inputs-gets-calculation"),
-            _concept("C", "community-submitted-benchmarks", "self-reported-user-data", "submits-data-creates-value"),
-        ])
-        ok, _ = validate_filtered_concepts(output)
-        assert ok
-
-    def test_missing_tags_fail(self):
-        concepts = [
-            _concept("A", "aggregates-public-records", "government-open-data", "search-lands-on-page"),
-            _concept("B", "parametric-calculator", "scraped-web-pages", "enters-inputs-gets-calculation"),
-            _concept("C", "community-submitted-benchmarks", "self-reported-user-data", "submits-data-creates-value"),
-        ]
-        del concepts[1]["mechanism_tag"]
-        ok, msg = validate_filtered_concepts(_filtered_concepts_output(concepts))
-        assert not ok
-        assert "mechanism_tag" in msg
-
-    def test_structural_duplicates_now_warn_not_reject(self):
-        """Structural near-duplicates (≥2 shared M/D/J) are now a WARNING, not a hard
-        reject — the old hard-reject deleted genuinely on-niche ideas and could crash
-        the run on retry exhaustion. Coverage is enforced deterministically post-crew.
-        """
-        output = _filtered_concepts_output([
-            _concept("A", "aggregates-public-records", "government-open-data", "search-lands-on-page"),
-            _concept("B", "aggregates-public-records", "government-open-data", "subscribes-gets-alerts"),
-            _concept("C", "parametric-calculator", "scraped-web-pages", "enters-inputs-gets-calculation"),
-        ])
-        ok, _msg = validate_filtered_concepts(output)
-        assert ok  # passes now (warning logged), does not hard-reject
-
-    def test_missing_tags_still_rejected(self):
-        """The satisfiable presence check (every concept carries M/D/J tags) still fails."""
-        concepts = [
-            _concept("A", "aggregates-public-records", "government-open-data", "search-lands-on-page"),
-            _concept("B", "parametric-calculator", "scraped-web-pages", "enters-inputs-gets-calculation"),
-            _concept("C", "community-submitted-benchmarks", "self-reported-user-data", "submits-data-creates-value"),
-        ]
-        del concepts[0]["data_source_tag"]
-        ok, msg = validate_filtered_concepts(_filtered_concepts_output(concepts))
-        assert not ok
-        assert "data_source_tag" in msg
 
 
 class TestDetectCatalogDuplicate:

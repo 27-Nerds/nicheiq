@@ -6,6 +6,7 @@ and recovery from failures.
 """
 
 import json
+import re
 import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -17,6 +18,20 @@ from loguru import logger
 from ..config.settings import settings
 from ..models.research_state import ResearchState
 from ..utils.validation import CheckpointValidator
+
+# Bump when a checkpoint stage-file schema changes incompatibly. Stamped into metadata on
+# save; a mismatch on load means the checkpoint may not deserialize cleanly (see load guard).
+CHECKPOINT_SCHEMA_VERSION = 1
+
+
+def _stage_num_from_filename(name: str) -> int | None:
+    """Extract the producing stage number from a checkpoint stage id/filename.
+
+    'stage_3_pain_points.json' -> 3 ; 'stage_5_3_refinement.json' -> 5 ;
+    'stage_6a_seed_expansion' -> 6 ; 'metadata.json' / non-stage -> None.
+    """
+    m = re.match(r"stage_(\d+)", name)
+    return int(m.group(1)) if m else None
 
 
 class CheckpointManager:
@@ -37,6 +52,7 @@ class CheckpointManager:
         state: ResearchState,
         allowed_project_types: list[str | None] = None,
         job_id: str | None = None,
+        entry_mode: str | None = None,
     ):
         """
         Initialize checkpoint manager.
@@ -46,11 +62,14 @@ class CheckpointManager:
             state: Research state object to checkpoint
             allowed_project_types: Optional project type constraints
             job_id: Optional job identifier for cross-user checkpoint isolation
+            entry_mode: Optional input entry mode ('idea'|'audience'|'discovery'); persisted in
+                metadata so it survives resume (re-synced onto the flow after restore).
         """
         self.niche_description = niche_description
         self.state = state
         self.allowed_project_types = allowed_project_types
         self.job_id = job_id
+        self.entry_mode = entry_mode
         self.checkpoint_folder: Path | None = None
         self.validator = CheckpointValidator()
 
@@ -153,7 +172,9 @@ class CheckpointManager:
             metadata = {
                 "niche_description": self.niche_description,
                 "job_id": self.job_id,
+                "schema_version": CHECKPOINT_SCHEMA_VERSION,
                 "allowed_project_types": self.allowed_project_types,
+                "entry_mode": self.entry_mode,
                 "started_at": self.state.started_at.isoformat() if self.state.started_at else datetime.now().isoformat(),
                 "completed_stages": [],
                 "errors": self.state.errors.copy() if hasattr(self.state, 'errors') else [],
@@ -163,8 +184,10 @@ class CheckpointManager:
             }
 
         # Update metadata
+        metadata["schema_version"] = CHECKPOINT_SCHEMA_VERSION  # stamp pre-existing metadata too
         metadata["last_checkpoint_at"] = datetime.now().isoformat()
         metadata["current_stage"] = self.state.current_stage
+        metadata["entry_mode"] = self.entry_mode
         if completed_stage not in metadata["completed_stages"]:
             metadata["completed_stages"].append(completed_stage)
         metadata["errors"] = self.state.errors.copy() if hasattr(self.state, 'errors') else []
@@ -216,8 +239,15 @@ class CheckpointManager:
                 temp_file.unlink()  # Clean up temp file on error
             raise  # Re-raise so outer try/catch can handle
 
-    def find_latest_checkpoint(self) -> Path | None:
-        """Find most recent checkpoint folder for current niche/job."""
+    def find_latest_checkpoint(self, allow_cross_job: bool = False) -> Path | None:
+        """Find most recent checkpoint folder for current niche/job.
+
+        ``allow_cross_job`` gates the Tier-2 niche-only fallback. It defaults to False so
+        a WORKER retry (same job_id as the failed job) only ever resumes its OWN checkpoint
+        and never adopts an unrelated job's checkpoint when its own is missing (e.g. a
+        Stage-1 failure that wrote nothing). The CLI ``--resume`` path opts in: it generates
+        a fresh job_id per run and legitimately needs to continue prior niche progress.
+        """
         if not settings.checkpoint_enabled or not settings.checkpoint_dir.exists():
             return None
 
@@ -234,7 +264,10 @@ class CheckpointManager:
             if checkpoints:
                 return checkpoints[0]
 
-        # Tier 2: niche-only fallback (CLI resume with different job_id)
+        # Tier 2: niche-only fallback (CLI resume with a fresh job_id each run). Opt-in only —
+        # a worker retry must NOT silently adopt a different job's (possibly stale-schema) run.
+        if not allow_cross_job:
+            return None
         pattern = f"checkpoint_{niche_slug}_*"
         checkpoints = sorted(
             settings.checkpoint_dir.glob(pattern),
@@ -270,12 +303,32 @@ class CheckpointManager:
                 )
                 return False
 
+            checkpoint_job_id = metadata.get("job_id")
+
+            # Schema-version guard: a checkpoint stamped with an older/missing schema_version
+            # may not deserialize cleanly against the current Pydantic models. REFUSE to adopt
+            # such a checkpoint across jobs (a fresh run is safer than forking stale-schema
+            # data — this is exactly what caused the stale pain-point incident); for a same-job
+            # resume, log and continue — the reconstruction-rewind below regenerates drifted stages.
+            ckpt_version = metadata.get("schema_version")
+            is_cross_job = bool(self.job_id and checkpoint_job_id and self.job_id != checkpoint_job_id)
+            if ckpt_version != CHECKPOINT_SCHEMA_VERSION:
+                if is_cross_job:
+                    logger.warning(
+                        f"Refusing cross-job resume: checkpoint schema_version={ckpt_version} != "
+                        f"{CHECKPOINT_SCHEMA_VERSION} (source job={checkpoint_job_id}); starting fresh."
+                    )
+                    return False
+                logger.warning(
+                    f"Checkpoint schema_version={ckpt_version} != {CHECKPOINT_SCHEMA_VERSION}; "
+                    f"relying on reconstruction-rewind for any drifted stages."
+                )
+
             # Cross-job resume guard: if the source checkpoint belongs to a different
             # job, fork it to a fresh folder owned by the current job. Keeps the source
             # folder byte-identical for other resumes / inspection and prevents
             # save_stage + _update_checkpoint_metadata from corrupting the source.
-            checkpoint_job_id = metadata.get("job_id")
-            if self.job_id and checkpoint_job_id and self.job_id != checkpoint_job_id:
+            if is_cross_job:
                 niche_slug = self._get_niche_slug()
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 forked = settings.checkpoint_dir / f"checkpoint_{niche_slug}_{self.job_id}_{timestamp}"
@@ -285,6 +338,7 @@ class CheckpointManager:
                     forked_metadata = json.load(f)
                 forked_metadata["job_id"] = self.job_id
                 forked_metadata["forked_from"] = folder_path.name
+                forked_metadata["schema_version"] = CHECKPOINT_SCHEMA_VERSION
                 with open(forked_meta_path, "w", encoding="utf-8") as f:
                     json.dump(forked_metadata, f, indent=2, default=str)
                 logger.warning(
@@ -312,6 +366,11 @@ class CheckpointManager:
 
     def _reconstruct_state_from_checkpoint(self, folder_path: Path, metadata: dict[str, Any]) -> None:
         """Reconstruct ResearchState from individual stage checkpoint files."""
+        # Restore entry_mode from metadata so audience-framing survives resume. The flow re-syncs
+        # this onto ResearchFlow.entry_mode after load (only matters if Stage 1 re-runs; the
+        # framing fields themselves ride back on the restored stage_1_niche_context).
+        if metadata.get("entry_mode") is not None:
+            self.entry_mode = metadata.get("entry_mode")
         # Map stage files to state attributes
         stage_mapping = {
             # Stage 1-4: Initial stages
@@ -321,10 +380,9 @@ class CheckpointManager:
             "stage_4_audience_mapping.json": "audience_mapping",
             "stage_5_competitor_mentions.json": "competitor_mentions_formatted",
             # Stage 5: Unified solution pipeline (6 tasks - divergent-convergent architecture)
-            # Tasks 1-2: Intermediate outputs (for debugging, not loaded to state)
+            # Divergent pool: intermediate output (for debugging, not loaded to state)
             "stage_5_1_divergent.json": None,  # RawConceptList - debug only
-            "stage_5_2_filtered.json": None,   # FilteredConceptList - debug only
-            # Tasks 3-6: Essential outputs (loaded to state for resume)
+            # Refinement onward: essential outputs (loaded to state for resume)
             "stage_5_3_refinement.json": "idea_generation",
             "stage_5_5_competitive.json": "competitive_analysis",
             "stage_5_6_selection.json": "solution_selection",
@@ -346,6 +404,9 @@ class CheckpointManager:
             "stage_12_seo_refinement.json": "seo_enrichment",
             "stage_13_data_sources.json": "data_source_research",
         }
+
+        # Lowest stage whose data failed to deserialize (schema drift); triggers a rewind below.
+        reconstruction_reset_stage: int | None = None
 
         # Load each stage file if it exists
         for stage_file, state_attr in stage_mapping.items():
@@ -418,13 +479,21 @@ class CheckpointManager:
                             setattr(self.state, state_attr, stage_data)
                             logger.debug(f"  ✓ Loaded {stage_file} → {state_attr} (raw data)")
                     except Exception as e:
+                        # Schema drift: the saved JSON no longer satisfies the current Pydantic
+                        # model. Do NOT keep the raw dict (it poisons downstream attribute access
+                        # for any stage without a quality gate). Clear it and record the producing
+                        # stage so progress rewinds and the stage RE-RUNS to regenerate valid data.
+                        n = _stage_num_from_filename(stage_file)
                         logger.error(
-                            f"  ✗ Failed to reconstruct Pydantic model for {stage_file} → {state_attr}: {e}\n"
-                            f"    Field type: {field_type}\n"
-                            f"    Falling back to raw dict data (this may cause attribute access errors later)"
+                            f"  ✗ Failed to reconstruct {field_type} for {stage_file} → {state_attr}: {e}\n"
+                            f"    Clearing it and scheduling re-run from stage {n}."
                         )
-                        # Fallback: set as raw dict
-                        setattr(self.state, state_attr, stage_data)
+                        setattr(self.state, state_attr, None)
+                        if n is not None:
+                            reconstruction_reset_stage = (
+                                n if reconstruction_reset_stage is None
+                                else min(reconstruction_reset_stage, n)
+                            )
 
         # Restore metadata fields
         self.state.current_stage = metadata.get("current_stage", 1)
@@ -471,6 +540,37 @@ class CheckpointManager:
                 k: datetime.fromisoformat(v) if isinstance(v, str) else v
                 for k, v in metadata["stage_completion_timestamps"].items()
             }
+
+        # ── Reconstruction-failure rewind ──
+        # A stage whose data failed to deserialize (schema drift) was cleared above; rewind
+        # progress to its producing stage so it RE-RUNS. Must run AFTER current_stage is
+        # restored from metadata (above). Lowering current_stage covers stages 1-5; stages 4+
+        # gate on metadata["completed_stages"] (read from disk via get_completed_stages), so
+        # prune those entries on disk AND in-memory, plus the state's completed_stage_numbers.
+        if reconstruction_reset_stage is not None:
+            n = reconstruction_reset_stage
+            logger.warning(
+                f"Checkpoint reconstruction failed at stage ≥ {n} (schema drift); "
+                f"rewinding to stage {n} for re-run."
+            )
+            self.state.current_stage = min(self.state.current_stage, n)
+            completed = metadata.get("completed_stages") or []
+            pruned = [s for s in completed if (_stage_num_from_filename(s) or 0) < n]
+            if pruned != completed:
+                metadata["completed_stages"] = pruned
+                # Rewrite on disk: get_completed_stages() re-reads metadata.json at runtime.
+                try:
+                    meta_path = folder_path / "metadata.json"
+                    if meta_path.exists():
+                        with open(meta_path, encoding="utf-8") as f:
+                            disk_meta = json.load(f)
+                        disk_meta["completed_stages"] = pruned
+                        with open(meta_path, "w", encoding="utf-8") as f:
+                            json.dump(disk_meta, f, indent=2, default=str)
+                except Exception as e:
+                    logger.warning(f"Could not rewrite pruned completed_stages on disk: {e}")
+            if getattr(self.state, "completed_stages", None):
+                self.state.completed_stages = [s for s in self.state.completed_stages if s < n]
 
         # ── Checkpoint quality gates: detect poisoned data ──
         # Must run AFTER metadata restoration (line 402 sets current_stage from metadata).

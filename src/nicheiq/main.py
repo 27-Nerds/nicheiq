@@ -126,7 +126,8 @@ def run_research(
                 report_path = flow.run_with_resume(auto_resume=False)
         elif resume:
             logger.info("Auto-resume enabled - checking for latest checkpoint")
-            report_path = flow.run_with_resume(auto_resume=True)
+            # CLI generates a fresh job_id each run, so cross-job niche resume is intended here.
+            report_path = flow.run_with_resume(auto_resume=True, allow_cross_job=True)
         else:
             report_path = flow.run_with_resume(auto_resume=False)
 

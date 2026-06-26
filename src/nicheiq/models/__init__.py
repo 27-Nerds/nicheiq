@@ -34,7 +34,6 @@ from .social_content import (
 )
 from .solution_idea import (
     BaseSolutionIdea,
-    FilteredConceptList,
     IdeaGenerationResult,
     RawConcept,
     RawConceptList,
@@ -63,7 +62,6 @@ __all__ = [
     # Divergent-Convergent Ideation (3-Task Architecture)
     "RawConcept",
     "RawConceptList",
-    "FilteredConceptList",
     # Competitors
     "Competitor",
     "CompetitorType",

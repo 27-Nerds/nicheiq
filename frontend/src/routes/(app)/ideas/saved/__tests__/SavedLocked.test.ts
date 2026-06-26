@@ -68,7 +68,7 @@ describe("SavedPainTable — locked rows", () => {
         description: "desc",
         mentionCount: 5,
         severityScore: 0.5,
-        willingnessToPayScore: 0.4,
+        commercialIntentScore: 0.4,
         opportunityLevel: "high",
         representativeQuotes: null,
         sourcePlatforms: null,

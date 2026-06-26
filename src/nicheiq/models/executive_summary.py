@@ -68,7 +68,7 @@ class CorePainPoint(BaseModel):
         le=1.0,
         description="Severity score (0-1 scale)"
     )
-    willingness_to_pay_score: float = Field(
+    commercial_intent_score: float = Field(
         ge=0.0,
         le=1.0,
         description="Willingness to pay score (0-1 scale)"
@@ -119,7 +119,7 @@ class KeyMetrics(BaseModel):
         le=1.0,
         description="Average severity score across all pain points"
     )
-    avg_willingness_to_pay: float = Field(
+    avg_commercial_intent: float = Field(
         ge=0.0,
         le=1.0,
         description="Average willingness-to-pay score across all pain points"

@@ -13,7 +13,7 @@
   import Tooltip from "$lib/components/ui/Tooltip.svelte";
   import { scoreRationale } from "$lib/utils/scoreRationale";
   import type { SolutionPreview } from "$lib/types/job";
-  import { computeCompositeScore, getSuperpower, SUPERPOWER_MAP_DETAILED, solutionDisplayTitle, originalityMetric } from "$lib/utils/solution-utils";
+  import { computeCompositeScore, solutionStrengthBadge, solutionDisplayTitle, originalityMetric } from "$lib/utils/solution-utils";
 
   interface Props {
     open: boolean;
@@ -85,7 +85,8 @@
     { label: "Solo", value: solution.solo_dev_feasibility, why: scoreRationale(solution, "solo_dev") },
   ]);
 
-  const superpower = $derived(getSuperpower(solution, SUPERPOWER_MAP_DETAILED));
+  // Backend-sourced strength badge (tags.primary_strength); legacy fallback for pre-tags data.
+  const superpower = $derived(solutionStrengthBadge(solution, true));
 
   const displayTitle = $derived(solutionDisplayTitle(solution));
   const hasHeadline = $derived(!!solution.headline?.trim());

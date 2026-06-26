@@ -40,7 +40,7 @@ def format_pain_points_for_agents(
             - None: All pain points (default if not specified)
         sort_by: Sort order (str). Valid values:
             - "severity": Sort by severity_score descending (highest first)
-            - "wtp": Sort by willingness_to_pay descending
+            - "wtp": Sort by commercial_intent descending
             - "mentions": Sort by mention_count descending
             - "title": Sort alphabetically by title ascending
         limit: Maximum number of pain points to include (int, default: 10)
@@ -98,7 +98,7 @@ def format_pain_points_for_agents(
     if sort_by == "severity":
         filtered = sorted(filtered, key=lambda p: p.severity_score, reverse=True)
     elif sort_by == "wtp":
-        filtered = sorted(filtered, key=lambda p: p.willingness_to_pay, reverse=True)
+        filtered = sorted(filtered, key=lambda p: p.commercial_intent, reverse=True)
     elif sort_by == "mentions":
         filtered = sorted(filtered, key=lambda p: p.mention_count, reverse=True)
     elif sort_by == "title":
@@ -115,7 +115,7 @@ def format_pain_points_for_agents(
             parts = [
                 f"**{i+1}. {pp.title}**",
                 f"- Problem: {pp.description}",
-                f"- Severity: {pp.severity_score * 10:.1f}/10 | WTP: {pp.willingness_to_pay * 10:.1f}/10",
+                f"- Severity: {pp.severity_score * 10:.1f}/10 | WTP: {pp.commercial_intent * 10:.1f}/10",
                 f"- Mentions: {pp.mention_count}"
             ]
             # §6b: surface the grounded opportunity tier + who feels it (dropped before).
@@ -152,7 +152,7 @@ def format_pain_points_for_agents(
         # even for secondary pains; capped to a single truncated quote to stay concise).
         lines = []
         for pp in filtered:
-            line = f"**{pp.title}** (Severity: {pp.severity_score * 10:.1f}/10, WTP: {pp.willingness_to_pay * 10:.1f}/10)"
+            line = f"**{pp.title}** (Severity: {pp.severity_score * 10:.1f}/10, WTP: {pp.commercial_intent * 10:.1f}/10)"
             q = (pp.representative_quotes or [None])[0]
             if q:
                 line += f' — e.g. "{" ".join(str(q).split())[:140]}"'
@@ -162,7 +162,7 @@ def format_pain_points_for_agents(
     elif format_type == "metrics_only":
         # SEOStrategyCrew format: Standardized metrics with /10 scale
         lines = [
-            f"- {pp.title} (Severity: {pp.severity_score * 10:.1f}/10, WTP: {pp.willingness_to_pay * 10:.1f}/10, Mentions: {pp.mention_count})"
+            f"- {pp.title} (Severity: {pp.severity_score * 10:.1f}/10, WTP: {pp.commercial_intent * 10:.1f}/10, Mentions: {pp.mention_count})"
             for pp in filtered
         ]
         return "\n".join(lines) if lines else ""

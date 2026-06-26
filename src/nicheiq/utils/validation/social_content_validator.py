@@ -5,7 +5,6 @@ Validates social content quality to ensure sufficient data for pain point analys
 Used by ResearchFlow to assess data quality after Stage 5 collection.
 """
 
-from typing import Optional
 from loguru import logger
 
 

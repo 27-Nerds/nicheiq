@@ -117,7 +117,7 @@
         mentionCount: mentions,
         themeId: null,
         // Unused-by-renderer fields with safe defaults to satisfy the type.
-        willingnessToPayScore: 0,
+        commercialIntentScore: 0,
         opportunityLevel: "",
         representativeQuotes: null,
         sourcePlatforms: null,

@@ -45,7 +45,7 @@ export interface SavedPainPointCardData {
   description: string;
   mentionCount: number;
   severityScore: number;
-  willingnessToPayScore: number;
+  commercialIntentScore: number;
   opportunityLevel: string;
   representativeQuotes: unknown;
   sourcePlatforms: unknown;

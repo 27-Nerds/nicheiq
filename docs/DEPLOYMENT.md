@@ -311,8 +311,7 @@ TWITTER_EMAIL=...
 # TOKEN & COST CONTROL (Optional)
 # =============================================================================
 TOKEN_MONITORING_ENABLED=true
-COST_BUDGET_ENABLED=false
-COST_BUDGET_LIMIT=5.00
+COST_LOGGING_ENABLED=true
 ```
 
 ### Security Notes

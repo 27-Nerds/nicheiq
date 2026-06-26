@@ -24,7 +24,6 @@ def test_settings_field_types():
 
 def test_search_configuration_defaults():
     """Test search configuration defaults."""
-    assert Settings.model_fields["max_search_results"].default == 20
     assert Settings.model_fields["min_reddit_upvotes"].default == 10
     assert Settings.model_fields["min_reddit_comments"].default == 5
     assert Settings.model_fields["min_twitter_likes"].default == 10

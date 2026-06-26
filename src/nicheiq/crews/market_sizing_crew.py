@@ -442,7 +442,7 @@ class MarketSizingCrew:
         if pain_point_analysis.pain_points:
             signals.append("\n**Top Pain Points:**")
             for pp in pain_point_analysis.pain_points[:5]:
-                signals.append(f"- {pp.title} (Severity: {pp.severity_score:.2f}, WTP: {pp.willingness_to_pay:.2f})")
+                signals.append(f"- {pp.title} (Severity: {pp.severity_score:.2f}, WTP: {pp.commercial_intent:.2f})")
 
         return "\n".join(signals)
 

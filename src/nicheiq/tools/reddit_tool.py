@@ -234,17 +234,54 @@ class RedditCollectorTool(BaseTool):
 
         return post
 
-    def collect_posts(self, urls: list[str]) -> list[RedditPost]:
+    @staticmethod
+    def _submission_id(url: str) -> str:
+        """Reddit submission id from a post URL (stable join key for grades)."""
+        m = re.search(r"/comments/([a-z0-9]+)", url or "", re.I)
+        return m.group(1).lower() if m else (url or "")
+
+    def _passes_quality(self, post: RedditPost, grade: int | None) -> bool:
+        """Quality gate with relevance-scaled engagement thresholds.
+
+        A higher relevance grade lowers the upvote/comment bar (popularity-bias mitigation):
+        factor = 1 - discount*(grade-1)/2. None/0 grade or discount=0 -> full base thresholds.
+        Comments never drop below settings.relevance_engagement_comment_floor — EXCEPT for a
+        self-contained article/guide (selftext >= reddit_article_min_chars), whose value is its own
+        text, not the discussion; for those the comment floor is waived (the upvote bar still holds).
         """
-        Collect multiple Reddit posts with quality filtering.
+        discount = settings.relevance_engagement_discount
+        if not grade or discount <= 0:
+            factor = 1.0
+        else:
+            g = max(1, min(3, grade))
+            factor = max(0.0, min(1.0, 1.0 - discount * (g - 1) / 2.0))
+        eff_upvotes = int(settings.min_reddit_upvotes * factor)
+        if post.score < eff_upvotes:
+            return False
+        # Text-rich post (article/guide) — self-contained value, don't require comments.
+        if len((post.selftext or "").strip()) >= settings.reddit_article_min_chars:
+            return True
+        eff_comments = max(settings.relevance_engagement_comment_floor,
+                           int(settings.min_reddit_comments * factor))
+        return post.num_comments >= eff_comments
+
+    def collect_posts(self, urls: list[str],
+                      grade_by_url: dict[str, int] | None = None) -> list[RedditPost]:
+        """
+        Collect multiple Reddit posts with relevance-scaled quality filtering.
         Uses batch cache lookup to minimize PRAW calls.
 
         Args:
             urls: List of Reddit post URLs
+            grade_by_url: Optional {url: 0-3 relevance grade} from thread validation. When given,
+                more-relevant threads pass on lower engagement, and the grade is attached to each
+                kept post for the relevance-weighted token budget. None -> base thresholds.
 
         Returns:
             List of RedditPost models that meet quality thresholds
         """
+        grade_by_id = {self._submission_id(u): g for u, g in (grade_by_url or {}).items()}
+
         # Batch cache lookup
         if settings.reddit_post_cache_enabled:
             cached = _cache.batch_get(urls)
@@ -255,16 +292,15 @@ class RedditCollectorTool(BaseTool):
 
         # Add cached posts that pass quality filters
         for url, post in cached.items():
-            if (
-                post.score >= settings.min_reddit_upvotes
-                and post.num_comments >= settings.min_reddit_comments
-            ):
+            grade = grade_by_id.get(self._submission_id(url))
+            if self._passes_quality(post, grade):
+                post.relevance_grade = grade
                 posts.append(post)
-                logger.info(f"✓ [cached] Post meets quality thresholds: {post.title[:50]}...")
+                logger.info(f"✓ [cached] Post meets quality thresholds (grade={grade}): {post.title[:50]}...")
             else:
                 logger.info(
                     f"✗ [cached] Post filtered out (score: {post.score}, "
-                    f"comments: {post.num_comments}): {post.title[:50]}..."
+                    f"comments: {post.num_comments}, grade: {grade}): {post.title[:50]}..."
                 )
 
         # PRAW-fetch only misses
@@ -276,13 +312,12 @@ class RedditCollectorTool(BaseTool):
             try:
                 post = self._fetch_post_from_praw(url)
 
-                # Quality filtering based on settings
-                if (
-                    post.score >= settings.min_reddit_upvotes
-                    and post.num_comments >= settings.min_reddit_comments
-                ):
+                # Quality filtering with relevance-scaled thresholds
+                grade = grade_by_id.get(self._submission_id(url))
+                if self._passes_quality(post, grade):
+                    post.relevance_grade = grade
                     posts.append(post)
-                    logger.info(f"✓ Post meets quality thresholds: {post.title[:50]}...")
+                    logger.info(f"✓ Post meets quality thresholds (grade={grade}): {post.title[:50]}...")
 
                     # Store in cache for future use
                     if settings.reddit_post_cache_enabled:
@@ -293,7 +328,7 @@ class RedditCollectorTool(BaseTool):
                 else:
                     logger.info(
                         f"✗ Post filtered out (score: {post.score}, "
-                        f"comments: {post.num_comments}): {post.title[:50]}..."
+                        f"comments: {post.num_comments}, grade: {grade}): {post.title[:50]}..."
                     )
 
             except Exception as e:

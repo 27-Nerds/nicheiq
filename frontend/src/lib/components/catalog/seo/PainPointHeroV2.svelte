@@ -35,7 +35,7 @@
     themeAnchorHref?: string | null;
     // Aside-panel props (passed through to PainPointHeroAside).
     severity: number | null;
-    willingnessToPay: number | null;
+    commercialIntent: number | null;
     opportunity: 'high' | 'medium' | 'low' | null;
     qualitySignals?: QualitySignals | null;
     mentionCount?: number | null;
@@ -58,7 +58,7 @@
     parentTheme = null,
     themeAnchorHref = null,
     severity,
-    willingnessToPay,
+    commercialIntent,
     opportunity,
     qualitySignals = null,
     mentionCount = null,
@@ -135,7 +135,7 @@
   </div>
   <PainPointHeroAside
     {severity}
-    {willingnessToPay}
+    {commercialIntent}
     {opportunity}
     {qualitySignals}
     {mentionCount}

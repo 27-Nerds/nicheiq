@@ -81,8 +81,8 @@ def compute_wtp_stats(
 
     pain_points = pain_point_analysis.pain_points
     high_severity = len([pp for pp in pain_points if pp.severity_score >= 0.7])
-    high_wtp = len([pp for pp in pain_points if pp.willingness_to_pay >= 0.5])
-    avg = sum(pp.willingness_to_pay for pp in pain_points) / len(pain_points)
+    high_wtp = len([pp for pp in pain_points if pp.commercial_intent >= 0.5])
+    avg = sum(pp.commercial_intent for pp in pain_points) / len(pain_points)
 
     return {
         "high_severity_count": high_severity,

@@ -4,7 +4,7 @@ Multi-agent crew that performs keyword expansion and develops comprehensive SEO 
 """
 
 import re
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from crewai import Agent, Crew, Task
 from .safe_task import SafeTask
@@ -40,11 +40,8 @@ from ..models.seo_strategy import (
     # SectionKeywordMapping removed - never rendered
     SEOStrategyReport,
     StrategicLightResult,
-    StrategicTierResult,
     Tier0LightResult,
-    Tier0PremiumResult,
     Tier1LightResult,
-    Tier1QuickWinResult,
     TieredKeyword,
     TopicCluster,
     TopicClusterLight,
@@ -662,7 +659,7 @@ class SEOStrategyCrew:
 
 **Keyword Signals:**
 - Severity: {pp.severity_score:.2f} ({"high" if pp.severity_score >= 0.7 else "medium" if pp.severity_score >= 0.4 else "low"})
-- User intent: {pp.willingness_to_pay:.2f} WTP indicates {"commercial intent" if pp.willingness_to_pay >= 0.6 else "informational intent"}
+- User intent: {pp.commercial_intent:.2f} WTP indicates {"commercial intent" if pp.commercial_intent >= 0.6 else "informational intent"}
 - Categories: {', '.join(pp.categories if pp.categories else ['N/A'])}
 - Platforms: {', '.join(pp.source_platforms if pp.source_platforms else ['N/A'])}
 """

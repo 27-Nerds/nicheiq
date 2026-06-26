@@ -270,10 +270,18 @@ extract_pain_points:
 
     **OUTPUT REQUIREMENTS:**
     - Return ONLY raw JSON (no markdown, no text before/after)
+    - ENGLISH ONLY: write every text field (title, description, short_summary,
+      anchor_keywords) entirely in English using Latin characters. NEVER splice a
+      non-Latin-script word or phrase into otherwise-English text — no Chinese,
+      Japanese, Korean, Cyrillic, or other native-script fragments, not even one
+      word mid-sentence (e.g. NEVER "creates 脆弱的排名 ecosystem" — write "creates a
+      fragile ranking ecosystem"). Translate every concept fully into English.
     - Each pain point has 2-10 anchor_keywords (short phrases)
     - Each pain point has a non-null parent_theme_id matching a Task 1 theme_id
     - All titles unique within the extraction
     - Minimum 3 pain points if sufficient data exists; max 5 per theme
+
+    {audience_lens}
 
     {corrective_feedback}
 
@@ -328,6 +336,7 @@ extract_pain_points:
 
     Rules:
     - Return ONLY raw JSON starting with { and ending with }
+    - ENGLISH ONLY in all text fields — Latin characters, no non-Latin-script fragments
     - parent_theme_id REQUIRED on every pain point; must match a theme_id from Task 1
     - All titles MUST be unique within the extraction (DB constraint)
     - short_summary: 1-2 punchy sentences, under 180 characters, different from title
@@ -370,7 +379,9 @@ validate_pain_points:
     For EACH pain point listed above, generate scoring data:
     - pain_point_title: The exact title as listed above (for Python matching)
     - severity_score: Float 0.0-1.0 based on the provided quotes
-    - willingness_to_pay: Float 0.0-1.0 based on financial signals in the quotes
+    - commercial_intent: Float 0.0-1.0 — ORDINAL commercial-intent/buying-signal strength from the
+      quotes (paid-tool mentions, budget/spend, billable-time impact). NOT a calibrated dollar
+      willingness-to-pay; score the relative STRENGTH of the buying signal, not a price.
     - opportunity_level: OpportunityLevel enum (high/medium/low)
     - scoring_rationale: Brief explanation (2-3 sentences) citing specific quotes
     - downgrade_reason: ONLY when you set opportunity_level BELOW what the formula
@@ -384,7 +395,7 @@ validate_pain_points:
     - A user saying "I HATE this minor UI quirk" → severity 0.2-0.4 (annoying but doesn't block work)
     - A user calmly stating "we lost 3 clients due to invoicing delays" → severity 0.8+ (blocks business goals)
 
-    | Score Range | Severity Indicators | Willingness-to-Pay Indicators |
+    | Score Range | Severity Indicators | Commercial-Intent Indicators |
     |-------------|---------------------|-------------------------------|
     | **0.8-1.0** (High) | Critical business/workflow blocker, causes measurable losses (revenue, clients, time), user cannot achieve core goal | Explicit payment mentions, budget availability, current spend on inadequate solutions |
     | **0.5-0.7** (Medium) | Significant productivity drain, wastes measurable time/money, forces workarounds | Frustration with existing paid tools, value/ROI mentions |
@@ -403,6 +414,13 @@ validate_pain_points:
     - "Lonely working from home" → NO, no tool fixes loneliness → WTP capped at 0.15
     - "Burnout from too many clients" → PARTIALLY, scheduling tool helps but doesn't fix root cause → WTP capped at 0.4
 
+    **RECORD the verdict** in the `tool_addressable` field of each score, mapping it exactly:
+    YES → "full", PARTIALLY → "partial", NO → "none". This is the SAME judgment you just made for
+    the WTP cap — emit it as a field too. Be honest: a pain that is purely cultural, spectator,
+    structural, or governance/policy in nature (no software can move the needle ≥50%) is "none".
+    "none" pains are excluded from downstream idea generation, so do not mark a genuinely
+    tool-addressable pain "none", and do not mark a non-addressable one "full".
+
     **UNIVERSAL THEME SCORING CAPS (MANDATORY):**
     Pain points with names containing: "burnout", "mental health", "stress", "loneliness",
     "work-life balance", "imposter syndrome", "overwhelm", "anxiety", "depression"
@@ -412,7 +430,7 @@ validate_pain_points:
 
     MUST have ALL THREE scores capped:
     - severity_score: CAPPED AT 0.4 (not higher, regardless of emotional intensity)
-    - willingness_to_pay: CAPPED AT 0.15 (no tool solves emotional states)
+    - commercial_intent: CAPPED AT 0.15 (no tool solves emotional states)
     - opportunity_level: CAPPED AT LOW (not MEDIUM, not HIGH) — supply downgrade_reason
       naming this cap when the formula would imply a higher level
 
@@ -452,7 +470,8 @@ validate_pain_points:
       loss (clients, revenue, hours), an explicit workflow blocker, or a stated
       inability to complete a core task.
 
-    **WTP INFERENCE RULES** (anchor to CONCRETE signals, strongest first):
+    **COMMERCIAL-INTENT INFERENCE RULES** (anchor to CONCRETE signals, strongest first; this is an
+    ordinal buying-signal strength, NOT a dollar willingness-to-pay):
     - Names a paid tool they currently pay for / asks "where do I pay" / mentions a budget or
       current spend on an inadequate solution → WTP 0.6-0.8 (explicit commercial signal).
     - B2B / professional context where the pain costs billable time or clients (time-is-money) →
@@ -514,11 +533,15 @@ validate_pain_points:
     **pain_point_scores**: List[PainPointScoring] with EXACTLY one score per listed pain point:
     - pain_point_title: Exact title as listed in the task (for Python matching)
     - severity_score: Float 0.0-1.0 based on the provided evidence quotes
-    - willingness_to_pay: Float 0.0-1.0 based on financial signals in the quotes
+    - commercial_intent: Float 0.0-1.0 — ORDINAL commercial-intent/buying-signal strength from the
+      quotes (paid-tool mentions, budget/spend, billable-time impact). NOT a calibrated dollar
+      willingness-to-pay; score the relative STRENGTH of the buying signal, not a price.
     - opportunity_level: OpportunityLevel enum (high/medium/low) based on scores
     - scoring_rationale: Brief explanation (2-3 sentences) citing specific quotes
     - downgrade_reason: Present ONLY when opportunity_level is set below the
       severity/WTP formula (universal-theme or niche-specificity cap), ≥20 chars
+    - tool_addressable: "full" | "partial" | "none" — the TOOL-ADDRESSABILITY TEST verdict
+      (YES→full, PARTIALLY→partial, NO→none). Required on every score.
 
     **validation_summary**: 4-6 sentence executive summary covering:
     - Total pain points scored (MUST match the listed count)

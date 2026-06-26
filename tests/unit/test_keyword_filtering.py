@@ -116,6 +116,17 @@ class TestFilterSingleWordKeywords:
 class TestCheckKeywordRelevance:
     """Tests for check_keyword_relevance function (integration tests)."""
 
+    @pytest.fixture(autouse=True)
+    def _stub_semantic_validator(self, monkeypatch):
+        """Criterion-3 semantic relevance calls a live LLM (KeywordRelevanceValidator.validate_batch
+        → LLMService.invoke_structured). These tests assert only loose, volume-driven bounds, so stub
+        the validator to return no semantic matches (semantic_score 0.0) — deterministic and hermetic."""
+        from nicheiq.utils.validation import keyword_validator
+        monkeypatch.setattr(
+            keyword_validator.KeywordRelevanceValidator, "validate_batch",
+            lambda self, *a, **k: [],
+        )
+
     def test_empty_keywords_returns_zero_score(self):
         """Test that empty keyword list returns 0.0 score."""
         mock_solution = MagicMock()

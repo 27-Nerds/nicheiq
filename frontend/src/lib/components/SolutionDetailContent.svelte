@@ -7,6 +7,10 @@
   import { untrack } from "svelte";
   import { SvelteSet } from "svelte/reactivity";
   import type { SolutionPreview } from "$lib/types/job";
+  import FacetChips from "$lib/components/FacetChips.svelte";
+  import Tooltip from "$lib/components/ui/Tooltip.svelte";
+  import { humanizeTag, tagDescription } from "$lib/utils/ideaTagLabels";
+  import { strengthEntry, SUPERPOWERS_DETAILED } from "$lib/utils/superpower";
 
   interface Props {
     solution: SolutionPreview;
@@ -28,6 +32,55 @@
   $effect(() => {
     solution;
     untrack(() => { descExpanded = false; });
+  });
+
+  // Closed-vocabulary tag facets, grouped for display (docs/IDEA_TAGS.md). Each chip carries a
+  // one-line hover explanation (tagDescription).
+  const strengthChips = $derived(
+    (solution.tags?.strengths ?? [])
+      .map((k) => {
+        const entry = strengthEntry(k, SUPERPOWERS_DETAILED);
+        return entry ? { ...entry, description: tagDescription(k) } : null;
+      })
+      .filter((e): e is NonNullable<typeof e> => e != null),
+  );
+  const chip = (v: string, label?: string) => ({ label: label ?? humanizeTag(v), description: tagDescription(v) });
+  // data-access values that signal sourcing friction → surfaced as watch-outs
+  const FRICTION_DATA = new Set(["paywalled", "unofficial", "restricted", "blocked"]);
+
+  // Model = identity only (what / who / how it earns) — always shown, neutral.
+  const modelItems = $derived.by(() => {
+    const t = solution.tags;
+    if (!t) return [];
+    const items: { label: string; description?: string }[] = [];
+    if (t.project_type) items.push(chip(t.project_type));
+    if (t.target_market) items.push(chip(t.target_market));
+    if (t.monetization)
+      items.push(
+        chip(
+          t.monetization,
+          humanizeTag(t.monetization) +
+            (t.monetization_secondary ? ` + ${humanizeTag(t.monetization_secondary)}` : ""),
+        ),
+      );
+    return items;
+  });
+  // Growth: show all channels — programmatic-SEO is a meaningful positive (scalable organic
+  // growth), so keep it even though it's common in some niches.
+  const growthItems = $derived(
+    (solution.tags?.growth_channels ?? []).map((g) => ({ label: humanizeTag(g), description: tagDescription(g) })),
+  );
+  // Watch-outs = the standout NEGATIVES (warning-toned): hard-to-build, unoriginal, sourcing
+  // friction, and risk flags. Positives live in Strengths; the neutral middle is hidden.
+  const watchOutItems = $derived.by(() => {
+    const t = solution.tags;
+    if (!t) return [];
+    const items: { label: string; description?: string }[] = [];
+    if (t.build_complexity === "high") items.push(chip("high"));
+    if (t.novelty_level === "conventional") items.push(chip("conventional"));
+    if (t.data_access && FRICTION_DATA.has(t.data_access)) items.push(chip(t.data_access));
+    for (const r of t.risk_flags ?? []) items.push(chip(r));
+    return items;
   });
 
   // Dev time parsing
@@ -119,6 +172,34 @@
     <p class="text-xs text-text-muted font-mono">
       Generated for <span class="text-text-secondary">{provenance.pain}</span>{#if provenance.seg} — {provenance.seg} audience{/if}
     </p>
+  {/if}
+
+  <!-- Closed-vocabulary tag facets: Strengths / Model / Signals & risks (docs/IDEA_TAGS.md) -->
+  {#if solution.tags}
+    <div class="space-y-3">
+      {#if strengthChips.length > 0}
+        <div class="facet-group">
+          <span class="mono-label">Strengths</span>
+          <div class="facet-chips">
+            {#each strengthChips as s}
+              <Tooltip content={s.description} class="cursor-help">
+                {#snippet children()}
+                  <span class="strength-chip strength-chip-{s.variant}">{s.label}</span>
+                {/snippet}
+              </Tooltip>
+            {/each}
+          </div>
+        </div>
+      {/if}
+      <FacetChips label="Model" items={modelItems} tone="neutral" />
+      <FacetChips label="Growth" items={growthItems} tone="info" />
+      <FacetChips label="Watch-outs" items={watchOutItems} tone="warning" />
+      {#if solution.tags.rationale}
+        <p class="text-xs text-text-muted leading-relaxed">
+          <span class="text-text-secondary">Why these tags:</span> {solution.tags.rationale}
+        </p>
+      {/if}
+    </div>
   {/if}
 
   <!-- Description (truncated to ~4 lines with expand) -->
@@ -304,4 +385,30 @@
   .markdown-content-compact :global(ol) {
     margin-bottom: 0.5rem;
   }
+
+  /* Idea-tag facet groups (display-only) */
+  .facet-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+  }
+  .facet-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+  }
+  .strength-chip {
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    line-height: 1.2;
+    padding-left: 0.5rem;
+    border-left: 2px solid currentColor;
+  }
+  .strength-chip-success { color: var(--color-success-dark); }
+  .strength-chip-accent { color: var(--color-accent-dark); }
+  .strength-chip-info { color: var(--color-secondary-dark); }
+  .strength-chip-warning { color: var(--color-warning-dark); }
 </style>

@@ -10,7 +10,8 @@
   import Tooltip from "$lib/components/ui/Tooltip.svelte";
   import { scoreRationale } from "$lib/utils/scoreRationale";
   import type { SolutionPreview } from "$lib/types/job";
-  import { computeCompositeScore, getSuperpower, SUPERPOWER_MAP, solutionDisplayTitle, solutionCardDescription, fitLabel } from "$lib/utils/solution-utils";
+  import { computeCompositeScore, solutionStrengthBadge, solutionDisplayTitle, solutionCardDescription, fitLabel } from "$lib/utils/solution-utils";
+  import { tagDescription } from "$lib/utils/ideaTagLabels";
 
   interface Props {
     solution: SolutionPreview;
@@ -73,7 +74,10 @@
   // Derived display data
   const compositeScore = $derived(computeCompositeScore(solution));
   const compositeWhy = $derived(scoreRationale(solution, "composite"));
-  const superpower = $derived(getSuperpower(solution, SUPERPOWER_MAP));
+  // Strength badge now comes from the backend (tags.primary_strength); falls back to the
+  // legacy client-side selection only for pre-tags reports. See docs/IDEA_TAGS.md.
+  const superpower = $derived(solutionStrengthBadge(solution));
+  const strengthWhy = $derived(tagDescription(solution.tags?.primary_strength));
   const displayTitle = $derived(solutionDisplayTitle(solution));
   const cardDesc = $derived(solutionCardDescription(solution));
   const fit = $derived(fitLabel(solution.market_fit_score));
@@ -208,7 +212,15 @@
       </span>
     {/if}
     {#if superpower}
-      <span class="superpower-tag superpower-tag-{superpower.variant}">{superpower.label}</span>
+      {#if strengthWhy}
+        <Tooltip content={strengthWhy} position="bottom" class="cursor-help">
+          {#snippet children()}
+            <span class="superpower-tag superpower-tag-{superpower.variant}">{superpower.label}</span>
+          {/snippet}
+        </Tooltip>
+      {:else}
+        <span class="superpower-tag superpower-tag-{superpower.variant}">{superpower.label}</span>
+      {/if}
     {/if}
     {#if solution.project_type}
       <span class="text-xs px-2 py-0.5 rounded-full bg-bg-elevated border border-border text-text-muted">

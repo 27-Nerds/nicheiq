@@ -125,6 +125,7 @@ class TestParseDateFromSnippet:
         assert tool._parse_date_from_snippet("Just a regular video description") is None
 
 
+@pytest.mark.usefixtures("no_youtube_api")  # disables the live Webshare proxy-list GET
 class TestFetchTranscript:
     @patch("youtube_transcript_api.YouTubeTranscriptApi")
     def test_successful_fetch(self, MockApi):
@@ -179,7 +180,7 @@ class TestFetchTranscript:
         assert reason == "disabled"
 
     @patch("youtube_transcript_api.YouTubeTranscriptApi")
-    def test_ip_block_short_circuits(self, MockApi):
+    def test_ip_block_short_circuits(self, MockApi, no_youtube_api):
         """IpBlocked is detected and returns immediately without retrying."""
         from youtube_transcript_api._errors import IpBlocked
         mock_instance = MagicMock()

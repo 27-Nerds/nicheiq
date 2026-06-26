@@ -26,6 +26,18 @@ from nicheiq.models.pain_point import (
 from nicheiq.crews.pain_point_crew import PainPointCrew
 
 
+@pytest.fixture(autouse=True)
+def _no_network_stance_gate():
+    """Patch the stance gate to an identity pass so enrichment unit tests stay
+    offline and assert P0-A behavior (relevance floor, per-post cap, dedup, the
+    12-cap) independently of the LLM stance call. The stance gate has its own
+    dedicated tests."""
+    with patch.object(
+        PainPointCrew, "_stance_filter_quotes", side_effect=lambda self, pp, quotes: quotes, autospec=True
+    ):
+        yield
+
+
 # ============================================================================
 # TEST FIXTURES
 # ============================================================================
@@ -542,6 +554,28 @@ This is quote number {i} about manual invoicing with enough words to pass the fi
         # Should cap at 12 quotes
         assert len(result.quotes) <= 12
 
+    def test_enrich_per_post_cap_enforced(self, mock_pain_point):
+        """At most _PER_POST_CAP quotes may come from a single source post, so one
+        comment cannot be sentence-shredded into many 'independent' quotes."""
+        crew = create_minimal_crew(enrichment_knowledge=MagicMock())
+
+        # 10 distinct, on-topic sentences ALL from the same post_id.
+        same_post = "\n\n".join([
+            f"""--- Result {i} (score: 0.9{i % 10}, post_id: onepost, source: reddit) ---
+Manual invoicing sentence number {i} that is wordy enough to clear the fifteen word minimum filter for this particular test case here."""
+            for i in range(1, 11)
+        ])
+        mock_tool = MagicMock()
+        mock_tool._run.return_value = same_post
+
+        result = crew._enrich_single_pain_point(mock_pain_point, mock_tool)
+
+        from_one_post = [q for q in result.quotes if q.post_id == "onepost"]
+        assert len(from_one_post) <= PainPointCrew._PER_POST_CAP
+        # matched_post_ids (the volume set) is unaffected by the display cap — the
+        # post still counts as one discussion.
+        assert result.matched_post_ids == ["onepost"]
+
     def test_enrich_handles_search_error(self, mock_pain_point):
         """Continue on search error, log warning."""
         crew = create_minimal_crew(enrichment_knowledge=MagicMock())
@@ -998,3 +1032,126 @@ This is the exact same quote that should be deduplicated across multiple keyword
             for quote in enriched.quotes:
                 assert hasattr(quote, "quote_text")
                 assert hasattr(quote, "post_id")
+
+
+# ============================================================================
+# TESTS: deterministic quote-grounding gate (#1)
+# ============================================================================
+
+
+class TestIsQuoteGrounded:
+    """Tests for the static _is_quote_grounded fuzzy-substring check."""
+
+    SRC = (
+        "I spent four months trying to verify the supplier and the lab results were "
+        "forged. honestly it was a complete nightmare and i lost money."
+    )
+
+    def test_exact_substring(self):
+        assert PainPointCrew._is_quote_grounded("the lab results were forged", self.SRC) is True
+
+    def test_case_and_whitespace_insensitive(self):
+        assert PainPointCrew._is_quote_grounded("THE  LAB   RESULTS were FORGED", self.SRC) is True
+
+    def test_trailing_punctuation_tolerated(self):
+        # cleaned quote drops the trailing period — still a near-exact contiguous match
+        assert PainPointCrew._is_quote_grounded("it was a complete nightmare", self.SRC) is True
+
+    def test_off_source_rejected(self):
+        assert PainPointCrew._is_quote_grounded("this product changed my life completely", self.SRC) is False
+
+    def test_paraphrase_rejected(self):
+        # reworded (results->result, were->was) is NOT verbatim -> flagged
+        assert PainPointCrew._is_quote_grounded("the lab result was fake", self.SRC) is False
+
+    def test_empty_inputs(self):
+        assert PainPointCrew._is_quote_grounded("", self.SRC) is False
+        assert PainPointCrew._is_quote_grounded("something", "") is False
+
+
+class TestGroundingGate:
+    """Tests for the grounding gate applied inside _enrich_single_pain_point."""
+
+    def _crew_with_body(self, body_map):
+        crew = create_minimal_crew()
+        crew._raw_generic_posts = []
+        crew._post_body_map_cache = body_map
+        return crew
+
+    def _pain(self):
+        return UnvalidatedPainPoint(
+            title="Supplier verification",
+            description="Users cannot verify supplier legitimacy before paying",
+            mention_count=5,
+            anchor_keywords=["verify supplier", "lab results forged"],
+        )
+
+    # NOTE: quotes must be >=15 words (parser minimum) AND share pain vocabulary (relevance floor)
+    # so they actually reach the grounding gate; otherwise they are dropped upstream.
+    _GROUNDED = ("i really could not verify the supplier legitimacy before paying and the "
+                 "lab results were forged which cost me a lot of money")
+    _UNGROUNDED_A = ("there is no reliable way to verify a supplier or check whether the lab "
+                     "results are forged before you pay them any money at all")
+    _UNGROUNDED_B = ("paying a supplier without being able to verify legitimacy or confirm the "
+                     "lab results means you risk losing real money every single time")
+
+    def test_drops_ungrounded_keeps_grounded(self, mock_quote_search_tool):
+        # two grounded quotes (floor already satisfied) so the ungrounded one is truly dropped,
+        # not re-admitted by floor protection.
+        crew = self._crew_with_body({
+            "good1": f"preamble here. {self._GROUNDED}. trailing text.",
+            "good2": f"intro. {self._UNGROUNDED_B}. outro padding text here.",  # verbatim in this body
+            "bad": "a totally different body about gardening tools and soil mixes",
+        })
+        mock_quote_search_tool._run.return_value = (
+            f"--- Result 1 (score: 0.95, post_id: good1, source: reddit) ---\n{self._GROUNDED}.\n\n"
+            f"--- Result 2 (score: 0.93, post_id: good2, source: reddit) ---\n{self._UNGROUNDED_B}.\n\n"
+            f"--- Result 3 (score: 0.90, post_id: bad, source: reddit) ---\n{self._UNGROUNDED_A}.\n"
+        )
+        with patch("nicheiq.config.settings.settings.enable_quote_grounding_gate", True):
+            res = crew._enrich_single_pain_point(self._pain(), mock_quote_search_tool)
+        ids = {q.post_id for q in res.quotes}
+        assert {"good1", "good2"} <= ids   # both grounded quotes kept
+        assert "bad" not in ids            # ungrounded dropped (floor already met by the two grounded)
+
+    def test_fail_open_unknown_post(self, mock_quote_search_tool):
+        # body map empty -> post_id unknown -> fail-open (keep despite no source body)
+        crew = self._crew_with_body({})
+        mock_quote_search_tool._run.return_value = (
+            f"--- Result 1 (score: 0.95, post_id: x1, source: reddit) ---\n{self._UNGROUNDED_A}.\n"
+        )
+        with patch("nicheiq.config.settings.settings.enable_quote_grounding_gate", True):
+            res = crew._enrich_single_pain_point(self._pain(), mock_quote_search_tool)
+        assert len(res.quotes) >= 1
+
+    def test_floor_protection_keeps_min_when_all_ungrounded(self, mock_quote_search_tool):
+        # both post_ids ARE in the map (not fail-open) but their text is NOT in the body ->
+        # floor protection keeps up to _MIN_QUOTES rather than emptying the evidence
+        crew = self._crew_with_body({"p1": "a totally different body about gardening tools and soil",
+                                     "p2": "another unrelated body about bicycle maintenance and tyres"})
+        mock_quote_search_tool._run.return_value = (
+            f"--- Result 1 (score: 0.95, post_id: p1, source: reddit) ---\n{self._UNGROUNDED_A}.\n\n"
+            f"--- Result 2 (score: 0.90, post_id: p2, source: reddit) ---\n{self._UNGROUNDED_B}.\n"
+        )
+        with patch("nicheiq.config.settings.settings.enable_quote_grounding_gate", True):
+            res = crew._enrich_single_pain_point(self._pain(), mock_quote_search_tool)
+        assert len(res.quotes) == PainPointCrew._MIN_QUOTES  # never emptied on grounding alone
+
+
+class TestNormToolAddressable:
+    """Tests for the tool-addressability verdict normalizer."""
+
+    def test_none_variants(self):
+        from nicheiq.crews.pain_point_crew import _norm_tool_addressable
+        for v in ("none", "NO", "No", "not addressable"):
+            assert _norm_tool_addressable(v) == "none"
+
+    def test_partial_variants(self):
+        from nicheiq.crews.pain_point_crew import _norm_tool_addressable
+        for v in ("partial", "PARTIALLY", "part"):
+            assert _norm_tool_addressable(v) == "partial"
+
+    def test_full_and_unknown_default(self):
+        from nicheiq.crews.pain_point_crew import _norm_tool_addressable
+        for v in ("full", "YES", "weird-value", "", None):
+            assert _norm_tool_addressable(v) == "full"

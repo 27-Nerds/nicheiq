@@ -813,7 +813,7 @@ model CatalogPainPoint {
   description           String                  @db.Text
   mentionCount          Int                     @default(0)
   severityScore         Float
-  willingnessToPayScore Float
+  commercialIntentScore Float
   opportunityLevel      String                  @db.Text
   representativeQuotes  Json? // string[]
   sourcePlatforms       Json? // string[]

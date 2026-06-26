@@ -717,6 +717,7 @@ class LLMService:
         reasoning_effort: str | None,
         max_tokens: int | None = None,
         creative: bool = False,
+        messages: list[dict] | None = None,
     ) -> tuple[T, TokenUsage]:
         """OpenRouter structured-output path via the direct OpenAI SDK (not langchain).
 
@@ -753,7 +754,9 @@ class LLMService:
 
         create_kwargs: dict = {
             "model": clean_model,
-            "messages": [{"role": "user", "content": prompt}],
+            # A caller-supplied multi-turn history (system/user/assistant) enables the
+            # ideator↔reviewer mirrored-thread dialog; otherwise wrap the single prompt.
+            "messages": messages if messages else [{"role": "user", "content": prompt}],
             # Merge reasoning + provider routing into extra_body (do NOT overwrite reasoning_body).
             # provider.require_parameters=True routes ONLY to providers that honor the request params
             # (tools/tool_choice OR response_format) — avoids silently dropping to a provider that
@@ -817,10 +820,14 @@ class LLMService:
         client = OpenAI(**client_kwargs)
         response = None
         parsed = None
-        # Outer loop: retry ONCE on genuine truncation (finish_reason == 'length') —
-        # a fresh call may re-route to a healthier provider or complete within the cap.
+        # Outer loop: up to 2 retries (3 attempts) on a clean-but-empty structured response.
+        # The escalation branches are mutually exclusive via explicit parse_attempt + transport
+        # guards (each ends in `continue`); the final `raise` fires when none match.
+        #   json_schema empty -> attempt0 pinned -> attempt1 unpinned reselect -> attempt2 tool.
+        #   plain forced-tool empty -> attempt0 relax to auto -> raise (unchanged, 2 calls).
+        #   truncation (finish=length) -> retried ONCE (attempt0 only).
         # Inner loop: retry once on TRANSIENT failures (see below).
-        for parse_attempt in range(2):
+        for parse_attempt in range(3):
             response = None
             last_exc = None
             for attempt in range(2):
@@ -838,40 +845,64 @@ class LLMService:
                 raise last_exc
 
             # Some providers (e.g. minimax:nitro) intermittently return a 200 with choices=None
-            # or []. Treat that as a no-output (retry once on a fresh call) rather than letting
-            # `choices[0]` raise a bare "'NoneType' object is not subscriptable".
+            # or []. Treat that as a no-output rather than letting `choices[0]` raise a bare
+            # "'NoneType' object is not subscriptable". finish=None routes it through the same
+            # escalation ladder (so the json_schema -> tool fallback is reachable here too).
             choices = getattr(response, "choices", None) or []
             if not choices:
-                logger.warning(
-                    f"OpenRouter returned no choices for {output_model.__name__} "
-                    f"(model={clean_model}); retrying once." if parse_attempt == 0 else
-                    f"OpenRouter returned no choices for {output_model.__name__} (model={clean_model})."
-                )
-                if parse_attempt == 0:
-                    continue
-                raise ValueError(
-                    f"OpenRouter returned no choices for {output_model.__name__} (model={clean_model}).")
+                finish = None
+            else:
+                msg = choices[0].message
+                parsed = _structured_from_message(msg, output_model)
+                if parsed is not None:
+                    break
+                finish = choices[0].finish_reason
 
-            msg = choices[0].message
-            parsed = _structured_from_message(msg, output_model)
-            if parsed is not None:
-                break
-
-            finish = choices[0].finish_reason
-            if parse_attempt == 0:
-                # (a) Truncation: a fresh call may re-route or complete within the cap.
-                if finish == "length":
+            # --- escalation ladder (each branch mutates create_kwargs then `continue`s) ---
+            if parse_attempt < 2:
+                # (a) Truncation: a fresh call may re-route or complete within the cap. ONCE.
+                if finish == "length" and parse_attempt == 0:
                     logger.warning(
                         f"OpenRouter structured output truncated (finish_reason=length) "
                         f"for {output_model.__name__} (model={clean_model}); retrying once."
                     )
                     continue
-                # (b) Forced tool_choice produced nothing parseable (the qwen/OpenRouter case:
-                # finish_reason=tool_calls but empty/malformed args from a flaky provider parser).
-                # Relax to tool_choice='auto' so the model can emit the JSON into `content`, which the
-                # universal reader handles. Only for the reasoning-OFF (forced) tool path — reasoning-ON
-                # is already 'auto', and json_schema mode has no tool_choice to relax, so both fail fast.
-                if not reasoning_on and not use_json_schema:
+                # (b) json_schema empty on a clean finish, step 1: drop the provider `only` pin
+                # so OpenRouter's require_parameters routing reselects a different json-capable
+                # provider. Drop `reasoning` too — it's already disabled on this path, and
+                # require_parameters filters on EVERY param (incl. reasoning), which would 404 a
+                # non-reasoning provider like qwen@deepinfra.
+                if use_json_schema and parse_attempt == 0:
+                    logger.warning(
+                        f"OpenRouter json_schema output not parseable for {output_model.__name__} "
+                        f"(model={clean_model}, finish_reason={finish}); reselecting a json-capable "
+                        f"provider (require_parameters) and retrying."
+                    )
+                    create_kwargs["extra_body"].pop("reasoning", None)
+                    create_kwargs["extra_body"]["provider"] = _structured_provider_routing(
+                        clean_model, pin=False)
+                    continue
+                # (c) json_schema empty, step 2: switch to the tool-call transport (a different
+                # decoding path that sidesteps the guided-json parser entirely).
+                if use_json_schema and parse_attempt == 1:
+                    from langchain_core.utils.function_calling import convert_to_openai_tool
+                    logger.warning(
+                        f"OpenRouter json_schema reselect still empty for {output_model.__name__} "
+                        f"(model={clean_model}, finish_reason={finish}); falling back to tool-call "
+                        f"transport and retrying."
+                    )
+                    create_kwargs.pop("response_format", None)
+                    create_kwargs["extra_body"].pop("reasoning", None)
+                    create_kwargs["tools"] = [convert_to_openai_tool(output_model)]
+                    create_kwargs["tool_choice"] = "auto"
+                    create_kwargs["extra_body"]["provider"] = _structured_provider_routing(
+                        clean_model, pin=False)
+                    use_json_schema = False
+                    continue
+                # (d) Plain forced-tool path produced nothing parseable (qwen/OpenRouter: empty/
+                # malformed args from a flaky provider parser). Relax to tool_choice='auto' so the
+                # model can emit the JSON into `content`. Reasoning-OFF forced path only, ONCE.
+                if not reasoning_on and not use_json_schema and parse_attempt == 0:
                     logger.warning(
                         f"OpenRouter structured output not parseable for {output_model.__name__} "
                         f"(model={clean_model}, finish_reason={finish}); retrying once with "
@@ -879,6 +910,10 @@ class LLMService:
                     )
                     create_kwargs["tool_choice"] = "auto"
                     continue
+
+            if finish is None:
+                raise ValueError(
+                    f"OpenRouter returned no choices for {output_model.__name__} (model={clean_model}).")
             raise ValueError(
                 f"Structured output for {output_model.__name__} not found in any "
                 f"channel (model={clean_model}, finish_reason={finish}); checked "
@@ -905,14 +940,15 @@ class LLMService:
 
     @staticmethod
     def invoke_structured(
-        prompt: str,
-        output_model: Type[T],
+        prompt: str = "",
+        output_model: Type[T] = None,
         temperature: float = 0.6,
         timeout: int = 120,
         model_name: str | None = None,
         reasoning_effort: str | None = None,
         max_tokens: int | None = None,
         creative: bool = False,
+        messages: list[dict] | None = None,
     ) -> tuple[T, TokenUsage]:
         """
         Invoke LLM with structured Pydantic output.
@@ -964,6 +1000,7 @@ class LLMService:
                     reasoning_effort=reasoning_effort,
                     max_tokens=max_tokens,
                     creative=creative,
+                    messages=messages,
                 )
             # Build kwargs - exclude temperature for reasoning models (GPT-5, o1/o3/o4)
             llm_kwargs = {
@@ -999,7 +1036,7 @@ class LLMService:
                 include_raw=True
             )
 
-            raw_result = structured_llm.invoke(prompt)
+            raw_result = structured_llm.invoke(messages if messages else prompt)
             parsed = raw_result['parsed']
             raw_response = raw_result['raw']
 

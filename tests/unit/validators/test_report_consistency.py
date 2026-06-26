@@ -523,7 +523,7 @@ def _make_report_with_pain_coverage(
                 report.executive_dashboard.core_pain_point = CorePainPoint(
                     title=core_pain_point,
                     severity_score=0.8,
-                    willingness_to_pay_score=0.7,
+                    commercial_intent_score=0.7,
                     representative_quote="Test quote",
                     source_platform="Test platform",
                 )
@@ -674,7 +674,7 @@ class TestCorePainPointCoverage:
         core = CorePainPoint(
             title="Burnout and Mental Health Struggles",
             severity_score=0.9,
-            willingness_to_pay_score=0.6,
+            commercial_intent_score=0.6,
             representative_quote="I'm so burned out",
             source_platform="Reddit r/burnout",
         )

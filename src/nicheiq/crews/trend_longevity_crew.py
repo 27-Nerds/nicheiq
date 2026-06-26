@@ -418,7 +418,7 @@ class TrendLongevityCrew:
 
         # Analyze discussion recency from timestamps
         if social_content.reddit_posts:
-            from datetime import datetime, timedelta, timezone
+            from datetime import datetime, timezone
 
             signals.append("\n**Discussion Recency (top 5 by discussion richness):**")
             now = datetime.now(timezone.utc)

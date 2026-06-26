@@ -30,6 +30,33 @@ export interface SolutionValidationData {
   pricing_validation?: Record<string, unknown> | null;
 }
 
+/** Canonical strength keys (mirror StrengthTag in solution_idea.py + superpower.ts). */
+export type StrengthKey =
+  | "market-fit"
+  | "seo-power"
+  | "innovator"
+  | "quick-build"
+  | "solo-friendly";
+
+/** Closed-vocabulary filter facets for an idea. Mirrors IdeaTags in solution_idea.py.
+ *  See docs/IDEA_TAGS.md. Values are display-only chips this round (filtering is later). */
+export interface IdeaTags {
+  project_type?: string | null;
+  data_access?: string | null;
+  target_market?: string | null;
+  monetization?: string | null;
+  monetization_secondary?: string | null;
+  growth_channels?: string[];
+  risk_flags?: string[];
+  build_complexity?: string | null;
+  novelty_level?: string | null;
+  strengths?: StrengthKey[];
+  /** The single most-exceptional strength (max margin above cutoff), or null — the card badge. */
+  primary_strength?: StrengthKey | null;
+  /** LLM's one-sentence justification of the non-obvious tag calls ("Why these tags"). */
+  rationale?: string | null;
+}
+
 export interface SolutionPreview {
   solution_name: string;
   headline?: string | null;
@@ -69,6 +96,11 @@ export interface SolutionPreview {
   // Grounded generation provenance — the (pain × segment) cell that produced this idea.
   source_pain?: string | null;
   source_segment?: string | null;
+  // Audience framing (output lens only): true when this idea serves the user's stated
+  // audience (set post-generation). Drives the primary/adjacent grid split.
+  audience_fit?: boolean | null;
+  // Closed-vocabulary filter facets (chips + future filtering). See docs/IDEA_TAGS.md.
+  tags?: IdeaTags | null;
 }
 
 export interface ReportSummary {

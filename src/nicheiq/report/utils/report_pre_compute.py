@@ -68,6 +68,6 @@ def format_pain_point_with_scores(pp: PainPoint) -> str:
     return (
         f"- {pp.title}: {desc} "
         f"[Severity: {pp.severity_score * 10:.1f}/10, "
-        f"WTP: {pp.willingness_to_pay * 10:.1f}/10, "
+        f"WTP: {pp.commercial_intent * 10:.1f}/10, "
         f"Mentions: {pp.mention_count}]"
     )

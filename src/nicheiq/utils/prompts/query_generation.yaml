@@ -23,23 +23,27 @@ template: |
   
   ## NON-NEGOTIABLE RULES
   1. Each query is 3-6 words (search engines fail on long queries).
-  2. Each query needs a NICHE-DOMAIN anchor — a role, activity, or process unique to this niche
-     (e.g. "peptide cycling", "athlete recovery", "peptide sourcing") — so it stays on-topic and does
-     not drift to adjacent niches. A specific PRODUCT/brand name is NOT required for this.
+  2. Anchor each query on the niche's ACTIVITY, role, experience, or process (e.g. "peptide cycling",
+     "ranked grind", "skin trading", "tournament spectating") — NOT on a specific proper name. A
+     specific product, brand, or title — INCLUDING the niche's own name (e.g. a particular game, app,
+     or platform) — is NOT required and should appear in only a minority of queries. This keeps the
+     query on-topic without narrowing it to surface mentions of one named thing.
   3. Vary the vocabulary; avoid near-duplicate queries.
-  
-  ## ANCHOR vs. PRODUCT LOCK-IN (critical — these queries select ALL content the rest of the research sees)
-  CAP specific named products: AT MOST ~40% of queries may contain a specific named entity/compound.
-  The MAJORITY must be CATEGORY-LEVEL (the activity/role/process, with NO specific product named), because:
-  - over-naming the products you already know BLINDS the research to compounds, vendors, and pains you
-    did NOT pre-list — the search becomes "what people say about these 15 things" instead of "what this
-    audience actually needs";
-  - category-level queries (e.g. "peptides for tendon repair", "what peptides for recovery",
-    "peptide sourcing legit", "is peptide cycling worth it") let REAL users name the products and
-    surface the long tail you would otherwise miss.
-  When you DO name an entity, spread them across DIFFERENT items in the provided list — never lean on the
-  same 1-2. If ANCHOR ENTITIES are provided they MAY be used (verbatim) for that minority; NEVER write a
-  query about an OUT-OF-SCOPE term. Do NOT invent brand/product names not in the list.
+
+  ## ANCHOR vs. NAME LOCK-IN (critical — these queries select ALL content the rest of the research sees)
+  CAP specific proper names: AT MOST ~40% of queries may name a SPECIFIC thing — a product, compound,
+  brand, OR the niche's own title (a particular game/app/platform/tool). The MAJORITY must be
+  ACTIVITY/EXPERIENCE-LEVEL (the role/process/situation, with NO specific name), because:
+  - over-naming the specific things you already know — including the niche's own name — BLINDS the
+    research to the adjacent products, communities, and pains you did NOT pre-list, AND misses the
+    many posts where people describe the problem WITHOUT restating the obvious name ("ranked is
+    unplayable", not "Dota 2 ranked is unplayable");
+  - activity-level queries (e.g. "is ranked matchmaking broken", "tired of smurfs", "skin prices
+    crashing", "peptides for tendon repair") let REAL people supply the names and surface the long
+    tail you would otherwise miss.
+  When you DO name something, spread it across DIFFERENT items — never lean on the same 1-2, and do not
+  put the niche's own title in every query. If ANCHOR ENTITIES are provided they MAY be used (verbatim)
+  for that minority; NEVER write a query about an OUT-OF-SCOPE term. Do NOT invent names not provided.
   
   ## SEEK BOTH SIDES (this is the point — do not skip)
   A complaint-only search always finds complaints, which proves nothing. To test whether a pain is real
@@ -57,7 +61,15 @@ template: |
   ## GENERATE FROM MULTIPLE PERSPECTIVES
   Picture 2-3 different people in this niche (beginner vs. veteran; churned vs. stayed) and write from
   their differing vocabulary so the set is not one voice.
-  
+
+  ## SPREAD ACROSS SEGMENTS (balanced coverage — do not let one segment dominate)
+  Allocate the queries roughly EVENLY across the Market Segments listed in the context above: every
+  segment must get at least one query, and no single segment may take more than its fair share. The
+  segments collectively are the market — under-covering any of them biases the whole research.
+  Additionally reserve 2-3 fully OPEN discovery queries (type "discovery"): broad and category-level,
+  naming NO segment and NO specific product, written to surface pains, vocabulary, and sub-communities
+  that the segments above did NOT anticipate. These are how the research escapes its own framing.
+
   ## PLATFORM SELECTION
   {platform_instructions}
   
@@ -75,8 +87,9 @@ template: |
   
   ## SELF-CHECK (before returning)
   - Exactly {num_queries} queries, each 3-6 words.
-  - AT MOST ~40% name a specific product; the MAJORITY are category-level (activity/role/process only).
+  - AT MOST ~40% name a specific thing (product, brand, OR the niche's own title); the MAJORITY are
+    activity/experience-level; the niche's own name is NOT in every query.
   - All five intents appear; problem queries are NOT the majority; >=~30% disconfirming (satisfaction+solved).
-  - Every query has a niche-domain anchor; no invented brands; no OUT-OF-SCOPE terms; not near-duplicates.
+  - Every query is anchored on the niche's activity/experience; no invented names; no OUT-OF-SCOPE terms; not near-duplicates.
   
   Generate {num_queries} queries now.

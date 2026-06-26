@@ -19,7 +19,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from loguru import logger
 
 if TYPE_CHECKING:
     from ..models.competitor import CompetitiveAnalysisResult

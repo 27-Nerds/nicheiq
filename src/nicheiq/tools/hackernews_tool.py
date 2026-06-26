@@ -14,13 +14,12 @@ from typing import TYPE_CHECKING
 import requests
 from crewai.tools import BaseTool
 from loguru import logger
-from pydantic import Field
 
 from ..config.settings import settings
 from ..models.social_content import SocialPost, SocialResponse
 
 if TYPE_CHECKING:
-    from ..models.research_state import SearchResultItem
+    pass
 
 # Algolia HN API endpoints
 _SEARCH_URL = "http://hn.algolia.com/api/v1/search"
@@ -181,7 +180,7 @@ class HackerNewsCollectorTool(BaseTool):
                 resp.raise_for_status()
                 data = resp.json()
                 return data.get("hits", [])
-            except requests.exceptions.HTTPError as exc:
+            except requests.exceptions.HTTPError:
                 if resp.status_code == 429 and attempt < _MAX_RETRIES:
                     time.sleep(_RETRY_DELAY * (attempt + 1))
                     continue

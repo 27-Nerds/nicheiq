@@ -731,7 +731,7 @@ adminCatalogRouter.post('/categories/:id/generate-ideas', async (req: Authentica
       description: pp.description,
       mentionCount: pp.mentionCount,
       severityScore: pp.severityScore,
-      willingnessToPayScore: pp.willingnessToPayScore,
+      commercialIntentScore: pp.commercialIntentScore,
       opportunityLevel: pp.opportunityLevel,
       representativeQuotes: pp.representativeQuotes,
       sourcePlatforms: pp.sourcePlatforms,

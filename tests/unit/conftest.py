@@ -20,6 +20,11 @@ from nicheiq.models.social_content import (
 )
 
 
+# NOTE: the live-LLM / live-HTTP hermeticity guards (_no_live_llm / _no_live_http) were promoted to
+# the tree-root tests/conftest.py so they cover EVERY test under tests/, not just tests/unit/. The
+# drift self-test (test_no_live_llm_guard.py) still exercises them via that parent conftest.
+
+
 @pytest.fixture
 def mock_reddit_post():
     """Create a mock RedditPost with comments for knowledge source tests."""

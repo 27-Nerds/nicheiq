@@ -157,7 +157,7 @@ const savedPainPointSelect = {
   description: true,
   mentionCount: true,
   severityScore: true,
-  willingnessToPayScore: true,
+  commercialIntentScore: true,
   opportunityLevel: true,
   representativeQuotes: true,
   sourcePlatforms: true,

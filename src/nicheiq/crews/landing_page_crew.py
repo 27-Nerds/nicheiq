@@ -22,7 +22,6 @@ import random
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 from crewai import Agent, Crew, Task
 from .safe_task import SafeTask

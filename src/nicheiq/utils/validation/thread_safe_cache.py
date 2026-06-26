@@ -6,7 +6,6 @@ Used by KeywordRelevanceValidator for parallel batch processing.
 """
 
 import threading
-from typing import Any
 
 
 class ThreadSafeValidationCache:

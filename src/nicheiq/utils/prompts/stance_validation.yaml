@@ -1,0 +1,39 @@
+# Quote Stance Validation Prompt
+# Used by: PainPointCrew._stance_filter_quotes()
+# Variables: claim, quotes_text, quote_count
+# Goal: keep only quotes that genuinely EXPRESS the pain (not just mention the topic).
+
+template: |
+  You are verifying evidence. Each quote below was retrieved because it is
+  topically related to a stated user PROBLEM. Topical relatedness is NOT enough —
+  decide whether each quote actually expresses, reports, or evidences THIS problem.
+
+  PROBLEM (the claim each quote must support):
+  {claim}
+
+  Classify each quote as exactly one of:
+  - SUPPORTS: the speaker experiences, reports, or describes THIS problem (a
+    complaint, side effect, failure, frustration, or first-hand account of it).
+  - NEUTRAL: on the same topic but states no instance of this problem (dosing
+    how-to, neutral description, a question, general discussion).
+  - CONTRADICTS: the quote is positive about the thing, denies the problem, or
+    describes a DIFFERENT problem than the one in the claim.
+
+  Be strict. A quote that praises the product, reports success, or is about a
+  different symptom than the claim is NOT support — mark it CONTRADICTS or NEUTRAL.
+
+  Quotes to classify ({quote_count} total, 1-based index):
+  {quotes_text}
+
+  Return a JSON object with a 'verdicts' array containing exactly {quote_count}
+  objects, each with:
+  - index: the 1-based number of the quote
+  - stance: "SUPPORTS" | "NEUTRAL" | "CONTRADICTS"
+  - reason: brief explanation (one short clause)
+
+  <verification>
+  Before returning, verify:
+  - verdicts array has exactly {quote_count} items
+  - every index from 1 to {quote_count} appears exactly once
+  - stance is one of the three allowed values
+  </verification>

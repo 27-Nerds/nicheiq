@@ -104,7 +104,7 @@ catalogResearchRouter.post(
           description: pp.description,
           mention_count: pp.mentionCount,
           severity_score: pp.severityScore,
-          willingness_to_pay: pp.willingnessToPayScore,
+          commercial_intent: pp.commercialIntentScore,
           opportunity_level: pp.opportunityLevel,
           representative_quotes: pp.representativeQuotes,
           source_platforms: pp.sourcePlatforms,

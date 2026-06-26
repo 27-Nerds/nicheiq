@@ -29,7 +29,7 @@ def _make_pain_point(
         description="Test description",
         mention_count=10,
         severity_score=0.7,
-        willingness_to_pay=0.5,
+        commercial_intent=0.5,
         opportunity_level="high",
         representative_quotes=quotes or ["Quote one", "Quote two"],
         source_platforms=["Reddit"],

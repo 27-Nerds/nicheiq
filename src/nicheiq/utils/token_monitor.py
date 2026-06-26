@@ -6,7 +6,7 @@ Supports configurable soft caps, cost estimation, and per-run cost tracking.
 """
 
 import logging
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, asdict
 from typing import Any
 
 from ..config.settings import settings
@@ -398,12 +398,21 @@ class ContentTokenMonitor:
         days_old = max((datetime.now(timezone.utc) - post.created_utc).days, 1)
         recency = 1.0 / log2(1 + days_old)
 
-        return (
+        base = (
             0.40 * discussion_richness
             + 0.25 * engagement
             + 0.20 * content_depth
             + 0.15 * recency
         )
+
+        # Relevance tilt (compensatory score fusion): when capping to the token budget, keep the
+        # most niche-relevant posts first; engagement still orders within a grade. w=0 disables.
+        # getattr-guarded: also called on possibly-ungraded posts (None -> x1.0, unchanged).
+        grade = getattr(post, "relevance_grade", None)
+        if grade is not None:
+            w = settings.relevance_priority_weight
+            base *= (1.0 - w) + w * (min(3, max(0, grade)) / 3.0)
+        return base
 
     def filter_posts_to_token_budget(
         self,

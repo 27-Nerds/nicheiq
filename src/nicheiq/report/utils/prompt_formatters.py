@@ -26,8 +26,8 @@ def format_pain_points_for_prompt(pain_points: list["PainPoint"]) -> str:
             f"{i}. **{pp.title}**\n"
             f"   - Description: {pp.description}\n"
             f"   - Severity: {pp.severity_score * 10:.1f}/10\n"
-            f"   - Willingness to Pay: {pp.willingness_to_pay * 10:.1f}/10\n"
-            f"   - Priority Score: {(pp.severity_score + pp.willingness_to_pay) / 2 * 10:.1f}/10"
+            f"   - Willingness to Pay: {pp.commercial_intent * 10:.1f}/10\n"
+            f"   - Priority Score: {(pp.severity_score + pp.commercial_intent) / 2 * 10:.1f}/10"
         )
 
     return "\n\n".join(formatted)

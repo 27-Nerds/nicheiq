@@ -2,11 +2,18 @@
 Tests for search helper utilities.
 """
 
-from unittest.mock import patch, MagicMock
+import json
+import re
+from unittest.mock import patch
 
 import pytest
+import requests
+import responses
 from nicheiq.utils.search_helpers import SearchHelper
 from nicheiq.models.research_state import SearchResultItem
+
+# Serper search endpoint (matched by URL suffix so the test doesn't depend on the resolved host).
+_SERPER_SEARCH = re.compile(r".+/search$")
 
 
 class TestBuildRedditQuery:
@@ -293,50 +300,51 @@ class TestExtractUrlsFromSerper:
 class TestSerperSearchWithDateFilter:
     """Tests for serper_search_with_date_filter static method."""
 
-    def _mock_serper_response(self, mock_post, json_return=None):
-        """Helper to set up a standard mock response."""
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = json_return or {"organic": []}
-        mock_resp.raise_for_status = MagicMock()
-        mock_post.return_value = mock_resp
-        return mock_resp
+    def _add_serper_response(self, json_return=None):
+        """Helper to register a standard mocked Serper response."""
+        responses.add(
+            responses.POST,
+            _SERPER_SEARCH,
+            json=json_return or {"organic": []},
+            status=200,
+        )
 
     @patch.dict("os.environ", {"SERPER_API_KEY": "test-key"})
-    @patch("nicheiq.utils.search_helpers.requests.post")
-    def test_tbs_included_in_payload(self, mock_post):
+    @responses.activate
+    def test_tbs_included_in_payload(self):
         """tbs param must be included in the POST payload."""
-        self._mock_serper_response(mock_post)
+        self._add_serper_response()
         SearchHelper.serper_search_with_date_filter("test query", tbs="qdr:y")
 
-        payload = mock_post.call_args.kwargs.get("json") or mock_post.call_args[1].get("json")
+        payload = json.loads(responses.calls[0].request.body)
         assert payload["tbs"] == "qdr:y"
         assert payload["q"] == "test query"
 
     @patch.dict("os.environ", {"SERPER_API_KEY": "test-key"})
-    @patch("nicheiq.utils.search_helpers.requests.post")
-    def test_tbs_day_variant(self, mock_post):
+    @responses.activate
+    def test_tbs_day_variant(self):
         """tbs=qdr:d for last-day results."""
-        self._mock_serper_response(mock_post)
+        self._add_serper_response()
         SearchHelper.serper_search_with_date_filter("test", tbs="qdr:d")
 
-        payload = mock_post.call_args.kwargs.get("json") or mock_post.call_args[1].get("json")
+        payload = json.loads(responses.calls[0].request.body)
         assert payload["tbs"] == "qdr:d"
 
     @patch.dict("os.environ", {"SERPER_API_KEY": "test-key"})
-    @patch("nicheiq.utils.search_helpers.requests.post")
-    def test_tbs_month_variant(self, mock_post):
+    @responses.activate
+    def test_tbs_month_variant(self):
         """tbs=qdr:m for last-month results."""
-        self._mock_serper_response(mock_post)
+        self._add_serper_response()
         SearchHelper.serper_search_with_date_filter("test", tbs="qdr:m")
 
-        payload = mock_post.call_args.kwargs.get("json") or mock_post.call_args[1].get("json")
+        payload = json.loads(responses.calls[0].request.body)
         assert payload["tbs"] == "qdr:m"
 
     @patch.dict("os.environ", {"SERPER_API_KEY": "test-key"})
-    @patch("nicheiq.utils.search_helpers.requests.post")
-    def test_response_compatible_with_extract(self, mock_post):
+    @responses.activate
+    def test_response_compatible_with_extract(self):
         """Response can be parsed by extract_results_from_serper."""
-        self._mock_serper_response(mock_post, {
+        self._add_serper_response({
             "organic": [{
                 "link": "https://reddit.com/r/test/comments/abc123/title",
                 "title": "Fresh post",
@@ -350,80 +358,79 @@ class TestSerperSearchWithDateFilter:
         assert items[0].title == "Fresh post"
 
     @patch.dict("os.environ", {"SERPER_API_KEY": "test-key"})
-    @patch("nicheiq.utils.search_helpers.requests.post")
-    def test_custom_n_results(self, mock_post):
+    @responses.activate
+    def test_custom_n_results(self):
         """n_results parameter controls num in payload."""
-        self._mock_serper_response(mock_post)
+        self._add_serper_response()
         SearchHelper.serper_search_with_date_filter("test", n_results=5)
 
-        payload = mock_post.call_args.kwargs.get("json") or mock_post.call_args[1].get("json")
+        payload = json.loads(responses.calls[0].request.body)
         assert payload["num"] == 5
 
-    @patch("nicheiq.utils.search_helpers.requests.post")
-    def test_api_key_from_environment(self, mock_post):
+    @responses.activate
+    def test_api_key_from_environment(self):
         """API key must be set in headers from environment."""
-        self._mock_serper_response(mock_post)
+        self._add_serper_response()
 
         with patch.dict("os.environ", {"SERPER_API_KEY": "test-key-123"}):
             SearchHelper.serper_search_with_date_filter("test")
 
-        headers = mock_post.call_args.kwargs.get("headers") or mock_post.call_args[1].get("headers")
+        headers = responses.calls[0].request.headers
         assert headers["X-API-KEY"] == "test-key-123"
 
     @patch.dict("os.environ", {"SERPER_API_KEY": "test-key"})
-    @patch("nicheiq.utils.search_helpers.requests.post")
-    def test_empty_response(self, mock_post):
+    @responses.activate
+    def test_empty_response(self):
         """Empty organic results return valid dict."""
-        self._mock_serper_response(mock_post)
+        self._add_serper_response()
         result = SearchHelper.serper_search_with_date_filter("test")
         assert result == {"organic": []}
 
     @patch.dict("os.environ", {"SERPER_API_KEY": "test-key"})
-    @patch("nicheiq.utils.search_helpers.requests.post")
-    def test_missing_organic_key(self, mock_post):
+    @responses.activate
+    def test_missing_organic_key(self):
         """Response without organic key still returns the dict."""
-        self._mock_serper_response(mock_post, {"searchParameters": {"q": "test"}})
+        self._add_serper_response({"searchParameters": {"q": "test"}})
         result = SearchHelper.serper_search_with_date_filter("test")
         assert "searchParameters" in result
 
     @patch.dict("os.environ", {"SERPER_API_KEY": "test-key"})
-    @patch("nicheiq.utils.search_helpers.requests.post")
-    def test_http_error_raises(self, mock_post):
+    @responses.activate
+    def test_http_error_raises(self):
         """HTTP errors (4xx, 5xx) should raise."""
-        import requests as req
-        mock_resp = MagicMock()
-        mock_resp.raise_for_status.side_effect = req.exceptions.HTTPError("429 Too Many Requests")
-        mock_post.return_value = mock_resp
+        responses.add(responses.POST, _SERPER_SEARCH, json={}, status=429)
 
-        with pytest.raises(req.exceptions.HTTPError):
+        with pytest.raises(requests.exceptions.HTTPError):
             SearchHelper.serper_search_with_date_filter("test")
 
     @patch.dict("os.environ", {"SERPER_API_KEY": "test-key"})
-    @patch("nicheiq.utils.search_helpers.requests.post")
-    def test_timeout_raises(self, mock_post):
+    @responses.activate
+    def test_timeout_raises(self):
         """Timeout should raise."""
-        import requests as req
-        mock_post.side_effect = req.exceptions.Timeout("Connection timed out")
+        responses.add(
+            responses.POST,
+            _SERPER_SEARCH,
+            body=requests.exceptions.Timeout("Connection timed out"),
+        )
 
-        with pytest.raises(req.exceptions.Timeout):
+        with pytest.raises(requests.exceptions.Timeout):
             SearchHelper.serper_search_with_date_filter("test")
 
     @patch.dict("os.environ", {"SERPER_API_KEY": "test-key"})
-    @patch("nicheiq.utils.search_helpers.requests.post")
-    def test_default_tbs_is_year(self, mock_post):
+    @responses.activate
+    def test_default_tbs_is_year(self):
         """Default tbs should be qdr:y (last year)."""
-        self._mock_serper_response(mock_post)
+        self._add_serper_response()
         SearchHelper.serper_search_with_date_filter("test")
 
-        payload = mock_post.call_args.kwargs.get("json") or mock_post.call_args[1].get("json")
+        payload = json.loads(responses.calls[0].request.body)
         assert payload["tbs"] == "qdr:y"
 
     @patch.dict("os.environ", {"SERPER_API_KEY": "test-key"})
-    @patch("nicheiq.utils.search_helpers.requests.post")
-    def test_posts_to_correct_url(self, mock_post):
+    @responses.activate
+    def test_posts_to_correct_url(self):
         """Must POST to the Serper search endpoint."""
-        self._mock_serper_response(mock_post)
+        self._add_serper_response()
         SearchHelper.serper_search_with_date_filter("test")
 
-        url = mock_post.call_args.args[0] if mock_post.call_args.args else mock_post.call_args.kwargs.get("url")
-        assert url == "https://google.serper.dev/search"
+        assert responses.calls[0].request.url == "https://google.serper.dev/search"

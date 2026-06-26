@@ -404,7 +404,7 @@ TIMEOUT_SECONDS=30
 # -----------------------------------------------------------------------------
 # Search Configuration (Optional - adjust for your needs)
 # -----------------------------------------------------------------------------
-MAX_SEARCH_RESULTS=20  # More results = more API costs
+NUM_SEARCH_QUERIES=40  # More queries = broader discovery, more API costs
 MIN_REDDIT_UPVOTES=5   # Minimum upvotes for post quality
 MIN_REDDIT_COMMENTS=3  # Minimum comments for engagement
 REDDIT_COMMENT_LIMIT=None  # None=all, 32=most, 0=top-level only
@@ -653,7 +653,7 @@ praw.exceptions.RedditAPIException: RATELIMIT
 
 **Solution:**
 1. Wait a few minutes (rate limits reset)
-2. Reduce `MAX_SEARCH_RESULTS` in `.env`
+2. Reduce `NUM_SEARCH_QUERIES` in `.env`
 3. Increase `TIMEOUT_SECONDS` to 60
 4. Reddit allows 60 requests/minute
 
@@ -725,7 +725,7 @@ python -m nicheiq.main --niche "test" --output ~/nicheiq-output
 **Symptoms**: Research takes 20+ minutes
 
 **Solutions:**
-1. **Reduce search results**: Set `MAX_SEARCH_RESULTS=10` in `.env`
+1. **Reduce query count**: Set `NUM_SEARCH_QUERIES=20` in `.env`
 2. **Limit comment depth**: Set `REDDIT_COMMENT_LIMIT=0` (top-level only)
 3. **Skip Twitter**: Remove Twitter credentials to disable collection
 4. **Check internet**: Slow connection affects API calls
@@ -745,7 +745,7 @@ python -m nicheiq.main --niche "test" --output ~/nicheiq-output
    MIN_TWITTER_LIKES=1
    ```
 2. **Try a different niche**: Some topics have more discussion than others
-3. **Broaden search**: Increase `MAX_SEARCH_RESULTS=30`
+3. **Broaden search**: Increase `NUM_SEARCH_QUERIES=60`
 4. **Check logs**: `cat output/logs/nicheiq_*.log | grep "filtered out"`
 
 ---
@@ -842,7 +842,7 @@ Typical costs per research run:
 
 **Tips to Reduce Costs:**
 - Use `gpt-4o-mini` instead of `gpt-4o` (75% cheaper)
-- Lower `MAX_SEARCH_RESULTS` to 10-15
+- Lower `NUM_SEARCH_QUERIES` to 20-25
 - Set `REDDIT_COMMENT_LIMIT=0` for faster processing
 - Reuse research reports instead of re-running
 

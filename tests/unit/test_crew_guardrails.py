@@ -506,6 +506,8 @@ class TestValidateRawConcepts:
         assert _normalize_technique("Platform_Leverage") == "platform_leverage"
         assert _normalize_technique("  niche_drilling  ") == "niche_drilling"
         assert _normalize_technique("CROSS-INDUSTRY TEMPLATE") == "cross_industry_template"
+        assert _normalize_technique("ai native") == "ai_native"
+        assert _normalize_technique("AI-Native") == "ai_native"
 
     def test_platform_leverage_technique_accepted(self):
         """Platform leverage counts as a valid technique for diversity."""
@@ -524,3 +526,24 @@ class TestValidateRawConcepts:
         success, result = validate_raw_concepts(output)
 
         assert success
+
+    def test_ai_native_technique_accepted(self):
+        """ai_native counts as a distinct valid technique (LLM-as-component lane)."""
+        concepts = [
+            _make_raw_concept("ConceptAlpha", "niche_drilling"),
+            _make_raw_concept("ConceptBeta", "data_source_inversion"),
+            _make_raw_concept("ConceptGamma", "ai_native",
+                              mechanism_tag="llm-extraction-pipeline"),
+            _make_raw_concept("ConceptDelta", "ai_native",
+                              mechanism_tag="ai-classification"),
+            _make_raw_concept("ConceptEpsilon", "community_flip"),
+            _make_raw_concept("ConceptZeta", "niche_drilling"),
+        ]
+        output = MagicMock()
+        output.pydantic = None
+        output.raw = _make_raw_concept_list_json(concepts=concepts)
+
+        success, result = validate_raw_concepts(output)
+
+        assert success
+        assert result == output.raw

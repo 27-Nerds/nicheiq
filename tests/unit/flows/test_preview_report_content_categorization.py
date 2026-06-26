@@ -65,7 +65,7 @@ def _build_pain_analysis(
                 description="desc",
                 mention_count=5,
                 severity_score=0.6,
-                willingness_to_pay=0.5,
+                commercial_intent=0.5,
                 opportunity_level=OpportunityLevel.MEDIUM,
                 representative_quotes=["q1"],
             )

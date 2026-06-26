@@ -392,6 +392,13 @@ THREAD_VALIDATION_LLM=gpt-4o-mini
 # Used for: Binary decisions (relevant/irrelevant URLs)
 # Why mini: Simple yes/no decisions
 
+# Pain-Point Quote Stance Verification
+STANCE_VALIDATION_LLM=gpt-4o-mini
+# Used for: classifying whether a retrieved quote genuinely expresses its pain
+#   point (SUPPORTS / NEUTRAL / CONTRADICTS) before it is shown. One cheap call
+#   per pain point in Stage 3 enrichment.
+# Why mini: short, bounded classification over <=12 quotes
+
 # Creative Ideation & Brainstorming
 BRAINSTORM_LLM=gpt-4o
 # Used for: Solution generation, strategic thinking
@@ -432,15 +439,16 @@ BRAINSTORM_LLM=gpt-4o
 # the whole pipeline. Allows a sample's 2x retry (~180s each) before abandoning.
 
 # DIVERGENT_KEEP_FRACTION=0.5
-# Fraction of the GENERATED divergent concepts to keep through the first dedup/clamp step (before the LLM
-# diversity filter). 0.5 = keep at least half of what the samples produced, so good ideas aren't discarded
-# before the filter sees them. The kept count is floored at 6 (so a small single-model pool isn't starved)
-# and capped at DIVERGENT_POOL_CAP. Dedup may leave fewer; duplicates are never re-added to hit the target.
+# Fraction of the GENERATED divergent concepts to keep through the dedup/clamp step. 0.5 = keep at least half
+# of what the samples produced, so good ideas aren't discarded before the refiner sees them. The kept count is
+# floored at 6 (so a small single-model pool isn't starved) and capped at DIVERGENT_POOL_CAP. Dedup may leave
+# fewer; duplicates are never re-added to hit the target.
 # Example: 31 generated -> keep 15 (half, capped); 10 generated -> keep 6 (floor); 20 -> keep 10.
 
 # DIVERGENT_POOL_CAP=15
-# Upper bound (ceiling) on concepts kept after pooling/dedup, fed to the diversity filter. Hard-capped at 15
-# (the RawConceptList max_length). The ACTUAL count scales with DIVERGENT_KEEP_FRACTION — this is the ceiling.
+# Upper bound (ceiling) on concepts kept after pooling/dedup, fed directly to the refiner (the LLM diversity
+# filter was removed). Hard-capped at 15 (the RawConceptList max_length). The ACTUAL count scales with
+# DIVERGENT_KEEP_FRACTION — this is the ceiling.
 
 # DIVERGENT_DEDUP_SIMILARITY_THRESHOLD=0.85
 # Cosine threshold for the embedding-based SEMANTIC dedup of pooled concepts
@@ -452,14 +460,12 @@ BRAINSTORM_LLM=gpt-4o
 # ENABLE_PAIN_PARTITIONED_DIVERGENT=false
 # When ON, divergent generation runs ONE narrow generator per selected diverse pain (capped at
 # DIVERGENT_MAX_GENERATORS) instead of N broad samples over the same pain list. Each generator focuses on
-# its single pain, reasons as a REAL audience segment (Stage 6.5; falls back to generic stance archetypes),
-# and targets ~DIVERGENT_CONCEPTS_PER_SAMPLE concepts. Pain coverage is guaranteed by construction and idea
-# clustering is broken. Info-products (directory/aggregator/comparison) are NOT penalized — they are
-# first-class SEO monetization outcomes; variety comes from the per-pain partition, not a type bias.
+# its single pain, reasons as a REAL audience segment (Stage 6.5; falls back to generic stance archetypes).
+# Pain coverage is guaranteed by construction and idea clustering is broken. Info-products
+# (directory/aggregator/comparison) are NOT penalized — they are first-class SEO monetization outcomes;
+# variety comes from the per-pain partition, not a type bias.
 # Auto-falls back to the legacy broad-sample path when fewer than 2 distinct pains are available.
-# DIVERGENT_CONCEPTS_PER_SAMPLE=3   # concepts each narrow generator targets (may return fewer, or 0 if no fit)
 # DIVERGENT_MAX_GENERATORS=8        # ceiling on generators (~1 per diverse pain); 5-8 is the sweet spot
-# DIVERGENT_MIN_PAINS=3             # below this, augment from medium-priority pains; below 2 -> legacy path
 # DIVERGENT_MAX_WORKERS=8           # parallel generator threads in partitioned mode (legacy path stays at 4)
 # DIVERGENT_PARTITIONED_KEEP_FRACTION=0.67  # keep-fraction override (narrow pain-separated concepts dedup
 #                                   # far less than broad samples, so 0.5 over-discards them)
@@ -527,15 +533,34 @@ BRAINSTORM_LLM=gpt-4o
 # ranking and the selected idea are unchanged; only the Go/No-Go verdict becomes more conservative. Requires
 # ENABLE_FEASIBILITY_CRITIC for the build cap to have data.
 
+# Realism score-calibration critic (default ON)
+ENABLE_SCORE_CALIBRATION=true
+# Independent critic that, AFTER refinement, re-scores all five displayed idea criteria (market_fit,
+# technical_feasibility, novelty, seo_scalability, obviousness) against the same anchored bands + evidence and
+# REPLACES the generator's optimistic self-scores. Originals are kept in *_score_raw + calibration_notes.
+# Counters self-grading overconfidence; runs after _finalize_feasibility, batched + parallel, fail-open per batch.
+SCORE_CALIBRATION_LLM=openrouter/qwen/qwen3.7-max
+# Calibration judge — independent of the brainstorm pool. A/B winner (scripts/score_calibration_ab.py vs a
+# gpt-5.2 reference): tightest to the reference on all 5 criteria with no market_fit overcorrection; beat
+# gpt-5.4-mini / deepseek-v4-pro (overshot market_fit low) and glm-5.2 (equal quality, ~2.5x slower).
+SCORE_CALIBRATION_REASONING_EFFORT=medium
+# Critic depth — weighs evidence against the bands (a notch above the JUDGE tier).
+
+# Idea-improvement loop — creative MENTOR (runs after calibration, before the deterministic caps)
+IDEATION_MENTOR_LLM=gpt-5.4-mini
+# The reviewer/mentor in the per-idea improvement loop: it scores three soft dimensions and gives ONE creative
+# direction, guiding weak/unverified ideas toward sharper, buildable, on-pain revisions (the ideator stays
+# IDEATION_REFINE_LLM). Use a DIFFERENT family than the ideator so it doesn't self-judge leniently. Cost-gated:
+# only below-bar ideas enter; data routes are flagged + search-verified, then the deterministic cap applies.
+# gpt-5.4-mini won a 6-model bake-off (validated +0.21/+0.97 vs baseline on two runs; re-tune via
+# scripts/idea_improvement_ab.py --v4 --reviewer-model). Requires OPENAI_API_KEY for the default model.
+IDEATION_MENTOR_REASONING_EFFORT=medium
+# Mentor depth — judges soft dimensions + proposes a creative direction, so it benefits from reasoning.
+
 # Keyword Relevance Validation (90% cost reduction)
 KEYWORD_VALIDATION_LLM=gpt-4.1-nano
 # Used for: Quick keyword relevance checks
 # Why nano: Ultra-fast, simple validation task
-
-# Keyword Research & Analysis (60% cost reduction)
-KEYWORD_RESEARCH_LLM=gpt-4o-mini
-# Used for: SEO keyword analysis and tier classification
-# Why mini: Structured analysis, good with metrics
 
 # Pain Point Validation (Stage 6 refinement)
 PAIN_POINT_VALIDATION_LLM=gpt-4.1-mini
@@ -546,16 +571,6 @@ PAIN_POINT_VALIDATION_LLM=gpt-4.1-mini
 PAIN_SOLUTION_MAPPING_LLM=gpt-4o-mini
 # Used for: Mapping pain points to solution features
 # Why mini: Structured mapping task
-
-# Quote Enrichment (Stage 6 Task 4)
-QUOTE_ENRICHMENT_LLM=gpt-4.1-mini
-# Used for: Finding verbatim quotes for pain points via vector search
-# Why mini: Literal extraction task, doesn't need reasoning
-
-# Quote enrichment target per pain point
-QUOTE_ENRICHMENT_TARGET_PER_PAIN_POINT=8
-# Number of quotes to find per pain point during enrichment
-# Higher = more evidence but longer processing time
 
 # Landing Page Generation (Stage 10+)
 LANDING_PAGE_LLM=gpt-5.2
@@ -664,7 +679,7 @@ OpenAI Responses API, and any non-overridden tier still uses OpenAI.
 
 | Class | Tiers | Notes |
 |-------|-------|-------|
-| Conditionally safe | `THREAD_VALIDATION_LLM`, `KEYWORD_VALIDATION_LLM`, `COMPETITOR_EXTRACTION_LLM`, `PAIN_SOLUTION_MAPPING_LLM` | Native structured output — needs a **tool-capable** OpenRouter model (gemma may fail) |
+| Conditionally safe | `THREAD_VALIDATION_LLM`, `STANCE_VALIDATION_LLM`, `KEYWORD_VALIDATION_LLM`, `COMPETITOR_EXTRACTION_LLM`, `PAIN_SOLUTION_MAPPING_LLM` | Native structured output — needs a **tool-capable** OpenRouter model (gemma may fail) |
 | Risky | `OPENAI_MODEL_NAME` (shared by ~23 agents), `PAIN_POINT_VALIDATION_LLM` | CrewAI prompt-based JSON; weak models may lose data, retry, or hard-fail on plain-`Task` steps |
 | Needs strong/large-context model | `CONTENT_ANALYSIS_LLM` (needs ~400K context), `FUNCTION_CALLING_LLM` (tool calls) | Pick a model with the matching capability |
 | Reasoning tiers | `BRAINSTORM_LLM`/`IDEATION_*` | Use a reasoning-capable OpenRouter model — the tier's `*_REASONING_EFFORT` IS forwarded (see below) |
@@ -672,8 +687,7 @@ OpenAI Responses API, and any non-overridden tier still uses OpenAI.
 
 Backend features also accept `openrouter/*` ids: `SUGGEST_LLM_MODEL`,
 `CATEGORIZE_LLM_MODEL`, `OPENAI_FAQ_MODEL` (backend `OPENAI_API_KEY` likewise stays
-required). Note: `KEYWORD_RESEARCH_LLM` and `QUOTE_ENRICHMENT_LLM` are defined but
-not currently read by any code — overriding them has no effect.
+required).
 
 **How it works:** model-name prefix routing, mirroring the Kimi/Moonshot pattern.
 
@@ -820,15 +834,16 @@ NUM_SEARCH_QUERIES=40
 # Number of search queries to generate for Reddit/Twitter/HN
 # Higher = more diverse results but more API calls
 # Recommended: 30-50 for thorough coverage
-```
 
-### Result Limits
+ENABLE_AUDIENCE_AWARE_RESEARCH=false
+# Part C master gate (default: false). When true AND Stage-1 detected a focusable
+# audience (audience_scope = segment_of_niche or community), query generation and
+# pain mining get a SOFT, ADDITIVE audience bias. Broad coverage is preserved —
+# never narrowed. Off => research stays fully broad; audience is output-only.
 
-```bash
-MAX_SEARCH_RESULTS=20
-# Maximum URLs to collect per platform
-# Higher = more data but slower and costlier
-# Recommended: 15-25 for quality niches
+AUDIENCE_QUERY_ALLOTMENT=6
+# Extra Reddit query slots reserved for audience-flavored queries when the gate
+# above is on. Added ON TOP of NUM_SEARCH_QUERIES so the broad set is untouched.
 ```
 
 ### Reddit Quality Filters
@@ -1053,21 +1068,6 @@ KEYWORD_QUICK_EXPANSION_SIZE=50
 KEYWORD_VALIDATION_ENABLED=true
 # When true: Validates keywords against pain points/solutions
 # When false: Skip validation, use all keywords
-
-# Top pain points for validation context
-KEYWORD_VALIDATION_TOP_PAIN_POINTS=5
-# Number of top pain points to include in validation prompt
-# More = better context but higher token cost
-
-# Top competitors for validation context
-KEYWORD_VALIDATION_TOP_COMPETITORS=10
-# Number of top competitors to include in validation prompt
-# Helps identify competitor-branded keywords
-
-# LLM temperature for validation
-KEYWORD_VALIDATION_TEMPERATURE=0.7
-# Temperature for keyword validation LLM calls
-# Lower = more consistent, higher = more creative decisions
 
 # Relevance score threshold
 KEYWORD_RELEVANCE_THRESHOLD=0.65
@@ -1310,18 +1310,11 @@ TOKEN_BUDGET_FRESHNESS_DAYS=180
 - **Disable reserve** (`TOKEN_BUDGET_FRESHNESS_RESERVE=0`): Historical research or niches where old discussions are most valuable
 - **Tighten freshness** (`TOKEN_BUDGET_FRESHNESS_DAYS=90`): Only reserve budget for very recent posts
 
-### Cost Budget
+### Cost Logging
 
-```bash
-# Enable cost budget tracking (default: false)
-COST_BUDGET_ENABLED=false
-# When true, tracks cumulative costs and logs warning when approaching limit
-
-# Maximum API cost budget per run in USD
-COST_BUDGET_LIMIT=5.00
-# Default: $5.00
-# This is a soft limit - logs warning when exceeded but doesn't halt execution
-```
+Cost tracking is controlled by `COST_LOGGING_ENABLED` (see Logging & Monitoring).
+When on, the pipeline tracks per-stage token costs and logs a summary at the end
+of the run.
 
 **Cost Tracking Features:**
 - **Per-stage breakdown**: See costs for each pipeline stage (Pain Point Analysis, Solution Ideation, SEO Strategy, etc.)
@@ -1345,11 +1338,6 @@ Per-Stage Breakdown:
   Stage 9 - SEO Strategy: $0.0150 (20,000 in / 5,000 out)
 ============================================================
 ```
-
-**When to enable cost budget:**
-- **Development/testing**: Set `COST_BUDGET_LIMIT=1.00` to catch runaway costs early
-- **Production**: Set to expected maximum (~$3-5) as a safety net
-- **Budget-conscious**: Enable to get visibility into per-run costs
 
 ---
 
@@ -1467,7 +1455,7 @@ SCORE_ACCESSOR_DEFAULT_FALLBACK=0.5
 
 #### Profile 1: Quality-Focused (Default)
 ```bash
-MAX_SEARCH_RESULTS=20
+NUM_SEARCH_QUERIES=40
 MIN_REDDIT_UPVOTES=5
 MIN_REDDIT_COMMENTS=3
 MIN_TWITTER_LIKES=5
@@ -1481,7 +1469,7 @@ KEYWORD_MAX_COMPETITION=0.7
 
 #### Profile 2: Fast Research
 ```bash
-MAX_SEARCH_RESULTS=10
+NUM_SEARCH_QUERIES=20
 MIN_REDDIT_UPVOTES=10
 MIN_REDDIT_COMMENTS=5
 MIN_TWITTER_LIKES=10
@@ -1495,7 +1483,7 @@ KEYWORD_MAX_COMPETITION=0.7
 
 #### Profile 3: Deep Dive
 ```bash
-MAX_SEARCH_RESULTS=30
+NUM_SEARCH_QUERIES=60
 MIN_REDDIT_UPVOTES=3
 MIN_REDDIT_COMMENTS=2
 MIN_TWITTER_LIKES=3
@@ -1509,7 +1497,7 @@ KEYWORD_MAX_COMPETITION=0.8
 
 #### Profile 4: Budget-Conscious
 ```bash
-MAX_SEARCH_RESULTS=10
+NUM_SEARCH_QUERIES=20
 MIN_REDDIT_UPVOTES=10
 MIN_REDDIT_COMMENTS=5
 MIN_TWITTER_LIKES=10
@@ -1523,7 +1511,7 @@ OPENAI_MODEL_NAME=gpt-4o-mini
 
 #### Profile 5: Niche/Long-Tail Focus
 ```bash
-MAX_SEARCH_RESULTS=25
+NUM_SEARCH_QUERIES=50
 MIN_REDDIT_UPVOTES=1
 MIN_REDDIT_COMMENTS=1
 MIN_TWITTER_LIKES=1

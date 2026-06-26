@@ -1098,7 +1098,7 @@ workersRouter.post('/catalog-pain-points-ready', async (req: Request, res: Respo
 
     // ─── Transactional mutation block ────────────────────────────────────
     const buildMergeData = (
-      bestMatch: { mentionCount: number; severityScore: number; willingnessToPayScore: number; representativeQuotes: unknown; sourcePlatforms: unknown; affectedSegments: unknown; opportunityLevel: string; themeId: string | null },
+      bestMatch: { mentionCount: number; severityScore: number; commercialIntentScore: number; representativeQuotes: unknown; sourcePlatforms: unknown; affectedSegments: unknown; opportunityLevel: string; themeId: string | null },
       newPp: Record<string, unknown>,
     ) => {
       const existingQuotes = (bestMatch.representativeQuotes as string[] | null) || [];
@@ -1127,7 +1127,7 @@ workersRouter.post('/catalog-pain-points-ready', async (req: Request, res: Respo
       return {
         mentionCount: bestMatch.mentionCount + (Number(newPp.mention_count) || 0),
         severityScore: Math.max(bestMatch.severityScore, Number(newPp.severity_score) || 0),
-        willingnessToPayScore: Math.max(bestMatch.willingnessToPayScore, Number(newPp.willingness_to_pay) || 0),
+        commercialIntentScore: Math.max(bestMatch.commercialIntentScore, Number(newPp.commercial_intent) || 0),
         representativeQuotes: mergedQuotes,
         sourcePlatforms: mergedPlatforms,
         affectedSegments: mergedSegments,
@@ -1269,7 +1269,7 @@ workersRouter.post('/catalog-pain-points-ready', async (req: Request, res: Respo
                 description: String(newPp.description || ''),
                 mentionCount: Number(newPp.mention_count) || 0,
                 severityScore: Number(newPp.severity_score) || 0,
-                willingnessToPayScore: Number(newPp.willingness_to_pay) || 0,
+                commercialIntentScore: Number(newPp.commercial_intent) || 0,
                 opportunityLevel: String(newPp.opportunity_level || 'medium'),
                 representativeQuotes: (newPp.representative_quotes as string[]) || [],
                 sourcePlatforms: (newPp.source_platforms as string[]) || [],

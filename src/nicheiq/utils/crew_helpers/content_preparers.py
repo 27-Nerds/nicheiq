@@ -186,7 +186,7 @@ def prepare_pain_point_content(pain_point_analysis: PainPointAnalysisResult) -> 
         formatted.append(
             f"""[PAIN POINT: {pp.title}]
 [SEVERITY: {pp.severity_score:.2f}]
-[WILLINGNESS TO PAY: {pp.willingness_to_pay:.2f}]
+[WILLINGNESS TO PAY: {pp.commercial_intent:.2f}]
 [OPPORTUNITY LEVEL: {pp.opportunity_level.value}]
 [MENTIONS: {pp.mention_count}]
 [PLATFORMS: {', '.join(pp.source_platforms if pp.source_platforms else ['N/A'])}]

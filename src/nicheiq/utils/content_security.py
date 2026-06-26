@@ -22,13 +22,23 @@ _INJECTION_PATTERNS = re.compile(
     r"\bdo\s+not\s+follow\s+any\s+(?:other|previous)\b)",
 )
 
+# Fence-forgery signature. fence_content wraps content with "======== ... ========"
+# delimiter lines; scraped text containing a byte-identical '=' run (on its own line OR
+# mid-line, e.g. inside a post title) could forge a fence closer so everything after it
+# reads as out-of-band/trusted. The '=' run IS the signature, so collapse any run of >=6
+# '=' anywhere BEFORE wrapping. The real fence added by fence_content (after sanitize)
+# is unaffected.
+_FENCE_DELIM = re.compile(r"={6,}")
+
 
 def sanitize_social_content(text: str) -> str:
-    """Strip control characters and known prompt-injection patterns from scraped text."""
+    """Strip control characters, fence-forgery delimiters, and known injection patterns."""
     if not text:
         return ""
     # Remove control characters except standard whitespace
     sanitized = "".join(c for c in text if ord(c) >= 32 or c in "\n\r\t")
+    # Neutralize forged fence delimiters so scraped text can't break out of fencing
+    sanitized = _FENCE_DELIM.sub("[REDACTED FENCE]", sanitized)
     # Strip known injection patterns
     sanitized = _INJECTION_PATTERNS.sub("[REDACTED]", sanitized)
     return sanitized

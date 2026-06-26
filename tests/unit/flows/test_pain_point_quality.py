@@ -37,7 +37,7 @@ def _make_pain_point(
         description="A test pain point description",
         mention_count=50,
         severity_score=severity,
-        willingness_to_pay=wtp,
+        commercial_intent=wtp,
         opportunity_level=opportunity,
         representative_quotes=quotes,
         source_platforms=platforms,
@@ -96,7 +96,7 @@ def _build_gold_dataset():
     """Build a dataset that meets GOLD tier requirements.
 
     GOLD needs: unique_source_count >= 20, subreddit_diversity >= 4,
-    pain_point_count >= 5, quote_density >= 8.
+    pain_point_count >= 5, quote_density >= 4.
     """
     # 5 pain points, each with 8 quotes from 4 unique sources across 4 subreddits
     subreddits = ["freelance", "entrepreneur", "startups", "smallbusiness"]
@@ -142,13 +142,13 @@ class TestGoldTier:
         assert 0.0 <= score <= 1.0
 
     def test_gold_tier_boundary_minimum(self):
-        """Exactly at GOLD thresholds → GOLD."""
+        """Exactly at GOLD thresholds (quote_density == 4) → GOLD."""
         # 5 PPs × 4 unique sources each = 20 unique sources
         subreddits = ["sub_a", "sub_b", "sub_c", "sub_d"]
         pps = []
         post_pairs = []
         for i in range(5):
-            pp = _make_pain_point(num_quotes=8, num_source_ids=4, source_id_prefix=f"g{i}")
+            pp = _make_pain_point(num_quotes=4, num_source_ids=4, source_id_prefix=f"g{i}")
             pps.append(pp)
             for j in range(4):
                 post_pairs.append((f"g{i}_{j}", subreddits[j]))
@@ -274,12 +274,17 @@ class TestInsufficientTier:
         assert tier == "INSUFFICIENT"
 
     def test_insufficient_low_quote_density(self):
-        """3 PPs, quote_density=2 → INSUFFICIENT (need >= 3)."""
+        """quote_density below 1 → INSUFFICIENT, even with enough sources/pains.
+
+        Sources (8) and pain count (4) clear the BRONZE floor, so the ONLY failing
+        gate is the recalibrated quote_density floor (need ≥1). One stance-verified
+        quote total across 4 pains = density 0.25.
+        """
         pps = [
-            _make_pain_point(num_quotes=2, num_source_ids=2, source_id_prefix=f"iq{i}")
-            for i in range(3)
+            _make_pain_point(num_quotes=(1 if i == 0 else 0), num_source_ids=2, source_id_prefix=f"iq{i}")
+            for i in range(4)
         ]
-        post_pairs = [(f"iq{i}_{j}", "sub") for i in range(3) for j in range(2)]
+        post_pairs = [(f"iq{i}_{j}", "sub") for i in range(4) for j in range(2)]
         reddit_posts = _make_reddit_posts(post_pairs)
         analysis = _make_analysis(pps)
         tier, _ = _validate(analysis, reddit_posts=reddit_posts)
@@ -360,7 +365,7 @@ class TestEdgeCases:
         pps = [
             PainPoint(
                 title=f"PP {i}", description="desc", mention_count=10,
-                severity_score=0.5, willingness_to_pay=0.5,
+                severity_score=0.5, commercial_intent=0.5,
                 opportunity_level=OpportunityLevel.MEDIUM,
                 representative_quotes=[f"quote {j}" for j in range(5)],
                 source_platforms=["Reddit"],

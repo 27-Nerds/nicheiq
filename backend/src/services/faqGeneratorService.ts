@@ -398,7 +398,7 @@ export async function generateForPainPoint(
       description: trimText(painPoint.description, 600),
       solution_approach: trimText(painPoint.solutionApproach, 300),
       severity_score: Math.round(painPoint.severityScore),
-      willingness_to_pay_score: Math.round(painPoint.willingnessToPayScore),
+      commercial_intent_score: Math.round(painPoint.commercialIntentScore),
       opportunity_level: painPoint.opportunityLevel,
       mention_count: painPoint.mentionCount,
       source_platforms: Array.isArray(painPoint.sourcePlatforms)

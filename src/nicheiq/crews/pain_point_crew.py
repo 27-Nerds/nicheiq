@@ -17,6 +17,7 @@ from loguru import logger
 from ..config.settings import settings
 from ..models.keyword_data import OpportunityLevel
 from ..models.pain_point import (
+    BatchStanceResponse,
     ContentCategorizationReport,
     EnrichedPainPointQuotes,
     ExtractedQuote,
@@ -52,6 +53,20 @@ from ..utils.validation.crew_guardrails import (
 # Fuzzy matching threshold for pain point title matching (0.0-1.0)
 # 0.85 = 85% similarity required to consider a match
 FUZZY_MATCH_THRESHOLD = 0.85
+
+
+def _norm_tool_addressable(value: str | None) -> str:
+    """Normalize the scorer's tool-addressability verdict to 'full' | 'partial' | 'none'.
+
+    Defensive: the LLM may emit YES/PARTIALLY/NO or other casings. Unknown values default to
+    'full' (eligible) so a parse miss never silently excludes a pain from ideation.
+    """
+    v = (value or "").strip().lower()
+    if v in ("none", "no", "not addressable", "non-addressable"):
+        return "none"
+    if v in ("partial", "partially", "part"):
+        return "partial"
+    return "full"
 
 
 def fuzzy_find_matching_score(title: str, scores: list, threshold: float = FUZZY_MATCH_THRESHOLD):
@@ -277,10 +292,10 @@ def validate_pain_point_scoring(task_output) -> tuple[bool, Any]:
                     f"Score for '{score.pain_point_title}' has invalid severity_score {score.severity_score}. "
                     "Must be between 0.0 and 1.0."
                 )
-            if score.willingness_to_pay is None or not (0.0 <= score.willingness_to_pay <= 1.0):
+            if score.commercial_intent is None or not (0.0 <= score.commercial_intent <= 1.0):
                 return (
                     False,
-                    f"Score for '{score.pain_point_title}' has invalid willingness_to_pay {score.willingness_to_pay}. "
+                    f"Score for '{score.pain_point_title}' has invalid commercial_intent {score.commercial_intent}. "
                     "Must be between 0.0 and 1.0."
                 )
 
@@ -307,7 +322,40 @@ class PainPointCrew:
     agents_config = "config/pain_point_agents.yaml"
     tasks_config = "config/pain_point_tasks.yaml"
 
-    def __init__(self, reddit_posts: list[RedditPost] = None, twitter_threads: list[TwitterThread] = None, generic_posts: list[SocialPost] = None, niche_description: str = "", market_segments: list[str] = None, industry_boundaries: str = "", job_id: str | None = None, niche_anchor_terms: list[str] | None = None):
+    @staticmethod
+    def _sanitize_audience(text: str | None) -> str | None:
+        """Part C: sanitize free-text audience before prompt interpolation.
+
+        Collapses whitespace/newlines, strips control chars, truncates to ~200 chars.
+        Returns None for empty/blank input so the audience lens stays off.
+        """
+        if not text:
+            return None
+        cleaned = " ".join(str(text).split())
+        cleaned = "".join(ch for ch in cleaned if ord(ch) >= 32)[:200].strip()
+        return cleaned or None
+
+    def _audience_lens(self) -> str:
+        """Part C: SOFT, ADDITIVE audience tiebreaker clause for the extraction task.
+
+        Empty string when no audience (so the {audience_lens} token renders blank and
+        behaviour is identical to today). When set, it ONLY breaks ties on inclusion and
+        must never inflate severity / WTP / any score — extraction stays niche-wide and
+        strictly evidence-based.
+        """
+        if not self.target_audience:
+            return ""
+        return (
+            f'AUDIENCE TIEBREAKER (the user is building for "{self.target_audience}"). '
+            "Extract pains across the WHOLE niche exactly as instructed above. Use the "
+            "audience ONLY to break ties: when two candidate pains are otherwise equally "
+            "worth including, prefer the one this audience feels acutely. Do NOT change "
+            "which pains qualify on their own merits, do NOT exclude any major niche pain, "
+            "and do NOT inflate severity / willingness-to-pay / any score for audience "
+            "pains — all scores stay strictly evidence-based."
+        )
+
+    def __init__(self, reddit_posts: list[RedditPost] = None, twitter_threads: list[TwitterThread] = None, generic_posts: list[SocialPost] = None, niche_description: str = "", market_segments: list[str] = None, industry_boundaries: str = "", job_id: str | None = None, niche_anchor_terms: list[str] | None = None, target_audience: str | None = None):
         """
         Initialize PainPointCrew with social content as knowledge sources.
 
@@ -381,6 +429,8 @@ class PainPointCrew:
         self.market_segments = market_segments or []
         self.industry_boundaries = industry_boundaries
         self.niche_anchor_terms = list(niche_anchor_terms or [])
+        # Part C: optional soft audience lens for pain extraction (sanitized free text).
+        self.target_audience = self._sanitize_audience(target_audience)
         # Anchor matchers for evidence ranking (empty => fail-open no-op).
         from ..utils.validation.niche_anchor import build_anchor_matchers
         self._anchor_matchers = build_anchor_matchers(self.niche_anchor_terms)
@@ -451,9 +501,16 @@ class PainPointCrew:
         Filter out low-quality Reddit posts before analysis.
 
         Removes:
-        - Posts with very short selftext (<50 chars - likely memes/links)
+        - Posts that are thin on BOTH selftext AND comment discussion (likely memes/links)
         - Posts with meme indicators in title
         - Posts with low-quality comment discussions (avg comment length <30 chars)
+
+        NOTE: a short selftext alone is NOT low-quality. Many high-value discussions are link or
+        question posts with an empty selftext where the substance lives in the COMMENTS (e.g.
+        "does anyone care about stickers?" + 31 comments, "ESL ticket advice?" + a pricing debate).
+        These are disproportionately fan/spectator/collector pains — judging by selftext length
+        alone deleted them whole and biased the corpus toward long player-rant posts. So we drop a
+        short-selftext post only when its comment discussion is ALSO thin.
 
         Args:
             posts: List of RedditPost objects
@@ -466,22 +523,27 @@ class PainPointCrew:
 
         quality_posts = []
         meme_indicators = ['meme', 'shitpost', 'lol', 'funny', 'joke', 'humor', 'circlejerk']
+        # A link/question post with at least this much comment text carries a real discussion
+        # even with an empty selftext — keep it (the value is in the comments).
+        MIN_DISCUSSION_CHARS = 200
 
         for post in posts:
-            # Skip posts with very short selftext (likely memes or link posts)
-            if len(post.selftext.strip()) < 50:
-                logger.debug(f"Filtered Reddit post (short content): {post.title[:50]}")
-                continue
-
             # Skip if title has meme indicators
             title_lower = post.title.lower()
             if any(indicator in title_lower for indicator in meme_indicators):
                 logger.debug(f"Filtered Reddit post (meme indicator): {post.title[:50]}")
                 continue
 
+            total_comment_length = sum(len(c.body or "") for c in (post.comments or []))
+
+            # Drop only when BOTH the selftext AND the comment discussion are thin (genuine
+            # meme/link with no substance). A short selftext with real discussion is kept.
+            if len(post.selftext.strip()) < 50 and total_comment_length < MIN_DISCUSSION_CHARS:
+                logger.debug(f"Filtered Reddit post (thin selftext + comments): {post.title[:50]}")
+                continue
+
             # Check comment quality - skip if average comment is too short (low-quality discussion)
             if post.comments:
-                total_comment_length = sum(len(c.body) for c in post.comments)
                 avg_comment_len = total_comment_length / max(len(post.comments), 1)
                 if avg_comment_len < 30:  # Average comment < 30 chars
                     logger.debug(f"Filtered Reddit post (low-quality comments): {post.title[:50]}")
@@ -831,8 +893,14 @@ class PainPointCrew:
             llm=build_crew_llm(
                 model=settings.content_analysis_llm,
                 temperature=0,  # Deterministic for categorization (ignored for reasoning models)
+                reasoning_effort=settings.content_analysis_reasoning_effort,
             ),
             verbose=True,
+            # We budget the corpus ourselves (filter_posts_to_token_budget → max_reddit_content_tokens).
+            # CrewAI mis-detects OpenRouter context windows as ~7K (OpenAICompletion's hardcoded
+            # OpenAI-only table) and would SUMMARIZE our 400K corpus down to ~7K before categorizing —
+            # lossy + majority-biased, dropping the quiet minority signal. Disable that second-guess.
+            respect_context_window=False,
         )
 
     @agent
@@ -855,9 +923,11 @@ class PainPointCrew:
                 model=settings.pain_point_validation_llm,  # Non-reasoning model (gpt-4o)
                 temperature=0.3,  # Low-moderate for consistent pattern extraction
                 max_tokens=16000,  # Prevent truncation of large extraction outputs
+                reasoning_effort=settings.pain_point_reasoning_effort,
             ),
             knowledge_config=KnowledgeConfig(results_limit=20),  # More tagged content available
             verbose=True,
+            respect_context_window=False,  # see content_researcher — we own corpus budgeting
         )
 
     @agent
@@ -880,9 +950,11 @@ class PainPointCrew:
                 model=settings.pain_point_validation_llm,  # Non-reasoning model (gpt-4o)
                 temperature=0.2,  # Low temperature for consistent scoring
                 max_tokens=8192,  # Prevent truncation of large validation outputs
+                reasoning_effort=settings.pain_point_reasoning_effort,
             ),
             knowledge_config=KnowledgeConfig(results_limit=5),  # Evidence validation
             verbose=True,
+            respect_context_window=False,  # see content_researcher — we own corpus budgeting
         )
 
     
@@ -976,6 +1048,65 @@ class PainPointCrew:
         text = re.sub(r'\s+', ' ', text).strip()
         return text
 
+    @property
+    def _post_body_map(self) -> dict[str, str]:
+        """Lazy `post_id -> full source text` map for the deterministic quote-grounding gate.
+
+        Built from the RAW posts (so the gate sees the complete corpus, not the token-budgeted
+        subset). Source text = title + selftext + EVERY comment/reply body (Reddit), original
+        tweet + replies (Twitter), or title + body + responses (generic). Comments are included
+        because displayed quotes are very often pulled from comment threads, not the post body.
+        """
+        cached = getattr(self, "_post_body_map_cache", None)
+        if cached is not None:
+            return cached
+
+        def _comment_bodies(comments) -> list[str]:
+            out: list[str] = []
+            for c in comments or []:
+                out.append(getattr(c, "body", "") or "")
+                out.extend(_comment_bodies(getattr(c, "replies", None)))
+            return out
+
+        m: dict[str, str] = {}
+        for p in getattr(self, "_raw_reddit_posts", None) or []:
+            parts = [getattr(p, "title", "") or "", getattr(p, "selftext", "") or ""]
+            parts += _comment_bodies(getattr(p, "comments", None))
+            m[p.post_id] = " ".join(t for t in parts if t)
+        for th in getattr(self, "_raw_twitter_threads", None) or []:
+            ot = getattr(th, "original_tweet", None)
+            parts = [getattr(ot, "text", "") or "" if ot else ""]
+            parts += [getattr(r, "text", "") or "" for r in (getattr(th, "replies", None) or [])]
+            m[th.thread_id] = " ".join(t for t in parts if t)
+        for p in getattr(self, "_raw_generic_posts", None) or []:
+            parts = [getattr(p, "title", "") or "", getattr(p, "body", "") or ""]
+            for r in (getattr(p, "responses", None) or []):
+                parts.append(getattr(r, "body", "") or getattr(r, "text", "") or "")
+            m[p.post_id] = " ".join(t for t in parts if t)
+        self._post_body_map_cache = m
+        return m
+
+    @staticmethod
+    def _is_quote_grounded(quote: str, source_body: str, threshold: float = 0.9) -> bool:
+        """Deterministic grounding check: is `quote` a verbatim or fuzzy substring of `source_body`?
+
+        Normalize case/whitespace -> exact-substring fast path -> sliding word-window
+        SequenceMatcher ratio >= threshold (tolerates the minor edits left by quote cleaning/
+        splitting). No LLM calls. Returns False on empty inputs (caller treats unknown-source
+        as fail-open separately).
+        """
+        q = re.sub(r"\s+", " ", (quote or "").lower()).strip()
+        src = re.sub(r"\s+", " ", (source_body or "").lower()).strip()
+        if not q or not src:
+            return False
+        if q in src:
+            return True
+        # Fuzzy: the longest CONTIGUOUS run of the quote that also appears in the source must
+        # cover >= threshold of the quote. Tolerates trailing punctuation / minor split artifacts
+        # while still rejecting reworded or off-source quotes (a paraphrase breaks contiguity).
+        match = SequenceMatcher(None, q, src, autojunk=False).find_longest_match(0, len(q), 0, len(src))
+        return (match.size / len(q)) >= threshold
+
     @staticmethod
     def _build_relevance_terms(pain_point: UnvalidatedPainPoint) -> frozenset[str]:
         """Precompute relevance terms from a pain point (title + description + keywords).
@@ -1019,10 +1150,14 @@ class PainPointCrew:
         effective_size = max(len(relevance_terms), 5)
         base_score = len(overlap) / effective_size
 
-        # Scaled bonus for anchor keyword phrase matches (substring in quote)
+        # Scaled bonus for anchor keyword phrase matches (substring in quote).
+        # Gate on real token overlap: an anchor substring alone (e.g. the niche
+        # word "peptide") must NOT carry an otherwise-irrelevant quote over the
+        # acceptance floor — the bonus only sweetens quotes that already share
+        # topic vocabulary.
         quote_lower = quote_text.lower()
         kw_matches = sum(1 for kw in anchor_keywords[:4] if kw.lower() in quote_lower)
-        bonus = min(0.3, kw_matches * 0.1) if kw_matches else 0.0
+        bonus = min(0.3, kw_matches * 0.1) if (kw_matches and overlap) else 0.0
 
         return min(1.0, base_score + bonus)
 
@@ -1069,8 +1204,94 @@ class PainPointCrew:
 
         return parsed
 
-    # Minimum relevance score for a quote to be accepted (safety net, not primary filter)
-    _MIN_RELEVANCE = 0.05
+    # Minimum keyword-relevance for a quote to reach the stance gate. Set LOW (0.03):
+    # this is a noise filter, NOT the primary quality control. Funnel diagnostics on a
+    # real run showed the vector search returns hundreds of semantically-matched
+    # candidates per pain, but a 0.10 lexical floor rejected ~98% of them — including
+    # genuine matches phrased differently from the formal pain title (e.g. "I can't push
+    # the needle in" vs "paralysis prevents self-administration"). Off-topic is already
+    # handled by vector similarity (QuoteSearchTool score_threshold), off-stance by the
+    # stance gate, so the lexical floor only needs to drop near-zero-overlap noise.
+    # Relevance is still used for RANKING (which candidates reach the cap/stance gate).
+    _MIN_RELEVANCE = 0.03
+    # Max quotes kept per source post, so one comment cannot be sentence-shredded
+    # into many "independent" quotes and fake corroboration.
+    _PER_POST_CAP = 2
+    # How many top-ranked candidates the stance gate JUDGES (its input). Wider than
+    # the display cap: with the loose relevance floor, the top candidates by vector
+    # similarity are the most TOPICALLY similar, which for some pains are off-stance
+    # (e.g. injection-technique quotes under "needle phobia"). Judging more gives the
+    # gate a real chance to find the genuinely-supporting quotes deeper in the pool.
+    _STANCE_INPUT_CAP = 24
+    # Max quotes DISPLAYED per pain (after the stance gate keeps only SUPPORTS).
+    _DISPLAY_CAP = 12
+    # Below this many stance-verified quotes, a pain point is flagged low_evidence
+    # (drives the severity clamp). Set to 2 (not higher): stance-verified quotes now
+    # average ~1.7/pain, so a pain with 2 independent supporting quotes is adequately
+    # evidenced; only 0-1 is genuinely thin. A higher floor would gut real pains whose
+    # displayed quotes were (correctly) trimmed by the stance gate.
+    _MIN_QUOTES = 2
+
+    def _stance_filter_quotes(
+        self,
+        pain_point: UnvalidatedPainPoint,
+        quotes: list[ExtractedQuote],
+    ) -> list[ExtractedQuote]:
+        """Keep only quotes that genuinely express the pain (stance gate).
+
+        Topical vector search retrieves quotes that share vocabulary with the pain
+        but may be off-stance (positive about the thing), neutral how-to, or about a
+        different symptom. A single cheap structured-output LLM call classifies each
+        quote SUPPORTS / NEUTRAL / CONTRADICTS against the claim; only SUPPORTS are
+        kept, preserving the input order.
+
+        Fail-open: any error (timeout, parse, network) returns the input quotes
+        unfiltered — a fail-closed default would wrongly zero out a pain's evidence.
+        """
+        if not quotes:
+            return quotes
+
+        from ..utils.llm_service import LLMService
+        from ..utils.prompts import get_prompt
+        from ..utils.validation.thread_validator import _sanitize_text
+
+        claim = _sanitize_text(f"{pain_point.title} - {pain_point.description}")
+        quotes_text = "\n".join(
+            f"{i}. {_sanitize_text(q.quote_text)}"
+            for i, q in enumerate(quotes, start=1)
+        )
+        prompt = get_prompt(
+            "stance_validation",
+            claim=claim,
+            quotes_text=quotes_text,
+            quote_count=len(quotes),
+        )
+
+        try:
+            result, _usage = LLMService.invoke_structured(
+                prompt=prompt,
+                output_model=BatchStanceResponse,
+                temperature=0,
+                timeout=120,
+                model_name=settings.stance_validation_llm,
+                reasoning_effort="minimal",
+            )
+        except Exception as e:
+            logger.warning(
+                f"[Stance] gate failed for '{pain_point.title[:40]}', keeping "
+                f"{len(quotes)} unfiltered quotes (fail-open): {e}"
+            )
+            return quotes
+
+        supported_idx = {
+            v.index for v in result.verdicts if v.stance == "SUPPORTS"
+        }
+        kept = [q for i, q in enumerate(quotes, start=1) if i in supported_idx]
+        logger.info(
+            f"[Stance] '{pain_point.title[:40]}': kept {len(kept)}/{len(quotes)} "
+            f"stance-verified quotes"
+        )
+        return kept
 
     def _enrich_single_pain_point(
         self,
@@ -1097,6 +1318,10 @@ class PainPointCrew:
         seen_quote_texts: set[str] = set()
         scored_quotes: list[tuple[float, ExtractedQuote]] = []
         matched_post_ids: set[str] = set()  # ALL relevance-passing hits (pre top-12 cut)
+        # Retrieval funnel diagnostics: distinguish a corpus/search gap (few raw
+        # vector hits) from an over-tight relevance floor (many raw, few pass).
+        raw_hits = 0
+        rejected_by_floor = 0
 
         # Precompute relevance terms once for this pain point
         relevance_terms = self._build_relevance_terms(pain_point)
@@ -1118,11 +1343,13 @@ class PainPointCrew:
                     normalized = quote_text.lower().strip()
                     if normalized in seen_quote_texts:
                         continue
+                    raw_hits += 1
 
                     relevance = self._compute_quote_relevance(
                         quote_text, relevance_terms, pain_point.anchor_keywords
                     )
                     if relevance < self._MIN_RELEVANCE:
+                        rejected_by_floor += 1
                         logger.debug(
                             f"Rejected quote (relevance={relevance:.3f}): "
                             f"'{quote_text[:60]}...' for '{pain_point.title}'"
@@ -1154,7 +1381,64 @@ class PainPointCrew:
             )
         else:
             scored_quotes.sort(key=lambda x: x[0], reverse=True)
-        final_quotes = [q for _, q in scored_quotes[:12]]
+
+        # Per-post cap: iterate in sort order (anchor-first, then score) and keep at
+        # most _PER_POST_CAP quotes per source post, up to 12. A high-scoring quote
+        # whose post is already at cap is skipped for the next under-cap quote —
+        # intended, prevents one comment from dominating via sentence-shredding.
+        # No backfill: a pain with little real evidence ends up with few quotes.
+        post_counts: dict[str, int] = {}
+        capped_quotes: list[ExtractedQuote] = []
+        for _, quote in scored_quotes:
+            if post_counts.get(quote.post_id, 0) < self._PER_POST_CAP:
+                capped_quotes.append(quote)
+                post_counts[quote.post_id] = post_counts.get(quote.post_id, 0) + 1
+                if len(capped_quotes) == self._STANCE_INPUT_CAP:
+                    break
+
+        # Stance gate: keep only quotes that genuinely express the pain (drops
+        # off-stance/positive and on-topic-but-no-complaint quotes). Fail-open.
+        # Judge up to _STANCE_INPUT_CAP candidates, then DISPLAY at most _DISPLAY_CAP
+        # of the survivors (stance gate preserves rank order). Note: matched_post_ids
+        # stays the WIDE relevance-passing set (drives the discussion-volume
+        # mention_count); the stance gate only narrows DISPLAY.
+        final_quotes = self._stance_filter_quotes(pain_point, capped_quotes)[:self._DISPLAY_CAP]
+
+        # Deterministic grounding gate: every DISPLAYED quote must be a verbatim/fuzzy substring
+        # of its cited source post (the fail-open stance gate can let off-source/mis-attributed
+        # fragments through). Drop ungrounded quotes, but FLOOR-PROTECT — never push a pain below
+        # _MIN_QUOTES on grounding alone (keep the top-ranked ungrounded to reach the floor and let
+        # the existing low_evidence flag handle the rest). Fail-open when the source body is unknown.
+        # Only narrows DISPLAY; matched_post_ids (mention_count) is untouched.
+        grounding_rejected = 0
+        if settings.enable_quote_grounding_gate and final_quotes:
+            body_map = self._post_body_map
+            grounded: list = []
+            ungrounded: list = []
+            for q in final_quotes:
+                src = body_map.get(q.post_id, "")
+                if not src or self._is_quote_grounded(
+                    q.quote_text, src, settings.quote_grounding_threshold
+                ):
+                    grounded.append(q)  # grounded, or unknown source (fail-open)
+                else:
+                    ungrounded.append(q)
+            grounding_rejected = len(ungrounded)
+            if grounding_rejected:
+                if len(grounded) < self._MIN_QUOTES:
+                    grounded.extend(ungrounded[: self._MIN_QUOTES - len(grounded)])
+                final_quotes = grounded
+
+        # Retrieval funnel: raw vector hits -> passed relevance floor -> per-post
+        # capped -> stance-verified. Lets us tell apart a search/corpus gap (low
+        # raw_hits) from an over-tight relevance floor (raw_hits high but most
+        # rejected) from an over-strict stance gate (capped high, kept low).
+        logger.info(
+            f"[Funnel] '{pain_point.title[:40]}': raw={raw_hits} "
+            f"floor_ok={len(scored_quotes)} (rejected={rejected_by_floor}) "
+            f"capped={len(capped_quotes)} stance_kept={len(final_quotes)} "
+            f"ungrounded_dropped={grounding_rejected}"
+        )
 
         return SinglePainPointQuotesResult(
             pain_point_title=pain_point.title,
@@ -1162,8 +1446,9 @@ class PainPointCrew:
             quotes=final_quotes,
             matched_post_ids=sorted(matched_post_ids),
             search_summary=(
-                f"Searched {len(all_queries)} queries (contextual), "
-                f"found {len(final_quotes)} quotes from {len(scored_quotes)} candidates"
+                f"Searched {len(all_queries)} queries (contextual), kept "
+                f"{len(final_quotes)} stance-verified quotes from {len(capped_quotes)} "
+                f"capped / {len(scored_quotes)} candidates"
             ),
         )
 
@@ -1339,6 +1624,7 @@ class PainPointCrew:
         uncovered: list["ThemeCategory"],
         orphans: list[tuple[str, str]],
         base_inputs: dict,
+        audience_directive: str = "",
     ) -> PainPointExtraction | None:
         """One corrective re-run of Task 2 ONLY (not Task 1) for coverage gaps.
 
@@ -1375,6 +1661,13 @@ class PainPointCrew:
             "tangential evidence should be skipped, not forced.\n"
             "- Every parent_theme_id must be one of the exact theme_ids listed above."
         )
+        if audience_directive:
+            feedback += (
+                "\n\n**AUDIENCE REBALANCE (the prior extraction over-served one sub-audience and "
+                "crowded out others the corpus clearly discusses):**\n" + audience_directive +
+                "\nSurface these audiences' pains FROM THE EXISTING CORPUS EVIDENCE only — same "
+                "no-fabrication rule: skip a sub-group whose evidence is actually thin."
+            )
 
         try:
             corrective_task = SafeTask(
@@ -1470,15 +1763,21 @@ class PainPointCrew:
         quotes: list[str],
         matching_enrichment: EnrichedPainPointQuotes | None,
         theme_mentions: dict[str, int],
-    ) -> tuple[int, float, OpportunityLevel, str | None]:
+    ) -> tuple[int, float, OpportunityLevel, str | None, bool, float]:
         """Resolve the code-governed fields for one merged PainPoint.
 
-        Returns (mention_count, severity_score, opportunity_level, downgrade_reason):
-        - mention_count: unique post_ids from ALL relevance-passing vector hits;
-          the LLM estimate is only a fallback when enrichment was unavailable.
-          Bounded by the parent theme's mention_count.
-        - severity: clamped to ≤0.45 when the pain point has zero evidence quotes
-          (mirrors the Task 3 rubric's rule in code).
+        Returns (mention_count, severity_score, opportunity_level, downgrade_reason,
+        low_evidence, commercial_intent):
+        - commercial_intent: the LLM score after the code-enforced tool-addressability cap
+          (downgrade-only: 'partial'->≤0.4, 'none'->≤0.15); authoritative for the final PainPoint.
+        - mention_count: unique post_ids from ALL relevance-passing vector hits
+          (matched_post_ids) — a discussion-volume signal, NOT limited to the few
+          displayed quotes; the LLM estimate is the fallback when enrichment was
+          unavailable. Bounded by the parent theme's mention_count.
+        - severity: clamped to ≤0.45 when the pain point has zero evidence quotes OR
+          is flagged low_evidence (fewer than _MIN_QUOTES survived) — mirrors the
+          Task 3 rubric's rule in code.
+        - low_evidence: True when fewer than _MIN_QUOTES stance-verified quotes survived.
         - opportunity_level: code-computed formula; the LLM value is honored only
           when BELOW the formula AND accompanied by a ≥20-char downgrade_reason
           (preserves universal-theme / niche-specificity cap semantics).
@@ -1490,6 +1789,13 @@ class PainPointCrew:
             OpportunityLevel.HIGH: 2,
         }
 
+        # mention_count is a DISCUSSION-VOLUME signal: how many distinct posts raise
+        # this problem. It counts ALL relevance-passing posts (matched_post_ids), NOT
+        # just the posts behind the few displayed quotes — the stance gate and per-post
+        # cap curate which quotes to SHOW; they must not shrink the count. Count broad,
+        # show narrow. matched_post_ids already benefits from the raised relevance floor
+        # (P0-A), so it is more accurate than before without collapsing. The LLM estimate
+        # is the fallback when enrichment was unavailable.
         if matching_enrichment and matching_enrichment.matched_post_ids:
             mention_count = len(matching_enrichment.matched_post_ids)
         else:
@@ -1502,15 +1808,38 @@ class PainPointCrew:
             )
             mention_count = theme_cap
 
+        low_evidence = len(quotes) < PainPointCrew._MIN_QUOTES
         severity = matching_score.severity_score
-        if not quotes and severity > 0.45:
+        _clamp = settings.low_evidence_severity_clamp
+        if (not quotes or low_evidence) and severity > _clamp:
             logger.warning(
-                f"Zero-quote severity clamp: '{unvalidated.title}' severity "
-                f"{severity:.2f} → 0.45 (no supporting evidence quotes)"
+                f"Low-evidence severity clamp: '{unvalidated.title}' severity "
+                f"{severity:.2f} → {_clamp} ({len(quotes)} supporting quote(s), "
+                f"min {PainPointCrew._MIN_QUOTES})"
             )
-            severity = 0.45
+            severity = _clamp
 
-        formula_level = compute_opportunity_level(severity, matching_score.willingness_to_pay)
+        # Tool-addressability commercial-intent cap (code-enforced, downgrade-only — mirrors the
+        # low-evidence severity clamp above). The scorer already makes this judgment; previously it
+        # only relied on the LLM honoring the prompt. Enforce it deterministically off the persisted
+        # tool_addressable verdict so the cap is authoritative for BOTH the opportunity formula and
+        # the final PainPoint: 'partial' (tool helps but root cause is structural) caps at 0.4;
+        # 'none' (no software solution) caps at 0.15. Can only lower, never raise.
+        commercial_intent = matching_score.commercial_intent
+        _ta = _norm_tool_addressable(getattr(matching_score, "tool_addressable", "full"))
+        _ta_cap = {"partial": 0.4, "none": 0.15}.get(_ta)
+        if _ta_cap is not None and commercial_intent > _ta_cap:
+            logger.warning(
+                f"Tool-addressability cap: '{unvalidated.title}' commercial_intent "
+                f"{commercial_intent:.2f} → {_ta_cap} (tool_addressable='{_ta}')"
+            )
+            commercial_intent = _ta_cap
+
+        formula_level = compute_opportunity_level(
+            severity, commercial_intent,
+            high_severity=settings.opportunity_high_severity_threshold,
+            high_commercial_intent=settings.opportunity_high_commercial_intent_threshold,
+        )
         llm_level = matching_score.opportunity_level
         downgrade_reason = None
         if _opportunity_rank[llm_level] < _opportunity_rank[formula_level]:
@@ -1532,7 +1861,7 @@ class PainPointCrew:
                 )
             final_level = formula_level
 
-        return mention_count, severity, final_level, downgrade_reason
+        return mention_count, severity, final_level, downgrade_reason, low_evidence, commercial_intent
 
     @crew
     def crew(self) -> Crew:
@@ -1800,6 +2129,7 @@ class PainPointCrew:
                 "avg_comments_per_post": avg_comments_per_post,
                 "rich_discussion_count": rich_discussion_count,
                 "corrective_feedback": "",  # populated only on Task-2 corrective re-run
+                "audience_lens": self._audience_lens(),  # Part C: "" unless a focusable audience is set
             }
 
             crew_a = Crew(
@@ -1867,25 +2197,57 @@ class PainPointCrew:
             # corrective Task-2 re-run, not warn-only).
             orphans, uncovered = self._validate_theme_linkage(extraction_output, categorization_output)
             coverage_caveat = None
-            if uncovered or orphans:
+
+            # Audience-coverage critic (Part 4): a SEPARATE grounded pass that flags audience
+            # sub-groups the CORPUS clearly discusses but the extraction crowded out (the 6a4600ca
+            # regression: a 2:1 fan-vs-player corpus yielded player-heavy pains). Its directive feeds
+            # the SAME corrective re-extraction. Fail-soft → no-rebalance verdict.
+            from ..utils.audience_coverage import assess_audience_coverage
+            corpus_titles = [getattr(p, "title", "") for p in
+                             list(self.reddit_posts or []) + list(self.generic_posts or [])
+                             if getattr(p, "title", "")][:70]
+            aud_verdict = assess_audience_coverage(
+                [pp.title for pp in extraction_output.extracted_pain_points],
+                self.target_audience or self.niche_description,
+                self.market_segments or [], corpus_titles)
+            if aud_verdict.rebalance_needed:
+                logger.warning(
+                    f"Audience-coverage gap: extraction under-serves {aud_verdict.under_covered_audiences} "
+                    f"(present in corpus). Folding a rebalance directive into corrective re-extraction.")
+
+            if uncovered or orphans or aud_verdict.rebalance_needed:
                 names = ", ".join(f"'{t.category_name}'" for t in uncovered)
                 logger.warning(
-                    f"Theme coverage gap: {len(uncovered)} non-Low theme(s) with no pain points ({names}); "
-                    f"{len(orphans)} orphaned parent_theme_id(s). Running ONE corrective Task-2 re-extraction."
+                    f"Coverage gap: {len(uncovered)} non-Low theme(s) with no pain points ({names}); "
+                    f"{len(orphans)} orphan(s); audience_rebalance={aud_verdict.rebalance_needed}. "
+                    f"Running ONE corrective Task-2 re-extraction."
                 )
                 retry_extraction = self._run_corrective_extraction(
-                    categorization_output, extraction_output, uncovered, orphans, base_inputs
+                    categorization_output, extraction_output, uncovered, orphans, base_inputs,
+                    audience_directive=(aud_verdict.rebalance_directive
+                                        if aud_verdict.rebalance_needed else ""),
                 )
                 if retry_extraction is not None:
                     retry_orphans, retry_uncovered = self._validate_theme_linkage(
                         retry_extraction, categorization_output
                     )
-                    # Keep whichever extraction covers more non-Low themes (original wins ties)
-                    if len(retry_uncovered) < len(uncovered):
+                    # Re-run the audience critic on the retry to confirm the rebalance helped.
+                    retry_aud = assess_audience_coverage(
+                        [pp.title for pp in retry_extraction.extracted_pain_points],
+                        self.target_audience or self.niche_description,
+                        self.market_segments or [], corpus_titles,
+                    ) if aud_verdict.rebalance_needed else aud_verdict
+                    # Safe-by-construction adoption: NEVER lose theme coverage; adopt only when the
+                    # retry improves theme coverage OR shrinks the audience gap (original wins ties).
+                    theme_ok = len(retry_uncovered) <= len(uncovered)
+                    improved = (len(retry_uncovered) < len(uncovered)) or (
+                        len(retry_aud.under_covered_audiences) < len(aud_verdict.under_covered_audiences))
+                    if theme_ok and improved:
                         extraction_output = retry_extraction
-                        orphans, uncovered = retry_orphans, retry_uncovered
+                        orphans, uncovered, aud_verdict = retry_orphans, retry_uncovered, retry_aud
                         logger.info(
-                            f"Corrective re-extraction adopted: {len(uncovered)} theme(s) still uncovered"
+                            f"Corrective re-extraction adopted: {len(uncovered)} theme(s) still uncovered, "
+                            f"{len(retry_aud.under_covered_audiences)} audience gap(s) remain"
                         )
                     else:
                         logger.info("Corrective re-extraction did not improve coverage; keeping original")
@@ -2017,7 +2379,7 @@ class PainPointCrew:
                     )
                     unmatched_quotes.append(unvalidated.title)
 
-                mention_count, severity, final_level, downgrade_reason = (
+                mention_count, severity, final_level, downgrade_reason, low_evidence, capped_wtp = (
                     self.resolve_pain_point_scores(
                         unvalidated=unvalidated,
                         matching_score=matching_score,
@@ -2039,9 +2401,13 @@ class PainPointCrew:
                     source_platforms=unvalidated.source_platforms,
                     categories=unvalidated.categories,
                     severity_score=severity,
-                    willingness_to_pay=matching_score.willingness_to_pay,
+                    commercial_intent=capped_wtp,  # post tool-addressability cap (authoritative)
                     opportunity_level=final_level,
                     opportunity_downgrade_reason=downgrade_reason,
+                    low_evidence=low_evidence,
+                    tool_addressable=_norm_tool_addressable(
+                        getattr(matching_score, "tool_addressable", "full")
+                    ),
                 ))
 
             # Validate merge completeness

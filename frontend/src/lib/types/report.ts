@@ -1,5 +1,7 @@
 // NicheIQ Report TypeScript Interfaces
 
+import type { IdeaTags } from './job';
+
 export interface Report {
 	niche: string;
 	executive_summary: string;
@@ -203,7 +205,7 @@ export interface GoNoGoVerdict {
 export interface CorePainPoint {
 	title: string;
 	severity_score: number;
-	willingness_to_pay_score: number;
+	commercial_intent_score: number;
 	representative_quote: string;
 	source_platform: string;
 }
@@ -220,7 +222,7 @@ export interface KeyMetrics {
 	high_priority_pain_points?: number; // deprecated: backward compat for old reports
 	primary_competitor_count: number;
 	avg_pain_point_severity: number;
-	avg_willingness_to_pay: number;
+	avg_commercial_intent: number;
 	social_evidence_threads: number;
 	market_fit_score?: number | null;
 	competitive_advantage_score?: number | null;
@@ -346,7 +348,7 @@ export interface PainPointAnalytics {
 	high_opportunity_count?: number;
 	quadrant_distribution: QuadrantDistribution;
 	avg_severity?: number;
-	avg_willingness_to_pay?: number;
+	avg_commercial_intent?: number;
 	top_pain_point_title?: string;
 }
 
@@ -362,7 +364,7 @@ export interface DetailedPainPoint {
 	description: string;
 	mention_count: number;
 	severity_score: number;
-	willingness_to_pay: number;
+	commercial_intent: number;
 	opportunity_level: 'high' | 'medium' | 'low';
 	/** Present when the LLM justifiably downgraded opportunity_level below the
 	 *  severity/WTP formula (universal-theme or niche-specificity cap). */
@@ -818,6 +820,9 @@ export interface AlternativeSolution {
 	estimated_development_time?: string;
 	estimated_cac_organic?: string;  // Matches Python: str format like "$15-30"
 	pricing_model?: string;
+
+	// Closed-vocabulary filter facets (chips + future filtering). See docs/IDEA_TAGS.md.
+	tags?: IdeaTags | null;
 }
 
 export interface CompetitiveLandscapeMatrix {
@@ -922,6 +927,10 @@ export interface NicheContext {
 	niche_description: string;
 	market_segments: string[];
 	industry_boundaries: string;
+	// Audience-framing (Stage 1 intent classification) — output framing only.
+	user_target_audience?: string | null;
+	resolved_primary_audience?: string | null;
+	audience_scope?: string | null;
 }
 
 // =============================================================================

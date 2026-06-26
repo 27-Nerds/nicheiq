@@ -263,7 +263,7 @@ class TestFinalPainPoint:
             description="Users struggle with manual invoicing",
             mention_count=20,
             severity_score=0.8,
-            willingness_to_pay=0.7,
+            commercial_intent=0.7,
             opportunity_level=OpportunityLevel.HIGH,
             representative_quotes=["Quote 1", "Quote 2"],
             source_post_ids=["p1", "p2"],
@@ -278,7 +278,7 @@ class TestFinalPainPoint:
             description="Test description",
             mention_count=5,
             severity_score=0.5,
-            willingness_to_pay=0.5,
+            commercial_intent=0.5,
             opportunity_level=OpportunityLevel.MEDIUM,
             representative_quotes=["Quote 1"],
         )
@@ -408,7 +408,7 @@ class TestValidationResult:
                 PainPointScoring(
                     pain_point_title="Manual Invoicing",
                     severity_score=0.8,
-                    willingness_to_pay=0.7,
+                    commercial_intent=0.7,
                     opportunity_level=OpportunityLevel.HIGH,
                 )
             ],
@@ -421,32 +421,32 @@ class TestPainPointScoring:
     """Tests for PainPointScoring model."""
 
     def test_pain_point_scoring_score_ranges(self):
-        """Test severity_score and willingness_to_pay are 0-1."""
+        """Test severity_score and commercial_intent are 0-1."""
         # Valid scores
         score = PainPointScoring(
             pain_point_title="Test",
             severity_score=0.5,
-            willingness_to_pay=0.5,
+            commercial_intent=0.5,
             opportunity_level=OpportunityLevel.MEDIUM,
         )
         assert 0.0 <= score.severity_score <= 1.0
-        assert 0.0 <= score.willingness_to_pay <= 1.0
+        assert 0.0 <= score.commercial_intent <= 1.0
 
         # Invalid severity_score > 1
         with pytest.raises(ValidationError):
             PainPointScoring(
                 pain_point_title="Test",
                 severity_score=1.5,
-                willingness_to_pay=0.5,
+                commercial_intent=0.5,
                 opportunity_level=OpportunityLevel.MEDIUM,
             )
 
-        # Invalid willingness_to_pay < 0
+        # Invalid commercial_intent < 0
         with pytest.raises(ValidationError):
             PainPointScoring(
                 pain_point_title="Test",
                 severity_score=0.5,
-                willingness_to_pay=-0.1,
+                commercial_intent=-0.1,
                 opportunity_level=OpportunityLevel.MEDIUM,
             )
 

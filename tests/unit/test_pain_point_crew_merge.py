@@ -332,19 +332,19 @@ class TestMergeLogic:
                 PainPointScoring(
                     pain_point_title="Manual Invoicing",
                     severity_score=0.8,
-                    willingness_to_pay=0.7,
+                    commercial_intent=0.7,
                     opportunity_level=OpportunityLevel.HIGH,
                 ),
                 PainPointScoring(
                     pain_point_title="Expense Tracking",
                     severity_score=0.6,
-                    willingness_to_pay=0.5,
+                    commercial_intent=0.5,
                     opportunity_level=OpportunityLevel.MEDIUM,
                 ),
                 PainPointScoring(
                     pain_point_title="Tax Preparation",
                     severity_score=0.7,
-                    willingness_to_pay=0.6,
+                    commercial_intent=0.6,
                     opportunity_level=OpportunityLevel.MEDIUM,
                 ),
             ],
@@ -388,7 +388,7 @@ class TestMergeLogic:
         pp = final_pain_points[0]  # Manual Invoicing
         assert pp["title"] == "Manual Invoicing"
         assert pp["severity_score"] == 0.8
-        assert pp["willingness_to_pay"] == 0.7
+        assert pp["commercial_intent"] == 0.7
         assert pp["representative_quotes"] == ["I spend 3 hours on invoices weekly"]
         assert pp["source_post_ids"] == ["abc123"]
 
@@ -425,19 +425,19 @@ class TestMergeLogic:
                 PainPointScoring(
                     pain_point_title="Manual Invoicing",
                     severity_score=0.8,
-                    willingness_to_pay=0.7,
+                    commercial_intent=0.7,
                     opportunity_level=OpportunityLevel.HIGH,
                 ),
                 PainPointScoring(
                     pain_point_title="Pain Point Two",
                     severity_score=0.6,
-                    willingness_to_pay=0.5,
+                    commercial_intent=0.5,
                     opportunity_level=OpportunityLevel.MEDIUM,
                 ),
                 PainPointScoring(
                     pain_point_title="Pain Point Three",
                     severity_score=0.5,
-                    willingness_to_pay=0.4,
+                    commercial_intent=0.4,
                     opportunity_level=OpportunityLevel.LOW,
                 ),
             ],
@@ -501,7 +501,7 @@ class TestMergeLogic:
                 PainPointScoring(
                     pain_point_title="Matched Pain Point",  # Only matches one
                     severity_score=0.8,
-                    willingness_to_pay=0.7,
+                    commercial_intent=0.7,
                     opportunity_level=OpportunityLevel.HIGH,
                 ),
             ],
@@ -590,19 +590,19 @@ class TestMergeLogic:
                 PainPointScoring(
                     pain_point_title="Real Pain Point",
                     severity_score=0.8,
-                    willingness_to_pay=0.7,
+                    commercial_intent=0.7,
                     opportunity_level=OpportunityLevel.HIGH,
                 ),
                 PainPointScoring(
                     pain_point_title="Second Real Pain",
                     severity_score=0.6,
-                    willingness_to_pay=0.5,
+                    commercial_intent=0.5,
                     opportunity_level=OpportunityLevel.MEDIUM,
                 ),
                 PainPointScoring(
                     pain_point_title="Third Real Pain",
                     severity_score=0.5,
-                    willingness_to_pay=0.4,
+                    commercial_intent=0.4,
                     opportunity_level=OpportunityLevel.LOW,
                 ),
             ],
@@ -642,7 +642,7 @@ def _make_scoring(title: str) -> PainPointScoring:
     return PainPointScoring(
         pain_point_title=title,
         severity_score=0.7,
-        willingness_to_pay=0.6,
+        commercial_intent=0.6,
         opportunity_level=OpportunityLevel.MEDIUM,
     )
 
@@ -701,7 +701,7 @@ def _simulate_merge(
             "description": unvalidated.description,
             "mention_count": unvalidated.mention_count,
             "severity_score": matching_score.severity_score,
-            "willingness_to_pay": matching_score.willingness_to_pay,
+            "commercial_intent": matching_score.commercial_intent,
             "opportunity_level": matching_score.opportunity_level,
             "representative_quotes": quotes,
             "source_post_ids": source_ids,

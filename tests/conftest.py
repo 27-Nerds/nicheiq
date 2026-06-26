@@ -2,6 +2,14 @@
 Pytest configuration and shared fixtures.
 """
 
+# Disable CrewAI / OpenTelemetry background analytics BEFORE any import pulls in crewai — otherwise it
+# spawns a background thread that POSTs telemetry to a live endpoint, which the HTTP guard flags
+# (intermittently, against whichever test happens to be running). Must precede the nicheiq imports.
+import os
+
+os.environ.setdefault("CREWAI_TELEMETRY_OPT_OUT", "true")
+os.environ.setdefault("OTEL_SDK_DISABLED", "true")
+
 import json
 import pytest
 from datetime import datetime
@@ -22,7 +30,7 @@ def sample_pain_point():
         description="Users report spending 3-5 hours on repetitive manual data entry tasks",
         mention_count=25,
         severity_score=0.85,
-        willingness_to_pay=0.75,
+        commercial_intent=0.75,
         representative_quotes=[
             "I waste 4 hours daily on data entry",
             "This manual process is killing my productivity",
@@ -94,7 +102,7 @@ def sample_pain_point_analysis():
             description="Users spend excessive time on manual entry",
             mention_count=30,
             severity_score=0.85,
-            willingness_to_pay=0.75,
+            commercial_intent=0.75,
             representative_quotes=["Quote 1", "Quote 2"],
             source_platforms=["reddit"],
             categories=["workflow"],
@@ -105,7 +113,7 @@ def sample_pain_point_analysis():
             description="Tools don't talk to each other",
             mention_count=20,
             severity_score=0.70,
-            willingness_to_pay=0.65,
+            commercial_intent=0.65,
             representative_quotes=["Quote 3"],
             source_platforms=["twitter"],
             categories=["integration"],
@@ -280,3 +288,106 @@ def pytest_configure(config):
     """Configure pytest with custom markers."""
     config.addinivalue_line("markers", "integration: mark test as integration test (requires API keys)")
     config.addinivalue_line("markers", "slow: mark test as slow running")
+
+
+# ── Hermeticity guards (TREE-WIDE) ──────────────────────────────────────────────────────────────
+# Defined here (tests/ root), not in tests/unit/, so NO test anywhere under tests/ can make a live
+# LLM/HTTP call — a future tests/integration/ dir or a stray top-level test can't silently escape.
+# A test that genuinely needs the network opts out explicitly with @pytest.mark.integration.
+
+@pytest.fixture(autouse=True)
+def _no_live_llm(request, monkeypatch):
+    """No test may make a LIVE LLM call. Patches the OpenAI SDK network methods (the floor for BOTH
+    the direct-SDK path and langchain ChatOpenAI) to RECORD the attempt and raise. Recording + a
+    teardown assertion is essential because the production code fail-opens (``except Exception``) and
+    would otherwise swallow a plain raise, leaving a leaking test silently green. Tests that mock the
+    LLM never reach these methods. @pytest.mark.integration tests opt out (they require API keys)."""
+    if request.node.get_closest_marker("integration"):
+        yield
+        return
+    hits: list[str] = []
+
+    def _blocker(surface: str):
+        def _f(*_a, **_k):
+            hits.append(surface)
+            raise RuntimeError(f"Live LLM call ({surface}) in {request.node.nodeid} — add a mock.")
+        return _f
+
+    import openai.resources.chat.completions as _cc
+    import openai.resources.beta.chat.completions as _bcc   # json_schema structured path uses .parse
+    import openai.resources.embeddings as _emb
+    import openai.resources.responses as _resp               # codex_llm Responses API (latent)
+
+    for cls, meth, name in [
+        (_cc.Completions, "create", "chat.completions.create"),
+        (_cc.AsyncCompletions, "create", "chat.completions.acreate"),
+        (_bcc.Completions, "parse", "beta.chat.completions.parse"),
+        (_bcc.AsyncCompletions, "parse", "beta.chat.completions.aparse"),
+        (_emb.Embeddings, "create", "embeddings.create"),
+        (_emb.AsyncEmbeddings, "create", "embeddings.acreate"),
+        (_resp.Responses, "create", "responses.create"),
+        (_resp.AsyncResponses, "create", "responses.acreate"),
+    ]:
+        monkeypatch.setattr(cls, meth, _blocker(name), raising=False)
+
+    # langchain floor (defined on BaseChatOpenAI) — clearer error, fires before beta.parse.
+    try:
+        from langchain_openai.chat_models.base import BaseChatOpenAI
+        monkeypatch.setattr(BaseChatOpenAI, "_generate", _blocker("ChatOpenAI._generate"), raising=False)
+        monkeypatch.setattr(BaseChatOpenAI, "_agenerate", _blocker("ChatOpenAI._agenerate"), raising=False)
+    except Exception:
+        pass
+
+    # Exposed so the guard's own drift self-test (test_no_live_llm_guard.py) can clear it after
+    # intentionally tripping the guard to prove it still blocks.
+    request.node._llm_guard_hits = hits
+
+    yield
+
+    if hits:
+        pytest.fail(
+            f"{request.node.nodeid} attempted live LLM call(s): {sorted(set(hits))} — add a mock."
+        )
+
+
+@pytest.fixture(autouse=True)
+def _no_live_http(request, monkeypatch):
+    """No test may make a LIVE HTTP call. Blocks the TRANSPORT layer of ``requests`` (HTTPAdapter.send)
+    and ``httpx`` (sync + async transports) — the floor every Serper / DataForSEO / Reddit / Webshare /
+    backend call funnels through. Tests that patch a higher-level symbol never reach the transport.
+    Records + fails in teardown (a swallowed exception can't hide a leak). Integration tests opt out."""
+    if request.node.get_closest_marker("integration"):
+        yield
+        return
+    hits: list[str] = []
+
+    def _blocker(surface: str):
+        def _f(_self, *a, **k):
+            req = a[0] if a else k.get("request")
+            url = getattr(req, "url", None)
+            target = f" -> {str(url).split('?')[0]}" if url else ""
+            hits.append(surface + target)
+            raise RuntimeError(f"Live HTTP call ({surface}{target}) in {request.node.nodeid} — add a mock.")
+        return _f
+
+    try:
+        import requests.adapters
+        monkeypatch.setattr(requests.adapters.HTTPAdapter, "send", _blocker("requests"), raising=False)
+    except Exception:
+        pass
+    try:
+        import httpx
+        monkeypatch.setattr(httpx.HTTPTransport, "handle_request", _blocker("httpx.sync"), raising=False)
+        monkeypatch.setattr(httpx.AsyncHTTPTransport, "handle_async_request", _blocker("httpx.async"), raising=False)
+    except Exception:
+        pass
+
+    # Exposed so the guard's own drift self-test can clear it after intentionally tripping the guard.
+    request.node._http_guard_hits = hits
+
+    yield
+
+    if hits:
+        pytest.fail(
+            f"{request.node.nodeid} attempted live HTTP call(s): {sorted(set(hits))} — add a mock."
+        )

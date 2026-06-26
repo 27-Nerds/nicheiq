@@ -36,7 +36,6 @@
     "nodemailer": "^6.9.16",
     "openai": "^4.77.0",
     "stripe": "^20.2.0",
-    "uuid": "^11.0.3",
     "zod": "^3.23.8"
   },
   "devDependencies": {
@@ -48,7 +47,6 @@
     "@types/node": "^22.10.2",
     "@types/nodemailer": "^6.4.17",
     "@types/supertest": "^6.0.3",
-    "@types/uuid": "^10.0.0",
     "@vitest/coverage-v8": "^4.0.18",
     "prisma": "^5.22.0",
     "supertest": "^7.2.2",

@@ -111,11 +111,11 @@ class TestSortedPainPoints:
         # Create mock pain points
         pp1 = MagicMock()
         pp1.severity_score = 0.8
-        pp1.willingness_to_pay = 0.7
+        pp1.commercial_intent = 0.7
 
         pp2 = MagicMock()
         pp2.severity_score = 0.9
-        pp2.willingness_to_pay = 0.8
+        pp2.commercial_intent = 0.8
 
         mock_state = MagicMock()
         mock_state.pain_point_analysis = MagicMock()
@@ -134,7 +134,7 @@ class TestSortedPainPoints:
         pp.title = "Slow Onboarding"
         pp.description = "Users drop off during setup"
         pp.severity_score = 0.75
-        pp.willingness_to_pay = 0.6
+        pp.commercial_intent = 0.6
 
         mock_state = MagicMock()
         mock_state.pain_point_analysis = MagicMock()

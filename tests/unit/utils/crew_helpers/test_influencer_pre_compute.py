@@ -459,207 +459,77 @@ class TestPrawEnrichment:
 # ---------------------------------------------------------------------------
 
 
-class TestMergeInfluencerData:
-    """Test the _merge_influencer_data method on AudienceMappingCrew."""
+class TestBuildInfluencers:
+    """Test the _build_influencers method on AudienceMappingCrew (index-based focus)."""
 
-    def _make_crew_result(self, influencer_dicts: list[dict]):
-        """Build a minimal AudienceMappingResult with given influencers."""
-        from nicheiq.models.research_state import (
-            AudienceMappingResult,
-            AudienceSegment,
-            InfluencerProfile,
-        )
+    @staticmethod
+    def _crew():
+        from nicheiq.crews.audience_mapping_crew import AudienceMappingCrew
 
-        segments = [
-            AudienceSegment(
-                segment_name=f"Segment {i}",
-                size_estimate="Medium",
-                pain_point_alignment=["pain1"],
-                motivation_drivers=["motive1"],
-                expertise_level="Intermediate",
-                budget_sensitivity="Medium",
-                discovery_channels=["Reddit"],
-            )
-            for i in range(3)
-        ]
+        return AudienceMappingCrew.__new__(AudienceMappingCrew)
 
-        influencers = [
-            InfluencerProfile(**d) for d in influencer_dicts
-        ]
-
-        return AudienceMappingResult(
-            audience_segments=segments,
-            primary_target_segment="Segment 0",
-            segment_prioritization_rationale="Because.",
-            key_influencers=influencers,
-            community_hubs=["r/SaaS"],
-            common_vocabulary=["a"] * 10,
-            content_preferences="Tutorials",
-            messaging_frameworks=["fast", "easy", "cheap"],
-            tools_currently_used=["tool1"],
-            frustrations_with_existing=["frust1"],
-            recommended_channels=["Reddit"],
-        )
-
-    def test_merge_authoritative_replaces_metrics(self):
-        """Pre-computed metrics ALWAYS override LLM values."""
-        llm_influencers = [
+    @staticmethod
+    def _profiles(n: int) -> list[dict]:
+        return [
             {
                 "name": f"u/user{i}",
                 "platform": "Reddit",
-                "relevance_score": 0.5,
-                "engagement_level": "Medium",
-                "outreach_priority": "Medium",
-                "follower_estimate": None,
-                "content_focus": f"LLM focus {i}",
-            }
-            for i in range(6)
-        ]
-        audience_result = self._make_crew_result(llm_influencers)
-
-        pre_computed = [
-            {
-                "name": f"u/user{i}",
-                "platform": "Reddit",
-                "relevance_score": 0.9 - i * 0.1,
+                "relevance_score": round(0.9 - i * 0.1, 2),
                 "engagement_level": "High",
                 "outreach_priority": "High",
                 "follower_estimate": "10K karma",
-                "content_focus": "fallback",
+                "content_focus": f"fallback {i}",
                 "top_subreddits": ["r/SaaS"],
-                "top_posts": [],
+                "top_posts": [
+                    {"title": "Best CRM", "subreddit": "SaaS", "score": 42, "url": "https://x/1"},
+                ],
             }
-            for i in range(6)
+            for i in range(n)
         ]
 
-        from nicheiq.crews.audience_mapping_crew import AudienceMappingCrew
+    def test_uses_precomputed_metrics_and_top_posts(self):
+        """Every field (incl. real top-post URLs) comes from the pre-compute."""
+        profiles = self._profiles(6)
+        result = self._crew()._build_influencers(profiles, [])
+        assert len(result) == 6
+        assert result[0].engagement_level == "High"
+        assert result[0].follower_estimate == "10K karma"
+        assert result[0].top_posts[0].url == "https://x/1"
 
-        crew = AudienceMappingCrew.__new__(AudienceMappingCrew)
-        merged = crew._merge_influencer_data(audience_result, pre_computed)
+    def test_content_focus_matched_by_index(self):
+        """1-based index links LLM focus to the right influencer."""
+        from nicheiq.models.research_state import InfluencerFocus
 
-        # Pre-computed metrics should override
-        assert len(merged.key_influencers) == 6
-        assert merged.key_influencers[0].engagement_level == "High"
-        assert merged.key_influencers[0].follower_estimate == "10K karma"
+        profiles = self._profiles(6)
+        focus = [InfluencerFocus(index=1, focus="CRM workflows"), InfluencerFocus(index=4, focus="No-code")]
+        result = self._crew()._build_influencers(profiles, focus)
+        assert result[0].content_focus == "CRM workflows"   # index 1 -> profiles[0]
+        assert result[3].content_focus == "No-code"          # index 4 -> profiles[3]
+        assert result[1].content_focus == "fallback 1"       # unmatched -> python fallback
 
-    def test_merge_content_focus_from_llm(self):
-        """LLM's content_focus is used when names match."""
-        llm_influencers = [
-            {
-                "name": f"u/user{i}",
-                "platform": "Reddit",
-                "relevance_score": 0.5,
-                "engagement_level": "Medium",
-                "outreach_priority": "Medium",
-                "follower_estimate": None,
-                "content_focus": f"LLM focus {i}",
-            }
-            for i in range(6)
+    def test_out_of_range_and_duplicate_index(self):
+        """Out-of-range indices are ignored; duplicate index is first-wins."""
+        from nicheiq.models.research_state import InfluencerFocus
+
+        profiles = self._profiles(3)
+        focus = [
+            InfluencerFocus(index=99, focus="ignored"),
+            InfluencerFocus(index=1, focus="first"),
+            InfluencerFocus(index=1, focus="second"),
+            InfluencerFocus(index=0, focus="also ignored"),
         ]
-        audience_result = self._make_crew_result(llm_influencers)
+        result = self._crew()._build_influencers(profiles, focus)
+        assert result[0].content_focus == "first"
+        assert result[1].content_focus == "fallback 1"
+        assert result[2].content_focus == "fallback 2"
 
-        pre_computed = [
-            {
-                "name": f"u/user{i}",
-                "platform": "Reddit",
-                "relevance_score": 0.9,
-                "engagement_level": "High",
-                "outreach_priority": "High",
-                "follower_estimate": None,
-                "content_focus": "fallback",
-                "top_subreddits": [],
-                "top_posts": [],
-            }
-            for i in range(6)
-        ]
+    def test_empty_focus_uses_fallback(self):
+        profiles = self._profiles(4)
+        result = self._crew()._build_influencers(profiles, [])
+        assert [p.content_focus for p in result] == [f"fallback {i}" for i in range(4)]
 
-        from nicheiq.crews.audience_mapping_crew import AudienceMappingCrew
-
-        crew = AudienceMappingCrew.__new__(AudienceMappingCrew)
-        merged = crew._merge_influencer_data(audience_result, pre_computed)
-
-        # LLM content_focus should be picked up
-        assert merged.key_influencers[0].content_focus == "LLM focus 0"
-        assert merged.key_influencers[3].content_focus == "LLM focus 3"
-
-    def test_merge_fuzzy_matching(self):
-        """'u/JohnDoe' matches 'johndoe' after normalization."""
-        llm_influencers = [
-            {
-                "name": f"u/User{i}",
-                "platform": "Reddit",
-                "relevance_score": 0.5,
-                "engagement_level": "Medium",
-                "outreach_priority": "Medium",
-                "follower_estimate": None,
-                "content_focus": f"LLM focus {i}",
-            }
-            for i in range(6)
-        ]
-        audience_result = self._make_crew_result(llm_influencers)
-
-        # Pre-computed uses different casing
-        pre_computed = [
-            {
-                "name": f"u/user{i}",
-                "platform": "Reddit",
-                "relevance_score": 0.9,
-                "engagement_level": "High",
-                "outreach_priority": "High",
-                "follower_estimate": None,
-                "content_focus": "fallback",
-                "top_subreddits": [],
-                "top_posts": [],
-            }
-            for i in range(6)
-        ]
-
-        from nicheiq.crews.audience_mapping_crew import AudienceMappingCrew
-
-        crew = AudienceMappingCrew.__new__(AudienceMappingCrew)
-        merged = crew._merge_influencer_data(audience_result, pre_computed)
-
-        # Should match despite casing difference
-        assert merged.key_influencers[0].content_focus == "LLM focus 0"
-
-    def test_fewer_than_5_keeps_llm(self):
-        """If fewer than 5 pre-computed profiles, keep LLM list entirely."""
-        llm_influencers = [
-            {
-                "name": f"u/llmuser{i}",
-                "platform": "Reddit",
-                "relevance_score": 0.5,
-                "engagement_level": "Medium",
-                "outreach_priority": "Medium",
-                "follower_estimate": None,
-                "content_focus": f"LLM focus {i}",
-            }
-            for i in range(6)
-        ]
-        audience_result = self._make_crew_result(llm_influencers)
-
-        pre_computed = [
-            {
-                "name": "u/only1",
-                "platform": "Reddit",
-                "relevance_score": 0.9,
-                "engagement_level": "High",
-                "outreach_priority": "High",
-                "follower_estimate": None,
-                "content_focus": "fallback",
-                "top_subreddits": [],
-                "top_posts": [],
-            }
-        ]
-
-        from nicheiq.crews.audience_mapping_crew import AudienceMappingCrew
-
-        crew = AudienceMappingCrew.__new__(AudienceMappingCrew)
-        merged = crew._merge_influencer_data(audience_result, pre_computed)
-
-        # Should keep LLM list
-        assert len(merged.key_influencers) == 6
-        assert merged.key_influencers[0].name == "u/llmuser0"
+    def test_empty_profiles_yields_empty_list(self):
+        assert self._crew()._build_influencers([], []) == []
 
 
 # ---------------------------------------------------------------------------

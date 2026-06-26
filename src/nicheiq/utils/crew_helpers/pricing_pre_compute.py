@@ -21,7 +21,7 @@ def compute_wtp_summary(
     if not pain_point_analysis or not pain_point_analysis.pain_points:
         return ("No WTP data available", "0.00")
 
-    scores = [pp.willingness_to_pay for pp in pain_point_analysis.pain_points]
+    scores = [pp.commercial_intent for pp in pain_point_analysis.pain_points]
     avg = sum(scores) / len(scores)
     mn, mx = min(scores), max(scores)
     high_count = sum(1 for s in scores if s >= 0.5)

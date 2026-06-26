@@ -5,7 +5,6 @@ Generates personalized site architecture and user journey maps based on
 the selected solution's features, personas, and project type.
 """
 
-from typing import Any
 
 from crewai import Agent, Crew, Task
 from .safe_task import SafeTask

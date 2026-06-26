@@ -10,7 +10,6 @@ from typing import Any, Optional
 from crewai.knowledge.knowledge import Knowledge
 from crewai.tools import BaseTool
 from loguru import logger
-from pydantic import Field
 
 
 class QuoteSearchTool(BaseTool):
@@ -68,8 +67,16 @@ class QuoteSearchTool(BaseTool):
             # Results are TypedDict with: id, content, metadata, score
             results = self._knowledge.query(
                 query=[query.strip()],
-                results_limit=15,
-                score_threshold=0.75,  # Tighter than default 0.6 to filter weak matches
+                results_limit=25,
+                # 0.60 (the chromadb default), widened from 0.75. The 0.75 cutoff was
+                # added as the ONLY quality control back when quotes were topic-matched
+                # with no validation — but it starves abstractly-phrased pains (e.g.
+                # "can't predict if BPC-157 will heal": real threads phrase it "tried it,
+                # didn't notice much" and embed below 0.75, so 0 candidates surfaced
+                # despite 14 relevant threads in-corpus). Quality control now lives in
+                # the relevance floor + per-post cap + stance gate downstream, so we cast
+                # a wider net here and let those enforce precision.
+                score_threshold=0.60,
             )
 
             if not results:

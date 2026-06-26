@@ -4,7 +4,7 @@ Enables concurrent collection of Reddit and Twitter content to improve Stage 5 p
 """
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Callable, TypeVar, Any
+from typing import Callable, TypeVar
 
 from loguru import logger
 

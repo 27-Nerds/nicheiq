@@ -21,6 +21,7 @@ def _make_post(
     post.score = score
     post.selftext = selftext
     post.title = title
+    post.relevance_grade = None  # ungraded by default; relevance multiplier is a no-op here
     post.created_utc = datetime.now(timezone.utc) - timedelta(days=days_old)
 
     # Build comments with specified average length

@@ -30,7 +30,7 @@ def sample_pain_points() -> list[PainPoint]:
             title="High Priority Issue",
             description="Critical problem affecting users",
             severity_score=0.9,
-            willingness_to_pay=0.8,
+            commercial_intent=0.8,
             mention_count=50,
             opportunity_level=OpportunityLevel.HIGH,
             representative_quotes=["Quote 1", "Quote 2"],
@@ -42,7 +42,7 @@ def sample_pain_points() -> list[PainPoint]:
             title="Medium Priority Issue",
             description="Moderate problem",
             severity_score=0.6,
-            willingness_to_pay=0.5,
+            commercial_intent=0.5,
             mention_count=25,
             opportunity_level=OpportunityLevel.MEDIUM,
             representative_quotes=["Quote 3"],
@@ -54,7 +54,7 @@ def sample_pain_points() -> list[PainPoint]:
             title="Low Priority Issue",
             description="Minor annoyance",
             severity_score=0.3,
-            willingness_to_pay=0.2,
+            commercial_intent=0.2,
             mention_count=10,
             opportunity_level=OpportunityLevel.LOW,
             representative_quotes=["Quote 4"],
@@ -224,7 +224,7 @@ class TestFormatPainPointsForAgents:
         assert high_pos < medium_pos < low_pos
 
     def test_sort_by_wtp(self, sample_pain_points):
-        """Test that sort_by='wtp' orders by willingness_to_pay descending."""
+        """Test that sort_by='wtp' orders by commercial_intent descending."""
         result = format_pain_points_for_agents(
             sample_pain_points, sort_by="wtp", format_type="metrics_only"
         )
@@ -487,7 +487,7 @@ class TestPerformanceOptimizations:
                 title=f"Pain Point {i}",
                 description=f"Description {i}",
                 severity_score=0.5,
-                willingness_to_pay=0.5,
+                commercial_intent=0.5,
                 mention_count=10,
                 opportunity_level=OpportunityLevel.MEDIUM,
                 representative_quotes=[f"Quote {i}"],
@@ -519,7 +519,7 @@ class TestPerformanceOptimizations:
                     title=f"High {i}",
                     description="desc",
                     severity_score=0.9,
-                    willingness_to_pay=0.8,
+                    commercial_intent=0.8,
                     mention_count=50,
                     opportunity_level=OpportunityLevel.HIGH,
                     representative_quotes=["quote"],
@@ -533,7 +533,7 @@ class TestPerformanceOptimizations:
                     title=f"Medium {i}",
                     description="desc",
                     severity_score=0.6,
-                    willingness_to_pay=0.5,
+                    commercial_intent=0.5,
                     mention_count=25,
                     opportunity_level=OpportunityLevel.MEDIUM,
                     representative_quotes=["quote"],
@@ -547,7 +547,7 @@ class TestPerformanceOptimizations:
                     title=f"Low {i}",
                     description="desc",
                     severity_score=0.3,
-                    willingness_to_pay=0.2,
+                    commercial_intent=0.2,
                     mention_count=10,
                     opportunity_level=OpportunityLevel.LOW,
                     representative_quotes=["quote"],

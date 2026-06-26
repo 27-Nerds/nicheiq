@@ -1186,7 +1186,6 @@ class ReportGenerator:
             Dictionary mapping pain point titles to solution approach explanations
         """
         from ..utils.prompts import load_prompt
-        from ..models.pain_point import PainPoint
         from .utils.report_pre_compute import format_pain_point_with_scores
 
         if not pain_points or not solution:
@@ -1910,6 +1909,9 @@ It differentiates through {diff_text}.
                     # cross-linked to specific pains on the catalog UI. Defaults
                     # to [] when the source is missing the field (legacy reports).
                     pain_points_addressed=list(getattr(solution, 'pain_points_addressed', []) or []),
+
+                    # Closed-vocabulary filter facets (chips + future filtering).
+                    tags=getattr(solution, 'tags', None),
                 ))
 
             return alternative_solutions if alternative_solutions else None
@@ -2514,7 +2516,7 @@ It differentiates through {diff_text}.
             # Pain point metrics
             high_severity_pain_points = 0
             avg_pain_point_severity = 0.0
-            avg_willingness_to_pay = 0.0
+            avg_commercial_intent = 0.0
 
             if self.state.pain_point_analysis and self.state.pain_point_analysis.pain_points:
                 pain_points = self.state.pain_point_analysis.pain_points
@@ -2524,7 +2526,7 @@ It differentiates through {diff_text}.
                 ])
 
                 avg_pain_point_severity = sum(pp.severity_score for pp in pain_points) / len(pain_points)
-                avg_willingness_to_pay = sum(pp.willingness_to_pay for pp in pain_points) / len(pain_points)
+                avg_commercial_intent = sum(pp.commercial_intent for pp in pain_points) / len(pain_points)
 
             # Competitor count from selected solution's competitive analysis
             primary_competitor_count = self.accessor.get_competitor_count()
@@ -2561,7 +2563,7 @@ It differentiates through {diff_text}.
                 high_severity_pain_points=high_severity_pain_points,
                 primary_competitor_count=primary_competitor_count,
                 avg_pain_point_severity=avg_pain_point_severity,
-                avg_willingness_to_pay=avg_willingness_to_pay,
+                avg_commercial_intent=avg_commercial_intent,
                 social_evidence_threads=social_evidence_threads,
                 market_fit_score=market_fit_score,
                 competitive_advantage_score=competitive_advantage_score,
@@ -2630,7 +2632,7 @@ It differentiates through {diff_text}.
             return CorePainPoint(
                 title=top_pp.title,
                 severity_score=top_pp.severity_score,
-                willingness_to_pay_score=top_pp.willingness_to_pay,
+                commercial_intent_score=top_pp.commercial_intent,
                 representative_quote=representative_quote,
                 source_platform=source_platform
             )
@@ -2689,7 +2691,7 @@ It differentiates through {diff_text}.
                 niche_description=self.state.niche_context.niche_description,
                 pain_point_title=core_pain_point.title,
                 pain_point_severity=f"{core_pain_point.severity_score:.1f}",
-                pain_point_wtp=f"{core_pain_point.willingness_to_pay_score:.1f}",
+                pain_point_wtp=f"{core_pain_point.commercial_intent_score:.1f}",
                 market_fit_score=f"{market_fit:.2f}" if market_fit is not None else "N/A",
                 competitive_advantage_score=f"{competitive_advantage:.2f}" if competitive_advantage is not None else "N/A",
                 technical_feasibility_score=f"{technical_feasibility:.2f}" if technical_feasibility is not None else "N/A",
@@ -3347,6 +3349,7 @@ It differentiates through {diff_text}.
                 prompt=prompt,
                 output_model=IdealCustomerProfile,
                 temperature=0.2,
+                model_name=settings.report_structured_llm,  # list-heavy (pain_points, goals)
             )
             self._record_cost("Stage 14 - Ideal Customer Profile", _usage)
             logger.info(f"[OK] LLM ICP generation successful: persona={result.persona_name}")
@@ -3543,7 +3546,8 @@ It differentiates through {diff_text}.
             result, _usage = LLMService.invoke_structured(
                 prompt=prompt,
                 output_model=MarketingNarrative,
-                temperature=0.6
+                temperature=0.6,
+                model_name=settings.report_structured_llm,  # list-heavy (content_angles)
             )
             self._record_cost("Stage 14 - Marketing Narrative", _usage)
             logger.info("[OK] LLM marketing narrative generation successful")
@@ -3618,7 +3622,8 @@ It differentiates through {diff_text}.
             playbook, _usage = LLMService.invoke_structured(
                 prompt=prompt,
                 output_model=First30DaysPlaybook,
-                temperature=0.6
+                temperature=0.6,
+                model_name=settings.report_structured_llm,  # list-heavy (week_1-4_actions, success_metrics)
             )
             self._record_cost("Stage 14 - First 30 Days Playbook", _usage)
             logger.info("Successfully generated 30-day playbook via LLM")
@@ -3961,7 +3966,7 @@ It differentiates through {diff_text}.
         competitors: list
     ) -> "FeatureComparison | None":
         """Use LLM to semantically group similar features across competitors."""
-        from ..models.analytics import FeatureGroup, FeatureComparison
+        from ..models.analytics import FeatureComparison
 
         # Collect all features with their sources
         all_features = []
@@ -4013,7 +4018,8 @@ Return valid JSON with this structure:
                 prompt=prompt,
                 output_model=FeatureComparison,
                 temperature=0.1,
-                timeout=60
+                timeout=60,
+                model_name=settings.report_structured_llm,  # list-heavy (feature_groups) — gemini truncates here
             )
             self._record_cost("Stage 14 - Feature Comparison", usage)
 
@@ -4052,7 +4058,7 @@ Return valid JSON with this structure:
 
             for pp in pain_points:
                 severity_high = pp.severity_score >= 0.5
-                wtp_high = pp.willingness_to_pay >= 0.5
+                wtp_high = pp.commercial_intent >= 0.5
 
                 if severity_high and wtp_high:
                     quadrants["high_severity_high_wtp"] += 1
@@ -4064,7 +4070,7 @@ Return valid JSON with this structure:
                     quadrants["low_severity_low_wtp"] += 1
 
             avg_severity = sum(pp.severity_score for pp in pain_points) / total
-            avg_wtp = sum(pp.willingness_to_pay for pp in pain_points) / total
+            avg_wtp = sum(pp.commercial_intent for pp in pain_points) / total
 
             # Top pain point
             sorted_pps = self.accessor.get_sorted_pain_points()
@@ -4076,7 +4082,7 @@ Return valid JSON with this structure:
                 high_opportunity_count=high_opportunity,
                 quadrant_distribution=quadrants,
                 avg_severity=avg_severity,
-                avg_willingness_to_pay=avg_wtp,
+                avg_commercial_intent=avg_wtp,
                 top_pain_point_title=top_title
             )
 
@@ -4104,7 +4110,6 @@ Return valid JSON with this structure:
             Tuple of (SiteStructure, UserFlowsSection) or (None, None) on failure
         """
         from ..crews.technical_blueprint_crew import TechnicalBlueprintCrew
-        from ..models.technical_blueprint import SiteStructure, UserFlowsSection
 
         try:
             crew = TechnicalBlueprintCrew()

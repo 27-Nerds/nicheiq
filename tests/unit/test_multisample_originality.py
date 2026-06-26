@@ -107,12 +107,20 @@ def test_pool_dedup_sentinel_not_treated_as_most_novel():
 
 # ── novelty critic ──────────────────────────────────────────────────────────
 
+def _bind_critic(fake):
+    # The _score_pool_novelty wrapper now dispatches to _score_concepts + _finalize_critic_pool;
+    # bind both onto the SimpleNamespace stub so the unbound-call pattern still works.
+    fake._score_concepts = UnifiedSolutionCrew._score_concepts.__get__(fake)
+    fake._finalize_critic_pool = UnifiedSolutionCrew._finalize_critic_pool.__get__(fake)
+    return fake
+
+
 def _critic_self():
-    return SimpleNamespace(
+    return _bind_critic(SimpleNamespace(
         _format_competitor_mentions=lambda: "ToolX: a known existing tool",
         audience_mapping=None,
         _record_divergent_usage=lambda u: None,
-    )
+    ))
 
 
 def test_critic_overwrites_and_drops_existing():
@@ -137,12 +145,15 @@ def test_critic_fail_open_on_error():
     assert len(out) == 2  # unchanged, never drops everything
 
 
-def test_critic_noop_when_no_reality_anchor():
-    fake = SimpleNamespace(
+def test_critic_noop_when_no_reality_anchor(monkeypatch):
+    # No anchor AND feasibility off → genuine early-exit (no LLM call). Without disabling
+    # feasibility the critic would run a feasibility-only pass and hit the live API.
+    monkeypatch.setattr(M.settings, "enable_feasibility_critic", False)
+    fake = _bind_critic(SimpleNamespace(
         _format_competitor_mentions=lambda: "",
         audience_mapping=None,
         _record_divergent_usage=lambda u: None,
-    )
+    ))
     concepts = [_rc("A"), _rc("B")]
     out = UnifiedSolutionCrew._score_pool_novelty(fake, concepts)
     assert out == concepts  # advisory skip, no call
@@ -219,7 +230,7 @@ def test_convergent_crew_builds_with_explicit_agents():
     from nicheiq.models.pain_point import PainPoint, PainPointAnalysisResult
     pp = PainPoint(
         title="Sourcing", description="hard", severity_score=0.8,
-        willingness_to_pay=0.5, mention_count=5, representative_quotes=["q"],
+        commercial_intent=0.5, mention_count=5, representative_quotes=["q"],
         opportunity_level="medium",
     )
     ppa = PainPointAnalysisResult(
@@ -227,7 +238,8 @@ def test_convergent_crew_builds_with_explicit_agents():
         top_categories=["c"],
     )
     crew = UnifiedSolutionCrew(pain_point_analysis=ppa, allowed_project_types=["saas", "aggregator"])
+    # Convergent crew is refine → (select) — the LLM diversity filter was removed.
     c_skip = crew._convergent_crew(skip_selection=True)
-    assert len(c_skip.tasks) == 2 and len(c_skip.agents) == 2
+    assert len(c_skip.tasks) == 1 and len(c_skip.agents) == 1   # refine only
     c_full = crew._convergent_crew(skip_selection=False)
-    assert len(c_full.tasks) == 3 and len(c_full.agents) == 3
+    assert len(c_full.tasks) == 2 and len(c_full.agents) == 2   # refine + select

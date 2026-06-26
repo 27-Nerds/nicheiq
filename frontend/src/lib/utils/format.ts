@@ -28,20 +28,46 @@ const SANITIZER_ALLOWED_TAGS = [
 ];
 const SANITIZER_ALLOWED_ATTR = ['class'];
 
-function sanitizeHtml(html: string): string {
+// One-time hook: force safe rel/target on any sanitized anchor (only fires when
+// `a` is on the allow-list — i.e. the allowLinks path below). DOMPurify already
+// strips javascript:/data: hrefs; this just hardens external links.
+let _linkHookInstalled = false;
+function ensureLinkHook(): void {
+	if (_linkHookInstalled) return;
+	DOMPurify.addHook('afterSanitizeAttributes', (node: Element) => {
+		if (node.tagName === 'A' && node.hasAttribute('href')) {
+			node.setAttribute('target', '_blank');
+			node.setAttribute('rel', 'noopener noreferrer nofollow');
+		}
+	});
+	_linkHookInstalled = true;
+}
+
+function sanitizeHtml(html: string, allowLinks = false): string {
+	if (allowLinks) ensureLinkHook();
 	return DOMPurify.sanitize(html, {
-		ALLOWED_TAGS: SANITIZER_ALLOWED_TAGS,
-		ALLOWED_ATTR: SANITIZER_ALLOWED_ATTR,
+		ALLOWED_TAGS: allowLinks ? [...SANITIZER_ALLOWED_TAGS, 'a'] : SANITIZER_ALLOWED_TAGS,
+		ALLOWED_ATTR: allowLinks ? [...SANITIZER_ALLOWED_ATTR, 'href', 'target', 'rel'] : SANITIZER_ALLOWED_ATTR,
 		// Defense-in-depth: strip any data-* / aria-* not on allow-list.
 		ALLOW_DATA_ATTR: false,
 		ALLOW_ARIA_ATTR: false,
 	});
 }
 
-export function renderMarkdown(content: string | undefined | null): string {
+/**
+ * Render markdown to sanitized HTML.
+ *
+ * `opts.allowLinks` opts into `<a href>` (sanitized; external links get
+ * target=_blank rel=noopener). Off by default so existing call sites are
+ * unchanged — only the help pages, whose content is author-controlled, enable it.
+ */
+export function renderMarkdown(
+	content: string | undefined | null,
+	opts: { allowLinks?: boolean } = {},
+): string {
 	if (!content) return '';
 	const html = marked.parse(content, { async: false }) as string;
-	return sanitizeHtml(html);
+	return sanitizeHtml(html, opts.allowLinks ?? false);
 }
 
 /** Strip markdown syntax from raw text, returning clean plain text. */

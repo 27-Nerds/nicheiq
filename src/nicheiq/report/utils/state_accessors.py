@@ -104,7 +104,7 @@ class StateAccessor:
 
         return sorted(
             self.state.pain_point_analysis.pain_points,
-            key=lambda x: (x.severity_score + x.willingness_to_pay) / 2,
+            key=lambda x: (x.severity_score + x.commercial_intent) / 2,
             reverse=True,
         )
 
@@ -117,7 +117,7 @@ class StateAccessor:
         """
         sorted_pps = self.get_sorted_pain_points()
         return [
-            f"{pp.title} - {pp.description} (Severity: {pp.severity_score * 10:.1f}/10, WTP: {pp.willingness_to_pay * 10:.1f}/10)"
+            f"{pp.title} - {pp.description} (Severity: {pp.severity_score * 10:.1f}/10, WTP: {pp.commercial_intent * 10:.1f}/10)"
             for pp in sorted_pps
         ]
 
@@ -154,7 +154,7 @@ class StateAccessor:
         if solution_pain_points:
             sorted_pps = sorted(
                 solution_pain_points,
-                key=lambda x: (x.severity_score + x.willingness_to_pay) / 2,
+                key=lambda x: (x.severity_score + x.commercial_intent) / 2,
                 reverse=True,
             )
             return sorted_pps[:3]

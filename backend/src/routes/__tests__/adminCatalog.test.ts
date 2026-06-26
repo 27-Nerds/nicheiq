@@ -241,7 +241,7 @@ describe('POST /api/admin/catalog/categories/:id/generate-ideas', () => {
     description: 'desc',
     mentionCount: 3,
     severityScore: 0.6,
-    willingnessToPayScore: 0.5,
+    commercialIntentScore: 0.5,
     opportunityLevel: 'medium',
     representativeQuotes: [],
     sourcePlatforms: [],
@@ -344,14 +344,14 @@ describe('GET /api/admin/catalog/categories/:id/pain-points', () => {
         id: painPointAId,
         title: 'Real pain',
         severityScore: 0.7,
-        willingnessToPayScore: 0.6,
+        commercialIntentScore: 0.6,
         researchContext: meaningfulCtx,
       },
       {
         id: painPointBId,
         title: 'Legacy pain',
         severityScore: 0.4,
-        willingnessToPayScore: 0.3,
+        commercialIntentScore: 0.3,
         researchContext: placeholderCtx,
       },
     ]);
@@ -380,7 +380,7 @@ describe('GET /api/admin/catalog/categories/:id/pain-points', () => {
 
   it('returns the resolved effectiveFreePreviewPainPointId', async () => {
     mockPrisma.catalogPainPoint.findMany.mockResolvedValueOnce([
-      { id: painPointAId, title: 'p', severityScore: 0.5, willingnessToPayScore: 0.5, researchContext: {} },
+      { id: painPointAId, title: 'p', severityScore: 0.5, commercialIntentScore: 0.5, researchContext: {} },
     ]);
     mockHasMeaningfulResearchContext.mockReturnValueOnce(false);
     mockResolveFreePreviewPainId.mockResolvedValueOnce(painPointAId);

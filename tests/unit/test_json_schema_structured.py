@@ -5,6 +5,7 @@ into an xgrammar-compilable shape, and the response_format json_schema branch in
 _invoke_structured_openrouter (no tool calls; the JSON lands in content).
 """
 
+import copy
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -97,7 +98,9 @@ class _FakeCompletions:
         self.calls = []
 
     def create(self, **kwargs):
-        self.calls.append(kwargs)
+        # deepcopy: the escalation path mutates create_kwargs in place across attempts, so a
+        # stored reference would show every recorded call in its final-mutated state.
+        self.calls.append(copy.deepcopy(kwargs))
         return self._responses.pop(0)
 
 
@@ -175,10 +178,12 @@ class TestJsonSchemaBranch:
         assert "tools" in calls[0]
         assert "response_format" not in calls[0]
 
-    def test_no_relax_to_auto_on_json_schema(self, monkeypatch):
-        # json_schema has no tool_choice to relax -> a clean-finish None fails fast (1 call).
+    def test_json_schema_escalates_then_fails(self, monkeypatch):
+        # A persistently-empty json_schema response escalates: pinned -> unpinned reselect
+        # -> tool transport (3 calls), then raises.
         monkeypatch.setattr(llm_service.settings, "openrouter_structured_mode", "json_schema")
-        fake = _FakeClient([_resp("stop", _BAD)])
+        monkeypatch.setattr(llm_service.settings, "openrouter_structured_providers", "deepinfra")
+        fake = _FakeClient([_resp("stop", _BAD)] * 3)
         with patch("openai.OpenAI", return_value=fake):
             with pytest.raises(ValueError):
                 LLMService._invoke_structured_openrouter(
@@ -186,7 +191,55 @@ class TestJsonSchemaBranch:
                     clean_model="qwen/x", api_key="k", base_url=None,
                     reasoning_effort=None, max_tokens=None,
                 )
-        assert len(fake.chat.completions.calls) == 1
+        calls = fake.chat.completions.calls
+        assert len(calls) == 3
+        # call 0: pinned json_schema, reasoning present
+        assert calls[0]["extra_body"]["provider"] == {"only": ["deepinfra"]}
+        assert "response_format" in calls[0]
+        assert "reasoning" in calls[0]["extra_body"]
+        # call 1: unpinned reselect, still json_schema, reasoning dropped
+        assert calls[1]["extra_body"]["provider"] == {"require_parameters": True}
+        assert "response_format" in calls[1]
+        assert "reasoning" not in calls[1]["extra_body"]
+        # call 2: tool transport
+        assert "response_format" not in calls[2]
+        assert "tools" in calls[2]
+        assert calls[2]["tool_choice"] == "auto"
+
+    def test_json_schema_reselect_succeeds(self, monkeypatch):
+        # Empty on the pinned provider, valid on the unpinned reselect -> 2 calls, no tool switch.
+        (parsed, _u), calls = _run(
+            [_resp("stop", _BAD), _resp("stop", _VALID)], "json_schema", monkeypatch,
+            providers="deepinfra", clean_model="qwen/x",
+        )
+        assert parsed == _M(name="x", value=1)
+        assert len(calls) == 2
+        assert "response_format" in calls[1]                                  # still json_schema
+        assert calls[1]["extra_body"]["provider"] == {"require_parameters": True}
+        assert "reasoning" not in calls[1]["extra_body"]                      # reasoning dropped
+
+    def test_json_schema_tool_fallback_succeeds(self, monkeypatch):
+        # Empty twice (pinned + reselect), valid on the tool transport -> 3 calls.
+        (parsed, _u), calls = _run(
+            [_resp("stop", _BAD), _resp("stop", _BAD), _resp("stop", _VALID)],
+            "json_schema", monkeypatch, providers="deepinfra", clean_model="qwen/x",
+        )
+        assert parsed == _M(name="x", value=1)
+        assert len(calls) == 3
+        assert "response_format" not in calls[2] and "tools" in calls[2]
+
+    def test_plain_tool_path_no_extra_call(self, monkeypatch):
+        # Non-json_schema (tool) path: forced -> relax to auto -> raise == 2 calls (no regression).
+        fake = _FakeClient([_resp("stop", _BAD), _resp("stop", _BAD)])
+        monkeypatch.setattr(llm_service.settings, "openrouter_structured_mode", "tool_choice")
+        with patch("openai.OpenAI", return_value=fake):
+            with pytest.raises(ValueError):
+                LLMService._invoke_structured_openrouter(
+                    prompt="p", output_model=_M, temperature=0.5, timeout=10,
+                    clean_model="qwen/x", api_key="k", base_url=None,
+                    reasoning_effort=None, max_tokens=None,
+                )
+        assert len(fake.chat.completions.calls) == 2
 
     def test_still_retries_once_on_length(self, monkeypatch):
         (parsed, _u), calls = _run(

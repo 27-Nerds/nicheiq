@@ -32,9 +32,14 @@
      *  blurred/locked teasers (used on the public shared discovery view,
      *  where real influencer data is stripped server-side). */
     lockedInfluencers?: boolean;
+    /** The audience the user said they're building for (audience entry mode);
+     *  shown as a muted eyebrow. Null in niche mode. */
+    targetAudience?: string | null;
   }
 
-  let { data, lockedInfluencers = false }: Props = $props();
+  let { data, lockedInfluencers = false, targetAudience = null }: Props = $props();
+
+  const audienceEyebrow = $derived((targetAudience ?? "").trim());
 
   // In locked mode use hardcoded placeholder rows; otherwise render the real
   // data. Zero regression on owner/report pages since lockedInfluencers defaults
@@ -71,6 +76,9 @@
   padding="none"
   marginBottom="none"
 >
+  {#if audienceEyebrow}
+    <p class="audience-eyebrow">For {audienceEyebrow}</p>
+  {/if}
   <!-- Hero Strip: Primary Target + Stats -->
   <HeroStrip>
     {#snippet primary()}
@@ -324,6 +332,16 @@
 </Section>
 
 <style>
+  /* Audience-framing eyebrow — mono uppercase muted (entity-eyebrow recipe; no orange). */
+  .audience-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    line-height: 1.2;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-text-muted);
+    margin: 0 0 var(--space-2);
+  }
   /* Restore header→hero vertical rhythm that `padding="container"` used to
      provide via its `.padding-container > .header-lg { margin-bottom: 1.5rem }`
      rule. With `padding="none"` the default header has 0 bottom margin which

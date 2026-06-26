@@ -77,9 +77,42 @@ class Settings(BaseSettings):
         default="gpt-4.1-mini",
         description="Model for content analysis (gpt-4.1-mini: needs 1M context for large Reddit content; gpt-4o is only 128K)"
     )
+    content_analysis_reasoning_effort: str = Field(
+        default="none",
+        description=(
+            "Reasoning effort for the Stage-3 content categorizer (Task 1, content_researcher). "
+            "'none' = reasoning off (default; matches prior behavior). Bump to low/medium for deeper "
+            "categorization. env: CONTENT_ANALYSIS_REASONING_EFFORT."
+        )
+    )
+    pain_point_reasoning_effort: str = Field(
+        default="none",
+        description=(
+            "Reasoning effort for the Stage-3 pain EXTRACTOR + validator (Tasks 2-3, "
+            "pain_point_analyst / pain_point_validator, model pain_point_validation_llm). 'none' = "
+            "off (default; the model was picked as non-reasoning to allow max_tokens). Bump to "
+            "low/medium for deeper extraction. env: PAIN_POINT_REASONING_EFFORT."
+        )
+    )
     thread_validation_llm: str = Field(
         default="gpt-4o-mini",
         description="Model to use for thread relevance validation in Stage 5 (gpt-4o-mini or gpt-3.5-turbo for cost efficiency)"
+    )
+    thread_relevance_min_grade: int = Field(
+        default=1,
+        description=(
+            "Minimum TREC/UMBRELA relevance grade (0-3) for a thread to pass validation and reach "
+            "pain extraction. 1 keeps 'related' and up (recovers ~36% of relevant threads the old "
+            "binary gate dropped at ~0.98 precision); 2 is stricter (highly-relevant only). "
+            "env: THREAD_RELEVANCE_MIN_GRADE."
+        )
+    )
+    stance_validation_llm: str = Field(
+        default="gpt-4o-mini",
+        description=(
+            "Model for pain-point quote stance verification (does a retrieved quote "
+            "genuinely express the pain). Cheap classifier; gpt-4o-mini recommended."
+        ),
     )
     brainstorm_llm: str = Field(
         default="gpt-5.2",
@@ -141,20 +174,10 @@ class Settings(BaseSettings):
             "Pain-partitioned divergent ideation: instead of N broad samples each "
             "generating 8-12 concepts off the same pain list, run ONE narrow generator "
             "per selected diverse pain (capped at divergent_max_generators), each asked "
-            "for ~divergent_concepts_per_sample concepts under a distinct persona + a "
+            "for a few concepts under a distinct persona + a "
             "hard-reserved non-info-product slot. Guarantees pain coverage by construction "
             "and breaks the info-product monoculture. Default OFF (land dark); flip on to "
             "A/B vs the legacy broad-sample path."
-        )
-    )
-    divergent_concepts_per_sample: int = Field(
-        default=3,
-        ge=1,
-        le=8,
-        description=(
-            "Target concepts per narrow generator in pain-partitioned mode. Small counts "
-            "avoid intra-call mode collapse (the best ideas are a call's first few). "
-            "Agents may return fewer (or 0 if no strong fit, capped to floor(n/2) agents)."
         )
     )
     divergent_max_generators: int = Field(
@@ -165,15 +188,6 @@ class Settings(BaseSettings):
             "Cap on the number of narrow generators in pain-partitioned mode (≈ one per "
             "selected diverse pain). ~5-8 is the sweet spot before cross-agent overlap / "
             "diminishing returns. Bounds parallel fan-out cost."
-        )
-    )
-    divergent_min_pains: int = Field(
-        default=3,
-        ge=1,
-        description=(
-            "Below this many distinct pains, fall back to the legacy broad-sample path "
-            "(< 2 distinct pains). NOT the generator-count target — generators now scale "
-            "with (pain × segment) edges; see divergent_target_generators."
         )
     )
     divergent_target_generators: int = Field(
@@ -213,6 +227,17 @@ class Settings(BaseSettings):
             "Enable the (source_pain × data_source_tag) near-duplicate dedup in the divergent "
             "pool — collapses concepts solving the same pain from the same data source that the "
             "M/D/J structural gate misses (no-op in the legacy broad path where source_pain is None)."
+        )
+    )
+    enable_addressability_ideation_gate: bool = Field(
+        default=True,
+        description=(
+            "Exclude pains the scorer judged non-tool-addressable (tool_addressable == 'none': "
+            "lifestyle/cultural/structural/governance, no software solution) from idea-generator "
+            "cell selection, so they don't burn a generator slot. Reuses the existing scoring "
+            "verdict (no extra LLM call). Floor-protected (keeps the full set if too few addressable "
+            "pains remain to seed ideation). Excluded pains still appear in the report catalog. "
+            "env: ENABLE_ADDRESSABILITY_IDEATION_GATE."
         )
     )
     diversity_max_final_ideas: int = Field(
@@ -461,6 +486,56 @@ class Settings(BaseSettings):
             "not divergent ideation, so it doesn't need the creative tier's 'high'."
         )
     )
+    ideation_mentor_llm: str = Field(
+        default="gpt-5.4-mini",
+        description=(
+            "Model for the creative MENTOR in the idea-improvement loop (Stage 7, post-calibration) "
+            "— the reviewer that guides weak ideas toward sharper, buildable, on-pain revisions. "
+            "Must be a DIFFERENT family than the ideator (ideation_refine_llm) so it doesn't self-"
+            "judge leniently. gpt-5.4-mini won a 6-model bake-off (validated +0.21/+0.97 vs baseline "
+            "across two runs); re-tune via scripts/idea_improvement_ab.py --v4 --reviewer-model."
+        )
+    )
+    ideation_mentor_reasoning_effort: str = Field(
+        default="medium",
+        description=(
+            "Reasoning effort for the mentor/reviewer tier. 'medium' default — it judges three soft "
+            "dimensions and proposes a creative direction, so it benefits from reasoning."
+        )
+    )
+
+    # Realism score-calibration critic (Stage 7, post-refinement). An INDEPENDENT model that
+    # re-scores market_fit / technical_feasibility / novelty / seo_scalability / obviousness from
+    # the anchored bands + evidence and REPLACES the generator's optimistic self-scores. Dark by
+    # default — flip on after the A/B (scripts/score_calibration_ab.py) shows calibrated scores
+    # move toward a stronger reference judge (lower MAE-to-reference than raw).
+    enable_score_calibration: bool = Field(
+        default=True,
+        description=(
+            "Master switch for the realism score-calibration critic. When False the generated "
+            "self-scores are used as-is. Enabled by default after the A/B "
+            "(scripts/score_calibration_ab.py) confirmed calibrated scores move toward a stronger "
+            "reference judge on all ranking criteria (overconfidence reduced, not just lowered)."
+        )
+    )
+    score_calibration_llm: str = Field(
+        default="openrouter/qwen/qwen3.7-max",
+        description=(
+            "Model for the realism calibration critic. Independent of the brainstorm pool (judge "
+            "≠ generator). Must be a reasoning model so reasoning_effort is honored. Default chosen "
+            "by A/B (scripts/score_calibration_ab.py vs a gpt-5.2 reference): qwen3.7-max gave the "
+            "tightest calibration to the stronger judge on all 5 criteria (mean market_fit 0.53 ≈ "
+            "ref 0.53) with no overcorrection — beating gpt-5.4-mini/deepseek-v4-pro (which overshot "
+            "market_fit low) and glm-5.2 (equal quality, ~2.5x slower). Cheaper OpenRouter model."
+        )
+    )
+    score_calibration_reasoning_effort: str = Field(
+        default="medium",
+        description=(
+            "Reasoning effort for the calibration critic. 'medium' default — it must weigh "
+            "evidence against the bands, a notch above the cheaper objective-scoring judge tier."
+        )
+    )
     ideation_refine_max_tokens: int = Field(
         default=32768,
         ge=16384,
@@ -470,33 +545,75 @@ class Settings(BaseSettings):
             "truncates the JSON once the kept set exceeds ~6 ideas. 32768 covers ~12 full specs."
         )
     )
+    niche_context_llm: str = Field(
+        default="openrouter/google/gemini-3.1-flash-lite",
+        description=(
+            "Model for the Stage-1 niche-context + audience-scope classifier (invoke_structured). "
+            "FIRST-PARTY (Google) to match the openai_model_name workhorse: first-party vendors serve "
+            "response_format from their own structured-output impl, skipping the open-weight vLLM/"
+            "xgrammar guided-decoder that returned empty finish_reason=stop on qwen3-235b (Stage-1 "
+            "crash). The invoke_structured escalating retry is the backstop. env: NICHE_CONTEXT_LLM."
+        )
+    )
     keyword_validation_llm: str = Field(
         default="gpt-5-nano",
         description="Model to use for keyword relevance validation in Phase 6c (gpt-5-nano at minimal reasoning effort for cost efficiency)"
-    )
-    keyword_research_llm: str = Field(
-        default="gpt-4o-mini",
-        description="Model to use for keyword research crew in keyword validation (gpt-4o-mini for cost efficiency, gpt-4o for better quality)"
     )
     pain_point_validation_llm: str = Field(
         default="gpt-4.1-mini",
         description="Model for pain point analysis/validation in Stage 6 (use non-reasoning model to allow max_tokens)"
     )
+    enable_quote_grounding_gate: bool = Field(
+        default=True,
+        description=(
+            "Deterministic grounding gate on Stage-3 quote enrichment: drop a displayed "
+            "representative_quote when it is not a verbatim/fuzzy substring of its cited source "
+            "post body (catches off-source/mis-attributed fragments the fail-open stance gate lets "
+            "through). Floor-protected (never pushes a pain below the low-evidence floor) and "
+            "fail-open when the source body is unknown. env: ENABLE_QUOTE_GROUNDING_GATE."
+        )
+    )
+    quote_grounding_threshold: float = Field(
+        default=0.9,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "SequenceMatcher ratio a quote must reach against a sliding window of its source post "
+            "to count as grounded (0.9 tolerates the minor edits left by quote cleaning/splitting)."
+        )
+    )
+    # --- Pain-scoring cutoffs (HEURISTIC PRIORS, not outcome-calibrated). These are round-number
+    # decision boundaries on subjective LLM scores; there is no labeled outcome data to optimize them
+    # against (would need shipped-idea revenue for a ROC/Youden fit). Exposed here so they can be tuned
+    # without code edits and are not mistaken for settled/validated thresholds. ---
+    opportunity_high_severity_threshold: float = Field(
+        default=0.6, ge=0.0, le=1.0,
+        description="Severity at/above which an axis counts as 'high' in the opportunity formula. Heuristic prior, NOT outcome-calibrated."
+    )
+    opportunity_high_commercial_intent_threshold: float = Field(
+        default=0.6, ge=0.0, le=1.0,
+        description="Commercial-intent at/above which an axis counts as 'high' in the opportunity formula. Heuristic prior, NOT outcome-calibrated."
+    )
+    low_evidence_severity_clamp: float = Field(
+        default=0.45, ge=0.0, le=1.0,
+        description="Severity is clamped DOWN to this when a pain has too few stance-verified quotes. Heuristic prior, NOT outcome-calibrated."
+    )
     competitor_extraction_llm: str = Field(
         default="gpt-4.1-mini",
         description="Model for extracting product/brand/tool names from social discussion sentences"
     )
+    report_structured_llm: str = Field(
+        default="gpt-4.1-mini",
+        description=(
+            "Model for LIST-HEAVY report invoke_structured schemas (FeatureComparison, "
+            "First30DaysPlaybook, MarketingNarrative, IdealCustomerProfile). gemini-2.5-"
+            "flash-lite truncates ~25% on long list outputs; grok-4.3 is reliable + cheap. "
+            "Single-object narratives stay on OPENAI_MODEL_NAME (gemini)."
+        ),
+    )
     pain_solution_mapping_llm: str = Field(
         default="gpt-4.1-mini",
         description="Model for pain-to-solution mapping in Stage 10 report generation (gpt-4.1-mini: non-reasoning, good instruction-following)"
-    )
-    quote_enrichment_llm: str = Field(
-        default="gpt-4.1-mini",
-        description="Model for quote enrichment agent (Task 4) in Stage 6 - uses vector search to find quotes"
-    )
-    quote_enrichment_target_per_pain_point: int = Field(
-        default=8,
-        description="Target number of quotes per pain point in Task 4 enrichment"
     )
     landing_page_llm: str = Field(
         default="gpt-5.2",
@@ -578,6 +695,17 @@ class Settings(BaseSettings):
     @property
     def openrouter_structured_providers_list(self) -> list[str]:
         return [p.strip() for p in self.openrouter_structured_providers.split(",") if p.strip()]
+
+    audience_digest_token_budget: int = Field(
+        default=24_000,
+        description=(
+            "Max tokens of scraped social content the Audience Mapping crew (Stage 6.5) injects "
+            "in-prompt as the 'discussion digest' (replaces RAG). Kept conservative so the digest "
+            "+ the large task prompt + output + reasoning fit a 32k-64k-context open-weight model; "
+            "raise it for large-context models (Gemini 2.5). Token counting is approximate for "
+            "non-OpenAI tokenizers, so a safety margin is applied."
+        ),
+    )
 
     # CrewAI+ (Enterprise) - Optional
     crewai_api_key: str | None = Field(default=None, description="CrewAI+ API key")
@@ -677,14 +805,72 @@ class Settings(BaseSettings):
     num_search_queries: int = Field(
         default=40, description="Number of search queries to generate for discovering pain points"
     )
-    max_search_results: int = Field(
-        default=20, description="Maximum search results per query"
+    enable_audience_aware_research: bool = Field(
+        default=False,
+        description=(
+            "Part C master gate. When True AND Stage-1 detected a focusable audience "
+            "(audience_scope in {segment_of_niche, community}), search-query generation and "
+            "pain mining get a SOFT, ADDITIVE audience bias — broad coverage is preserved, "
+            "never narrowed. Default False (research stays fully broad; audience is output-only). "
+            "env: ENABLE_AUDIENCE_AWARE_RESEARCH."
+        )
+    )
+    audience_query_allotment: int = Field(
+        default=6,
+        description=(
+            "Part C: extra Reddit search-query slots reserved for audience-flavored queries when "
+            "audience-aware research is on. Added ON TOP of num_search_queries so the broad set is "
+            "untouched (additive, not a filter). env: AUDIENCE_QUERY_ALLOTMENT."
+        )
+    )
+    query_named_entity_cap: float = Field(
+        default=0.4,
+        description=(
+            "Product-lock-in ceiling: at most this fraction of generated search queries may name a "
+            "SPECIFIC product/entity (e.g. a peptide compound). Niche-identity terms (the niche's own "
+            "name/games/market) do NOT count — only true product names beyond it. Excess named-entity "
+            "queries are dropped so the search isn't pre-committed to the products Stage-1 happened to "
+            "list. 1.0 disables. env: QUERY_NAMED_ENTITY_CAP."
+        )
     )
     min_reddit_upvotes: int = Field(
         default=10, description="Minimum upvotes for Reddit posts (higher threshold for quality)"
     )
     min_reddit_comments: int = Field(
         default=5, description="Minimum comments for Reddit posts (higher threshold for quality)"
+    )
+    relevance_engagement_discount: float = Field(
+        default=0.8,
+        description=(
+            "How much a high thread-relevance grade lowers the Reddit engagement bar (popularity-"
+            "bias mitigation): per-post factor = 1 - discount*(grade-1)/2, applied to "
+            "min_reddit_upvotes/comments. At 0.8: grade-3 ~= 2 upvotes/1 comment, grade-2 ~= 6/3, "
+            "grade-1 = full 10/5. 0 disables (current behavior). env: RELEVANCE_ENGAGEMENT_DISCOUNT."
+        ),
+    )
+    relevance_engagement_comment_floor: int = Field(
+        default=1,
+        description=(
+            "Minimum comments a relevance-discounted Reddit post must still have — a thread needs "
+            "SOME discussion to mine pain points, no matter how on-topic. env: RELEVANCE_ENGAGEMENT_COMMENT_FLOOR."
+        ),
+    )
+    reddit_article_min_chars: int = Field(
+        default=500,
+        description=(
+            "A Reddit post whose selftext is at least this many chars is treated as a self-contained "
+            "ARTICLE/guide: it still must clear the (relevance-scaled) upvote bar, but the comment "
+            "floor is WAIVED — a high-quality how-to/analysis carries its value in its own text, not "
+            "the comments (a 0-comment link post still fails). env: REDDIT_ARTICLE_MIN_CHARS."
+        ),
+    )
+    relevance_priority_weight: float = Field(
+        default=0.5,
+        description=(
+            "Weight of thread-relevance in the pain-point token-budget priority score: "
+            "score *= (1-w) + w*grade/3. grade-3 keeps full weight, grade-1 ~0.67. 0 disables. "
+            "env: RELEVANCE_PRIORITY_WEIGHT."
+        ),
     )
     reddit_comment_limit: int | None = Field(
         default=None,
@@ -833,25 +1019,10 @@ class Settings(BaseSettings):
         description="Log estimated API costs for token usage"
     )
 
-    # Cost Budget Configuration
-    cost_budget_enabled: bool = Field(
-        default=False,
-        description="Enable cost budget tracking (logs warning when approaching limit)"
-    )
-    cost_budget_limit: float = Field(
-        default=5.00,
-        gt=0,
-        description="Maximum API cost budget per run in USD (soft limit, logs warning when exceeded)"
-    )
-
     # Reddit Post Cache (PostgreSQL-backed)
     reddit_post_cache_enabled: bool = Field(
         default=True,
         description="Enable PostgreSQL-backed Reddit thread cache to avoid re-fetching posts via PRAW"
-    )
-    reddit_post_cache_ttl_hours: int = Field(
-        default=168,
-        description="TTL in hours for cached Reddit threads (default 168 = 7 days)"
     )
 
     # Reddit Freshness Search Configuration
@@ -931,18 +1102,6 @@ class Settings(BaseSettings):
         default=50,
         description="Target number of keywords for quick expansion during relevance testing"
     )
-    keyword_validation_top_pain_points: int = Field(
-        default=5,
-        description="Number of top pain points to include in keyword validation context"
-    )
-    keyword_validation_top_competitors: int = Field(
-        default=10,
-        description="Number of top competitors to include in keyword validation context"
-    )
-    keyword_validation_temperature: float = Field(
-        default=0.7,
-        description="LLM temperature for keyword research crew (0.7 recommended for creative tasks with constraints)"
-    )
 
     # Phase 6c: Keyword Enrichment Quality Gates
     keyword_enrichment_min_coverage: float = Field(
@@ -978,12 +1137,6 @@ class Settings(BaseSettings):
         le=100,
         description="Max keyword_difficulty for Tier 1 Quick Win keywords. Keywords with higher difficulty demoted to Tier 2."
     )
-    tier_2_max_difficulty: int = Field(
-        default=75,
-        ge=0,
-        le=100,
-        description="Max keyword_difficulty for Tier 2 Strategic keywords. Very hard keywords still included but flagged."
-    )
 
     @field_validator('reddit_comment_limit', 'target_location', mode='before')
     @classmethod
@@ -1001,22 +1154,6 @@ class Settings(BaseSettings):
             return None
         if isinstance(v, str):
             return [c.strip().upper() for c in v.split(',') if c.strip()]
-        return v
-
-    @field_validator('keyword_validation_top_pain_points', 'keyword_validation_top_competitors')
-    @classmethod
-    def validate_positive_count(cls, v):
-        """Validate that count fields are at least 1."""
-        if v < 1:
-            raise ValueError("Must be at least 1")
-        return v
-
-    @field_validator('keyword_validation_temperature')
-    @classmethod
-    def validate_temperature_range(cls, v):
-        """Validate that temperature is in valid range for LLMs."""
-        if not 0.0 <= v <= 2.0:
-            raise ValueError("Temperature must be between 0.0 and 2.0")
         return v
 
     @field_validator('keyword_enrichment_min_coverage', 'keyword_enrichment_target_coverage', 'keyword_tiering_min_coverage', 'keyword_cluster_min_coverage')

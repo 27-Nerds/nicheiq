@@ -426,7 +426,6 @@ Different cognitive tasks require different model capabilities. By routing simpl
 - `FUNCTION_CALLING_LLM=gpt-4o-mini` - Tool calls (60% cost reduction)
 - `THREAD_VALIDATION_LLM=gpt-4o-mini` - Relevance filtering (60% reduction)
 - `KEYWORD_VALIDATION_LLM=gpt-4.1-nano` - Keyword checks (90% reduction)
-- `KEYWORD_RESEARCH_LLM=gpt-4o-mini` - SEO analysis (60% reduction)
 
 ### Cost Impact
 
@@ -449,14 +448,12 @@ Set individual model overrides in `.env`:
 FUNCTION_CALLING_LLM=gpt-4o-mini
 THREAD_VALIDATION_LLM=gpt-4o-mini
 KEYWORD_VALIDATION_LLM=gpt-4.1-nano
-KEYWORD_RESEARCH_LLM=gpt-4o-mini
 
 # Or use all GPT-4o (higher cost, slightly better quality)
 OPENAI_MODEL_NAME=gpt-4o
 FUNCTION_CALLING_LLM=gpt-4o
 THREAD_VALIDATION_LLM=gpt-4o
 KEYWORD_VALIDATION_LLM=gpt-4o
-KEYWORD_RESEARCH_LLM=gpt-4o
 ```
 
 See [ENV_REFERENCE.md#specialized-model-configuration-advanced](ENV_REFERENCE.md#specialized-model-configuration-advanced) for detailed guidance.

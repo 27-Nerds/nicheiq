@@ -821,7 +821,7 @@
                 {:else if item.itemScores}
                   <span title="Severity">{formatScore(item.itemScores.severity)}</span>
                   <span class="text-text-muted mx-0.5">/</span>
-                  <span title="WTP">{formatScore(item.itemScores.willingness_to_pay)}</span>
+                  <span title="Commercial Intent">{formatScore(item.itemScores.commercial_intent ?? (item.itemScores as any).willingness_to_pay)}</span>
                 {:else}
                   —
                 {/if}

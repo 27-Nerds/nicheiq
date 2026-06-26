@@ -67,7 +67,7 @@ class TestFormatPainPointWithScores:
         pp.title = "Data Export Issues"
         pp.description = "Users struggle with exporting data"
         pp.severity_score = 0.8
-        pp.willingness_to_pay = 0.6
+        pp.commercial_intent = 0.6
         pp.mention_count = 42
         result = format_pain_point_with_scores(pp)
         assert result.startswith("- Data Export Issues:")
@@ -80,7 +80,7 @@ class TestFormatPainPointWithScores:
         pp.title = "Test"
         pp.description = "x" * 300
         pp.severity_score = 0.5
-        pp.willingness_to_pay = 0.5
+        pp.commercial_intent = 0.5
         pp.mention_count = 10
         result = format_pain_point_with_scores(pp)
         assert "..." in result
@@ -91,7 +91,7 @@ class TestFormatPainPointWithScores:
         pp.title = "Unique Title Here"
         pp.description = "desc"
         pp.severity_score = 0.5
-        pp.willingness_to_pay = 0.5
+        pp.commercial_intent = 0.5
         pp.mention_count = 5
         result = format_pain_point_with_scores(pp)
         # Extract title: everything between "- " and ":"
@@ -110,7 +110,7 @@ class TestFormatPainPointsForPrompt:
         pp.title = "Slow Onboarding"
         pp.description = "Users drop off during setup"
         pp.severity_score = 0.8
-        pp.willingness_to_pay = 0.6
+        pp.commercial_intent = 0.6
 
         result = format_pain_points_for_prompt([pp])
         assert "Severity: 8.0/10" in result

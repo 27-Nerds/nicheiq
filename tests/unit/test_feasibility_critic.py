@@ -23,11 +23,16 @@ def _rc(name, obv=0.3):
 
 
 def _critic_self():
-    return SimpleNamespace(
+    # The _score_pool_novelty wrapper now dispatches to _score_concepts + _finalize_critic_pool;
+    # bind both onto the SimpleNamespace stub so the unbound-call pattern still works.
+    fake = SimpleNamespace(
         _format_competitor_mentions=lambda: "ToolX: an existing tool",
         audience_mapping=None,
         _record_divergent_usage=lambda u: None,
     )
+    fake._score_concepts = usc.UnifiedSolutionCrew._score_concepts.__get__(fake)
+    fake._finalize_critic_pool = usc.UnifiedSolutionCrew._finalize_critic_pool.__get__(fake)
+    return fake
 
 
 def _verdicts(items, drop_names=None):

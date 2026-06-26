@@ -82,7 +82,7 @@ vi.mock('../../config.js', () => ({ CONFIG: { baseUrl: 'http://test' } }));
 function painRecord(over: Record<string, unknown> = {}) {
   return {
     id: 'pp-1', slug: 'manual-invoicing', title: 'Manual invoicing', description: 'desc',
-    mentionCount: 5, severityScore: 0.7, willingnessToPayScore: 0.6, opportunityLevel: 'high',
+    mentionCount: 5, severityScore: 0.7, commercialIntentScore: 0.6, opportunityLevel: 'high',
     representativeQuotes: ['q'], sourcePlatforms: ['reddit'], categories: ['billing'],
     affectedSegments: ['freelancers'], solutionApproach: null, themeId: null,
     sourceNiche: 'Freelance tools', ...over,

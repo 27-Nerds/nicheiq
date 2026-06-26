@@ -1,6 +1,6 @@
 # UnifiedSolutionCrew Tasks
-# 4-task pipeline: 3 divergent-convergent ideation tasks + selection
-# Architecture: divergent_exploration → diversity_filtering → solution_refinement → solution_selection
+# Pipeline: divergent-convergent ideation + selection
+# Architecture: divergent_exploration → solution_refinement → solution_selection
 # Note: competitive_analysis task definition kept for on-demand per-solution analysis
 
 # =============================================================================
@@ -9,7 +9,7 @@
 
 divergent_exploration:
   description: >
-    {partitioned_mode_block}**TASK 1: DIVERGENT EXPLORATION (Generate 8-12 Raw Concepts)**
+    {partitioned_mode_block}**TASK 1: DIVERGENT EXPLORATION (Generate {concept_count} Raw Concepts)**
 
     Generate diverse solution concepts for micro/mini SaaS with SEO traffic focus.
     This is the DIVERGENT phase - prioritize quantity and variety over polish.
@@ -205,20 +205,31 @@ divergent_exploration:
       (1) data access outsiders can't get, (2) trust from being inside the ecosystem,
       (3) bonus distribution via app store ON TOP of SEO. Platform-leverage concepts
       must STILL have clear SEO keywords (e.g., "shopify inventory management tool").
+    - **AI leverage (LLM-as-component)** - Use an EXISTING LLM API (OpenAI, Anthropic,
+      OpenRouter) or a runnable local/open model (Ollama, Hugging Face) to do extraction,
+      classification, summarization, generation, or embedding/semantic-search OVER this
+      niche's data. The AI is plumbing, not the product — pair it with a specific data or
+      distribution advantage (the thing a competitor can't copy is the data/route, not
+      "we call an LLM"). NOT training/fine-tuning a new model, NOT a generic
+      assistant/chatbot. Must STILL have clear SEO keywords like every other concept.
 
     Choose techniques that fit THIS problem space. Not all techniques apply to every niche.
 
     ## MANDATORY TECHNIQUE QUOTA
 
-    You MUST generate concepts using AT LEAST 4 different techniques from these 6:
+    You MUST generate concepts using AT LEAST 4 different techniques from these 7:
     - Minimum 2 concepts from: niche_drilling OR data_source_inversion
     - Minimum 2 concepts from: cross_industry_template OR atomic_feature OR platform_leverage
     - Minimum 1 concept from: community_flip OR platform_leverage
-    - Remaining concepts: any technique
+    - Remaining concepts: any technique (including ai_native)
 
     STRONGLY ENCOURAGED: Include at least 1 platform_leverage concept if ANY
     platform APIs are relevant to this niche (Shopify, Stripe, GitHub, Notion, etc.).
     Platform leverage enhances SEO-first ideas with unique data access.
+
+    ENCOURAGED: Include at least 1 ai_native concept when an LLM primitive (extraction,
+    classification, summarization, generation, embeddings) gives a clear advantage for
+    THIS niche's data — never as a generic wrapper. Skip it if no LLM angle genuinely fits.
 
     OPTIONAL WILDCARD: You MAY include up to ONE concept using a technique you
     invent for this niche — label it "wildcard_<short-description>" in
@@ -232,7 +243,7 @@ divergent_exploration:
 
     ## MANDATORY PROJECT-TYPE SPREAD
 
-    Across your 8-12 concepts, use AT LEAST 3 different project_types from the
+    Across your concepts, use AT LEAST 3 different project_types from the
     Allowed Types: {allowed_project_types}. Do NOT make every concept a SaaS
     calculator or a content-hub. Map techniques to varied PRODUCT architectures —
     e.g. data_source_inversion → aggregator/directory, community_flip →
@@ -247,7 +258,7 @@ divergent_exploration:
     That is theme clustering — the failure this axis prevents.
 
     Assign each concept to exactly ONE primary pain (from STEP -1 insights / the pain lists):
-    - COVER AT LEAST 4 DISTINCT pains across your 8-12 concepts.
+    - COVER AT LEAST 4 DISTINCT pains across your concepts.
     - CAP: at most 2 concepts may share the same primary pain.
     - If your first 3 concepts trace to the same pain, STOP and pivot the next concept to an
       UNUSED pain regardless of technique.
@@ -260,11 +271,11 @@ divergent_exploration:
 
     **OUTPUT REQUIREMENTS (RawConceptList):**
 
-    Generate 8-12 concepts. For EACH concept:
+    Generate {concept_count} concepts. For EACH concept:
 
     - **concept_name**: Catchy, specific name (e.g., "PlumbingCostCalc", "RemoteTaxAdvisors")
     - **one_liner**: 1-2 sentence description focusing on unique angle
-    - **ideation_technique**: Which technique generated it (niche_drilling, data_source_inversion, cross_industry_template, atomic_feature, community_flip, platform_leverage)
+    - **ideation_technique**: Which technique generated it (niche_drilling, data_source_inversion, cross_industry_template, atomic_feature, community_flip, platform_leverage, ai_native)
     - **project_type**: directory, aggregator, comparison-tool, marketplace, saas, or other
     - **target_keywords**: 2-5 specific SEO queries. PRIORITY: use community-vocabulary
       phrases from Discussion Themes above before inventing new terms.
@@ -286,10 +297,13 @@ divergent_exploration:
       - mechanism_tag: aggregates-public-records | platform-api-monitoring |
         community-submitted-benchmarks | scheduled-automated-checks |
         parametric-calculator | curated-comparison-pages | llm-content-extraction |
-        marketplace-matching
+        llm-extraction-pipeline | ai-classification | ai-content-generation |
+        embedding-semantic-search | ai-agent-workflow | marketplace-matching
       - data_source_tag: government-open-data | platform-api | self-reported-user-data |
         scraped-web-pages | third-party-api | newsletters-and-bulletins |
         public-court-records | proprietary-user-activity
+        (NOTE: AI is a MECHANISM, not a data source — an ai_native concept STILL needs a
+        real data_source_tag for the data the LLM processes; "we call an LLM" is not data.)
       - journey_tag: search-lands-on-page | enters-inputs-gets-calculation |
         subscribes-gets-alerts | browses-comparison-table | submits-data-creates-value |
         recurring-dashboard-checkin
@@ -317,7 +331,9 @@ divergent_exploration:
     **ANTI-CLICHÉ — banned generic shapes** (regardless of niche): do NOT propose
     "a marketplace for X", "an AI chatbot/assistant for X", or "a tracking app for X"
     unless the why_non_obvious cites a specific insight/quote that makes that shape
-    non-obvious here.
+    non-obvious here. (The GENERIC AI wrapper stays banned — but specific-advantage AI
+    is welcome via the ai_native technique above: an LLM-as-component WITH a real data/
+    distribution wedge is encouraged, a bare "AI assistant for X" is not.)
 
     **DISCOURAGED — hard-to-ship shapes** (avoid unless the wedge is exceptional, because
     they score poorly on feasibility): products whose CORE mechanism is publishing claims/
@@ -391,7 +407,8 @@ divergent_exploration:
     **CRITICAL RULES:**
 
     ✗ NO evaluation at this stage - defer feasibility judgment
-    ✗ NO "AI-powered [X]" unless you explain the specific data/model advantage
+    ✗ NO generic "AI-powered [X]" wrapper — but a specific LLM-as-component wedge
+      (ideation_technique: ai_native) WITH a real data/model advantage IS welcome
     ✗ NO "all-in-one platform" - too complex for solo dev
     ✗ NO multi-sided marketplaces without explaining bootstrapping strategy
 
@@ -402,181 +419,25 @@ divergent_exploration:
 
   expected_output: >
     RawConceptList with:
-    - concepts: List of 8-12 RawConcept objects with all fields populated
+    - concepts: List of RawConcept objects with all fields populated
     - techniques_used: List of ideation techniques applied
     - pain_points_referenced: Pain point titles that informed concepts
 
-diversity_filtering:
-  description: >
-    **TASK 2: DIVERSITY FILTERING (Filter to up to ~10 Unique Concepts)**
-
-    Filter the pooled raw concepts below to ensure diversity and remove duplicates.
-    This is the CONVERGENT phase - apply strict diversity criteria.
-
-    ## Pooled concepts to filter
-
-    These concepts were pooled from several independent generation passes (different
-    creative lenses) and deduplicated. Filter them down — output the surviving
-    RawConcept objects UNCHANGED (keep every field exactly, including obviousness_score
-    and the mechanism_tag/data_source_tag/journey_tag).
-
-    {pooled_concepts}
-
-    <output_verbosity_spec>
-    - concepts: Pass through up to ~10 RawConcept objects unchanged
-    - removed_concepts: List of names only
-    - removal_reasons: 1 sentence per removal (format: "[Name]: [reason]")
-    - diversity_summary: 2-3 sentences max
-    </output_verbosity_spec>
-
-    ═══════════════════════════════════════════════════════════════════════════
-
-    **FILTERING WORKFLOW (apply in order — coverage BEFORE de-dup):**
-
-    0. **COVERAGE LOCK + PER-PAIN CAP (do this FIRST).** List the distinct high-severity
-       on-niche pains (severity ≥ 0.6 OR high mention count) — the PAIN REGISTRY. For EACH,
-       identify which Task-1 concepts address it and mark the STRONGEST one LOCKED (it must
-       survive). NEVER remove the only concept covering a high-severity on-niche pain.
-       On-niche coverage outranks structural spread.
-       **PER-PAIN CAP:** after locking, no single pain may keep MORE THAN 2 concepts in the
-       final set. If a pain has 3+ survivors, remove the weakest extras for THAT pain first
-       (even if structurally distinct) until it holds ≤2 — the goal is maximum DISTINCT-pain
-       coverage, not maximum concepts per pain. Record: "[Name]: per-pain cap — '[pain]' already at 2".
-
-    0c. **PAIN-SPREAD AUDIT (before step 1).** Tally surviving concepts per pain. Re-apply the
-       per-pain cap if any pain exceeds 2. If a PAIN REGISTRY pain has ZERO coverage, note it in
-       diversity_summary (enforce_pain_coverage re-injects post-crew).
-
-    0b. **INTEREST AUDIT.** Look at each concept's obviousness_score. If the most
-       obvious surviving concept scores > 0.7 AND a less-obvious Task-1 concept
-       (tied to an unexplored STEP -1 insight) was about to be cut, prefer the
-       less-obvious one. When two concepts tie on everything else, keep the lower
-       obviousness_score.
-
-    1. **CLUSTER SIMILAR CONCEPTS (pain-first)**
-       First note which pain each concept primarily serves. Then group concepts sharing
-       >50% of these characteristics:
-       - Same primary data source
-       - Same target audience segment
-       - Same core mechanism (how value is delivered)
-       - Same monetization model
-
-       Resolve clusters by pain: if two similar concepts serve the SAME pain, keep only the
-       more novel one; if they serve DIFFERENT pains, prefer keeping both (subject to the
-       step-0 cap) — structural similarity alone is NOT a reason to drop a distinct-pain concept.
-
-       If 2 concepts differ ONLY in:
-       - Target industry (same product, different vertical)
-       - UI/branding differences
-       - "AI-powered" vs "smart" vs "intelligent" labeling
-       → They are DUPLICATES. Keep only the most novel.
-
-    1b. **CROSS-RUN DUPLICATE CHECK** (mandatory — check every surviving concept)
-
-        {existing_ideas_blacklist_compact}
-
-        For EACH concept carried forward from Task 1:
-
-        Concept: [Name]
-        M-tag: ___
-        D-tag: ___
-        Most similar blacklisted idea: [name] or "none"
-        Overlap: M=yes/no, D=yes/no, J=yes/no → match count: ___
-
-        REJECT rules:
-        (a) Match count >= 2 with any blacklisted idea → REMOVE
-        (b) Concept name contains a banned fragment from the list above → REMOVE
-
-        For each removal, output:
-        "[Name]: cross-run duplicate — [rule a/b] — [detail]"
-
-    2. **ADAPTIVE DIVERSITY ENFORCEMENT**
-
-       **If multiple project types allowed:**
-       - REQUIRE at least 2 different project_types in final list
-       - Prefer variety: 2 directories + 2 aggregators + 1 comparison = GOOD
-       - Avoid: 5 directories = BAD (lacks architectural diversity)
-
-       **If single project type allowed (e.g., only "directory"):**
-       - REQUIRE diversity WITHIN that type:
-         - Different data sources (Reddit scraper vs API vs user submissions)
-         - Different target sub-niches (budget travelers vs luxury vs digital nomads)
-         - Different content models (reviews vs comparisons vs curated lists)
-
-    3. **SPECIFICITY CHECK**
-       - At least 1 concept must target a specific sub-niche (not generic category)
-       - Reject: "Travel directory" (too broad, already exists)
-       - Accept: "Budget digital nomad visa directory for Eastern Europe" (specific)
-
-    4. **SEO PATTERN DIVERSITY CHECK**
-
-       Two concepts are SEO-similar if they target the SAME programmatic page pattern:
-       - Both generate "[City] + [Service]" pages → DUPLICATES
-       - Both generate "[Product A] vs [Product B]" pages → DUPLICATES
-       - Both generate "[Tool] pricing" pages → DUPLICATES
-
-       EVEN IF they target different industries, they compete for similar user intent.
-
-       Example DUPLICATES (same SEO pattern, different vertical):
-       - "Plumber Directory" ([City] plumber) + "Electrician Directory" ([City] electrician) → Keep only 1
-       - "VPN Speed Test" (VPN A vs B) + "Hosting Speed Test" (Host A vs B) → Keep only 1
-
-       Example DIVERSE (different SEO patterns, same industry):
-       - "Plumber Directory" ([City] plumber) → location + service pattern
-       - "Plumber Cost Calculator" (plumbing cost calculator) → calculator/tool pattern
-       - "Plumber Review Aggregator" (best plumbers 2025) → comparison/review pattern
-       → ALL 3 are valid because they target DIFFERENT search intents
-
-    ═══════════════════════════════════════════════════════════════════════════
-
-    **OUTPUT REQUIREMENTS (FilteredConceptList):**
-
-    - **concepts**: up to ~10 unique RawConcept objects (passed from Task 1)
-    - **removed_concepts**: List of concept names that were filtered out
-    - **removal_reasons**: Explanation for each removal (format: "[Name]: [reason]")
-    - **diversity_summary**: Summary of diversity achieved
-
-    **EXAMPLE OUTPUT:**
-
-    removed_concepts: ["VendorCompare", "SmartVendorMatch"]
-    removal_reasons:
-      - "VendorCompare: Too similar to VendorMatch (same data source + mechanism)"
-      - "SmartVendorMatch: 'Smart' prefix doesn't add differentiation, duplicate of VendorMatch"
-    diversity_summary: "3 directories, 2 aggregators, 1 comparison tool across 4 unique data sources. Niches: tax advisors (specific), pricing data (broad), VPN testing (specific)."
-
-    ═══════════════════════════════════════════════════════════════════════════
-
-    **ANTI-PATTERN CHECKLIST:**
-
-    Before finalizing, verify NONE of these anti-patterns remain:
-
-    ✗ "[Category] directory" without specific data source or curation angle
-    ✗ "All-in-one platform" (too complex for solo dev)
-    ✗ Generic "[Industry] comparison site" without unique scoring methodology
-    ✗ "AI-powered [X]" without explaining the data/model advantage
-    ✗ Solutions requiring enterprise sales cycles
-    ✗ Multi-sided marketplaces without bootstrapping strategy
-
-    If anti-pattern detected → REMOVE from list with explanation
-
-  expected_output: >
-    FilteredConceptList with:
-    - concepts: up to ~10 unique RawConcept objects
-    - removed_concepts: Names of filtered concepts
-    - removal_reasons: Explanations for removals
-    - diversity_summary: Summary of diversity achieved
-
 solution_refinement:
   description: >
-    **TASK 3: SOLUTION REFINEMENT (Expand to Full Specifications)**
+    **TASK 2: SOLUTION REFINEMENT (Expand to Full Specifications)**
 
-    Expand filtered concepts from Task 2 into complete solution specifications.
+    Expand the deduped concept pool below into complete solution specifications.
     Score each on market fit, novelty, solo-dev feasibility, and SEO potential.
-    Select up to ~10 for detailed specification.
+    Select up to ~10 for detailed specification (this selection is the only count bound).
 
-    ## Context from Task 2
+    ## Concepts to refine
 
-    You have access to FilteredConceptList with up to ~10 unique concepts.
+    These concepts were pooled from several independent generation passes (different creative
+    lenses) and deterministically deduplicated. Expand them — keep each concept's mechanism and
+    its mechanism_tag/data_source_tag/journey_tag; do not invent concepts not listed here.
+
+    {pooled_concepts}
 
     ## Pain Points Context
 

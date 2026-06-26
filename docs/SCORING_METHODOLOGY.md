@@ -4,6 +4,9 @@ How NicheIQ scores and ranks the solution ideas it generates — and the guardra
 that keep those scores honest. Written for the curious user: this is the reasoning
 behind the numbers you see on each idea.
 
+> For how a run is organized around a niche vs. a target audience, see
+> **Niche or Audience: How NicheIQ Reads What You're After**.
+
 ## Table of Contents
 
 - [Overview](#overview)
@@ -142,6 +145,51 @@ sets don't earn the top band, and a product whose output pages sit behind a logi
 can't be crawled) is capped — because un-indexable pages, however many, don't rank. These
 checks only ever *lower* the score and never change the ranking order; they make the
 displayed number and the verdict honest.
+
+## Pain point scores (severity, commercial intent, opportunity)
+
+Before any ideas exist, each **pain point** mined from the discussions carries its own small
+set of scores. These describe the *problem*, not a product, and they feed which pains are worth
+building for.
+
+- **Severity (0–1) — does this block real work?** Severity measures **functional impact**: does
+  the problem stop someone reaching a goal or finishing a workflow? It is deliberately **not** a
+  measure of how *loudly* people complain. "I'm so frustrated with this" is emotional volume;
+  "we lost three clients to invoicing delays" is severity. The score is read against
+  behaviorally-anchored bands (a critical revenue/clients/time loss sits at the top; a minor
+  annoyance near the bottom), which is the part of this with the most research behind it.
+
+- **Commercial intent (0–1) — is there a buying signal?** This was previously labelled
+  "willingness to pay," which over-claimed what text can tell us. It is an **ordinal buying-signal
+  strength**, not a dollar figure: it reads how strongly the discussion shows commercial intent —
+  people naming a paid tool they already use, mentioning a budget or current spend, or a pain that
+  costs billable time. It is honest to use it to **rank** pains by buying signal; it is *not* a
+  willingness-to-pay you could put a price on. A true willingness-to-pay needs a pricing study
+  (people reacting to real prices), which self-selected public discussion simply cannot provide —
+  and even careful surveys overstate what people will really pay. Treat a high score as "there's a
+  buying signal here," not "users will pay $X."
+
+- **Opportunity (High / Medium / Low) — the two combined.** Opportunity combines the two:
+  **High** when both severity and commercial intent are strong, **Medium** when one is, **Low**
+  when neither. The boundary (currently 0.6 on each) is a sensible **heuristic**, not a
+  statistically optimised cutoff — we don't yet have outcome data (which ideas became revenue) to
+  tune it against, and we'd rather tell you that than imply a precision we don't have.
+
+**Honesty guardrails on pain scores (all downgrade-only, like the idea scores):**
+
+- **No evidence → capped severity.** A pain whose supporting quotes are thin or missing can't keep
+  a high severity score, regardless of how it was phrased.
+- **Tool-addressability cap.** If a software product can't realistically move the needle on a pain
+  (a lifestyle, cultural, or structural problem — "people prefer watching to playing"), its
+  commercial-intent score is capped and it is held out of idea generation. There's no point pricing
+  a problem software can't solve.
+- **Universal-emotional and "every niche" caps.** Pains that are really generic emotional themes
+  (burnout, stress) or would appear identically for *any* audience are capped down — they don't
+  differentiate an opportunity.
+
+Across all of these: the scores are **ordinal guides read from self-selected public discussion**,
+not survey-calibrated instruments. They're best read as bands (High / Medium / Low), not precise
+decimals — a "0.63" is not meaningfully different from a "0.61."
 
 ## What we show about the idea *set*
 

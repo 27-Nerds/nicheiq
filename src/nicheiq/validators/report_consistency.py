@@ -14,7 +14,6 @@ Design:
 import re
 from typing import Literal, Optional
 
-from loguru import logger
 from pydantic import BaseModel, Field
 
 

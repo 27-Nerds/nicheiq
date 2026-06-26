@@ -128,7 +128,10 @@ class TestQuoteSearchToolQueryParameters:
         # Check call args
         call_args = mock_knowledge.query.call_args
         assert call_args[1]["query"] == ["manual invoicing"]
-        assert call_args[1]["results_limit"] == 15
+        # Widened retrieval: more candidates at a lower similarity floor, with quality
+        # enforced downstream (relevance floor + per-post cap + stance gate).
+        assert call_args[1]["results_limit"] == 25
+        assert call_args[1]["score_threshold"] == 0.60
 
     def test_run_strips_query_whitespace(self, mock_knowledge):
         """Query whitespace should be stripped."""

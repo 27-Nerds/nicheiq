@@ -161,15 +161,15 @@ describe('POST /api/workers/catalog-pain-points-ready — legacy sweep', () => {
   it('deactivates unmatched legacy rows; merges matched legacy; preserves non-legacy', async () => {
     const existingRows = [
       { id: 'pp-a', sourceJobId: 'legacy-1', title: 'Old A', isActive: true,
-        mentionCount: 0, severityScore: 0.1, willingnessToPayScore: 0.1,
+        mentionCount: 0, severityScore: 0.1, commercialIntentScore: 0.1,
         representativeQuotes: [], sourcePlatforms: [], affectedSegments: [],
         opportunityLevel: 'low', themeId: null },
       { id: 'pp-b', sourceJobId: 'legacy-2', title: 'Old B', isActive: true,
-        mentionCount: 0, severityScore: 0.1, willingnessToPayScore: 0.1,
+        mentionCount: 0, severityScore: 0.1, commercialIntentScore: 0.1,
         representativeQuotes: [], sourcePlatforms: [], affectedSegments: [],
         opportunityLevel: 'low', themeId: null },
       { id: 'pp-c', sourceJobId: 'meaningful-x', title: 'Real C', isActive: true,
-        mentionCount: 0, severityScore: 0.1, willingnessToPayScore: 0.1,
+        mentionCount: 0, severityScore: 0.1, commercialIntentScore: 0.1,
         representativeQuotes: [], sourcePlatforms: [], affectedSegments: [],
         opportunityLevel: 'low', themeId: null },
     ];
@@ -189,7 +189,7 @@ describe('POST /api/workers/catalog-pain-points-ready — legacy sweep', () => {
     // New pain point matches 'Old A' via bigramSimilarity.
     const payload = buildPayload([
       { title: 'Old A', description: 'd', mention_count: 1, severity_score: 0.5,
-        willingness_to_pay: 0.5, opportunity_level: 'high',
+        commercial_intent: 0.5, opportunity_level: 'high',
         representative_quotes: [], source_platforms: [], categories: [],
         affected_segments: [] },
     ]);
@@ -224,7 +224,7 @@ describe('POST /api/workers/catalog-pain-points-ready — legacy sweep', () => {
   it('empty pain_points: never sweeps even with all-legacy existing', async () => {
     mockTxPainPointFindMany.mockResolvedValue([
       { id: 'pp-a', sourceJobId: 'legacy-1', title: 'Old A', isActive: true,
-        mentionCount: 0, severityScore: 0, willingnessToPayScore: 0,
+        mentionCount: 0, severityScore: 0, commercialIntentScore: 0,
         representativeQuotes: [], sourcePlatforms: [], affectedSegments: [],
         opportunityLevel: 'low', themeId: null },
     ]);
@@ -244,11 +244,11 @@ describe('POST /api/workers/catalog-pain-points-ready — legacy sweep', () => {
   it('all-meaningful existing: no sweep even when some are unmatched', async () => {
     mockTxPainPointFindMany.mockResolvedValue([
       { id: 'pp-c', sourceJobId: 'meaningful-x', title: 'Real C', isActive: true,
-        mentionCount: 0, severityScore: 0, willingnessToPayScore: 0,
+        mentionCount: 0, severityScore: 0, commercialIntentScore: 0,
         representativeQuotes: [], sourcePlatforms: [], affectedSegments: [],
         opportunityLevel: 'low', themeId: null },
       { id: 'pp-d', sourceJobId: 'meaningful-y', title: 'Real D', isActive: true,
-        mentionCount: 0, severityScore: 0, willingnessToPayScore: 0,
+        mentionCount: 0, severityScore: 0, commercialIntentScore: 0,
         representativeQuotes: [], sourcePlatforms: [], affectedSegments: [],
         opportunityLevel: 'low', themeId: null },
     ]);
@@ -260,7 +260,7 @@ describe('POST /api/workers/catalog-pain-points-ready — legacy sweep', () => {
 
     const payload = buildPayload([
       { title: 'Real C', description: 'd', mention_count: 1, severity_score: 0.5,
-        willingness_to_pay: 0.5, opportunity_level: 'high',
+        commercial_intent: 0.5, opportunity_level: 'high',
         representative_quotes: [], source_platforms: [], categories: [],
         affected_segments: [] },
     ]);
@@ -277,7 +277,7 @@ describe('POST /api/workers/catalog-pain-points-ready — legacy sweep', () => {
   it('all-legacy existing, all matched: no sweep (matched IDs filter everything out)', async () => {
     mockTxPainPointFindMany.mockResolvedValue([
       { id: 'pp-a', sourceJobId: 'legacy-1', title: 'Old A', isActive: true,
-        mentionCount: 0, severityScore: 0, willingnessToPayScore: 0,
+        mentionCount: 0, severityScore: 0, commercialIntentScore: 0,
         representativeQuotes: [], sourcePlatforms: [], affectedSegments: [],
         opportunityLevel: 'low', themeId: null },
     ]);
@@ -286,7 +286,7 @@ describe('POST /api/workers/catalog-pain-points-ready — legacy sweep', () => {
 
     const payload = buildPayload([
       { title: 'Old A', description: 'd', mention_count: 1, severity_score: 0.5,
-        willingness_to_pay: 0.5, opportunity_level: 'high',
+        commercial_intent: 0.5, opportunity_level: 'high',
         representative_quotes: [], source_platforms: [], categories: [],
         affected_segments: [] },
     ]);

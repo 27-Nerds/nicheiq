@@ -13,7 +13,6 @@ from .crew_guardrails import (
     validate_data_implementation_plan,
     validate_data_source_evaluation,
     validate_diversity,
-    validate_filtered_concepts,
     validate_geographic_tier_output,
     validate_implementation_plan_output,
     validate_keyword_summary,
@@ -52,7 +51,6 @@ __all__ = [
     # Crew guardrails (new high-priority tasks)
     "validate_content_categorization",
     "validate_raw_concepts",
-    "validate_filtered_concepts",
     "validate_audience_mapping",
     "validate_data_source_evaluation",
     # Solution selection guardrail

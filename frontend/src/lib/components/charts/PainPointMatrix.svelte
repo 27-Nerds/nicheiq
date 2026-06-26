@@ -27,7 +27,8 @@
   const chartData = $derived(
     painPoints.map((p, i) => ({
       id: i,
-      x: p.willingness_to_pay,
+      // commercial_intent (was willingness_to_pay) — legacy fallback for pre-rename reports
+      x: p.commercial_intent ?? (p as any).willingness_to_pay ?? 0,
       y: p.severity_score,
       r: Math.max(8, Math.min(24, (p.mention_count || 1) * 3)),
       title: p.title,

@@ -18,7 +18,7 @@ def _pain(**overrides):
         "description": "Freelancers waste hours invoicing",
         "mention_count": 12,
         "severity_score": 0.8,
-        "willingness_to_pay": 0.7,
+        "commercial_intent": 0.7,
         "opportunity_level": "high",
         "representative_quotes": ["I hate doing invoices"],
         "affected_segments": ["Freelancers"],

@@ -1267,8 +1267,8 @@
                       <Badge variant={pp.severityScore >= 0.7 ? 'error' : pp.severityScore >= 0.4 ? 'warning' : 'default'} size="sm">
                         Sev {(pp.severityScore * 100).toFixed(0)}%
                       </Badge>
-                      <Badge variant={pp.willingnessToPayScore >= 0.6 ? 'success' : 'default'} size="sm">
-                        WTP {(pp.willingnessToPayScore * 100).toFixed(0)}%
+                      <Badge variant={pp.commercialIntentScore >= 0.6 ? 'success' : 'default'} size="sm">
+                        WTP {(pp.commercialIntentScore * 100).toFixed(0)}%
                       </Badge>
                       {#if pp.isLegacy}
                         <Badge variant="warning" size="sm">Legacy — refresh first</Badge>

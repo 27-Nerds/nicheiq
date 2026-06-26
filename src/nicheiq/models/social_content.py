@@ -56,6 +56,11 @@ class RedditPost(BaseModel):
     comments: list[RedditComment] = Field(
         default_factory=list, description="Top-level comments"
     )
+    relevance_grade: int | None = Field(
+        default=None, ge=0, le=3,
+        description="TREC/UMBRELA 0-3 niche-relevance from thread validation; used to "
+        "prioritize the most-relevant posts when capping to the pain-finder token budget",
+    )
 
 class TwitterTweet(BaseModel):
     """Represents a single tweet."""

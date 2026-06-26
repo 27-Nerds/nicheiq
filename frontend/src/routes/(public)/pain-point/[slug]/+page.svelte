@@ -49,7 +49,7 @@
   // src/nicheiq/models/pain_point.py:202,205); reuse scaleSeverity(value,
   // 'pain') for both since the math is identical.
   const severity100 = $derived(scaleSeverity(pp.severityScore, "pain"));
-  const wtp100 = $derived(scaleSeverity(pp.willingnessToPayScore, "pain"));
+  const intent100 = $derived(scaleSeverity(pp.commercialIntentScore, "pain"));
 
   // Opportunity normalization moved from PainStatStrip → route level so the
   // hero aside doesn't re-implement the high/med/low coercion.
@@ -223,7 +223,7 @@
   {parentTheme}
   {themeAnchorHref}
   severity={severity100}
-  willingnessToPay={wtp100}
+  commercialIntent={intent100}
   opportunity={opportunityNorm}
   qualitySignals={data.painPoint.qualitySignals}
   mentionCount={pp.mentionCount}

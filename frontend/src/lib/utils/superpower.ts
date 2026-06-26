@@ -83,3 +83,26 @@ export function getSuperpower(
   if (entries[0][1] < threshold) return null;
   return map[entries[0][0]];
 }
+
+/**
+ * Backend strength keys (IdeaTags.strengths / primary_strength, hyphenated) → canonical key.
+ * The backend now owns strength selection (margin above standardized cutoffs); this file keeps
+ * only the display labels/variants.
+ */
+const STRENGTH_KEY_TO_CANONICAL: Record<string, CanonicalKey> = {
+  'market-fit': 'marketFit',
+  'seo-power': 'seoScalability',
+  'innovator': 'novelty',
+  'quick-build': 'techFeasibility',
+  'solo-friendly': 'soloDev',
+};
+
+/** Resolve a backend strength key to its display entry (label + variant), or null. */
+export function strengthEntry(
+  key: string | null | undefined,
+  map: Record<string, SuperpowerEntry> = SUPERPOWERS,
+): SuperpowerEntry | null {
+  if (!key) return null;
+  const canonical = STRENGTH_KEY_TO_CANONICAL[key];
+  return canonical ? map[canonical] : null;
+}

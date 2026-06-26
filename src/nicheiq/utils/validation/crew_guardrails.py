@@ -19,9 +19,9 @@ from loguru import logger
 from ...models.competitor import CompetitiveAnalysisResult
 from ...models.data_source import DataImplementationPlan, SourceEvaluationReport
 from ...models.landing_page import AnimatedHTMLResult, HTMLPageResult, QAReviewResult
-from ...models.pain_point import ContentCategorizationReport, QuoteEnrichmentResult
+from ...models.pain_point import ContentCategorizationReport
 from ...models.research_state import (
-    AudienceMappingResult,
+    AudienceMappingLLMResult,
     PricingStrategyResult,
     TrafficMonetizationResult,
     TrendNarrativeOutput,
@@ -36,7 +36,6 @@ from ...models.seo_strategy import (
 )
 from ...models.solution_idea import (
     CompetitiveEnhancements,
-    FilteredConceptList,
     IdeaGenerationResult,
     RawConceptList,
 )
@@ -51,6 +50,15 @@ def _guardrail_success_payload(task_output, parsed_result: Any | None = None) ->
     raw = getattr(task_output, "raw", None)
 
     if isinstance(raw, str):
+        # If the model wrapped the JSON in a reasoning preamble ("Thought: ...{...}"),
+        # the raw string won't parse when CrewAI materializes .pydantic downstream.
+        # When the guardrail already produced a validated object, hand CrewAI clean
+        # serialized JSON instead. Gated on "raw is not already clean JSON", so this
+        # is a NO-OP for well-behaved models (raw returned unchanged).
+        if parsed_result is not None and hasattr(parsed_result, "model_dump_json"):
+            if not clean_llm_response(raw).lstrip().startswith("{"):
+                logger.info("Guardrail payload: normalizing prose-wrapped output to clean JSON")
+                return parsed_result.model_dump_json()
         return raw
 
     payload = raw if raw is not None else parsed_result
@@ -110,9 +118,19 @@ def validate_diversity(
                 result = IdeaGenerationResult.model_validate(raw_json)
                 logger.debug("Diversity guardrail: Parsed IdeaGenerationResult from .raw")
             except json.JSONDecodeError as e:
-                logger.warning(f"[DEBUG] Failed to parse JSON from .raw: {e}")
-                logger.warning(f"[DEBUG] .raw first 500 chars: {task_output.raw[:500]}")
-                return (False, f"Invalid JSON in task output: {e}")
+                # Recover JSON embedded in a reasoning preamble ("Thought: ...{...}").
+                extracted = extract_json_object_from_text(task_output.raw)
+                if extracted is not None:
+                    try:
+                        result = IdeaGenerationResult.model_validate(extracted)
+                        logger.info("Diversity guardrail: recovered IdeaGenerationResult from prose-wrapped output")
+                    except Exception as ve:
+                        logger.warning(f"[DEBUG] extracted JSON failed validation: {ve}")
+                        return (False, f"Failed to parse IdeaGenerationResult: {ve}")
+                else:
+                    logger.warning(f"[DEBUG] Failed to parse JSON from .raw: {e}")
+                    logger.warning(f"[DEBUG] .raw first 500 chars: {task_output.raw[:500]}")
+                    return (False, f"Invalid JSON in task output: {e}")
             except Exception as e:
                 logger.warning(f"[DEBUG] Failed to validate IdeaGenerationResult: {e}")
                 return (False, f"Failed to parse IdeaGenerationResult: {e}")
@@ -1249,11 +1267,27 @@ def _parse_pydantic_from_task_output(task_output, model_class, task_name: str) -
             logger.debug(f"{task_name} guardrail: Parsed {model_class.__name__} from .raw")
             return (result, None)
         except json.JSONDecodeError as e:
+            # Reasoning models (e.g. DeepSeek) sometimes emit a chain-of-thought
+            # preamble as plain text BEFORE the JSON ("Thought: ...{...}"), so a
+            # whole-string json.loads fails at char 0. Recover the embedded object
+            # via bracket-matching before giving up (avoids a wasted retry).
+            extracted = extract_json_object_from_text(task_output.raw)
+            if extracted is not None:
+                try:
+                    result = model_class.model_validate(extracted)
+                    logger.info(
+                        f"{task_name} guardrail: recovered {model_class.__name__} "
+                        f"from prose-wrapped output (model emitted text before JSON)"
+                    )
+                    return (result, None)
+                except Exception as ve:
+                    logger.warning(f"{task_name}: extracted JSON failed validation: {ve}")
             logger.warning(f"JSON parse error in {task_name}: {e}")
             return (
                 None,
                 f"Invalid JSON at line {e.lineno}, column {e.colno}: {e.msg}. "
                 "Ensure valid JSON with no trailing commas and double-quoted strings. "
+                "Output ONLY the JSON object — no reasoning, preamble, or commentary. "
                 f"Return a valid {model_class.__name__} JSON object."
             )
         except Exception as e:
@@ -1421,7 +1455,7 @@ def validate_raw_concept_list(
                 f"Technique diversity violation: only {len(techniques_used)} techniques "
                 f"({', '.join(sorted(techniques_used))}). Need 3+. Available: niche_drilling, "
                 "data_source_inversion, cross_industry_template, atomic_feature, "
-                "community_flip, platform_leverage."
+                "community_flip, platform_leverage, ai_native."
             )
         if "platform_leverage" not in techniques_used:
             logger.warning("No platform_leverage concepts generated.")
@@ -1443,132 +1477,39 @@ def validate_raw_concepts(task_output) -> tuple[bool, Any]:
 
 
 # ========================================
-# UNIFIED SOLUTION CREW: FILTERED CONCEPTS GUARDRAIL
-# ========================================
-
-
-def validate_filtered_concepts(task_output) -> tuple[bool, Any]:
-    """
-    Guardrail for diversity_filtering_task to validate FilteredConceptList.
-
-    Validates:
-    - JSON is parseable (via unified helper)
-    - Has concepts list (3-8 expected, minimum 3)
-    - Has removed_concepts with matching explanations
-
-    Returns:
-        tuple[bool, Any]: (success, raw_string_or_error)
-    """
-    # Parse using unified helper
-    result, error = _parse_pydantic_from_task_output(
-        task_output, FilteredConceptList, "Diversity filtering"
-    )
-    if error:
-        return (False, error)
-
-    # Validate concept count (3-8 expected, minimum 3)
-    if not result.concepts or len(result.concepts) < 3:
-        return (
-            False,
-            f"Need at least 3 filtered concepts, got {len(result.concepts or [])}. "
-            "Keep more diverse concepts that represent different approaches."
-        )
-
-    # Validate removed_concepts/removal_reasons consistency
-    # Note: Both can be empty if all concepts are unique, but counts must match
-    removed_count = len(result.removed_concepts or [])
-    reasons_count = len(result.removal_reasons or [])
-    if removed_count != reasons_count:
-        return (
-            False,
-            f"Mismatch between removed_concepts ({removed_count}) "
-            f"and removal_reasons ({reasons_count}). "
-            "Each removed concept needs a corresponding reason."
-        )
-
-    # Validate diversity_summary exists
-    if not result.diversity_summary or len(result.diversity_summary) < 30:
-        return (
-            False,
-            f"diversity_summary too short ({len(result.diversity_summary or '')} chars, minimum 30). "
-            "Summarize the project types and data sources represented."
-        )
-
-    # M/D/J tag presence contract (code-checked, not LLM self-report): every kept
-    # concept must carry its dedup-gate tags so downstream stages can reason about
-    # structure. (This is satisfiable by the model — it's a presence check.)
-    missing_tags = [
-        c.concept_name for c in result.concepts
-        if not (
-            getattr(c, 'mechanism_tag', None)
-            and getattr(c, 'data_source_tag', None)
-            and getattr(c, 'journey_tag', None)
-        )
-    ]
-    if missing_tags:
-        return (
-            False,
-            f"Concepts missing mechanism_tag/data_source_tag/journey_tag: {missing_tags}. "
-            "Copy the M/D/J tags from the STEP 0.75 dedup gate into each kept concept's fields."
-        )
-
-    # Structural near-duplicates (≥2 shared M/D/J tags) are now a WARNING, not a
-    # hard reject. Rationale: the old hard-reject deleted genuinely on-niche ideas
-    # (two recovery-focused concepts share tags yet serve distinct pains), and an
-    # unsatisfiable guardrail crashes the whole run after CrewAI retry exhaustion.
-    # Pain-point COVERAGE is enforced deterministically post-crew instead; coverage
-    # outranks structural spread.
-    for i, concept_a in enumerate(result.concepts):
-        for concept_b in result.concepts[i + 1:]:
-            matched_dims = [
-                field for field in ('mechanism_tag', 'data_source_tag', 'journey_tag')
-                if _tags_match(getattr(concept_a, field, None), getattr(concept_b, field, None))
-            ]
-            if len(matched_dims) >= 2:
-                logger.warning(
-                    f"Structural near-duplicate kept (allowed for coverage): "
-                    f"'{concept_a.concept_name}' ~ '{concept_b.concept_name}' share "
-                    f"{len(matched_dims)}/3 M/D/J ({', '.join(matched_dims)}). "
-                    f"Acceptable when each covers a distinct pain."
-                )
-
-    logger.info(
-        f"✓ Filtered concepts guardrail passed: "
-        f"{len(result.concepts)} kept, {len(result.removed_concepts or [])} removed "
-        f"(M/D/J tag presence verified; structural dups warned, coverage enforced post-crew)"
-    )
-    return (True, _guardrail_success_payload(task_output, result))
-
-
-# ========================================
 # AUDIENCE MAPPING CREW: AUDIENCE MAPPING GUARDRAIL
 # ========================================
 
 
 def validate_audience_mapping(task_output) -> tuple[bool, Any]:
     """
-    Guardrail for audience_mapping_task to validate AudienceMappingResult.
+    Guardrail for audience_mapping_task to validate AudienceMappingLLMResult.
 
-    Validates:
+    Influencers are computed in Python (not LLM-produced), so this validates only the
+    qualitative fields. It is the single source of quality floors (the final model relaxed
+    its Pydantic min_length to avoid a double-validation trap):
     - JSON is parseable (via unified helper)
-    - Has at least 2 audience_segments
-    - Has required fields: primary_target_segment, key_influencers, community_hubs
+    - >= 3 audience_segments (matches the task's 3-5 contract)
+    - primary_target_segment present
+    - >= 6 common_vocabulary terms (verbatim extraction is the hardest ask for small models;
+      gating lower than the 10-15 prompt target avoids retry loops / fabricated vocab)
+    - >= 2 community_hubs
 
     Returns:
         tuple[bool, Any]: (success, raw_string_or_error)
     """
     # Parse using unified helper
     result, error = _parse_pydantic_from_task_output(
-        task_output, AudienceMappingResult, "Audience mapping"
+        task_output, AudienceMappingLLMResult, "Audience mapping"
     )
     if error:
         return (False, error)
 
-    # Validate minimum audience_segments (at least 2)
-    if not result.audience_segments or len(result.audience_segments) < 2:
+    # Validate minimum audience_segments (at least 3, per the 3-5 contract)
+    if not result.audience_segments or len(result.audience_segments) < 3:
         return (
             False,
-            f"Need at least 2 audience_segments, got {len(result.audience_segments or [])}. "
+            f"Need at least 3 audience_segments, got {len(result.audience_segments or [])}. "
             "Identify more distinct audience segments from the discussions."
         )
 
@@ -1580,12 +1521,12 @@ def validate_audience_mapping(task_output) -> tuple[bool, Any]:
             "Identify the recommended primary target segment name."
         )
 
-    # Validate key_influencers (at least 3)
-    if not result.key_influencers or len(result.key_influencers) < 3:
+    # Validate common_vocabulary (at least 6 verbatim terms)
+    if not result.common_vocabulary or len(result.common_vocabulary) < 6:
         return (
             False,
-            f"Need at least 3 key_influencers, got {len(result.key_influencers or [])}. "
-            "Identify more influencers or active community members from discussions."
+            f"Need at least 6 common_vocabulary terms, got {len(result.common_vocabulary or [])}. "
+            "Extract more verbatim terms/phrases the audience actually uses from the digest."
         )
 
     # Validate community_hubs (at least 2)
@@ -1598,7 +1539,7 @@ def validate_audience_mapping(task_output) -> tuple[bool, Any]:
 
     logger.info(
         f"✓ Audience mapping guardrail passed: "
-        f"{len(result.audience_segments)} segments, {len(result.key_influencers)} influencers"
+        f"{len(result.audience_segments)} segments, {len(result.common_vocabulary)} vocab terms"
     )
     return (True, _guardrail_success_payload(task_output, result))
 

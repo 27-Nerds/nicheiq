@@ -5,6 +5,8 @@ Generates strategic search queries using context-aware prompting.
 """
 
 import json
+import math
+import re
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -83,6 +85,46 @@ class QueryGenerator:
             anchor_pct = 1.0
         return kept, anchor_pct, dropped
 
+    # Product-name shape: a capitalized token carrying a digit (BPC-157, MK-677, TB-500, IGF-1).
+    _PRODUCT_RE = re.compile(r"\b[A-Z][A-Za-z]*[- ]?\d[\dA-Za-z-]*\b")
+
+    def _cap_named_entities(
+        self, queries: list[dict], niche_context: "NicheContext | None", niche_description: str
+    ) -> list[dict]:
+        """Enforce the product-lock-in ceiling (settings.query_named_entity_cap).
+
+        A query is "product-named" when it names a specific entity BEYOND the niche's own identity:
+        a product-shaped token (caps+digit) or a Stage-1 `anchor_entity`, EXCLUDING any term that
+        appears in the niche text itself (so naming the niche's game/market — e.g. "Dota 2", "CS2"
+        — is never penalized; only true product lock-in like peptide compounds is). Drops the excess
+        named queries so the search isn't pre-committed to the products Stage-1 happened to list.
+        """
+        cap = settings.query_named_entity_cap
+        if not queries or cap >= 1.0:
+            return queries
+        niche_lc = (niche_description or "").lower() + " " + (
+            getattr(niche_context, "niche_description", "") or "").lower()
+        anchors_lc = [a.lower() for a in (getattr(niche_context, "anchor_entities", None) or [])
+                      if a.lower() not in niche_lc]
+
+        def is_product(q: dict) -> bool:
+            text = q.get("query", "")
+            if any(m.lower() not in niche_lc for m in self._PRODUCT_RE.findall(text)):
+                return True
+            tl = text.lower()
+            return any(a in tl for a in anchors_lc)
+
+        prod_idx = [i for i, q in enumerate(queries) if is_product(q)]
+        n, p = len(queries), len(prod_idx)
+        if p <= math.floor(cap * n):
+            return queries
+        # Closed form: drop d named queries so (p-d)/(n-d) <= cap (denominator-shrink aware).
+        d = math.ceil((p - cap * n) / (1.0 - cap))
+        drop = set(prod_idx[-d:])  # drop the later named queries; keep the earlier, more-diverse ones
+        kept = [q for i, q in enumerate(queries) if i not in drop]
+        logger.info(f"[LOCK-IN] named-entity queries {p}/{n} over cap {cap:.0%} — dropped {d}")
+        return kept
+
     def _sanitize_for_prompt(self, text: str, max_length: int = 1000) -> str:
         """
         Sanitize user input for safe prompt inclusion.
@@ -99,6 +141,27 @@ class QueryGenerator:
         # Truncate to reasonable length
         text = text[:max_length]
         return text
+
+    def _audience_focus_block(self, target_audience: str, allotment: int) -> str:
+        """Part C: a SOFT, ADDITIVE audience block appended to the query-gen context.
+
+        Returns an instruction reserving exactly `allotment` of the requested queries
+        for the audience while keeping the broad set unchanged. Empty string if no
+        audience. The audience text is sanitized for prompt safety.
+        """
+        if not target_audience:
+            return ""
+        safe = self._sanitize_for_prompt(target_audience, max_length=200)
+        return (
+            "\n\n**ADDITIONAL AUDIENCE QUERIES (additive — the broad set above is "
+            "unchanged):**\n\n"
+            f'The user is building for "{safe}". Reserve EXACTLY {allotment} of the '
+            "requested queries for this audience — phrased the way they actually talk "
+            "(their communities, jargon, experience level) — and keep ALL the others "
+            "broad across the niche above. Each audience query MUST still reference the "
+            "niche (an anchor or niche term) so it stays on-topic. Do NOT reduce or "
+            "replace the broad queries."
+        )
 
     def _extract_json_array(self, text: str) -> list | None:
         """Extract first complete JSON array from text."""
@@ -188,6 +251,7 @@ class QueryGenerator:
         niche_context: "NicheContext | None" = None,
         num_queries: int = 20,
         enabled_platforms: list[str] | None = None,
+        target_audience: str | None = None,
         _is_retry: bool = False,
     ) -> list[dict]:
         """
@@ -199,6 +263,9 @@ class QueryGenerator:
             num_queries: Number of queries to generate
             enabled_platforms: List of enabled platforms (e.g. ["reddit", "twitter"]).
                 None means all platforms enabled (backward compatible).
+            target_audience: Part C optional soft bias. When set, `audience_query_allotment`
+                extra audience-flavored queries are added ON TOP of `num_queries` (additive,
+                broad set preserved). None = fully broad (default).
 
         Returns:
             List of query dictionaries with 'query', 'type', 'platform', and 'rationale' keys
@@ -276,10 +343,19 @@ Industry Boundaries: [Not provided - use general heuristics]
                 "the OUT-OF-SCOPE topics.\n" + context_section
             )
 
+        # Part C: soft, ADDITIVE audience bias. Bump the requested count by the
+        # allotment so audience queries are added ON TOP of the broad set (never
+        # displace it), and append the audience block to the context.
+        effective_num_queries = num_queries
+        if target_audience:
+            allotment = settings.audience_query_allotment
+            effective_num_queries = num_queries + allotment
+            context_section = context_section + self._audience_focus_block(target_audience, allotment)
+
         prompt = get_prompt(
             "query_generation",
             context_section=context_section,
-            num_queries=num_queries,
+            num_queries=effective_num_queries,
             platform_instructions=platform_instructions,
         )
 
@@ -457,7 +533,8 @@ Industry Boundaries: [Not provided - use general heuristics]
                         )
                         retry = self.generate_queries(
                             niche_description, niche_context, num_queries,
-                            enabled_platforms, _is_retry=True,
+                            enabled_platforms, target_audience=target_audience,
+                            _is_retry=True,
                         )
                         # Merge: keep all anchored queries from both attempts, then
                         # top up with non-anchored ones, deduped by query text.
@@ -465,7 +542,11 @@ Industry Boundaries: [Not provided - use general heuristics]
                         for q in sorted(queries + retry,
                                         key=lambda x: x.get("has_anchor", False), reverse=True):
                             merged.setdefault(q.get("query", "").strip().lower(), q)
-                        queries = list(merged.values())[:num_queries]
+                        queries = list(merged.values())[:effective_num_queries]
+
+                # Product-lock-in ceiling: keep the search from pre-committing to Stage-1's
+                # named entities (the majority must stay category-level for honest discovery).
+                queries = self._cap_named_entities(queries, niche_context, niche_description)
 
                 return queries
             else:
@@ -486,6 +567,7 @@ Industry Boundaries: [Not provided - use general heuristics]
         niche_description: str,
         niche_context: "NicheContext | None" = None,
         enabled_platforms: list[str] | None = None,
+        target_audience: str | None = None,
     ) -> list[dict]:
         """Generate queries for all enabled platforms in parallel.
 
@@ -494,6 +576,9 @@ Industry Boundaries: [Not provided - use general heuristics]
         - HN: keyword-focused for Algolia (neutral, 2-4 words)
         - YouTube: tutorial/how-to for Google (conversational, 3-6 words)
         - Twitter: shares Reddit queries
+
+        target_audience (Part C): when set, each platform additionally gets a soft,
+        additive audience bias — the broad set is preserved (never narrowed).
 
         Returns combined list with 'platform' field set on each query.
         """
@@ -513,6 +598,7 @@ Industry Boundaries: [Not provided - use general heuristics]
                 niche_description, niche_context,
                 num_queries=settings.num_search_queries,
                 enabled_platforms=reddit_platforms,
+                target_audience=target_audience,
             )
 
         # HN: new focused generator
@@ -520,6 +606,7 @@ Industry Boundaries: [Not provided - use general heuristics]
             tasks["hackernews"] = lambda: self._generate_platform_queries(
                 "hn_query_generation", niche_description, niche_context,
                 num_queries=8, platform="hackernews",
+                target_audience=target_audience,
             )
 
         # YouTube: new focused generator
@@ -527,6 +614,7 @@ Industry Boundaries: [Not provided - use general heuristics]
             tasks["youtube"] = lambda: self._generate_platform_queries(
                 "yt_query_generation", niche_description, niche_context,
                 num_queries=8, platform="youtube",
+                target_audience=target_audience,
             )
 
         # Run in parallel (3 LLM calls, wall time ≈ 1 call)
@@ -555,11 +643,15 @@ Industry Boundaries: [Not provided - use general heuristics]
         niche_context: "NicheContext | None" = None,
         num_queries: int = 8,
         platform: str = "hackernews",
+        target_audience: str | None = None,
     ) -> list[dict]:
         """Generate queries using a platform-specific prompt.
 
         Thin wrapper: loads YAML prompt, calls LLM, parses JSON.
         No specificity scoring (Reddit-centric, irrelevant for HN/YouTube).
+
+        target_audience (Part C): when set, adds `audience_query_allotment` extra
+        audience-flavored slots on top of `num_queries` (additive, broad set kept).
         """
         # Build context section (same as Reddit generator)
         if niche_context:
@@ -582,10 +674,17 @@ Market Segments:
 Niche Description: {sanitized_niche}
 """
 
+        # Part C: soft, ADDITIVE audience bias (same contract as the Reddit path).
+        effective_num_queries = num_queries
+        if target_audience:
+            allotment = settings.audience_query_allotment
+            effective_num_queries = num_queries + allotment
+            context_section = context_section + self._audience_focus_block(target_audience, allotment)
+
         prompt = get_prompt(
             prompt_name,
             context_section=context_section,
-            num_queries=num_queries,
+            num_queries=effective_num_queries,
         )
 
         logger.info(f"[QueryGen] Generating {num_queries} {platform} queries...")
