@@ -82,6 +82,7 @@ export interface SolutionPreview {
   solo_dev_feasibility?: number | null;
   pricing_strategy?: string | null;
   estimated_development_time?: string | null;
+  dev_time_rationale?: string | null;
   why_it_works?: string | null;
   why_it_works_short?: string | null;
   innovation_angle?: string | null;

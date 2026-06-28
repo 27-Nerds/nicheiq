@@ -1,4 +1,4 @@
-"""Phase-2 originality overhaul: pool dedup, novelty critic, bold slot, interpolation.
+"""Phase-2 originality overhaul: pool dedup, novelty critic, interpolation.
 
 Methods are exercised by binding them to a lightweight fake `self` (SimpleNamespace),
 avoiding the heavy UnifiedSolutionCrew.__init__.
@@ -157,71 +157,6 @@ def test_critic_noop_when_no_reality_anchor(monkeypatch):
     concepts = [_rc("A"), _rc("B")]
     out = UnifiedSolutionCrew._score_pool_novelty(fake, concepts)
     assert out == concepts  # advisory skip, no call
-
-
-# ── bold slot ───────────────────────────────────────────────────────────────
-
-def _bold_self(pains):
-    # _refine_single_concept is stubbed to return a COMPLETE idea (no real LLM call);
-    # mirrors production where the boldest concept is fully refined, not a stub.
-    def _refine(concept, pain):
-        idea = _idea(concept.concept_name, novelty=0.55)
-        idea.technical_approach = "approach"
-        idea.why_it_works = "w" * 40
-        idea.innovation_angle = "i" * 40
-        idea.conventional_approach = "c" * 40
-        return idea
-    return SimpleNamespace(
-        _BOLD_NOVELTY=UnifiedSolutionCrew._BOLD_NOVELTY,
-        _BOLD_OBVIOUSNESS=UnifiedSolutionCrew._BOLD_OBVIOUSNESS,
-        pain_point_analysis=SimpleNamespace(pain_points=pains),
-        coverage_caveats=[],
-        _refine_single_concept=_refine,
-    )
-
-
-def test_bold_slot_reinjects_when_all_safe():
-    pains = [_pain("Sourcing safe peptides", 0.85)]
-    raw = SimpleNamespace(concepts=[
-        _rc("SafeIdea", obv=0.7), _rc("BoldIdea", obv=0.15),
-    ])
-    final = [_idea("SafeIdea", novelty=0.4)]  # only safe idea present
-    fake = _bold_self(pains)
-    UnifiedSolutionCrew._enforce_bold_slot(fake, final, raw)
-    names = [i.solution_name for i in final]
-    assert "BoldIdea" in names
-    bold = next(i for i in final if i.solution_name == "BoldIdea")
-    assert bold.novelty_score >= 0.6  # floored since it's the boldest concept
-    # Fully refined (not a stub): narrative fields populated.
-    assert len(bold.innovation_angle or "") >= 30 and len(bold.why_it_works or "") >= 30
-    assert any("Bold slot" in c for c in fake.coverage_caveats)
-
-
-def test_bold_slot_noop_when_low_obviousness_present():
-    pains = [_pain("X", 0.8)]
-    raw = SimpleNamespace(concepts=[_rc("AlreadyBold", obv=0.2)])
-    final = [_idea("AlreadyBold", novelty=0.4)]  # traces to obviousness 0.2 -> bold already
-    fake = _bold_self(pains)
-    UnifiedSolutionCrew._enforce_bold_slot(fake, final, raw)
-    assert len(final) == 1  # no re-injection
-
-
-def test_bold_slot_noop_when_high_novelty_present():
-    pains = [_pain("X", 0.8)]
-    raw = SimpleNamespace(concepts=[_rc("WhateverSrc", obv=0.9)])
-    final = [_idea("Whatever", novelty=0.7)]  # high novelty already
-    fake = _bold_self(pains)
-    UnifiedSolutionCrew._enforce_bold_slot(fake, final, raw)
-    assert len(final) == 1
-
-
-def test_bold_slot_sentinel_concept_ineligible():
-    pains = [_pain("X", 0.8)]
-    raw = SimpleNamespace(concepts=[_rc("OnlyUnscored", obv=-1.0)])  # sentinel only
-    final = [_idea("Safe", novelty=0.3)]
-    fake = _bold_self(pains)
-    UnifiedSolutionCrew._enforce_bold_slot(fake, final, raw)
-    assert len(final) == 1  # no eligible (scored) concept to re-inject
 
 
 # ── convergent crew assembly (regression: must not rely on @crew's self.agents) ──

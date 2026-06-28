@@ -77,13 +77,16 @@ class TestMergedCriticFlagOn:
         concepts = [_rc("A")]
         result = _verdicts([
             {"name": "A", "independent_obviousness": 0.2, "build_feasibility": 0.9,
-             "data_feasibility": 0.9, "data_access_model": "public", "bulk_route": "NO-BULK"},
+             "data_feasibility": 0.9, "data_access_model": "public", "bulk_route": "NO-BULK",
+             "data_notes": "claims a public API"},
         ])
         out = self._run(monkeypatch, concepts, result)
         a = out[0]
         assert a.data_access_model == "restricted"
         assert a.data_feasibility_score == 0.45
         assert a.build_feasibility_score == pytest.approx(0.6)
+        # Note is reconciled at the source so label and notes don't drift.
+        assert "no bulk route confirmed" in (a.data_acquisition_notes or "")
 
     def test_drop_names_allowlisted_and_applied(self, monkeypatch):
         concepts = [_rc(f"c{i}") for i in range(8)]  # >= MIN_KEEP so a drop survives

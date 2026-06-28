@@ -168,6 +168,45 @@ class DataQualitySummary(BaseModel):
     )
 
 
+class NicheDifficultyVerdict(BaseModel):
+    """Candid 'Research Reality Check' verdict on how well software can solve this niche.
+
+    The difficulty band + software_addressability are classified deterministically from
+    already-computed pipeline signals (tool-addressability, novelty, calibration gap,
+    audience fit, project-type concentration, cold-start data dependency). The prose
+    (headline/narrative_summary) is written by a grounded LLM pass with a deterministic
+    fallback. Bidirectional: STRONG (software can directly own the pains) -> HARD
+    (software can only advise/lookup beside a physical problem).
+    """
+
+    model_config = ConfigDict(extra='ignore')
+
+    difficulty_level: str = Field(
+        ...,
+        description="Software-fit difficulty band: low | medium | high | very_high"
+    )
+    software_addressability: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="0-1 estimate of how much of the niche's pain is software-addressable"
+    )
+    headline: str = Field(
+        ...,
+        description="One-line candid verdict"
+    )
+    narrative_summary: str = Field(
+        ...,
+        description="2-4 sentence candid prose verdict, grounded in the computed signals"
+    )
+    key_challenges: list[str] = Field(
+        default_factory=list,
+        description="What makes the niche hard (or strong) — framed as what the product must be"
+    )
+    low_confidence: bool = Field(
+        default=False,
+        description="True when the pain/idea sample is too small to be confident"
+    )
 
 
 class RefinementHighlights(BaseModel):
@@ -536,6 +575,10 @@ class FinalReport(BaseModel):
     data_quality_summary: Optional[DataQualitySummary] = Field(
         default=None,
         description="Data quality assessment: quality tiers, confidence scores, caveats"
+    )
+    niche_difficulty_verdict: Optional[NicheDifficultyVerdict] = Field(
+        default=None,
+        description="Research Reality Check: candid verdict on how hard this niche is to solve with software"
     )
     refinement_highlights: Optional[RefinementHighlights] = Field(
         default=None,
@@ -1651,6 +1694,9 @@ class ResearchState(BaseModel):
 
     # Stage 14: Final Report
     final_report: Optional[FinalReport] = None
+
+    # Research Reality Check (computed end of Phase 1; shared by preview + final report)
+    niche_difficulty_verdict: Optional[NicheDifficultyVerdict] = None
 
     # Metadata
     job_id: Optional[str] = Field(default=None, description="Unique job identifier for ChromaDB collection isolation")

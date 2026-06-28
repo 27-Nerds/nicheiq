@@ -17,6 +17,7 @@ Benefits:
 - Solo-dev feasibility weighted in scoring
 """
 
+import copy
 import json
 import re
 from collections import Counter
@@ -301,7 +302,8 @@ def _candidate_segments_for_pain(pain, segments: list) -> list:
     return list(segments)
 
 
-def _assign_generator_cells(pains: list, segments: list, *, target: int, max_gen: int) -> list:
+def _assign_generator_cells(pains: list, segments: list, *, target: int, max_gen: int,
+                            relevance: dict | None = None) -> list:
     """Assign divergent generator cells from the (pain × segment) affinity graph.
 
     One cell per real (pain × affected-segment) edge, de-clustered by BUILD-TIME per-segment
@@ -314,8 +316,26 @@ def _assign_generator_cells(pains: list, segments: list, *, target: int, max_gen
     (persona falls back to the generic archetypes). Pure function — no I/O, deterministic."""
     if not pains:
         return []
-    pains_ordered = sorted(
-        pains, key=lambda p: (-_opportunity_rank(p), -(getattr(p, "severity_score", 0) or 0)))
+    def _rel(p):
+        return relevance.get(id(p), 0.0) if relevance else 0.0
+
+    def _sev(p):
+        return getattr(p, "severity_score", 0) or 0
+
+    # Theme ordering key = the theme's BEST (opportunity, severity) member, so which THEMES win
+    # cells stays exactly as before. WITHIN a theme, order by niche-relevance first: the cell's
+    # representative pain becomes the one that best matches the niche, not just the highest-severity
+    # theme-mate (fix: a high-severity but off-niche pain was shadowing the niche-defining one).
+    # relevance=None (flag off / legacy) ⇒ _rel==0 ⇒ within-theme falls back to severity = old behaviour.
+    _theme_of = lambda p: getattr(p, "parent_theme_id", None) or id(p)
+    _theme_best: dict = {}
+    for p in pains:
+        th = _theme_of(p)
+        k = (_opportunity_rank(p), _sev(p))
+        if th not in _theme_best or k > _theme_best[th]:
+            _theme_best[th] = k
+    pains_ordered = sorted(pains, key=lambda p: (
+        -_theme_best[_theme_of(p)][0], -_theme_best[_theme_of(p)][1], -_rel(p), -_sev(p)))
     if not segments:
         return [{"pain": p, "segment": None} for p in pains_ordered[:max_gen]]
 
@@ -437,6 +457,15 @@ def _cap_feasibility_scores(
     return df, bf
 
 
+class _DevTimeEstimate(BaseModel):
+    """Grounded solo-dev MVP build-time estimate (reason-first, range not point)."""
+    model_config = ConfigDict(extra='ignore')
+    rationale: str = Field(
+        "", description="One line: the BINDING (most involved) build component, reasoned BEFORE the estimate.")
+    estimate: str = Field(
+        "", description="Realistic solo-dev MVP build time as a RANGE in weeks or months, e.g. '6-10 weeks' / '3-5 months'.")
+
+
 class _LooseConceptBatch(BaseModel):
     """Lenient per-sample divergent output (no min/max on concepts), so a sample that
     under-produces does NOT raise inside invoke_structured. Pooled into a proper
@@ -493,11 +522,39 @@ class _ScoreCalibration(BaseModel):
     seo_scalability_score: float = -1.0
     obviousness_reason: str = ""
     obviousness_score: float = -1.0
+    solo_dev_feasibility_reason: str = ""
+    solo_dev_feasibility_score: float = -1.0
 
 
 class _ScoreCalibrations(BaseModel):
     model_config = ConfigDict(extra='ignore')
     calibrations: list[_ScoreCalibration] = Field(default_factory=list)
+
+
+class _PainRelevance(BaseModel):
+    """Cheap relevance gate: which of an idea's candidate pains its MECHANISM actually addresses."""
+    model_config = ConfigDict(extra='ignore')
+    keep: list[int] = Field(
+        default_factory=list,
+        description="1-based indices of the candidate pains this product's mechanism directly addresses",
+    )
+
+
+class _RevisedMechanism(BaseModel):
+    """The ideator's more-differentiated rewrite of a validated-but-obvious idea (novelty-enhance
+    pass). Only the mechanism fields change; the pain + data route are held fixed by the prompt."""
+    model_config = ConfigDict(extra='ignore')
+    solution_name: str = ""
+    value_proposition: str = ""
+    conventional_approach: str = ""
+    innovation_angle: str = ""
+    why_it_works: str = ""
+    technical_approach: str = ""
+    core_features: list[str] = Field(default_factory=list)
+    # Display fields — MUST be rewritten to match the new mechanism, else the card describes the old idea.
+    description: str = ""
+    short_description: str = ""
+    headline: str = ""
 
 
 class _ToolGloss(BaseModel):
@@ -997,6 +1054,61 @@ class UnifiedSolutionCrew:
                     break
         return titles[:cap]
 
+    def _relevant_pains_for_idea(self, idea) -> tuple[list | None, object]:
+        """Cheap LLM relevance gate over an idea's `pain_points_addressed`. The grounded matcher
+        attaches every pain affecting the idea's SEGMENT; this keeps only the ones the idea's
+        MECHANISM directly addresses. The source_pain is always kept; the rest are filtered.
+        Allow-listed to the existing titles (returns exact strings only). Returns (kept|None, usage)."""
+        cur = list(getattr(idea, "pain_points_addressed", None) or [])
+        sp = getattr(idea, "source_pain", None)
+        extras = [t for t in cur if t != sp]
+        if not extras:
+            return None, None
+        feats = "; ".join(str(f) for f in (getattr(idea, "core_features", None) or [])[:6])
+        listing = "\n".join(f"{i + 1}. {sanitize_social_content(str(t))}" for i, t in enumerate(extras))
+        prompt = (
+            "A micro-SaaS product is described below, then a numbered list of candidate user pains. "
+            "Return keep = the numbers of ONLY the pains this product's MECHANISM directly solves or "
+            "materially helps with. EXCLUDE any pain that merely affects the same audience but is NOT "
+            "addressed by THIS specific mechanism — be strict, not generous.\n\n"
+            f"PRODUCT: {sanitize_social_content(getattr(idea, 'value_proposition', '') or '')[:300]}\n"
+            f"HOW IT WORKS: {sanitize_social_content(getattr(idea, 'technical_approach', '') or '')[:300]}\n"
+            f"FEATURES: {sanitize_social_content(feats)[:300]}\n\n"
+            f"CANDIDATE PAINS:\n{listing}\n"
+        )
+        r, usage = LLMService.invoke_structured(
+            prompt=prompt, output_model=_PainRelevance, temperature=0, timeout=60,
+            model_name=settings.function_calling_llm)
+        keep = {i for i in (getattr(r, "keep", None) or []) if isinstance(i, int) and 1 <= i <= len(extras)}
+        kept = ([sp] if sp else []) + [extras[i - 1] for i in sorted(keep)]
+        return (kept or cur), usage  # never wipe the field
+
+    def _filter_pain_relevance(self, ideas: list) -> None:
+        """Post-union pass (single-threaded): trim over-claimed `pain_points_addressed` to what each
+        idea's mechanism actually addresses. Flag-gated; per-idea fail-soft (keeps the full list)."""
+        if not settings.enable_pain_relevance_filter:
+            return
+        usages: list = []
+        filtered = 0
+        for idea in ideas:
+            cur = list(getattr(idea, "pain_points_addressed", None) or [])
+            sp = getattr(idea, "source_pain", None)
+            if len([t for t in cur if t != sp]) < 1:
+                continue
+            try:
+                kept, u = self._relevant_pains_for_idea(idea)
+                if kept is not None and kept != cur:
+                    idea.pain_points_addressed = kept
+                    filtered += 1
+                if u is not None:
+                    usages.append(u)
+            except Exception as e:  # noqa: BLE001 — fail-soft, keep the full list
+                logger.warning(f"[PAIN-RELEVANCE] '{getattr(idea, 'solution_name', '?')}' skipped: {str(e)[:90]}")
+        if usages:
+            self._record_divergent_usage(usages)  # single-threaded here → safe
+        if filtered:
+            logger.info(f"[PAIN-RELEVANCE] trimmed over-claimed pains on {filtered} idea(s)")
+
     def _build_partition_cells(self, selected_pains: list, extra_pains: list) -> list:
         """Build (pain × segment) generator cells from the audience affinity graph, WIDENING the
         pain set (medium → low priority) until the cells span enough distinct THEMES. Widening on
@@ -1004,18 +1116,36 @@ class UnifiedSolutionCrew:
         1-2 themes (e.g. 3 "verify peptide purity" variants) reaches the generator target via
         segment depth and never pulls in the diverse long tail, so all ideas come out as
         near-duplicates. `_assign_generator_cells`'s per-theme cap then keeps one theme from
-        monopolizing. Returns the cell list (the caller drops to legacy if < 2)."""
+        monopolizing. Each theme's cell is seeded by its most niche-relevant pain (not just its
+        highest-severity one) so the niche-defining pain isn't shadowed by a higher-severity
+        theme-mate. Returns the cell list (the caller drops to legacy if < 2)."""
         am = getattr(self, "audience_mapping", None)
         segments = list(getattr(am, "audience_segments", None) or []) if am else []
         target = settings.divergent_target_generators
         cap = settings.divergent_max_generators
+
+        # Niche-relevance per pain — a deterministic lexical match (token_jaccard, stemmed +
+        # stopword-stripped) between the pain text and the niche description. Biases each theme's
+        # cell toward the pain the user actually asked about. Flag off / no niche text ⇒ None ⇒
+        # legacy severity-only selection.
+        all_pains = list(selected_pains) + list(extra_pains or [])
+        relevance = None
+        if settings.enable_niche_anchor_cells:
+            from ..utils.validation.dedup import token_jaccard
+            niche = getattr(getattr(self, "niche_context", None), "niche_description", "") or ""
+            if niche:
+                relevance = {
+                    id(p): token_jaccard(
+                        f"{getattr(p, 'title', '')} {getattr(p, 'description', '') or ''}", niche)
+                    for p in all_pains
+                }
 
         def _theme_count(cs: list) -> int:
             return len({getattr(c["pain"], "parent_theme_id", None) for c in cs
                         if getattr(c["pain"], "parent_theme_id", None)})
 
         pains = list(selected_pains)
-        cells = _assign_generator_cells(pains, segments, target=target, max_gen=cap)
+        cells = _assign_generator_cells(pains, segments, target=target, max_gen=cap, relevance=relevance)
         extra = list(extra_pains or [])
         widened = 0
         # Widen while the cells (a) under-fill the target OR (b) span fewer distinct themes than
@@ -1025,11 +1155,46 @@ class UnifiedSolutionCrew:
                and (len(cells) < target or _theme_count(cells) < target)):
             pains.append(extra[widened])
             widened += 1
-            cells = _assign_generator_cells(pains, segments, target=target, max_gen=cap)
+            cells = _assign_generator_cells(pains, segments, target=target, max_gen=cap, relevance=relevance)
+        # Transparency: flag cells whose pain was chosen for niche-fit over a higher-severity
+        # theme-mate, so the report can note "addresses your stated focus, not the top-severity pain".
+        self._anchor_severity_notes = self._build_anchor_severity_notes(cells, all_pains, relevance)
         logger.info(
             f"[Divergent][partitioned] cells={len(cells)} themes={_theme_count(cells)} "
-            f"(segments={len(segments)}, widened_pains={widened}, target={target})")
+            f"(segments={len(segments)}, widened_pains={widened}, target={target}, "
+            f"anchor_notes={len(self._anchor_severity_notes)})")
         return cells
+
+    @staticmethod
+    def _build_anchor_severity_notes(cells: list, all_pains: list, relevance: dict | None) -> list:
+        """One transparency caveat per cell whose pain is NOT the highest-severity pain of its
+        theme — i.e. a more niche-relevant but lower-severity pain was chosen to represent the
+        theme. Empty when relevance is off or no such substitution happened."""
+        if not relevance:
+            return []
+        by_theme: dict = {}
+        for p in all_pains:
+            th = getattr(p, "parent_theme_id", None)
+            if th:
+                by_theme.setdefault(th, []).append(p)
+        notes, seen = [], set()
+        for c in cells:
+            p = c["pain"]
+            th = getattr(p, "parent_theme_id", None)
+            if not th or th in seen:
+                continue
+            mates = by_theme.get(th, [])
+            top = max(mates, key=lambda m: getattr(m, "severity_score", 0) or 0, default=None)
+            psev = getattr(p, "severity_score", 0) or 0
+            tsev = (getattr(top, "severity_score", 0) or 0) if top is not None else 0
+            if top is not None and top is not p and tsev > psev + 0.05:
+                seen.add(th)
+                notes.append(
+                    f"“{getattr(p, 'title', '')}” was prioritised for ideation as the "
+                    f"closest match to your niche focus; research scored a related pain higher on "
+                    f"severity (“{getattr(top, 'title', '')}”, {tsev:.2f} vs {psev:.2f})."
+                )
+        return notes
 
     def _generate_divergent_pool_partitioned(self, inputs, cells, pool, deadline) -> tuple[list, object]:
         """Pain-partitioned divergent generation: one narrow generator per (pain × segment) cell.
@@ -1368,10 +1533,15 @@ class UnifiedSolutionCrew:
                             c.data_acquisition_notes = v.data_notes[:120]
                         # bulk_route gate: a source with no nameable bulk route is UNVERIFIED ->
                         # 'restricted' regardless of the model's own label (a named source is a claim,
-                        # not a fact). 'not-data-dependent' / a real route pass through.
+                        # not a fact). 'not-data-dependent' / a real route pass through. Reconcile the
+                        # note at the source so the label and notes never drift (covers skipped ideas).
                         _route = (getattr(v, "bulk_route", "") or "").strip().lower()
                         if _route in ("", "no-bulk", "none", "n/a"):
                             c.data_access_model = "restricted"
+                            c.data_acquisition_notes = (
+                                (c.data_acquisition_notes or "")[:80]
+                                + " — no bulk route confirmed; per-ID/unverified access"
+                            )[:120]
                         # Deterministic feasibility caps. The critic is the feasibility AUTHORITY; the
                         # downstream diversity-filter / refiner LLMs re-emit their own (uncapped)
                         # feasibility, so _finalize_feasibility re-asserts these capped values on the
@@ -1411,6 +1581,14 @@ class UnifiedSolutionCrew:
                 no_route.append(c)
             else:
                 kept.append(c)
+
+        # Tool-ecosystem saturation signal for the Research Reality Check: the share of the
+        # brainstormed pool the novelty critic flagged as "already exists" (a thinner version of a
+        # shipping tool). A high share = a mature/crowded tool space where the bar is differentiation,
+        # not feasibility. Read off the crew post-run by assess_niche_difficulty (the surviving ideas
+        # can't show this — by construction they're the non-duplicate ones that got through).
+        if concepts:
+            self._concept_already_exists_share = round(len(exists) / len(concepts), 3)
 
         # Rebuild the authoritative capped feasibility (identical content to the old inline stash)
         # so _finalize_feasibility can re-assert it on the final ideas. Iterate the FULL pool — a
@@ -1454,31 +1632,15 @@ class UnifiedSolutionCrew:
         self._record_divergent_usage(self._score_concepts(concepts))
         return self._finalize_critic_pool(concepts)
 
-    def _calibrate_idea_scores(self, ideas: list) -> None:
-        """INDEPENDENT realism critic (Stage 7, post-refinement). Re-scores market_fit /
-        technical_feasibility / novelty / seo_scalability / obviousness on the FULL refined idea
-        against the SAME anchored bands the generator used, and REPLACES the generator's optimistic
-        self-scores. Originals are preserved in `*_score_raw` + `calibration_notes` (audit + A/B).
-
-        Why: the four self-scores are assigned by the Task-3 refiner grading its OWN ideas (lenient /
-        self-preference bias); nothing downstream pulls the STORED values toward reality (the
-        feasibility critic only adjusts data/build feasibility + the composite, never these). This is
-        the independent counterweight. Runs AFTER `_finalize_feasibility` so build/data are final
-        when technical capability is re-scored.
-
-        Batched into `_CRITIC_BATCH` groups run in PARALLEL via `_run_parallel`; fail-open per batch
-        (a failed / timed-out batch keeps its raw scores — never blocks the pipeline). Untrusted idea
-        text is sanitized + fenced and labelled as data. Double-gated by
-        settings.enable_score_calibration (here AND at the call site): flag off ⇒ no-op.
-        """
-        if not ideas or not settings.enable_score_calibration:
-            return
-
+    def _calibration_static_prompt(self) -> tuple[str, dict]:
+        """Build the model-invariant calibration system prompt + severity-by-pain map. Read-only
+        on crew state, so safe to call per-cell (in a tournament thread) as well as per-batch."""
         _F = BaseSolutionIdea.model_fields
         bands = "\n\n".join(
             f"{k} — {_F[k].description}" for k in (
                 "market_fit_score", "technical_feasibility_score",
                 "novelty_score", "seo_scalability_score", "obviousness_score",
+                "solo_dev_feasibility",
             )
         )
         try:
@@ -1510,18 +1672,48 @@ class UnifiedSolutionCrew:
             "award a high band when the evidence specifically supports it. Do not be charitable.\n"
             "- Use the SAME 0-1 bands below — do not invent your own scale.\n"
             "- novelty_score and obviousness_score are INVERSE facets of the same originality "
-            "judgment (Originality = 1 - obviousness). Keep them coherent: a genuinely original idea "
-            "has HIGH novelty AND LOW obviousness; a me-too idea has LOW novelty AND HIGH obviousness.\n"
+            "judgment (Originality = 1 - obviousness). They MUST stay numerically coherent: "
+            "novelty_score ≈ 1 − obviousness_score (the two should sum to roughly 1.0, within ±0.15). "
+            "Never let them drift so far apart that one calls the idea original while the other calls "
+            "it obvious — e.g. novelty 0.45 with obviousness 0.65 is INCOHERENT (sums to 1.10); pick "
+            "one originality level and set both to match it.\n"
+            "- BEFORE scoring novelty/obviousness, do this IN ORDER (reason first): (1) name the SINGLE "
+            "closest existing thing that already delivers this idea's CORE value — from the tools listed "
+            "below OR from your own knowledge of common products in this space — or the literal 'none'. "
+            "Match on what it DOES (capability), not on wording; a thin wrapper / nicer UI over an "
+            "existing capability COUNTS as a duplicate. (2) Independently estimate: of competent builders "
+            "handed this exact pain, what fraction would ALSO land on essentially this concept? A "
+            "'cached first-thought' shape — a calculator, a leaderboard/benchmark, a directory, a "
+            "comparison table of an obvious axis — is OBVIOUS even if no specific competitor is listed. "
+            "If a named equivalent exists OR most builders would propose it, obviousness is >=0.6, NO "
+            "MATTER how well-written the innovation_angle is — a slick angle is not novelty; a mechanism "
+            "nobody ships is. Keep novelty COHERENT with that obviousness (an obvious-SHAPED idea is not "
+            "highly novel), but still credit a genuine structural mechanism twist in the mid-low range "
+            "rather than flooring it — an idea can be an obvious shape AND carry a real mechanism.\n"
+            "- solo_dev_feasibility: judge whether ONE person can build AND indefinitely run this. The "
+            "PRIMARY driver is ONGOING operational burden — support load, uptime / on-call, manual "
+            "moderation, continuous hand-seeding, multi-channel marketing — NOT raw build effort; these "
+            "are what actually sink solo founders. It cannot exceed buildability (the build_feas shown "
+            "for each idea): a hard-to-build product is not easy for one person to ship and run. An "
+            "easy-to-build product that needs 24/7 moderation or heavy support is still LOW.\n"
             "- Return a calibration for EVERY idea, keyed by its EXACT name. Leave a criterion at "
             "-1.0 only if the idea truly gives no basis to judge it.\n\n"
             "ANCHORED BANDS:\n" + bands + "\n\n"
             + (f"EXISTING TOOLS / COMPETITORS (anchor novelty/obviousness against these):\n{competitor_block}\n\n"
                if competitor_block.strip() else "")
         )
+        return static_prompt, sev_by_pain
 
-        def _fenced(batch: list) -> str:
+    def _calibrate_batch(self, *, batch: list) -> tuple[int, object]:
+        """Re-score ONE batch of ideas with the independent realism critic. Sets calibrated scores
+        and preserves the originals in `*_score_raw` (once) on each idea; returns (applied, usage).
+        Self-contained + read-only on shared crew state, so it runs both inside a cell thread (the
+        in-cell scorer) and via the post-union `_run_parallel`. The flag gate lives at the callers."""
+        static_prompt, sev_by_pain = self._calibration_static_prompt()
+
+        def _fenced(items: list) -> str:
             rows = []
-            for i in batch:
+            for i in items:
                 nm = sanitize_social_content(getattr(i, "solution_name", "") or "")
                 pains = ", ".join(str(p) for p in (getattr(i, "pain_points_addressed", None) or [])[:4])
                 sp = (getattr(i, "source_pain", "") or "").strip().lower()
@@ -1554,79 +1746,145 @@ class UnifiedSolutionCrew:
 
         def _apply(idea, c) -> None:
             notes = []
-            for crit, raw_field in (
-                ("market_fit_score", "market_fit_score_raw"),
-                ("technical_feasibility_score", "technical_feasibility_score_raw"),
-                ("novelty_score", "novelty_score_raw"),
-                ("seo_scalability_score", "seo_scalability_score_raw"),
-                ("obviousness_score", "obviousness_score_raw"),
+            # (idea attr, raw-preserve field, calibration-object attr). The idea field and the
+            # critic field share a name for the five core scores; solo_dev_feasibility (idea) maps
+            # to solo_dev_feasibility_score (critic) so the reason-first scaffold stays uniform.
+            for idea_attr, raw_field, cal_attr in (
+                ("market_fit_score", "market_fit_score_raw", "market_fit_score"),
+                ("technical_feasibility_score", "technical_feasibility_score_raw", "technical_feasibility_score"),
+                ("novelty_score", "novelty_score_raw", "novelty_score"),
+                ("seo_scalability_score", "seo_scalability_score_raw", "seo_scalability_score"),
+                ("obviousness_score", "obviousness_score_raw", "obviousness_score"),
+                ("solo_dev_feasibility", "solo_dev_feasibility_raw", "solo_dev_feasibility_score"),
             ):
-                newv = getattr(c, crit, -1.0)
+                newv = getattr(c, cal_attr, -1.0)
                 if newv is None or newv < 0:
                     continue  # critic abstained on this criterion → keep generator value
                 if getattr(idea, raw_field, None) is None:
-                    setattr(idea, raw_field, getattr(idea, crit, None))  # preserve original once
-                setattr(idea, crit, _clamp(newv))
-                reason = getattr(c, crit.replace("_score", "_reason"), "") or ""
+                    setattr(idea, raw_field, getattr(idea, idea_attr, None))  # preserve original once
+                setattr(idea, idea_attr, _clamp(newv))
+                reason = getattr(c, cal_attr.replace("_score", "_reason"), "") or ""
                 if reason:
-                    notes.append(f"{crit.replace('_score', '')}: {reason[:140]}")
+                    notes.append(f"{cal_attr.replace('_score', '')}: {reason[:140]}")
             if notes:
                 idea.calibration_notes = " | ".join(notes)
 
-        def _worker(batch):
-            prompt = static_prompt + f"IDEAS:\n{_fenced(batch)}\n"
-            r, usage = LLMService.invoke_structured(
-                prompt=prompt,
-                output_model=_ScoreCalibrations,
-                temperature=0,
-                timeout=120,
-                model_name=settings.score_calibration_llm,
-                reasoning_effort=settings.score_calibration_reasoning_effort,
-                # creative=True keeps tool transport + reasoning honored on OpenRouter judges;
-                # harmless on the OpenAI path. Reasoning stays ON (we WANT it for evidence weighing).
-                creative=True,
-            )
-            cals = getattr(r, "calibrations", None) or []
-            by_name = {x.name.strip().lower(): x for x in cals if x.name}
-            applied = 0
-            for idea in batch:
-                nm = (getattr(idea, "solution_name", "") or "").strip().lower()
-                c = by_name.get(nm)  # allow-list: look up by INPUT name, never trust output-only names
-                if c is None:
-                    continue
-                _apply(idea, c)
-                applied += 1
-            return (applied, usage)
+        prompt = static_prompt + f"IDEAS:\n{_fenced(batch)}\n"
+        r, usage = LLMService.invoke_structured(
+            prompt=prompt,
+            output_model=_ScoreCalibrations,
+            temperature=0,
+            timeout=120,
+            model_name=settings.score_calibration_llm,
+            reasoning_effort=settings.score_calibration_reasoning_effort,
+            # creative=True keeps tool transport + reasoning honored on OpenRouter judges;
+            # harmless on the OpenAI path. Reasoning stays ON (we WANT it for evidence weighing).
+            creative=True,
+        )
+        cals = getattr(r, "calibrations", None) or []
+        by_name = {x.name.strip().lower(): x for x in cals if x.name}
+        applied = 0
+        for idea in batch:
+            nm = (getattr(idea, "solution_name", "") or "").strip().lower()
+            c = by_name.get(nm)  # allow-list: look up by INPUT name, never trust output-only names
+            if c is None:
+                continue
+            _apply(idea, c)
+            applied += 1
+        return (applied, usage)
 
-        batches = [ideas[i:i + _CRITIC_BATCH] for i in range(0, len(ideas), _CRITIC_BATCH)]
+    def _calibrate_idea_scores(self, ideas: list) -> None:
+        """INDEPENDENT realism critic (Stage 7, post-refinement) — post-union wrapper.
+
+        Re-scores market_fit / technical_feasibility / novelty / seo_scalability / obviousness /
+        solo_dev_feasibility on the FULL refined idea against the SAME anchored bands the generator
+        used, and REPLACES the generator's optimistic self-scores. Originals are preserved in
+        `*_score_raw` / `solo_dev_feasibility_raw` +
+        `calibration_notes`. The per-batch work lives in `_calibrate_batch` (also called per-cell in
+        the tournament); this wrapper only handles the post-union path: it SKIPS ideas already
+        calibrated in-cell (any `*_score_raw` set), batches the remaining stragglers into
+        `_CRITIC_BATCH` groups run in PARALLEL via `_run_parallel` (fail-open per batch), and records
+        usage once. Double-gated by settings.enable_score_calibration (here AND at the call site).
+        """
+        if not ideas or not settings.enable_score_calibration:
+            return
+        _CRIT = ("market_fit", "technical_feasibility", "novelty", "seo_scalability", "obviousness")
+        todo = [i for i in ideas if not any(
+            getattr(i, f"{c}_score_raw", None) is not None for c in _CRIT)]
+        if not todo:
+            return
+        batches = [todo[i:i + _CRITIC_BATCH] for i in range(0, len(todo), _CRITIC_BATCH)]
         jobs = [{"batch": b} for b in batches]
         deadline = settings.divergent_sample_deadline_seconds
         max_workers = min(len(jobs), settings.divergent_max_workers)
-        results = self._run_parallel(_worker, jobs, deadline, max_workers, label="Calibrate")
+        results = self._run_parallel(self._calibrate_batch, jobs, deadline, max_workers, label="Calibrate")
         applied = sum(a for a, _ in results)
         self._record_divergent_usage([u for _, u in results if u is not None])
         logger.info(
-            f"[CALIBRATE] re-scored {applied}/{len(ideas)} ideas across {len(batches)} batch(es)"
+            f"[CALIBRATE] re-scored {applied}/{len(todo)} straggler idea(s) across {len(batches)} "
+            f"batch(es) ({len(ideas) - len(todo)} already scored in-cell)"
         )
 
-    def _validate_idea_scores(self, ideas: list) -> dict:
-        """Deterministic, downgrade-only consistency/cap pass over the (calibrated) idea scores.
-
-        Catches the structural defects the audit found across all 3 runs that the LLM does not
-        reliably enforce — these are mechanical invariants, not judgments:
-          (a) novelty ≤ 1 − obviousness  (they are inverse facets of one originality judgment; the
-              run had novelty 0.8 vs obviousness 0.5 → originality 0.5. Snap novelty DOWN to match —
-              never claim more novelty than originality).
+    def _validate_idea_caps(self, idea) -> list[str]:
+        """Per-idea downgrade-only caps (a)+(b) from `_validate_idea_scores`. PURE: mutates only the
+        passed idea, touches NO shared crew state (no `coverage_caveats`), so it is safe to run in a
+        cell thread (the in-cell scorer). Returns this idea's weakness reasons. Idempotent —
+        re-running over an already-capped idea is a no-op.
+          (a) novelty ≤ 1 − obviousness  (inverse facets of one originality judgment).
           (b) market_fit ≤ 0.4 when the data/mechanism is UNVERIFIED (data_access_model ∈
-              {unofficial,restricted,blocked} or build_feasibility < 0.5) — "a real pain solved by a
-              product that can't be built/sourced is not a fit" (solution_idea band). The run had
-              market_fit 0.85 on a reverse-engineered, breaks-on-patches route.
-          (c) per-pain concentration — FLAG (not drop) when > diversity_max_per_segment ideas share a
-              source_pain (the run had 3 vs cap 2; the Stage-5_2 filter never fired its cap).
+              {unofficial,restricted,blocked} or build_feasibility < 0.5).
+          (c) solo_dev_feasibility ≤ build_feasibility + margin — a one-person product can't be
+              MORE feasible to ship+run solo than it is to build at all. The calibration critic now
+              re-scores solo_dev too (ops-burden-weighted second opinion); this coupling is the hard
+              logical FLOOR underneath that re-score, not its only grounding.
+        """
+        f: list[str] = []
+        # (a) novelty ≤ 1 − obviousness
+        nov = getattr(idea, "novelty_score", None)
+        obv = getattr(idea, "obviousness_score", None)
+        if isinstance(nov, (int, float)) and isinstance(obv, (int, float)):
+            ceil = 1.0 - obv
+            if nov > ceil + 0.25:
+                f.append(f"novelty {nov:.2f} overstates originality {ceil:.2f} (1−obviousness)")
+                idea.novelty_score = round(ceil, 2)
 
-        Never inflates. Mutates (a)/(b) down, records caveats in self.coverage_caveats, and RETURNS a
-        per-idea weakness map {solution_name: [reasons]} — the grounded "deterministic flags" the
-        idea-improvement critic (Part 1) consumes to drive targeted fixes.
+        # (b) market_fit ≤ 0.4 on unverified data/mechanism. The label is authoritative here —
+        # label/notes consistency is enforced at the source (v4 verifier reconcile + the critic's
+        # bulk_route note reconcile), not by re-sniffing notes downstream.
+        mf = getattr(idea, "market_fit_score", None)
+        dam = (getattr(idea, "data_access_model", None) or "").strip().lower()
+        bf = getattr(idea, "build_feasibility_score", None)
+        unverified = dam in ("unofficial", "restricted", "blocked") or (
+            isinstance(bf, (int, float)) and 0 <= bf < 0.5)
+        if isinstance(mf, (int, float)) and mf > 0.4 and unverified:
+            why = dam or f"build_feasibility {bf:.2f}"
+            f.append(f"market_fit {mf:.2f} unsupported — data/mechanism unverified ({why}); cap 0.40")
+            idea.market_fit_score = 0.4
+
+        # (c) solo_dev ≤ build_feasibility + margin (downgrade-only). The calibration critic now
+        # re-scores solo_dev (ops-burden-weighted) — this is the logical floor under that re-score:
+        # you can't solo-run what you can't build. Mirrors the build≤data coupling.
+        sd = getattr(idea, "solo_dev_feasibility", None)
+        if isinstance(sd, (int, float)) and isinstance(bf, (int, float)) and bf >= 0:
+            cap = bf + settings.feasibility_build_data_coupling_margin
+            if sd > cap:
+                f.append(f"solo_dev {sd:.2f} exceeds build_feasibility {bf:.2f} + margin (cap {cap:.2f})")
+                idea.solo_dev_feasibility = round(cap, 2)
+        return f
+
+    def _validate_idea_scores(self, ideas: list) -> dict:
+        """Deterministic, downgrade-only consistency/cap pass over the (calibrated) idea scores —
+        the SET-LEVEL post-union pass.
+
+        Per-idea caps (a)+(b) are delegated to `_validate_idea_caps` (which the in-cell scorer also
+        runs, so for tournament winners these are already applied and re-running is a no-op). This
+        method adds the set-level work that can only run over the full union: (c) per-pain
+        concentration — FLAG (not drop) when > diversity_max_per_segment ideas share a source_pain —
+        and appends the resulting caveats to `self.coverage_caveats`. Stays post-union (it must run
+        AFTER `enforce_pain_coverage` replaces `coverage_caveats`, and the concentration scan is
+        meaningless on a single in-cell idea).
+
+        Never inflates. RETURNS a per-idea weakness map {solution_name: [reasons]}.
         """
         flags: dict[str, list[str]] = {}
         if not ideas:
@@ -1635,31 +1893,10 @@ class UnifiedSolutionCrew:
         pain_counts: dict[str, int] = {}
         for i in ideas:
             name = getattr(i, "solution_name", "") or "?"
-            f: list[str] = []
             sp = (getattr(i, "source_pain", None) or "").strip()
             if sp:
                 pain_counts[sp] = pain_counts.get(sp, 0) + 1
-
-            # (a) novelty ≤ 1 − obviousness
-            nov = getattr(i, "novelty_score", None)
-            obv = getattr(i, "obviousness_score", None)
-            if isinstance(nov, (int, float)) and isinstance(obv, (int, float)):
-                ceil = 1.0 - obv
-                if nov > ceil + 0.25:
-                    f.append(f"novelty {nov:.2f} overstates originality {ceil:.2f} (1−obviousness)")
-                    i.novelty_score = round(ceil, 2)
-
-            # (b) market_fit ≤ 0.4 on unverified data/mechanism
-            mf = getattr(i, "market_fit_score", None)
-            dam = (getattr(i, "data_access_model", None) or "").strip().lower()
-            bf = getattr(i, "build_feasibility_score", None)
-            unverified = dam in ("unofficial", "restricted", "blocked") or (
-                isinstance(bf, (int, float)) and 0 <= bf < 0.5)
-            if isinstance(mf, (int, float)) and mf > 0.4 and unverified:
-                why = dam or f"build_feasibility {bf:.2f}"
-                f.append(f"market_fit {mf:.2f} unsupported — data/mechanism unverified ({why}); cap 0.40")
-                i.market_fit_score = 0.4
-
+            f = self._validate_idea_caps(i)
             if f:
                 flags[name] = f
 
@@ -1678,123 +1915,273 @@ class UnifiedSolutionCrew:
                         f"{sum(1 for c in pain_counts.values() if c > caps_cap)} over-concentrated pain(s)")
         return flags
 
-    # Fields the v4 mentor loop refines; applied back onto the original idea (preserving its other
-    # fields: obviousness/seo/tags/provenance) when an improved version is adopted.
-    _LOOP_FIELDS = (
-        "solution_name", "headline", "short_description", "description", "value_proposition",
-        "core_features", "target_personas", "technical_approach", "differentiation_factors",
-        "data_sources", "pricing_strategy", "market_fit_score", "technical_feasibility_score",
-        "novelty_score", "conventional_approach", "innovation_angle", "why_it_works",
-        "why_it_works_short", "data_access_model", "build_feasibility_score",
-        "data_feasibility_score", "data_acquisition_notes",
-    )
-    # SURFACE pitch fields — these DESCRIBE the idea, so when the loop adopts a revision they must
-    # come from the revised idea AS A UNIT. A non-surface field keeps the original on an empty
-    # improved value (degrade-safe); a surface field must NOT — keeping the original's old pitch
-    # next to the new mechanism is the stale-field bug. See _merge_loop_result.
-    _SURFACE_FIELDS = ("headline", "short_description", "value_proposition", "why_it_works",
-                       "why_it_works_short", "innovation_angle")
-
-    def _merge_loop_result(self, original, improved) -> None:
-        """Apply an adopted loop revision back onto the original idea. Non-surface fields overwrite
-        only when the improved value is non-empty (preserve the original otherwise). SURFACE pitch
-        fields are taken from the revision as a unit — never left as the original's stale pitch:
-        a blank short_description/headline/value_proposition is derived from the NEW description (the
-        name seeds the headline); the deeper why_it_works/innovation_angle clear to None when blank
-        (the downstream novelty cap then handles the missing justification)."""
-        nd = (getattr(improved, "description", "") or "").strip()
-        def _short(s): return (s[:177].rstrip() + "…") if len(s) > 177 else s
-        for f in self._LOOP_FIELDS:
-            v = getattr(improved, f, None)
-            has = v not in (None, "", [])
-            if f in self._SURFACE_FIELDS:
-                if has:
-                    setattr(original, f, v)
-                elif f == "headline":
-                    setattr(original, f, getattr(improved, "solution_name", None) or None)
-                elif f in ("short_description", "value_proposition"):
-                    setattr(original, f, _short(nd) if nd else None)
-                else:                       # why_it_works / why_it_works_short / innovation_angle
-                    setattr(original, f, None)
-            elif has:
-                setattr(original, f, v)
-
-    def _idea_already_strong(self, idea) -> bool:
-        """Cheap (no-LLM) pre-gate: skip the improvement loop for ideas already strong on their
-        calibrated scores AND on an obtainable data route (those come out ties anyway). Gates the
-        loop to the weak / risky / off-pain ideas where it actually adds value — the cost control."""
-        mf = getattr(idea, "market_fit_score", 0) or 0
-        nov = getattr(idea, "novelty_score", 0) or 0
-        tf = getattr(idea, "technical_feasibility_score", 0) or 0
-        comp = 0.45 * mf + 0.30 * nov + 0.25 * tf   # mirrors the v4 composite (tech_feas proxies clarity)
-        dam = (getattr(idea, "data_access_model", None) or "").strip().lower()
-        obtainable = dam not in ("unofficial", "restricted", "blocked")
-        return comp >= 0.70 and obtainable
-
-    def _build_cell_grounding(self, idea):
-        """Assemble the CellGrounding (audience + source pain + evidence + competitors) the mentor
-        loop judges against, from this crew's state. Mirrors scripts/idea_improvement_ab.py:_grounding."""
+    def _build_cell_grounding_from_cell(self, cell: dict):
+        """Build the CellGrounding (audience + source pain + evidence + competitors) the per-cell
+        tournament reviewer judges against, directly from a (pain × segment) cell."""
         from .idea_improvement_loop import CellGrounding
         niche = getattr(self.niche_context, "niche_description", "") if self.niche_context else ""
-        sp = getattr(idea, "source_pain", None)
-        pains = getattr(getattr(self, "pain_point_analysis", None), "pain_points", None) or []
-        pain = next((p for p in pains if (getattr(p, "title", "") or "").strip() == (sp or "").strip()), None)
+        pain = cell.get("pain")
+        seg = cell.get("segment")
+        sp = (getattr(pain, "title", "") or "") if pain else ""
         quotes = "\n".join(f'  "{q}"' for q in (getattr(pain, "representative_quotes", None) or [])[:3]) if pain else ""
         evidence = ((getattr(pain, "description", "") or "") + "\n" + quotes) if pain else ""
         sev = ""
         if pain:
             lvl = getattr(pain, "opportunity_level", None)
             sev = str(getattr(lvl, "value", lvl) or getattr(pain, "severity_score", "") or "")
-        seg_name = getattr(idea, "source_segment", None)
+        seg_name = (getattr(seg, "segment_name", "") or "") if seg else ""
         profile = ""
-        segs = getattr(getattr(self, "audience_mapping", None), "audience_segments", None) or []
-        seg = next((s for s in segs if (getattr(s, "segment_name", "") or "").strip().lower()
-                    == (seg_name or "").strip().lower()), None)
         if seg:
             profile = (f"motivations: {', '.join(getattr(seg, 'motivation_drivers', None) or [])}; "
                        f"expertise: {getattr(seg, 'expertise_level', '?')}; "
                        f"budget: {getattr(seg, 'budget_sensitivity', '?')}")
         return CellGrounding(
             niche=niche, audience_segment=seg_name or "the niche audience", segment_profile=profile,
-            pain_title=sp or "", pain_evidence=evidence, pain_severity=sev,
+            pain_title=sp, pain_evidence=evidence, pain_severity=sev,
             competitor_mentions=(self.competitor_mentions_text or "")[:1500],
         )
 
-    def _run_improvement_loop(self, ideas: list) -> None:
-        """Per-idea mentor improvement loop (validated +0.21/+0.97 vs baseline on two runs; gpt-5.4-mini
-        mentor). Decoupled v4 loop (soft-only refine + NEEDS-VERIFY flag + separate search verify) +
-        the deterministic caps that run right after. Cost-gated: only below-bar / unverified ideas enter.
-        Mutates ideas in place; fail-soft per idea (a failure leaves that idea untouched)."""
-        from .idea_improvement_loop_v4 import tournament_refine_cell_v4
-        if not ideas:
-            return
-        search = None
-        if getattr(self, "search_tool", None) is not None:
-            def search(q):  # noqa: E731
-                try:
-                    return str(self.search_tool.run(search_query=q))
-                except Exception:
-                    return ""
-        usages: list = []
-        refined = skipped = 0
-        for idea in ideas:
-            if self._idea_already_strong(idea):
-                skipped += 1
-                continue
+    @staticmethod
+    def _group_pool_by_cell(pooled: list, cells: list) -> list:
+        """Bucket the flat critic-scored concept pool back into its (pain × segment) cells by the
+        provenance stamped during generation (`source_pain`/`source_segment`). Returns a list of
+        (cell, [concepts]) for cells that produced ≥1 concept — the per-cell tournament inputs."""
+        def _key(pain_title, seg_name):
+            return ((pain_title or "").strip().lower(), (seg_name or "").strip().lower())
+
+        groups: dict = {}
+        for c in pooled or []:
+            groups.setdefault(_key(getattr(c, "source_pain", None), getattr(c, "source_segment", None)),
+                              []).append(c)
+        out = []
+        for cell in cells or []:
+            pain = cell.get("pain")
+            seg = cell.get("segment")
+            k = _key(getattr(pain, "title", None), getattr(seg, "segment_name", None) if seg else None)
+            concepts = groups.get(k)
+            if concepts:
+                out.append((cell, concepts))
+        return out
+
+    def _enhance_idea_mechanism(self, idea, *, usages: list):
+        """Ask the ideator for a MORE DIFFERENTIATED MECHANISM on the SAME pain + SAME data route.
+        Returns a deep-copied idea with the mechanism fields replaced and calibration provenance
+        reset (so the caller re-scores it from scratch), or None on failure. Read-only on shared
+        crew state, so safe in a cell thread."""
+        prompt = (
+            "You are a senior product strategist improving ONE micro-SaaS idea. An independent critic "
+            "judged the SOLUTION as OBVIOUS — most builders would propose the same thing — but the "
+            "underlying PROBLEM is validated and worth solving. Invent a MORE DIFFERENTIATED MECHANISM "
+            "for the SAME problem, buildable on the SAME data.\n\n"
+            "HARD CONSTRAINTS (do not change):\n"
+            f"- Same validated pain: {sanitize_social_content(getattr(idea, 'source_pain', '') or '')[:160]}\n"
+            f"- Same data route / access: {getattr(idea, 'data_access_model', None) or 'n/a'} "
+            f"({sanitize_social_content(getattr(idea, 'data_acquisition_notes', '') or '')[:160]}). Do NOT "
+            "invent a data source needing different access; the mechanism must run on the same obtainable data.\n"
+            "- Still solo-buildable (no custom-trained models, no multi-sided marketplace, no enterprise sales).\n\n"
+            f"WHY THE CRITIC CALLED IT OBVIOUS: "
+            f"{sanitize_social_content(getattr(idea, 'calibration_notes', '') or 'cached-shape solution')[:300]}\n\n"
+            "CURRENT IDEA:\n"
+            f"- name: {sanitize_social_content(getattr(idea, 'solution_name', '') or '')}\n"
+            f"- value_prop: {sanitize_social_content(getattr(idea, 'value_proposition', '') or '')[:300]}\n"
+            f"- conventional_approach: {sanitize_social_content(getattr(idea, 'conventional_approach', '') or '')[:300]}\n"
+            f"- innovation_angle: {sanitize_social_content(getattr(idea, 'innovation_angle', '') or '')[:300]}\n"
+            f"- why_it_works: {sanitize_social_content(getattr(idea, 'why_it_works', '') or '')[:300]}\n"
+            f"- technical_approach: {sanitize_social_content(getattr(idea, 'technical_approach', '') or '')[:400]}\n\n"
+            "Produce a revised idea whose MECHANISM is genuinely non-obvious — a structural angle most "
+            "builders would NOT land on — while solving the same pain on the same data. A slicker "
+            "description is NOT enough; change the actual approach. Reground why_it_works in the validated "
+            "pain.\n"
+            "Return ALL revised fields, INCLUDING the display fields rewritten to describe the NEW "
+            "mechanism (they must NOT describe the old approach): description (4-6 sentences on how the "
+            "new mechanism works), short_description (<=180 chars), and headline (5-12 words). In those "
+            "display fields, refer to the product as 'the tool' — do NOT hard-code the name."
+        )
+        r, u = LLMService.invoke_structured(
+            prompt=prompt, output_model=_RevisedMechanism, temperature=0.7, timeout=120,
+            model_name=settings.novelty_enhance_llm, reasoning_effort="none", creative=True)
+        if u is not None:
+            usages.append(u)
+        old_name = (getattr(idea, "solution_name", "") or "").strip()
+        rev = copy.deepcopy(idea)
+        # Rewrite the mechanism fields AND the display fields (description/short_description/headline) —
+        # the latter MUST track the new mechanism or the card sells the old, un-enhanced idea.
+        for f in ("solution_name", "value_proposition", "conventional_approach",
+                  "innovation_angle", "why_it_works", "technical_approach",
+                  "description", "short_description", "headline"):
+            v = (getattr(r, f, "") or "").strip()
+            if v:
+                setattr(rev, f, v)
+        if r.core_features:
+            rev.core_features = r.core_features
+        # Safety net: if the LLM left a display field empty, the carried value still names the OLD
+        # product — propagate the rename so a stale name never leaks.
+        new_name = (getattr(rev, "solution_name", "") or "").strip()
+        if old_name and new_name and old_name != new_name:
+            for f in ("description", "short_description", "headline"):
+                txt = getattr(rev, f, None)
+                if isinstance(txt, str) and old_name in txt:
+                    setattr(rev, f, txt.replace(old_name, new_name))
+        # reset calibration provenance so the re-score starts clean (and tags re-derive)
+        for c in ("market_fit", "technical_feasibility", "novelty", "seo_scalability", "obviousness"):
+            setattr(rev, f"{c}_score_raw", None)
+        rev.solo_dev_feasibility_raw = None
+        rev.calibration_notes = None
+        rev.tags = None
+        return rev
+
+    def _novelty_enhance(self, idea, *, usages: list):
+        """Targeted novelty-improvement pass on a VALIDATED-but-OBVIOUS cell winner. Gated +
+        accept-guarded: revise the mechanism, re-score (feasibility → calibrate → caps), and KEEP the
+        revision ONLY if novelty rises by >= the lift threshold WITHOUT market_fit / technical_feasibility
+        regressing past tolerance. Returns the kept idea (revision or original). Fail-soft → original.
+        SEO + tags are intentionally NOT run here — the caller finalizes them once on the kept idea."""
+        mf = getattr(idea, "market_fit_score", None)
+        obv = getattr(idea, "obviousness_score", None)
+        nov = getattr(idea, "novelty_score", None)
+        if not all(isinstance(x, (int, float)) for x in (mf, obv, nov)):
+            return idea
+        # Gate: validated demand AND an obvious solution. Everything else is left untouched.
+        if mf < settings.novelty_enhance_min_market_fit or obv < settings.novelty_enhance_min_obviousness:
+            return idea
+        try:
+            rev = self._enhance_idea_mechanism(idea, usages=usages)
+            if rev is None:
+                return idea
+            self._finalize_feasibility([rev])
+            if settings.enable_score_calibration:
+                _a, u = self._calibrate_batch(batch=[rev])
+                if u is not None:
+                    usages.append(u)
+            self._validate_idea_caps(rev)
+            new_nov = getattr(rev, "novelty_score", -1.0)
+            new_mf = getattr(rev, "market_fit_score", -1.0)
+            new_tf = getattr(rev, "technical_feasibility_score", -1.0)
+            new_seo = getattr(rev, "seo_scalability_score", -1.0)
+            tf = getattr(idea, "technical_feasibility_score", None) or 0.0
+            seo = getattr(idea, "seo_scalability_score", None) or 0.0
+            tol = settings.novelty_enhance_regression_tol
+            # Guard market_fit, feasibility AND SEO — otherwise a clever rewrite can trade a pragmatic
+            # content/directory surface (high SEO) for novelty and slip through unnoticed.
+            if (new_nov >= nov + settings.novelty_enhance_min_novelty_lift
+                    and new_mf >= mf - tol and new_tf >= tf - tol and new_seo >= seo - tol):
+                logger.info(
+                    f"[NOVELTY-ENHANCE] kept '{getattr(rev, 'solution_name', '?')}' "
+                    f"(nov {nov:.2f}->{new_nov:.2f}, mf {mf:.2f}->{new_mf:.2f}, tf {tf:.2f}->{new_tf:.2f}, "
+                    f"seo {seo:.2f}->{new_seo:.2f})")
+                return rev
+            logger.info(f"[NOVELTY-ENHANCE] rejected revision of '{getattr(idea, 'solution_name', '?')}' "
+                        f"(nov {nov:.2f}->{new_nov:.2f}, mf {mf:.2f}->{new_mf:.2f}, tf {tf:.2f}->{new_tf:.2f}, "
+                        f"seo {seo:.2f}->{new_seo:.2f})")
+            return idea
+        except Exception as e:  # noqa: BLE001 — fail-soft, keep the original
+            logger.warning(f"[NOVELTY-ENHANCE] skipped: {str(e)[:120]}")
+            return idea
+
+    def _score_cell_winner(self, winner, *, skip_selection: bool, usages: list):
+        """Run the scorer chain on a single cell winner, in the cell's thread (parallel across
+        cells). Mirrors the post-union order so scoring semantics are unchanged — only the location
+        (in-cell) + granularity (per-idea) differ:
+            feasibility → calibrate → validate-caps → [novelty-enhance] → seo (skip_selection only) → tags.
+        Returns the kept idea — usually `winner` scored in place, but the optional novelty-enhance
+        step (flag-gated) may return a more-differentiated REVISION when it scores strictly better.
+        LLM usage is appended to the shared sink (recorded once after the join). Each step is
+        fail-soft so a scorer error never drops the idea. The post-union passes are idempotent and
+        skip these now-scored ideas (they finish only the coverage-net stragglers)."""
+        one = [winner]
+        try:
+            self._finalize_feasibility(one)  # det; gated internally on enable_feasibility_critic
+        except Exception as e:
+            logger.warning(f"[CELL-SCORE] feasibility skipped: {str(e)[:120]}")
+        if settings.enable_score_calibration:
             try:
-                grounding = self._build_cell_grounding(idea)
-                # reviewer/mentor model + effort default from settings (ideation_mentor_llm).
-                improved = tournament_refine_cell_v4(
-                    [idea], grounding, rounds=2, search=search, usage_sink=usages)
-                if improved is not idea:
-                    self._merge_loop_result(idea, improved)
-                refined += 1
+                _applied, u = self._calibrate_batch(batch=one)
+                if u is not None:
+                    usages.append(u)
             except Exception as e:
-                logger.warning(f"[IMPROVE-LOOP] '{getattr(idea,'solution_name','?')}' skipped: {str(e)[:120]}")
-        if usages:
-            self._record_divergent_usage(usages)
-        logger.info(f"[IMPROVE-LOOP] refined {refined} idea(s), skipped {skipped} already-strong "
-                    f"({len(usages)} LLM calls)")
+                logger.warning(f"[CELL-SCORE] calibration skipped: {str(e)[:120]}")
+        try:
+            self._validate_idea_caps(winner)  # det; per-idea caps so tags read capped scores
+        except Exception as e:
+            logger.warning(f"[CELL-SCORE] cap validation skipped: {str(e)[:120]}")
+        # Targeted novelty enhancement (gated + accept-guarded). May REPLACE winner with a more
+        # differentiated mechanism — but only when it scores strictly better (else returns the
+        # original). Runs AFTER caps (needs the gating scores) and BEFORE seo/tags so those finalize
+        # once, on the kept idea.
+        if settings.enable_novelty_enhance:
+            winner = self._novelty_enhance(winner, usages=usages)
+            one = [winner]
+        # SEO caps run in-cell ONLY on the live/preview path (skip_selection=True). On the legacy
+        # one-shot path (skip_selection=False) ranking locks after this crew, so SEO stays deferred
+        # to Stage 12 — and tags below read uncapped SEO, matching the post-union behaviour there.
+        if skip_selection:
+            try:
+                self._finalize_seo_realism(one)
+            except Exception as e:
+                logger.warning(f"[CELL-SCORE] seo caps skipped: {str(e)[:120]}")
+        try:
+            u = self._apply_tags_to(one)  # LLM; tags from the now-final scores. Runs last.
+            if u is not None:
+                usages.append(u)
+        except Exception as e:
+            logger.warning(f"[CELL-SCORE] tagging skipped: {str(e)[:120]}")
+        return winner  # may be a novelty-enhanced revision (else the original, scored in place)
+
+    def _tournament_cell(self, *, cell: dict, candidates: list, search, usages: list,
+                         skip_selection: bool = False):
+        """One per-cell ideator↔judge tournament → ONE best, fully-scored idea (per-cell-tournament
+        architecture).
+
+        Pre-ranks the cell's critic-scored candidates (drop blocked, prefer most novel), expands the
+        winner RawConcept → full BaseSolutionIdea, then runs `tournament_refine_cell_v4` (keep-best
+        across rounds + separate search-grounded data-route verify). Stamps provenance from the CELL
+        (not a name-join — the ideator renames mid-loop), then runs the scorer chain on the winner in
+        this thread (`_score_cell_winner`). Pure per-thread; fail-soft → None.
+        """
+        from .idea_improvement_loop_v4 import tournament_refine_cell_v4
+        try:
+            pain = cell.get("pain")
+            # pre-rank: drop blocked / no-route, prefer lowest obviousness (most novel); -1 sentinel = neutral.
+            usable = [c for c in (candidates or [])
+                      if not getattr(c, "critic_no_route", False)
+                      and (getattr(c, "data_access_model", None) or "").strip().lower() != "blocked"]
+            pool = usable or list(candidates or [])  # floor: a flagged idea beats no idea
+            if not pool:
+                return None
+
+            def _obv(c):
+                o = getattr(c, "obviousness_score", -1.0)
+                return o if isinstance(o, (int, float)) and o >= 0 else 0.5
+            top = min(pool, key=_obv)
+
+            expanded = self._refine_single_concept(top, pain)
+            grounding = self._build_cell_grounding_from_cell(cell)
+            winner = tournament_refine_cell_v4(
+                [expanded], grounding, rounds=settings.tournament_rounds, search=search, usage_sink=usages)
+            winner = winner or expanded
+
+            # Stamp provenance from the cell + seed concept (the join the pooled flow does by name).
+            seg = cell.get("segment")
+            winner.source_pain = getattr(pain, "title", None) or getattr(winner, "source_pain", None)
+            if seg is not None:
+                winner.source_segment = getattr(seg, "segment_name", None) or getattr(winner, "source_segment", None)
+            for tag in ("mechanism_tag", "data_source_tag", "journey_tag"):
+                if not getattr(winner, tag, None) and getattr(top, tag, None):
+                    setattr(winner, tag, getattr(top, tag))
+            # Carry the critic's feasibility/obviousness (the tournament doesn't recompute them; it DID
+            # re-verify data_access_model, so leave that as the verifier set it).
+            for fld in ("obviousness_score", "data_feasibility_score", "build_feasibility_score"):
+                v = getattr(top, fld, None)
+                if isinstance(v, (int, float)) and v >= 0:
+                    setattr(winner, fld, v)
+            # In-cell scoring: emit a fully-scored, fully-tagged idea (runs in this thread, overlapping
+            # the other cells). Usage funnels into the shared sink, recorded once after the join.
+            # May return a novelty-enhanced revision (flag-gated) in place of the original winner.
+            winner = self._score_cell_winner(winner, skip_selection=skip_selection, usages=usages)
+            return winner
+        except Exception as e:  # noqa: BLE001 — fail-soft; the pool drops a None
+            logger.warning(f"[TOURNAMENT] cell '{getattr(cell.get('pain'),'title','?')}' failed: {str(e)[:120]}")
+            return None
 
     def _pool_and_dedup_raw_concepts(self, concepts: list, keep_fraction: float | None = None) -> list:
         """Dedup the pooled concepts and clamp to a DYNAMIC cap.
@@ -1989,7 +2376,7 @@ class UnifiedSolutionCrew:
 
     def _refine_single_concept(self, concept, pain):
         """Expand ONE pooled concept into a COMPLETE BaseSolutionIdea via the brainstorm
-        model — so a re-injected (coverage/bold) idea is as complete as the others.
+        model — so a re-injected (coverage) idea is as complete as the others.
 
         Returns a fully-populated BaseSolutionIdea, or falls back to the lightweight
         stub synthesizer on any failure (never raises)."""
@@ -2031,6 +2418,11 @@ class UnifiedSolutionCrew:
                 timeout=180,
                 model_name=settings.ideation_refine_llm,
                 reasoning_effort=settings.ideation_refine_reasoning_effort,
+                # Tool-calling transport (opts out of json_schema guided decoding). On the
+                # guided-json path glm-4.7 dumps hidden reasoning that eats max_tokens and
+                # truncates this large BaseSolutionIdea spec (finish_reason=length). Same fix
+                # the tagging call uses; keeps glm-4.7's clean full-field coverage.
+                creative=True,
             )
             self._record_divergent_usage([usage])
             # Carry structural tags + guarantee the two required scores are present.
@@ -2045,7 +2437,7 @@ class UnifiedSolutionCrew:
             # leaving it None or forcing a slow reasoning pass; fall back to 0.5 if no obviousness.
             if idea.novelty_score is None:
                 idea.novelty_score = round(1.0 - _obv, 2) if (_obv is not None and _obv >= 0) else 0.5
-            # Carry feasibility-critic outputs (reinjection/bold-slot path has the concept
+            # Carry feasibility-critic outputs (reinjection/coverage path has the concept
             # directly). data_* surfaced; build_feasibility_score for the verdict cap.
             if getattr(concept, "data_feasibility_score", -1.0) >= 0:
                 idea.data_feasibility_score = concept.data_feasibility_score
@@ -2060,15 +2452,17 @@ class UnifiedSolutionCrew:
             if idea.technical_feasibility_score is None:
                 idea.technical_feasibility_score = 0.5
             # Grounded provenance + CODE-FILLED pain_points_addressed (override the LLM): prefer
-            # the concept's stamped cell, else the pain passed in. Direct-refine path (bold-slot /
-            # coverage / reinjection), so the concept→idea link is exact (no rename join needed).
+            # the concept's stamped cell, else the pain passed in. Direct-refine path (coverage /
+            # reinjection), so the concept→idea link is exact (no rename join needed).
             src_pain = getattr(concept, "source_pain", None) or pain_title
             src_seg = getattr(concept, "source_segment", None)
             idea.source_pain = src_pain
             idea.source_segment = src_seg
             grounded = self._grounded_pains_for(src_pain, src_seg)
+            # Fall back to the validated source_pain (a real PainPoint.title), NOT the LLM's free-text
+            # self-reported pains — those paraphrase/duplicate/fabricate. Always a validated title.
             idea.pain_points_addressed = (
-                grounded or idea.pain_points_addressed or [pain_title or "high-severity pain"])
+                grounded or ([src_pain] if src_pain else None) or [pain_title or "high-severity pain"])
             return idea
         except Exception as e:
             logger.warning(f"[REINJECT] full refinement of '{concept.concept_name}' failed, "
@@ -2137,21 +2531,22 @@ class UnifiedSolutionCrew:
         )
         return "\n".join(lines)
 
-    def _apply_tags(self, refined_solutions) -> None:
-        """Assign closed-vocabulary `tags` to every refined idea (chips + future filtering).
-        One batch LLM call supplies the semantic facets; code derives the rest. Fail-soft:
-        on any LLM/parse error the derived + reused facets still attach (tags never block the
-        pipeline). Mirrors the novelty-critic direct-invoke pattern."""
+    def _apply_tags_to(self, ideas: list):
+        """Assign closed-vocabulary `tags` to a SPECIFIC list of ideas: one batch LLM call supplies
+        the semantic facets, code derives the rest. RETURNS the LLM usage (or None on failure/empty)
+        so the caller records it — the in-cell scorer funnels it into the cell's shared sink, the
+        post-union wrapper records it directly. Fail-soft: on any LLM/parse error the derived +
+        reused facets still attach (tags never block the pipeline)."""
         from ..utils.idea_tags import derive_tag_facets, validate_solution_tags
 
-        ideas = getattr(refined_solutions, "solution_ideas", None) or []
         if not ideas:
-            return
+            return None
 
         def _norm(n: str) -> str:
             return "".join((n or "").lower().split())
 
         llm_by_name: dict = {}
+        usage = None
         try:
             result, usage = LLMService.invoke_structured(
                 prompt=self._render_tagging_prompt(ideas),
@@ -2166,7 +2561,6 @@ class UnifiedSolutionCrew:
                 reasoning_effort="none",
                 creative=True,
             )
-            self._record_divergent_usage([usage])
             llm_by_name = {
                 _norm(t.solution_name): t for t in (result.tags or []) if t.solution_name
             }
@@ -2183,11 +2577,24 @@ class UnifiedSolutionCrew:
                 idea.tags = derive_tag_facets(idea, llm_facets)
             except Exception as e:
                 logger.warning(f"[TAGS] derive failed for '{idea.solution_name}': {str(e)[:120]}")
+        return usage
 
-    # Bold-slot thresholds: a final idea "counts" as bold if its novelty_score is high
-    # OR it traces to a low-obviousness pooled concept.
+    def _apply_tags(self, refined_solutions) -> None:
+        """Assign closed-vocabulary `tags` to refined ideas — post-union wrapper. SKIPS ideas already
+        tagged in-cell (`tags is not None`) and tags only the stragglers (coverage-net injections +
+        the pooled-fallback path, where nothing is pre-tagged). Delegates the batch call to
+        `_apply_tags_to` and records its usage. Fail-soft: tags never block the pipeline."""
+        ideas = getattr(refined_solutions, "solution_ideas", None) or []
+        todo = [i for i in ideas if getattr(i, "tags", None) is None]
+        if not todo:
+            return
+        usage = self._apply_tags_to(todo)
+        if usage is not None:
+            self._record_divergent_usage([usage])
+
+    # Novelty threshold above which an idea is "bold" — used by _enforce_diversity_caps (pooled
+    # fallback) to protect high-novelty ideas from the de-concentration caps.
     _BOLD_NOVELTY = 0.6
-    _BOLD_OBVIOUSNESS = 0.35
     # Provenance fuzzy-fallback (rename recovery): when an idea's name doesn't exact-match a
     # pooled concept (refiner renamed it), match on text-blob overlap. Conservative — an
     # ambiguous match (below margin) changes nothing, leaving the refiner's own value.
@@ -2229,8 +2636,9 @@ class UnifiedSolutionCrew:
                 sol.source_pain = src_pain
                 sol.source_segment = getattr(c, "source_segment", None)
                 grounded = self._grounded_pains_for(src_pain, sol.source_segment)
-                if grounded:
-                    sol.pain_points_addressed = grounded
+                # Always validated titles: grounded set, else just the source pain — never keep the
+                # LLM's free-text self-reported pains (paraphrase/duplicate/fabricate).
+                sol.pain_points_addressed = grounded or [src_pain]
 
         by_name: dict = {}
         for c in raw_concepts.concepts:
@@ -2277,7 +2685,7 @@ class UnifiedSolutionCrew:
         ≤ max_per_mechanism by mechanism FAMILY (greedy pairwise via _tags_match), ≤
         max_per_project_type by project_type, ≤ max_final total. Walks strongest-first, drops
         the weakest excess; re-admits the best dropped (least-represented bucket first) up to
-        the floor. NEVER drops the bold idea or the sole coverage of a high-severity pain.
+        the floor. NEVER drops the most-novel idea or the sole coverage of a high-severity pain.
         Mutates `ideas` in place; never raises."""
         if not settings.enable_diversity_caps or not ideas or len(ideas) <= settings.diversity_min_final_ideas:
             return
@@ -2289,7 +2697,7 @@ class UnifiedSolutionCrew:
             return sum(present) / len(present) if present else -1.0  # missing -> worst
 
         # PROTECTED: the SINGLE most-novel idea + sole coverage of a high-severity pain.
-        # The bold slot guarantees >=1 genuinely novel idea; protecting EVERY idea above the
+        # We protect only the single most-novel idea; protecting EVERY idea above the
         # novelty threshold neuters the caps when the refiner inflates novelty (observed: 7/8
         # ideas >= 0.6 -> caps could drop nothing). Protect only the top-1 by novelty.
         protected: set = set()
@@ -2422,11 +2830,76 @@ class UnifiedSolutionCrew:
             if bf_in >= 0:
                 idea.build_feasibility_score = bf2
 
+    def _finalize_dev_time(self, ideas: list) -> None:
+        """Grounded, reasoning-first build-time estimate — replaces the refiner's throwaway point
+        guess ("3-4 months"). Per idea: a targeted web search for comparable build complexity + a
+        DECOMPOSED LLM judgment anchored to the (grounded) build_feasibility score → an honest RANGE.
+        Parallel, fail-soft (keeps the prior estimate on any error). Gated by enable_grounded_dev_time."""
+        if not settings.enable_grounded_dev_time or not ideas:
+            return
+        search = None
+        if getattr(self, "search_tool", None) is not None:
+            def search(q):  # noqa: E731
+                try:
+                    return str(self.search_tool.run(search_query=q))
+                except Exception:
+                    return ""
+
+        def _worker(idea):
+            feats = "; ".join((getattr(idea, "core_features", None) or [])[:6])
+            snip = ""
+            if search is not None:
+                q = f"{getattr(idea, 'project_type', '') or 'web app'} MVP solo developer build time {feats[:80]}"
+                snip = (search(q) or "")[:1200]
+            prompt = (
+                "Estimate how long a SOLO developer would realistically need to ship a working MVP "
+                "of this product. Decompose the build, reason about the binding constraint, THEN give "
+                "the number.\n\n"
+                f"PRODUCT: {getattr(idea, 'solution_name', '')}\n"
+                f"WHAT IT DOES: {(getattr(idea, 'value_proposition', '') or getattr(idea, 'description', '') or '')[:300]}\n"
+                f"CORE FEATURES: {feats}\n"
+                f"TECHNICAL APPROACH: {(getattr(idea, 'technical_approach', '') or '')[:300]}\n"
+                f"DATA ROUTE: {getattr(idea, 'data_access_model', '') or 'n/a'} — "
+                f"{(getattr(idea, 'data_acquisition_notes', '') or '')[:160]}\n"
+                f"INDEPENDENT BUILD-FEASIBILITY (0-1, higher = easier to build): "
+                f"{getattr(idea, 'build_feasibility_score', '?')}\n\n"
+                f"WEB EVIDENCE (comparable build complexity — may be thin):\n{snip or '(none retrieved)'}\n\n"
+                "Decompose the MVP into its real build components (core feature work, data "
+                "integration/pipeline, auth/infra, any content or SEO scaffolding) and judge which is "
+                "the binding (most involved) one. ANCHOR to the build-feasibility score: a low score "
+                "(hard to build, or a gated/unverified data route) means a LONGER estimate — do not "
+                "contradict it. Assume a solo dev (no team) shipping a working MVP, not a polished "
+                "v1. Give a realistic RANGE in weeks or months, never a single false-precise number. "
+                "rationale FIRST (the binding driver), THEN the estimate."
+            )
+            try:
+                r, usage = LLMService.invoke_structured(
+                    prompt=prompt, output_model=_DevTimeEstimate, temperature=0.2, timeout=60,
+                    model_name=settings.ideation_judge_llm, reasoning_effort="none", creative=True)
+                est = (getattr(r, "estimate", "") or "").strip()
+                if est:
+                    idea.estimated_development_time = est[:40]
+                    rat = (getattr(r, "rationale", "") or "").strip()
+                    if rat:
+                        idea.dev_time_rationale = rat[:200]
+                return usage
+            except Exception as e:
+                logger.warning(f"[DEV-TIME] estimate skipped for "
+                               f"'{getattr(idea,'solution_name','?')}': {str(e)[:100]}")
+                return None
+
+        jobs = [{"idea": i} for i in ideas]
+        deadline = settings.divergent_sample_deadline_seconds
+        max_workers = min(len(jobs), settings.divergent_max_workers)
+        usages = self._run_parallel(_worker, jobs, deadline, max_workers, label="DevTime")
+        self._record_divergent_usage([u for u in usages if u is not None])
+        logger.info(f"[DEV-TIME] grounded build-time re-estimated for {len(ideas)} idea(s)")
+
     def _finalize_seo_realism(self, ideas: list) -> None:
         """Apply the downgrade-only SEO-realism cap to the stored seo_scalability_score of each
         idea (preview path — see the call site for the ranking-safety reasoning). Rules A
         (account-gated SaaS) + C (hand-seeded, if enabled) bite here; Rule B (page counts) is a
-        no-op pre-Stage-12. Caller gates on settings.enable_seo_realism_caps. Mutates in place."""
+        no-op pre-Stage-12. Caller gates on skip_selection (preview path). Mutates in place."""
         from ..utils.seo_helpers import cap_idea_seo_realism
         capped_n = 0
         for idea in ideas:
@@ -2486,60 +2959,7 @@ class UnifiedSolutionCrew:
         self.coverage_caveats = list(getattr(self, "coverage_caveats", None) or []) + [msg]
         logger.info(f"[PAIN-COVERAGE] {msg}")
 
-    def _enforce_bold_slot(self, final_ideas: list, raw_concepts) -> None:
-        """Ensure the final set has >=1 genuinely original idea; else re-inject the
-        lowest-obviousness pooled concept (fully refined). Mutates in place; never raises."""
-        concepts = list(getattr(raw_concepts, "concepts", None) or [])
-        if not final_ideas or not concepts:
-            return
-
-        def _norm(n: str) -> str:
-            return "".join((n or "").lower().split())
-
-        # obviousness by concept name (treat -1.0 sentinel as ineligible/unknown)
-        obv_by_name = {}
-        for c in concepts:
-            s = getattr(c, "obviousness_score", -1.0)
-            if s is not None and s >= 0:
-                obv_by_name[_norm(c.concept_name)] = s
-
-        # Already bold? (high novelty OR traces to a low-obviousness concept)
-        for idea in final_ideas:
-            nov = getattr(idea, "novelty_score", None)
-            if nov is not None and nov >= self._BOLD_NOVELTY:
-                return
-            src = obv_by_name.get(_norm(getattr(idea, "solution_name", "")))
-            if src is not None and src <= self._BOLD_OBVIOUSNESS:
-                return
-
-        # Pick the lowest-obviousness ELIGIBLE concept not already in the final set.
-        final_names = {_norm(getattr(i, "solution_name", "")) for i in final_ideas}
-        candidates = [
-            c for c in concepts
-            if _norm(c.concept_name) not in final_names
-            and _norm(c.concept_name) in obv_by_name
-        ]
-        if not candidates:
-            return
-        boldest = min(candidates, key=lambda c: obv_by_name[_norm(c.concept_name)])
-
-        pains = self.pain_point_analysis.pain_points
-        top_pain = max(pains, key=lambda p: getattr(p, "severity_score", 0) or 0) if pains else None
-        if top_pain is None:
-            return
-        # Fully refine the boldest concept so it's as complete as the rest.
-        bold = self._refine_single_concept(boldest, top_pain)
-        if bold is None:
-            return
-        # It IS the lowest-obviousness concept → floor novelty so the bold signal holds.
-        bold.novelty_score = max(bold.novelty_score or 0.0, 0.6)
-        final_ideas.append(bold)
-        self.coverage_caveats = list(getattr(self, "coverage_caveats", []) or []) + [
-            f"Bold slot: re-injected '{bold.solution_name}' as a deliberately original option "
-            f"(the generated set lacked a high-novelty idea)."
-        ]
-        logger.warning(f"[BOLD SLOT] Re-injected '{bold.solution_name}' "
-                       f"(obviousness {obv_by_name[_norm(boldest.concept_name)]:.2f})")
+    
 
     # ========== AGENTS ==========
 
@@ -3041,25 +3461,64 @@ class UnifiedSolutionCrew:
             logger.info(f"  Divergent pool: {len(raw_concepts.concepts)} concepts fed to the refiner")
             crew_inputs["pooled_concepts"] = self._format_pooled_concepts(raw_concepts.concepts)
 
-            # ── CONVERGENT crew: refine → (select) ── (the deduped pool is the refiner's input)
-            self._last_crew = self._convergent_crew(skip_selection)  # for usage_metrics
-            crew_output = self._last_crew.kickoff(inputs=crew_inputs)
+            use_tournament = settings.enable_per_cell_tournament and partition_cells
+            if use_tournament:
+                # ── PER-CELL TOURNAMENTS: each (pain × segment) cell → 1 best idea, run in PARALLEL.
+                # Replaces the pooled convergent refine + the late per-idea improvement loop.
+                search = None
+                if getattr(self, "search_tool", None) is not None:
+                    def search(q):  # noqa: E731
+                        try:
+                            return str(self.search_tool.run(search_query=q))
+                        except Exception:
+                            return ""
+                t_usages: list = []
+                groups = self._group_pool_by_cell(pooled, partition_cells)
+                jobs = [{"cell": c, "candidates": cand, "search": search, "usages": t_usages,
+                         "skip_selection": skip_selection}
+                        for c, cand in groups]
+                logger.info(f"  [Tournament] running {len(jobs)} per-cell ideator+judge tournaments")
+                winners = self._run_parallel(
+                    self._tournament_cell, jobs,
+                    deadline=settings.divergent_sample_deadline_seconds,
+                    max_workers=settings.divergent_max_workers, label="Tournament")
+                if t_usages:
+                    self._record_divergent_usage(t_usages)
+                # Union of per-cell winners, DEDUP ONLY (normalized-name; minimal filtering — no
+                # diversity caps). Distinct cells rarely collide, so this stays a light floor.
+                ideas, _seen = [], set()
+                for w in winners:
+                    if w is None:
+                        continue
+                    key = "".join((getattr(w, "solution_name", "") or "").lower().split())
+                    if key and key in _seen:
+                        continue
+                    _seen.add(key)
+                    ideas.append(w)
+                if not ideas:
+                    raise ValueError("Per-cell tournaments produced no ideas.")
+                base_solutions = IdeaGenerationResult(solution_ideas=ideas)
+                logger.info(f"  [Tournament] {len(ideas)} per-cell winners (from {len(jobs)} cells)")
+            else:
+                # ── CONVERGENT crew: refine → (select) ── (the deduped pool is the refiner's input)
+                self._last_crew = self._convergent_crew(skip_selection)  # for usage_metrics
+                crew_output = self._last_crew.kickoff(inputs=crew_inputs)
 
-            task_outputs = crew_output.tasks_output if hasattr(crew_output, 'tasks_output') else []
-            min_expected = 1 if skip_selection else 2
-            if len(task_outputs) < min_expected:
-                raise ValueError(
-                    f"Expected {min_expected} convergent task outputs, got {len(task_outputs)}. "
-                    "Pipeline may have failed mid-execution."
-                )
+                task_outputs = crew_output.tasks_output if hasattr(crew_output, 'tasks_output') else []
+                min_expected = 1 if skip_selection else 2
+                if len(task_outputs) < min_expected:
+                    raise ValueError(
+                        f"Expected {min_expected} convergent task outputs, got {len(task_outputs)}. "
+                        "Pipeline may have failed mid-execution."
+                    )
 
-            # Convergent indices: [0]=refine, (select is crew_output.pydantic). REQUIRED.
-            base_solutions = task_outputs[0].pydantic
-            if base_solutions is None:
-                raise ValueError(
-                    "Solution Refinement returned None pydantic output. "
-                    "Check IdeaGenerationResult schema and agent prompt."
-                )
+                # Convergent indices: [0]=refine, (select is crew_output.pydantic). REQUIRED.
+                base_solutions = task_outputs[0].pydantic
+                if base_solutions is None:
+                    raise ValueError(
+                        "Solution Refinement returned None pydantic output. "
+                        "Check IdeaGenerationResult schema and agent prompt."
+                    )
 
             # Post-process: cap novelty_score when text fields are weak
             for solution in base_solutions.solution_ideas:
@@ -3074,9 +3533,10 @@ class UnifiedSolutionCrew:
                         )
                         solution.novelty_score = 0.45
 
-            # Extract Task 4 (selection) if not skipped
+            # Extract Task 4 (selection) if not skipped. Tournament mode has no selection crew —
+            # it shows all per-cell winners, so selection stays None there.
             solution_selection = None
-            if not skip_selection:
+            if not skip_selection and not use_tournament:
                 solution_selection = crew_output.pydantic
                 if solution_selection is None:
                     raise ValueError(
@@ -3103,14 +3563,18 @@ class UnifiedSolutionCrew:
             # Carry M/D/J structural tags + (pain × segment) provenance from raw_concepts onto
             # the refined solutions (refinement drops them). Exact name match, then a fuzzy
             # blob fallback for refiner-renamed ideas. See _carry_provenance.
-            self._carry_provenance(refined_solutions, raw_concepts)
+            # SKIPPED in per-cell tournament mode — _tournament_cell already stamped provenance +
+            # feasibility from the seed concept by cell identity (the name-join would mis-match the
+            # tournament-renamed winners).
+            if not use_tournament:
+                self._carry_provenance(refined_solutions, raw_concepts)
 
             # Carry feasibility-critic outputs from the critic-scored pool (raw_concepts,
             # code-controlled) onto the refined solutions: the 3 data fields are SURFACED;
             # build_feasibility_score is carried for the downgrade-only verdict cap. Does
             # NOT touch market_fit/technical_feasibility (ranking stays unchanged). Keyed
             # by normalized name; a miss leaves the solution's fields as-is (degrade-safe).
-            if settings.enable_feasibility_critic and raw_concepts and raw_concepts.concepts:
+            if not use_tournament and settings.enable_feasibility_critic and raw_concepts and raw_concepts.concepts:
                 def _norm2(n: str) -> str:
                     return "".join((n or "").lower().split())
                 feas_lookup = {_norm2(c.concept_name): c for c in raw_concepts.concepts}
@@ -3143,29 +3607,47 @@ class UnifiedSolutionCrew:
                 logger.warning(f"Pain-coverage enforcement skipped: {e}")
                 self.coverage_caveats = []
 
-            # Post-crew BOLD SLOT: guarantee >=1 genuinely novel idea even at lower
-            # market-fit (deterministic, never crashes). Re-injects the lowest-obviousness
-            # pooled concept if the final set has no bold idea.
-            try:
-                self._enforce_bold_slot(refined_solutions.solution_ideas, raw_concepts)
-            except Exception as e:
-                logger.warning(f"Bold-slot enforcement skipped: {e}")
+            # Append the niche-anchor transparency notes AFTER enforce_pain_coverage (which replaces
+            # coverage_caveats wholesale) so they survive: each flags an idea built on the user's
+            # stated-focus pain rather than the higher-severity research pain in the same theme.
+            anchor_notes = getattr(self, "_anchor_severity_notes", None)
+            if anchor_notes:
+                self.coverage_caveats = list(self.coverage_caveats or []) + list(anchor_notes)
 
             # Diversity-aware final selection: de-concentrate (per-segment / mechanism /
-            # project-type caps, drop-only, floor-protected). Runs AFTER coverage + bold so
-            # those re-injected ideas are protected, BEFORE finalize so caps see the full set.
-            try:
-                self._enforce_diversity_caps(refined_solutions.solution_ideas)
-            except Exception as e:
-                logger.warning(f"Diversity caps skipped: {e}")
+            # project-type caps, drop-only, floor-protected). Runs AFTER coverage so those
+            # re-injected ideas are protected, BEFORE finalize so caps see the full set.
+            # SKIPPED in per-cell tournament mode — diversity is structural (1 idea per (pain×segment)
+            # cell), so we show all winners ("dedup only, minimal filtering").
+            if not use_tournament:
+                try:
+                    self._enforce_diversity_caps(refined_solutions.solution_ideas)
+                except Exception as e:
+                    logger.warning(f"Diversity caps skipped: {e}")
 
             # Re-assert the critic's authoritative (capped) feasibility on the final ideas —
-            # the filter/refiner LLMs overwrite it with uncapped values. Runs AFTER the bold
-            # slot so re-injected ideas are normalized too.
+            # the filter/refiner LLMs overwrite it with uncapped values. Runs AFTER coverage
+            # re-injection so re-injected ideas are normalized too.
             try:
                 self._finalize_feasibility(refined_solutions.solution_ideas)
             except Exception as e:
                 logger.warning(f"Feasibility finalization skipped: {e}")
+
+            # Trim over-claimed pain_points_addressed (the grounded matcher attaches every pain in the
+            # idea's SEGMENT; keep only the ones the mechanism actually addresses). Cheap LLM gate,
+            # single-threaded, fail-soft. Runs after coverage re-injection so every final idea is covered.
+            try:
+                self._filter_pain_relevance(refined_solutions.solution_ideas)
+            except Exception as e:
+                logger.warning(f"Pain-relevance filter skipped: {e}")
+
+            # Grounded build-time estimate (web-search + decomposed LLM judgment, anchored to the
+            # just-finalized build_feasibility) — replaces the refiner's false-precise point guess
+            # with an honest range. Runs AFTER feasibility so the anchor is grounded. Fail-soft.
+            try:
+                self._finalize_dev_time(refined_solutions.solution_ideas)
+            except Exception as e:
+                logger.warning(f"Dev-time estimation skipped: {e}")
 
             # Realism score-calibration critic (independent re-score of market_fit / technical_feas /
             # novelty / seo / obviousness; REPLACES the generator's optimistic self-scores, originals
@@ -3178,16 +3660,9 @@ class UnifiedSolutionCrew:
                 except Exception as e:
                     logger.warning(f"Score calibration skipped: {e}")
 
-            # Mentor improvement loop (validated +0.21/+0.97 vs baseline across two runs + two Opus
-            # judges; gpt-5.4-mini mentor). Cost-gated: only below-bar / unverified ideas enter (already-
-            # strong ones skip). Refines on soft dimensions, flags + search-verifies data routes; the
-            # deterministic backstop right below then caps any idea whose route the verifier couldn't
-            # confirm. Runs AFTER calibration (gate reads calibrated scores) and BEFORE the cap (cap
-            # reads the verifier's data_access_model). Fail-soft per idea.
-            try:
-                self._run_improvement_loop(refined_solutions.solution_ideas)
-            except Exception as e:
-                logger.warning(f"Idea improvement loop skipped: {e}")
+            # NOTE: the legacy late per-idea "mentor improvement loop" was removed — the per-cell
+            # tournament (default path) IS that ideator↔judge loop, run once per (pain × segment) cell
+            # upstream. The rare no-cells pooled fallback ships its refined ideas without a late polish.
 
             # Deterministic score-consistency backstop (downgrade-only, always on): enforces the two
             # mechanical invariants the LLM calibration doesn't reliably hold — novelty ≤ 1−obviousness
@@ -3204,7 +3679,7 @@ class UnifiedSolutionCrew:
             # no Task-4 selection / flow-level backfill, so capping the stored seo_scalability_score
             # here cannot reorder anything. In the full pipeline ranking is locked AFTER this crew
             # (flow backfill), so the cap is applied later — at Stage 12 for the selected solution.
-            if skip_selection and settings.enable_seo_realism_caps:
+            if skip_selection:
                 try:
                     self._finalize_seo_realism(refined_solutions.solution_ideas)
                 except Exception as e:

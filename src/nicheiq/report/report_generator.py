@@ -294,6 +294,9 @@ class ReportGenerator:
                 f"{len(final_report.data_quality_summary.quality_caveats)} caveats"
             )
 
+        # Research Reality Check — computed end of Phase 1, carried on state (no re-generation).
+        final_report.niche_difficulty_verdict = getattr(self.state, "niche_difficulty_verdict", None)
+
         final_report.refinement_highlights = self._generate_refinement_highlights()
         if final_report.refinement_highlights:
             logger.info(

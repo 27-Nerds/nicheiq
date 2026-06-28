@@ -295,7 +295,7 @@
     if (score == null) return "Market demand alignment — no data available";
     const pct = Math.round(score * 100);
     const passes = score >= GO_THRESHOLD;
-    return `Market Fit: ${pct}%\nMeasures alignment with validated market demand and pain points.\n${passes ? `Meets Go threshold (\u2265${GO_THRESHOLD * 100}%)` : `Below Go threshold (\u2265${GO_THRESHOLD * 100}%) \u2014 limits verdict to Conditional`}`;
+    return `Market Fit: ${pct}%\nHow well the idea fits validated demand, weighted by pain severity. Capped at 40% when the data it needs can't be obtained through a verified route.\n${passes ? `Meets Go threshold (\u2265${GO_THRESHOLD * 100}%)` : `Below Go threshold (\u2265${GO_THRESHOLD * 100}%) \u2014 limits verdict to Conditional`}`;
   });
 
   const techFeasibilityTooltip = $derived.by(() => {
@@ -317,7 +317,7 @@
     const score = metrics?.solo_dev_feasibility;
     if (score == null) return "Solo dev feasibility — no data available";
     const pct = Math.round(score * 100);
-    return `Solo Dev: ${pct}%\nSuitability for a single developer to build and launch.`;
+    return `Solo Dev: ${pct}%\nHow realistic for one person to build AND keep running. The main driver is ongoing burden (support, uptime, moderation, marketing), not just build time. Independently re-scored, and held at or below the build-feasibility estimate.`;
   });
 
   const compEdgeTooltip = $derived.by(() => {

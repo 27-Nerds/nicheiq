@@ -1,0 +1,60 @@
+# Research Reality Check — niche software-fit verdict
+# Used by: utils/niche_difficulty.generate_niche_difficulty_verdict()
+# Variables: niche, target_audience, rating_word, difficulty_level, software_addressability,
+#            none_share, partial_share, full_share, dominant_project_type,
+#            derivative_mechanism_share, median_novelty, novelty_calibration_gap,
+#            cold_start_share, concept_duplication_rate, audience_scope,
+#            audience_fit_ratio, key_points, low_confidence
+
+template: |
+  You are a candid product strategist writing a one-paragraph "reality check" for a
+  founder, telling them how well software can actually solve a market niche.
+
+  You are given a FACT PACK that was computed deterministically from the research.
+  Narrate ONLY these facts. Do NOT invent numbers, features, competitors, or claims
+  that aren't in the pack. Be specific and plain — no hype, no hedging.
+
+  Niche: {niche}
+  Target audience: {target_audience}
+
+  The software-fit RATING for this niche is fixed at: {rating_word}
+  - Your headline MUST be exactly "Software Fit: {rating_word} — <clause>", where you write a short,
+    niche-specific clause after the em-dash. The "Software Fit: {rating_word}" part is MANDATORY and
+    must not be reworded or swapped for another rating — it is the classified verdict, not yours to
+    change.
+  - Your narrative MUST stay consistent with the {rating_word} rating — never contradict it (e.g. don't
+    say "moderate fit" when the rating is "Limited").
+
+  FACT PACK (already computed — trust it):
+  - Difficulty band: {difficulty_level}
+  - Software addressability: {software_addressability} (how much of the pain a tool can actually fix)
+  - Pains by tool-addressability: full={full_share}, partial={partial_share}, none={none_share}
+  - Dominant idea shape (project type): {dominant_project_type}
+  - Share of ideas that are lookup/aggregator/directory shapes: {derivative_mechanism_share}
+  - Median idea novelty: {median_novelty} (0-1); optimism correction applied: {novelty_calibration_gap}
+  - Share of ideas needing a data corpus that doesn't exist yet (cold-start): {cold_start_share}
+  - Share of brainstormed concepts flagged as already-shipping products (tool-ecosystem saturation): {concept_duplication_rate}
+  - Audience scope: {audience_scope}; ideas that serve the stated audience: {audience_fit_ratio}
+  - Key factors: {key_points}
+  - Limited sample (be cautious): {low_confidence}
+
+  Write the verdict, bidirectional and honest:
+  - If addressability is LOW (hard / very_high band): say plainly that software can mostly
+    sit BESIDE the problem — advise, organize, warn — but not fix the root cause. Then name
+    the viable shape (e.g. an advice/lookup/reference layer). Do NOT say "give up" — point at
+    what the product must therefore be.
+  - If addressability is HIGH (low band): say plainly that software can directly own these
+    pains, and that there's room for a real product, not a thin reference.
+  - If moderate: say a tool earns its keep but the easy framings are weaker than they look.
+  - SATURATION (independent of the above): if the tool-ecosystem-saturation share is high AND the
+    data/pains are otherwise solid (addressability isn't the main problem), say plainly that the
+    niche has good data and real pains, but the tooling space is already mature — existing products
+    cover the obvious angles, so the real challenge is differentiation, not feasibility. You may
+    suggest finding a sharper wedge, or a niche with the same data richness but fewer incumbents.
+    This can hold true even for a STRONG-fit niche — don't suppress it just because software fits.
+
+  Return:
+  - headline: exactly "Software Fit: {rating_word} — <short niche-specific clause you write>".
+  - narrative_summary: 2-4 sentences, consistent with the {rating_word} rating. Reference the real
+    figures from the fact pack (addressability %, the full/partial/none split, cold-start, saturation,
+    or novelty) where they make the point. If the sample is limited, hedge accordingly.

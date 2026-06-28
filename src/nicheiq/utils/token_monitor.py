@@ -414,6 +414,93 @@ class ContentTokenMonitor:
             base *= (1.0 - w) + w * (min(3, max(0, grade)) / 3.0)
         return base
 
+    @staticmethod
+    def select_comment_units_to_budget(
+        posts: list["RedditPost"],
+        *,
+        budget_tokens: int,
+        niche_description: str = "",
+        min_comment_chars: int = 80,
+        op_snippet_chars: int = 1000,
+        relevance_boost: float = 3.0,
+    ) -> list:
+        """Comment-level, diversity-first content selection for pain-point extraction.
+
+        Instead of feeding a few whole threads (post + entire comment tree) until the token
+        budget fills — which over-weights a handful of high-engagement threads — this flattens
+        every thread's comments, drops junk, ranks each thread's comments by
+        ``score × niche-relevance``, then ROUND-ROBINS across threads (each active thread
+        contributes its OP anchor + best comment, then its 2nd-best, …) until the budget fills.
+        Breadth is guaranteed by construction: as many threads as fit are represented, not just
+        the deepest few.
+
+        Returns an ordered list of ``(post, [selected_comments])`` bundles (threads strongest
+        first); each carries its OP (title + selftext snippet) as the context anchor. Token cost
+        is estimated at ~chars/4 — the caller's final token count is the precise bound.
+        """
+        from math import log2
+        from .validation.dedup import token_jaccard
+
+        def _flatten(cs: list, out: list) -> list:
+            for c in cs:
+                out.append(c)
+                if getattr(c, "replies", None):
+                    _flatten(c.replies, out)
+            return out
+
+        def _est(text: str) -> int:
+            return max(1, len(text or "") // 4)
+
+        bundles = []
+        for p in posts or []:
+            ranked = []
+            for c in _flatten(p.comments or [], []):
+                body = (c.body or "").strip()
+                if len(body) < min_comment_chars or body.lower() in ("[deleted]", "[removed]"):
+                    continue
+                if (c.score or 0) <= 0 and len(body) < 200:  # short, un-upvoted noise
+                    continue
+                rel = token_jaccard(body, niche_description) if niche_description else 0.0
+                eng = log2(1 + max(c.score or 0, 0))
+                priority = (0.5 + eng) * (1.0 + relevance_boost * rel)  # score × niche-relevance
+                ranked.append((priority, _est(body) + 12, c))  # +12 ≈ "- [N pts] … [source]" overhead
+            ranked.sort(key=lambda x: -x[0])
+            op_text = f"{p.title or ''}\n{(p.selftext or '')[:op_snippet_chars]}"
+            bundles.append({
+                "post": p,
+                "op_tokens": _est(op_text) + 40,  # +40 ≈ metadata header
+                "strength": ranked[0][0] if ranked else 0.0,
+                "ranked": [(t, c) for _, t, c in ranked],
+            })
+
+        # A thread with no eligible comment but a real OP still qualifies (the OP states a pain).
+        bundles = [b for b in bundles if b["ranked"] or (b["post"].selftext or b["post"].title)]
+        bundles.sort(key=lambda b: -b["strength"])
+
+        selected: dict = {id(b["post"]): [] for b in bundles}
+        used = 0
+        # Round 0: OP anchors — breadth first, every thread that fits gets its OP.
+        active = []
+        for b in bundles:
+            if used + b["op_tokens"] > budget_tokens:
+                break
+            used += b["op_tokens"]
+            active.append(b)
+        # Rounds 1+: one comment per active thread per round, in strength order.
+        r, progressed = 0, True
+        while progressed and used < budget_tokens:
+            progressed = False
+            for b in active:
+                if r < len(b["ranked"]):
+                    t, c = b["ranked"][r]
+                    if used + t <= budget_tokens:
+                        selected[id(b["post"])].append(c)
+                        used += t
+                        progressed = True
+            r += 1
+
+        return [(b["post"], selected[id(b["post"])]) for b in active]
+
     def filter_posts_to_token_budget(
         self,
         posts: list["RedditPost"],

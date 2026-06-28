@@ -48,6 +48,7 @@
   import DiscoveryEvidence from "$lib/components/discovery/DiscoveryEvidence.svelte";
   import AudienceSection from "$lib/components/sections/AudienceSection.svelte";
   import UnifiedHero from "$lib/components/sections/UnifiedHero.svelte";
+  import NicheRealityCheck from "$lib/components/sections/NicheRealityCheck.svelte";
   import Competitors from "$lib/components/sections/Competitors.svelte";
   import { LOCKED_PREVIEW_SECTIONS, ADDITIONAL_LOCKED_SECTIONS } from "$lib/types/previewReport";
   import {
@@ -759,6 +760,9 @@
               solutionCount={displaySolutions.length}
               {segmentCount}
             />
+            {#if previewReport.niche_difficulty_verdict}
+              <NicheRealityCheck verdict={previewReport.niche_difficulty_verdict} context="discovery" />
+            {/if}
           </ExpandableSection>
         {/if}
 

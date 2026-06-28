@@ -1,5 +1,6 @@
 <script lang="ts">
   import ScorePanel, { type ScoreRow } from "./ScorePanel.svelte";
+  import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
 
   // Right rail of IdeaHeroV2 — niche-score panel. Thin wrapper over the shared
   // <ScorePanel>: maps the 3 niche-score axes (demand/feasibility/opportunity)
@@ -76,17 +77,17 @@
 
   const rows = $derived.by<ScoreRow[]>(() => {
     const out: ScoreRow[] = [
-      { kind: "bar", label: "Demand", value: scores.demand, tone: "var(--color-accent)" },
-      { kind: "bar", label: "Feasibility", value: scores.feasibility, tone: "var(--color-info)" },
-      { kind: "bar", label: "Opportunity", value: scores.opportunity, tone: "var(--color-success)" },
+      { kind: "bar", label: "Demand", value: scores.demand, tone: "var(--color-accent)", description: SCORE_DEFINITIONS.demand },
+      { kind: "bar", label: "Feasibility", value: scores.feasibility, tone: "var(--color-info)", description: SCORE_DEFINITIONS.technical_feasibility },
+      { kind: "bar", label: "Opportunity", value: scores.opportunity, tone: "var(--color-success)", description: SCORE_DEFINITIONS.opportunity },
     ];
     if (hasFitRow) {
       out.push({ kind: "subhead", label: "Founder fit" });
       if (scores.originality != null && Number.isFinite(scores.originality)) {
-        out.push({ kind: "bar", label: scores.originalityLabel || "Originality", value: scores.originality, tone: "var(--color-text-muted)" });
+        out.push({ kind: "bar", label: scores.originalityLabel || "Originality", value: scores.originality, tone: "var(--color-text-muted)", description: SCORE_DEFINITIONS.originality });
       }
       if (scores.soloDev != null && Number.isFinite(scores.soloDev)) {
-        out.push({ kind: "bar", label: "Solo-dev", value: scores.soloDev, tone: "var(--color-text-muted)" });
+        out.push({ kind: "bar", label: "Solo-dev", value: scores.soloDev, tone: "var(--color-text-muted)", description: SCORE_DEFINITIONS.solo_dev });
       }
     }
     return out;

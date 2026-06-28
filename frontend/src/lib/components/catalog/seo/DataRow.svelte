@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
+  import Tooltip from '$lib/components/ui/Tooltip.svelte';
 
   // One row in a <DataList>. Renders the canonical dashed-border metadata
   // row used across catalog consumer pages: mono accent-muted uppercase
@@ -8,6 +9,9 @@
   interface Props {
     /** Kicker text on the left column. */
     label: string;
+    /** Optional hover definition for the label (renders the kicker as a
+     *  cursor-help tooltip trigger). Omit for no tooltip. */
+    labelTooltip?: string;
     /** Stack the label above the value instead of side-by-side grid.
      *  Use for wide-value content (e.g. multi-line prose) or for
      *  vertical-stack contexts like CategoryHeroAside. */
@@ -20,11 +24,17 @@
     children: Snippet;
   }
 
-  let { label, stack = false, align = 'baseline', children }: Props = $props();
+  let { label, labelTooltip, stack = false, align = 'baseline', children }: Props = $props();
 </script>
 
 <div class="data-row" class:stack class:align-center={align === 'center'}>
-  <span class="data-row-label">{label}</span>
+  {#if labelTooltip}
+    <Tooltip content={labelTooltip} position="right" class="data-row-label cursor-help">
+      {#snippet children()}{label}{/snippet}
+    </Tooltip>
+  {:else}
+    <span class="data-row-label">{label}</span>
+  {/if}
   <div class="data-row-value">{@render children()}</div>
 </div>
 

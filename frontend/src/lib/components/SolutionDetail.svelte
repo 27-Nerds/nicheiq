@@ -10,8 +10,9 @@
   import Badge from "$lib/components/ui/Badge.svelte";
   import ProgressRing from "$lib/components/ui/ProgressRing.svelte";
   import SolutionDetailContent from "$lib/components/SolutionDetailContent.svelte";
-  import Tooltip from "$lib/components/ui/Tooltip.svelte";
+  import Popover from "$lib/components/ui/Popover.svelte";
   import { scoreRationale } from "$lib/utils/scoreRationale";
+import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
   import type { SolutionPreview } from "$lib/types/job";
   import { computeCompositeScore, solutionStrengthBadge, solutionDisplayTitle, originalityMetric } from "$lib/utils/solution-utils";
 
@@ -59,6 +60,7 @@
   const total = $derived(solutions.length);
 
   const compositeScore = $derived(computeCompositeScore(solution));
+  const compositeWhy = $derived(scoreRationale(solution, "composite"));
 
   // Score color (matches ProgressRing auto logic)
   const scoreColor = $derived.by(() => {
@@ -78,11 +80,11 @@
   const origMetric = $derived(originalityMetric(solution));
 
   const individualScores = $derived([
-    { label: "MF", value: solution.market_fit_score, why: scoreRationale(solution, "market_fit") },
-    { label: "Feas", value: solution.technical_feasibility_score, why: scoreRationale(solution, "technical_feasibility") },
-    { label: "SEO", value: solution.seo_scalability_score, why: scoreRationale(solution, "seo") },
-    { label: origMetric.short ?? "Orig", value: origMetric.value, why: scoreRationale(solution, "novelty") },
-    { label: "Solo", value: solution.solo_dev_feasibility, why: scoreRationale(solution, "solo_dev") },
+    { label: "MF", value: solution.market_fit_score, def: SCORE_DEFINITIONS.market_fit, why: scoreRationale(solution, "market_fit") },
+    { label: "Feas", value: solution.technical_feasibility_score, def: SCORE_DEFINITIONS.technical_feasibility, why: scoreRationale(solution, "technical_feasibility") },
+    { label: "SEO", value: solution.seo_scalability_score, def: SCORE_DEFINITIONS.seo, why: scoreRationale(solution, "seo") },
+    { label: origMetric.short ?? "Orig", value: origMetric.value, def: SCORE_DEFINITIONS.originality, why: scoreRationale(solution, "novelty") },
+    { label: "Solo", value: solution.solo_dev_feasibility, def: SCORE_DEFINITIONS.solo_dev, why: scoreRationale(solution, "solo_dev") },
   ]);
 
   // Backend-sourced strength badge (tags.primary_strength); legacy fallback for pre-tags data.
@@ -161,10 +163,28 @@
             <p class="text-xs font-mono text-text-muted/60 mt-0.5">{solution.solution_name}</p>
           {/if}
           <div class="flex items-center gap-2 mt-1.5 flex-wrap">
-            <div class="flex items-center gap-1">
-              <ProgressRing value={compositeScore} size={24} showValue={false} color="auto" animate={false} showTooltip={false} flat={true} />
-              <span class="text-sm font-semibold font-display" style:color={scoreColor}>{Math.round(compositeScore * 100)}</span>
-            </div>
+            <!-- Click-popover content: methodology ("what it measures") + this idea's reasoning. -->
+            {#snippet scoreDetail(def: string, why: string | null, value: number | null | undefined)}
+              <div class="space-y-3">
+                <div>
+                  <div class="text-[10px] font-semibold uppercase tracking-wide text-text-muted mb-1">What this measures</div>
+                  <p class="text-text-secondary">{def}</p>
+                </div>
+                <div>
+                  <div class="text-[10px] font-semibold uppercase tracking-wide text-text-muted mb-1">Why this idea{value != null ? ` scored ${Math.round(value * 100)}` : ''}</div>
+                  <p class="text-text-secondary">{why || 'No idea-specific detail available yet.'}</p>
+                </div>
+              </div>
+            {/snippet}
+            <Popover position="bottom" label="Overall score details">
+              {#snippet trigger()}
+                <div class="flex items-center gap-1">
+                  <ProgressRing value={compositeScore} size={24} showValue={false} color="auto" animate={false} showTooltip={false} flat={true} />
+                  <span class="text-sm font-semibold font-display" style:color={scoreColor}>{Math.round(compositeScore * 100)}</span>
+                </div>
+              {/snippet}
+              {@render scoreDetail(SCORE_DEFINITIONS.composite, compositeWhy, compositeScore)}
+            </Popover>
             {#if superpower}
               <Badge variant={superpower.variant} size="sm">{superpower.label}</Badge>
             {/if}
@@ -178,23 +198,15 @@
                 <Heart class="w-3 h-3" /> {voteCount} vote{voteCount === 1 ? '' : 's'}
               </span>
             {/if}
-            <!-- Individual score breakdown -->
+            <!-- Individual score breakdown — one click-popover per score (label + number as a unit). -->
             <span class="hidden sm:inline w-px h-3 bg-border-emphasis"></span>
-            {#snippet scoreBadge(s: { label: string; value: number | null | undefined })}
-              <span class="text-[10px] text-text-muted">
-                {s.label}:<span class="font-semibold tabular-nums ml-0.5" style:color={individualScoreColor(s.value)}>{s.value != null ? (s.value * 100).toFixed(0) : '--'}</span>
-              </span>
-            {/snippet}
             {#each individualScores as s}
-              <span class="hidden sm:inline-flex items-center">
-                {#if s.why}
-                  <Tooltip content={s.why} position="bottom" class="cursor-help">
-                    {#snippet children()}{@render scoreBadge(s)}{/snippet}
-                  </Tooltip>
-                {:else}
-                  {@render scoreBadge(s)}
-                {/if}
-              </span>
+              <Popover position="bottom" label={`${s.label} score details`} class="text-[10px] text-text-muted">
+                {#snippet trigger()}
+                  <span>{s.label}:<span class="font-semibold tabular-nums ml-0.5" style:color={individualScoreColor(s.value)}>{s.value != null ? (s.value * 100).toFixed(0) : '--'}</span></span>
+                {/snippet}
+                {@render scoreDetail(s.def, s.why, s.value)}
+              </Popover>
             {/each}
           </div>
         </div>

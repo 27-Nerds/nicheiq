@@ -473,12 +473,12 @@ BRAINSTORM_LLM=gpt-4o
 # --- Diversity-aware final selection -----------------------------------------------------------
 # ENABLE_DIVERSITY_CAPS=false
 # When ON, the convergent stage keeps MORE diverse ideas instead of squeezing to ~5. The post-crew
-# enforcement (after the bold slot, before feasibility finalize) applies drop-only per-bucket caps:
+# enforcement (after coverage re-injection, before feasibility finalize) applies drop-only per-bucket caps:
 # <= DIVERSITY_MAX_PER_SEGMENT by source_segment, <= DIVERSITY_MAX_PER_MECHANISM by mechanism family
 # (greedy pairwise via _tags_match, strongest-composite anchors first), <= DIVERSITY_MAX_PER_PROJECT_TYPE
 # by project_type, and a hard ceiling of DIVERSITY_MAX_FINAL_IDEAS. Weakest excess (lowest composite ->
-# novelty -> market_fit) is dropped; ideas are never swapped or re-refined. The bold idea and any idea
-# that is the SOLE coverage of a high-severity pain are PROTECTED (never dropped). A floor
+# novelty -> market_fit) is dropped; ideas are never swapped or re-refined. The single most-novel idea
+# and any idea that is the SOLE coverage of a high-severity pain are PROTECTED (never dropped). A floor
 # (DIVERSITY_MIN_FINAL_IDEAS) re-admits the best dropped ideas, least-represented bucket first, so the set
 # never goes thin. Logs a project_type / source_segment concentration metric per run.
 # ENABLE_PAIN_SOURCE_DEDUP=false
@@ -492,8 +492,7 @@ BRAINSTORM_LLM=gpt-4o
 # DIVERSITY_MAX_PER_MECHANISM=2     # max ideas per mechanism family
 # DIVERSITY_MAX_PER_PROJECT_TYPE=3  # lenient (info-products first-class); set 2 to force type-spread
 
-# --- SEO-realism caps (downgrade-only; mirror the feasibility caps) -----------------------------
-# ENABLE_SEO_REALISM_CAPS=false
+# --- SEO-realism caps (downgrade-only, always on; mirror the feasibility caps) ------------------
 # SEO scalability = realistic count of distinct, indexable, non-thin pages. These caps key ONLY on
 # that — page count, page quality, and indexability. They do NOT penalize data sourcing (official vs
 # unofficial/scraping): that affects feasibility/durability, not whether a page ranks, and is already
@@ -510,7 +509,6 @@ BRAINSTORM_LLM=gpt-4o
 # NEVER raises a score and NEVER recomputes the composite: applied on the Stage-1 preview (no Task-4
 # ranking exists there) and on the selected solution at Stage 12 (after ranking is locked), so solution
 # RANKING is unaffected — only the displayed score + the Go/No-Go verdict become realistic. Fail-open.
-# Land dark; validate on a golden run before flipping ENABLE_SEO_REALISM_CAPS=true.
 # SEO_CAP_REQUIRE_SAAS_FOR_GATING=true   # Rule A: require saas, not just restricted data
 # SEO_CAP_GATED_SAAS_CEILING=0.5
 # SEO_CAP_THIN_PAGES_THRESHOLD=50
@@ -556,6 +554,16 @@ IDEATION_MENTOR_LLM=gpt-5.4-mini
 # scripts/idea_improvement_ab.py --v4 --reviewer-model). Requires OPENAI_API_KEY for the default model.
 IDEATION_MENTOR_REASONING_EFFORT=medium
 # Mentor depth — judges soft dimensions + proposes a creative direction, so it benefits from reasoning.
+
+# Novelty-enhance pass — refiner model (flag-gated; see ENABLE_NOVELTY_ENHANCE)
+NOVELTY_ENHANCE_LLM=openrouter/deepseek/deepseek-v4-pro:nitro
+# Refiner for the targeted novelty-enhance pass: when a validated-but-obvious cell winner is gated in, this
+# model proposes a more differentiated MECHANISM on the same pain + data; the revision is re-scored and kept
+# only if it strictly improves. SEPARATE from IDEATION_REFINE_LLM so the main ideator stays glm-4.7. Called
+# reasoning-off + creative=True (tool transport sidesteps deepseek's structured-output field-drop class — the
+# reason it is NOT the ideator). A/B winner (scripts-style refiner_multi.py across 3 niches): 4/4 Opus-audited
+# GENUINE accepts vs glm-4.7 ~78%, highest novelty reach, often lifts feasibility — at the cost of higher
+# latency. Use a family distinct from the calibration critic (qwen) so the refiner never self-judges.
 
 # Keyword Relevance Validation (90% cost reduction)
 KEYWORD_VALIDATION_LLM=gpt-4.1-nano

@@ -168,6 +168,27 @@ class Settings(BaseSettings):
             "this to >=600 when using slower models so a straggler isn't abandoned early."
         )
     )
+    # --- Per-cell tournament architecture (DEFAULT; flag kept only as a rollback to the legacy pool) ---
+    enable_per_cell_tournament: bool = Field(
+        default=True,
+        description=(
+            "Stage-5 architecture (DEFAULT). Each (pain x segment) cell runs its OWN ideator+judge "
+            "tournament (tournament_refine_cell_v4) converging to one best idea; the union of per-cell "
+            "winners (deduped only) is shown — replacing the pooled convergent-refine + the late "
+            "per-idea improvement loop + diversity caps. Won the blind A/B on top-pain coverage. Set "
+            "ENABLE_PER_CELL_TOURNAMENT=false to roll back to the legacy pooled flow (kept as the "
+            "no-cells fallback). Note: ~2.5-3x the cost/latency of the pooled flow."
+        )
+    )
+    tournament_rounds: int = Field(
+        default=2,
+        ge=1,
+        le=4,
+        description=(
+            "Ideator<->reviewer rounds per cell in enable_per_cell_tournament mode "
+            "(keep-best across rounds). 2 matches the validated mentor-loop default."
+        )
+    )
     enable_pain_partitioned_divergent: bool = Field(
         default=False,
         description=(
@@ -178,6 +199,17 @@ class Settings(BaseSettings):
             "hard-reserved non-info-product slot. Guarantees pain coverage by construction "
             "and breaks the info-product monoculture. Default OFF (land dark); flip on to "
             "A/B vs the legacy broad-sample path."
+        )
+    )
+    enable_niche_anchor_cells: bool = Field(
+        default=True,
+        description=(
+            "Bias each (pain × segment) generator cell toward the pain that best matches the "
+            "niche description (deterministic token_jaccard relevance), so a theme's cell is "
+            "seeded by the niche-defining pain rather than its highest-severity but off-niche "
+            "theme-mate. When a lower-severity pain is chosen this way, a transparency caveat is "
+            "added (it addresses the user's stated focus, not the top-severity research pain). "
+            "Off ⇒ legacy severity-only cell selection."
         )
     )
     divergent_max_generators: int = Field(
@@ -357,16 +389,9 @@ class Settings(BaseSettings):
         )
     )
     # --- SEO-realism caps (downgrade-only, mirrors the feasibility caps) -------------------
-    enable_seo_realism_caps: bool = Field(
-        default=False,
-        description=(
-            "Enable downgrade-only SEO-realism caps on seo_scalability_score (account-gated "
-            "SaaS, thin/combinatorial page counts, hand-seeded content). Default OFF; land dark "
-            "and validate on a golden run before flipping on. NEVER raises a score and NEVER "
-            "recomputes the composite, so solution RANKING is unaffected (caps the displayed "
-            "score + the verdict, applied after ranking is locked)."
-        )
-    )
+    # Always on now (the enable_seo_realism_caps flag was removed). Downgrade-only caps on
+    # seo_scalability_score (account-gated SaaS, thin/combinatorial page counts, hand-seeded
+    # content) — NEVER raise a score or recompute the composite, so RANKING is unaffected.
     enable_seo_handseed_cap: bool = Field(
         default=False,
         description=(
@@ -516,6 +541,72 @@ class Settings(BaseSettings):
             "self-scores are used as-is. Enabled by default after the A/B "
             "(scripts/score_calibration_ab.py) confirmed calibrated scores move toward a stronger "
             "reference judge on all ranking criteria (overconfidence reduced, not just lowered)."
+        )
+    )
+    enable_grounded_dev_time: bool = Field(
+        default=True,
+        description=(
+            "Replace the refiner's throwaway dev-time point guess with a grounded estimate: a "
+            "targeted web search for comparable build complexity + a decomposed, reason-first LLM "
+            "judgment anchored to the build_feasibility score, returning an honest RANGE. Off => "
+            "keep the generator's raw estimate."
+        )
+    )
+    # Targeted novelty-enhancement pass (per-cell, after calibration). For a VALIDATED-but-OBVIOUS
+    # idea (decent market_fit AND high obviousness), ask the ideator for a more differentiated
+    # MECHANISM on the SAME pain + SAME data, re-score it, and KEEP the revision ONLY if novelty
+    # rises without market_fit / feasibility regressing. Dark by default — prototype A/B (9 runs /
+    # 3 niches) showed 0/8 worse, 0/8 drifted, 6/8 genuinely better (Opus-audited); flip on after a
+    # live A/B. Gate keeps cost bounded (~half of ideas qualify; only gated ideas pay the 2 calls).
+    enable_novelty_enhance: bool = Field(
+        default=False,
+        description=(
+            "Master switch for the targeted novelty-enhancement pass. When True, a validated-but-"
+            "obvious cell winner gets one ideator revision (more differentiated mechanism, same pain "
+            "+ data); the revision is re-scored and kept ONLY if it strictly improves (novelty lift, "
+            "no market_fit/feasibility regression). Accept-guarded so it can never worsen the set."
+        )
+    )
+    novelty_enhance_min_market_fit: float = Field(
+        default=0.5, ge=0.0, le=1.0,
+        description="Gate: only enhance ideas whose calibrated market_fit is at least this (validated demand).",
+    )
+    novelty_enhance_min_obviousness: float = Field(
+        default=0.55, ge=0.0, le=1.0,
+        description="Gate: only enhance ideas whose calibrated obviousness is at least this (an obvious solution).",
+    )
+    novelty_enhance_min_novelty_lift: float = Field(
+        default=0.10, ge=0.0, le=1.0,
+        description=(
+            "Accept: keep the revision only if novelty rises by at least this. 0.10 chosen by the "
+            "prototype A/B — both reworded-only false-positives sat at the +0.05 floor; genuine wins "
+            "were >=0.10."
+        ),
+    )
+    novelty_enhance_regression_tol: float = Field(
+        default=0.05, ge=0.0, le=1.0,
+        description="Accept: reject the revision if market_fit OR technical_feasibility drops by more than this.",
+    )
+    enable_pain_relevance_filter: bool = Field(
+        default=True,
+        description=(
+            "Post-union: trim each idea's pain_points_addressed to the pains its MECHANISM actually "
+            "addresses. The grounded matcher fills that field with EVERY validated pain affecting the "
+            "idea's SEGMENT (good provenance, but it over-claims — e.g. a capsule-art tool listing "
+            "'identify underserved genres'). A cheap LLM (function_calling_llm) drops the same-audience-"
+            "but-unaddressed pains; the source pain is always kept. Fail-soft per idea → keep the full list."
+        )
+    )
+    novelty_enhance_llm: str = Field(
+        default="openrouter/deepseek/deepseek-v4-pro:nitro",
+        description=(
+            "Refiner model for the novelty-enhance pass (separate from the main ideator, "
+            "ideation_refine_llm). Called reasoning-off + creative=True (tool transport). Default "
+            "deepseek-v4-pro: in the A/B (refiner_multi.py, 3 niches) it was the quality winner — "
+            "4/4 Opus-audited GENUINE accepts (vs glm-4.7 ~78%), highest novelty reach, often lifts "
+            "feasibility, reaching for real ML/DSP techniques rather than rewording. Trade-off: "
+            "slower than glm-4.7. Note: creative=True sidesteps deepseek's structured-output "
+            "field-drop class (the reason it is NOT the main ideator)."
         )
     )
     score_calibration_llm: str = Field(
@@ -887,6 +978,24 @@ class Settings(BaseSettings):
     max_reddit_content_tokens: int = Field(
         default=150_000,
         description="Maximum tokens for Reddit content in PainPointCrew (filters by engagement/recency)"
+    )
+    enable_comment_level_pain_content: bool = Field(
+        default=True,
+        description=(
+            "Feed the pain-point finder COMMENT-level units (each thread's OP anchor + its best "
+            "comments, selected by score × niche-relevance and round-robined across threads to fit "
+            "the token budget) instead of whole comment trees from a few threads. Massively widens "
+            "thread coverage within the same budget. Off ⇒ legacy whole-thread formatting + the "
+            "post-level auto-reduction loop."
+        )
+    )
+    pain_min_comment_chars: int = Field(
+        default=80,
+        description="Minimum comment length (chars) to be eligible as a comment-level evidence unit."
+    )
+    pain_op_snippet_chars: int = Field(
+        default=1000,
+        description="Max chars of a thread's OP selftext kept as the context anchor for its comments."
     )
     min_twitter_likes: int = Field(default=10, description="Minimum likes for Twitter posts (higher threshold for quality)")
     min_twitter_replies: int = Field(

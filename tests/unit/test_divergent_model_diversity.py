@@ -553,3 +553,56 @@ class TestCellAssignment:
                                      partitioned_block="b", min_concepts=1, allow_zero=False, timeout=5,
                                      source_pain="Pain X", source_segment="Seg Y")
         assert valid and all(c.source_pain == "Pain X" and c.source_segment == "Seg Y" for c in valid)
+
+
+class TestNicheAnchorCells:
+    """Niche-relevance cell selection (settings.enable_niche_anchor_cells): each theme's cell is
+    seeded by its most niche-relevant pain, not just its highest-severity one, with a transparency
+    caveat when a lower-severity pain is chosen."""
+
+    def _themed(self, title, theme, sev, seg="S1"):
+        p = _pain_seg(title, [seg], "medium", sev)
+        p.parent_theme_id = theme
+        return p
+
+    def test_relevance_picks_anchor_pain_within_theme(self):
+        # 2 themes, target=2 -> per_theme_cap=1, so each theme contributes exactly ONE cell.
+        segs = [_seg("S1")]
+        quant = self._themed("quantization hardware fit", "model-sel", 0.70)   # high sev, off-niche
+        anchor = self._themed("best model for my task", "model-sel", 0.60)     # low sev, on-niche
+        ops = self._themed("gpu setup nightmare", "ops", 0.75)
+        rel = {id(quant): 0.05, id(anchor): 0.30, id(ops): 0.01}
+        cells = usc._assign_generator_cells([quant, anchor, ops], segs, target=2, max_gen=4, relevance=rel)
+        reps = {c["pain"].title for c in cells}
+        assert reps == {"best model for my task", "gpu setup nightmare"}  # anchor reps its theme
+
+    def test_relevance_none_keeps_highest_severity_rep(self):
+        segs = [_seg("S1")]
+        quant = self._themed("quantization hardware fit", "model-sel", 0.70)
+        anchor = self._themed("best model for my task", "model-sel", 0.60)
+        ops = self._themed("gpu setup nightmare", "ops", 0.75)
+        cells = usc._assign_generator_cells([quant, anchor, ops], segs, target=2, max_gen=4)  # relevance=None
+        reps = {c["pain"].title for c in cells}
+        assert reps == {"quantization hardware fit", "gpu setup nightmare"}  # severity wins (legacy)
+
+    def test_anchor_severity_note_flags_substitution(self):
+        quant = self._themed("quantization hardware fit", "model-sel", 0.70)
+        anchor = self._themed("best model for my task", "model-sel", 0.60)
+        rel = {id(quant): 0.05, id(anchor): 0.30}
+        notes = usc.UnifiedSolutionCrew._build_anchor_severity_notes(
+            [{"pain": anchor, "segment": None}], [quant, anchor], rel)
+        assert len(notes) == 1
+        assert "best model for my task" in notes[0] and "0.70 vs 0.60" in notes[0]
+
+    def test_anchor_note_empty_when_relevance_off(self):
+        anchor = self._themed("best model for my task", "model-sel", 0.60)
+        assert usc.UnifiedSolutionCrew._build_anchor_severity_notes(
+            [{"pain": anchor, "segment": None}], [anchor], None) == []
+
+    def test_anchor_note_empty_when_chosen_is_top_severity(self):
+        quant = self._themed("quantization hardware fit", "model-sel", 0.70)
+        anchor = self._themed("best model for my task", "model-sel", 0.60)
+        rel = {id(quant): 0.05, id(anchor): 0.30}
+        # the cell's pain IS the theme's top-severity one -> no substitution -> no note
+        assert usc.UnifiedSolutionCrew._build_anchor_severity_notes(
+            [{"pain": quant, "segment": None}], [quant, anchor], rel) == []

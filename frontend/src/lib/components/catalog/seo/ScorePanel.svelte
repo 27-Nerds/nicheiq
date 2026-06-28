@@ -14,7 +14,7 @@
   // bar that omits its own tone). Bars keep per-metric tones via row.tone.
 
   export type ScoreRow =
-    | { kind: "bar"; label: string; value: number | null; tone?: string }
+    | { kind: "bar"; label: string; value: number | null; tone?: string; description?: string }
     | { kind: "pill"; label: string; text: string; tier?: "high" | "medium" | "low" | null }
     | { kind: "subhead"; label: string };
 
@@ -106,7 +106,7 @@
         {#if row.kind === "subhead"}
           <div class="sp-subhead" aria-hidden="true"><span>{row.label}</span></div>
         {:else if row.kind === "bar"}
-          <DataRow label={row.label} align="center">
+          <DataRow label={row.label} labelTooltip={row.description} align="center">
             <div class="sp-value">
               <div class="bar">
                 <span

@@ -62,14 +62,17 @@ Ideas move through three steps, and different steps own different scores:
 
 2. **Independent review.** A separate reviewer model re-scores each concept's
    originality and feasibility — crucially, it writes its reasoning *before* its
-   numbers, and it must name the real bulk route the data is obtainable through. If it
-   can't, the data is treated as **unverified** and scored down. This is where most
-   over-optimism is caught.
+   numbers. The data route gets its own web-search check that rules three ways: a real
+   public source is **supported** (no penalty); data that's removed, gated, or doesn't
+   exist is **refuted** (scored down); and a route the search can neither confirm nor
+   refute is left **unverified** — flagged for you to check, but *not* penalized on a
+   guess. This is where most over-optimism is caught, without punishing a real idea just
+   because a search came up thin.
 
 3. **Refinement.** A final pass turns the surviving concepts into full ideas and
    scores market fit, technical feasibility, SEO scalability, novelty, and solo-dev
    feasibility — against rubrics that explicitly *demote* an idea when it has a real
-   defect (an unverified data source, an ongoing moderation burden, a cold-start
+   defect (a refuted/unobtainable data source, an ongoing moderation burden, a cold-start
    requirement), while leaving clean, simple ideas untouched.
 
 ## The honesty guardrails
@@ -85,8 +88,15 @@ scores. Every one can only lower a score:
 - **You can't build on data you can't get.** Build feasibility can never sit far above
   data feasibility. An idea that claims it's easy to build *on top of data it can't
   actually obtain* is automatically pulled back down.
-- **Access tiers have ceilings.** Data behind hard blocks is floored to a low score;
-  restricted/unverified data is capped at a modest one.
+- **A one-person product can't beat its own build difficulty.** Solo-dev feasibility is
+  capped at build feasibility + a small margin — if an idea is hard to build at all, it
+  can't be easy for one person to build *and run*. The realism critic now re-scores solo-dev
+  too (weighing ongoing support, uptime, and moderation load first, since that — not the
+  initial build — is what sinks most solo founders); this cap is the hard floor beneath that.
+- **Access tiers have ceilings.** Data the search *refutes* (removed, gated, nonexistent) is
+  floored to a low score; restricted / scraping routes are capped at a modest one. A route the
+  search could neither confirm nor refute is left **uncapped** but flagged "unverified — verify
+  before building", so an honest "we don't know" isn't treated as either a green light or a block.
 - **Operating cost counts, not just build cost.** Ideas that need ongoing manual
   moderation, community management, or continuous hand-seeding are penalized on build
   and solo-dev feasibility — a maintenance-heavy product is not a one-person product.

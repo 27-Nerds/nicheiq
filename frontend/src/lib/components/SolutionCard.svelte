@@ -8,6 +8,7 @@
   import Badge from "$lib/components/ui/Badge.svelte";
   import CategoryBadge from "$lib/components/catalog/CategoryBadge.svelte";
   import Tooltip from "$lib/components/ui/Tooltip.svelte";
+import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
   import { scoreRationale } from "$lib/utils/scoreRationale";
   import type { SolutionPreview } from "$lib/types/job";
   import { computeCompositeScore, solutionStrengthBadge, solutionDisplayTitle, solutionCardDescription, fitLabel } from "$lib/utils/solution-utils";
@@ -207,9 +208,13 @@
       {/if}
     </span>
     {#if solution.market_fit_score != null}
-      <span class="text-xs text-text-muted tabular-nums">
-        Fit <span class="font-semibold fit-num fit-num-{fit.variant}">{Math.round(solution.market_fit_score * 100)}%</span>
-      </span>
+      <Tooltip content={SCORE_DEFINITIONS.market_fit} position="bottom" class="cursor-help">
+        {#snippet children()}
+          <span class="text-xs text-text-muted tabular-nums">
+            Fit <span class="font-semibold fit-num fit-num-{fit.variant}">{Math.round((solution.market_fit_score ?? 0) * 100)}%</span>
+          </span>
+        {/snippet}
+      </Tooltip>
     {/if}
     {#if superpower}
       {#if strengthWhy}

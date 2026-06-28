@@ -85,6 +85,9 @@ export interface Report {
 	// Data Quality Summary (top-level)
 	data_quality_summary?: DataQualitySummary;
 
+	// Research Reality Check — candid software-fit verdict
+	niche_difficulty_verdict?: NicheDifficultyVerdict;
+
 	// Stage timing summary (pipeline execution timing)
 	stage_timing_summary?: StageTimingSummary;
 
@@ -649,6 +652,15 @@ export interface SubredditBreakdown {
 	post_count: number;
 }
 
+export interface NicheDifficultyVerdict {
+	difficulty_level: string; // low | medium | high | very_high
+	software_addressability: number; // 0-1
+	headline: string;
+	narrative_summary: string;
+	key_challenges: string[];
+	low_confidence: boolean;
+}
+
 export interface DataQualitySummary {
 	social_content_quality_tier?: string; // EXCELLENT, GOOD, MINIMAL, INSUFFICIENT
 	pain_point_quality_tier?: string; // GOLD, SILVER, BRONZE, INSUFFICIENT (evidence-based: measures research quality, not niche attractiveness)
@@ -701,7 +713,7 @@ export interface SolutionDetails {
 	solo_dev_feasibility?: number;
 	// Data feasibility (annotate-only; from the ideation feasibility critic)
 	data_feasibility_score?: number;
-	data_access_model?: string; // public | freemium | paywalled | unofficial | restricted
+	data_access_model?: string; // public | freemium | paywalled | unofficial | restricted | blocked | unverified
 	data_acquisition_notes?: string;
 	keyword_geographic_priorities?: string[];
 	keyword_feature_priorities?: string[];
@@ -808,7 +820,7 @@ export interface AlternativeSolution {
 	solo_dev_feasibility?: number; // 0-1 scale matching Python float
 	// Data feasibility (annotate-only; from the ideation feasibility critic)
 	data_feasibility_score?: number;
-	data_access_model?: string; // public | freemium | paywalled | unofficial | restricted
+	data_access_model?: string; // public | freemium | paywalled | unofficial | restricted | blocked | unverified
 	data_acquisition_notes?: string;
 
 	// Competitive landscape for this solution

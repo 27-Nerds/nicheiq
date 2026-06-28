@@ -209,6 +209,12 @@ REQUIREMENTS:
 5. Use action verbs (managing, coordinating, navigating, tracking, building, scheduling, optimizing, growing)
 6. Describe WHO + WHAT THEY STRUGGLE WITH — never the solution
 
+FAVOR niches a software tool can actually succeed in (this is what makes the research worth running):
+- SOFTWARE-ADDRESSABLE: the pain is a workflow, a scattered-data problem, or a hard decision — something a tool can organize, automate, or answer. NOT willpower, motivation, focus, discipline, loneliness, burnout, physical effort, or "the industry is broken" pains no app can fix.
+- DATA A TOOL COULD RUN ON: the work involves data that is either publicly gettable OR produced by the users themselves (first-party). Avoid niches whose value would depend on private data locked inside someone else's company.
+- A BUYING SIGNAL: the audience already pays for tools, loses billable hours, or runs a business where the pain costs real money.
+- DOERS, NOT SPECTATORS: aim at the people doing the work and paying the cost, not the fans or audience around it (e.g. "competitive players", not "esports fans").
+
 GOOD examples (diverse archetype structures):
 - "Dental offices managing patient recall systems"
 - "Youth sports coaches scheduling practice facilities"
@@ -225,6 +231,8 @@ DO NOT default to hobby/collector patterns (e.g. "Vintage X collectors", "DIY Y 
 AVOID:
 - Solution words: "marketplace", "platform", "app", "tool", "software", "directory", "finder", "system", "service", "hub"
 - Generic terms: "small businesses", "entrepreneurs", "startups"
+- Willpower / lifestyle / emotional pains software can't fix: focus, discipline, motivation, loneliness, burnout, confidence
+- Spectator/fan audiences (people who WATCH an activity rather than DO it)
 - Long multi-clause descriptions
 - Repeating any of the examples above verbatim
 
@@ -265,19 +273,22 @@ TRANSFORMATION RULES:
 3. If input is a pain point (e.g., "scheduling"), identify WHO has it worst
 4. Always make it specific enough that you could find Reddit threads about it
 5. Vary the action verb — use verbs like: tracking, juggling, coordinating, chasing, managing, scaling, navigating, optimizing, struggling, maintaining, syncing
+6. Pick a SOFTWARE-ADDRESSABLE angle: a workflow, a scattered-data problem, or a hard decision a tool can organize, automate, or answer — NOT willpower, focus, motivation, or emotional pains no app can fix.
+7. Lean toward an angle where a tool would have data to run on (public or user-generated, not locked in someone else's private system) AND where the audience already spends money or loses billable hours.
+8. Aim at the people DOING the activity and paying the cost, not the fans/audience watching it.
 
 AVOID these solution words in your output: "marketplace", "platform", "app", "tool", "software", "directory", "finder", "system", "service", "hub".
 
 EXAMPLES:
-- "fitness" → "Home gym owners tracking progressive overload without a spotter"
+- "fitness" → "Home gym owners tracking progressive overload across training blocks"
 - "lawyers" → "Solo immigration attorneys juggling client document collection"
-- "remote work" → "Remote-first startups coordinating team culture across timezones"
+- "remote work" → "Remote-first startups coordinating on-call rotations across timezones"
 - "invoicing" → "Freelance videographers chasing late payments from corporate clients"
-- "productivity" → "ADHD entrepreneurs struggling to maintain deep work focus"
+- "productivity" → "Agency owners tracking billable vs non-billable hours across projects"
 - "ecommerce" → "Shopify store owners manually syncing inventory across marketplaces"
 - "AI" → "Content marketers maintaining brand voice while adopting AI writing tools"
 
-THE KEY TEST: Would someone post about this specific pain on Reddit? If it's too generic, no one would.
+THE KEY TEST: Would someone post about this specific pain on Reddit, AND could a solo developer actually build a tool for it (software-addressable, with gettable data)? If either fails, pick a sharper angle.
 
 Respond with JSON:
 {

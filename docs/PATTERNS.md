@@ -571,7 +571,7 @@ for sol in refined_solutions.solution_ideas:
 **Notes**:
 - The match is by name, and refinement can rename a concept — so the consumer must tolerate a
   miss (the UI's Originality bar falls back to `novelty_score` when `obviousness_score` is null).
-- Re-injected (coverage / bold-slot) ideas run the same single-concept refinement, so they
+- Re-injected (coverage) ideas run the same single-concept refinement, so they
   carry the field too.
 
 ### Multi-Agent Sequential Crew Pattern

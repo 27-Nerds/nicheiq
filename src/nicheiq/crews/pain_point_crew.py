@@ -758,6 +758,9 @@ class PainPointCrew:
         Returns:
             Formatted string with embedded metadata for semantic search
         """
+        if settings.enable_comment_level_pain_content:
+            return self._prepare_reddit_content_comment_level()
+
         # Sort posts by pain point priority, then interleave:
         # best at beginning and end, weakest in the middle
         scored = sorted(
@@ -786,6 +789,57 @@ class PainPointCrew:
 
 {self._format_comments_with_replies(post.comments, post_id=post.post_id)}
 """)
+        return "\n\n===\n\n".join(formatted)
+
+    def _prepare_reddit_content_comment_level(self) -> str:
+        """Comment-level Reddit content (settings.enable_comment_level_pain_content).
+
+        Selects each thread's OP anchor (title + selftext snippet) + its best comments — ranked by
+        score × niche-relevance and round-robined across threads to fit the token budget — so the
+        pain finder sees BREADTH (many threads) instead of whole comment trees from a few deep ones.
+        Preserves POST_ID traceability + the U-shaped attention ordering."""
+        budget = min(settings.max_reddit_content_tokens, 500_000)
+        bundles = ContentTokenMonitor.select_comment_units_to_budget(
+            self.reddit_posts,
+            budget_tokens=budget,
+            niche_description=self.niche_description,
+            min_comment_chars=settings.pain_min_comment_chars,
+            op_snippet_chars=settings.pain_op_snippet_chars,
+        )
+        if not bundles:
+            return ""
+        # U-shaped attention: strongest threads at the front and back, weaker in the middle.
+        front = bundles[::2]
+        back = bundles[1::2]
+        ordered = front + list(reversed(back))
+
+        formatted = []
+        for post, comments in ordered:
+            op = _fence_content(
+                (post.selftext or "")[:settings.pain_op_snippet_chars], "reddit", post.post_id)
+            comment_lines = "\n".join(
+                f"- [{c.score} pts] {_sanitize_social_content(c.body)} [source: {post.post_id}]"
+                for c in comments
+            ) or "[no comments selected — OP only]"
+            formatted.append(f"""[PLATFORM: REDDIT]
+[POST_ID: {post.post_id}]
+[SUBREDDIT: r/{post.subreddit}]
+[SCORE: {post.score}]
+[URL: {post.url}]
+
+### {post.title}
+
+{op} [source: {post.post_id}]
+
+---
+## Discussion ({len(comments)} of {len(post.comments)} comments — selected for relevance + breadth):
+
+{comment_lines}
+""")
+        logger.info(
+            f"[Stage 6][comment-level] {len(ordered)} threads represented "
+            f"(of {len(self.reddit_posts)}), {sum(len(c) for _, c in ordered)} comments selected"
+        )
         return "\n\n===\n\n".join(formatted)
 
     def _prepare_twitter_content(self) -> str:
@@ -1995,7 +2049,11 @@ class PainPointCrew:
             reduction_iterations = 0
             max_iterations = 10  # Safety limit to prevent infinite loop
 
-            while content_tokens > max_content_tokens and len(self.reddit_posts) > 1 and reduction_iterations < max_iterations:
+            # Comment-level mode already bounds Reddit content to the budget during formatting, so
+            # the whole-post reduction loop is a no-op there (would needlessly drop entire threads).
+            while (not settings.enable_comment_level_pain_content
+                   and content_tokens > max_content_tokens
+                   and len(self.reddit_posts) > 1 and reduction_iterations < max_iterations):
                 reduction_iterations += 1
 
                 # Sort posts by pain point priority score (lowest first)

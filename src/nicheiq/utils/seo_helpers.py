@@ -103,7 +103,6 @@ def cap_seo_realism_score(
 def cap_idea_seo_realism(idea, settings) -> tuple[float | None, str | None]:
     """Thin wrapper: pull the real idea fields + settings ceilings, call the pure cap.
 
-    Caller is responsible for the master ``settings.enable_seo_realism_caps`` gate.
     Returns ``(capped_seo, note | None)``; does NOT mutate ``idea``.
     """
     return cap_seo_realism_score(

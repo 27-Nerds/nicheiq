@@ -30,6 +30,7 @@ const TAG_LABELS: Record<string, string> = {
   unofficial: "Unofficial data",
   restricted: "Hard-to-get data",
   blocked: "Blocked data",
+  unverified: "Unverified data",
   // build_complexity (plain effort phrasing — "high complexity" reads ambiguously)
   low: "Easy to build",
   medium: "Moderate build",
@@ -97,10 +98,11 @@ const TAG_DESCRIPTIONS: Record<string, string> = {
   unofficial: "Uses a Terms-of-service-gray route (unofficial API / scraping).",
   restricted: "Data is hard to obtain in bulk (per-lookup or login-gated).",
   blocked: "No reliable route to the required data.",
-  // build_complexity (derived from build feasibility)
-  low: "Low build effort — comfortably solo-buildable (feasibility ≥ 0.75).",
-  medium: "Moderate build effort (feasibility 0.65–0.75).",
-  high: "High build effort or operational burden (feasibility < 0.65).",
+  unverified: "Couldn't confirm or refute a public source for this data — verify it's obtainable before building.",
+  // build_complexity (derived from solo-dev feasibility — the same number shown as the "Solo" score)
+  low: "Easy for one person to build and run — the Solo score is 0.78 or higher.",
+  medium: "Moderate effort for one person to build and run — the Solo score is 0.65–0.78.",
+  high: "Hard for one person to build and run — the Solo score (build + operate solo) is below 0.65.",
   // novelty_level (derived from novelty / obviousness)
   conventional: "A well-trodden, obvious approach.",
   moderate: "Somewhat differentiated from the obvious path.",

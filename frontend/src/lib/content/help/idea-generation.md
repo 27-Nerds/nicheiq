@@ -1,16 +1,20 @@
 ## How ideas are generated
 
-Ideas don't come out of a single brainstorm. They run through a funnel that's deliberately wide at the top and ruthless after that, so what you're left with is a handful of distinct, defensible options instead of ten flavours of the same thing.
+Ideas don't come out of one big brainstorm that gets filtered down. Each of your strongest problems gets worked on its own, by its own small team, so you end up with one well-argued idea per problem instead of ten flavours of whichever problem the brainstorm happened to fixate on.
 
-### The funnel
+### One problem, one team
 
-We start from the strongest problems, the ones with real severity and evidence behind them, and we skip the ones software can't actually solve (the lifestyle and structural stuff), so nothing gets wasted inventing tools for non-tool problems.
+We start from the strongest problems, the ones with real severity and evidence behind them, and skip the ones software can't actually solve (the lifestyle and structural stuff), so nothing gets wasted inventing tools for non-tool problems.
 
-From there we brainstorm the same problems from several independent angles and personas at once. Different starting points tend to produce genuinely different ideas rather than near-copies, and sampling several independent attempts and weighing them up is a well-worn way to get more out of this kind of reasoning ([Wang et al., 2022, Self-Consistency](https://arxiv.org/abs/2203.11171)). Then a separate critic goes through every concept and scores it for novelty and feasibility, and it can only ever lower a score. It names the closest existing tool, so "a thinner version of something that already ships" gets caught, and it flags whether the data an idea needs is even obtainable. Having a model check its own work like this is a known way to cut the confident mistakes ([Dhuliawala et al., 2023, Chain-of-Verification](https://arxiv.org/abs/2309.11495)).
+Then each problem, paired with the audience that actually feels it, gets its own back-and-forth. One model proposes ideas from a fresh angle. A second model — a different family, so it isn't grading its own homework — pushes back: is this genuinely novel, can a solo dev build it, and does it still solve *this* problem rather than some bigger one nobody asked for? They go a couple of rounds and the best version wins. Proposing from several independent angles is a well-worn way to get more out of this kind of reasoning ([Wang et al., 2022, Self-Consistency](https://arxiv.org/abs/2203.11171)), and a second model checking the work catches the confident mistakes ([Dhuliawala et al., 2023, Chain-of-Verification](https://arxiv.org/abs/2309.11495)).
 
-After that we drop the duplicates ([SemDeDup, Abbas et al., 2023](https://arxiv.org/abs/2303.09540)), keep a varied shortlist, and write the survivors up in full, each with a reason it isn't obvious rather than just a description. The last step spreads the final set across audiences, mechanisms, and product types, while protecting one deliberately bold idea and any idea that's the only one covering a strong problem.
+The reason it's set up this way: when every strong problem gets its own team, the best ones can't quietly fall out of a shared pool. The highest-value problem in your niche is guaranteed an idea, instead of being the thing that got merged away while the model polished three variations of an easier one.
 
-There's one more pass, but only on the survivors that come out weak: thin, a bit me-too, or leaning on data they probably can't get. Those go through a short back-and-forth with a second model acting as a creative mentor, whose only job is to push the idea toward something sharper and more original that still solves the *same* problem, without bloating it into a bigger product nobody asked for. We learned one thing the hard way here: a model told to "make it more buildable" will cheerfully invent an official API that doesn't exist. So the mentor never gets to claim a data source is real. The idea flags any route it's unsure about, and a separate web search actually checks whether that data is gettable ([Chain-of-Verification, Dhuliawala et al., 2023](https://arxiv.org/abs/2309.11495)). If it isn't, the market-fit score gets capped honestly instead of the idea pretending the data is there. Ideas that are already strong and built on obtainable data skip this pass untouched.
+A critic scores each idea for novelty and feasibility, and it can only ever lower a score. It names the closest existing tool, so "a thinner version of something that already ships" gets caught, and it flags whether the data an idea needs is even gettable. We learned one thing the hard way: a model told to "make it more buildable" will cheerfully invent an official API that doesn't exist. So no model gets to claim a data source is real. The idea flags any route it's unsure about, and a separate web search checks each one. If the search turns up a genuine public source, the idea keeps its score; if it shows the data is removed, gated, or doesn't exist, market fit gets capped honestly; and if the search can't confirm or deny it either way, we don't punish the idea on a guess — it's marked "unverified" so you know to check the data is gettable before you build.
+
+There's one more step for the ideas where the problem is strong but the solution is predictable. If a problem is clearly worth solving but the idea we landed on is the obvious one most builders would reach for, a model takes a second run at it — not to reword it, but to find a genuinely more original mechanism for the *same* problem, built on the *same* data we already confirmed it can get. The rewrite only sticks if it actually comes out better: more original, and no weaker on whether it solves the problem or whether one person can build it. If it doesn't clear that bar, we keep the original. So this step can sharpen an idea, but it can't blunt one.
+
+Finally we drop near-duplicates across the set ([SemDeDup, Abbas et al., 2023](https://arxiv.org/abs/2303.09540)), so you're not handed three versions of the same idea dressed up as three.
 
 ### What you'll see on each idea
 
@@ -22,7 +26,7 @@ The tags fall into four buckets. **Strengths** are what an idea is genuinely goo
 
 ### What to keep in mind
 
-We don't force an even spread across problems. If the best ideas all land on one problem, that's often a sign the value really is there, so we show you the concentration instead of breaking it up for the sake of variety. The critic can also miss subtler infeasibility, so treat feasibility as a strong hunch, not a guarantee. And the bold idea is chosen for novelty, not market fit, so it's there to widen your options and it may carry more risk than the rest.
+The set covers your strongest problems roughly one apiece, so you're seeing breadth by design rather than three takes on the same idea. The critic can still miss subtler infeasibility, so treat feasibility as a strong hunch, not a guarantee.
 
 ### Sources
 

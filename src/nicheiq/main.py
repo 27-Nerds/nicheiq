@@ -75,7 +75,8 @@ def run_research(
     niche_description: str,
     allowed_project_types=None,
     resume: bool = False,
-    checkpoint_path: str = None
+    checkpoint_path: str = None,
+    stop_after_phase: int | None = None,
 ) -> str:
     """
     Run the complete NicheIQ research pipeline.
@@ -120,16 +121,17 @@ def run_research(
                 logger.error(f"Checkpoint not found: {checkpoint_path}")
                 raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
             if flow.resume_from_checkpoint(checkpoint):
-                report_path = flow._execute_remaining_stages()
+                report_path = flow._execute_remaining_stages(stop_after_phase=stop_after_phase)
             else:
                 logger.warning("Failed to resume from checkpoint, starting fresh")
-                report_path = flow.run_with_resume(auto_resume=False)
+                report_path = flow.run_with_resume(auto_resume=False, stop_after_phase=stop_after_phase)
         elif resume:
             logger.info("Auto-resume enabled - checking for latest checkpoint")
             # CLI generates a fresh job_id each run, so cross-job niche resume is intended here.
-            report_path = flow.run_with_resume(auto_resume=True, allow_cross_job=True)
+            report_path = flow.run_with_resume(auto_resume=True, allow_cross_job=True,
+                                               stop_after_phase=stop_after_phase)
         else:
-            report_path = flow.run_with_resume(auto_resume=False)
+            report_path = flow.run_with_resume(auto_resume=False, stop_after_phase=stop_after_phase)
 
         return report_path
     finally:
@@ -336,6 +338,14 @@ Examples:
     )
 
     parser.add_argument(
+        "--stop-after-phase",
+        type=int,
+        default=None,
+        choices=[1],
+        help="Stop after this phase. 1 = Phase 1 / Discovery only (pain points + preview report, no full solution report).",
+    )
+
+    parser.add_argument(
         "--resume",
         action="store_true",
         help="Automatically resume from latest checkpoint if available",
@@ -421,7 +431,8 @@ Examples:
             niche_description,
             allowed_project_types,
             resume=args.resume,
-            checkpoint_path=args.checkpoint
+            checkpoint_path=args.checkpoint,
+            stop_after_phase=args.stop_after_phase,
         )
         logger.info("\n✓ Research completed successfully!")
         logger.info(f"✓ Report saved to: {report_path}")

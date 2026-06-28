@@ -49,6 +49,10 @@ STRENGTH_CUTOFFS: list[tuple[str, str, float]] = [
     ("solo-friendly", "solo_dev_feasibility", 0.78),
 ]
 
+# "Easy to build" shares the solo-friendly cutoff so the two tags stay locked together (the table
+# above is the single source of truth — never hardcode this elsewhere).
+_SOLO_FRIENDLY_CUTOFF: float = dict((key, cut) for key, _field, cut in STRENGTH_CUTOFFS)["solo-friendly"]
+
 # data_access_model values that genuinely imply a Terms-of-Service-gray acquisition route →
 # derived tos-risk. Only `unofficial` qualifies: it denotes a ToS-gray route (unofficial API /
 # scraping a site against its terms). `restricted` / `blocked` describe OBTAINABILITY (per-ID
@@ -58,14 +62,19 @@ _TOS_RISK_ACCESS = frozenset({"unofficial"})
 
 
 def _build_complexity(idea: "BaseSolutionIdea") -> Optional[str]:
-    """Bucket build effort from build_feasibility (fallback solo_dev). Cuts recalibrated to the
-    observed 0.5-0.95 range so all three buckets populate (a flat <0.5='high' never fired)."""
-    s = idea.build_feasibility_score
+    """Bucket build effort from solo_dev_feasibility — the SAME field shown as the "Solo" chip and
+    used by the "solo-friendly" strength — so "Hard to build" can never contradict a high Solo score
+    (they read the same number). Falls back to build_feasibility/technical only when solo is absent.
+    The "low" cut is locked to the solo-friendly cutoff so Easy-to-build and Solo-friendly stay
+    mutually consistent with "Hard to build" (<0.65)."""
+    s = idea.solo_dev_feasibility
     if s is None:
-        s = idea.solo_dev_feasibility
+        s = idea.build_feasibility_score
+    if s is None:
+        s = idea.technical_feasibility_score
     if s is None:
         return None
-    if s >= 0.75:
+    if s >= _SOLO_FRIENDLY_CUTOFF:
         return "low"
     if s >= 0.65:
         return "medium"

@@ -70,15 +70,39 @@ def test_strengths_ignore_missing_scores():
 
 # --- build_complexity recalibrated buckets --------------------------------------
 
-def test_build_complexity_buckets():
+def test_build_complexity_buckets_from_solo_dev():
+    # PRIMARY driver is solo_dev_feasibility (the visible "Solo" score).
+    assert derive_tag_facets(_idea(solo_dev_feasibility=0.95)).build_complexity == "low"
+    assert derive_tag_facets(_idea(solo_dev_feasibility=0.70)).build_complexity == "medium"
+    assert derive_tag_facets(_idea(solo_dev_feasibility=0.55)).build_complexity == "high"
+
+
+def test_build_complexity_low_cut_locked_to_solo_friendly():
+    """The 'low' cut must equal the solo-friendly strength cutoff so Easy-to-build and Solo-friendly
+    stay consistent — pins the single-source-of-truth invariant (review SHOULD-FIX 1)."""
+    from nicheiq.utils.idea_tags import STRENGTH_CUTOFFS, _SOLO_FRIENDLY_CUTOFF
+
+    solo_cut = dict((k, c) for k, _f, c in STRENGTH_CUTOFFS)["solo-friendly"]
+    assert _SOLO_FRIENDLY_CUTOFF == solo_cut
+    # 0.76 is below the 0.78 cut -> medium (would have been "low" under the old 0.75 cut).
+    assert derive_tag_facets(_idea(solo_dev_feasibility=0.76)).build_complexity == "medium"
+
+
+def test_hard_to_build_and_solo_friendly_never_co_occur():
+    # solo<0.65 -> "high" (Hard to build); solo>=0.78 -> "solo-friendly". Non-overlapping by design.
+    hard = _idea(solo_dev_feasibility=0.55)
+    assert derive_tag_facets(hard).build_complexity == "high"
+    assert "solo-friendly" not in derive_tag_facets(hard).strengths
+
+    easy = _idea(solo_dev_feasibility=0.95)
+    assert derive_tag_facets(easy).build_complexity != "high"
+    assert "solo-friendly" in derive_tag_facets(easy).strengths
+
+
+def test_build_complexity_falls_back_when_solo_absent():
+    # No solo_dev -> fall back to build_feasibility, then technical.
     assert derive_tag_facets(_idea(build_feasibility_score=0.90)).build_complexity == "low"
-    assert derive_tag_facets(_idea(build_feasibility_score=0.70)).build_complexity == "medium"
-    assert derive_tag_facets(_idea(build_feasibility_score=0.55)).build_complexity == "high"
-
-
-def test_build_complexity_falls_back_to_solo_dev():
-    idea = _idea(solo_dev_feasibility=0.90)  # no build_feasibility_score
-    assert derive_tag_facets(idea).build_complexity == "low"
+    assert derive_tag_facets(_idea(technical_feasibility_score=0.55)).build_complexity == "high"
 
 
 # --- novelty_level --------------------------------------------------------------

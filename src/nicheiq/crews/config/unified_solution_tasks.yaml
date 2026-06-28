@@ -489,8 +489,8 @@ solution_refinement:
     - **novelty_score** - How differentiated is this from existing solutions?
     - **technical_feasibility_score** - Can it be BUILT AT ALL with available tech+data? (capability; gates the verdict)
       Score AT MOST equal to data obtainability — uncertain/unverified data caps this at 0.6.
-    - **solo_dev_feasibility** - Can ONE developer build AND OPERATE an MVP in ~2-3 months? (scope/effort + ongoing run cost)
-      Subtract for ongoing operational burden (manual moderation, community management, continuous hand-seeding) — a maintenance-heavy product is NOT solo-feasible at 0.8+.
+    - **solo_dev_feasibility** - Can ONE person build AND indefinitely RUN this alone? The BINDING constraint is ongoing burden (support load, uptime/on-call, manual moderation, continuous hand-seeding, multi-channel marketing) — NOT build time; that is what actually sinks solo founders. Build effort is secondary, and this cannot exceed technical_feasibility (you can't solo-run what you can't build).
+      A maintenance-heavy product is NOT solo-feasible at 0.8+ however fast it ships; reserve 0.8+ for products that genuinely run hands-off.
     - **seo_scalability_score** - Organic traffic potential = the realistic count of DISTINCT, INDEXABLE, non-thin pages this can rank (page count × page quality). This is a PRELIMINARY estimate — real page counts are validated later by keyword research, so do NOT inflate. Score the SEO surface itself; do NOT dock SEO for how the data is *sourced* (scraping vs official API is a feasibility concern, scored separately — it does not change whether a page ranks).
       BEFORE scoring above 0.7, name the actual content corpus and roughly how many UNIQUE, non-thin pages it yields. Then apply these limits:
         - "Pages" are combinatorial filler (e.g. contaminant × peptide grids) with near-duplicate thin content rather than genuinely distinct value → cap 0.6 (Google won't rank thin/duplicate pages, so a big page count alone is a mirage).
@@ -519,8 +519,7 @@ solution_refinement:
     slightly lower than a safer alternative. Give it a real novelty_score ≥ 0.6 with
     substantive conventional_approach / innovation_angle / why_it_works text. A final set
     of only "safe" ideas is INVALID — generic ideas fail in crowded markets regardless of
-    fit. (A deterministic check after you finish will re-inject the boldest concept if you
-    omit one, so include it yourself.) The bold slot must ALSO serve a DIFFERENT pain than
+    fit. The bold slot must ALSO serve a DIFFERENT pain than
     your top-scoring solution; if the lowest-obviousness concept shares your #1's pain, pick
     the next-lowest-obviousness concept that covers a distinct pain.
 
@@ -562,6 +561,7 @@ solution_refinement:
 
     **Basic Info:**
     - solution_name, headline (5-12 word human-readable title — NOT the code name), short_description (1-2 punchy sentences for card display, <180 chars), description (4-6 sentence HOW IT WORKS), value_proposition
+      NAME HYGIENE: inside description, short_description, value_proposition, and technical_approach, refer to the product as "the tool" / "it" — do NOT repeat the solution_name. The name may be revised later, and a hard-coded old name left behind reads as a bug.
     - pain_points_addressed (a best-effort exact pain title is fine — this field is RESET in
       code from the solution's grounded generation provenance, so don't over-optimize it; keep
       it present and parseable)

@@ -6,7 +6,8 @@
   import SolutionDetail from "./SolutionDetail.svelte";
   import { ListChecks, Clock } from "lucide-svelte";
   import type { SolutionPreview } from "$lib/types/job";
-  import { computeCompositeScore, solutionStrengthBadge } from "$lib/utils/solution-utils";
+  import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
+import { computeCompositeScore, solutionStrengthBadge } from "$lib/utils/solution-utils";
 
   interface Props {
     selectedNames: string[];
@@ -62,7 +63,9 @@
           {solution.solution_name === primaryWinner ? 'bg-accent/5 border-accent/20' : ''}"
         onclick={() => modalIndex = i}
       >
-        <ProgressRing value={score} size={selectedSolutions.length === 1 ? 48 : 40} animate={true} showTooltip={false} flat={true} />
+        <span class="inline-flex cursor-help" title={SCORE_DEFINITIONS.composite}>
+          <ProgressRing value={score} size={selectedSolutions.length === 1 ? 48 : 40} animate={true} showTooltip={false} flat={true} />
+        </span>
         <div class="flex-1 min-w-0">
           <h4 class="text-base font-semibold text-text-primary leading-snug truncate">{solution.solution_name}</h4>
           <p class="mt-1 text-xs text-text-muted italic truncate">{solution.value_proposition}</p>

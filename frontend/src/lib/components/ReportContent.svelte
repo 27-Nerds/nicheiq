@@ -4,6 +4,7 @@
 
   // PHASE 1: DECISION (Go/No-Go verdict)
   import UnifiedHero from "$lib/components/sections/UnifiedHero.svelte";
+  import NicheRealityCheck from "$lib/components/sections/NicheRealityCheck.svelte";
   import SolutionHero from "$lib/components/sections/SolutionHero.svelte";
 
   // PHASE 2: VALIDATE (Is the opportunity real?)
@@ -145,6 +146,13 @@
           description="The executive dashboard could not be generated for this report. Some data may be missing from earlier pipeline stages."
           variant="warning"
         />
+      </section>
+    {/if}
+
+    <!-- Research Reality Check — candid software-fit verdict (framing anchor) -->
+    {#if report.niche_difficulty_verdict}
+      <section class="report-section">
+        <NicheRealityCheck verdict={report.niche_difficulty_verdict} context="report" />
       </section>
     {/if}
 

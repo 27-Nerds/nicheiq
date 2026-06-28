@@ -420,6 +420,13 @@ validate_pain_points:
     structural, or governance/policy in nature (no software can move the needle ≥50%) is "none".
     "none" pains are excluded from downstream idea generation, so do not mark a genuinely
     tool-addressable pain "none", and do not mark a non-addressable one "full".
+    **DEFAULT TO "partial" WHEN UNSURE.** "none" is a strong, destructive verdict — it deletes the
+    pain from idea generation entirely — so only use it when the pain is CLEARLY non-technical: a
+    purely emotional, physical, social, cultural, or policy problem where no data, workflow, or
+    automation tool could plausibly help, and the evidence makes that obvious. If software might
+    help even indirectly (tracking, surfacing, coordinating, automating part of it, or aggregating
+    information about it), that is "partial", not "none". When the quotes don't clearly support
+    "none", choose "partial".
 
     **UNIVERSAL THEME SCORING CAPS (MANDATORY):**
     Pain points with names containing: "burnout", "mental health", "stress", "loneliness",

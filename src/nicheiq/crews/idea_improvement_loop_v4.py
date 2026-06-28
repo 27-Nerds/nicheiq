@@ -56,10 +56,32 @@ class IdeaCritiqueV4(BaseModel):
 
 
 class DataRouteVerdict(BaseModel):
-    """Separate, tool-grounded resolution of ONE data claim (never judged inside the loop)."""
-    obtainable: bool = Field(..., description="Can a solo dev get this data via the claimed route?")
-    access_model: str = Field(..., description="one of: official | unofficial | blocked")
-    note: str = Field("", description="≤160 chars citing the search evidence")
+    """Separate, tool-grounded resolution of ONE data claim (never judged inside the loop).
+
+    Three-way, evidence-symmetric (SAFE / decompose-then-verify): the search evidence either
+    CONFIRMS a public route, CONTRADICTS it, or is insufficient — the last ABSTAINS rather than
+    blocking, so poor search recall can never mis-classify a real public API as unobtainable."""
+    self_sourced: bool = Field(
+        ...,
+        description=(
+            "True if the product needs NO external feed — it computes from static formulas, uses "
+            "publicly downloadable datasets, user-entered values, or first-party submissions."
+        ),
+    )
+    verdict: str = Field(
+        "not_enough_info",
+        description=(
+            "one of: 'supported' (evidence shows a real, accessible public/official route), "
+            "'refuted' (evidence shows it's removed / gated / paywalled / nonexistent), or "
+            "'not_enough_info' (evidence neither confirms nor refutes)."
+        ),
+    )
+    access_model: str = Field(
+        "",
+        description="when verdict='supported': 'official' (documented public/free) or 'unofficial' (only scraping / ToS-gray).",
+    )
+    obtainable: bool = Field(True, description="convenience flag; false only when verdict='refuted'.")
+    note: str = Field("", description="≤160 chars CITING the specific search evidence for the verdict")
 
 
 def _soft_invoke(messages, output_model, *, temperature, model_name, reasoning_effort):
@@ -146,10 +168,21 @@ def _improve(crit, thread, prior, *, invoke, model, effort):
     return idea, usage
 
 
+def _canonicalize_route(access_model: str, obtainable: bool) -> str:
+    """Fold the v4 verifier's vocab (`official|unofficial|blocked`) onto the critic / `DataAccessTag`
+    vocab the rest of the pipeline keys on. `official` is not a recognized `DataAccessTag` (it shows
+    no chip and no downstream cap matches it) → map to `public` when obtainable, else `blocked` so a
+    confused `official + obtainable=false` keeps the cap."""
+    am = (access_model or "").strip().lower()
+    if am == "official":
+        return "public" if obtainable else "blocked"
+    return am or "blocked"
+
+
 def verify_data_routes(idea, grounding, *, search, invoke, model_name=None, reasoning_effort="medium") -> DataRouteVerdict | None:
     """SEPARATE tool-grounded check (Chain-of-Verification): pull the idea's data claims (+ any
-    NEEDS-VERIFY flags), search them, and resolve obtainability. Sets idea.data_access_model so the
-    downstream deterministic cap can act. Fail-soft → None (leaves the idea's own value)."""
+    NEEDS-VERIFY flags), search them, and resolve obtainability. Sets idea.data_access_model (canonical
+    vocab) + reconciles data_acquisition_notes so label and notes agree. Fail-soft → None."""
     model_name = model_name or settings.pain_point_validation_llm
     sources = ", ".join(getattr(idea, "data_sources", None) or [])
     flags = _VERIFY_RE.findall(
@@ -158,37 +191,83 @@ def verify_data_routes(idea, grounding, *, search, invoke, model_name=None, reas
     claim = "; ".join(flags) or sources
     if not claim:
         return None
-    query = f"{sources} {claim} public official API developer access documentation".strip()
+
+    prior = (getattr(idea, "data_access_model", None) or "").strip().lower()
+
+    # Targeted retrieval (SAFE-style): a generic availability query + a documentation-seeking query,
+    # so a real public API's docs surface rather than being missed by one generic query.
+    queries = [f"{sources} {claim} data availability access".strip()]
+    if sources:
+        queries.append(f"{sources[:140]} public API documentation endpoint dataset access".strip())
     snippets = ""
     if search is not None:
-        try:
-            snippets = (search(query) or "")[:1800]
-        except Exception as e:
-            logger.warning(f"[v4-verify] search failed: {str(e)[:80]}")
+        for q in queries:
+            try:
+                snippets += (search(q) or "")[:1200] + "\n"
+            except Exception as e:
+                logger.warning(f"[v4-verify] search failed: {str(e)[:80]}")
+    snippets = snippets.strip()[:2400]
     prompt = (
-        "Resolve whether a SOLO DEVELOPER can actually obtain the data this product needs, using the "
-        "web-search evidence below as ground truth over the idea's optimistic claims.\n\n"
+        "You verify whether a SOLO DEVELOPER can actually obtain the data this product needs. Decide "
+        "ONLY from the web-search evidence below — do NOT rely on your own assumptions about which APIs "
+        "might exist (that is how fabricated APIs slip through), and do NOT treat thin evidence as proof "
+        "of absence.\n\n"
         f"DATA THE PRODUCT NEEDS: {claim}\nNAMED SOURCES: {sources or 'n/a'}\n\n"
         f"WEB-SEARCH EVIDENCE:\n{snippets or '(no evidence retrieved)'}\n\n"
-        "FIRST decide whether the product even depends on a specific EXTERNAL API/feed. If it does NOT — "
-        "it computes from static formulas, uses publicly downloadable datasets, user-entered values, or "
-        "first-party submissions — then the data IS obtainable → access_model='official', obtainable=true. "
-        "Do NOT penalize an idea for 'no API found' when it needs no external API.\n"
-        "Only when it DOES depend on a specific external source, classify that source: a real public/"
-        "official/documented endpoint that exposes what's needed → 'official'; obtainable only via "
-        "scraping/ToS-gray/undocumented → 'unofficial'; reverse-engineered, partner/affiliate-gated, "
-        "blocked, or no such endpoint exists → 'blocked'. When it depends on an external API and the "
-        "evidence doesn't confirm that endpoint+capability is real and open, treat it as NOT obtainable."
+        "STEP 1 — Does the product even depend on a specific EXTERNAL API/feed? If NOT (it computes from "
+        "static formulas, publicly downloadable datasets, user-entered values, or first-party "
+        "submissions), set self_sourced=true and verdict='supported'. Never penalize an idea that needs "
+        "no external API.\n"
+        "STEP 2 — If it DOES depend on an external source (self_sourced=false), return a THREE-WAY "
+        "verdict, grounded in the evidence and CITED in `note`:\n"
+        "- 'supported': the evidence shows a real, documented, publicly or officially accessible route "
+        "that exposes what's needed. Set access_model='official', or 'unofficial' if the only route is "
+        "scraping / ToS-gray / undocumented.\n"
+        "- 'refuted': the evidence POSITIVELY shows the route is NOT obtainable — the endpoint was "
+        "removed/deprecated, is partner/affiliate/login-gated with no public path, is paywalled, or no "
+        "such source exists.\n"
+        "- 'not_enough_info': the evidence neither confirms a public route NOR shows it is closed.\n"
+        "Be SYMMETRIC: 'supported' requires positive evidence of access; 'refuted' requires positive "
+        "evidence of NON-access. A specifically NAMED official API or product for which the search "
+        "returns NO trace of existence is 'refuted' (a named, official-sounding source with zero "
+        "corroboration is fabricated). Reserve 'not_enough_info' for when the platform/source clearly "
+        "EXISTS but only its specific capability, granularity, or endpoint is unconfirmed. Never infer "
+        "'refuted' from a search miss on a real platform, nor 'supported' from optimism."
     )
     try:
         verdict, _ = LLMService.invoke_structured(
             prompt=prompt, output_model=DataRouteVerdict, temperature=0.1,
             model_name=model_name, reasoning_effort=reasoning_effort)
-        idea.data_access_model = verdict.access_model
-        if verdict.access_model == "blocked":
+        # Map the three-way verdict onto the pipeline's access vocab. 'not_enough_info' ABSTAINS
+        # (canonical 'unverified') — it is NOT in any score-cap set, so an unconfirmed route is
+        # surfaced as a caveat rather than penalized (search recall can't false-block a real API).
+        v3 = (verdict.verdict or "not_enough_info").strip().lower()
+        if verdict.self_sourced:
+            canonical = "public"
+        elif v3 == "supported":
+            canonical = _canonicalize_route(verdict.access_model or "official", True)
+        elif v3 == "refuted":
+            canonical = "blocked"
+        else:
+            canonical = "unverified"
+        idea.data_access_model = canonical
+        if canonical == "blocked":
             idea.build_feasibility_score = min(getattr(idea, "build_feasibility_score", 0.5) or 0.5, 0.3)
-        logger.info(f"[v4-verify] '{getattr(idea,'solution_name','?')}' route -> {verdict.access_model} "
-                    f"(obtainable={verdict.obtainable})")
+            df = getattr(idea, "data_feasibility_score", None)
+            if isinstance(df, (int, float)) and df > 0.2:  # re-cap stale data score (cap ran pre-loop)
+                idea.data_feasibility_score = 0.2
+            if (verdict.note or "").strip():
+                idea.data_acquisition_notes = verdict.note.strip()[:160]
+        elif canonical == "unverified":
+            # Calibrated abstention: no score penalty — flag the uncertainty honestly instead.
+            note = (verdict.note or "").strip()
+            idea.data_acquisition_notes = (
+                "Data route UNVERIFIED — could not confirm or refute a public source; verify "
+                "obtainability before building." + (f" {note}" if note else ""))[:200]
+        elif canonical != prior and (verdict.note or "").strip():
+            idea.data_acquisition_notes = verdict.note.strip()[:120]
+        logger.info(f"[v4-verify] '{getattr(idea,'solution_name','?')}' route -> {canonical} "
+                    f"(verdict={v3}, access={verdict.access_model})")
         return verdict
     except Exception as e:
         logger.warning(f"[v4-verify] resolve failed: {str(e)[:80]}")

@@ -297,3 +297,59 @@ class TestCostTrackerActualCost:
 
         ct.record_crew_usage("Stage X", M(), "gpt-4o")
         assert not mock_logger.warning.called
+
+
+# ── comment-level diversity selection (select_comment_units_to_budget) ──────────
+from types import SimpleNamespace as _NS
+
+
+def _cmt(body, score=5, replies=None):
+    return _NS(body=body, score=score, replies=replies or [])
+
+
+def _pst(pid, title="title", selftext="op text here", comments=None):
+    return _NS(post_id=pid, title=title, selftext=selftext, comments=comments or [],
+               subreddit="sub", score=10, url="u")
+
+
+class TestCommentUnitSelection:
+    def test_round_robin_spreads_across_threads(self):
+        posts = [_pst(f"t{i}", comments=[
+            _cmt(f"comment {i}-{j} that is clearly long enough to pass the length filter", score=10 - j)
+            for j in range(3)]) for i in range(3)]
+        bundles = ContentTokenMonitor.select_comment_units_to_budget(
+            posts, budget_tokens=400, niche_description="", min_comment_chars=10)
+        reps = {p.post_id for p, _ in bundles}
+        counts = [len(cs) for _, cs in bundles]
+        assert reps == {"t0", "t1", "t2"}          # breadth: every thread represented
+        assert max(counts) - min(counts) <= 1       # round-robin invariant (no thread races ahead)
+
+    def test_relevance_orders_within_thread(self):
+        niche = "best open source model selection for coding tasks"
+        post = _pst("t", comments=[
+            _cmt("random unrelated chit chat about the weather today and stuff like that", score=8),
+            _cmt("which model is best for coding model selection among open source models", score=8),
+        ])
+        bundles = ContentTokenMonitor.select_comment_units_to_budget(
+            [post], budget_tokens=100_000, niche_description=niche, min_comment_chars=10)
+        _, comments = bundles[0]
+        assert "model selection" in comments[0].body   # on-niche comment wins the tie via relevance
+
+    def test_junk_comments_filtered(self):
+        post = _pst("t", comments=[
+            _cmt("short", score=5),
+            _cmt("[deleted]", score=5),
+            _cmt("a substantive comment about the actual pain that is definitely long enough to pass the filter", score=5),
+        ])
+        bundles = ContentTokenMonitor.select_comment_units_to_budget(
+            [post], budget_tokens=100_000, niche_description="", min_comment_chars=80)
+        bodies = [c.body for _, cs in bundles for c in cs]
+        assert "short" not in bodies and "[deleted]" not in bodies
+        assert any("substantive" in b for b in bodies)
+
+    def test_budget_bounds_breadth(self):
+        posts = [_pst(f"t{i}", title="T" * 80, selftext="s" * 600,
+                      comments=[_cmt("c" * 400, score=5)]) for i in range(50)]
+        bundles = ContentTokenMonitor.select_comment_units_to_budget(
+            posts, budget_tokens=2000, niche_description="", min_comment_chars=10)
+        assert 0 < len(bundles) < 50   # budget caps how many threads fit

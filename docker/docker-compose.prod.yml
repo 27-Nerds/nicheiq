@@ -223,8 +223,7 @@ services:
       LANDING_PAGE_VALIDATION_REASONING_EFFORT: ${LANDING_PAGE_VALIDATION_REASONING_EFFORT:-low}
       # Final solution refinement pass (turns surviving concepts into full scored ideas)
       SOLUTION_REFINEMENT_ENABLED: ${SOLUTION_REFINEMENT_ENABLED:-true}
-      # SEO realism caps (downgrade-only; default OFF until calibrated) + page-count/handseed ceilings
-      ENABLE_SEO_REALISM_CAPS: ${ENABLE_SEO_REALISM_CAPS:-false}
+      # SEO realism caps (downgrade-only, always on) + page-count/handseed ceilings
       ENABLE_SEO_HANDSEED_CAP: ${ENABLE_SEO_HANDSEED_CAP:-false}
       SEO_CAP_GATED_SAAS_CEILING: ${SEO_CAP_GATED_SAAS_CEILING:-0.5}
       SEO_CAP_HANDSEED_CEILING: ${SEO_CAP_HANDSEED_CEILING:-0.6}

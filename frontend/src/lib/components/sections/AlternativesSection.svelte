@@ -12,6 +12,7 @@
   import type { AlternativeSolution } from "$lib/types/report";
   import { renderMarkdown, formatScorePercent } from "$lib/utils/format";
   import Badge from "$lib/components/ui/Badge.svelte";
+import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
   import AnimateOnScroll from "$lib/components/ui/AnimateOnScroll.svelte";
   import ProgressBar from "$lib/components/ui/ProgressBar.svelte";
   import Tooltip from "$lib/components/ui/Tooltip.svelte";
@@ -135,7 +136,11 @@
             <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
               {#if solution.market_fit_score != null}
                 <div class="text-center">
-                  <div class="text-xs text-text-muted mb-1">Market Fit</div>
+                  <div class="text-xs text-text-muted mb-1">
+                    <Tooltip content={SCORE_DEFINITIONS.market_fit} position="top" class="cursor-help">
+                      {#snippet children()}<span>Market Fit</span>{/snippet}
+                    </Tooltip>
+                  </div>
                   <ProgressBar
                     value={(solution.market_fit_score ?? 0) * 100}
                     max={100}
@@ -148,7 +153,11 @@
               {/if}
               {#if solution.technical_feasibility_score != null}
                 <div class="text-center">
-                  <div class="text-xs text-text-muted mb-1">Technical</div>
+                  <div class="text-xs text-text-muted mb-1">
+                    <Tooltip content={SCORE_DEFINITIONS.technical_feasibility} position="top" class="cursor-help">
+                      {#snippet children()}<span>Technical</span>{/snippet}
+                    </Tooltip>
+                  </div>
                   <ProgressBar
                     value={(solution.technical_feasibility_score ?? 0) * 100}
                     max={100}
@@ -161,7 +170,11 @@
               {/if}
               {#if solution.competitive_advantage_score != null}
                 <div class="text-center">
-                  <div class="text-xs text-text-muted mb-1">Competitive</div>
+                  <div class="text-xs text-text-muted mb-1">
+                    <Tooltip content={SCORE_DEFINITIONS.competitive_advantage} position="top" class="cursor-help">
+                      {#snippet children()}<span>Competitive</span>{/snippet}
+                    </Tooltip>
+                  </div>
                   <ProgressBar
                     value={(solution.competitive_advantage_score ?? 0) * 100}
                     max={100}
@@ -174,7 +187,11 @@
               {/if}
               {#if solution.seo_growth_potential_score != null}
                 <div class="text-center">
-                  <div class="text-xs text-text-muted mb-1">SEO Potential</div>
+                  <div class="text-xs text-text-muted mb-1">
+                    <Tooltip content={SCORE_DEFINITIONS.seo} position="top" class="cursor-help">
+                      {#snippet children()}<span>SEO Potential</span>{/snippet}
+                    </Tooltip>
+                  </div>
                   <ProgressBar
                     value={(solution.seo_growth_potential_score ?? 0) * 100}
                     max={100}
@@ -188,7 +205,11 @@
               {#if originalityMetric(solution).value != null}
                 {@const orig = originalityMetric(solution)}
                 <div class="text-center">
-                  <div class="text-xs text-text-muted mb-1">{orig.label}</div>
+                  <div class="text-xs text-text-muted mb-1">
+                    <Tooltip content={SCORE_DEFINITIONS.originality} position="top" class="cursor-help">
+                      {#snippet children()}<span>{orig.label}</span>{/snippet}
+                    </Tooltip>
+                  </div>
                   <ProgressBar
                     value={(orig.value ?? 0) * 100}
                     max={100}

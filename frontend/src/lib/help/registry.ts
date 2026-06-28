@@ -11,6 +11,11 @@ export interface HelpTopic {
 
 export const HELP_TOPICS: HelpTopic[] = [
   {
+    slug: "choosing-a-niche",
+    title: "How to choose a good niche",
+    subtitle: "Why the niche you type drives everything, and how to write one that produces good results",
+  },
+  {
     slug: "discovery",
     title: "How the research works",
     subtitle: "The steps behind every report, and what the Discovery phase does",

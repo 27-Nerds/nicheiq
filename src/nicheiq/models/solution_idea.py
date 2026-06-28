@@ -169,7 +169,7 @@ GrowthChannelTag = Literal[
 ]
 RiskFlagTag = Literal["regulatory", "tos-risk", "grey-market", "trust-dependent"]
 DataAccessTag = Literal[
-    "public", "freemium", "paywalled", "unofficial", "restricted", "blocked"
+    "public", "freemium", "paywalled", "unofficial", "restricted", "blocked", "unverified"
 ]
 BuildComplexityTag = Literal["low", "medium", "high"]
 NoveltyLevelTag = Literal["conventional", "moderate", "novel"]
@@ -304,7 +304,11 @@ class BaseSolutionIdea(BaseModel):
         description="Potential data sources if aggregation is required",
     )
     estimated_development_time: Optional[str] = Field(
-        default=None, description="Estimated time to build MVP"
+        default=None, description="Estimated time to build MVP (grounded range, e.g. '6-10 weeks')"
+    )
+    dev_time_rationale: Optional[str] = Field(
+        default=None,
+        description="One-line LLM reasoning for the build-time estimate (the binding/most-involved component)",
     )
     pricing_strategy: Optional[str] = Field(
         default=None, description="Detailed pricing model and monetization strategy"
@@ -350,7 +354,11 @@ class BaseSolutionIdea(BaseModel):
         description=(
             "How the required data is obtained: 'public' | 'freemium' | 'paywalled' | "
             "'unofficial' (unofficial API / scraping lib, ToS-gray — kept + flagged) | "
-            "'restricted'. ('blocked' concepts are dropped, never surfaced.)"
+            "'restricted' | 'blocked'. The Stage-7 critic drops 'blocked' RawConcepts, but the v4 "
+            "data-route verifier can also set 'blocked' AFTER that drop (when a route is unverified/"
+            "unobtainable) — those ideas SURVIVE and are market_fit/feasibility capped, not dropped. "
+            "The verifier's own 'official' verdict is canonicalized to 'public' (obtainable) or "
+            "'blocked' (not) so it always lands in this enum — see idea_improvement_loop_v4."
         ),
     )
     data_acquisition_notes: Optional[str] = Field(
@@ -537,15 +545,19 @@ class BaseSolutionIdea(BaseModel):
         ge=0.0,
         le=1.0,
         description=(
-            "Feasibility for a solo developer to build AND OPERATE (0-1 scale; includes ongoing run "
-            "cost, not just build time). "
-            "0.9-1.0: Static site + APIs, <2 months, no complex backend, no ongoing human ops. "
-            "0.7-0.8: Simple backend, 2-3 months, standard tech stack. "
-            "0.4-0.6: Moderate complexity, 3-6 months, OR needs a seeded corpus / human-in-the-loop. "
-            "0.0-0.3: Complex infrastructure, >6 months, or requires team/enterprise sales. "
-            "DEMOTE by ~0.2 for any ongoing operational burden a solo dev can't sustain — manual "
-            "content moderation, community management, or continuous hand-seeding (a maintenance-heavy "
-            "product is NOT solo-feasible at 0.8+)."
+            "Feasibility for ONE person to build AND indefinitely OPERATE this (0-1). The binding "
+            "constraint is ONGOING burden, not build time: weight support load, uptime / on-call "
+            "demands, manual moderation, continuous hand-seeding, and how many channels it must be "
+            "marketed on — these sink solo founders far more often than build complexity. Build effort "
+            "is the SECONDARY axis. Cannot exceed build feasibility (you can't solo-run what you can't "
+            "build). "
+            "0.9-1.0: ships in <2 months AND runs hands-off — static/API-backed, no human-in-the-loop, "
+            "support is occasional email. "
+            "0.7-0.8: simple backend, light support, weekly check-ins. "
+            "0.4-0.6: 3-6 month build OR a real recurring ops load (seeded corpus, human-in-the-loop, "
+            "daily monitoring). "
+            "0.0-0.3: heavy infra, 24/7 on-call / constant moderation, or needs a team / enterprise "
+            "sales. A maintenance-heavy product is NOT solo-feasible at 0.8+ however easy it is to build."
         )
     )
     obviousness_score: Optional[float] = Field(
@@ -587,6 +599,10 @@ class BaseSolutionIdea(BaseModel):
     obviousness_score_raw: Optional[float] = Field(
         default=None, ge=0.0, le=1.0,
         description="Pre-refinement critic's original obviousness_score before realism re-score.",
+    )
+    solo_dev_feasibility_raw: Optional[float] = Field(
+        default=None, ge=0.0, le=1.0,
+        description="Generator's original solo_dev_feasibility before realism calibration (audit/A-B only).",
     )
     calibration_notes: Optional[str] = Field(
         default=None,

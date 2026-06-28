@@ -1917,6 +1917,10 @@ RULES:
                 report["research_metadata"] = None
                 report["data_quality_summary"] = None
 
+            # Research Reality Check (computed end of Phase 1; visible on the discovery screen).
+            _verdict = getattr(state, "niche_difficulty_verdict", None)
+            report["niche_difficulty_verdict"] = _verdict.model_dump() if _verdict else None
+
             # ── Write to file ──
             job_id = getattr(self, "job_id", None) or getattr(state, "job_id", None)
             if not job_id:
@@ -3697,6 +3701,41 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             # then tag each idea's audience_fit (semantic primary/adjacent signal).
             self._refine_audience_against_ideas()
             self._tag_audience_fit()
+
+            # Research Reality Check: candid software-fit verdict, computed once here over
+            # all pains + all generated ideas. Read later by both the preview materializer
+            # and the full report. Best-effort — never blocks the pipeline.
+            try:
+                from ..utils.niche_difficulty import (
+                    assess_niche_difficulty,
+                    generate_niche_difficulty_verdict,
+                )
+                _pains = (
+                    self.state.pain_point_analysis.pain_points
+                    if self.state.pain_point_analysis
+                    else []
+                )
+                _ideas = refined_solutions.solution_ideas if refined_solutions else []
+                _nctx = self.state.niche_context
+                _niche = getattr(_nctx, "niche_description", None) or self.niche_description
+                _dup_rate = getattr(unified_crew, "_concept_already_exists_share", None)
+                _fact_pack = assess_niche_difficulty(_pains, _ideas, _nctx, concept_duplication_rate=_dup_rate)
+                if _fact_pack is not None:
+                    _verdict, _usage = generate_niche_difficulty_verdict(
+                        _fact_pack, _niche, _nctx
+                    )
+                    self.state.niche_difficulty_verdict = _verdict
+                    if _usage is not None:
+                        self.cost_tracker.record_llm_usage(
+                            "Stage 5 - Niche Difficulty", _usage.to_dict()
+                        )
+                    logger.info(
+                        f"[Niche Difficulty] {_verdict.difficulty_level} "
+                        f"(addressability {_verdict.software_addressability:.0%})"
+                    )
+            except Exception as e:  # noqa: BLE001 — non-critical enrichment
+                logger.warning(f"[Niche Difficulty] verdict step failed: {e}")
+
             # Surface any uncovered high-severity pains (post-crew coverage check).
             # MERGE (don't overwrite) — preserve any earlier caveat (e.g. the Stage-4 breadth
             # caveat for a too_broad audience) added before this stage.
@@ -6644,27 +6683,26 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             # Rule B engages here (in addition to A/C). Stage 12 runs AFTER ranking is locked,
             # so capping the selected solution's displayed/verdict SEO cannot reorder anything.
             refined_seo_score = refined_scalability['score']
-            if settings.enable_seo_realism_caps:
-                from ..utils.seo_helpers import cap_seo_realism_score
-                _capped, _note = cap_seo_realism_score(
-                    refined_seo_score,
-                    project_type=getattr(selected_solution, "project_type", None),
-                    data_access_model=getattr(selected_solution, "data_access_model", None),
-                    content_generation_model=getattr(selected_solution, "content_generation_model", None),
-                    estimated_indexable_pages=page_count,
-                    require_saas_for_gating=settings.seo_cap_require_saas_for_gating,
-                    gated_saas_ceiling=settings.seo_cap_gated_saas_ceiling,
-                    thin_pages_threshold=settings.seo_cap_thin_pages_threshold,
-                    thin_pages_ceiling=settings.seo_cap_thin_pages_ceiling,
-                    high_score_min_pages=settings.seo_cap_high_score_min_pages,
-                    moderate_pages_ceiling=settings.seo_cap_moderate_pages_ceiling,
-                    handseed_ceiling=(settings.seo_cap_handseed_ceiling
-                                      if settings.enable_seo_handseed_cap else None),
-                )
-                if _note:
-                    logger.info(f"[Stage 12][SEO-REALISM] {selected_solution_name}: "
-                                f"{refined_seo_score:.2f} -> {_capped:.2f} ({_note})")
-                    refined_seo_score = _capped
+            from ..utils.seo_helpers import cap_seo_realism_score
+            _capped, _note = cap_seo_realism_score(
+                refined_seo_score,
+                project_type=getattr(selected_solution, "project_type", None),
+                data_access_model=getattr(selected_solution, "data_access_model", None),
+                content_generation_model=getattr(selected_solution, "content_generation_model", None),
+                estimated_indexable_pages=page_count,
+                require_saas_for_gating=settings.seo_cap_require_saas_for_gating,
+                gated_saas_ceiling=settings.seo_cap_gated_saas_ceiling,
+                thin_pages_threshold=settings.seo_cap_thin_pages_threshold,
+                thin_pages_ceiling=settings.seo_cap_thin_pages_ceiling,
+                high_score_min_pages=settings.seo_cap_high_score_min_pages,
+                moderate_pages_ceiling=settings.seo_cap_moderate_pages_ceiling,
+                handseed_ceiling=(settings.seo_cap_handseed_ceiling
+                                  if settings.enable_seo_handseed_cap else None),
+            )
+            if _note:
+                logger.info(f"[Stage 12][SEO-REALISM] {selected_solution_name}: "
+                            f"{refined_seo_score:.2f} -> {_capped:.2f} ({_note})")
+                refined_seo_score = _capped
 
             # Update CAC metadata with page count
             refined_cac['metadata']['estimated_year1_pages'] = page_count

@@ -1,0 +1,182 @@
+"""Hermetic tests for the Research Reality Check difficulty classifier.
+
+Targets the pure `assess_niche_difficulty` (no LLM/IO) plus the deterministic
+fallback path of `generate_niche_difficulty_verdict` (LLM monkeypatched to raise).
+"""
+
+from types import SimpleNamespace
+
+import pytest
+
+from nicheiq.utils.niche_difficulty import (
+    assess_niche_difficulty,
+    generate_niche_difficulty_verdict,
+)
+
+
+def _pain(tool="full"):
+    return SimpleNamespace(tool_addressable=tool)
+
+
+def _idea(
+    novelty=0.5,
+    novelty_raw=None,
+    project_type="saas",
+    mechanism_tag="workflow-automation",
+    audience_fit=None,
+    requires_data_aggregation=False,
+    data_access_model="public",
+):
+    return SimpleNamespace(
+        novelty_score=novelty,
+        novelty_score_raw=novelty_raw,
+        project_type=project_type,
+        mechanism_tag=mechanism_tag,
+        audience_fit=audience_fit,
+        requires_data_aggregation=requires_data_aggregation,
+        data_access_model=data_access_model,
+    )
+
+
+def _nc(scope=None, audience="founders"):
+    return SimpleNamespace(audience_scope=scope, user_target_audience=audience)
+
+
+def test_empty_returns_none():
+    assert assess_niche_difficulty([], [], _nc()) is None
+
+
+def test_all_none_tool_addressable_is_very_high():
+    fp = assess_niche_difficulty([_pain("none")] * 6, [_idea()] * 4, _nc())
+    assert fp.difficulty_level == "very_high"
+    assert fp.software_addressability == 0.0
+    assert "tool_addressability" in fp.flags
+
+
+def test_all_full_high_novelty_is_low():
+    ideas = [
+        _idea(novelty=0.6, novelty_raw=0.62, project_type=pt, mechanism_tag="workflow")
+        for pt in ("saas", "marketplace", "saas", "comparison-tool")
+    ]
+    fp = assess_niche_difficulty([_pain("full")] * 6, ideas, _nc())
+    assert fp.difficulty_level == "low"
+    assert fp.software_addressability == 1.0
+    assert fp.flags == []  # no friction
+
+
+def test_missing_raw_means_no_calibration_gap():
+    fp = assess_niche_difficulty(
+        [_pain("partial")] * 4,
+        [_idea(novelty=0.5, novelty_raw=None)] * 3,
+        _nc(),
+    )
+    assert fp.novelty_calibration_gap is None
+    assert "calibration" not in fp.flags
+
+
+def test_audience_fit_ratio_only_for_segment_scope():
+    ideas = [_idea(audience_fit=True), _idea(audience_fit=False)]
+    fp_other = assess_niche_difficulty([_pain("full")] * 3, ideas, _nc(scope="niche"))
+    assert fp_other.audience_fit_ratio is None
+
+    fp_seg = assess_niche_difficulty(
+        [_pain("full")] * 3, ideas, _nc(scope="segment_of_niche")
+    )
+    assert fp_seg.audience_fit_ratio == 0.5
+
+
+def test_low_confidence_on_tiny_sample():
+    fp = assess_niche_difficulty([_pain("partial")], [_idea()], _nc())
+    assert fp.low_confidence is True
+
+
+def test_concentrated_derivative_low_novelty_escalates():
+    # 4 aggregator/lookup ideas, low novelty -> derivative flag; combined with the
+    # tool-addressability flag (partial pains) this should escalate past 'medium'.
+    ideas = [
+        _idea(novelty=0.3, project_type="aggregator", mechanism_tag="lookup-database")
+        for _ in range(4)
+    ]
+    fp = assess_niche_difficulty([_pain("partial")] * 4, ideas, _nc())
+    assert "derivative" in fp.flags
+    assert fp.difficulty_level in ("high", "very_high")
+    assert fp.derivative_mechanism_share == 1.0
+
+
+def test_saturation_surfaces_even_on_strong_fit_niche():
+    # Strong fit (addressable pains, public data, room for novelty) BUT a high share of brainstormed
+    # concepts were flagged already-existing → "great data, clear pains, mature tool ecosystem".
+    pains = [_pain("full")] * 6 + [_pain("partial")] * 2
+    ideas = [_idea(novelty=0.5) for _ in range(4)]
+    fp = assess_niche_difficulty(pains, ideas, _nc("segment_of_niche"), concept_duplication_rate=0.44)
+    assert fp.difficulty_level == "low"                       # software fits
+    assert fp.concept_duplication_rate == 0.44
+    assert "saturated_tooling" in fp.flags
+    assert any("tool ecosystem looks mature" in k for k in fp.key_points)  # surfaced despite strong fit
+
+
+def test_no_saturation_when_duplication_low():
+    pains = [_pain("full")] * 6 + [_pain("partial")] * 2
+    ideas = [_idea(novelty=0.5) for _ in range(4)]
+    fp = assess_niche_difficulty(pains, ideas, _nc("segment_of_niche"), concept_duplication_rate=0.1)
+    assert "saturated_tooling" not in fp.flags
+
+
+def test_saturation_skipped_when_fit_is_the_problem():
+    # When addressability is low, the fit verdict leads — don't also cry "saturated".
+    pains = [_pain("none")] * 6 + [_pain("partial")] * 2
+    ideas = [_idea(novelty=0.4) for _ in range(4)]
+    fp = assess_niche_difficulty(pains, ideas, _nc("segment_of_niche"), concept_duplication_rate=0.5)
+    assert "saturated_tooling" not in fp.flags
+
+
+def test_blocked_data_access_counts_as_cold_start():
+    ideas = [_idea(requires_data_aggregation=False, data_access_model="blocked")] * 3
+    fp = assess_niche_difficulty([_pain("partial")] * 3, ideas, _nc())
+    assert fp.cold_start_share == 1.0
+
+
+def _patch_llm_headline(monkeypatch, headline):
+    from types import SimpleNamespace
+    from nicheiq.utils import llm_service
+    monkeypatch.setattr(
+        llm_service.LLMService, "invoke_structured",
+        staticmethod(lambda **kw: (SimpleNamespace(headline=headline, narrative_summary="ok"), None)),
+    )
+
+
+def test_verdict_rejects_headline_with_wrong_rating(monkeypatch):
+    # very_high band -> rating word "Hard". An LLM headline that says "Limited" contradicts the band,
+    # so the guard rejects it and the deterministic headline stands.
+    _patch_llm_headline(monkeypatch, "Software Fit: Limited — differentiation is the real bottleneck")
+    fp = assess_niche_difficulty([_pain("none")] * 5, [_idea(novelty=0.3)] * 3, _nc())
+    assert fp.difficulty_level == "very_high"
+    v, _ = generate_niche_difficulty_verdict(fp, "x", _nc())
+    assert v.headline == "Software Fit: Hard — software can only sit beside the problem"
+
+
+def test_verdict_keeps_tailored_headline_when_rating_matches(monkeypatch):
+    # medium band -> "Moderate"; a matching tailored headline is kept verbatim.
+    _patch_llm_headline(monkeypatch, "Software Fit: Moderate — pick the wedge carefully")
+    fp = assess_niche_difficulty([_pain("full")] * 2 + [_pain("partial")] * 3, [_idea(novelty=0.45)] * 3, _nc())
+    v, _ = generate_niche_difficulty_verdict(fp, "x", _nc())
+    assert fp.difficulty_level == "medium"
+    assert v.headline == "Software Fit: Moderate — pick the wedge carefully"
+
+
+def test_verdict_falls_back_when_llm_raises(monkeypatch):
+    from nicheiq.utils import llm_service
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("no live llm in tests")
+
+    monkeypatch.setattr(llm_service.LLMService, "invoke_structured", staticmethod(_boom))
+
+    fp = assess_niche_difficulty([_pain("none")] * 5, [_idea(novelty=0.3)] * 3, _nc())
+    verdict, usage = generate_niche_difficulty_verdict(fp, "peptide research", _nc())
+
+    assert usage is None
+    assert verdict.difficulty_level == "very_high"
+    assert verdict.headline  # deterministic fallback populated
+    assert verdict.narrative_summary
+    assert verdict.software_addressability == fp.software_addressability

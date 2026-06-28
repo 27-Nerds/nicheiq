@@ -223,26 +223,48 @@ filter/refine/select tasks above:
 3. **Pool + dedup** (`_pool_and_dedup_raw_concepts`) across all samples, capped at
    `divergent_pool_cap` (default 12). Falls back to a single divergent sample if the pool
    comes back too small.
-4. **Convergent tasks** (refine → select) run on the deduped pooled concepts — the refiner
-   consumes `{pooled_concepts}` directly (the LLM diversity filter was removed; deterministic
-   dedup before + the refine diversity guardrail + caps after replace it). The M/D/J-tag
-   carry-through also copies `obviousness_score` from the pooled `RawConcept` onto the final
-   refined idea by whitespace-normalized name.
-5. **Deterministic coverage + bold-slot re-injection** — after refinement, code (not the
-   LLM) guarantees pain-point coverage and a single **bold slot** (the most original unused
-   concept). Re-injected ideas are fully refined via `_refine_single_concept` (not stubs) so
-   they carry the same fields and scores as the rest.
-6. **Mentor improvement loop** (`_run_improvement_loop`, after calibration) — a below-bar idea
-   is refined through a short ideator↔reviewer dialog where the reviewer is a *creative mentor*
-   (a different model, gpt-5.4-mini) that pushes for a sharper, more original, on-pain idea and
-   forbids scope-inflation. The loop scores only the soft dimensions; the ideator flags any
-   uncertain data route as `[NEEDS-VERIFY: …]` instead of asserting an API, and a **separate
-   web-search verification step** resolves each route and sets `data_access_model` — so the
-   model never confabulates an API the loop then rewards. Cost-gated: ideas already strong on
-   calibrated scores with an obtainable route skip the loop (no LLM cost); only weak/unverified
-   ideas enter, capped at 2 rounds. Validated +0.21/+0.97 mean-composite vs baseline across two
-   runs (independent Opus judges). The deterministic backstop (below) then caps `market_fit` on
-   any route the verifier couldn't confirm — honest scores, not confabulated ones.
+4. **Per-cell ideator↔judge tournaments** (DEFAULT, `enable_per_cell_tournament`). Instead of
+   pooling everything into one convergent-refine crew, each `(pain × segment)` cell runs its OWN
+   tournament IN PARALLEL: pre-rank the cell's concepts → expand the best into a full idea
+   (`_refine_single_concept`) → `tournament_refine_cell_v4` converges it through the ideator↔mentor
+   loop (below) → ONE best per cell. The union of per-cell winners (deduped only — no diversity
+   caps) is shown, so every cell's pain is structurally covered (one idea each). Provenance
+   (`source_pain`/segment + M/D/J tags + critic feasibility) is stamped by cell identity, not a
+   name-join. Cost ~2.5–3× the pooled flow; won the blind A/B on top-pain coverage. The legacy
+   **pooled convergent refine → (select)** path (refiner consumes `{pooled_concepts}`) remains as
+   the fallback when there are no partition cells. Each cell emits a FULLY-SCORED idea: the
+   realism re-score critic (`_calibrate_idea_scores`) and the closed-vocab tagger (`_apply_tags`)
+   run per-cell in the cell's thread, alongside the deterministic feasibility + SEO-realism caps —
+   so the post-union passes (step 5) only finish the few coverage-net stragglers.
+   Optionally (`enable_novelty_enhance`, after calibrate+caps, before SEO/tags) a **targeted
+   novelty pass** (`_novelty_enhance`) fires on VALIDATED-but-OBVIOUS winners (market_fit ≥ gate AND
+   obviousness ≥ gate): the refiner (`novelty_enhance_llm`, default deepseek-v4-pro) proposes a more
+   differentiated MECHANISM on the SAME pain + data, the revision is re-scored, and it is KEPT only
+   if novelty rises ≥ the lift threshold with no market_fit/feasibility regression — accept-guarded,
+   so it can never worsen the set (A/B: 0 worse / 0 drifted across 3 niches).
+5. **Deterministic coverage re-injection** — after refinement, code (not the LLM) guarantees
+   pain-point coverage: a high-severity pain the diversity filter dropped is re-injected as the
+   best-covering divergent concept, fully refined via `_refine_single_concept` (not a stub) so it
+   carries the same fields and scores as the rest. The idempotent post-union scorers then finish
+   any such re-injected idea (the in-cell winners are skipped, already scored). SEO-realism caps
+   are always on (the `enable_seo_realism_caps` flag was removed), still applied on the
+   `skip_selection` live/preview path and deferred to Stage 12 on the legacy one-shot path.
+6. **The per-cell ideator↔mentor loop** (`tournament_refine_cell_v4`, run inside step 4) — each
+   cell's idea is refined through a short ideator↔reviewer dialog where the reviewer is a *creative
+   mentor* (a **different model than the ideator** so it doesn't self-judge: ideator glm-4.7,
+   reviewer `deepseek-v4-pro@none` — won a blind Opus A/B over gpt-5.4-mini across 3 niches at
+   ~2.5× lower cost) that pushes for a sharper, more original, on-pain idea and forbids
+   scope-inflation. The loop scores only the soft dimensions; the ideator flags any uncertain data
+   route as `[NEEDS-VERIFY: …]` instead of asserting an API, and a **separate web-search
+   verification step** (a SAFE / Chain-of-Verification check) resolves each route THREE ways from
+   the search evidence and sets `data_access_model`: **supported** → a real public/official source
+   (no penalty); **refuted** → removed / gated / paywalled / nonexistent (`market_fit` capped); or
+   **not-enough-info** → `unverified`, left UNCAPPED but flagged "verify before building". The rule
+   is symmetric and evidence-only (no model belief): crediting needs evidence of access, blocking
+   needs evidence of NON-access, and thin/silent search abstains — so the model never confabulates
+   an API the loop rewards, nor blocks a real one the search merely missed. Capped at
+   `tournament_rounds` (default 2). (The legacy late per-idea `_run_improvement_loop`
+   was removed — the per-cell tournament IS this loop, run once per cell.)
 7. **Deterministic score backstop** (`_validate_idea_scores`) — downgrade-only invariants the
    LLM doesn't reliably hold: `novelty ≤ 1 − obviousness`, and `market_fit ≤ 0.4` when the data
    route is unverified/unbuildable. Never inflates.
@@ -250,6 +272,16 @@ filter/refine/select tasks above:
 `obviousness_score` is surfaced in the UI as **Originality** (= 1 − obviousness_score,
 falling back to `novelty_score`). `novelty_score` stays the refiner's separate signal and
 continues to drive the composite score and the "Innovator" superpower.
+
+**Research Reality Check** (end of Phase 1, `utils/niche_difficulty.py`). Right after idea
+generation + audience-fit tagging, a deterministic classifier scores how well software can
+actually solve the niche — `software_addressability` (from pain-point `tool_addressable`
+shares) plus a `difficulty_level` band — using only already-computed signals (novelty +
+raw→calibrated gap, project-type concentration, cold-start data dependency, audience fit).
+A grounded best-effort LLM pass writes the candid prose (deterministic templated fallback if
+it fails). The verdict is stored once on `state.niche_difficulty_verdict` and read by both the
+Phase-1 preview materializer (discovery screen) and the full report — no double generation.
+Same "code judges, LLM narrates" split as the score backstop above.
 
 ---
 

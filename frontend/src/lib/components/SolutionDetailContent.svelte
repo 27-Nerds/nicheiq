@@ -46,7 +46,7 @@
   );
   const chip = (v: string, label?: string) => ({ label: label ?? humanizeTag(v), description: tagDescription(v) });
   // data-access values that signal sourcing friction → surfaced as watch-outs
-  const FRICTION_DATA = new Set(["paywalled", "unofficial", "restricted", "blocked"]);
+  const FRICTION_DATA = new Set(["paywalled", "unofficial", "restricted", "blocked", "unverified"]);
 
   // Model = identity only (what / who / how it earns) — always shown, neutral.
   const modelItems = $derived.by(() => {
@@ -78,7 +78,13 @@
     const items: { label: string; description?: string }[] = [];
     if (t.build_complexity === "high") items.push(chip("high"));
     if (t.novelty_level === "conventional") items.push(chip("conventional"));
-    if (t.data_access && FRICTION_DATA.has(t.data_access)) items.push(chip(t.data_access));
+    if (t.data_access && FRICTION_DATA.has(t.data_access))
+      // Prefer the verifier's per-idea, evidence-grounded note (LLM-generated) over the static
+      // definition — it explains WHY *this* idea's data route is gated/unverified, citing the search.
+      items.push({
+        label: humanizeTag(t.data_access),
+        description: solution.data_acquisition_notes?.trim() || tagDescription(t.data_access),
+      });
     for (const r of t.risk_flags ?? []) items.push(chip(r));
     return items;
   });
@@ -227,9 +233,19 @@
   <!-- Quick info row -->
   {#if devTimeParsed}
     <div class="flex flex-wrap items-center gap-2">
-      <span class="text-xs text-text-muted flex items-center gap-1" title={devTimeParsed.full}>
-        <span>&#9201;</span> {devTimeParsed.short}
-      </span>
+      <Tooltip
+        content={solution.dev_time_rationale?.trim()
+          ? `Grounded solo-dev MVP estimate. Binding driver: ${solution.dev_time_rationale.trim()}`
+          : "Estimated time for a solo dev to ship a working MVP — a grounded range anchored to build feasibility, not a precise commitment."}
+        position="top"
+        class="cursor-help"
+      >
+        {#snippet children()}
+          <span class="text-xs text-text-muted flex items-center gap-1">
+            <span>&#9201;</span> {devTimeParsed.short}
+          </span>
+        {/snippet}
+      </Tooltip>
     </div>
   {/if}
 

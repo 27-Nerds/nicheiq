@@ -37,6 +37,8 @@ def _crit_self(pain_points=None):
         _record_divergent_usage=lambda u: None,
     )
     fake._run_parallel = usc.UnifiedSolutionCrew._run_parallel.__get__(fake)
+    fake._calibration_static_prompt = usc.UnifiedSolutionCrew._calibration_static_prompt.__get__(fake)
+    fake._calibrate_batch = usc.UnifiedSolutionCrew._calibrate_batch.__get__(fake)
     fake._calibrate_idea_scores = usc.UnifiedSolutionCrew._calibrate_idea_scores.__get__(fake)
     return fake
 
@@ -77,6 +79,23 @@ class TestReplaceAndProvenance:
         assert idea.seo_scalability_score_raw == 0.8
         assert idea.obviousness_score_raw == 0.2
         assert idea.calibration_notes and "market_fit" in idea.calibration_notes
+
+    def test_rescores_solo_dev_and_preserves_raw(self, monkeypatch):
+        # solo_dev_feasibility is now part of the re-grade (ops-burden-weighted second opinion);
+        # the idea field name differs from the critic field, so this guards the mapping.
+        idea = _idea(solo_dev_feasibility=0.9)
+        _run(monkeypatch, [idea], [_cal(
+            "A", solo_dev_feasibility_score=0.45,
+            solo_dev_feasibility_reason="needs 24/7 moderation",
+        )])
+        assert idea.solo_dev_feasibility == 0.45
+        assert idea.solo_dev_feasibility_raw == 0.9
+        assert "solo_dev_feasibility" in (idea.calibration_notes or "")
+
+    def test_solo_dev_abstain_keeps_generator_value(self, monkeypatch):
+        idea = _idea(solo_dev_feasibility=0.85)
+        _run(monkeypatch, [idea], [_cal("A", market_fit_score=0.4, market_fit_reason="x")])
+        assert idea.solo_dev_feasibility == 0.85 and idea.solo_dev_feasibility_raw is None
 
     def test_raw_survives_checkpoint_round_trip(self, monkeypatch):
         idea = _idea()

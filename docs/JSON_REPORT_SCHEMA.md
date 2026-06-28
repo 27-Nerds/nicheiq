@@ -107,7 +107,7 @@ The executive dashboard provides a quick go/no-go decision framework.
 {
   "title": "string",
   "severity_score": 0.85,
-  "willingness_to_pay_score": 0.75,
+  "commercial_intent_score": 0.75,
   "representative_quote": "string",
   "source_platform": "Reddit r/LocalLLaMA"
 }
@@ -117,7 +117,7 @@ The executive dashboard provides a quick go/no-go decision framework.
 |-------|------|-------------|
 | `title` | `string` | Pain point title |
 | `severity_score` | `number` (0-1) | Severity score |
-| `willingness_to_pay_score` | `number` (0-1) | WTP score |
+| `commercial_intent_score` | `number` (0-1) | WTP score |
 | `representative_quote` | `string` | User quote illustrating pain |
 | `source_platform` | `string` | Source platform |
 
@@ -135,7 +135,7 @@ The executive dashboard provides a quick go/no-go decision framework.
   "high_severity_pain_points": 7,
   "primary_competitor_count": 5,
   "avg_pain_point_severity": 0.76,
-  "avg_willingness_to_pay": 0.72,
+  "avg_commercial_intent": 0.72,
   "social_evidence_threads": 54,
   "market_fit_score": 0.88,
   "competitive_advantage_score": 0.7,
@@ -157,7 +157,7 @@ The executive dashboard provides a quick go/no-go decision framework.
 | `high_severity_pain_points` | `number` | Pain points with severity >= 0.7 |
 | `primary_competitor_count` | `number` | Direct competitors identified |
 | `avg_pain_point_severity` | `number` (0-1) | Average severity |
-| `avg_willingness_to_pay` | `number` (0-1) | Average WTP |
+| `avg_commercial_intent` | `number` (0-1) | Average WTP |
 | `social_evidence_threads` | `number` | Total social threads analyzed (Reddit + Twitter + HN + generic) |
 | `market_fit_score` | `number \| null` (0-1) | Market fit score |
 | `competitive_advantage_score` | `number \| null` (0-1) | Competitive advantage |
@@ -332,7 +332,7 @@ Actionable GTM strategy for immediate execution.
     "low_severity_low_wtp": 0
   },
   "avg_severity": 0.76,
-  "avg_willingness_to_pay": 0.72,
+  "avg_commercial_intent": 0.72,
   "top_pain_point_title": "string"
 }
 ```
@@ -344,7 +344,7 @@ Actionable GTM strategy for immediate execution.
 | `high_opportunity_count` | `number` | Both severity >= 0.6 and WTP >= 0.6 |
 | `quadrant_distribution` | `object` | Priority matrix distribution |
 | `avg_severity` | `number` (0-1) | Average severity |
-| `avg_willingness_to_pay` | `number` (0-1) | Average WTP |
+| `avg_commercial_intent` | `number` (0-1) | Average WTP |
 | `top_pain_point_title` | `string` | Highest priority pain point |
 
 ### `data_quality_summary: object`
@@ -369,11 +369,16 @@ Actionable GTM strategy for immediate execution.
 
 **Pain Point Quality Tier** measures research evidence breadth and diversity, not niche attractiveness. Tiers are determined by four evidence metrics:
 
+`quote_density` counts **stance-verified** quotes per pain point (each quote must
+genuinely express the pain; off-topic/positive quotes are excluded) and is per-post
+capped, so the realistic range is ~1–5. The thresholds below are calibrated to that
+scale (recalibrated from the legacy pad-to-12 scale of 8/5/3).
+
 | Tier | `unique_source_count` | `subreddit_diversity` | `pain_point_count` | `quote_density` |
 |------|----------------------|----------------------|-------------------|----------------|
-| GOLD | >= 20 | >= 4 | >= 5 | >= 8.0 |
-| SILVER | >= 10 | >= 2 | >= 3 | >= 5.0 |
-| BRONZE | >= 5 | (no gate) | >= 2 | >= 3.0 |
+| GOLD | >= 20 | >= 4 | >= 5 | >= 4.0 |
+| SILVER | >= 10 | >= 2 | >= 3 | >= 2.0 |
+| BRONZE | >= 5 | (no gate) | >= 2 | >= 1.0 |
 | INSUFFICIENT | below BRONZE — pipeline stops | | | |
 
 **Confidence score weights** (single-platform): `unique_source_count` 0.30, `subreddit_diversity` 0.25, `quote_density` 0.25, `pain_point_count` 0.20.
@@ -463,7 +468,8 @@ Actionable GTM strategy for immediate execution.
 | `differentiation_factors` | `array[string]` | Unique differentiators |
 | `requires_data_aggregation` | `boolean` | Needs data sourcing |
 | `data_sources` | `array[string]` | Required data sources |
-| `estimated_development_time` | `string` | Dev time estimate |
+| `estimated_development_time` | `string` | Solo-dev MVP build time as a **grounded range** (e.g. `"6-10 weeks"`) — re-estimated post-scoring by a web-search + decomposed LLM judgment anchored to `build_feasibility_score`, not the refiner's point guess. |
+| `dev_time_rationale` | `string\|null` | One-line LLM reasoning for the build-time estimate (the binding / most-involved component). Surfaced in the dev-time chip's hover tooltip. |
 | `pricing_strategy` | `string` | Pricing approach |
 | `market_fit_score` | `number` (0-1) | Market fit |
 | `technical_feasibility_score` | `number` (0-1) | Feasibility |
@@ -482,7 +488,7 @@ Actionable GTM strategy for immediate execution.
 | `why_it_works` | `string` | Evidence-based reason it succeeds |
 | `solo_dev_feasibility` | `number` (0-1) | Solo developer feasibility |
 | `data_feasibility_score` | `number\|null` (0-1) | How readily a solo dev can OBTAIN the required data (annotate-only; from the independent feasibility critic). Higher = easier. |
-| `data_access_model` | `string\|null` | `public` \| `freemium` \| `paywalled` \| `unofficial` (unofficial API / scraping lib, ToS-gray) \| `restricted`. `blocked` concepts are dropped, never surfaced. |
+| `data_access_model` | `string\|null` | `public` \| `freemium` \| `paywalled` \| `unofficial` (unofficial API / scraping lib, ToS-gray) \| `restricted` \| `blocked` (verifier *refuted* the route — score-capped) \| `unverified` (search could neither confirm nor refute — flagged, NOT score-capped). |
 | `data_acquisition_notes` | `string\|null` | Data source/route + access model + cost/ToS risk (≤120 chars). |
 | `keyword_geographic_priorities` | `array[string]` | Geographic priorities |
 | `keyword_feature_priorities` | `array[string]` | Feature priorities |
@@ -492,6 +498,7 @@ Actionable GTM strategy for immediate execution.
 | `estimated_cac_organic_refined` | `string` | Refined organic CAC |
 | `programmatic_seo_opportunity_refined` | `string` | Refined SEO assessment |
 | `seo_refinement_metadata` | `object` | SEO calculation details |
+| `tags` | `object\|null` | `IdeaTags` — closed-vocabulary filter facets (chips + future filtering). See **`docs/IDEA_TAGS.md`**. |
 
 ### `site_structure: object` (Stage 10.5 - LLM-generated)
 
@@ -764,7 +771,7 @@ Summary with severity/WTP insights.
   "description": "string",
   "mention_count": 12,
   "severity_score": 0.85,
-  "willingness_to_pay": 0.8,
+  "commercial_intent": 0.8,
   "opportunity_level": "high",
   "opportunity_downgrade_reason": null,
   "representative_quotes": ["string"],
@@ -780,11 +787,11 @@ Summary with severity/WTP insights.
 | `title` | `string` | Short title |
 | `description` | `string` | Detailed description |
 | `mention_count` | `number` | Unique discussions matched by evidence vector search (LLM estimate only when enrichment unavailable) |
-| `severity_score` | `number` (0-1) | Severity (computed from evidence quotes; clamped ≤0.45 when zero quotes found) |
-| `willingness_to_pay` | `number` (0-1) | WTP indicator |
+| `severity_score` | `number` (0-1) | Severity (computed from evidence quotes; clamped ≤0.45 when the pain has low evidence — fewer than 2 stance-verified quotes) |
+| `commercial_intent` | `number` (0-1) | WTP indicator |
 | `opportunity_level` | `"high" \| "medium" \| "low"` | Code-computed from severity/WTP formula (High: both ≥0.6; Medium: one ≥0.6; Low: both <0.6); LLM may only downgrade with justification |
 | `opportunity_downgrade_reason` | `string \| null` | Present when the LLM justifiably downgraded below the formula (universal-theme / niche-specificity cap) |
-| `representative_quotes` | `array[string]` | User quotes |
+| `representative_quotes` | `array[string]` | Stance-verified user quotes (each genuinely expresses the pain; off-topic/positive matches excluded). Variable length, ≤2 per source post; may be few or empty for thinly-evidenced pains. |
 | `source_platforms` | `array[string]` | Source platforms |
 | `categories` | `array[string]` | Categories |
 | `source_post_ids` | `array[string]` | Post IDs for traceability |
@@ -1430,9 +1437,27 @@ Array of 7 recommended next steps.
   "competitive_intensity": "Medium",
   "estimated_development_time": "string",
   "estimated_cac_organic": 15,
-  "pricing_model": null
+  "pricing_model": null,
+  "tags": {
+    "project_type": "comparison-tool",
+    "data_access": "public",
+    "target_market": "b2c",
+    "monetization": "affiliate",
+    "monetization_secondary": null,
+    "growth_channels": ["programmatic-seo", "content"],
+    "risk_flags": ["grey-market"],
+    "build_complexity": "low",
+    "novelty_level": "moderate",
+    "strengths": ["seo-power", "solo-friendly"],
+    "primary_strength": "seo-power"
+  }
 }
 ```
+
+`tags` is an `IdeaTags` object of **closed-vocabulary filter facets** (chips now, filtering
+later). It is also present on each `SolutionIdea` and the preview `alternative_solutions`. Every
+value comes from a fixed enum; the card badge reads `tags.primary_strength`. Full vocabulary,
+derivation thresholds, and strength cutoffs: see **`docs/IDEA_TAGS.md`**.
 
 ### `solution_innovation_assessment: object`
 
@@ -1490,6 +1515,39 @@ Array of 7 recommended next steps.
 }
 ```
 
+### `niche_difficulty_verdict: object` (6 keys)
+
+"Research Reality Check" — a candid, bidirectional verdict on how well software can
+actually solve this niche. The `difficulty_level` band and `software_addressability`
+score are classified **deterministically** at the end of Phase 1 from already-computed
+signals (pain-point `tool_addressable`, idea `novelty_score` + its raw→calibrated gap,
+`audience_fit`, project-type concentration, cold-start data dependency). The prose
+(`headline` / `narrative_summary`) is written by a grounded, best-effort LLM pass with a
+deterministic templated fallback. Present on BOTH the Phase-1 preview report and the full
+report (computed once, read from state). Null when there are no pains and no ideas.
+
+```json
+{
+  "difficulty_level": "high",
+  "software_addressability": 0.37,
+  "headline": "Software Fit: Limited — software mostly advises here",
+  "narrative_summary": "This is a hardware/physical niche where software can mostly sit beside the problem...",
+  "key_challenges": [
+    "Most pains are only partly software-addressable — build for the decision/advice layer, not the fix.",
+    "Most ideas need a data corpus that doesn't exist yet — plan a cold-start play."
+  ],
+  "low_confidence": false
+}
+```
+
+- `difficulty_level`: `"low" | "medium" | "high" | "very_high"` — surfaced as a "Software
+  Fit" badge: low→Strong, medium→Moderate, high→Limited, very_high→Hard.
+- `software_addressability`: `0–1`, share of the niche's pain a tool can actually fix
+  (= `full_share*1.0 + partial_share*0.4 + none_share*0.0`, mirroring the pain-point
+  tool-addressability caps).
+- `key_challenges`: bidirectional — frictions for a hard niche, strengths for a strong one.
+- `low_confidence`: `true` when the pain/idea sample is too small to be confident.
+
 ---
 
 ## 17. Type Reference
@@ -1520,7 +1578,7 @@ Array of 7 recommended next steps.
 | Score Type | Range | Description |
 |------------|-------|-------------|
 | `severity_score` | 0.0 - 1.0 | Higher = more severe pain |
-| `willingness_to_pay` | 0.0 - 1.0 | Higher = more willing to pay |
+| `commercial_intent` | 0.0 - 1.0 | Higher = more willing to pay |
 | `market_fit_score` | 0.0 - 1.0 | Higher = better market fit |
 | `technical_feasibility_score` | 0.0 - 1.0 | Higher = more feasible |
 | `competitive_advantage_score` | 0.0 - 1.0 | Higher = stronger advantage |
@@ -1595,11 +1653,24 @@ Array of 7 recommended next steps.
 | 51 | `refinement_highlights` | `object` |
 | 52 | `stage_timing_summary` | `object` |
 | 53 | `seo_calculation_transparency` | `object` |
-| 54 | `generated_at` | `string` |
+| 54 | `niche_difficulty_verdict` | `object` |
+| 55 | `generated_at` | `string` |
 
 ---
 
 ## Version History
+
+- **v2.7** - Added Research Reality Check
+  - Added `niche_difficulty_verdict` (`NicheDifficultyVerdict`) — a candid software-fit verdict
+    (difficulty band + `software_addressability` + narrative). Classified deterministically at the
+    end of Phase 1; prose written by a grounded LLM pass with a deterministic fallback. Shown on
+    both the preview and full report. See `src/nicheiq/utils/niche_difficulty.py`.
+
+- **v2.6** - Added idea tags
+  - Added `tags` (`IdeaTags`) to `SolutionIdea` and `alternative_solutions` — closed-vocabulary
+    filter facets (project type, target market, monetization, data access, growth channels, risk,
+    build complexity, novelty, strengths). See `docs/IDEA_TAGS.md`.
+  - The card "superpower" badge now reads `tags.primary_strength` (standardized, margin-based).
 
 - **v2.5** - Removed dead fields
   - Removed `pdf_path` from `FinalReport` (always null, no PDF generation exists)
