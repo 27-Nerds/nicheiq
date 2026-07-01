@@ -25,13 +25,14 @@ template: |
   - Your narrative MUST stay consistent with the {rating_word} rating — never contradict it (e.g. don't
     say "moderate fit" when the rating is "Limited").
 
-  FACT PACK (already computed — trust it):
+  FACT PACK (already computed — trust it). The software-fit and novelty signals are given as plain
+  BANDS (e.g. "strong" / "moderate" / "limited"); use those words, never invent a number for them:
   - Difficulty band: {difficulty_level}
-  - Software addressability: {software_addressability} (how much of the pain a tool can actually fix)
+  - Software addressability (how much of the pain a tool can actually fix): {software_addressability}
   - Pains by tool-addressability: full={full_share}, partial={partial_share}, none={none_share}
   - Dominant idea shape (project type): {dominant_project_type}
   - Share of ideas that are lookup/aggregator/directory shapes: {derivative_mechanism_share}
-  - Median idea novelty: {median_novelty} (0-1); optimism correction applied: {novelty_calibration_gap}
+  - Median idea novelty: {median_novelty}; optimism correction applied: {novelty_calibration_gap}
   - Share of ideas needing a data corpus that doesn't exist yet (cold-start): {cold_start_share}
   - Share of brainstormed concepts flagged as already-shipping products (tool-ecosystem saturation): {concept_duplication_rate}
   - Audience scope: {audience_scope}; ideas that serve the stated audience: {audience_fit_ratio}
@@ -53,8 +54,13 @@ template: |
     suggest finding a sharper wedge, or a niche with the same data richness but fewer incumbents.
     This can hold true even for a STRONG-fit niche — don't suppress it just because software fits.
 
+  NEVER expose an internal score as a number: do NOT write a 0-1 value or a precise percentage for
+  software-fit or novelty (no "novelty 0.45", no "addressability 65%") — describe them with the band
+  words. You MAY cite the pain-addressability split (full/partial/none) and the cold-start / saturation
+  shares as approximate proportions ("most pains", "about half", "a minority") where they sharpen the point.
+
   Return:
   - headline: exactly "Software Fit: {rating_word} — <short niche-specific clause you write>".
-  - narrative_summary: 2-4 sentences, consistent with the {rating_word} rating. Reference the real
-    figures from the fact pack (addressability %, the full/partial/none split, cold-start, saturation,
-    or novelty) where they make the point. If the sample is limited, hedge accordingly.
+  - narrative_summary: 2-4 sentences, consistent with the {rating_word} rating. Make the point with the
+    band words (software-fit, novelty) and the pain/cold-start/saturation proportions — never a raw
+    score. If the sample is limited, hedge accordingly.

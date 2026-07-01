@@ -36,6 +36,11 @@ export const HELP_TOPICS: HelpTopic[] = [
     subtitle: "From the strongest problems to a varied, vetted shortlist",
   },
   {
+    slug: "deep-research",
+    title: "How one idea gets pressure-tested",
+    subtitle: "After you pick an idea, what Deep Research checks before it gives a verdict",
+  },
+  {
     slug: "methodology",
     title: "How scoring works",
     subtitle: "What the severity, commercial-intent, opportunity and idea scores mean, and how far to trust them",

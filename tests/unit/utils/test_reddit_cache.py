@@ -30,7 +30,10 @@ _FOUND_POST = {
 
 
 @pytest.fixture
-def cache():
+def cache(monkeypatch):
+    # Configure a backend so the network-path tests exercise the POST/lookup. Minor C makes the
+    # cache a no-op when BACKEND_URL is unset (standalone runs), which is covered separately below.
+    monkeypatch.setenv("BACKEND_URL", "http://test-backend:3001")
     return RedditThreadCache()
 
 
@@ -200,3 +203,22 @@ class TestStorePost:
         payload = json.loads(responses.calls[0].request.body)
         assert payload["comments"] is not None
         assert len(payload["comments"]) == 1
+
+
+class TestCacheDisabledWhenNoBackend:
+    """Minor C: with BACKEND_URL unset (standalone CLI runs), the cache is a no-op — no POST/
+    lookup is attempted, so there is no `Connection refused` flood."""
+
+    def test_batch_get_returns_empty_when_unset(self, monkeypatch):
+        monkeypatch.delenv("BACKEND_URL", raising=False)
+        c = RedditThreadCache()
+        result = c.batch_get(["https://www.reddit.com/r/SaaS/comments/abc123/test/"])
+        assert result == {}
+
+    @responses.activate
+    def test_store_makes_no_post_when_unset(self, monkeypatch):
+        monkeypatch.delenv("BACKEND_URL", raising=False)
+        responses.add(responses.POST, _STORE, json={}, status=200)
+        c = RedditThreadCache()
+        c.store_post(_make_post())
+        assert len(responses.calls) == 0

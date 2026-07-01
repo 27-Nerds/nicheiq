@@ -14,7 +14,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from crewai.flow.flow import Flow, listen, start
+from crewai.flow.flow import Flow  # Flow = state container only; the @start/@listen graph was
+# removed — all stages run via the _execute_remaining_stages sequential driver, never kickoff().
 
 if TYPE_CHECKING:
     from ..models.research_state import NicheContext
@@ -102,7 +103,7 @@ class ResearchFlow(Flow[ResearchState]):
     10: Final Report Generation (Flow)
     """
 
-    def __init__(self, niche_description: str, allowed_project_types: list[str | None] = None, job_id: str | None = None, entry_mode: str | None = None):
+    def __init__(self, niche_description: str, allowed_project_types: list[str | None] = None, job_id: str | None = None, entry_mode: str | None = None, idea_focus: str = "auto"):
         """
         Initialize ResearchFlow with niche description.
 
@@ -111,6 +112,7 @@ class ResearchFlow(Flow[ResearchState]):
             allowed_project_types: Optional list of allowed project types (saas, directory, aggregator, comparison-tool, marketplace)
             job_id: Optional job identifier for per-job ChromaDB collection isolation
             entry_mode: Optional entry mode ('idea', 'audience', 'discovery') for future mode-aware prompts
+            idea_focus: GTM focus steer ('auto' | 'novelty' | 'distribution'); 'auto' is neutral
         """
         super().__init__()
 
@@ -122,6 +124,7 @@ class ResearchFlow(Flow[ResearchState]):
         # Store niche description for use in flow methods
         self.niche_description = niche_description
         self.allowed_project_types = allowed_project_types
+        self.idea_focus = idea_focus or "auto"
         self.job_id = job_id or str(uuid.uuid4())
         self.state.job_id = self.job_id
         self.entry_mode = entry_mode
@@ -295,6 +298,14 @@ class ResearchFlow(Flow[ResearchState]):
         if getattr(self.checkpoint_mgr, "entry_mode", None) is not None:
             self.entry_mode = self.checkpoint_mgr.entry_mode
 
+        # Re-sync the user constraints restored into ResearchState back onto the flow attrs — the crew
+        # reads self.allowed_project_types / self.idea_focus, NOT state, so without this a resumed or
+        # regenerate run silently drops the original constraints (the latent allowed_project_types bug).
+        if getattr(self.state, "allowed_project_types", None) is not None:
+            self.allowed_project_types = self.state.allowed_project_types
+        if getattr(self.state, "idea_focus", None):
+            self.idea_focus = self.state.idea_focus
+
         # Cleanup old checkpoints
         self.checkpoint_mgr.cleanup_old_checkpoints()
 
@@ -328,18 +339,32 @@ class ResearchFlow(Flow[ResearchState]):
         # No checkpoint or resume failed - run normal flow
         logger.info("Starting fresh research run")
 
-        if stop_after_phase is not None:
-            # Use _execute_remaining_stages for fresh runs with stop_after_phase.
-            # current_stage defaults to 1, completed_stages is empty, so all stages run sequentially.
-            return self._execute_remaining_stages(stop_after_phase=stop_after_phase)
+        # Fresh full run: the single execution path for ALL cases. There is no CrewAI
+        # @start/@listen graph; _execute_remaining_stages drives every stage directly.
+        # current_stage defaults to 1, completed_stages is empty, so all stages run sequentially.
+        return self._execute_remaining_stages(stop_after_phase=stop_after_phase)
 
-        self.kickoff()
-
-        # Return the actual report path stored during stage 10
-        if hasattr(self, 'report_path') and self.report_path:
-            return self.report_path
-
-        return ""
+    def _deep_research_audience_directive(self) -> str:
+        """Front-load WHO the idea must serve + their real frustrations/current tools for the
+        post-selection deep research. Empty string when the flag is off or no audience resolved —
+        so it's a pure no-op by default. DISTINCT from enable_audience_aware_research (Phase-1 only).
+        """
+        if not settings.enable_audience_conditioned_deep_research:
+            return ""
+        nc, am = self.state.niche_context, self.state.audience_mapping
+        aud = (getattr(nc, "resolved_primary_audience", None) or getattr(nc, "user_target_audience", None)) if nc else None
+        if not aud:
+            return ""
+        tools = ", ".join((getattr(am, "tools_currently_used", None) or [])[:4]) if am else ""
+        frus = ", ".join((getattr(am, "frustrations_with_existing", None) or [])[:4]) if am else ""
+        bits = [f"**RESOLVED AUDIENCE (target the analysis at THESE users):** {aud}."]
+        if tools:
+            bits.append(f"Tools they use today: {tools}. Profile any that are genuine SUBSTITUTES for "
+                        f"this solution, but do NOT drop the solution's direct competitors to make room — "
+                        f"treat the rest as switching-cost context, not competitors.")
+        if frus:
+            bits.append(f"Their top frustrations with current tools (the gaps to verify): {frus}.")
+        return "\n" + " ".join(bits) + "\n"
 
     def analyze_single_solution_competitors(self, solution_name: str) -> dict:
         """Run competitive analysis for a single solution on demand.
@@ -369,6 +394,20 @@ class ResearchFlow(Flow[ResearchState]):
             for p in (solution.target_personas or [])[:4]
         )
 
+        # Angle-conditioned research: front-load the idea's winning-angle defensibility question (gated;
+        # empty -> no change). For novel ideas it focuses competitor research on the nearest rival's gap +
+        # clone speed; for distribution_seo on who owns the SERP + beatability; for workflow on switching cost.
+        angle_directive = ""
+        if settings.enable_angle_conditioned_research:
+            from ..utils.angle_brief import build_angle_brief
+            _ab = build_angle_brief(solution).get("angle_brief", "")
+            if _ab:
+                angle_directive = f"\n**ANGLE PRIORITY (answer this first):** {_ab}\n"
+
+        # Audience-conditioned deep research (gated; empty -> no change). The crew task has no
+        # inputs= dict, so the directive is embedded as text in the task description.
+        audience_directive = self._deep_research_audience_directive()
+
         task_description = f"""Analyze the competitive landscape for a specific solution.
 
 **Solution:** {solution.solution_name}
@@ -378,6 +417,7 @@ class ResearchFlow(Flow[ResearchState]):
 **Core Features:** {features_str}
 **Target Personas:** {personas_str}
 **Niche:** {niche_desc}
+{angle_directive}{audience_directive}
 
 WORKFLOW:
 1. Generate search queries for this solution's competitive space
@@ -406,6 +446,7 @@ RULES:
             audience_mapping=getattr(self.state, "audience_mapping", None),
             checkpoint_mgr=self.checkpoint_mgr,
             job_id=self.state.job_id,
+            idea_focus=getattr(self, "idea_focus", "auto"),
         )
 
         researcher_agent = unified_crew.competitive_researcher()
@@ -1040,6 +1081,12 @@ RULES:
         self.state.stage_completion_timestamps[str(stage_num)] = datetime.now()
         logger.info(f"[Stage Tracking] Stage {stage_num} ({stage_name}) skipped: {reason}")
         self._emit_progress(stage_num, stage_name, "skipped", artifact={"skip_reason": reason})
+        # Persist skipped_stages now — a terminal skip cascade (stages 10-13 before the report)
+        # may have no following save_stage to flush metadata, so it would be lost on resume.
+        try:
+            self.checkpoint_mgr.flush_metadata()
+        except Exception as _e:  # noqa: BLE001 — checkpointing must never break the pipeline
+            logger.debug(f"[Stage Tracking] metadata flush skipped: {_e}")
 
     def _extract_stage_artifact(self, stage: float) -> dict | None:
         """Extract a lightweight artifact dict for a completed stage.
@@ -1807,6 +1854,12 @@ RULES:
                             "source_segment": getattr(solution, "source_segment", None),
                             "project_type": getattr(solution, "project_type", None),
                             "audience_fit": getattr(solution, "audience_fit", None),
+                            # Angle-aware evaluation — so the angle badge + comment (and the novelty
+                            # tooltip) render on the Phase-1 locked preview report, not just the
+                            # selection grid. Without these the preview report shows winning_angle=None.
+                            "winning_angle": getattr(solution, "winning_angle", None),
+                            "angle_rationale": getattr(solution, "angle_rationale", None),
+                            "novelty_rationale": getattr(solution, "novelty_rationale", None),
                             "key_differentiator": key_diff or "Unique approach to this market",
                             "best_suited_for": personas[0] if personas else "General market",
                             "pivot_trigger": "Consider if primary solution faces execution barriers",
@@ -2253,7 +2306,6 @@ RULES:
 
     # ========== STAGE METHODS ==========
 
-    @start()
     def stage_1_validate_niche(self):
         """
         Stage 1-4: Niche Input & Validation
@@ -2282,6 +2334,7 @@ RULES:
 
         # Store user constraints in state for persistence
         self.state.allowed_project_types = self.allowed_project_types
+        self.state.idea_focus = self.idea_focus
         if self.allowed_project_types:
             logger.info(f"[OK] Project type constraints: {', '.join(self.allowed_project_types)}")
 
@@ -2776,7 +2829,6 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             logger.warning(f"[YouTube] Pipeline failed (non-fatal): {exc}")
             return PlatformSearchResult()
 
-    @listen(stage_1_validate_niche)
     def stage_2_search_and_discover(self):
         """
         Stage 2: Search & Discover
@@ -3132,7 +3184,6 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             "knowledge_objects": knowledge_objects,
         }
 
-    @listen(stage_2_search_and_discover)
     def stage_3_analyze_pain_points(self):
         """
         Stage 6: Pain Point Analysis + Audience Mapping (Parallel Execution)
@@ -3351,7 +3402,6 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
 
         logger.info("[Stage 3] Parallel execution complete - PainPointCrew + AudienceMappingCrew")
 
-    @listen(stage_3_analyze_pain_points)
     def stage_4_audience_mapping(self):
         """
         Stage 6.5: Audience & Influence Mapping (Pass-through)
@@ -3543,10 +3593,13 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
         except Exception as e:
             logger.warning(f"Re-checkpoint of idea_generation (audience_fit) skipped: {e}")
 
-    @listen(stage_4_audience_mapping)
     def _resolve_primary_audience(self) -> None:
         """Resolve the audience-framing label (OUTPUT framing only — NEVER mutate
         audience_mapping.primary_target_segment, which feeds generation). Idempotent.
+
+        NOTE: no longer a CrewAI @listen node (an underscore-named listener KeyErrors —
+        CrewAI skips `_`-prefixed names in its executable-method registry). It is invoked
+        directly from stage_5_unified_solution_pipeline, which runs after every Stage-4 exit.
 
         - segment_of_niche: set niche_context.resolved_primary_audience to the discovered
           audience_segments.segment_name best-matching user_target_audience (fuzzy >= 0.40);
@@ -3593,6 +3646,35 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             self.checkpoint_mgr.save_stage("stage_1_niche_context", self.state.niche_context)
         except Exception as e:
             logger.warning(f"Re-checkpoint of niche_context skipped: {e}")
+
+    def _build_headless_selection(self, refined_solutions):
+        """Auto-select a winner for the headless per-cell-tournament path.
+
+        The tournament returns no SolutionSelection (there is no LLM Task-4 selector), so a
+        non-interactive run must pick a winner itself. Ranks the final, calibrated ideas with
+        the same helper the skipped-selector path uses (compute_solution_scores → composite,
+        rank, score_source='interactive') and takes rank 1. Interactive runs never reach here
+        (skip_selection=True keeps solution_selection=None so the user picks in the UI).
+        """
+        from nicheiq.utils.score_helpers import compute_solution_scores
+        from nicheiq.models.solution_selection import SolutionSelection
+        ideas = refined_solutions.solution_ideas
+        scores = compute_solution_scores(ideas)
+        winner_name = scores[0].solution_name
+        winner_idea = next((i for i in ideas if i.solution_name == winner_name), ideas[0])
+        rationale = (
+            f"{winner_name} was auto-selected as the top-ranked concept from the per-cell "
+            f"tournament, scoring highest on the blended market-fit, feasibility, novelty and "
+            f"SEO composite ({(scores[0].composite_score or 0.0):.2f}) across {len(scores)} "
+            f"candidate ideas. Runner-up concepts are retained for comparison in all_solution_scores."
+        )
+        return SolutionSelection(
+            selected_solution_name=winner_name,
+            selection_rationale=rationale,
+            recommended_focus=self._build_recommended_focus(solution=winner_idea, keyword_validation=None),
+            all_solution_scores=scores,
+            runner_up_solutions=[s.solution_name for s in scores[1:]],
+        )
 
     def stage_5_unified_solution_pipeline(self, skip_selection: bool = False):
         """
@@ -3676,6 +3758,7 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                 checkpoint_mgr=self.checkpoint_mgr,
                 job_id=self.state.job_id,
                 competitor_mentions_text=self.state.competitor_mentions_formatted,
+                idea_focus=getattr(self, "idea_focus", "auto"),
             )
 
             # Execute complete pipeline
@@ -3696,6 +3779,18 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             # Save results to state
             self.state.idea_generation = refined_solutions
             self.state.solution_selection = solution_selection
+            # Headless per-cell-tournament auto-select: the tournament path returns
+            # solution_selection=None (no LLM Task-4 selector). For a NON-interactive run,
+            # pick the top-ranked calibrated idea so Stage 6+ can proceed. Interactive runs
+            # (skip_selection=True) intentionally keep None — the user selects in the UI.
+            if (solution_selection is None and not skip_selection
+                    and refined_solutions and refined_solutions.solution_ideas):
+                solution_selection = self._build_headless_selection(refined_solutions)
+                self.state.solution_selection = solution_selection
+                logger.info(
+                    f"[Stage 5] Headless tournament auto-select: "
+                    f"{solution_selection.selected_solution_name}"
+                )
             # Re-resolve the audience label against the real generated idea segments so the
             # frontend grid can actually split (the Stage-4 guess used a different namespace),
             # then tag each idea's audience_fit (semantic primary/adjacent signal).
@@ -3725,6 +3820,12 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                         _fact_pack, _niche, _nctx
                     )
                     self.state.niche_difficulty_verdict = _verdict
+                    # Persist so the verdict survives resume (read by the report + preview);
+                    # restored via stage_mapping. save_stage also flushes checkpoint metadata.
+                    try:
+                        self.checkpoint_mgr.save_stage("stage_5_niche_difficulty", _verdict)
+                    except Exception as _e:  # noqa: BLE001
+                        logger.warning(f"[Niche Difficulty] checkpoint skipped: {_e}")
                     if _usage is not None:
                         self.cost_tracker.record_llm_usage(
                             "Stage 5 - Niche Difficulty", _usage.to_dict()
@@ -3834,6 +3935,14 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                         self.state.solution_selection.all_solution_scores,
                         self.state.idea_generation.solution_ideas,
                     )
+
+                # Persist the selection reflecting backfill/feasibility — and the headless
+                # tournament build, which UnifiedSolutionCrew did not checkpoint (it returned
+                # None). save_stage also flushes checkpoint metadata.
+                self.checkpoint_mgr.save_stage(
+                    "stage_5_6_selection",
+                    self.state.solution_selection.model_dump(),
+                )
 
             # Log results
             logger.info("[OK] Solution Pipeline Complete:")
@@ -4022,6 +4131,121 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
         )
         return all_enriched
 
+    def _llm_real_phrase_seeds(self, ctx, broad_seeds: list[str]) -> list[str]:
+        """P0a: LLM-generate real 2-3 word search-phrase seeds for contains-seed expansion, grounded in
+        the idea's value-prop + pains (and the proven-real broad idea-intent terms as examples). These
+        surface an idea's OWN SEO axis when the broad Google-Ads set is category-only. Returns [] on any
+        failure (fail-soft). Constrains to 2-3 word phrases (contains-seed needs short real phrases)."""
+        try:
+            from pydantic import BaseModel, Field as _F
+            from ..utils.llm_service import LLMService
+
+            class _Seeds(BaseModel):
+                seeds: list[str] = _F(default_factory=list,
+                                      description="8-10 SHORT 2-3 word real search phrases for the idea's specific job")
+
+            resp, _ = LLMService.invoke_structured(
+                prompt=(
+                    f"Product job: {ctx.value_proposition}\n"
+                    f"Problems it solves: {'; '.join(ctx.pains[:6])}\n"
+                    f"Real search terms people already use in this space: {broad_seeds[:10] or '(none found)'}\n\n"
+                    f"List 8-10 SHORT seed phrases (STRICTLY 2-3 words) that are REAL, COMMON search terms "
+                    f"for this product's SPECIFIC job — the exact problem/outcome, NOT the broad category, "
+                    f"and NOT abstract descriptions. They must be phrases that real keywords literally "
+                    f"contain (like the examples above, or 'partial rent', 'cost per token'). Avoid "
+                    f"conceptual phrases like 'reproducible model tests'. Return JSON."),
+                output_model=_Seeds, temperature=0.3,
+                model_name=settings.report_structured_llm, reasoning_effort="minimal")
+            out = []
+            for s in (getattr(resp, "seeds", None) or []):
+                s = (s or "").strip()
+                if s and 1 <= len(s.split()) <= 3:
+                    out.append(s)
+            return out
+        except Exception as e:
+            logger.warning(f"[Stage 6][ContainsSeed] LLM seed-gen failed: {str(e)[:100]}")
+            return []
+
+    def _augment_idea_intent_keywords(self, enriched_keywords: list[dict], selected_solution=None) -> list[dict]:
+        """Additive contains-seed discovery (Stage 6): surface the idea-intent long-tail that the broad
+        Google-Ads expansion (keywords_for_keywords) structurally misses — it returns the category
+        neighborhood regardless of seed. Validated 2026-07-01 to add 4-12x more idea-intent keywords.
+
+        Pipeline: grade the existing set -> its idea-intent keywords are GROUNDED seeds (proven-real,
+        on-idea search terms; seed quality is the make-or-break factor) -> DataForSEO keyword_suggestions
+        (contains-seed) on them -> grade the results -> MERGE the idea-intent survivors. Purely additive:
+        never removes an existing keyword. Fail-soft: any error returns the input unchanged.
+        """
+        if not settings.enable_contains_seed_enrichment or not selected_solution or not enriched_keywords:
+            return enriched_keywords
+        try:
+            from ..utils.validation.keyword_intent_validator import (
+                KeywordIntentRelevanceValidator, IdeaContext,
+            )
+            validator = KeywordIntentRelevanceValidator()
+            ctx = IdeaContext(
+                value_proposition=getattr(selected_solution, "value_proposition", "") or "",
+                pains=getattr(selected_solution, "pain_points_addressed", None) or [],
+                angle=getattr(selected_solution, "winning_angle", "") or "",
+                niche=self.niche_description or "",
+            )
+            ming = settings.keyword_relevance_min_grade
+            merge_min = settings.contains_seed_merge_min_grade  # JOB-only merge gate (A/B 2026-07-01)
+            existing = {(k.get("keyword", "") or "").lower() for k in enriched_keywords}
+            # 1) grade the existing set -> grounded seeds (idea-intent, <=3 words = real, expandable)
+            grades = validator.grade_keywords(ctx, [k.get("keyword", "") for k in enriched_keywords if k.get("keyword")])
+            broad_seeds = list(dict.fromkeys(
+                k.get("keyword") for k in enriched_keywords
+                if (grades.get(k.get("keyword", "")) or 0) >= ming and 1 <= len((k.get("keyword", "") or "").split()) <= 3
+            ))
+            # P0a: ALSO ground seeds in the idea's OWN value-prop/pains language via an LLM (grounded in
+            # the proven-real broad idea-intent terms as examples). This surfaces the idea's real SEO axis
+            # even when the broad Google-Ads set is ~100% category (broad_seeds empty/generic) — the
+            # catastrophic-drift case. Flag-gated (dark pending A/B).
+            # LLM real-phrase seeds fire when P0a is enabled OR — the thin-case auto-trigger — when the
+            # broad set is too thin to cover the idea's SEO axis (few grounded seeds ⇒ thin beachhead).
+            thin = (settings.contains_seed_thin_seed_threshold > 0
+                    and len(broad_seeds) < settings.contains_seed_thin_seed_threshold)
+            use_llm_seeds = settings.contains_seed_llm_seeds or thin
+            llm_seeds = self._llm_real_phrase_seeds(ctx, broad_seeds) if use_llm_seeds else []
+            seeds = list(dict.fromkeys(s for s in (broad_seeds + llm_seeds) if s))[:settings.contains_seed_max_seeds]
+            if not seeds:
+                logger.info("[Stage 6][ContainsSeed] no grounding seeds (broad or LLM) — skipping augmentation")
+                return enriched_keywords
+            logger.info(
+                f"[Stage 6][ContainsSeed] seeds: {len(broad_seeds)} broad + {len(llm_seeds)} LLM "
+                f"({'thin-case auto-trigger' if thin and not settings.contains_seed_llm_seeds else 'flag'}) "
+                f"-> {len(seeds)} used"
+            )
+            # 2) contains-seed expansion of the grounded seeds
+            suggestions: list[dict] = []
+            for s in seeds:
+                suggestions += self.dataforseo_tool.get_keyword_suggestions(s, limit=settings.contains_seed_per_seed)
+            new = list(dict.fromkeys(
+                k.get("keyword") for k in suggestions
+                if k.get("keyword") and (k.get("keyword") or "").lower() not in existing
+            ))
+            if not new:
+                return enriched_keywords
+            # 3) grade the new suggestions, keep only idea-intent, merge
+            new_grades = validator.grade_keywords(ctx, new)
+            vol = {(k.get("keyword") or "").lower(): (k.get("search_volume", 0) or 0) for k in suggestions}
+            comp = {(k.get("keyword") or "").lower(): k.get("competition") for k in suggestions}
+            merged, seen = [], set()
+            for kw in new:
+                kl = kw.lower()
+                if (new_grades.get(kw) or 0) >= merge_min and kl not in seen:
+                    seen.add(kl)
+                    merged.append({"keyword": kw, "search_volume": vol.get(kl, 0), "competition": comp.get(kl)})
+            logger.info(
+                f"[Stage 6][ContainsSeed] {len(seeds)} grounded seeds -> {len(suggestions)} suggestions -> "
+                f"+{len(merged)} idea-intent keywords merged (was {len(enriched_keywords)})"
+            )
+            return enriched_keywords + merged
+        except Exception as e:
+            logger.warning(f"[Stage 6][ContainsSeed] augmentation failed, using base set: {str(e)[:120]}")
+            return enriched_keywords
+
     def _enrich_anchor_keywords(
         self,
         anchor_keywords: list[dict],
@@ -4062,18 +4286,15 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
         )
 
         for round_num in range(1, settings.keyword_enrichment_max_rounds + 1):
-            # Seed selection: anchor keywords first, then high-volume discoveries
+            # Seed selection: anchor keywords first, then discoveries to expand from.
             remaining_anchors = [s for s in anchor_seed_strings if s not in seeds_used]
-            high_volume = sorted(
-                [k for k in all_enriched if k['keyword'] not in seeds_used and k.get('search_volume', 0) > 1000],
-                key=lambda k: k.get('search_volume', 0), reverse=True
-            )
-
-            # Prioritize remaining anchor seeds, fill rest with high-volume discoveries
             next_seeds = remaining_anchors[:batch_size]
             if len(next_seeds) < batch_size:
-                next_seeds += [k['keyword'] for k in high_volume[:batch_size - len(next_seeds)]
-                              if k['keyword'] not in next_seeds]
+                fill = batch_size - len(next_seeds)
+                pool = [k for k in all_enriched if k['keyword'] not in seeds_used
+                        and k['keyword'] not in next_seeds and k.get('search_volume', 0) > 1000]
+                chosen = sorted(pool, key=lambda k: k.get('search_volume', 0), reverse=True)
+                next_seeds += [k['keyword'] for k in chosen[:fill] if k['keyword'] not in next_seeds]
 
             if not next_seeds:
                 logger.info(f"[Anchor Enrichment] No more seeds after {round_num - 1} rounds")
@@ -4364,6 +4585,137 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
 
         return enriched_keywords
 
+    # UGC / forum / aggregator surfaces — when these dominate a SERP, a purpose-built site has room
+    # to rank (the niche isn't owned by a strong dedicated incumbent). Heuristic, not a DA/DR signal.
+    _UGC_SERP_DOMAINS = (
+        "reddit.com", "quora.com", "stackexchange.com", "stackoverflow.com", "medium.com",
+        "blogspot.", "wordpress.com", "pinterest.", "facebook.com", "youtube.com", "tumblr.",
+        "github.com", "news.ycombinator", "linkedin.com",
+    )
+
+    # Institutional surfaces — when these DOMINATE a SERP, a new commercial domain faces a real
+    # ranking headwind that keyword-difficulty scores can understate (gov/edu/.mil + Wikipedia rarely
+    # carry the link signals KD models weigh). Caution-only signal, matched on the host suffix.
+    _INSTITUTIONAL_SERP_SUFFIXES = (".gov", ".edu", ".mil")
+
+    def _compute_seo_kill_question(self, enriched_keywords, selected_solution):
+        """Deterministic SEO-thesis stress test for a distribution_seo idea (no LLM).
+
+        Reuses the already-validated keyword set (search_volume + keyword_difficulty) for the page
+        ceiling + KD distribution (no new keyword API calls); a small SERP sample reads beatability.
+        Returns a SeoKillQuestion. Fail-soft to the caller.
+        """
+        import statistics
+        from ..models.seo_strategy import SeoKillQuestion
+
+        def _vol(k):
+            return k.get("search_volume", 0) or 0 if isinstance(k, dict) else (getattr(k, "search_volume", 0) or 0)
+
+        def _kd(k):
+            v = k.get("keyword_difficulty") if isinstance(k, dict) else getattr(k, "keyword_difficulty", None)
+            return v if isinstance(v, (int, float)) else None
+
+        def _kw(k):
+            return (k.get("keyword", "") if isinstance(k, dict) else getattr(k, "keyword", "")) or ""
+
+        # 1. Page universe — distinct non-zero-volume intents (each = one indexable programmatic page).
+        with_vol = [k for k in (enriched_keywords or []) if _vol(k) > 0]
+        ceiling = len(with_vol)
+        head = sum(1 for k in with_vol if _vol(k) >= 1000)
+        mid = sum(1 for k in with_vol if 100 <= _vol(k) < 1000)
+        tail = sum(1 for k in with_vol if 1 <= _vol(k) < 100)
+
+        # 2. KD distribution — how many pages are realistically winnable on a new (DA~0) domain.
+        kds = [v for v in (_kd(k) for k in with_vol) if v is not None]
+        median_kd = round(statistics.median(kds), 1) if kds else None
+        rankable_kd = settings.seo_kill_question_rankable_kd
+        winnable = sum(1 for v in kds if v < rankable_kd)
+        # KD coverage — DataForSEO omits KD for many (often easy) long-tail intents, so on sparse coverage
+        # `winnable`/`median_kd` reflect a tiny biased subsample, not the real page universe. The verdict
+        # floor (apply_seo_kill_downgrade) abstains below this; the display verdict says so rather than
+        # over-claiming "only N winnable".
+        kd_n = len(kds)
+        kd_coverage = (kd_n / ceiling) if ceiling else 0.0
+        kd_sparse = (kd_n < settings.seo_kill_question_min_kd_sample
+                     or kd_coverage < settings.seo_kill_question_min_kd_coverage)
+
+        # 3. SERP shape — sample the highest-volume intents and read TWO independent signals from the
+        # same fetch (no extra API calls):
+        #   • forum_soft (UPSIDE-only): UGC/forum-dominated SERPs = extra ranking room. Absence (0.0) is
+        #     NEUTRAL (professional SERPs have no forums by default), never a downgrade.
+        #   • institutional (CAUTION-only): gov/edu/.mil/Wikipedia-DOMINATED SERPs = a ranking headwind
+        #     that low KD can understate. High share is a flag to verify winnability, NOT a kill.
+        # Neither enters the verdict — KD is the real competition signal. They only color the rationale.
+        from urllib.parse import urlparse
+
+        def _is_institutional(link: str) -> bool:
+            host = urlparse(link or "").netloc.lower()
+            return (host.endswith(self._INSTITUTIONAL_SERP_SUFFIXES)
+                    or ".gov." in host or "wikipedia.org" in host)
+
+        forum_soft, institutional, serp_n = None, None, 0
+        sample_n = settings.seo_kill_question_serp_sample
+        serper = getattr(self, "serper_tool", None) or getattr(self, "search_tool", None)
+        if sample_n and serper is not None:
+            sample = sorted(with_vol, key=_vol, reverse=True)[:sample_n]
+            soft_hits, inst_hits = 0, 0
+            for k in sample:
+                try:
+                    res = serper.run(search_query=_kw(k))
+                    organic = (res.get("organic", []) if isinstance(res, dict) else [])[:5]
+                    links = [(o.get("link", "") or "").lower() for o in organic]
+                    ugc = sum(1 for l in links if any(d in l for d in self._UGC_SERP_DOMAINS))
+                    inst = sum(1 for l in links if _is_institutional(l))
+                    if ugc >= 2:
+                        soft_hits += 1
+                    if inst >= 3:  # a clear majority of the top 5 — genuinely institution-owned
+                        inst_hits += 1
+                    serp_n += 1
+                except Exception as e:
+                    logger.debug(f"[SEO-KILL] SERP sample failed for '{_kw(k)[:40]}': {str(e)[:80]}")
+            forum_soft = round(soft_hits / serp_n, 2) if serp_n else None
+            institutional = round(inst_hits / serp_n, 2) if serp_n else None
+
+        # 4. Penalty risk — a large page universe that's mostly near-zero-volume tail reads as the kind
+        # of thin, templated programmatic site that trips scaled-content / helpful-content actions.
+        tail_share = (tail / ceiling) if ceiling else 0.0
+        penalty_risk = ceiling >= settings.seo_kill_question_high_page_count and tail_share >= 0.7
+
+        # 5. One-line verdict (the kill-question answered).
+        if ceiling < 30:
+            verdict = (f"Weak SEO thesis — only {ceiling} non-zero-volume intents; too few pages to "
+                       f"justify a programmatic distribution play.")
+        elif penalty_risk:
+            verdict = (f"Large but THIN page universe ({ceiling} pages, {round(tail_share * 100)}% "
+                       f"near-zero-volume tail) — scaled-content / helpful-content penalty risk.")
+        elif kd_sparse:
+            verdict = (f"Page universe exists ({ceiling}), but KD data is too sparse "
+                       f"({kd_n} of {ceiling} intents scored) to judge winnability — treat the "
+                       f"winnable / KD figures as indicative only.")
+        elif median_kd is not None and median_kd >= 60:
+            verdict = (f"Page universe exists ({ceiling}) but KD is high (median {median_kd}) — slow "
+                       f"time-to-rank on a new domain; only {winnable} realistically winnable.")
+        else:
+            verdict = (f"SEO thesis holds — {ceiling} indexable intents, {winnable} winnable on a new "
+                       f"domain (median KD {median_kd}).")
+        # Both SERP signals are rationale-only color (never the verdict). Forum-softness is upside —
+        # cite only when present so 0.0 never reads as "0% beatable". Institutional dominance is a
+        # caution — cite only when a majority of sampled SERPs are gov/edu-owned (a headwind KD misses).
+        soft_clause = (f"; {round(forum_soft * 100)}% of {serp_n} sampled SERPs are forum-soft (bonus room)"
+                       if forum_soft else "")
+        inst_clause = (f"; {round(institutional * 100)}% of {serp_n} sampled SERPs are authority-heavy "
+                       f"(gov/edu-dominated) — expect a ranking headwind KD understates"
+                       if institutional and institutional >= 0.5 else "")
+        rationale = (f"Page ceiling {ceiling} (head {head} / mid {mid} / tail {tail}); KD on {kd_n}/{ceiling} "
+                     f"intents; median KD {median_kd}; winnable<{rankable_kd:.0f} = {winnable}{soft_clause}{inst_clause}.")
+
+        return SeoKillQuestion(
+            indexable_page_ceiling=ceiling, head_count=head, mid_count=mid, tail_count=tail,
+            median_keyword_difficulty=median_kd, winnable_pages=winnable, kd_sample_size=kd_n,
+            forum_soft_serp_share=forum_soft, institutional_serp_share=institutional, serp_sampled=serp_n,
+            penalty_risk_flag=penalty_risk, verdict=verdict, rationale=rationale,
+        )
+
     def _validate_solution_pricing(self, solution_name: str) -> dict:
         """
         Helper method to validate pricing for a single solution (thread-safe).
@@ -4424,11 +4776,10 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
         }
 
     def _run_competitive_analysis(self):
-        """Competitive Analysis: On-demand competitive analysis for selected solution (classic mode).
+        """Competitive Analysis: On-demand competitive analysis for the selected solution.
 
-        In classic mode (@listen chain via kickoff()), competitive analysis is needed
-        before downstream stages 8, 8.6, 8.7 can use it. This stage auto-runs it
-        for the selected solution.
+        Competitive analysis is needed before downstream stages 8, 8.6, 8.7 can use it, so this
+        auto-runs it for the selected solution.
         """
         if self.state.competitive_analysis:
             return  # Already have data (e.g., from checkpoint)
@@ -4444,7 +4795,6 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
         self.analyze_single_solution_competitors(selected_name)
         self._emit_progress(5.5, "Competitive Analysis", "completed")
 
-    @listen(stage_5_unified_solution_pipeline)
     def stage_6_seo_strategy(self):
         """
         Stage 6: Integrated Keyword Validation + SEO Strategy Development
@@ -4585,6 +4935,9 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             # Anchor keywords are enough - skip 6a/b/c entirely
             enriched_keywords = anchor_enriched
             expanded_keywords = None  # Strategy creation handles None gracefully
+
+            # Additive contains-seed discovery: merge the idea-intent long-tail the broad expansion missed.
+            enriched_keywords = self._augment_idea_intent_keywords(enriched_keywords, selected_solution)
 
             # Store to state for downstream Stage 11 trend analysis
             self.state.seo_enriched_keywords = enriched_keywords
@@ -4743,6 +5096,8 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                     niche_context=self.state.niche_context,
                     initial_keywords=anchor_enriched if anchor_enriched else None,
                 )
+                # Additive contains-seed discovery: merge the idea-intent long-tail the broad expansion missed.
+                enriched_keywords = self._augment_idea_intent_keywords(enriched_keywords, selected_solution)
                 # Checkpoint 6c: Save enriched keywords
                 self.state.seo_enriched_keywords = enriched_keywords
                 self.checkpoint_mgr.save_stage("stage_6c_enrichment", enriched_keywords)
@@ -4865,6 +5220,18 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                 else:
                     logger.info(f"✓ Good tiering coverage: {utilization:.1%} of keywords distributed across tiers")
 
+            # SEO kill-question (distribution_seo deep research): attach a deterministic thesis
+            # stress-test (page ceiling, winnable pages, penalty risk) so the report flags pSEO ideas
+            # that score great on keyword volume but have no real page universe / face a penalty.
+            if (settings.enable_seo_kill_question
+                    and getattr(selected_solution, "winning_angle", None) == "distribution_seo"):
+                try:
+                    seo_strategy.seo_kill_question = self._compute_seo_kill_question(
+                        enriched_keywords, selected_solution)
+                    logger.info(f"[SEO-KILL] {seo_strategy.seo_kill_question.verdict}")
+                except Exception as e:
+                    logger.warning(f"[SEO-KILL] skipped: {str(e)[:120]}")
+
             self.state.seo_strategy_report = seo_strategy
 
             logger.info(
@@ -4874,9 +5241,19 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                 f"{len(seo_strategy.topic_clusters) if seo_strategy.topic_clusters else 0} topic clusters"
             )
         except Exception as e:
-            logger.error(f"SEO strategy generation failed: {e}")
+            # Degrade like every other Phase-2 stage — NEVER kill a job that has already spent the
+            # (expensive) keyword/DataForSEO budget over one flaky LLM sub-task. The report ships
+            # without the SEO section; downstream already tolerates seo_strategy_report=None
+            # (same as the "no solution selected" path above).
+            logger.error(f"SEO strategy generation failed — skipping Stage 6 (report ships without SEO): {e}")
+            self.state.seo_strategy_report = None
+            self.state.current_stage = 7
             self._skip_stage(6, "SEO & Keyword Strategy", "SEO strategy generation failed")
-            raise RuntimeError(f"Stage 6 failed: SEO strategy generation failed - {e}") from e
+            self.checkpoint_mgr.save_stage(
+                "stage_6_seo_strategy",
+                {"skipped": True, "reason": f"SEO strategy generation failed: {str(e)[:200]}"},
+            )
+            return
 
         # Update stage first, then checkpoint (so resume skips this stage)
         self.state.current_stage = 7
@@ -4894,7 +5271,23 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
         if self.state.seo_strategy_report:
             self.checkpoint_mgr.save_stage("stage_6_seo_strategy", self.state.seo_strategy_report)
 
-    @listen(stage_6_seo_strategy)
+    def _ensure_selected_in_topn(self, top_n: list, all_scores: list) -> list:
+        """Guarantee the selected winner stays in the Stage 7/8 working set.
+
+        Stages 7/8 pick top-N by RAW composite_score, but Stage-6 keyword validation can pivot
+        selected_solution_name to a lower-raw-composite idea. Without this, the pivoted winner
+        loses its pricing/traffic and the report (which looks these up BY the selected name)
+        renders nothing for the actual recommendation. Appends the selected score if missing.
+        """
+        sel = getattr(getattr(self.state, "solution_selection", None), "selected_solution_name", None)
+        if not sel or any(s.solution_name == sel for s in top_n):
+            return top_n
+        match = next((s for s in (all_scores or []) if s.solution_name == sel), None)
+        if match is not None:
+            logger.info(f"[Stage 7/8] Adding pivoted selected winner '{sel}' to the top-N working set")
+            return list(top_n) + [match]
+        return top_n
+
     def stage_7_pricing_validation(self):
         """
         Stage 8: Pricing Strategy Validation for Top N Solutions (Parallel Execution)
@@ -4950,6 +5343,7 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
 
         # Sort by composite score and take top N (configurable)
         top_n_scores = sorted(all_scores, key=lambda s: s.composite_score, reverse=True)[:settings.top_solutions_for_validation]
+        top_n_scores = self._ensure_selected_in_topn(top_n_scores, all_scores)
 
         logger.info(f"[Stage 7] Analyzing pricing for top {len(top_n_scores)} solutions (PARALLEL)")
 
@@ -5630,6 +6024,7 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
         logger.info("[Stage 6-KV] Re-scoring solutions with keyword demand data")
         from nicheiq.utils.score_helpers import (
             blend_adjusted_composite,
+            demand_with_beachhead_magnitude,
             rerank_solutions_by_adjusted_score,
         )
 
@@ -5637,13 +6032,27 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             # Find corresponding solution score
             for solution_score in all_scores:
                 if solution_score.solution_name == validation.solution_name:
+                    # P3b (A/B-validated 2026-07-01, always on): fold beachhead MAGNITUDE into the
+                    # ratio-based demand so a thin-but-clean beachhead can't out-rank a truly higher-demand
+                    # idea (live: MountLimit demand 0.98 on a 720/mo beachhead → selection A/B picked the
+                    # genuinely-better NINA once its real beachhead was reflected).
+                    demand = demand_with_beachhead_magnitude(
+                        validation.keyword_demand_score,
+                        getattr(validation, "niche_relevant_volume", None),
+                        getattr(validation, "total_volume", 0),
+                    )
+                    if demand != validation.keyword_demand_score:
+                        logger.info(
+                            f"[Stage 6-KV][P3b] {solution_score.solution_name}: demand "
+                            f"{validation.keyword_demand_score:.2f} -> {demand:.2f} "
+                            f"(niche_relevant_volume={getattr(validation, 'niche_relevant_volume', None)})"
+                        )
                     # Store keyword demand score
-                    solution_score.keyword_demand_score = validation.keyword_demand_score
+                    solution_score.keyword_demand_score = demand
 
                     # Adjusted composite: bounded 0.7/0.3 blend, NOT multiplication
                     # (see blend_adjusted_composite for rationale)
                     base_score = solution_score.composite_score
-                    demand = validation.keyword_demand_score
                     solution_score.adjusted_composite_score = blend_adjusted_composite(
                         base_score, demand
                     )
@@ -5727,9 +6136,10 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                     f"due to weaker keyword demand evidence."
                 )
 
-                self.state.solution_selection.selection_rationale = (
-                    original_rationale + "\n\n" + "\n\n".join(rationale_parts)
-                )
+                # Lead with the NEW winner's keyword-driven rationale — do NOT prepend the
+                # dethroned solution's text (it would surface as a contradictory rationale in the
+                # report). The original reasoning is preserved verbatim in original_selection_reasoning.
+                self.state.solution_selection.selection_rationale = "\n\n".join(rationale_parts)
 
                 # Refresh selection_criteria_scores to describe the NEW winner
                 # (they previously kept describing the dethroned original).
@@ -6007,7 +6417,6 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                 "usage_metrics": None
             }
 
-    @listen(stage_7_pricing_validation)
     def stage_8_traffic_monetization(self):
         """
         Stage 8: Traffic Monetization Analysis (Parallel)
@@ -6056,6 +6465,7 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             key=lambda s: s.composite_score,
             reverse=True
         )[:settings.top_solutions_for_validation]
+        top_n_scores = self._ensure_selected_in_topn(top_n_scores, all_scores)
 
         # Filter to traffic-based solutions only
         traffic_solutions = []
@@ -6169,7 +6579,6 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             f"{len(traffic_results)}/{len(traffic_solutions)} solutions analyzed (PARALLEL)"
         )
 
-    @listen(stage_8_traffic_monetization)
     def stage_9_market_sizing(self):
         """
         Stage 9: Market Sizing & Validation
@@ -6233,16 +6642,32 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
 
         market_sizing_crew = MarketSizingCrew()
 
-        # Pass keyword_validation=None; crew derives demand signals from SEO report
-        logger.info(f"[Stage 9] Using SEO strategy report for market demand signals")
+        # Beachhead anchor: pass the SELECTED solution's own validated keyword set (the slice it serves)
+        # so SAM/SOM anchor on its demand, with the SEO report kept as the follow-on reach ceiling (TAM).
+        # Falls back to None (SEO-only) when validation is missing.
+        selected_kv = next(
+            (v for v in self.state.keyword_validation_results
+             if v.solution_name == selected_name), None
+        ) if self.state.keyword_validation_results else None
+        # Pricing anchor (rec #3): ground the per-customer value on the Stage-7 pricing analysis (real
+        # ARPU/LTV) rather than letting the LLM invent a number.
+        selected_pricing = next(
+            (p for p in self.state.pricing_strategies
+             if p.solution_name == selected_name), None
+        ) if self.state.pricing_strategies else None
+        logger.info(
+            f"[Stage 9] Demand anchor: {'solution keyword validation' if selected_kv else 'SEO report (no per-solution validation)'}; "
+            f"pricing anchor: {'present' if selected_pricing else 'none (derive value from WTP)'}"
+        )
 
         market_sizing_result = market_sizing_crew.analyze(
             selected_solution=selected_solution,
-            keyword_validation=None,
+            keyword_validation=selected_kv,
             pain_point_analysis=self.state.pain_point_analysis,
             competitive_analysis=self.state.competitive_analysis,
             niche_description=self.niche_description,
-            seo_strategy_report=self.state.seo_strategy_report
+            seo_strategy_report=self.state.seo_strategy_report,
+            pricing_strategy=selected_pricing,
         )
 
         # Record crew cost
@@ -6278,7 +6703,6 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
         logger.info(f"  Viability: {market_sizing_result.market_viability_verdict}")
         logger.info(f"  Entry Strategy: {market_sizing_result.recommended_entry_strategy}")
 
-    @listen(stage_9_market_sizing)
     def stage_10_solution_refinement(self):
         """
         Stage 10: Solution Refinement Using Keyword Insights
@@ -6418,7 +6842,6 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
 
             self.checkpoint_mgr.save_stage("stage_10_solution_refinement", {"skipped": True, "reason": "refinement_failed"})
 
-    @listen(stage_10_solution_refinement)
     def stage_11_trend_longevity(self):
         """
         Stage 11: Trend Longevity & Market Momentum Analysis
@@ -6562,7 +6985,6 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
         logger.info(f"  Market Maturity: {trend_result.market_maturity}")
         logger.info(f"  Timing Recommendation: {trend_result.timing_recommendation}")
 
-    @listen(stage_11_trend_longevity)
     def stage_12_refine_seo_scores(self):
         """
         Stage 12: Refine SEO Scores Based on Actual Keyword Data
@@ -6791,7 +7213,6 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             self._mark_stage_complete(12, used_fallback=True)
             self.checkpoint_mgr.save_stage("stage_12_seo_refinement", {"skipped": True, "reason": str(e)})
 
-    @listen(stage_12_refine_seo_scores)
     def stage_13_research_data_sources(self):
         """
         Stage 13: Targeted Data Source Research
@@ -6930,7 +7351,6 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
         if self.state.data_source_research:
             self.checkpoint_mgr.save_stage("stage_13_data_sources", self.state.data_source_research)
 
-    @listen(stage_13_research_data_sources)
     def stage_14_generate_report(self):
         """
         Stage 14: Final Report Generation
@@ -7012,23 +7432,13 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
     # - refine_cac_organic
     # - refine_programmatic_opportunity
 
-    def run_research(self) -> str:
-        """
-        Execute the complete research pipeline.
-
-        Returns:
-            Path to the generated report file
-        """
-        logger.info("Starting NicheIQ Research Pipeline...")
-        logger.info(f"Niche: {self.niche_description}")
-
-        try:
-            # Kick off the flow
-            self.kickoff()
-
-            logger.info("[OK] Research pipeline completed successfully")
-            return self.report_path
-
-        except Exception as e:
-            logger.error(f"Research pipeline failed: {e}")
-            raise
+    def kickoff(self, *args, **kwargs):
+        """Not an execution path. ResearchFlow has NO CrewAI @start/@listen graph — every stage
+        runs through the `_execute_remaining_stages` sequential driver (via run_with_resume),
+        which owns the prerequisite/skip/checkpoint-gating logic the listener graph lacked. The
+        Flow base class is retained only for its structured-state container (self.state). This
+        override makes an accidental kickoff() a loud, clear failure instead of a silent no-op."""
+        raise NotImplementedError(
+            "ResearchFlow does not execute via kickoff(); use run_with_resume() / "
+            "_execute_remaining_stages(). ResearchFlow has no CrewAI @start/@listen graph."
+        )

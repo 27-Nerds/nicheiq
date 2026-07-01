@@ -823,6 +823,65 @@ class DataForSEOBaseClient:
 
         return combined_results
 
+    def get_keyword_suggestions(
+        self,
+        seed: str,
+        limit: int = 200,
+        location_code: int = None,
+        language_code: str = None,
+    ) -> list[dict[str, Any]]:
+        """DataForSEO Labs Keyword Suggestions — long-tail keywords that CONTAIN the seed phrase.
+
+        Unlike google_ads/keywords_for_keywords (broad ad-targeting co-targeting that drifts to the
+        category), this returns only full-text variations of the seed ("words before/after/within"),
+        so seeding from idea-intent language yields idea-intent long-tail. Each result carries search
+        volume + DataForSEO's ML search_intent classification (info/nav/commercial/transactional).
+
+        Returns the same dict shape as expand_keywords: {'keyword','search_volume','competition','search_intent'}.
+        Pricing: ~$0.01/request + $0.0001/returned keyword (Labs database, not live SERP).
+        """
+        if location_code is None:
+            location_code = settings.target_location or 2840
+        if language_code is None:
+            language_code = settings.target_language or "en"
+        seed = self._sanitize_keyword(str(seed))
+        if not seed:
+            return []
+        endpoint = "/dataforseo_labs/google/keyword_suggestions/live"
+        post_data = [{
+            "keyword": seed,
+            "location_code": location_code,
+            "language_code": language_code,
+            "limit": max(1, min(limit, 1000)),
+            "include_serp_info": False,
+        }]
+        out: list[dict[str, Any]] = []
+        try:
+            response = self._make_request_with_task_retry(endpoint, post_data)
+            tasks = response.get("tasks") or []
+            if tasks and tasks[0].get("status_code") != 20000:
+                logger.error(f"[KeywordSuggestions] task error: {tasks[0].get('status_message')}")
+                return []
+            result = (tasks[0].get("result") if tasks else response.get("result")) or []
+            for result_obj in result:
+                for item in (result_obj.get("items") or []):
+                    kd = item.get("keyword_data") or item
+                    kw = kd.get("keyword")
+                    if not kw:
+                        continue
+                    ki = kd.get("keyword_info") or {}
+                    si = kd.get("search_intent_info") or {}
+                    out.append({
+                        "keyword": kw,
+                        "search_volume": ki.get("search_volume", 0) or 0,
+                        "competition": ki.get("competition"),
+                        "search_intent": si.get("main_intent"),
+                    })
+        except Exception as e:
+            logger.error(f"[KeywordSuggestions] failed for seed '{seed[:40]}': {str(e)[:100]}")
+        logger.info(f"[KeywordSuggestions] seed '{seed[:40]}' -> {len(out)} contains-seed suggestions")
+        return out
+
 
 # CrewAI Tool Wrappers
 # These wrap the base client methods so agents can use them as tools

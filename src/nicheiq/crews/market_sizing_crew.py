@@ -20,6 +20,7 @@ from ..models.keyword_data import CrewKeywordValidationResult
 from ..models.pain_point import PainPointAnalysisResult
 from ..models.research_state import MarketSizingResult
 from ..models.solution_idea import SolutionIdea
+from ..utils.score_helpers import score_band
 from ..utils.crew_helpers import (
     collect_all_tiered_keywords,
     compute_commercial_intent_ratio,
@@ -226,7 +227,8 @@ class MarketSizingCrew:
         pain_point_analysis: PainPointAnalysisResult,
         competitive_analysis: CompetitiveAnalysisResult,
         niche_description: str,
-        seo_strategy_report=None
+        seo_strategy_report=None,
+        pricing_strategy=None,
     ) -> MarketSizingResult | None:
         """
         Execute market sizing crew to calculate TAM/SAM/SOM and validate market.
@@ -248,7 +250,7 @@ class MarketSizingCrew:
         keyword_signals = self._format_keyword_signals(keyword_validation, seo_strategy_report=seo_strategy_report)
 
         # Extract pain point signals
-        pain_signals = self._format_pain_signals(pain_point_analysis)
+        pain_signals = self._format_pain_signals(pain_point_analysis, selected_solution)
 
         # Extract competitive signals (scoped to selected solution)
         competitive_signals = self._format_competitive_signals(competitive_analysis, selected_solution.solution_name)
@@ -256,29 +258,58 @@ class MarketSizingCrew:
         # Extract solution context
         solution_context = self._format_solution_context(selected_solution)
 
-        # Pre-compute deterministic values
-        # Prefer SEO strategy report volume when keyword_validation is None
+        # Pre-compute deterministic values.
+        # BEACHHEAD vs FOLLOW-ON anchor (market-sizing methodology, docs/MARKET_SIZING_METHODOLOGY.md):
+        # the headline SAM/SOM is anchored on the solution's OWN validated keyword demand (the beachhead
+        # slice it actually serves), while the broad niche/SEO keyword expansion is the FOLLOW-ON reach
+        # ceiling (drives TAM only, never the SAM headline). Anchoring SAM independently on the beachhead —
+        # rather than as a % of an inflated niche TAM — avoids the "1% fallacy" for narrow ideas.
         if keyword_validation:
             unfiltered_volume = keyword_validation.total_volume or 0
-            if keyword_validation.niche_relevant_volume is not None:
-                kv_volume = keyword_validation.niche_relevant_volume
-            else:
-                kv_volume = unfiltered_volume
-            if kv_volume != unfiltered_volume:
+            nrv = keyword_validation.niche_relevant_volume
+            # niche_relevant_volume is the preferred semantically-filtered demand, BUT it is 0 when
+            # keyword validation degraded (empty validated_keywords) — fall back to the solution's total
+            # validated volume rather than zeroing the beachhead anchor.
+            kv_volume = nrv if nrv else unfiltered_volume
+            if kv_volume != unfiltered_volume and unfiltered_volume > 0:
                 logger.info(
-                    f"[Stage 9] Using niche-relevant volume {kv_volume:,} "
-                    f"(unfiltered: {unfiltered_volume:,}, "
-                    f"reduction: {(1 - kv_volume / unfiltered_volume) * 100:.0f}%)"
-                    if unfiltered_volume > 0
-                    else f"[Stage 9] Using niche-relevant volume {kv_volume:,}"
+                    f"[Stage 9] Beachhead demand {kv_volume:,} (niche-relevant; "
+                    f"unfiltered: {unfiltered_volume:,}, reduction: {(1 - kv_volume / unfiltered_volume) * 100:.0f}%)"
                 )
         elif seo_strategy_report:
             kv_volume = seo_strategy_report.total_monthly_volume or 0
             unfiltered_volume = kv_volume
-            logger.info(f"[Stage 9] Using SEO strategy volume {kv_volume:,}")
+            logger.info(f"[Stage 9] No per-solution keyword validation — beachhead falls back to SEO volume {kv_volume:,}")
         else:
             kv_volume = 0
             unfiltered_volume = 0
+
+        # Follow-on reach ceiling = the broadest keyword universe available (niche SEO expansion, or the
+        # unfiltered keyword total). Equals the beachhead when no broader signal exists (honest no-op).
+        beachhead_volume = kv_volume
+        seo_total_volume = (seo_strategy_report.total_monthly_volume or 0) if seo_strategy_report else 0
+        niche_reach_ceiling = max(seo_total_volume, unfiltered_volume, beachhead_volume)
+        if niche_reach_ceiling > beachhead_volume and beachhead_volume > 0:
+            logger.info(
+                f"[Stage 9] Follow-on reach ceiling {niche_reach_ceiling:,} "
+                f"({niche_reach_ceiling / beachhead_volume:.1f}x the beachhead) — TAM only, not the SAM headline"
+            )
+
+        # Pricing anchor (rec #3): ground the per-customer value on the real Stage-7 pricing analysis
+        # (ARPU/LTV) so the LLM doesn't invent a number. Falls back to a WTP-derivation instruction.
+        if pricing_strategy is not None:
+            _pp = []
+            _summ = pricing_strategy.format_summary() if hasattr(pricing_strategy, "format_summary") else None
+            if _summ:
+                _pp.append(f"Pricing model: {_summ}")
+            if getattr(pricing_strategy, "estimated_arpu", None):
+                _pp.append(f"Estimated ARPU: {pricing_strategy.estimated_arpu}")
+            if getattr(pricing_strategy, "estimated_ltv", None):
+                _pp.append(f"Estimated LTV: {pricing_strategy.estimated_ltv}")
+            pricing_anchor = " | ".join(_pp) if _pp else "No pricing analysis available."
+        else:
+            pricing_anchor = ("No pricing analysis available — derive the per-customer value from the "
+                              "willingness-to-pay signals and competitor pricing in the context above.")
 
         pp_mentions = pain_point_analysis.total_mentions if pain_point_analysis else 0
         selected_landscape = find_landscape_for_solution(competitive_analysis, selected_solution.solution_name)
@@ -319,6 +350,9 @@ class MarketSizingCrew:
             "pain_point_signals": pain_signals,
             "competitive_signals": competitive_signals,
             "total_keyword_volume": kv_volume,
+            "beachhead_demand_volume": beachhead_volume,
+            "niche_reach_ceiling": niche_reach_ceiling,
+            "pricing_anchor": pricing_anchor,
             "unfiltered_keyword_volume": unfiltered_volume,
             "validated_keyword_count": keyword_validation.validated_count if keyword_validation else (seo_strategy_report.total_keywords_analyzed if seo_strategy_report else 0),
             "pain_point_count": len(pain_point_analysis.pain_points) if pain_point_analysis else 0,
@@ -427,24 +461,82 @@ class MarketSizingCrew:
 
         return "\n".join(signals)
 
-    def _format_pain_signals(self, pain_point_analysis: PainPointAnalysisResult | None) -> str:
-        """Format pain point signals for market validation."""
+    def _format_pain_signals(
+        self,
+        pain_point_analysis: PainPointAnalysisResult | None,
+        selected_solution: SolutionIdea | None = None,
+    ) -> str:
+        """Format pain point signals for market validation.
+
+        When ``enable_scoped_market_sizing`` is on and the solution declares which pains it
+        addresses, narrow the niche-wide pain corpus to just the addressed slice so the LLM
+        sizes the SERVICEABLE market, not the whole niche (top-down keyword volume already
+        captures the niche). Bands severity/WTP so no raw 0-1 score leaks into the sizing prose.
+        """
         if not pain_point_analysis or not pain_point_analysis.pain_points:
             return "No pain point data available."
 
+        all_pains = pain_point_analysis.pain_points
+        pains = all_pains
+        scope_note = None
+        if (
+            settings.enable_scoped_market_sizing
+            and selected_solution is not None
+            and getattr(selected_solution, "pain_points_addressed", None)
+        ):
+            scoped = self._scope_pains_to_solution(all_pains, selected_solution.pain_points_addressed)
+            if scoped:
+                pains = scoped
+                scope_note = (
+                    f"**Scope:** this idea addresses {len(scoped)} of {len(all_pains)} validated pains. "
+                    "Size the SERVICEABLE slice these pains represent, not the whole niche."
+                )
+
         signals = []
-        signals.append(f"**Total Pain Points Identified:** {len(pain_point_analysis.pain_points)}")
-        signals.append(f"**Total Mentions:** {pain_point_analysis.total_mentions}")
+        if scope_note:
+            signals.append(scope_note)
+        signals.append(f"**Pain Points In Scope:** {len(pains)}")
+        signals.append(f"**Total Mentions (niche-wide):** {pain_point_analysis.total_mentions}")
 
-        high_severity = [pp for pp in pain_point_analysis.pain_points if pp.severity_score >= 0.7]
-        signals.append(f"**High Severity Pain Points:** {len(high_severity)}")
+        high_severity = [pp for pp in pains if pp.severity_score >= 0.7]
+        signals.append(f"**High Severity Pain Points (in scope):** {len(high_severity)}")
 
-        if pain_point_analysis.pain_points:
+        if pains:
             signals.append("\n**Top Pain Points:**")
-            for pp in pain_point_analysis.pain_points[:5]:
-                signals.append(f"- {pp.title} (Severity: {pp.severity_score:.2f}, WTP: {pp.commercial_intent:.2f})")
+            for pp in pains[:5]:
+                signals.append(
+                    f"- {pp.title} (severity: {score_band(pp.severity_score)}, "
+                    f"willingness-to-pay: {score_band(pp.commercial_intent)})"
+                )
 
         return "\n".join(signals)
+
+    @staticmethod
+    def _scope_pains_to_solution(pains: list, addressed: list[str]) -> list:
+        """Return the subset of ``pains`` the solution's ``pain_points_addressed`` strings refer to,
+        by token overlap (>=0.5 of the smaller token set) against each pain's title/categories/description.
+        Reuses ``segment_matching._tokens`` (shared stemmer/stopwords) so we don't fork a tokenizer."""
+        from ..utils.segment_matching import _tokens
+
+        addressed_tokens = [_tokens(a) for a in addressed if a]
+        addressed_tokens = [t for t in addressed_tokens if t]
+        if not addressed_tokens:
+            return []
+        out = []
+        for pp in pains:
+            pv = _tokens(
+                getattr(pp, "title", "") or "",
+                " ".join(getattr(pp, "categories", None) or []),
+                getattr(pp, "description", "") or "",
+            )
+            if not pv:
+                continue
+            for av in addressed_tokens:
+                shared = pv & av
+                if shared and len(shared) >= 0.5 * min(len(pv), len(av)):
+                    out.append(pp)
+                    break
+        return out
 
     def _format_competitive_signals(
         self,

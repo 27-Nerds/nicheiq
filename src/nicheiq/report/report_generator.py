@@ -626,26 +626,41 @@ class ReportGenerator:
 
             traffic_monetization = traffic_monetization.model_copy(update=update_fields)
 
-        # Generate market_validation based on actual metrics
-        # Use primary search volume (SEO strategy report)
-        niche_vol = self.accessor.get_primary_search_volume()
-        total_volume_for_validation = niche_vol if niche_vol > 0 else self.accessor.get_total_keyword_search_volume()
-        if total_volume_for_validation == 0:
+        # Generate market_validation based on actual metrics.
+        # P0b: headline the BEACHHEAD demand (the selected solution's OWN validated keyword volume) — NOT
+        # the whole-niche keyword total, which is the follow-on REACH CEILING. Headlining the category
+        # number is the "1% fallacy" and makes this narrative contradict the beachhead-anchored verdict +
+        # market sizing (docs/MARKET_SIZING_METHODOLOGY.md). Category volume is kept only as secondary reach.
+        beachhead_vol = self.accessor.get_beachhead_search_volume()
+        category_vol = self.accessor.get_primary_search_volume()
+        headline_vol = beachhead_vol if beachhead_vol > 0 else category_vol
+        if headline_vol == 0:
             logger.warning("⚠️ Keyword volume is 0 for market validation - check keyword pipeline")
         pain_point_count = len(self.state.pain_point_analysis.pain_points) if self.state.pain_point_analysis else 0
 
-        if (total_volume_for_validation > settings.market_validation_strong_volume and
-            pain_point_count >= settings.market_validation_strong_pain_points):
+        # LEVEL: prefer the market-sizing viability verdict (already beachhead-anchored + LLM-judged, so
+        # it stays consistent with the market-sizing section) — else fall back to volume thresholds applied
+        # to the BEACHHEAD volume, not the inflated category total.
+        ms_verdict = ""
+        if self.state.market_sizing:
+            ms_verdict = (getattr(self.state.market_sizing, "market_viability_verdict", "") or "").strip().lower()
+        if ms_verdict in ("strong", "moderate", "weak"):
+            validation_level = {"strong": "STRONG", "moderate": "MODERATE", "weak": "EMERGING"}[ms_verdict]
+        elif (headline_vol > settings.market_validation_strong_volume and
+              pain_point_count >= settings.market_validation_strong_pain_points):
             validation_level = "STRONG"
-        elif (total_volume_for_validation > settings.market_validation_moderate_volume and
+        elif (headline_vol > settings.market_validation_moderate_volume and
               pain_point_count >= settings.market_validation_moderate_pain_points):
             validation_level = "MODERATE"
         else:
             validation_level = "EMERGING"
 
+        reach_note = (f"Broader niche reach: {category_vol:,}/mo (follow-on ceiling). "
+                      if category_vol > headline_vol else "")
         market_validation = (
             f"{validation_level} market validation. "
-            f"Search volume: {total_volume_for_validation:,} monthly searches. "
+            f"Beachhead demand: {headline_vol:,} monthly searches for the solution's core keywords. "
+            f"{reach_note}"
             f"Validated pain points: {pain_point_count}. "
             f"Competitive landscape shows existing market demand."
         )
@@ -1601,6 +1616,7 @@ class ReportGenerator:
         Returns:
             Data-driven pivot trigger string with scores and reasoning
         """
+        from ..utils.score_helpers import score_band  # plain bands — never the raw decimal in user text
         prefix = f"Pivot to {runner_up_name} if: "
 
         # If no selected scores available, use lower absolute thresholds as fallback
@@ -1610,11 +1626,11 @@ class ReportGenerator:
             sg = runner_up_scores.get("seo_growth")
             tf = runner_up_scores.get("technical_feasibility")
             if mf is not None and mf > 0.65:
-                conditions.append(f"market fit score ({mf:.2f}) suggests strong demand")
+                conditions.append(f"{score_band(mf)} market fit suggests strong demand")
             if sg is not None and sg > 0.60:
-                conditions.append(f"SEO growth potential ({sg:.2f}) indicates viable organic channel")
+                conditions.append(f"{score_band(sg)} SEO growth potential indicates a viable organic channel")
             if tf is not None and tf > 0.65:
-                conditions.append(f"technical feasibility ({tf:.2f}) enables faster time-to-market")
+                conditions.append(f"{score_band(tf)} technical feasibility enables faster time-to-market")
             if conditions:
                 return prefix + "; ".join(conditions) + "."
             return (
@@ -1665,23 +1681,17 @@ class ReportGenerator:
 
         parts = []
 
+        # The category labels already encode the comparison direction, so the dimension names alone
+        # carry the meaning — no raw scores in user-facing text.
         if strong_signals:
-            phrases = []
-            for label, ru_val, sel_val, _delta in strong_signals:
-                phrases.append(f"{label} ({ru_val:.2f} vs selected {sel_val:.2f})")
-            parts.append("Strong pivot signal: " + ", ".join(phrases))
+            parts.append("Strong pivot signal — the runner-up leads on "
+                         + ", ".join(label for label, *_ in strong_signals))
 
         if near_parity:
-            phrases = []
-            for label, ru_val, sel_val, _delta in near_parity:
-                phrases.append(f"{label} closely matched ({ru_val:.2f} vs {sel_val:.2f})")
-            parts.append("Near-parity: " + ", ".join(phrases))
+            parts.append("Near-parity on " + ", ".join(label for label, *_ in near_parity))
 
         if moderate_gaps:
-            phrases = []
-            for label, ru_val, sel_val, _delta in moderate_gaps:
-                phrases.append(f"{label} ({ru_val:.2f} vs {sel_val:.2f})")
-            parts.append("Worth monitoring: " + ", ".join(phrases))
+            parts.append("Worth monitoring " + ", ".join(label for label, *_ in moderate_gaps))
 
         # Contextual (non-score) signals
         contextual = []
@@ -1724,9 +1734,8 @@ class ReportGenerator:
             label, ru_val, sel_val, delta = best_dim
             differentiator_note = f" Key differentiator: {key_differentiator}." if key_differentiator else ""
             return (
-                f"Pivot to {runner_up_name} if: Strongest relative dimension is "
-                f"{label} ({ru_val:.2f} vs selected {sel_val:.2f}, delta {delta:+.2f}). "
-                f"Validation would need to close the gap in other areas.{differentiator_note}"
+                f"Pivot to {runner_up_name} if: its closest dimension is "
+                f"{label} — validation would need to close the gap in the other areas.{differentiator_note}"
             )
 
         # Should not reach here, but defensive
@@ -1892,10 +1901,16 @@ It differentiates through {diff_text}.
                     # NEW: Additional scores and feasibility
                     novelty_score=getattr(solution, 'novelty_score', None),
                     solo_dev_feasibility=solo_dev_feasibility_val,  # Pass-through float
+                    # Angle-aware evaluation (pass-through; None when angle eval is off)
+                    winning_angle=getattr(solution, 'winning_angle', None),
+                    angle_rationale=getattr(solution, 'angle_rationale', None),
+                    novelty_rationale=getattr(solution, 'novelty_rationale', None),
+                    differentiation_locus=getattr(solution, 'differentiation_locus', None),
                     # Data feasibility (annotate-only; from the ideation critic, may be None)
                     data_feasibility_score=getattr(solution, 'data_feasibility_score', None),
                     data_access_model=getattr(solution, 'data_access_model', None),
                     data_acquisition_notes=getattr(solution, 'data_acquisition_notes', None),
+                    build_feasibility_score=getattr(solution, 'build_feasibility_score', None),
 
                     # NEW: Competitive landscape for this solution
                     top_competitors=top_competitors,
@@ -2185,26 +2200,81 @@ It differentiates through {diff_text}.
             return None
 
         try:
-            # Extract top 10 Reddit threads by engagement score
-            reddit_posts = sorted(
-                self.state.social_content.reddit_posts,
-                key=lambda p: p.score,
-                reverse=True
-            )[:10]
-
-            top_reddit_threads = [
-                TopRedditThread(
-                    post_id=post.post_id,
-                    title=post.title,
-                    subreddit=post.subreddit,
-                    score=post.score,
-                    num_comments=post.num_comments,
-                    url=post.url,
-                    created_utc=post.created_utc,
-                    key_insight=f"High-engagement discussion ({post.score} score, {post.num_comments} comments) in r/{post.subreddit}"
-                )
-                for post in reddit_posts
-            ]
+            if settings.enable_multisource_evidence_headline:
+                # Multi-source headline threads ranked by platform-FAIR normalized engagement (Reddit +
+                # Hacker News + Twitter), not Reddit-only by raw upvotes. normalize_engagement only reads
+                # .platform/.score/.num_responses/.raw_engagement, so each source is duck-typed.
+                from types import SimpleNamespace
+                from ..utils.engagement_normalizer import normalize_engagement
+                _plat = {"hackernews": "Hacker News", "youtube": "YouTube"}
+                candidates: list[tuple[float, TopRedditThread]] = []
+                for post in self.state.social_content.reddit_posts:
+                    eng = normalize_engagement(SimpleNamespace(
+                        platform="reddit", score=post.score, num_responses=post.num_comments,
+                        raw_engagement={"upvotes": post.score, "num_comments": post.num_comments}))
+                    candidates.append((eng, TopRedditThread(
+                        post_id=post.post_id, title=post.title, subreddit=f"r/{post.subreddit}",
+                        platform="reddit", score=post.score, num_comments=post.num_comments, url=post.url,
+                        created_utc=post.created_utc,
+                        key_insight=f"High-engagement discussion in r/{post.subreddit} ({post.score} upvotes, {post.num_comments} comments)")))
+                for post in (self.state.social_content.generic_posts or []):
+                    label = _plat.get(post.platform, post.platform)
+                    candidates.append((normalize_engagement(post), TopRedditThread(
+                        post_id=post.post_id, title=post.title, subreddit=label, platform=post.platform,
+                        score=post.score, num_comments=post.num_responses, url=post.url,
+                        created_utc=getattr(post, "created_utc", None),
+                        key_insight=f"High-engagement discussion on {label} ({post.score} points, {post.num_responses} comments)")))
+                for thread in self.state.social_content.twitter_threads:
+                    likes = thread.original_tweet.likes
+                    replies = getattr(thread.original_tweet, "replies", 0) or 0
+                    eng = normalize_engagement(SimpleNamespace(
+                        platform="twitter", score=likes, num_responses=replies, raw_engagement={}))
+                    candidates.append((eng, TopRedditThread(
+                        post_id=thread.thread_id,
+                        title=(getattr(thread.original_tweet, "text", "") or thread.thread_id)[:120],
+                        subreddit="Twitter", platform="twitter", score=likes, num_comments=replies,
+                        url=thread.original_tweet.url, created_utc=getattr(thread.original_tweet, "created_at", None),
+                        key_insight=f"High-engagement discussion on Twitter ({likes} likes)")))
+                candidates.sort(key=lambda c: c[0], reverse=True)
+                # Per-platform cap (<=60% of the 10-slot headline from any one source) so a small but
+                # high-engagement platform can't sweep the headline and misrepresent where the evidence
+                # actually concentrates (e.g. a 13-post HN minority taking 9/10 slots over 197 Reddit
+                # posts). Backfill past the cap only when fewer sources exist — a single-platform corpus
+                # still fills all 10 (byte-identical to an uncapped sort there).
+                _per_platform_cap = 6
+                picked: list[TopRedditThread] = []
+                counts: dict[str, int] = {}
+                for _eng, thread in candidates:
+                    if len(picked) >= 10:
+                        break
+                    if counts.get(thread.platform, 0) >= _per_platform_cap:
+                        continue
+                    picked.append(thread)
+                    counts[thread.platform] = counts.get(thread.platform, 0) + 1
+                if len(picked) < 10:
+                    seen = {id(t) for t in picked}
+                    picked += [t for _e, t in candidates if id(t) not in seen][:10 - len(picked)]
+                top_reddit_threads = picked
+            else:
+                # Default (dark flag off): Reddit-only by raw score — byte-identical to before.
+                reddit_posts = sorted(
+                    self.state.social_content.reddit_posts,
+                    key=lambda p: p.score,
+                    reverse=True
+                )[:10]
+                top_reddit_threads = [
+                    TopRedditThread(
+                        post_id=post.post_id,
+                        title=post.title,
+                        subreddit=post.subreddit,
+                        score=post.score,
+                        num_comments=post.num_comments,
+                        url=post.url,
+                        created_utc=post.created_utc,
+                        key_insight=f"High-engagement discussion ({post.score} score, {post.num_comments} comments) in r/{post.subreddit}"
+                    )
+                    for post in reddit_posts
+                ]
 
             # Create post ID to metadata mapping
             post_metadata: dict[str, dict[str, Any]] = {}
@@ -2686,6 +2756,8 @@ It differentiates through {diff_text}.
 
             # Load prompt template from YAML
             from ..utils.prompts import load_prompt
+            from ..utils.score_helpers import score_band
+            _nb = lambda s: score_band(s) if s is not None else "N/A"  # band-or-N/A for prompt inputs
             template = load_prompt("report_executive_narrative")
             prompt = safe_format(template,
                 solution_name=selected_solution.solution_name,
@@ -2693,12 +2765,14 @@ It differentiates through {diff_text}.
                 target_personas=target_personas_str,
                 niche_description=self.state.niche_context.niche_description,
                 pain_point_title=core_pain_point.title,
-                pain_point_severity=f"{core_pain_point.severity_score:.1f}",
-                pain_point_wtp=f"{core_pain_point.commercial_intent_score:.1f}",
-                market_fit_score=f"{market_fit:.2f}" if market_fit is not None else "N/A",
-                competitive_advantage_score=f"{competitive_advantage:.2f}" if competitive_advantage is not None else "N/A",
-                technical_feasibility_score=f"{technical_feasibility:.2f}" if technical_feasibility is not None else "N/A",
-                seo_growth_score=f"{seo_growth:.2f}" if seo_growth is not None else "N/A",
+                # Feed BANDS, never raw decimals — the narrative must read in plain terms and can't
+                # echo a score it never saw (mirrors the verdict-explanation + niche-summary band work).
+                pain_point_severity=_nb(core_pain_point.severity_score),
+                pain_point_wtp=_nb(core_pain_point.commercial_intent_score),
+                market_fit_score=_nb(market_fit),
+                competitive_advantage_score=_nb(competitive_advantage),
+                technical_feasibility_score=_nb(technical_feasibility),
+                seo_growth_score=_nb(seo_growth),
                 total_keyword_count=key_metrics.total_keyword_count,
                 tier1_keyword_count=key_metrics.tier1_keyword_count,
                 competitor_count=key_metrics.primary_competitor_count,
@@ -2770,19 +2844,24 @@ It differentiates through {diff_text}.
                 r'\bscore\b'
             ]
 
-            # Check for either keyword mentions OR numeric score format
+            # Require a criterion keyword (anti-hallucination) — but NOT a numeric score.
             has_score_keyword = any(
                 re.search(pattern, verdict_lower, re.IGNORECASE)
                 for pattern in score_patterns
             )
-            has_numeric_score = bool(re.search(r'\b[01]\.\d{2}\b', narrative.verdict_rationale))
-
-            if not (has_score_keyword or has_numeric_score):
+            if not has_score_keyword:
                 logger.warning(
-                    "Verdict does not reference specific scores or criteria. "
+                    "Verdict does not reference any criterion (market fit / feasibility / SEO …). "
                     "This may indicate hallucinated analysis rather than data-driven rationale."
                 )
                 return False
+
+            # Band policy: the narrative must NOT leak a raw 0-1 score or percentage into user text
+            # (the inputs are fed as bands; this rejects any echoed decimal). Mirrors the verdict guard.
+            for field in (narrative.tagline, narrative.core_value_prop, narrative.verdict_rationale):
+                if re.search(r"\d\.\d|\d{1,3}\s?%", field or ""):
+                    logger.warning("Executive narrative leaked a raw score/percentage — rejecting for band fallback")
+                    return False
 
             # ===== VALIDATION 2: Temporal Claim Detection (Soft Warning) =====
             # Purpose: Flag potential hallucinations about market trends/timing
@@ -2859,6 +2938,7 @@ It differentiates through {diff_text}.
 
     def _apply_verdict_data_caps(self, solution, market_fit, tech_feasibility):
         """Apply the downgrade-only caps; return (market_fit, tech_feasibility, note)."""
+        from ..utils.score_helpers import score_band  # bands in the user-facing note, never the decimal
         note_bits = []
         # tech_feasibility capped by the critic's independent build estimate (sentinel-guarded).
         bf = getattr(solution, "build_feasibility_score", None)
@@ -2866,13 +2946,13 @@ It differentiates through {diff_text}.
             if tech_feasibility is None:
                 tech_feasibility = bf
             elif bf < tech_feasibility:
-                note_bits.append(f"build feasibility independently assessed at {bf:.2f}")
+                note_bits.append(f"build feasibility independently assessed as {score_band(bf)}")
                 tech_feasibility = bf
         # market_fit capped by the addressed pain's opportunity ceiling.
         if market_fit is not None:
             ceiling = self._market_fit_ceiling(solution)
             if ceiling < market_fit:
-                note_bits.append(f"market fit bounded to {ceiling:.2f} by the addressed pain's evidence")
+                note_bits.append(f"market fit bounded to {score_band(ceiling)} by the addressed pain's evidence")
                 market_fit = ceiling
         return market_fit, tech_feasibility, ("; ".join(note_bits) or None)
 
@@ -2896,6 +2976,7 @@ It differentiates through {diff_text}.
             GoNoGoVerdict with verdict, rationale, and risk level
         """
         from ..models.executive_summary import GoNoGoVerdict
+        from ..utils.score_helpers import score_band, _composite_for_angle
 
         # Use enriched solution if available (RC1 fix: object identity)
         solution = getattr(self, '_enriched_solution', None) or selected_solution
@@ -2931,10 +3012,10 @@ It differentiates through {diff_text}.
             )
             return GoNoGoVerdict(
                 verdict="Conditional",
-                rationale=narrative_rationale or (
-                    "Insufficient score data to compute a definitive verdict. "
-                    "Some pipeline stages may not have produced scores. "
-                    "Review pipeline output quality before making a final decision."
+                rationale=(
+                    "Not enough scored data to call this confidently. "
+                    "Some pipeline stages did not produce scores — "
+                    "review the research output quality before making a final decision."
                 ),
                 risk_level="High",
                 primary_concern="Missing score data — review pipeline output quality",
@@ -2948,29 +3029,65 @@ It differentiates through {diff_text}.
             )
             logger.info(f"[Verdict Calculation] {score_caveat}")
 
-        # Compute verdict
-        avg_score = sum(present_scores) / len(present_scores)
+        # Compute verdict score basis. LIFT-ONLY angle awareness (matches the angle-weighted RANKING),
+        # always on when the idea has a winning angle: the angle weights can only RAISE the average
+        # (max with the equal-weight mean), so a strong distribution_seo play isn't dragged down by its
+        # intentionally-low novelty — but the verdict is NEVER worse than equal-weight, so a winning_angle
+        # MISCLASSIFICATION can't wrongly demote a deserving idea (A/B-validated 2026-06-30: 4 correct
+        # lifts, 0 demotes). No angle => exact equal-weight mean. The min(market_fit, tech) hard gate below
+        # is unchanged either way.
+        equal_avg = sum(present_scores) / len(present_scores)
+        winning_angle = getattr(solution, "winning_angle", None)
+        if winning_angle:
+            # competitive_adv occupies the 'novelty' dimension (get_competitive_advantage→novelty_score)
+            angle_avg = _composite_for_angle(
+                market_fit, tech_feasibility, competitive_adv, seo_potential, winning_angle
+            )
+            avg_score = max(equal_avg, angle_avg)
+        else:
+            avg_score = equal_avg
+
+        # P1d: angle-aware LIFT-ONLY hard gate. Default gate = min(market_fit, tech). For a
+        # distribution_seo idea we ALSO allow the gate to pass on its binding dimension (SEO), and for
+        # novel_differentiation on novelty — via max(...), so the gate is never worse than the tech-based
+        # gate (a misclassification can't wrongly demote; preserves the invariant at :3017-3022). An
+        # INDEPENDENT tech buildability floor still blocks an un-buildable idea from a clean Go.
+        tech_gate = min(market_fit, tech_feasibility)
+        gate_val = tech_gate
+        buildability_ok = True
+        if settings.enable_direction_aware_eval and winning_angle:
+            _binding = {
+                "distribution_seo": seo_potential,
+                "novel_differentiation": competitive_adv,
+            }.get(winning_angle)
+            if _binding is not None:
+                gate_val = max(tech_gate, min(market_fit, _binding))
+            # Un-buildable ideas never reach Go, whatever the angle.
+            buildability_ok = tech_feasibility >= settings.verdict_conditional_min_individual_score
 
         # Phase 1.1: Use settings thresholds instead of hard-coded values
         if (avg_score >= settings.verdict_go_avg_score and
-            min(market_fit, tech_feasibility) >= settings.verdict_go_min_individual_score):
+            gate_val >= settings.verdict_go_min_individual_score and buildability_ok):
             verdict = "Go"
             risk_level = "Low"
             primary_concern = None
         elif (avg_score >= settings.verdict_conditional_avg_score and
-              min(market_fit, tech_feasibility) >= settings.verdict_conditional_min_individual_score):
+              gate_val >= settings.verdict_conditional_min_individual_score):
             verdict = "Conditional"
             risk_level = "Medium"
             primary_concern = "Monitor market validation closely during MVP phase"
         else:
             verdict = "No-Go"
             risk_level = "High"
+            # Plain-language concern (the band, never the decimal). Name the angle's binding dim.
             if market_fit < 0.6:
-                primary_concern = f"Low market fit score ({market_fit:.2f}) indicates weak product-market alignment"
+                primary_concern = f"{score_band(market_fit).capitalize()} market fit signals soft product-market alignment"
+            elif winning_angle == "distribution_seo" and seo_potential is not None and seo_potential < 0.6:
+                primary_concern = f"{score_band(seo_potential).capitalize()} SEO scalability undermines the distribution strategy"
             elif tech_feasibility < 0.6:
-                primary_concern = f"Low technical feasibility ({tech_feasibility:.2f}) indicates implementation challenges"
+                primary_concern = f"{score_band(tech_feasibility).capitalize()} technical feasibility signals real build hurdles"
             else:
-                primary_concern = "Overall scores below confidence threshold for recommended pursuit"
+                primary_concern = "Overall signals fall short of the bar for a recommended build"
 
         # Transparency: when a data/feasibility cap lowered a gating score and the verdict
         # is not a clean Go, surface why (reuses primary_concern; no schema change).
@@ -2980,23 +3097,9 @@ It differentiates through {diff_text}.
                 else f"Grounded check: {cap_note}."
             )
 
-        # Use LLM rationale if available, otherwise template
-        if narrative_rationale:
-            rationale = narrative_rationale
-        else:
-            if verdict == "Go":
-                ca_text = f"{competitive_adv:.2f}" if competitive_adv is not None else "N/A"
-                rationale = f"Strong scores across all criteria (avg {avg_score:.2f}). Market fit ({market_fit:.2f}) and competitive advantage ({ca_text}) indicate solid opportunity."
-            elif verdict == "Conditional":
-                rationale = f"Acceptable scores (avg {avg_score:.2f}) but requires validation. Proceed with MVP to test assumptions."
-            else:
-                rationale = f"Scores below threshold (avg {avg_score:.2f}). {primary_concern}"
-        if score_caveat:
-            rationale = f"{rationale} {score_caveat}"
-
-        # Remember the score-based verdict so a Phase 2/3 downgrade can be
-        # reconciled into the rationale (the narrative was written before any
-        # downgrade existed and may argue for the original verdict).
+        # The verdict rationale is built AFTER Phase 2/3 (below) so it explains the FINAL verdict
+        # (post-downgrade), in plain band language — never the internal decimals, and never the
+        # pre-verdict narrative_rationale (generated before this verdict, it could argue a different one).
         pre_downgrade_verdict = verdict
 
         # Phase 2: Apply trend-based downgrades (downgrade-only, never upgrades)
@@ -3066,15 +3169,45 @@ It differentiates through {diff_text}.
                 if market_viability_context:
                     logger.info(f"[Verdict Viability Adjustment] {market_viability_context}")
 
-        # Reconcile the rationale with post-rationale downgrades: the shipped
-        # text must not argue for a verdict the report no longer carries
-        # (the UI shows downgrade context, but the JSON must stand on its own).
+        # Phase 4: SEO kill-question floor (distribution_seo only; dark by default). Grounds an
+        # over-OPTIMISTIC pSEO verdict in the page-universe reality. Null-guard — the kill-question is
+        # optional/fail-soft (only set when enable_seo_kill_question on, for distribution_seo).
+        seo_kill_context = None
+        if settings.enable_seo_kill_question_floor and winning_angle == "distribution_seo":
+            kq = getattr(self.state.seo_strategy_report, "seo_kill_question", None) if self.state.seo_strategy_report else None
+            if kq is not None:
+                from ..validators.score_validators import ScoreThresholds as _ST4, VerdictValidator as _VV4
+                verdict, risk_level, primary_concern, seo_kill_context = (
+                    _VV4(_ST4.from_settings(settings)).apply_seo_kill_downgrade(
+                        verdict=verdict, risk_level=risk_level, primary_concern=primary_concern,
+                        winnable_pages=kq.winnable_pages,
+                        median_keyword_difficulty=kq.median_keyword_difficulty,
+                        penalty_risk_flag=kq.penalty_risk_flag,
+                        kd_sample_size=getattr(kq, "kd_sample_size", 0),
+                        page_ceiling=kq.indexable_page_ceiling,
+                    )
+                )
+                if seo_kill_context:
+                    logger.info(f"[Verdict SEO-Kill Floor] {seo_kill_context}")
+
+        # Build the verdict explanation now the FINAL verdict is known: LLM-grounded + validated when
+        # enabled, else a deterministic band template. Any downgrade is prepended transparently and the
+        # score caveat (if any) appended — both deterministic, so the JSON stands on its own.
+        downgrade_note = None
         if verdict != pre_downgrade_verdict:
-            downgrade_note = trend_context or market_viability_context or "post-verdict validation"
-            rationale = (
-                f"Note: verdict downgraded from {pre_downgrade_verdict} to {verdict} — "
-                f"{downgrade_note}\n\n{rationale}"
-            )
+            downgrade_note = trend_context or market_viability_context or seo_kill_context or "post-verdict validation"
+        rationale = self._generate_verdict_explanation(
+            verdict=verdict,
+            primary_concern=primary_concern,
+            market_fit=market_fit,
+            competitive_adv=competitive_adv,
+            tech_feasibility=tech_feasibility,
+            seo_potential=seo_potential,
+            winning_angle=winning_angle,
+            pre_downgrade_verdict=pre_downgrade_verdict,
+            downgrade_note=downgrade_note,
+            score_caveat=score_caveat,
+        )
 
         result = GoNoGoVerdict(
             verdict=verdict,
@@ -3088,6 +3221,115 @@ It differentiates through {diff_text}.
         # from the same verdict instead of maintaining parallel thresholds)
         self._last_computed_verdict = result
         return result
+
+    def _generate_verdict_explanation(
+        self, *, verdict, primary_concern, market_fit, competitive_adv, tech_feasibility,
+        seo_potential, winning_angle, pre_downgrade_verdict, downgrade_note, score_caveat,
+    ) -> str:
+        """The verdict rationale in plain band language. LLM-grounded + validated when
+        enable_llm_verdict_explanation is on, else a deterministic band template. The verdict is
+        already decided — this only EXPLAINS it. Downgrade note + score caveat are deterministic."""
+        from ..utils.score_helpers import score_band
+        mf_band, ca_band = score_band(market_fit), score_band(competitive_adv)
+
+        # Deterministic band template — always the fallback (the LLM must pass validation to replace it).
+        if verdict == "Go":
+            body = (f"Strong opportunity — {mf_band} market fit and {ca_band} differentiation, "
+                    f"clearing the bar on every dimension that gates a Go.")
+        elif verdict == "Conditional":
+            body = ("Promising but unproven — the signals support moving forward, but build an MVP "
+                    "to validate the key assumptions before committing.")
+        elif primary_concern:
+            body = f"Not a build yet — {primary_concern[0].lower()}{primary_concern[1:]}."
+        else:
+            body = "Not a build yet — the signals fall short of the bar for a recommended build."
+
+        if settings.enable_llm_verdict_explanation:
+            llm_body = self._llm_verdict_explanation(
+                verdict=verdict, primary_concern=primary_concern, mf_band=mf_band, ca_band=ca_band,
+                feasibility_band=score_band(tech_feasibility), seo_band=score_band(seo_potential),
+                winning_angle=winning_angle, downgrade_note=downgrade_note,
+            )
+            if llm_body:
+                body = llm_body
+
+        if downgrade_note and verdict != pre_downgrade_verdict:
+            body = (f"Note: verdict downgraded from {pre_downgrade_verdict} to {verdict} — "
+                    f"{downgrade_note}\n\n{body}")
+        if score_caveat:
+            body = f"{body} {score_caveat}"
+        return body
+
+    def _llm_verdict_explanation(
+        self, *, verdict, primary_concern, mf_band, ca_band, feasibility_band, seo_band,
+        winning_angle, downgrade_note,
+    ) -> "str | None":
+        """One focused LLM call explaining the DECIDED verdict in bands. Validated; None on any failure
+        (caller keeps the band template). The LLM is told the verdict — it never decides it."""
+        try:
+            from ..models.executive_summary import VerdictExplanation
+            from ..utils.prompts import load_prompt
+
+            sol = getattr(self, "_enriched_solution", None)
+            sol_name = getattr(sol, "solution_name", None) or "this idea"
+            angle_phrase = (
+                f"**Winning GTM angle:** {str(winning_angle).replace('_', ' ')}" if winning_angle else ""
+            )
+            firing = {
+                "Go": "It cleared the bar on the overall score and on both gating dimensions "
+                      "(market fit and technical feasibility).",
+                "Conditional": "The overall score is solid but below the Go bar, or a gating dimension is "
+                               "only moderate — enough to pursue with validation, not for an unqualified Go.",
+                "No-Go": "The overall score or a gating dimension falls below the threshold for a "
+                         "recommended build.",
+            }.get(verdict, "")
+            template = load_prompt("report_verdict_explanation")
+            prompt = safe_format(
+                template,
+                verdict=verdict,
+                solution_name=sol_name,
+                winning_angle_phrase=angle_phrase,
+                market_fit_band=mf_band,
+                differentiation_band=ca_band,
+                feasibility_band=feasibility_band,
+                seo_band=seo_band,
+                firing_context=firing,
+                downgrade_context=(f"**Downgrade:** {downgrade_note}" if downgrade_note else ""),
+                primary_concern=(f"**Primary concern:** {primary_concern}" if primary_concern else ""),
+            )
+            result, _usage = LLMService.invoke_structured(
+                prompt=prompt, output_model=VerdictExplanation, temperature=0.4
+            )
+            self._record_cost("Stage 14 - Verdict Explanation", _usage)
+            text = (getattr(result, "explanation", "") or "").strip()
+            if self._verdict_explanation_valid(text, verdict):
+                return text
+            logger.warning("[Verdict] LLM explanation failed validation — using band template")
+            return None
+        except Exception as e:
+            logger.warning(f"[Verdict] LLM explanation failed ({e}) — using band template")
+            return None
+
+    @staticmethod
+    def _verdict_explanation_valid(text: str, verdict: str) -> bool:
+        """Guard: the explanation must match the verdict's stance and expose NO internal decimals."""
+        import re
+        if not text or not (20 <= len(text) <= 700):
+            return False
+        if re.search(r"\d\.\d|\d{1,3}\s?%", text):  # no decimals, no percentages
+            return False
+        low = text.lower()
+        if verdict == "No-Go" and any(
+            p in low for p in ("strong opportunity", "clear go", "go for it", "solid opportunity",
+                               "recommended pursuit", "pursue this opportunity", "green light")
+        ):
+            return False
+        if verdict == "Go" and any(
+            p in low for p in ("no-go", "not viable", "avoid this", "do not build", "don't build",
+                               "not recommended", "not worth pursuing")
+        ):
+            return False
+        return True
 
     # ==================================================================================
     # Go-to-Market Blueprint Generator (Phase 2 Enhancement)

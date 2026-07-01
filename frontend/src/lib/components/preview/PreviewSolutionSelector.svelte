@@ -8,7 +8,7 @@
   import { Sparkles, Loader2, Coins } from "lucide-svelte";
   import { DEFAULT_STAGE_COSTS } from "$lib/types/job";
   import type { SolutionPreview, StageCosts } from "$lib/types/job";
-  import { solutionDisplayTitle } from "$lib/utils/solution-utils";
+  import { solutionDisplayTitle, opportunityShape } from "$lib/utils/solution-utils";
   import { creditTopUp } from "$lib/stores/creditTopUp.svelte";
 
   const MAX_SELECTIONS = 3;
@@ -72,6 +72,17 @@
   let regenerateError = $state("");
   const canAffordRegenerate = $derived(creditBalance >= stageCosts.regenerate_ideas);
 
+  // Opportunity shape — one-line read on how this niche's ideas split across GTM angles.
+  const shape = $derived(opportunityShape(solutions));
+
+  // Batch-scoped GTM focus for the NEXT regeneration (defaults to the run's original focus = auto).
+  const REGEN_FOCUSES = [
+    { value: "auto", label: "Auto" },
+    { value: "novelty", label: "Novelty" },
+    { value: "distribution", label: "Distribution" },
+  ] as const;
+  let regenerateFocus = $state<"auto" | "novelty" | "distribution">("auto");
+
   $effect(() => {
     if (!isRegenerating && regenerating) regenerating = false;
   });
@@ -81,7 +92,7 @@
     regenerating = true;
     regenerateError = "";
     try {
-      await regenerateIdeas(jobId);
+      await regenerateIdeas(jobId, regenerateFocus === "auto" ? undefined : regenerateFocus);
       onRegenerateStart?.();
     } catch (e) {
       if (e instanceof ApiError && e.status === 402) {
@@ -221,6 +232,14 @@
       <CoverageNotes notes={coverageNotes} compact />
     {/if}
 
+    <!-- Opportunity shape: how this niche's viable ideas split across GTM angles -->
+    {#if shape}
+      <p class="opportunity-shape">
+        <span class="opportunity-shape__label">Opportunity shape</span>
+        {shape.line}
+      </p>
+    {/if}
+
     <!-- Solutions grid (top-pick + remaining, shared with visitor view) -->
     <SolutionGrid
       {solutions}
@@ -236,6 +255,18 @@
 
     <!-- Generate more ideas -->
     {#if canRegenerate}
+      <div class="regen-focus" role="group" aria-label="Idea focus for the next batch">
+        {#each REGEN_FOCUSES as focus}
+          <button
+            type="button"
+            onclick={() => regenerateFocus = focus.value}
+            disabled={regenerating || isRegenerating}
+            class="regen-focus-btn {regenerateFocus === focus.value ? 'is-active' : ''}"
+          >
+            {focus.label}
+          </button>
+        {/each}
+      </div>
       <button
         onclick={handleRegenerate}
         disabled={regenerating || isRegenerating || !canAffordRegenerate}
@@ -421,6 +452,58 @@
 
   .fallback-link:hover {
     color: var(--color-text-secondary);
+  }
+
+  .opportunity-shape {
+    margin: 0 0 var(--space-3);
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+    line-height: 1.5;
+  }
+
+  .opportunity-shape__label {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+    margin-right: var(--space-2);
+  }
+
+  .regen-focus {
+    align-self: center;
+    display: inline-flex;
+    gap: var(--space-1);
+    margin-bottom: var(--space-2);
+  }
+
+  .regen-focus-btn {
+    padding: 0.2rem var(--space-2);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-muted);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    cursor: pointer;
+    transition: border-color 0.15s ease, color 0.15s ease;
+  }
+
+  .regen-focus-btn:hover:not(:disabled) {
+    color: var(--color-text-secondary);
+    border-color: var(--color-border-emphasis);
+  }
+
+  .regen-focus-btn.is-active {
+    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+    border-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
+    color: var(--color-accent);
+    font-weight: 500;
+  }
+
+  .regen-focus-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 
   .generate-more-btn {

@@ -21,6 +21,8 @@ export const CreateJobSchema = z.object({
     ),
   allowedProjectTypes: z.array(z.enum(VALID_PROJECT_TYPES)).min(1).max(5).optional(),
   entryMode: z.enum(['idea', 'audience', 'discovery', 'pain_research', 'pain_remix', 'deep_idea']).optional(),
+  // GTM-focus steer for idea generation/ranking emphasis (only active when angle eval is on).
+  ideaFocus: z.enum(['auto', 'novelty', 'distribution']).optional(),
 });
 
 export type CreateJobInput = z.infer<typeof CreateJobSchema>;

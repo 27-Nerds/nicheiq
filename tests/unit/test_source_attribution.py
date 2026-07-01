@@ -250,3 +250,74 @@ class TestEvidenceAppendixParallelIds:
         qs = result.pain_point_quote_sources[0].quotes_with_sources[0]
         assert qs.post_id == "matched_post"  # Fuzzy match found the source
         assert qs.source_label == "matchsub"
+
+
+class TestMultiSourceEvidenceHeadline:
+    """enable_multisource_evidence_headline: headline threads span Reddit + HN + Twitter, ranked by
+    normalized engagement, not Reddit-only by raw upvotes. Off => Reddit-only (byte-identical)."""
+
+    def _state(self):
+        from types import SimpleNamespace
+        state = MagicMock()
+        rp = MagicMock(post_id="r1", title="Reddit thread", subreddit="saas", score=40,
+                       num_comments=5, url="https://reddit.com/r/saas/1",
+                       created_utc=datetime(2025, 1, 1, tzinfo=timezone.utc), selftext="reddit body text here", comments=[])
+        hn = SimpleNamespace(post_id="h1", title="HN thread", platform="hackernews", score=300,
+                             num_responses=180, url="https://news.ycombinator.com/item?id=1",
+                             created_utc=datetime(2025, 1, 2, tzinfo=timezone.utc), body="hn body text",
+                             raw_engagement={}, responses=[])
+        state.social_content.reddit_posts = [rp]
+        state.social_content.generic_posts = [hn]
+        state.social_content.twitter_threads = []  # twitter exercised by the real pipeline
+        state.pain_point_analysis.pain_points = []
+        gen = ReportGenerator.__new__(ReportGenerator)
+        gen.state = state
+        gen.accessor = MagicMock()
+        gen.score_accessor = MagicMock()
+        return gen
+
+    def test_multisource_headline_is_cross_platform_and_engagement_ranked(self, monkeypatch):
+        from nicheiq.config.settings import settings
+        monkeypatch.setattr(settings, "enable_multisource_evidence_headline", True)
+        gen = self._state()
+        result = gen._generate_evidence_appendix()
+        assert result is not None
+        platforms = {t.platform for t in result.top_reddit_threads}
+        assert {"reddit", "hackernews"} <= platforms  # multi-source headline
+        # HN (300 points / 180 comments) outranks Reddit (40/5) by normalized engagement
+        assert result.top_reddit_threads[0].platform == "hackernews"
+
+    def test_off_is_reddit_only(self, monkeypatch):
+        from nicheiq.config.settings import settings
+        monkeypatch.setattr(settings, "enable_multisource_evidence_headline", False)
+        gen = self._state()
+        result = gen._generate_evidence_appendix()
+        assert result is not None
+        assert all(t.platform == "reddit" for t in result.top_reddit_threads)
+
+    def test_per_platform_cap_keeps_breadth(self, monkeypatch):
+        """A small but high-engagement platform (13 HN) must not sweep the 10-slot headline over a
+        larger Reddit corpus — capped at <=6 so Reddit (the bulk of the evidence) keeps presence."""
+        from types import SimpleNamespace
+        from nicheiq.config.settings import settings
+        monkeypatch.setattr(settings, "enable_multisource_evidence_headline", True)
+        gen = self._state()
+        # 13 very-high-engagement HN posts + 12 lower-engagement Reddit posts
+        gen.state.social_content.generic_posts = [
+            SimpleNamespace(post_id=f"h{i}", title=f"HN {i}", platform="hackernews", score=2000,
+                            num_responses=500, url=f"https://news.ycombinator.com/item?id={i}",
+                            created_utc=datetime(2025, 1, 2, tzinfo=timezone.utc), body="x",
+                            raw_engagement={}, responses=[]) for i in range(13)]
+        gen.state.social_content.reddit_posts = [
+            MagicMock(post_id=f"r{i}", title=f"Reddit {i}", subreddit="saas", score=30, num_comments=3,
+                      url=f"https://reddit.com/r/saas/{i}",
+                      created_utc=datetime(2025, 1, 1, tzinfo=timezone.utc),
+                      selftext="body", comments=[]) for i in range(12)]
+        result = gen._generate_evidence_appendix()
+        assert result is not None
+        threads = result.top_reddit_threads
+        assert len(threads) == 10
+        hn = sum(1 for t in threads if t.platform == "hackernews")
+        assert hn <= 6                                   # cap holds
+        assert any(t.platform == "reddit" for t in threads)  # Reddit keeps presence
+        assert threads[0].platform == "hackernews"       # top slot still the highest-engagement source

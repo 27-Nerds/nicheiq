@@ -69,6 +69,15 @@
     }
   }
 
+  // --- Idea focus (GTM angle steer) ---
+  const IDEA_FOCUSES = [
+    { value: "auto", label: "Auto", hint: "Pick the best angle for each idea (recommended)" },
+    { value: "novelty", label: "Novelty", hint: "Favor novel, defensible mechanisms" },
+    { value: "distribution", label: "Distribution", hint: "Favor SEO/directory plays you can rank fast" },
+  ] as const;
+  let selectedFocus = $state<"auto" | "novelty" | "distribution">("auto");
+  let showFocus = $state(false);
+
   // --- Input state ---
   let niche = $state("");
   let loading = $state(false);
@@ -329,6 +338,7 @@
           ...(selectedProjectTypes.length > 0 && {
             allowedProjectTypes: selectedProjectTypes,
           }),
+          ...(selectedFocus !== "auto" && { ideaFocus: selectedFocus }),
           entryMode,
         }),
       });
@@ -567,6 +577,41 @@
                   </button>
                 {/each}
               </div>
+            {/if}
+          </div>
+
+          <div class="mb-4">
+            <button
+              type="button"
+              onclick={() => showFocus = !showFocus}
+              class="text-xs text-text-muted hover:text-text-secondary transition-colors flex items-center gap-1"
+            >
+              <span class="font-medium">Idea focus</span>
+              <span>·</span>
+              <span>{IDEA_FOCUSES.find((f) => f.value === selectedFocus)?.label ?? "Auto"}</span>
+              <ChevronDown class="w-3 h-3 transition-transform duration-200 {showFocus ? 'rotate-180' : ''}" />
+            </button>
+            {#if showFocus}
+              <div class="flex flex-wrap gap-2 mt-2">
+                {#each IDEA_FOCUSES as focus}
+                  <button
+                    type="button"
+                    onclick={() => selectedFocus = focus.value}
+                    disabled={loading || showSuccess}
+                    title={focus.hint}
+                    class="text-xs px-3 py-1.5 rounded-md border transition-colors
+                      {selectedFocus === focus.value
+                      ? 'bg-accent/10 border-accent/40 text-accent font-medium'
+                      : 'bg-bg-elevated border-border text-text-muted hover:border-border-emphasis hover:text-text-secondary'}
+                      disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {focus.label}
+                  </button>
+                {/each}
+              </div>
+              <p class="text-xs text-text-muted mt-1.5">
+                {IDEA_FOCUSES.find((f) => f.value === selectedFocus)?.hint}
+              </p>
             {/if}
           </div>
 

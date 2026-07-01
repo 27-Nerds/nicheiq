@@ -16,8 +16,16 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from nicheiq.config.settings import settings
 from nicheiq.models.research_state import TrendLongevityResult
 from nicheiq.report.report_generator import ReportGenerator
+
+
+@pytest.fixture(autouse=True)
+def _deterministic_verdict_explanation(monkeypatch):
+    """Deterministic verdict: no live LLM explanation. Angle-aware verdict is always on now but is a
+    lift-only no-op unless a solution sets a real winning_angle (these tests don't)."""
+    monkeypatch.setattr(settings, "enable_llm_verdict_explanation", False)
 
 
 @pytest.fixture

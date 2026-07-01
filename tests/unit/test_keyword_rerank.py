@@ -110,12 +110,29 @@ class TestRerankSolutions:
         assert len(ranked) == 1
         assert unvalidated.rank == 2
 
-    def test_tiebreaker_cascades_until_stable(self):
-        """Three solutions within margin: highest competitive advantage ends first."""
-        a = _make_score("A", composite=0.7, adjusted=0.70, competitive_advantage=0.3)
-        b = _make_score("B", composite=0.7, adjusted=0.69, competitive_advantage=0.6)
-        c = _make_score("C", composite=0.7, adjusted=0.68, competitive_advantage=0.9)
+    def test_tiebreaker_leader_anchored(self):
+        """Leader-anchored: within the margin-of-top cluster, highest competitive advantage wins
+        rank 1; the rest keep adjusted-score order (NOT re-sorted by CA). Demand spreads (0.70/0.60/0.50,
+        >= the P3a gate's 0.05 eps) so the novelty override fires under the default demand-gated tiebreak."""
+        a = _make_score("A", composite=0.7, adjusted=0.70, competitive_advantage=0.3, demand=0.70)
+        b = _make_score("B", composite=0.7, adjusted=0.69, competitive_advantage=0.6, demand=0.60)
+        c = _make_score("C", composite=0.7, adjusted=0.68, competitive_advantage=0.9, demand=0.50)
         ranked = rerank_solutions_by_adjusted_score(
             [a, b, c], validated_names={"A", "B", "C"}
         )
-        assert [s.solution_name for s in ranked] == ["C", "B", "A"]
+        # C promoted (highest CA, within 0.05 of leader); A before B by adjusted score.
+        assert [s.solution_name for s in ranked] == ["C", "A", "B"]
+
+    def test_tiebreaker_outside_margin_cannot_win(self):
+        """A solution >= margin below the leader can NEVER win rank 1, however high its CA."""
+        # Top has the highest CA within the cluster, so it stays rank 1; Low is outside the margin.
+        top = _make_score("Top", composite=0.9, adjusted=0.90, competitive_advantage=0.5)
+        mid = _make_score("Mid", composite=0.86, adjusted=0.86, competitive_advantage=0.3)
+        low = _make_score("Low", composite=0.82, adjusted=0.82, competitive_advantage=0.99)
+        ranked = rerank_solutions_by_adjusted_score(
+            [top, mid, low], validated_names={"Top", "Mid", "Low"}, tiebreak_margin=0.05
+        )
+        # Low (0.82) is 0.08 below Top (0.90) — outside the margin — so its 0.99 CA cannot win.
+        assert ranked[0].solution_name == "Top"
+        assert ranked[-1].solution_name == "Low"
+        assert [s.rank for s in ranked] == [1, 2, 3]

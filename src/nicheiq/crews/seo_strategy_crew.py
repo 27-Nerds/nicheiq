@@ -929,7 +929,12 @@ class SEOStrategyCrew:
         return Agent(
             config=self.agents_config["content_strategist"],
             llm=build_crew_llm(
-                model=settings.openai_model_name,
+                # List-heavy structured output (content/technical strategy → keyword_based_page_types,
+                # topic clusters). Uses the reliable structured model, NOT the lite workhorse, which
+                # truncates long lists ~25% and exhausts this task's ">=4 page types" guardrail (which
+                # used to hard-fail the whole job). report_structured_llm is the project's designated
+                # list-heavy model (grok-class); A/B-validated on the SEO crew (2026-06-30).
+                model=settings.report_structured_llm,
                 temperature=0.5,  # Moderate temperature (ignored for reasoning models)
             ),
             verbose=True,
@@ -950,7 +955,9 @@ class SEOStrategyCrew:
         return Agent(
             config=self.agents_config["seo_specialist"],
             llm=build_crew_llm(
-                model=settings.openai_model_name,
+                # List-heavy structured output (implementation roadmap, key metrics). Reliable structured
+                # model, not the lite workhorse (truncates long lists). See content_strategist note.
+                model=settings.report_structured_llm,
                 temperature=0.4,  # Moderate temperature (ignored for reasoning models)
                 timeout=180,
                 # max_completion_tokens=20000,  # Disabled: CrewAI doesn't forward this properly for reasoning models
@@ -1360,8 +1367,20 @@ class SEOStrategyCrew:
                 self.audience_mapping.common_vocabulary
                 if self.audience_mapping else None
             )
+            # Deep-research audience conditioning (gated): ground seeds on the resolved primary audience
+            # + the tools they use today (strong keyword seeds — "<tool> alternative"). Additive.
+            if settings.enable_audience_conditioned_deep_research and self.audience_mapping:
+                extra = list(getattr(self.audience_mapping, "tools_currently_used", None) or [])[:5]
+                aud = getattr(self.niche_context, "resolved_primary_audience", None) if self.niche_context else None
+                if aud:
+                    extra.append(aud)
+                if extra:
+                    audience_vocab = (audience_vocab or []) + extra
             if audience_vocab:
                 logger.info(f"Passing {len(audience_vocab)} audience vocabulary terms to seed generator")
+
+            # Broad:targeted seed ratio for keyword seed generation.
+            n_broad, n_targeted = (30, 15)
 
             # Generate seeds with full context
             result = generator.generate_seeds(
@@ -1370,8 +1389,8 @@ class SEOStrategyCrew:
                 pain_points=self.pain_points,
                 competitive_analysis=self.competitive_analysis,
                 audience_vocabulary=audience_vocab,
-                num_broad_seeds=30,
-                num_targeted_seeds=15,
+                num_broad_seeds=n_broad,
+                num_targeted_seeds=n_targeted,
                 covered_keywords=self.covered_keywords,
             )
 
@@ -2093,6 +2112,17 @@ class SEOStrategyCrew:
         else:
             return (8, 15)
 
+    def _angle_vars(self) -> dict:
+        """Angle brief vars for the SEO task prompts. Empty strings when angle-conditioned research is
+        off OR the selected idea has no winning_angle => the {angle_brief} interpolation is a no-op, so
+        the SEO strategy is byte-identical to today. When on for a distribution_seo idea, this
+        front-loads the SEO kill-question (real page ceiling + winnable + penalty risk) the crew should
+        investigate; for a novel/workflow idea it tells the crew SEO is thin so it doesn't over-promise."""
+        if not settings.enable_angle_conditioned_research:
+            return {"winning_angle": "", "angle_brief": "", "angle_primary_question": ""}
+        from ..utils.angle_brief import build_angle_brief
+        return build_angle_brief(self.selected_solution)
+
     def create_strategy_multitask(
         self,
         enriched_keywords: list,
@@ -2413,6 +2443,8 @@ class SEOStrategyCrew:
                     # Dynamic category limits (calculated by Python, not LLM)
                     "min_category_groups": cat_min,
                     "max_category_groups": cat_max,
+                    # Angle-conditioned research (empty vars when disabled => no change).
+                    **self._angle_vars(),
                 }
             )
 
@@ -2848,6 +2880,8 @@ class SEOStrategyCrew:
                     "timeline_multiplier": difficulty_metrics["timeline_multiplier"],
                     "tier1_ranking_time": difficulty_metrics["tier1_ranking_time"],
                     "tier2_ranking_time": difficulty_metrics["tier2_ranking_time"],
+                    # Angle-conditioned research (empty vars when disabled => no change).
+                    **self._angle_vars(),
                 }
             )
 

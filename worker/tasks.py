@@ -242,6 +242,12 @@ def _solution_to_preview_dict(solution) -> dict:
     name = d.get("solution_name") or d.get("name", "Unknown")
     d["name"] = name
     d["solution_name"] = name
+
+    # Angle-aware ranking on the surface the user actually picks from: the selection grid
+    # short-circuits to adjusted_composite_score when present, so stamp the angle-weighted composite
+    # (each idea by its own winning_angle; angle=None ideas fall back to an equal-weight mean).
+    from nicheiq.utils.score_helpers import angle_ranked_composite
+    d["adjusted_composite_score"] = angle_ranked_composite(d)
     return d
 
 
@@ -252,6 +258,7 @@ def run_interactive_research(
     allowed_project_types: Optional[list[str]] = None,
     resume: bool = False,
     entry_mode: Optional[str] = None,
+    idea_focus: Optional[str] = None,
 ) -> dict:
     """
     Interactive research task: runs Phase 1, validates solutions, waits for user selection.
@@ -282,6 +289,7 @@ def run_interactive_research(
             allowed_project_types=allowed_project_types,
             job_id=job_id,
             entry_mode=entry_mode,
+            idea_focus=idea_focus or "auto",
         )
         flow.progress_callback = progress_callback
 
@@ -858,10 +866,15 @@ def run_regenerate_ideas(
     checkpoint_path: str,
     existing_solution_names: list[str],
     niche: str,
+    idea_focus: Optional[str] = None,
 ) -> dict:
     """
     Regeneration task: generates new solution ideas avoiding existing names.
     Loaded from checkpoint, runs solution crew with exclusion list.
+
+    idea_focus, when provided, is a BATCH-SCOPED override for this regeneration only — the user
+    changing the GTM focus for the new batch. It does NOT overwrite the run-level state.idea_focus
+    (kept immutable); it's passed straight to the crew. None → fall back to the checkpoint's focus.
     """
     logger.info(f"[Worker] Regenerating ideas for job {job_id}, excluding: {existing_solution_names}")
 
@@ -934,6 +947,8 @@ def run_regenerate_ideas(
             job_id=job_id,
             existing_ideas=existing_ideas_for_crew,
             competitor_mentions_text=competitor_mentions,
+            # Batch override > restored run-level focus > default. Run-level state stays immutable.
+            idea_focus=(idea_focus or getattr(flow, "idea_focus", "auto") or "auto"),
         )
 
         # Execute pipeline with skip_selection=True (no Task 4 needed for regeneration)

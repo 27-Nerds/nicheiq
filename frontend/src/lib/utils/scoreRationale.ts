@@ -72,6 +72,13 @@ export function scoreRationale(
       break;
 
     case "novelty": {
+      // Prefer the angle-aware, project-type-grounded rationale when present and non-empty
+      // (angle eval on) — it explains why a low mechanism-novelty isn't a flaw for, e.g., a catalog.
+      const angleNov = clean(idea.novelty_rationale);
+      if (angleNov) {
+        why = angleNov;
+        break;
+      }
       const innov = clean(idea.innovation_angle);
       const conv = clean(idea.conventional_approach);
       why = innov && conv

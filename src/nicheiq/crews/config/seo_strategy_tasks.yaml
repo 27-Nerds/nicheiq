@@ -1109,6 +1109,8 @@ develop_content_technical_strategy:
   description: >
     **Task 2: Content & Technical Strategy**
 
+    {angle_brief}
+
     **HOW TO ACCESS KEYWORD DATA (from Task 1e context):**
 
     Task 1e (KeywordSummaryResult) provides sample keywords for your strategy via CrewAI context chaining.

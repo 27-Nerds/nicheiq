@@ -395,7 +395,7 @@ scale (recalibrated from the legacy pad-to-12 scale of 8/5/3).
 | `selection_rationale` | `string` | Why selected over alternatives (carries an appended keyword-validation update when the winner pivoted) |
 | `original_selection_reasoning` | `string \| null` | Original strategic rationale, preserved verbatim when keyword validation pivoted the winner |
 | `recommended_focus` | `string` | Strategic focus recommendation |
-| `selected_solution_details` | `object` | Complete solution details (35 keys) |
+| `selected_solution_details` | `object` | Complete solution details (38 keys) |
 | `solution_user_journey` | `string` | Step-by-step user workflow |
 | `solution_implementation_overview` | `string` | High-level implementation plan |
 | `mvp_scope_definition` | `string` | MVP scope definition |
@@ -405,7 +405,7 @@ scale (recalibrated from the legacy pad-to-12 scale of 8/5/3).
 > **Note:** `selection_criteria_scores` was removed in favor of ScoreAccessor as single source of truth.
 > All diagnostic scores are now served via `key_metrics` in the executive dashboard.
 
-### `selected_solution_details` (35 keys)
+### `selected_solution_details` (38 keys)
 
 ```json
 {
@@ -436,6 +436,9 @@ scale (recalibrated from the legacy pad-to-12 scale of 8/5/3).
   "innovation_angle": "string",
   "why_it_works": "string",
   "solo_dev_feasibility": 0.6,
+  "winning_angle": "distribution_seo",
+  "angle_rationale": "string",
+  "novelty_rationale": "string",
   "keyword_geographic_priorities": ["string"],
   "keyword_feature_priorities": ["string"],
   "keyword_strategic_insights": "string",
@@ -488,6 +491,8 @@ scale (recalibrated from the legacy pad-to-12 scale of 8/5/3).
 | `why_it_works` | `string` | Evidence-based reason it succeeds |
 | `solo_dev_feasibility` | `number` (0-1) | Solo developer feasibility |
 | `data_feasibility_score` | `number\|null` (0-1) | How readily a solo dev can OBTAIN the required data (annotate-only; from the independent feasibility critic). Higher = easier. |
+| `build_feasibility_score` | `number\|null` (0-1) | How readily a solo dev can BUILD the idea (independent of data access; from the feasibility critic). Higher = easier. Anchors `estimated_development_time`; surfaced as the "Build" ring in the Technical Blueprint. |
+| `differentiation_locus` | `string\|null` | Where the idea's edge actually lives (e.g. data representation, workflow integration, distribution) — the angle classifier's one-line read, distinct from `innovation_angle`. Rendered as "Where the edge lives" in the angle block. |
 | `data_access_model` | `string\|null` | `public` \| `freemium` \| `paywalled` \| `unofficial` (unofficial API / scraping lib, ToS-gray) \| `restricted` \| `blocked` (verifier *refuted* the route — score-capped) \| `unverified` (search could neither confirm nor refute — flagged, NOT score-capped). |
 | `data_acquisition_notes` | `string\|null` | Data source/route + access model + cost/ToS risk (≤120 chars). |
 | `keyword_geographic_priorities` | `array[string]` | Geographic priorities |
@@ -989,9 +994,9 @@ Overall market validation conclusion.
 | `keyword_validation_overview` | `string` | Keyword validation summary |
 | `solution_keyword_comparison` | `string` | Cross-solution comparison |
 | `content_strategy_preview` | `string` | Content strategy preview |
-| `seo_strategy_report` | `object` | Full SEO strategy (21 keys) |
+| `seo_strategy_report` | `object` | Full SEO strategy (22 keys) |
 
-### `seo_strategy_report: object` (21 keys)
+### `seo_strategy_report: object` (22 keys)
 
 ```json
 {
@@ -1018,7 +1023,27 @@ Overall market validation conclusion.
   "risk_mitigation": "string",
   "budget_allocation": "string",
   "conclusion_bottom_line": "string",
-  "next_steps_checklist": ["string"]
+  "next_steps_checklist": ["string"],
+
+  "seo_kill_question": SeoKillQuestion | null
+}
+```
+
+**`seo_kill_question: object | null`** — deterministic (no-LLM) SEO-thesis stress test, present ONLY for `distribution_seo` ideas (null otherwise). Catches the "pSEO mirage": an idea that scores great on raw keyword volume but has no real page universe or faces a thin-content penalty.
+
+```json
+{
+  "indexable_page_ceiling": 148,        // distinct non-zero-volume intents = realistic programmatic page universe
+  "head_count": 90, "mid_count": 42, "tail_count": 16,  // by monthly volume (>=1000 / 100-999 / 1-99)
+  "median_keyword_difficulty": 12.0,    // median KD (0-100) across the universe
+  "winnable_pages": 118,                // pages with KD below the new-domain-rankable threshold
+  "kd_sample_size": 133,                // intents that carried a KD value (coverage denominator). DataForSEO omits KD for many easy long-tail intents, so when this is small vs the ceiling, winnable_pages/median_keyword_difficulty are unreliable — the verdict floor abstains and the verdict text says "indicative only".
+  "forum_soft_serp_share": 0.0,         // UPSIDE-ONLY: share of sampled SERPs that are forum/UGC-soft (= bonus ranking room). 0.0 is NEUTRAL (default for professional niches), NOT "unwinnable". Does not feed the verdict.
+  "institutional_serp_share": 0.0,      // CAUTION-ONLY: share of sampled SERPs DOMINATED (>=3 of top 5) by .gov/.edu/.mil/Wikipedia — a ranking headwind KD understates. High share = "verify winnability"; NOT a kill, does not feed the verdict.
+  "serp_sampled": 5,
+  "penalty_risk_flag": false,           // large page universe + thin (tail-heavy) => scaled-content penalty risk
+  "verdict": "string",                  // one-line read (driven by ceiling, median KD, penalty risk — NOT forum-softness)
+  "rationale": "string"
 }
 ```
 
@@ -1431,6 +1456,11 @@ Array of 7 recommended next steps.
   "target_personas": ["string"],
   "technical_approach": "string",
   "novelty_score": 0.6,
+  "novelty_rationale": "string",
+  "differentiation_locus": "string",
+  "winning_angle": "distribution_seo",
+  "angle_rationale": "string",
+  "build_feasibility_score": 0.8,
   "solo_dev_feasibility": "string",
   "top_competitors": ["string"],
   "market_gaps": ["string"],
@@ -1464,6 +1494,9 @@ derivation thresholds, and strength cutoffs: see **`docs/IDEA_TAGS.md`**.
 ```json
 {
   "novelty_score": 0.7,
+  "novelty_rationale": "string",
+  "winning_angle": "distribution_seo",
+  "angle_rationale": "string",
   "conventional_approach": "string",
   "innovation_angle": "string",
   "why_it_works": "string",
@@ -1572,6 +1605,7 @@ report (computed once, read from state). Null when there are no pains and no ide
 | `OverallDataQuality` | `"HIGH"`, `"MEDIUM"`, `"LOW"` |
 | `IntegrationComplexity` | `"LOW"`, `"MEDIUM"`, `"HIGH"`, `"LOW-MEDIUM"`, `"MEDIUM-HIGH"` |
 | `SourcePriority` | `"HIGH"`, `"MEDIUM"`, `"LOW"` |
+| `WinningAngle` | `"distribution_seo"`, `"novel_differentiation"`, `"vertical_workflow"` — the GTM angle an idea is judged and ranked on |
 
 ### Score Ranges
 
@@ -1586,6 +1620,9 @@ report (computed once, read from state). Null when there are no pains and no ide
 | `momentum_score` | 0.0 - 1.0 | 0=declining, 0.5=stable, 1=strong growth |
 | `confidence_score` | 0.0 - 1.0 | Higher = more confident |
 | `novelty_score` | 0.0 - 1.0 | Higher = more novel |
+| `novelty_rationale` | string\|null | One line tying the novelty score to the idea's `project_type` (why it's expected/low/high for that type). Shown in the novelty score tooltip |
+| `winning_angle` | string\|null | `WinningAngle` enum — the angle that gives the idea its best real chance; the idea is judged and ranked on executing *that* angle |
+| `angle_rationale` | string\|null | 1-3 sentences naming the angle, the nearest competitor, and where the idea's differentiation lives |
 | `obviousness_score` | 0.0 - 1.0 | **Lower = more original** (independent novelty critic). Shown as Originality = 1 − this |
 | `solo_dev_feasibility` | 0.0 - 1.0 | Higher = easier for solo dev |
 | `data_feasibility_score` | 0.0 - 1.0 | Higher = data easier to obtain (annotate-only) |
@@ -1659,6 +1696,28 @@ report (computed once, read from state). Null when there are no pains and no ide
 ---
 
 ## Version History
+
+- **v2.9** - Post-selection deep-research surfacing + band hygiene
+  - Surfaced `differentiation_locus` (where the idea's edge lives) and `build_feasibility_score`
+    (solo-dev build ease, distinct from data access) on the selected solution and each
+    `alternative_solutions` entry — both already computed upstream but previously dropped from the
+    report. `top_reddit_threads[].platform` now distinguishes the source across Reddit / HN /
+    YouTube / Twitter.
+  - Post-selection prose (pivot trigger, executive narrative, verdict cap-notes, market-sizing pain
+    signals) now emits qualitative score **bands** instead of raw 0-1 decimals, matching the
+    Phase-1 niche-summary band work.
+  - New dark flags (off pending A/B): `ENABLE_SEO_KILL_QUESTION_FLOOR`,
+    `ENABLE_SCOPED_MARKET_SIZING`, `ENABLE_AUDIENCE_CONDITIONED_DEEP_RESEARCH`,
+    `ENABLE_MULTISOURCE_EVIDENCE_HEADLINE`. See `docs/ENV_REFERENCE.md` and
+    `docs/DEEP_RESEARCH_IMPROVEMENT_PLAN.md`.
+
+- **v2.8** - Added angle-aware idea evaluation
+  - Added `winning_angle` (`WinningAngle`: `distribution_seo` | `novel_differentiation` |
+    `vertical_workflow`), `angle_rationale`, and `novelty_rationale` to each idea (selected
+    solution + `alternative_solutions`). An in-cell classifier assigns the angle that gives an
+    idea its best real chance, and the idea is judged and ranked on executing that angle, so a
+    low off-axis score (e.g. low mechanism-novelty for a catalog) is explained, not penalized.
+    See `docs/SCORING_METHODOLOGY.md`.
 
 - **v2.7** - Added Research Reality Check
   - Added `niche_difficulty_verdict` (`NicheDifficultyVerdict`) — a candid software-fit verdict

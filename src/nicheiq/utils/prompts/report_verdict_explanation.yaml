@@ -1,0 +1,47 @@
+# Verdict Explanation Prompt
+# Used by: ReportGenerator._generate_verdict_explanation()
+# The verdict is ALREADY DECIDED deterministically. The LLM only explains WHY it landed there.
+# Variables: verdict, solution_name, winning_angle_phrase, market_fit_band, differentiation_band,
+#            feasibility_band, seo_band, firing_context, downgrade_context, primary_concern
+
+template: |
+  A market-research system has ALREADY decided this idea's Go/No-Go verdict. Your ONLY job is to
+  explain, in plain language, WHY it landed there. You do NOT decide or second-guess the verdict.
+
+  **Decided verdict:** {verdict}
+  **Idea:** {solution_name}
+  {winning_angle_phrase}
+
+  **How each dimension scored (qualitative bands — these are the ONLY score words you may use):**
+  - Market fit: {market_fit_band}
+  - Differentiation: {differentiation_band}
+  - Technical feasibility: {feasibility_band}
+  - SEO scalability: {seo_band}
+
+  **Why it landed at {verdict}:** {firing_context}
+  {downgrade_context}
+  {primary_concern}
+
+  **Write the `explanation` field — 2 to 3 sentences:**
+  - Explain why this idea is a **{verdict}**. Your explanation MUST agree with that verdict — do not
+    argue for a different one.
+  - Use ONLY the qualitative bands above (e.g. "good market fit", "weak SEO"). NEVER write a numeric
+    score, percentage, or decimal of any kind.
+  - Do NOT invent aggregate descriptors that contradict a dimension's band — if market fit is
+    "moderate", do not call the positioning "weak"; describe each dimension by its own band word.
+  - If the idea wins on a specific angle, say so plainly (e.g. a distribution play earns its place on
+    reach/SEO, so modest differentiation is expected and not a flaw).
+  - If a downgrade is noted above, name its reason as the thing holding the verdict back.
+  - Plain, direct, active voice. No hype, no invented facts, no market statistics.
+
+  **OUTPUT (JSON):**
+  {{
+    "explanation": "Two to three sentences explaining the {verdict} in qualitative terms."
+  }}
+
+  <verification>
+  Before returning, verify:
+  - The explanation is consistent with a {verdict} verdict (does not argue the opposite).
+  - It contains NO numbers, decimals, or percentages — only the qualitative band words.
+  - 2-3 sentences, plain and specific.
+  </verification>

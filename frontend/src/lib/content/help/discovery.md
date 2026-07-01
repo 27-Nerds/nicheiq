@@ -1,6 +1,4 @@
-## How the research works
-
-Every report gets built in two phases. Discovery comes first: it reads real public discussion to find what people are struggling with, who they are, and what you could build for them. Deep Analysis comes second, where we pressure-test the most promising idea on demand, pricing, market size, and timing. This page is about Discovery.
+Every report gets built in two phases. Discovery comes first: it reads real public discussion to find what people are struggling with, who they are, and what you could build for them. Deep Research comes second, where we pressure-test the most promising idea on demand, pricing, market size, and timing. (See [How one idea gets pressure-tested](/help/deep-research).) This page is about Discovery.
 
 ### The five Discovery steps
 

@@ -98,7 +98,7 @@ def test_tournament_cell_picks_lowest_obviousness_and_stamps_provenance(monkeypa
 
     monkeypatch.setattr(UnifiedSolutionCrew, "_refine_single_concept", fake_refine)
     monkeypatch.setattr(usc.UnifiedSolutionCrew, "_record_divergent_usage", lambda self, u: None, raising=False)
-    monkeypatch.setattr(UnifiedSolutionCrew, "_score_cell_winner", lambda self, w, **kw: None)
+    monkeypatch.setattr(UnifiedSolutionCrew, "_score_cell_winner", lambda self, w, **kw: w)
     import nicheiq.crews.idea_improvement_loop_v4 as v4
     monkeypatch.setattr(v4, "tournament_refine_cell_v4", fake_tournament)
 
@@ -121,7 +121,7 @@ def test_tournament_cell_drops_blocked_with_floor(monkeypatch):
                             solution_name="X", source_pain=None, source_segment=None,
                             mechanism_tag=None, data_source_tag=None, journey_tag=None,
                             obviousness_score=None, data_feasibility_score=None, build_feasibility_score=None))
-    monkeypatch.setattr(UnifiedSolutionCrew, "_score_cell_winner", lambda self, w, **kw: None)
+    monkeypatch.setattr(UnifiedSolutionCrew, "_score_cell_winner", lambda self, w, **kw: w)
     import nicheiq.crews.idea_improvement_loop_v4 as v4
     monkeypatch.setattr(v4, "tournament_refine_cell_v4", lambda cands, g, **kw: cands[0])
 
@@ -139,3 +139,100 @@ def test_tournament_cell_fail_soft_returns_none(monkeypatch):
     cell = {"pain": _pain("P"), "segment": None}
     out = _crew()._tournament_cell(cell=cell, candidates=[_concept("a")], search=None, usages=[])
     assert out is None
+
+
+def test_tournament_cell_backfills_project_type_from_candidate(monkeypatch):
+    # The refiner often drops project_type (RawConcept has it, the refined idea doesn't) — the cell
+    # must backfill it from the seed concept so the idea/UI/angle keep the type signal.
+    refined = SimpleNamespace(solution_name="X", source_pain=None, source_segment=None,
+                              mechanism_tag=None, data_source_tag=None, journey_tag=None,
+                              project_type=None,  # refiner dropped it
+                              obviousness_score=None, data_feasibility_score=None,
+                              build_feasibility_score=None)
+    monkeypatch.setattr(UnifiedSolutionCrew, "_refine_single_concept", lambda self, c, p: refined)
+    monkeypatch.setattr(UnifiedSolutionCrew, "_score_cell_winner", lambda self, w, **kw: w)
+    monkeypatch.setattr(usc.UnifiedSolutionCrew, "_record_divergent_usage", lambda self, u: None, raising=False)
+    import nicheiq.crews.idea_improvement_loop_v4 as v4
+    monkeypatch.setattr(v4, "tournament_refine_cell_v4", lambda cands, g, **kw: cands[0])
+    cell = {"pain": _pain("P"), "segment": _seg("Budget")}
+    cand = _concept("c", obv=0.3)  # _concept defaults project_type="aggregator"
+    winner = _crew()._tournament_cell(cell=cell, candidates=[cand], search=None, usages=[])
+    assert winner.project_type == "aggregator"  # carried from the candidate, not left None
+
+
+def test_tournament_cell_keeps_refiner_project_type(monkeypatch):
+    # If the refiner DID set a project_type, the backfill must not overwrite it.
+    refined = SimpleNamespace(solution_name="X", source_pain=None, source_segment=None,
+                              mechanism_tag=None, data_source_tag=None, journey_tag=None,
+                              project_type="saas",
+                              obviousness_score=None, data_feasibility_score=None,
+                              build_feasibility_score=None)
+    monkeypatch.setattr(UnifiedSolutionCrew, "_refine_single_concept", lambda self, c, p: refined)
+    monkeypatch.setattr(UnifiedSolutionCrew, "_score_cell_winner", lambda self, w, **kw: w)
+    monkeypatch.setattr(usc.UnifiedSolutionCrew, "_record_divergent_usage", lambda self, u: None, raising=False)
+    import nicheiq.crews.idea_improvement_loop_v4 as v4
+    monkeypatch.setattr(v4, "tournament_refine_cell_v4", lambda cands, g, **kw: cands[0])
+    cell = {"pain": _pain("P"), "segment": None}
+    winner = _crew()._tournament_cell(cell=cell, candidates=[_concept("c", obv=0.3)], search=None, usages=[])
+    assert winner.project_type == "saas"  # refiner value preserved
+
+
+# --- focus-aware winner-pick (Stage 4) -------------------------------------
+
+def _pick_seed(monkeypatch, candidates, *, focus="auto"):
+    """Run _tournament_cell with downstream mocked; return the SEED concept the winner-pick chose."""
+    captured = {}
+
+    def fake_refine(self, concept, pain):
+        captured["seed"] = concept
+        return SimpleNamespace(solution_name="X", source_pain=None, source_segment=None,
+                               mechanism_tag=None, data_source_tag=None, journey_tag=None,
+                               obviousness_score=None, data_feasibility_score=None,
+                               build_feasibility_score=None)
+
+    monkeypatch.setattr(UnifiedSolutionCrew, "_refine_single_concept", fake_refine)
+    monkeypatch.setattr(UnifiedSolutionCrew, "_score_cell_winner", lambda self, w, **kw: w)
+    monkeypatch.setattr(usc.UnifiedSolutionCrew, "_record_divergent_usage",
+                        lambda self, u: None, raising=False)
+    import nicheiq.crews.idea_improvement_loop_v4 as v4
+    monkeypatch.setattr(v4, "tournament_refine_cell_v4", lambda cands, g, **kw: cands[0])
+    c = _crew()
+    c.idea_focus = focus
+    cell = {"pain": _pain("P"), "segment": _seg("Budget")}
+    c._tournament_cell(cell=cell, candidates=candidates, search=None, usages=[])
+    return captured["seed"]
+
+
+def _typed(name, obv, project_type):
+    c = _concept(name, obv=obv)
+    c.project_type = project_type
+    return c
+
+
+def test_winner_pick_auto_is_pure_obviousness(monkeypatch):
+    # focus=auto -> lowest obviousness wins regardless of project_type (regression-lock behaviour).
+    cands = [_typed("novel-saas", 0.20, "saas"), _typed("dir", 0.50, "directory")]
+    assert _pick_seed(monkeypatch, cands, focus="auto").concept_name == "novel-saas"
+
+
+def test_winner_pick_distribution_prefers_directory_in_band(monkeypatch):
+    # focus=distribution -> within the obviousness band, the directory beats the (slightly more novel) saas.
+    cands = [_typed("novel-saas", 0.20, "saas"), _typed("dir", 0.25, "directory")]
+    assert _pick_seed(monkeypatch, cands, focus="distribution").concept_name == "dir"
+
+
+def test_winner_pick_focus_respects_quality_floor(monkeypatch):
+    # the directory is FAR outside the obviousness band (0.6 vs 0.2) -> focus must NOT override the gap.
+    cands = [_typed("novel-saas", 0.20, "saas"), _typed("dir", 0.60, "directory")]
+    assert _pick_seed(monkeypatch, cands, focus="distribution").concept_name == "novel-saas"
+
+
+def test_focus_matches_type_helper():
+    assert usc._focus_matches_type("distribution", "directory")
+    assert usc._focus_matches_type("distribution", "aggregator")
+    assert not usc._focus_matches_type("distribution", "saas")
+    assert usc._focus_matches_type("novelty", "saas")
+    assert usc._focus_matches_type("novelty", "marketplace")
+    assert not usc._focus_matches_type("novelty", "directory")
+    assert not usc._focus_matches_type("auto", "directory")  # auto never biases
+    assert not usc._focus_matches_type("distribution", None)

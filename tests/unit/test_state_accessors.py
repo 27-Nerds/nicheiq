@@ -286,6 +286,39 @@ class TestKeywordValidation:
         assert isinstance(result, bool)
 
 
+class TestBeachheadSearchVolume:
+    """P0b: get_beachhead_search_volume returns the SELECTED solution's own validated demand
+    (niche-relevant, else total) — the market-sizing beachhead anchor, not the niche/SEO total."""
+
+    def _state(self, selected, entries):
+        from types import SimpleNamespace
+        return SimpleNamespace(
+            solution_selection=SimpleNamespace(selected_solution_name=selected),
+            keyword_validation_results=[
+                SimpleNamespace(solution_name=n, niche_relevant_volume=nrv, total_volume=tv)
+                for (n, nrv, tv) in entries
+            ],
+        )
+
+    def test_returns_niche_relevant_of_selected(self):
+        acc = StateAccessor(self._state("Sol B", [("Sol A", 9000, 20000), ("Sol B", 4000, 15000)]))
+        assert acc.get_beachhead_search_volume() == 4000  # NOT the 15000 total, NOT Sol A
+
+    def test_falls_back_to_total_when_niche_relevant_none(self):
+        acc = StateAccessor(self._state("Sol B", [("Sol B", None, 15000)]))
+        assert acc.get_beachhead_search_volume() == 15000
+
+    def test_zero_when_no_validation_results(self):
+        from types import SimpleNamespace
+        acc = StateAccessor(SimpleNamespace(solution_selection=SimpleNamespace(selected_solution_name="X"),
+                                            keyword_validation_results=None))
+        assert acc.get_beachhead_search_volume() == 0
+
+    def test_zero_when_selected_not_in_results(self):
+        acc = StateAccessor(self._state("Missing", [("Sol A", 9000, 20000)]))
+        assert acc.get_beachhead_search_volume() == 0
+
+
 class TestTrendLongevityAccessor:
     """Tests for trend longevity data extraction."""
 

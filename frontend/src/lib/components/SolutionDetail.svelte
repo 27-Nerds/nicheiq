@@ -15,6 +15,7 @@
 import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
   import type { SolutionPreview } from "$lib/types/job";
   import { computeCompositeScore, solutionStrengthBadge, solutionDisplayTitle, originalityMetric } from "$lib/utils/solution-utils";
+  import { angleLabel, angleDescription } from "$lib/utils/ideaAngleLabels";
 
   interface Props {
     open: boolean;
@@ -187,6 +188,15 @@ import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
             </Popover>
             {#if superpower}
               <Badge variant={superpower.variant} size="sm">{superpower.label}</Badge>
+            {/if}
+            {#if solution.winning_angle && angleLabel(solution.winning_angle)}
+              <span
+                class="text-xs px-2 py-0.5 rounded-full bg-bg-elevated border"
+                style="border-color: var(--color-secondary); color: var(--color-secondary-dark)"
+                title={solution.angle_rationale || angleDescription(solution.winning_angle)}
+              >
+                {angleLabel(solution.winning_angle)}
+              </span>
             {/if}
             {#if solution.project_type}
               <span class="text-xs px-2 py-0.5 rounded-full bg-bg-elevated border border-border text-text-muted">

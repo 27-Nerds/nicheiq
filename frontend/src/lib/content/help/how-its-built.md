@@ -1,5 +1,3 @@
-## How it's built and tuned
-
 NicheIQ isn't one big AI prompt. A report gets put together by a pipeline of small, specialised steps, each doing one job and handing its work to the next. We want to explain how that's wired up, mostly because it's the reason we trust the output more than we'd trust a single model asked to "research this niche."
 
 ### Lots of small jobs, not one big one

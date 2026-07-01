@@ -10,6 +10,7 @@
   import FacetChips from "$lib/components/FacetChips.svelte";
   import Tooltip from "$lib/components/ui/Tooltip.svelte";
   import { humanizeTag, tagDescription } from "$lib/utils/ideaTagLabels";
+  import { angleLabel } from "$lib/utils/ideaAngleLabels";
   import { strengthEntry, SUPERPOWERS_DETAILED } from "$lib/utils/superpower";
 
   interface Props {
@@ -227,6 +228,20 @@
     <div class="pl-3 border-l-2 border-border-emphasis">
       <span class="mono-label">Why it works</span>
       <p class="mt-0.5 text-sm text-text-secondary leading-relaxed">{solution.why_it_works}</p>
+    </div>
+  {/if}
+
+  <!-- Angle — which GTM angle wins for this idea + where its differentiation lives -->
+  {#if solution.winning_angle && solution.angle_rationale}
+    <div class="pl-3 border-l-2 border-border-emphasis">
+      <span class="mono-label">Angle · {angleLabel(solution.winning_angle)}</span>
+      <p class="mt-0.5 text-sm text-text-secondary leading-relaxed">{solution.angle_rationale}</p>
+      {#if solution.differentiation_locus}
+        <p class="mt-1 text-xs text-text-muted">
+          <span class="font-medium text-text-secondary">Where the edge lives:</span>
+          {solution.differentiation_locus}
+        </p>
+      {/if}
     </div>
   {/if}
 

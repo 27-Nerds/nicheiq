@@ -98,6 +98,73 @@ class Settings(BaseSettings):
         default="gpt-4o-mini",
         description="Model to use for thread relevance validation in Stage 5 (gpt-4o-mini or gpt-3.5-turbo for cost efficiency)"
     )
+    keyword_relevance_llm: str = Field(
+        default="openrouter/google/gemini-3.1-flash-lite",
+        description=(
+            "Model for the idea-intent keyword relevance grader (UMBRELA 0-3). Panel-consensus benchmark "
+            "(2026-06-30) picked gemini-3.1-flash-lite: cheap AND most central (0.959 vol-weighted agreement "
+            "with the diverse panel). Keep batch small — gemini truncates long list output."
+        ),
+    )
+    keyword_relevance_min_grade: int = Field(
+        default=2, ge=0, le=3,
+        description="Grade >= this counts as idea-intent (vs category-reach). Grade 2=BUYER, 3=JOB.",
+    )
+    keyword_relevance_batch_size: int = Field(
+        default=12, ge=1, le=40,
+        description="Keywords graded per LLM call. Small (<=12) to bound batch-composition + truncation effects.",
+    )
+    enable_contains_seed_enrichment: bool = Field(
+        default=True,
+        description=(
+            "Stage 6 additive discovery (validated 2026-07-01): after broad expansion, grade the keyword "
+            "set, take its idea-intent keywords as GROUNDED seeds, run DataForSEO keyword_suggestions "
+            "(contains-seed) on them, grade the results, and MERGE the idea-intent long-tail (never "
+            "removes). Surfaces 4-12x more idea-intent keywords the broad Google-Ads expansion misses "
+            "(feeds honest market-sizing beachhead + SEO viability). ~$0.13/report. Escape hatch: False."
+        ),
+    )
+    contains_seed_max_seeds: int = Field(
+        default=8, ge=1, le=20,
+        description="Max grounded idea-intent seeds to contains-seed expand (cost = ~$0.01/seed).",
+    )
+    contains_seed_per_seed: int = Field(
+        default=150, ge=10, le=1000,
+        description="keyword_suggestions returned per seed (cost = ~$0.0001/keyword).",
+    )
+    contains_seed_merge_min_grade: int = Field(
+        default=3, ge=1, le=3,
+        description=(
+            "Min idea-intent grade for a contains-seed suggestion to be MERGED (distinct from the seed/"
+            "demand min_grade of 2). A/B'd 2026-07-01 vs an independent 3-model panel (grok+claude-sonnet+"
+            "qwen): 3 (JOB-only) cuts off-idea drift 46%->26% off-rate (-70% junk) while retaining 76% of "
+            "the on-idea long-tail — contains-seed expansion over-produces category/adjacent BUYER terms "
+            "gemini grades 2, so JOB-only is the precise merge gate. A 2nd-grader AND-filter was rejected."
+        ),
+    )
+    contains_seed_llm_seeds: bool = Field(
+        default=False,
+        description=(
+            "P0a: ALSO generate contains-seed grounding seeds via an LLM from the idea's value-prop + "
+            "pains (real 2-3 word search phrases), not only from the broad set's idea-intent keywords. "
+            "Fixes the catastrophic-drift case where the broad Google-Ads set is ~100% category (so the "
+            "grounded-seed pool is empty/generic and the idea's own SEO axis is never surfaced). Prototype-"
+            "validated (contains_seed_prototype.py): grounding LLM seeds in the broad idea-intent examples "
+            "took LocalModelBenchmarks 0->27 idea-intent kw. Dark pending A/B; env CONTAINS_SEED_LLM_SEEDS."
+        ),
+    )
+    contains_seed_thin_seed_threshold: int = Field(
+        default=3,
+        description=(
+            "Thin-case auto-trigger for the idea-intent LLM seed generation (P0a). When the broad set "
+            "yields FEWER than this many grounded seeds, the idea's SEO axis is under-covered and the "
+            "solution's beachhead is thin (observed live: astrophotography selected solution → 1 grounded "
+            "seed → beachhead 720/mo). In that thin case, fire the LLM real-phrase seed generation + one "
+            "more contains-seed DataForSEO expansion REGARDLESS of contains_seed_llm_seeds, since that is "
+            "exactly where idea-anchored seeds help most and category-drift risk is lowest. 0 disables the "
+            "thin-case trigger. env CONTAINS_SEED_THIN_SEED_THRESHOLD."
+        ),
+    )
     thread_relevance_min_grade: int = Field(
         default=1,
         description=(
@@ -190,7 +257,7 @@ class Settings(BaseSettings):
         )
     )
     enable_pain_partitioned_divergent: bool = Field(
-        default=False,
+        default=True,
         description=(
             "Pain-partitioned divergent ideation: instead of N broad samples each "
             "generating 8-12 concepts off the same pain list, run ONE narrow generator "
@@ -233,6 +300,22 @@ class Settings(BaseSettings):
             "until the target is met. Hard-capped by divergent_max_generators."
         )
     )
+    # Severity-floor cell guarantee (always on): the cell allocation is opportunity/theme/segment-
+    # affinity driven under per-segment + per-theme caps and a cell budget, NOT raw severity — so a
+    # top-severity pain with thin/unmatched segment affinity could be crowded out entirely (e.g. a
+    # sev-0.7 "morning routine" pain getting zero ideation, only a coverage caveat). The top-N pains
+    # by severity now claim a cell FIRST (Round 0), bypassing the theme cap, so they can't be dropped.
+    # Default 1 chosen by the A/B (scripts/floor_ab): over 24 cached niches, floor=1 lifted #1-pain
+    # coverage 22/24 -> 24/24 with ZERO diversity cost; floor 2/3 bought more top-2/3 coverage but cost
+    # distinct themes. Set to 0 to disable. 0 = byte-identical to the legacy allocation.
+    divergent_severity_floor_count: int = Field(
+        default=1, ge=0, le=8,
+        description=(
+            "Guarantee the top-N pains by severity each get a generator cell (Round 0, before the "
+            "diversity fill) so a high-severity, thin-affinity pain can't get zero ideation. 0 disables "
+            "(legacy opportunity/theme/affinity allocation)."
+        ),
+    )
     divergent_target_pool: int = Field(
         default=15,
         ge=6,
@@ -246,7 +329,7 @@ class Settings(BaseSettings):
     )
     # --- Diversity-aware final selection (keep more ideas, de-concentrate) ---
     enable_diversity_caps: bool = Field(
-        default=False,
+        default=True,
         description=(
             "Enable diversity-aware final selection: raise the final idea count toward "
             "diversity_max_final_ideas and enforce per-segment / per-mechanism / per-project-type "
@@ -254,7 +337,7 @@ class Settings(BaseSettings):
         )
     )
     enable_pain_source_dedup: bool = Field(
-        default=False,
+        default=True,
         description=(
             "Enable the (source_pain × data_source_tag) near-duplicate dedup in the divergent "
             "pool — collapses concepts solving the same pain from the same data source that the "
@@ -351,7 +434,7 @@ class Settings(BaseSettings):
         )
     )
     enable_feasibility_critic: bool = Field(
-        default=False,
+        default=True,
         description=(
             "Enable the merged novelty+feasibility critic (adds build_feasibility / "
             "data_feasibility / data_access_model + drop_names to the independent critic "
@@ -559,7 +642,7 @@ class Settings(BaseSettings):
     # 3 niches) showed 0/8 worse, 0/8 drifted, 6/8 genuinely better (Opus-audited); flip on after a
     # live A/B. Gate keeps cost bounded (~half of ideas qualify; only gated ideas pay the 2 calls).
     enable_novelty_enhance: bool = Field(
-        default=False,
+        default=True,
         description=(
             "Master switch for the targeted novelty-enhancement pass. When True, a validated-but-"
             "obvious cell winner gets one ideator revision (more differentiated mechanism, same pain "
@@ -586,6 +669,26 @@ class Settings(BaseSettings):
     novelty_enhance_regression_tol: float = Field(
         default=0.05, ge=0.0, le=1.0,
         description="Accept: reject the revision if market_fit OR technical_feasibility drops by more than this.",
+    )
+    novelty_enhance_skip_seo_floor: float = Field(
+        default=0.5, ge=0.0, le=1.0,
+        description="Heuristic-fallback SEO floor: skip the enhance for a directory/aggregator/comparison idea with seo >= this (used only when winning_angle is unset).",
+    )
+    # Angle-aware idea evaluation (always on). An in-cell agent decides each cell winner's WINNING
+    # ANGLE (distribution_seo / novel_differentiation / vertical_workflow), judges it on executing THAT
+    # angle, and writes a user-facing comment so low off-axis scores (e.g. low mechanism-novelty for a
+    # catalog) are explained rather than penalized. Steered by the per-run idea_focus control.
+    idea_angle_llm: str = Field(
+        default="openrouter/qwen/qwen3.7-max",
+        description=(
+            "Model for the in-cell angle classifier. An evidence-weighing judgment (argue the rival "
+            "angle, reject it, commit), so it runs on the reasoning-ON path like the calibration critic. "
+            "Defaults to the calibration judge model; the Stage-1 A/B may retune it independently."
+        ),
+    )
+    idea_angle_reasoning_effort: str = Field(
+        default="medium",
+        description="Reasoning effort for the angle classifier (reasoning-ON path), mirroring the calibration critic.",
     )
     enable_pain_relevance_filter: bool = Field(
         default=True,
@@ -625,6 +728,20 @@ class Settings(BaseSettings):
         description=(
             "Reasoning effort for the calibration critic. 'medium' default — it must weigh "
             "evidence against the bands, a notch above the cheaper objective-scoring judge tier."
+        )
+    )
+    score_calibration_samples: int = Field(
+        default=1,
+        ge=1,
+        le=7,
+        description=(
+            "P2: N independent calibration-critic samples per batch, aggregated to the per-criterion "
+            "MEDIAN before applying (the critic is non-deterministic even at temperature 0 with reasoning "
+            "on — a single draw can flip a verdict). N=1 (default) is byte-identical to the single-call "
+            "path (dark). N>1 trades ~Nx critic cost on the selected batch for variance reduction; choose "
+            "N against a residual-variance target from scripts/calibration_gate.py stddev, validated AFTER "
+            "the critic's bias (market_fit realism) is settled — medianing a biased critic just stabilizes "
+            "the wrong center. env SCORE_CALIBRATION_SAMPLES."
         )
     )
     ideation_refine_max_tokens: int = Field(
@@ -734,7 +851,7 @@ class Settings(BaseSettings):
         description="Moonshot AI API key for Kimi models (get from platform.moonshot.ai)"
     )
     kimi_thinking: bool = Field(
-        default=False,
+        default=True,
         description="Enable Kimi thinking mode (deeper reasoning, temp=1.0). Default: False (instant mode, temp=0.6, faster and cheaper)."
     )
 
@@ -820,8 +937,12 @@ class Settings(BaseSettings):
         description="Path to cache Twitter cookies (auto-created after first login)"
     )
     enable_twitter: bool = Field(
-        default=True,
-        description="Enable/disable Twitter/X data collection (set to False to skip Twitter entirely)"
+        default=False,
+        description=(
+            "Enable/disable Twitter/X data collection. Default False — Twitter is disabled/optional "
+            "(matches .env, .env.example, and docker-compose.prod ENABLE_TWITTER:-false); the old True "
+            "default contradicted every deployment path and would wrongly enable Twitter in a no-env run."
+        )
     )
     enable_reddit: bool = Field(
         default=True,
@@ -832,7 +953,7 @@ class Settings(BaseSettings):
         description="Enable/disable Hacker News data collection via Algolia API (free, no auth needed)"
     )
     enable_youtube: bool = Field(
-        default=False,
+        default=True,
         description="Enable/disable YouTube transcript collection (requires youtube-transcript-api)"
     )
     enable_seed_enrichment: bool = Field(
@@ -897,7 +1018,7 @@ class Settings(BaseSettings):
         default=40, description="Number of search queries to generate for discovering pain points"
     )
     enable_audience_aware_research: bool = Field(
-        default=False,
+        default=True,
         description=(
             "Part C master gate. When True AND Stage-1 detected a focusable audience "
             "(audience_scope in {segment_of_niche, community}), search-query generation and "
@@ -1219,6 +1340,93 @@ class Settings(BaseSettings):
         le=1.0,
         description="Minimum coverage rate for keyword enrichment (validated/total). Default 0.30 = warn if <30% pass validation"
     )
+    # SEO kill-question (Stage 6 deep research, distribution_seo ideas only). Deterministic thesis
+    # stress-test computed from the already-validated keyword set (page ceiling, KD distribution,
+    # winnable pages, penalty risk) + a small SERP sample. Dark by default; flip on after the A/B.
+    enable_seo_kill_question: bool = Field(
+        default=True,
+        description=(
+            "Run the deterministic SEO kill-question for a distribution_seo selected solution in Stage 6 "
+            "(page-ceiling + KD distribution + forum-soft-SERP bonus + penalty-risk flag). On by default "
+            "(A/B-validated 2026-06-30); set False to disable. Only fires for distribution_seo ideas."
+        ),
+    )
+    enable_multisource_evidence_headline: bool = Field(
+        default=True,
+        description=(
+            "EvidenceAppendix headline threads: when True, rank across Reddit + Hacker News + Twitter by "
+            "normalized engagement (platform-fair) instead of Reddit-only by raw upvotes, with a per-source "
+            "cap (<=60% of the 10 slots) so a small high-engagement platform can't sweep the headline. On by "
+            "default (A/B-validated 2026-06-30: surfaces genuinely-high HN threads the Reddit-only path hid, "
+            "cap keeps multi-source breadth). Set False for the legacy Reddit-only-by-score behavior."
+        ),
+    )
+    enable_audience_conditioned_deep_research: bool = Field(
+        default=True,
+        description=(
+            "Forward the Stage-1 resolved primary audience + its frustrations/current-tools into the "
+            "POST-SELECTION deep research (competitor task + SEO seed generation), so the research targets "
+            "the resolved audience. DISTINCT from enable_audience_aware_research (which only biases Phase-1 "
+            "search/pain-mining). On by default (A/B-validated 2026-06-30: 4/4 distinct-audience checkpoints "
+            "Opus-judged ON_BETTER after the directive reword that stops audience tools from displacing the "
+            "solution's direct competitors; honesty preserved — never force-profiles irrelevant named tools)."
+        ),
+    )
+    enable_seo_kill_question_floor: bool = Field(
+        default=True,
+        description=(
+            "Ground an over-OPTIMISTIC distribution_seo Go/No-Go verdict in the SEO kill-question: when "
+            "the page universe isn't winnable (winnable SHARE low / KD high), cap Go->Conditional + floor "
+            "risk (downgrade-only). Keyed on the KD/winnability axis the SEO composite excludes (no "
+            "double-count). KD-coverage-gated: abstains (fail-soft) when KD covers too little of the page "
+            "universe to trust. On by default (A/B-validated 2026-06-30: 0/14 prior false-positives after "
+            "the coverage gate + share threshold; 8/8 dense checkpoints correctly silent). Set False to disable."
+        ),
+    )
+    enable_scoped_market_sizing: bool = Field(
+        default=True,
+        description=(
+            "Scope market sizing to the SERVICEABLE slice the selected idea actually addresses: narrow the "
+            "pain corpus to the idea's pain_points_addressed and prompt the LLM to size that slice (not the "
+            "whole niche), with top-down keyword volume kept only as a labeled cross-check and a qualitative "
+            "scope note instead of a fabricated bottom-up SAM. On by default (A/B-validated 2026-06-30: on a "
+            "strong-contrast niche [2-3 of 29 pains] it consistently corrected an over-optimistic Strong/"
+            "Aggressive verdict to Moderate/Measured — Opus-judged ON_BETTER — while a weak-contrast niche was "
+            "a correct no-op; thin data — only one strong-contrast checkpoint was cached). Set False to disable."
+        ),
+    )
+    seo_kill_question_serp_sample: int = Field(
+        default=5, ge=0, le=15,
+        description="Representative queries to SERP-sample for the SEO kill-question beatability read (0 = skip SERP).",
+    )
+    seo_kill_question_rankable_kd: float = Field(
+        default=40.0, ge=0.0, le=100.0,
+        description="KD below which a page is counted 'winnable' on a new (DA~0) domain for the kill-question.",
+    )
+    seo_kill_question_high_page_count: int = Field(
+        default=500, ge=50,
+        description="Page-universe size above which a tail-heavy (thin) set is flagged for scaled-content penalty risk.",
+    )
+    seo_kill_question_min_kd_sample: int = Field(
+        default=30, ge=0,
+        description="Below this many KD-scored intents, the kill-question display flags KD coverage as too sparse to judge winnability.",
+    )
+    seo_kill_question_min_kd_coverage: float = Field(
+        default=0.5, ge=0.0, le=1.0,
+        description="Below this KD-coverage fraction (kd_sample_size / page_ceiling), the kill-question display flags winnability as indicative-only.",
+    )
+    # Angle-conditioned deep research: front-load the selected idea's winning-angle kill-question into the
+    # Stage-2 crew prompts (SEO + competitor) so they investigate what actually validates/kills THAT angle.
+    # The brief only ADDS the question — it never tells a crew to suppress off-angle critique; it explicitly
+    # asks the crew to stress-test the angle and report true intensity. Off => the crews receive empty angle
+    # vars => byte-identical to today. On by default (A/B-validated 2026-06-30); set False to disable.
+    enable_angle_conditioned_research: bool = Field(
+        default=True,
+        description=(
+            "Merge the per-idea angle brief (build_angle_brief) into the Stage-2 SEO + competitor crew "
+            "prompts so each front-loads the winning angle's kill-question. Off => empty angle vars (no change)."
+        ),
+    )
     keyword_enrichment_target_coverage: float = Field(
         default=0.60,
         ge=0.0,
@@ -1348,6 +1556,29 @@ class Settings(BaseSettings):
         ge=0.0,
         le=1.0,
         description="Minimum individual score for Conditional verdict"
+    )
+    enable_direction_aware_eval: bool = Field(
+        default=False,
+        description=(
+            "P1: direction-aware evaluation. P1d (verdict): replace the uniform min(market_fit, "
+            "tech_feasibility) hard gate with a LIFT-ONLY angle-binding gate "
+            "max(min(mf, tech), min(mf, angle_binding_dim)) — binding dim = seo for distribution_seo, "
+            "novelty for novel_differentiation, tech otherwise — so an SEO play is gated on SEO not tech, "
+            "while a misclassification still passes via tech (never wrongly demotes). An INDEPENDENT tech "
+            "buildability floor (tech >= verdict_conditional_min_individual_score) still blocks un-buildable "
+            "ideas from Go. Dark pending the neutral-Opus-anchored A/B; env ENABLE_DIRECTION_AWARE_EVAL."
+        ),
+    )
+    enable_llm_verdict_explanation: bool = Field(
+        default=True,
+        description=(
+            "Explain the Go/No-Go verdict with an LLM instead of the deterministic band template. The "
+            "LLM is given the ALREADY-DECIDED verdict + qualitative score bands + the winning angle + "
+            "the firing rule / any downgrade, and writes 2-3 sentences of WHY it landed there. It never "
+            "decides the verdict. The output is validated (must match the verdict's stance, no internal "
+            "decimals) and falls back to the band template on any failure. On by default (A/B-validated "
+            "2026-06-30: 10/10 band-accurate, no leaks); set False to use the deterministic template."
+        ),
     )
 
     # STRIVE market-sizing pre-check

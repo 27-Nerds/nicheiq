@@ -68,8 +68,9 @@ def find_solution_by_name(
             )
             return solution
 
-    # No match found
-    logger.error(
+    # No match found — callers handle None fail-soft (a miss is expected for pruned/phantom
+    # names), so this is debug-level, not an error.
+    logger.debug(
         f"No match found for solution '{solution_name}' in available solutions: "
         f"{[sol.solution_name for sol in solution_list]}"
     )

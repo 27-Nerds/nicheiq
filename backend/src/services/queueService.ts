@@ -31,7 +31,8 @@ export async function enqueueJob(
   allowedProjectTypes?: string[],
   resume: boolean = false,
   jobMode?: string,
-  entryMode?: string
+  entryMode?: string,
+  ideaFocus?: string
 ): Promise<void> {
   const jobData = JSON.stringify({
     job_id: jobId,
@@ -41,6 +42,7 @@ export async function enqueueJob(
     resume,
     job_mode: jobMode || null,
     entry_mode: entryMode || null,
+    idea_focus: ideaFocus || 'auto',
     created_at: new Date().toISOString(),
   });
 
@@ -99,7 +101,8 @@ export async function enqueueRegenerateJob(
   jobId: string,
   checkpointPath: string,
   existingSolutionNames: string[],
-  niche: string
+  niche: string,
+  ideaFocus?: string
 ): Promise<void> {
   const jobData = JSON.stringify({
     job_id: jobId,
@@ -107,6 +110,8 @@ export async function enqueueRegenerateJob(
     existing_solution_names: existingSolutionNames,
     niche,
     task_type: 'regenerate_ideas',
+    // Batch-scoped GTM-focus override (omitted => worker uses the run's original focus).
+    idea_focus: ideaFocus,
     created_at: new Date().toISOString(),
   });
 

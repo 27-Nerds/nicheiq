@@ -1,5 +1,3 @@
-## What the scores actually mean
-
 Every report comes with numbers attached, and we want to be straight about what they are. They're estimates, kept in check by guardrails, meant to point you in a direction. They are not promises, and they're not as precise as the decimals make them look. Here's how each one is built and how much weight to put on it.
 
 ### Pain point scores
@@ -30,6 +28,16 @@ Sitting on top of that re-grade is a handful of hard caps, and these can only ev
 
 Ideas are ranked on the composite of market fit, feasibility, novelty, and SEO. The piece that matters most for trust: that build-feasibility cap feeds the ranking too, so "can you actually build this?" drags fragile ideas down the list. What floats to the top is the part you can lean on, not the part with the best pitch.
 
+### Novelty means a different thing per idea
+
+We don't grade every idea on the same axis. Each one is matched to the way it actually wins: by being found (SEO and reach), by being genuinely different (a mechanism rivals can't easily copy), or by owning a workflow for one kind of user. Novelty then means something different depending on which of those an idea is going for. For an idea whose whole case is a clever mechanism, a low novelty score is a real problem. For a directory or catalog, the edge is the data it holds and how it's presented, not a trick, so a low novelty score is normal there and we don't treat it as a flaw. The ranking works the same way: each idea is weighed by what its own angle rewards, so a strong catalog isn't pushed down the list for scoring low on something it was never trying to do. The novelty score carries a one-line note explaining why it reads the way it does for that type of idea.
+
+### How the prompts are built and tested
+
+None of this runs on casually-worded instructions. The prompt behind each stage is written deliberately, and a change to one is tested against real saved runs before it ships — the old wording and the new one are compared on the same niches, and the change is kept only if the output genuinely improves. The care is there because language models have predictable weak spots: they grade their own work generously (the reason for the separate re-grade above), and they latch onto any specific number put in front of them, drifting toward it instead of reasoning from the evidence ([Lou & Sun, 2024](https://arxiv.org/abs/2412.06593)). So the instructions are built not to hand the model an answer to copy — a market size or a price is worked out from your niche's own data, never seeded with an example figure to anchor on. The aim throughout is that a number you read was reasoned to, not parroted.
+
+And where a step leans on the model to *judge* rather than generate — deciding which discussions or search terms are genuinely about your idea versus its broad category — we don't take one model's word for it. Before trusting a judge, we check its calls against several independent models and against what actually ranks in search, and we keep only the parts they agree on. A single model turns out to be unreliable on exactly the borderline calls that matter most, so the agreement of independent checks, not one model's confidence, is what we build on.
+
 ### How to read them
 
 Read these as bands, not decimals. A 0.63 and a 0.61 are the same thing. They reflect the discussion we found for your niche on the day we ran it, so more and better source material means better-calibrated scores. They're guides drawn from self-selected public conversation, not instruments measured against ground truth.
@@ -43,3 +51,4 @@ The point was never a perfect number. We'd rather hand you a cautious score with
 - Schmidt & Bijmolt (2020), [Accurately measuring willingness to pay: a meta-analysis of the hypothetical bias](https://doi.org/10.1007/s11747-019-00666-6), *Journal of the Academy of Marketing Science*
 - Dawes (1979), [The robust beauty of improper linear models in decision making](https://doi.org/10.1037/0003-066X.34.7.571), *American Psychologist*
 - Zheng et al. (2023), [Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena](https://arxiv.org/abs/2306.05685)
+- Lou & Sun (2024), [Anchoring Bias in Large Language Models: An Experimental Study](https://arxiv.org/abs/2412.06593)

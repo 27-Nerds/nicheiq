@@ -76,6 +76,7 @@ class CellGrounding:
     pain_severity: str = ""             # severity / opportunity labels
     competitor_mentions: str = ""       # real competitor list for the novelty judgement
     deterministic_flags: list[str] = field(default_factory=list)  # from _validate_idea_scores
+    winning_angle: str = ""             # P1b: provisional GTM angle so the loop optimizes on-direction
 
     def as_block(self) -> str:
         flags = "\n".join(f"  - {f}" for f in self.deterministic_flags) or "  (none)"

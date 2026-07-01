@@ -18,14 +18,14 @@ template: |
 
   **Top Pain Point:**
   Title: {pain_point_title}
-  Severity: {pain_point_severity}/1.0
-  WTP Score: {pain_point_wtp}/1.0
+  Severity: {pain_point_severity}
+  Willingness to pay: {pain_point_wtp}
 
-  **Selection Criteria Scores (0-1.0 scale):**
-  - Market Fit: {market_fit_score}/1.0
-  - Competitive Advantage: {competitive_advantage_score}/1.0
-  - Technical Feasibility: {technical_feasibility_score}/1.0
-  - SEO Scalability: {seo_growth_score}/1.0
+  **Selection Criteria (given as plain qualitative bands — use these words, never invent a number):**
+  - Market Fit: {market_fit_score}
+  - Competitive Advantage / differentiation: {competitive_advantage_score}
+  - Technical Feasibility: {technical_feasibility_score}
+  - SEO Scalability: {seo_growth_score}
 
   **Market Metrics:**
   - Total Keywords: {total_keyword_count}{zero_keywords_note}
@@ -52,19 +52,20 @@ template: |
      - Second sentence: Explain the solution approach
      - Third sentence (optional): Differentiation or benefit
 
-  3. **verdict_rationale**: Go/No-Go rationale based on scores (MAXIMUM 3 sentences, prefer 2)
-     - First sentence: State 2-3 key scores and their implication
-     - Second sentence: Address any concerns or strengths
-     - Optional third sentence: Clear recommendation signal (only if needed)
-     - MUST reference specific numeric score values (e.g., "market fit of 0.82")
-     - If market_fit >= 0.75 AND technical_feasibility >= 0.7: Lean positive
-     - If any critical score < 0.6: Acknowledge concerns and require validation
+  3. **verdict_rationale**: rationale based on the criteria bands (MAXIMUM 3 sentences, prefer 2)
+     - First sentence: name 2-3 key criteria by their BAND and their implication
+     - Second sentence: address any concerns or strengths
+     - Optional third sentence: clear recommendation signal (only if needed)
+     - Reference the criteria with the BAND WORDS above (e.g. "good market fit", "weak SEO").
+       NEVER write a numeric score, decimal, or percentage of any kind.
+     - If market fit and technical feasibility are good/strong: lean positive
+     - If any criterion is weak/limited: acknowledge the concern and require validation
 
   **OUTPUT STRUCTURE EXAMPLE:**
   {{
     "tagline": "{solution_name} simplifies [pain] for {target_personas}",
     "core_value_prop": "Pain point impact... Solution approach... Benefit.",
-    "verdict_rationale": "With market fit of 0.82 and technical feasibility of 0.75, this solution shows strong potential for the target market. The competitive advantage score of 0.68 indicates differentiation opportunities that warrant further validation."
+    "verdict_rationale": "With strong market fit and good technical feasibility, this solution shows clear potential for the target market. Its good differentiation points to opportunities that warrant further validation."
   }}
 
   **CRITICAL ANTI-HALLUCINATION RULES:**
@@ -84,8 +85,8 @@ template: |
   - JSON contains exactly 3 fields: tagline, core_value_prop, verdict_rationale
   - Tagline is 10-15 words with solution name and active verb
   - core_value_prop is 2-3 sentences
-  - verdict_rationale is 2-3 sentences max with specific score values
+  - verdict_rationale is 2-3 sentences max and names criteria by their band
   - All pain point references match EXACTLY the title above
-  - All score references use actual values (no generic "strong" or "good")
+  - Score references use the BAND WORDS only — NO numbers, decimals, or percentages anywhere
   - No invented market claims or statistics
   </verification>

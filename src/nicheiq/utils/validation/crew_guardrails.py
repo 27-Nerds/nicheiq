@@ -1920,16 +1920,16 @@ def validate_traffic_monetization(task_output, traffic_ceiling_y1_high: int | No
     return (True, _guardrail_success_payload(task_output, result))
 
 
-# Numeric fingerprints of the fictional example products in
-# crews/config/pricing_strategy_tasks.yaml (DevFlowTracker subscription block,
-# PlumbingCostCalc ad block). The LLM sometimes copies these values wholesale
-# instead of deriving its own — observed 2026-06-11, when a report shipped the
-# full DevFlowTracker tuple ($19/$49/$149 tiers, $32 ARPU, $384-$960 LTV).
-# Matching is numeric with ±2% tolerance (not substring), so reformats and
-# ±$1 tweaks still count. A single coincidental match is plausible for a real
-# product; >= _EXAMPLE_REJECT_THRESHOLD independent signals is copying.
-# tests/unit/test_numeric_guardrails.py has a sync test that fails if the YAML
-# examples change without these fingerprints being updated.
+# Numeric fingerprints of the 2026-06-11 incident, when a report shipped the
+# fictional example tuple wholesale ($19/$49/$149 tiers, $32 ARPU, $384-$960 LTV,
+# $400-600 ad / $150-300 affiliate). The root cause — concrete example numbers in
+# pricing_strategy_tasks.yaml — was removed 2026-06-30 (the worked examples are now
+# placeholders, since LLMs anchor on in-prompt numbers ~88% of the time). These
+# fingerprints survive as standalone DEFENSE-IN-DEPTH: the model can still emit the
+# pattern from its training prior, and a hit only forces a retry. They are no longer
+# synced to the YAML. Matching is numeric with ±2% tolerance (not substring), so
+# reformats / ±$1 tweaks still count; a single coincidental match is plausible for a
+# real product, so only >= _EXAMPLE_REJECT_THRESHOLD independent signals trips it.
 _EXAMPLE_REJECT_THRESHOLD = 3
 
 

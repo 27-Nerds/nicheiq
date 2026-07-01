@@ -6,10 +6,13 @@ export const API_BASE = '/api';
 // SSE uses the same proxy - SvelteKit +server.ts handles streaming and adds auth headers
 export const SSE_BASE = '/api';
 
+export type IdeaFocus = 'auto' | 'novelty' | 'distribution';
+
 export interface CreateJobRequest {
   email: string;
   niche: string;
   allowedProjectTypes?: string[];
+  ideaFocus?: IdeaFocus;
 }
 
 export interface CreateJobResponse {
@@ -111,9 +114,14 @@ export async function selectSolution(jobId: string, request: SelectSolutionReque
 /**
  * Regenerate solution ideas
  */
-export async function regenerateIdeas(jobId: string): Promise<{ message: string }> {
+export async function regenerateIdeas(
+  jobId: string,
+  ideaFocus?: IdeaFocus,
+): Promise<{ message: string }> {
   const response = await fetch(`${API_BASE}/jobs/${jobId}/regenerate-ideas`, {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(ideaFocus ? { idea_focus: ideaFocus } : {}),
   });
   return handleResponse<{ message: string }>(response);
 }

@@ -380,6 +380,23 @@ export interface DetailedPainPoint {
 	solution_approach?: string;
 }
 
+// Deterministic SEO-thesis stress test for a distribution_seo idea (present only for that angle).
+export interface SeoKillQuestion {
+	indexable_page_ceiling: number;
+	head_count: number;
+	mid_count: number;
+	tail_count: number;
+	median_keyword_difficulty?: number | null;
+	winnable_pages: number;
+	kd_sample_size: number;
+	forum_soft_serp_share?: number | null;
+	institutional_serp_share?: number | null;
+	serp_sampled: number;
+	penalty_risk_flag: boolean;
+	verdict: string;
+	rationale: string;
+}
+
 export interface SEOStrategy {
 	total_keywords_analyzed: number;
 	total_monthly_volume: number;
@@ -403,6 +420,7 @@ export interface SEOStrategy {
 	// key_metrics_to_track removed - generic boilerplate
 	// risk_mitigation removed - generic boilerplate
 	budget_allocation?: string;
+	seo_kill_question?: SeoKillQuestion | null;
 	// long_term_strategy removed - duplicates implementation_roadmap
 	// conclusion_bottom_line removed - generic boilerplate
 	// competitive_advantages removed - redundant with competitive_positioning
@@ -711,10 +729,16 @@ export interface SolutionDetails {
 	why_it_works?: string;
 	why_it_works_short?: string;
 	solo_dev_feasibility?: number;
+	// Angle-aware evaluation (set when angle eval is on; absent otherwise)
+	winning_angle?: string | null; // distribution_seo | novel_differentiation | vertical_workflow
+	angle_rationale?: string | null; // user-facing comment: the angle + where differentiation lives
+	novelty_rationale?: string | null; // user-facing: why this novelty score fits the project_type
+	differentiation_locus?: string | null; // WHERE the edge lives (or honest "thin me-too")
 	// Data feasibility (annotate-only; from the ideation feasibility critic)
 	data_feasibility_score?: number;
 	data_access_model?: string; // public | freemium | paywalled | unofficial | restricted | blocked | unverified
 	data_acquisition_notes?: string;
+	build_feasibility_score?: number; // independent critic's build-feasibility estimate (0-1)
 	keyword_geographic_priorities?: string[];
 	keyword_feature_priorities?: string[];
 	keyword_strategic_insights?: string;
@@ -818,8 +842,14 @@ export interface AlternativeSolution {
 	novelty_score?: number;
 	obviousness_score?: number | null; // 0-1, lower = more original; shown as "Originality" (1 - this)
 	solo_dev_feasibility?: number; // 0-1 scale matching Python float
+	// Angle-aware evaluation (set when angle eval is on; absent otherwise)
+	winning_angle?: string | null;
+	angle_rationale?: string | null;
+	novelty_rationale?: string | null;
+	differentiation_locus?: string | null; // WHERE the edge lives (or honest "thin me-too")
 	// Data feasibility (annotate-only; from the ideation feasibility critic)
 	data_feasibility_score?: number;
+	build_feasibility_score?: number; // independent critic's build-feasibility estimate (0-1)
 	data_access_model?: string; // public | freemium | paywalled | unofficial | restricted | blocked | unverified
 	data_acquisition_notes?: string;
 

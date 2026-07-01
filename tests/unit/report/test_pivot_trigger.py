@@ -5,11 +5,14 @@ Tests relative score comparison logic that replaces the old
 absolute-threshold pivot trigger generation.
 """
 
+import re
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from nicheiq.report.report_generator import ReportGenerator
+
+_NO_DECIMALS = re.compile(r"\d\.\d")  # pivot prose must never leak a raw 0-1 score
 
 
 @pytest.fixture
@@ -50,8 +53,7 @@ class TestBuildPivotTriggerStrongAdvantage:
         assert "Pivot to RunnerUp if:" in result
         assert "Strong pivot signal" in result
         assert "market fit" in result
-        assert "0.80" in result
-        assert "0.70" in result
+        assert not _NO_DECIMALS.search(result)  # bands only, no raw scores
 
     def test_multiple_strong_signals(self, generator):
         runner_up_scores = {
@@ -99,7 +101,7 @@ class TestBuildPivotTriggerNearParity:
         )
         assert "Near-parity" in result
         assert "market fit" in result
-        assert "closely matched" in result
+        assert not _NO_DECIMALS.search(result)
 
     def test_exact_tie_is_near_parity(self, generator):
         runner_up_scores = {
@@ -170,14 +172,12 @@ class TestBuildPivotTriggerAllBehindFallback:
             runner_up_scores=runner_up_scores,
             selected_scores=selected_scores,
         )
-        # Should still have scores in output, not generic text
+        # Should still be data-driven (names the closest dimension), in band-clean prose
         assert "Pivot to RunnerUp if:" in result
-        assert "Strongest relative dimension" in result
+        assert "closest dimension" in result
         # Best relative dim is technical_feasibility (delta -0.25, smallest gap)
         assert "technical feasibility" in result
-        assert "0.45" in result
-        assert "0.70" in result
-        assert "delta" in result
+        assert not _NO_DECIMALS.search(result)
 
     def test_all_behind_with_key_differentiator(self, generator):
         runner_up_scores = {
@@ -217,9 +217,11 @@ class TestBuildPivotTriggerMissingSelectedSolution:
             selected_scores=None,
         )
         assert "Pivot to RunnerUp if:" in result
-        assert "market fit score (0.70)" in result
-        assert "SEO growth potential (0.65)" in result
-        assert "technical feasibility (0.70)" in result
+        # banded ("good market fit suggests strong demand"), no raw scores
+        assert "market fit" in result
+        assert "SEO growth potential" in result
+        assert "technical feasibility" in result
+        assert not _NO_DECIMALS.search(result)
 
     def test_no_selected_scores_below_threshold(self, generator):
         runner_up_scores = {

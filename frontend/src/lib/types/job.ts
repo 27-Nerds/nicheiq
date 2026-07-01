@@ -87,6 +87,11 @@ export interface SolutionPreview {
   why_it_works_short?: string | null;
   innovation_angle?: string | null;
   conventional_approach?: string | null;
+  // Angle-aware evaluation (set when angle eval is on; absent/null otherwise)
+  winning_angle?: string | null; // distribution_seo | novel_differentiation | vertical_workflow
+  angle_rationale?: string | null; // user-facing comment about the angle
+  novelty_rationale?: string | null; // user-facing: why this novelty score fits the project_type
+  differentiation_locus?: string | null; // WHERE the edge lives (or honest "thin me-too")
   // Feasibility rationale — already emitted in the preview dict (BaseSolutionIdea.model_dump),
   // declared here so the per-score "why" tooltips can read them type-safely.
   technical_approach?: string | null;

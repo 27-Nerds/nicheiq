@@ -1,5 +1,3 @@
-## How the search finds discussions
-
 Once we know what your niche is, we turn it into a batch of short searches and run them across public discussion, mostly Reddit, where people talk plainly about what is and isn't working. Each search is only a few words, written the way someone would actually type it. Long, stuffed queries tend to come back empty.
 
 ### Looking for both sides

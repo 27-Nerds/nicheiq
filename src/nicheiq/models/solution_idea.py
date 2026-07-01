@@ -608,6 +608,37 @@ class BaseSolutionIdea(BaseModel):
         default=None,
         description="Realism critic's per-criterion 1-line reasons (audit/transparency; not user-facing).",
     )
+    # Angle-aware evaluation (set by the in-cell angle classifier; None only on classify fail-soft).
+    winning_angle: Optional[str] = Field(
+        default=None,
+        description=(
+            "The GTM angle the agent judged best for this idea+pain: 'distribution_seo', "
+            "'novel_differentiation', or 'vertical_workflow'. None when angle evaluation is off."
+        ),
+    )
+    angle_rationale: Optional[str] = Field(
+        default=None,
+        description=(
+            "User-facing comment (1-3 sentences): names the winning angle, why it fits this pain, and "
+            "WHERE this idea's differentiation lives — so a low off-axis score (e.g. low mechanism-novelty "
+            "for a catalog) is explained, not read as a flaw."
+        ),
+    )
+    novelty_rationale: Optional[str] = Field(
+        default=None,
+        description=(
+            "User-facing one-liner tying the novelty score to the project_type (why it's expected/low/high "
+            "for this type), for the novelty score tooltip."
+        ),
+    )
+    differentiation_locus: Optional[str] = Field(
+        default=None,
+        description=(
+            "WHERE this idea's differentiation lives in its winning angle (data representation / mechanism / "
+            "workflow step), or 'thin me-too' stated honestly. Internal research signal: the classifier "
+            "computes it and Stage-2 deep research conditions on it. None when angle evaluation is off."
+        ),
+    )
 
 
 class SolutionIdea(BaseSolutionIdea):

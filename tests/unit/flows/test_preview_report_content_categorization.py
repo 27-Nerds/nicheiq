@@ -120,3 +120,46 @@ class TestContentCategorizationInPreview:
 
         report = _read_preview(tmp_path)
         assert report["content_categorization"] is None
+
+
+class TestAngleFieldsInPreview:
+    """Guards the angle-aware fields through the preview-report materializer — the hand-built
+    `alt` dict must carry winning_angle/angle_rationale/novelty_rationale, else the Phase-1 locked
+    report-preview shows no angle badge/comment (the _materialize_preview_report trap CLAUDE.md warns of)."""
+
+    def _idea(self, name, **over):
+        from nicheiq.models.solution_idea import BaseSolutionIdea
+        base = dict(
+            solution_name=name, description="d" * 30, value_proposition="v",
+            pain_points_addressed=["p"], core_features=["f"], target_personas=["t"],
+            market_fit_score=0.6, technical_feasibility_score=0.7, novelty_score=0.4,
+            seo_scalability_score=0.5, project_type="directory",
+            winning_angle="distribution_seo", angle_rationale="A catalog play; edge is freshness.",
+            novelty_rationale="Low mechanism-novelty is normal for a directory.",
+        )
+        base.update(over)
+        return BaseSolutionIdea(**base)
+
+    def test_angle_fields_appear_on_preview_alternatives(self, tmp_path):
+        from nicheiq.models.solution_idea import IdeaGenerationResult
+        flow = ResearchFlow(niche_description=NICHE, job_id="test-job-angle")
+        flow.state.idea_generation = IdeaGenerationResult(
+            solution_ideas=[
+                self._idea("Cat", winning_angle="distribution_seo"),
+                self._idea("Tool", winning_angle="novel_differentiation",
+                           angle_rationale="Novel mechanism.", project_type="saas"),
+                self._idea("Flow", winning_angle="vertical_workflow",
+                           angle_rationale="Owns a workflow.", project_type="saas"),
+            ]
+        )
+
+        path = flow._materialize_preview_report(str(tmp_path))
+        assert path is not None
+
+        alts = _read_preview(tmp_path)["alternative_solutions"]
+        assert alts and len(alts) == 3
+        by_name = {a["solution_name"]: a for a in alts}
+        assert by_name["Cat"]["winning_angle"] == "distribution_seo"
+        assert "freshness" in by_name["Cat"]["angle_rationale"]
+        assert by_name["Cat"]["novelty_rationale"]
+        assert by_name["Tool"]["winning_angle"] == "novel_differentiation"

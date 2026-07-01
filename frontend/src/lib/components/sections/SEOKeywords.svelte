@@ -234,6 +234,45 @@
     </div>
   {/if}
 
+  <!-- SEO thesis stress-test (distribution_seo ideas only) — does the page universe actually exist
+       and is it winnable, or is it a thin-pages / penalty-risk mirage? -->
+  {#if strategy.seo_kill_question}
+    {@const kq = strategy.seo_kill_question}
+    <div class="seo-thesis-card" class:seo-thesis-card--risk={kq.penalty_risk_flag}>
+      <div class="seo-thesis-head">
+        <span class="seo-thesis-eyebrow">SEO thesis</span>
+        {#if kq.penalty_risk_flag}
+          <Badge variant="warning" size="sm">Penalty risk</Badge>
+        {/if}
+      </div>
+      <p class="seo-thesis-verdict">{kq.verdict}</p>
+      <div class="seo-thesis-metrics">
+        <span><strong>{kq.indexable_page_ceiling.toLocaleString()}</strong> indexable pages</span>
+        <span class="sep">·</span>
+        <span><strong>{kq.winnable_pages.toLocaleString()}</strong> winnable on a new domain</span>
+        {#if kq.median_keyword_difficulty != null}
+          <span class="sep">·</span>
+          <span>median KD <strong>{kq.median_keyword_difficulty}</strong></span>
+        {/if}
+        {#if kq.forum_soft_serp_share}
+          <span class="sep">·</span>
+          <span title="Forum/UGC results in these SERPs signal extra ranking room — a bonus, not the verdict driver. Difficulty (KD) is the real competition signal.">
+            {Math.round(kq.forum_soft_serp_share * 100)}% forum-soft SERPs (bonus room)
+          </span>
+        {/if}
+        {#if kq.institutional_serp_share != null && kq.institutional_serp_share >= 0.5}
+          <span class="sep">·</span>
+          <span class="serp-caution" title="Most sampled SERPs are dominated by government/education/Wikipedia results. A new site faces a ranking headwind that keyword-difficulty can understate — verify winnability before committing.">
+            {Math.round(kq.institutional_serp_share * 100)}% authority-heavy SERPs (headwind)
+          </span>
+        {/if}
+      </div>
+      <p class="seo-thesis-rationale" title="Pages are an indexable-intent ceiling, not traffic.">
+        {kq.rationale}
+      </p>
+    </div>
+  {/if}
+
   <!-- Key Findings (Always Visible) -->
   {#if strategy.key_findings}
     <div class="insight-card insight-card--accent findings-card">
@@ -789,6 +828,61 @@
     border-radius: var(--radius-lg);
     padding: var(--space-5);
     margin-bottom: var(--space-4);
+  }
+
+  /* SEO thesis stress-test card — neutral by default; severity (warning) accent only on penalty risk. */
+  .seo-thesis-card {
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4) var(--space-5);
+    margin-bottom: var(--space-4);
+  }
+  .seo-thesis-card--risk {
+    border-color: var(--color-warning);
+    background: color-mix(in srgb, var(--color-warning) 6%, var(--color-bg-elevated));
+  }
+  .seo-thesis-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-bottom: var(--space-2);
+  }
+  .seo-thesis-eyebrow {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+  }
+  .seo-thesis-verdict {
+    margin: 0 0 var(--space-2);
+    font-size: var(--text-base);
+    font-weight: 600;
+    color: var(--color-text-primary);
+    line-height: 1.45;
+  }
+  .seo-thesis-metrics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    align-items: baseline;
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+  .seo-thesis-metrics .sep {
+    color: var(--color-text-muted);
+  }
+  .seo-thesis-metrics .serp-caution {
+    color: var(--color-warning);
+    cursor: help;
+  }
+  .seo-thesis-rationale {
+    margin: var(--space-2) 0 0;
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+    line-height: 1.5;
   }
 
   /* Tabs */

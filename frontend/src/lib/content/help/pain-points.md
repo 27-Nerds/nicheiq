@@ -1,5 +1,3 @@
-## How pain points are gathered
-
 Pain points are the problems we catch people actually talking about. They come out of public discussion, mostly forums and community threads (Reddit, Hacker News, with more sources over time), so they're things people chose to post about in the open. We didn't run a survey.
 
 ### From conversation to problem

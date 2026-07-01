@@ -160,21 +160,16 @@ pricing_strategy_analysis:
 
     **VALIDATION RULE:** If recommended_starter_price exceeds the WTP-implied ceiling, REDUCE price or JUSTIFY premium positioning.
 
-    **Example: Subscription Model (High WTP)**
-    - Competitor median: $29/month
-    - Average WTP score: 0.65 (Market Rate tolerance)
-    - Project type: SaaS
-    - Implied price range: $26-32/month (+-10% of median)
-    - Starter recommendation: $19/month (below range = acquisition-friendly)
-    - Pro recommendation: $49/month (above range, needs differentiation justification)
+    **Reasoning shape: Subscription Model (High WTP)** — derive every number from the ACTUAL inputs:
+    - Start from the real competitor median price.
+    - Read the WTP band (e.g. Market Rate tolerance) → pick the price posture from the WTP→price table above.
+    - Implied range ≈ competitor median ±10%.
+    - Set Starter at/below the range (acquisition-friendly); Pro above the range (must justify differentiation).
 
-    **Example: Ad-Supported Free Tool (Low WTP)**
-    - Average WTP score: 0.22 (Free/Near-Free tolerance)
-    - Project type: directory
-    - Competitor models: mix of free + paid, mostly free tools with ads
-    - Model: Ad-Supported-Free with affiliate links
-    - Revenue: Target 50,000 monthly pageviews at $8 CPM = $400/month
-    - Affiliate: 3% CTR x $15 avg commission = $200/month additional
+    **Reasoning shape: Ad-Supported Free Tool (Low WTP)** — derive every number from the ACTUAL inputs:
+    - Low WTP band (Free/Near-Free) → ad/affiliate model.
+    - Revenue ≈ estimated monthly pageviews × the niche's real CPM (see the CPM-by-industry table below) / 1000.
+    - Affiliate ≈ pageviews × CTR × average commission. Use the niche's real figures, not placeholders.
 
 
     **SaaS PRICING GUIDELINES (use only when subscription model is chosen):**
@@ -275,17 +270,17 @@ pricing_strategy_analysis:
     **FOR SUBSCRIPTION MODELS (Freemium, Freemium-Lite, Subscription, Hybrid, One-time, Usage-Based):**
 
     - **solution_name:** {solution_name}
-    - **recommended_starter_price:** e.g., "$19/month" (null for ad/affiliate models)
-    - **recommended_pro_price:** e.g., "$49/month" (null for ad/affiliate models)
-    - **recommended_enterprise_price:** e.g., "$199/month" or null if not applicable
+    - **recommended_starter_price:** format "$<starter>/month" — derive from the WTP band + competitor median; null for ad/affiliate models
+    - **recommended_pro_price:** format "$<pro>/month" (null for ad/affiliate models)
+    - **recommended_enterprise_price:** format "$<enterprise>/month" or null if not applicable
     - **pricing_model:** One of: "Freemium", "Freemium-Lite", "Subscription", "Hybrid", "One-time", "Usage-Based", "Ad-Supported-Free", "Affiliate-Only"
     - **pricing_rationale:** 2-3 sentences explaining why this monetization strategy
     - **free_tier_features:** Array of features (if freemium) or null
     - **starter_tier_features:** Array of 3-5 core features (null for ad/affiliate models)
     - **pro_tier_features:** Array of 5-8 advanced features (null for ad/affiliate models)
-    - **estimated_arpu:** e.g., "$27/month"
-    - **estimated_ltv:** e.g., "$324 - $810 (12-30mo retention)"
-    - **ltv_to_cac_ratio:** e.g., "5:1 (LTV $324 ÷ CAC $65)"
+    - **estimated_arpu:** format "$<arpu>/month"
+    - **estimated_ltv:** format "$<low> - $<high> (<N>-<M>mo retention)"
+    - **ltv_to_cac_ratio:** format "<ratio>:1 (LTV $<ltv> ÷ CAC $<cac>)"
     - **price_vs_competitors:** e.g., "10% below median"
     - **value_proposition_delta:** e.g., "15% more features at 20% lower price"
     - **pricing_confidence:** "High", "Medium", or "Low"
@@ -303,11 +298,11 @@ pricing_strategy_analysis:
     - **free_tier_features:** null (all features are free)
     - **starter_tier_features:** null (no tiers)
     - **pro_tier_features:** null (no tiers)
-    - **estimated_monthly_ad_revenue:** e.g., "$400-800/month at 50K pageviews"
-    - **estimated_monthly_affiliate_revenue:** e.g., "$200-400/month at 3% CTR"
-    - **estimated_cpm_rate:** e.g., "$5-15 CPM"
+    - **estimated_monthly_ad_revenue:** format "$<low>-<high>/month at <N> pageviews" (computed from the niche's real CPM)
+    - **estimated_monthly_affiliate_revenue:** format "$<low>-<high>/month at <CTR>% CTR"
+    - **estimated_cpm_rate:** format "$<low>-<high> CPM" (from the CPM-by-industry table)
     - **recommended_ad_networks:** e.g., ["Google AdSense", "Ezoic", "Mediavine"]
-    - **estimated_arpu:** e.g., "$0.012 per pageview" (revenue per user visit)
+    - **estimated_arpu:** format "$<arpu> per pageview" (revenue per user visit)
     - **estimated_ltv:** e.g., "N/A - traffic-based model"
     - **ltv_to_cac_ratio:** e.g., "N/A - SEO-driven traffic acquisition"
     - **price_vs_competitors:** e.g., "Free vs competitor freemium models"
@@ -316,41 +311,40 @@ pricing_strategy_analysis:
     - **wtp_validation:** Explain why ad/affiliate is appropriate given WTP scores
     - **market_segment_pricing:** null
 
-    **EXAMPLE — format only (fictional product "PlumbingCostCalc"; reusing these numbers fails validation):**
+    **EXAMPLE — SHAPE only (fictional; derive every number from the real inputs, never copy these slots):**
 
-    solution_name: "PlumbingCostCalc"
+    solution_name: "<ProductName>"
     pricing_model: "Ad-Supported-Free"
-    pricing_rationale: "100% free tool. WTP score of 0.22 indicates users won't pay for this utility.
-      Monetized via display ads targeting homeowner intent traffic with high purchase intent.
-      Target 50,000 monthly pageviews at $8 CPM = $400/month. Affiliate links to plumbing
-      services add estimated $200/month at 3% CTR and $15 avg commission."
+    pricing_rationale: "100% free tool. Low WTP score indicates users won't pay for this utility.
+      Monetized via display ads on high-purchase-intent traffic. Revenue ≈ <monthly pageviews> × the
+      niche's real CPM ÷ 1000; affiliate links add ≈ <pageviews> × <CTR> × <avg commission>."
     recommended_starter_price: null
     recommended_pro_price: null
-    estimated_monthly_ad_revenue: "$400-600/month"
-    estimated_monthly_affiliate_revenue: "$150-300/month"
-    estimated_cpm_rate: "$6-10 CPM (home services niche)"
+    estimated_monthly_ad_revenue: "$<low>-<high>/month"
+    estimated_monthly_affiliate_revenue: "$<low>-<high>/month"
+    estimated_cpm_rate: "$<low>-<high> CPM (<niche>)"
     recommended_ad_networks: ["Google AdSense", "Ezoic"]
-    estimated_arpu: "$0.012 per pageview (ads + affiliate)"
+    estimated_arpu: "$<arpu> per pageview (ads + affiliate)"
     pricing_confidence: "Medium"
-    wtp_validation: "Low WTP (0.22) confirms users seek free tools; monetization through ads aligns with user expectations"
+    wtp_validation: "Low WTP confirms users seek free tools; ad monetization aligns with user expectations"
 
-    **EXAMPLE — format only (fictional product "DevFlowTracker"; reusing these numbers fails validation):**
+    **EXAMPLE — SHAPE only (fictional; derive every number from the real inputs, never copy these slots):**
 
-    solution_name: "DevFlowTracker"
+    solution_name: "<ProductName>"
     pricing_model: "Freemium"
-    pricing_rationale: "WTP score of 0.72 confirms strong willingness to pay for developer workflow tooling.
-      3-tier model captures solo devs (Starter $19/mo), teams (Pro $49/mo), and orgs (Enterprise $149/mo).
-      Competitive gap exists at $19 entry point where most competitors start at $29+."
-    recommended_starter_price: "$19/month"
-    recommended_pro_price: "$49/month"
-    recommended_enterprise_price: "$149/month"
-    starter_tier_features: ["Workflow tracking", "3 integrations", "Basic analytics"]
-    pro_tier_features: ["Unlimited integrations", "Advanced analytics", "Team features", "API access", "Priority support"]
-    estimated_arpu: "$32/month"
-    estimated_ltv: "$384 - $960 (12-30mo retention)"
-    ltv_to_cac_ratio: "4:1 (LTV $384 ÷ CAC $96)"
+    pricing_rationale: "High WTP score confirms willingness to pay. 3-tier model captures individuals
+      (Starter), teams (Pro), and orgs (Enterprise), each priced off the real competitor median per the
+      WTP→price table. Note any competitive gap at the entry point."
+    recommended_starter_price: "$<starter>/month"
+    recommended_pro_price: "$<pro>/month"
+    recommended_enterprise_price: "$<enterprise>/month"
+    starter_tier_features: ["<core feature>", "<core feature>", "<core feature>"]
+    pro_tier_features: ["<advanced feature>", "<advanced feature>", "<advanced feature>"]
+    estimated_arpu: "$<arpu>/month"
+    estimated_ltv: "$<low> - $<high> (<N>-<M>mo retention)"
+    ltv_to_cac_ratio: "<ratio>:1 (LTV $<ltv> ÷ CAC $<cac>)"
     pricing_confidence: "High"
-    wtp_validation: "WTP of 0.72 supports premium positioning; pricing 35% below competitor median to accelerate acquisition"
+    wtp_validation: "High WTP supports premium positioning; price below competitor median to accelerate acquisition"
 
 
     **STOP CONDITIONS (ABORT ANALYSIS IF ANY ARE TRUE):**
@@ -376,7 +370,7 @@ pricing_strategy_analysis:
 
 
     **CRITICAL RULES (REMINDER - RECENCY BIAS):**
-    - For subscription models: All prices must be exact dollar amounts (e.g., "$19/month" NOT "$15-25/month")
+    - For subscription models: All prices must be exact dollar amounts (a single "$<price>/month", NOT a "$<low>-<high>/month" range)
     - For subscription models: LTV/CAC ratio >=2:1 is MANDATORY
     - For ad/affiliate models: Set tier prices to null, provide ad/affiliate revenue estimates instead
     - Monetization model must align with WTP signals AND project type (low WTP + directory = ad/affiliate)

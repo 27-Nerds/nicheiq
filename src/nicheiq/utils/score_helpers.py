@@ -6,16 +6,16 @@ and as a backfill for non-interactive mode when the LLM misses some solutions.
 
 from __future__ import annotations
 
-import logging
+import math
 from typing import TYPE_CHECKING
+
+from loguru import logger
 
 if TYPE_CHECKING:
     from nicheiq.models.solution_idea import BaseSolutionIdea
 
 from nicheiq.config.settings import settings
 from nicheiq.models.solution_selection import SolutionScores
-
-logger = logging.getLogger(__name__)
 
 # Field mapping from BaseSolutionIdea → SolutionScores:
 #   market_fit_score           → market_fit_score           (direct)
@@ -49,6 +49,97 @@ def _composite_of_present(*scores: float | None) -> float:
     return round(sum(present) / len(present), 3) if present else 0.0
 
 
+def score_band(score: float | None) -> str:
+    """Map a 0-1 sub-score to a plain qualitative band for USER-FACING verdict text.
+
+    Verdict prose must read in general terms ("good SEO", "weak market fit") and NEVER expose the
+    internal decimal. Bands: strong >=0.80, good >=0.65, moderate >=0.50, limited >=0.35, else weak;
+    None => "unrated".
+    """
+    if score is None:
+        return "unrated"
+    if score >= 0.80:
+        return "strong"
+    if score >= 0.65:
+        return "good"
+    if score >= 0.50:
+        return "moderate"
+    if score >= 0.35:
+        return "limited"
+    return "weak"
+
+
+# Angle-aware ranking weights over the four composite dimensions (market_fit,
+# technical_feasibility, novelty=competitive_advantage, seo). Each preset sums to 1.0 so the
+# weighted mean stays on the same 0-1 scale as the equal-weight mean. distribution_seo keeps a
+# SMALL non-zero novelty weight (it still rewards representation differentiation, just not as the
+# primary lever). An idea is ranked by ITS OWN winning_angle — the run-level focus never enters here.
+# These are starting weights; the Stage-2 A/B tunes them. angle=None => equal-weight (today).
+# P3a: within a tiebreak cluster, a demand max-min below this carries no differentiating signal
+# (demand is flat/saturated), so the novelty override is suppressed in favour of the composite leader.
+_DEMAND_SPREAD_EPS = 0.05
+
+# P3b: fold beachhead demand MAGNITUDE into the ratio-based demand score. log10(vol)/DIVISOR maps
+# volume→[0,1] (100k/mo→1.0, 10k→0.8, 1k→0.6); RATIO_WEIGHT blends the existing clean-keywords ratio
+# against that magnitude so a thin-but-clean beachhead can't score as high demand as a truly large one.
+_DEMAND_VOL_LOG_DIVISOR = 5.0
+_DEMAND_RATIO_WEIGHT = 0.5
+
+
+def demand_with_beachhead_magnitude(
+    ratio_demand: float,
+    niche_relevant_volume: int | float | None,
+    total_volume: int | float | None,
+) -> float:
+    """P3b: blend the ratio-based keyword_demand_score with the solution's log-scaled BEACHHEAD volume.
+
+    The ratio score rewards 'most keywords are individually clean' (have volume, low competition) but
+    ignores MAGNITUDE — a thin beachhead of clean-but-tiny keywords can score ~1.0. We blend in a
+    log-scaled niche-relevant volume (falling back to total_volume when niche-relevance is unavailable)
+    so demand tracks real magnitude; the log floors a genuinely-thin-but-real idea rather than zeroing
+    it. Returns the original ratio_demand only if no usable volume is present (defensive no-op).
+    """
+    vol = niche_relevant_volume if isinstance(niche_relevant_volume, (int, float)) and niche_relevant_volume > 0 \
+        else (total_volume or 0)
+    if not isinstance(vol, (int, float)) or vol <= 0:
+        return round(ratio_demand, 4)
+    magnitude = min(math.log10(vol + 1) / _DEMAND_VOL_LOG_DIVISOR, 1.0)
+    return round(_DEMAND_RATIO_WEIGHT * ratio_demand + (1 - _DEMAND_RATIO_WEIGHT) * magnitude, 4)
+
+_ANGLE_WEIGHTS: dict[str, dict[str, float]] = {
+    "distribution_seo":       {"market_fit": 0.30, "technical_feasibility": 0.15, "novelty": 0.15, "seo": 0.40},
+    "novel_differentiation":  {"market_fit": 0.30, "technical_feasibility": 0.20, "novelty": 0.40, "seo": 0.10},
+    "vertical_workflow":      {"market_fit": 0.35, "technical_feasibility": 0.35, "novelty": 0.20, "seo": 0.10},
+}
+
+
+def _composite_for_angle(
+    market_fit: float | None,
+    technical_feasibility: float | None,
+    novelty: float | None,
+    seo: float | None,
+    angle: str | None,
+) -> float:
+    """Angle-weighted mean over the present dimensions. When `angle` is None or unknown, returns the
+    exact equal-weight `_composite_of_present` (byte-identical regression-lock). Otherwise weights by
+    the angle preset and re-normalizes over the present dimensions' weights (a None dim drops out of
+    BOTH numerator and denominator, mirroring _composite_of_present)."""
+    w = _ANGLE_WEIGHTS.get(angle or "")
+    if not w:
+        return _composite_of_present(market_fit, technical_feasibility, novelty, seo)
+    pairs = [
+        (w["market_fit"], market_fit),
+        (w["technical_feasibility"], technical_feasibility),
+        (w["novelty"], novelty),
+        (w["seo"], seo),
+    ]
+    present = [(wt, s) for wt, s in pairs if s is not None]
+    denom = sum(wt for wt, _ in present)
+    if denom <= 0:
+        return _composite_of_present(market_fit, technical_feasibility, novelty, seo)
+    return round(sum(wt * s for wt, s in present) / denom, 3)
+
+
 def feasibility_adjusted_composite(
     composite_score: float,
     market_fit: float | None,
@@ -56,6 +147,7 @@ def feasibility_adjusted_composite(
     competitive_advantage: float | None,
     seo: float | None,
     build_feasibility: float | None,
+    angle: str | None = None,
 ) -> float:
     """Downgrade-only feasibility adjustment to a composite ranking score.
 
@@ -65,6 +157,10 @@ def feasibility_adjusted_composite(
     mean-of-present composite — so ONLY ideas where build < technical_feasibility move,
     and only downward. The LLM-assigned composite of unaffected ideas is preserved, and
     the stored technical_feasibility_score is never mutated (the verdict reads it raw).
+
+    When ``angle`` is set, the composite is an angle-WEIGHTED mean (see _composite_for_angle),
+    so the marginal drop must use the SAME weighting: w_tf·(tf−build)/Σw_present, not the plain
+    1/n_present. ``angle=None`` keeps the exact equal-weight arithmetic (byte-identical no-op).
 
     No-op when the feasibility critic is off, build is unscored (sentinel -1.0 / None),
     or build >= technical_feasibility.
@@ -79,13 +175,53 @@ def feasibility_adjusted_composite(
         return composite_score
     if build_feasibility < 0 or build_feasibility >= technical_feasibility:
         return composite_score
-    n_present = sum(
-        1 for s in (market_fit, technical_feasibility, competitive_advantage, seo) if s is not None
-    )
-    if n_present == 0:
-        return composite_score
-    drop = (technical_feasibility - build_feasibility) / n_present
+    w = _ANGLE_WEIGHTS.get(angle or "")
+    if w:
+        # Weighted mean: capping tf->build lowers the composite by w_tf·(tf−build)/Σw_present.
+        # Σw_present uses the SAME present-dimension weights as the base (None dims drop out).
+        denom = sum(
+            wt for wt, s in (
+                (w["market_fit"], market_fit),
+                (w["technical_feasibility"], technical_feasibility),
+                (w["novelty"], competitive_advantage),
+                (w["seo"], seo),
+            ) if s is not None
+        )
+        if denom <= 0:
+            return composite_score
+        drop = w["technical_feasibility"] * (technical_feasibility - build_feasibility) / denom
+    else:
+        n_present = sum(
+            1 for s in (market_fit, technical_feasibility, competitive_advantage, seo) if s is not None
+        )
+        if n_present == 0:
+            return composite_score
+        drop = (technical_feasibility - build_feasibility) / n_present
     return round(max(0.0, composite_score - drop), 3)
+
+
+def angle_ranked_composite(idea) -> float:
+    """The angle-weighted, feasibility-adjusted composite for ONE idea, by its winning_angle.
+
+    Used to STAMP ``adjusted_composite_score`` on preview dicts so the interactive selection grid
+    ranks by the same angle-aware composite the report uses (the grid short-circuits to
+    adjusted_composite_score when present). Reads sub-scores defensively from a model OR a dict.
+    An idea whose winning_angle is None (classify fail-soft) falls back to an equal-weight 4-dim mean.
+    """
+    def _g(field):
+        return idea.get(field) if isinstance(idea, dict) else getattr(idea, field, None)
+
+    mf = _g("market_fit_score")
+    tf = _g("technical_feasibility_score")
+    mf = mf if mf is not None else 0.5  # match compute_solution_scores' required-field default
+    tf = tf if tf is not None else 0.5
+    ca = _g("novelty_score")
+    seo = _g("seo_scalability_score")
+    bf = _g("build_feasibility_score")
+    angle = _g("winning_angle")
+    return feasibility_adjusted_composite(
+        _composite_for_angle(mf, tf, ca, seo, angle), mf, tf, ca, seo, bf, angle
+    )
 
 
 def apply_feasibility_to_scores(
@@ -100,6 +236,13 @@ def apply_feasibility_to_scores(
     reflect a low build estimate (the cause of the ranking inversion). ONLY 'llm'-sourced
     entries are adjusted; 'backfill'/'interactive' composites were already adjusted at
     compute time (re-applying would double-subtract). No-op when the critic is off.
+
+    Angle policy (intentional): the 'llm' composite is whatever the selector emitted, NOT a
+    weighted mean of the four sub-scores, so we DON'T angle-reweight it here — re-weighting a
+    base built with unknown internal weighting would compound the approximation. The 'llm' path
+    stays equal-weight; angle-aware ranking lives where the composite is built from sub-scores
+    (compute/backfill + the preview-grid stamp). Mixed 'llm'+'backfill' lists therefore carry a
+    small cross-source scale gap — accepted for v1, validated by the A/B.
     """
     if not settings.enable_feasibility_critic or not all_scores:
         return all_scores
@@ -147,8 +290,10 @@ def compute_solution_scores(solution_ideas: list[BaseSolutionIdea]) -> list[Solu
         ca = _extract_optional_score(idea, "novelty_score")
         seo = _extract_optional_score(idea, "seo_scalability_score")
         bf = _extract_optional_score(idea, "build_feasibility_score")
+        # Rank by each idea's OWN winning_angle (None when angle eval is off => equal-weight no-op).
+        angle = getattr(idea, "winning_angle", None)
         composite = feasibility_adjusted_composite(
-            _composite_of_present(mf, tf, ca, seo), mf, tf, ca, seo, bf
+            _composite_for_angle(mf, tf, ca, seo, angle), mf, tf, ca, seo, bf, angle
         )
         scores.append(
             SolutionScores(
@@ -187,8 +332,9 @@ def backfill_solution_scores(
             ca = _extract_optional_score(idea, "novelty_score")
             seo = _extract_optional_score(idea, "seo_scalability_score")
             bf = _extract_optional_score(idea, "build_feasibility_score")
+            angle = getattr(idea, "winning_angle", None)
             composite = feasibility_adjusted_composite(
-                _composite_of_present(mf, tf, ca, seo), mf, tf, ca, seo, bf
+                _composite_for_angle(mf, tf, ca, seo, angle), mf, tf, ca, seo, bf, angle
             )
             result.append(
                 SolutionScores(
@@ -246,23 +392,39 @@ def rerank_solutions_by_adjusted_score(
         reverse=True,
     )
 
-    changed = True
-    while changed:
-        changed = False
-        for i in range(len(ranked) - 1):
-            a, b = ranked[i], ranked[i + 1]
-            a_adj = a.adjusted_composite_score or 0.0
-            b_adj = b.adjusted_composite_score or 0.0
-            if (
-                abs(a_adj - b_adj) < tiebreak_margin
-                and (b.competitive_advantage_score or 0.0) > (a.competitive_advantage_score or 0.0)
-            ):
-                ranked[i], ranked[i + 1] = b, a
-                changed = True
+    # Leader-anchored novelty tiebreak (order-independent; mirrors the Task-4 prompt rule).
+    # Among solutions within `tiebreak_margin` of the TOP adjusted score, the one with the
+    # highest competitive_advantage_score wins rank 1; the rest keep adjusted-score order. A
+    # solution >= margin below the leader can NEVER win (the old transitive adjacent-swap loop
+    # could reorder within the cluster non-obviously). Strict `<` boundary: a gap of exactly
+    # tiebreak_margin does not tie.
+    if ranked:
+        top_adj = ranked[0].adjusted_composite_score or 0.0
+        cluster = [s for s in ranked if (top_adj - (s.adjusted_composite_score or 0.0)) < tiebreak_margin]
+        # P3a (A/B-validated 2026-07-01, always on): the novelty override breaks DEMAND-driven near-ties,
+        # but keyword_demand_score saturates (~0.94 constant) in practice, so the cluster is really a
+        # composite-proximity artifact and overriding the composite leader on novelty systematically
+        # promotes a weaker idea. Fire the override ONLY if within-cluster demand actually spreads
+        # (>= _DEMAND_SPREAD_EPS); on flat/saturated demand keep the composite leader.
+        fire_override = True
+        if len(cluster) > 1:
+            demands = [s.keyword_demand_score for s in cluster if s.keyword_demand_score is not None]
+            if len(demands) < 2 or (max(demands) - min(demands)) < _DEMAND_SPREAD_EPS:
+                fire_override = False
                 logger.info(
-                    f"Novelty tiebreaker: '{b.solution_name}' over '{a.solution_name}' "
-                    f"(adjusted within {tiebreak_margin}, higher competitive advantage)"
+                    f"Demand-gated tiebreak: demand spread <{_DEMAND_SPREAD_EPS} across {len(cluster)} "
+                    f"clustered solution(s) — keeping composite leader '{ranked[0].solution_name}' "
+                    f"(novelty override suppressed)"
                 )
+        if fire_override:
+            winner = max(cluster, key=lambda s: s.competitive_advantage_score or 0.0)
+            if winner is not ranked[0]:
+                logger.info(
+                    f"Novelty tiebreaker: '{winner.solution_name}' over '{ranked[0].solution_name}' "
+                    f"(adjusted within {tiebreak_margin} of leader, higher competitive advantage)"
+                )
+                ranked.remove(winner)
+                ranked.insert(0, winner)
 
     for i, score in enumerate(ranked, start=1):
         score.rank = i

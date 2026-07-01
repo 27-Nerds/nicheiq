@@ -167,6 +167,48 @@ def test_novelty_enhance_rejects_seo_regression(monkeypatch):
     assert out is idea                           # SEO regression > tol → original directory kept
 
 
+# --- _novelty_enhance angle-aware skip-gate (Stage 3) ----------------------
+
+def test_novelty_enhance_skips_distribution_angle(monkeypatch):
+    # validated + obvious (would normally enhance), but the agent's angle is distribution_seo -> skip
+    # the mechanism rewrite (wrong lever; Phase 2b handles it). No revise call.
+    calls = []
+    idea = _idea("A", market_fit_score=0.7, obviousness_score=0.7, novelty_score=0.4,
+                 winning_angle="distribution_seo")
+    out = _ne_crew(monkeypatch, _idea("REV"), calls=calls)._novelty_enhance(idea, usages=[])
+    assert out is idea and calls == []
+
+
+def test_novelty_enhance_skips_workflow_angle(monkeypatch):
+    calls = []
+    idea = _idea("A", market_fit_score=0.7, obviousness_score=0.7, novelty_score=0.4,
+                 winning_angle="vertical_workflow")
+    out = _ne_crew(monkeypatch, _idea("REV"), calls=calls)._novelty_enhance(idea, usages=[])
+    assert out is idea and calls == []
+
+
+def test_novelty_enhance_runs_for_novel_angle(monkeypatch):
+    # novel_differentiation is the RIGHT lever for the mechanism enhance -> not skipped; runs + accepts.
+    idea = _idea("A", market_fit_score=0.7, obviousness_score=0.7, novelty_score=0.4,
+                 technical_feasibility_score=0.8, seo_scalability_score=0.6,
+                 winning_angle="novel_differentiation")
+    rev = _idea("REV", novelty_score=0.6, market_fit_score=0.7, technical_feasibility_score=0.8,
+                seo_scalability_score=0.6)
+    out = _ne_crew(monkeypatch, rev)._novelty_enhance(idea, usages=[])
+    assert out is rev
+
+
+def test_novelty_enhance_skip_heuristic_when_angle_unset(monkeypatch):
+    # winning_angle unset (classify off/fail-soft) -> deterministic fallback: directory + high SEO +
+    # programmatic_seo opportunity -> skip.
+    calls = []
+    idea = _idea("A", market_fit_score=0.7, obviousness_score=0.7, novelty_score=0.4,
+                 winning_angle=None, project_type="directory", seo_scalability_score=0.6,
+                 programmatic_seo_opportunity="per-entity pages")
+    out = _ne_crew(monkeypatch, _idea("REV"), calls=calls)._novelty_enhance(idea, usages=[])
+    assert out is idea and calls == []
+
+
 # --- _enhance_idea_mechanism (rename propagation) --------------------------
 
 def test_enhance_propagates_rename_into_description(monkeypatch):
@@ -260,6 +302,9 @@ def _patch_chain(monkeypatch, order):
                         lambda self, *, batch: (order.append("cal"), (1, None))[1])
     monkeypatch.setattr(UnifiedSolutionCrew, "_validate_idea_caps",
                         lambda self, idea: order.append("val") or [])
+    # Angle classify is a separate fail-soft concern (own tests); stub it out of the scored chain.
+    monkeypatch.setattr(UnifiedSolutionCrew, "_classify_batch",
+                        lambda self, *, batch: (0, None))
     monkeypatch.setattr(UnifiedSolutionCrew, "_finalize_seo_realism",
                         lambda self, ideas: order.append("seo"))
     monkeypatch.setattr(UnifiedSolutionCrew, "_apply_tags_to",
@@ -286,6 +331,7 @@ def test_score_cell_winner_funnels_usage(monkeypatch):
     monkeypatch.setattr(UnifiedSolutionCrew, "_validate_idea_caps", lambda self, idea: [])
     monkeypatch.setattr(UnifiedSolutionCrew, "_finalize_seo_realism", lambda self, ideas: None)
     monkeypatch.setattr(UnifiedSolutionCrew, "_calibrate_batch", lambda self, *, batch: (1, "CAL_U"))
+    monkeypatch.setattr(UnifiedSolutionCrew, "_classify_batch", lambda self, *, batch: (0, None))
     monkeypatch.setattr(UnifiedSolutionCrew, "_apply_tags_to", lambda self, ideas: "TAG_U")
     usages: list = []
     _crew()._score_cell_winner(_idea("W"), skip_selection=True, usages=usages)

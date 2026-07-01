@@ -606,3 +606,42 @@ class TestNicheAnchorCells:
         # the cell's pain IS the theme's top-severity one -> no substitution -> no note
         assert usc.UnifiedSolutionCrew._build_anchor_severity_notes(
             [{"pain": quant, "segment": None}], [quant, anchor], rel) == []
+
+
+class TestSeverityFloorCells:
+    """Round-0 severity floor in _assign_generator_cells: guarantee the top-N pains by severity a
+    cell before the opportunity/theme/affinity diversity fill spends the budget — so a high-severity,
+    thin-affinity pain (e.g. a sev-0.7 'morning routine' pain) can't be crowded out entirely."""
+
+    def _p(self, title, sev, opp, theme, segs):
+        return SimpleNamespace(title=title, severity_score=sev, opportunity_level=opp,
+                               parent_theme_id=theme, affected_segments=segs,
+                               mention_count=5, commercial_intent=0.5)
+
+    def _segs(self):
+        return [SimpleNamespace(segment_name="S1", pain_point_alignment=[]),
+                SimpleNamespace(segment_name="S2", pain_point_alignment=[])]
+
+    def _pains(self):
+        # Two high-opportunity low-severity pains fill the 2-cell budget; the top-severity pain is
+        # medium-opportunity (opportunity dominates severity in the ordering) -> crowded out when off.
+        return [
+            self._p("Ah", 0.5, "high", "TA", ["S1"]),
+            self._p("Bh", 0.5, "high", "TB", ["S2"]),
+            self._p("HiSev", 0.95, "medium", "TC", ["S1"]),
+        ]
+
+    def test_floor_off_drops_high_severity_thin_pain(self):
+        cells = usc._assign_generator_cells(self._pains(), self._segs(),
+                                            target=2, max_gen=2, severity_floor=0)
+        assert "HiSev" not in {c["pain"].title for c in cells}
+
+    def test_floor_on_guarantees_top_severity_pain(self):
+        cells = usc._assign_generator_cells(self._pains(), self._segs(),
+                                            target=2, max_gen=2, severity_floor=1)
+        assert "HiSev" in {c["pain"].title for c in cells}
+
+    def test_floor_default_zero_is_byte_identical(self):
+        a = usc._assign_generator_cells(self._pains(), self._segs(), target=2, max_gen=2)
+        b = usc._assign_generator_cells(self._pains(), self._segs(), target=2, max_gen=2, severity_floor=0)
+        assert [c["pain"].title for c in a] == [c["pain"].title for c in b]

@@ -13,6 +13,7 @@ import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
   import type { SolutionPreview } from "$lib/types/job";
   import { computeCompositeScore, solutionStrengthBadge, solutionDisplayTitle, solutionCardDescription, fitLabel } from "$lib/utils/solution-utils";
   import { tagDescription } from "$lib/utils/ideaTagLabels";
+  import { angleLabel, angleDescription } from "$lib/utils/ideaAngleLabels";
 
   interface Props {
     solution: SolutionPreview;
@@ -227,6 +228,13 @@ import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
         <span class="superpower-tag superpower-tag-{superpower.variant}">{superpower.label}</span>
       {/if}
     {/if}
+    {#if solution.winning_angle && angleLabel(solution.winning_angle)}
+      <Tooltip content={solution.angle_rationale || angleDescription(solution.winning_angle)} position="bottom" class="cursor-help">
+        {#snippet children()}
+          <span class="angle-tag">{angleLabel(solution.winning_angle)}</span>
+        {/snippet}
+      </Tooltip>
+    {/if}
     {#if solution.project_type}
       <span class="text-xs px-2 py-0.5 rounded-full bg-bg-elevated border border-border text-text-muted">
         {solution.project_type}
@@ -433,6 +441,19 @@ import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
   .superpower-tag-accent { color: var(--color-accent-dark); }
   .superpower-tag-info { color: var(--color-secondary-dark); }
   .superpower-tag-warning { color: var(--color-warning-dark); }
+
+  /* Angle chip: one neutral (secondary-tinted) treatment for all three peer angles —
+     marks the "why it wins" angle without implying a ranking or reusing brand orange. */
+  .angle-tag {
+    font-size: 0.75rem;
+    line-height: 1.2;
+    padding: 0.125rem 0.5rem;
+    border-radius: 9999px;
+    white-space: nowrap;
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-secondary);
+    color: var(--color-secondary-dark);
+  }
 
   .fit-num-success { color: var(--color-success-dark); }
   .fit-num-warning { color: var(--color-warning-dark); }

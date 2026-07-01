@@ -241,6 +241,26 @@
         </div>
       {/if}
 
+      <!-- Build Feasibility (independent critic's build estimate; annotate-only) -->
+      {#if solution.build_feasibility_score != null}
+        <div class="bento-card stat-card-animated">
+          <div class="flex flex-col items-center gap-3">
+            <ProgressRing
+              value={solution.build_feasibility_score}
+              size={72}
+              strokeWidth={5}
+              color="auto"
+              showValue={true}
+              showLabel={true}
+              label="Build"
+            />
+            <span class="text-xs text-text-muted uppercase tracking-wider"
+              >Build Feasibility</span
+            >
+          </div>
+        </div>
+      {/if}
+
       <!-- Data Aggregation Required -->
       {#if solution.requires_data_aggregation !== undefined}
         <div class="bento-card stat-card-animated">

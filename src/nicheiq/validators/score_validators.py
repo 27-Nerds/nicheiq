@@ -195,6 +195,27 @@ class ScoreThresholds(BaseModel):
         description="Phase 3: Weak market viability sets risk floor at Medium",
     )
 
+    # Phase 4: SEO kill-question floor tuning (enable is the plain settings.enable_seo_kill_question_floor).
+    # The floor keys on KD-coverage-robust signals: DataForSEO omits KD for many (often easy) long-tail
+    # intents, so an absolute winnable-page count collapses to ~0 on niches that are actually winnable.
+    # We therefore (a) gate on KD-coverage sufficiency and (b) judge winnability as a SHARE of KD'd intents.
+    seo_kill_min_kd_sample: int = Field(
+        default=30,
+        description="Floor abstains unless this many page-universe intents carried a KD value (coverage denominator)",
+    )
+    seo_kill_min_kd_coverage: float = Field(
+        default=0.5,
+        description="Floor abstains unless KD covers >= this fraction of the page universe (else winnable/KD unreliable)",
+    )
+    seo_kill_min_winnable_share: float = Field(
+        default=0.15,
+        description="distribution_seo with winnable_pages/kd_sample_size < this = no real winnable universe (floor fires)",
+    )
+    seo_kill_high_kd: float = Field(
+        default=60.0,
+        description="Median keyword difficulty >= this = slow/unwinnable on a new domain (secondary floor signal)",
+    )
+
     @classmethod
     def from_settings(cls, app_settings) -> "ScoreThresholds":
         """Build thresholds from application settings (env-overridable).
@@ -383,6 +404,7 @@ class VerdictValidator:
         original_risk = risk_level
         trend_context = None
         risk_raised = False
+        from ..utils.score_helpers import score_band  # plain bands, never expose the decimal
 
         # Helper to raise risk one level
         def _raise_risk(current: str) -> str:
@@ -430,7 +452,7 @@ class VerdictValidator:
                 verdict = "Conditional"
                 trend_context = (
                     f"Downgraded from Go/{original_risk} to Conditional/{risk_level}: "
-                    f"Declining market trend (momentum={momentum_score:.2f})"
+                    f"Declining market trend ({score_band(momentum_score)} momentum)"
                 )
 
         # Rule 4: Risky longevity → Go→Conditional only if momentum confirms weakness
@@ -447,15 +469,15 @@ class VerdictValidator:
         # (only reached if momentum >= 0.35 AND not Risky with momentum < 0.50)
         elif self.thresholds.trend_declining_downgrades_go and is_declining:
             trend_context = (
-                f"Note: Declining direction but momentum ({momentum_score:.2f}) "
-                f"near Stable boundary — no verdict downgrade"
+                f"Note: Declining direction but {score_band(momentum_score)} momentum "
+                f"near the Stable boundary — no verdict downgrade"
             )
 
         # Rule 4b: Risky longevity but moderate+ momentum — informational only
         elif self.thresholds.trend_risky_downgrades_go and is_risky:
             trend_context = (
-                f"Note: Risky longevity ({market_maturity} market) but momentum "
-                f"({momentum_score:.2f}) above downgrade threshold"
+                f"Note: Risky longevity ({market_maturity} market) but {score_band(momentum_score)} "
+                f"momentum above the downgrade threshold"
             )
 
         # Rule 5: Monitor & Wait → raise risk one level (additive, independent of 1-4)
@@ -544,6 +566,67 @@ class VerdictValidator:
             market_viability_context = f"Moderate market viability noted (verdict: {verdict}, entry strategy: {entry_strategy or 'N/A'})"
 
         return verdict, risk_level, primary_concern, market_viability_context
+
+    def apply_seo_kill_downgrade(
+        self,
+        verdict: Literal["Go", "No-Go", "Conditional"],
+        risk_level: Literal["Low", "Medium", "High"],
+        primary_concern: Optional[str],
+        winnable_pages: int,
+        median_keyword_difficulty: Optional[float],
+        penalty_risk_flag: bool,
+        kd_sample_size: int,
+        page_ceiling: int,
+    ) -> tuple[
+        Literal["Go", "No-Go", "Conditional"],
+        Literal["Low", "Medium", "High"],
+        Optional[str],
+        Optional[str],
+    ]:
+        """SEO kill-question floor (Phase 4) — caller gates this to distribution_seo ideas only.
+
+        Grounds an over-OPTIMISTIC distribution_seo verdict in SEO REALITY: a great keyword score is a
+        mirage if there's no winnable page universe. Keyed on the KD/winnability axis, which the SEO
+        composite excludes by design (seo_helpers.py) — so this is NEW info, not a double-count.
+        Downgrade-only: caps Go->Conditional + floors risk at Medium; never forces No-Go. penalty_risk
+        is SECONDARY (it overlaps the existing Rule-B thin-page cap, so it never fires the floor alone).
+
+        KD-COVERAGE GATE (A/B-driven, 2026-06-30): DataForSEO omits keyword_difficulty for many (often
+        easy) long-tail intents, so an absolute winnable-page count collapses to ~0 on niches that are
+        actually winnable. The floor therefore ABSTAINS (fail-soft, returns no-context) unless KD covers
+        enough of the page universe, and judges winnability as a SHARE of KD'd intents, not an absolute
+        count. Recompute A/B over cached checkpoints showed the old absolute test false-fired on 14/14
+        sparse-KD checkpoints while every dense one (winnable share 0.75-0.93) was correctly silent.
+        """
+        seo_kill_context = None
+
+        # Coverage gate — below this the winnable/median-KD signals are an artifact of missing data, not
+        # real difficulty. Abstain (the safe direction: never downgrade a deserving idea on thin data).
+        coverage = (kd_sample_size / page_ceiling) if page_ceiling else 0.0
+        if (kd_sample_size < self.thresholds.seo_kill_min_kd_sample
+                or coverage < self.thresholds.seo_kill_min_kd_coverage):
+            return verdict, risk_level, primary_concern, None
+
+        winnable_share = (winnable_pages / kd_sample_size) if kd_sample_size else 0.0
+        no_universe = winnable_share < self.thresholds.seo_kill_min_winnable_share
+        high_kd = median_keyword_difficulty is not None and median_keyword_difficulty >= self.thresholds.seo_kill_high_kd
+
+        if no_universe or high_kd:
+            if verdict == "Go":
+                verdict = "Conditional"
+            if risk_level == "Low":
+                risk_level = "Medium"
+            reason = ("almost no winnable page universe" if no_universe
+                      else "high keyword difficulty (slow to rank on a new domain)")
+            extra = " (thin-content penalty risk)" if penalty_risk_flag else ""
+            seo_kill_context = (
+                f"SEO kill-question: {reason}{extra} for a distribution play — held to Conditional, "
+                f"risk floored at Medium."
+            )
+            if primary_concern is None:
+                primary_concern = "Distribution play lacks a winnable SEO page universe"
+
+        return verdict, risk_level, primary_concern, seo_kill_context
 
     def is_high_priority_pain_point(self, severity_score: float) -> bool:
         """

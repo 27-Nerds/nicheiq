@@ -25,7 +25,9 @@ _session = requests.Session()
 
 
 def _get_backend_url() -> str:
-    return os.environ.get("BACKEND_URL", "http://localhost:3001")
+    # Empty when unset (no localhost default): standalone CLI runs have no backend, so the
+    # cache POST/lookup is skipped rather than flooding `Connection refused` warnings.
+    return os.environ.get("BACKEND_URL", "")
 
 
 def _get_internal_secret() -> str:
@@ -52,6 +54,9 @@ class RedditThreadCache:
         Returns:
             Dict keyed by URL -> RedditPost for cache hits.
         """
+        if not _get_backend_url():
+            return {}  # no backend configured (standalone) — cache disabled
+
         url_to_pid: dict[str, str] = {}
         for url in urls:
             pid = self._extract_post_id(url)
@@ -111,6 +116,8 @@ class RedditThreadCache:
 
     def store_post(self, post: RedditPost) -> None:
         """Store a fetched Reddit post in the cache."""
+        if not _get_backend_url():
+            return  # no backend configured (standalone) — cache disabled
         try:
             comments_data = [c.model_dump(mode="json") for c in post.comments] if post.comments else None
 

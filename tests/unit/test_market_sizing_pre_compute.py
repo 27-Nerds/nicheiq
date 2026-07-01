@@ -79,7 +79,8 @@ class TestComputeSaturationLevel:
 class TestComputeTamSeed:
     def test_positive_volume(self):
         result = compute_tam_seed(10_000)
-        assert "$6,000,000" in result  # 10000 * 50 * 12
+        assert "10,000" in result  # restates demand volume...
+        assert "$" not in result   # ...but emits NO pre-computed dollar TAM anchor
 
     def test_zero_volume(self):
         result = compute_tam_seed(0)

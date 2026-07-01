@@ -344,6 +344,47 @@ class KeywordBasedPageType(BaseModel):
 
 
 
+class SeoKillQuestion(BaseModel):
+    """Deterministic SEO-thesis stress test for a distribution_seo idea (no LLM).
+
+    Answers the angle's kill-question — "is there a real indexable-page ceiling, are the pages
+    winnable on a new domain, and is the page universe thin enough to risk a scaled-content penalty?"
+    Computed from the already-validated keyword set (search_volume + keyword_difficulty) plus a small
+    SERP sample. Surfaces the report's biggest distribution_seo blind spot: ideas that score great on
+    keyword volume but have no real page universe / would face a Google penalty.
+    """
+    model_config = ConfigDict(extra='ignore')
+
+    indexable_page_ceiling: int = Field(
+        ..., description="Distinct non-zero-volume search intents — the realistic programmatic page universe")
+    head_count: int = Field(0, description="Intents with monthly volume >= 1000")
+    mid_count: int = Field(0, description="Intents with monthly volume 100-999")
+    tail_count: int = Field(0, description="Intents with monthly volume 1-99")
+    median_keyword_difficulty: Optional[float] = Field(
+        None, description="Median KD (0-100) across the page universe")
+    winnable_pages: int = Field(
+        0, description="Pages with KD below the new-domain-rankable threshold (realistically winnable)")
+    kd_sample_size: int = Field(
+        0, description=("Page-universe intents that carried a keyword_difficulty value — the KD-coverage "
+                        "denominator. DataForSEO omits KD for many (often easy) long-tail intents, so when "
+                        "this is small relative to the ceiling, winnable_pages/median_keyword_difficulty are "
+                        "unreliable and the verdict floor abstains."))
+    forum_soft_serp_share: Optional[float] = Field(
+        None, description=("UPSIDE-ONLY signal: fraction of sampled SERPs whose top results are UGC/forum "
+                           "domains (= extra ranking room). Presence is a bonus; 0.0 is NEUTRAL (the default "
+                           "for professional/legal niches), NOT 'unwinnable'. Does not feed the verdict."))
+    institutional_serp_share: Optional[float] = Field(
+        None, description=("CAUTION-ONLY signal: fraction of sampled SERPs DOMINATED (>=3 of top 5) by "
+                           "institutional domains (.gov/.edu/.mil/Wikipedia) — a ranking headwind that "
+                           "keyword-difficulty understates. High share flags 'verify winnability'; it is "
+                           "NOT a kill and does NOT feed the verdict or the winnable count."))
+    serp_sampled: int = Field(0, description="Number of representative queries sampled in the SERP")
+    penalty_risk_flag: bool = Field(
+        False, description="High page count + thin (tail-heavy) universe -> scaled-content-abuse penalty risk")
+    verdict: str = Field("", description="One-line human read of whether the SEO thesis holds")
+    rationale: str = Field("", description="The evidence behind the verdict")
+
+
 class SEOStrategyReport(BaseModel):
     """
     Comprehensive SEO strategy report matching translation services example.
@@ -466,6 +507,13 @@ class SEOStrategyReport(BaseModel):
     budget_allocation: Optional[str] = Field(
         default=None,
         description="Budget recommendations with options (markdown, Option A/B/C)"
+    )
+
+    # SEO kill-question: deterministic thesis stress-test, attached only for distribution_seo ideas.
+    seo_kill_question: Optional["SeoKillQuestion"] = Field(
+        default=None,
+        description="Deterministic SEO-thesis stress test (page ceiling, winnable pages, penalty risk) "
+                    "for a distribution_seo idea. None for other angles or when disabled."
     )
 
     # conclusion_bottom_line removed - generic boilerplate

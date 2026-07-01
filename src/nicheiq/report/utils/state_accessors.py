@@ -605,6 +605,23 @@ class StateAccessor:
         """Deprecated alias for get_primary_search_volume()."""
         return self.get_primary_search_volume()
 
+    def get_beachhead_search_volume(self) -> int:
+        """P0b: BEACHHEAD demand = the SELECTED solution's OWN validated keyword volume (niche-relevant,
+        else total) — the slice it actually serves. Mirrors the market-sizing SAM anchor
+        (market_sizing_crew beachhead), INDEPENDENT of the whole-niche SEO expansion that
+        get_primary_search_volume returns when an SEO report exists. 0 when there is no per-solution
+        keyword validation. Headlining THIS in market_validation (not the category reach ceiling) stops
+        the '1% fallacy' where the narrative contradicts the beachhead-anchored verdict + market sizing."""
+        if not self.state.solution_selection or not self.state.keyword_validation_results:
+            return 0
+        selected_name = self.state.solution_selection.selected_solution_name
+        for v in self.state.keyword_validation_results:
+            if v.solution_name.lower().strip() == selected_name.lower().strip():
+                if v.niche_relevant_volume is not None:
+                    return v.niche_relevant_volume
+                return v.total_volume or 0
+        return 0
+
     def get_volume_filter_ratio(self) -> float | None:
         """
         Get the ratio of primary volume to Stage 9 total volume.

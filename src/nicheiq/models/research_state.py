@@ -367,10 +367,17 @@ class AlternativeSolution(BaseModel):
     novelty_score: Optional[float] = Field(None, ge=0.0, le=1.0, description="Innovation/novelty score")
     solo_dev_feasibility: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="Solo developer feasibility score (0-1)")
 
+    # Angle-aware evaluation (mirrors BaseSolutionIdea; set when angle eval is on, None otherwise)
+    winning_angle: Optional[str] = Field(default=None, description="distribution_seo | novel_differentiation | vertical_workflow")
+    angle_rationale: Optional[str] = Field(default=None, description="User-facing comment: the angle + where differentiation lives")
+    novelty_rationale: Optional[str] = Field(default=None, description="User-facing: why this novelty score fits the project_type")
+    differentiation_locus: Optional[str] = Field(default=None, description="WHERE this idea's differentiation lives (or honest 'thin me-too')")
+
     # Data feasibility (from the ideation feasibility critic; annotate-only, surfaced in UI)
     data_feasibility_score: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="Ease of obtaining required data (0-1)")
     data_access_model: Optional[str] = Field(default=None, description="public | freemium | paywalled | unofficial | restricted")
     data_acquisition_notes: Optional[str] = Field(default=None, description="Data source/route + access model + cost/ToS risk")
+    build_feasibility_score: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="Independent critic's build-feasibility estimate (0-1)")
 
     # NEW: Competitive landscape for this solution
     top_competitors: Optional[list[str]] = Field(default=None, description="Top 3 competitors for this solution")
@@ -1557,6 +1564,14 @@ class ResearchState(BaseModel):
     allowed_project_types: Optional[list[str]] = Field(
         default=None,
         description="User-specified project type constraints: saas, directory, aggregator, comparison-tool, marketplace"
+    )
+    idea_focus: str = Field(
+        default="auto",
+        description=(
+            "User GTM-focus steer for idea generation + ranking emphasis: 'auto' (the angle agent "
+            "decides, unbiased), 'novelty' (tilt toward novel_differentiation), or 'distribution' (tilt "
+            "toward distribution_seo). 'auto' is neutral — the angle agent decides per idea."
+        ),
     )
 
     # Niche-fidelity telemetry (non-scoring; surfaced as report caveats in Stage 10).

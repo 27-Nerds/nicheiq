@@ -172,6 +172,7 @@ def process_job(job_data: dict) -> None:
                 checkpoint_path=job_data["checkpoint_path"],
                 existing_solution_names=job_data.get("existing_solution_names", []),
                 niche=job_data.get("niche", ""),
+                idea_focus=job_data.get("idea_focus"),
             )
         elif task_type == TASK_TYPE_CATALOG_PAIN_POINTS:
             from .tasks import run_catalog_pain_points
@@ -226,6 +227,7 @@ def process_job(job_data: dict) -> None:
             resume = job_data.get("resume", False)
             job_mode = job_data.get("job_mode")
             entry_mode = job_data.get("entry_mode")
+            idea_focus = job_data.get("idea_focus")
 
             logger.info(f"Processing research for user {user_id or 'anonymous'}: {niche[:50]}... (resume={resume}, mode={job_mode})")
 
@@ -239,6 +241,7 @@ def process_job(job_data: dict) -> None:
                     allowed_project_types=allowed_project_types,
                     resume=resume,
                     entry_mode=entry_mode,
+                    idea_focus=idea_focus,
                 )
             else:
                 from .tasks import run_research_job

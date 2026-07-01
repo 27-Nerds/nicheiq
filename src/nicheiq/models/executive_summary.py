@@ -55,6 +55,18 @@ class GoNoGoVerdict(BaseModel):
         description="Market viability adjustment explanation, if any. None = no adjustment applied."
     )
 
+
+class VerdictExplanation(BaseModel):
+    """LLM explanation of an ALREADY-DECIDED Go/No-Go verdict (never decides it)."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    explanation: str = Field(
+        description=("2-3 sentences explaining WHY this idea landed at its verdict, in plain qualitative "
+                     "terms (e.g. 'good market fit, weak SEO') — NEVER numeric scores.")
+    )
+
+
 class CorePainPoint(BaseModel):
     """The single most important pain point driving this opportunity."""
 

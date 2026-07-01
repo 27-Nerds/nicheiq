@@ -38,6 +38,13 @@ _HARD_CAP = 3
 _QUALITY_BAR = 0.72
 # Soft-only composite: no data/technical feasibility (those are verified, not judged-in-the-loop).
 _WEIGHTS = {"market_fit": 0.45, "novelty": 0.30, "clarity": 0.25}
+# P1b: angle-aware loop weights (behind enable_direction_aware_eval) — a distribution_seo idea is
+# optimized on its SEO SURFACE (structural page-corpus), not novelty; a novel idea on novelty. Mirrors
+# the ranking/verdict _ANGLE_WEIGHTS intent. seo_surface enters ONLY on these angle paths.
+_ANGLE_LOOP_WEIGHTS = {
+    "distribution_seo":      {"market_fit": 0.35, "seo_surface": 0.40, "novelty": 0.10, "clarity": 0.15},
+    "novel_differentiation": {"market_fit": 0.35, "novelty": 0.40, "seo_surface": 0.10, "clarity": 0.15},
+}
 _VERIFY_RE = re.compile(r"\[NEEDS[-\s]?VERIFY:\s*([^\]]+)\]", re.I)
 
 
@@ -46,13 +53,19 @@ class IdeaCritiqueV4(BaseModel):
     market_fit: float = Field(..., ge=0, le=1, description="Does it solve the SOURCE pain for the TARGET audience?")
     novelty: float = Field(..., ge=0, le=1, description="Non-obvious vs the named competitors / generic tools?")
     clarity: float = Field(..., ge=0, le=1, description="Coherent, specific, complete spec (penalize vagueness/empty fields)?")
-    binding_constraint: str = Field(..., description="The ONE lowest, most-actionable of the three dimensions")
+    # P1b: STRUCTURAL SEO surface only — does the idea SHAPE yield an enumerable corpus of many indexable
+    # pages? Judge the shape, NEVER search demand/volume (the loop has no keyword data). Default 0.5 so the
+    # legacy/flag-off path (reviewer not asked for it) is unaffected.
+    seo_surface: float = Field(0.5, ge=0, le=1, description="Structural: does the idea shape yield an enumerable corpus of many indexable pages? SHAPE only, NOT search demand/volume.")
+    binding_constraint: str = Field(..., description="The ONE lowest, most-actionable dimension")
     directive: str = Field(..., description="A specific, actionable fix for the binding constraint — staying ON the source pain")
-    meets_bar: bool = Field(..., description="True only if strong on all three dimensions")
+    meets_bar: bool = Field(..., description="True only if strong on all scored dimensions")
     rationale: str = Field("", description="≤200 chars grounding the call")
 
-    def composite(self) -> float:
-        return round(sum(_WEIGHTS[k] * getattr(self, k) for k in _WEIGHTS), 4)
+    def composite(self, angle: str | None = None) -> float:
+        w = _ANGLE_LOOP_WEIGHTS.get(angle or "") if settings.enable_direction_aware_eval else None
+        w = w or _WEIGHTS
+        return round(sum(wt * getattr(self, k) for k, wt in w.items()), 4)
 
 
 class DataRouteVerdict(BaseModel):
@@ -91,8 +104,33 @@ def _soft_invoke(messages, output_model, *, temperature, model_name, reasoning_e
         model_name=model_name, reasoning_effort=reasoning_effort, creative=creative)
 
 
+def _angle_directive(g: CellGrounding) -> str:
+    """P1b: angle-specific mentor guidance so the loop optimizes the direction's winning axis."""
+    if not (settings.enable_direction_aware_eval and g.winning_angle):
+        return ""
+    if g.winning_angle == "distribution_seo":
+        return (
+            "\nDIRECTION = DISTRIBUTION_SEO — this idea WINS on SEO distribution, NOT mechanism novelty.\n"
+            "• ALSO score `seo_surface` 0-1: does the idea SHAPE yield an enumerable corpus of MANY indexable "
+            "pages (one per entity / comparison / location / question)? Judge the SHAPE ONLY — you have no "
+            "keyword data, so NEVER assume or claim search volume/demand.\n"
+            "• Do NOT penalize the idea for being an 'obvious' shape — an obvious directory/comparison/"
+            "benchmark shape is the CORRECT form here; low novelty is EXPECTED, not a flaw.\n"
+            "• Prioritize `seo_surface` and `market_fit` as the binding_constraint; push the ideator toward a "
+            "richer, more enumerable page corpus and a sharper wedge into the pain — NOT a novel mechanism.\n"
+        )
+    if g.winning_angle == "novel_differentiation":
+        return (
+            "\nDIRECTION = NOVEL_DIFFERENTIATION — this idea WINS on a genuine, non-obvious mechanism.\n"
+            "• Prioritize `novelty` and `market_fit` as the binding_constraint; push toward a sharper, "
+            "non-obvious mechanism. (Score `seo_surface` too, but it is secondary for this direction.)\n"
+        )
+    return ""
+
+
 def _reviewer_system(g: CellGrounding) -> dict:
     return {"role": "system", "content": (
+        _angle_directive(g) +
         "You are a CREATIVE PRODUCT MENTOR for a solo developer — not a grader. Your job is to GUIDE the "
         "ideator toward a sharper, more ORIGINAL, genuinely BUILDABLE product that nails the source pain "
         "below. Every turn you give ONE concrete creative direction that moves the idea forward, plus "
@@ -145,7 +183,7 @@ def _ideator_system(g: CellGrounding) -> dict:
 
 def _review(idea, thread, *, invoke, model, effort):
     thread.append({"role": "user", "content":
-        "Review on market_fit, novelty, clarity only. Name the binding constraint + one directive.\n\n"
+        "Review on the scored dimensions. Name the binding constraint + one directive.\n\n"
         + _idea_to_text(idea)})
     crit, usage = invoke(thread, IdeaCritiqueV4, temperature=0.2, model_name=model, reasoning_effort=effort)
     thread.append({"role": "assistant", "content":
@@ -312,7 +350,7 @@ def tournament_refine_cell_v4(
             _rec(u)
         except Exception as e:
             logger.warning(f"[v4] review failed r{r}: {str(e)[:80]}"); break
-        score = crit.composite()
+        score = crit.composite(grounding.winning_angle)  # P1b: angle-weighted (flag-gated)
         if start_mf is None:
             start_mf = crit.market_fit
         on_pain = crit.market_fit >= start_mf - _ONPAIN_SLACK

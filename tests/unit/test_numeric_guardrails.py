@@ -323,24 +323,23 @@ class TestExampleAnchoring:
         assert not ok
         assert "fictional example" in msg
 
-    def test_yaml_examples_match_fingerprints(self):
-        """Sync guard: if someone edits the YAML example numbers, this fails
-        and tells them to update _collect_example_matches."""
+    def test_yaml_examples_are_de_anchored(self):
+        """Regression guard for the anchoring de-risk (2026-06-30): the pricing prompt's worked
+        examples must NOT carry concrete dollar magnitudes — LLMs anchor on in-prompt numbers, and the
+        2026-06-11 incident shipped the example tuple verbatim. The examples are now placeholders, so the
+        prompt has nothing to copy. (The _collect_example_matches fingerprints survive as a standalone
+        defense-in-depth denylist for the known incident pattern, no longer synced to the YAML.)"""
         from pathlib import Path
         yaml_path = (
             Path(__file__).parents[2]
             / "src" / "nicheiq" / "crews" / "config" / "pricing_strategy_tasks.yaml"
         )
         text = yaml_path.read_text()
-        for marker in (
-            "$19/month", "$49/month", "$149/month",  # DevFlowTracker tiers
-            "$32/month", "$384 - $960",              # DevFlowTracker ARPU/LTV
-            "$400-600/month", "$150-300/month",      # PlumbingCostCalc revenue
-        ):
-            assert marker in text, (
-                f"YAML example value {marker!r} not found in "
-                "pricing_strategy_tasks.yaml — the example numbers changed. "
-                "Update _collect_example_matches in crew_guardrails.py to match."
+        for anchor in ("$19/month", "$49/month", "$149/month", "$32/month", "$384 - $960", "$400-600/month"):
+            assert anchor not in text, (
+                f"Anchoring regression: concrete example value {anchor!r} reappeared in "
+                "pricing_strategy_tasks.yaml. Worked-example numbers must stay placeholders "
+                "(e.g. \"$<starter>/month\") so the LLM derives its own figures."
             )
 
 

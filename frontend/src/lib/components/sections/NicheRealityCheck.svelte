@@ -48,6 +48,17 @@
   );
   const positive = $derived(band === "low" || (verdict.software_addressability ?? 0) >= 0.7);
   const pointsLabel = $derived(positive ? "What makes it strong" : "What makes it hard");
+
+  // Qualitative addressability label — the meter bar is the visual gauge; the text never shows the raw %.
+  const addrLabel = $derived(
+    band === "low"
+      ? "Mostly tool-addressable"
+      : band === "medium"
+        ? "Partly tool-addressable"
+        : band === "high"
+          ? "Hard to fully address with software"
+          : "Largely beyond what software can fix",
+  );
 </script>
 
 <InsightCard variant={badgeVariant} border="all" padding="lg" class="reality-check">
@@ -67,7 +78,7 @@
     {/if}
 
     <!-- Software-addressability meter: how much of the niche's pain a tool can actually fix. -->
-    <div class="rc-meter" role="img" aria-label={`Software addressability ${pct} percent`}>
+    <div class="rc-meter" role="img" aria-label={`Software addressability: ${addrLabel}`}>
       <div class="rc-meter-ends">
         <span>Software can't fix it</span>
         <span>Software owns it</span>
@@ -75,7 +86,7 @@
       <div class="rc-track">
         <span class="rc-marker"></span>
       </div>
-      <p class="rc-meter-value">{pct}% software-addressable</p>
+      <p class="rc-meter-value">{addrLabel}</p>
     </div>
 
     <p class="rc-narrative">{verdict.narrative_summary}</p>

@@ -544,6 +544,62 @@ SCORE_CALIBRATION_LLM=openrouter/qwen/qwen3.7-max
 SCORE_CALIBRATION_REASONING_EFFORT=medium
 # Critic depth — weighs evidence against the bands (a notch above the JUDGE tier).
 
+# Angle-aware idea evaluation (always on — no feature flag)
+IDEA_ANGLE_LLM=openrouter/qwen/qwen3.7-max
+# In-cell classifier that assigns each idea a winning_angle (distribution_seo | novel_differentiation |
+# vertical_workflow) with an angle_rationale + novelty_rationale, then ranks each idea by its OWN angle's
+# weights (distribution upweights SEO + market_fit with a small non-zero novelty weight; novel upweights
+# novelty; workflow upweights feasibility). Runs after calibration, before the novelty enhance; a post-union
+# straggler-finisher catches re-injected ideas. So a low off-axis score (low mechanism-novelty for a catalog)
+# is explained, not penalized.
+IDEA_ANGLE_REASONING_EFFORT=medium
+# Classifier depth — picks the angle + writes the rationales.
+NOVELTY_ENHANCE_SKIP_SEO_FLOOR=0.5
+# Novelty-enhance skips distribution_seo-angle ideas whose SEO score is at/above this floor — their edge is
+# data representation, not a novel mechanism, so low mechanism-novelty is expected and shouldn't trigger a rewrite.
+# NOTE: idea_focus (auto | novelty | distribution, default auto) is a PER-RUN REQUEST PARAMETER, not an env var.
+# It tilts both what gets generated and the ranking emphasis toward an angle; it steers emphasis, not the truthful
+# winning_angle label. Also available as a per-batch override on "Generate more ideas".
+
+# Post-selection deep research — pressure-testing the ONE selected idea (the post-Stage-5 stages:
+# competitor 5.5, SEO 6, pricing 7, market-sizing 9, report 14). See the in-app help page /help/deep-research
+# and docs/DEEP_RESEARCH_IMPROVEMENT_PLAN.md.
+#
+# Shipped ON (A/B-validated 2026-06-30):
+ENABLE_ANGLE_CONDITIONED_RESEARCH=true
+# Front-load the selected idea's winning-angle kill-question into the SEO + competitor crew prompts so deep
+# research investigates what validates/kills THAT angle (honestly stress-tested, never inflated).
+ENABLE_SEO_KILL_QUESTION=true
+# Deterministic SEO-thesis stress-test for distribution_seo ideas in Stage 6 (page ceiling + KD distribution +
+# forum-soft-SERP bonus + penalty-risk flag). Catches the pSEO mirage. Only fires for distribution_seo.
+ENABLE_LLM_VERDICT_EXPLANATION=true
+# Explain the DECIDED Go/No-Go verdict with an LLM (told the verdict + score BANDS + angle + any downgrade),
+# validated to match the verdict's stance and use NO raw decimals; deterministic band template as fallback.
+ENABLE_ANGLE_AWARE_VERDICT=true
+# LIFT-ONLY verdict averaging: avg = max(equal-weight, angle-weighted), so a strong distribution_seo idea isn't
+# penalized for low novelty, but a winning_angle misclassification can never DEMOTE it. min(market_fit,tech) gate
+# unchanged (boundary-grid A/B: 4 correct lifts, 0 demotes).
+#
+# DARK by default — each pending a per-flag A/B over cached checkpoints before flip:
+# ENABLE_SEO_KILL_QUESTION_FLOOR=false
+# Ground an over-OPTIMISTIC distribution_seo verdict in the kill-question: when the page universe isn't winnable
+# (winnable_pages low / median KD high), cap Go->Conditional + floor risk Low->Medium (downgrade-only). Keyed on
+# the KD/winnability axis the SEO composite EXCLUDES by design, so it's new information, not a double-count of the
+# existing thin-page Rule-B (penalty_risk_flag is strictly secondary here).
+# ENABLE_SCOPED_MARKET_SIZING=false
+# Size the SERVICEABLE slice the selected idea actually addresses, not the whole niche: narrow the pain corpus to
+# the idea's pain_points_addressed (token-overlap match), keep top-down keyword volume only as a labeled
+# cross-check, and emit a qualitative "addresses N of M pains" scope note — NO fabricated bottom-up SAM (there is
+# no headcount/ACV data to build one from). Falls back to niche-wide when nothing matches.
+# ENABLE_AUDIENCE_CONDITIONED_DEEP_RESEARCH=false
+# Forward the Stage-1 RESOLVED audience (tools_currently_used / frustrations_with_existing) into the competitor
+# task prompt + the SEO seed-generation vocabulary, so deep research judges against the real buyer. Distinct from
+# ENABLE_AUDIENCE_AWARE_RESEARCH (which only biases the Phase-1 search/pain-mining, not the post-selection stages).
+# ENABLE_MULTISOURCE_EVIDENCE_HEADLINE=false
+# Rank the report's evidence appendix across ALL sources (Reddit + HN/YouTube + Twitter) by normalized engagement
+# and surface a per-thread platform tag, vs the Reddit-only-by-raw-score default. Keeps the top_reddit_threads JSON
+# key for backward compatibility.
+
 # Idea-improvement loop — creative MENTOR (runs after calibration, before the deterministic caps)
 IDEATION_MENTOR_LLM=gpt-5.4-mini
 # The reviewer/mentor in the per-idea improvement loop: it scores three soft dimensions and gives ONE creative

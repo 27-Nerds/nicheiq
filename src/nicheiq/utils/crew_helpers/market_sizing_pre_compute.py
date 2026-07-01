@@ -55,18 +55,19 @@ def compute_saturation_level(competitor_count: int) -> str:
 
 
 def compute_tam_seed(total_volume: int) -> str:
-    """Keyword-based TAM seed anchor for the LLM to adjust.
+    """Restate the beachhead demand WITHOUT a pre-computed dollar figure.
 
-    Formula: monthly_volume x $50 avg LTV x 12 months.
+    A pre-computed "$X TAM seed" (volume x an assumed LTV) is a numeric ANCHOR, and LLMs shift their
+    estimates toward in-prompt numbers ~88% of the time — framing one as a fact amplifies the pull, and
+    a hardcoded $50 LTV biases every niche the same way. So we deliberately emit NO dollar seed: the
+    model derives the per-customer value from the real pricing anchor and the actual demand volumes.
     """
     if total_volume > 0:
-        baseline = total_volume * 50 * 12
         return (
-            f"Keyword-based TAM seed: ${baseline:,.0f}/year "
-            f"(based on {total_volume:,} monthly searches x $50 avg LTV x 12 months "
-            f"-- adjust LTV based on niche)"
+            f"Beachhead demand baseline: {total_volume:,} monthly searches "
+            f"(no pre-set TAM — derive the per-customer value from the pricing anchor)."
         )
-    return "No keyword data for TAM seed calculation"
+    return "No keyword data for demand baseline."
 
 
 def compute_wtp_stats(

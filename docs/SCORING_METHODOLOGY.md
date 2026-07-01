@@ -13,6 +13,7 @@ behind the numbers you see on each idea.
 - [The eight scores](#the-eight-scores)
 - [How a score is produced](#how-a-score-is-produced)
 - [The honesty guardrails](#the-honesty-guardrails)
+- [Angle-aware evaluation](#angle-aware-evaluation)
 - [How ideas are ranked](#how-ideas-are-ranked)
 - [The Go / No-Go verdict](#the-go--no-go-verdict)
 - [Honest limitations](#honest-limitations)
@@ -117,10 +118,44 @@ scores. Every one can only lower a score:
   account-gating signal uses the project type plus the data-access tier — there is no
   separate "is it gated" flag — so it's a careful proxy, not a certainty.)
 
+## Angle-aware evaluation
+
+Not every good idea wins the same way, so we don't score every idea on the same axis.
+A small classifier assigns each generated idea a **winning angle** — the go-to-market
+angle that gives it its best real chance — and then judges it on executing *that* angle:
+
+- **distribution_seo** — wins by being **found**: programmatic / SEO pages plus owned
+  distribution. Its differentiation lives in the **data representation** (format,
+  coverage, freshness), not a clever mechanism. Low *mechanism*-novelty is **expected**
+  here and isn't a flaw; the real weakness is a me-too directory with no unique data slice.
+- **novel_differentiation** — wins on a **novel mechanism** rivals can't easily copy.
+- **vertical_workflow** — wins by **owning a deep workflow** for one specific user: a
+  workflow step rivals miss, plus switching cost.
+
+Every idea should be differentiated — but in the dimension its angle rewards. That means
+"novelty" means a different thing per angle: a new mechanism, a better data representation,
+or a deeper workflow step. So a low off-axis score (a low mechanism-novelty for a catalog
+whose edge is its data) is **explained**, not held against the idea. Each idea carries a
+short `angle_rationale` (naming the angle, the nearest competitor, and where its
+differentiation lives) and a `novelty_rationale` (one line tying the novelty score to the
+idea's project type — why it reads as expected, low, or high there).
+
+Ranking is **angle-aware** too: each idea is ranked by its own angle's weights — a
+distribution idea upweights SEO and market fit (with a small, non-zero novelty weight); a
+novel-differentiation idea upweights novelty; a workflow idea upweights feasibility. So a
+strong catalog isn't out-ranked by a flashier idea just because it scores lower on a
+dimension its angle never relied on.
+
+**You can steer the emphasis.** An **Idea focus** control (per run, also available when you
+ask for more ideas) sets the tilt: **Auto** lets the classifier decide each idea's angle
+unbiased; **Novelty** or **Distribution** tilts *both* what gets generated *and* the ranking
+emphasis toward that angle. It steers emphasis, not honesty — each idea's winning-angle label
+stays truthful regardless of the setting.
+
 ## How ideas are ranked
 
 Ideas are ordered by a **composite score** — a blend of market fit, technical
-feasibility, novelty, and SEO scalability.
+feasibility, novelty, and SEO scalability, weighted by each idea's winning angle.
 
 One adjustment matters a lot for trust: the independent reviewer's **build-feasibility**
 estimate is allowed to *lower* the technical feasibility used in ranking (never raise
@@ -226,6 +261,19 @@ Each idea carries a Go / No-Go signal. Like the scores, the verdict logic is
 **downgrade-only**: weak fundamentals (for example, technical feasibility below a set
 floor) can turn a Go into a No-Go, but the verdict machinery never upgrades a weak idea
 into a Go. It is designed to be a conservative gate, not a cheerleader.
+
+The verdict is read through the idea's **winning angle**. Averaging is *lift-only*: an
+idea is scored on the better of its equal-weight and angle-weighted average, so a strong
+distribution-first idea isn't punished for low mechanism-novelty — but a misread angle can
+never demote a deserving idea. One angle-specific gate matters for distribution-first ideas:
+if the search opportunity looks great on paper but there's no realistic set of pages you
+could rank for (the "SEO kill-question"), the verdict is tempered toward Conditional. That
+check keys off ranking winnability, which the SEO score itself deliberately leaves out — so
+it adds a missing caution rather than penalizing the same weakness twice.
+
+The verdict's written explanation speaks in plain terms — strong demand, weak distribution,
+crowded field — and never quotes the raw internal scores, because the reasoning travels
+better than the decimals.
 
 ## Honest limitations
 

@@ -25,6 +25,40 @@ export const SUPERPOWER_MAP_DETAILED: Record<string, SuperpowerEntry> = Object.f
 
 export type { SuperpowerEntry };
 
+/**
+ * Opportunity shape — a one-line read on how this niche's viable ideas split across GTM angles.
+ * Tells the user whether the niche rewards being FOUND (distribution/SEO), being DIFFERENT (a novel
+ * mechanism), or OWNING a workflow. Computed from the ideas' winning_angle; null when too few are
+ * classified to be meaningful. The angles are peers — this describes the niche, not a quality verdict.
+ */
+const _ANGLE_SHAPE: Record<string, { word: string; why: string }> = {
+  distribution_seo: { word: 'distribution-leaning', why: 'win by being found (SEO), not by a novel mechanism' },
+  novel_differentiation: { word: 'novelty-leaning', why: "win on a novel mechanism rivals can't easily copy" },
+  vertical_workflow: { word: 'workflow-leaning', why: 'win by owning a deep workflow for a specific user' },
+};
+
+export function opportunityShape(
+  solutions: SolutionPreview[] | null | undefined,
+): { dominant: string; counts: Record<string, number>; line: string } | null {
+  const angled = (solutions ?? []).filter((s) => s.winning_angle);
+  if (angled.length < 3) return null; // too little signal to characterize the niche
+
+  const counts: Record<string, number> = {};
+  for (const s of angled) counts[s.winning_angle!] = (counts[s.winning_angle!] ?? 0) + 1;
+  const ranked = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  const [dominant, n] = ranked[0];
+  const total = angled.length;
+
+  // A clear lean needs a plurality AND a real edge over the runner-up; otherwise it's a mixed niche.
+  const runnerUp = ranked[1]?.[1] ?? 0;
+  const shape = _ANGLE_SHAPE[dominant];
+  const line = (!shape || n === runnerUp)
+    ? `Mixed niche — viable plays span ${ranked.length} angles, no single dominant approach.`
+    : `${shape.word.charAt(0).toUpperCase() + shape.word.slice(1)} niche — ${n} of ${total} viable ideas ${shape.why}.`;
+
+  return { dominant, counts, line };
+}
+
 export function computeCompositeScore(solution: SolutionPreview): number {
   if (solution.adjusted_composite_score != null) return solution.adjusted_composite_score;
   return _computeComposite(solution as unknown as Record<string, unknown>, SOLUTION_PREVIEW_KEYS);

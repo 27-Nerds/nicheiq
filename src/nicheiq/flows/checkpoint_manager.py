@@ -157,6 +157,14 @@ class CheckpointManager:
             logger.warning(f"Failed to save checkpoint for {stage_name}: {e}")
             # Don't fail the pipeline for checkpoint errors
 
+    def flush_metadata(self) -> None:
+        """Rewrite metadata.json from current state WITHOUT marking a stage completed.
+
+        For state mutated with no following save_stage (e.g. skipped_stages set in
+        _skip_stage's terminal cascade) — otherwise those fields never reach disk and are
+        lost on resume."""
+        self._update_checkpoint_metadata("")
+
     def _update_checkpoint_metadata(self, completed_stage: str) -> None:
         """Update checkpoint metadata.json with current progress."""
         if self.checkpoint_folder is None:
@@ -188,7 +196,7 @@ class CheckpointManager:
         metadata["last_checkpoint_at"] = datetime.now().isoformat()
         metadata["current_stage"] = self.state.current_stage
         metadata["entry_mode"] = self.entry_mode
-        if completed_stage not in metadata["completed_stages"]:
+        if completed_stage and completed_stage not in metadata["completed_stages"]:
             metadata["completed_stages"].append(completed_stage)
         metadata["errors"] = self.state.errors.copy() if hasattr(self.state, 'errors') else []
 
@@ -219,6 +227,19 @@ class CheckpointManager:
         # Catalog-seeded flag (transparency badge; must survive Phase-2 resume)
         if getattr(self.state, 'seeded_from_catalog', False):
             metadata["seeded_from_catalog"] = True
+
+        # Phase-1 state fields consumed by the report/preview AFTER resume — must round-trip
+        # (mirror fallback_stages; otherwise they reset to their model default on --resume /
+        # Phase-2, silently dropping the user's idea_focus steer and report caveats/telemetry).
+        metadata["idea_focus"] = getattr(self.state, "idea_focus", "auto")
+        if getattr(self.state, "idea_coverage_caveats", None):
+            metadata["idea_coverage_caveats"] = self.state.idea_coverage_caveats
+        if getattr(self.state, "niche_drift_telemetry", None):
+            metadata["niche_drift_telemetry"] = self.state.niche_drift_telemetry
+        if getattr(self.state, "skipped_stages", None):
+            metadata["skipped_stages"] = self.state.skipped_stages
+        if getattr(self.state, "sources_searched", None):
+            metadata["sources_searched"] = self.state.sources_searched
 
         # Stage completion timestamps (for timing summary in final report)
         if hasattr(self.state, 'stage_completion_timestamps') and self.state.stage_completion_timestamps:
@@ -386,6 +407,7 @@ class CheckpointManager:
             "stage_5_3_refinement.json": "idea_generation",
             "stage_5_5_competitive.json": "competitive_analysis",
             "stage_5_6_selection.json": "solution_selection",
+            "stage_5_niche_difficulty.json": "niche_difficulty_verdict",
             # Stage 6: SEO strategy (internal phases 6a/b/c/d)
             "stage_6a_seed_expansion.json": "seo_expanded_keywords",
             "stage_6b_bulk_validation.json": "seo_validation_results",
@@ -533,6 +555,20 @@ class CheckpointManager:
         # Restore catalog-seeded flag (so Phase-2 reports keep the transparency badge)
         if metadata.get("seeded_from_catalog"):
             self.state.seeded_from_catalog = True
+
+        # Restore Phase-1 state fields consumed by the report/preview after resume (see the
+        # matching write block in _update_checkpoint_metadata). idea_focus is restored even at
+        # its "auto" default so the resync in resume_from_checkpoint propagates the real value.
+        if metadata.get("idea_focus"):
+            self.state.idea_focus = metadata["idea_focus"]
+        if metadata.get("idea_coverage_caveats"):
+            self.state.idea_coverage_caveats = metadata["idea_coverage_caveats"]
+        if metadata.get("niche_drift_telemetry"):
+            self.state.niche_drift_telemetry = metadata["niche_drift_telemetry"]
+        if metadata.get("skipped_stages"):
+            self.state.skipped_stages = metadata["skipped_stages"]
+        if metadata.get("sources_searched"):
+            self.state.sources_searched = metadata["sources_searched"]
 
         # Restore stage completion timestamps
         if metadata.get("stage_completion_timestamps"):

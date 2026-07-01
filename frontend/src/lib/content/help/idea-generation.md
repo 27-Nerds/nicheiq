@@ -1,5 +1,3 @@
-## How ideas are generated
-
 Ideas don't come out of one big brainstorm that gets filtered down. Each of your strongest problems gets worked on its own, by its own small team, so you end up with one well-argued idea per problem instead of ten flavours of whichever problem the brainstorm happened to fixate on.
 
 ### One problem, one team
@@ -23,6 +21,16 @@ The scores (shown as percentages, with an overall green / amber / red composite 
 One thing worth knowing about those numbers: they aren't the idea's own self-grade. The model that comes up with an idea tends to like its own work and marks it generously, so once an idea is written up in full a separate model goes back over it and re-scores it against the same yardstick, leaning conservative when the evidence is thin ([Zheng et al., 2023](https://arxiv.org/abs/2306.05685)). So a 70% for market fit is a second opinion that has already argued the optimism back down, not the first number the idea gave itself.
 
 The tags fall into four buckets. **Strengths** are what an idea is genuinely good at (market fit, SEO power, originality, quick to build, solo-friendly), and the standout one gets called out as its "superpower." **Model** is how it works and sells: the product type, who it's for, and how it makes money. **Growth** is how it would realistically pick up users. And **Watch-outs** are the honest cautions, the hard-to-build, the unoriginal, the gated or grey-area data, and risk flags like regulatory, terms-of-service, grey-market, or trust-dependent. Some of these are judgement calls and some are read straight off the scores, and there's a one-line note explaining the calls that aren't obvious.
+
+### Each idea is judged on the angle that actually wins for it
+
+Not every idea wins the same way, so we don't grade them all on the same thing. There are three ways an idea can earn its place: it can win by being **found** (lots of SEO pages plus a way to reach people), by being **genuinely different** (a mechanism competitors can't easily copy), or by **owning a workflow** for one specific kind of user. We label each idea with the one that fits it and judge it on that.
+
+This matters most for the catalog-and-directory ideas. A directory wins by being found and by holding a slice of data nobody else has, not by some clever trick. So when one of those scores low on novelty, we don't hold it against the idea: a low-novelty score is normal for that kind of product, and that isn't the game it's playing. The novelty score comes with a one-line note telling you why it reads the way it does for that type of idea.
+
+You also get a steer. The **Idea focus** control has three settings: **Auto** lets us pick the right angle for each idea, which is the default. **Novelty** and **Distribution** lean both the ideas we come up with and the way we rank them toward that one angle, so you see more of what you're after. It changes the emphasis, not the honesty: every idea still gets the angle label that actually fits it, whatever you set the focus to. The same control shows up when you ask for more ideas, so you can change the lean batch by batch.
+
+One last thing on the selection screen: a single line reads out how the niche's ideas split across these angles, for example "Distribution-leaning niche: 3 of 5 viable ideas win by being found (SEO), not by a novel mechanism." It's a quick way to see what kind of opportunity this niche actually is before you dig in.
 
 ### What to keep in mind
 

@@ -34,11 +34,11 @@ market_sizing_analysis:
     - demand_signal: "strong" (>5k/mo) | "moderate" (2k-5k/mo) | "weak" (<2k/mo)
     - top_keywords: list of keyword strings sorted by volume
 
-    **Total Monthly Search Volume (SEO strategy data):** {total_keyword_volume:,} searches
-    **Total Unfiltered Search Volume:** {unfiltered_keyword_volume:,} searches (when SEO data is used, both values match)
+    **Beachhead demand (anchor SAM/SOM here):** {beachhead_demand_volume:,} monthly searches — the solution's OWN validated keyword demand, i.e. the slice of the niche it actually serves.
+    **Follow-on reach ceiling (TAM only):** {niche_reach_ceiling:,} monthly searches — the broad niche/category keyword universe the idea could eventually expand into. The eventual ceiling, NEVER the SAM headline.
     **Analyzed Keywords:** {validated_keyword_count}
 
-    **IMPORTANT:** Use the niche-relevant volume for TAM calculations. The unfiltered volume is provided for reference only — it includes broad keywords that are not specific to this niche and would inflate market size estimates.
+    **IMPORTANT:** Anchor SAM and SOM on the BEACHHEAD demand, never the follow-on ceiling. Sizing the serviceable market off the broad niche volume is the classic "1% fallacy" — it inflates the number for an idea that only serves a slice. The ceiling drives TAM only.
 
     **Pain Point Signals (Discussion Frequency = Problem Validation):**
     {pain_point_signals}
@@ -54,7 +54,7 @@ market_sizing_analysis:
     **PRE-COMPUTED MARKET SIGNALS (from Python -- treat as facts):**
     - Suggested Saturation Level: {suggested_saturation_level}
     - {strive_pre_check}
-    - {tam_seed} (uses niche-relevant filtered volume)
+    - {tam_seed}
     - High-Severity Pain Points (>=0.7): {high_severity_count}
     - High-WTP Pain Points (>=0.5): {high_wtp_count}
     - Average WTP Score: {avg_wtp}
@@ -90,56 +90,72 @@ market_sizing_analysis:
 
     **YOUR TASK:**
 
+    **SCOPE DIRECTIVE (applies ONLY if the Pain Point Signals above start with a "Scope:" line):**
+    When a Scope line is present, the selected idea addresses a SLICE of the niche, not all of it.
+    - Size SAM and SOM for that serviceable slice — the in-scope pains and the audience segments that
+      feel them — NOT the whole niche. Anchor them on the BEACHHEAD demand, not a percentage of TAM.
+    - TAM stays the follow-on reach ceiling (the whole category the idea could grow into) — a directional
+      ceiling kept separate from the slice, never the slice's size.
+    - Do NOT fabricate a bottom-up SAM from pain-point or competitor COUNTS (there is no headcount or
+      ACV data — inventing one is a fabrication). Use the counts only to sanity-check direction.
+    - In methodology_explanation, add one qualitative sentence naming how much of the niche this slice
+      represents (e.g. "serviceable to the N addressed pains, a subset of the niche"), and flag SAM/SOM
+      confidence as MODERATE-to-LOW because the slice is bounded by qualitative scope, not measured demand.
+    (If no "Scope:" line is present, ignore this directive and size the full niche as described below.)
+
+
     Conduct comprehensive market sizing and validation analysis following these steps:
 
     ### 1. Market Sizing Calculation (TAM/SAM/SOM)
 
-    Calculate market size estimates using the Triangle Validation Method:
+    A focused idea wins a BEACHHEAD first, then expands — so anchor each layer on the RIGHT demand
+    signal. The headline is the beachhead (SAM/SOM); the whole-category ceiling is a separate follow-on
+    layer (TAM), NOT the number you derive everything else from.
 
-    **A. Keyword-Based Sizing (Primary Method for Digital Markets):**
-    - Use niche-relevant monthly search volume ({total_keyword_volume}) as demand signal (semantically filtered to exclude broad/off-topic keywords)
-    - Estimate market value: Monthly volume × avg customer value × 12 months
-    - ANCHOR the avg customer value to evidence, do NOT invent it: derive it from the audience's
-      willingness-to-pay signals and any competitor pricing in the context above. Higher WTP / paid
-      incumbents ⇒ higher value; hobby/low-WTP audiences ⇒ low value. State which signal you used.
-    - These are MODEL ESTIMATES, not measured figures — keep them defensible and conservative.
-    - Provide TAM estimate with calculation shown
+    **A. SAM — the beachhead (THE HEADLINE; size the slice the idea actually serves):**
+    - Anchor on the BEACHHEAD demand ({beachhead_demand_volume:,} monthly searches) — the solution's own
+      validated keyword demand. SAM ≈ beachhead monthly volume × avg annual customer value × 12 months.
+    - ANCHOR the avg annual customer value on the PRICING ANCHOR (the real Stage-7 pricing analysis):
+      {pricing_anchor}
+      Use its ARPU / LTV as the per-customer value basis and do NOT invent a number. Annualize a monthly
+      ARPU (×12). Only if no pricing anchor is provided, fall back to the audience's willingness-to-pay
+      signals and competitor pricing. State which basis you used.
+    - The headline metric is the number of paying customers, not searchers: not every monthly searcher
+      buys. Apply an explicit, conservative search→customer conversion rate and state it.
+    - Do NOT derive SAM as a flat percentage of TAM. Anchor it on the beachhead demand directly. Deriving
+      SAM as "30-60% of the niche TAM" is the 1% fallacy and overstates a narrow idea by an order of magnitude.
 
-    **B. Top-Down Analysis (Secondary Validation):**
-    - If industry data available from competitive analysis, use total market size
-    - Segment by geography, company size, or persona
-    - Provide SAM estimate based on addressable segment
+    **B. TAM — the follow-on reach ceiling (the eventual whole-category opportunity, NOT the headline):**
+    - TAM ≈ follow-on reach ceiling ({niche_reach_ceiling:,} monthly searches) × avg annual customer value × 12.
+    - This is the niche-wide ceiling the idea could grow into over time, not what it serves today. When the
+      idea is a narrow slice, TAM will be MUCH larger than SAM — that gap is correct and expected, never an
+      error to "fix" by inflating SAM toward TAM.
 
-    **C. Bottom-Up Validation (Sanity Check):**
-    - Validate using pain point frequency ({pain_point_count} pain points identified)
-    - Cross-check against competitor count ({competitor_count} competitors)
-    - Adjust estimates if discussion volume doesn't support keyword projections
+    **C. SOM — realistic capture of the BEACHHEAD SAM:**
+    - SOM Year 1 = 0.5-2% of the beachhead SAM (conservative, proving PMF).
+    - SOM Year 3 = 5-10% of the beachhead SAM (scaling with proven model).
 
-    **D. Calculate TAM/SAM/SOM:**
-    - **TAM (Total Addressable Market):** Maximum market size across all segments
-      - Format: "$XXM" (millions) or "$X.XB" (billions) for values under/over $1B
-      - Examples: "$150M", "$2.5B", "10M users"
-      - Calculation: "2.5M monthly searches × $60 avg LTV × 12 = $1.8B TAM"
+    **D. Cross-check (sanity only, never the anchor):**
+    - Validate direction against pain-point frequency ({pain_point_count} pains) and competitor count
+      ({competitor_count}). If the beachhead SAM and these signals disagree sharply, LOWER the estimate.
+    - Do NOT fabricate a bottom-up SAM from pain-point or competitor COUNTS — there is no headcount or ACV
+      data, so inventing one is fabrication. Counts are for direction only.
 
-    - **SAM (Serviceable Available Market):** Portion your solution can serve (typically 30-60% of TAM)
-      - Consider: Geographic limitations, solution capabilities, target personas
-      - Format: "$XXM" with % of TAM shown
-      - Examples: "$630M", "$50M", "3M users"
-      - Calculation: "$1.8B TAM × 35% (small businesses only) = $630M SAM"
+    **E. Give RANGES, not false precision:** present TAM/SAM/SOM as a low–high band, never a single
+    point. Keep them defensible and conservative — model estimates, not measured figures.
 
-    - **SOM Year 1 (Serviceable Obtainable Market):** Realistic Year 1 capture (0.5-2% of SAM)
-      - Consider: First-year constraints, customer acquisition channels, competition
-      - Format: "$XXM" or "$XXK" for smaller values
-      - Examples: "$6.3M", "$500K", "8K users"
-      - Calculation: "$630M SAM × 1% (conservative first year) = $6.3M SOM Y1"
+    **Show the calculation for each as a formula filled with the ACTUAL inputs above:**
+    SAM = (beachhead search demand) × (a stated, conservative search→customer conversion) × (annual value
+    per customer, from the pricing anchor); TAM = (reach-ceiling search demand) × (the same conversion) ×
+    (annual value). Plug in the real figures — do NOT carry over a magnitude from any illustration.
 
-    - **SOM Year 3 (Growth Target):** Growth trajectory with PMF (5-10% of SAM)
-      - Consider: Product maturity, market penetration, scaling capabilities
-      - Format: "$XXM" for growth values
-      - Examples: "$50M", "$15M", "50K users"
-      - Calculation: "$630M SAM × 8% (scaling phase) = $50M SOM Y3"
+    **A NOTE ON THE NUMBERS:** the demand volumes, the pricing anchor, and the counts provided above are
+    REAL DATA — anchor on them. Any figure shown inside a quoted "e.g." anywhere in this task illustrates
+    FORMAT ONLY; never reuse its magnitude as your answer.
 
-    **CRITICAL**: Ensure TAM > SAM > SOM (Y1) hierarchy. Apply "3-2-1 Rule": TAM should be >3x SAM, SAM should be >2x SOM Y1.
+    **CRITICAL**: Ensure TAM > SAM > SOM (Y1). Anchoring SAM on the beachhead (a fraction of the ceiling)
+    makes the 3-2-1 Rule (TAM >3x SAM, SAM >2x SOM Y1) hold naturally — do not force it by shrinking TAM
+    or growing SAM.
 
     ### 2. Methodology Documentation
 
@@ -212,7 +228,7 @@ market_sizing_analysis:
       - Weak: 0-1 STRIVE criteria met, SAM <$20M, or high saturation (15+ competitors)
 
     - **viability_rationale:** 2-3 sentences justifying verdict with SPECIFIC metrics
-      - Example: "Strong viability: 2.5M monthly searches (Searchable), $630M SAM (Income Potential), 12 competitors (Rivalry), 15% CAGR (Velocity). Market is in growth phase with clear demand signals and room for differentiation."
+      - Example shape (fill with the REAL values, do not copy these slots): "Strong viability: <demand> (Searchable), <SAM range> (Income Potential), <N> competitors (Rivalry), <growth> (Velocity). Growth phase with clear demand and room to differentiate."
 
     - **recommended_entry_strategy:** Choose one based on viability:
 
@@ -248,8 +264,8 @@ market_sizing_analysis:
     **MARKET SIZING GUIDELINES:**
 
     **TAM/SAM/SOM Hierarchy Validation:**
-    - Good: TAM $500M → SAM $150M (30%) → SOM Y1 $3M (2%) ✅ Meets 3-2-1 Rule
-    - Bad: TAM $100M → SAM $90M (90%) → SOM Y1 $50M (55%) ❌ Unrealistic addressability
+    - Good: SAM is a modest fraction of TAM; SOM Y1 ≈ 1-2% of SAM ✅ Meets 3-2-1 Rule
+    - Bad: SAM ≈ 90% of TAM; SOM Y1 ≈ 55% of SAM ❌ Unrealistic addressability
 
     **Methodology Selection:**
     - Keyword-Based: Best for digital products with strong search intent (SaaS, tools, info products)
@@ -259,7 +275,7 @@ market_sizing_analysis:
 
     **Conservative Bias:**
     - When uncertain, choose LOWER estimate (builds investor trust)
-    - Provide ranges when confidence is medium: "$50-80M SAM" vs "$65M SAM"
+    - Provide a low–high range when confidence is medium, rather than a single point
     - Explain assumptions explicitly in methodology_explanation
 
     **SOM Growth Rates:**
@@ -272,10 +288,10 @@ market_sizing_analysis:
 
     You MUST provide ALL required fields in the MarketSizingResult model:
 
-    - **total_addressable_market:** TAM estimate (e.g., "$2.5B", "10M users") - NOT "TBD"
-    - **serviceable_available_market:** SAM estimate (e.g., "$800M", "3M users") - NOT "TBD"
-    - **serviceable_obtainable_market_y1:** SOM Year 1 (e.g., "$2M", "8K users") - NOT "TBD"
-    - **serviceable_obtainable_market_y3:** SOM Year 3 (e.g., "$15M", "50K users") - NOT "TBD"
+    - **total_addressable_market:** TAM as a low–high RANGE, formatted "$<low>-<high>M" or "$<low>-<high>B" (or "<low>-<high>M users") - NOT "TBD", not a single point
+    - **serviceable_available_market:** SAM as a low–high RANGE, same format - NOT "TBD", not a single point
+    - **serviceable_obtainable_market_y1:** SOM Year 1 as a low–high RANGE - NOT "TBD"
+    - **serviceable_obtainable_market_y3:** SOM Year 3 as a low–high RANGE - NOT "TBD"
 
     - **primary_methodology:** "Top-Down", "Bottom-Up", "Keyword-Based", or "Hybrid"
     - **methodology_explanation:** 2-3 sentences with calculation approach
@@ -310,7 +326,7 @@ market_sizing_analysis:
 
 
     **CRITICAL RULES (REMINDER - RECENCY BIAS):**
-    - TAM/SAM/SOM estimates with NO "TBD" or placeholders (format: "$XXM" like "$150M", "$2.5B")
+    - TAM/SAM/SOM estimates with NO "TBD" or placeholders (format: "$<low>-<high>M" / "$<low>-<high>B" ranges)
     - TAM > SAM > SOM (Y3) > SOM (Y1) hierarchy validation (3-2-1 Rule: TAM >3x SAM, SAM >2x SOM Y1)
     - Methodology explanation with calculation details showing formula used
     - market_viability_verdict: "Strong"/"Moderate"/"Weak" ONLY (matching STRIVE criteria count: 4+ = Strong, 2-3 = Moderate, 0-1 = Weak)
@@ -321,7 +337,7 @@ market_sizing_analysis:
 
   expected_output: >
     A complete MarketSizingResult object with all required fields populated:
-    - TAM/SAM/SOM estimates in dollar or user format (e.g., "$500M", "2M users")
+    - TAM/SAM/SOM estimates as low–high ranges in dollar or user format
     - Methodology explanation with calculation approach and data sources
     - Market validation signals (keyword demand, pain frequency, competitor presence)
     - Growth potential assessment with drivers and growth rate estimate

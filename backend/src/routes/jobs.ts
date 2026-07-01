@@ -53,7 +53,7 @@ jobsRouter.post('/', requireInternalAuth, jobCreationLimiter, async (req: Authen
     );
 
     // Enqueue job for Python worker
-    await enqueueJob(job.id, input.niche, userId, input.allowedProjectTypes, false, 'interactive', input.entryMode);
+    await enqueueJob(job.id, input.niche, userId, input.allowedProjectTypes, false, 'interactive', input.entryMode, input.ideaFocus);
 
     // Update status to QUEUED and set queuedAt timestamp
     await prisma.job.update({
@@ -931,6 +931,11 @@ jobsRouter.post('/:jobId/regenerate-ideas', requireInternalAuth, validateJobId, 
     const { jobId } = req.params;
     const userId = req.user!.id;
 
+    // Optional batch-scoped GTM-focus override for this regeneration (auto | novelty | distribution).
+    // Allow-listed; anything else is ignored (worker falls back to the run's original focus).
+    const allowedFocus = ['auto', 'novelty', 'distribution'];
+    const ideaFocus = allowedFocus.includes(req.body?.idea_focus) ? req.body.idea_focus : undefined;
+
     const job = await prisma.job.findFirst({
       where: { id: jobId, userId },
       select: {
@@ -999,7 +1004,7 @@ jobsRouter.post('/:jobId/regenerate-ideas', requireInternalAuth, validateJobId, 
 
     // Enqueue regeneration — compensating refund on failure
     try {
-      await enqueueRegenerateJob(jobId, job.phase1CheckpointPath, existingSolutionNames, job.niche);
+      await enqueueRegenerateJob(jobId, job.phase1CheckpointPath, existingSolutionNames, job.niche, ideaFocus);
     } catch (enqueueError) {
       console.error(`[Jobs] Failed to enqueue regeneration for job ${jobId}, compensating:`, enqueueError);
       await refundForRegenerationStage(jobId, nextRegenNumber);

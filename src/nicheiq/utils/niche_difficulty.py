@@ -295,13 +295,30 @@ _HEADLINES = {
 _BAND_RATING = {"low": "Strong", "medium": "Moderate", "high": "Limited", "very_high": "Hard"}
 
 
+def _addressability_band(score: float) -> str:
+    """Plain word for software_addressability — user-facing text never shows the raw %/score."""
+    if score >= ADDR_STRONG:       # 0.70
+        return "strong"
+    if score >= ADDR_HIGH:         # 0.45
+        return "moderate"
+    if score >= ADDR_VERY_HIGH:    # 0.25
+        return "limited"
+    return "very limited"
+
+
+def _calibration_gap_word(gap: Optional[float]) -> str:
+    """Plain word for the novelty optimism-correction — never the raw decimal."""
+    if gap is None:
+        return "n/a"
+    return "notable" if gap >= CALIB_GAP_NOTABLE else "minor"
+
+
 def _fallback_narrative(fp: NicheDifficultyFactPack, niche: Optional[str]) -> tuple[str, str]:
     """Deterministic templated prose used when the LLM is skipped or fails."""
-    addr = f"{fp.software_addressability:.0%}"
     where = fp.dominant_project_type or "tooling"
     if fp.difficulty_level in ("high", "very_high"):
         lead = (
-            f"This niche is hard to solve with software (addressability ~{addr}). "
+            "This niche is hard to solve with software. "
             f"{fp.n_pains - int(round(fp.full_share * fp.n_pains))} of {fp.n_pains} pains "
             "sit beyond what a tool can fix — software can advise, organize, and warn, "
             "but not remove the root cause. The realistic shape is a "
@@ -309,13 +326,13 @@ def _fallback_narrative(fp: NicheDifficultyFactPack, niche: Optional[str]) -> tu
         )
     elif fp.difficulty_level == "low":
         lead = (
-            f"This niche is a strong fit for software (addressability ~{addr}). "
+            "This niche is a strong fit for software. "
             "The pains are workflow or data problems a tool can directly own, and "
             "there's room for a real product rather than a thin reference."
         )
     else:
         lead = (
-            f"This niche is a moderate fit for software (addressability ~{addr}). "
+            "This niche is a moderate fit for software. "
             "A tool earns its keep, but the easy framings are weaker than they look — "
             "pick the wedge carefully."
         )
@@ -343,6 +360,7 @@ def generate_niche_difficulty_verdict(
     try:
         from .llm_service import LLMService
         from .prompts import load_prompt, safe_format
+        from .score_helpers import score_band
         from ..config.settings import settings
 
         target_audience = getattr(niche_context, "user_target_audience", None) if niche_context else None
@@ -353,14 +371,16 @@ def generate_niche_difficulty_verdict(
             target_audience=target_audience or "the stated audience",
             rating_word=_BAND_RATING.get(fp.difficulty_level, "Moderate"),
             difficulty_level=fp.difficulty_level,
-            software_addressability=f"{fp.software_addressability:.0%}",
+            # Internal SCORES go to the LLM as plain bands (never raw 0-1 / precise %), so the prose
+            # can't echo them. Pain/idea SHARES stay as proportions — they're observable, not scores.
+            software_addressability=_addressability_band(fp.software_addressability),
             none_share=f"{fp.none_share:.0%}",
             partial_share=f"{fp.partial_share:.0%}",
             full_share=f"{fp.full_share:.0%}",
             dominant_project_type=fp.dominant_project_type or "n/a",
             derivative_mechanism_share=f"{fp.derivative_mechanism_share:.0%}",
-            median_novelty=("n/a" if fp.median_novelty is None else f"{fp.median_novelty:.2f}"),
-            novelty_calibration_gap=("n/a" if fp.novelty_calibration_gap is None else f"{fp.novelty_calibration_gap:.2f}"),
+            median_novelty=("n/a" if fp.median_novelty is None else score_band(fp.median_novelty)),
+            novelty_calibration_gap=_calibration_gap_word(fp.novelty_calibration_gap),
             cold_start_share=f"{fp.cold_start_share:.0%}",
             concept_duplication_rate=("n/a" if fp.concept_duplication_rate is None else f"{fp.concept_duplication_rate:.0%}"),
             audience_scope=fp.audience_scope or "n/a",

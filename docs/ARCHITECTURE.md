@@ -236,6 +236,16 @@ filter/refine/select tasks above:
    realism re-score critic (`_calibrate_idea_scores`) and the closed-vocab tagger (`_apply_tags`)
    run per-cell in the cell's thread, alongside the deterministic feasibility + SEO-realism caps —
    so the post-union passes (step 5) only finish the few coverage-net stragglers.
+   An **in-cell angle classifier** (`idea_angle_llm`, default qwen3.7-max) also runs here — after
+   calibration, before the novelty enhance — assigning each cell winner a `winning_angle`
+   (`distribution_seo` / `novel_differentiation` / `vertical_workflow`) with an `angle_rationale`
+   and a `novelty_rationale`; the union ranks each idea by its OWN angle's weights (distribution
+   upweights SEO + market_fit with a small non-zero novelty weight; novel upweights novelty;
+   workflow upweights feasibility). A post-union **straggler-finisher** classifies any coverage-net
+   re-injected idea the in-cell pass skipped. The per-run **`idea_focus`** steer (auto | novelty |
+   distribution, default auto) pulls three levers at once: it skews generation toward the chosen
+   angle, biases winner-pick, and tilts the ranking emphasis — auto leaves the classifier unbiased
+   and every winning_angle label stays truthful regardless of the steer.
    Optionally (`enable_novelty_enhance`, after calibrate+caps, before SEO/tags) a **targeted
    novelty pass** (`_novelty_enhance`) fires on VALIDATED-but-OBVIOUS winners (market_fit ≥ gate AND
    obviousness ≥ gate): the refiner (`novelty_enhance_llm`, default deepseek-v4-pro) proposes a more
@@ -385,6 +395,27 @@ crew.generate(
 - **Reliability**: Python fallback always succeeds
 
 **Alternative Rejected**: Pure LLM generation (245-line prompt, high cost, slow, hallucination risk)
+
+#### Post-selection deep-research refinements
+
+Stages 6–10 run *after* a single idea is selected, so they're tuned to pressure-test that one
+idea rather than survey the niche. Several refinements gate this behavior (see
+`docs/DEEP_RESEARCH_IMPROVEMENT_PLAN.md` and `docs/ENV_REFERENCE.md`):
+
+- **Angle-conditioned research** (ON): the selected idea's `winning_angle` kill-question is
+  front-loaded into the SEO + competitor prompts so they investigate what would validate or kill
+  *that* angle.
+- **Audience-conditioned deep research** (`ENABLE_AUDIENCE_CONDITIONED_DEEP_RESEARCH`, dark):
+  forwards the Stage-1 resolved audience (tools used / frustrations) into the competitor prompt and
+  SEO seed vocabulary, so the analysis judges against the real buyer.
+- **SEO kill-question verdict floor** (`ENABLE_SEO_KILL_QUESTION_FLOOR`, dark): tempers an
+  over-optimistic distribution_seo Go when the page universe isn't winnable — keyed on the
+  winnability/KD axis the SEO composite excludes, so no double-count.
+- **Scoped market sizing** (`ENABLE_SCOPED_MARKET_SIZING`, dark): sizes the serviceable slice the
+  idea's `pain_points_addressed` represent, not the whole niche; keyword volume is a labeled
+  cross-check and the SAM stays qualitative (no fabricated bottom-up number).
+- The Go/No-Go verdict averages **lift-only** by angle and its explanation uses score *bands*, never
+  raw decimals — consistent across all post-selection prose.
 
 ---
 

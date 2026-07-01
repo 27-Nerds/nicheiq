@@ -65,10 +65,11 @@
     }
   };
 
-  // Sort threads by score
+  // Preserve the backend ranking (engagement-ranked when multi-source, score-ranked otherwise) —
+  // raw `score` isn't comparable across platforms (reddit upvotes vs HN points vs twitter likes).
   const sortedThreads = $derived.by(() => {
     if (!data.top_reddit_threads) return [];
-    return [...data.top_reddit_threads].sort((a, b) => b.score - a.score);
+    return [...data.top_reddit_threads];
   });
 
   // Group threads by subreddit

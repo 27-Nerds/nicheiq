@@ -130,10 +130,9 @@ traffic_monetization_analysis:
     B2B Revenue = # Listings × Monthly Fee
     ```
 
-    **Example (50,000 pageviews/month, beauty niche):**
-    - Ads: 50,000 × $5 CPM / 1000 = $250
-    - Affiliate: 50,000 × 3% CTR × 2% conversion × $40 × 8% = $48
-    - Total: ~$300/month passive
+    Apply these formulas to THIS niche's actual projected pageviews and its real CPM (both provided
+    below) — never to the round numbers in an illustration. The shape is: Ads = pageviews × niche CPM /
+    1000; Affiliate = pageviews × CTR × conversion × avg order × commission.
 
     Pre-Computed Revenue Estimates:
     - Ad Revenue: {ad_revenue_estimate}
@@ -162,32 +161,35 @@ traffic_monetization_analysis:
   expected_output: >
     A comprehensive TrafficMonetizationResult with ALL required fields:
 
+    All figures below are FORMAT placeholders — derive every number from THIS niche's real traffic
+    projection, CPM, and the pre-computed estimates above; never copy an illustration's magnitude.
+
     1. **Traffic Projections**: Realistic monthly pageview estimates (Year 1) based on keyword data
-       - estimated_monthly_pageviews: Range (e.g., "15,000 - 30,000")
+       - estimated_monthly_pageviews: Range, format "<low> - <high>"
        - traffic_source_breakdown: Dict showing organic/direct/referral percentages
 
     2. **Ad Revenue Analysis**:
-       - estimated_cpm_rate: Niche-appropriate CPM with explanation (e.g., "$5-10 CPM (technology niche)")
-       - estimated_monthly_ad_revenue: Range (e.g., "$75 - $300")
+       - estimated_cpm_rate: Niche-appropriate CPM with explanation, format "$<low>-<high> CPM (<niche> vertical)"
+       - estimated_monthly_ad_revenue: Range, format "$<low> - $<high>"
        - recommended_ad_networks: List based on traffic tier (e.g., ["Google AdSense"])
 
     3. **Affiliate Revenue Analysis**:
-       - affiliate_commission_rate: Typical rates for niche (e.g., "5-15%")
-       - estimated_affiliate_ctr: Click-through rate estimate (e.g., "2-4% of pageviews")
-       - estimated_monthly_affiliate_revenue: Range (e.g., "$50 - $200")
+       - affiliate_commission_rate: Typical rates for niche, format "<low>-<high>%"
+       - estimated_affiliate_ctr: Click-through rate estimate, format "<low>-<high>% of pageviews"
+       - estimated_monthly_affiliate_revenue: Range, format "$<low> - $<high>"
        - recommended_affiliate_programs: List of up to 5 REAL, relevant programs.
          An empty list is valid and preferred over invented programs — do NOT
          fabricate affiliate programs for niches where none realistically exist.
 
     4. **B2B Options** (if applicable):
-       - sponsored_listing_price: Suggested price (e.g., "$99/month")
-       - premium_placement_price: Featured placement price (e.g., "$249/month")
-       - lead_gen_price_per_lead: If B2B service niche (e.g., "$25-50")
+       - sponsored_listing_price: Suggested price, format "$<price>/month"
+       - premium_placement_price: Featured placement price, format "$<price>/month"
+       - lead_gen_price_per_lead: If B2B service niche, format "$<low>-<high>"
 
     5. **Total Revenue Projection**:
-       - estimated_monthly_revenue_range: Combined total (e.g., "$200 - $700")
-       - estimated_annual_revenue_range: Annualized (e.g., "$2,400 - $8,400")
-       - break_even_traffic_threshold: Min traffic to cover costs (e.g., "10,000 monthly pageviews")
+       - estimated_monthly_revenue_range: Combined total, format "$<low> - $<high>"
+       - estimated_annual_revenue_range: Annualized, format "$<low> - $<high>"
+       - break_even_traffic_threshold: Min traffic to cover costs, format "<N> monthly pageviews"
 
     6. **Strategy**:
        - monetization_model: Primary model ("Ad-Supported", "Affiliate", "Hybrid-Traffic", or "Lead-Gen")
