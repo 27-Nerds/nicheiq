@@ -73,3 +73,9 @@ class TestMergeUsages:
 
     def test_all_none_returns_none(self):
         assert _merge_usages([None, None]) is None
+
+
+def test_default_is_three_after_gate_validation():
+    # 2026-07-02 gate: N=3 beat N=1 (kappa 0.19->0.256, exact 37->40, MAE down everywhere)
+    from nicheiq.config.settings import Settings
+    assert Settings.model_fields["score_calibration_samples"].default == 3

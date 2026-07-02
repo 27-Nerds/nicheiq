@@ -241,6 +241,7 @@ def _format_one_pain(pain, n_quotes: int = 5) -> str:
 def _build_partitioned_block(
     pain_focus: str, persona: str, concepts_target: int, allow_zero: bool,
     allowed_types: list[str] | None = None, preferred_type: str | None = None,
+    data_menu: str = "", dissatisfaction: str = "",
 ) -> str:
     """The per-agent override prefix injected at the TOP of the divergent task as
     {partitioned_mode_block}. Empty string => byte-identical legacy prompt. When present it
@@ -264,8 +265,12 @@ def _build_partitioned_block(
         f"{concepts_target} concepts each take a DISTINCT angle on this ONE pain (depth, not volume).\n"
         f"Reason from this viewpoint: {persona}. Think step by step about their day before each concept.\n"
         f"{archetype}\n"
-        f"{zero_clause}\n\n"
-        "THE ONE PAIN TO SOLVE:\n"
+        f"{zero_clause}\n"
+        + (f"\nVERIFIED DATA ROUTES for this niche — anchor every concept's mechanism on these "
+           f"(NO smart-device/vendor APIs you can't confirm, NO scraping fragile private sites, NO "
+           f"cold-start user-generated data as the core value):\n{data_menu}\n" if data_menu else "")
+        + (f"\n{dissatisfaction}\n" if dissatisfaction else "")
+        + "\nTHE ONE PAIN TO SOLVE:\n"
         f"{pain_focus}\n\n"
         "═══════════════════════════════════════════════════════════════════════════\n\n"
     )
@@ -398,7 +403,8 @@ def _candidate_segments_for_pain(pain, segments: list) -> list:
 
 
 def _assign_generator_cells(pains: list, segments: list, *, target: int, max_gen: int,
-                            relevance: dict | None = None, severity_floor: int = 0) -> list:
+                            relevance: dict | None = None, severity_floor: int = 0,
+                            commercial_floor: int = 0, commercial_min_intent: float = 0.6) -> list:
     """Assign divergent generator cells from the (pain × segment) affinity graph.
 
     One cell per real (pain × affected-segment) edge, de-clustered by BUILD-TIME per-segment
@@ -482,6 +488,22 @@ def _assign_generator_cells(pains: list, segments: list, *, target: int, max_gen
         # broader-affinity but lower-severity pains. `_pick` always finds a segment (the candidate
         # helper falls back to all segments), so these placements are guaranteed up to the budget.
         for p in sorted(pains, key=_sev, reverse=True)[:severity_floor]:
+            if len(cells) >= limit:
+                break
+            s = _pick(p)
+            if s is not None:
+                _take(p, s)
+                floored.add(id(p))
+    if commercial_floor and segments:       # Round 0b: guarantee the top-K MONETIZABLE pains a cell
+        # Mirrors the severity floor for commercial_intent (0-1 buying-signal strength) — the ranking
+        # key never reads the raw scalar (only its opportunity_level bucket), so the most monetizable
+        # pain cluster can otherwise get zero ideation. Threshold-gated: weak buying signals never
+        # manufacture a cell. Skips pains already floored by severity (no double-spend).
+        def _ci(p):
+            v = getattr(p, "commercial_intent", None)
+            return v if isinstance(v, (int, float)) and not isinstance(v, bool) else 0.0
+        eligible = [p for p in pains if _ci(p) >= commercial_min_intent and id(p) not in floored]
+        for p in sorted(eligible, key=lambda p: (_ci(p), _sev(p)), reverse=True)[:commercial_floor]:
             if len(cells) >= limit:
                 break
             s = _pick(p)
@@ -854,21 +876,214 @@ class UnifiedSolutionCrew:
     # ========== COMPETITOR MENTIONS HELPER ==========
 
     def _format_competitor_mentions(self) -> str:
-        """Format competitor mentions from social content for direct prompt injection."""
-        if self.competitor_mentions_text:
-            return self.competitor_mentions_text
-        if not self.social_content:
-            return "No competitor data available"
-        known_tools = (
-            self.audience_mapping.tools_currently_used
-            if self.audience_mapping and self.audience_mapping.tools_currently_used
-            else None
-        )
-        return format_competitor_mentions_for_prompt(
-            self.social_content, known_tools=known_tools
-        )
+        """Format competitor mentions from social content for direct prompt injection.
 
-    # ========== BLACKLIST FORMATTING ==========
+        Portfolio funnel F4 (A/B-validated 2026-07-02, always on): a web-probed incumbent map
+        (real named products + pricing + gaps) is APPENDED — the community-mentions block alone
+        surfaces generic tools (Canva/Square), not the actual paid competitors ideas must beat."""
+        if self.competitor_mentions_text:
+            base = self.competitor_mentions_text
+        elif not self.social_content:
+            base = "No competitor data available"
+        else:
+            known_tools = (
+                self.audience_mapping.tools_currently_used
+                if self.audience_mapping and self.audience_mapping.tools_currently_used
+                else None
+            )
+            base = format_competitor_mentions_for_prompt(
+                self.social_content, known_tools=known_tools
+            )
+        probe = self._probe_incumbents()
+        if probe:
+            base = f"{base}\n\n{probe}"
+        return base
+
+    def _probe_incumbents(self) -> str:
+        """Portfolio funnel F4: web-probe the REAL incumbent products for this niche (names, pricing,
+        focus, gaps) via 2 Serper queries + one small extraction call. Cached on the instance;
+        fail-soft -> ''. The output block instructs downstream consumers to design the WEDGE."""
+        cached = getattr(self, "_incumbent_probe_text", None)
+        if cached is not None:
+            return cached
+        text = ""
+        try:
+            search_tool = getattr(self, "search_tool", None)
+            niche = getattr(getattr(self, "niche_context", None), "niche_description", "") or ""
+            if search_tool is None or not niche:
+                self._incumbent_probe_text = ""
+                return ""
+            snippets = []
+            for q in (f"best software tools for {niche}"[:120],
+                      f"{niche} app pricing per month"[:120]):
+                try:
+                    snippets.append(str(search_tool.run(search_query=q))[:3000])
+                except Exception:
+                    continue
+            if not snippets:
+                self._incumbent_probe_text = ""
+                return ""
+
+            from pydantic import BaseModel, Field as _F
+
+            class _Incumbent(BaseModel):
+                name: str = ""
+                pricing: str = _F("", description="e.g. '$15-49/mo' or 'free' or 'unknown'")
+                focus: str = _F("", description="what it does, <=10 words")
+                gap: str = _F("", description="what it does NOT cover, <=12 words")
+
+            class _Incumbents(BaseModel):
+                incumbents: list[_Incumbent] = _F(default_factory=list)
+
+            r, usage = LLMService.invoke_structured(
+                prompt=(f"Niche: {niche}\n\nSearch results:\n{chr(10).join(snippets)}\n\n"
+                        "Extract the REAL software products/tools serving this niche (max 8). Only "
+                        "products actually named in the results — never invent. Return JSON."),
+                output_model=_Incumbents, temperature=0, timeout=120,
+                model_name=settings.report_structured_llm, reasoning_effort="minimal")
+            rows = [i for i in (r.incumbents or []) if (i.name or "").strip()][:8]
+            if rows:
+                lines = "\n".join(
+                    f"- {i.name} ({i.pricing or 'pricing unknown'}): {i.focus or 'n/a'}."
+                    f" Gap: {i.gap or 'n/a'}" for i in rows)
+                text = ("### Web-probed incumbent products (design the WEDGE these do not cover; "
+                        f"do NOT duplicate):\n{lines}")
+                # structured rows for the mechanism-parity probe (name+focus matching)
+                self._incumbent_rows = [
+                    {"name": i.name, "pricing": i.pricing, "focus": i.focus, "gap": i.gap}
+                    for i in rows]
+            if hasattr(self, "cost_tracker") and self.cost_tracker and usage is not None:
+                self.cost_tracker.record_llm_usage("Stage 7 - Incumbent Probe", usage.to_dict())
+            logger.info(f"[IncumbentProbe] extracted {len(rows)} incumbents from web search")
+        except Exception as e:
+            logger.warning(f"[IncumbentProbe] failed (non-fatal): {str(e)[:100]}")
+            text = ""
+        self._incumbent_probe_text = text
+        return text
+
+    @staticmethod
+    def _mechanism_keywords(idea, max_words: int = 6) -> str:
+        """Distinctive search words for an idea's core mechanism: mechanism_tag words +
+        the first content words of the value proposition."""
+        stop = {"the", "and", "for", "with", "your", "that", "from", "into", "them",
+                "this", "their", "then", "every", "using", "without", "where"}
+        words = []
+        tag = (getattr(idea, "mechanism_tag", None) or "").replace("-", " ").replace("_", " ")
+        vp = getattr(idea, "value_proposition", "") or ""
+        for w in (tag + " " + vp).split():
+            w = w.strip(".,;:!?()\"'").lower()
+            if len(w) > 3 and w not in stop and w not in words:
+                words.append(w)
+            if len(words) >= max_words:
+                break
+        return " ".join(words)
+
+    def _probe_mechanism_parity(self, ideas: list) -> None:
+        """Mechanism-parity probe (A/B-validated 2026-07-02, always on): web-verify whether an
+        incumbent already SHIPS the top ideas' core mechanisms, then re-score those ideas (N-median)
+        with the parity evidence in critic context. Fixes the known blind spot where the critic sees
+        incumbent names/prices but not feature depth (live case: MoeGo/QuoteIQ already ship route-
+        optimized scheduling — RouteBoard 0.75 → 0.55, halving the mean distance to the neutral
+        panel on the ground-truth niche). Evidence-in-context only — the critic decides what parity
+        means; no hard caps. Sets `incumbent_parity` on probed ideas. Fail-soft: changes nothing."""
+        if not ideas:
+            return
+        try:
+            search_tool = getattr(self, "search_tool", None)
+            niche = getattr(getattr(self, "niche_context", None), "niche_description", "") or ""
+            if search_tool is None or not niche:
+                return
+            self._probe_incumbents()  # ensure structured rows are populated (cached)
+            incumbents = getattr(self, "_incumbent_rows", None) or []
+
+            def _comp(i) -> float:
+                dims = [getattr(i, k, None) for k in
+                        ("market_fit_score", "technical_feasibility_score",
+                         "novelty_score", "seo_scalability_score")]
+                p = [d for d in dims if d is not None]
+                return sum(p) / len(p) if p else 0.0
+
+            top = sorted(ideas, key=_comp, reverse=True)[:settings.parity_probe_top_k]
+
+            def _overlap(a: str, b: str) -> int:
+                ta = {w for w in (a or "").lower().split() if len(w) > 3}
+                tb = {w for w in (b or "").lower().split() if len(w) > 3}
+                return len(ta & tb)
+
+            snippets = []
+            for idea in top:
+                kw = self._mechanism_keywords(idea)
+                idea_text = f"{getattr(idea, 'value_proposition', '')} {getattr(idea, 'technical_approach', '')}"
+                ranked = sorted(incumbents,
+                                key=lambda r: -_overlap(r.get("focus", ""), idea_text))
+                queries = [f'"{r["name"]}" {kw}'[:120] for r in ranked[:2]
+                           if _overlap(r.get("focus", ""), idea_text) > 0]
+                if not queries:
+                    queries = [f"{niche} software {kw}"[:120]]
+                for q in queries:
+                    try:
+                        snippets.append(
+                            f"[for idea: {getattr(idea, 'solution_name', '?')}]\n"
+                            + str(search_tool.run(search_query=q))[:1500])
+                    except Exception:
+                        continue
+            if not snippets:
+                return
+
+            from pydantic import BaseModel, Field as _F
+
+            class _ParityFinding(BaseModel):
+                idea_name: str = ""
+                covered_by: str = _F("", description="incumbent product name, '' if none")
+                evidence: str = _F("", description="what the incumbent ships, <=20 words")
+                parity: str = _F("none", description="shipped | partial | none")
+
+            class _ParityFindings(BaseModel):
+                findings: list[_ParityFinding] = _F(default_factory=list)
+
+            idea_lines = "\n".join(
+                f"- {getattr(i, 'solution_name', '?')}: "
+                f"{(getattr(i, 'value_proposition', '') or '')[:160]}" for i in top)
+            r, usage = LLMService.invoke_structured(
+                prompt=(f"Niche: {niche}\n\nIDEAS under evaluation:\n{idea_lines}\n\n"
+                        f"Known incumbents: {', '.join(x['name'] for x in incumbents) or 'none'}\n\n"
+                        f"Web search results:\n{chr(10).join(snippets)}\n\n"
+                        "For EACH idea, judge from the search results ONLY whether an incumbent "
+                        "already SHIPS the idea's core mechanism: parity=shipped (feature exists), "
+                        "partial (adjacent/limited version), none (no evidence). Parity means a "
+                        "COMMERCIAL PRODUCT or first-party feature — spreadsheets, templates, "
+                        "tutorials, scripts, or 'do it manually' workarounds are NOT parity (they "
+                        "are the conventional approach a product displaces). Cite only what the "
+                        "results actually show — never invent features. Return JSON."),
+                output_model=_ParityFindings, temperature=0, timeout=120,
+                model_name=settings.report_structured_llm, reasoning_effort="minimal")
+            by_name = {(f.idea_name or "").strip().lower(): f for f in (r.findings or [])}
+            if hasattr(self, "cost_tracker") and self.cost_tracker and usage is not None:
+                self.cost_tracker.record_llm_usage("Stage 7 - Parity Probe", usage.to_dict())
+
+            parity_lines = []
+            for idea in top:
+                f = by_name.get((getattr(idea, "solution_name", "") or "").strip().lower())
+                if f is None:
+                    continue
+                if f.parity in ("shipped", "partial") and f.covered_by:
+                    note = f"{f.parity} by {f.covered_by}: {f.evidence or 'n/a'}"
+                else:
+                    note = "none found"
+                idea.incumbent_parity = note
+                parity_lines.append(f"- {getattr(idea, 'solution_name', '?')}: {note}")
+            if not parity_lines:
+                return
+            logger.info(f"[ParityProbe] {len(parity_lines)} top idea(s) checked: "
+                        + "; ".join(p[2:60] for p in parity_lines))
+
+            extra = ("### MECHANISM PARITY CHECK (web-verified against real incumbents)\n"
+                     "Weigh this evidence when scoring market_fit — an idea whose core mechanism "
+                     "an incumbent already ships is competing head-on, not filling a gap:\n"
+                     + "\n".join(parity_lines))
+            self._calibrate_batch(batch=top, extra_context=extra)
+        except Exception as e:
+            logger.warning(f"[ParityProbe] failed (non-fatal, scores unchanged): {str(e)[:120]}")
 
     def _format_blacklist(self, compact: bool = False) -> str:
         """Format existing ideas as a structured blacklist for prompt injection.
@@ -953,6 +1168,43 @@ class UnifiedSolutionCrew:
 
         return "\n\n".join(parts)
 
+    @staticmethod
+    def _critic_reason(notes: str | None, criterion: str = "market_fit", max_len: int = 170) -> str:
+        """Extract one criterion's reason from a persisted calibration_notes string
+        ('market_fit: ... | technical_feasibility: ... | ...'). '' when absent."""
+        from ..utils.calibration_notes import extract_criterion_reason
+        return extract_criterion_reason(notes, criterion, max_len)
+
+    def _format_scoreboard(self) -> str:
+        """Regeneration-only CRITIC SCOREBOARD: how the independent realism critic scored
+        the previous batch, with its market_fit reason per idea. This is the QUALITY
+        feedback the angle-map directive lacks — without it a regen ideator can't tell a
+        0.70 verified-route winner from a 0.35 feasibility-hallucination, so it optimizes
+        for 'different' instead of 'better'. Feedback stays SOFT (reasons, not the rubric)
+        per the v4 improvement-loop decoupling lesson. '' when no idea carries a score
+        (legacy checkpoints) — directive stays byte-identical."""
+        scored = [i for i in self.existing_ideas
+                  if isinstance(i.get("market_fit_score"), (int, float))]
+        if not scored:
+            return ""
+        scored.sort(key=lambda i: -i["market_fit_score"])
+        lines = []
+        for i in scored:
+            reason = self._critic_reason(i.get("calibration_notes"))
+            lines.append(f"- [{i['market_fit_score']:.2f}] {i.get('name', '?')}"
+                         + (f" — critic: {reason}" if reason else ""))
+        return (
+            "### CRITIC SCOREBOARD — how an independent realism critic scored the previous batch\n"
+            "(market_fit 0-1; every new idea will be scored by the same critic)\n\n"
+            + "\n".join(lines) + "\n\n"
+            "Learn from WHY the top ideas scored high and the bottom ones were capped —\n"
+            "typically: verified/official data routes and high-severity monetizable pains score\n"
+            "high; unverifiable data (device telemetry, scraping private sites, cold-start UGC),\n"
+            "tangential pain linkage, and me-too shapes score low. Generate concepts that would\n"
+            "EARN a higher score for real reasons. Do NOT parrot the critic's language or claim\n"
+            "verification you don't have — the critic independently re-checks every claim.\n\n"
+        )
+
     def _format_regeneration_directive(self) -> str:
         """Regeneration-only block: re-approach the SAME pains from new ANGLES.
 
@@ -961,11 +1213,13 @@ class UnifiedSolutionCrew:
         the dimensions the previous batch did NOT" — different mechanism, persona,
         journey moment, data source, or a contrarian framing — so the new batch is
         genuinely additive rather than reworded cousins of what already exists.
+        A CRITIC SCOREBOARD (when the previous batch carries calibrated scores)
+        additionally steers new concepts toward angles the critic rewarded.
         """
         if not self.existing_ideas:
             return ""
         n = len(self.existing_ideas)
-        return (
+        return self._format_scoreboard() + (
             "## STEP 0.6: REGENERATION — Explore NEW ANGLES (this is a 'generate more' run)\n\n"
             f"The user already has the {n} ideas listed above and asked for MORE. They do\n"
             "NOT want the same concepts reworded — they want genuinely different angles on\n"
@@ -1298,7 +1552,30 @@ class UnifiedSolutionCrew:
                 if id(fp) not in seen:
                     pains.append(fp)
                     seen.add(id(fp))
-        cells = _assign_generator_cells(pains, segments, target=target, max_gen=cap, relevance=relevance, severity_floor=sev_floor)
+        com_floor = settings.divergent_commercial_floor_count
+        com_min = settings.divergent_commercial_floor_min_intent
+        if com_floor:
+            # Same injection logic for the commercial floor: the most monetizable pain can sit in the
+            # medium/low tail (opportunity buckets severity AND commercial_intent, so a mid-severity
+            # high-intent pain lands outside selected_pains) — inject it so Round 0b can guarantee it.
+            def _ci(p):
+                v = getattr(p, "commercial_intent", None)
+                return v if isinstance(v, (int, float)) and not isinstance(v, bool) else 0.0
+            seen = {id(p) for p in pains}
+            for fp in sorted([p for p in all_pains if _ci(p) >= com_min],
+                             key=lambda p: (_ci(p), getattr(p, "severity_score", 0) or 0),
+                             reverse=True)[:com_floor]:
+                if id(fp) not in seen:
+                    pains.append(fp)
+                    seen.add(id(fp))
+
+        def _alloc() -> list:
+            return _assign_generator_cells(
+                pains, segments, target=target, max_gen=cap, relevance=relevance,
+                severity_floor=sev_floor, commercial_floor=com_floor,
+                commercial_min_intent=com_min)
+
+        cells = _alloc()
         extra = list(extra_pains or [])
         widened = 0
         # Widen while the cells (a) under-fill the target OR (b) span fewer distinct themes than
@@ -1308,7 +1585,7 @@ class UnifiedSolutionCrew:
                and (len(cells) < target or _theme_count(cells) < target)):
             pains.append(extra[widened])
             widened += 1
-            cells = _assign_generator_cells(pains, segments, target=target, max_gen=cap, relevance=relevance, severity_floor=sev_floor)
+            cells = _alloc()
         # Transparency: flag cells whose pain was chosen for niche-fit over a higher-severity
         # theme-mate, so the report can note "addresses your stated focus, not the top-severity pain".
         self._anchor_severity_notes = self._build_anchor_severity_notes(cells, all_pains, relevance)
@@ -1369,6 +1646,12 @@ class UnifiedSolutionCrew:
         _focus = getattr(self, "idea_focus", "auto") or "auto"
         rotation = _FOCUS_ROTATIONS.get(_focus, _ARCHETYPE_ROTATION)
 
+        # Portfolio funnel (A/B-validated 2026-07-02, always on): verified data-route menu injected
+        # into every cell brief so mechanisms START from data reality (0.46 -> 0.718 on same pains).
+        data_menu = self._build_data_menu()
+        # Incumbent-dissatisfaction signals (A/B-validated, always on) — '' when none survive the gate.
+        dissatisfaction = self._build_dissatisfaction_block()
+
         briefs, jobs = [], []
         for i, cell in enumerate(cells):
             pain = cell["pain"]
@@ -1384,6 +1667,7 @@ class UnifiedSolutionCrew:
                 pain_focus=_format_one_pain(pain), persona=persona,
                 concepts_target=per_cell, allow_zero=allow_zero,
                 allowed_types=allowed_types, preferred_type=archetype_pref,
+                data_menu=data_menu, dissatisfaction=dissatisfaction,
             )
             briefs.append({"idx": i, "pain": getattr(pain, "title", "?"), "segment": seg_name,
                            "persona": persona, "model": model, "archetype": archetype_pref,
@@ -1407,7 +1691,8 @@ class UnifiedSolutionCrew:
                        else _DIVERGENT_PERSONAS[0])
             block = _build_partitioned_block(
                 pain_focus=_format_one_pain(cell["pain"]), persona=persona,
-                concepts_target=4, allow_zero=False, allowed_types=allowed_types)
+                concepts_target=4, allow_zero=False, allowed_types=allowed_types,
+                data_menu=data_menu, dissatisfaction=dissatisfaction)
             extra, eu = self._one_sample(
                 inputs, idx=90 + topped_up, lens=_LENS_PARTITIONED_PREFIX + _DIVERGENT_LENSES[0], model=pool[0][0],
                 effort=pool[0][1], partitioned_block=block, min_concepts=1, allow_zero=False,
@@ -1859,6 +2144,22 @@ class UnifiedSolutionCrew:
             + (f"EXISTING TOOLS / COMPETITORS (anchor novelty/obviousness against these):\n{competitor_block}\n\n"
                if competitor_block.strip() else "")
         )
+        # Portfolio funnel (always on): give the critic the same verified data-route menu the
+        # ideators saw, so "is this mechanism's data route real?" is judged against the run's actual
+        # menu instead of the critic's general knowledge. No menu built (fail-soft) => no section.
+        _menu = getattr(self, "_data_menu_text", None) or ""
+        if _menu:
+            static_prompt += (
+                "VERIFIED DATA ROUTES for this niche (mechanisms anchored on these are verified; "
+                "anything else is unverified unless the idea itself proves availability):\n"
+                f"{_menu}\n\n"
+            )
+        # Incumbent-dissatisfaction signals (dark flag; '' when off/none detected): verified
+        # demand evidence the critic may weigh for market_fit on ideas that fix WHY those
+        # users are unhappy.
+        _dissat = getattr(self, "_dissatisfaction_text", None) or ""
+        if _dissat:
+            static_prompt += f"{_dissat}\n\n"
         # market_fit REALISM (A/B-validated 2026-07-01, always on): the critic over-scores market_fit vs
         # a neutral-Opus panel (~+0.13) by anchoring on pain SEVERITY alone — the top driver of false 'Go'
         # verdicts. Severity is the CEILING; discount it for mechanism / market / linkage. Bounded —
@@ -1900,11 +2201,14 @@ class UnifiedSolutionCrew:
             )
         return static_prompt, sev_by_pain
 
-    def _calibrate_batch(self, *, batch: list) -> tuple[int, object]:
+    def _calibrate_batch(self, *, batch: list, extra_context: str = "") -> tuple[int, object]:
         """Re-score ONE batch of ideas with the independent realism critic. Sets calibrated scores
         and preserves the originals in `*_score_raw` (once) on each idea; returns (applied, usage).
         Self-contained + read-only on shared crew state, so it runs both inside a cell thread (the
-        in-cell scorer) and via the post-union `_run_parallel`. The flag gate lives at the callers."""
+        in-cell scorer) and via the post-union `_run_parallel`. The flag gate lives at the callers.
+        ``extra_context`` (default '' = byte-identical prompt) is inserted before the IDEAS block —
+        used by the parity probe to put web-verified mechanism-parity evidence in front of the
+        critic for a targeted re-score."""
         static_prompt, sev_by_pain = self._calibration_static_prompt()
 
         def _fenced(items: list) -> str:
@@ -1969,7 +2273,8 @@ class UnifiedSolutionCrew:
             if notes:
                 idea.calibration_notes = " | ".join(notes)
 
-        prompt = static_prompt + f"IDEAS:\n{_fenced(batch)}\n"
+        prompt = (static_prompt + (f"{extra_context}\n" if extra_context else "")
+                  + f"IDEAS:\n{_fenced(batch)}\n")
 
         def _one_sample():
             r, usage = LLMService.invoke_structured(
@@ -3096,6 +3401,461 @@ class UnifiedSolutionCrew:
     _PROV_FUZZY_MIN = 0.45
     _PROV_FUZZY_MARGIN = 0.12
 
+    def _synthesize_bundles(self, winners: list) -> list:
+        """Portfolio funnel F3: compose 3-5 COMPLEMENTARY validated pains (and the cell winners'
+        single-pain ideas) into 1-2 BUNDLED products around one user workflow — the shape real
+        buyers pay for, which one-pain-per-cell ideation structurally never produces. Bundles are
+        ADDITIVE (idea_tier='bundle'); the post-union straggler passes score/classify/tag them like
+        any other pool member. Fail-soft -> []."""
+        try:
+            from pydantic import BaseModel, Field as _F
+
+            class _Bundle(BaseModel):
+                solution_name: str = ""
+                project_type: str = ""
+                value_proposition: str = ""
+                description: str = ""
+                core_features: list[str] = _F(default_factory=list)
+                target_personas: list[str] = _F(default_factory=list)
+                pain_points_addressed: list[str] = _F(
+                    default_factory=list, description="EXACT titles of the 3-5 validated pains bundled")
+                conventional_approach: str = ""
+                innovation_angle: str = ""
+                why_it_works: str = ""
+                technical_approach: str = ""
+                requires_data_aggregation: bool = False
+                data_access_model: str = _F(
+                    "", description="EXACTLY one of: public | freemium | paywalled | "
+                                    "unofficial | restricted | none")
+                build_feasibility_score: float = 0.7
+                data_feasibility_score: float = 0.7
+                # None-able so omission is DETECTABLE (schema defaults would silently mask it);
+                # the dict-processing pass below logs + backfills any miss.
+                market_fit_score: float | None = None
+                technical_feasibility_score: float | None = None
+                estimated_indexable_pages: int | None = _F(
+                    None, description="Realistic count of genuinely indexable pages this bundle "
+                                      "could publish — estimate FIRST, then score SEO (provisional)")
+                programmatic_seo_opportunity: str = ""
+                content_generation_model: str = ""
+
+            class _Bundles(BaseModel):
+                bundles: list[_Bundle] = _F(default_factory=list)
+
+            niche = getattr(getattr(self, "niche_context", None), "niche_description", "") or ""
+            pains = getattr(getattr(self, "pain_point_analysis", None), "pain_points", []) or []
+            pain_lines = "\n".join(
+                f"- [sev={getattr(p, 'severity_score', '?')}, commercial="
+                f"{getattr(p, 'commercial_intent', '?')}] {getattr(p, 'title', '')}"
+                for p in pains[:12])
+            winner_lines = "\n".join(
+                f"- {getattr(w, 'solution_name', '')}: "
+                f"{(getattr(w, 'value_proposition', '') or '')[:120]}" for w in winners)
+            data_menu = getattr(self, "_data_menu_text", None) or ""
+            menu_block = (f"\nVERIFIED DATA ROUTES (mechanisms must run on these):\n{data_menu}\n"
+                          if data_menu else "")
+            _dissat = getattr(self, "_dissatisfaction_text", None) or ""
+            if _dissat:
+                menu_block += f"\n{_dissat}\n"
+            n = settings.synthesis_max_bundles
+            r, usage = LLMService.invoke_structured(
+                prompt=(
+                    f"Niche: {niche}\n\nVALIDATED PAINS:\n{pain_lines}\n\n"
+                    f"Single-pain tools already designed (each solves ONE pain):\n{winner_lines}\n"
+                    f"{menu_block}\n"
+                    f"Design {n} BUNDLED PRODUCTS. Each composes 3-5 COMPLEMENTARY validated pains "
+                    f"from the list into ONE coherent product around a single user workflow (how this "
+                    f"audience actually works day-to-day) — a product whose parts reinforce each "
+                    f"other, not a feature list. Solo-developer buildable AND operable; deterministic "
+                    f"or official/public-data mechanisms only (no cold-start UGC core). Fill every "
+                    f"field honestly (all *_score fields on a 0-1 scale); pain_points_addressed must "
+                    f"use the EXACT pain titles. Estimate estimated_indexable_pages FIRST (the "
+                    f"realistic count of genuinely indexable pages), THEN score SEO against it."),
+                output_model=_Bundles, temperature=0.4, timeout=180,
+                model_name=settings.brainstorm_llm, reasoning_effort="medium", creative=True)
+            out = []
+            for b in (r.bundles or [])[:n]:
+                d = b.model_dump()
+                d["idea_tier"] = "bundle"
+                if not d.get("description"):
+                    d["description"] = d.get("value_proposition", "")
+                if not d.get("core_features"):
+                    d["core_features"] = ["bundled workflow"]
+                if not d.get("target_personas"):
+                    d["target_personas"] = ["primary audience member"]
+                # Normalize score scales: brainstorm models intermittently emit percent-style scores
+                # (85 instead of 0.85) which fail BaseSolutionIdea's 0-1 bounds (observed live —
+                # "2 validation errors" dropping every bundle in some generations).
+                # data_access_model must be a closed tier (codex-review finding: bundles carried
+                # prose like "Read-only aggregation from Hugging Face Hub…", breaking Rule-A SEO
+                # gating + tag facets). Prose moves to data_acquisition_notes; no tier invented.
+                _dam = (d.get("data_access_model") or "").strip().lower()
+                if _dam and _dam not in ("public", "freemium", "paywalled",
+                                         "unofficial", "restricted", "none"):
+                    d["data_acquisition_notes"] = (
+                        f"Data route: {d['data_access_model'].strip()}"
+                        + (f" | {d['data_acquisition_notes']}" if d.get("data_acquisition_notes") else ""))
+                    d["data_access_model"] = None
+                elif _dam:
+                    d["data_access_model"] = _dam
+                else:
+                    d["data_access_model"] = None
+                # estimated_indexable_pages: defensive int-normalization (models emit strings/
+                # floats); junk -> None (Rule B of the SEO cap simply won't bind).
+                try:
+                    _pages = d.get("estimated_indexable_pages")
+                    d["estimated_indexable_pages"] = int(float(_pages)) if _pages is not None else None
+                except (TypeError, ValueError):
+                    d["estimated_indexable_pages"] = None
+                # market_fit/technical_feasibility are REQUIRED non-None by IdeaGenerationResult's
+                # validator (observed live: a scoreless bundle killed the whole Stage 5) — backfill
+                # conservative defaults; the calibration critic replaces them post-union anyway.
+                _backfilled = [k for k in ("market_fit_score", "technical_feasibility_score")
+                               if d.get(k) is None]
+                if _backfilled:
+                    logger.warning(
+                        f"[Synthesis] bundle '{d.get('solution_name', '?')}' missing "
+                        f"{', '.join(_backfilled)} from LLM — backfilled defaults "
+                        f"(critic recalibrates post-union)")
+                d.setdefault("market_fit_score", 0.6)
+                d.setdefault("technical_feasibility_score", 0.7)
+                for k in ("build_feasibility_score", "data_feasibility_score",
+                          "market_fit_score", "technical_feasibility_score"):
+                    v = d.get(k)
+                    if isinstance(v, (int, float)) and not isinstance(v, bool):
+                        if 1.0 < v <= 100.0:
+                            v = v / 100.0
+                        d[k] = max(0.0, min(1.0, v))
+                try:
+                    out.append(BaseSolutionIdea.model_validate(d))
+                except Exception as ve:
+                    logger.warning(f"[Synthesis] bundle dropped (validation): {str(ve)[:400]}")
+            if hasattr(self, "cost_tracker") and self.cost_tracker and usage is not None:
+                self.cost_tracker.record_llm_usage("Stage 7 - Synthesis", usage.to_dict())
+            if out:
+                logger.info(f"[Synthesis] {len(out)} bundled product(s) added to the pool: "
+                            + ", ".join(o.solution_name for o in out))
+            return out
+        except Exception as e:
+            logger.warning(f"[Synthesis] failed (non-fatal, no bundles): {str(e)[:120]}")
+            return []
+
+    def _build_data_menu(self) -> str:
+        """Portfolio funnel F2: one LLM call assembling the niche's VERIFIED data-route menu — the
+        routes an indie product can actually be built on. Injected into every cell ideator brief and
+        the calibration critic's context, so mechanisms start from data reality instead of being
+        invented first and dying on it later (the dominant idea-killer: 4/5 cottage-run ideas were
+        born on unverifiable routes and hard-capped at mf<=0.45).
+
+        Deterministic ALWAYS-AVAILABLE routes are appended in code (licensed keyword API, public
+        community discussions, user-input arithmetic) — the LLM only contributes niche-specific
+        official/public sources, with an honesty rule against inventing datasets. Cached on the
+        instance; fail-soft -> '' (briefs render byte-identically without it)."""
+        cached = getattr(self, "_data_menu_text", None)
+        if cached is not None:
+            return cached
+        menu = ""
+        try:
+            from pydantic import BaseModel, Field as _F
+
+            class _Routes(BaseModel):
+                routes: list[str] = _F(default_factory=list)
+
+            niche = getattr(getattr(self, "niche_context", None), "niche_description", "") or ""
+            pains = getattr(getattr(self, "pain_point_analysis", None), "pain_points", []) or []
+            pain_lines = "\n".join(f"- {getattr(p, 'title', '')}" for p in pains[:10])
+            r, usage = LLMService.invoke_structured(
+                prompt=(
+                    f"Niche: {niche}\nValidated pains:\n{pain_lines}\n\n"
+                    "List 4-8 VERIFIED data routes an indie software product for this niche could be "
+                    "built on TODAY. Each entry: '<source> (<access: official|public|licensed>) — <what "
+                    "it contains>'. ONLY sources you are CERTAIN exist (government/agency pages, public "
+                    "registries, published standards, open datasets, established public directories). "
+                    "Do NOT invent datasets, do NOT list vendor/device APIs, do NOT list scraping of "
+                    "private sites. Return JSON: {\"routes\": [...]}"),
+                output_model=_Routes, temperature=0, timeout=120,
+                model_name=settings.brainstorm_llm, reasoning_effort="medium")
+            routes = [s.strip() for s in (r.routes or []) if s and s.strip()][:8]
+            routes += [
+                "Google keyword search data via DataForSEO (licensed) — volumes, competition, per-region queries",
+                "Public community discussions (Reddit/HN/forums, public) — pain language, tool mentions",
+                "Deterministic arithmetic on the user's own inputs (none) — calculators/planners need no external data",
+            ]
+            menu = "\n".join(f"- {s}" for s in routes)
+            if hasattr(self, "cost_tracker") and self.cost_tracker and usage is not None:
+                self.cost_tracker.record_llm_usage("Stage 7 - Data Menu", usage.to_dict())
+            logger.info(f"[DataMenu] built {len(routes)} verified routes for ideation briefs")
+        except Exception as e:
+            logger.warning(f"[DataMenu] build failed (non-fatal, briefs unaugmented): {str(e)[:100]}")
+            menu = ""
+        self._data_menu_text = menu
+        return menu
+
+    def _build_dissatisfaction_block(self) -> str:
+        """Incumbent-dissatisfaction signals (A/B-validated 2026-07-02, always on): verbatim
+        community quotes naming a tool they're unhappy with — detected deterministically from the
+        RAW corpus (recall) then precision-gated by one small LLM call (regex alone ~2/9 precision;
+        gate live-validated ~100%, fail-CLOSED). Injected into cell briefs, the calibration critic,
+        and synthesis. A/B (astro, PixInsight-pricing signals): best-concept mf 0.55→0.65, concepts
+        visibly target the evidenced gap. Cached; fail-soft -> '' (consumers render nothing)."""
+        cached = getattr(self, "_dissatisfaction_text", None)
+        if cached is not None:
+            return cached
+        block = ""
+        try:
+            import re as _re
+
+            from ..utils.quote_signals import (
+                detect_incumbent_dissatisfaction,
+                format_dissatisfaction_block,
+                iter_corpus_texts,
+            )
+            names: list[str] = []
+            self._probe_incumbents()  # populate structured rows (cached, fail-soft)
+            names += [r["name"] for r in (getattr(self, "_incumbent_rows", None) or [])]
+            # bolded tool names from the community-mentions block ("- **CakeCost**: ...")
+            names += _re.findall(r"\*\*([^*]+)\*\*",
+                                 getattr(self, "competitor_mentions_text", "") or "")
+            names += list(getattr(getattr(self, "niche_context", None),
+                                  "anchor_entities", None) or [])
+            # scan the RAW corpus — the pain-quote funnel distills pain evidence and
+            # reliably drops named-tool dissatisfaction lines
+            texts = iter_corpus_texts(getattr(self, "social_content", None))
+            candidates = detect_incumbent_dissatisfaction(texts, names, max_signals=10)
+            # Precision gate: the regex detector is recall-oriented (~2/9 precision on real
+            # corpora — sentiment inversions like "almost gave up ... and WOW", recommendation
+            # noise). One cheap LLM pass keeps only genuine dissatisfaction WITH the named tool.
+            # Fail-closed: injected "verified demand evidence" must not carry noise.
+            signals: list[str] = []
+            if candidates:
+                from pydantic import BaseModel, Field as _F
+
+                class _Kept(BaseModel):
+                    keep_indices: list[int] = _F(default_factory=list)
+
+                cand_lines = "\n".join(f"{i}: {s}" for i, s in enumerate(candidates))
+                r, usage = LLMService.invoke_structured(
+                    prompt=("Each line pairs a TOOL NAME with a community sentence:\n"
+                            f"{cand_lines}\n\n"
+                            "Return the indices of lines where the sentence expresses GENUINE "
+                            "DISSATISFACTION WITH THAT NAMED TOOL (its price, UX, missing "
+                            "capability, or abandoning it). EXCLUDE: praise or success stories, "
+                            "recommendations of the tool, rhetorical questions, sentences where "
+                            "the negativity targets something other than the named tool, and "
+                            "off-topic products. Return JSON: {\"keep_indices\": [...]}"),
+                    output_model=_Kept, temperature=0, timeout=60,
+                    model_name=settings.report_structured_llm, reasoning_effort="minimal")
+                signals = [candidates[i] for i in (r.keep_indices or [])
+                           if 0 <= i < len(candidates)][:6]
+                if hasattr(self, "cost_tracker") and self.cost_tracker and usage is not None:
+                    self.cost_tracker.record_llm_usage("Stage 7 - Dissatisfaction Gate", usage.to_dict())
+            block = format_dissatisfaction_block(signals)
+            if candidates:
+                logger.info(f"[Dissatisfaction] {len(signals)}/{len(candidates)} candidate "
+                            f"signal(s) kept: {', '.join(s.split(' — ')[0] for s in signals) or 'none'}")
+        except Exception as e:
+            logger.warning(f"[Dissatisfaction] detection failed (non-fatal): {str(e)[:100]}")
+            block = ""
+        self._dissatisfaction_text = block
+        return block
+
+    # Salvage gate (portfolio funnel F1): promotion bar for tournament losers.
+    _SALVAGE_MIN = 0.55          # absolute floor a loser must clear
+    _SALVAGE_MARGIN = 0.05       # ...or land within this of its own cell's winner, whichever is higher
+
+    @staticmethod
+    def _loser_stub_idea(c, tier: str = "salvaged"):
+        """Map a RawConcept tournament loser to a minimal-but-scoreable BaseSolutionIdea (the fields
+        the calibration critic's fence reads). Promoted losers get the FULL expansion afterwards —
+        this stub exists only so the critic can gate promotion cheaply."""
+        from ..models.solution_idea import BaseSolutionIdea
+        return BaseSolutionIdea.model_validate({
+            "solution_name": getattr(c, "concept_name", "") or "unnamed",
+            "description": getattr(c, "one_liner", "") or "",
+            "value_proposition": getattr(c, "one_liner", "") or "",
+            "core_features": [getattr(c, "mechanism_tag", None) or "core feature"],
+            "target_personas": [getattr(c, "source_segment", None) or "target user"],
+            "pain_points_addressed": [p for p in [getattr(c, "source_pain", None)] if p],
+            "innovation_angle": getattr(c, "why_non_obvious", "") or "",
+            "why_it_works": getattr(c, "why_non_obvious", "") or "",
+            "technical_approach": f"{getattr(c, 'data_route', '') or ''}. "
+                                  f"{getattr(c, 'data_acquisition_notes', '') or ''}",
+            "requires_data_aggregation": True,
+            "data_access_model": getattr(c, "data_access_model", None),
+            "build_feasibility_score": getattr(c, "build_feasibility_score", None),
+            "data_feasibility_score": getattr(c, "data_feasibility_score", None),
+            "programmatic_seo_opportunity": ", ".join(getattr(c, "target_keywords", None) or []),
+            "project_type": getattr(c, "project_type", None),
+            "idea_tier": tier,
+        })
+
+    def _salvage_cell_losers(self, groups: list, winners: list) -> list:
+        """Portfolio funnel F1: rescue tournament losers the full critic rates near/above their cell's
+        winner. The in-cell judge picks 1 of 3-4 on a composite+novelty basis BEFORE the calibration
+        critic runs — a lower-novelty/higher-market-fit runner-up can die unexamined (prototype: the
+        judge discarded SafeBakeRegistry, which the critic scores above 4 of 5 actual winners).
+
+        Losers = cell candidates not claimed by any winner: exact-name (mirroring
+        _carry_provenance pass 1) PLUS structural checks (detect_catalog_duplicate on
+        name/value-prop; same-pain + matching mechanism_tag = reworded cousin) so a RENAMED
+        winner can't be salvaged as its own duplicate. One critic batch gates promotion;
+        promoted losers (cap salvage_max_promoted, at most 2 per source pain) get the SAME
+        full expansion as winners and are tagged idea_tier='salvaged'. Fail-soft: []."""
+        try:
+            from types import SimpleNamespace as _NS
+
+            from ..utils.validation.crew_guardrails import _tags_match, detect_catalog_duplicate
+
+            def _norm(n: str) -> str:
+                return "".join((n or "").lower().split())
+
+            winner_names = {_norm(getattr(w, "solution_name", "")) for w in winners}
+            winner_dicts = [{
+                "name": getattr(w, "solution_name", "") or "",
+                "value_proposition": getattr(w, "value_proposition", "") or "",
+                "description": getattr(w, "description", "") or "",
+                "mechanism_tag": getattr(w, "mechanism_tag", None),
+                "data_source_tag": getattr(w, "data_source_tag", None),
+                "journey_tag": getattr(w, "journey_tag", None),
+            } for w in winners]
+            winner_pain_mech = [((getattr(w, "source_pain", "") or "").strip().lower(),
+                                 getattr(w, "mechanism_tag", None)) for w in winners]
+
+            def _is_winner_duplicate(c) -> bool:
+                # a renamed winner shares its text substance and/or its pain+mechanism —
+                # salvaging it would put the same idea in the report twice
+                adapter = _NS(solution_name=getattr(c, "concept_name", "") or "",
+                              value_proposition=getattr(c, "one_liner", "") or "",
+                              mechanism_tag=getattr(c, "mechanism_tag", None),
+                              data_source_tag=None, journey_tag=None)
+                if any(detect_catalog_duplicate(adapter, wd) for wd in winner_dicts):
+                    return True
+                sp = (getattr(c, "source_pain", "") or "").strip().lower()
+                mech = getattr(c, "mechanism_tag", None)
+                return any(sp and sp == wp and _tags_match(mech, wm)
+                           for wp, wm in winner_pain_mech)
+
+            losers, loser_cell = [], {}
+            for cell, cands in groups:
+                for c in cands or []:
+                    if _norm(getattr(c, "concept_name", "")) in winner_names:
+                        continue
+                    if _is_winner_duplicate(c):
+                        logger.debug(f"[Salvage] skip structural duplicate of a winner: "
+                                     f"{getattr(c, 'concept_name', '?')}")
+                        continue
+                    losers.append(c)
+                    loser_cell[id(c)] = cell
+            if not losers:
+                return []
+            # Cost bound: one-two critic batches. A 2026-07-02 widen-to-16 A/B was a no-op —
+            # real pools run ~4 eligible losers, the cap never binds; kept at the original 10.
+            losers = losers[:10]
+
+            stubs = [self._loser_stub_idea(c) for c in losers]
+            self._calibrate_batch(batch=stubs)
+
+            def _comp(i) -> float:
+                dims = [i.market_fit_score, i.technical_feasibility_score,
+                        i.novelty_score, i.seo_scalability_score]
+                present = [d for d in dims if d is not None]
+                return sum(present) / len(present) if present else 0.0
+
+            # own-cell winner composite (match winner to cell by grounded source pain)
+            win_by_pain = {}
+            for w in winners:
+                sp = (getattr(w, "source_pain", "") or "").strip().lower()
+                if sp:
+                    win_by_pain[sp] = max(win_by_pain.get(sp, 0.0), _comp(w))
+            pool_max = max((_comp(w) for w in winners), default=0.0)
+
+            promoted = []
+            for c, stub in zip(losers, stubs):
+                cell = loser_cell.get(id(c)) or {}
+                pain_title = (getattr(cell.get("pain"), "title", "") or "").strip().lower()
+                bar = max(self._SALVAGE_MIN, win_by_pain.get(pain_title, pool_max) - self._SALVAGE_MARGIN)
+                comp = _comp(stub)
+                if comp >= bar:
+                    promoted.append((comp, c, cell))
+                    logger.info(f"[Salvage] PROMOTE {stub.solution_name} "
+                                f"(composite={comp:.3f} >= bar={bar:.2f})")
+                else:
+                    logger.debug(f"[Salvage] decline {stub.solution_name} "
+                                 f"(composite={comp:.3f} < bar={bar:.2f})")
+            promoted.sort(key=lambda t: t[0], reverse=True)
+            # Final selection: global top-K by composite, but at most 2 rescues per source
+            # pain — groomers run promoted 3/3 on the same route-planning pain, buying
+            # depth the pool already had instead of breadth it lacked.
+            out, per_pain = [], {}
+            for _comp_v, c, cell in promoted:
+                if len(out) >= settings.salvage_max_promoted:
+                    break
+                pain_key = (getattr(c, "source_pain", "") or "").strip().lower()
+                if per_pain.get(pain_key, 0) >= 2:
+                    logger.debug(f"[Salvage] per-pain cap: skipping "
+                                 f"{getattr(c, 'concept_name', '?')} ({pain_key[:40]})")
+                    continue
+                expanded = self._refine_single_concept(c, cell.get("pain"))
+                if expanded is not None:
+                    expanded.idea_tier = "salvaged"
+                    out.append(expanded)
+                    per_pain[pain_key] = per_pain.get(pain_key, 0) + 1
+            if out:
+                logger.info(f"[Salvage] {len(out)} loser(s) rescued into the pool "
+                            f"(of {len(losers)} scored)")
+            return out
+        except Exception as e:
+            logger.warning(f"[Salvage] gate failed (non-fatal, no losers rescued): {str(e)[:120]}")
+            return []
+
+    def _note_idea_overlap(self, ideas: list) -> None:
+        """Post-union overlap NOTE (codex-review finding: 3 same-theme vLLM-config ideas coexisted
+        with no signal). Deterministic detectors CANNOT catch this — measured on the motivating
+        pool: max name+VP embedding cosine 0.572 (thresholding would no-op or flag everything in a
+        themed niche) and zero >=2 M/D/J tag matches (post-refinement tags too fine-grained,
+        bundles untagged). Product-overlap is a semantic judgment, so ONE small structured call
+        groups ideas a buyer would see as variants of the same product, and the groups are surfaced
+        as a coverage caveat — informational only, nothing is dropped or merged. Fail-soft."""
+        if len(ideas) < 3:
+            return
+        try:
+            from pydantic import BaseModel, Field as _F
+
+            class _Group(BaseModel):
+                idea_names: list[str] = _F(default_factory=list)
+                shared_product: str = _F("", description="what the one product would be, <=12 words")
+
+            class _Groups(BaseModel):
+                groups: list[_Group] = _F(default_factory=list)
+
+            lines = "\n".join(
+                f"- {getattr(i, 'solution_name', '?')}: "
+                f"{(getattr(i, 'value_proposition', '') or '')[:150]}" for i in ideas)
+            r, usage = LLMService.invoke_structured(
+                prompt=(f"Final product ideas for one niche:\n{lines}\n\n"
+                        "Group ideas a BUYER would see as variants of the SAME product — same job, "
+                        "same core value, overlapping feature surface (different mechanisms do NOT "
+                        "make them different products). Only groups of 2+; ideas that stand alone "
+                        "are omitted. Distinct products that merely share the niche vocabulary are "
+                        "NOT a group. Return JSON."),
+                output_model=_Groups, temperature=0, timeout=90,
+                model_name=settings.report_structured_llm, reasoning_effort="minimal")
+            valid_names = {(getattr(i, "solution_name", "") or "").strip().lower() for i in ideas}
+            if hasattr(self, "cost_tracker") and self.cost_tracker and usage is not None:
+                self.cost_tracker.record_llm_usage("Stage 7 - Overlap Note", usage.to_dict())
+            for g in (r.groups or []):
+                members = [n for n in (g.idea_names or [])
+                           if (n or "").strip().lower() in valid_names]
+                if len(members) < 2:
+                    continue
+                msg = (f"{len(members)} ideas overlap as one product "
+                       f"({g.shared_product or 'same buyer job'}): {'; '.join(members)} — "
+                       "consider them variants to pick between or merge, not separate bets.")
+                self.coverage_caveats = list(getattr(self, "coverage_caveats", None) or []) + [msg]
+                logger.info(f"[OverlapNote] {msg}")
+        except Exception as e:
+            logger.warning(f"[OverlapNote] failed (non-fatal, no note): {str(e)[:100]}")
+
     def _carry_provenance(self, refined_solutions, raw_concepts) -> int:
         """Carry M/D/J tags + (pain × segment) provenance from the divergent pool onto the
         refined ideas (refinement drops them). raw_concepts is code-built and keeps the
@@ -3455,7 +4215,16 @@ class UnifiedSolutionCrew:
         n = len(ideas)
         top_pain, top_n = counts.most_common(1)[0]
 
+        # Coverage must also see pains addressed by bundles/salvaged ideas, which have no
+        # (or a different) source_pain — counting only cell provenance made the summary
+        # report bundle-covered pains as "no idea" (live-observed: CottagePath Navigator's
+        # two pains flagged uncovered in the very pool that contained it). Concentration
+        # (above) intentionally stays source_pain-based.
         covered_norm = {_norm(p) for p in counts}
+        for i in ideas:
+            for t in (getattr(i, "pain_points_addressed", None) or []):
+                if t and str(t).strip():
+                    covered_norm.add(_norm(str(t)))
         uncovered = [
             getattr(p, "title", "")
             for p in pains
@@ -3817,6 +4586,31 @@ class UnifiedSolutionCrew:
                         f"{_MIN_ADDRESSABLE})"
                     )
 
+            # Evidence gate (codex-review fix 2026-07-02): a low_evidence pain with ZERO surviving
+            # quotes is unverifiable — it must not SEED a generator cell (it stays in the report,
+            # display-flagged + severity-clamped). Mirrors the addressability gate incl. its floor.
+            def _evidenced(p) -> bool:
+                return not (getattr(p, "low_evidence", False)
+                            and not (getattr(p, "representative_quotes", None) or []))
+            _MIN_EVIDENCED = 3
+            e_high = [p for p in high_priority if _evidenced(p)]
+            e_med = [p for p in medium_priority if _evidenced(p)]
+            e_low = [p for p in low_priority if _evidenced(p)]
+            n_zero_quote = (len(high_priority) + len(medium_priority) + len(low_priority)
+                            - len(e_high) - len(e_med) - len(e_low))
+            if n_zero_quote and (len(e_high) + len(e_med) + len(e_low)) >= _MIN_EVIDENCED:
+                high_priority, medium_priority, low_priority = e_high, e_med, e_low
+                logger.info(
+                    f"[EvidenceGate] excluded {n_zero_quote} zero-quote low-evidence pain(s) "
+                    f"from ideation seeding"
+                )
+            elif n_zero_quote:
+                logger.info(
+                    f"[EvidenceGate] {n_zero_quote} zero-quote pain(s) found but KEPT (floor "
+                    f"protection: only {len(e_high)+len(e_med)+len(e_low)} evidenced < "
+                    f"{_MIN_EVIDENCED})"
+                )
+
             # Diversified ideation funnel (top-7 severity + top-3 evidence
             # mentions + up to 2 from unrepresented themes) — a pure
             # top-10-by-severity slice fed ideation the same flavor of pain
@@ -4015,8 +4809,21 @@ class UnifiedSolutionCrew:
                     ideas.append(w)
                 if not ideas:
                     raise ValueError("Per-cell tournaments produced no ideas.")
+                # Portfolio funnel F1 (salvage gate, dark): rescue losers the full critic rates
+                # near/above their cell's winner — the in-cell judge discards ~66% of generation
+                # unexamined by the calibration critic. Promoted losers are fully expanded and join
+                # the pool as idea_tier='salvaged'; the post-union straggler passes (calibrate /
+                # angle / tags) pick them up automatically.
+                n_winners = len(ideas)
+                # Portfolio funnel (A/B-validated 2026-07-02, always on): salvage critic-approved
+                # tournament losers, then compose complementary pains/winners into 1-2 bundled
+                # products (the shape buyers actually pay for) — both additive to the pool.
+                ideas.extend(self._salvage_cell_losers(groups, ideas))
+                n_salvaged = len(ideas) - n_winners
+                ideas.extend(self._synthesize_bundles(ideas[:n_winners]))
                 base_solutions = IdeaGenerationResult(solution_ideas=ideas)
-                logger.info(f"  [Tournament] {len(ideas)} per-cell winners (from {len(jobs)} cells)")
+                logger.info(f"  [Tournament] {n_winners} per-cell winners + {n_salvaged} salvaged + "
+                            f"{len(ideas) - n_winners - n_salvaged} bundles (from {len(jobs)} cells)")
             else:
                 # ── CONVERGENT crew: refine → (select) ── (the deduped pool is the refiner's input)
                 self._last_crew = self._convergent_crew(skip_selection)  # for usage_metrics
@@ -4178,6 +4985,14 @@ class UnifiedSolutionCrew:
                 except Exception as e:
                     logger.warning(f"Score calibration skipped: {e}")
 
+            # Mechanism-parity probe (A/B-validated, always on): runs AFTER calibration so
+            # top-K selection uses calibrated composites; re-scores probed ideas with the
+            # web-verified parity evidence in critic context. Fail-soft inside the method.
+            try:
+                self._probe_mechanism_parity(refined_solutions.solution_ideas)
+            except Exception as e:
+                logger.warning(f"Parity probe skipped: {e}")
+
             # Angle-classification straggler-finisher: the in-cell classifier labels every cell winner;
             # this finishes the leftovers — coverage re-injections, and ALL ideas on the non-tournament
             # fallback. Runs AFTER calibration so it judges final calibrated scores, and BEFORE ranking
@@ -4222,6 +5037,13 @@ class UnifiedSolutionCrew:
             except Exception as e:
                 logger.warning(f"Pain-coverage summary skipped: {e}")
 
+            # Overlap note (informational, never drops): flags final ideas a buyer would see
+            # as variants of one product. Fail-soft inside the method.
+            try:
+                self._note_idea_overlap(refined_solutions.solution_ideas)
+            except Exception as e:
+                logger.warning(f"Overlap note skipped: {e}")
+
             # Closed-vocabulary tag facets (chips + future filtering). Runs LAST so it reads the
             # FINAL scores/data fields (feasibility + SEO realism caps above mutate the very
             # values derive_tag_facets buckets on). Fail-soft: never blocks the pipeline.
@@ -4236,6 +5058,17 @@ class UnifiedSolutionCrew:
             # ghost names and the report renders dropped runner-ups).
             if solution_selection is not None:
                 self._prune_selection_to_ideas(solution_selection, refined_solutions.solution_ideas)
+
+            # Re-save the FINAL ideas: calibrate/angle/validate/SEO-caps/tags all mutate them
+            # AFTER the mid-pipeline stage_5_3 save above. Without this re-save the durable
+            # checkpoint keeps pre-calibration self-scores whenever no later incidental save
+            # fires (live-caught 2026-07-02 astro run: salvaged ideas persisted mf=0.88
+            # self-scores because the audience-fit re-save path didn't run for that niche).
+            if self.checkpoint_mgr and refined_solutions:
+                try:
+                    self.checkpoint_mgr.save_stage("stage_5_3_refinement", refined_solutions)
+                except Exception as e:
+                    logger.warning(f"Final stage_5_3 re-checkpoint skipped: {e}")
 
             # Log pipeline summary
             logger.info("✓ Unified Pipeline Complete:")

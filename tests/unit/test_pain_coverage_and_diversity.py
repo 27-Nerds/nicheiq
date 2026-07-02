@@ -137,3 +137,28 @@ def test_obviousness_score_sentinel_default_and_roundtrip():
     assert c.obviousness_score == -1.0  # sentinel = "not scored"
     c2 = RawConcept.model_validate({**c.model_dump(), "obviousness_score": 0.2})
     assert c2.obviousness_score == 0.2
+
+
+# ── Coverage summary bundle-awareness (2026-07-02) ──────────────────────────
+
+def test_coverage_summary_sees_bundle_addressed_pains():
+    """Live-observed: the summary counted only source_pain (cell provenance), so pains
+    covered ONLY by a bundle/salvaged idea (which carry them in pain_points_addressed)
+    were reported as 'no idea' — in the very pool containing the bundle."""
+    from nicheiq.crews.unified_solution_crew import UnifiedSolutionCrew
+
+    def _p(title):
+        return SimpleNamespace(title=title, severity_score=0.7,
+                               opportunity_level=SimpleNamespace(value="high"))
+
+    crew = UnifiedSolutionCrew.__new__(UnifiedSolutionCrew)
+    crew.pain_point_analysis = SimpleNamespace(pain_points=[_p("Pain A"), _p("Pain B")])
+    crew.coverage_caveats = []
+    ideas = [
+        SimpleNamespace(source_pain="Pain A", pain_points_addressed=["Pain A"]),
+        # bundle: no source_pain, covers Pain B via pain_points_addressed
+        SimpleNamespace(source_pain=None, pain_points_addressed=["Pain B"]),
+    ]
+    crew._pain_coverage_summary(ideas)
+    joined = " ".join(crew.coverage_caveats)
+    assert "Pain B" not in joined  # bundle coverage now visible → no false 'uncovered'

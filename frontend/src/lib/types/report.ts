@@ -729,6 +729,9 @@ export interface SolutionDetails {
 	why_it_works?: string;
 	why_it_works_short?: string;
 	solo_dev_feasibility?: number;
+	// Portfolio-funnel provenance tier: 'single' (cell winner) | 'salvaged' (critic-rescued loser)
+	// | 'bundle' (synthesis-stage multi-pain product). Absent on legacy reports = 'single'.
+	idea_tier?: string;
 	// Angle-aware evaluation (set when angle eval is on; absent otherwise)
 	winning_angle?: string | null; // distribution_seo | novel_differentiation | vertical_workflow
 	angle_rationale?: string | null; // user-facing comment: the angle + where differentiation lives
@@ -842,6 +845,8 @@ export interface AlternativeSolution {
 	novelty_score?: number;
 	obviousness_score?: number | null; // 0-1, lower = more original; shown as "Originality" (1 - this)
 	solo_dev_feasibility?: number; // 0-1 scale matching Python float
+	// Portfolio-funnel provenance tier (see selected_solution_details.idea_tier)
+	idea_tier?: string;
 	// Angle-aware evaluation (set when angle eval is on; absent otherwise)
 	winning_angle?: string | null;
 	angle_rationale?: string | null;
@@ -852,6 +857,11 @@ export interface AlternativeSolution {
 	build_feasibility_score?: number; // independent critic's build-feasibility estimate (0-1)
 	data_access_model?: string; // public | freemium | paywalled | unofficial | restricted | blocked | unverified
 	data_acquisition_notes?: string;
+
+	// Honest brief: evidence + the critic's voice (mirrors Python AlternativeSolution)
+	demand_quotes?: string[] | null; // verbatim community quotes for the addressed pains (max 3)
+	critic_concern?: string | null; // calibration critic's market_fit reason — the bear case
+	incumbent_parity?: string | null; // web-verified mechanism parity for top ideas ("shipped by MoeGo: …" | "none found")
 
 	// Competitive landscape for this solution
 	top_competitors?: string[];

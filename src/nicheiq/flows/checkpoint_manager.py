@@ -234,6 +234,8 @@ class CheckpointManager:
         metadata["idea_focus"] = getattr(self.state, "idea_focus", "auto")
         if getattr(self.state, "idea_coverage_caveats", None):
             metadata["idea_coverage_caveats"] = self.state.idea_coverage_caveats
+        if getattr(self.state, "pipeline_degradations", None):
+            metadata["pipeline_degradations"] = self.state.pipeline_degradations
         if getattr(self.state, "niche_drift_telemetry", None):
             metadata["niche_drift_telemetry"] = self.state.niche_drift_telemetry
         if getattr(self.state, "skipped_stages", None):
@@ -563,6 +565,8 @@ class CheckpointManager:
             self.state.idea_focus = metadata["idea_focus"]
         if metadata.get("idea_coverage_caveats"):
             self.state.idea_coverage_caveats = metadata["idea_coverage_caveats"]
+        if metadata.get("pipeline_degradations"):
+            self.state.pipeline_degradations = metadata["pipeline_degradations"]
         if metadata.get("niche_drift_telemetry"):
             self.state.niche_drift_telemetry = metadata["niche_drift_telemetry"]
         if metadata.get("skipped_stages"):

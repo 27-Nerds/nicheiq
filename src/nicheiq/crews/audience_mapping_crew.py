@@ -97,6 +97,7 @@ class AudienceMappingCrew:
         market_segments: list[str] | None = None,
         industry_boundaries: str = "",
         disambiguation_exclusions: list[str] | None = None,
+        user_target_audience: str | None = None,
     ):
         """
         Initialize AudienceMappingCrew with raw social content.
@@ -125,6 +126,7 @@ class AudienceMappingCrew:
         self.market_segments = market_segments or []
         self.industry_boundaries = industry_boundaries or ""
         self.disambiguation_exclusions = disambiguation_exclusions or []
+        self.user_target_audience = (user_target_audience or "").strip()
 
         # Calculate content stats for logging
         total_reddit_comments = sum(len(post.comments) for post in self.reddit_posts)
@@ -446,6 +448,9 @@ class AudienceMappingCrew:
             "pre_computed_influencers": influencer_data["influencer_names_formatted"],
             "discussion_digest": discussion_digest,
             "segment_grounding": self._segment_grounding_directive(),  # Part D: "" unless grounding flag on
+            # Codex-review fix (2026-07-02): the crew never saw the user's stated audience, so
+            # primary_target_segment drifted (e.g. "small dev teams" -> "Solo SaaS Developers").
+            "user_target_audience": self.user_target_audience or "Not specified — derive from evidence",
         }
 
         try:

@@ -281,6 +281,7 @@ class TestPartitionedDivergent:
 
     def test_one_generator_per_pain_with_distinct_briefs(self, monkeypatch):
         crew = self._crew()
+        crew._data_menu_text = ""  # pre-cache: the (always-on) data-menu build adds no LLM call
         # render returns the per-agent block so we can inspect each agent's brief
         monkeypatch.setattr(crew, "_render_divergent_prompt",
                             lambda inputs, lens, **kw: kw.get("partitioned_mode_block", ""), raising=False)
@@ -363,6 +364,7 @@ class TestPartitionedDivergent:
 
     def test_partitioned_brief_respects_allowed_project_types(self, monkeypatch):
         crew = self._crew()
+        crew._data_menu_text = ""  # pre-cache: the (always-on) data-menu build adds no LLM call
         crew.allowed_project_types = ["saas", "marketplace"]  # UI restriction
         monkeypatch.setattr(crew, "_render_divergent_prompt",
                             lambda inputs, lens, **kw: kw.get("partitioned_mode_block", ""), raising=False)

@@ -40,6 +40,8 @@ def _idea(name, **over):
 # --- _calibrate_batch (extraction parity) ----------------------------------
 
 def test_calibrate_batch_sets_scores_and_preserves_raw(monkeypatch):
+    # pin N=1: this test asserts SINGLE-call semantics (default is 3 since the P2 gate)
+    monkeypatch.setattr(usc.settings, "score_calibration_samples", 1)
     idea = _idea("Idea A", market_fit_score=0.9)
     cal = SimpleNamespace(
         name="Idea A", market_fit_score=0.3, market_fit_reason="thin evidence",

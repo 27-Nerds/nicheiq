@@ -1,6 +1,8 @@
 """LLM invocation utilities for report generation."""
 
 import json
+import random
+import time
 from typing import Any, Type, TypeVar
 
 from langchain_openai import ChatOpenAI
@@ -770,6 +772,21 @@ class LLMService:
             "max_tokens": _resolve_max_tokens(max_tokens, reasoning_enabled=reasoning_on),
         }
 
+        # Fallback-model chain (OpenRouter model-layer failover): when the primary model has a
+        # configured fallback list, pass OpenRouter's top-level `models` array so a provider outage /
+        # upstream 429 on the primary automatically retries the fallbacks IN ONE REQUEST (billed only
+        # for the successful run). Essential for SINGLE-PROVIDER models (e.g. inception/mercury-2 —
+        # provider-layer failover has nowhere to go; observed live 2026-07-02: one 15s 429 window
+        # killed the stance gate for a whole run). The provider.only pin is keyed to the PRIMARY, so
+        # it must be dropped (keep require_parameters) or it would strangle the fallback's routing.
+        _fallbacks = (settings.llm_fallback_models or {}).get(clean_model) \
+            or (settings.llm_fallback_models or {}).get(f"openrouter/{clean_model}")
+        if _fallbacks:
+            create_kwargs["extra_body"]["models"] = [clean_model] + [
+                m.removeprefix("openrouter/") for m in _fallbacks
+            ]
+            create_kwargs["extra_body"]["provider"] = {"require_parameters": True}
+
         if use_json_schema:
             # response_format json_schema => guided/constrained decoding, NO tool calls.
             # The grammar masks logits to schema-valid tokens, so this sidesteps BOTH the
@@ -812,10 +829,12 @@ class LLMService:
         # are likewise transient. A single retry recovers these for every tier (proven
         # rare, <1/14). Non-transient errors (bad request, auth) propagate immediately.
         try:
-            from openai import APIConnectionError, APITimeoutError, InternalServerError
+            from openai import APIConnectionError, APITimeoutError, InternalServerError, RateLimitError
             transient = (json.JSONDecodeError, APIConnectionError, APITimeoutError, InternalServerError)
+            ratelimit_exc: tuple = (RateLimitError,)
         except Exception:
             transient = (json.JSONDecodeError,)
+            ratelimit_exc = ()
 
         client = OpenAI(**client_kwargs)
         response = None
@@ -830,15 +849,35 @@ class LLMService:
         for parse_attempt in range(3):
             response = None
             last_exc = None
-            for attempt in range(2):
+            transient_tries = 0
+            ratelimit_tries = 0
+            while response is None:
                 try:
                     response = client.chat.completions.create(**create_kwargs)
-                    break
-                except transient as e:
+                except ratelimit_exc as e:
+                    # Rate-limit branch: an INSTANT retry inside a 429 window is a guaranteed second
+                    # failure (observed live: a whole parallel stance burst died in one 15s window).
+                    # Jittered exponential backoff, up to 3 attempts, ≤~12s total sleep. Checked
+                    # BEFORE `transient` (RateLimitError subclasses APIStatusError, not in that tuple).
                     last_exc = e
+                    ratelimit_tries += 1
+                    if ratelimit_tries >= 3:
+                        break
+                    delay = min(3 * (2 ** (ratelimit_tries - 1)), 8) + random.uniform(0, 1.5)
+                    logger.warning(
+                        f"OpenRouter rate-limited for {output_model.__name__} "
+                        f"(model={clean_model}, attempt {ratelimit_tries}/3) — backing off {delay:.1f}s"
+                    )
+                    time.sleep(delay)
+                except transient as e:
+                    # Non-rate-limit transients keep the original single immediate retry.
+                    last_exc = e
+                    transient_tries += 1
+                    if transient_tries >= 2:
+                        break
                     logger.warning(
                         f"OpenRouter transient error for {output_model.__name__} "
-                        f"(model={clean_model}, attempt {attempt + 1}/2): "
+                        f"(model={clean_model}, attempt {transient_tries}/2): "
                         f"{type(e).__name__}: {str(e)[:120]}"
                     )
             if response is None:

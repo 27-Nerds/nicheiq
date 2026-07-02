@@ -61,6 +61,11 @@ class RedditPost(BaseModel):
         description="TREC/UMBRELA 0-3 niche-relevance from thread validation; used to "
         "prioritize the most-relevant posts when capping to the pain-finder token budget",
     )
+    subreddit_subscribers: int | None = Field(
+        default=None,
+        description="Subscriber count of the post's subreddit at collection time; posts from "
+        "small dedicated communities get a waived engagement gate (None = unknown, full bars)",
+    )
 
 class TwitterTweet(BaseModel):
     """Represents a single tweet."""

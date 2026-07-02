@@ -378,6 +378,13 @@ class PainPointCrew:
         self._raw_twitter_threads = list(twitter_threads or [])
         self._raw_generic_posts = list(generic_posts or [])
 
+        # Degradation ledger (fail-open gates / silent quality reductions in THIS crew): summaries are
+        # copied by research_flow into state.pipeline_degradations and surface as report quality
+        # caveats — fail-open without surfacing is fail-silent (mirrors coverage_caveats pattern).
+        self.degradation_events: list[str] = []
+        self._stance_gate_failures: int = 0
+        self._stance_gate_calls: int = 0
+
         # Apply quality filter BEFORE formatting for knowledge sources
         original_reddit_count = len(reddit_posts or [])
         original_twitter_count = len(twitter_threads or [])
@@ -1321,6 +1328,8 @@ class PainPointCrew:
             quote_count=len(quotes),
         )
 
+        # Defensive getattr: helpers are also exercised on bare instances (object.__new__) in tests.
+        self._stance_gate_calls = getattr(self, "_stance_gate_calls", 0) + 1
         try:
             result, _usage = LLMService.invoke_structured(
                 prompt=prompt,
@@ -1331,6 +1340,8 @@ class PainPointCrew:
                 reasoning_effort="minimal",
             )
         except Exception as e:
+            # summarized into degradation_events at end of analyze()
+            self._stance_gate_failures = getattr(self, "_stance_gate_failures", 0) + 1
             logger.warning(
                 f"[Stance] gate failed for '{pain_point.title[:40]}', keeping "
                 f"{len(quotes)} unfiltered quotes (fail-open): {e}"
@@ -2094,6 +2105,15 @@ class PainPointCrew:
                 )
             else:
                 logger.info(f"[Stage 6] Content size: {content_tokens:,} tokens (limit: {max_content_tokens:,})")
+            # Token-pressure degradation event: near/over the budget means source content was (or is
+            # about to be) auto-reduced — the pain analysis saw less than what was collected.
+            if content_tokens > 0.9 * max_content_tokens:
+                pct = content_tokens / max_content_tokens * 100
+                self.degradation_events.append(
+                    f"Pain analysis input at {pct:.0f}% of the token limit "
+                    f"({content_tokens:,} of {max_content_tokens:,}) — source content was auto-reduced; "
+                    f"some collected discussions were not analyzed."
+                )
 
             if settings.token_monitoring_enabled:
                 # Detailed token breakdown
@@ -2539,6 +2559,14 @@ class PainPointCrew:
                     sample_quote = result.pain_points[0].representative_quotes[0][:150]
                     logger.debug(f"Sample quote: '{sample_quote}...'")
                 logger.debug("=" * 80)
+            # Summarize fail-open stance-gate failures ONCE per run (per-pain warnings already logged).
+            # Lands in state.pipeline_degradations → report quality_caveats.
+            if getattr(self, "_stance_gate_failures", 0):
+                self.degradation_events.append(
+                    f"Quote stance filter unavailable for {self._stance_gate_failures}/"
+                    f"{getattr(self, '_stance_gate_calls', 0)} pain points (LLM errors, fail-open) — "
+                    f"those quotes were kept unfiltered and may include neutral/off-stance mentions."
+                )
             logger.info(
                 f"Pain point analysis complete: "
                 f"{len(result.pain_points)} pain points identified, "

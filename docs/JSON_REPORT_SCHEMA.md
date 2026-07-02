@@ -1458,10 +1458,14 @@ Array of 7 recommended next steps.
   "novelty_score": 0.6,
   "novelty_rationale": "string",
   "differentiation_locus": "string",
+  "idea_tier": "single",
   "winning_angle": "distribution_seo",
   "angle_rationale": "string",
   "build_feasibility_score": 0.8,
   "solo_dev_feasibility": "string",
+  "demand_quotes": ["verbatim community quote evidencing an addressed pain"],
+  "critic_concern": "calibration critic's market_fit reason (the bear case)",
+  "incumbent_parity": "partial by MoeGo: schedule management with route optimization",
   "top_competitors": ["string"],
   "market_gaps": ["string"],
   "competitive_intensity": "Medium",
@@ -1483,6 +1487,12 @@ Array of 7 recommended next steps.
   }
 }
 ```
+
+`demand_quotes` (max 3) and `critic_concern` form the **honest brief** (2026-07-02): the
+evidence half (verbatim community quotes for the idea's addressed pains, round-robin across
+pains) and the adversarial half (the independent calibration critic's market_fit reason,
+verbatim). Both are `null` on legacy reports and quote-less pains. Present on Phase-2
+`alternative_solutions` and the Phase-1 preview equivalents.
 
 `tags` is an `IdeaTags` object of **closed-vocabulary filter facets** (chips now, filtering
 later). It is also present on each `SolutionIdea` and the preview `alternative_solutions`. Every
@@ -1621,6 +1631,7 @@ report (computed once, read from state). Null when there are no pains and no ide
 | `confidence_score` | 0.0 - 1.0 | Higher = more confident |
 | `novelty_score` | 0.0 - 1.0 | Higher = more novel |
 | `novelty_rationale` | string\|null | One line tying the novelty score to the idea's `project_type` (why it's expected/low/high for that type). Shown in the novelty score tooltip |
+| `idea_tier` | string | Portfolio-funnel provenance: `single` (cell-tournament winner), `salvaged` (tournament loser rescued by the calibration critic), `bundle` (synthesis-stage multi-pain product). Drives the alternatives tier badge; absent/`single` on legacy reports |
 | `winning_angle` | string\|null | `WinningAngle` enum — the angle that gives the idea its best real chance; the idea is judged and ranked on executing *that* angle |
 | `angle_rationale` | string\|null | 1-3 sentences naming the angle, the nearest competitor, and where the idea's differentiation lives |
 | `obviousness_score` | 0.0 - 1.0 | **Lower = more original** (independent novelty critic). Shown as Originality = 1 − this |

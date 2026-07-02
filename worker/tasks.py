@@ -922,6 +922,10 @@ def run_regenerate_ideas(
                         "mechanism_tag": getattr(s, "mechanism_tag", None),
                         "data_source_tag": getattr(s, "data_source_tag", None),
                         "journey_tag": getattr(s, "journey_tag", None),
+                        # Critic scoreboard: lets the regen directive steer new ideators
+                        # toward angles the calibration critic actually rewarded.
+                        "market_fit_score": getattr(s, "market_fit_score", None),
+                        "calibration_notes": getattr(s, "calibration_notes", None),
                     }
         existing_ideas_for_crew = [
             {
@@ -931,6 +935,8 @@ def run_regenerate_ideas(
                 "mechanism_tag": idea_lookup.get(n.lower(), {}).get("mechanism_tag"),
                 "data_source_tag": idea_lookup.get(n.lower(), {}).get("data_source_tag"),
                 "journey_tag": idea_lookup.get(n.lower(), {}).get("journey_tag"),
+                "market_fit_score": idea_lookup.get(n.lower(), {}).get("market_fit_score"),
+                "calibration_notes": idea_lookup.get(n.lower(), {}).get("calibration_notes"),
             }
             for n in existing_solution_names
         ]

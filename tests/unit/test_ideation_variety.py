@@ -211,7 +211,9 @@ class TestRegenerationDirective:
         assert self._fn()(SimpleNamespace(existing_ideas=[])) == ""
 
     def test_angle_diversification_on_regeneration(self):
-        out = self._fn()(SimpleNamespace(existing_ideas=[{"name": "A"}, {"name": "B"}]))
+        # unscored ideas → scoreboard renders '' (legacy path); stub it on the fake self
+        out = self._fn()(SimpleNamespace(existing_ideas=[{"name": "A"}, {"name": "B"}],
+                                         _format_scoreboard=lambda: ""))
         assert "NEW ANGLES" in out and "ANGLE MAP" in out
         # mentions different dimensions to shift
         for dim in ("MECHANISM", "USER-JOURNEY", "PERSONA", "DATA SOURCE", "CONTRARIAN"):

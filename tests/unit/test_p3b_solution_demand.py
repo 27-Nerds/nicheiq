@@ -38,3 +38,16 @@ def test_falls_back_to_total_when_niche_relevant_missing():
 def test_noop_when_no_volume():
     assert demand_with_beachhead_magnitude(0.98, None, 0) == 0.98
     assert demand_with_beachhead_magnitude(0.98, 0, 0) == 0.98
+
+
+def test_explicit_zero_nrv_gets_no_magnitude_credit():
+    """Bug-fix 2026-07-02 (cottage-food run): nrv == 0 means graded-and-NOTHING-passed — total_volume is
+    then the drifted category number and must NOT be blended (it lifted demand 0.88→0.94 live). Neutral
+    no-op instead."""
+    assert demand_with_beachhead_magnitude(0.88, niche_relevant_volume=0, total_volume=1_628_480) == 0.88
+
+
+def test_none_nrv_still_falls_back_to_total():
+    # legacy/not-computed path unchanged: blends total_volume
+    d = demand_with_beachhead_magnitude(0.9, niche_relevant_volume=None, total_volume=50_000)
+    assert d == pytest.approx(0.920, abs=3e-3)

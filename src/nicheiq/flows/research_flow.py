@@ -1785,6 +1785,12 @@ RULES:
                         for landscape in comp_analysis.solution_landscapes:
                             landscapes[landscape.solution_name] = landscape
 
+                    # Honest brief: pain-title → community quotes (same helper as Phase 2)
+                    from ..utils.calibration_notes import extract_criterion_reason
+                    from ..utils.honest_brief import build_quotes_by_pain, demand_quotes_for
+                    quotes_by_pain = build_quotes_by_pain(
+                        getattr(getattr(state, "pain_point_analysis", None), "pain_points", None))
+
                     for solution in idea_gen.solution_ideas:
                         description = getattr(solution, "description", "") or ""
                         tech_approach = getattr(solution, "technical_approach", "") or ""
@@ -1872,6 +1878,14 @@ RULES:
                             # Phase 8 of detail-page IA rework — copy through
                             # so /pain-point/[slug] can cross-link to alts.
                             "pain_points_addressed": list(getattr(solution, "pain_points_addressed", []) or []),
+                            # Honest brief: evidence + the critic's bear case (None-safe)
+                            "demand_quotes": demand_quotes_for(
+                                getattr(solution, "pain_points_addressed", None),
+                                quotes_by_pain) or None,
+                            "critic_concern": extract_criterion_reason(
+                                getattr(solution, "calibration_notes", None),
+                                "market_fit", max_len=280) or None,
+                            "incumbent_parity": getattr(solution, "incumbent_parity", None),
                             # Closed-vocabulary filter facets (chips + future filtering).
                             "tags": (
                                 solution.tags.model_dump()
@@ -2494,7 +2508,40 @@ Return a valid JSON object with this structure (emit the fields in this order):
         # fully fault-tolerant: any failure falls back to empty anchor lists and
         # the run continues with anchor-based drift protection inactive.
         self._extract_niche_anchors(niche_input, context)
+        self._discover_anchor_subreddits(context)
         return context
+
+    def _discover_anchor_subreddits(self, context: "NicheContext") -> None:
+        """Find REAL subreddits by keyword search and append them to anchor_communities.
+
+        LLM-recalled community names hallucinate for small niches (live 2026-07-02: Stage 1
+        confidently named the nonexistent r/CottageFood while the real r/CottageFoodBusiness and
+        r/cottagefoodoperators went unfound). Queries = the anchors call's community_search_terms
+        + queries derived from the recalled anchor NAMES themselves (even a hallucinated name is a
+        good QUERY). Discovered subs are appended as 'r/Name' entries, so the anchor-subreddit
+        collection pass and the report's community hubs pick them up with no further wiring.
+        Fail-soft: any error leaves anchor_communities unchanged.
+        """
+        if not settings.enable_reddit:
+            return
+        try:
+            from ..tools.reddit_tool import RedditCollectorTool as _RedditTool
+            tool = _RedditTool()
+            queries = list(dict.fromkeys(
+                [q.strip().lower() for q in (context.community_search_terms or []) if q and q.strip()]
+                + _RedditTool.queries_from_anchor_names(context.anchor_communities or [])
+            ))[:6]
+            if not queries:
+                return
+            niche_text = f"{context.niche_description} {context.user_target_audience or ''}"
+            found = tool.discover_subreddits(queries, niche_text)
+            existing = {n.lower() for n in _RedditTool.extract_subreddits_from_anchors(
+                context.anchor_communities or [])}
+            for c in found:
+                if c["name"].lower() not in existing:
+                    context.anchor_communities.append(f"r/{c['name']} (Reddit, discovered)")
+        except Exception as e:
+            logger.warning(f"[Stage 1] Subreddit discovery failed (non-fatal): {str(e)[:100]}")
 
     def _extract_niche_anchors(self, niche_input: str, context: "NicheContext") -> None:
         """Populate context.anchor_* fields via an isolated reasoning-model call.
@@ -2511,6 +2558,7 @@ Return a valid JSON object with this structure (emit the fields in this order):
             disambiguation_exclusions: list[str] = Field(default_factory=list)
             anchor_communities: list[str] = Field(default_factory=list)
             audience_jargon: list[str] = Field(default_factory=list)
+            community_search_terms: list[str] = Field(default_factory=list)
 
         # Outcome-oriented prompt + explicit output contract. Two FORMAT-ONLY
         # illustrations from maximally-different, unrelated domains calibrate the
@@ -2520,7 +2568,7 @@ Return a valid JSON object with this structure (emit the fields in this order):
 **Niche Input:** {niche_input}
 **Refined Description:** {context.niche_description}
 
-Extract four lists. Be specific and derive EVERYTHING from the niche above.
+Extract five lists. Be specific and derive EVERYTHING from the niche above.
 
 1. **anchor_entities** (8-20): SPECIFIC named entities — proper-noun products,
    compounds, models, brands, or named techniques/protocols — that an on-topic
@@ -2532,6 +2580,10 @@ Extract four lists. Be specific and derive EVERYTHING from the niche above.
 3. **anchor_communities** (3-8): specific online communities/forums where this niche
    concentrates. Prefer specific over general.
 4. **audience_jargon** (8-12): insider terms/phrases the audience actually uses.
+5. **community_search_terms** (3-6): SHORT terms (STRICTLY 1-3 words) someone would
+   type into a community-search box to FIND this niche's groups — the topic/identity
+   words communities NAME themselves after (e.g. a hobby name, a practitioner identity,
+   a defining compound term). NOT jargon, NOT sentences.
 
 COMPLETION CHECK before answering: verify every anchor_entities item is a specific
 named item (proper noun / compound / model / branded technique), NOT a category word.
@@ -2547,7 +2599,7 @@ reuse this content, derive everything from the niche above) ---
 --- END ILLUSTRATIONS ---
 
 Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
-"anchor_communities": [...], "audience_jargon": [...]}}"""
+"anchor_communities": [...], "audience_jargon": [...], "community_search_terms": [...]}}"""
 
         try:
             anchors, usage = LLMService.invoke_structured(
@@ -2561,6 +2613,7 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             context.disambiguation_exclusions = anchors.disambiguation_exclusions or []
             context.anchor_communities = anchors.anchor_communities or []
             context.audience_jargon = anchors.audience_jargon or []
+            context.community_search_terms = anchors.community_search_terms or []
             if hasattr(self, 'cost_tracker') and self.cost_tracker:
                 self.cost_tracker.record_llm_usage("Stage 1 - Niche Anchors", usage.to_dict())
         except Exception as e:
@@ -2643,11 +2696,32 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                     from ..tools.reddit_tool import RedditCollectorTool as _RedditTool
 
                     existing_urls = [r.url for r in reddit_results]
-                    target_subs = _RedditTool.extract_subreddits_from_urls(existing_urls)
+                    url_subs = _RedditTool.extract_subreddits_from_urls(existing_urls)
+                    praw_tool = _RedditTool()
+
+                    # Anchor-subreddit targeting (always on; live-verified 2026-07-02): prepend the
+                    # DEDICATED communities Stage 1 identified (anchor_communities) ahead of the
+                    # URL-extracted subs — otherwise the native pass only re-searches what generic
+                    # keyword search already found (rich-get-richer; r/Baking 149 posts, dedicated sub
+                    # 0). Anchor names are LLM output → pre-validate so a hallucinated sub can't trip
+                    # the search circuit breaker (live-proven: caught nonexistent 'r/CottageFood' and
+                    # degraded to a clean no-op). Known limit: LLM-memory anchors are unreliable for
+                    # small communities — a PRAW subreddits.search discovery step is the backlogged fix.
+                    anchors = getattr(self.state.niche_context, "anchor_communities", None) or []
+                    anchor_subs = _RedditTool.extract_subreddits_from_anchors(anchors)
+                    if anchor_subs:
+                        anchor_subs = praw_tool.validate_subreddits(anchor_subs)
+                        logger.info(f"[Reddit] Anchor subreddits from Stage 1: {anchor_subs}")
+                    seen_subs: set[str] = set()
+                    target_subs = []
+                    for s in anchor_subs + url_subs:
+                        if s.lower() not in seen_subs:
+                            seen_subs.add(s.lower())
+                            target_subs.append(s)
+                    target_subs = target_subs[:settings.reddit_native_max_subreddits]
 
                     if target_subs:
                         native_queries = reddit_queries[:max(1, math.ceil(len(reddit_queries) * settings.reddit_native_search_query_fraction))]
-                        praw_tool = _RedditTool()
                         praw_results = praw_tool.search_subreddits(
                             queries=[q.query for q in native_queries],
                             subreddits=target_subs,
@@ -2657,6 +2731,16 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                         )
                         reddit_results.extend(praw_results)
                         logger.info(f"[Reddit] Found {len(praw_results)} results from PRAW native search")
+                        # Small dedicated subs (live-proven r/CottageFoodBusiness, 83 subscribers):
+                        # query search inside them is structurally empty — wholesale-fetch their
+                        # new/top listings instead; thread validation grades them like any candidate.
+                        wholesale = praw_tool.fetch_small_subreddit_posts(
+                            target_subs,
+                            already_collected_urls=set(existing_urls) | {r.url for r in praw_results},
+                        )
+                        reddit_results.extend(wholesale)
+                        if wholesale:
+                            logger.info(f"[Reddit] Wholesale small-sub fetch added {len(wholesale)} candidates")
                     else:
                         logger.info("[Reddit] No subreddits identified for PRAW native search")
                 except Exception as e:
@@ -2690,6 +2774,15 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             reddit_urls = list(grade_by_url)
             filtered_count = len(unique_reddit_results) - len(reddit_urls)
             logger.info(f"[Reddit] Filtered {filtered_count} irrelevant, kept {len(reddit_urls)} relevant discussions")
+
+            # Degradation ledger: batches whose LLM grading failed OPEN kept threads at a default
+            # grade without real relevance grading — surface it as a report quality caveat.
+            if getattr(validator, "failed_open_threads", 0):
+                msg = (f"Thread relevance grading unavailable for {validator.failed_open_threads} "
+                       f"Reddit thread(s) across {validator.failed_open_batches} batch(es) (LLM errors, "
+                       f"fail-open) — those threads were kept ungraded and may be off-topic.")
+                if msg not in self.state.pipeline_degradations:
+                    self.state.pipeline_degradations.append(msg)
 
             # Collect full posts
             logger.info("[Reddit] Collecting posts and comments...")
@@ -3112,6 +3205,13 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
         result = pain_point_crew.analyze()
         logger.info(f"[Parallel] PainPointCrew complete: {len(result.pain_points) if result else 0} pain points")
 
+        # Copy the crew's degradation ledger into state (mirrors the coverage_caveats pattern) so
+        # fail-open gates / token pressure surface as report quality caveats instead of log-only.
+        crew_degradations = getattr(pain_point_crew, "degradation_events", None) or []
+        for d in crew_degradations:
+            if d not in self.state.pipeline_degradations:
+                self.state.pipeline_degradations.append(d)
+
         # Collect Knowledge objects for cleanup
         knowledge_objects = []
         if getattr(pain_point_crew, '_crew_knowledge', None):
@@ -3153,6 +3253,8 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             market_segments=getattr(_nc, "market_segments", None),
             industry_boundaries=getattr(_nc, "industry_boundaries", "") or "",
             disambiguation_exclusions=getattr(_nc, "disambiguation_exclusions", None),
+            # Codex-review fix: primary segment must respect the user's stated audience
+            user_target_audience=getattr(_nc, "user_target_audience", None),
         )
 
         # Use provided pain_point_analysis or create empty placeholder for parallel execution
@@ -4219,8 +4321,22 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             )
             # 2) contains-seed expansion of the grounded seeds
             suggestions: list[dict] = []
+            n_contains = 0
             for s in seeds:
                 suggestions += self.dataforseo_tool.get_keyword_suggestions(s, limit=settings.contains_seed_per_seed)
+            n_contains = len(suggestions)
+            # 2b) related-keywords arm (SERP 'searches related to' graph): semantically-adjacent REAL
+            # queries that DON'T contain the seed — the gap contains-seed can't cover ('cottage food
+            # law texas' → 'selling baked goods from home texas'). Appended into the SAME suggestions
+            # list so the grading gate below controls drift identically. A/B-validated 2026-07-02
+            # (flag removed): +17 exclusive on-idea licensing keywords, 27% gate survival, tiny cost.
+            for s in seeds:
+                suggestions += self.dataforseo_tool.get_related_keywords(
+                    s, depth=settings.related_keywords_depth,
+                    limit=settings.related_keywords_per_seed)
+            logger.info(
+                f"[Stage 6][ContainsSeed] per-arm: {n_contains} contains-seed + "
+                f"{len(suggestions) - n_contains} related-graph suggestions")
             new = list(dict.fromkeys(
                 k.get("keyword") for k in suggestions
                 if k.get("keyword") and (k.get("keyword") or "").lower() not in existing
@@ -5805,7 +5921,13 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             needs_pivot: list[str] = []
             for solution_name in solutions_to_validate:
                 state = batch_states.get(solution_name)
-                if state and state["validation_result"] and state["relevance_score"] >= relevance_threshold:
+                # Acceptance needs BOTH pool relevance AND actual validated keywords. A pool can score
+                # just over the relevance threshold while ZERO keywords individually pass (observed live
+                # 2026-07-02: all 5 solutions accepted at relevance 0.61 with 0 good keywords → empty
+                # validated sets → nrv=0 cascaded into demand/beachhead). 0 good keywords ⇒ pivot.
+                if (state and state["validation_result"]
+                        and state["relevance_score"] >= relevance_threshold
+                        and (state["good_keywords"] or [])):
                     vr = state["validation_result"]
                     good_keywords = state["good_keywords"] or []
                     vr["attempts_made"] = 1

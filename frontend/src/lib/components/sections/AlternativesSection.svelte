@@ -95,6 +95,11 @@ import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
               {/if}
             </div>
             <div class="flex flex-wrap gap-2">
+              {#if solution.idea_tier === "bundle"}
+                <Badge variant="accent" size="sm">Bundle product</Badge>
+              {:else if solution.idea_tier === "salvaged"}
+                <Badge variant="info" size="sm">Rescued concept</Badge>
+              {/if}
               {#if solution.solo_dev_feasibility != null}
                 {@const feasibility = solution.solo_dev_feasibility}
                 {#if Number.isFinite(feasibility)}
@@ -394,6 +399,46 @@ import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
               </div>
             {/if}
           </div>
+
+          <!-- Honest brief: community evidence + the critic's bear case -->
+          {#if solution.demand_quotes?.length}
+            <div class="mt-4 border-t border-border pt-4">
+              <div class="text-xs text-text-muted mb-2">
+                What the community says
+              </div>
+              <div class="space-y-2">
+                {#each solution.demand_quotes.slice(0, 3) as quote}
+                  <blockquote
+                    class="text-sm text-text-secondary italic border-l-2 border-border pl-3"
+                  >
+                    "{quote}"
+                  </blockquote>
+                {/each}
+              </div>
+            </div>
+          {/if}
+          {#if solution.critic_concern}
+            <div class="mt-4 p-3 rounded border border-border">
+              <div class="text-xs text-text-muted font-medium mb-1">
+                Independent critic's take
+              </div>
+              <p class="text-sm text-text-secondary">
+                {solution.critic_concern}
+              </p>
+            </div>
+          {/if}
+          {#if solution.incumbent_parity}
+            <div class="mt-4 p-3 rounded border border-border">
+              <div class="text-xs text-text-muted font-medium mb-1">
+                Incumbent check (web-verified)
+              </div>
+              <p class="text-sm text-text-secondary">
+                {solution.incumbent_parity === "none found"
+                  ? "No incumbent found shipping this idea's core mechanism."
+                  : solution.incumbent_parity}
+              </p>
+            </div>
+          {/if}
 
           <!-- Pivot Trigger -->
           {#if solution.pivot_trigger}

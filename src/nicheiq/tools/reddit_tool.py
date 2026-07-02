@@ -26,8 +26,33 @@ if TYPE_CHECKING:
 # Compiled outside the Pydantic model to avoid BaseTool treating it as a private attr
 _SUBREDDIT_RE = re.compile(r"reddit\.com/r/([^/]+)")
 
+# Platform/boilerplate words stripped when turning anchor-community NAMES into search queries
+# (module-level: an underscore CLASS attr on a pydantic BaseTool becomes a ModelPrivateAttr).
+_ANCHOR_NOISE_WORDS = {
+    "reddit", "facebook", "group", "groups", "forum", "forums", "community", "communities",
+    "association", "discord", "server", "subreddit", "official", "the", "com", "org", "net",
+}
+
 # Module-level cache instance (shared across tool instances)
 _cache = RedditThreadCache()
+
+# Subscriber counts per subreddit (lowercased name), memoized for the process lifetime —
+# accessing praw Subreddit.subscribers triggers one API fetch per subreddit; posts from the
+# same sub must not re-fetch. (Module-level for the same pydantic BaseTool reason as above.)
+_SUB_SUBSCRIBERS_CACHE: dict[str, int | None] = {}
+
+
+def _cached_subscribers(sub) -> int | None:
+    """Subscriber count for a praw Subreddit, memoized per name; None if unavailable."""
+    name = (getattr(sub, "display_name", "") or "").lower()
+    if not name:
+        return None
+    if name not in _SUB_SUBSCRIBERS_CACHE:
+        try:
+            _SUB_SUBSCRIBERS_CACHE[name] = int(sub.subscribers)
+        except Exception:
+            _SUB_SUBSCRIBERS_CACHE[name] = None
+    return _SUB_SUBSCRIBERS_CACHE[name]
 
 
 # Process-wide PRAW client singleton. Each praw.Reddit() instance owns a
@@ -188,6 +213,7 @@ class RedditCollectorTool(BaseTool):
                 created_utc=datetime.fromtimestamp(submission.created_utc, tz=timezone.utc),
                 url=url,
                 comments=comments,
+                subreddit_subscribers=_cached_subscribers(submission.subreddit),
             )
 
             logger.info(
@@ -249,6 +275,13 @@ class RedditCollectorTool(BaseTool):
         self-contained article/guide (selftext >= reddit_article_min_chars), whose value is its own
         text, not the discussion; for those the comment floor is waived (the upvote bar still holds).
         """
+        # Small dedicated communities (r/CottageFoodBusiness: 83 subscribers) can't clear absolute
+        # engagement bars — their on-niche posts sit at score 1-3 with 0-3 comments, which is
+        # exactly the content the pipeline exists to mine. Waive the bars down to a minimal score
+        # floor; thread-relevance grading remains the real filter for these posts.
+        subs = getattr(post, "subreddit_subscribers", None)
+        if subs is not None and subs <= settings.reddit_small_sub_max_subscribers:
+            return post.score >= settings.reddit_small_sub_min_upvotes
         discount = settings.relevance_engagement_discount
         if not grade or discount <= 0:
             factor = 1.0
@@ -359,6 +392,137 @@ class RedditCollectorTool(BaseTool):
                 counts[match.group(1)] += 1
         return [name for name, _ in counts.most_common(max_subreddits)]
 
+    @staticmethod
+    def extract_subreddits_from_anchors(anchors: list[str]) -> list[str]:
+        """Parse subreddit names out of Stage-1 anchor_communities strings.
+
+        Anchors are LLM prose entries like ``"Reddit: r/CottageFood"``, ``"r/Baking"``, or full
+        ``reddit.com/r/...`` URLs, mixed with non-Reddit hubs ("CakeCentral.com Forums",
+        "Facebook group: ...") which are silently ignored. Returns bare subreddit names,
+        case-insensitively deduped, input order preserved.
+        """
+        out: list[str] = []
+        seen: set[str] = set()
+        pat = re.compile(r"(?:reddit\.com)?/?\br/([A-Za-z0-9_]{2,21})\b", re.IGNORECASE)
+        for a in anchors or []:
+            m = pat.search(a or "")
+            if not m:
+                continue
+            name = m.group(1)
+            if name.lower() not in seen:
+                seen.add(name.lower())
+                out.append(name)
+        return out
+
+    def validate_subreddits(self, names: list[str]) -> list[str]:
+        """Drop subreddits that don't resolve (hallucinated/banned/private LLM anchors).
+
+        One lazy attribute fetch per name; a nonexistent sub would otherwise fail EVERY query in
+        search_subreddits and can trip its 3-consecutive-failure circuit breaker, killing valid
+        subs' queries. Fail-soft: on any error the name is dropped with a log line.
+        """
+        reddit = _get_shared_reddit_client()
+        valid: list[str] = []
+        for name in names or []:
+            try:
+                _ = reddit.subreddit(name).id  # lazy fetch — raises for nonexistent/banned/private
+                valid.append(name)
+            except Exception as e:
+                logger.info(f"[Reddit] Dropping unresolvable anchor subreddit r/{name}: {type(e).__name__}")
+        return valid
+
+    @staticmethod
+    def queries_from_anchor_names(anchors: list[str], max_queries: int = 6) -> list[str]:
+        """Turn Stage-1 anchor_communities NAMES (any platform) into short community-search queries.
+
+        Even a HALLUCINATED community name is a good QUERY — the LLM knows what the community would
+        be called ('r/CottageFood' → 'cottage food' finds the real r/CottageFoodBusiness). Strips
+        platform parentheticals/suffixes, de-camel-cases r/Names, drops boilerplate words, and trims
+        to <=3 content words. Deduped, order preserved.
+        """
+        out: list[str] = []
+        seen: set[str] = set()
+        for a in anchors or []:
+            if not a:
+                continue
+            s = re.sub(r"\([^)]*\)", " ", str(a))          # strip parentheticals "(Facebook Group)"
+            s = re.sub(r"https?://\S+", " ", s)
+            m = re.search(r"\br/([A-Za-z0-9_]{2,21})\b", s)
+            if m:  # de-camel-case the subreddit name: CottageFoodLaws -> cottage food laws
+                s = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", m.group(1)).replace("_", " ")
+            words = [w for w in re.split(r"[^A-Za-z0-9]+", s)
+                     if w and w.lower() not in _ANCHOR_NOISE_WORDS]
+            q = " ".join(words[:3]).lower().strip()
+            if len(q) >= 4 and q not in seen:
+                seen.add(q)
+                out.append(q)
+            if len(out) >= max_queries:
+                break
+        return out
+
+    def discover_subreddits(
+        self,
+        queries: list[str],
+        niche_text: str,
+        limit_per_query: int = 8,
+        max_results: int = 4,
+        min_subscribers: int = 25,
+    ) -> list[dict]:
+        """Find REAL subreddits by keyword via PRAW subreddits.search (LLM-recalled names hallucinate
+        for small communities — live: the nonexistent r/CottageFood).
+
+        Filter: public/restricted only (restricted subs are still readable), not over18, >= a LOW
+        subscriber floor (dedicated niche subs can be tiny: r/CottageFoodBusiness has 83 subscribers —
+        a 500+ floor would kill exactly the discoveries wanted). Rank by stemmed content-token OVERLAP
+        between (niche_text + queries) and the sub's name/title/description — kills same-word noise
+        ('deep sky' → No Man's Sky) deterministically; require >= 2 overlapping tokens. Ties broken by
+        subscribers. Returns [{'name','subscribers','score','title'}] best-first, fail-soft.
+        """
+        from ..utils.text_stemmer import stem_tokens
+        from ..utils.validation.dedup import STOPWORDS, normalize_text
+
+        def _tokens(text: str) -> set[str]:
+            return stem_tokens({
+                t for t in normalize_text(text or "").split()
+                if len(t) > 1 and t not in STOPWORDS
+            })
+
+        niche_tokens = _tokens(f"{niche_text} {' '.join(queries or [])}")
+        reddit = _get_shared_reddit_client()
+        cand: dict[str, dict] = {}
+        for q in (queries or []):
+            try:
+                for s in reddit.subreddits.search(q, limit=limit_per_query):
+                    try:
+                        name = s.display_name
+                        if name.lower() in cand:
+                            continue
+                        if getattr(s, "subreddit_type", "public") not in ("public", "restricted"):
+                            continue
+                        if getattr(s, "over18", False):
+                            continue
+                        subs_ct = getattr(s, "subscribers", 0) or 0
+                        if subs_ct < min_subscribers:
+                            continue
+                        # name split (CamelCase + underscores) + title + description
+                        name_text = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", name).replace("_", " ")
+                        sub_text = f"{name_text} {getattr(s, 'title', '') or ''} " \
+                                   f"{getattr(s, 'public_description', '') or ''}"
+                        score = len(niche_tokens & _tokens(sub_text))
+                        if score >= 2:
+                            cand[name.lower()] = {"name": name, "subscribers": subs_ct,
+                                                  "score": score, "title": getattr(s, "title", "") or ""}
+                    except Exception:
+                        continue  # one bad candidate never kills discovery
+            except Exception as e:
+                logger.warning(f"[Reddit] Subreddit discovery failed for query '{q}': {str(e)[:80]}")
+        ranked = sorted(cand.values(), key=lambda c: (c["score"], c["subscribers"]), reverse=True)
+        top = ranked[:max_results]
+        if top:
+            logger.info("[Reddit] Discovered subreddits: " + ", ".join(
+                f"r/{c['name']} (score={c['score']}, {c['subscribers']:,} subs)" for c in top))
+        return top
+
     def search_subreddits(
         self,
         queries: list[str],
@@ -440,6 +604,78 @@ class RedditCollectorTool(BaseTool):
                         f"PRAW search failed for '{query}' in r/{sub_name}: {e} "
                         f"(failure {consecutive_failures}/3)"
                     )
+
+        return results
+
+    def fetch_small_subreddit_posts(
+        self,
+        subreddits: list[str],
+        already_collected_urls: set[str] | None = None,
+    ) -> list["SearchResultItem"]:
+        """Wholesale-fetch new + top(all) listings from SMALL dedicated subreddits.
+
+        Native search inside a tiny sub (multi-word queries, time-windowed) is structurally
+        empty — an 83-subscriber niche sub has a handful of posts total. Every post in a
+        dedicated community is on-niche by construction, so pull its listings wholesale and
+        let thread validation grade them like any other candidate.
+
+        Subs above ``reddit_small_sub_max_subscribers`` are skipped (query search covers them).
+
+        Returns:
+            List of SearchResultItem (url, title, snippet) — collection happens in
+            ``collect_posts()``, same as ``search_subreddits``.
+        """
+        from ..models.research_state import SearchResultItem
+
+        if not subreddits:
+            return []
+
+        limit = settings.reddit_small_sub_fetch_limit
+        seen_urls: set[str] = set(already_collected_urls or set())
+        results: list[SearchResultItem] = []
+        reddit = self._get_reddit_client()
+
+        for sub_name in subreddits:
+            try:
+                sub = reddit.subreddit(sub_name)
+                n_subs = _cached_subscribers(sub)
+                if n_subs is None or n_subs > settings.reddit_small_sub_max_subscribers:
+                    continue
+                batch: list = []
+                authors: list[str] = []
+                batch_urls: set[str] = set()
+                for listing in (sub.new(limit=limit), sub.top(time_filter="all", limit=limit)):
+                    for submission in listing:
+                        url = f"https://www.reddit.com{submission.permalink}"
+                        if url in seen_urls or url in batch_urls:
+                            continue
+                        batch_urls.add(url)
+                        authors.append(str(getattr(submission, "author", None) or "[deleted]"))
+                        batch.append(SearchResultItem(
+                            url=url,
+                            title=submission.title,
+                            snippet=(getattr(submission, "selftext", "") or "")[:300],
+                        ))
+                # Vendor/promo defense (codex-review finding: tiny on-topic vendor subs like
+                # r/InferX pass the waived engagement gate AND relevance grading — promo content
+                # IS on-niche). A small sub dominated by one author is marketing, not community.
+                if len(batch) >= 6 and authors:
+                    top_author, top_n = Counter(authors).most_common(1)[0]
+                    if top_n / len(batch) >= settings.reddit_small_sub_max_author_share:
+                        logger.info(
+                            f"[Reddit] Skipping r/{sub_name} — vendor/promo pattern "
+                            f"(u/{top_author} authored {top_n} of {len(batch)} posts)"
+                        )
+                        continue
+                seen_urls.update(batch_urls)
+                results.extend(batch)
+                logger.info(
+                    f"[Reddit] Wholesale-fetched {len(batch)} posts from small sub "
+                    f"r/{sub_name} ({n_subs} subscribers)"
+                )
+            except (praw.exceptions.PRAWException,
+                    prawcore.exceptions.PrawcoreException) as e:
+                logger.warning(f"[Reddit] Wholesale fetch failed for r/{sub_name}: {e}")
 
         return results
 

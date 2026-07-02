@@ -95,12 +95,21 @@ def demand_with_beachhead_magnitude(
 
     The ratio score rewards 'most keywords are individually clean' (have volume, low competition) but
     ignores MAGNITUDE — a thin beachhead of clean-but-tiny keywords can score ~1.0. We blend in a
-    log-scaled niche-relevant volume (falling back to total_volume when niche-relevance is unavailable)
-    so demand tracks real magnitude; the log floors a genuinely-thin-but-real idea rather than zeroing
-    it. Returns the original ratio_demand only if no usable volume is present (defensive no-op).
+    log-scaled niche-relevant volume so demand tracks real magnitude; the log floors a genuinely-
+    thin-but-real idea rather than zeroing it.
+
+    Fallback semantics (bug-fixed 2026-07-02 after the cottage-food run): an EXPLICIT
+    niche_relevant_volume == 0 means the keywords were graded and NOTHING passed — total_volume is then
+    precisely the drifted category number, and blending it REWARDS the failure (observed live: demand
+    0.88→0.94 on an empty validated set). So: nrv > 0 → blend nrv; nrv is None (never computed, legacy) →
+    blend total_volume; nrv == 0 → NO magnitude credit (return ratio unchanged, neutral no-op).
     """
-    vol = niche_relevant_volume if isinstance(niche_relevant_volume, (int, float)) and niche_relevant_volume > 0 \
-        else (total_volume or 0)
+    if isinstance(niche_relevant_volume, (int, float)) and not isinstance(niche_relevant_volume, bool):
+        if niche_relevant_volume <= 0:
+            return round(ratio_demand, 4)  # graded-and-empty → no magnitude credit
+        vol = niche_relevant_volume
+    else:
+        vol = total_volume or 0  # nrv never computed → total is the only signal available
     if not isinstance(vol, (int, float)) or vol <= 0:
         return round(ratio_demand, 4)
     magnitude = min(math.log10(vol + 1) / _DEMAND_VOL_LOG_DIVISOR, 1.0)

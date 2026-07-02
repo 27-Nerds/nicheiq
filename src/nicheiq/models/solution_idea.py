@@ -608,6 +608,23 @@ class BaseSolutionIdea(BaseModel):
         default=None,
         description="Realism critic's per-criterion 1-line reasons (audit/transparency; not user-facing).",
     )
+    incumbent_parity: Optional[str] = Field(
+        default=None,
+        description=(
+            "Web-verified mechanism-parity finding for top ideas, e.g. 'shipped by MoeGo: "
+            "route optimization (Smart Schedule)' or 'none found'. Set by the parity probe; "
+            "None when the probe didn't run for this idea."
+        ),
+    )
+    idea_tier: str = Field(
+        default="single",
+        description=(
+            "Portfolio-funnel provenance tier: 'single' (a per-cell tournament winner — one focused "
+            "tool), 'salvaged' (a tournament loser the calibration critic rescued via the salvage "
+            "gate), or 'bundle' (a synthesis-stage product composing several complementary pains). "
+            "Drives the report's tier badge; default 'single' keeps legacy data unchanged."
+        ),
+    )
     # Angle-aware evaluation (set by the in-cell angle classifier; None only on classify fail-soft).
     winning_angle: Optional[str] = Field(
         default=None,

@@ -147,7 +147,11 @@ class ThreadRelevanceValidator:
     """
 
     def __init__(self):
-        pass  # No longer need to initialize LLM instance
+        # Degradation counters: batches whose LLM validation failed OPEN (threads kept at a
+        # relevant-default grade without real grading). Summarized by the caller into
+        # state.pipeline_degradations — fail-open without surfacing is fail-silent.
+        self.failed_open_batches: int = 0
+        self.failed_open_threads: int = 0
 
     @staticmethod
     @lru_cache(maxsize=1000)
@@ -280,6 +284,8 @@ class ThreadRelevanceValidator:
             except Exception as e:
                 logger.warning(f"Validation batch failed: {e} - keeping all {len(batch)} results")
                 # On error, keep all results with a relevant-default grade (fail-open)
+                self.failed_open_batches += 1
+                self.failed_open_threads += len(batch)
                 results.extend([(result, 2) for result in batch])
 
         return results
@@ -426,4 +432,6 @@ class ThreadRelevanceValidator:
         except Exception as e:
             logger.error(f"[Thread Worker {chunk_num}] Failed: {e}")
             # Fail-open: return all threads with a relevant-default grade on error
+            self.failed_open_batches += 1
+            self.failed_open_threads += len(chunk)
             return [(result, 2) for result in chunk]

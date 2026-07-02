@@ -283,16 +283,31 @@ def assess_niche_difficulty(
     )
 
 
-_HEADLINES = {
-    "low": "Software Fit: Strong — a tool can directly own these pains",
-    "medium": "Software Fit: Moderate — a useful tool, with real caveats",
-    "high": "Software Fit: Limited — software mostly advises here",
-    "very_high": "Software Fit: Hard — software can only sit beside the problem",
+# FIT language comes from the ADDRESSABILITY band, not the difficulty band. difficulty_level
+# measures overall difficulty INCLUDING frictions (cold-start, saturation, calibration) and its
+# ≥2-flags escalation can push a strong-fit niche to "high" — mapping THAT to "Software Fit:
+# Limited" printed a contradiction next to an 88% addressability meter (codex-review finding,
+# 2026-07-02). Fit rating = can software address the pains; frictions color the clause/key points.
+_FIT_HEADLINES = {
+    "strong": "Software Fit: Strong — a tool can directly own these pains",
+    "moderate": "Software Fit: Moderate — a useful tool, with real caveats",
+    "limited": "Software Fit: Limited — software mostly advises here",
+    "very limited": "Software Fit: Hard — software can only sit beside the problem",
 }
 
-# The one rating word per band. The LLM writes the headline but must use this exact word, so the
-# headline can never drift out of sync with the classified band (validated after the LLM call).
-_BAND_RATING = {"low": "Strong", "medium": "Moderate", "high": "Limited", "very_high": "Hard"}
+# The one rating word per addressability band. The LLM writes the headline but must use this exact
+# word, so the headline can never drift out of sync with the classified fit (validated post-call).
+_FIT_RATING = {"strong": "Strong", "moderate": "Moderate", "limited": "Limited",
+               "very limited": "Hard"}
+
+
+def _fit_rating(software_addressability: float) -> str:
+    """Rating word for the 'Software Fit' headline — from addressability, never difficulty."""
+    return _FIT_RATING[_addressability_band(software_addressability)]
+
+
+def _fit_headline(software_addressability: float) -> str:
+    return _FIT_HEADLINES[_addressability_band(software_addressability)]
 
 
 def _addressability_band(score: float) -> str:
@@ -313,10 +328,53 @@ def _calibration_gap_word(gap: Optional[float]) -> str:
     return "notable" if gap >= CALIB_GAP_NOTABLE else "minor"
 
 
+def _share_word(share: Optional[float]) -> str:
+    """Proportion word for a 0-1 share. The LLM prose anchors on whatever it sees —
+    hand it a percentage and it echoes '49% of pains'; hand it a word and it writes
+    prose. So shares NEVER reach the prompt as numbers."""
+    if share is None:
+        return "n/a"
+    if share <= 0.02:
+        return "none"
+    if share < 0.15:
+        return "a small minority"
+    if share < 0.35:
+        return "about a quarter"
+    if share < 0.65:
+        return "about half"
+    if share < 0.85:
+        return "most"
+    return "nearly all"
+
+
+def _shape_concentration_word(hhi: float) -> str:
+    """Is the most common idea shape actually DOMINANT, or just the plurality? A 20%-share
+    plurality narrated as 'the dominant shape' misleads — HHI decides the honest word."""
+    if hhi >= 0.5:
+        return "one shape genuinely dominates the pool"
+    if hhi >= 0.3:
+        return "the pool leans toward this shape but stays mixed"
+    return "the pool is varied — no single shape dominates"
+
+
+def _saturation_judgment(rate: Optional[float]) -> str:
+    """Saturation share + the judgment the number implies — a bare '6%' reads as a
+    warning in prose when it actually means the space is open."""
+    if rate is None:
+        return "n/a"
+    if rate < 0.15:
+        return "low — the obvious tools are largely NOT already built"
+    if rate < 0.35:
+        return "moderate — some obvious angles are already shipping products"
+    return "high — most obvious angles are already shipping products"
+
+
 def _fallback_narrative(fp: NicheDifficultyFactPack, niche: Optional[str]) -> tuple[str, str]:
-    """Deterministic templated prose used when the LLM is skipped or fails."""
+    """Deterministic templated prose used when the LLM is skipped or fails. FIT statements come
+    from the addressability band; difficulty (frictions) colors the follow-on via key_points."""
     where = fp.dominant_project_type or "tooling"
-    if fp.difficulty_level in ("high", "very_high"):
+    fit_band = _addressability_band(fp.software_addressability)
+    if fit_band in ("limited", "very limited"):
         lead = (
             "This niche is hard to solve with software. "
             f"{fp.n_pains - int(round(fp.full_share * fp.n_pains))} of {fp.n_pains} pains "
@@ -324,12 +382,18 @@ def _fallback_narrative(fp: NicheDifficultyFactPack, niche: Optional[str]) -> tu
             "but not remove the root cause. The realistic shape is a "
             f"{where}-style advice/lookup layer, not a mechanism that solves the problem."
         )
-    elif fp.difficulty_level == "low":
+    elif fit_band == "strong":
         lead = (
-            "This niche is a strong fit for software. "
-            "The pains are workflow or data problems a tool can directly own, and "
-            "there's room for a real product rather than a thin reference."
+            "This niche is a strong fit for software — the pains are workflow or data "
+            "problems a tool can directly own."
         )
+        if fp.difficulty_level in ("high", "very_high"):
+            lead += (
+                " The difficulty is NOT fit: succeeding here carries real frictions — "
+                "see the factors below."
+            )
+        else:
+            lead += " There's room for a real product rather than a thin reference."
     else:
         lead = (
             "This niche is a moderate fit for software. "
@@ -340,7 +404,7 @@ def _fallback_narrative(fp: NicheDifficultyFactPack, niche: Optional[str]) -> tu
         lead += " " + fp.key_points[0]
     if fp.low_confidence:
         lead += " (Limited sample — treat as directional.)"
-    return _HEADLINES[fp.difficulty_level], lead
+    return _fit_headline(fp.software_addressability), lead
 
 
 def generate_niche_difficulty_verdict(
@@ -369,22 +433,25 @@ def generate_niche_difficulty_verdict(
             template,
             niche=niche or "this niche",
             target_audience=target_audience or "the stated audience",
-            rating_word=_BAND_RATING.get(fp.difficulty_level, "Moderate"),
+            rating_word=_fit_rating(fp.software_addressability),
             difficulty_level=fp.difficulty_level,
-            # Internal SCORES go to the LLM as plain bands (never raw 0-1 / precise %), so the prose
-            # can't echo them. Pain/idea SHARES stay as proportions — they're observable, not scores.
+            # EVERYTHING quantitative goes to the LLM as WORDS (bands / proportion words /
+            # judgment phrases), never numbers — the model anchors on and echoes any digit it
+            # sees ("software can only address 49% of the pains… already 6% saturated"),
+            # producing stat-soup prose the reader can't act on.
             software_addressability=_addressability_band(fp.software_addressability),
-            none_share=f"{fp.none_share:.0%}",
-            partial_share=f"{fp.partial_share:.0%}",
-            full_share=f"{fp.full_share:.0%}",
+            none_share=_share_word(fp.none_share),
+            partial_share=_share_word(fp.partial_share),
+            full_share=_share_word(fp.full_share),
             dominant_project_type=fp.dominant_project_type or "n/a",
-            derivative_mechanism_share=f"{fp.derivative_mechanism_share:.0%}",
+            shape_concentration=_shape_concentration_word(fp.project_type_hhi),
+            derivative_mechanism_share=_share_word(fp.derivative_mechanism_share),
             median_novelty=("n/a" if fp.median_novelty is None else score_band(fp.median_novelty)),
             novelty_calibration_gap=_calibration_gap_word(fp.novelty_calibration_gap),
-            cold_start_share=f"{fp.cold_start_share:.0%}",
-            concept_duplication_rate=("n/a" if fp.concept_duplication_rate is None else f"{fp.concept_duplication_rate:.0%}"),
+            cold_start_share=_share_word(fp.cold_start_share),
+            concept_duplication_rate=_saturation_judgment(fp.concept_duplication_rate),
             audience_scope=fp.audience_scope or "n/a",
-            audience_fit_ratio=("n/a" if fp.audience_fit_ratio is None else f"{fp.audience_fit_ratio:.0%}"),
+            audience_fit_ratio=_share_word(fp.audience_fit_ratio),
             key_points=" | ".join(fp.key_points) or "n/a",
             low_confidence=fp.low_confidence,
         )
@@ -394,10 +461,10 @@ def generate_niche_difficulty_verdict(
             temperature=0.7,
             model_name=settings.function_calling_llm,
         )
-        # Accept the LLM headline ONLY if it carries the band's required rating word — otherwise the
-        # deterministic _HEADLINES[band] stands. Guarantees the rating stays in sync while letting the
+        # Accept the LLM headline ONLY if it carries the fit rating word — otherwise the
+        # deterministic fit headline stands. Guarantees the rating stays in sync while letting the
         # LLM tailor the clause after the em-dash.
-        rating = _BAND_RATING.get(fp.difficulty_level, "")
+        rating = _fit_rating(fp.software_addressability)
         cand = result.headline.strip()
         if cand and f"software fit: {rating}".lower() in cand.lower():
             headline = cand

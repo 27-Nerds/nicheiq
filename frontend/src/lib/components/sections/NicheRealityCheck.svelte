@@ -10,52 +10,57 @@
 
   let { verdict, context = "report" }: Props = $props();
 
-  const band = $derived(verdict.difficulty_level);
+  // FIT visuals derive from software_addressability (cutoffs mirror the backend bands
+  // 0.70 / 0.45 / 0.25 in niche_difficulty.py). The difficulty band measures overall
+  // difficulty INCLUDING frictions and can be "high" on a strong-fit niche — deriving fit
+  // labels from it printed "Hard to fully address with software" next to an 88% meter.
+  const addr = $derived(verdict.software_addressability ?? 0);
+  const fitBand = $derived(
+    addr >= 0.7 ? "strong" : addr >= 0.45 ? "moderate" : addr >= 0.25 ? "limited" : "very_limited",
+  );
 
   // Severity ramp — never `accent` (orange is brand/interactive only).
   const badgeVariant = $derived(
-    band === "low"
+    fitBand === "strong"
       ? "success"
-      : band === "medium"
+      : fitBand === "moderate"
         ? "info"
-        : band === "high"
+        : fitBand === "limited"
           ? "warning"
           : "error",
   );
   const fitLabel = $derived(
-    band === "low"
+    fitBand === "strong"
       ? "Strong"
-      : band === "medium"
+      : fitBand === "moderate"
         ? "Moderate"
-        : band === "high"
+        : fitBand === "limited"
           ? "Limited"
           : "Hard",
   );
   // Meter marker color matches the badge severity.
   const accentColor = $derived(
-    band === "low"
+    fitBand === "strong"
       ? "var(--color-success)"
-      : band === "medium"
+      : fitBand === "moderate"
         ? "var(--color-secondary)"
-        : band === "high"
+        : fitBand === "limited"
           ? "var(--color-warning)"
           : "var(--color-error)",
   );
 
   // Left = software can't fix it (HARD); right = software owns it (STRONG).
-  const pct = $derived(
-    Math.max(0, Math.min(100, Math.round((verdict.software_addressability ?? 0) * 100))),
-  );
-  const positive = $derived(band === "low" || (verdict.software_addressability ?? 0) >= 0.7);
+  const pct = $derived(Math.max(0, Math.min(100, Math.round(addr * 100))));
+  const positive = $derived(fitBand === "strong");
   const pointsLabel = $derived(positive ? "What makes it strong" : "What makes it hard");
 
   // Qualitative addressability label — the meter bar is the visual gauge; the text never shows the raw %.
   const addrLabel = $derived(
-    band === "low"
+    fitBand === "strong"
       ? "Mostly tool-addressable"
-      : band === "medium"
+      : fitBand === "moderate"
         ? "Partly tool-addressable"
-        : band === "high"
+        : fitBand === "limited"
           ? "Hard to fully address with software"
           : "Largely beyond what software can fix",
   );

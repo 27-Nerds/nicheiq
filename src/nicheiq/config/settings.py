@@ -165,6 +165,19 @@ class Settings(BaseSettings):
             "thin-case trigger. env CONTAINS_SEED_THIN_SEED_THRESHOLD."
         ),
     )
+    related_keywords_depth: int = Field(
+        default=1, ge=1, le=3,
+        description=(
+            "related_keywords SERP-graph depth for the third idea-intent discovery arm in "
+            "_augment_idea_intent_keywords (A/B-validated 2026-07-02: +17 exclusive on-idea "
+            "state-licensing keywords the other two arms structurally can't reach, 27% gate survival). "
+            "Each extra level multiplies results/cost ~6x."
+        ),
+    )
+    related_keywords_per_seed: int = Field(
+        default=30, ge=5, le=200,
+        description="related_keywords returned per seed (~$0.0001/keyword).",
+    )
     thread_relevance_min_grade: int = Field(
         default=1,
         description=(
@@ -315,6 +328,41 @@ class Settings(BaseSettings):
             "diversity fill) so a high-severity, thin-affinity pain can't get zero ideation. 0 disables "
             "(legacy opportunity/theme/affinity allocation)."
         ),
+    )
+    divergent_commercial_floor_count: int = Field(
+        default=1, ge=0, le=4,
+        description=(
+            "Guarantee the top-K pains by commercial_intent (>= the min-intent threshold) a generator "
+            "cell (Round 0b, mirrors the severity floor). Cell allocation ranks by opportunity/theme/"
+            "severity and never reads the raw commercial_intent scalar, so the most MONETIZABLE pain "
+            "cluster can get zero ideation (live 2026-07-02 cottage-food run: COGS/labor-time pricing "
+            "pains — the niche's classic paid product — got no cell while a cell went to an infeasible "
+            "telemetry idea). Default 1 — A/B-validated over 10 cached niches "
+            "(scripts/commercial_floor_ab.py): top3-commercial coverage 23/30→26/30 with ZERO theme/"
+            "segment diversity cost; K=2 gained less and cost diversity. 0 disables. "
+            "env DIVERGENT_COMMERCIAL_FLOOR_COUNT."
+        ),
+    )
+    divergent_commercial_floor_min_intent: float = Field(
+        default=0.4, ge=0.0, le=1.0,
+        description=(
+            "Minimum commercial_intent for a pain to qualify for the commercial floor — below this the "
+            "floor does nothing (no manufactured cells for weak buying signals). Default 0.4, not 0.6: "
+            "the scorer's ci scale varies by niche (cottage-food's TOP pain scored 0.45 — a 0.6 bar made "
+            "the floor a no-op in exactly the case that motivated it); K=1 already bounds blast radius."
+        ),
+    )
+    synthesis_max_bundles: int = Field(
+        default=2, ge=1, le=3,
+        description="Max bundled products the synthesis stage may add per run.",
+    )
+    salvage_max_promoted: int = Field(
+        default=3, ge=1, le=6,
+        description="Max losers the salvage gate may promote per run (each costs one expansion call).",
+    )
+    parity_probe_top_k: int = Field(
+        default=3, ge=1, le=6,
+        description="How many top-composite ideas get the mechanism-parity probe + re-score.",
     )
     divergent_target_pool: int = Field(
         default=15,
@@ -731,17 +779,16 @@ class Settings(BaseSettings):
         )
     )
     score_calibration_samples: int = Field(
-        default=1,
+        default=3,
         ge=1,
         le=7,
         description=(
             "P2: N independent calibration-critic samples per batch, aggregated to the per-criterion "
             "MEDIAN before applying (the critic is non-deterministic even at temperature 0 with reasoning "
-            "on — a single draw can flip a verdict). N=1 (default) is byte-identical to the single-call "
-            "path (dark). N>1 trades ~Nx critic cost on the selected batch for variance reduction; choose "
-            "N against a residual-variance target from scripts/calibration_gate.py stddev, validated AFTER "
-            "the critic's bias (market_fit realism) is settled — medianing a biased critic just stabilizes "
-            "the wrong center. env SCORE_CALIBRATION_SAMPLES."
+            "on — a single draw can flip a verdict; measured per-idea stddev ~0.03-0.05). Default 3 after "
+            "the 2026-07-02 gate validation vs the 67-idea neutral-Opus panel: κ 0.19→0.256, exact 37→40, "
+            "MAE down on every criterion, bias unchanged — at ~3x critic cost on calibration batches. "
+            "N=1 restores the single-call path. env SCORE_CALIBRATION_SAMPLES."
         )
     )
     ideation_refine_max_tokens: int = Field(
@@ -903,6 +950,22 @@ class Settings(BaseSettings):
     @property
     def openrouter_structured_providers_list(self) -> list[str]:
         return [p.strip() for p in self.openrouter_structured_providers.split(",") if p.strip()]
+
+    llm_fallback_models: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description=(
+            "OpenRouter model-layer failover chains: map a primary model id to fallback model id(s), "
+            "passed as OpenRouter's top-level `models` array so a provider outage / upstream 429 on the "
+            "primary automatically retries the fallbacks in ONE request (billed only for the successful "
+            "run). Essential for SINGLE-PROVIDER models where provider-layer failover has nowhere to go "
+            "— e.g. inception/mercury-2 (Inception-only; one 15s 429 window silently killed the quote "
+            "stance gate for an entire run, 2026-07-02). Keys/values accept ids with or without the "
+            "'openrouter/' prefix. Recommended (.env): "
+            '{"inception/mercury-2": ["openai/gpt-4o-mini"]} — gpt-4o-mini over gemini-2.5-flash-lite '
+            "(observed live structured-output flakiness) and provider-decorrelated from Inception. "
+            "Empty (default) = no fallback chains. env LLM_FALLBACK_MODELS (JSON)."
+        ),
+    )
 
     audience_digest_token_budget: int = Field(
         default=24_000,
@@ -1285,6 +1348,50 @@ class Settings(BaseSettings):
     reddit_native_search_max_results: int = Field(
         default=10,
         description="Max results per query+subreddit combination in PRAW native search"
+    )
+    reddit_native_max_subreddits: int = Field(
+        default=8,
+        ge=1,
+        le=20,
+        description=(
+            "Cap on subreddits searched by the PRAW native pass (anchor-derived first, then "
+            "URL-extracted; the URL extractor alone keeps its historical top-5)."
+        )
+    )
+    reddit_small_sub_max_subscribers: int = Field(
+        default=10000,
+        description=(
+            "Subreddits at/below this subscriber count are treated as small dedicated communities: "
+            "the PRAW pass fetches their new/top listings WHOLESALE instead of querying (native "
+            "search inside tiny subs is structurally empty), and the engagement quality gate is "
+            "waived down to reddit_small_sub_min_upvotes (absolute upvote/comment bars filter out "
+            "exactly the niche posts these subs exist for). Relevance grading still applies. "
+            "env: REDDIT_SMALL_SUB_MAX_SUBSCRIBERS."
+        ),
+    )
+    reddit_small_sub_fetch_limit: int = Field(
+        default=25,
+        description=(
+            "Posts fetched per listing (new + top-all each) when wholesale-fetching a small "
+            "dedicated subreddit. env: REDDIT_SMALL_SUB_FETCH_LIMIT."
+        ),
+    )
+    reddit_small_sub_min_upvotes: int = Field(
+        default=1,
+        description=(
+            "Minimum post score for posts from small dedicated subreddits (replaces the scaled "
+            "engagement bars; comment floor waived). env: REDDIT_SMALL_SUB_MIN_UPVOTES."
+        ),
+    )
+    reddit_small_sub_max_author_share: float = Field(
+        default=0.5, ge=0.2, le=1.0,
+        description=(
+            "Vendor/promo defense on the wholesale small-sub fetch: when one author wrote at "
+            "least this share of a small sub's fetched posts (and >=6 were fetched), the sub is "
+            "skipped — a tiny sub dominated by one author is marketing, not community (on-topic "
+            "promo passes both the waived engagement gate and relevance grading). "
+            "env: REDDIT_SMALL_SUB_MAX_AUTHOR_SHARE."
+        ),
     )
 
     # Token Budget Freshness Reserve

@@ -30,6 +30,7 @@ def test_phase1_fields_survive_checkpoint_round_trip(tmp_path, monkeypatch):
     save_state.current_stage = 5
     save_state.idea_focus = "novelty"
     save_state.idea_coverage_caveats = ["Very broad audience — narrow it."]
+    save_state.pipeline_degradations = ["Quote stance filter unavailable for 3/24 pain points."]
     save_state.niche_drift_telemetry = {"anchored_pct": 12, "dropped": 0}
     save_state.skipped_stages = [10.0, 11.0]
     save_state.sources_searched = {"reddit": 26, "hackernews": 14}
@@ -57,6 +58,7 @@ def test_phase1_fields_survive_checkpoint_round_trip(tmp_path, monkeypatch):
 
     assert load_state.idea_focus == "novelty"          # NOT clobbered back to "auto"
     assert load_state.idea_coverage_caveats == ["Very broad audience — narrow it."]
+    assert load_state.pipeline_degradations == ["Quote stance filter unavailable for 3/24 pain points."]
     assert load_state.niche_drift_telemetry == {"anchored_pct": 12, "dropped": 0}
     assert load_state.skipped_stages == [10.0, 11.0]
     assert load_state.sources_searched == {"reddit": 26, "hackernews": 14}
@@ -97,7 +99,8 @@ _PERSISTED_VIA_METADATA = {
     "social_content_quality_tier", "pain_point_quality_tier", "pain_point_confidence_score",
     "filtering_stats", "completed_stages", "fallback_stages", "social_content_metrics",
     "seeded_from_catalog", "stage_completion_timestamps", "idea_focus",
-    "idea_coverage_caveats", "niche_drift_telemetry", "skipped_stages", "sources_searched",
+    "idea_coverage_caveats", "pipeline_degradations", "niche_drift_telemetry", "skipped_stages",
+    "sources_searched",
 }
 # intentionally NOT persisted (re-derived, terminal, unused, or re-set on construction)
 _TRANSIENT = {

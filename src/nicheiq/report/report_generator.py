@@ -657,9 +657,19 @@ class ReportGenerator:
 
         reach_note = (f"Broader niche reach: {category_vol:,}/mo (follow-on ceiling). "
                       if category_vol > headline_vol else "")
+        # Label honestly: when there is no per-solution beachhead volume (keyword validation produced
+        # none), the headline falls back to the CATEGORY total and must SAY so — calling a category
+        # number "beachhead demand" is the exact 1%-fallacy presentation this narrative exists to avoid
+        # (observed live 2026-07-02: 'Beachhead demand: 1,628,480' on an empty validated set).
+        if beachhead_vol > 0:
+            demand_line = f"Beachhead demand: {headline_vol:,} monthly searches for the solution's core keywords. "
+        else:
+            demand_line = (f"Category search volume: {headline_vol:,} monthly searches "
+                           f"(no solution-specific beachhead demand was validated — treat as reach ceiling, "
+                           f"not addressable demand). ")
         market_validation = (
             f"{validation_level} market validation. "
-            f"Beachhead demand: {headline_vol:,} monthly searches for the solution's core keywords. "
+            f"{demand_line}"
             f"{reach_note}"
             f"Validated pain points: {pain_point_count}. "
             f"Competitive landscape shows existing market demand."
@@ -1431,6 +1441,16 @@ class ReportGenerator:
             cov_caveats = getattr(self.state, "idea_coverage_caveats", None)
             if isinstance(cov_caveats, list):
                 quality_caveats.extend(c for c in cov_caveats if isinstance(c, str))
+            # Pipeline degradation ledger: every fail-open gate / silent quality reduction recorded
+            # anywhere in the run (stance filter down, token pressure, …) surfaces here verbatim —
+            # fail-open without surfacing is fail-silent. Deduped against what's already present.
+            degradations = getattr(self.state, "pipeline_degradations", None)
+            if isinstance(degradations, list):
+                seen = set(quality_caveats)
+                for d in degradations:
+                    if isinstance(d, str) and d and d not in seen:
+                        seen.add(d)
+                        quality_caveats.append(d)
 
             return DataQualitySummary(
                 social_content_quality_tier=social_tier,
@@ -1773,6 +1793,11 @@ class ReportGenerator:
                 for landscape in self.state.competitive_analysis.solution_landscapes:
                     competitive_landscapes[landscape.solution_name] = landscape
 
+            # Honest brief: pain-title → verbatim community quotes lookup (evidence half)
+            from ..utils.honest_brief import build_quotes_by_pain
+            pain_analysis = getattr(self.state, 'pain_point_analysis', None)
+            quotes_by_pain = build_quotes_by_pain(getattr(pain_analysis, 'pain_points', None))
+
             # Fetch selected solution and its scores for relative comparison
             selected_solution = self.accessor.get_selected_solution_details()
             selected_scores = None
@@ -1790,7 +1815,9 @@ class ReportGenerator:
             selected_solution_name = getattr(solution_selection, 'selected_solution_name', None)
 
             alternative_solutions = []
-            for runner_up_name in runner_up_names[:4]:  # Top 4 runners-up (enhanced from 2)
+            # Top 8 runners-up (was 4): the portfolio funnel (salvage + bundles) widens the pool to
+            # ~6-12, and alternatives are the report's main breadth — bounded by pool size anyway.
+            for runner_up_name in runner_up_names[:8]:
                 if runner_up_name == selected_solution_name:
                     continue
                 if runner_up_name not in all_solutions:
@@ -1868,6 +1895,14 @@ It differentiates through {diff_text}.
                     selected_solo_dev=selected_solo_dev,
                 )
 
+                # Honest brief: evidence quotes for the addressed pains + the critic's voice
+                from ..utils.calibration_notes import extract_criterion_reason
+                from ..utils.honest_brief import demand_quotes_for
+                demand_quotes = demand_quotes_for(
+                    getattr(solution, 'pain_points_addressed', None), quotes_by_pain)
+                critic_concern = extract_criterion_reason(
+                    getattr(solution, 'calibration_notes', None), "market_fit", max_len=280)
+
                 # Pass through estimated_cac_organic as string (no conversion needed)
                 estimated_cac_organic_val = getattr(solution, 'estimated_cac_organic', None)
                 if isinstance(estimated_cac_organic_val, (int, float)):
@@ -1902,6 +1937,7 @@ It differentiates through {diff_text}.
                     novelty_score=getattr(solution, 'novelty_score', None),
                     solo_dev_feasibility=solo_dev_feasibility_val,  # Pass-through float
                     # Angle-aware evaluation (pass-through; None when angle eval is off)
+                    idea_tier=getattr(solution, 'idea_tier', None) or "single",
                     winning_angle=getattr(solution, 'winning_angle', None),
                     angle_rationale=getattr(solution, 'angle_rationale', None),
                     novelty_rationale=getattr(solution, 'novelty_rationale', None),
@@ -1927,6 +1963,12 @@ It differentiates through {diff_text}.
                     # cross-linked to specific pains on the catalog UI. Defaults
                     # to [] when the source is missing the field (legacy reports).
                     pain_points_addressed=list(getattr(solution, 'pain_points_addressed', []) or []),
+
+                    # Honest brief: evidence + the critic's voice (None when unavailable
+                    # so legacy reports and quote-less pains render unchanged)
+                    demand_quotes=demand_quotes or None,
+                    critic_concern=critic_concern or None,
+                    incumbent_parity=getattr(solution, 'incumbent_parity', None),
 
                     # Closed-vocabulary filter facets (chips + future filtering).
                     tags=getattr(solution, 'tags', None),

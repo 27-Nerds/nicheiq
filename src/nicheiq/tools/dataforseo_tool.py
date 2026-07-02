@@ -882,6 +882,66 @@ class DataForSEOBaseClient:
         logger.info(f"[KeywordSuggestions] seed '{seed[:40]}' -> {len(out)} contains-seed suggestions")
         return out
 
+    def get_related_keywords(
+        self,
+        seed: str,
+        depth: int = 1,
+        limit: int = 30,
+        location_code: int = None,
+        language_code: str = None,
+    ) -> list[dict[str, Any]]:
+        """DataForSEO Labs Related Keywords — the SERP 'searches related to' graph, depth-first.
+
+        The third discovery mechanism beside google_ads/keywords_for_keywords (category-broad,
+        drift-prone) and keyword_suggestions (contains-seed, LITERAL — can't find phrasings that
+        don't contain the seed): this surfaces semantically-adjacent REAL queries (seed 'cottage
+        food law texas' → 'selling baked goods from home texas'). Drift control lives at the
+        caller's grading gate, not here. depth 1 default — each extra depth level multiplies
+        results/cost ~6x. Same dict shape as expand_keywords/get_keyword_suggestions.
+        """
+        if location_code is None:
+            location_code = settings.target_location or 2840
+        if language_code is None:
+            language_code = settings.target_language or "en"
+        seed = self._sanitize_keyword(str(seed))
+        if not seed:
+            return []
+        endpoint = "/dataforseo_labs/google/related_keywords/live"
+        post_data = [{
+            "keyword": seed,
+            "location_code": location_code,
+            "language_code": language_code,
+            "depth": max(1, min(depth, 3)),
+            "limit": max(1, min(limit, 1000)),
+            "include_serp_info": False,
+        }]
+        out: list[dict[str, Any]] = []
+        try:
+            response = self._make_request_with_task_retry(endpoint, post_data)
+            tasks = response.get("tasks") or []
+            if tasks and tasks[0].get("status_code") != 20000:
+                logger.error(f"[RelatedKeywords] task error: {tasks[0].get('status_message')}")
+                return []
+            result = (tasks[0].get("result") if tasks else response.get("result")) or []
+            for result_obj in result:
+                for item in (result_obj.get("items") or []):
+                    kd = item.get("keyword_data") or item
+                    kw = kd.get("keyword")
+                    if not kw:
+                        continue
+                    ki = kd.get("keyword_info") or {}
+                    si = kd.get("search_intent_info") or {}
+                    out.append({
+                        "keyword": kw,
+                        "search_volume": ki.get("search_volume", 0) or 0,
+                        "competition": ki.get("competition"),
+                        "search_intent": si.get("main_intent"),
+                    })
+        except Exception as e:
+            logger.error(f"[RelatedKeywords] failed for seed '{seed[:40]}': {str(e)[:100]}")
+        logger.info(f"[RelatedKeywords] seed '{seed[:40]}' (depth={depth}) -> {len(out)} related keywords")
+        return out
+
 
 # CrewAI Tool Wrappers
 # These wrap the base client methods so agents can use them as tools

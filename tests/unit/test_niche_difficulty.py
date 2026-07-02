@@ -180,3 +180,69 @@ def test_verdict_falls_back_when_llm_raises(monkeypatch):
     assert verdict.headline  # deterministic fallback populated
     assert verdict.narrative_summary
     assert verdict.software_addressability == fp.software_addressability
+
+
+# ── 2026-07-02 words-only narrative contract ─────────────────────────────────
+
+def test_share_word_bands():
+    from nicheiq.utils.niche_difficulty import _share_word
+    assert _share_word(None) == "n/a"
+    assert _share_word(0.0) == "none"
+    assert _share_word(0.06) == "a small minority"
+    assert _share_word(0.20) == "about a quarter"
+    assert _share_word(0.49) == "about half"
+    assert _share_word(0.85) == "nearly all"
+
+
+def test_saturation_judgment_low_is_good_news():
+    from nicheiq.utils.niche_difficulty import _saturation_judgment
+    # a bare "6%" read as a warning in prose — the judgment phrase carries the meaning
+    assert "NOT already built" in _saturation_judgment(0.06)
+    assert "differentiation" not in _saturation_judgment(0.06)
+    assert _saturation_judgment(0.5).startswith("high")
+    assert _saturation_judgment(None) == "n/a"
+
+
+def test_shape_concentration_words():
+    from nicheiq.utils.niche_difficulty import _shape_concentration_word
+    assert "dominates" in _shape_concentration_word(0.6)
+    assert "no single shape dominates" in _shape_concentration_word(0.15)
+
+
+def test_prompt_receives_no_percentages(monkeypatch):
+    # the words-only contract at the source: no digit-percent tokens in the rendered prompt
+    from types import SimpleNamespace
+    from nicheiq.utils import llm_service
+    captured = {}
+
+    def _cap(**kw):
+        captured["prompt"] = kw.get("prompt")
+        return (SimpleNamespace(headline="", narrative_summary=""), None)
+
+    monkeypatch.setattr(llm_service.LLMService, "invoke_structured", staticmethod(_cap))
+    fp = assess_niche_difficulty(
+        [_pain("none")] * 3 + [_pain("partial")] * 2, [_idea(novelty=0.3)] * 4, _nc())
+    generate_niche_difficulty_verdict(fp, "x", _nc())
+    import re
+    assert captured["prompt"]
+    assert not re.search(r"\d+%", captured["prompt"])
+    assert "about" in captured["prompt"] or "minority" in captured["prompt"] or "nearly all" in captured["prompt"] or "none" in captured["prompt"]
+
+
+def test_strong_fit_with_frictions_keeps_strong_headline(monkeypatch):
+    """Codex-review fix (2026-07-02): the ≥2-friction escalation can band a strong-fit niche
+    'high', but FIT language must come from addressability — 'Software Fit: Limited' next to
+    an 88% addressability meter was a printed contradiction."""
+    _patch_llm_headline(monkeypatch, "")   # empty LLM headline -> deterministic fit headline stands
+    # all pains fully tool-addressable → addressability 1.0 (strong)
+    pains = [_pain("full")] * 6
+    # frictions: notable calibration gap + cold-start ideas → ≥2 flags → escalation
+    ideas = [_idea(novelty=0.4, novelty_raw=0.8, data_access_model="unverified",
+                   requires_data_aggregation=True) for _ in range(4)]
+    fp = assess_niche_difficulty(pains, ideas, _nc())
+    assert fp.software_addressability >= 0.7
+    v, _ = generate_niche_difficulty_verdict(fp, "x", _nc())
+    assert v.headline.startswith("Software Fit: Strong")
+    if fp.difficulty_level in ("high", "very_high"):
+        # frictions still surfaced, just not as a fit problem
+        assert v.key_challenges

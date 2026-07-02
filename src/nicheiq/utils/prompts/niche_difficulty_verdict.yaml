@@ -1,18 +1,25 @@
 # Research Reality Check — niche software-fit verdict
 # Used by: utils/niche_difficulty.generate_niche_difficulty_verdict()
 # Variables: niche, target_audience, rating_word, difficulty_level, software_addressability,
-#            none_share, partial_share, full_share, dominant_project_type,
+#            none_share, partial_share, full_share, dominant_project_type, shape_concentration,
 #            derivative_mechanism_share, median_novelty, novelty_calibration_gap,
 #            cold_start_share, concept_duplication_rate, audience_scope,
 #            audience_fit_ratio, key_points, low_confidence
+#
+# 2026-07-02 rewrite: every quantitative signal now arrives as a WORD (band / proportion word /
+# judgment phrase) — the model anchors on and echoes any digit it sees, producing stat-soup
+# ("software can only address 49% of the pains… already 6% saturated"). Prose now leads with
+# the builder's decision, not the statistics.
 
 template: |
-  You are a candid product strategist writing a one-paragraph "reality check" for a
-  founder, telling them how well software can actually solve a market niche.
+  You are a candid product strategist writing a short "reality check" for a founder,
+  telling them how well software can actually solve a market niche — and what that
+  means for what they should build.
 
-  You are given a FACT PACK that was computed deterministically from the research.
-  Narrate ONLY these facts. Do NOT invent numbers, features, competitors, or claims
-  that aren't in the pack. Be specific and plain — no hype, no hedging.
+  You are given a FACT PACK computed deterministically from the research. Every signal
+  is already expressed in plain words (bands, proportion words, judgment phrases).
+  Narrate ONLY these facts. Do NOT invent numbers, percentages, features, competitors,
+  or claims that aren't in the pack. Be specific and plain — no hype, no hedging.
 
   Niche: {niche}
   Target audience: {target_audience}
@@ -25,42 +32,50 @@ template: |
   - Your narrative MUST stay consistent with the {rating_word} rating — never contradict it (e.g. don't
     say "moderate fit" when the rating is "Limited").
 
-  FACT PACK (already computed — trust it). The software-fit and novelty signals are given as plain
-  BANDS (e.g. "strong" / "moderate" / "limited"); use those words, never invent a number for them:
+  FACT PACK (already computed — trust it):
   - Difficulty band: {difficulty_level}
   - Software addressability (how much of the pain a tool can actually fix): {software_addressability}
-  - Pains by tool-addressability: full={full_share}, partial={partial_share}, none={none_share}
-  - Dominant idea shape (project type): {dominant_project_type}
-  - Share of ideas that are lookup/aggregator/directory shapes: {derivative_mechanism_share}
+  - Pains a tool can fully own: {full_share}; only partially help with: {partial_share};
+    cannot address at all: {none_share}
+  - Most common idea shape: {dominant_project_type} ({shape_concentration})
+  - Ideas that are lookup/aggregator/directory shapes: {derivative_mechanism_share}
   - Median idea novelty: {median_novelty}; optimism correction applied: {novelty_calibration_gap}
-  - Share of ideas needing a data corpus that doesn't exist yet (cold-start): {cold_start_share}
-  - Share of brainstormed concepts flagged as already-shipping products (tool-ecosystem saturation): {concept_duplication_rate}
-  - Audience scope: {audience_scope}; ideas that serve the stated audience: {audience_fit_ratio}
+  - Ideas needing a data corpus that doesn't exist yet (cold-start risk): {cold_start_share}
+  - Tool-ecosystem saturation: {concept_duplication_rate}
+  - Audience scope: {audience_scope}; ideas serving the stated audience: {audience_fit_ratio}
   - Key factors: {key_points}
   - Limited sample (be cautious): {low_confidence}
 
-  Write the verdict, bidirectional and honest:
-  - If addressability is LOW (hard / very_high band): say plainly that software can mostly
-    sit BESIDE the problem — advise, organize, warn — but not fix the root cause. Then name
-    the viable shape (e.g. an advice/lookup/reference layer). Do NOT say "give up" — point at
-    what the product must therefore be.
-  - If addressability is HIGH (low band): say plainly that software can directly own these
-    pains, and that there's room for a real product, not a thin reference.
-  - If moderate: say a tool earns its keep but the easy framings are weaker than they look.
-  - SATURATION (independent of the above): if the tool-ecosystem-saturation share is high AND the
-    data/pains are otherwise solid (addressability isn't the main problem), say plainly that the
-    niche has good data and real pains, but the tooling space is already mature — existing products
-    cover the obvious angles, so the real challenge is differentiation, not feasibility. You may
-    suggest finding a sharper wedge, or a niche with the same data richness but fewer incumbents.
-    This can hold true even for a STRONG-fit niche — don't suppress it just because software fits.
+  HOW TO WRITE IT — lead with the decision, not the statistics:
+  - Sentence 1 answers "so what should I build (or avoid)?" for THIS niche in concrete terms.
+    The remaining sentences give the reasons, using the fact pack's own words.
+  - FIT comes from the software-addressability band; the difficulty band measures OVERALL
+    difficulty including frictions (cold-start, saturated tooling, corrected-down scores) and
+    can be "high" even when fit is strong. Never let a friction read as a fit problem.
+  - If addressability is "limited" or "very limited": say plainly that software mostly sits
+    BESIDE the problem — it can advise, organize, and warn, but not remove the root cause.
+    Then name the viable shape (advice/lookup/reference layer). Do NOT say "give up" — point
+    at what the product must therefore be.
+  - If addressability is "strong": say plainly that software can directly own these pains.
+    If the difficulty band is nonetheless high, say the difficulty is NOT fit — name the
+    actual frictions from the key factors (cold-start, crowded tools, etc.).
+  - If addressability is "moderate": a tool earns its keep, but the easy framings are weaker
+    than they look.
+  - SATURATION: relay the judgment phrase you were given, in your own words. Low saturation is
+    GOOD NEWS (the obvious tools aren't built yet) — never present it as a warning. High
+    saturation means the challenge is differentiation, not feasibility — suggest a sharper
+    wedge. This holds even for a STRONG-fit niche.
+  - COLD-START: if a meaningful share of ideas need a data corpus that doesn't exist, warn the
+    founder to prefer ideas built on data that exists today (official sources, public data,
+    the user's own inputs).
+  - Only call a shape "dominant" if the pack says one shape genuinely dominates; otherwise
+    call it the most common shape.
 
-  NEVER expose an internal score as a number: do NOT write a 0-1 value or a precise percentage for
-  software-fit or novelty (no "novelty 0.45", no "addressability 65%") — describe them with the band
-  words. You MAY cite the pain-addressability split (full/partial/none) and the cold-start / saturation
-  shares as approximate proportions ("most pains", "about half", "a minority") where they sharpen the point.
+  ABSOLUTE RULE: no digits anywhere in your output — no percentages, no scores, no counts.
+  Use the pack's band words and proportion words ("most pains", "about a quarter", "nearly
+  all"). A founder should finish reading knowing what to do, not holding a list of numbers.
 
   Return:
   - headline: exactly "Software Fit: {rating_word} — <short niche-specific clause you write>".
-  - narrative_summary: 2-4 sentences, consistent with the {rating_word} rating. Make the point with the
-    band words (software-fit, novelty) and the pain/cold-start/saturation proportions — never a raw
-    score. If the sample is limited, hedge accordingly.
+  - narrative_summary: 2-4 sentences, decision-first, consistent with the {rating_word} rating.
+    If the sample is limited, hedge accordingly.
