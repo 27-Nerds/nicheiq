@@ -91,7 +91,11 @@ export type RegenerateIdeasInput = z.infer<typeof RegenerateIdeasSchema>;
 export const IdeasReadySchema = z.object({
   worker_id: z.string().min(1),
   job_id: z.string().uuid(),
-  solutions: z.array(z.record(z.any())),
+  // Minimal shape guard (2026-07-02 infra review): the backend stores the blob and matches
+  // by solution_name downstream — an idea without a name is undeliverable, and an empty
+  // delivery is a worker bug. Passthrough keeps the rest of each idea open (full model
+  // mirroring would be brittle churn).
+  solutions: z.array(z.object({ solution_name: z.string().min(1) }).passthrough()).min(1),
   checkpoint_path: z.string().min(1).max(500),
   total_to_validate: z.number().int().min(0).default(0),
   skip_validation: z.boolean().optional(),

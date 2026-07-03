@@ -144,7 +144,8 @@ class TestComputeWithFeasibility:
         [s] = compute_solution_scores([idea])
         # composite == the raw mean of the 4 (no feasibility drop), compared via the
         # helper's own computation to avoid float-order rounding-boundary flakiness.
-        assert s.composite_score == sh._composite_of_present(0.72, 0.85, 0.42, 0.78)
+        # seo 0.78 is provisional (no refined score) -> rank-capped at the 0.7 ceiling.
+        assert s.composite_score == sh._composite_of_present(0.72, 0.85, 0.42, 0.7)
 
 class TestFinalizeFeasibility:
     """The final re-assertion that fixes the leak where the filter/refiner LLMs overwrite

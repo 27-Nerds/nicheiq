@@ -299,7 +299,8 @@ describe('POST /api/jobs/:jobId/regenerate-ideas', () => {
       jobId,
       '/cp/path',
       ['A', 'B'],
-      'test niche'
+      'test niche',
+      undefined // ideaFocus: not set in this fixture (5th arg added with the idea_focus steer)
     );
   });
 

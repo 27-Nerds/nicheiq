@@ -201,6 +201,7 @@ model Job {
   // Interactive job flow
   jobMode                String?   @db.VarChar(20) // 'interactive' or null (legacy one-shot)
   entryMode              String?   @db.VarChar(20) // 'idea' | 'audience' | 'discovery' | 'pain_research' | 'pain_remix' | 'deep_idea'
+  ideaFocus              String?   @db.VarChar(20) // 'auto' | 'novelty' | 'distribution' — soft ideation steer; stored so failed-before-checkpoint resumes keep it
   solutionIdeas          Json? // Array of solution preview objects
   selectedSolution       String?   @db.VarChar(255) // Name of winning solution (set by Phase 2 re-ranking)
   selectedSolutions      String[]  @default([]) // User's 1-3 selected solution names

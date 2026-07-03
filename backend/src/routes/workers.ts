@@ -247,12 +247,23 @@ workersRouter.post('/job-started', async (req: Request, res: Response) => {
         select: { status: true },
       });
 
-      if (job?.status === JobStatus.CANCELLED) {
-        console.log(`[Workers] Job ${data.job_id} was cancelled - signaling worker to skip`);
+      // Terminal/settled states must NOT be re-run (infra review round 2: a stale-requeued
+      // job whose backend heartbeat already marked it FAILED — and refunded it — was being
+      // blessed to run again). Missing jobs likewise: nothing to run for.
+      const doNotRun = new Set<string>([
+        JobStatus.CANCELLED,
+        JobStatus.FAILED,
+        JobStatus.COMPLETED,
+        JobStatus.AWAITING_SELECTION,
+      ]);
+      if (!job || doNotRun.has(job.status)) {
+        console.log(
+          `[Workers] Job ${data.job_id} not runnable (status: ${job?.status ?? 'not found'}) - signaling worker to skip`
+        );
         return res.json({ status: 'ok', shouldCancel: true });
       }
-      // Job might already be RUNNING (duplicate call) or not found - proceed normally
-      console.log(`[Workers] Job ${data.job_id} not updated (status: ${job?.status ?? 'not found'})`);
+      // Job might already be RUNNING (duplicate call) - proceed normally
+      console.log(`[Workers] Job ${data.job_id} not updated (status: ${job.status})`);
     }
 
     // Update worker heartbeat
@@ -794,7 +805,28 @@ workersRouter.post('/ideas-ready', async (req: Request, res: Response) => {
     });
 
     if (result.count === 0) {
-      res.status(409).json({ error: 'Job not in RUNNING state' });
+      // Distinguish WHY the conditional update missed (mirrors the /job-complete precedent):
+      // a lost-response retry must read as idempotent success, while a cancelled/failed job
+      // must NOT — the worker previously treated every 409 as "delivered", silently
+      // discarding a completed run's ideas.
+      const job = await prisma.job.findUnique({
+        where: { id: data.job_id },
+        select: { status: true, ideasShownAt: true },
+      });
+      if (!job) {
+        res.status(404).json({ error: 'Job not found' });
+        return;
+      }
+      if (job.status === JobStatus.AWAITING_SELECTION || job.ideasShownAt !== null) {
+        // A previous attempt landed and the response was lost — idempotent success.
+        // Skip re-broadcast/notify: the first delivery already did both.
+        res.json({ status: 'ok', idempotent: true });
+        return;
+      }
+      res.status(409).json({
+        error: `Job not in RUNNING state (current: ${job.status})`,
+        state: job.status,
+      });
       return;
     }
 

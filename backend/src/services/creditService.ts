@@ -390,6 +390,7 @@ export async function createJobAndChargeDiscovery(
   allowedProjectTypes?: string[],
   jobMode?: string,
   entryMode?: string,
+  ideaFocus?: string,
 ): Promise<{ job: Job; transaction?: CreditTransaction }> {
   const stages = PIPELINE_STAGES.filter(s => s.number !== 15);
 
@@ -403,6 +404,7 @@ export async function createJobAndChargeDiscovery(
         generateLandingPage: false,
         jobMode,
         entryMode: entryMode || null,
+        ideaFocus: ideaFocus || null,
         status: JobStatus.PENDING,
         totalStages: stages.length,
         progress: {

@@ -14,6 +14,38 @@ from ..config.settings import settings
 T = TypeVar('T', bound=BaseModel)
 
 
+class LLMSystemicError(RuntimeError):
+    """A SYSTEMIC LLM-provider failure (payment/auth) — every future call is guaranteed to
+    fail. Distinct from transient errors so the pipeline can halt cleanly instead of limping
+    through dozens of independent fail-soft sites producing a half-evaluated zombie state
+    (live-observed 2026-07-02: OpenRouter 402 mid-Stage-5 left a pool where 3 of 6 ideas
+    were ranked without angle/novelty/calibration)."""
+
+
+_SYSTEMIC_STATUS_CODES = {401, 402}
+_systemic_failure: str | None = None
+
+
+def _detect_systemic(exc: Exception) -> None:
+    """Trip the breaker on payment/auth errors. Idempotent; logs CRITICAL once."""
+    global _systemic_failure
+    if _systemic_failure is not None:
+        return
+    code = getattr(exc, "status_code", None)
+    if code in _SYSTEMIC_STATUS_CODES:
+        _systemic_failure = f"HTTP {code}: {str(exc)[:120]}"
+        logger.critical(
+            f"[LLM] SYSTEMIC provider failure — {_systemic_failure}. "
+            "All further LLM calls will fast-fail; the job should halt and be resumed "
+            "after the account issue is fixed."
+        )
+
+
+def _check_systemic() -> None:
+    if _systemic_failure is not None:
+        raise LLMSystemicError(_systemic_failure)
+
+
 def is_reasoning_model(model: str) -> bool:
     """
     Check if a model is a reasoning model that doesn't support sampling parameters.
@@ -1017,6 +1049,7 @@ class LLMService:
         Raises:
             Exception: If LLM invocation fails
         """
+        _check_systemic()   # breaker: fast-fail once a payment/auth failure is known
         model = model_name or settings.openai_model_name
         is_openrouter = is_openrouter_model(model)
         # Route provider by prefix (openrouter/kimi/openai). LangChain-direct calls
@@ -1126,6 +1159,7 @@ class LLMService:
             return parsed, usage
 
         except Exception as e:
+            _detect_systemic(e)
             logger.error(f"LLM invocation failed for {output_model.__name__}: {e}")
             raise
 
@@ -1158,6 +1192,7 @@ class LLMService:
         Raises:
             Exception: If LLM invocation fails
         """
+        _check_systemic()   # breaker: fast-fail once a payment/auth failure is known
         model = model_name or settings.openai_model_name
         is_openrouter = is_openrouter_model(model)
         clean_model, resolved_key, resolved_base_url = resolve_endpoint(model)
@@ -1205,5 +1240,20 @@ class LLMService:
             return result.content, usage
 
         except Exception as e:
+            _detect_systemic(e)
             logger.error(f"LLM plain invocation failed: {e}")
             raise
+
+    @staticmethod
+    def reset_systemic() -> None:
+        """Clear the systemic-failure breaker. Call at run/job start — one worker process
+        serves many jobs and a fixed account must not stay poisoned."""
+        global _systemic_failure
+        _systemic_failure = None
+
+    @staticmethod
+    def raise_if_systemic() -> None:
+        """Explicit halt point: raise LLMSystemicError if the breaker tripped. Placed at
+        stage boundaries so a systemic failure becomes a clean job failure instead of a
+        half-evaluated pool persisted as authoritative."""
+        _check_systemic()

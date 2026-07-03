@@ -305,15 +305,30 @@ def notify_ideas_ready(job_id: str, solutions: list[dict], checkpoint_path: str,
                 headers={"x-internal-service": _get_internal_secret()},
                 timeout=30,
             )
-            # 409 = job no longer RUNNING: either a previous attempt landed but the
-            # response was lost (already AWAITING_SELECTION) or the job was
-            # cancelled. Either way, retrying can't help — treat as delivered.
-            if response.status_code == 409:
-                logger.warning(
-                    f"[Progress] Ideas-ready for job {job_id}: job no longer RUNNING "
-                    "(already delivered or cancelled) — not retrying"
+            # 409/404 = deterministic state conflict — retrying can't help, but the cases
+            # differ: the backend answers lost-response retries with 200 {idempotent:true},
+            # so a 409 means the job genuinely left RUNNING for another reason. CANCELLED
+            # has nothing to deliver to (return quietly); anything else (FAILED etc.) means
+            # a completed run's ideas would be silently discarded — raise so the loss is
+            # visible in the worker's failure path instead of masquerading as delivery.
+            if response.status_code in (404, 409):
+                try:
+                    state = (response.json() or {}).get("state", "")
+                except ValueError:
+                    state = ""
+                if response.status_code == 409 and state == "CANCELLED":
+                    logger.warning(
+                        f"[Progress] Ideas-ready for job {job_id}: job was cancelled — "
+                        "nothing to deliver, not retrying"
+                    )
+                    return
+                msg = (
+                    f"Ideas-ready rejected for job {job_id}: HTTP {response.status_code}"
+                    + (f", job state {state}" if state else "")
+                    + " — completed ideas could not be delivered"
                 )
-                return
+                logger.error(f"[Progress] {msg}")
+                raise RuntimeError(msg)
             response.raise_for_status()
             logger.info(f"[Progress] Ideas ready notification sent for job {job_id} ({len(solutions)} solutions)")
             return

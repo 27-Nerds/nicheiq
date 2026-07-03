@@ -40,8 +40,9 @@ class TestComputeSolutionScores:
         assert s.market_fit_score == 0.8
         assert s.technical_feasibility_score == 0.6
         assert s.competitive_advantage_score == 0.7  # from novelty_score
-        assert s.seo_growth_potential_score == 0.9
-        assert s.composite_score == round((0.8 + 0.6 + 0.7 + 0.9) / 4, 3)
+        assert s.seo_growth_potential_score == 0.9  # stored raw (display parity)
+        # composite uses the provisional-capped seo (0.9 -> 0.7 rank ceiling)
+        assert s.composite_score == round((0.8 + 0.6 + 0.7 + 0.7) / 4, 3)
         assert s.rank == 1
 
     def test_none_optional_fields_stay_none(self):

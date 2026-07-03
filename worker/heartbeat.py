@@ -131,6 +131,20 @@ def _send_heartbeat() -> bool:
         return False
 
 
+# Reliable-queue claim refresher (2026-07-02 infra review round 2): the queue consumer
+# registers a callable that re-stamps the job's processing-list claim. Without refresh, a
+# legitimately long job (backend max runtime 4h) outlives STALE_CLAIM_SECONDS (2h) and the
+# sweep requeues it WHILE STILL RUNNING. Refreshing from this thread means a claim only goes
+# stale when the worker is actually dead.
+_claim_refresher = None
+
+
+def set_claim_refresher(fn) -> None:
+    """Register fn(job_id) to be called each heartbeat tick while a job is in flight."""
+    global _claim_refresher
+    _claim_refresher = fn
+
+
 def _heartbeat_loop() -> None:
     """
     Background thread that sends periodic heartbeats.
@@ -140,6 +154,11 @@ def _heartbeat_loop() -> None:
 
     while not _shutdown_event.is_set():
         _send_heartbeat()
+        if _current_job_id and _claim_refresher is not None:
+            try:
+                _claim_refresher(_current_job_id)
+            except Exception as e:  # noqa: BLE001 — refresh is advisory, never kill the thread
+                logger.debug(f"[Heartbeat] claim refresh failed (non-fatal): {e}")
         # Wait for interval or until shutdown
         _shutdown_event.wait(HEARTBEAT_INTERVAL_SECONDS)
 

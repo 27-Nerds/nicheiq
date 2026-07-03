@@ -401,6 +401,53 @@ def test_finalize_dev_time_sets_grounded_estimate(monkeypatch):
     assert idea.estimated_development_time == "6-10 weeks"   # grounded range replaces the point guess
 
 
+def test_finalize_dev_time_prompt_has_calibration_bands(monkeypatch):
+    # run-2 review: estimates ran ~4x over for standard documented-API ideas (4-6 months for a
+    # pip-audit + public API + arithmetic build). The bands tie the estimate to observable
+    # component properties; data_feasibility now rides along as an anchor.
+    from nicheiq.crews.unified_solution_crew import _DevTimeEstimate
+    monkeypatch.setattr(usc.settings, "enable_grounded_dev_time", True)
+    captured = {}
+    def _cap(**kw):
+        captured["prompt"] = kw.get("prompt")
+        return _DevTimeEstimate(rationale="r", estimate="4-6 weeks"), None
+    monkeypatch.setattr(usc.LLMService, "invoke_structured", staticmethod(_cap))
+    monkeypatch.setattr(UnifiedSolutionCrew, "_run_parallel",
+                        lambda self, fn, jobs, *a, **k: [fn(**j) for j in jobs])
+    monkeypatch.setattr(UnifiedSolutionCrew, "_record_divergent_usage", lambda self, u: None, raising=False)
+    c = _crew(); c.search_tool = None
+    idea = _idea("DT3", core_features=["a"], data_feasibility_score=0.85)
+    c._finalize_dev_time([idea])
+    p = captured["prompt"]
+    assert "classify FIRST" in p and "STANDARD" in p and "HARD" in p
+    assert "3-6 weeks" in p and "2-4 months" in p and "4-6+ months" in p
+    assert "DAYS each, not weeks" in p
+    assert "WORKED EXAMPLE" in p and "SCOPE TO THE MVP" in p
+    assert "DATA-FEASIBILITY" in p and "0.85" in p
+
+
+def test_reconcile_dev_time_band_arithmetic():
+    # the model classifies; CODE does the band arithmetic it kept getting wrong (3 replay
+    # iterations: estimates contradicted the model's own component labels)
+    from nicheiq.crews.unified_solution_crew import _parse_range_weeks, _reconcile_dev_time
+    assert _parse_range_weeks("6-10 weeks") == (6, 10)
+    lo, hi = _parse_range_weeks("2-4 months")
+    assert 8 < lo < 9 and 17 < hi < 18
+    assert _parse_range_weeks("soon") is None
+    # 0 HARD -> weeks band: a months estimate gets overridden
+    est, over = _reconcile_dev_time("4-6 months", ["parsing — STANDARD", "ui — STANDARD"])
+    assert est == "3-6 weeks" and over
+    # 1 HARD -> months band: consistent estimate kept verbatim
+    est, over = _reconcile_dev_time("2-3 months", ["nlp — HARD", "ui — STANDARD"])
+    assert est == "2-3 months" and not over
+    # 2 HARD -> long band: a weeks estimate gets overridden
+    est, over = _reconcile_dev_time("5-6 weeks", ["nlp — HARD", "resolution — HARD"])
+    assert est == "4-6+ months" and over
+    # no components (legacy response) -> estimate passes through untouched
+    est, over = _reconcile_dev_time("7-9 weeks", [])
+    assert est == "7-9 weeks" and not over
+
+
 def test_finalize_dev_time_failsoft_keeps_prior(monkeypatch):
     monkeypatch.setattr(usc.settings, "enable_grounded_dev_time", True)
     def _boom(**kw):

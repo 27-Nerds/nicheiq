@@ -236,6 +236,33 @@ filter/refine/select tasks above:
    realism re-score critic (`_calibrate_idea_scores`) and the closed-vocab tagger (`_apply_tags`)
    run per-cell in the cell's thread, alongside the deterministic feasibility + SEO-realism caps —
    so the post-union passes (step 5) only finish the few coverage-net stragglers.
+   **Portfolio funnel (2026-07-02, all stages A/B-validated then made unconditional).** Post-
+   tournament stages widen and strengthen the pool (each idea carries an `idea_tier`:
+   `single` | `salvaged` | `bundle`):
+   - **Salvage gate**: the in-cell judge picks 1 of 3-4 concepts BEFORE the calibration critic
+     runs, discarding ~66% of paid generation unexamined. The gate gives the full critic one
+     batch over the unclaimed losers (structural duplicates of a renamed winner are excluded)
+     and promotes any scoring `>= max(0.55, own-cell winner − 0.05)` — cap `salvage_max_promoted`,
+     at most 2 rescues per source pain; promoted losers get the same full expansion as winners
+     and join the pool as `idea_tier='salvaged'`.
+   - **Synthesis bundles**: one call composes 3-5 complementary validated pains (and the cell
+     winners) into 1-2 BUNDLED products around a single user workflow — the shape buyers actually
+     pay for, which one-pain-per-cell ideation structurally never produces. Additive
+     (`idea_tier='bundle'`); singles remain as alternatives.
+   - **Data-menu briefs**: a per-niche VERIFIED data-route menu (official/public registries,
+     licensed APIs, deterministic user-input arithmetic) built once and injected into every cell
+     ideator brief AND the critic's context — mechanisms start from data reality instead of dying
+     on unverifiable routes (the dominant idea-killer). An **incumbent probe** similarly augments
+     the community competitor-mentions block with a web-searched map of real paid products, their
+     pricing, and gaps.
+   - **Mechanism-parity probe** (post-calibration): web-verifies whether an incumbent already
+     SHIPS the top-`parity_probe_top_k` ideas' core mechanisms (targeted Serper queries against the
+     probed incumbents + one extraction), then re-scores those ideas with the parity evidence in
+     critic context and stamps `incumbent_parity` on each (rendered in the report's honest brief).
+     Evidence-in-context only — the critic decides what parity means; no hard caps.
+   The calibration critic itself samples **N=3 per batch, per-criterion median**
+   (`score_calibration_samples`; single draws carry ~0.03-0.05 stddev — gate-validated vs the
+   67-idea neutral-Opus panel: κ 0.19→0.256).
    An **in-cell angle classifier** (`idea_angle_llm`, default qwen3.7-max) also runs here — after
    calibration, before the novelty enhance — assigning each cell winner a `winning_angle`
    (`distribution_seo` / `novel_differentiation` / `vertical_workflow`) with an `angle_rationale`

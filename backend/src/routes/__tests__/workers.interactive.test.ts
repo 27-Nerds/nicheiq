@@ -121,7 +121,7 @@ describe('POST /api/workers/ideas-ready', () => {
   const validPayload = {
     worker_id: 'w1',
     job_id: jobId,
-    solutions: [{ name: 'Sol1' }],
+    solutions: [{ solution_name: 'Sol1' }],
     checkpoint_path: '/tmp/cp',
     total_to_validate: 3,
   };
@@ -159,7 +159,7 @@ describe('POST /api/workers/ideas-ready', () => {
       .send(validPayload);
 
     const callArgs = mockJobUpdateMany.mock.calls[0][0];
-    expect(callArgs.data.solutionIdeas).toEqual([{ name: 'Sol1' }]);
+    expect(callArgs.data.solutionIdeas).toEqual([{ solution_name: 'Sol1' }]);
     expect(callArgs.data.phase1CheckpointPath).toBe('/tmp/cp');
   });
 
@@ -244,15 +244,70 @@ describe('POST /api/workers/ideas-ready', () => {
     expect(mockNotifySolutionsReady).not.toHaveBeenCalled();
   });
 
-  it('returns 409 when job not in RUNNING state', async () => {
+  it('returns 200 idempotent when ideas already delivered (lost response retry)', async () => {
     mockJobUpdateMany.mockResolvedValue({ count: 0 });
+    mockJobFindUnique.mockResolvedValue({ status: 'AWAITING_SELECTION', ideasShownAt: new Date() });
+
+    const response = await request(app)
+      .post('/api/workers/ideas-ready')
+      .send(validPayload);
+
+    expect(response.status).toBe(200);
+    expect(response.body.idempotent).toBe(true);
+    // first delivery already broadcast/notified — the retry must NOT repeat either
+    expect(mockBroadcastProgress).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 when job does not exist', async () => {
+    mockJobUpdateMany.mockResolvedValue({ count: 0 });
+    mockJobFindUnique.mockResolvedValue(null);
+
+    const response = await request(app)
+      .post('/api/workers/ideas-ready')
+      .send(validPayload);
+
+    expect(response.status).toBe(404);
+  });
+
+  it('returns 409 with state for a cancelled job', async () => {
+    mockJobUpdateMany.mockResolvedValue({ count: 0 });
+    mockJobFindUnique.mockResolvedValue({ status: 'CANCELLED', ideasShownAt: null });
 
     const response = await request(app)
       .post('/api/workers/ideas-ready')
       .send(validPayload);
 
     expect(response.status).toBe(409);
-    expect(response.body.error).toBe('Job not in RUNNING state');
+    expect(response.body.state).toBe('CANCELLED');
+  });
+
+  it('returns 409 with state for a failed job (silent-loss scenario)', async () => {
+    mockJobUpdateMany.mockResolvedValue({ count: 0 });
+    mockJobFindUnique.mockResolvedValue({ status: 'FAILED', ideasShownAt: null });
+
+    const response = await request(app)
+      .post('/api/workers/ideas-ready')
+      .send(validPayload);
+
+    expect(response.status).toBe(409);
+    expect(response.body.state).toBe('FAILED');
+    expect(response.body.error).toContain('FAILED');
+  });
+
+  it('returns 400 when a solution is missing solution_name', async () => {
+    const response = await request(app)
+      .post('/api/workers/ideas-ready')
+      .send({ ...validPayload, solutions: [{ name: 'wrong-key' }] });
+
+    expect(response.status).toBe(400);
+  });
+
+  it('returns 400 for an empty solutions array', async () => {
+    const response = await request(app)
+      .post('/api/workers/ideas-ready')
+      .send({ ...validPayload, solutions: [] });
+
+    expect(response.status).toBe(400);
   });
 
   it('returns 400 for invalid payload (missing job_id)', async () => {

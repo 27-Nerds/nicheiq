@@ -326,6 +326,11 @@ class ResearchFlow(Flow[ResearchState]):
         Returns:
             Path to final report
         """
+        # Fresh run/resume: clear any systemic-LLM breaker from a previous job in this
+        # process (a fixed account must not stay poisoned).
+        from ..utils.llm_service import LLMService as _LLMSvc
+        _LLMSvc.reset_systemic()
+
         # Try to resume from checkpoint
         if auto_resume and self.resume_from_checkpoint(allow_cross_job=allow_cross_job):
             logger.info("Resuming from checkpoint - skipping completed stages")
@@ -1852,6 +1857,10 @@ RULES:
                             "obviousness_score": float(obviousness) if obviousness is not None else None,
                             "solo_dev_feasibility": float(solo_dev) if solo_dev is not None else None,
                             "data_feasibility_score": float(data_feas) if data_feas is not None else None,
+                            # review-3 fix: the independent build-feasibility estimate was
+                            # computed but never shown to Phase-1 users
+                            "build_feasibility_score": (
+                                float(bf) if (bf := getattr(solution, "build_feasibility_score", None)) is not None else None),
                             "data_access_model": getattr(solution, "data_access_model", None),
                             "data_acquisition_notes": getattr(solution, "data_acquisition_notes", None),
                             # Audience-framing inputs (the frontend splits the grid on
@@ -2142,7 +2151,17 @@ RULES:
             # Check if we should stop after a specific stage (interactive mode)
             if stop_after_phase is not None and stop_after_phase <= 1:
                 logger.info(f"Stopping after Phase {stop_after_phase} (interactive mode)")
-                return ""
+                # CLI deliverable (review-3 fix): the preview materializer previously ran only
+                # in the worker path, so --stop-after-phase 1 printed "Report saved to: "
+                # with an empty path. Materialize here and return the real path (fail-soft).
+                try:
+                    preview_path = self._materialize_preview_report(str(settings.output_dir))
+                except Exception as e:
+                    logger.warning(f"Preview report materialization failed (non-fatal): {e}")
+                    preview_path = None
+                if preview_path:
+                    logger.info(f"[OK] Phase-1 preview report written: {preview_path}")
+                return preview_path or ""
 
             # Auto-run competitive analysis for selected solution if not already done
             if (self.state.solution_selection
@@ -7483,6 +7502,9 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
 
         Delegates all report generation logic to ReportGenerator class.
         """
+        # Systemic-LLM halt point: never assemble a final report on a breaker-tripped run.
+        from ..utils.llm_service import LLMService as _LLMSvc
+        _LLMSvc.raise_if_systemic()
         logger.info("=" * 80)
         logger.info("STAGE 10: Final Report Generation (Hybrid Python + LLM)")
         logger.info("=" * 80)

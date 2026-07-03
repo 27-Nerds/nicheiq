@@ -49,7 +49,8 @@ jobsRouter.post('/', requireInternalAuth, jobCreationLimiter, async (req: Authen
       input.niche,
       input.allowedProjectTypes,
       'interactive',
-      input.entryMode
+      input.entryMode,
+      input.ideaFocus
     );
 
     // Enqueue job for Python worker
@@ -596,13 +597,17 @@ jobsRouter.post('/:jobId/resume', requireInternalAuth, validateJobId, async (req
       );
     } else {
       // Re-enqueue with resume flag
+      // Full original inputs (infra review round 2): a failure BEFORE a usable checkpoint
+      // previously lost entryMode/ideaFocus on resume — both now come from the Job row.
       await enqueueJob(
         job.id,
         job.niche,
         userId,
         job.allowedProjectTypes as string[] | undefined,
         true, // resume = true
-        job.jobMode || undefined
+        job.jobMode || undefined,
+        job.entryMode || undefined,
+        job.ideaFocus || undefined
       );
     }
 

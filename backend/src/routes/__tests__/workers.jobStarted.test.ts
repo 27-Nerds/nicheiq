@@ -172,6 +172,35 @@ describe('POST /api/workers/job-started', () => {
       expect(response.status).toBe(200);
       expect(response.body.shouldCancel).toBe(false);
     });
+
+    // Infra review round 2: a stale-requeued job whose heartbeat monitor already marked it
+    // FAILED (and refunded it) must NOT be blessed to run again.
+    it.each(['FAILED', 'COMPLETED', 'AWAITING_SELECTION'])(
+      'returns shouldCancel: true for terminal/settled state %s',
+      async (status) => {
+        mockJobUpdateMany.mockResolvedValue({ count: 0 });
+        mockJobFindUnique.mockResolvedValue({ status });
+
+        const response = await request(app)
+          .post('/api/workers/job-started')
+          .send({ worker_id: 'worker-1', job_id: jobId });
+
+        expect(response.status).toBe(200);
+        expect(response.body.shouldCancel).toBe(true);
+      },
+    );
+
+    it('returns shouldCancel: true when job does not exist', async () => {
+      mockJobUpdateMany.mockResolvedValue({ count: 0 });
+      mockJobFindUnique.mockResolvedValue(null);
+
+      const response = await request(app)
+        .post('/api/workers/job-started')
+        .send({ worker_id: 'worker-1', job_id: jobId });
+
+      expect(response.status).toBe(200);
+      expect(response.body.shouldCancel).toBe(true);
+    });
   });
 
   describe('normal operation', () => {

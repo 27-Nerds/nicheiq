@@ -364,6 +364,16 @@ class Settings(BaseSettings):
         default=3, ge=1, le=6,
         description="How many top-composite ideas get the mechanism-parity probe + re-score.",
     )
+    provisional_seo_rank_ceiling: float = Field(
+        default=0.7, ge=0.0, le=1.0,
+        description=(
+            "RANKING-only cap on seo_scalability_score while it is still provisional (no Stage-12 "
+            "keyword grounding, i.e. seo_scalability_score_refined is None). A speculative SEO score "
+            "carries the heaviest angle weight (distribution_seo: 0.40) and can put a weaker idea at "
+            "rank 1 before any keyword data exists. Display/verdict fields keep the uncapped value. "
+            "1.0 disables."
+        ),
+    )
     divergent_target_pool: int = Field(
         default=15,
         ge=6,

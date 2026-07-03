@@ -115,7 +115,8 @@ class TestThreadingAndStamp:
     def test_angle_ranked_composite_on_dict(self):
         d = {"market_fit_score": 0.6, "technical_feasibility_score": 0.6, "novelty_score": 0.3,
              "seo_scalability_score": 0.9, "build_feasibility_score": None, "winning_angle": "distribution_seo"}
-        assert angle_ranked_composite(d) == _composite_for_angle(0.6, 0.6, 0.3, 0.9, "distribution_seo")
+        # provisional seo (no refined score) is rank-capped at the ceiling: 0.9 -> 0.7
+        assert angle_ranked_composite(d) == _composite_for_angle(0.6, 0.6, 0.3, 0.7, "distribution_seo")
 
     def test_preview_stamp_is_angle_weighted(self, monkeypatch):
         # The preview dict is always stamped with the angle-weighted composite so the selection grid
@@ -124,4 +125,56 @@ class TestThreadingAndStamp:
         idea = self._idea("Seo", "distribution_seo")
         monkeypatch.setattr(sh.settings, "enable_feasibility_critic", False)
         stamped = _solution_to_preview_dict(idea)
-        assert stamped["adjusted_composite_score"] == _composite_for_angle(0.6, 0.6, 0.3, 0.9, "distribution_seo")
+        # provisional seo rank-capped 0.9 -> 0.7 in the stamp (stored score stays 0.9)
+        assert stamped["adjusted_composite_score"] == _composite_for_angle(0.6, 0.6, 0.3, 0.7, "distribution_seo")
+
+
+class TestProvisionalSeoCeiling:
+    """RANKING-only cap on provisional (not keyword-grounded) seo scores. Observed live
+    (indie-hackers run-2): a bundle's speculative seo 0.85 x distribution_seo weight 0.40
+    out-ranked a verified-data idea by 0.009 before any keyword existed."""
+
+    def _idea(self, name, **kw):
+        base = dict(
+            solution_name=name, description="d" * 30, value_proposition="v",
+            pain_points_addressed=["p"], core_features=["f"], target_personas=["t"],
+            market_fit_score=0.6, technical_feasibility_score=0.6, novelty_score=0.3,
+            seo_scalability_score=0.9, winning_angle="distribution_seo",
+        )
+        base.update(kw)
+        return BaseSolutionIdea(**base)
+
+    def test_caps_provisional_above_ceiling(self):
+        assert sh.ranking_seo(0.9, {}) == settings.provisional_seo_rank_ceiling
+
+    def test_below_ceiling_and_none_pass_through(self):
+        assert sh.ranking_seo(0.55, {}) == 0.55
+        assert sh.ranking_seo(None, {}) is None
+
+    def test_grounded_score_exempt(self):
+        idea = {"seo_scalability_score_refined": 0.82}
+        assert sh.ranking_seo(0.9, idea) == 0.9
+
+    def test_ceiling_one_disables(self, monkeypatch):
+        monkeypatch.setattr(settings, "provisional_seo_rank_ceiling", 1.0)
+        assert sh.ranking_seo(0.95, {}) == 0.95
+
+    def test_stored_score_stays_raw_composite_uses_cap(self, monkeypatch):
+        monkeypatch.setattr(settings, "enable_feasibility_critic", False)
+        scores = compute_solution_scores([self._idea("Spec")])
+        s = scores[0]
+        assert s.seo_growth_potential_score == 0.9  # display parity — never mutated
+        assert s.composite_score == _composite_for_angle(0.6, 0.6, 0.3, 0.7, "distribution_seo")
+
+    def test_speculative_seo_no_longer_outranks_verified_idea(self, monkeypatch):
+        # The run-2 shape: speculative-seo bundle vs a stronger verified idea.
+        monkeypatch.setattr(settings, "enable_feasibility_critic", False)
+        spec = self._idea("SpecBundle", market_fit_score=0.45, technical_feasibility_score=0.8,
+                          novelty_score=0.5, seo_scalability_score=0.95)
+        solid = self._idea("Verified", market_fit_score=0.7, technical_feasibility_score=0.85,
+                           novelty_score=0.6, seo_scalability_score=0.6)
+        with_cap = compute_solution_scores([spec, solid])
+        assert with_cap[0].solution_name == "Verified"
+        monkeypatch.setattr(settings, "provisional_seo_rank_ceiling", 1.0)
+        without_cap = compute_solution_scores([spec, solid])
+        assert without_cap[0].solution_name == "SpecBundle"  # the distortion the cap removes

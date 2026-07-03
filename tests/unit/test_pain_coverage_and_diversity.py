@@ -162,3 +162,33 @@ def test_coverage_summary_sees_bundle_addressed_pains():
     crew._pain_coverage_summary(ideas)
     joined = " ".join(crew.coverage_caveats)
     assert "Pain B" not in joined  # bundle coverage now visible → no false 'uncovered'
+
+
+def test_coverage_summary_high_pain_survives_display_truncation():
+    """Indie run-2 replay: the uncovered list truncated to 4 in raw pains-order, dropping
+    exactly the one HIGH (sev 0.75) pain while four mediums showed. Highest-stakes must
+    sort first, and the overflow must be counted."""
+    from nicheiq.crews.unified_solution_crew import UnifiedSolutionCrew
+
+    def _p(title, level, sev):
+        return SimpleNamespace(title=title, severity_score=sev,
+                               opportunity_level=SimpleNamespace(value=level))
+
+    crew = UnifiedSolutionCrew.__new__(UnifiedSolutionCrew)
+    crew.pain_point_analysis = SimpleNamespace(pain_points=[
+        _p("Med one", "medium", 0.65),
+        _p("Med two", "medium", 0.6),
+        _p("Med three", "medium", 0.6),
+        _p("Med four", "medium", 0.6),
+        _p("MoR fee vs own tax compliance", "high", 0.75),   # listed LAST, must show FIRST
+        _p("Med five", "medium", 0.5),
+        _p("Covered pain", "high", 0.9),
+    ])
+    crew.coverage_caveats = []
+    ideas = [SimpleNamespace(source_pain="Covered pain", pain_points_addressed=["Covered pain"]),
+             SimpleNamespace(source_pain="Covered pain", pain_points_addressed=[])]
+    crew._pain_coverage_summary(ideas)
+    [caveat] = crew.coverage_caveats
+    assert "MoR fee vs own tax compliance" in caveat          # high pain survives the [:4] cut
+    assert caveat.index("MoR fee") < caveat.index("Med one")  # and leads the list
+    assert "(+2 more)" in caveat                              # truncation is visible, not silent

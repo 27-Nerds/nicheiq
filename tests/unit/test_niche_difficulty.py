@@ -246,3 +246,42 @@ def test_strong_fit_with_frictions_keeps_strong_headline(monkeypatch):
     if fp.difficulty_level in ("high", "very_high"):
         # frictions still surfaced, just not as a fit problem
         assert v.key_challenges
+
+
+def test_wtp_signals_computed_and_weak_wtp_keypoint():
+    from nicheiq.utils.niche_difficulty import _WEAK_WTP_CHALLENGE, _wtp_judgment
+    pains = [SimpleNamespace(tool_addressable="full", commercial_intent=ci)
+             for ci in (0.55, 0.4, 0.3)]
+    fp = assess_niche_difficulty(pains, [_idea(novelty=0.6)] * 4, _nc())
+    assert fp.commercial_intent_max == 0.55
+    assert fp.high_commercial_share == 0.0
+    assert _WEAK_WTP_CHALLENGE in fp.key_points          # surfaced even on a strong-fit niche
+    # judgment bands
+    assert _wtp_judgment(None, None) == "n/a"
+    assert _wtp_judgment(0.55, 0.0).startswith("weak")
+    assert "NOT subscription" in _wtp_judgment(0.55, 0.0)
+    assert _wtp_judgment(0.8, 0.3).startswith("strong")
+    assert _wtp_judgment(0.7, 0.1).startswith("moderate")
+
+
+def test_strong_wtp_no_keypoint():
+    from nicheiq.utils.niche_difficulty import _WEAK_WTP_CHALLENGE
+    pains = [SimpleNamespace(tool_addressable="full", commercial_intent=0.75) for _ in range(4)]
+    fp = assess_niche_difficulty(pains, [_idea(novelty=0.6)] * 4, _nc())
+    assert _WEAK_WTP_CHALLENGE not in fp.key_points
+
+
+def test_wtp_reaches_prompt(monkeypatch):
+    from types import SimpleNamespace as NS
+    from nicheiq.utils import llm_service
+    captured = {}
+
+    def _cap(**kw):
+        captured["prompt"] = kw.get("prompt")
+        return (NS(headline="", narrative_summary=""), None)
+    monkeypatch.setattr(llm_service.LLMService, "invoke_structured", staticmethod(_cap))
+    pains = [SimpleNamespace(tool_addressable="full", commercial_intent=0.4) for _ in range(4)]
+    fp = assess_niche_difficulty(pains, [_idea(novelty=0.6)] * 4, _nc())
+    generate_niche_difficulty_verdict(fp, "x", _nc())
+    assert "Willingness to pay" in captured["prompt"]
+    assert "weak — no pain crosses" in captured["prompt"]

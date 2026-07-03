@@ -595,12 +595,50 @@ def _cap_feasibility_scores(
 
 
 class _DevTimeEstimate(BaseModel):
-    """Grounded solo-dev MVP build-time estimate (reason-first, range not point)."""
+    """Grounded solo-dev MVP build-time estimate (reason-first, range not point).
+
+    components carries the model's per-component STANDARD/HARD labels; the BAND is then
+    computed in code from the HARD count (2026-07-03: three prompt iterations could not make
+    the model keep its own band arithmetic consistent — classification is the part it can do)."""
     model_config = ConfigDict(extra='ignore')
     rationale: str = Field(
         "", description="One line: the BINDING (most involved) build component, reasoned BEFORE the estimate.")
+    components: list[str] = Field(
+        default_factory=list,
+        description="Each MVP build component as '<name> — STANDARD' or '<name> — HARD' (see rubric).")
     estimate: str = Field(
         "", description="Realistic solo-dev MVP build time as a RANGE in weeks or months, e.g. '6-10 weeks' / '3-5 months'.")
+
+
+_DEV_TIME_BANDS = ("3-6 weeks", "2-4 months", "4-6+ months")
+_DEV_TIME_BAND_WEEKS = ((2.0, 7.0), (7.0, 19.0), (16.0, 999.0))
+
+
+def _parse_range_weeks(estimate: str) -> tuple[float, float] | None:
+    """'6-10 weeks' -> (6, 10); '2-4 months' -> (8.7, 17.4); None when unparseable."""
+    import re as _re
+    nums = [float(n) for n in _re.findall(r"\d+(?:\.\d+)?", estimate or "")]
+    if not nums:
+        return None
+    lo, hi = nums[0], nums[-1]
+    if "month" in (estimate or "").lower():
+        lo, hi = lo * 4.345, hi * 4.345
+    return (lo, hi) if lo <= hi else (hi, lo)
+
+
+def _reconcile_dev_time(estimate: str, components: list[str]) -> tuple[str, bool]:
+    """Deterministic band check: the estimate must overlap the band the model's OWN component
+    labels select (0 HARD -> weeks, 1 -> 2-4 months, 2+ -> 4-6+). Returns (estimate, overridden).
+    No components (legacy/omitted) -> keep the model estimate untouched."""
+    if not components:
+        return estimate, False
+    hard = sum(1 for c in components if "HARD" in (c or "").upper())
+    band_idx = min(hard, 2)
+    parsed = _parse_range_weeks(estimate)
+    lo_b, hi_b = _DEV_TIME_BAND_WEEKS[band_idx]
+    if parsed and parsed[0] <= hi_b and parsed[1] >= lo_b:
+        return estimate, False
+    return _DEV_TIME_BANDS[band_idx], True
 
 
 class _LooseConceptBatch(BaseModel):
@@ -3415,6 +3453,17 @@ class UnifiedSolutionCrew:
                 project_type: str = ""
                 value_proposition: str = ""
                 description: str = ""
+                # Presentation fields (2026-07-03): bundles are the only birth path with no
+                # full-field expansion step — anything absent from THIS schema ships as None
+                # (run-2 review: bundle cards rendered without headline/pricing/differentiators).
+                headline: str = _F("", description="5-12 word product headline")
+                short_description: str = _F("", description="<=180 chars, plain language")
+                pricing_strategy: str = ""
+                differentiation_factors: list[str] = _F(default_factory=list)
+                organic_discovery_queries: list[str] = _F(
+                    default_factory=list, description="5-8 searches the buyer would type")
+                estimated_cac_organic: str = ""
+                estimated_cac_paid: str = ""
                 core_features: list[str] = _F(default_factory=list)
                 target_personas: list[str] = _F(default_factory=list)
                 pain_points_addressed: list[str] = _F(
@@ -3470,7 +3519,12 @@ class UnifiedSolutionCrew:
                     f"or official/public-data mechanisms only (no cold-start UGC core). Fill every "
                     f"field honestly (all *_score fields on a 0-1 scale); pain_points_addressed must "
                     f"use the EXACT pain titles. Estimate estimated_indexable_pages FIRST (the "
-                    f"realistic count of genuinely indexable pages), THEN score SEO against it."),
+                    f"realistic count of genuinely indexable pages), THEN score SEO against it. "
+                    f"Fill the presentation fields with the same care as a fully-refined idea: "
+                    f"headline (5-12 words), short_description (<=180 chars), a realistic "
+                    f"pricing_strategy, 2-4 differentiation_factors, 5-8 organic_discovery_queries "
+                    f"(searches the buyer would actually type), and estimated_cac_organic/"
+                    f"estimated_cac_paid as short qualitative ranges."),
                 output_model=_Bundles, temperature=0.4, timeout=180,
                 model_name=settings.brainstorm_llm, reasoning_effort="medium", creative=True)
             out = []
@@ -3479,6 +3533,13 @@ class UnifiedSolutionCrew:
                 d["idea_tier"] = "bundle"
                 if not d.get("description"):
                     d["description"] = d.get("value_proposition", "")
+                # Presentation fields: empty-string/empty-list schema defaults -> None, so an
+                # LLM omission stays DETECTABLE downstream (Optional fields, {#if} guards).
+                for k in ("headline", "short_description", "pricing_strategy",
+                          "differentiation_factors", "organic_discovery_queries",
+                          "estimated_cac_organic", "estimated_cac_paid"):
+                    if not d.get(k):
+                        d[k] = None
                 if not d.get("core_features"):
                     d["core_features"] = ["bundled workflow"]
                 if not d.get("target_personas"):
@@ -4140,22 +4201,63 @@ class UnifiedSolutionCrew:
                 f"DATA ROUTE: {getattr(idea, 'data_access_model', '') or 'n/a'} — "
                 f"{(getattr(idea, 'data_acquisition_notes', '') or '')[:160]}\n"
                 f"INDEPENDENT BUILD-FEASIBILITY (0-1, higher = easier to build): "
-                f"{getattr(idea, 'build_feasibility_score', '?')}\n\n"
+                f"{getattr(idea, 'build_feasibility_score', '?')}\n"
+                f"DATA-FEASIBILITY (0-1, higher = data easier to obtain): "
+                f"{getattr(idea, 'data_feasibility_score', None) if getattr(idea, 'data_feasibility_score', None) is not None else '?'}\n\n"
                 f"WEB EVIDENCE (comparable build complexity — may be thin):\n{snip or '(none retrieved)'}\n\n"
                 "Decompose the MVP into its real build components (core feature work, data "
                 "integration/pipeline, auth/infra, any content or SEO scaffolding) and judge which is "
                 "the binding (most involved) one. ANCHOR to the build-feasibility score: a low score "
                 "(hard to build, or a gated/unverified data route) means a LONGER estimate — do not "
                 "contradict it. Assume a solo dev (no team) shipping a working MVP, not a polished "
-                "v1. Give a realistic RANGE in weeks or months, never a single false-precise number. "
+                "v1.\n"
+                "CALIBRATION — classify FIRST, then count, then estimate:\n"
+                "Classify each build component as STANDARD or HARD.\n"
+                "STANDARD = a documented public API lookup, an existing open-source tool doing the "
+                "heavy step (dependency scanning a la pip-audit/osv-scanner, OCR, geocoding), CRUD "
+                "+ auth, deterministic arithmetic or fixed-weight scoring, templated page "
+                "generation. Wiring these is DAYS each, not weeks — and a component is NOT hard "
+                "just because it sounds central to the product.\n"
+                "HARD = no existing API or tool does the heavy step: fuzzy entity resolution "
+                "across sources, NLP over messy free text, scoring that needs iterative tuning "
+                "against real data, multi-ecosystem support built from scratch.\n"
+                "SCOPE TO THE MVP, not the written maximum: if the approach lists many "
+                "ecosystems, languages, regions, or sources, the MVP ships with the 1-3 that "
+                "serve the core user and the rest is post-MVP — classify and count at MVP scope.\n"
+                "WORKED EXAMPLE — 'scan a repo's dependencies and price the security risk': "
+                "components = ['dependency manifest parsing — STANDARD (osv-scanner/pip-audit "
+                "already do this)', 'CVE lookup — STANDARD (NVD/OSV public APIs)', 'risk-price "
+                "arithmetic — STANDARD (fixed weights)', 'web UI + report — STANDARD'] -> 0 HARD "
+                "-> 3-6 weeks. Note the parser is STANDARD even though it sounds central: an "
+                "existing tool does it. If the TECHNICAL APPROACH text itself names the "
+                "library/tool/API that performs a step, that step is STANDARD by definition — "
+                "never re-price it as building the capability from scratch.\n"
+                "Band by the COUNT of HARD components: 0 -> 3-6 weeks; exactly 1 -> 2-4 months; "
+                "2 or more (or combinatorial scope) -> 4-6+ months. Fill `components` with every "
+                "MVP component and its STANDARD/HARD label; the estimate must match the band your "
+                "count selects. Do not price in enterprise concerns (SLAs, scale, compliance) an "
+                "MVP doesn't have.\n"
+                "Give a realistic RANGE in weeks or months, never a single false-precise number. "
                 "rationale FIRST (the binding driver), THEN the estimate."
             )
             try:
+                # Model: pain_point_validation_llm, NOT ideation_judge_llm — the 2026-07-03
+                # replay A/B showed the judge model (glm-4.7, reasoning-none) cannot apply the
+                # STANDARD/HARD rubric (labels a step HARD even when the spec names the library
+                # that does it; 5 prompt iterations), while the validation model nails the two
+                # reviewer-anchored cases. Band discipline additionally enforced in code by
+                # _reconcile_dev_time (the model classifies, code does the band arithmetic).
                 r, usage = LLMService.invoke_structured(
                     prompt=prompt, output_model=_DevTimeEstimate, temperature=0.2, timeout=60,
-                    model_name=settings.ideation_judge_llm, reasoning_effort="none", creative=True)
+                    model_name=settings.pain_point_validation_llm, reasoning_effort="none",
+                    creative=True)
                 est = (getattr(r, "estimate", "") or "").strip()
                 if est:
+                    est, overridden = _reconcile_dev_time(est, getattr(r, "components", None) or [])
+                    if overridden:
+                        logger.info(f"[DEV-TIME] '{getattr(idea, 'solution_name', '?')}' estimate "
+                                    f"'{(getattr(r, 'estimate', '') or '').strip()[:20]}' outside its "
+                                    f"own component band -> '{est}'")
                     idea.estimated_development_time = est[:40]
                     rat = (getattr(r, "rationale", "") or "").strip()
                     if rat:
@@ -4191,6 +4293,93 @@ class UnifiedSolutionCrew:
         if capped_n:
             logger.info(f"[SEO-REALISM] capped {capped_n}/{len(ideas)} idea SEO scores")
 
+    _PROJECT_TYPE_VOCAB = ("saas", "directory", "aggregator", "comparison-tool", "marketplace")
+    _DATA_ACCESS_VOCAB = ("public", "freemium", "paywalled", "unofficial", "restricted", "none",
+                          "official", "licensed", "blocked", "unverified")
+
+    def _finalize_idea_pool(self, ideas: list) -> None:
+        """Pool-assembly contract (2026-07-03): the FINAL pool is fed by four birth paths
+        (tournament winners, salvaged losers, synthesis bundles, coverage re-injections) with
+        different guarantees — every shape bug to date (bundle missing scores, prose
+        data_access_model, free-text project_type breaking the frontend type chips) was a
+        per-path escape. This is the ONE choke point that normalizes closed-vocab fields and
+        accounts for evaluation completeness on everything that ships. Mutates in place."""
+        from ..utils.public_data_sources import llm_confirm_known_route, retrieve_known_sources
+
+        clamped = 0
+        for idea in ideas or []:
+            # project_type closed vocab (frontend chips + archetype logic key off it)
+            pt = (getattr(idea, "project_type", None) or "").strip().lower()
+            if pt and pt not in self._PROJECT_TYPE_VOCAB:
+                low = pt
+                if "aggregat" in low:
+                    norm = "aggregator"
+                elif "director" in low:
+                    norm = "directory"
+                elif "comparison" in low or " vs " in low:
+                    norm = "comparison-tool"
+                elif "marketplace" in low:
+                    norm = "marketplace"
+                else:
+                    norm = "saas"
+                # keep the informative prose (e.g. "Desktop app + local agent") with the
+                # technical description instead of silently discarding it
+                if len(pt) > len(norm) + 4:
+                    ta = getattr(idea, "technical_approach", "") or ""
+                    if pt not in ta.lower():
+                        idea.technical_approach = (f"Delivery shape: {getattr(idea, 'project_type')}. "
+                                                   + ta).strip()
+                logger.info(f"[PoolContract] project_type '{pt[:50]}' -> '{norm}' "
+                            f"({getattr(idea, 'solution_name', '?')})")
+                idea.project_type = norm
+                clamped += 1
+            # data_access_model closed vocab (Rule-A SEO gating + facets read the tier)
+            dam = getattr(idea, "data_access_model", None)
+            if dam and dam.strip().lower() not in self._DATA_ACCESS_VOCAB:
+                notes = getattr(idea, "data_acquisition_notes", "") or ""
+                if dam not in notes:
+                    idea.data_acquisition_notes = (f"Data route: {dam.strip()}"
+                                                   + (f" | {notes}" if notes else ""))
+                logger.info(f"[PoolContract] data_access_model prose -> notes "
+                            f"({getattr(idea, 'solution_name', '?')})")
+                idea.data_access_model = None
+                clamped += 1
+            # Well-known-source label upgrade (2026-07-03): only tournament winners pass the
+            # web verifier — bundles/salvaged/re-injections carry the critic's model-knowledge
+            # label, observed wrong on famous sources (a bundle shipped SAM.gov as 'paywalled').
+            # Upgrade-only and two-step: deterministic retrieval (EVERY listed source must
+            # match) + LLM confirm over the retrieved entries; runs at most for the rare
+            # restrictively-labeled idea, so the confirm call cost is ~0-2 per run.
+            dam = (getattr(idea, "data_access_model", None) or "").strip().lower()
+            if dam in ("paywalled", "restricted", "blocked", "unverified"):
+                matches = retrieve_known_sources(getattr(idea, "data_sources", None))
+                names = llm_confirm_known_route(
+                    matches, context=(getattr(idea, "technical_approach", "") or "")[:400],
+                ) if matches else None
+                if names:
+                    logger.info(f"[PoolContract] data_access_model '{dam}' -> 'public' "
+                                f"(well-known source: {names}; "
+                                f"{getattr(idea, 'solution_name', '?')})")
+                    idea.data_access_model = "public"
+                    idea.data_acquisition_notes = (
+                        f"Known public data source: {names} (allowlist-verified)")[:160]
+                    clamped += 1
+        # Evaluation-completeness accounting (informational — the systemic-LLM breaker halts
+        # runs where the passes died wholesale; isolated gaps stay visible to the user)
+        missing = [getattr(i, "solution_name", "?") for i in ideas or []
+                   if getattr(i, "winning_angle", None) is None
+                   and getattr(i, "novelty_score", None) is None
+                   and not getattr(i, "calibration_notes", None)]
+        if missing:
+            msg = (f"{len(missing)} idea(s) shipped without full independent evaluation "
+                   f"(angle/novelty/critic): {'; '.join(missing[:4])} — treat their scores "
+                   "as generator self-assessment.")
+            self.coverage_caveats = list(getattr(self, "coverage_caveats", None) or []) + [msg]
+            logger.warning(f"[PoolContract] {msg}")
+        if clamped or missing:
+            logger.info(f"[PoolContract] normalized {clamped} field(s), "
+                        f"{len(missing)} under-evaluated idea(s)")
+
     def _pain_coverage_summary(self, ideas: list) -> None:
         """Informational pain-coverage signal (NO drops, NO reorder). Appends a caveat to
         self.coverage_caveats describing (a) concentration — when many final ideas share one
@@ -4225,20 +4414,28 @@ class UnifiedSolutionCrew:
             for t in (getattr(i, "pain_points_addressed", None) or []):
                 if t and str(t).strip():
                     covered_norm.add(_norm(str(t)))
-        uncovered = [
-            getattr(p, "title", "")
-            for p in pains
+        uncovered_pains = [
+            p for p in pains
             if getattr(getattr(p, "opportunity_level", None), "value", "") in ("high", "medium")
             and _norm(getattr(p, "title", "")) not in covered_norm
             and getattr(p, "title", "")
         ]
+        # Highest-stakes first BEFORE the display truncation: the [:4] cut used to run in raw
+        # pains-order, which dropped exactly the pain that mattered (indie run replay: the one
+        # HIGH sev-0.75 uncovered pain fell off while four mediums showed).
+        uncovered_pains.sort(key=lambda p: (
+            getattr(getattr(p, "opportunity_level", None), "value", "") != "high",
+            -(getattr(p, "severity_score", None) or 0.0),
+        ))
+        uncovered = [getattr(p, "title", "") for p in uncovered_pains]
 
         notes: list[str] = []
         # Concentration: only flag when it's genuinely lopsided (>=3 ideas AND >=half the set).
         if top_n >= 3 and top_n / n >= 0.5:
             notes.append(f'{top_n} of {n} ideas address "{top_pain}"')
         if uncovered:
-            notes.append("validated pains with no idea: " + "; ".join(uncovered[:4]))
+            more = f" (+{len(uncovered) - 4} more)" if len(uncovered) > 4 else ""
+            notes.append("validated pains with no idea: " + "; ".join(uncovered[:4]) + more)
         if not notes:
             return
         msg = ("Idea-set coverage — " + "; ".join(notes)
@@ -4932,6 +5129,15 @@ class UnifiedSolutionCrew:
                 logger.warning(f"Pain-coverage enforcement skipped: {e}")
                 self.coverage_caveats = []
 
+            # Pool-assembly contract: ONE choke point covering all four idea birth paths
+            # (tournament winners, salvaged, bundles, and the coverage re-injections above).
+            # Every prior shape bug (bundle missing scores, prose data_access_model, free-text
+            # project_type chips) was an instance of this missing contract at some birth path.
+            try:
+                self._finalize_idea_pool(refined_solutions.solution_ideas)
+            except Exception as e:
+                logger.warning(f"Pool contract skipped: {e}")
+
             # Append the niche-anchor transparency notes AFTER enforce_pain_coverage (which replaces
             # coverage_caveats wholesale) so they survive: each flags an idea built on the user's
             # stated-focus pain rather than the higher-severity research pain in the same theme.
@@ -5058,6 +5264,13 @@ class UnifiedSolutionCrew:
             # ghost names and the report renders dropped runner-ups).
             if solution_selection is not None:
                 self._prune_selection_to_ideas(solution_selection, refined_solutions.solution_ideas)
+
+            # Systemic-LLM halt point: if a payment/auth failure tripped the breaker during
+            # the post-union passes (each is fail-soft and would have silently skipped), the
+            # pool is half-evaluated — FAIL the stage rather than persist/rank it. Resume
+            # re-runs Stage 5 whole once the account is fixed.
+            from ..utils.llm_service import LLMService as _LLMSvc
+            _LLMSvc.raise_if_systemic()
 
             # Re-save the FINAL ideas: calibrate/angle/validate/SEO-caps/tags all mutate them
             # AFTER the mid-pipeline stage_5_3 save above. Without this re-save the durable

@@ -122,3 +122,108 @@ def test_notes_kept_when_label_unchanged(monkeypatch):
     verify_data_routes(idea, None, search=lambda q: "", invoke=None)
     assert idea.data_access_model == "public"
     assert idea.data_acquisition_notes == "rich critic note describing the route and cost"
+
+
+# --- well-known-source pass (2026-07-03) ------------------------------------
+# Famous free sources were getting misclassified by sparse search snippets (live: GitHub API
+# -> 'restricted', SAM.gov -> 'paywalled'). Two steps: deterministic retrieval over the
+# allowlist, then an LLM confirm over the retrieved entries; anything unrecognized or
+# unconfirmed falls through to the web path untouched.
+
+def _boom(_q):
+    raise AssertionError("search must not run on the allowlist path")
+
+
+def _confirm_yes(monkeypatch):
+    monkeypatch.setattr(v4, "llm_confirm_known_route",
+                        lambda matches, **kw: ", ".join(dict.fromkeys(n for _, n in matches)))
+
+
+def _confirm_no(monkeypatch):
+    monkeypatch.setattr(v4, "llm_confirm_known_route", lambda matches, **kw: None)
+
+
+class TestWellKnownSourcePass:
+    def test_github_api_short_circuits_to_public(self, monkeypatch):
+        spy = _patch_llm(monkeypatch, DataRouteVerdict(
+            self_sourced=False, verdict="refuted", note="sparse snippets"))  # would misclassify
+        _confirm_yes(monkeypatch)
+        idea = _idea(data_sources=["GitHub REST API"], data_access_model="restricted")
+        v = verify_data_routes(idea, None, search=_boom, invoke=None)
+        assert spy.calls == 0                       # verdict LLM never consulted
+        assert idea.data_access_model == "public"
+        assert "GitHub REST API" in idea.data_acquisition_notes
+        assert v.verdict == "supported" and v.obtainable
+
+    def test_sam_gov_short_circuits_to_public(self, monkeypatch):
+        spy = _patch_llm(monkeypatch, DataRouteVerdict(self_sourced=False, verdict="refuted"))
+        _confirm_yes(monkeypatch)
+        idea = _idea(data_sources=["SAM.gov opportunity notices"], data_access_model="paywalled")
+        verify_data_routes(idea, None, search=_boom, invoke=None)
+        assert spy.calls == 0
+        assert idea.data_access_model == "public"
+
+    def test_confirm_rejection_falls_through_to_web_path(self, monkeypatch):
+        # retrieval hits, but the LLM says the claim doesn't really refer to the matched
+        # source (name coincidence / partner-gated data) -> full web verification runs.
+        spy = _patch_llm(monkeypatch, DataRouteVerdict(
+            self_sourced=False, verdict="not_enough_info", note=""))
+        _confirm_no(monkeypatch)
+        idea = _idea(data_sources=["GitHub REST API"], data_access_model="restricted")
+        verify_data_routes(idea, None, search=lambda q: "", invoke=None)
+        assert spy.calls == 1                       # web path taken
+        assert idea.data_access_model == "unverified"
+
+    def test_mixed_claim_falls_through_before_confirm(self, monkeypatch):
+        # A famous source next to an unknown vendor feed must NOT even reach the confirm.
+        spy = _patch_llm(monkeypatch, DataRouteVerdict(
+            self_sourced=False, verdict="not_enough_info", note=""))
+        def _no_confirm(*a, **kw):
+            raise AssertionError("confirm must not run when retrieval fails")
+        monkeypatch.setattr(v4, "llm_confirm_known_route", _no_confirm)
+        idea = _idea(data_sources=["GitHub REST API", "VendorMetrics partner feed"])
+        verify_data_routes(idea, None, search=lambda q: "", invoke=None)
+        assert spy.calls == 1                       # web path taken
+        assert idea.data_access_model == "unverified"
+
+    def test_unrecognized_vendor_falls_through(self, monkeypatch):
+        spy = _patch_llm(monkeypatch, DataRouteVerdict(
+            self_sourced=False, verdict="refuted", note="no trace"))
+        idea = _idea(data_sources=["ActBlue donor API"])
+        verify_data_routes(idea, None, search=lambda q: "", invoke=None)
+        assert spy.calls == 1
+        assert idea.data_access_model == "blocked"  # fabrication rule untouched
+
+    def test_prior_public_label_keeps_existing_notes(self, monkeypatch):
+        spy = _patch_llm(monkeypatch, DataRouteVerdict(self_sourced=False, verdict="refuted"))
+        _confirm_yes(monkeypatch)
+        idea = _idea(data_sources=["SEC EDGAR filings"], data_access_model="public",
+                     data_acquisition_notes="rich critic note")
+        verify_data_routes(idea, None, search=_boom, invoke=None)
+        assert spy.calls == 0
+        assert idea.data_acquisition_notes == "rich critic note"  # label unchanged -> notes kept
+
+
+class TestVerdictPromptPins:
+    def _capture_prompt(self, monkeypatch):
+        captured = {}
+
+        def fake(*args, **kwargs):
+            captured["prompt"] = kwargs.get("prompt") or (args[0] if args else "")
+            return DataRouteVerdict(self_sourced=False, verdict="not_enough_info", note=""), None
+
+        monkeypatch.setattr(v4.LLMService, "invoke_structured", staticmethod(fake))
+        idea = _idea(data_sources=["SomePlatform API"])
+        verify_data_routes(idea, None, search=lambda q: "", invoke=None)
+        return captured["prompt"]
+
+    def test_famous_source_exception_present(self, monkeypatch):
+        prompt = self._capture_prompt(monkeypatch)
+        assert "canonically famous sources" in prompt
+        assert "must NOT downgrade a famous source" in prompt
+        # the exception is scoped: unrecognized vendor APIs still need evidence
+        assert "NEVER applies to" in prompt
+
+    def test_fabrication_rule_retained(self, monkeypatch):
+        prompt = self._capture_prompt(monkeypatch)
+        assert "zero" in prompt and "corroboration is fabricated" in prompt

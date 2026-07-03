@@ -256,3 +256,182 @@ class TestRegenerationFailureHandling:
                 "niche": "test",
             })
             mock_job_failed.assert_called_once()
+
+
+# ── Reliable queue (2026-07-02 infra review): BLMOVE + processing ack + stale requeue ──
+
+class TestReliableQueue:
+    def _redis(self, entries=None, claims=None):
+        from unittest.mock import MagicMock
+        r = MagicMock()
+        r.lrange.return_value = list(entries or [])
+        claims = claims or {}
+        r.hget.side_effect = lambda h, k: claims.get(k)
+        r.lrem.return_value = 1
+        return r
+
+    def test_ack_removes_entry_and_claim(self):
+        from worker.queue_consumer import _ack_processing, PROCESSING_QUEUE, CLAIMS_HASH
+        r = self._redis()
+        _ack_processing(r, '{"job_id": "j1"}', "j1")
+        r.lrem.assert_called_once_with(PROCESSING_QUEUE, 1, '{"job_id": "j1"}')
+        r.hdel.assert_called_once_with(CLAIMS_HASH, "j1")
+
+    def test_ack_fail_soft(self):
+        import redis as redis_lib
+        from worker.queue_consumer import _ack_processing
+        r = self._redis()
+        r.lrem.side_effect = redis_lib.RedisError("down")
+        _ack_processing(r, "raw", "j1")   # must not raise — sweep reclaims later
+
+    def test_sweep_requeues_stale_and_keeps_fresh(self):
+        import time
+        from worker.queue_consumer import (
+            CLAIMS_HASH, PROCESSING_QUEUE, QUEUE_NAME, STALE_CLAIM_SECONDS,
+            requeue_stale_processing,
+        )
+        now = time.time()
+        stale = '{"job_id": "old"}'
+        fresh = '{"job_id": "new"}'
+        r = self._redis(entries=[stale, fresh],
+                        claims={"old": f"{now - STALE_CLAIM_SECONDS - 10}:w1",
+                                "new": f"{now - 30}:w2"})
+        n = requeue_stale_processing(r)
+        assert n == 1
+        r.lpush.assert_called_once_with(QUEUE_NAME, stale)
+        # fresh entry untouched on the queue side
+        for call in r.lrem.call_args_list:
+            assert call.args[2] != fresh
+
+    def test_sweep_requeues_claimless_entry(self):
+        from worker.queue_consumer import QUEUE_NAME, requeue_stale_processing
+        r = self._redis(entries=['{"job_id": "ghost"}'], claims={})
+        assert requeue_stale_processing(r) == 1
+        r.lpush.assert_called_once_with(QUEUE_NAME, '{"job_id": "ghost"}')
+
+    def test_sweep_drops_malformed_poison(self):
+        from worker.queue_consumer import PROCESSING_QUEUE, requeue_stale_processing
+        r = self._redis(entries=["not json at all"])
+        assert requeue_stale_processing(r) == 0
+        r.lrem.assert_called_once_with(PROCESSING_QUEUE, 1, "not json at all")
+        r.lpush.assert_not_called()
+
+    def test_sweep_fail_soft(self):
+        import redis as redis_lib
+        from worker.queue_consumer import requeue_stale_processing
+        r = self._redis()
+        r.lrange.side_effect = redis_lib.RedisError("down")
+        assert requeue_stale_processing(r) == 0   # must not raise
+
+    def test_consume_loop_uses_blmove_and_acks(self):
+        # drive ONE loop iteration: blmove returns a job, then shutdown
+        import worker.queue_consumer as qc
+        from unittest.mock import MagicMock, patch
+
+        r = self._redis()
+        job = '{"job_id": "j9", "task_type": "research"}'
+        r.blmove.side_effect = [job]
+
+        def _stop(job_data):
+            qc.shutdown_requested = True
+
+        with patch.object(qc, "get_redis_connection", return_value=r), \
+             patch.object(qc, "process_job", side_effect=_stop), \
+             patch.object(qc, "start_heartbeat", create=True), \
+             patch("worker.heartbeat.start_heartbeat"), \
+             patch("worker.heartbeat.stop_heartbeat"), \
+             patch("worker.heartbeat.get_worker_id", return_value="w1"), \
+             patch.object(qc.signal, "signal"):
+            qc.shutdown_requested = False
+            qc._jobs_processed = 0
+            try:
+                qc.run_consumer()
+            finally:
+                qc.shutdown_requested = False
+        r.blmove.assert_called_once_with(
+            qc.QUEUE_NAME, qc.PROCESSING_QUEUE, timeout=5, src="RIGHT", dest="LEFT")
+        r.lrem.assert_any_call(qc.PROCESSING_QUEUE, 1, job)   # acked after process_job
+        r.hset.assert_called_once()                            # claim stamped
+
+    def test_consume_loop_acks_even_when_process_job_raises(self):
+        import worker.queue_consumer as qc
+        from unittest.mock import patch
+
+        r = self._redis()
+        job = '{"job_id": "jX", "task_type": "research"}'
+        r.blmove.side_effect = [job]
+
+        def _boom(job_data):
+            qc.shutdown_requested = True
+            raise RuntimeError("unexpected")
+
+        with patch.object(qc, "get_redis_connection", return_value=r), \
+             patch.object(qc, "process_job", side_effect=_boom), \
+             patch("worker.heartbeat.start_heartbeat"), \
+             patch("worker.heartbeat.stop_heartbeat"), \
+             patch("worker.heartbeat.get_worker_id", return_value="w1"), \
+             patch.object(qc.signal, "signal"), \
+             patch.object(qc.time, "sleep", create=True) if hasattr(qc, "time") else patch("time.sleep"):
+            qc.shutdown_requested = False
+            qc._jobs_processed = 0
+            try:
+                qc.run_consumer()
+            finally:
+                qc.shutdown_requested = False
+        r.lrem.assert_any_call(qc.PROCESSING_QUEUE, 1, job)   # delivery attempt is DONE
+
+
+class TestClaimRefresh:
+    """Infra review round 2: without refresh, a job longer than STALE_CLAIM_SECONDS (2h) but
+    under the backend's 4h max runtime gets sweep-requeued WHILE STILL RUNNING. The heartbeat
+    thread re-stamps the claim each tick, so staleness now means 'worker actually dead'."""
+
+    def test_heartbeat_tick_invokes_refresher_for_current_job(self):
+        from unittest.mock import MagicMock, patch
+        import worker.heartbeat as hb
+
+        calls = []
+        hb.set_claim_refresher(lambda job_id: calls.append(job_id))
+        try:
+            with patch.object(hb, "_send_heartbeat"), \
+                 patch.object(hb, "_current_job_id", "j42"), \
+                 patch.object(hb, "HEARTBEAT_INTERVAL_SECONDS", 0):
+                hb._shutdown_event.clear()
+                # run exactly one loop iteration: set shutdown from within wait
+                original_wait = hb._shutdown_event.wait
+                def _wait_once(timeout=None):
+                    hb._shutdown_event.set()
+                    return True
+                with patch.object(hb._shutdown_event, "wait", side_effect=_wait_once):
+                    hb._heartbeat_loop()
+        finally:
+            hb.set_claim_refresher(None)
+            hb._shutdown_event.clear()
+        assert calls == ["j42"]
+
+    def test_refresher_exception_never_kills_thread(self):
+        from unittest.mock import patch
+        import worker.heartbeat as hb
+
+        def _boom(job_id):
+            raise RuntimeError("redis down")
+        hb.set_claim_refresher(_boom)
+        try:
+            with patch.object(hb, "_send_heartbeat"), \
+                 patch.object(hb, "_current_job_id", "j1"):
+                def _wait_once(timeout=None):
+                    hb._shutdown_event.set()
+                    return True
+                with patch.object(hb._shutdown_event, "wait", side_effect=_wait_once):
+                    hb._heartbeat_loop()   # must not raise
+        finally:
+            hb.set_claim_refresher(None)
+            hb._shutdown_event.clear()
+
+    def test_consumer_registers_refresher(self):
+        # source-level pin: run_consumer wires set_claim_refresher before consuming
+        import inspect
+        import worker.queue_consumer as qc
+        src = inspect.getsource(qc.run_consumer)
+        assert "set_claim_refresher(_refresh_claim)" in src
+        assert src.index("set_claim_refresher") < src.index("requeue_stale_processing(redis_conn)")

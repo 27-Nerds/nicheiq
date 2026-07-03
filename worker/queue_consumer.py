@@ -49,6 +49,13 @@ logger.add(
 
 # Queue configuration
 QUEUE_NAME = "nicheiq:jobs"
+# Reliable-queue companions (2026-07-02 infra review: a bare BRPOP loses the job forever if
+# the worker dies mid-processing). Jobs are BLMOVEd into the processing list, acked (LREM)
+# after process_job returns, and stale entries are requeued by the sweep below.
+PROCESSING_QUEUE = "nicheiq:jobs:processing"
+CLAIMS_HASH = "nicheiq:jobs:claims"          # job_id -> "<epoch>:<worker_id>"
+STALE_CLAIM_SECONDS = 2 * 60 * 60            # > max observed job duration
+REQUEUE_SWEEP_INTERVAL_SECONDS = 10 * 60
 
 # Task types and modes (must match backend/src/services/queueService.ts)
 TASK_TYPE_LANDING_PAGE = "landing_page"
@@ -127,6 +134,9 @@ def process_job(job_data: dict) -> None:
     Args:
         job_data: Dict with job_id, niche, user_id, allowed_project_types
     """
+    # Clear the systemic-LLM breaker from any previous job in this process.
+    from nicheiq.utils.llm_service import LLMService as _LLMSvc
+    _LLMSvc.reset_systemic()
     global current_job_id
 
     job_id = job_data.get("job_id")
@@ -324,6 +334,54 @@ def process_job(job_data: dict) -> None:
         )
 
 
+def _ack_processing(redis_conn, raw_job_json: str, job_id: str | None) -> None:
+    """Remove a finished/poison job from the processing list + its claim. Fail-soft: an ack
+    failure only means the sweep requeues it later (at-least-once, never lost)."""
+    try:
+        redis_conn.lrem(PROCESSING_QUEUE, 1, raw_job_json)
+        if job_id:
+            redis_conn.hdel(CLAIMS_HASH, job_id)
+    except redis.RedisError as e:
+        logger.warning(f"[Requeue] ack failed (job {job_id}): {e} — sweep will reclaim")
+
+
+def requeue_stale_processing(redis_conn) -> int:
+    """Move stale processing-list entries (claim missing or older than STALE_CLAIM_SECONDS —
+    i.e. their worker died mid-job) back onto the main queue. Malformed entries are dropped
+    (poison). Returns the number requeued. Fail-soft on any redis error."""
+    import time as _time
+    requeued = 0
+    try:
+        entries = redis_conn.lrange(PROCESSING_QUEUE, 0, -1)
+        now = _time.time()
+        for raw in entries:
+            try:
+                job_id = json.loads(raw).get("job_id")
+            except (json.JSONDecodeError, AttributeError):
+                redis_conn.lrem(PROCESSING_QUEUE, 1, raw)
+                logger.warning("[Requeue] dropped malformed processing entry")
+                continue
+            claim = redis_conn.hget(CLAIMS_HASH, job_id) if job_id else None
+            claimed_at = None
+            if claim:
+                try:
+                    claimed_at = float(str(claim).split(":", 1)[0])
+                except ValueError:
+                    claimed_at = None
+            if claimed_at is None or (now - claimed_at) >= STALE_CLAIM_SECONDS:
+                # atomic-enough: remove first so two sweepers can't both requeue it
+                if redis_conn.lrem(PROCESSING_QUEUE, 1, raw):
+                    redis_conn.lpush(QUEUE_NAME, raw)
+                    requeued += 1
+                    logger.info(f"[Requeue] stale job {job_id} moved back to queue "
+                                f"(claim age: {'none' if claimed_at is None else int(now - claimed_at)}s)")
+                if job_id:
+                    redis_conn.hdel(CLAIMS_HASH, job_id)
+    except redis.RedisError as e:
+        logger.warning(f"[Requeue] sweep failed (non-fatal): {e}")
+    return requeued
+
+
 def run_consumer():
     """Main consumer loop - blocks on Redis queue and processes jobs."""
     global shutdown_requested, _jobs_processed
@@ -344,24 +402,57 @@ def run_consumer():
     logger.info(f"Queue: {QUEUE_NAME}")
     logger.info("Waiting for jobs...")
 
+    # Claim refresh (infra review round 2): the heartbeat thread re-stamps the in-flight
+    # job's claim so a long-running job (backend allows up to 4h) can never be sweep-requeued
+    # while alive — a claim only ages past STALE_CLAIM_SECONDS when this worker is dead.
+    from .heartbeat import set_claim_refresher
+    import time as _time0
+
+    def _refresh_claim(job_id: str) -> None:
+        redis_conn.hset(CLAIMS_HASH, job_id, f"{_time0.time()}:{worker_id}")
+
+    set_claim_refresher(_refresh_claim)
+
+    # Reclaim anything a previously-crashed worker left behind before consuming.
+    requeue_stale_processing(redis_conn)
+    import time as _time
+    _last_sweep = _time.time()
+
     while not shutdown_requested:
         try:
-            # Block waiting for jobs (timeout every 5 seconds to check shutdown flag)
-            result = redis_conn.brpop(QUEUE_NAME, timeout=5)
+            # Reliable pop: BLMOVE tail->processing (producer LPUSHes the head, so RIGHT
+            # keeps FIFO). The job survives a worker crash in the processing list and is
+            # reclaimed by the stale sweep. Timeout 5s to re-check the shutdown flag.
+            job_json = redis_conn.blmove(
+                QUEUE_NAME, PROCESSING_QUEUE, timeout=5, src="RIGHT", dest="LEFT"
+            )
 
-            if result is None:
-                # Timeout, check shutdown flag and continue
+            if job_json is None:
+                # Timeout — check shutdown flag, run the periodic sweep, continue
+                if _time.time() - _last_sweep >= REQUEUE_SWEEP_INTERVAL_SECONDS:
+                    requeue_stale_processing(redis_conn)
+                    _last_sweep = _time.time()
                 continue
 
-            queue_name, job_json = result
-
+            job_id = None
             try:
                 job_data = json.loads(job_json)
-                logger.info(f"Received job: {job_data.get('job_id')}")
+                job_id = job_data.get("job_id")
+                if job_id:
+                    try:
+                        redis_conn.hset(CLAIMS_HASH, job_id, f"{_time.time()}:{worker_id}")
+                    except redis.RedisError:
+                        pass  # claim is advisory; the sweep treats a missing claim as stale
+                logger.info(f"Received job: {job_id}")
                 process_job(job_data)
             except json.JSONDecodeError as e:
                 logger.error(f"Invalid job JSON: {e}")
-                continue
+            finally:
+                # process_job returned (success/failure/cancel — all handled inside it),
+                # raised, or the payload was poison: this delivery attempt is DONE either
+                # way — ack so the entry can't ping-pong via the stale sweep. A hard crash
+                # (kill/OOM) never reaches this line; the sweep requeues those.
+                _ack_processing(redis_conn, job_json, job_id)
 
             # Post-job recycle check. process_job() has returned (success,
             # failure, or user-cancellation), so the in-flight job is done

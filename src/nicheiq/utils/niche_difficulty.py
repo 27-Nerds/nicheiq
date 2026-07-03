@@ -78,6 +78,9 @@ class NicheDifficultyFactPack(BaseModel):
     cold_start_share: float = 0.0
     concept_duplication_rate: Optional[float] = None
     audience_scope: Optional[str] = None
+    # Willingness-to-pay signals from the pains' commercial intent (None = no pains carried it)
+    commercial_intent_max: Optional[float] = None
+    high_commercial_share: Optional[float] = None
     difficulty_level: str = "medium"
     low_confidence: bool = False
     flags: list[str] = Field(default_factory=list)
@@ -168,6 +171,16 @@ def assess_niche_difficulty(
         return dam in _COLD_START_ACCESS
 
     cold_start_share = _share(ideas, _is_cold_start)
+
+    # Willingness-to-pay: the pains' commercial-intent distribution. 0.6 is the same cutoff
+    # compute_opportunity_level uses for a "High" opportunity — when NOTHING crosses it, the
+    # niche's monetization shape (free tool + distribution vs subscription) is a verdict-level
+    # fact the founder needs, independent of how good the ideas are.
+    ci_values = [getattr(p, "commercial_intent", None) for p in pains]
+    ci_present = [c for c in ci_values if isinstance(c, (int, float))]
+    commercial_intent_max = round(max(ci_present), 3) if ci_present else None
+    high_commercial_share = (round(sum(1 for c in ci_present if c >= 0.6) / len(ci_present), 3)
+                             if ci_present else None)
 
     # --- Friction flags (drive both band escalation and the key-points list) ---
     flags: list[str] = []
@@ -260,9 +273,17 @@ def assess_niche_difficulty(
     if saturated and _SATURATION_CHALLENGE not in key_points:
         key_points = [*key_points, _SATURATION_CHALLENGE]
 
+    # Weak willingness-to-pay is orthogonal to fit AND to idea quality — surface it even on a
+    # strong-fit niche (mirrors the saturation append). NOT an escalation flag: it changes the
+    # monetization SHAPE, not the difficulty of building.
+    if commercial_intent_max is not None and commercial_intent_max < 0.6:
+        key_points = [*key_points, _WEAK_WTP_CHALLENGE]
+
     return NicheDifficultyFactPack(
         n_pains=len(pains),
         n_ideas=len(ideas),
+        commercial_intent_max=commercial_intent_max,
+        high_commercial_share=high_commercial_share,
         none_share=round(none_share, 3),
         partial_share=round(partial_share, 3),
         full_share=round(full_share, 3),
@@ -299,6 +320,28 @@ _FIT_HEADLINES = {
 # word, so the headline can never drift out of sync with the classified fit (validated post-call).
 _FIT_RATING = {"strong": "Strong", "moderate": "Moderate", "limited": "Limited",
                "very limited": "Hard"}
+
+
+_WEAK_WTP_CHALLENGE = (
+    "No pain shows strong buying signals — plan a free-tool + distribution monetization "
+    "(lead-gen, sponsorship, a cheap team tier), not subscription pricing."
+)
+
+
+def _wtp_judgment(commercial_intent_max, high_commercial_share) -> str:
+    """Willingness-to-pay signal + the judgment it implies (same pattern as saturation —
+    a bare number reads wrong in prose; the phrase carries the monetization-shape verdict)."""
+    if commercial_intent_max is None:
+        return "n/a"
+    if commercial_intent_max < 0.6:
+        return ("weak — no pain crosses the strong-buying-signal bar; the winning shape here "
+                "is a free tool with built-in distribution (lead-gen, sponsorship, a cheap "
+                "team tier), NOT subscription SaaS")
+    if (high_commercial_share or 0.0) >= 0.25:
+        return ("strong — buyers demonstrably carry purchase intent across several pains; "
+                "direct paid pricing is viable")
+    return ("moderate — some pains carry real buying intent; a paid tier is plausible if it "
+            "targets those pains specifically")
 
 
 def _fit_rating(software_addressability: float) -> str:
@@ -452,6 +495,7 @@ def generate_niche_difficulty_verdict(
             concept_duplication_rate=_saturation_judgment(fp.concept_duplication_rate),
             audience_scope=fp.audience_scope or "n/a",
             audience_fit_ratio=_share_word(fp.audience_fit_ratio),
+            willingness_to_pay=_wtp_judgment(fp.commercial_intent_max, fp.high_commercial_share),
             key_points=" | ".join(fp.key_points) or "n/a",
             low_confidence=fp.low_confidence,
         )

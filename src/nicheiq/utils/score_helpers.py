@@ -209,6 +209,33 @@ def feasibility_adjusted_composite(
     return round(max(0.0, composite_score - drop), 3)
 
 
+def ranking_seo(seo: float | None, idea) -> float | None:
+    """The seo score as the RANKING layer consumes it: capped at
+    ``settings.provisional_seo_rank_ceiling`` while still provisional.
+
+    "Provisional" = not yet keyword-grounded, i.e. ``seo_scalability_score_refined`` is
+    absent (Stage 12 sets it — and mutates the base score — for the selected winner only).
+    A provisional SEO score is the one ranking dimension with no independent evidence
+    behind it at selection time, yet distribution_seo weights it 0.40 — observed live
+    putting a speculative bundle at rank 1 over a verified-data idea. The cap applies ONLY
+    to the composite input; the stored/displayed ``seo_scalability_score`` is untouched.
+    Ceiling 1.0 disables. ``idea`` may be a model or a dict.
+    """
+    if not isinstance(seo, (int, float)) or isinstance(seo, bool):
+        return seo  # None / non-numeric: pass through untouched (mirrors _extract_optional_score)
+    ceiling = settings.provisional_seo_rank_ceiling
+    if ceiling >= 1.0 or seo <= ceiling:
+        return seo
+    refined = (
+        idea.get("seo_scalability_score_refined")
+        if isinstance(idea, dict)
+        else getattr(idea, "seo_scalability_score_refined", None)
+    )
+    if refined is not None:
+        return seo  # keyword-grounded — earned its value
+    return ceiling
+
+
 def angle_ranked_composite(idea) -> float:
     """The angle-weighted, feasibility-adjusted composite for ONE idea, by its winning_angle.
 
@@ -225,7 +252,7 @@ def angle_ranked_composite(idea) -> float:
     mf = mf if mf is not None else 0.5  # match compute_solution_scores' required-field default
     tf = tf if tf is not None else 0.5
     ca = _g("novelty_score")
-    seo = _g("seo_scalability_score")
+    seo = ranking_seo(_g("seo_scalability_score"), idea)
     bf = _g("build_feasibility_score")
     angle = _g("winning_angle")
     return feasibility_adjusted_composite(
@@ -301,8 +328,10 @@ def compute_solution_scores(solution_ideas: list[BaseSolutionIdea]) -> list[Solu
         bf = _extract_optional_score(idea, "build_feasibility_score")
         # Rank by each idea's OWN winning_angle (None when angle eval is off => equal-weight no-op).
         angle = getattr(idea, "winning_angle", None)
+        # Composite uses the provisional-capped seo; the STORED score stays raw (display parity).
+        rseo = ranking_seo(seo, idea)
         composite = feasibility_adjusted_composite(
-            _composite_for_angle(mf, tf, ca, seo, angle), mf, tf, ca, seo, bf, angle
+            _composite_for_angle(mf, tf, ca, rseo, angle), mf, tf, ca, rseo, bf, angle
         )
         scores.append(
             SolutionScores(
@@ -342,8 +371,9 @@ def backfill_solution_scores(
             seo = _extract_optional_score(idea, "seo_scalability_score")
             bf = _extract_optional_score(idea, "build_feasibility_score")
             angle = getattr(idea, "winning_angle", None)
+            rseo = ranking_seo(seo, idea)
             composite = feasibility_adjusted_composite(
-                _composite_for_angle(mf, tf, ca, seo, angle), mf, tf, ca, seo, bf, angle
+                _composite_for_angle(mf, tf, ca, rseo, angle), mf, tf, ca, rseo, bf, angle
             )
             result.append(
                 SolutionScores(

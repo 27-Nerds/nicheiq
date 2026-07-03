@@ -29,6 +29,7 @@ from pydantic import BaseModel, Field
 from ..config.settings import settings
 from ..models.solution_idea import BaseSolutionIdea
 from ..utils.llm_service import LLMService
+from ..utils.public_data_sources import llm_confirm_known_route, retrieve_known_sources
 from .idea_improvement_loop import (
     CellGrounding, _carry_forward_fields, _idea_to_text, _ONPAIN_SLACK,
 )
@@ -232,6 +233,23 @@ def verify_data_routes(idea, grounding, *, search, invoke, model_name=None, reas
 
     prior = (getattr(idea, "data_access_model", None) or "").strip().lower()
 
+    # Well-known-source pass (2026-07-03): canonically famous free sources were getting
+    # misclassified by sparse search snippets (observed live: GitHub API -> 'restricted',
+    # SAM.gov -> 'paywalled'). Two steps: deterministic RETRIEVAL (every claimed part must
+    # match a known public source; parts are the ORIGINAL list items / flags — never a
+    # re-split of the joined string) then an LLM CONFIRM over the retrieved entries (a name
+    # hit alone is too broad). Reject/error at either step falls through to the web verifier.
+    matches = retrieve_known_sources(flags or getattr(idea, "data_sources", None))
+    names = llm_confirm_known_route(matches, context=claim[:400]) if matches else None
+    if names:
+        idea.data_access_model = "public"
+        if prior != "public":
+            idea.data_acquisition_notes = f"Known public data source: {names} (allowlist-verified)"[:160]
+        logger.info(f"[v4-verify] '{getattr(idea, 'solution_name', '?')}' route -> public "
+                    f"(well-known source: {names}; LLM-confirmed, web search skipped)")
+        return DataRouteVerdict(self_sourced=False, verdict="supported", access_model="official",
+                                obtainable=True, note=f"Well-known public source: {names}")
+
     # Targeted retrieval (SAFE-style): a generic availability query + a documentation-seeking query,
     # so a real public API's docs surface rather than being missed by one generic query.
     queries = [f"{sources} {claim} data availability access".strip()]
@@ -247,9 +265,9 @@ def verify_data_routes(idea, grounding, *, search, invoke, model_name=None, reas
     snippets = snippets.strip()[:2400]
     prompt = (
         "You verify whether a SOLO DEVELOPER can actually obtain the data this product needs. Decide "
-        "ONLY from the web-search evidence below — do NOT rely on your own assumptions about which APIs "
-        "might exist (that is how fabricated APIs slip through), and do NOT treat thin evidence as proof "
-        "of absence.\n\n"
+        "from the web-search evidence below — do NOT assume an API you don't recognize exists just "
+        "because the idea names it (that is how fabricated APIs slip through), and do NOT treat thin "
+        "evidence as proof of absence.\n\n"
         f"DATA THE PRODUCT NEEDS: {claim}\nNAMED SOURCES: {sources or 'n/a'}\n\n"
         f"WEB-SEARCH EVIDENCE:\n{snippets or '(no evidence retrieved)'}\n\n"
         "STEP 1 — Does the product even depend on a specific EXTERNAL API/feed? If NOT (it computes from "
@@ -270,7 +288,13 @@ def verify_data_routes(idea, grounding, *, search, invoke, model_name=None, reas
         "returns NO trace of existence is 'refuted' (a named, official-sounding source with zero "
         "corroboration is fabricated). Reserve 'not_enough_info' for when the platform/source clearly "
         "EXISTS but only its specific capability, granularity, or endpoint is unconfirmed. Never infer "
-        "'refuted' from a search miss on a real platform, nor 'supported' from optimism."
+        "'refuted' from a search miss on a real platform, nor 'supported' from optimism.\n"
+        "EXCEPTION — canonically famous sources: if a named source is one you know with HIGH confidence "
+        "to be a major, well-established public data source (a government open-data portal or registry "
+        "in any country, an official statistics agency, or a large platform whose free public API is "
+        "widely documented), treat it as 'supported' with the access model you know to be true — sparse "
+        "or ambiguous snippets must NOT downgrade a famous source. This exception NEVER applies to "
+        "niche or vendor-specific APIs you don't recognize; those still require corroborating evidence."
     )
     try:
         verdict, _ = LLMService.invoke_structured(

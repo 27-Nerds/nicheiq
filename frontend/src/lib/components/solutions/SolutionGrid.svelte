@@ -75,8 +75,12 @@
     }
     return best;
   });
+  // Sorted by the same composite as the top-pick — the whole grid follows one ranking
+  // (indices are name-keyed via globalIndexOf/selectionIndexOf, so re-sorting is safe).
   const remaining = $derived(
-    solutions.filter((s) => s.solution_name !== topPick?.solution_name),
+    [...solutions]
+      .filter((s) => s.solution_name !== topPick?.solution_name)
+      .sort(byComposite),
   );
 
   function globalIndexOf(name: string): number {

@@ -43,6 +43,7 @@ template: |
   - Ideas needing a data corpus that doesn't exist yet (cold-start risk): {cold_start_share}
   - Tool-ecosystem saturation: {concept_duplication_rate}
   - Audience scope: {audience_scope}; ideas serving the stated audience: {audience_fit_ratio}
+  - Willingness to pay (from the pains' buying signals): {willingness_to_pay}
   - Key factors: {key_points}
   - Limited sample (be cautious): {low_confidence}
 
@@ -68,6 +69,10 @@ template: |
   - COLD-START: if a meaningful share of ideas need a data corpus that doesn't exist, warn the
     founder to prefer ideas built on data that exists today (official sources, public data,
     the user's own inputs).
+  - WILLINGNESS TO PAY: relay the judgment you were given, in your own words. This is about
+    the BUSINESS shape, not idea quality — when it is weak, say plainly that strong ideas here
+    should be built as free tools with built-in distribution (lead-gen, sponsorship, a cheap
+    team tier) rather than subscription products. Never present weak WTP as "the ideas are bad".
   - Only call a shape "dominant" if the pack says one shape genuinely dominates; otherwise
     call it the most common shape.
 

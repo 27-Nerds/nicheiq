@@ -162,6 +162,59 @@ class TestSynthesizeBundles:
                    side_effect=RuntimeError("down")):
             assert crew._synthesize_bundles([_winner("W1")]) == []
 
+    def test_presentation_fields_flow_through(self):
+        # run-2 review: bundles shipped with headline/pricing/differentiators all None because
+        # the _Bundle schema simply didn't carry them (only birth path with no full expansion).
+        crew = _crew()
+        b = _fake_bundle()
+        d = b.model_dump()
+        d.update({
+            "headline": "One dashboard for compliant home-bakery pricing",
+            "short_description": "Price bakes with COGS, labor and state rules included.",
+            "pricing_strategy": "$15/mo subscription with free calculator tier",
+            "differentiation_factors": ["labor-inclusive costing", "state compliance built in"],
+            "organic_discovery_queries": ["cottage food pricing calculator", "home bakery cogs"],
+            "estimated_cac_organic": "low ($0-5)",
+            "estimated_cac_paid": "moderate ($20-40)",
+        })
+        fake = SimpleNamespace(bundles=[SimpleNamespace(model_dump=lambda: dict(d))])
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   return_value=(fake, None)):
+            out = crew._synthesize_bundles([_winner("W1")])
+        bundle = out[0]
+        assert bundle.headline.startswith("One dashboard")
+        assert bundle.pricing_strategy and bundle.short_description
+        assert len(bundle.differentiation_factors) == 2
+        assert len(bundle.organic_discovery_queries) == 2
+        assert bundle.estimated_cac_organic and bundle.estimated_cac_paid
+
+    def test_omitted_presentation_fields_become_none_not_empty(self):
+        # empty-string schema defaults must land as None so {#if} guards / audits see the gap
+        crew = _crew()
+        fake = SimpleNamespace(bundles=[_fake_bundle()])  # no presentation fields at all
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   return_value=(fake, None)):
+            out = crew._synthesize_bundles([_winner("W1")])
+        b = out[0]
+        assert b.headline is None
+        assert b.short_description is None
+        assert b.pricing_strategy is None
+        assert b.differentiation_factors is None
+        assert b.organic_discovery_queries is None
+
+    def test_prompt_demands_presentation_fields(self):
+        crew = _crew()
+        captured = {}
+        def _cap(**kw):
+            captured["prompt"] = kw.get("prompt")
+            return (SimpleNamespace(bundles=[]), None)
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured", side_effect=_cap):
+            crew._synthesize_bundles([_winner("W1")])
+        p = captured["prompt"]
+        for needle in ("headline", "short_description", "pricing_strategy",
+                       "differentiation_factors", "organic_discovery_queries"):
+            assert needle in p, needle
+
 
 def test_tunable_default():
     # synthesis is unconditional (flag removed after the 2026-07-02 production A/B)

@@ -382,7 +382,8 @@ describe('Security Audit: Jobs API', () => {
         expect.any(String),
         undefined,
         'interactive', // jobMode
-        undefined // entryMode
+        undefined, // entryMode
+        undefined // ideaFocus (persisted on the Job row since the resume-completeness fix)
       );
     });
 
