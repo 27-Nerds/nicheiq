@@ -16,6 +16,7 @@
 		{ name: 'Features', href: '#how-it-works' },
 		{ name: 'Pricing', href: '#pricing' },
 		{ name: 'How it works', href: '/help' },
+		{ name: 'Blog', href: '/blog' },
 		{ name: 'FAQ', href: '#faq' },
 	];
 

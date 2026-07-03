@@ -43,11 +43,25 @@ function ensureLinkHook(): void {
 	_linkHookInstalled = true;
 }
 
-function sanitizeHtml(html: string, allowLinks = false): string {
+function sanitizeHtml(html: string, opts: { allowLinks?: boolean; allowImages?: boolean } = {}): string {
+	const { allowLinks = false, allowImages = false } = opts;
 	if (allowLinks) ensureLinkHook();
+	let allowedTags = [...SANITIZER_ALLOWED_TAGS];
+	let allowedAttr = [...SANITIZER_ALLOWED_ATTR];
+	if (allowLinks) {
+		allowedTags.push('a');
+		allowedAttr.push('href', 'target', 'rel');
+	}
+	// Images are only enabled for author-controlled content (blog/help). DOMPurify
+	// strips javascript:/data: srcs and any event-handler attrs (onerror, etc.).
+	// Width/height let markdown ![..](url =WxH) hints flow through for layout stability.
+	if (allowImages) {
+		allowedTags.push('img');
+		allowedAttr.push('src', 'alt', 'width', 'height');
+	}
 	return DOMPurify.sanitize(html, {
-		ALLOWED_TAGS: allowLinks ? [...SANITIZER_ALLOWED_TAGS, 'a'] : SANITIZER_ALLOWED_TAGS,
-		ALLOWED_ATTR: allowLinks ? [...SANITIZER_ALLOWED_ATTR, 'href', 'target', 'rel'] : SANITIZER_ALLOWED_ATTR,
+		ALLOWED_TAGS: allowedTags,
+		ALLOWED_ATTR: allowedAttr,
 		// Defense-in-depth: strip any data-* / aria-* not on allow-list.
 		ALLOW_DATA_ATTR: false,
 		ALLOW_ARIA_ATTR: false,
@@ -60,14 +74,18 @@ function sanitizeHtml(html: string, allowLinks = false): string {
  * `opts.allowLinks` opts into `<a href>` (sanitized; external links get
  * target=_blank rel=noopener). Off by default so existing call sites are
  * unchanged — only the help pages, whose content is author-controlled, enable it.
+ *
+ * `opts.allowImages` opts into `<img>` (src/alt/width/height only; DOMPurify
+ * strips onerror/javascript: srcs). Used by the blog renderer for author-
+ * controlled content. Requires allowLinks when links are also needed.
  */
 export function renderMarkdown(
 	content: string | undefined | null,
-	opts: { allowLinks?: boolean } = {},
+	opts: { allowLinks?: boolean; allowImages?: boolean } = {},
 ): string {
 	if (!content) return '';
 	const html = marked.parse(content, { async: false }) as string;
-	return sanitizeHtml(html, opts.allowLinks ?? false);
+	return sanitizeHtml(html, opts);
 }
 
 /** Strip markdown syntax from raw text, returning clean plain text. */

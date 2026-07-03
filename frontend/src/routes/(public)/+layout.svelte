@@ -34,6 +34,7 @@
 		{ label: 'Features', href: '#how-it-works' },
 		{ label: 'Pricing', href: '#pricing' },
 		{ label: 'Sample Reports', href: '/sample-report' },
+		{ label: 'Blog', href: '/blog' },
 	];
 
 	function onScroll() {

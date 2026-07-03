@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 540" font-family="'Plus Jakarta Sans',system-ui,sans-serif">
+  <rect width="1200" height="540" fill="#FAFAFA"/>
+  <text x="600" y="42" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="12" letter-spacing="2" fill="#71717A">FIG 2 - SELF-SCORES COLLAPSE UNDER AN INDEPENDENT CRITIC</text>
+
+  <g transform="translate(60 82)">
+    <text x="230" y="0" text-anchor="middle" font-size="15" font-weight="600" fill="#18181B">Before</text>
+    <rect x="20" y="20" width="420" height="340" rx="12" fill="#FFFFFF" stroke="#E4E4E7"/>
+    <text x="230" y="52" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="10" letter-spacing="1" fill="#71717A">SELF-GRADED</text>
+
+    <line x1="72" y1="244" x2="402" y2="244" stroke="#D4D4D8"/>
+    <line x1="72" y1="82" x2="72" y2="244" stroke="#D4D4D8"/>
+    <g stroke="#E4E4E7" stroke-dasharray="3 3">
+      <line x1="72" y1="82" x2="402" y2="82"/>
+      <line x1="72" y1="137" x2="402" y2="137"/>
+      <line x1="72" y1="191" x2="402" y2="191"/>
+    </g>
+    <text x="64" y="86" text-anchor="end" font-size="10" fill="#A1A1AA">1.0</text>
+    <text x="64" y="141" text-anchor="end" font-size="10" fill="#A1A1AA">0.66</text>
+    <text x="64" y="195" text-anchor="end" font-size="10" fill="#A1A1AA">0.33</text>
+    <text x="64" y="248" text-anchor="end" font-size="10" fill="#A1A1AA">0</text>
+
+    <g fill="#FB923C">
+      <rect x="94" y="104" width="18" height="140" rx="3"/>
+      <rect x="124" y="108" width="18" height="136" rx="3" opacity="0.82"/>
+      <rect x="154" y="100" width="18" height="144" rx="3"/>
+      <rect x="184" y="105" width="18" height="139" rx="3" opacity="0.9"/>
+      <rect x="214" y="102" width="18" height="142" rx="3"/>
+      <rect x="244" y="107" width="18" height="137" rx="3" opacity="0.82"/>
+      <rect x="274" y="103" width="18" height="141" rx="3"/>
+      <rect x="304" y="108" width="18" height="136" rx="3" opacity="0.85"/>
+      <rect x="334" y="104" width="18" height="140" rx="3"/>
+      <rect x="364" y="106" width="18" height="138" rx="3" opacity="0.9"/>
+    </g>
+    <line x1="72" y1="102" x2="402" y2="102" stroke="#EF4444" stroke-width="2" stroke-dasharray="5 4"/>
+    <text x="398" y="94" text-anchor="end" font-size="11" font-weight="600" fill="#EF4444">near 0.88</text>
+
+    <text x="230" y="292" text-anchor="middle" font-size="12" fill="#71717A">ten ideas, near-identical scores</text>
+    <text x="230" y="314" text-anchor="middle" font-size="12" fill="#71717A">the generator graded its own work</text>
+    <text x="230" y="340" text-anchor="middle" font-size="12" font-weight="600" fill="#9A3412">automatic A's, every time</text>
+  </g>
+
+  <g transform="translate(540 260)">
+    <path d="M0 0h64" stroke="#A1A1AA" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+  </g>
+
+  <g transform="translate(640 82)">
+    <text x="250" y="0" text-anchor="middle" font-size="15" font-weight="600" fill="#18181B">After</text>
+    <rect x="20" y="20" width="480" height="340" rx="12" fill="#FFFFFF" stroke="#E4E4E7"/>
+    <text x="250" y="52" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="10" letter-spacing="1" fill="#71717A">INDEPENDENT CRITIC</text>
+
+    <g transform="translate(72 68)">
+      <rect x="0" y="0" width="12" height="12" rx="2" fill="#EF4444"/>
+      <text x="18" y="10" font-size="11" fill="#52525B">No-Go</text>
+      <rect x="92" y="0" width="12" height="12" rx="2" fill="#F59E0B"/>
+      <text x="110" y="10" font-size="11" fill="#52525B">caution</text>
+      <rect x="204" y="0" width="12" height="12" rx="2" fill="#22C55E"/>
+      <text x="222" y="10" font-size="11" fill="#52525B">worth a look</text>
+    </g>
+
+    <line x1="72" y1="244" x2="460" y2="244" stroke="#D4D4D8"/>
+    <line x1="72" y1="96" x2="72" y2="244" stroke="#D4D4D8"/>
+    <g stroke="#E4E4E7" stroke-dasharray="3 3">
+      <line x1="72" y1="96" x2="460" y2="96"/>
+      <line x1="72" y1="146" x2="460" y2="146"/>
+      <line x1="72" y1="195" x2="460" y2="195"/>
+    </g>
+    <text x="64" y="100" text-anchor="end" font-size="10" fill="#A1A1AA">1.0</text>
+    <text x="64" y="150" text-anchor="end" font-size="10" fill="#A1A1AA">0.66</text>
+    <text x="64" y="199" text-anchor="end" font-size="10" fill="#A1A1AA">0.33</text>
+    <text x="64" y="248" text-anchor="end" font-size="10" fill="#A1A1AA">0</text>
+
+    <g>
+      <rect x="96" y="190" width="24" height="54" rx="3" fill="#EF4444"/>
+      <rect x="132" y="174" width="24" height="70" rx="3" fill="#F59E0B"/>
+      <rect x="168" y="184" width="24" height="60" rx="3" fill="#EF4444"/>
+      <rect x="204" y="164" width="24" height="80" rx="3" fill="#F59E0B"/>
+      <rect x="240" y="150" width="24" height="94" rx="3" fill="#22C55E"/>
+      <rect x="276" y="178" width="24" height="66" rx="3" fill="#F59E0B"/>
+      <rect x="312" y="168" width="24" height="76" rx="3" fill="#F59E0B"/>
+      <rect x="348" y="154" width="24" height="90" rx="3" fill="#22C55E"/>
+      <rect x="384" y="188" width="24" height="56" rx="3" fill="#EF4444"/>
+      <rect x="420" y="158" width="24" height="86" rx="3" fill="#22C55E"/>
+    </g>
+
+    <text x="250" y="292" text-anchor="middle" font-size="12" fill="#71717A">the wall collapsed into spread scores</text>
+    <text x="250" y="314" text-anchor="middle" font-size="12" fill="#71717A">blind rubric, not generator confidence</text>
+    <text x="250" y="340" text-anchor="middle" font-size="12" font-weight="600" fill="#166534">0.35-0.65, earned not granted</text>
+  </g>
+
+  <g transform="translate(60 452)">
+    <rect x="0" y="0" width="1080" height="64" rx="12" fill="#FEF2F2" stroke="#FCA5A5"/>
+    <text x="20" y="26" font-family="'JetBrains Mono',monospace" font-size="11" letter-spacing="1" fill="#991B1B">BENCHMARK - 61 IDEAS / 6 NICHES</text>
+    <text x="20" y="48" font-size="12" fill="#52525B">The critic was +0.13 too generous on market fit; one bounded rule cut the optimism in half.</text>
+  </g>
+
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0 0l7 4-7 4z" fill="#A1A1AA"/>
+    </marker>
+  </defs>
+</svg>

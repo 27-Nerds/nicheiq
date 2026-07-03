@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 560" font-family="'Plus Jakarta Sans',system-ui,sans-serif">
+  <rect width="1200" height="560" fill="#FAFAFA"/>
+  <text x="600" y="42" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="12" letter-spacing="2" fill="#71717A">FIG 5 - DATA-SOURCE CATALOG: RETRIEVE FIRST, VERIFY BEFORE TRUST</text>
+
+  <g transform="translate(60 82)">
+    <text x="515" y="0" text-anchor="middle" font-size="15" font-weight="600" fill="#18181B">How a claimed data source gets verified</text>
+
+    <rect x="0" y="20" width="220" height="112" rx="12" fill="#FFFFFF" stroke="#E4E4E7"/>
+    <text x="110" y="48" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="10" letter-spacing="1" fill="#71717A">IDEA CLAIMS A SOURCE</text>
+    <text x="110" y="78" text-anchor="middle" font-size="13" fill="#18181B">GitHub + SAM.gov</text>
+    <text x="110" y="100" text-anchor="middle" font-size="11" fill="#71717A">named in the mechanism</text>
+    <path d="M220 76h34" stroke="#A1A1AA" stroke-width="2" fill="none" marker-end="url(#gray)"/>
+
+    <rect x="270" y="20" width="220" height="112" rx="12" fill="#EEF2FF" stroke="#A5B4FC"/>
+    <text x="380" y="48" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="10" letter-spacing="1" fill="#4338CA">CATALOG RETRIEVAL</text>
+    <text x="380" y="76" text-anchor="middle" font-size="12" fill="#4338CA">about 1,400 sources</text>
+    <text x="380" y="96" text-anchor="middle" font-size="11" fill="#6366F1">public APIs + gov + stats</text>
+    <text x="380" y="116" text-anchor="middle" font-size="11" fill="#71717A">not a verdict yet</text>
+    <path d="M490 76h34" stroke="#A1A1AA" stroke-width="2" fill="none" marker-end="url(#gray)"/>
+
+    <rect x="540" y="20" width="220" height="112" rx="12" fill="#FFF7ED" stroke="#FDBA74"/>
+    <text x="650" y="48" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="10" letter-spacing="1" fill="#9A3412">SECOND MODEL CHECK</text>
+    <text x="650" y="76" text-anchor="middle" font-size="12" fill="#52525B">Does the claim match</text>
+    <text x="650" y="94" text-anchor="middle" font-size="12" fill="#52525B">the retrieved source?</text>
+    <text x="650" y="116" text-anchor="middle" font-size="11" fill="#71717A">asks what data it serves</text>
+    <path d="M760 76h34" stroke="#22C55E" stroke-width="2" fill="none" marker-end="url(#green)"/>
+    <text x="777" y="68" text-anchor="middle" font-size="11" font-weight="600" fill="#16A34A">pass</text>
+
+    <rect x="810" y="20" width="220" height="112" rx="12" fill="#F0FDF4" stroke="#86EFAC"/>
+    <text x="920" y="48" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="10" letter-spacing="1" fill="#166534">PUBLIC VERDICT</text>
+    <text x="920" y="80" text-anchor="middle" font-size="14" font-weight="600" fill="#166534">keeps its score</text>
+    <text x="920" y="102" text-anchor="middle" font-size="11" fill="#16A34A">sources named in report</text>
+
+    <path d="M650 132v34" stroke="#EF4444" stroke-width="2" fill="none" marker-end="url(#red)"/>
+    <text x="666" y="154" font-size="11" font-weight="600" fill="#DC2626">reject</text>
+
+    <rect x="540" y="182" width="220" height="66" rx="12" fill="#FEF2F2" stroke="#FCA5A5"/>
+    <text x="650" y="207" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="10" letter-spacing="1" fill="#991B1B">REJECTED CLAIM</text>
+    <text x="650" y="229" text-anchor="middle" font-size="11" fill="#71717A">private repo scan is not</text>
+    <text x="650" y="243" text-anchor="middle" font-size="11" fill="#71717A">the public GitHub API</text>
+    <path d="M540 215h-34" stroke="#A1A1AA" stroke-width="2" fill="none" marker-end="url(#gray)"/>
+    <text x="523" y="207" text-anchor="middle" font-size="10" fill="#71717A">fallback</text>
+
+    <rect x="270" y="182" width="220" height="66" rx="12" fill="#FFFBEB" stroke="#FCD34D"/>
+    <text x="380" y="207" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="10" letter-spacing="1" fill="#B45309">WEB CHECK</text>
+    <text x="380" y="230" text-anchor="middle" font-size="11" fill="#71717A">ordinary search verification</text>
+
+    <rect x="810" y="182" width="220" height="66" rx="8" fill="#F5F5F5" stroke="#D4D4D8"/>
+    <text x="920" y="204" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="9" letter-spacing="1" fill="#71717A">BEFORE</text>
+    <text x="920" y="224" text-anchor="middle" font-size="11" fill="#52525B">SAM.gov marked gated</text>
+    <text x="920" y="240" text-anchor="middle" font-size="10" fill="#A1A1AA">score capped at 0.45</text>
+
+    <rect x="810" y="264" width="220" height="66" rx="8" fill="#F0FDF4" stroke="#86EFAC"/>
+    <text x="920" y="286" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="9" letter-spacing="1" fill="#16A34A">AFTER</text>
+    <text x="920" y="306" text-anchor="middle" font-size="11" fill="#166534">SAM.gov marked public</text>
+    <text x="920" y="322" text-anchor="middle" font-size="10" fill="#16A34A">Census, SAM, SEC, CH</text>
+  </g>
+
+  <g transform="translate(60 452)">
+    <rect x="0" y="0" width="1080" height="76" rx="12" fill="#FFFFFF" stroke="#E4E4E7"/>
+    <text x="20" y="28" font-family="'JetBrains Mono',monospace" font-size="11" letter-spacing="2" fill="#71717A">THE ASYMMETRY</text>
+    <text x="20" y="52" font-size="13" fill="#52525B">Wrong rejection costs one extra search. Wrong pass would skip verification entirely,</text>
+    <text x="20" y="68" font-size="13" font-weight="600" fill="#9A3412">so every doubt breaks toward suspicion.</text>
+  </g>
+
+  <defs>
+    <marker id="gray" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0 0l7 4-7 4z" fill="#A1A1AA"/>
+    </marker>
+    <marker id="green" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0 0l7 4-7 4z" fill="#22C55E"/>
+    </marker>
+    <marker id="red" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0 0l7 4-7 4z" fill="#EF4444"/>
+    </marker>
+  </defs>
+</svg>

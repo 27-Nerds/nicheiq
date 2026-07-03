@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 540" font-family="'Plus Jakarta Sans',system-ui,sans-serif">
+  <rect width="1200" height="540" fill="#FAFAFA"/>
+  <text x="600" y="42" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="12" letter-spacing="2" fill="#71717A">FIG 6 - THE HARDEST ENGINEERING IS MAKING IT SAY NO</text>
+
+  <g transform="translate(60 82)">
+    <text x="230" y="0" text-anchor="middle" font-size="15" font-weight="600" fill="#18181B">The cottage-food verdict</text>
+    <rect x="20" y="20" width="420" height="370" rx="12" fill="#FFFFFF" stroke="#E4E4E7"/>
+    <text x="230" y="52" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="10" letter-spacing="1" fill="#71717A">BEST IDEA - 0.46 - NO-GO</text>
+
+    <g transform="translate(230 206)">
+      <path d="M-130 0 A130 130 0 0 1 40 -124" fill="none" stroke="#EF4444" stroke-width="24"/>
+      <path d="M40 -124 A130 130 0 0 1 92 -92" fill="none" stroke="#F59E0B" stroke-width="24"/>
+      <path d="M92 -92 A130 130 0 0 1 130 0" fill="none" stroke="#22C55E" stroke-width="24"/>
+      <text x="-130" y="24" text-anchor="middle" font-size="11" fill="#A1A1AA">0</text>
+      <text x="0" y="-142" text-anchor="middle" font-size="11" fill="#A1A1AA">0.5</text>
+      <text x="130" y="24" text-anchor="middle" font-size="11" fill="#A1A1AA">1.0</text>
+      <g transform="rotate(-7)">
+        <line x1="0" y1="0" x2="0" y2="-112" stroke="#18181B" stroke-width="3"/>
+        <circle cx="0" cy="0" r="7" fill="#18181B"/>
+      </g>
+      <text x="0" y="50" text-anchor="middle" font-size="16" font-weight="700" fill="#EF4444">0.46</text>
+    </g>
+
+    <text x="230" y="314" text-anchor="middle" font-size="12" fill="#71717A">post-COVID home-baking wave receding</text>
+    <text x="230" y="334" text-anchor="middle" font-size="12" fill="#71717A">the system cites the trend data</text>
+    <text x="230" y="366" text-anchor="middle" font-size="12" font-weight="600" fill="#991B1B">cautious verdict, not missing imagination</text>
+  </g>
+
+  <g transform="translate(550 82)">
+    <text x="285" y="0" text-anchor="middle" font-size="15" font-weight="600" fill="#18181B">Every change has to earn its place</text>
+    <rect x="20" y="20" width="560" height="370" rx="12" fill="#FFFFFF" stroke="#E4E4E7"/>
+
+    <rect x="44" y="48" width="512" height="58" rx="8" fill="#FFF7ED" stroke="#FDBA74"/>
+    <text x="64" y="72" font-family="'JetBrains Mono',monospace" font-size="10" letter-spacing="1" fill="#9A3412">1 - HOLD THE OLD RUN</text>
+    <text x="64" y="92" font-size="12" fill="#52525B">same niche, same evidence, saved baseline</text>
+
+    <rect x="44" y="122" width="512" height="58" rx="8" fill="#EEF2FF" stroke="#A5B4FC"/>
+    <text x="64" y="146" font-family="'JetBrains Mono',monospace" font-size="10" letter-spacing="1" fill="#4338CA">2 - TEST THE CHANGE</text>
+    <text x="64" y="166" font-size="12" fill="#52525B">the benchmark is allowed to disagree</text>
+
+    <rect x="44" y="196" width="512" height="58" rx="8" fill="#F0FDF4" stroke="#86EFAC"/>
+    <text x="64" y="220" font-family="'JetBrains Mono',monospace" font-size="10" letter-spacing="1" fill="#166534">3 - KEEP ONLY A WIN</text>
+    <text x="64" y="240" font-size="12" fill="#52525B">better output, no new optimism</text>
+
+    <rect x="44" y="270" width="512" height="58" rx="8" fill="#F5F5F5" stroke="#D4D4D8"/>
+    <text x="64" y="294" font-family="'JetBrains Mono',monospace" font-size="10" letter-spacing="1" fill="#52525B">4 - CUT THE LOSER</text>
+    <text x="64" y="314" font-size="12" fill="#71717A">favorite hypotheses still have to lose</text>
+
+    <text x="300" y="360" text-anchor="middle" font-size="12" font-weight="600" fill="#9A3412">discipline matters most when the answer is No-Go</text>
+  </g>
+
+  <text x="600" y="512" text-anchor="middle" font-size="14" font-weight="600" fill="#18181B">When this system finally says Go, we want it to mean something.</text>
+</svg>

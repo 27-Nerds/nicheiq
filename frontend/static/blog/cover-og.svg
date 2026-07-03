@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" font-family="'Plus Jakarta Sans',system-ui,sans-serif">
+  <rect width="1200" height="630" fill="#FAFAFA"/>
+  <text x="60" y="52" font-family="'JetBrains Mono',monospace" font-size="15" letter-spacing="3" fill="#71717A">NICHEIQ · ENGINEERING NOTES</text>
+
+  <g transform="translate(60 100)">
+    <!-- PAINS -->
+    <g>
+      <rect x="0" y="0" width="150" height="240" rx="12" fill="#FFFFFF" stroke="#E4E4E7"/>
+      <text x="75" y="28" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="10" letter-spacing="2" fill="#71717A">PAINS</text>
+      <g fill="#FB923C">
+        <rect x="24" y="50" width="102" height="16" rx="5"/>
+        <rect x="24" y="76" width="86" height="16" rx="5" opacity="0.7"/>
+        <rect x="24" y="102" width="112" height="16" rx="5" opacity="0.85"/>
+        <rect x="24" y="128" width="74" height="16" rx="5" opacity="0.55"/>
+        <rect x="24" y="154" width="96" height="16" rx="5" opacity="0.75"/>
+        <rect x="24" y="180" width="68" height="16" rx="5" opacity="0.35"/>
+      </g>
+      <text x="75" y="222" text-anchor="middle" font-size="11" fill="#71717A">validated, by severity</text>
+    </g>
+    <path d="M158 120h28" stroke="#A1A1AA" stroke-width="2" fill="none" marker-end="url(#a)"/>
+
+    <!-- CELLS -->
+    <g transform="translate(196 0)">
+      <rect x="0" y="0" width="190" height="240" rx="12" fill="#FFFFFF" stroke="#E4E4E7"/>
+      <text x="95" y="28" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="10" letter-spacing="2" fill="#71717A">CELLS</text>
+      <rect x="18" y="48" width="154" height="44" rx="8" fill="#FFF7ED" stroke="#FDBA74"/>
+      <text x="95" y="74" text-anchor="middle" font-size="11" fill="#9A3412">tournament · 1 winner</text>
+      <rect x="18" y="100" width="154" height="44" rx="8" fill="#EEF2FF" stroke="#A5B4FC"/>
+      <text x="95" y="126" text-anchor="middle" font-size="11" fill="#4338CA">tournament · 1 winner</text>
+      <rect x="18" y="152" width="154" height="44" rx="8" fill="#FFFBEB" stroke="#FCD34D"/>
+      <text x="95" y="178" text-anchor="middle" font-size="11" fill="#B45309">tournament · 1 winner</text>
+      <text x="95" y="222" text-anchor="middle" font-size="11" fill="#71717A">one per pain × audience</text>
+    </g>
+    <path d="M394 120h28" stroke="#A1A1AA" stroke-width="2" fill="none" marker-end="url(#a)"/>
+
+    <!-- CRITIC -->
+    <g transform="translate(432 0)">
+      <rect x="0" y="0" width="190" height="240" rx="12" fill="#FFFFFF" stroke="#E4E4E7"/>
+      <text x="95" y="28" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="10" letter-spacing="2" fill="#71717A">CRITIC</text>
+      <rect x="18" y="48" width="154" height="44" rx="8" fill="#F5F5F5" stroke="#D4D4D8"/>
+      <text x="95" y="74" text-anchor="middle" font-size="11" fill="#52525B">independent re-score</text>
+      <rect x="18" y="100" width="154" height="44" rx="8" fill="#FEF2F2" stroke="#FCA5A5"/>
+      <text x="95" y="126" text-anchor="middle" font-size="11" fill="#991B1B">benchmark ground truth</text>
+      <rect x="18" y="152" width="154" height="44" rx="8" fill="#F0FDF4" stroke="#86EFAC"/>
+      <text x="95" y="178" text-anchor="middle" font-size="11" fill="#166534">calibrated</text>
+      <text x="95" y="222" text-anchor="middle" font-size="11" fill="#71717A">blind, fixed rubrics</text>
+    </g>
+    <path d="M630 120h28" stroke="#A1A1AA" stroke-width="2" fill="none" marker-end="url(#a)"/>
+
+    <!-- PORTFOLIO -->
+    <g transform="translate(668 0)">
+      <rect x="0" y="0" width="200" height="240" rx="12" fill="#FFFFFF" stroke="#E4E4E7"/>
+      <text x="100" y="28" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="10" letter-spacing="2" fill="#71717A">PORTFOLIO</text>
+      <rect x="16" y="48" width="168" height="52" rx="8" fill="#EA580C"/>
+      <text x="100" y="79" text-anchor="middle" font-size="13" font-weight="600" fill="#FFFFFF">Flagship bundle</text>
+      <rect x="16" y="108" width="168" height="40" rx="8" fill="#FFF7ED" stroke="#FDBA74"/>
+      <text x="100" y="133" text-anchor="middle" font-size="11" fill="#9A3412">Focused tools</text>
+      <rect x="16" y="156" width="168" height="40" rx="8" fill="#F5F3FF" stroke="#C4B5FD" stroke-dasharray="4 3"/>
+      <text x="100" y="181" text-anchor="middle" font-size="11" fill="#6D28D9">Rescued concept</text>
+      <text x="100" y="222" text-anchor="middle" font-size="11" fill="#71717A">tiered, honestly labeled</text>
+    </g>
+    <path d="M876 120h28" stroke="#A1A1AA" stroke-width="2" fill="none" marker-end="url(#a)"/>
+
+    <!-- VERDICT badge -->
+    <g transform="translate(924 60)">
+      <circle cx="75" cy="75" r="75" fill="url(#glow)"/>
+      <circle cx="75" cy="75" r="62" fill="#FFFFFF" stroke="#E4E4E7"/>
+      <circle cx="75" cy="75" r="62" fill="none" stroke="#EA580C" stroke-width="2.5" opacity="0.85"/>
+      <text x="75" y="50" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="10" letter-spacing="3" fill="#71717A">VERDICT</text>
+      <text x="75" y="85" text-anchor="middle" font-size="30" font-weight="700" fill="#EA580C">Go</text>
+      <text x="75" y="108" text-anchor="middle" font-size="12" fill="#71717A">or No-Go</text>
+    </g>
+  </g>
+
+  <!-- title block (OG card only — not in cover.svg) -->
+  <text x="60" y="470" font-size="34" font-weight="700" fill="#18181B">How our idea-generation pipeline</text>
+  <text x="60" y="510" font-size="34" font-weight="700" fill="#18181B">learned to stop lying to itself</text>
+  <text x="60" y="550" font-family="'JetBrains Mono',monospace" font-size="14" fill="#71717A">From self-graded 0.88s to honest No-Gos · July 2026</text>
+
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="50%">
+      <stop offset="60%" stop-color="rgba(234,88,12,0)"/>
+      <stop offset="100%" stop-color="rgba(234,88,12,0.12)"/>
+    </radialGradient>
+    <marker id="a" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0 0l7 4-7 4z" fill="#A1A1AA"/>
+    </marker>
+  </defs>
+</svg>

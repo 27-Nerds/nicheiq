@@ -2,6 +2,7 @@ import type { RequestHandler } from './$types';
 import { fetchBackend } from '$lib/backend';
 import { programmaticIdeaPages } from '$lib/data/programmaticIdeaPages';
 import { LAUNCH_GATE_ON } from '$lib/seo/launchGate';
+import { BLOG_POSTS_SORTED } from '$lib/blog/registry';
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -76,6 +77,7 @@ export const GET: RequestHandler = async ({ url }) => {
     { path: '/login', changefreq: 'monthly', priority: '0.4', lastmod: today },
     { path: '/register', changefreq: 'monthly', priority: '0.5', lastmod: today },
     { path: '/sample-report', changefreq: 'daily', priority: '0.7', lastmod: today },
+    { path: '/blog', changefreq: 'weekly', priority: '0.7', lastmod: today },
   ];
   if (!LAUNCH_GATE_ON) {
     staticEntries.splice(1, 0, {
@@ -89,6 +91,16 @@ export const GET: RequestHandler = async ({ url }) => {
   let urls = '';
   for (const entry of staticEntries) {
     urls += entryXml(origin, entry);
+  }
+
+  // Blog posts — author-controlled, always indexable.
+  for (const post of BLOG_POSTS_SORTED) {
+    urls += entryXml(origin, {
+      path: `/blog/${escapeXml(post.slug)}`,
+      lastmod: formatDate(post.date),
+      changefreq: 'monthly',
+      priority: '0.6',
+    });
   }
 
   // Existing share entries (unrelated to catalog migration; preserved as-is).

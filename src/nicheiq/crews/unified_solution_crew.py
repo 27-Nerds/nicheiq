@@ -610,6 +610,25 @@ class _DevTimeEstimate(BaseModel):
         "", description="Realistic solo-dev MVP build time as a RANGE in weeks or months, e.g. '6-10 weeks' / '3-5 months'.")
 
 
+# The ONE full-field expansion spec every idea birth path must satisfy (2026-07-03).
+# Consumed by _refine_single_concept (winners' seed expansion + coverage re-injections)
+# AND _expand_bundle — bundles previously used a hand-mirrored slim schema that kept
+# drifting (run-2: headline/pricing/differentiators all None). Add new idea fields HERE.
+_FULL_FIELD_SPEC = (
+    "Fill EVERY field, grounded in the design and niche (do not leave fields blank):\n"
+    "headline (5-12 words), short_description (<180 chars), description (4-6 "
+    "sentences on HOW it works for the user), value_proposition, pain_points_addressed, "
+    "core_features, target_personas, technical_approach, "
+    "differentiation_factors, requires_data_aggregation, data_sources, "
+    "estimated_development_time, pricing_strategy, programmatic_seo_opportunity, "
+    "content_generation_model, organic_discovery_queries (5-10), estimated_cac_organic, "
+    "estimated_cac_paid. ALL numeric scores are 0.0-1.0 decimals: market_fit_score, "
+    "technical_feasibility_score, seo_scalability_score, solo_dev_feasibility, "
+    "novelty_score. For novelty justification fill conventional_approach, "
+    "innovation_angle, why_it_works (each a real sentence), and why_it_works_short "
+    "(<=120 chars)."
+)
+
 _DEV_TIME_BANDS = ("3-6 weeks", "2-4 months", "4-6+ months")
 _DEV_TIME_BAND_WEEKS = ((2.0, 7.0), (7.0, 19.0), (16.0, 999.0))
 
@@ -3226,19 +3245,9 @@ class UnifiedSolutionCrew:
         allowed = ", ".join(self.allowed_project_types) if self.allowed_project_types else "any"
         prompt = (
             "Expand this ONE solution concept into a COMPLETE product specification with "
-            "the SAME depth and field coverage as a fully-refined idea. Fill EVERY field, "
-            "grounded in the concept and niche (do not leave fields blank):\n"
-            "headline (5-12 words), short_description (<180 chars), description (4-6 "
-            "sentences on HOW it works for the user), value_proposition, pain_points_addressed "
-            f"(MUST include \"{pain_title}\"), core_features, target_personas, technical_approach, "
-            "differentiation_factors, requires_data_aggregation, data_sources, "
-            "estimated_development_time, pricing_strategy, programmatic_seo_opportunity, "
-            "content_generation_model, organic_discovery_queries (5-10), estimated_cac_organic, "
-            "estimated_cac_paid. ALL numeric scores are 0.0-1.0 decimals: market_fit_score, "
-            "technical_feasibility_score, seo_scalability_score, solo_dev_feasibility, "
-            "novelty_score. For novelty justification fill conventional_approach, "
-            "innovation_angle, why_it_works (each a real sentence), and why_it_works_short "
-            "(<=120 chars).\n\n"
+            "the SAME depth and field coverage as a fully-refined idea. "
+            + _FULL_FIELD_SPEC + "\n"
+            f"pain_points_addressed MUST include \"{pain_title}\".\n\n"
             f"NICHE: {niche}\n"
             f"ALLOWED PROJECT TYPES: {allowed}\n"
             f"This concept addresses the high-severity pain: \"{pain_title}\".\n\n"
@@ -3449,21 +3458,14 @@ class UnifiedSolutionCrew:
             from pydantic import BaseModel, Field as _F
 
             class _Bundle(BaseModel):
+                # COMPOSITION-only schema: which pains compose, the workflow, the mechanism
+                # sketch, the SEO page estimate. Presentation/spec depth comes from the SAME
+                # full-field expansion every other birth path uses (_expand_bundle +
+                # _FULL_FIELD_SPEC) — a wide hand-mirrored schema here kept drifting.
                 solution_name: str = ""
                 project_type: str = ""
                 value_proposition: str = ""
                 description: str = ""
-                # Presentation fields (2026-07-03): bundles are the only birth path with no
-                # full-field expansion step — anything absent from THIS schema ships as None
-                # (run-2 review: bundle cards rendered without headline/pricing/differentiators).
-                headline: str = _F("", description="5-12 word product headline")
-                short_description: str = _F("", description="<=180 chars, plain language")
-                pricing_strategy: str = ""
-                differentiation_factors: list[str] = _F(default_factory=list)
-                organic_discovery_queries: list[str] = _F(
-                    default_factory=list, description="5-8 searches the buyer would type")
-                estimated_cac_organic: str = ""
-                estimated_cac_paid: str = ""
                 core_features: list[str] = _F(default_factory=list)
                 target_personas: list[str] = _F(default_factory=list)
                 pain_points_addressed: list[str] = _F(
@@ -3519,12 +3521,7 @@ class UnifiedSolutionCrew:
                     f"or official/public-data mechanisms only (no cold-start UGC core). Fill every "
                     f"field honestly (all *_score fields on a 0-1 scale); pain_points_addressed must "
                     f"use the EXACT pain titles. Estimate estimated_indexable_pages FIRST (the "
-                    f"realistic count of genuinely indexable pages), THEN score SEO against it. "
-                    f"Fill the presentation fields with the same care as a fully-refined idea: "
-                    f"headline (5-12 words), short_description (<=180 chars), a realistic "
-                    f"pricing_strategy, 2-4 differentiation_factors, 5-8 organic_discovery_queries "
-                    f"(searches the buyer would actually type), and estimated_cac_organic/"
-                    f"estimated_cac_paid as short qualitative ranges."),
+                    f"realistic count of genuinely indexable pages), THEN score SEO against it."),
                 output_model=_Bundles, temperature=0.4, timeout=180,
                 model_name=settings.brainstorm_llm, reasoning_effort="medium", creative=True)
             out = []
@@ -3533,13 +3530,6 @@ class UnifiedSolutionCrew:
                 d["idea_tier"] = "bundle"
                 if not d.get("description"):
                     d["description"] = d.get("value_proposition", "")
-                # Presentation fields: empty-string/empty-list schema defaults -> None, so an
-                # LLM omission stays DETECTABLE downstream (Optional fields, {#if} guards).
-                for k in ("headline", "short_description", "pricing_strategy",
-                          "differentiation_factors", "organic_discovery_queries",
-                          "estimated_cac_organic", "estimated_cac_paid"):
-                    if not d.get(k):
-                        d[k] = None
                 if not d.get("core_features"):
                     d["core_features"] = ["bundled workflow"]
                 if not d.get("target_personas"):
@@ -3588,9 +3578,13 @@ class UnifiedSolutionCrew:
                             v = v / 100.0
                         d[k] = max(0.0, min(1.0, v))
                 try:
-                    out.append(BaseSolutionIdea.model_validate(d))
+                    slim = BaseSolutionIdea.model_validate(d)
                 except Exception as ve:
                     logger.warning(f"[Synthesis] bundle dropped (validation): {str(ve)[:400]}")
+                    continue
+                # Same-scope expansion: run the composition through the SAME full-field
+                # expansion every other birth path gets; fail-soft ships the composition.
+                out.append(self._expand_bundle(slim) or slim)
             if hasattr(self, "cost_tracker") and self.cost_tracker and usage is not None:
                 self.cost_tracker.record_llm_usage("Stage 7 - Synthesis", usage.to_dict())
             if out:
@@ -3600,6 +3594,67 @@ class UnifiedSolutionCrew:
         except Exception as e:
             logger.warning(f"[Synthesis] failed (non-fatal, no bundles): {str(e)[:120]}")
             return []
+
+    def _expand_bundle(self, bundle):
+        """Same-scope expansion for a synthesized bundle (2026-07-03): bundles were the only
+        birth path skipping the full-field expansion — their parallel slim schema kept
+        drifting (run-2: headline/pricing/differentiators all None). Expands the composition
+        through the SAME `_FULL_FIELD_SPEC` used by `_refine_single_concept`, with the
+        composition pinned as constraints (expansion, not redesign), then re-asserts the
+        fields synthesis owns: name, bundled pains (coverage keys off the EXACT titles),
+        idea_tier, page estimate, data route. Fail-soft -> None (caller ships the slim
+        composition unchanged)."""
+        from ..models.solution_idea import BaseSolutionIdea
+
+        niche = getattr(getattr(self, "niche_context", None), "niche_description", "") or ""
+        pains = ", ".join(f'"{p}"' for p in (bundle.pain_points_addressed or []))
+        prompt = (
+            "Expand this BUNDLED product design into a COMPLETE product specification with "
+            "the SAME depth and field coverage as a fully-refined idea. This is an EXPANSION, "
+            "NOT a redesign: keep the product name, the bundled pains, the mechanism and the "
+            "delivery shape exactly as designed — fill in everything else. "
+            + _FULL_FIELD_SPEC + "\n\n"
+            f"NICHE: {niche}\n"
+            f"PRODUCT NAME (keep VERBATIM): {bundle.solution_name}\n"
+            f"PROJECT TYPE: {getattr(bundle, 'project_type', None) or 'saas'}\n"
+            f"PAIN POINTS ADDRESSED (keep EXACTLY these titles): {pains}\n"
+            f"VALUE PROPOSITION: {(bundle.value_proposition or '')[:400]}\n"
+            f"WHY IT WORKS: {(getattr(bundle, 'why_it_works', None) or '')[:300]}\n"
+            f"TECHNICAL APPROACH: {(getattr(bundle, 'technical_approach', None) or '')[:400]}\n"
+            f"DATA ROUTE: {getattr(bundle, 'data_access_model', None) or 'n/a'} — "
+            f"{(getattr(bundle, 'data_acquisition_notes', None) or '')[:200]}\n"
+            f"ESTIMATED INDEXABLE PAGES: {getattr(bundle, 'estimated_indexable_pages', None)}\n"
+        )
+        try:
+            idea, usage = LLMService.invoke_structured(
+                prompt=prompt,
+                output_model=BaseSolutionIdea,
+                temperature=0.4,
+                timeout=180,
+                model_name=settings.ideation_refine_llm,
+                reasoning_effort=settings.ideation_refine_reasoning_effort,
+                creative=True,  # tool-calling transport, same rationale as _refine_single_concept
+            )
+            self._record_divergent_usage([usage])
+        except Exception as e:
+            logger.warning(f"[Synthesis] bundle expansion failed for "
+                           f"'{getattr(bundle, 'solution_name', '?')}' — shipping the "
+                           f"composition as-is: {str(e)[:120]}")
+            return None
+        # Re-assert the composition-owned fields (never let the expansion redesign them).
+        idea.solution_name = bundle.solution_name or idea.solution_name
+        idea.idea_tier = "bundle"
+        if bundle.pain_points_addressed:
+            idea.pain_points_addressed = list(bundle.pain_points_addressed)
+        if getattr(bundle, "data_access_model", None):
+            idea.data_access_model = bundle.data_access_model
+        if getattr(bundle, "estimated_indexable_pages", None) is not None:
+            idea.estimated_indexable_pages = bundle.estimated_indexable_pages
+        for fld in ("build_feasibility_score", "data_feasibility_score"):
+            v = getattr(bundle, fld, None)
+            if getattr(idea, fld, None) is None and isinstance(v, (int, float)):
+                setattr(idea, fld, v)
+        return idea
 
     def _build_data_menu(self) -> str:
         """Portfolio funnel F2: one LLM call assembling the niche's VERIFIED data-route menu — the
@@ -4168,6 +4223,42 @@ class UnifiedSolutionCrew:
                 idea.data_feasibility_score = df2
             if bf_in >= 0:
                 idea.build_feasibility_score = bf2
+
+    def _verify_pool_routes(self, ideas: list) -> None:
+        """Verification parity (2026-07-03): only per-cell tournament winners get the
+        search-grounded `verify_data_routes` at birth — bundles, salvaged losers and
+        coverage re-injections shipped model-knowledge data_access_model labels (live:
+        a bundle shipped SAM.gov as 'paywalled'). Runs the SAME verifier post-union on
+        every idea not in `_birth_verified_names`. Claimless ideas are a free no-op
+        inside the verifier; known-public routes short-circuit via the allowlist
+        retrieval+confirm. Parallel, fail-soft per idea."""
+        from .idea_improvement_loop_v4 import verify_data_routes
+
+        verified = getattr(self, "_birth_verified_names", None) or set()
+        todo = [i for i in ideas or [] if getattr(i, "solution_name", "") not in verified]
+        if not todo:
+            return
+        search = None
+        if getattr(self, "search_tool", None) is not None:
+            def search(q):  # noqa: E731
+                try:
+                    return str(self.search_tool.run(search_query=q))
+                except Exception:
+                    return ""
+
+        def _worker(idea):
+            try:
+                verify_data_routes(idea, None, search=search, invoke=None)
+            except Exception as e:
+                logger.warning(f"[RouteVerify] '{getattr(idea, 'solution_name', '?')}' "
+                               f"skipped: {str(e)[:100]}")
+            return None
+
+        jobs = [{"idea": i} for i in todo]
+        self._run_parallel(_worker, jobs, settings.divergent_sample_deadline_seconds,
+                           min(len(jobs), settings.divergent_max_workers), label="RouteVerify")
+        logger.info(f"[RouteVerify] post-union route verification for {len(todo)} "
+                    f"idea(s) not verified at birth")
 
     def _finalize_dev_time(self, ideas: list) -> None:
         """Grounded, reasoning-first build-time estimate — replaces the refiner's throwaway point
@@ -5012,6 +5103,10 @@ class UnifiedSolutionCrew:
                 # the pool as idea_tier='salvaged'; the post-union straggler passes (calibrate /
                 # angle / tags) pick them up automatically.
                 n_winners = len(ideas)
+                # Verification parity: per-cell winners are the ONLY ideas route-verified at
+                # birth (tournament_refine_cell_v4 -> verify_data_routes); everything joining
+                # below gets the same verifier post-union via _verify_pool_routes.
+                self._birth_verified_names = {getattr(i, "solution_name", "") for i in ideas}
                 # Portfolio funnel (A/B-validated 2026-07-02, always on): salvage critic-approved
                 # tournament losers, then compose complementary pains/winners into 1-2 bundled
                 # products (the shape buyers actually pay for) — both additive to the pool.
@@ -5163,6 +5258,16 @@ class UnifiedSolutionCrew:
                 self._finalize_feasibility(refined_solutions.solution_ideas)
             except Exception as e:
                 logger.warning(f"Feasibility finalization skipped: {e}")
+
+            # Verification parity: run the winners' search-grounded route verifier on every
+            # idea that joined WITHOUT it (salvaged / bundles / coverage re-injections) —
+            # same scope for every birth path. AFTER _finalize_feasibility (a 'blocked'
+            # verdict caps build_feasibility and must not be overwritten), BEFORE dev-time
+            # and the calibration critic (both read the route label). Fail-soft.
+            try:
+                self._verify_pool_routes(refined_solutions.solution_ideas)
+            except Exception as e:
+                logger.warning(f"Pool route verification skipped: {e}")
 
             # Trim over-claimed pain_points_addressed (the grounded matcher attaches every pain in the
             # idea's SEGMENT; keep only the ones the mechanism actually addresses). Cheap LLM gate,
