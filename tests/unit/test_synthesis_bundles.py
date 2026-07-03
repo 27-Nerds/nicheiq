@@ -14,6 +14,9 @@ def _crew():
         SimpleNamespace(title="Cannot calculate COGS", severity_score=0.7, commercial_intent=0.45),
         SimpleNamespace(title="Labor time in pricing", severity_score=0.65, commercial_intent=0.45),
     ])
+    # expansion is exercised by TestExpandBundle; composition tests pin the fail-soft
+    # path (expansion None -> the slim composition ships unchanged)
+    crew._expand_bundle = lambda b: None
     return crew
 
 
@@ -162,58 +165,107 @@ class TestSynthesizeBundles:
                    side_effect=RuntimeError("down")):
             assert crew._synthesize_bundles([_winner("W1")]) == []
 
-    def test_presentation_fields_flow_through(self):
-        # run-2 review: bundles shipped with headline/pricing/differentiators all None because
-        # the _Bundle schema simply didn't carry them (only birth path with no full expansion).
+    def test_expansion_result_replaces_composition(self):
+        # same-scope (2026-07-03): every bundle goes through _expand_bundle; the expanded
+        # idea ships, the slim composition is only the fail-soft fallback.
         crew = _crew()
-        b = _fake_bundle()
-        d = b.model_dump()
-        d.update({
-            "headline": "One dashboard for compliant home-bakery pricing",
-            "short_description": "Price bakes with COGS, labor and state rules included.",
-            "pricing_strategy": "$15/mo subscription with free calculator tier",
-            "differentiation_factors": ["labor-inclusive costing", "state compliance built in"],
-            "organic_discovery_queries": ["cottage food pricing calculator", "home bakery cogs"],
-            "estimated_cac_organic": "low ($0-5)",
-            "estimated_cac_paid": "moderate ($20-40)",
-        })
-        fake = SimpleNamespace(bundles=[SimpleNamespace(model_dump=lambda: dict(d))])
+        marker = SimpleNamespace(solution_name="Expanded BakePrice Pro")
+        crew._expand_bundle = lambda b: marker
+        fake = SimpleNamespace(bundles=[_fake_bundle()])
         with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
                    return_value=(fake, None)):
             out = crew._synthesize_bundles([_winner("W1")])
-        bundle = out[0]
-        assert bundle.headline.startswith("One dashboard")
-        assert bundle.pricing_strategy and bundle.short_description
-        assert len(bundle.differentiation_factors) == 2
-        assert len(bundle.organic_discovery_queries) == 2
-        assert bundle.estimated_cac_organic and bundle.estimated_cac_paid
+        assert out == [marker]
 
-    def test_omitted_presentation_fields_become_none_not_empty(self):
-        # empty-string schema defaults must land as None so {#if} guards / audits see the gap
-        crew = _crew()
-        fake = SimpleNamespace(bundles=[_fake_bundle()])  # no presentation fields at all
+    def test_expansion_failure_ships_composition(self):
+        crew = _crew()  # _expand_bundle -> None
+        fake = SimpleNamespace(bundles=[_fake_bundle()])
         with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
                    return_value=(fake, None)):
             out = crew._synthesize_bundles([_winner("W1")])
-        b = out[0]
-        assert b.headline is None
-        assert b.short_description is None
-        assert b.pricing_strategy is None
-        assert b.differentiation_factors is None
-        assert b.organic_discovery_queries is None
+        assert len(out) == 1 and out[0].solution_name == "BakePrice Pro"
 
-    def test_prompt_demands_presentation_fields(self):
+
+class TestExpandBundle:
+    """The expansion must be an EXPANSION, not a redesign: composition-owned fields come
+    back verbatim no matter what the LLM returns."""
+
+    def _slim(self):
+        from nicheiq.models.solution_idea import BaseSolutionIdea
+        return BaseSolutionIdea(
+            solution_name="BakePrice Pro", idea_tier="bundle", project_type="saas",
+            description="costing + labor + compliance in one workflow",
+            value_proposition="costing + labor + compliance",
+            pain_points_addressed=["Cannot calculate COGS", "Labor time in pricing"],
+            core_features=["bundled workflow"], target_personas=["bakers"],
+            market_fit_score=0.6, technical_feasibility_score=0.7,
+            data_access_model="public", estimated_indexable_pages=90,
+            build_feasibility_score=0.8, data_feasibility_score=0.9,
+        )
+
+    def _expanded_llm_idea(self, **kw):
+        from nicheiq.models.solution_idea import BaseSolutionIdea
+        base = dict(
+            solution_name="Renamed By LLM", project_type="saas",
+            description="d" * 40, value_proposition="v",
+            pain_points_addressed=["totally different pain"],
+            core_features=["f1", "f2"], target_personas=["t"],
+            headline="One dashboard for compliant pricing",
+            short_description="Price bakes with COGS and rules included.",
+            pricing_strategy="$15/mo", differentiation_factors=["a", "b"],
+            market_fit_score=0.8, technical_feasibility_score=0.8,
+        )
+        base.update(kw)
+        return BaseSolutionIdea(**base)
+
+    def test_carries_composition_owned_fields(self):
         crew = _crew()
+        del crew._expand_bundle  # use the real method, not the fixture stub
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   return_value=(self._expanded_llm_idea(), None)):
+            crew._record_divergent_usage = lambda u: None
+            out = crew._expand_bundle(self._slim())
+        assert out.solution_name == "BakePrice Pro"                # name never redesigned
+        assert out.idea_tier == "bundle"
+        assert out.pain_points_addressed == ["Cannot calculate COGS", "Labor time in pricing"]
+        assert out.data_access_model == "public"
+        assert out.estimated_indexable_pages == 90
+        # presentation depth comes from the expansion
+        assert out.headline and out.pricing_strategy and out.differentiation_factors
+
+    def test_prompt_uses_shared_spec_and_pins_constraints(self):
+        from nicheiq.crews.unified_solution_crew import _FULL_FIELD_SPEC
+        crew = _crew()
+        del crew._expand_bundle
+        crew._record_divergent_usage = lambda u: None
         captured = {}
         def _cap(**kw):
             captured["prompt"] = kw.get("prompt")
-            return (SimpleNamespace(bundles=[]), None)
-        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured", side_effect=_cap):
-            crew._synthesize_bundles([_winner("W1")])
+            return self._expanded_llm_idea(), None
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   side_effect=_cap):
+            crew._expand_bundle(self._slim())
         p = captured["prompt"]
-        for needle in ("headline", "short_description", "pricing_strategy",
-                       "differentiation_factors", "organic_discovery_queries"):
-            assert needle in p, needle
+        assert _FULL_FIELD_SPEC in p                     # SAME spec as every other birth path
+        assert "NOT a redesign" in p
+        assert "keep VERBATIM" in p and "BakePrice Pro" in p
+        assert '"Cannot calculate COGS"' in p
+
+    def test_llm_failure_returns_none(self):
+        crew = _crew()
+        del crew._expand_bundle
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   side_effect=RuntimeError("down")):
+            assert crew._expand_bundle(self._slim()) is None
+
+    def test_refine_single_concept_shares_the_spec(self):
+        # parity pin: both expansion consumers reference the ONE field spec — adding a
+        # field to _FULL_FIELD_SPEC covers winners, re-injections AND bundles.
+        import inspect
+        src_refine = inspect.getsource(UnifiedSolutionCrew._refine_single_concept)
+        src_bundle = inspect.getsource(UnifiedSolutionCrew._expand_bundle)
+        assert "_FULL_FIELD_SPEC" in src_refine
+        assert "_FULL_FIELD_SPEC" in src_bundle
 
 
 def test_tunable_default():
