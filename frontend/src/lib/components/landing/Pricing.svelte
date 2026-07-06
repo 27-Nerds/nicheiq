@@ -25,7 +25,7 @@
 	];
 
 	const reportFeatures = [
-		'16-stage research pipeline',
+		'30+ specialised AI agents on every report',
 		'5+ pain points with sources',
 		'100+ keywords with live search volumes',
 		'Competitive landscape analysis',
@@ -132,8 +132,7 @@
 			style="text-align: center;"
 		>
 			<div class="landing-section-label-row">
-				<span class="landing-section-dot"></span>
-				<span class="landing-section-label">Simple Pricing</span>
+				<span class="landing-section-label">PRICING</span>
 			</div>
 			<h2 class="landing-section-h2">
 				Simple Pricing. <span style="color:var(--color-accent)">Monthly Research</span>
@@ -191,7 +190,7 @@
 		</div>
 
 		<p class="footnote">
-			*Subscription credits reset each month. Need a one-time top-up? Buy credit packs on your billing page.
+			*Subscription credits reset each month. Need a one-time top-up? Buy credit packs on your billing page — they never expire.
 		</p>
 
 		<div class="whats-included">
@@ -283,7 +282,6 @@
 	.pricing-cta:hover {
 		border-color: var(--color-text-primary);
 		background: var(--color-bg-surface);
-		transform: translateY(-1px);
 	}
 	.pricing-cta:focus-visible {
 		outline: 2px solid var(--color-accent);

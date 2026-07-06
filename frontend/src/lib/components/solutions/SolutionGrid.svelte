@@ -65,8 +65,6 @@
 
   let adjacentOpen = $state(false);
 
-  // Niche/community layout: global top pick (highest composite) + the rest. In community mode
-  // "Highest viability" is still globally true, so the top-pick highlight is kept.
   const topPick = $derived.by(() => {
     if (solutions.length === 0) return null;
     let best = solutions[0];
@@ -75,13 +73,10 @@
     }
     return best;
   });
-  // Sorted by the same composite as the top-pick — the whole grid follows one ranking
-  // (indices are name-keyed via globalIndexOf/selectionIndexOf, so re-sorting is safe).
-  const remaining = $derived(
-    [...solutions]
-      .filter((s) => s.solution_name !== topPick?.solution_name)
-      .sort(byComposite),
-  );
+
+  // Dense comparison layout: every card stays in the same grid; the top pick
+  // gets an in-card badge instead of a different card size.
+  const rankedSolutions = $derived([...solutions].sort(byComposite));
 
   function globalIndexOf(name: string): number {
     return solutions.findIndex((s) => s.solution_name === name);
@@ -120,9 +115,9 @@
 
 {#if segmentMode}
   <p class="audience-eyebrow">For {eyebrowLabel}</p>
-  <div class="remaining-grid">
+  <div class="remaining-grid" class:remaining-grid--select={!!onSelect}>
     {#each primaryGroup as solution, i (solution.solution_name)}
-      {@render card(solution, i, false)}
+      {@render card(solution, i, solution.solution_name === topPick?.solution_name)}
     {/each}
   </div>
 
@@ -137,9 +132,9 @@
       Also worth exploring · {adjacentGroup.length}
     </button>
     {#if adjacentOpen}
-      <div class="remaining-grid">
+      <div class="remaining-grid" class:remaining-grid--select={!!onSelect}>
         {#each adjacentGroup as solution, i (solution.solution_name)}
-          {@render card(solution, i, false)}
+          {@render card(solution, i, solution.solution_name === topPick?.solution_name)}
         {/each}
       </div>
     {/if}
@@ -148,31 +143,24 @@
   {#if framingOn}
     <p class="audience-eyebrow">For {eyebrowLabel}</p>
   {/if}
-  {#if topPick}
-    <div class="top-pick-section">
-      {@render card(topPick, 0, true)}
-    </div>
-  {/if}
-  {#if remaining.length > 0}
-    <div class="remaining-grid">
-      {#each remaining as solution, i (solution.solution_name)}
-        {@render card(solution, i, false)}
+  {#if rankedSolutions.length > 0}
+    <div class="remaining-grid" class:remaining-grid--select={!!onSelect}>
+      {#each rankedSolutions as solution, i (solution.solution_name)}
+        {@render card(solution, i, solution.solution_name === topPick?.solution_name)}
       {/each}
     </div>
   {/if}
 {/if}
 
 <style>
-  .top-pick-section {
-    width: 100%;
-  }
   .remaining-grid {
     display: grid;
     grid-template-columns: 1fr;
     gap: var(--space-3);
+    align-items: stretch;
   }
   @media (min-width: 640px) {
-    .remaining-grid {
+    .remaining-grid:not(.remaining-grid--select) {
       grid-template-columns: repeat(2, 1fr);
     }
   }

@@ -34,8 +34,7 @@
 		<div class="landing-container">
 			<div class="landing-section-header-wrap">
 				<div class="landing-section-label-row">
-					<span class="landing-section-dot"></span>
-					<span class="landing-section-label">Sample Reports</span>
+					<span class="landing-section-label">SAMPLES · FROM THE CATALOG</span>
 				</div>
 				<h2 class="landing-section-h2">
 					See what a market research run <span style="color: var(--color-accent)">looks like</span>

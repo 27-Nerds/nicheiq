@@ -14,15 +14,26 @@
     /** Seeded-flow mode. 'deep_idea' skips discovery (stages 1-5) and runs deep-research
      *  immediately, so its discovery phase shows as seeded/done while deep-research is active. */
     entryMode?: string | null;
+    mode?: "default" | "selection";
+    selectionCount?: number;
+    selectedCount?: number;
   }
 
-  let { jobStatus, activeSection = "", entryMode = null }: Props = $props();
+  let {
+    jobStatus,
+    activeSection = "",
+    entryMode = null,
+    mode = "default",
+    selectionCount = 0,
+    selectedCount = 0,
+  }: Props = $props();
 
   let scrollProgress = $state(0);
   let trackedSection = $state("");
   let isOpen = $state(false);
 
-  const currentSection = $derived(activeSection || trackedSection);
+  const isSelectionMode = $derived(mode === "selection");
+  const currentSection = $derived(activeSection || trackedSection || (isSelectionMode ? "opportunities" : ""));
 
   // Phase badge states
   type BadgeState = "active" | "done" | "locked";
@@ -96,13 +107,25 @@
     )
   );
   const moreItemsTooltip = $derived(rolledUpLocked.map(s => s.label).join(' · '));
+  const discoveryPhase = PHASES.find(p => p.id === 'discovery')!;
+  const opportunitySection = discoveryPhase.sections.find(s => s.id === 'opportunities');
+  const contextSections = $derived(
+    discoveryPhase.sections.filter(
+      s => s.id !== 'opportunities'
+    )
+  );
+  const selectionTrackedSections = $derived.by(() => [
+    opportunitySection,
+    ...contextSections,
+    ...blurredPreviewSections,
+  ].filter((s): s is SectionConfig => s !== undefined));
 
   function isPhaseUnlocked(phaseId: string): boolean {
     const badge = phaseBadges[phaseId];
     return badge?.state === "active" || badge?.state === "done";
   }
 
-  const HEADER_OFFSET = 72; // 56px header + 16px breathing room
+  const HEADER_OFFSET = 24; // static app header; keep a small breathing offset for anchors
   const SCROLL_THRESHOLD = HEADER_OFFSET + 10; // small buffer above header for activation
 
   function scrollToElement(el: HTMLElement) {
@@ -131,13 +154,15 @@
 
     // Only track sections that correspond to visible/interactive sidebar items.
     // For locked deep-research, only the blurred-preview items appear in the sidebar.
-    const allSections = PHASES.flatMap((p) => {
-      if (isPhaseUnlocked(p.id)) return p.sections;
-      if (p.id === 'deep-research') {
-        return blurredPreviewSections;
-      }
-      return [];
-    });
+    const allSections = isSelectionMode
+      ? selectionTrackedSections
+      : PHASES.flatMap((p) => {
+          if (isPhaseUnlocked(p.id)) return p.sections;
+          if (p.id === 'deep-research') {
+            return blurredPreviewSections;
+          }
+          return [];
+        });
     // Resolve to elements, then sort by actual DOM position — the allSections order
     // does not always match the rendered page order (e.g., Phase 2 previews are rendered
     // unified-hero → seo → competitors on the page).
@@ -148,13 +173,15 @@
       .sort((a, b) => a.top - b.top);
 
     const scrollY = window.scrollY;
+    let nextSection = isSelectionMode ? "opportunities" : trackedSection;
     for (let i = sectionElements.length - 1; i >= 0; i--) {
       const section = sectionElements[i];
       if (section.top - scrollY <= SCROLL_THRESHOLD) {
-        trackedSection = section.id;
+        nextSection = section.id;
         break;
       }
     }
+    trackedSection = nextSection;
   }
 
   $effect(() => { handleScroll(); });
@@ -163,108 +190,165 @@
 <svelte:window onscroll={handleScroll} />
 
 <!-- ═══ DESKTOP SIDEBAR ═══ -->
-<nav class="sidebar-desktop">
+<nav class="sidebar-desktop" class:sidebar-desktop--selection={isSelectionMode}>
   <div class="sidebar-phases">
-    {#each PHASES as phase, phaseIndex}
-      {@const badge = phaseBadges[phase.id]}
-      {@const unlocked = isPhaseUnlocked(phase.id)}
-
-      {#if phaseIndex > 0}
-        <div class="phase-divider"></div>
-      {/if}
-
-      <div class="phase-group">
+    {#if isSelectionMode}
+      <div class="phase-group phase-group--current">
         <div class="phase-header">
-          <span class="phase-label">{phase.label}</span>
-          <span
-            class="phase-badge"
-            class:badge-success={badge?.variant === "success"}
-            class:badge-secondary={badge?.variant === "secondary"}
-            class:badge-muted={badge?.variant === "muted"}
-          >
-            {badge?.label}
-          </span>
+          <span class="phase-label">Candidates</span>
         </div>
-
         <div class="phase-sections">
-          {#if phase.id === 'deep-research' && !unlocked}
-            <!-- Blurred preview items first (scrollable on page) -->
-            {#each blurredPreviewSections as section}
-              {@const isActive = currentSection === section.id}
-              {@const Icon = section.icon}
-              <button
-                class="nav-item previewable"
-                class:active={isActive}
-                onclick={() => handleSectionClick(phase, section)}
-              >
-                {#if Icon}<Icon class="nav-icon" />{/if}
-                <span class="nav-item-label">{section.label}</span>
-                <span class="nav-preview-tag">Preview</span>
-              </button>
-            {/each}
-            <!-- Peek items — locked, stacked label + value tagline -->
-            {#each peekItems as item, idx (item.id)}
-              {@const Icon = item.icon}
-              <div
-                class="nav-item locked nav-item-peek"
-                class:nav-item-peek--first={idx === 0}
-                aria-disabled="true"
-              >
-                {#if Icon}<Icon class="nav-icon" aria-hidden="true" />{/if}
-                <div class="nav-item-peek-text">
-                  <span class="nav-item-label">{item.label}</span>
-                  <span class="nav-item-tagline">{item.tagline}</span>
-                </div>
-                <Tooltip content="Unlocks with Deep Research" position="right">
-                  {#snippet children()}
-                    <span class="nav-lock-trigger" aria-label="Locked - unlocks with Deep Research">
-                      <svg class="nav-lock-icon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><rect x="2" y="5.5" width="8" height="6" rx="1.5"/><path d="M4 5.5V4a2 2 0 0 1 4 0v1.5"/></svg>
-                    </span>
-                  {/snippet}
-                </Tooltip>
-              </div>
-            {/each}
-            {#if rolledUpLocked.length > 0}
-              <span class="nav-more" title={moreItemsTooltip}>
-                +{rolledUpLocked.length} more
-              </span>
-            {/if}
-          {:else}
-            <!-- Normal rendering (unlocked phases) -->
-            {#each phase.sections as section}
-              {@const isActive = currentSection === section.id}
-              {@const isDone = unlocked && (badge?.state === 'done' || badge?.state === 'active')}
-              {@const Icon = section.icon}
-
-              <button
-                class="nav-item"
-                class:active={isActive}
-                class:done={isDone}
-                class:locked={!unlocked}
-                onclick={() => handleSectionClick(phase, section)}
-                disabled={!unlocked}
-              >
-                {#if Icon}
-                  <Icon class="nav-icon" />
-                {/if}
-                <span class="nav-item-label">{section.label}</span>
-                {#if isDone}
-                  <span class="nav-check">
-                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5L8 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                  </span>
-                {:else if !unlocked}
-                  <svg class="nav-lock-icon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="2" y="5.5" width="8" height="6" rx="1.5"/><path d="M4 5.5V4a2 2 0 0 1 4 0v1.5"/></svg>
-                {/if}
-              </button>
-            {/each}
+          {#if opportunitySection}
+            {@const isActive = currentSection === opportunitySection.id}
+            {@const Icon = opportunitySection.icon}
+            <button
+              class="nav-item nav-item-primary"
+              class:active={isActive}
+              class:done={selectedCount > 0}
+              onclick={() => handleSectionClick(discoveryPhase, opportunitySection)}
+            >
+              {#if Icon}<Icon class="nav-icon" />{/if}
+              <span class="nav-item-label">Shortlist</span>
+              <span class="nav-preview-tag">{selectedCount > 0 ? `${selectedCount}/3` : `${selectionCount} candidates`}</span>
+            </button>
           {/if}
         </div>
       </div>
-    {/each}
+
+      <div class="phase-divider"></div>
+      <div class="phase-group">
+        <div class="phase-header">
+          <span class="phase-label">Market context</span>
+        </div>
+        <div class="phase-sections">
+          {#each contextSections as section}
+            {@const isActive = currentSection === section.id}
+            {@const Icon = section.icon}
+            <button
+              class="nav-item"
+              class:active={isActive}
+              onclick={() => handleSectionClick(discoveryPhase, section)}
+            >
+              {#if Icon}<Icon class="nav-icon" />{/if}
+              <span class="nav-item-label">{section.label}</span>
+            </button>
+          {/each}
+        </div>
+      </div>
+
+      <div class="phase-divider"></div>
+      <div class="phase-group phase-group--next">
+        <div class="phase-header">
+          <span class="phase-label">Deep Research</span>
+        </div>
+        <div class="next-card" aria-label="Deep Research unlocks after selection">
+          <span class="next-card-title">Validation</span>
+          <span class="next-card-text">Validates the ideas you shortlist.</span>
+        </div>
+      </div>
+    {:else}
+      {#each PHASES as phase, phaseIndex}
+        {@const badge = phaseBadges[phase.id]}
+        {@const unlocked = isPhaseUnlocked(phase.id)}
+
+        {#if phaseIndex > 0}
+          <div class="phase-divider"></div>
+        {/if}
+
+        <div class="phase-group">
+          <div class="phase-header">
+            <span class="phase-label">{phase.label}</span>
+            <span
+              class="phase-badge"
+              class:badge-success={badge?.variant === "success"}
+              class:badge-secondary={badge?.variant === "secondary"}
+              class:badge-muted={badge?.variant === "muted"}
+            >
+              {badge?.label}
+            </span>
+          </div>
+
+          <div class="phase-sections">
+            {#if phase.id === 'deep-research' && !unlocked}
+              <!-- Blurred preview items first (scrollable on page) -->
+              {#each blurredPreviewSections as section}
+                {@const isActive = currentSection === section.id}
+                {@const Icon = section.icon}
+                <button
+                  class="nav-item previewable"
+                  class:active={isActive}
+                  onclick={() => handleSectionClick(phase, section)}
+                >
+                  {#if Icon}<Icon class="nav-icon" />{/if}
+                  <span class="nav-item-label">{section.label}</span>
+                  <span class="nav-preview-tag">Preview</span>
+                </button>
+              {/each}
+              <!-- Peek items — locked, stacked label + value tagline -->
+              {#each peekItems as item, idx (item.id)}
+                {@const Icon = item.icon}
+                <div
+                  class="nav-item locked nav-item-peek"
+                  class:nav-item-peek--first={idx === 0}
+                  aria-disabled="true"
+                >
+                  {#if Icon}<Icon class="nav-icon" aria-hidden="true" />{/if}
+                  <div class="nav-item-peek-text">
+                    <span class="nav-item-label">{item.label}</span>
+                    <span class="nav-item-tagline">{item.tagline}</span>
+                  </div>
+                  <Tooltip content="Unlocks with Deep Research" position="right">
+                    {#snippet children()}
+                      <span class="nav-lock-trigger" aria-label="Locked - unlocks with Deep Research">
+                        <svg class="nav-lock-icon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><rect x="2" y="5.5" width="8" height="6" rx="1.5"/><path d="M4 5.5V4a2 2 0 0 1 4 0v1.5"/></svg>
+                      </span>
+                    {/snippet}
+                  </Tooltip>
+                </div>
+              {/each}
+              {#if rolledUpLocked.length > 0}
+                <span class="nav-more" title={moreItemsTooltip}>
+                  +{rolledUpLocked.length} more
+                </span>
+              {/if}
+            {:else}
+              <!-- Normal rendering (unlocked phases) -->
+              {#each phase.sections as section}
+                {@const isActive = currentSection === section.id}
+                {@const isDone = unlocked && (badge?.state === 'done' || badge?.state === 'active')}
+                {@const Icon = section.icon}
+
+                <button
+                  class="nav-item"
+                  class:active={isActive}
+                  class:done={isDone}
+                  class:locked={!unlocked}
+                  onclick={() => handleSectionClick(phase, section)}
+                  disabled={!unlocked}
+                >
+                  {#if Icon}
+                    <Icon class="nav-icon" />
+                  {/if}
+                  <span class="nav-item-label">{section.label}</span>
+                  {#if isDone}
+                    <span class="nav-check">
+                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5L8 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    </span>
+                  {:else if !unlocked}
+                    <svg class="nav-lock-icon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="2" y="5.5" width="8" height="6" rx="1.5"/><path d="M4 5.5V4a2 2 0 0 1 4 0v1.5"/></svg>
+                  {/if}
+                </button>
+              {/each}
+            {/if}
+          </div>
+        </div>
+      {/each}
+    {/if}
   </div>
 </nav>
 
 <!-- ═══ MOBILE BOTTOM BAR ═══ -->
+{#if !isSelectionMode}
 <nav class="sidebar-mobile" class:open={isOpen}>
   <button class="mobile-toggle" onclick={() => (isOpen = !isOpen)}>
     <div class="mobile-progress-bar">
@@ -329,6 +413,7 @@
     </div>
   {/if}
 </nav>
+{/if}
 
 <style>
   /* ═══════════════════════════════════
@@ -340,10 +425,10 @@
     background: var(--color-bg-elevated);
     border-right: 1px solid var(--color-border);
     padding: 1.5rem 0;
-    position: sticky;
-    top: 3.5rem;
-    height: calc(100vh - 3.5rem);
-    overflow-y: auto;
+    position: relative;
+    min-height: 100vh;
+    height: auto;
+    overflow: visible;
     display: none;
   }
 
@@ -354,6 +439,45 @@
   .sidebar-phases {
     display: flex;
     flex-direction: column;
+  }
+
+  .sidebar-desktop--selection .phase-label {
+    letter-spacing: 0.08em;
+  }
+
+  .sidebar-desktop--selection {
+    background: var(--color-bg-base);
+    width: 220px;
+  }
+
+  .sidebar-desktop--selection .phase-badge {
+    background: transparent;
+    border-color: var(--color-border);
+  }
+
+  .sidebar-desktop--selection .nav-item {
+    font-family: var(--font-body);
+    font-size: 0.82rem;
+    padding-left: 1.35rem;
+    padding-right: 1.25rem;
+  }
+
+  .sidebar-desktop--selection .nav-item.active,
+  .sidebar-desktop--selection .nav-item.active.done {
+    background: transparent;
+    color: var(--color-accent);
+  }
+
+  .sidebar-desktop--selection .nav-preview-tag {
+    color: var(--color-text-muted);
+  }
+
+  .sidebar-desktop--selection .nav-item.active .nav-preview-tag {
+    color: var(--color-accent);
+  }
+
+  .phase-group--current .nav-item-primary {
+    min-height: 40px;
   }
 
   /* ── Phase groups ── */
@@ -435,7 +559,10 @@
     cursor: pointer;
     text-align: left;
     white-space: nowrap;
-    transition: color 150ms ease, background-color 150ms ease;
+    transition:
+      color 220ms cubic-bezier(0.32, 0.72, 0, 1),
+      background-color 220ms cubic-bezier(0.32, 0.72, 0, 1),
+      transform 220ms cubic-bezier(0.32, 0.72, 0, 1);
   }
 
   .nav-item:hover:not(.locked):not(.active) {
@@ -459,6 +586,17 @@
     color: var(--color-accent);
     font-weight: 600;
     background: var(--color-accent-subtle);
+  }
+
+  .sidebar-desktop--selection .nav-item.active::before {
+    content: "";
+    position: absolute;
+    left: 0.55rem;
+    top: 0.55rem;
+    bottom: 0.55rem;
+    width: 2px;
+    border-radius: 999px;
+    background: var(--color-accent);
   }
 
   /* Done tier */
@@ -489,6 +627,28 @@
   .nav-item.previewable:hover {
     opacity: 1;
     background: var(--color-bg-surface);
+  }
+
+  .next-card {
+    display: grid;
+    gap: 0.18rem;
+    margin: 0.2rem 1.5rem 0;
+    padding: 0.68rem 0.72rem;
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.65rem;
+    color: var(--color-text-muted);
+  }
+
+  .next-card-title {
+    color: var(--color-text-secondary);
+    font-size: 0.82rem;
+    font-weight: 750;
+  }
+
+  .next-card-text {
+    font-size: 0.72rem;
+    line-height: 1.35;
   }
 
   /* Active state must win over .previewable color/opacity (source-order tie) */

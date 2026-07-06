@@ -53,8 +53,8 @@ export function opportunityShape(
   const runnerUp = ranked[1]?.[1] ?? 0;
   const shape = _ANGLE_SHAPE[dominant];
   const line = (!shape || n === runnerUp)
-    ? `Mixed niche — viable plays span ${ranked.length} angles, no single dominant approach.`
-    : `${shape.word.charAt(0).toUpperCase() + shape.word.slice(1)} niche — ${n} of ${total} viable ideas ${shape.why}.`;
+    ? `Mixed niche: viable plays span ${ranked.length} angles, no single dominant approach.`
+    : `${shape.word.charAt(0).toUpperCase() + shape.word.slice(1)} niche: ${n} of ${total} viable ideas ${shape.why}.`;
 
   return { dominant, counts, line };
 }

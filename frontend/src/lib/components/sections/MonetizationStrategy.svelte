@@ -454,10 +454,10 @@
     </ExpandableSection>
   {/if}
 
-  <!-- WTP Validation -->
+  <!-- Commercial-Intent Validation -->
   {#if pricingData.wtp_validation}
     <ExpandableSection
-      title="WTP Validation"
+      title="Commercial-Intent Validation"
       defaultOpen={false}
       variant="muted"
     >

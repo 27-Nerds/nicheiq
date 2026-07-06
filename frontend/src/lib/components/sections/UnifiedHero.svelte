@@ -262,7 +262,7 @@
       "How crowded the market is. Low = blue ocean, High = intense competition.",
     risk: "Overall risk assessment factoring technical complexity, market uncertainty, and competitive threats.",
     researchDepth:
-      "Based on pain point quality — severity scores, willingness-to-pay signals, quote evidence density, and cross-platform validation. Premium = strong evidence across multiple signals. Standard = solid data with some gaps. Basic = minimum viable evidence.",
+      "Based on pain point quality — severity scores, buying-signal strength, quote evidence density, and cross-platform validation. Premium = strong evidence across multiple signals. Standard = solid data with some gaps. Basic = minimum viable evidence.",
     pipelineScanned:
       "Reddit discussion URLs found via search. These are the raw results before relevance filtering.",
     pipelineRelevant:
@@ -596,7 +596,7 @@
                 >{formatScorePercent(heroPainWTP)}</span
               >
               <span class="pain-stat-label">
-                Willing to pay <Tooltip content={getTermTooltip("WTP")} position="top" />
+                Commercial intent <Tooltip content={getTermTooltip("CI")} position="top" />
               </span>
             </div>
             {#if heroPainOpportunity}

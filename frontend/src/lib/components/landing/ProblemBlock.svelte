@@ -35,8 +35,7 @@
 	<div class="landing-container">
 		<div class="landing-section-header-wrap">
 			<div class="landing-section-label-row">
-				<span class="landing-section-dot"></span>
-				<span class="landing-section-label">The Problem Space</span>
+				<span class="landing-section-label">THE PROBLEM</span>
 			</div>
 			<h2 class="landing-section-h2">Four walls every founder hits</h2>
 		</div>
@@ -109,7 +108,7 @@
 	.card-label {
 		font-size: var(--text-xs);
 		font-weight: var(--font-semibold);
-		letter-spacing: var(--tracking-widest);
+		letter-spacing: 0.08em;
 		color: var(--color-accent);
 		font-family: var(--font-mono);
 		text-transform: uppercase;

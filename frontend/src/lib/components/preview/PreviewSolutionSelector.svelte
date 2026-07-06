@@ -32,6 +32,8 @@
     /** Audience framing (output lens): label for the "For {x}" eyebrow + resolved segment to split on. */
     primaryAudience?: string | null;
     audienceLabel?: string | null;
+    /** Parent observes the real inline action bar to decide when sticky CTA appears. */
+    actionBarRef?: HTMLElement | null;
   }
 
   let {
@@ -51,6 +53,7 @@
     coverageNotes = [],
     primaryAudience = null,
     audienceLabel = null,
+    actionBarRef = $bindable<HTMLElement | null>(null),
   }: Props = $props();
 
   // Multi-select state
@@ -227,17 +230,18 @@
       <a href="/jobs/{jobId}" class="fallback-link">Go to job page</a>
     </p>
   {:else}
-    <!-- Idea-set coverage notes (concentration / uncovered pains) -->
-    {#if coverageNotes && coverageNotes.length}
-      <CoverageNotes notes={coverageNotes} compact />
-    {/if}
-
-    <!-- Opportunity shape: how this niche's viable ideas split across GTM angles -->
-    {#if shape}
-      <p class="opportunity-shape">
-        <span class="opportunity-shape__label">Opportunity shape</span>
-        {shape.line}
-      </p>
+    {#if (coverageNotes && coverageNotes.length) || shape}
+      <div class="selector-context">
+        {#if shape}
+          <p class="opportunity-shape">
+            <span class="opportunity-shape__label">Opportunity shape</span>
+            {shape.line}
+          </p>
+        {/if}
+        {#if coverageNotes && coverageNotes.length}
+          <CoverageNotes notes={coverageNotes} compact />
+        {/if}
+      </div>
     {/if}
 
     <!-- Solutions grid (top-pick + remaining, shared with visitor view) -->
@@ -289,7 +293,7 @@
     {/if}
 
     <!-- Selection action bar (always visible; disabled state when 0 selected) -->
-    <div class="selection-bar">
+    <div class="selection-bar" bind:this={actionBarRef}>
       <span class="selection-count">
         {#if selectionCount === 0}
           Choose 1–3 solutions to compare
@@ -319,12 +323,6 @@
       </button>
     </div>
 
-    <!-- Fallback link -->
-    <p class="fallback">
-      <a href="/jobs/{jobId}" class="fallback-link">
-        Want different options? Explore all solutions on the job page &rarr;
-      </a>
-    </p>
   {/if}
 </div>
 
@@ -365,6 +363,11 @@
     gap: var(--space-4);
   }
 
+  .selector-context {
+    display: grid;
+    gap: var(--space-3);
+  }
+
   .empty-state {
     font-family: var(--font-mono);
     font-size: var(--text-sm);
@@ -382,9 +385,9 @@
     flex-wrap: wrap;
     gap: var(--space-3);
     padding: var(--space-3) var(--space-4);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-accent);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--color-accent) 5%, var(--color-bg-elevated));
   }
 
   .selection-count {
@@ -434,11 +437,6 @@
   @media (max-width: 639px) {
     .selection-count { white-space: normal; }
     .validate-btn { margin-left: 0; width: 100%; }
-  }
-
-  .fallback {
-    text-align: center;
-    padding: var(--space-2) 0;
   }
 
   .fallback-link {

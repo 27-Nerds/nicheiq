@@ -1,17 +1,20 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import {
-    ArrowRight,
-    Heart,
-  } from "lucide-svelte";
+  import { ArrowRight, Heart } from "lucide-svelte";
   import { fly } from "svelte/transition";
   import Badge from "$lib/components/ui/Badge.svelte";
   import CategoryBadge from "$lib/components/catalog/CategoryBadge.svelte";
   import Tooltip from "$lib/components/ui/Tooltip.svelte";
-import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
+  import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
   import { scoreRationale } from "$lib/utils/scoreRationale";
   import type { SolutionPreview } from "$lib/types/job";
-  import { computeCompositeScore, solutionStrengthBadge, solutionDisplayTitle, solutionCardDescription, fitLabel } from "$lib/utils/solution-utils";
+  import {
+    computeCompositeScore,
+    solutionStrengthBadge,
+    solutionDisplayTitle,
+    solutionCardDescription,
+    fitLabel,
+  } from "$lib/utils/solution-utils";
   import { tagDescription } from "$lib/utils/ideaTagLabels";
   import { angleLabel, angleDescription } from "$lib/utils/ideaAngleLabels";
 
@@ -61,56 +64,39 @@ import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
     category = null,
   }: Props = $props();
 
-  // Dev guard: mixed-mode usage
   $effect(() => {
     if (import.meta.env.DEV && href && onSelect) {
-      console.warn('SolutionCard: href and onSelect are mutually exclusive. Use one mode at a time.');
+      console.warn("SolutionCard: href and onSelect are mutually exclusive. Use one mode at a time.");
     }
   });
 
-  // Mode
-  const variant = $derived<'selection' | 'link' | 'readonly'>(
-    onSelect ? 'selection' : href ? 'link' : 'readonly'
-  );
-
-  // Derived display data
   const compositeScore = $derived(computeCompositeScore(solution));
   const compositeWhy = $derived(scoreRationale(solution, "composite"));
-  // Strength badge now comes from the backend (tags.primary_strength); falls back to the
-  // legacy client-side selection only for pre-tags reports. See docs/IDEA_TAGS.md.
   const superpower = $derived(solutionStrengthBadge(solution));
   const strengthWhy = $derived(tagDescription(solution.tags?.primary_strength));
   const displayTitle = $derived(solutionDisplayTitle(solution));
   const cardDesc = $derived(solutionCardDescription(solution));
   const fit = $derived(fitLabel(solution.market_fit_score));
 
-  // why_it_works_short with fallback
-  const whyShort = $derived(
-    solution.why_it_works_short?.trim() || null
-  );
+  const whyShort = $derived(solution.why_it_works_short?.trim() || null);
   const whyFallback = $derived(
-    !whyShort && solution.why_it_works?.trim() ? solution.why_it_works.trim() : null
+    !whyShort && solution.why_it_works?.trim() ? solution.why_it_works.trim() : null,
   );
 
-  // Grounded generation provenance: the (pain × segment) cell that produced this idea.
   const provenance = $derived.by(() => {
     const pain = solution.source_pain?.trim() || solution.pain_points_addressed?.[0]?.trim();
     if (!pain) return null;
     const seg = solution.source_segment?.trim();
-    return seg ? `Generated for ${pain} — ${seg} audience` : `Addresses ${pain}`;
+    return seg ? `Generated for ${pain} - ${seg} audience` : `Addresses ${pain}`;
   });
 
-  // Score color
   const scoreColor = $derived.by(() => {
-    if (compositeScore >= 0.7) return 'var(--color-success)';
-    if (compositeScore >= 0.4) return 'var(--color-warning)';
-    return 'var(--color-error)';
+    if (compositeScore >= 0.7) return "var(--color-success)";
+    if (compositeScore >= 0.4) return "var(--color-warning)";
+    return "var(--color-error)";
   });
 
-  // Selection pulse micro-interaction
   let justSelected = $state(false);
-
-  // Card is selectable (checkbox toggle)
   const isToggleable = $derived(!!onSelect && !disabled && (isSelected || !maxReached));
 
   function handleCardClick(e: MouseEvent) {
@@ -121,14 +107,11 @@ import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
     onOpen?.();
   }
 
-  // Clear pulse timer on unmount
   let pulseTimer: ReturnType<typeof setTimeout> | null = null;
   $effect(() => {
     return () => { if (pulseTimer) clearTimeout(pulseTimer); };
   });
 
-  // Native <input type="checkbox"> inside <label> handles keyboard + click.
-  // onchange fires for both mouse click on label AND Space keydown on focused checkbox.
   function handleCheckboxChange(e: Event) {
     const target = e.currentTarget as HTMLInputElement;
     if (!onSelect) return;
@@ -141,88 +124,90 @@ import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
   }
 
   function handleDetailsClick(e: MouseEvent) {
-    // Inside a <label>, we need to prevent the label from toggling the checkbox
     e.preventDefault();
     e.stopPropagation();
     onOpen?.();
   }
 </script>
 
-{#snippet cardContent()}
-  {#if isTopPick}
-    <span class="absolute -top-2.5 right-3 z-10 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full
-      text-accent border border-accent/30 whitespace-nowrap shadow-sm"
-      style="background-color: var(--color-bg-elevated)">
-      Highest viability
+{#snippet scoreMetric()}
+  {#if compositeWhy}
+    <Tooltip content={compositeWhy} position="bottom" class="cursor-help">
+      {#snippet children()}
+        <span class="score-metric">
+          <span>Score</span>
+          <strong style:color={scoreColor}>{Math.round(compositeScore * 100)}</strong>
+        </span>
+      {/snippet}
+    </Tooltip>
+  {:else}
+    <span class="score-metric">
+      <span>Score</span>
+      <strong style:color={scoreColor}>{Math.round(compositeScore * 100)}</strong>
     </span>
   {/if}
+{/snippet}
 
-  <!-- Title + Checkbox / Action slot -->
-  <div class="flex items-start gap-2">
-    <h3 class="flex-1 min-w-0 text-sm font-semibold text-text-primary leading-snug break-words truncate-2 group-hover:text-accent transition-colors">
-      {displayTitle}
-      {#if isNew}
-        <span class="new-badge" aria-hidden="true">New</span>
-        <span class="sr-only">Newly generated solution</span>
-      {/if}
-      {#if isFeatured}
-        <Badge variant="accent" size="sm">Featured</Badge>
-      {/if}
-    </h3>
+{#snippet cardContent()}
+  <div class="solution-card__head">
+    <div class="solution-card__title-group">
+      <div class="solution-card__badges">
+        {#if isTopPick}<span class="top-pick-badge">Highest viability</span>{/if}
+        {#if isNew}
+          <span class="new-badge" aria-hidden="true">New</span>
+          <span class="sr-only">Newly generated solution</span>
+        {/if}
+        {#if isFeatured}<Badge variant="accent" size="sm">Featured</Badge>{/if}
+      </div>
+      <h3>{displayTitle}</h3>
+    </div>
+
     {#if onSelect}
-      <!-- Visual indicator only — real <input type="checkbox"> lives in the <label> wrapper below -->
       <span
-        class="selection-indicator shrink-0 w-6 h-6 flex items-center justify-center transition-all
+        class="selection-indicator
           {isSelected ? 'selection-indicator--selected' : ''}
           {isToggleable && !isSelected ? 'selection-indicator--available' : ''}
           {!isToggleable && !isSelected ? 'selection-indicator--disabled' : ''}"
         aria-hidden="true"
       >
-        {#if isSelected && selectionIndex}
-          <span class="selection-indicator__number">{selectionIndex}</span>
-        {/if}
+        {#if isSelected && selectionIndex}<span>{selectionIndex}</span>{/if}
       </span>
     {:else if actionSlot}
-      <div class="shrink-0">
-        {@render actionSlot()}
-      </div>
+      <div class="solution-card__action-slot">{@render actionSlot()}</div>
     {/if}
   </div>
 
-  <!-- Metrics row -->
-  <div class="flex items-center gap-2 mt-1.5 flex-wrap">
-    <span class="score-anchor">
-      {#if compositeWhy}
-        <Tooltip content={compositeWhy} position="bottom" class="cursor-help">
-          {#snippet children()}
-            <span class="text-sm font-bold font-display tabular-nums" style:color={scoreColor}>{Math.round(compositeScore * 100)}</span>
-          {/snippet}
-        </Tooltip>
-      {:else}
-        <span class="text-sm font-bold font-display tabular-nums" style:color={scoreColor}>{Math.round(compositeScore * 100)}</span>
-      {/if}
-      {#if voteCount > 0 && !actionSlot}
-        <span class="vote-mark" title="{voteCount} community vote{voteCount === 1 ? '' : 's'}">
-          <Heart class="w-2.5 h-2.5 shrink-0" fill="currentColor" aria-hidden="true" />
-          <span class="vote-mark__count">{voteCount}</span>
-        </span>
-      {/if}
-    </span>
+  <div class="solution-card__metrics">
+    {@render scoreMetric()}
     {#if solution.market_fit_score != null}
       <Tooltip content={SCORE_DEFINITIONS.market_fit} position="bottom" class="cursor-help">
         {#snippet children()}
-          <span class="text-xs text-text-muted tabular-nums">
-            Fit <span class="font-semibold fit-num fit-num-{fit.variant}">{Math.round((solution.market_fit_score ?? 0) * 100)}%</span>
+          <span class="mini-metric">
+            <span>Fit</span>
+            <strong class="fit-num fit-num-{fit.variant}">{Math.round((solution.market_fit_score ?? 0) * 100)}%</strong>
           </span>
         {/snippet}
       </Tooltip>
     {/if}
+    {#if solution.estimated_development_time}
+      <span class="mini-metric">
+        <span>Build</span>
+        <strong>~{solution.estimated_development_time}</strong>
+      </span>
+    {/if}
+    {#if voteCount > 0 && !actionSlot}
+      <span class="vote-mark" title="{voteCount} community vote{voteCount === 1 ? '' : 's'}">
+        <Heart class="w-3 h-3" fill="currentColor" aria-hidden="true" />
+        <span>{voteCount}</span>
+      </span>
+    {/if}
+  </div>
+
+  <div class="solution-card__tags">
     {#if superpower}
       {#if strengthWhy}
         <Tooltip content={strengthWhy} position="bottom" class="cursor-help">
-          {#snippet children()}
-            <span class="superpower-tag superpower-tag-{superpower.variant}">{superpower.label}</span>
-          {/snippet}
+          {#snippet children()}<span class="superpower-tag superpower-tag-{superpower.variant}">{superpower.label}</span>{/snippet}
         </Tooltip>
       {:else}
         <span class="superpower-tag superpower-tag-{superpower.variant}">{superpower.label}</span>
@@ -230,88 +215,48 @@ import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
     {/if}
     {#if solution.winning_angle && angleLabel(solution.winning_angle)}
       <Tooltip content={solution.angle_rationale || angleDescription(solution.winning_angle)} position="bottom" class="cursor-help">
-        {#snippet children()}
-          <span class="angle-tag">{angleLabel(solution.winning_angle)}</span>
-        {/snippet}
+        {#snippet children()}<span class="angle-tag">{angleLabel(solution.winning_angle)}</span>{/snippet}
       </Tooltip>
     {/if}
-    {#if solution.project_type}
-      <span class="text-xs px-2 py-0.5 rounded-full bg-bg-elevated border border-border text-text-muted">
-        {solution.project_type}
-      </span>
-    {/if}
-    {#if solution.estimated_development_time}
-      <span class="text-xs font-mono text-text-muted tabular-nums">
-        ~{solution.estimated_development_time}
-      </span>
-    {/if}
+    {#if solution.project_type}<span class="project-tag">{solution.project_type}</span>{/if}
   </div>
 
-  <!-- Description -->
-  <p class="mt-2 text-sm text-text-secondary leading-relaxed truncate-3">
-    {cardDesc}
-  </p>
+  <p class="solution-card__desc">{cardDesc}</p>
 
-  <!-- Why it works callout -->
   {#if whyShort}
-    <p class="mt-1.5 text-xs text-text-muted leading-relaxed pl-2 border-l-2 border-border-emphasis">
-      &#x21B3; {whyShort}
-    </p>
+    <p class="solution-card__evidence">{whyShort}</p>
   {:else if whyFallback}
-    <p class="mt-1.5 text-xs text-text-muted leading-relaxed truncate-1 pl-2 border-l-2 border-border-emphasis">
-      &#x21B3; {whyFallback}
-    </p>
+    <p class="solution-card__evidence truncate-1">{whyFallback}</p>
   {/if}
 
-  <!-- Grounded provenance: the pain × segment this idea was generated for -->
   {#if provenance}
-    <p class="mt-1.5 text-[11px] text-text-muted font-mono truncate-1">{provenance}</p>
+    <p class="solution-card__provenance">{provenance}</p>
   {/if}
 
-  <!-- Category badge -->
-  {#if category}
-    <div class="mt-1.5">
-      <CategoryBadge {category} type="ideas" light asLink={false} />
-    </div>
-  {/if}
-
-  {#if onSelect && onOpen}
-    <!-- Selection mode + detail available: dedicated button (stops label-click from toggling) -->
-    <button
-      type="button"
-      class="card-detail-btn mt-auto pt-2 self-start inline-flex items-center gap-1 text-sm font-medium text-accent underline-offset-2 hover:underline transition-colors"
-      onclick={handleDetailsClick}
-      aria-label="View {displayTitle} details"
-    >
-      View details <ArrowRight class="w-3.5 h-3.5" aria-hidden="true" />
-    </button>
-  {:else}
-    <!-- Hover affordance for link/readonly modes -->
-    <span class="mt-auto pt-2 inline-flex items-center gap-1 text-sm font-medium text-accent" aria-hidden="true">
-      View details <ArrowRight class="w-3.5 h-3.5" />
-    </span>
-  {/if}
+  <div class="solution-card__footer">
+    {#if category}<CategoryBadge {category} type="ideas" light asLink={false} />{/if}
+    {#if onSelect && onOpen}
+      <button type="button" class="card-detail-btn" onclick={handleDetailsClick} aria-label="View {displayTitle} details">
+        View details <ArrowRight class="w-3.5 h-3.5" aria-hidden="true" />
+      </button>
+    {:else}
+      <span class="card-detail-btn" aria-hidden="true">View details <ArrowRight class="w-3.5 h-3.5" /></span>
+    {/if}
+  </div>
 {/snippet}
 
-<!-- Link mode: <a> with fly transition -->
 {#if href}
   <a
     {href}
     onclick={handleCardClick}
-    class="block w-full text-left card card-interactive card-sm group solution-card overflow-visible
-      {isTopPick ? 'relative mt-3' : ''}"
-    in:fly={{ y: 12, duration: 400, delay: index * 40 }}
+    class="card card-interactive card-sm group solution-card solution-card-link {isTopPick ? 'is-top-pick' : ''}"
+    in:fly={{ y: 12, duration: 300, delay: index * 35 }}
   >
     {@render cardContent()}
   </a>
-<!-- Selection mode: <label> + hidden <input type="checkbox"> — native keyboard/mouse semantics -->
 {:else if onSelect}
   <label
-    class="card solution-card group p-3 relative transition-all duration-200 cursor-pointer overflow-visible flex flex-col
-      {isSelected ? 'card-selected' : ''}
-      {justSelected ? 'selection-pulse' : ''}
-      {isTopPick ? 'border-border-emphasis mt-3' : ''}
-      {(disabled || maxReached) && !isSelected ? 'opacity-60' : ''}"
+    class="card group solution-card solution-card-select {isSelected ? 'card-selected' : ''} {justSelected ? 'selection-pulse' : ''} {isTopPick ? 'is-top-pick' : ''} {(disabled || maxReached) && !isSelected ? 'opacity-60' : ''}"
   >
     <input
       type="checkbox"
@@ -323,12 +268,10 @@ import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
     />
     {@render cardContent()}
   </label>
-<!-- Readonly mode: <button> opens detail -->
 {:else}
   <button
     type="button"
-    class="card solution-card group p-3 relative transition-all duration-200 cursor-pointer overflow-visible text-left w-full flex flex-col
-      {isTopPick ? 'border-border-emphasis mt-3' : ''}"
+    class="card group solution-card solution-card-button {isTopPick ? 'is-top-pick' : ''}"
     onclick={handleCardClick}
     aria-label="Solution: {displayTitle}"
   >
@@ -337,154 +280,334 @@ import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
 {/if}
 
 <style>
+  .solution-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+    min-height: 0;
+    width: 100%;
+    padding: 1rem;
+    border-radius: var(--radius-md);
+    text-align: left;
+    overflow: hidden;
+    transition: border-color 150ms ease, background-color 150ms ease, outline-color 150ms ease;
+  }
+
   .solution-card:hover {
     border-color: var(--color-border-emphasis);
   }
 
-  /* Selected: accent tint + ring */
-  .card-selected {
-    background: color-mix(in srgb, var(--color-accent) 4%, var(--color-bg-card));
-    outline: 2px solid color-mix(in srgb, var(--color-accent) 20%, transparent);
+  .solution-card-select {
+    cursor: pointer;
   }
 
-  /* Keyboard focus ring via :has(input:focus-visible) — works when native checkbox is sr-only */
-  label.solution-card:has(input:focus-visible) {
-    outline: 2px solid var(--color-accent);
-    outline-offset: 2px;
+  .solution-card-button {
+    cursor: pointer;
   }
 
-  /* Disabled state for the label when checkbox is disabled */
-  label.solution-card:has(input:disabled) {
-    cursor: default;
+  .solution-card.is-top-pick {
+    border-color: color-mix(in srgb, var(--color-accent) 30%, var(--color-border));
   }
 
-  /* Selection pulse micro-interaction */
-  :global(.selection-pulse) {
-    animation: selectionPulse 300ms ease-out;
+  .solution-card__head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.75rem;
+    align-items: start;
   }
 
-  @keyframes selectionPulse {
-    0% { transform: scale(1); }
-    50% { transform: scale(1.015); }
-    100% { transform: scale(1); }
+  .solution-card__title-group {
+    min-width: 0;
+  }
+
+  .solution-card__badges {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    min-height: 1.25rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .solution-card h3 {
+    margin: 0;
+    color: var(--color-text-primary);
+    font-size: 0.9375rem;
+    font-weight: 650;
+    line-height: 1.3;
+    text-wrap: pretty;
+  }
+
+  .top-pick-badge,
+  .new-badge {
+    display: inline-flex;
+    align-items: center;
+    min-height: 1.25rem;
+    padding: 0.125rem 0.45rem;
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    line-height: 1;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .top-pick-badge {
+    color: var(--color-accent-dark);
+    background: var(--color-accent-subtle);
+    border: 1px solid var(--color-border-accent);
   }
 
   .new-badge {
-    font-size: 0.625rem;
-    font-weight: 600;
+    color: var(--color-secondary-dark);
+    background: var(--color-secondary-subtle);
+    border: 1px solid rgba(99, 102, 241, 0.2);
+  }
+
+  .solution-card__metrics {
+    display: flex;
+    align-items: stretch;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+
+  .solution-card__metrics :global(.tooltip-wrapper) {
+    display: flex;
+    min-width: 0;
+  }
+
+  .score-metric,
+  .mini-metric {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.125rem;
+    min-width: 4.75rem;
+    min-height: 2.75rem;
+    padding: 0.5rem 0.625rem;
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .score-metric span,
+  .mini-metric span {
+    font-family: var(--font-mono);
+    font-size: 0.5625rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    padding: 0.125rem 0.375rem;
-    vertical-align: middle;
-    margin-left: 0.25rem;
-    border-radius: 9999px;
-    color: var(--color-info);
-    background: rgba(59, 130, 246, 0.1);
-    border: 1px solid rgba(59, 130, 246, 0.2);
-    animation: newBadgeFade 8s ease-out forwards;
+    color: var(--color-text-muted);
   }
 
-  @keyframes newBadgeFade {
-    0%, 70% { opacity: 1; }
-    100% { opacity: 0; }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .new-badge {
-      animation: none;
-    }
-  }
-
-  /* Composite score + optional community-vote annotation, read as one unit.
-     items-center (not baseline) keeps the row height tight — the annotation
-     slots at the score's mid-line rather than superscripting above it, so
-     cards with and without votes stay the same height. */
-  .score-anchor {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3125rem; /* 5px — reads as annotation, not as a separate chip */
+  .score-metric strong {
+    font-family: var(--font-display);
+    font-size: 1.125rem;
     line-height: 1;
   }
 
-  .vote-mark {
+  .mini-metric strong {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    line-height: 1.15;
+  }
+
+  .solution-card__tags {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    min-height: 1.4rem;
+  }
+
+  .superpower-tag,
+  .angle-tag,
+  .project-tag {
     display: inline-flex;
     align-items: center;
-    gap: 0.125rem;
+    min-height: 1.375rem;
+    padding: 0.125rem 0.5rem;
+    border-radius: 999px;
     font-family: var(--font-mono);
     font-size: 0.625rem;
-    font-weight: 600;
-    color: var(--color-accent);
-    font-variant-numeric: tabular-nums;
-    line-height: 1;
-    letter-spacing: 0.02em;
-    /* Subtle dotted tether to the score so they read as one unit */
-    padding-left: 0.3125rem;
-    border-left: 1px dotted color-mix(in srgb, var(--color-accent) 40%, transparent);
-    margin-left: -0.125rem; /* pull the tether closer to the score */
-  }
-
-  .vote-mark__count {
-    line-height: 1;
+    font-weight: 650;
+    letter-spacing: 0.04em;
+    line-height: 1.1;
+    white-space: nowrap;
   }
 
   .superpower-tag {
-    font-family: var(--font-mono);
-    font-size: 0.625rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    line-height: 1.2;
-    padding-left: 0.5rem;
-    border-left: 2px solid currentColor;
+    background: var(--color-bg-surface);
+    border: 1px solid currentColor;
   }
   .superpower-tag-success { color: var(--color-success-dark); }
   .superpower-tag-accent { color: var(--color-accent-dark); }
   .superpower-tag-info { color: var(--color-secondary-dark); }
   .superpower-tag-warning { color: var(--color-warning-dark); }
 
-  /* Angle chip: one neutral (secondary-tinted) treatment for all three peer angles —
-     marks the "why it wins" angle without implying a ranking or reusing brand orange. */
   .angle-tag {
-    font-size: 0.75rem;
-    line-height: 1.2;
-    padding: 0.125rem 0.5rem;
-    border-radius: 9999px;
-    white-space: nowrap;
-    background: var(--color-bg-elevated);
-    border: 1px solid var(--color-secondary);
+    background: var(--color-secondary-subtle);
+    border: 1px solid rgba(99, 102, 241, 0.24);
     color: var(--color-secondary-dark);
+  }
+
+  .project-tag {
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border);
+    color: var(--color-text-muted);
+  }
+
+  .solution-card__desc {
+    margin: 0;
+    color: var(--color-text-secondary);
+    font-size: 0.875rem;
+    line-height: 1.5;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .solution-card__evidence {
+    margin: 0;
+    padding-left: 0.625rem;
+    border-left: 2px solid var(--color-border-emphasis);
+    color: var(--color-text-muted);
+    font-size: 0.75rem;
+    line-height: 1.45;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .solution-card__provenance {
+    margin: 0;
+    color: var(--color-text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    line-height: 1.35;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .solution-card__desc,
+  .solution-card__evidence,
+  .solution-card__provenance {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .solution-card__footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-top: auto;
+    padding-top: 0.25rem;
+  }
+
+  .card-detail-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    min-height: 2rem;
+    padding: 0;
+    margin-left: auto;
+    background: transparent;
+    border: none;
+    color: var(--color-accent);
+    font-size: 0.8125rem;
+    font-weight: 650;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .card-detail-btn:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .card-selected {
+    background: color-mix(in srgb, var(--color-accent) 4%, var(--color-bg-elevated));
+    outline: 2px solid color-mix(in srgb, var(--color-accent) 24%, transparent);
+  }
+
+  label.solution-card:has(input:focus-visible) {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  label.solution-card:has(input:disabled) {
+    cursor: default;
+  }
+
+  :global(.selection-pulse) {
+    animation: selectionPulse 260ms ease-out;
+  }
+
+  @keyframes selectionPulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.01); }
+    100% { transform: scale(1); }
+  }
+
+  .vote-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.1875rem;
+    min-height: 2.875rem;
+    padding: 0 0.5rem;
+    color: var(--color-accent);
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
   }
 
   .fit-num-success { color: var(--color-success-dark); }
   .fit-num-warning { color: var(--color-warning-dark); }
   .fit-num-muted { color: var(--color-text-muted); }
 
-  /* --- Selection indicator (numbered checkbox) --- */
   .selection-indicator {
     position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
     border-radius: 0.375rem;
     border: 2px solid var(--color-border-emphasis);
-    background: transparent;
-    cursor: pointer;
+    background: var(--color-bg-elevated);
+    color: white;
+    font-family: var(--font-mono);
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 800;
     font-variant-numeric: tabular-nums;
     line-height: 1;
-    padding: 0;
-    transition: border-color 150ms ease, background 150ms ease,
-                box-shadow 150ms ease, transform 120ms ease;
+    transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease, transform 120ms ease;
   }
 
-  /* Expanded hit area (visual 24px, tap target 32px) */
   .selection-indicator::after {
     content: '';
     position: absolute;
-    inset: -4px;
+    inset: -0.25rem;
   }
 
   .selection-indicator--available:hover {
     border-color: var(--color-accent);
-    background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+    background: color-mix(in srgb, var(--color-accent) 8%, var(--color-bg-elevated));
   }
 
   .selection-indicator--selected {
@@ -493,24 +616,23 @@ import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 15%, transparent);
   }
 
-  .selection-indicator__number {
-    color: white;
-    display: block;
-    animation: indicator-pop 200ms cubic-bezier(0.34, 1.56, 0.64, 1);
-  }
-
-  @keyframes indicator-pop {
-    0%   { transform: scale(0); opacity: 0; }
-    100% { transform: scale(1); opacity: 1; }
-  }
-
   .selection-indicator--disabled {
     border-color: var(--color-border);
-    opacity: 0.4;
-    cursor: default;
+    opacity: 0.45;
   }
 
   .selection-indicator:active:not(.selection-indicator--disabled) {
-    transform: scale(0.9);
+    transform: scale(0.94);
+  }
+
+  @media (max-width: 639px) {
+    .solution-card {
+      padding: 0.875rem;
+    }
+
+    .score-metric,
+    .mini-metric {
+      min-width: calc(50% - 0.25rem);
+    }
   }
 </style>

@@ -55,7 +55,7 @@
   // 70 'critical' when severity is 85?" misread.
   const formulaNote = $derived(
     composite == null && compositeRounded != null
-      ? "avg of severity + willingness-to-pay"
+      ? "avg of severity + commercial intent"
       : null,
   );
 

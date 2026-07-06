@@ -34,210 +34,307 @@
   const segments = $derived(
     painPoint.affected_segments?.slice(0, 3) ?? []
   );
+
+  const categories = $derived(painPoint.categories?.slice(0, 3) ?? []);
+  const mentionLabel = $derived(
+    `${painPoint.mention_count} ${painPoint.mention_count === 1 ? 'mention' : 'mentions'}`
+  );
+  const topQuote = $derived(quotes[0] ?? null);
 </script>
 
-<article class="pp-card" class:pp-card--top={isTop}>
-  <div class="pp-header">
-    <div class="pp-rank" class:pp-rank--top={isTop}>{rank}</div>
-    <div class="pp-title-col">
-      {#if isTop}
-        <span class="pp-top-flag">Top Opportunity</span>
-      {/if}
+<article class="pp-card" class:pp-card--lead={isTop}>
+  <div class="pp-card__grid">
+    <div class="pp-rank" class:pp-rank--lead={isTop}>{String(rank).padStart(2, '0')}</div>
+
+    <div class="pp-main">
+      <div class="pp-kicker-row">
+        <span class="pp-kicker">{isTop ? 'Lead pain signal' : 'Pain cluster'}</span>
+        <span class="pp-sev pp-sev--{severityLevel}">{severityLabel}</span>
+      </div>
       <h3 class="pp-title">{painPoint.title}</h3>
-    </div>
-    {#if severityLevel === 'critical'}
-      <span class="pp-sev pp-sev--critical">
-        {severityLabel}
-      </span>
-    {:else}
-      <span class="pp-sev pp-sev--quiet">
-        {severityLevel}
-      </span>
-    {/if}
-  </div>
 
-  {#if painPoint.description}
-    <p class="pp-body">{painPoint.description}</p>
-  {/if}
+      {#if painPoint.description}
+        <p class="pp-body">{painPoint.description}</p>
+      {/if}
 
-  {#if segments.length > 0}
-    <div class="pp-segments">
-      {#each segments as segment}
-        <span class="pp-segment">{segment}</span>
-      {/each}
-    </div>
-  {/if}
+      {#if isTop && topQuote}
+        <blockquote class="pp-pullquote">"{topQuote}"</blockquote>
+      {/if}
 
-  {#if quotes.length > 0 || painPoint.solution_approach}
-    <details class="pp-evidence">
-      <summary class="pp-evidence-trigger">Evidence & opportunity</summary>
-      <div class="pp-evidence-body">
-        {#if quotes.length > 0}
-          {#each quotes as quote}
-            <blockquote class="pp-quote">"{quote}"</blockquote>
-          {/each}
-        {/if}
-        {#if painPoint.solution_approach}
-          <div class="pp-opp">
-            <strong>Opportunity:</strong> {painPoint.solution_approach}
+      <div class="pp-meta-row" aria-label="Pain point metadata">
+        {#if segments.length > 0}
+          <div class="pp-meta-group">
+            <span class="pp-meta-label">Segments</span>
+            <div class="pp-pills">
+              {#each segments as segment}
+                <span>{segment}</span>
+              {/each}
+            </div>
           </div>
         {/if}
-      </div>
-    </details>
-  {/if}
 
-  <div class="pp-footer">
-    <div class="pp-meta">
-      {#if painPoint.categories?.length}
-        {#each painPoint.categories.slice(0, 3) as cat}
-          <span class="pp-tag">{cat}</span>
-        {/each}
+        {#if categories.length > 0}
+          <div class="pp-meta-group">
+            <span class="pp-meta-label">Themes</span>
+            <div class="pp-pills">
+              {#each categories as cat}
+                <span>{cat}</span>
+              {/each}
+            </div>
+          </div>
+        {/if}
+
+        <div class="pp-meta-group pp-meta-group--count">
+          <span class="pp-meta-label">Evidence</span>
+          <strong>{mentionLabel}</strong>
+        </div>
+      </div>
+
+      {#if isTop && (quotes.length > 1 || painPoint.solution_approach)}
+        <details class="pp-evidence">
+          <summary class="pp-evidence-trigger">Open supporting evidence</summary>
+          <div class="pp-evidence-body">
+            {#if quotes.length > 1}
+              {#each quotes.slice(1) as quote}
+                <blockquote class="pp-quote">"{quote}"</blockquote>
+              {/each}
+            {/if}
+            {#if painPoint.solution_approach}
+              <div class="pp-opp">
+                <span>Opportunity lens</span>
+                <p>{painPoint.solution_approach}</p>
+              </div>
+            {/if}
+          </div>
+        </details>
       {/if}
-      <span class="pp-mentions">{painPoint.mention_count} {painPoint.mention_count === 1 ? 'mention' : 'mentions'}</span>
     </div>
-    {#if onViewOpportunity}
-      <button class="pp-action" class:pp-action--solid={isTop} onclick={onViewOpportunity}>
-        Explore solutions
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
+
+    {#if onViewOpportunity && isTop}
+      <button class="pp-action" onclick={onViewOpportunity}>
+        <span>Explore matching ideas</span>
+        <span class="pp-action-icon" aria-hidden="true">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
+        </span>
       </button>
     {/if}
   </div>
 </article>
 
 <style>
-  /* ── Card shell ── */
   .pp-card {
-    background: var(--color-bg-elevated);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    padding: 1.25rem 1.5rem;
-    margin-bottom: 0.5rem;
+    position: relative;
+    margin: 0;
+    padding: 0.82rem 0;
+    border-top: 1px solid color-mix(in srgb, var(--color-border-emphasis) 34%, transparent);
+    background: transparent;
+    transition:
+      background-color 260ms cubic-bezier(0.32, 0.72, 0, 1),
+      transform 260ms cubic-bezier(0.32, 0.72, 0, 1);
   }
 
-  .pp-card--top {
-    border-color: var(--color-border-accent);
+  .pp-card:hover {
+    transform: translateY(-1px);
+  }
+
+  .pp-card--lead {
+    margin: 0.06rem 0 0.18rem;
+    padding: 0.92rem;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--color-accent) 32%, var(--color-border-emphasis));
+    border-radius: 0.82rem;
     background:
-      linear-gradient(135deg, rgba(234, 88, 12, 0.05) 0%, transparent 50%),
-      var(--color-bg-elevated);
+      linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 5%, transparent), transparent 55%),
+      color-mix(in srgb, var(--color-bg-elevated) 94%, white);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.88),
+      0 14px 32px rgba(234, 88, 12, 0.04);
   }
 
-  /* ── Header: rank + title + severity ── */
-  .pp-header {
-    display: flex;
+  .pp-card--lead:hover {
+    transform: translateY(-2px);
+  }
+
+  .pp-card__grid {
+    display: grid;
+    grid-template-columns: 2.2rem minmax(0, 1fr) auto;
     align-items: flex-start;
-    gap: 0.75rem;
-    margin-bottom: 0.75rem;
+    gap: 0.74rem;
   }
 
   .pp-rank {
-    width: 2rem;
-    height: 2rem;
-    border-radius: var(--radius-sm);
+    width: 1.9rem;
+    height: 1.9rem;
+    border-radius: 0.52rem;
     display: flex;
     align-items: center;
     justify-content: center;
     font-family: var(--font-display);
-    font-weight: 700;
-    font-size: 0.875rem;
+    font-weight: 760;
+    font-size: 0.68rem;
     font-variant-numeric: tabular-nums;
     flex-shrink: 0;
-    background: var(--color-bg-surface);
+    background: color-mix(in srgb, var(--color-bg-surface) 82%, white);
     color: var(--color-text-muted);
+    border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 32%, transparent);
   }
 
-  .pp-rank--top {
+  .pp-rank--lead {
     background: var(--color-accent);
     color: white;
+    border-color: transparent;
+    box-shadow: 0 8px 18px rgba(234, 88, 12, 0.12);
   }
 
-  .pp-title-col {
-    flex: 1;
+  .pp-main {
     min-width: 0;
   }
 
-  .pp-top-flag {
-    display: inline-block;
-    font-size: 0.5625rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
+  .pp-kicker-row {
+    display: flex;
+    align-items: center;
+    gap: 0.44rem;
+    margin-bottom: 0.24rem;
+  }
+
+  .pp-kicker,
+  .pp-meta-label,
+  .pp-opp span {
+    color: var(--color-text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.56rem;
+    font-weight: 760;
+    letter-spacing: 0.06em;
+    line-height: 1;
     text-transform: uppercase;
+  }
+
+  .pp-card--lead .pp-kicker {
     color: var(--color-accent);
-    margin-bottom: 0.125rem;
   }
 
   .pp-title {
     font-family: var(--font-display);
-    font-size: 0.9375rem;
-    font-weight: 600;
-    line-height: 1.4;
+    font-size: 0.86rem;
+    font-weight: 760;
+    line-height: 1.2;
     color: var(--color-text-primary);
     margin: 0;
+    text-wrap: balance;
+  }
+
+  .pp-card--lead .pp-title {
+    max-width: 54rem;
+    font-size: 0.96rem;
   }
 
   .pp-sev {
     display: inline-flex;
     align-items: center;
-    font-size: 0.6875rem;
+    font-size: 0.66rem;
     font-weight: 600;
-    padding: 0.25rem 0.625rem;
-    border-radius: var(--radius-sm);
+    padding: 0.2rem 0.52rem;
+    border-radius: 0.38rem;
     flex-shrink: 0;
     white-space: nowrap;
-    margin-top: 0.125rem;
+    border: 1px solid transparent;
   }
 
-  .pp-sev--critical {
-    background: var(--color-severity-critical-bg);
+  .pp-sev--critical,
+  .pp-sev--high {
+    background: color-mix(in srgb, var(--color-severity-critical-bg) 72%, var(--color-bg-elevated));
     color: var(--color-severity-critical);
+    border-color: color-mix(in srgb, var(--color-severity-critical) 16%, transparent);
   }
 
-  .pp-sev--quiet {
-    background: none;
-    padding: 0.25rem 0;
-    font-family: var(--font-mono);
+  .pp-sev--medium {
+    background: color-mix(in srgb, var(--color-bg-surface) 72%, white);
     color: var(--color-text-muted);
+    border-color: color-mix(in srgb, var(--color-border-emphasis) 28%, transparent);
   }
 
-  /* ── Body ── */
   .pp-body {
-    font-size: 0.8125rem;
+    max-width: 90ch;
+    font-size: 0.74rem;
     color: var(--color-text-secondary);
-    line-height: 1.6;
-    margin-bottom: 0.625rem;
+    line-height: 1.48;
+    margin: 0.26rem 0 0;
+    text-wrap: pretty;
   }
 
-  /* ── Affected segments ── */
-  .pp-segments {
+  .pp-card--lead .pp-body {
+    font-size: 0.78rem;
+  }
+
+  .pp-pullquote {
+    margin: 0.64rem 0 0;
+    padding: 0.52rem 0.66rem;
+    border-left: 2px solid color-mix(in srgb, var(--color-accent) 34%, transparent);
+    border-radius: 0 0.46rem 0.46rem 0;
+    background: color-mix(in srgb, var(--color-accent) 3%, white);
+    color: var(--color-text-secondary);
+    font-size: 0.72rem;
+    line-height: 1.48;
+    text-wrap: pretty;
+  }
+
+  .pp-meta-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.56rem 0.86rem;
+    flex-wrap: wrap;
+    margin-top: 0.58rem;
+  }
+
+  .pp-meta-group {
+    display: grid;
+    gap: 0.26rem;
+    min-width: 0;
+  }
+
+  .pp-meta-group--count strong {
+    color: var(--color-text-secondary);
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    font-weight: 760;
+    line-height: 1.15;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .pp-pills {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.375rem;
-    margin-bottom: 0.75rem;
+    gap: 0.28rem;
   }
 
-  .pp-segment {
-    font-size: 0.625rem;
-    font-weight: 500;
-    padding: 0.1875rem 0.5rem;
-    border-radius: 9999px;
-    color: var(--color-text-secondary);
-    background: var(--color-bg-surface);
-    border: 1px solid var(--color-border);
+  .pp-pills span {
+    max-width: 22rem;
+    padding: 0.15rem 0.46rem;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 34%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--color-bg-surface) 78%, white);
+    color: var(--color-text-muted);
+    font-size: 0.6rem;
+    font-weight: 650;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  /* ── Evidence toggle ── */
   .pp-evidence {
-    margin-bottom: 0.75rem;
+    margin-top: 0.64rem;
   }
 
   .pp-evidence-trigger {
     list-style: none;
     cursor: pointer;
     font-family: var(--font-body);
-    font-size: 0.75rem;
-    font-weight: 500;
+    font-size: 0.68rem;
+    font-weight: 650;
     color: var(--color-text-secondary);
-    padding: 0.25rem 0;
-    transition: color 150ms ease;
+    padding: 0.12rem 0;
+    transition: color 220ms cubic-bezier(0.32, 0.72, 0, 1);
     display: inline-flex;
     align-items: center;
     gap: 0.35em;
@@ -247,7 +344,7 @@
     content: '▸';
     display: inline-block;
     font-size: 0.85em;
-    transition: transform 180ms ease-out;
+    transition: transform 240ms cubic-bezier(0.32, 0.72, 0, 1);
   }
 
   .pp-evidence[open] .pp-evidence-trigger::before {
@@ -262,18 +359,18 @@
   }
 
   .pp-evidence-body {
-    padding-top: 0.5rem;
+    padding-top: 0.54rem;
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
   }
 
   .pp-quote {
-    background: var(--color-bg-surface);
-    border-left: 2px solid var(--color-border);
+    background: color-mix(in srgb, var(--color-bg-surface) 76%, white);
+    border-left: 2px solid color-mix(in srgb, var(--color-border-emphasis) 48%, transparent);
     border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-    padding: 0.625rem 0.875rem;
-    font-size: 0.8125rem;
+    padding: 0.52rem 0.68rem;
+    font-size: 0.74rem;
     font-style: italic;
     color: var(--color-text-secondary);
     line-height: 1.55;
@@ -281,92 +378,83 @@
   }
 
   .pp-opp {
-    font-size: 0.8125rem;
+    display: grid;
+    gap: 0.22rem;
+    padding: 0.54rem 0.62rem;
+    border: 1px solid color-mix(in srgb, var(--color-accent) 18%, transparent);
+    border-radius: 0.52rem;
+    background: color-mix(in srgb, var(--color-opportunity-bg) 58%, white);
+  }
+
+  .pp-opp p {
+    margin: 0;
     color: var(--color-opportunity);
-    line-height: 1.5;
-    padding: 0.5rem 0.75rem;
-    background: var(--color-opportunity-bg);
-    border-radius: var(--radius-sm);
-  }
-
-  .pp-opp strong {
-    font-weight: 600;
-  }
-
-  /* ── Footer ── */
-  .pp-footer {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    margin-top: 0.75rem;
-    padding-top: 0.75rem;
-    border-top: 1px solid var(--color-border);
-  }
-
-  .pp-meta {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-  }
-
-  .pp-tag {
-    font-size: 0.625rem;
-    font-weight: 500;
-    padding: 0.1875rem 0.5rem;
-    border-radius: 9999px;
-    background: var(--color-bg-surface);
-    color: var(--color-text-muted);
-  }
-
-  .pp-mentions {
-    font-size: 0.625rem;
-    font-weight: 600;
-    color: var(--color-text-muted);
-    font-variant-numeric: tabular-nums;
+    font-size: 0.72rem;
+    line-height: 1.46;
+    text-wrap: pretty;
   }
 
   .pp-action {
     display: inline-flex;
     align-items: center;
-    gap: 0.375rem;
-    font-size: 0.75rem;
-    font-weight: 600;
+    gap: 0.42rem;
+    font-size: 0.7rem;
+    font-weight: 720;
     color: var(--color-accent);
-    background: transparent;
-    border: none;
-    padding: 0.375rem 0;
-    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--color-bg-elevated) 88%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-accent) 22%, transparent);
+    padding: 0.28rem 0.34rem 0.28rem 0.58rem;
+    border-radius: 999px;
     cursor: pointer;
-    transition: color 150ms ease, background-color 150ms ease;
+    transition:
+      color 220ms cubic-bezier(0.32, 0.72, 0, 1),
+      border-color 220ms cubic-bezier(0.32, 0.72, 0, 1),
+      background-color 220ms cubic-bezier(0.32, 0.72, 0, 1),
+      transform 220ms cubic-bezier(0.32, 0.72, 0, 1);
   }
 
   .pp-action:hover {
     color: var(--color-accent-dark, #D9562A);
-  }
-
-  .pp-action--solid {
-    color: white;
-    background: var(--color-accent);
-    padding: 0.375rem 0.75rem;
-  }
-
-  .pp-action--solid:hover {
-    color: white;
-    background: var(--color-accent-dark, #D9562A);
+    border-color: color-mix(in srgb, var(--color-accent) 26%, transparent);
+    background: color-mix(in srgb, var(--color-accent) 7%, var(--color-bg-elevated));
   }
 
   .pp-action:active {
     transform: scale(0.98);
   }
 
-  .pp-action svg {
-    transition: transform 0.15s ease;
+  .pp-action-icon {
+    display: inline-flex;
+    width: 1.14rem;
+    height: 1.14rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--color-accent) 11%, transparent);
+    transition:
+      transform 240ms cubic-bezier(0.32, 0.72, 0, 1),
+      background-color 240ms cubic-bezier(0.32, 0.72, 0, 1);
   }
 
-  .pp-action:hover svg {
+  .pp-action:hover .pp-action-icon {
     transform: translateX(2px);
+    background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+  }
+
+  @media (max-width: 760px) {
+    .pp-card__grid {
+      grid-template-columns: 1.95rem minmax(0, 1fr);
+    }
+
+    .pp-action {
+      grid-column: 2;
+      justify-self: start;
+      margin-top: 0.64rem;
+    }
+
+    .pp-pills span {
+      max-width: 100%;
+      white-space: normal;
+    }
   }
 </style>

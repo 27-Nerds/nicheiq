@@ -189,7 +189,7 @@
         >
         <text x={innerWidth} y={innerHeight + 25} class="axis-tick">100%</text>
         <text x={innerWidth / 2} y={innerHeight + 42} class="axis-label"
-          >Willingness to Pay</text
+          >Commercial Intent</text
         >
 
         <!-- Y-axis labels -->
@@ -226,7 +226,7 @@
             tabindex="0"
             aria-label="{point.title}: Severity {formatScorePercent(
               point.y,
-            )}, WTP {formatScorePercent(point.x)}"
+            )}, Intent {formatScorePercent(point.x)}"
           />
         {/each}
       </g>
@@ -244,7 +244,7 @@
             >Severity: <strong>{formatScorePercent(hoveredPoint.y)}</strong
             ></span
           >
-          <span>WTP: <strong>{formatScorePercent(hoveredPoint.x)}</strong></span
+          <span>Intent: <strong>{formatScorePercent(hoveredPoint.x)}</strong></span
           >
         </div>
         <div class="tooltip-meta">

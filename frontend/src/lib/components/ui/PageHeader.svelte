@@ -41,13 +41,13 @@
   const colors = $derived(Icon ? colorMap[iconColor] : null);
 </script>
 
-<div class="mb-8 {className}">
+<div class="page-header mb-8 {className}">
   {#if breadcrumbItems && breadcrumbCurrent}
     <Breadcrumb items={breadcrumbItems} current={breadcrumbCurrent} />
   {/if}
 
-  <div class={actions ? 'flex items-center justify-between flex-wrap gap-4' : ''}>
-    <div class="flex items-start gap-3">
+  <div class={actions ? 'page-header-body flex items-center justify-between flex-wrap gap-4' : 'page-header-body'}>
+    <div class="page-header-title-row flex items-start gap-3">
       {#if Icon && colors}
         <div class="p-2 rounded-xl {colors.bg} border {colors.border} shrink-0">
           <Icon class="w-6 h-6 {colors.text}" />
@@ -69,7 +69,9 @@
       </div>
     </div>
     {#if actions}
-      {@render actions()}
+      <div class="page-header-actions">
+        {@render actions()}
+      </div>
     {/if}
   </div>
 

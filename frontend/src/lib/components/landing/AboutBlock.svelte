@@ -8,8 +8,7 @@
 			<!-- Text column -->
 			<div class="about-text">
 				<div class="landing-section-label-row" style="margin-bottom: var(--space-6);">
-					<span class="landing-section-dot"></span>
-					<span class="landing-section-label">This is why we built this</span>
+					<span class="landing-section-label">WHY WE BUILT THIS</span>
 				</div>
 				<h2 class="landing-section-h2" style="margin-bottom: var(--space-8);">
 					We're founders too.<br />
@@ -23,7 +22,7 @@
 					</p>
 					<p>
 						<strong>So we built the tool we wished existed.</strong> NicheIQ is what we used to do by
-						hand — automated, in 45 minutes.
+						hand — automated, in under an hour.
 					</p>
 					<p>Built for founders who think win-win — great product for users, real profit for you.</p>
 				</div>

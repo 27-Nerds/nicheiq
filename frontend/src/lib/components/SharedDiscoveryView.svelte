@@ -271,7 +271,7 @@
       defaultOpen={true}
       id="pain-points"
     >
-      <p class="section-intro">What are people struggling with? Each pain point scored by frequency, emotional intensity, and willingness to pay.</p>
+      <p class="section-intro">What are people struggling with? Each pain point scored by frequency, severity, and commercial intent.</p>
       {#each topPainPoints as pp, i (pp.title ?? i)}
         <PainPointSummaryCard painPoint={pp} rank={i + 1} isTop={i === 0} />
       {/each}

@@ -106,7 +106,7 @@
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div
     use:portal
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+    class="confirm-backdrop"
     onclick={handleBackdropClick}
     role="dialog"
     aria-modal="true"
@@ -114,41 +114,44 @@
   >
     <div
       bind:this={modalEl}
-      class="bg-bg-surface border border-border rounded-xl shadow-2xl w-full max-w-md"
+      class="confirm-card"
     >
       <!-- Header -->
-      <div class="flex items-center justify-between p-4 border-b border-border">
-        <h2 class="text-lg font-semibold text-text-primary">
-          Start Your Market Analysis
-        </h2>
+      <div class="confirm-header">
+        <div>
+          <p class="confirm-eyebrow">Deep Research</p>
+          <h2 class="confirm-title">Validate your shortlist</h2>
+        </div>
         <button
           onclick={handleClose}
           disabled={loading}
           aria-label="Close modal"
-          class="p-1 rounded-lg hover:bg-bg-hover text-text-muted hover:text-text-primary transition-colors disabled:opacity-50"
+          class="confirm-close"
         >
           <X class="w-5 h-5" />
         </button>
       </div>
 
       <!-- Body -->
-      <div class="p-4 space-y-4">
+      <div class="confirm-body">
         {#if isSingle}
-          <p class="text-sm text-text-secondary">
-            Validating <span class="font-semibold text-text-primary">{displayMap.get(solutionNames[0]) || solutionNames[0]}</span>.
-          </p>
+          <div class="confirm-selection">
+            <span class="confirm-selection-count">1 idea selected</span>
+            <strong>{displayMap.get(solutionNames[0]) || solutionNames[0]}</strong>
+          </div>
         {:else}
-          <p class="text-sm text-text-secondary">
-            Validating <span class="font-semibold text-text-primary">{solutionNames.length} solutions</span>. The strongest becomes your primary recommendation; the rest appear as alternatives.
-          </p>
-          <ul class="space-y-1">
+          <div class="confirm-selection">
+            <span class="confirm-selection-count">{solutionNames.length} ideas selected</span>
+            <p>The strongest result becomes the primary recommendation. The rest stay available as alternatives.</p>
+          </div>
+          <ul class="confirm-list">
             {#each solutionNames as name}
-              <li class="text-sm text-text-primary flex items-start gap-2">
-                <span class="text-accent mt-0.5 shrink-0">&#x2022;</span>
-                <span class="font-medium">
+              <li>
+                <span class="confirm-dot" aria-hidden="true"></span>
+                <span>
                   {displayMap.get(name) || name}
                   {#if displayMap.get(name) && displayMap.get(name) !== name}
-                    <span class="text-[10px] font-mono text-text-muted/60 ml-1">{name}</span>
+                    <span class="confirm-original-name">{name}</span>
                   {/if}
                 </span>
               </li>
@@ -156,13 +159,19 @@
           </ul>
         {/if}
 
-        <p class="text-sm text-text-secondary">
-          You'll get a full market analysis — demand signals, competitor landscape, keyword opportunities, and a pricing recommendation. Results by email in ~20 minutes.
-        </p>
+        <div class="confirm-scope">
+          <span>What gets tested</span>
+          <p>Demand signals, competition, market size, pricing, SEO demand, and go-to-market risk.</p>
+        </div>
+
+        <div class="confirm-cost">
+          <span><Coins class="w-3.5 h-3.5" aria-hidden="true" />{creditCost} credits</span>
+          <span>one-time</span>
+        </div>
 
         {#if errorMessage}
           <div
-            class="flex items-center gap-2 p-3 bg-error/10 border border-error/20 rounded-lg text-error text-sm"
+            class="confirm-error"
           >
             <AlertCircle class="w-4 h-4 shrink-0" />
             <span>{errorMessage}</span>
@@ -172,33 +181,293 @@
 
       <!-- Footer -->
       <div
-        class="flex items-center justify-end gap-3 p-4 border-t border-border"
+        class="confirm-footer"
       >
         <button
           onclick={handleClose}
           disabled={loading}
-          class="px-4 py-2 text-sm font-medium rounded-lg border border-border text-text-secondary hover:bg-bg-hover transition-colors disabled:opacity-50"
+          class="confirm-secondary"
         >
           Cancel
         </button>
         <button
           onclick={handleConfirm}
           disabled={loading}
-          class="btn-primary px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2 disabled:opacity-50"
+          class="confirm-primary"
         >
           {#if loading}
             <Loader2 class="w-4 h-4 animate-spin" />
-            Submitting...
+            Starting...
           {:else}
-            Validate my picks
-            {#if creditCost > 0}
-              <span class="inline-flex items-center gap-1 text-xs opacity-80">
-                <Coins class="w-3 h-3" />{creditCost}
-              </span>
-            {/if}
+            Start Deep Research
           {/if}
         </button>
       </div>
     </div>
   </div>
 {/if}
+
+<style>
+  .confirm-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: clamp(0.75rem, 2vw, 1.35rem);
+    background: rgba(246, 246, 244, 0.9);
+  }
+
+  .confirm-card {
+    width: min(34rem, 100%);
+    overflow: hidden;
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-emphasis);
+    border-radius: 0.95rem;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.92),
+      0 24px 64px rgba(24, 24, 27, 0.14);
+  }
+
+  .confirm-header,
+  .confirm-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.1rem;
+  }
+
+  .confirm-header {
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .confirm-eyebrow {
+    margin: 0 0 0.18rem;
+    font-size: 0.7rem;
+    font-weight: 780;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+  }
+
+  .confirm-title {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 1.12rem;
+    font-weight: 800;
+    line-height: 1.15;
+    color: var(--color-text-primary);
+  }
+
+  .confirm-close {
+    display: grid;
+    place-items: center;
+    width: 2.15rem;
+    height: 2.15rem;
+    border: 1px solid transparent;
+    border-radius: 0.58rem;
+    background: transparent;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    transition:
+      transform 220ms cubic-bezier(0.32, 0.72, 0, 1),
+      background 220ms cubic-bezier(0.32, 0.72, 0, 1),
+      color 220ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  .confirm-close:hover:not(:disabled) {
+    transform: translateY(-1px);
+    background: var(--color-bg-surface);
+    color: var(--color-text-primary);
+  }
+
+  .confirm-body {
+    display: grid;
+    gap: 0.85rem;
+    padding: 1rem 1.1rem 1.1rem;
+  }
+
+  .confirm-selection {
+    display: grid;
+    gap: 0.28rem;
+    padding: 0.8rem;
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.72rem;
+  }
+
+  .confirm-selection-count {
+    font-size: 0.72rem;
+    font-weight: 760;
+    color: var(--color-text-muted);
+  }
+
+  .confirm-selection strong,
+  .confirm-selection p {
+    margin: 0;
+    color: var(--color-text-primary);
+    font-size: 0.9rem;
+    line-height: 1.42;
+  }
+
+  .confirm-list {
+    display: grid;
+    gap: 0.44rem;
+    margin: 0;
+    padding: 0;
+  }
+
+  .confirm-list li {
+    display: grid;
+    grid-template-columns: 0.44rem minmax(0, 1fr);
+    gap: 0.52rem;
+    align-items: start;
+    color: var(--color-text-primary);
+    font-size: 0.86rem;
+    font-weight: 700;
+    line-height: 1.35;
+  }
+
+  .confirm-dot {
+    width: 0.42rem;
+    height: 0.42rem;
+    margin-top: 0.38rem;
+    border-radius: 50%;
+    background: var(--color-accent);
+  }
+
+  .confirm-original-name {
+    display: block;
+    margin-top: 0.16rem;
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    font-weight: 650;
+    color: var(--color-text-muted);
+  }
+
+  .confirm-scope {
+    display: grid;
+    gap: 0.22rem;
+  }
+
+  .confirm-scope span {
+    font-size: 0.72rem;
+    font-weight: 760;
+    color: var(--color-text-muted);
+  }
+
+  .confirm-scope p {
+    margin: 0;
+    color: var(--color-text-secondary);
+    font-size: 0.86rem;
+    line-height: 1.48;
+    text-wrap: pretty;
+  }
+
+  .confirm-cost {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding-top: 0.72rem;
+    border-top: 1px solid var(--color-border);
+    color: var(--color-text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+  }
+
+  .confirm-cost span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .confirm-error {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.7rem 0.78rem;
+    background: color-mix(in srgb, var(--color-error) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-error) 18%, var(--color-border));
+    border-radius: 0.62rem;
+    color: var(--color-error);
+    font-size: 0.82rem;
+  }
+
+  .confirm-footer {
+    border-top: 1px solid var(--color-border);
+    background: var(--color-bg-elevated);
+  }
+
+  .confirm-secondary,
+  .confirm-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    min-height: 2.35rem;
+    padding: 0.48rem 0.82rem;
+    border-radius: 0.62rem;
+    font-family: var(--font-body);
+    font-size: 0.84rem;
+    font-weight: 780;
+    cursor: pointer;
+    transition:
+      transform 220ms cubic-bezier(0.32, 0.72, 0, 1),
+      background 220ms cubic-bezier(0.32, 0.72, 0, 1),
+      color 220ms cubic-bezier(0.32, 0.72, 0, 1),
+      border-color 220ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  .confirm-secondary {
+    background: transparent;
+    border: 1px solid var(--color-border);
+    color: var(--color-text-secondary);
+  }
+
+  .confirm-primary {
+    background: var(--color-accent);
+    border: 1px solid var(--color-accent);
+    color: white;
+  }
+
+  .confirm-secondary:hover:not(:disabled),
+  .confirm-primary:hover:not(:disabled) {
+    transform: translateY(-1px);
+  }
+
+  .confirm-secondary:hover:not(:disabled) {
+    border-color: var(--color-border-emphasis);
+    color: var(--color-text-primary);
+  }
+
+  .confirm-primary:hover:not(:disabled) {
+    background: var(--color-accent-hover);
+  }
+
+  .confirm-close:focus-visible,
+  .confirm-secondary:focus-visible,
+  .confirm-primary:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  .confirm-close:disabled,
+  .confirm-secondary:disabled,
+  .confirm-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  @media (max-width: 520px) {
+    .confirm-footer {
+      display: grid;
+    }
+    .confirm-secondary,
+    .confirm-primary {
+      width: 100%;
+    }
+  }
+</style>

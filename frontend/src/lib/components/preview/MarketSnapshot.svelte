@@ -36,18 +36,20 @@
 </script>
 
 <div class="ms">
-  {#if growthPct !== null}
-    <div class="ms-growth">
-      <span class="ms-growth-value">
-        {growthPct >= 0 ? '\u2191' : '\u2193'} {Math.abs(growthPct)}%
-      </span>
-      <span class="ms-growth-label">discussion growth</span>
-    </div>
-  {/if}
+  <div class="ms-header">
+    {#if growthPct !== null}
+      <div class="ms-growth">
+        <span class="ms-growth-value">
+          {growthPct >= 0 ? '\u2191' : '\u2193'} {Math.abs(growthPct)}%
+        </span>
+        <span class="ms-growth-label">discussion growth</span>
+      </div>
+    {/if}
 
-  <p class="ms-metrics">
-    {postsAnalyzed} posts &middot; {subredditCount} subreddits{#if totalEngagement > 0} &middot; {formatEngagement(totalEngagement)} upvotes{/if}
-  </p>
+    <p class="ms-metrics">
+      {postsAnalyzed} posts &middot; {subredditCount} subreddits{#if totalEngagement > 0} &middot; {formatEngagement(totalEngagement)} upvotes{/if}
+    </p>
+  </div>
 
   {#if showChart}
     <div class="ms-chart" role="img" aria-label="Monthly discussion trend">
@@ -86,48 +88,59 @@
   .ms {
     display: flex;
     flex-direction: column;
-    gap: 0.625rem;
+    gap: 0.76rem;
   }
 
-  /* ── Growth hero ── */
-  .ms-growth {
+  .ms-header {
     display: flex;
-    align-items: baseline;
-    gap: 0.5rem;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .ms-growth {
+    display: grid;
+    gap: 0.04rem;
   }
 
   .ms-growth-value {
     font-family: var(--font-display);
-    font-size: 1.875rem;
-    font-weight: 700;
+    font-size: 1.5rem;
+    font-weight: 760;
     color: var(--color-accent);
     font-variant-numeric: tabular-nums;
-    line-height: 1.1;
+    line-height: 0.98;
   }
 
   .ms-growth-label {
     font-family: var(--font-body);
-    font-size: 0.8125rem;
+    font-size: 0.66rem;
+    font-weight: 640;
     color: var(--color-text-muted);
   }
 
-  /* ── Inline metrics ── */
   .ms-metrics {
     font-family: var(--font-body);
-    font-size: 0.8125rem;
+    font-size: 0.72rem;
     color: var(--color-text-secondary);
     margin: 0;
     font-variant-numeric: tabular-nums;
+    text-align: right;
   }
 
-  /* ── Bar chart ── */
   .ms-chart {
-    margin-top: 0.25rem;
+    padding: 0.62rem 0.68rem 0.48rem;
+    border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 44%, transparent);
+    border-radius: 0.72rem;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.16)),
+      color-mix(in srgb, var(--color-bg-surface) 72%, transparent);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
   }
 
   .ms-plot {
     position: relative;
-    height: 80px;
+    height: 68px;
     padding-right: 1.75rem;
   }
 
@@ -142,7 +155,7 @@
     left: 0;
     right: 0;
     height: 1px;
-    background: var(--color-border);
+    background: color-mix(in srgb, var(--color-border) 68%, transparent);
   }
 
   .ms-gridline--top { top: 0; }
@@ -163,7 +176,7 @@
   .ms-bars {
     display: flex;
     align-items: flex-end;
-    gap: 2px;
+    gap: 3px;
     height: 100%;
     position: relative;
   }
@@ -171,9 +184,9 @@
   .ms-bar {
     flex: 1;
     background: color-mix(in srgb, var(--color-accent) var(--bar-mix, 100%), var(--color-bg-surface));
-    border-radius: 2px 2px 0 0;
+    border-radius: 4px 4px 1px 1px;
     transform-origin: bottom;
-    animation: barGrow 300ms var(--ease-data-viz, cubic-bezier(0.4, 0, 0.2, 1)) backwards;
+    animation: barGrow 420ms var(--ease-data-viz, cubic-bezier(0.32, 0.72, 0, 1)) backwards;
     min-width: 0;
   }
 
@@ -190,7 +203,7 @@
   .ms-axis {
     display: flex;
     justify-content: space-between;
-    margin-top: 0.375rem;
+    margin-top: 0.42rem;
   }
 
   .ms-axis span {
@@ -199,5 +212,16 @@
     font-weight: 500;
     color: var(--color-text-muted);
     letter-spacing: 0.02em;
+  }
+
+  @media (max-width: 640px) {
+    .ms-header {
+      display: grid;
+      align-items: start;
+    }
+
+    .ms-metrics {
+      text-align: left;
+    }
   }
 </style>

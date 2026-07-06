@@ -11,7 +11,7 @@
 		},
 		{
 			q: 'How is this different from ChatGPT or Perplexity?',
-			a: 'General AI tools give you plausible-sounding text. NicheIQ gives you scored, source-cited analysis built for SaaS validation — with a proprietary pain scoring system.<br><br>Every comment is weighted by functional impact, not emotional volume. "I hate this UI" scores low. "We lost 3 clients because of this" scores high.<br><br>Each comment gets its own score across three dimensions:<br>— Severity<br>— Willingness to pay<br>— Opportunity<br><br>The key principle: functional impact over emotional volume.',
+			a: 'General AI tools give you plausible-sounding text. NicheIQ gives you scored, source-cited analysis built for SaaS validation — with a proprietary pain scoring system.<br><br>Every comment is weighted by functional impact, not emotional volume. "I hate this UI" scores low. "We lost 3 clients because of this" scores high.<br><br>Each comment gets its own score across three dimensions:<br>— Severity<br>— Commercial intent<br>— Opportunity<br><br>The key principle: functional impact over emotional volume.',
 		},
 		{
 			q: 'What if my niche is too specialized?',
@@ -23,7 +23,7 @@
 		},
 		{
 			q: 'Can I run multiple researches?',
-			a: 'Yes. Credits never expire — buy them in bulk and use them on your schedule. Each research is independent, so you can validate multiple ideas side by side.',
+			a: 'Yes. Each research is independent, so you can validate multiple ideas side by side. Subscription credits refresh each month; one-time credit packs never expire — buy them anytime from your billing page.',
 		},
 		{
 			q: 'Do you store my research data?',
@@ -38,8 +38,7 @@
 	<div class="landing-container">
 		<div class="landing-section-header-wrap">
 			<div class="landing-section-label-row">
-				<span class="landing-section-dot"></span>
-				<span class="landing-section-label">F.A.Q</span>
+				<span class="landing-section-label">FAQ</span>
 			</div>
 			<h2 class="landing-section-h2 faq-h2">Any questions?<br />We've got answers</h2>
 			<p class="landing-section-subtitle">

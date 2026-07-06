@@ -29,7 +29,7 @@ export function placeholderExecutiveDashboard(niche: string): Report {
       },
       go_no_go_verdict: {
         verdict: 'Go',
-        rationale: `Strong demand signals detected across ${niche} communities with clear willingness to pay for solutions.`,
+        rationale: `Strong demand signals detected across ${niche} communities with clear commercial intent for solutions.`,
         risk_level: 'Medium',
         primary_concern: 'Market timing and competitive entry window',
       },

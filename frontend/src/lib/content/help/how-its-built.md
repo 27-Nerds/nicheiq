@@ -2,7 +2,7 @@ NicheIQ isn't one big AI prompt. A report gets put together by a pipeline of sma
 
 ### Lots of small jobs, not one big one
 
-A single run leans on more than thirty specialised agents across roughly a dozen stages. Each one has a narrow job: read your niche, decide whether a thread is relevant, pull a specific problem out of a discussion, poke holes in an idea's feasibility, and so on. Cutting the work up this way means we can make each step genuinely good at its own task instead of asking one model to juggle everything at once.
+A single run leans on more than thirty specialised agents across a pipeline of specialised stages — and some stages, like idea generation, are multi-step systems of their own, with tournaments, critics, and verification passes. Each agent has a narrow job: read your niche, decide whether a thread is relevant, pull a specific problem out of a discussion, poke holes in an idea's feasibility, and so on. Cutting the work up this way means we can make each step genuinely good at its own task instead of asking one model to juggle everything at once.
 
 Those agents pull from around nine data tools that reach into the real world, the community discussions (Reddit, Hacker News), the web and keyword-demand searches, and the fetchers behind them. The research is grounded in live data, not whatever the model happens to remember.
 

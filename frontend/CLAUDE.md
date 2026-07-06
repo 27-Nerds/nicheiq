@@ -23,6 +23,7 @@ Edition labels ("June 2026" / "Latest edition", derived per-surface by
 - `/ideas` index → hero dateline (`CatalogIndexHero`) + the
   "Most In-Demand Pain Points — {edition}" section label.
 - niche / sub-niche pages → `NicheSeoSummary` backmatter footer only.
+- landing page `/` → `LandingDateline` folio strip under the hero only.
 
 Do NOT add edition labels to hero kickers or new surfaces. Different months on
 different pages are **intentional** — each surface reflects its own data

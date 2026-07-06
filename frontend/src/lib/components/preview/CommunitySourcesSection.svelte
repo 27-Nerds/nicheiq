@@ -64,14 +64,14 @@
   .community {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 0.68rem;
   }
 
   .community-stat {
     font-family: var(--font-mono);
-    font-size: 0.625rem;
-    font-weight: 600;
-    letter-spacing: 0.08em;
+    font-size: 0.6rem;
+    font-weight: 760;
+    letter-spacing: 0.055em;
     text-transform: uppercase;
     color: var(--color-text-muted);
   }
@@ -79,16 +79,16 @@
   .source-grid {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.375rem;
+    gap: 0.32rem;
   }
 
   .source-pill {
-    padding: 0.25rem 0.625rem;
-    background: var(--color-bg-surface);
-    border: 1px solid var(--color-border);
+    padding: 0.24rem 0.58rem;
+    background: color-mix(in srgb, var(--color-bg-elevated) 78%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 36%, transparent);
     border-radius: var(--radius-full);
     font-family: var(--font-mono);
-    font-size: 0.6875rem;
+    font-size: 0.65rem;
     font-weight: 500;
     color: var(--color-text-secondary);
     white-space: nowrap;
@@ -97,6 +97,6 @@
   .source-gap {
     border-style: dashed;
     color: var(--color-text-muted);
-    opacity: var(--opacity-muted);
+    opacity: 0.78;
   }
 </style>

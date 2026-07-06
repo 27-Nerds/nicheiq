@@ -30,7 +30,7 @@ export const programmaticIdeaPages: ProgrammaticIdeaPage[] = [
     faqJson: [
       {
         q: 'How are these B2B SaaS ideas selected?',
-        a: 'Each idea originates from a documented pain point on Reddit, Hacker News, or a similar founder-adjacent community. We score willingness to pay, severity, and mention frequency, then run an LLM-assisted analysis to draft a solution shape. Only ideas with non-trivial validation make it into the catalog.',
+        a: 'Each idea originates from a documented pain point on Reddit, Hacker News, or a similar founder-adjacent community. We score commercial intent, severity, and mention frequency, then run an LLM-assisted analysis to draft a solution shape. Only ideas with non-trivial validation make it into the catalog.',
       },
       {
         q: "What does 'B2B SaaS' mean here?",

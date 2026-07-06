@@ -354,7 +354,7 @@
         </div>
       {/if}
 
-      <!-- Willingness to Pay Insight -->
+      <!-- Commercial Intent Insight -->
       {#if topPainPoints.some((p) => ciOf(p) > 0.5)}
         <AnimateOnScroll animation="fade-up" delay={600}>
           <div class="wtp-insight">
@@ -364,8 +364,8 @@
             </div>
             <p class="wtp-text">
               {topPainPoints.filter((p) => ciOf(p) > 0.5).length} of
-              {topPainPoints.length} top pain points show high willingness-to-pay
-              indicators, suggesting strong market demand for a paid solution.
+              {topPainPoints.length} top pain points show strong commercial-intent
+              signals, suggesting strong market demand for a paid solution.
             </p>
             <div class="wtp-scores">
               {#each topPainPoints
@@ -412,8 +412,8 @@
               {formatScorePercent(avgWtp)}
             </span>
             <span class="stat-label inline-flex items-center gap-1">
-              Avg. WTP Score <Tooltip
-                content={getTermTooltip("WTP")}
+              Avg. Commercial Intent <Tooltip
+                content={getTermTooltip("CI")}
                 position="top"
               />
             </span>
@@ -506,7 +506,7 @@
                       showValue={true}
                       animate={true}
                     />
-                    <span class="score-ring-label">WTP</span>
+                    <span class="score-ring-label">Intent</span>
                   </div>
                 </div>
               </div>

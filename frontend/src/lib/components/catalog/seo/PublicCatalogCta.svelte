@@ -13,7 +13,7 @@
   let {
     variant = "bottom",
     headline = "Run research on your niche.",
-    subhead = "NicheIQ scans real Reddit and Hacker News discussions, surfaces validated pain points and audience segments, and returns a launch-ready report in about 45 minutes.",
+    subhead = "NicheIQ scans real Reddit and Hacker News discussions, surfaces validated pain points and audience segments, and returns a launch-ready report in under an hour.",
     href,
     ctaLabel,
   }: Props = $props();

@@ -2,8 +2,7 @@
 	<div class="landing-container">
 		<div class="landing-section-header-wrap">
 			<div class="landing-section-label-row">
-				<span class="landing-section-dot"></span>
-				<span class="landing-section-label">How It Works</span>
+				<span class="landing-section-label">HOW IT WORKS · 3 STEPS</span>
 			</div>
 			<h2 class="landing-section-h2">
 				From <span style="color:var(--color-accent)">noise</span> to validated ideas
@@ -49,7 +48,7 @@
 					<h3 class="step-heading">Ship with confidence</h3>
 					<p class="step-body">
 						Know your market, competition, SEO strategy, tech blueprint and revenue potential. Know
-						if it's worth building. In 45 minutes.
+						if it's worth building. In under an hour.
 					</p>
 				</div>
 				<div class="step-img-wrap">
@@ -94,7 +93,7 @@
 		font-family: var(--font-mono);
 		font-size: var(--text-xs);
 		font-weight: var(--font-semibold);
-		letter-spacing: var(--tracking-wider);
+		letter-spacing: 0.08em;
 		color: var(--color-accent);
 		margin-bottom: var(--space-3);
 	}

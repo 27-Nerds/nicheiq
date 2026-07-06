@@ -35,7 +35,7 @@
       <div class="flex items-center gap-1.5 mt-0.5">
         <Coins class="w-3 h-3 text-accent" />
         <span class="text-xs font-mono tabular-nums text-text-muted"
-          >{creditCost} credits · ~5 min</span
+          >{creditCost} credits · first ideas ~15 min</span
         >
       </div>
     </div>

@@ -11,8 +11,8 @@
   <!-- Step 1: Discover -->
   <div class="flex items-center gap-1">
     <span class="w-2 h-2 rounded-full bg-accent shrink-0"></span>
-    <span class="text-text-secondary font-medium">Discover ideas</span>
-    <span class="font-mono tabular-nums text-text-muted">{stageCosts.discovery} credits · 5 min</span>
+    <span class="text-text-secondary font-medium">Discover 5–10 scored ideas</span>
+    <span class="font-mono tabular-nums text-text-muted">{stageCosts.discovery} credits · ~15 min</span>
   </div>
 
   <span class="text-text-muted/40 hidden sm:inline">—</span>
@@ -30,6 +30,6 @@
   <div class="flex items-center gap-1">
     <span class="w-2 h-2 rounded-full bg-border shrink-0"></span>
     <span class="text-text-muted">Full validation</span>
-    <span class="font-mono tabular-nums text-text-muted/60">{stageCosts.deep_research} credits · 20 min</span>
+    <span class="font-mono tabular-nums text-text-muted/60">{stageCosts.deep_research} credits · ~20 min</span>
   </div>
 </div>

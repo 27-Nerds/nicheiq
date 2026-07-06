@@ -13,6 +13,8 @@ export const load: PageServerLoad = async ({ setHeaders }) => {
   let topPainPoints: CatalogTopPainPoint[] = [];
   let commentsAnalyzed: number | null = null;
   let subNiches: number | null = null;
+  let contentItemsMined: number | null = null;
+  let catalogLastUpdated: string | null = null;
 
   try {
     const [statsRes, settingsRes, plansRes, topPainPointsRes, totalsRes] = await Promise.all([
@@ -62,6 +64,8 @@ export const load: PageServerLoad = async ({ setHeaders }) => {
       const totals: CatalogTotals = await totalsRes.json();
       commentsAnalyzed = totals.commentsAnalyzed ?? null;
       subNiches = totals.totalSubcategories ?? null;
+      contentItemsMined = totals.contentItemsMined ?? null;
+      catalogLastUpdated = totals.lastUpdated ?? null;
     }
   } catch (error) {
     console.error('Failed to fetch landing page data:', error);
@@ -75,5 +79,7 @@ export const load: PageServerLoad = async ({ setHeaders }) => {
     topPainPoints,
     commentsAnalyzed,
     subNiches,
+    contentItemsMined,
+    catalogLastUpdated,
   };
 };

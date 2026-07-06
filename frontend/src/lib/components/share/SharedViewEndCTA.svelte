@@ -39,7 +39,7 @@
         <ArrowRight class="end-cta-arrow" aria-hidden="true" />
       </a>
       <p class="end-cta-trust">
-        No subscription · Pay per report · Credits valid forever
+        Monthly plans or one-time credit packs · Credits auto-refund if a run can't complete
       </p>
     </div>
   </div>

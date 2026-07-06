@@ -387,8 +387,9 @@
       </p>
       <h1 class="new-h1">What are you exploring?</h1>
       <p class="new-lede">
-        Tell us what you're exploring and we'll surface real, validated
-        opportunities from live community discussions.
+        Get 5–10 scored product ideas from real Reddit &amp; Hacker News
+        discussions — first ideas in ~15 minutes. You pick which one is worth
+        full validation.
       </p>
     </header>
 
@@ -544,11 +545,14 @@
               onclick={() => showProjectTypes = !showProjectTypes}
               class="text-xs text-text-muted hover:text-text-secondary transition-colors flex items-center gap-1"
             >
-              <span class="font-medium">Business types</span>
+              <span class="font-medium">Business model filter</span>
               <span>·</span>
               <span>{projectTypeCountLabel}</span>
               <ChevronDown class="w-3 h-3 transition-transform duration-200 {showProjectTypes ? 'rotate-180' : ''}" />
             </button>
+            <p class="text-[11px] text-text-muted mt-1">
+              Tip: leave all selected if you're exploring multiple approaches.
+            </p>
             {#if showProjectTypes}
               {@const allSelected = selectedProjectTypes.length === PROJECT_TYPES.length}
               <div class="flex flex-wrap gap-2 mt-2">
@@ -640,7 +644,7 @@
               loadingText="Starting..."
               icon={ArrowRight}
               iconPosition="end"
-              label="Discover ideas (~5 min)"
+              label="Discover ideas"
               disabled={!niche.trim()}
               class="btn-primary w-full justify-center text-base py-3"
             />
@@ -654,10 +658,13 @@
           {/if}
 
           <p class="text-xs text-text-muted text-center mt-2">
-            {stageCosts.discovery} credits &middot; you choose which ideas to validate further
+            {stageCosts.discovery} credits &middot; see every idea before paying for validation
           </p>
-          <p class="text-xs text-center mt-1">
-            <a href="/sample-report" class="text-text-muted hover:text-text-secondary underline underline-offset-2 decoration-border">Sample report</a>
+          <p class="text-[11px] text-text-muted text-center mt-1">
+            Credits auto-refund if a run can't complete.
+          </p>
+          <p class="text-center mt-1">
+            <a href="/sample-report" class="font-mono text-[11px] text-text-muted hover:text-text-secondary">See a sample report &rarr;</a>
           </p>
 
           <div bind:this={ctaEndEl}></div>

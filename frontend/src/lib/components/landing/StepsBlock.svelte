@@ -10,7 +10,7 @@
 		{
 			number: '02',
 			title: 'Score Demand',
-			description: 'Each pain is ranked by frequency, urgency, and willingness to pay.',
+			description: 'Each pain is ranked by frequency, severity, and commercial intent.',
 			image: '/landing/steps/image 92.png',
 		},
 		{
@@ -31,8 +31,7 @@
 				style="text-align: center;"
 			>
 				<div class="landing-section-label-row">
-					<span class="landing-section-dot"></span>
-					<span class="landing-section-label">Our approach</span>
+					<span class="landing-section-label">METHOD · HOW WE SCORE</span>
 				</div>
 				<h2 class="landing-section-h2">
 					Don't waste your time, money and energy on the wrong idea.

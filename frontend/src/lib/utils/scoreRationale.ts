@@ -17,9 +17,8 @@ export type ScoreKey =
   | "novelty"
   | "solo_dev";
 
-// Generous cap: the reasoning now lives in a scrollable popover (not a fixed-size
-// hover tooltip), so it can hold a full grounded sentence without being clipped.
-const MAX_LEN = 600;
+// Keep hover tooltip rationale compact enough to scan without covering the card.
+const MAX_LEN = 240;
 
 function clean(s?: string | null): string {
   return (s ?? "").replace(/\s+/g, " ").trim();

@@ -1,6 +1,4 @@
 <script lang="ts">
-  import InsightCard from "$lib/components/ui/InsightCard.svelte";
-  import Badge from "$lib/components/ui/Badge.svelte";
   import type { NicheDifficultyVerdict } from "$lib/types/report";
 
   interface Props {
@@ -41,12 +39,10 @@
   // Meter marker color matches the badge severity.
   const accentColor = $derived(
     fitBand === "strong"
-      ? "var(--color-success)"
-      : fitBand === "moderate"
-        ? "var(--color-secondary)"
-        : fitBand === "limited"
-          ? "var(--color-warning)"
-          : "var(--color-error)",
+      ? "var(--color-success-dark)"
+      : fitBand === "very_limited"
+        ? "var(--color-error-dark)"
+        : "var(--color-text-muted)",
   );
 
   // Left = software can't fix it (HARD); right = software owns it (STRONG).
@@ -62,139 +58,212 @@
         ? "Partly tool-addressable"
         : fitBand === "limited"
           ? "Hard to fully address with software"
-          : "Largely beyond what software can fix",
+      : "Largely beyond what software can fix",
+  );
+
+  const cleanHeadline = $derived(
+    verdict.headline
+      ?.replace(/^software\s+fit:\s*[^—-]+[—-]\s*/i, "")
+      .trim() || verdict.headline,
   );
 </script>
 
-<InsightCard variant={badgeVariant} border="all" padding="lg" class="reality-check">
-  {#snippet header()}
-    <div class="rc-head">
-      <div class="rc-titles">
-        <p class="rc-eyebrow">Research Reality Check</p>
-        <h3 class="rc-headline">{verdict.headline}</h3>
-      </div>
-      <Badge variant={badgeVariant} size="sm">Software Fit: {fitLabel}</Badge>
+<section class="reality-check reality-check--{context}" aria-label="Software fit">
+  <div class="rc-head">
+    <div class="rc-titles">
+      <p class="rc-eyebrow">Software fit</p>
+      <h3 class="rc-headline">{cleanHeadline}</h3>
     </div>
-  {/snippet}
-
-  <div class="rc-body" style={`--rc-accent:${accentColor};--rc-pct:${pct}%`}>
-    {#if context === "discovery"}
-      <p class="rc-lead">The honest read before you choose what to build.</p>
-    {/if}
-
-    <!-- Software-addressability meter: how much of the niche's pain a tool can actually fix. -->
-    <div class="rc-meter" role="img" aria-label={`Software addressability: ${addrLabel}`}>
-      <div class="rc-meter-ends">
-        <span>Software can't fix it</span>
-        <span>Software owns it</span>
-      </div>
-      <div class="rc-track">
-        <span class="rc-marker"></span>
-      </div>
-      <p class="rc-meter-value">{addrLabel}</p>
-    </div>
-
-    <p class="rc-narrative">{verdict.narrative_summary}</p>
-
-    {#if verdict.key_challenges?.length}
-      <p class="rc-points-label">{pointsLabel}</p>
-      <ul class="rc-points">
-        {#each verdict.key_challenges as point}
-          <li>{point}</li>
-        {/each}
-      </ul>
-    {/if}
-
-    {#if verdict.low_confidence}
-      <p class="rc-note">Limited sample — treat this as directional.</p>
-    {/if}
+    <span class="rc-badge rc-badge-{badgeVariant}">{fitLabel}</span>
   </div>
-</InsightCard>
+  <div class="rc-body" style={`--rc-accent:${accentColor};--rc-pct:${pct}%`}>
+    <div class="rc-verdict">
+      <!-- Software-addressability meter: how much of the niche's pain a tool can actually fix. -->
+      <div class="rc-meter" role="img" aria-label={`Software addressability: ${addrLabel}`}>
+        <div class="rc-meter-head">
+          <span>Addressability</span>
+          <strong>{addrLabel}</strong>
+        </div>
+        <div class="rc-track">
+          <span class="rc-marker"></span>
+        </div>
+      </div>
+
+      {#if verdict.low_confidence}
+        <p class="rc-note">Limited sample. Treat this as directional.</p>
+      {/if}
+    </div>
+
+    <div class="rc-rationale">
+      <p class="rc-narrative">{verdict.narrative_summary}</p>
+
+      {#if verdict.key_challenges?.length}
+        <div class="rc-points-block">
+          <p class="rc-points-label">{pointsLabel}</p>
+          <ul class="rc-points">
+            {#each verdict.key_challenges as point}
+              <li>{point}</li>
+            {/each}
+          </ul>
+        </div>
+      {/if}
+    </div>
+  </div>
+</section>
 
 <style>
+  .reality-check {
+    margin-top: 1.02rem;
+    padding: 0.9rem 0.96rem;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.18)),
+      color-mix(in srgb, var(--color-bg-surface) 74%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 42%, transparent);
+    border-radius: 0.78rem;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  }
+
   .rc-head {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    gap: 0.75rem;
+    gap: 1rem;
+    margin-bottom: 0.72rem;
   }
 
   .rc-eyebrow {
-    font-size: 0.6875rem;
-    font-weight: 600;
-    letter-spacing: 0.06em;
+    font-size: 0.7rem;
+    font-weight: 750;
+    letter-spacing: 0.04em;
     text-transform: uppercase;
     color: var(--color-text-muted);
-    margin: 0 0 0.25rem;
+    margin: 0 0 0.32rem;
   }
 
   .rc-headline {
-    font-size: 1.0625rem;
-    font-weight: 650;
-    line-height: 1.3;
+    max-width: 68ch;
+    font-size: 0.94rem;
+    font-weight: 750;
+    line-height: 1.32;
     color: var(--color-text-primary);
     margin: 0;
+    text-wrap: pretty;
   }
 
-  .rc-lead {
-    font-size: 0.8125rem;
-    color: var(--color-text-muted);
-    margin: 0 0 0.875rem;
+  .rc-badge {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    padding: 0.16rem 0;
+    border-radius: 0;
+    border: 0;
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-size: 0.72rem;
+    font-weight: 750;
+    line-height: 1;
+  }
+
+  .rc-badge-success {
+    color: var(--color-success-dark);
+  }
+
+  .rc-badge-info {
+    color: var(--color-text-secondary);
+    border-color: var(--color-border);
+  }
+
+  .rc-badge-warning {
+    color: var(--color-text-secondary);
+  }
+
+  .rc-badge-error {
+    color: var(--color-error-dark);
+  }
+
+  .rc-body {
+    display: grid;
+    gap: 0.86rem;
+    align-items: start;
+  }
+
+  .rc-verdict {
+    display: grid;
+    gap: 0.56rem;
+    min-width: 0;
+  }
+
+  .rc-rationale {
+    display: grid;
+    gap: 0.64rem;
+    min-width: 0;
   }
 
   .rc-meter {
-    margin: 0 0 1rem;
+    display: grid;
+    gap: 0.38rem;
+    margin: 0;
   }
 
-  .rc-meter-ends {
-    display: flex;
-    justify-content: space-between;
-    font-size: 0.6875rem;
+  .rc-meter-head {
+    display: grid;
+    gap: 0.16rem;
+    font-size: 0.72rem;
+  }
+
+  .rc-meter-head span {
     color: var(--color-text-muted);
-    margin-bottom: 0.375rem;
+    font-weight: 700;
+  }
+
+  .rc-meter-head strong {
+    color: var(--color-text-secondary);
+    font-weight: 750;
   }
 
   .rc-track {
     position: relative;
-    height: 6px;
+    height: 0.28rem;
+    overflow: hidden;
     border-radius: 999px;
-    background: var(--color-bg-surface);
-    border: 1px solid var(--color-border);
+    background: color-mix(in srgb, var(--color-border) 68%, transparent);
   }
 
   .rc-marker {
     position: absolute;
     top: 50%;
     left: var(--rc-pct);
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
+    width: 0.38rem;
+    height: 0.8rem;
+    border-radius: 999px;
     background: var(--rc-accent);
     transform: translate(-50%, -50%);
-    box-shadow: 0 0 0 3px var(--color-bg-elevated);
-  }
-
-  .rc-meter-value {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: var(--rc-accent);
-    margin: 0.4rem 0 0;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-bg-surface) 82%, white);
   }
 
   .rc-narrative {
-    font-size: 0.875rem;
-    line-height: 1.6;
+    max-width: 76ch;
+    font-size: 0.8rem;
+    line-height: 1.5;
     color: var(--color-text-secondary);
     margin: 0;
+    text-wrap: pretty;
   }
 
   .rc-points-label {
-    font-size: 0.6875rem;
-    font-weight: 600;
-    letter-spacing: 0.04em;
+    font-size: 0.7rem;
+    font-weight: 750;
+    letter-spacing: 0.03em;
     text-transform: uppercase;
     color: var(--color-text-muted);
-    margin: 0.875rem 0 0.4rem;
+    margin: 0;
+  }
+
+  .rc-points-block {
+    display: grid;
+    gap: 0.34rem;
+    padding-top: 0.56rem;
+    border-top: 1px solid var(--color-border);
   }
 
   .rc-points {
@@ -203,14 +272,14 @@
     padding: 0;
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
+    gap: 0.36rem;
   }
 
   .rc-points li {
     position: relative;
-    padding-left: 1rem;
-    font-size: 0.8125rem;
-    line-height: 1.5;
+    padding-left: 0.9rem;
+    font-size: 0.76rem;
+    line-height: 1.48;
     color: var(--color-text-secondary);
   }
 
@@ -222,13 +291,39 @@
     width: 5px;
     height: 5px;
     border-radius: 50%;
-    background: var(--rc-accent, var(--color-text-muted));
+    background: var(--color-text-muted);
   }
 
   .rc-note {
     font-size: 0.75rem;
     color: var(--color-text-muted);
-    margin: 0.875rem 0 0;
+    margin: 0;
     font-style: italic;
+  }
+
+  @media (min-width: 760px) {
+    .rc-body {
+      grid-template-columns: minmax(12rem, 0.3fr) minmax(0, 1fr);
+      align-items: start;
+    }
+
+    .rc-rationale {
+      padding-left: 0.9rem;
+      border-left: 1px solid color-mix(in srgb, var(--color-border-emphasis) 44%, transparent);
+    }
+  }
+
+  @media (max-width: 640px) {
+    .rc-head {
+      display: grid;
+      gap: 0.55rem;
+    }
+    .rc-badge {
+      width: fit-content;
+    }
+    .rc-meter-head {
+      display: grid;
+      gap: 0.2rem;
+    }
   }
 </style>

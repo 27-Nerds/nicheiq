@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import HeroBlock from '$lib/components/landing/HeroBlock.svelte';
+	import LandingDateline from '$lib/components/landing/LandingDateline.svelte';
 	import ProductDemoBlock from '$lib/components/landing/ProductDemoBlock.svelte';
 	import ProblemBlock from '$lib/components/landing/ProblemBlock.svelte';
 	import MarqueeBlock from '$lib/components/landing/MarqueeBlock.svelte';
@@ -8,7 +9,6 @@
 	import StepsBlock from '$lib/components/landing/StepsBlock.svelte';
 	import SamplesBlock from '$lib/components/landing/SamplesBlock.svelte';
 	import AboutBlock from '$lib/components/landing/AboutBlock.svelte';
-	import AchievementsBlock from '$lib/components/landing/AchievementsBlock.svelte';
 	import TestimonialsBlock from '$lib/components/landing/TestimonialsBlock.svelte';
 	import Pricing from '$lib/components/landing/Pricing.svelte';
 	import FAQBlock from '$lib/components/landing/FAQBlock.svelte';
@@ -40,6 +40,11 @@
 		ctaTexts={data.ctaTexts}
 		activeFounders={data.activeFounders}
 	/>
+	<LandingDateline
+		reportsRun={data.reportsDelivered}
+		discussionsMined={data.contentItemsMined}
+		catalogLastUpdated={data.catalogLastUpdated}
+	/>
 	<ProductDemoBlock />
 	<ProblemBlock />
 	<MarqueeBlock />
@@ -47,11 +52,6 @@
 	<StepsBlock />
 	<SamplesBlock topPainPoints={data.topPainPoints} />
 	<AboutBlock />
-	<AchievementsBlock
-		reportsDelivered={data.reportsDelivered}
-		commentsAnalyzed={data.commentsAnalyzed}
-		subNiches={data.subNiches}
-	/>
 	<TestimonialsBlock ctaTexts={data.ctaTexts} />
 	<Pricing {session} ctaTexts={data.ctaTexts} plans={data.plans ?? []} />
 	<FAQBlock />

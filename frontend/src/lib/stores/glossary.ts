@@ -116,11 +116,11 @@ export const glossary: Record<string, GlossaryTerm> = {
 	},
 
 	// Pain Analysis
-	WTP: {
-		term: 'WTP',
-		fullName: 'Willingness to Pay',
-		definition: 'How much customers would pay to solve this specific problem',
-		calculation: 'Derived from pain severity and market research (0-100%)',
+	CI: {
+		term: 'CI',
+		fullName: 'Commercial Intent',
+		definition: 'How strong the buying signals are in the discussion — language about paying, budgets, or hiring for the problem (not a dollar estimate)',
+		calculation: 'Scored 0-100% from buying-signal language in the source quotes',
 		category: 'pain'
 	},
 

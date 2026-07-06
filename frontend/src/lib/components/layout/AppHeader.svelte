@@ -99,7 +99,7 @@
   </a>
 {/snippet}
 
-<header class="bg-bg-surface border-b border-border sticky top-0 z-50">
+<header class="app-header bg-bg-surface border-b border-border">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <div class="flex justify-between h-14 items-center">
       <!-- Left group: logo + primary wayfinding nav -->
@@ -121,7 +121,7 @@
       </div>
 
       <nav class="flex items-center gap-1">
-        <a href="/new" class="btn-primary flex items-center gap-2 ml-1">
+        <a href="/new" class="new-research-action">
           <Plus class="w-4 h-4" />
           <span class="hidden sm:inline">New Research</span>
         </a>
@@ -241,6 +241,49 @@
     </div>
   </div>
 </header>
+
+<style>
+  .app-header {
+    position: relative;
+    z-index: 30;
+  }
+
+  .new-research-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.42rem;
+    min-height: 2rem;
+    margin-left: 0.25rem;
+    padding: 0.38rem 0.68rem;
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    background: var(--color-bg-elevated);
+    color: var(--color-text-secondary);
+    font-size: 0.82rem;
+    font-weight: 700;
+    transition:
+      transform 180ms cubic-bezier(0.32, 0.72, 0, 1),
+      border-color 180ms cubic-bezier(0.32, 0.72, 0, 1),
+      color 180ms cubic-bezier(0.32, 0.72, 0, 1),
+      background 180ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  .new-research-action:hover {
+    transform: translateY(-1px);
+    border-color: var(--color-border-emphasis);
+    color: var(--color-text-primary);
+    background: var(--color-bg-surface);
+  }
+
+  .new-research-action:active {
+    transform: scale(0.98);
+  }
+
+  .new-research-action:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+</style>
 
 <!-- Click outside to close user menu -->
 <svelte:window

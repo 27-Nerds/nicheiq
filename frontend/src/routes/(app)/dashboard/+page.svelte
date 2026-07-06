@@ -499,8 +499,9 @@
           No research yet
         </h2>
         <p class="text-text-secondary mb-8 max-w-lg mx-auto leading-relaxed">
-          NicheIQ analyzes Reddit discussions, identifies pain points, and
-          generates a comprehensive market research report in minutes.
+          NicheIQ analyzes Reddit and Hacker News discussions, identifies pain
+          points, and generates a comprehensive market research report — first
+          ideas in ~15 minutes.
         </p>
         <Button href="/new" icon={Plus} label="Start Your First Research" class="btn-primary inline-flex text-base px-6 py-3" />
         <p class="text-xs text-text-muted mt-4">

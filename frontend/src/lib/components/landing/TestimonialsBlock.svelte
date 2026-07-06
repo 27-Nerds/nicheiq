@@ -17,8 +17,7 @@
     <div class="landing-container">
       <div class="landing-section-header-wrap">
         <div class="landing-section-label-row">
-          <span class="landing-section-dot"></span>
-          <span class="landing-section-label">What Founders Are Saying</span>
+          <span class="landing-section-label">FOUNDERS · IN THEIR WORDS</span>
         </div>
         <h2 class="landing-section-h2">
           We gave early access.<br />

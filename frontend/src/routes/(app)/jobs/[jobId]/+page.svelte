@@ -38,8 +38,9 @@
   import PreviewOverview from "$lib/components/preview/PreviewOverview.svelte";
   import ProgressStepper from "$lib/components/preview/ProgressStepper.svelte";
   import PainPointSummaryCard from "$lib/components/preview/PainPointSummaryCard.svelte";
+  import AudienceSnapshot from "$lib/components/preview/AudienceSnapshot.svelte";
   import CommunitySourcesSection from "$lib/components/preview/CommunitySourcesSection.svelte";
-  import PreviewSolutionSelector from "$lib/components/preview/PreviewSolutionSelector.svelte";
+  import SelectionWorkbench from "$lib/components/selection/SelectionWorkbench.svelte";
   import ResearchProgressScreen from "$lib/components/preview/ResearchProgressScreen.svelte";
 
   import DeepResearchCTABlock from "$lib/components/preview/DeepResearchCTABlock.svelte";
@@ -50,7 +51,7 @@
   import UnifiedHero from "$lib/components/sections/UnifiedHero.svelte";
   import NicheRealityCheck from "$lib/components/sections/NicheRealityCheck.svelte";
   import Competitors from "$lib/components/sections/Competitors.svelte";
-  import { LOCKED_PREVIEW_SECTIONS, ADDITIONAL_LOCKED_SECTIONS } from "$lib/types/previewReport";
+  import { LOCKED_PREVIEW_SECTIONS } from "$lib/types/previewReport";
   import {
     placeholderExecutiveDashboard,
     placeholderCompetitors,
@@ -168,7 +169,7 @@
     if (discoveryLoading) return;
     discoveryLoading = true;
     try { clientDiscoveryData = await getDiscoveryData(id); }
-    catch { /* graceful fallback — old jobs won't have this asset */ }
+    catch { /* graceful fallback - old jobs won't have this asset */ }
     finally { discoveryLoading = false; }
   }
 
@@ -177,7 +178,7 @@
     if (previewReportLoading) return;
     previewReportLoading = true;
     try { clientPreviewReport = await getPreviewReport(id); }
-    catch { /* graceful fallback — old jobs won't have preview report */ }
+    catch { /* graceful fallback - old jobs won't have preview report */ }
     finally { previewReportLoading = false; }
   }
 
@@ -335,7 +336,7 @@
 
   function getStatusLabel(status: string): string {
     switch (status) {
-      case "AWAITING_SELECTION": return "Awaiting Selection";
+      case "AWAITING_SELECTION": return "Ready for Selection";
       case "QUEUED": return "Queued";
       case "REGENERATING": return "Generating New Ideas";
       case "RUNNING_PHASE2": return "Deep Analysis";
@@ -355,6 +356,12 @@
 
   function scrollToSolutions() {
     document.getElementById('solution-selector')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function sentenceHeading(value: string | null | undefined): string {
+    const trimmed = value?.trim();
+    if (!trimmed) return 'Research';
+    return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
   }
 
   const showSelectedSummary = $derived(
@@ -399,6 +406,15 @@
     job?.niche?.slice(0, 60) ??
     ''
   );
+  const pageTitle = $derived(
+    isSelectionPhase
+      ? 'Select candidates for Deep Research'
+      : titleCase(nicheName) || 'Research Progress',
+  );
+
+  const selectionSubtitle = $derived(
+    `${sentenceHeading(nicheName)}. Discovery found ${displaySolutions.length} ranked ${displaySolutions.length === 1 ? 'candidate' : 'candidates'}. Choose up to 3 for validation.`,
+  );
 
   const discussionCount = $derived(
     (previewReport?.research_metadata?.filtering_stats as Record<string, number>)?.total_urls_relevant ??
@@ -416,7 +432,7 @@
     previewReport?.audience_mapping?.audience_segments?.length ?? 0
   );
 
-  // Placeholder data for locked sections — use short niche name, not full description
+  // Placeholder data for locked sections - use short niche name, not full description
   const niche = $derived(previewReport?.niche ?? job?.niche ?? '');
   const placeholderNiche = $derived(stripLeadingArticle(nicheName || niche));
   const placeholderExec = $derived(placeholderExecutiveDashboard(placeholderNiche));
@@ -452,29 +468,16 @@
     problems: previewPainPointCount,
   });
 
-  // Sticky bar state
-  let ctaBannerRef = $state<HTMLElement | null>(null);
-  let showStickyBar = $state(false);
-  let stickySelectionCount = $state(0);
-  let stickyCanAfford = $state(true);
-  let stickySelectionNames = $state<string[]>([]);
-  let validateTrigger = $state(0);
-
-  $effect(() => {
-    if (!ctaBannerRef) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => { showStickyBar = !entry.isIntersecting; },
-      { threshold: 0 },
-    );
-    observer.observe(ctaBannerRef);
-    return () => observer.disconnect();
-  });
+  // Sticky bar state removed - SelectionWorkbench owns its own fixed tray.
 
   // All pain points sorted by severity
   const topPainPoints = $derived(
     (previewReport?.detailed_pain_points ?? [])
       .slice()
       .sort((a, b) => b.severity_score - a.severity_score)
+  );
+  const visiblePainPoints = $derived(
+    isSelectionPhase ? topPainPoints.slice(0, 8) : topPainPoints
   );
 
   // Report-ready reveal: trigger once when job transitions to COMPLETED
@@ -562,14 +565,20 @@
 </script>
 
 <svelte:head>
-  <title>{job ? `${titleCase(nicheName) || job.niche} — ${getStatusLabel(job.status)}` : 'Job'} - NicheIQ</title>
+  <title>{job ? `${pageTitle || job.niche} - ${getStatusLabel(job.status)}` : 'Job'} - NicheIQ</title>
 </svelte:head>
 
-<div class="job-page-shell" class:has-sticky-bar={isSelectionPhase && showStickyBar}>
+  <div class="job-page-shell">
   {#if job && !isGenerating}
-    <PhaseNav jobStatus={job.status} entryMode={job.entryMode} />
+    <PhaseNav
+      jobStatus={job.status}
+      entryMode={job.entryMode}
+      mode={isSelectionPhase ? 'selection' : 'default'}
+      selectionCount={displaySolutions.length}
+      selectedCount={job.selectedSolutions?.length ?? 0}
+    />
   {/if}
-  <main class="job-page-content">
+  <main class="job-page-content" class:job-page-content--selection={isSelectionPhase}>
     {#if loading}
       <div class="text-center py-12">
         <Loader2 class="w-10 h-10 text-accent mx-auto animate-spin" />
@@ -607,13 +616,15 @@
         />
       {:else}
       <!-- ═══ EDITORIAL HERO (1fr | 320px grid) ═══ -->
-      <div class="job-hero-grid">
+      <div class="job-hero-grid" class:job-hero-grid--selection={isSelectionPhase}>
         <div class="job-hero-main">
           <PageHeader
-            icon={Telescope}
+            class={isSelectionPhase ? 'job-selection-header' : ''}
+            icon={isSelectionPhase ? undefined : Telescope}
             breadcrumbItems={[{ label: 'Dashboard', href: '/dashboard' }]}
-            breadcrumbCurrent={titleCase(nicheName) || 'Research'}
-            title={titleCase(nicheName) || 'Research Progress'}
+            breadcrumbCurrent={isSelectionPhase ? 'Selection' : titleCase(nicheName) || 'Research'}
+            title={pageTitle}
+            subtitle={isSelectionPhase ? selectionSubtitle : undefined}
           >
             {#snippet metadata()}
               {#if job && nicheName !== job.niche}
@@ -640,41 +651,47 @@
                     <span>Share</span>
                   </button>
                 {/if}
-                <Badge variant={getStatusVariant(isRegenQueued ? 'REGENERATING' : job.status)}>
-                  {#if ['RUNNING', 'RUNNING_PHASE2', 'REGENERATING'].includes(job.status) || isRegenQueued}
-                    <Loader2 class="w-3.5 h-3.5 animate-spin" />
-                  {/if}
-                  {getStatusLabel(isRegenQueued ? 'REGENERATING' : job.status)}
-                </Badge>
+                {#if !isSelectionPhase}
+                  <Badge variant={getStatusVariant(isRegenQueued ? 'REGENERATING' : job.status)}>
+                    {#if ['RUNNING', 'RUNNING_PHASE2', 'REGENERATING'].includes(job.status) || isRegenQueued}
+                      <Loader2 class="w-3.5 h-3.5 animate-spin" />
+                    {/if}
+                    {getStatusLabel(isRegenQueued ? 'REGENERATING' : job.status)}
+                  </Badge>
+                {/if}
               </div>
             {/snippet}
           </PageHeader>
         </div>
-        <aside class="job-hero-aside">
-          <JobHeroAside
-            state={asideState}
-            progressPercent={job.progressPercent}
-            stagesCompleted={jobStageCounts.completed}
-            totalStages={jobStageCounts.total}
-            startedAt={job.startedAt}
-            selectionCount={displaySolutions.length}
-            summary={reportSummary}
-            errorDetails={job.errorDetails}
-            errorMessage={job.errorMessage}
-            stopReason={job.stopReason}
-            stopReasonDetails={job.stopReasonDetails}
-            creditRefunded={job.creditRefunded}
-          />
-        </aside>
+        {#if !isSelectionPhase}
+          <aside class="job-hero-aside">
+            <JobHeroAside
+              state={asideState}
+              progressPercent={job.progressPercent}
+              stagesCompleted={jobStageCounts.completed}
+              totalStages={jobStageCounts.total}
+              startedAt={job.startedAt}
+              selectionCount={displaySolutions.length}
+              summary={reportSummary}
+              errorDetails={job.errorDetails}
+              errorMessage={job.errorMessage}
+              stopReason={job.stopReason}
+              stopReasonDetails={job.stopReasonDetails}
+              creditRefunded={job.creditRefunded}
+            />
+          </aside>
+        {/if}
       </div>
 
-      <!-- ═══ PROGRESS STEPPER ═══ -->
-      <ProgressStepper
-        currentStep={stepperStep}
-        {discussionCount}
-        painPointCount={previewPainPointCount}
-        solutionCount={displaySolutions.length}
-      />
+      {#if !isSelectionPhase}
+        <!-- ═══ PROGRESS STEPPER ═══ -->
+        <ProgressStepper
+          currentStep={stepperStep}
+          {discussionCount}
+          painPointCount={previewPainPointCount}
+          solutionCount={displaySolutions.length}
+        />
+      {/if}
 
       <!-- ═══ ERROR / CANCELLED / RESUME ═══ -->
       {#if job.status === 'CANCELLED'}
@@ -749,157 +766,195 @@
       <!-- ═══ DASHBOARD SECTIONS ═══ -->
       {#if !isGeneratingP1}
 
-        <!-- Overview -->
-        {#if previewReport}
-          <ExpandableSection title="Overview" variant="success" defaultOpen={true} resetKey={sectionResetKey} id="overview">
-            <PreviewOverview
-              nicheName={nicheName}
-              nicheDescription={previewReport.niche_context?.niche_description}
-              {discussionCount}
-              painPointCount={previewPainPointCount}
-              solutionCount={displaySolutions.length}
-              {segmentCount}
-            />
-            {#if previewReport.niche_difficulty_verdict}
-              <NicheRealityCheck verdict={previewReport.niche_difficulty_verdict} context="discovery" />
-            {/if}
-          </ExpandableSection>
+        {#if isSelectionPhase && displaySolutions.length > 0}
+          <SelectionWorkbench
+            jobId={jobId ?? ''}
+            solutions={displaySolutions}
+            coverageNotes={previewReport?.data_quality_summary?.quality_caveats ?? []}
+            {discussionCount}
+            painPointCount={previewPainPointCount}
+            {segmentCount}
+            creditBalance={page.data.creditBalance ?? 0}
+            stageCosts={page.data.stageCosts ?? { discovery: 5, deep_research: 15, landing_page: 5, regenerate_ideas: 2 }}
+            canRegenerate={job.canRegenerate ?? false}
+            isRegenerating={job.status === 'REGENERATING' || isRegenQueued}
+            selectedSolutions={job.selectedSolutions ?? undefined}
+            {solutionVotes}
+            onComplete={handleSelectionComplete}
+            onRegenerateStart={() => { clientJob = { ...job!, status: 'QUEUED' }; }}
+          />
         {/if}
 
-        <!-- Opportunities (Selection) — promoted above supporting evidence -->
-        {#if displaySolutions.length > 0}
-          <div class={isSelectionPhase ? 'opportunities-zone' : ''}>
-          {#if isSelectionPhase}
-            <div class="action-banner" id="solution-selector" bind:this={ctaBannerRef}>
-              <div class="action-banner-badge">Action Required</div>
-              <p class="action-banner-text">
-                Select up to 3 solutions to compare. Deep Research will validate the most promising one.
-                <strong>{ADDITIONAL_LOCKED_SECTIONS.length + LOCKED_PREVIEW_SECTIONS.length} sections</strong> unlock for {page.data.stageCosts?.deep_research ?? 15} credits.
-              </p>
-            </div>
-          {/if}
-          <ExpandableSection
-            title="Opportunities"
-            count={displaySolutions.length}
-            countSuffix="opportunities"
-            variant={isSelectionPhase ? "default" : "accent"}
-            defaultOpen={discoveryOpen}
-            resetKey={sectionResetKey}
-            id="opportunities"
-          >
+        {#if previewReport || discoveryData}
+          <div class="discovery-sections" class:discovery-dossier={isSelectionPhase}>
             {#if isSelectionPhase}
-              <PreviewSolutionSelector
-                jobId={jobId ?? ''}
-                solutions={displaySolutions}
-                coverageNotes={previewReport?.data_quality_summary?.quality_caveats ?? []}
-                primaryAudience={previewReport?.niche_context?.resolved_primary_audience ?? null}
-                audienceLabel={previewReport?.niche_context?.user_target_audience ?? null}
-                creditBalance={page.data.creditBalance ?? 0}
-                stageCosts={page.data.stageCosts ?? { discovery: 5, deep_research: 15, landing_page: 5, regenerate_ideas: 2 }}
-                canRegenerate={job.canRegenerate ?? false}
-                isRegenerating={job.status === 'REGENERATING' || isRegenQueued}
-                selectedSolutions={job.selectedSolutions ?? undefined}
-                {solutionVotes}
-                onComplete={handleSelectionComplete}
-                onSelectionComplete={handleSelectionComplete}
-                onRegenerateStart={() => { clientJob = { ...job!, status: 'QUEUED' }; }}
-                onSelectionChange={(info) => {
-                  stickySelectionCount = info.count;
-                  stickyCanAfford = info.canAfford;
-                  stickySelectionNames = info.names;
-                }}
-                bind:externalValidate={validateTrigger}
-              />
-            {:else if showSelectedSummary && !isGeneratingP2}
-              <SelectedSolutionsSummary
-                selectedNames={job.selectedSolutions ?? []}
-                solutionIdeas={job.solutionIdeas ?? []}
-                primaryWinner={job.selectedSolution}
-                status={job.status}
-              />
+              <div class="dossier-header">
+                <div>
+                  <p class="dossier-eyebrow">Discovery dossier</p>
+                  <h2 class="dossier-title">Evidence behind the shortlist</h2>
+                  <p class="dossier-copy">Market context, demand signals, pain clusters, and source quality from the discovery run.</p>
+                </div>
+                <dl class="dossier-ledger" aria-label="Discovery evidence summary">
+                  <div>
+                    <dt>Discussions</dt>
+                    <dd>{discussionCount.toLocaleString()}</dd>
+                  </div>
+                  <div>
+                    <dt>Pain points</dt>
+                    <dd>{previewPainPointCount}</dd>
+                  </div>
+                  <div>
+                    <dt>Sources</dt>
+                    <dd>{discoveryData?.subreddit_names?.length ?? 0}</dd>
+                  </div>
+                </dl>
+              </div>
             {/if}
-          </ExpandableSection>
+
+            <!-- Overview -->
+            {#if previewReport}
+              <ExpandableSection
+                title="Overview"
+                variant="default"
+                defaultOpen={!isSelectionPhase}
+                resetKey={sectionResetKey}
+                id="overview"
+              >
+                <PreviewOverview
+                  nicheName={nicheName}
+                  nicheDescription={previewReport.niche_context?.niche_description}
+                  {discussionCount}
+                  painPointCount={previewPainPointCount}
+                  solutionCount={displaySolutions.length}
+                  {segmentCount}
+                  showFacts={!isSelectionPhase}
+                />
+                {#if previewReport.niche_difficulty_verdict}
+                  <NicheRealityCheck verdict={previewReport.niche_difficulty_verdict} context="discovery" />
+                {/if}
+              </ExpandableSection>
+            {/if}
+
+            <!-- Opportunities (post-selection summary) -->
+            {#if !isSelectionPhase && displaySolutions.length > 0}
+              <ExpandableSection
+                title="Opportunities"
+                count={displaySolutions.length}
+                countSuffix="opportunities"
+                variant="accent"
+                defaultOpen={false}
+                resetKey={sectionResetKey}
+                id="opportunities"
+              >
+                {#if showSelectedSummary && !isGeneratingP2}
+                  <SelectedSolutionsSummary
+                    selectedNames={job.selectedSolutions ?? []}
+                    solutionIdeas={job.solutionIdeas ?? []}
+                    primaryWinner={job.selectedSolution}
+                    status={job.status}
+                  />
+                {/if}
+              </ExpandableSection>
+            {/if}
+
+            <!-- Market Snapshot -->
+            {#if discoveryData?.discussion_trend?.length}
+              <ExpandableSection
+                title="Market Snapshot"
+                icon={BarChart3}
+                defaultOpen={!isSelectionPhase}
+                resetKey={sectionResetKey}
+                id="market-snapshot"
+              >
+                <MarketSnapshot
+                  postsAnalyzed={discussionCount}
+                  subredditCount={discoveryData.subreddit_names?.length ?? 0}
+                  totalEngagement={discoveryData.methodology?.total_engagement ?? 0}
+                  trend={discoveryData.discussion_trend}
+                  growthPct={discoveryData.discussion_growth_pct ?? null}
+                />
+              </ExpandableSection>
+            {/if}
+
+            <!-- Pain Points -->
+            {#if previewReport?.detailed_pain_points?.length}
+              <ExpandableSection
+                title="Pain Points"
+                count={previewPainPointCount}
+                countSuffix="clusters"
+                variant={isSelectionPhase ? "default" : "success"}
+                defaultOpen={!isSelectionPhase && discoveryOpen}
+                resetKey={sectionResetKey}
+                id="pain-points"
+              >
+                <p class="section-intro">The highest-signal pain clusters from discovery, ranked by severity and commercial intent.</p>
+                {#each visiblePainPoints as pp, i}
+                  <PainPointSummaryCard painPoint={pp} rank={i + 1} isTop={i === 0} onViewOpportunity={scrollToSolutions} />
+                {/each}
+                {#if isSelectionPhase && topPainPoints.length > visiblePainPoints.length}
+                  <p class="section-footnote">
+                    Showing the {visiblePainPoints.length} highest-signal clusters for selection. {topPainPoints.length - visiblePainPoints.length} lower-priority clusters stay in the discovery record.
+                  </p>
+                {/if}
+
+              </ExpandableSection>
+            {/if}
+
+            <!-- Audience -->
+            {#if previewReport?.audience_mapping}
+              {#if isSelectionPhase}
+                <ExpandableSection
+                  title="Audience"
+                  count={segmentCount}
+                  countSuffix="segments"
+                  variant="default"
+                  defaultOpen={false}
+                  resetKey={sectionResetKey}
+                  id="audience"
+                >
+                  <AudienceSnapshot data={previewReport.audience_mapping} />
+                </ExpandableSection>
+              {:else}
+                <AudienceSection data={previewReport.audience_mapping} />
+              {/if}
+            {/if}
+
+            <!-- Community & Sources -->
+            {#if discoveryData || previewReport?.evidence_appendix}
+              <ExpandableSection
+                title="Community & Sources"
+                count={discoveryData?.subreddit_names?.length ?? 0}
+                countSuffix="sources"
+                variant={isSelectionPhase ? "default" : "success"}
+                defaultOpen={false}
+                resetKey={sectionResetKey}
+                id="community"
+              >
+                <CommunitySourcesSection
+                  subredditNames={discoveryData?.subreddit_names}
+                  communityHubs={previewReport?.audience_mapping?.community_hubs}
+                  postsAnalyzed={((previewReport?.research_metadata?.reddit_posts_analyzed ?? 0) + (previewReport?.research_metadata?.generic_posts_analyzed ?? 0)) || undefined}
+                  sourcesSearched={discoveryData?.sources_searched}
+                />
+
+                {#if discoveryData?.methodology}
+                  <p class="methodology-note">
+                    Based on {discoveryData.methodology.urls_searched.toLocaleString()} URLs scanned &middot;
+                    {discoveryData.methodology.urls_relevant} relevant ({discoveryData.methodology.filtering_rate}%) &middot;
+                    {discoveryData.methodology.quality_tier} quality
+                  </p>
+                {/if}
+
+                {#if discoveryData?.social_posts_sample?.length}
+                  <DiscoveryEvidence data={discoveryData} />
+                {/if}
+              </ExpandableSection>
+            {/if}
           </div>
         {/if}
 
-        <!-- Market Snapshot -->
-        {#if discoveryData?.discussion_trend?.length}
-          <ExpandableSection
-            title="Market Snapshot"
-            icon={BarChart3}
-            defaultOpen={true}
-            resetKey={sectionResetKey}
-            id="market-snapshot"
-          >
-            <MarketSnapshot
-              postsAnalyzed={discussionCount}
-              subredditCount={discoveryData.subreddit_names?.length ?? 0}
-              totalEngagement={discoveryData.methodology?.total_engagement ?? 0}
-              trend={discoveryData.discussion_trend}
-              growthPct={discoveryData.discussion_growth_pct ?? null}
-            />
-          </ExpandableSection>
-        {/if}
-
-        <!-- Pain Points -->
-        {#if previewReport?.detailed_pain_points?.length}
-          <ExpandableSection
-            title="Pain Points"
-            count={previewPainPointCount}
-            countSuffix="clusters"
-            variant="success"
-            defaultOpen={discoveryOpen}
-            resetKey={sectionResetKey}
-            id="pain-points"
-          >
-            <p class="section-intro">What are people struggling with? Each pain point scored by how much it blocks real work (severity) and its commercial-intent signal.</p>
-            {#each topPainPoints as pp, i}
-              <PainPointSummaryCard painPoint={pp} rank={i + 1} isTop={i === 0} onViewOpportunity={scrollToSolutions} />
-            {/each}
-
-          </ExpandableSection>
-        {/if}
-
-        <!-- Audience — rendered at full width without ExpandableSection; the
-             AudienceSection component owns its own section chrome + hero strip. -->
-        {#if previewReport?.audience_mapping}
-          <AudienceSection data={previewReport.audience_mapping} />
-        {/if}
-
-        <!-- Community & Sources -->
-        {#if discoveryData || previewReport?.evidence_appendix}
-          <ExpandableSection
-            title="Community & Sources"
-            count={discoveryData?.subreddit_names?.length ?? 0}
-            countSuffix="sources"
-            variant="success"
-            defaultOpen={false}
-            resetKey={sectionResetKey}
-            id="community"
-          >
-            <CommunitySourcesSection
-              subredditNames={discoveryData?.subreddit_names}
-              communityHubs={previewReport?.audience_mapping?.community_hubs}
-              postsAnalyzed={((previewReport?.research_metadata?.reddit_posts_analyzed ?? 0) + (previewReport?.research_metadata?.generic_posts_analyzed ?? 0)) || undefined}
-              sourcesSearched={discoveryData?.sources_searched}
-            />
-
-            {#if discoveryData?.methodology}
-              <p class="methodology-note">
-                Based on {discoveryData.methodology.urls_searched.toLocaleString()} URLs scanned &middot;
-                {discoveryData.methodology.urls_relevant} relevant ({discoveryData.methodology.filtering_rate}%) &middot;
-                {discoveryData.methodology.quality_tier} quality
-              </p>
-            {/if}
-
-            {#if discoveryData?.social_posts_sample?.length}
-              <DiscoveryEvidence data={discoveryData} />
-            {/if}
-          </ExpandableSection>
-        {/if}
-
         <!-- ═══ DEEP RESEARCH PREVIEW SECTIONS ═══ -->
-        {#if !isCompleted}
+        {#if !isCompleted && !isSelectionPhase}
           <!-- Capped preview: UnifiedHero with real blurred content -->
           <div class="preview-capped">
             <UnifiedHero
@@ -915,7 +970,7 @@
             </div>
           </div>
 
-          <!-- SEO Keywords preview — editorial hairline insert between capped cards -->
+          <!-- SEO Keywords preview - editorial hairline insert between capped cards -->
           <SEOKeywordsPreview nicheName={placeholderNiche} />
 
           <!-- Capped preview: Competitors with real blurred content -->
@@ -1027,51 +1082,8 @@
       </div>
       {/if}
     {/if}
-
-    {#if isSelectionPhase}
-      <div class="sticky-bar-spacer" aria-hidden="true"></div>
-    {/if}
   </main>
 </div>
-
-<!-- ═══ STICKY BAR (selection phase only) ═══ -->
-{#if job && isSelectionPhase && showStickyBar}
-  <div class="sticky-bar" role="region" aria-label="Selection summary">
-    <div class="sticky-bar-inner" role="status" aria-live="polite">
-      <div class="sticky-bar-context">
-        <span class="sticky-bar-heading">Ready to go deeper?</span>
-        {#if stickySelectionCount > 0}
-          <div class="sticky-bar-pills">
-            {#each stickySelectionNames.slice(0, 3) as name}
-              <span class="sticky-bar-pill">{name.length > 30 ? name.slice(0, 28) + '...' : name}</span>
-            {/each}
-          </div>
-        {:else}
-          <span class="sticky-bar-sub">Market Sizing, SEO, Competitors & {ADDITIONAL_LOCKED_SECTIONS.length} more · {page.data.stageCosts?.deep_research ?? 15} credits · one-time per niche</span>
-        {/if}
-      </div>
-      {#if stickySelectionCount > 0}
-        <button
-          class="btn-primary btn-sm sticky-bar-btn"
-          onclick={() => { validateTrigger++; }}
-        >
-          {#if !stickyCanAfford}
-            Add credits to start
-          {:else}
-            Start Deep Research · {page.data.stageCosts?.deep_research ?? 15} credits <ArrowRight class="w-3.5 h-3.5" aria-hidden="true" />
-          {/if}
-        </button>
-      {:else}
-        <button
-          class="btn-primary btn-sm sticky-bar-btn"
-          onclick={scrollToSolutions}
-        >
-          Select a solution <ArrowRight class="w-3.5 h-3.5" />
-        </button>
-      {/if}
-    </div>
-  </div>
-{/if}
 
 {#if jobId}
   <ShareDiscoveryModal bind:open={discoveryShareOpen} jobId={jobId} />
@@ -1092,9 +1104,14 @@
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md, 0.5rem);
     cursor: pointer;
-    transition: color 150ms ease, border-color 150ms ease, background-color 150ms ease;
+    transition:
+      transform 220ms cubic-bezier(0.32, 0.72, 0, 1),
+      color 220ms cubic-bezier(0.32, 0.72, 0, 1),
+      border-color 220ms cubic-bezier(0.32, 0.72, 0, 1),
+      background-color 220ms cubic-bezier(0.32, 0.72, 0, 1);
   }
   .share-discovery-btn:hover {
+    transform: translateY(-1px);
     color: var(--color-text-primary);
     border-color: var(--color-border-emphasis);
     background: var(--color-bg-surface);
@@ -1120,10 +1137,305 @@
     padding: 2rem 2.5rem 5rem;
   }
 
+  .job-page-content--selection {
+    width: min(76rem, 100%);
+  }
+
+  .discovery-sections {
+    margin-top: 1.1rem;
+  }
+
+  .discovery-dossier {
+    position: relative;
+    margin-top: 1.18rem;
+    padding: 0.62rem;
+    border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 46%, transparent);
+    border-radius: 1.08rem;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(255, 255, 255, 0.34)),
+      color-mix(in srgb, var(--color-bg-surface) 78%, var(--color-bg-elevated));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.86),
+      0 22px 64px rgba(24, 24, 27, 0.05);
+  }
+
+  .dossier-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: 1rem;
+    padding: 0.82rem 0.92rem 0.92rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-border-emphasis) 46%, transparent);
+  }
+
+  .dossier-eyebrow {
+    margin: 0 0 0.24rem;
+    color: var(--color-text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.58rem;
+    font-weight: 780;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .dossier-title {
+    margin: 0;
+    color: var(--color-text-primary);
+    font-family: var(--font-display);
+    font-size: clamp(1rem, 1.16vw, 1.18rem);
+    font-weight: 780;
+    line-height: 1.16;
+    letter-spacing: -0.01em;
+  }
+
+  .dossier-copy {
+    max-width: 58ch;
+    margin: 0.34rem 0 0;
+    color: var(--color-text-secondary);
+    font-size: 0.76rem;
+    line-height: 1.46;
+    text-wrap: pretty;
+  }
+
+  .dossier-ledger {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(4.8rem, 1fr));
+    gap: 0.28rem;
+    min-width: 16.5rem;
+    margin: 0;
+    padding: 0.28rem;
+    border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 38%, transparent);
+    border-radius: 0.7rem;
+    background: color-mix(in srgb, var(--color-bg-elevated) 74%, transparent);
+  }
+
+  .dossier-ledger div {
+    display: grid;
+    gap: 0.1rem;
+    min-width: 0;
+    padding: 0.4rem 0.46rem;
+    border-radius: 0.5rem;
+    background: color-mix(in srgb, white 58%, transparent);
+  }
+
+  .dossier-ledger dt {
+    color: var(--color-text-muted);
+    font-size: 0.56rem;
+    font-weight: 720;
+    line-height: 1;
+  }
+
+  .dossier-ledger dd {
+    margin: 0;
+    color: var(--color-text-primary);
+    font-family: var(--font-mono);
+    font-size: 0.88rem;
+    font-weight: 820;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  :global(.job-page-content--selection .section-container.expandable) {
+    margin-top: 0.82rem;
+    margin-bottom: 0.92rem;
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  :global(.job-page-content--selection .section-container.expandable.elevated) {
+    background: transparent;
+  }
+
+  :global(.job-page-content--selection .section-container.expandable .expandable-trigger) {
+    padding: 0.72rem 0.08rem 0.62rem;
+    border-top: 1px solid color-mix(in srgb, var(--color-border-emphasis) 54%, transparent);
+    border-radius: 0;
+    background: transparent;
+    transition:
+      color 240ms cubic-bezier(0.32, 0.72, 0, 1),
+      transform 240ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  :global(.job-page-content--selection .section-container.expandable .expandable-trigger:hover) {
+    transform: translateY(-1px);
+    background: transparent;
+  }
+
+  :global(.job-page-content--selection .section-container.expandable .section-header-title) {
+    font-size: 0.92rem;
+    font-weight: 760;
+  }
+
+  :global(.job-page-content--selection .section-container.expandable .section-body) {
+    transition: grid-template-rows 320ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  :global(.job-page-content--selection .section-container.expandable .section-body-inner) {
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 52%, transparent);
+    border-radius: 0.82rem;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.42)),
+      color-mix(in srgb, var(--color-bg-elevated) 94%, var(--color-bg-surface));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.86),
+      0 18px 48px rgba(24, 24, 27, 0.045);
+  }
+
+  :global(.job-page-content--selection .section-container.expandable .section-content) {
+    padding: 0.98rem 1.08rem 1.08rem !important;
+  }
+
+  :global(.job-page-content--selection .section-container.expandable .chevron-icon) {
+    transition: transform 260ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  :global(.discovery-dossier .section-container.expandable) {
+    margin: 0;
+  }
+
+  :global(.discovery-dossier .section-container.expandable .expandable-trigger) {
+    padding: 0.78rem 0.5rem;
+    border-top: 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-border-emphasis) 38%, transparent);
+  }
+
+  :global(.discovery-dossier .section-container.expandable:last-child .expandable-trigger) {
+    border-bottom-color: transparent;
+  }
+
+  :global(.discovery-dossier .section-container.expandable .header-content) {
+    gap: 0.48rem;
+  }
+
+  :global(.discovery-dossier .section-container.expandable .section-icon) {
+    width: 0.82rem;
+    height: 0.82rem;
+    color: var(--color-text-muted);
+  }
+
+  :global(.discovery-dossier .section-container.expandable .section-header-title) {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.46rem;
+    font-size: 0.84rem;
+    font-weight: 780;
+    letter-spacing: -0.005em;
+  }
+
+  :global(.discovery-dossier .section-container.expandable .section-header-title::before) {
+    color: var(--color-text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.58rem;
+    font-weight: 760;
+    letter-spacing: 0.04em;
+  }
+
+  :global(.discovery-dossier #overview .section-header-title::before) {
+    content: "01";
+  }
+
+  :global(.discovery-dossier #market-snapshot .section-header-title::before) {
+    content: "02";
+  }
+
+  :global(.discovery-dossier #pain-points .section-header-title::before) {
+    content: "03";
+  }
+
+  :global(.discovery-dossier #audience .section-header-title::before) {
+    content: "04";
+  }
+
+  :global(.discovery-dossier #community .section-header-title::before) {
+    content: "05";
+  }
+
+  :global(.discovery-dossier .section-container.expandable .section-body-inner) {
+    border-color: color-mix(in srgb, var(--color-border-emphasis) 34%, transparent);
+    border-radius: 0.82rem;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.68), rgba(255, 255, 255, 0.18)),
+      color-mix(in srgb, var(--color-bg-elevated) 88%, var(--color-bg-surface));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.74);
+  }
+
+  :global(.discovery-dossier .section-container.expandable .section-content) {
+    padding: 0.9rem 0.96rem 1rem !important;
+  }
+
+  :global(.job-selection-header) {
+    margin-bottom: 0;
+  }
+
+  :global(.job-selection-header .page-header-body) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 0.8rem;
+  }
+
+  :global(.job-selection-header .page-header-title-row) {
+    min-width: 0;
+    gap: 0.78rem;
+  }
+
+  :global(.job-selection-header .page-header-actions) {
+    justify-self: end;
+    padding-top: 1.55rem;
+  }
+
+  :global(.job-selection-header h1) {
+    max-width: 34ch;
+    font-size: clamp(1.28rem, 1.72vw, 1.58rem);
+    line-height: 1.13;
+    letter-spacing: -0.01em;
+  }
+
+  :global(.job-selection-header p) {
+    max-width: 44rem;
+    margin-top: 0.38rem;
+    font-size: 0.92rem;
+  }
+
+  :global(.job-selection-header .page-header-title-row > div:first-child) {
+    padding: 0.42rem;
+    border-radius: 0.7rem;
+  }
+
+  :global(.job-selection-header .page-header-title-row svg) {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
   @media (max-width: 1279px) {
     .job-page-content {
       padding: 1rem;
       width: 100%;
+    }
+  }
+
+  @media (max-width: 760px) {
+    .discovery-dossier {
+      padding: 0.44rem;
+      border-radius: 0.86rem;
+    }
+
+    .dossier-header {
+      grid-template-columns: minmax(0, 1fr);
+      padding: 0.7rem 0.72rem 0.78rem;
+    }
+
+    .dossier-ledger {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      min-width: 0;
+      width: 100%;
+    }
+
+    :global(.discovery-dossier .section-container.expandable .expandable-trigger) {
+      padding-inline: 0.34rem;
     }
   }
 
@@ -1137,6 +1449,12 @@
     grid-template-columns: minmax(0, 1fr) 300px;
     gap: 1.5rem;
     margin-bottom: 1.5rem;
+  }
+  .job-hero-grid--selection {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 0;
+    margin-bottom: 0.2rem;
   }
   .job-hero-main {
     min-width: 0;
@@ -1157,10 +1475,22 @@
 
   /* ═══ Section intro ═══ */
   .section-intro {
-    font-size: 0.875rem;
+    max-width: 74ch;
+    font-size: 0.8rem;
     color: var(--color-text-secondary);
-    line-height: 1.6;
-    margin-bottom: 1rem;
+    line-height: 1.55;
+    margin: 0 0 0.72rem;
+    text-wrap: pretty;
+  }
+
+  .section-footnote {
+    margin: 0.72rem 0 0;
+    padding-top: 0.7rem;
+    border-top: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
+    color: var(--color-text-muted);
+    font-size: 0.72rem;
+    line-height: 1.42;
+    text-wrap: pretty;
   }
 
   /* ═══ Methodology footnote ═══ */
@@ -1169,48 +1499,9 @@
     font-size: 0.5625rem;
     color: var(--color-text-muted);
     letter-spacing: 0.02em;
-    margin-top: var(--space-4);
-    padding-top: var(--space-3);
+    margin: 0.78rem 0 0;
+    padding-top: 0.72rem;
     border-top: 1px solid var(--color-border);
-  }
-
-
-  /* ═══ Opportunities zone (warm wrapper during selection) ═══ */
-  .opportunities-zone {
-    margin-bottom: var(--space-4);
-  }
-
-  /* ═══ Action banner (opportunities callout) ═══ */
-  .action-banner {
-    padding: var(--space-5) var(--space-6);
-    margin-bottom: var(--space-3);
-    background: rgba(234, 88, 12, 0.10);
-    border: 1px solid rgba(234, 88, 12, 0.18);
-    border-radius: var(--radius-lg, 0.75rem);
-  }
-
-  .action-banner-badge {
-    display: inline-block;
-    background: var(--color-accent);
-    color: white;
-    font-family: var(--font-display);
-    font-size: 0.6875rem;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    padding: var(--space-1) var(--space-3);
-    border-radius: 0.25rem;
-    margin-bottom: var(--space-3);
-  }
-
-  .action-banner-text {
-    font-size: 0.875rem;
-    color: var(--color-text-secondary);
-    line-height: 1.6;
-  }
-
-  .action-banner-text strong {
-    color: var(--color-text-primary);
   }
 
   /* .preview-capped* classes moved to src/lib/styles/preview-capped.css
@@ -1293,107 +1584,10 @@
     letter-spacing: 0.05em;
   }
 
-  .sticky-bar-spacer {
-    height: 5.5rem;
-  }
-
-  /* ═══ Sticky bar ═══ */
-  .sticky-bar {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background: color-mix(in srgb, var(--color-bg-base) 92%, transparent);
-    backdrop-filter: blur(12px);
-    border-top: 2px solid var(--color-accent);
-    z-index: var(--z-dropdown, 40);
-    min-height: 56px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    animation: stickyBarEnter 200ms ease-out;
-  }
-
-  @keyframes stickyBarEnter {
-    from { transform: translateY(100%); opacity: 0; }
-    to { transform: translateY(0); opacity: 1; }
-  }
-
-  .sticky-bar-inner {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    padding: 0.625rem 1.25rem;
-    max-width: 1200px;
-    width: 100%;
-    justify-content: space-between;
-  }
-
-  .sticky-bar-context {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    min-width: 0;
-  }
-
-  .sticky-bar-heading {
-    font-size: 0.8125rem;
-    font-weight: 600;
-    color: var(--color-text-primary);
-  }
-
-  .sticky-bar-sub {
-    font-size: 0.75rem;
-    color: var(--color-text-muted);
-  }
-
-  .sticky-bar-pills {
-    display: flex;
-    gap: 0.375rem;
-    flex-wrap: wrap;
-  }
-
-  .sticky-bar-pill {
-    font-size: 0.6875rem;
-    font-weight: 500;
-    padding: 0.1875rem 0.5rem;
-    background: var(--color-accent-subtle);
-    border: 1px solid var(--color-border-accent);
-    border-radius: 9999px;
-    color: var(--color-accent);
-    max-width: 12rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .sticky-bar-btn {
-    min-height: 40px;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    white-space: nowrap;
-    flex-shrink: 0;
-  }
-
-  .sticky-bar-btn:active {
-    transform: scale(0.97);
-  }
-
-  /* gate-locked and stage-list removed — no longer used in unified dashboard */
+  /* gate-locked and stage-list removed - no longer used in unified dashboard */
 
   /* ═══ Responsive ═══ */
   @media (max-width: 639px) {
-    .sticky-bar-inner {
-      flex-direction: column;
-      gap: 0.5rem;
-      text-align: center;
-    }
-
-    .sticky-bar-spacer {
-      height: 8rem;
-    }
-
     .report-summary-header {
       flex-direction: column;
       align-items: flex-start;
@@ -1414,7 +1608,7 @@
     overflow: hidden;
   }
 
-  /* extras-card--locked removed — extras only shown when complete */
+  /* extras-card--locked removed - extras only shown when complete */
 
   .extras-header {
     display: flex;

@@ -777,7 +777,7 @@
             <th class="text-left py-3 px-4 text-text-muted font-medium">Name</th>
             <th class="text-left py-3 px-4 text-text-muted font-medium">Niche</th>
             <th class="text-center py-3 px-4 text-text-muted font-medium">
-              {currentType === "ideas" ? "Scores" : "Severity/WTP"}
+              {currentType === "ideas" ? "Scores" : "Severity/CI"}
             </th>
             <th class="text-center py-3 px-4 text-text-muted font-medium">
               {currentType === "ideas" ? "Verdict" : "Opportunity"}

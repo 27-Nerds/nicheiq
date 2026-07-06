@@ -358,7 +358,7 @@
                         <Badge variant="success" size="sm">Free preview</Badge>
                       {/if}
                       <Badge variant="default" size="sm">Sev {formatScore(pp.severityScore)}</Badge>
-                      <Badge variant="warning" size="sm">WTP {formatScore(pp.commercialIntentScore)}</Badge>
+                      <Badge variant="warning" size="sm">CI {formatScore(pp.commercialIntentScore)}</Badge>
                       <button
                         class="p-1 rounded hover:bg-accent/10 transition-opacity flex-shrink-0 {pp.id === effectiveFreePreviewPainPointId ? 'text-accent' : 'text-text-muted opacity-0 group-hover:opacity-100'}"
                         title={pp.id === effectiveFreePreviewPainPointId
