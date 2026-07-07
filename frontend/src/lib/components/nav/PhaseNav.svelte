@@ -137,7 +137,12 @@
     const el = document.getElementById(section.id);
     if (el) {
       trackedSection = section.id;
-      scrollToElement(el);
+      // Ask a collapsed dossier accordion to open, then scroll next frame so the
+      // jump measures the expanded height and lands on content, not a closed row.
+      window.dispatchEvent(
+        new CustomEvent("nicheiq:reveal-section", { detail: { id: section.id } }),
+      );
+      requestAnimationFrame(() => scrollToElement(el));
       isOpen = false;
     } else {
       const cta = document.getElementById("solution-selector");

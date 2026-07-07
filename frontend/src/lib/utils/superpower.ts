@@ -15,21 +15,25 @@ export interface SuperpowerEntry {
 // Canonical keys (framework-agnostic)
 type CanonicalKey = 'marketFit' | 'seoScalability' | 'novelty' | 'techFeasibility' | 'soloDev';
 
+// Every superpower is a positive strength, and only one badge shows per idea — so the
+// color encodes valence (this is a strength), not which capability. All read as success;
+// the label says which one. 'warning' (amber) is reserved for the severity/risk ramp,
+// never for a positive trait.
 /** Short labels for card context */
 export const SUPERPOWERS: Record<CanonicalKey, SuperpowerEntry> = {
   marketFit: { label: 'Market Fit', variant: 'success' },
-  seoScalability: { label: 'SEO Power', variant: 'accent' },
-  novelty: { label: 'Innovator', variant: 'info' },
-  techFeasibility: { label: 'Quick Build', variant: 'warning' },
+  seoScalability: { label: 'SEO Power', variant: 'success' },
+  novelty: { label: 'Innovator', variant: 'success' },
+  techFeasibility: { label: 'Quick Build', variant: 'success' },
   soloDev: { label: 'Solo-Friendly', variant: 'success' },
 };
 
 /** Longer labels for modal/detail context */
 export const SUPERPOWERS_DETAILED: Record<CanonicalKey, SuperpowerEntry> = {
   marketFit: { label: 'Strong Market Fit', variant: 'success' },
-  seoScalability: { label: 'SEO Powerhouse', variant: 'accent' },
-  novelty: { label: 'Innovator', variant: 'info' },
-  techFeasibility: { label: 'Quick to Build', variant: 'warning' },
+  seoScalability: { label: 'SEO Powerhouse', variant: 'success' },
+  novelty: { label: 'Innovator', variant: 'success' },
+  techFeasibility: { label: 'Quick to Build', variant: 'success' },
   soloDev: { label: 'Solo-Friendly', variant: 'success' },
 };
 

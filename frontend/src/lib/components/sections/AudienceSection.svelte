@@ -141,7 +141,7 @@
                 <MetaItem
                   icon={DollarSign}
                   value={segment.budget_sensitivity}
-                  label="Budget"
+                  label="Price sensitivity"
                   iconClass="w-3 h-3 text-muted"
                 />
               {/if}

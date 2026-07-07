@@ -105,6 +105,21 @@
   const isExpandable = $derived(mode === "expandable");
   const showBody = $derived(!isExpandable || expanded);
 
+  // Reveal-on-navigate: the sidebar (PhaseNav) dispatches this when a link targets a
+  // collapsed section, so the jump lands on open content instead of a closed row.
+  $effect(() => {
+    function onReveal(e: Event) {
+      const detail = (e as CustomEvent<{ id?: string }>).detail;
+      if (isExpandable && id && detail?.id === id && !expanded) {
+        expanded = true;
+        userHasToggled = true;
+        onToggle?.(true);
+      }
+    }
+    window.addEventListener("nicheiq:reveal-section", onReveal);
+    return () => window.removeEventListener("nicheiq:reveal-section", onReveal);
+  });
+
   // Badge variant mapping
   const badgeVariants: Record<
     SectionVariant,

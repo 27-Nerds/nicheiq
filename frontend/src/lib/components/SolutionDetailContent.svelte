@@ -229,7 +229,7 @@
       {/if}
       <FacetChips label="Model" items={modelItems} tone="neutral" />
       <FacetChips label="Growth" items={growthItems} tone="neutral" />
-      <FacetChips label="Watch-outs" items={watchOutItems} tone="neutral" />
+      <FacetChips label="Watch-outs" items={watchOutItems} tone="risk" />
     </div>
   {/if}
 
@@ -772,6 +772,11 @@
     font-size: 0.68rem;
     font-weight: 650;
   }
+  /* Keep the red risk tint (matches the ranked list's .tag-risk) — the base rule above
+     would otherwise flatten watch-out chips to the neutral surface fill. */
+  .facet-panel :global(.facet-chip-risk) {
+    background: var(--color-error-subtle);
+  }
   .facet-chips {
     display: flex;
     flex-wrap: wrap;
@@ -785,7 +790,9 @@
     letter-spacing: 0;
     line-height: 1.2;
     padding: 0.16rem 0.46rem;
-    border: 1px solid color-mix(in srgb, currentColor 62%, transparent);
+    /* Filled tint + border mirrors the ranked list's .tag-success so strengths match across views. */
+    background: color-mix(in srgb, currentColor 9%, transparent);
+    border: 1px solid color-mix(in srgb, currentColor 55%, transparent);
     border-radius: 0.42rem;
   }
   .strength-chip-success { color: var(--color-success-dark); }

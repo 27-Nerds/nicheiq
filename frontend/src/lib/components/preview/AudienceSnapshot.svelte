@@ -59,10 +59,16 @@
           {/if}
           <div class="audience-segment__meta">
             {#if segment.expertise_level}
-              <span>{segment.expertise_level}</span>
+              <span class="audience-segment__stat">
+                <span class="audience-segment__stat-key">Expertise</span>
+                {segment.expertise_level}
+              </span>
             {/if}
             {#if segment.budget_sensitivity}
-              <span>{segment.budget_sensitivity}</span>
+              <span class="audience-segment__stat">
+                <span class="audience-segment__stat-key">Price sensitivity</span>
+                {segment.budget_sensitivity}
+              </span>
             {/if}
           </div>
         </article>
@@ -253,11 +259,32 @@
   }
 
   .audience-segment__meta {
-    gap: 0.28rem;
-    margin-top: 0.5rem;
+    gap: 0.5rem 0.9rem;
+    margin-top: 0.55rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid color-mix(in srgb, var(--color-border-emphasis) 22%, transparent);
   }
 
-  .audience-segment__meta span,
+  .audience-segment__stat {
+    display: flex;
+    flex-direction: column;
+    gap: 0.14rem;
+    color: var(--color-text-secondary);
+    font-size: 0.68rem;
+    font-weight: 660;
+    line-height: 1.05;
+  }
+
+  .audience-segment__stat-key {
+    color: var(--color-text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.5rem;
+    font-weight: 720;
+    letter-spacing: 0.05em;
+    line-height: 1;
+    text-transform: uppercase;
+  }
+
   .audience-signal-tags span {
     max-width: 100%;
     padding: 0.16rem 0.42rem;

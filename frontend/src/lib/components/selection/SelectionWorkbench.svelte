@@ -1356,9 +1356,9 @@
     color: var(--color-text-muted);
   }
   .tag-risk {
-    background: var(--color-bg-elevated);
-    border: 1px solid var(--color-border);
-    color: var(--color-text-muted);
+    background: var(--color-error-subtle);
+    border: 1px solid color-mix(in srgb, var(--color-error) 30%, transparent);
+    color: var(--color-error-dark);
   }
 
   /* metric cells */

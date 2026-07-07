@@ -11,7 +11,7 @@
   interface Props {
     label: string;
     items: ChipItem[];
-    tone?: "neutral" | "info" | "warning";
+    tone?: "neutral" | "info" | "warning" | "risk";
   }
   let { label, items, tone = "neutral" }: Props = $props();
 </script>
@@ -63,5 +63,11 @@
   .facet-chip-warning {
     color: var(--color-warning-dark);
     border-color: color-mix(in srgb, var(--color-warning) 35%, transparent);
+  }
+  /* Matches the ranked list's .tag-risk so a watch-out reads the same in both places. */
+  .facet-chip-risk {
+    color: var(--color-error-dark);
+    border-color: color-mix(in srgb, var(--color-error) 30%, transparent);
+    background: var(--color-error-subtle);
   }
 </style>

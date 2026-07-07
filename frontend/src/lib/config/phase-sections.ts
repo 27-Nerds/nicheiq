@@ -39,6 +39,7 @@ export interface PhaseConfig {
 
 export const DISCOVERY_SECTIONS: SectionConfig[] = [
   { id: 'overview', label: 'Overview', icon: Compass },
+  { id: 'market-snapshot', label: 'Market Snapshot', icon: BarChart3 },
   { id: 'opportunities', label: 'Opportunities', icon: Lightbulb },
   { id: 'pain-points', label: 'Pain Points', icon: AlertTriangle },
   { id: 'audience', label: 'Audience', icon: Users },

@@ -296,6 +296,34 @@ _ANGLE_FORCE_SEO_FLOOR = 0.35
 _ANGLE_SEO_NOVELTY_CEIL = 0.55
 
 
+def _idea_shape(idea) -> str:
+    """Coarse product SHAPE for the salvage diversity preference, anchored on the CLOSED-vocab
+    project_type (normalized with the same substring rules the pool-assembly contract uses for
+    project_type drift, ~L4877). The only distinction that matters for breaking the aggregate
+    monoculture is 'aggregate-index vs. not', which project_type nails reliably; mechanism_tag is
+    free text (sometimes a full sentence) and deliberately NOT used. Used ONLY to prefer a shape
+    absent from the winners among already-qualifying salvage candidates — never to gate promotion."""
+    pt = (getattr(idea, "project_type", None) or "").strip().lower()
+    if "aggregat" in pt or "director" in pt or "comparison" in pt or " vs " in pt:
+        return "aggregate-index"
+    if "marketplace" in pt:
+        return "match"
+    return pt or "other"   # saas / any other non-aggregate shape → the 'alternative' bucket
+
+
+def _salvage_preference_sort(promoted: list, winner_shapes: set, margin: float) -> list:
+    """Order promoted salvage candidates (tuples ``(composite, concept, cell)``) by composite, with a
+    small bonus (== ``margin``, so it only breaks genuine near-ties) for a candidate whose product
+    SHAPE is absent from the winners. Returns a NEW sorted list. On a mono-shape pool (nothing absent
+    to prefer) the bonus is 0 for every item, so the stable sort is byte-identical to a plain
+    composite sort — this adds optionality ONLY when a strong different-shape close-second exists."""
+    return sorted(
+        promoted,
+        key=lambda t: t[0] + (margin if _idea_shape(t[1]) not in winner_shapes else 0.0),
+        reverse=True,
+    )
+
+
 # P2: the six critic criteria on the calibration object (score attr + matching reason attr).
 _CAL_SCORE_ATTRS = ("market_fit_score", "technical_feasibility_score", "novelty_score",
                     "seo_scalability_score", "obviousness_score", "solo_dev_feasibility_score")
@@ -4366,7 +4394,11 @@ class UnifiedSolutionCrew:
                 else:
                     logger.debug(f"[Salvage] decline {stub.solution_name} "
                                  f"(composite={comp:.3f} < bar={bar:.2f})")
-            promoted.sort(key=lambda t: t[0], reverse=True)
+            # Diversity PREFERENCE (not a gate): among already-qualifying close-seconds, break
+            # near-ties toward a product SHAPE absent from the winners (bonus == _SALVAGE_MARGIN, so a
+            # real quality gap still wins). No-op on a mono-shape pool; never changes the bar or count.
+            win_shapes = {_idea_shape(w) for w in winners}
+            promoted = _salvage_preference_sort(promoted, win_shapes, self._SALVAGE_MARGIN)
             # Final selection: global top-K by composite, but at most 2 rescues per source
             # pain — groomers run promoted 3/3 on the same route-planning pain, buying
             # depth the pool already had instead of breadth it lacked.
