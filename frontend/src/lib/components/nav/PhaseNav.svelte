@@ -130,7 +130,8 @@
 
   function scrollToElement(el: HTMLElement) {
     const y = el.getBoundingClientRect().top + window.scrollY - HEADER_OFFSET;
-    window.scrollTo({ top: y, behavior: 'smooth' });
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    window.scrollTo({ top: y, behavior: reduce ? 'auto' : 'smooth' });
   }
 
   function handleSectionClick(phase: PhaseConfig, section: SectionConfig) {
@@ -355,7 +356,13 @@
 <!-- ═══ MOBILE BOTTOM BAR ═══ -->
 {#if !isSelectionMode}
 <nav class="sidebar-mobile" class:open={isOpen}>
-  <button class="mobile-toggle" onclick={() => (isOpen = !isOpen)}>
+  <button
+    class="mobile-toggle"
+    onclick={() => (isOpen = !isOpen)}
+    aria-expanded={isOpen}
+    aria-controls="phase-nav-mobile-menu"
+    aria-label="Section navigation"
+  >
     <div class="mobile-progress-bar">
       <div class="mobile-progress-fill" style:width="{scrollProgress * 100}%"></div>
     </div>
@@ -365,7 +372,7 @@
   </button>
 
   {#if isOpen}
-    <div class="mobile-menu">
+    <div class="mobile-menu" id="phase-nav-mobile-menu">
       {#each PHASES as phase, phaseIndex}
         {@const badge = phaseBadges[phase.id]}
         {@const unlocked = isPhaseUnlocked(phase.id)}

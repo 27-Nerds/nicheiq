@@ -181,7 +181,7 @@
       linear-gradient(180deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.18)),
       color-mix(in srgb, var(--color-bg-surface) 74%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 42%, transparent);
-    border-radius: 0.78rem;
+    border-radius: 0.75rem;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
   }
 
@@ -194,8 +194,8 @@
   }
 
   .rc-eyebrow {
-    font-size: 0.7rem;
-    font-weight: 750;
+    font-size: 0.6875rem;
+    font-weight: 700;
     letter-spacing: 0.04em;
     text-transform: uppercase;
     color: var(--color-text-muted);
@@ -204,8 +204,8 @@
 
   .rc-headline {
     max-width: 68ch;
-    font-size: 0.94rem;
-    font-weight: 750;
+    font-size: 0.9375rem;
+    font-weight: 700;
     line-height: 1.32;
     color: var(--color-text-primary);
     margin: 0;
@@ -221,8 +221,8 @@
     border: 0;
     background: transparent;
     color: var(--color-text-secondary);
-    font-size: 0.72rem;
-    font-weight: 750;
+    font-size: 0.75rem;
+    font-weight: 700;
     line-height: 1;
   }
 
@@ -270,7 +270,7 @@
   .rc-meter-head {
     display: grid;
     gap: 0.16rem;
-    font-size: 0.72rem;
+    font-size: 0.75rem;
   }
 
   .rc-meter-head span {
@@ -280,7 +280,7 @@
 
   .rc-meter-head strong {
     color: var(--color-text-secondary);
-    font-weight: 750;
+    font-weight: 700;
   }
 
   .rc-track {
@@ -305,7 +305,7 @@
 
   .rc-narrative {
     max-width: 76ch;
-    font-size: 0.8rem;
+    font-size: 0.8125rem;
     line-height: 1.5;
     color: var(--color-text-secondary);
     margin: 0;
@@ -313,8 +313,8 @@
   }
 
   .rc-points-label {
-    font-size: 0.7rem;
-    font-weight: 750;
+    font-size: 0.6875rem;
+    font-weight: 700;
     letter-spacing: 0.03em;
     text-transform: uppercase;
     color: var(--color-text-muted);
@@ -340,7 +340,7 @@
   .rc-points li {
     position: relative;
     padding-left: 0.9rem;
-    font-size: 0.76rem;
+    font-size: 0.75rem;
     line-height: 1.48;
     color: var(--color-text-secondary);
   }
@@ -375,7 +375,7 @@
   }
 
   .rc-buyer-note {
-    font-size: 0.74rem;
+    font-size: 0.75rem;
     line-height: 1.45;
     color: var(--color-text-secondary);
     margin: 0;

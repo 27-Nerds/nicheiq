@@ -32,6 +32,8 @@ export interface PainEvidence {
   mentions: number;
   platform: string;
   quotes: string[];
+  coveredBy: string[]; // idea headlines addressing this pain
+  isOpportunity: boolean; // uncovered AND high-severity — whitespace worth expanding into
 }
 
 export interface IdeaVM {
@@ -56,6 +58,37 @@ export interface IdeaVM {
   painsAddressed: string[];
   weakest: { label: string; value: number };
   pains: PainEvidence[];
+  // richer idea detail (parity with live SolutionDetailContent)
+  deck: string | null; // short_description
+  pricing: string | null;
+  conventional: string | null;
+  innovation: string | null;
+  seoOpportunity: string | null;
+  indexablePages: number | null;
+  cacOrganic: string | null;
+  cacPaid: string | null;
+  queries: string[];
+  personas: string[];
+  diffFactors: string[];
+  // full-detail fields (idea "everything" view)
+  valueProposition: string | null;
+  description: string | null;
+  devTimeRationale: string | null;
+  technicalApproach: string | null;
+  dataAcquisition: string | null;
+  dataAccessModel: string | null;
+  dataSources: string[];
+  noveltyRationale: string | null;
+  calibrationNotes: string | null;
+  incumbentParity: string | null;
+  adjacentParity: string | null;
+  rank: number; // 1-based, by score
+  pricingShapeMismatch: boolean;
+  pricingShapeNote: string | null;
+  buildComplexity: string | null;
+  journeyTag: string | null;
+  mechanismTag: string | null;
+  growthChannels: string[];
 }
 
 export interface AudienceSegmentVM {
@@ -63,6 +96,9 @@ export interface AudienceSegmentVM {
   size: string | null;
   priceSensitivity: string | null;
   expertise: string | null;
+  motivations: string[];
+  payability: string | null; // humanized wallet class
+  payabilityRationale: string | null;
 }
 
 export interface ContextVM {
@@ -70,6 +106,17 @@ export interface ContextVM {
   nicheDescription: string | null;
   primarySegment: string | null;
   audienceSegments: AudienceSegmentVM[];
+  communityHubs: string[];
+  topPains: PainEvidence[];
+  painCount: number;
+  uncoveredPains: string[]; // high-severity pains no idea addresses
+  dataQuality: {
+    painTier: string | null;
+    contentTier: string | null;
+    confidence: number | null; // 0-100
+    totalSources: number | null;
+    caveats: string[];
+  } | null;
   ideaCount: number;
   verdict: {
     headline: string | null;
@@ -129,6 +176,18 @@ const PAYABILITY_LABELS: Record<string, string> = {
   mixed: "Mixed wallet",
 };
 
+/** slug/enum → readable chip label; upper-cases known acronyms. */
+const ACRONYMS = /\b(seo|api|coa|fda|glp|ndc|wada|cac|faers)\b/gi;
+function humanTag(v: string): string {
+  const t = v.replace(/[-_]+/g, " ").trim();
+  return (t.charAt(0).toUpperCase() + t.slice(1)).replace(ACRONYMS, (m) => m.toUpperCase());
+}
+/** mechanism_tag is usually a slug but occasionally free prose — keep only slug-like. */
+function slugTag(v: string | null | undefined): string | null {
+  if (!v || v.includes(".") || v.length > 45 || v.trim().split(/\s+/).length > 4) return null;
+  return humanTag(v);
+}
+
 function buildModel(tags: Record<string, unknown> | null, projectType: string | null): string[] {
   const t = tags ?? {};
   const out: string[] = [];
@@ -136,10 +195,6 @@ function buildModel(tags: Record<string, unknown> | null, projectType: string | 
   if (pt) out.push(label(pt));
   if (t.target_market) out.push(label(t.target_market as string));
   if (t.monetization) out.push(label(t.monetization as string));
-  if (t.build_complexity) {
-    const bc = t.build_complexity as string;
-    out.push(`${bc[0].toUpperCase()}${bc.slice(1)} build`);
-  }
   return out;
 }
 
@@ -212,7 +267,43 @@ function matchPains(
     mentions: (p.mention_count as number) ?? 0,
     platform: ((p.source_platforms as string[]) ?? [])[0] ?? "Reddit",
     quotes: ((p.representative_quotes as string[]) ?? []).slice(0, 2),
+    coveredBy: [],
+    isOpportunity: false,
   }));
+}
+
+/**
+ * Job-level pain-coverage map: every pain ranked by severity, annotated with
+ * which ideas address it (join on each idea's already-matched pains).
+ */
+function buildPainCoverage(
+  detailed: Record<string, unknown>[],
+  ideas: IdeaVM[],
+): PainEvidence[] {
+  return [...detailed]
+    .sort(
+      (a, b) =>
+        ((b.severity_score as number) ?? 0) - ((a.severity_score as number) ?? 0) ||
+        ((b.mention_count as number) ?? 0) - ((a.mention_count as number) ?? 0),
+    )
+    .map((p) => {
+      const title = p.title as string;
+      const severity = pct(p.severity_score);
+      const coveredBy = ideas
+        .filter((i) => i.pains.some((mp) => mp.title === title))
+        .map((i) => i.title);
+      return {
+        title,
+        severity,
+        commercialIntent: pct(p.commercial_intent),
+        opportunity: (p.opportunity_level as string) ?? null,
+        mentions: (p.mention_count as number) ?? 0,
+        platform: ((p.source_platforms as string[]) ?? [])[0] ?? "Reddit",
+        quotes: ((p.representative_quotes as string[]) ?? []).slice(0, 1),
+        coveredBy,
+        isOpportunity: coveredBy.length === 0 && severity >= 55,
+      };
+    });
 }
 
 export function normalizeJob(
@@ -269,9 +360,42 @@ export function normalizeJob(
         painsAddressed: ((i.pain_points_addressed as string[]) ?? []).slice(0, 4),
         weakest: weakest(signals),
         pains: matchPains(i, detailed),
+        deck: (i.short_description as string) ?? (i.value_proposition as string) ?? null,
+        pricing: (i.pricing_strategy as string) ?? null,
+        conventional: (i.conventional_approach as string) ?? null,
+        innovation: (i.innovation_angle as string) ?? null,
+        seoOpportunity: (i.programmatic_seo_opportunity as string) ?? null,
+        indexablePages:
+          typeof i.estimated_indexable_pages === "number" ? i.estimated_indexable_pages : null,
+        cacOrganic: (i.estimated_cac_organic as string) ?? null,
+        cacPaid: (i.estimated_cac_paid as string) ?? null,
+        queries: ((i.organic_discovery_queries as string[]) ?? []).slice(0, 12),
+        personas: ((i.target_personas as string[]) ?? []).slice(0, 6),
+        diffFactors: ((i.differentiation_factors as string[]) ?? []).slice(0, 6),
+        valueProposition: (i.value_proposition as string) ?? null,
+        description: (i.description as string) ?? null,
+        devTimeRationale: (i.dev_time_rationale as string) ?? null,
+        technicalApproach: (i.technical_approach as string) ?? null,
+        dataAcquisition: (i.data_acquisition_notes as string) ?? null,
+        dataAccessModel: (i.data_access_model as string) ?? null,
+        dataSources: ((i.data_sources as string[]) ?? []).slice(0, 6),
+        noveltyRationale: (i.novelty_rationale as string) ?? null,
+        calibrationNotes: (i.calibration_notes as string) ?? null,
+        incumbentParity: (i.incumbent_parity as string) ?? null,
+        adjacentParity: (i.adjacent_market_parity as string) ?? null,
+        rank: 0, // stamped after sort
+        pricingShapeMismatch: (tags?.pricing_shape_mismatch as boolean) ?? false,
+        pricingShapeNote: (tags?.pricing_shape_note as string) ?? null,
+        buildComplexity: tags?.build_complexity
+          ? humanTag(tags.build_complexity as string)
+          : null,
+        journeyTag: i.journey_tag ? humanTag(i.journey_tag as string) : null,
+        mechanismTag: slugTag(i.mechanism_tag as string),
+        growthChannels: ((tags?.growth_channels as string[]) ?? []).map(humanTag),
       };
     })
     .sort((a, b) => b.score - a.score);
+  ideas.forEach((it, i) => (it.rank = i + 1));
 
   // niche average = mean across ideas (no stored baseline exists)
   const nicheAvg: Signals = { originality: 0, marketFit: 0, seo: 0, feasibility: 0, novelty: 0 };
@@ -284,6 +408,31 @@ export function normalizeJob(
   const am = (preview?.audience_mapping as Record<string, unknown>) ?? {};
   const nc = (preview?.niche_context as Record<string, unknown>) ?? {};
   const ndv = (preview?.niche_difficulty_verdict as Record<string, unknown>) ?? null;
+  const dqs = (preview?.data_quality_summary as Record<string, unknown>) ?? null;
+
+  const coverage = buildPainCoverage(detailed, ideas);
+  // slug → human headline, so caveats don't print raw idea slugs
+  const slugToTitle = (s: string): string =>
+    ideas.reduce((acc, i) => (i.name ? acc.split(i.name).join(i.title) : acc), s);
+  const dataQuality = dqs
+    ? {
+        painTier: (dqs.pain_point_quality_tier as string) ?? null,
+        contentTier: (dqs.social_content_quality_tier as string) ?? null,
+        confidence:
+          typeof dqs.pain_point_confidence_score === "number"
+            ? pct(dqs.pain_point_confidence_score)
+            : null,
+        totalSources:
+          ((dqs.social_content_metrics as Record<string, unknown>)?.total_sources as number) ??
+          null,
+        // drop caveats that just restate the uncovered-pain flags already in the coverage grid;
+        // keep the net-new ones (e.g. "N ideas overlap as one product"), de-slugged.
+        caveats: ((dqs.quality_caveats as string[]) ?? [])
+          .filter((c) => !/not addressed by any generated|no idea\b/i.test(c))
+          .map(slugToTitle)
+          .slice(0, 4),
+      }
+    : null;
 
   const context: ContextVM = {
     niche: (nc.niche_input as string) || "Research niche",
@@ -296,7 +445,18 @@ export function normalizeJob(
         size: (s.size_estimate as string) ?? null,
         priceSensitivity: (s.budget_sensitivity as string) ?? null,
         expertise: (s.expertise_level as string) ?? null,
+        motivations: ((s.motivation_drivers as string[]) ?? []).slice(0, 3),
+        payability: s.payability_class
+          ? (PAYABILITY_LABELS[s.payability_class as string] ??
+            TITLE_CASE(s.payability_class as string))
+          : null,
+        payabilityRationale: (s.payability_rationale as string) ?? null,
       })),
+    communityHubs: ((am.community_hubs as string[]) ?? []).slice(0, 8),
+    topPains: coverage,
+    painCount: detailed.length,
+    uncoveredPains: coverage.filter((p) => p.severity >= 55 && p.coveredBy.length === 0).map((p) => p.title),
+    dataQuality,
     ideaCount: ideas.length,
     verdict: ndv
       ? {

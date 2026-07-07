@@ -1,3 +1,8 @@
+<script module lang="ts">
+  // Module-scoped so ids are unique across every Tooltip instance.
+  let tooltipCounter = 0;
+</script>
+
 <script lang="ts">
   import { HelpCircle } from "lucide-svelte";
   import type { Snippet } from "svelte";
@@ -20,6 +25,10 @@
   let triggerRef: HTMLElement | null = $state(null);
 
   let portalEl: HTMLDivElement | null = null;
+
+  // Stable id (module counter → same on SSR and hydration) so the trigger can
+  // point aria-describedby at an always-present description, not the hover-only portal.
+  const descId = `tooltip-desc-${++tooltipCounter}`;
 
   function show() {
     isVisible = true;
@@ -68,7 +77,8 @@
     if (isVisible && triggerRef) {
       const el = document.createElement("div");
       el.className = `tooltip-portal tooltip-portal-${position}`;
-      el.setAttribute("role", "tooltip");
+      // Visual only — the accessible description is the persistent sr-only span below.
+      el.setAttribute("aria-hidden", "true");
 
       const contentDiv = document.createElement("div");
       contentDiv.className = "tooltip-portal-content";
@@ -105,6 +115,7 @@
   onblur={hide}
   role="button"
   tabindex="0"
+  aria-describedby={descId}
 >
   {#if children}
     {@render children()}
@@ -113,6 +124,7 @@
       <HelpCircle class="w-3.5 h-3.5" />
     </span>
   {/if}
+  <span id={descId} class="sr-only">{content}</span>
 </span>
 
 <style>

@@ -404,7 +404,7 @@
     margin: 0;
     overflow: hidden;
     border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 58%, transparent);
-    border-radius: 0.62rem;
+    border-radius: 0.625rem;
     background:
       linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.36)),
       color-mix(in srgb, var(--color-bg-surface) 56%, var(--color-bg-elevated));
@@ -431,15 +431,15 @@
 
   .decision-facts dt {
     color: var(--color-text-muted);
-    font-size: 0.57rem;
-    font-weight: 760;
+    font-size: 0.5625rem;
+    font-weight: 800;
     letter-spacing: 0.01em;
   }
 
   .decision-facts dd {
     margin: 0;
     color: var(--color-text-primary);
-    font-size: 0.74rem;
+    font-size: 0.75rem;
     font-weight: 700;
     line-height: 1.24;
     display: -webkit-box;
@@ -470,7 +470,7 @@
     margin: 0;
     max-width: 74ch;
     color: var(--color-text-secondary);
-    font-size: 0.85rem;
+    font-size: 0.875rem;
     line-height: 1.52;
     text-wrap: pretty;
   }
@@ -481,7 +481,7 @@
     border: 0;
     background: transparent;
     color: var(--color-text-muted);
-    font-size: 0.8rem;
+    font-size: 0.8125rem;
     cursor: pointer;
     transition: color 180ms cubic-bezier(0.32, 0.72, 0, 1);
   }
@@ -495,7 +495,7 @@
     gap: 0.4rem;
     padding: 0.66rem 0.72rem;
     border: 1px solid color-mix(in srgb, var(--color-border) 76%, transparent);
-    border-radius: 0.56rem;
+    border-radius: 0.5rem;
     background: color-mix(in srgb, var(--color-bg-surface) 36%, transparent);
   }
 
@@ -512,7 +512,7 @@
     position: relative;
     padding-left: 0.7rem;
     color: var(--color-text-secondary);
-    font-size: 0.74rem;
+    font-size: 0.75rem;
     line-height: 1.36;
   }
 
@@ -533,7 +533,7 @@
     max-width: 88ch;
     padding: 0.62rem 0.72rem;
     border: 1px solid color-mix(in srgb, var(--color-border) 78%, transparent);
-    border-radius: 0.56rem;
+    border-radius: 0.5rem;
     background: color-mix(in srgb, var(--color-bg-surface) 42%, transparent);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
   }
@@ -541,14 +541,14 @@
   .insight-callout p {
     margin: 0;
     color: var(--color-text-secondary);
-    font-size: 0.8rem;
+    font-size: 0.8125rem;
     line-height: 1.5;
     text-wrap: pretty;
   }
 
   .insight-callout .subnote {
     color: var(--color-text-muted);
-    font-size: 0.8rem;
+    font-size: 0.8125rem;
   }
 
   .detail-section-list {
@@ -556,7 +556,7 @@
     gap: 0;
     overflow: hidden;
     border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 58%, transparent);
-    border-radius: 0.62rem;
+    border-radius: 0.625rem;
     background: color-mix(in srgb, var(--color-bg-surface) 50%, var(--color-bg-elevated));
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
   }
@@ -587,8 +587,8 @@
     border: 0;
     background: transparent;
     color: var(--color-text-primary);
-    font-size: 0.76rem;
-    font-weight: 720;
+    font-size: 0.75rem;
+    font-weight: 700;
     text-align: left;
     cursor: pointer;
     transition:
@@ -616,8 +616,8 @@
     border-radius: 999px;
     background: var(--color-bg-elevated);
     color: var(--color-text-muted);
-    font-size: 0.68rem;
-    font-weight: 650;
+    font-size: 0.6875rem;
+    font-weight: 600;
     cursor: pointer;
   }
 
@@ -629,7 +629,7 @@
     padding: 0.64rem 0.72rem 0.72rem;
     border-top: 1px solid var(--color-border);
     background: var(--color-bg-elevated);
-    font-size: 0.78rem;
+    font-size: 0.75rem;
   }
 
   .detail-section-panel p {
@@ -714,15 +714,15 @@
     border-radius: 999px;
     background: var(--color-bg-surface);
     color: var(--color-text-secondary);
-    font-size: 0.68rem;
+    font-size: 0.6875rem;
     line-height: 1.25;
   }
 
   .solution-detail-content :global(.mono-label),
   .mini-label {
     font-family: var(--font-body);
-    font-size: 0.62rem;
-    font-weight: 750;
+    font-size: 0.625rem;
+    font-weight: 700;
     letter-spacing: 0.015em;
     text-transform: uppercase;
     color: var(--color-text-muted);
@@ -759,18 +759,18 @@
   }
   .facet-panel :global(.mono-label) {
     font-family: var(--font-body);
-    font-size: 0.67rem;
-    font-weight: 750;
+    font-size: 0.6875rem;
+    font-weight: 700;
     letter-spacing: 0.02em;
     text-transform: uppercase;
     color: var(--color-text-muted);
   }
   .facet-panel :global(.facet-chip) {
     background: color-mix(in srgb, var(--color-bg-surface) 74%, var(--color-bg-elevated));
-    border-radius: 0.42rem;
+    border-radius: 0.375rem;
     font-family: var(--font-body);
-    font-size: 0.68rem;
-    font-weight: 650;
+    font-size: 0.6875rem;
+    font-weight: 600;
   }
   /* Keep the red risk tint (matches the ranked list's .tag-risk) — the base rule above
      would otherwise flatten watch-out chips to the neutral surface fill. */
@@ -784,7 +784,7 @@
   }
   .strength-chip {
     font-family: var(--font-body);
-    font-size: 0.68rem;
+    font-size: 0.6875rem;
     font-weight: 700;
     text-transform: none;
     letter-spacing: 0;
@@ -793,7 +793,7 @@
     /* Filled tint + border mirrors the ranked list's .tag-success so strengths match across views. */
     background: color-mix(in srgb, currentColor 9%, transparent);
     border: 1px solid color-mix(in srgb, currentColor 55%, transparent);
-    border-radius: 0.42rem;
+    border-radius: 0.375rem;
   }
   .strength-chip-success { color: var(--color-success-dark); }
   .strength-chip-accent { color: var(--color-accent-dark); }

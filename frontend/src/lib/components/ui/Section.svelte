@@ -139,30 +139,33 @@
   {id}
 >
   {#if isExpandable}
-    <!-- Expandable header (clickable) -->
-    <button
-      class="section-header-row expandable-trigger"
-      onclick={handleToggle}
-      aria-expanded={expanded}
-    >
-      <div class="header-content">
-        {#if Icon}
-          <Icon class="section-icon" />
-        {/if}
-        <span class="section-header-title">{title}</span>
-        {#if count != null}
-          <Badge variant={badgeVariants[variant]} size="sm"
-            >{count}{#if countSuffix}&nbsp;{countSuffix}{/if}</Badge
-          >
-        {/if}
-        {#if creditCost && creditCost > 0}
-          <span class="credit-cost-badge" aria-label="{creditCost} credits">
-            <Coins class="credit-cost-icon" />{creditCost}
-          </span>
-        {/if}
-      </div>
-      <ChevronDown class="chevron-icon {expanded ? 'expanded' : ''}" />
-    </button>
+    <!-- Expandable header: button wrapped in a heading so the section title is in the
+         document outline (valid accordion pattern: <h3><button aria-expanded>). -->
+    <h3 class="section-heading">
+      <button
+        class="section-header-row expandable-trigger"
+        onclick={handleToggle}
+        aria-expanded={expanded}
+      >
+        <div class="header-content">
+          {#if Icon}
+            <Icon class="section-icon" />
+          {/if}
+          <span class="section-header-title">{title}</span>
+          {#if count != null}
+            <Badge variant={badgeVariants[variant]} size="sm"
+              >{count}{#if countSuffix}&nbsp;{countSuffix}{/if}</Badge
+            >
+          {/if}
+          {#if creditCost && creditCost > 0}
+            <span class="credit-cost-badge" aria-label="{creditCost} credits">
+              <Coins class="credit-cost-icon" />{creditCost}
+            </span>
+          {/if}
+        </div>
+        <ChevronDown class="chevron-icon {expanded ? 'expanded' : ''}" />
+      </button>
+    </h3>
 
     <!-- Always-mounted body with CSS grid transition for smooth expand/collapse -->
     <div
@@ -214,7 +217,7 @@
       {#if Icon}
         <Icon class="section-icon" />
       {/if}
-      <span class="section-header-title">{title}</span>
+      <h3 class="section-header-title">{title}</h3>
       {#if count != null}
         <Badge variant={badgeVariants[variant]} size="sm"
           >{count}{#if countSuffix}&nbsp;{countSuffix}{/if}</Badge
@@ -445,7 +448,16 @@
   /* ============================================
 	   Title Styles
 	   ============================================ */
+  /* Heading wrapper around the accordion trigger — carries no visual weight of its own. */
+  .section-heading {
+    margin: 0;
+    font: inherit;
+    font-weight: inherit;
+    line-height: inherit;
+  }
+
   .section-header-title {
+    margin: 0;
     font-family: var(--font-display);
     font-size: 0.9375rem;
     font-weight: 600;

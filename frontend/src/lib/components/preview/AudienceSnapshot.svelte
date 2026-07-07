@@ -123,8 +123,8 @@
     margin: 0 0 0.28rem;
     color: var(--color-text-muted);
     font-family: var(--font-mono);
-    font-size: 0.58rem;
-    font-weight: 760;
+    font-size: 0.5625rem;
+    font-weight: 800;
     letter-spacing: 0.06em;
     line-height: 1;
     text-transform: uppercase;
@@ -136,7 +136,7 @@
     color: var(--color-text-primary);
     font-family: var(--font-display);
     font-size: 1rem;
-    font-weight: 780;
+    font-weight: 800;
     letter-spacing: -0.012em;
     line-height: 1.18;
     text-wrap: balance;
@@ -146,7 +146,7 @@
     max-width: 74ch;
     margin: 0.34rem 0 0;
     color: var(--color-text-secondary);
-    font-size: 0.78rem;
+    font-size: 0.75rem;
     line-height: 1.5;
     text-wrap: pretty;
   }
@@ -159,7 +159,7 @@
     overflow: hidden;
     margin: 0;
     border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 38%, transparent);
-    border-radius: 0.62rem;
+    border-radius: 0.625rem;
     background: color-mix(in srgb, var(--color-bg-surface) 70%, white);
   }
 
@@ -174,8 +174,8 @@
 
   .audience-snapshot__stats dt {
     color: var(--color-text-muted);
-    font-size: 0.56rem;
-    font-weight: 720;
+    font-size: 0.5625rem;
+    font-weight: 700;
     line-height: 1;
   }
 
@@ -183,8 +183,8 @@
     margin: 0.18rem 0 0;
     color: var(--color-text-primary);
     font-family: var(--font-mono);
-    font-size: 0.92rem;
-    font-weight: 820;
+    font-size: 0.9375rem;
+    font-weight: 800;
     line-height: 1;
     font-variant-numeric: tabular-nums;
   }
@@ -199,7 +199,7 @@
     min-width: 0;
     padding: 0.7rem 0.72rem;
     border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 36%, transparent);
-    border-radius: 0.62rem;
+    border-radius: 0.625rem;
     background:
       linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(255, 255, 255, 0.22)),
       color-mix(in srgb, var(--color-bg-elevated) 84%, var(--color-bg-surface));
@@ -230,22 +230,22 @@
   .audience-segment__rank {
     color: var(--color-text-muted);
     font-family: var(--font-mono);
-    font-size: 0.58rem;
-    font-weight: 820;
+    font-size: 0.5625rem;
+    font-weight: 800;
   }
 
   .audience-segment__size {
     color: var(--color-text-secondary);
-    font-size: 0.58rem;
-    font-weight: 680;
+    font-size: 0.5625rem;
+    font-weight: 700;
   }
 
   .audience-segment h4 {
     margin: 0;
     color: var(--color-text-primary);
     font-family: var(--font-display);
-    font-size: 0.82rem;
-    font-weight: 760;
+    font-size: 0.8125rem;
+    font-weight: 800;
     line-height: 1.22;
     text-wrap: balance;
   }
@@ -253,7 +253,7 @@
   .audience-segment p {
     margin: 0.34rem 0 0;
     color: var(--color-text-secondary);
-    font-size: 0.68rem;
+    font-size: 0.6875rem;
     line-height: 1.43;
     text-wrap: pretty;
   }
@@ -270,16 +270,16 @@
     flex-direction: column;
     gap: 0.14rem;
     color: var(--color-text-secondary);
-    font-size: 0.68rem;
-    font-weight: 660;
+    font-size: 0.6875rem;
+    font-weight: 700;
     line-height: 1.05;
   }
 
   .audience-segment__stat-key {
     color: var(--color-text-muted);
     font-family: var(--font-mono);
-    font-size: 0.5rem;
-    font-weight: 720;
+    font-size: 0.5625rem;
+    font-weight: 700;
     letter-spacing: 0.05em;
     line-height: 1;
     text-transform: uppercase;
@@ -293,8 +293,8 @@
     border-radius: 999px;
     color: var(--color-text-muted);
     background: color-mix(in srgb, var(--color-bg-surface) 76%, white);
-    font-size: 0.58rem;
-    font-weight: 620;
+    font-size: 0.5625rem;
+    font-weight: 600;
     text-overflow: ellipsis;
     white-space: nowrap;
   }

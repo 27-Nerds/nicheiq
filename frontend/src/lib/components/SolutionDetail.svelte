@@ -60,10 +60,13 @@
 
   let modalEl: HTMLDivElement | undefined = $state();
 
-  // Focus trap: focus modal when opened
+  // On open, move focus into the dialog and remember the trigger; on close, return
+  // focus to it so keyboard users aren't dumped at the top of the page.
   $effect(() => {
     if (open && modalEl) {
+      const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       modalEl.focus();
+      return () => trigger?.focus?.();
     }
   });
 
@@ -136,8 +139,33 @@
   function handleKeydown(e: KeyboardEvent) {
     if (!open) return;
     if (e.key === 'Escape') { onClose(); return; }
+    if (e.key === 'Tab') { trapTab(e); return; }
+    // Arrow paging only when focus isn't in a control that uses arrows itself.
+    const t = e.target as HTMLElement | null;
+    if (t && (t.closest('input, textarea, select, [contenteditable="true"]'))) return;
     if (e.key === 'ArrowLeft') { e.preventDefault(); navigatePrev(); }
     if (e.key === 'ArrowRight') { e.preventDefault(); navigateNext(); }
+  }
+
+  // Keyboard focus trap — keep Tab cycling inside the dialog (aria-modal handles AT).
+  function trapTab(e: KeyboardEvent) {
+    if (!modalEl) return;
+    const focusables = Array.from(
+      modalEl.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    ).filter((el) => el.offsetParent !== null || el === document.activeElement);
+    if (focusables.length === 0) { e.preventDefault(); modalEl.focus(); return; }
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    const active = document.activeElement;
+    if (e.shiftKey && (active === first || active === modalEl)) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault();
+      first.focus();
+    }
   }
 
   function handleBackdropClick(e: MouseEvent) {
@@ -341,7 +369,7 @@
       linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.54)),
       var(--color-bg-elevated);
     border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 78%, transparent);
-    border-radius: 0.78rem;
+    border-radius: 0.75rem;
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.86),
       0 1px 0 rgba(255, 255, 255, 0.72),
@@ -368,7 +396,7 @@
     margin: 0;
     max-width: 31ch;
     font-family: var(--font-display);
-    font-size: clamp(1.12rem, 1.45vw, 1.38rem);
+    font-size: clamp(1.125rem, 1.45vw, 1.375rem);
     font-weight: 800;
     line-height: 1.12;
     letter-spacing: 0;
@@ -380,14 +408,14 @@
     display: block;
     margin-bottom: 0.28rem;
     color: var(--color-text-muted);
-    font-size: 0.66rem;
-    font-weight: 720;
+    font-size: 0.6875rem;
+    font-weight: 700;
   }
 
   .modal-subtitle {
     margin: 0.18rem 0 0;
     font-family: var(--font-mono);
-    font-size: 0.62rem;
+    font-size: 0.625rem;
     color: var(--color-text-muted);
   }
 
@@ -398,7 +426,7 @@
     margin-top: 0.55rem;
     flex-wrap: wrap;
     color: var(--color-text-muted);
-    font-size: 0.78rem;
+    font-size: 0.75rem;
   }
 
   .score-token {
@@ -411,7 +439,7 @@
     border-radius: 999px;
     background: color-mix(in srgb, var(--color-bg-surface) 58%, transparent);
     font-family: var(--font-mono);
-    font-size: 0.8rem;
+    font-size: 0.8125rem;
     font-weight: 800;
   }
 
@@ -435,7 +463,7 @@
     padding: 0.2rem;
     background: color-mix(in srgb, var(--color-bg-surface) 78%, var(--color-bg-elevated));
     border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 72%, transparent);
-    border-radius: 0.68rem;
+    border-radius: 0.625rem;
   }
 
   .modal-nav-btn {
@@ -454,15 +482,13 @@
       color 220ms cubic-bezier(0.32, 0.72, 0, 1);
   }
 
-  .modal-nav-btn:hover {
-    transform: translateY(-1px);
-    background: var(--color-bg-elevated);
+  .modal-nav-btn:hover {    background: var(--color-bg-elevated);
     color: var(--color-text-primary);
   }
 
   .modal-position {
     padding: 0 0.22rem;
-    font-size: 0.72rem;
+    font-size: 0.75rem;
     color: var(--color-text-muted);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
@@ -488,13 +514,11 @@
   .modal-select-primary {
     min-height: 2.36rem;
     padding: 0.48rem 0.92rem;
-    border-radius: 0.68rem;
-    font-size: 0.82rem;
+    border-radius: 0.625rem;
+    font-size: 0.8125rem;
   }
 
-  .modal-select-primary:hover:not(:disabled) {
-    transform: translateY(-1px);
-    border-color: var(--color-accent);
+  .modal-select-primary:hover:not(:disabled) {    border-color: var(--color-accent);
     background: color-mix(in srgb, var(--color-accent) 5%, var(--color-bg-elevated));
     color: var(--color-accent);
   }
@@ -515,10 +539,10 @@
     place-items: center;
     width: 1.16rem;
     height: 1.16rem;
-    border-radius: 0.38rem;
+    border-radius: 0.375rem;
     border: 1.5px solid currentColor;
     font-family: var(--font-mono);
-    font-size: 0.66rem;
+    font-size: 0.6875rem;
     font-weight: 800;
     line-height: 1;
   }
@@ -535,7 +559,7 @@
     width: 2.25rem;
     height: 2.25rem;
     border: 1px solid transparent;
-    border-radius: 0.62rem;
+    border-radius: 0.625rem;
     background: transparent;
     color: var(--color-text-muted);
     cursor: pointer;
@@ -545,9 +569,7 @@
       color 220ms cubic-bezier(0.32, 0.72, 0, 1);
   }
 
-  .modal-close:hover {
-    transform: translateY(-1px);
-    background: var(--color-bg-surface);
+  .modal-close:hover {    background: var(--color-bg-surface);
     color: var(--color-text-primary);
   }
 
@@ -577,7 +599,7 @@
     padding: 0.68rem;
     background: color-mix(in srgb, var(--color-bg-surface) 46%, var(--color-bg-elevated));
     border: 1px solid color-mix(in srgb, var(--color-border) 78%, transparent);
-    border-radius: 0.62rem;
+    border-radius: 0.625rem;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
   }
 
@@ -589,15 +611,15 @@
   .score-item-label {
     display: block;
     font-family: var(--font-mono);
-    font-size: 0.62rem;
-    font-weight: 750;
+    font-size: 0.625rem;
+    font-weight: 700;
     color: var(--color-text-muted);
   }
 
   .score-panel-summary p {
     margin: 0.26rem 0 0;
     color: var(--color-text-secondary);
-    font-size: 0.77rem;
+    font-size: 0.75rem;
     line-height: 1.42;
     text-wrap: pretty;
   }
@@ -606,8 +628,8 @@
     display: inline-flex;
     margin-top: 0.55rem;
     color: var(--color-accent);
-    font-size: 0.76rem;
-    font-weight: 650;
+    font-size: 0.75rem;
+    font-weight: 600;
   }
 
   .score-grid {
@@ -630,7 +652,7 @@
     padding: 0.42rem 0.5rem;
     background: color-mix(in srgb, var(--color-bg-elevated) 84%, var(--color-bg-surface));
     border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 62%, transparent);
-    border-radius: 0.46rem;
+    border-radius: 0.5rem;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
     transition:
       transform 220ms cubic-bezier(0.32, 0.72, 0, 1),
@@ -649,9 +671,7 @@
     opacity: 1;
   }
 
-  .score-item:hover {
-    transform: translateY(-1px);
-    border-color: var(--color-border-emphasis);
+  .score-item:hover {    border-color: var(--color-border-emphasis);
     background: var(--color-bg-elevated);
   }
 
@@ -663,8 +683,8 @@
 
   .score-item-value {
     font-family: var(--font-mono);
-    font-size: 0.86rem;
-    font-weight: 850;
+    font-size: 0.875rem;
+    font-weight: 800;
     line-height: 1;
     font-variant-numeric: tabular-nums;
   }
@@ -688,14 +708,14 @@
     gap: 0.28rem 0.55rem;
     min-width: 0;
     color: var(--color-text-muted);
-    font-size: 0.72rem;
+    font-size: 0.75rem;
     line-height: 1.35;
   }
 
   .modal-footer-status strong {
     font-family: var(--font-mono);
     color: var(--color-text-primary);
-    font-size: 0.8rem;
+    font-size: 0.8125rem;
     font-weight: 800;
     font-variant-numeric: tabular-nums;
   }
@@ -717,11 +737,11 @@
     justify-content: center;
     min-height: 2.36rem;
     padding: 0.48rem 0.95rem;
-    border: 1px solid var(--color-accent);
-    border-radius: 0.68rem;
-    background: var(--color-accent);
+    border: 1px solid var(--color-accent-hover);
+    border-radius: 0.625rem;
+    background: var(--color-accent-hover);
     color: white;
-    font-size: 0.82rem;
+    font-size: 0.8125rem;
     font-weight: 800;
     cursor: pointer;
     transition:
@@ -732,9 +752,8 @@
   }
 
   .modal-start-primary:hover:not(:disabled) {
-    transform: translateY(-1px);
-    border-color: var(--color-accent-hover);
-    background: var(--color-accent-hover);
+    border-color: var(--color-accent-dark);
+    background: var(--color-accent-dark);
   }
 
   .modal-start-primary:disabled {
@@ -786,7 +805,7 @@
   /* Hide arrows on very small screens (use keyboard/swipe instead) */
   @media (max-width: 480px) {
     .modal-title {
-      font-size: 1.2rem;
+      font-size: 1.25rem;
     }
     .modal-select-primary {
       width: 100%;

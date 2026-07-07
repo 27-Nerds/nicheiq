@@ -21,6 +21,7 @@
     Package,
     Share2,
     BarChart3,
+    Copy,
   } from "lucide-svelte";
   import { creditTopUp } from "$lib/stores/creditTopUp.svelte";
   import { getAdjustedStageCounts } from "$lib/utils/stages";
@@ -84,6 +85,32 @@
 
   // ── Merged: client overrides take precedence over server data ──
   const job = $derived(clientJob ?? serverJob);
+
+  // Human-readable run timestamp (drops seconds; month name over machine locale).
+  function formatRunDate(iso: string): string {
+    const d = new Date(iso);
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+      + " at " + d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  }
+  const runTimeline = $derived.by(() => {
+    const parts = ["Discovery run"];
+    if (job?.startedAt) parts.push(`started ${formatRunDate(job.startedAt)}`);
+    if (job?.completedAt) parts.push(`completed ${formatRunDate(job.completedAt)}`);
+    return parts.join(" · ");
+  });
+  let copiedRunId = $state(false);
+  let copiedRunIdTimer: ReturnType<typeof setTimeout> | undefined;
+  async function copyRunId() {
+    if (!job) return;
+    try {
+      await navigator.clipboard.writeText(job.id);
+      copiedRunId = true;
+      clearTimeout(copiedRunIdTimer);
+      copiedRunIdTimer = setTimeout(() => (copiedRunId = false), 1600);
+    } catch {
+      /* clipboard unavailable — no-op */
+    }
+  }
   // Hidden-stage-adjusted counts so the aside matches JobCard / progress screen.
   const jobStageCounts = $derived(
     job ? getAdjustedStageCounts(job) : { completed: 0, total: 0 },
@@ -355,7 +382,8 @@
   }
 
   function scrollToSolutions() {
-    document.getElementById('solution-selector')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    document.getElementById('solution-selector')?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
   }
 
   function sentenceHeading(value: string | null | undefined): string {
@@ -722,9 +750,9 @@
               <p class="mt-1.5 text-sm text-text-secondary">
                 {job.stopReasonDetails?.recommendation || 'The research could not continue due to insufficient discussion data.'}
               </p>
-              <div class="mt-4 flex items-center gap-2">
-                <CheckCircle class="w-4 h-4 text-success" />
-                <span class="text-sm text-success">Credits refunded automatically</span>
+              <div class="mt-4 flex items-center gap-2" style="color: var(--color-success-dark)">
+                <CheckCircle class="w-4 h-4" />
+                <span class="text-sm">Credits refunded automatically</span>
               </div>
             </div>
           </div>
@@ -1068,16 +1096,23 @@
         {/if}
       {/if}
 
-      <!-- ═══ META ═══ -->
+      <!-- ═══ RUN PROVENANCE ═══ -->
       <div class="mt-6 p-4 rounded-lg bg-bg-surface border border-border">
-        <div class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-text-muted">
-          <span class="font-mono text-xs">ID: {job.id.substring(0, 8)}...</span>
-          {#if job.startedAt}
-            <span>Started: {new Date(job.startedAt).toLocaleString()}</span>
-          {/if}
-          {#if job.completedAt}
-            <span>Completed: {new Date(job.completedAt).toLocaleString()}</span>
-          {/if}
+        <div class="run-meta">
+          <span class="run-meta__timeline">
+            <span class="run-meta__dot" class:run-meta__dot--done={job.completedAt}></span>
+            <span>{runTimeline}</span>
+          </span>
+          <button type="button" class="run-meta__id" onclick={copyRunId} aria-label="Copy full run ID">
+            <span class="run-meta__id-label">Run ID</span>
+            <code>{job.id.slice(0, 8)}</code>
+            {#if copiedRunId}
+              <CheckCircle class="run-meta__id-icon run-meta__id-icon--done" />
+            {:else}
+              <Copy class="run-meta__id-icon" />
+            {/if}
+          </button>
+          <span class="sr-only" role="status" aria-live="polite">{copiedRunId ? "Run ID copied to clipboard" : ""}</span>
         </div>
       </div>
       {/if}
@@ -1090,6 +1125,74 @@
 {/if}
 
 <style>
+  /* Run provenance strip — reads as intentional metadata, not debug output. */
+  .run-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+  }
+  .run-meta__timeline {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    color: var(--color-text-muted);
+  }
+  .run-meta__dot {
+    flex-shrink: 0;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--color-text-muted) 55%, transparent);
+  }
+  .run-meta__dot--done {
+    background: var(--color-success);
+  }
+  .run-meta__id {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.42rem;
+    padding: 0.26rem 0.5rem 0.26rem 0.42rem;
+    border: 1px solid var(--color-border);
+    border-radius: 0.375rem;
+    background: var(--color-bg-elevated);
+    color: var(--color-text-secondary);
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: border-color 0.15s ease, color 0.15s ease;
+  }
+  .run-meta__id:hover {
+    border-color: var(--color-border-emphasis);
+    color: var(--color-text-primary);
+  }
+  .run-meta__id:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+  .run-meta__id-label {
+    color: var(--color-text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.5625rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .run-meta__id code {
+    font-family: var(--font-mono);
+    letter-spacing: 0.01em;
+  }
+  .run-meta__id :global(.run-meta__id-icon) {
+    width: 0.8rem;
+    height: 0.8rem;
+    color: var(--color-text-muted);
+  }
+  .run-meta__id :global(.run-meta__id-icon--done) {
+    color: var(--color-success);
+  }
+
   /* Share discovery button (header actions) */
   .share-discovery-btn {
     display: inline-flex;
@@ -1111,7 +1214,6 @@
       background-color 220ms cubic-bezier(0.32, 0.72, 0, 1);
   }
   .share-discovery-btn:hover {
-    transform: translateY(-1px);
     color: var(--color-text-primary);
     border-color: var(--color-border-emphasis);
     background: var(--color-bg-surface);
@@ -1150,7 +1252,7 @@
     margin-top: 1.18rem;
     padding: 0.62rem;
     border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 46%, transparent);
-    border-radius: 1.08rem;
+    border-radius: 1.125rem;
     background:
       linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(255, 255, 255, 0.34)),
       color-mix(in srgb, var(--color-bg-surface) 78%, var(--color-bg-elevated));
@@ -1172,8 +1274,8 @@
     margin: 0 0 0.24rem;
     color: var(--color-text-muted);
     font-family: var(--font-mono);
-    font-size: 0.58rem;
-    font-weight: 780;
+    font-size: 0.5625rem;
+    font-weight: 800;
     letter-spacing: 0.06em;
     text-transform: uppercase;
   }
@@ -1182,8 +1284,8 @@
     margin: 0;
     color: var(--color-text-primary);
     font-family: var(--font-display);
-    font-size: clamp(1rem, 1.16vw, 1.18rem);
-    font-weight: 780;
+    font-size: clamp(1rem, 1.16vw, 1.125rem);
+    font-weight: 800;
     line-height: 1.16;
     letter-spacing: -0.01em;
   }
@@ -1192,7 +1294,7 @@
     max-width: 58ch;
     margin: 0.34rem 0 0;
     color: var(--color-text-secondary);
-    font-size: 0.76rem;
+    font-size: 0.75rem;
     line-height: 1.46;
     text-wrap: pretty;
   }
@@ -1205,7 +1307,7 @@
     margin: 0;
     padding: 0.28rem;
     border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 38%, transparent);
-    border-radius: 0.7rem;
+    border-radius: 0.75rem;
     background: color-mix(in srgb, var(--color-bg-elevated) 74%, transparent);
   }
 
@@ -1220,8 +1322,8 @@
 
   .dossier-ledger dt {
     color: var(--color-text-muted);
-    font-size: 0.56rem;
-    font-weight: 720;
+    font-size: 0.5625rem;
+    font-weight: 700;
     line-height: 1;
   }
 
@@ -1229,8 +1331,8 @@
     margin: 0;
     color: var(--color-text-primary);
     font-family: var(--font-mono);
-    font-size: 0.88rem;
-    font-weight: 820;
+    font-size: 0.875rem;
+    font-weight: 800;
     line-height: 1.1;
     font-variant-numeric: tabular-nums;
   }
@@ -1259,13 +1361,12 @@
   }
 
   :global(.job-page-content--selection .section-container.expandable .expandable-trigger:hover) {
-    transform: translateY(-1px);
-    background: transparent;
+    background: color-mix(in srgb, var(--color-bg-surface) 60%, transparent);
   }
 
   :global(.job-page-content--selection .section-container.expandable .section-header-title) {
-    font-size: 0.92rem;
-    font-weight: 760;
+    font-size: 0.9375rem;
+    font-weight: 800;
   }
 
   :global(.job-page-content--selection .section-container.expandable .section-body) {
@@ -1275,7 +1376,7 @@
   :global(.job-page-content--selection .section-container.expandable .section-body-inner) {
     overflow: hidden;
     border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 52%, transparent);
-    border-radius: 0.82rem;
+    border-radius: 0.875rem;
     background:
       linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.42)),
       color-mix(in srgb, var(--color-bg-elevated) 94%, var(--color-bg-surface));
@@ -1320,42 +1421,33 @@
     display: inline-flex;
     align-items: baseline;
     gap: 0.46rem;
-    font-size: 0.84rem;
-    font-weight: 780;
+    font-size: 0.8125rem;
+    font-weight: 800;
     letter-spacing: -0.005em;
   }
 
+  /* Number the dossier sections by actual render order via a CSS counter, so the
+     sequence stays contiguous (01,02,03…) even when a section is conditionally
+     absent. Never hardcode per-id "01"/"02" literals (they desync on conditionals). */
+  :global(.discovery-dossier) {
+    counter-reset: dossier-section;
+  }
+  :global(.discovery-dossier .section-container.expandable) {
+    counter-increment: dossier-section;
+  }
   :global(.discovery-dossier .section-container.expandable .section-header-title::before) {
+    content: counter(dossier-section, decimal-leading-zero);
+    margin-right: 0.5rem;
     color: var(--color-text-muted);
     font-family: var(--font-mono);
-    font-size: 0.58rem;
-    font-weight: 760;
+    font-size: 0.5625rem;
+    font-weight: 800;
     letter-spacing: 0.04em;
-  }
-
-  :global(.discovery-dossier #overview .section-header-title::before) {
-    content: "01";
-  }
-
-  :global(.discovery-dossier #market-snapshot .section-header-title::before) {
-    content: "02";
-  }
-
-  :global(.discovery-dossier #pain-points .section-header-title::before) {
-    content: "03";
-  }
-
-  :global(.discovery-dossier #audience .section-header-title::before) {
-    content: "04";
-  }
-
-  :global(.discovery-dossier #community .section-header-title::before) {
-    content: "05";
   }
 
   :global(.discovery-dossier .section-container.expandable .section-body-inner) {
     border-color: color-mix(in srgb, var(--color-border-emphasis) 34%, transparent);
-    border-radius: 0.82rem;
+    border-radius: 0.875rem;
     background:
       linear-gradient(180deg, rgba(255, 255, 255, 0.68), rgba(255, 255, 255, 0.18)),
       color-mix(in srgb, var(--color-bg-elevated) 88%, var(--color-bg-surface));
@@ -1389,7 +1481,7 @@
 
   :global(.job-selection-header h1) {
     max-width: 34ch;
-    font-size: clamp(1.28rem, 1.72vw, 1.58rem);
+    font-size: clamp(1.25rem, 1.72vw, 1.5rem);
     line-height: 1.13;
     letter-spacing: -0.01em;
   }
@@ -1397,12 +1489,12 @@
   :global(.job-selection-header p) {
     max-width: 44rem;
     margin-top: 0.38rem;
-    font-size: 0.92rem;
+    font-size: 0.9375rem;
   }
 
   :global(.job-selection-header .page-header-title-row > div:first-child) {
     padding: 0.42rem;
-    border-radius: 0.7rem;
+    border-radius: 0.75rem;
   }
 
   :global(.job-selection-header .page-header-title-row svg) {
@@ -1420,7 +1512,7 @@
   @media (max-width: 760px) {
     .discovery-dossier {
       padding: 0.44rem;
-      border-radius: 0.86rem;
+      border-radius: 0.875rem;
     }
 
     .dossier-header {
@@ -1476,7 +1568,7 @@
   /* ═══ Section intro ═══ */
   .section-intro {
     max-width: 74ch;
-    font-size: 0.8rem;
+    font-size: 0.8125rem;
     color: var(--color-text-secondary);
     line-height: 1.55;
     margin: 0 0 0.72rem;
@@ -1488,7 +1580,7 @@
     padding-top: 0.7rem;
     border-top: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
     color: var(--color-text-muted);
-    font-size: 0.72rem;
+    font-size: 0.75rem;
     line-height: 1.42;
     text-wrap: pretty;
   }

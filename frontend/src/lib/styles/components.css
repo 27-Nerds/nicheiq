@@ -130,15 +130,17 @@
 	font-weight: var(--font-semibold);
 	font-size: var(--text-base);
 	color: white;
-	background: var(--color-accent);
+	/* accent-hover (#C2410C) gives white button text 5.17:1 (AA); raw --color-accent
+	   is only 3.56:1 with white. Hover deepens further to accent-dark. */
+	background: var(--color-accent-hover);
 	border: 1px solid transparent;
 	border-radius: var(--radius-md);
 	cursor: pointer;
-	transition: all var(--duration-normal) ease;
+	transition: background-color var(--duration-normal) ease, border-color var(--duration-normal) ease, transform var(--duration-normal) ease, box-shadow var(--duration-normal) ease;
 }
 
 .btn-primary:hover {
-	background: var(--color-accent-hover);
+	background: var(--color-accent-dark);
 }
 
 .btn-primary:active {
@@ -165,7 +167,7 @@
 	border: 1px solid var(--color-border-emphasis);
 	border-radius: var(--radius-md);
 	cursor: pointer;
-	transition: all var(--duration-normal) ease;
+	transition: background-color var(--duration-normal) ease, border-color var(--duration-normal) ease, color var(--duration-normal) ease, transform var(--duration-normal) ease;
 }
 
 .btn-secondary:hover {

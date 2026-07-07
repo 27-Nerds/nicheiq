@@ -39,7 +39,7 @@
   <div class="ms-header">
     {#if growthPct !== null}
       <div class="ms-growth">
-        <span class="ms-growth-value">
+        <span class="ms-growth-value" class:is-negative={growthPct < 0}>
           {growthPct >= 0 ? '\u2191' : '\u2193'} {Math.abs(growthPct)}%
         </span>
         <span class="ms-growth-label">discussion growth</span>
@@ -103,25 +103,30 @@
     gap: 0.04rem;
   }
 
+  /* Color encodes the sign — rising discussion volume is a positive signal (green),
+     falling is a caution (amber). Orange stays reserved for brand/interactive. */
   .ms-growth-value {
     font-family: var(--font-display);
     font-size: 1.5rem;
-    font-weight: 760;
-    color: var(--color-accent);
+    font-weight: 800;
+    color: var(--color-success-dark);
     font-variant-numeric: tabular-nums;
     line-height: 0.98;
+  }
+  .ms-growth-value.is-negative {
+    color: var(--color-warning-dark);
   }
 
   .ms-growth-label {
     font-family: var(--font-body);
-    font-size: 0.66rem;
-    font-weight: 640;
+    font-size: 0.6875rem;
+    font-weight: 600;
     color: var(--color-text-muted);
   }
 
   .ms-metrics {
     font-family: var(--font-body);
-    font-size: 0.72rem;
+    font-size: 0.75rem;
     color: var(--color-text-secondary);
     margin: 0;
     font-variant-numeric: tabular-nums;
@@ -131,7 +136,7 @@
   .ms-chart {
     padding: 0.62rem 0.68rem 0.48rem;
     border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 44%, transparent);
-    border-radius: 0.72rem;
+    border-radius: 0.75rem;
     background:
       linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.16)),
       color-mix(in srgb, var(--color-bg-surface) 72%, transparent);

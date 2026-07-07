@@ -64,7 +64,7 @@
 
 	/* Semantic */
 	--color-success: #22C55E;
-	--color-success-dark: #16A34A;
+	--color-success-dark: #0F7A38;
 	--color-error: #EF4444;
 	--color-error-dark: #DC2626;
 	--color-warning: #F59E0B;
@@ -74,16 +74,20 @@
 	--color-border-emphasis: rgba(0, 0, 0, 0.12);
 	--color-border-accent: rgba(234, 88, 12, 0.3);
 
-	/* Shadows — zeroed out; design is shadow-free */
-	--shadow-sm: 0 0 0 transparent;
-	--shadow-md: 0 0 0 transparent;
-	--shadow-lg: 0 0 0 transparent;
+	/* Elevation — subtle, restrained. Raised surfaces (cards) get -sm; menus/nav get -md;
+	   floating overlays (tooltips, popovers, modals) get -lg so they read as above the page.
+	   Accent "glow" shadows stay off (orange is reserved for brand/interactive, not ambient). */
+	--shadow-sm: 0 1px 2px rgba(24, 24, 27, 0.04), 0 1px 3px rgba(24, 24, 27, 0.06);
+	--shadow-md: 0 2px 4px rgba(24, 24, 27, 0.04), 0 6px 16px rgba(24, 24, 27, 0.07);
+	--shadow-lg: 0 4px 8px rgba(24, 24, 27, 0.05), 0 16px 40px rgba(24, 24, 27, 0.11);
 	--shadow-glow: 0 0 0 transparent;
 	--shadow-glow-lg: 0 0 0 transparent;
 	--shadow-inner-glow: 0 0 0 transparent;
 
 	/* Typography */
-	--font-display: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+	/* Space Grotesk (display) gives headings/big numbers a distinct technical character
+	   that pairs with JetBrains Mono; Plus Jakarta Sans stays the body face for contrast. */
+	--font-display: "Space Grotesk", "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
 	--font-body: "Plus Jakarta Sans", -apple-system, "Segoe UI", Roboto, sans-serif;
 	--font-mono: "JetBrains Mono", ui-monospace, monospace;
 
@@ -139,10 +143,11 @@
 		line-height: 1.65;
 		-webkit-font-smoothing: antialiased;
 		-moz-osx-font-smoothing: grayscale;
-		/* Contextual alternates on; keep lining/proportional figures by default
-		   so dashboards/data UIs render correctly. Prose contexts can opt into
-		   oldstyle figures via .prose-body. */
-		font-feature-settings: "calt" 1;
+		/* Contextual alternates on; plain (un-slashed) zeros for display/data numbers
+		   so stats don't read as a developer console. Slashed zeros stay ON for code
+		   (code/pre below), where 0/O disambiguation earns its keep. Prose contexts can
+		   opt into oldstyle figures via .prose-body. */
+		font-feature-settings: "calt" 1, "zero" 0;
 		overflow-x: hidden;
 	}
 
@@ -190,7 +195,9 @@
 	}
 
 	a {
-		color: var(--color-accent);
+		/* accent-dark (7.3:1 on white) clears WCAG AA for link text; raw --color-accent
+		   (#EA580C) is only 3.56:1 and is reserved for fills/large elements. */
+		color: var(--color-accent-dark);
 		text-decoration: none;
 		transition: color 0.2s ease;
 		/* When text-decoration: underline is applied (e.g., in prose contexts),
@@ -200,7 +207,7 @@
 	}
 
 	a:hover {
-		color: var(--color-accent-light);
+		color: var(--color-accent-hover);
 	}
 
 	/* Prose body opts into oldstyle figures (numbers blend into letterforms)
@@ -210,10 +217,11 @@
 		text-wrap: pretty;
 	}
 
-	/* Tabular figures for data tables/dashboards/stat tiles */
+	/* Tabular figures for data tables/dashboards/stat tiles — plain zeros (slashed
+	   zeros are reserved for code/pre; stat tiles read cleaner without them). */
 	.font-mono,
 	.tabular-nums {
-		font-feature-settings: "calt" 1, "zero" 1, "ss01" 1, "ss02" 1, "tnum" 1;
+		font-feature-settings: "calt" 1, "zero" 0, "ss01" 1, "ss02" 1, "tnum" 1;
 		font-variant-numeric: tabular-nums;
 	}
 
