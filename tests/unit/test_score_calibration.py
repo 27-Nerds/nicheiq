@@ -168,9 +168,6 @@ class TestDownstreamFeasibilityCoupling:
     def test_lowering_technical_shrinks_the_composite_drop(self, monkeypatch):
         # The composite drop term is (technical - build)/n. Calibrating technical DOWN (but still
         # above build) yields a SMALLER drop than the raw optimistic technical would. build < cal < raw.
-        monkeypatch.setattr(usc.settings, "enable_feasibility_critic", True)
-        from nicheiq.config.settings import settings as live
-        monkeypatch.setattr(live, "enable_feasibility_critic", True)
         build, cal_tech, raw_tech = 0.5, 0.7, 0.9
         comp = 0.80
         adj_cal = feasibility_adjusted_composite(comp, 0.6, cal_tech, 0.6, 0.6, build)

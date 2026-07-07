@@ -44,6 +44,11 @@ template: |
   - Tool-ecosystem saturation: {concept_duplication_rate}
   - Audience scope: {audience_scope}; ideas serving the stated audience: {audience_fit_ratio}
   - Willingness to pay (from the pains' buying signals): {willingness_to_pay}
+  - Buyer segments (name + budget sensitivity + wallet class where scored): {buyer_segments}
+  - Ideas whose outcome is already free/DIY (web-verified substitute): {substitute_share}
+  - Ideas with a web-verified shipping incumbent: {verified_incumbent_share}
+  - Ideas whose mechanism already earns money in an ADJACENT commercial market: {adjacent_incumbent_share}
+  - Ideas the buyer would use only episodically / once: {episodic_usage_share}
   - Key factors: {key_points}
   - Limited sample (be cautious): {low_confidence}
 
@@ -61,7 +66,9 @@ template: |
     If the difficulty band is nonetheless high, say the difficulty is NOT fit — name the
     actual frictions from the key factors (cold-start, crowded tools, etc.).
   - If addressability is "moderate": a tool earns its keep, but the easy framings are weaker
-    than they look.
+    than they look. If the difficulty band is nonetheless high, make clear the difficulty is
+    frictions (cold-start, crowded tools, weak wallets), not a worse fit — name the actual
+    frictions from the key factors.
   - SATURATION: relay the judgment phrase you were given, in your own words. Low saturation is
     GOOD NEWS (the obvious tools aren't built yet) — never present it as a warning. High
     saturation means the challenge is differentiation, not feasibility — suggest a sharper
@@ -73,6 +80,14 @@ template: |
     the BUSINESS shape, not idea quality — when it is weak, say plainly that strong ideas here
     should be built as free tools with built-in distribution (lead-gen, sponsorship, a cheap
     team tier) rather than subscription products. Never present weak WTP as "the ideas are bad".
+  - FREE/DIY SUBSTITUTES: when a meaningful share of outcomes is already obtainable free, say
+    plainly that a paid product must beat the free route on convenience — that is the real
+    competitor here, not another startup.
+  - ADJACENT MARKET: when many mechanisms already earn money in an adjacent commercial market
+    AND the buyers here have weak wallets, name that tension — the same product sold to the
+    adjacent buyer may be the better business.
+  - EPISODIC USE: when most ideas would be used only around irregular events, note that
+    subscriptions churn between events and one-time/usage pricing fits the shape better.
   - Only call a shape "dominant" if the pack says one shape genuinely dominates; otherwise
     call it the most common shape.
 
@@ -80,7 +95,19 @@ template: |
   Use the pack's band words and proportion words ("most pains", "about a quarter", "nearly
   all"). A founder should finish reading knowing what to do, not holding a list of numbers.
 
+  BUYER CLASS — classify WHO actually pays in this niche, judged from the buyer segments,
+  their budget sensitivity, and the willingness-to-pay signal. EXACTLY one of:
+  - budgeted-business: buyers with organizational budget authority (procurement, teams, agencies)
+  - smb-operator: small-business owners/operators buying tools for a revenue-generating business
+  - prosumer: serious hobbyists/power users paying out of pocket for their craft
+  - indie-hobbyist: indie builders/side-project makers spending personal money episodically
+  - consumer: ordinary consumers
+  - mixed: no single class dominates
+  Judge the WALLET, not the job title — "founders validating side-project ideas" spend personal
+  money (indie-hobbyist) even though they run "businesses".
+
   Return:
   - headline: exactly "Software Fit: {rating_word} — <short niche-specific clause you write>".
   - narrative_summary: 2-4 sentences, decision-first, consistent with the {rating_word} rating.
     If the sample is limited, hedge accordingly.
+  - buyer_class: exactly one vocabulary value from BUYER CLASS above.

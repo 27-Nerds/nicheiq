@@ -1367,9 +1367,9 @@ class SEOStrategyCrew:
                 self.audience_mapping.common_vocabulary
                 if self.audience_mapping else None
             )
-            # Deep-research audience conditioning (gated): ground seeds on the resolved primary audience
+            # Deep-research audience conditioning: ground seeds on the resolved primary audience
             # + the tools they use today (strong keyword seeds — "<tool> alternative"). Additive.
-            if settings.enable_audience_conditioned_deep_research and self.audience_mapping:
+            if self.audience_mapping:
                 extra = list(getattr(self.audience_mapping, "tools_currently_used", None) or [])[:5]
                 aud = getattr(self.niche_context, "resolved_primary_audience", None) if self.niche_context else None
                 if aud:
@@ -2113,13 +2113,10 @@ class SEOStrategyCrew:
             return (8, 15)
 
     def _angle_vars(self) -> dict:
-        """Angle brief vars for the SEO task prompts. Empty strings when angle-conditioned research is
-        off OR the selected idea has no winning_angle => the {angle_brief} interpolation is a no-op, so
-        the SEO strategy is byte-identical to today. When on for a distribution_seo idea, this
+        """Angle brief vars for the SEO task prompts. Empty strings when the selected idea has no
+        winning_angle => the {angle_brief} interpolation is a no-op. For a distribution_seo idea this
         front-loads the SEO kill-question (real page ceiling + winnable + penalty risk) the crew should
         investigate; for a novel/workflow idea it tells the crew SEO is thin so it doesn't over-promise."""
-        if not settings.enable_angle_conditioned_research:
-            return {"winning_angle": "", "angle_brief": "", "angle_primary_question": ""}
         from ..utils.angle_brief import build_angle_brief
         return build_angle_brief(self.selected_solution)
 

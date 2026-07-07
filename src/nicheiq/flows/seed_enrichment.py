@@ -193,9 +193,6 @@ def maybe_enrich_seed(
     Job cancellation propagates; every other failure logs and returns.
     """
     job_id = getattr(flow, "job_id", "?")
-    if not settings.enable_seed_enrichment:
-        logger.info(f"[SeedEnrichment] job={job_id} enrichment=skipped reason=disabled")
-        return
     try:
         evidence = collect_seed_evidence(
             query_candidates, niche_description, cancel_check=cancel_check

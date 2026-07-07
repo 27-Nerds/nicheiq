@@ -13,6 +13,8 @@ behind the numbers you see on each idea.
 - [The eight scores](#the-eight-scores)
 - [How a score is produced](#how-a-score-is-produced)
 - [The honesty guardrails](#the-honesty-guardrails)
+- [Who pays: buyer payability and pricing shape](#who-pays-buyer-payability-and-pricing-shape-2026-07-06)
+- [Competition checks: direct, substitute, and adjacent-market](#competition-checks-direct-substitute-and-adjacent-market-2026-07-06)
 - [Angle-aware evaluation](#angle-aware-evaluation)
 - [How ideas are ranked](#how-ideas-are-ranked)
 - [The Go / No-Go verdict](#the-go--no-go-verdict)
@@ -117,6 +119,56 @@ scores. Every one can only lower a score:
   and the Go/No-Go verdict honest without reshuffling which ideas rank where. (The
   account-gating signal uses the project type plus the data-access tier — there is no
   separate "is it gated" flag — so it's a careful proxy, not a certainty.)
+
+## Who pays: buyer payability and pricing shape (2026-07-06)
+
+Pain intensity alone can't make a market — the buyer also needs a wallet. Three signals cover
+this, all downgrade-only or informational:
+
+- **Usage cadence + pricing-shape check** (always on): every idea is tagged with how often the
+  buyer actually *uses* it (`continuous | periodic | episodic | one-shot`), and a deterministic
+  check flags `episodic`/`one-shot` usage sold as a subscription — buyers churn between events,
+  so the note recommends usage-based/credit-pack or one-time pricing instead. Never a score
+  change; rendered as a "Pricing-shape mismatch" watch-out (see `docs/IDEA_TAGS.md`).
+- **Niche buyer class** (always on): the Research Reality Check classifies who actually pays in
+  the niche (`budgeted-business | smb-operator | prosumer | indie-hobbyist | consumer | mixed`)
+  from the Stage-4 segments' budget sensitivity + the pains' buying signals. Low-payability
+  classes surface a "Who pays here" warning — e.g. indie/hobbyist builders spending personal
+  money episodically are a documented low-willingness-to-pay class regardless of how loud the
+  pain reads.
+- **Segment payability** (permanent — flag removed after the 2026-07-06 calibration-gate pass:
+  market_fit signed error vs a neutral Fable panel went +0.051 → −0.006 with MAE not worse and
+  verdict kappa 0.142 → 0.248): each audience segment gets a 0-1
+  payability score from budget authority (`budget_sensitivity`), existing-spend evidence
+  (web-probed incumbent pricing, money-language quotes, pain commercial-intent joined via
+  `affected_segments`), and a closed wallet-class vocabulary
+  (`corporate-budget .85 | smb-budget .60 | prosumer-wallet .40 | personal-wallet .25` priors,
+  averaged with the LLM's score and clamped — a single optimistic draw can't flip a
+  personal-wallet segment). Ideas inherit it via `source_segment` (unmatched segments fall back
+  to the niche mean — a join failure can never silently create scoring asymmetry). It feeds the
+  calibration critic as a per-idea evidence line ("pain without a wallet is not a market"),
+  caps market_fit at `payability_market_fit_cap` (default 0.55) when payability is below
+  `payability_low_threshold` (default 0.35), and can hold a Go verdict to Conditional for
+  direct-paid ideas (Phase-5 floor; ads/affiliate/commission plays are exempt — they don't need
+  the buyer's wallet). Validation path: `scripts/calibration_gate.py gate --candidate payability`.
+
+## Competition checks: direct, substitute, and adjacent-market (2026-07-06)
+
+The mechanism-parity probe web-verifies every idea (not just the top few) and now reports four
+levels: `shipped` / `partial` (a commercial product ships the mechanism), `substitute` (no
+commercial product, but a free/DIY route — a free official data source, a spreadsheet, a manual
+workflow — already delivers the outcome; a willingness-to-pay drag, sometimes a distribution
+wedge), and `none found`. Because the probe searches by each idea's own audience framing, a
+second **adjacent-market probe** groups ideas into mechanism families, asks which commercial
+categories the mechanism already belongs to *ignoring the stated audience*, and searches those —
+catching incumbents like a govcon-intelligence vendor behind a "failed-RFP digest for founders".
+Findings are name-verified against the search snippets (a hallucinated incumbent is dropped) and
+shown as an "Adjacent market check" card. When ≥80% of ideas come back `none found` with no
+adjacent coverage, a probe-coverage caveat warns that "none found" means low search coverage,
+not a green light. Substitute + adjacent evidence also reaches the scoring critic (permanent —
+flag removed after the 2026-07-06 calibration-gate replay vs a neutral Fable panel: market_fit
+MAE unchanged, optimism +0.022 → +0.013 with no deflation, verdict kappa 0.197 → 0.256) — and
+the critic is instructed to never *raise* a score on this evidence, only ground it.
 
 ## Angle-aware evaluation
 
@@ -274,6 +326,22 @@ it adds a missing caution rather than penalizing the same weakness twice.
 The verdict's written explanation speaks in plain terms — strong demand, weak distribution,
 crowded field — and never quotes the raw internal scores, because the reasoning travels
 better than the decimals.
+
+### Phase-5 payability floor and the No-Go reclassification
+
+A Go verdict for an idea sold **directly** (subscription / one-time / usage-based) to a segment
+whose payability is below the low threshold is held to Conditional with risk floored at Medium —
+the pain may be real, but the wallet isn't. Downgrade-only, never forces No-Go, abstains when
+payability is unscored or the idea monetizes via ads/affiliate/commission. The explanation ships
+in `go_no_go_verdict.payability_context`.
+
+**No-Go is reserved for structural blockers** (product decision, 2026-07-06): when the
+score-based verdict would land on No-Go for an idea that is *buildable* (technical feasibility ≥
+the Conditional bar) and whose market_fit was grounded by weak buyer payability, the verdict
+presents as **Conditional / High risk** with the condition named — "validate real payment intent
+(pre-sales, paid pilots, or a concierge version) before committing". Unbuildable ideas, refuted
+data routes, and weak markets with a *healthy* wallet remain genuine No-Gos. Rationale: a paid
+analysis should tell the user what must be true, not just "no".
 
 ## Honest limitations
 

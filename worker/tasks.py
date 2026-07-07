@@ -28,6 +28,18 @@ from .progress import (
 from .status import mark_job_running
 
 
+def _resolve_cost_summary(flow) -> Optional[dict]:
+    """Return the run's LLM cost breakdown for the admin pricing view.
+
+    Prefers the finalized state.cost_summary (set at Stage 14); falls back to the live
+    tracker so cost is still reported if finalization didn't stamp state.
+    """
+    summary = getattr(getattr(flow, "state", None), "cost_summary", None)
+    if not summary and getattr(flow, "cost_tracker", None):
+        summary = flow.cost_tracker.get_summary()
+    return summary or None
+
+
 def run_research_job(
     job_id: str,
     niche: str,
@@ -104,7 +116,7 @@ def run_research_job(
             json.dump(report_data, dst, indent=2)
 
         # Notify backend that the report is ready (triggers email notification)
-        publish_report_ready(job_id, str(job_report_path))
+        publish_report_ready(job_id, str(job_report_path), cost_summary=_resolve_cost_summary(flow))
 
         # Publish completion (landing pages are on-demand only)
         publish_job_completed(job_id, str(job_report_path), None)
@@ -337,8 +349,10 @@ def run_interactive_research(
         except Exception as e:
             logger.warning(f"[Worker] Failed to materialize preview report: {e}")
 
-        # Notify backend: ideas ready, skip to AWAITING_SELECTION directly
-        notify_ideas_ready(job_id, solution_previews, checkpoint_path, len(solutions), skip_validation=True, discovery_data_path=discovery_data_path, preview_report_path=preview_report_path)
+        # Notify backend: ideas ready, skip to AWAITING_SELECTION directly.
+        # Phase-1 cost has no state.cost_summary yet (set at Stage 14), so this reports
+        # the live tracker (stages 1-5) for the admin pricing view.
+        notify_ideas_ready(job_id, solution_previews, checkpoint_path, len(solutions), skip_validation=True, discovery_data_path=discovery_data_path, preview_report_path=preview_report_path, cost_summary=_resolve_cost_summary(flow))
 
         logger.info(f"[Worker] Job {job_id} entering AWAITING_SELECTION")
         return {"status": "awaiting_selection", "job_id": job_id}
@@ -486,7 +500,10 @@ def _run_phase2_continuation(
 
     # Read final winner from state (keyword validation re-ranking may have changed it)
     final_winner = state.solution_selection.selected_solution_name if state.solution_selection else selected_solution
-    publish_report_ready(job_id, str(job_report_path), winner_name=final_winner)
+    publish_report_ready(
+        job_id, str(job_report_path), winner_name=final_winner,
+        cost_summary=_resolve_cost_summary(flow),
+    )
 
     # Publish completion (landing pages are on-demand only)
     publish_job_completed(job_id, str(job_report_path), None)
@@ -698,6 +715,7 @@ def run_catalog_pain_research(
             skip_validation=True,
             discovery_data_path=discovery_data_path,
             preview_report_path=preview_report_path,
+            cost_summary=_resolve_cost_summary(flow),
         )
         logger.info(f"[Worker] Pain research job {job_id} entering AWAITING_SELECTION")
         return {"status": "awaiting_selection", "job_id": job_id}
@@ -824,7 +842,10 @@ def run_catalog_deep_research(
             if flow.state.solution_selection
             else solution_selection.selected_solution_name
         )
-        publish_report_ready(job_id, str(job_report_path), winner_name=final_winner)
+        publish_report_ready(
+            job_id, str(job_report_path), winner_name=final_winner,
+            cost_summary=_resolve_cost_summary(flow),
+        )
         publish_job_completed(job_id, str(job_report_path), None)
 
         return {"status": "completed", "job_id": job_id, "report_path": str(job_report_path)}

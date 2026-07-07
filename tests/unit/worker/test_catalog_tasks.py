@@ -234,32 +234,6 @@ class TestRunCatalogPainResearch:
             saved = [c.args[0] for c in flow.checkpoint_mgr.save_stage.call_args_list]
             assert "stage_2_social_content" in saved
 
-    @patch("worker.tasks.notify_ideas_ready")
-    @patch("worker.tasks.mark_job_running")
-    @patch("worker.tasks.create_progress_callback")
-    def test_enrichment_disabled_skips_collector(
-        self, mock_progress, mock_mark, mock_notify, monkeypatch
-    ):
-        from nicheiq.flows import seed_enrichment
-
-        monkeypatch.setattr(seed_enrichment.settings, "enable_seed_enrichment", False)
-        collect = MagicMock()
-        monkeypatch.setattr(seed_enrichment, "collect_seed_evidence", collect)
-        with patch("nicheiq.flows.research_flow.ResearchFlow") as MockFlow:
-            flow = MockFlow.return_value
-            ns = SimpleNamespace()
-            flow.state = ns
-            flow.checkpoint_mgr = MagicMock()
-            flow._execute_remaining_stages.side_effect = lambda **_kw: setattr(
-                ns, "idea_generation", SimpleNamespace(solution_ideas=[_mock_solution()])
-            )
-
-            from worker.tasks import run_catalog_pain_research
-
-            run_catalog_pain_research("job-p", [PAIN_SEED], "Manual invoicing")
-            collect.assert_not_called()
-            assert not hasattr(ns, "social_content")
-
     @patch("worker.tasks.mark_job_running")
     @patch("worker.tasks.create_progress_callback")
     def test_no_solutions_raises_with_stage_5(self, mock_progress, mock_mark):

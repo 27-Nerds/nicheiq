@@ -216,6 +216,15 @@ class NicheDifficultyVerdict(BaseModel):
         default=False,
         description="True when the pain/idea sample is too small to be confident"
     )
+    buyer_class: Optional[str] = Field(
+        default=None,
+        description="Who actually pays in this niche: budgeted-business | smb-operator | "
+                    "prosumer | indie-hobbyist | consumer | mixed (None = not classified)"
+    )
+    buyer_class_note: Optional[str] = Field(
+        default=None,
+        description="User-facing one-liner on what the buyer class means for monetization"
+    )
 
 
 class RefinementHighlights(BaseModel):
@@ -419,6 +428,16 @@ class AlternativeSolution(BaseModel):
         default=None,
         description="Web-verified mechanism-parity finding for top ideas (mirrors "
         "BaseSolutionIdea.incumbent_parity); None when the parity probe didn't run")
+    adjacent_market_parity: Optional[str] = Field(
+        default=None,
+        description="Audience-independent incumbent in the adjacent commercial market the "
+        "mechanism monetizes in (mirrors BaseSolutionIdea.adjacent_market_parity)")
+    source_segment_payability: Optional[float] = Field(
+        default=None, ge=0.0, le=1.0,
+        description="0-1 payability of the source segment (permanent buyer-wallet signal)")
+    source_segment_payability_class: Optional[str] = Field(
+        default=None,
+        description="corporate-budget | smb-budget | prosumer-wallet | personal-wallet | mixed")
 
     # Closed-vocabulary filter facets (chips + future filtering). See docs/IDEA_TAGS.md.
     tags: Optional[IdeaTags] = Field(default=None, description="Closed-vocabulary filter facets")
@@ -1159,6 +1178,16 @@ class AudienceSegment(BaseModel):
     budget_sensitivity: str = Field(..., description="Price sensitivity: 'High', 'Medium', 'Low'")
     discovery_channels: list[str] = Field(..., description="Where they discover solutions (Reddit, Twitter, Google, communities)")
     influencers_followed: Optional[list[str]] = Field(default=None, description="Key influencers or communities they follow")
+    # Payability (permanent since the 2026-07-06 gate pass): computed post-Stage-4 by utils/segment_payability
+    # from budget authority + existing-spend evidence; declared so it persists through model_dump.
+    payability_score: Optional[float] = Field(
+        default=None, ge=0.0, le=1.0,
+        description="0-1 ability/habit of this segment to PAY for software (None = not scored)")
+    payability_class: Optional[str] = Field(
+        default=None,
+        description="corporate-budget | smb-budget | prosumer-wallet | personal-wallet")
+    payability_rationale: Optional[str] = Field(
+        default=None, description="One-line evidence-grounded reason for the payability call")
 
 
 

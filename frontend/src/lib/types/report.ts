@@ -203,6 +203,8 @@ export interface GoNoGoVerdict {
 	primary_concern: string | null;
 	trend_context?: string | null;
 	market_viability_context?: string | null;
+	/** Buyer-payability floor explanation (Phase 5), null = no adjustment applied. */
+	payability_context?: string | null;
 }
 
 export interface CorePainPoint {
@@ -677,6 +679,10 @@ export interface NicheDifficultyVerdict {
 	narrative_summary: string;
 	key_challenges: string[];
 	low_confidence: boolean;
+	/** Who actually pays here: budgeted-business | smb-operator | prosumer | indie-hobbyist | consumer | mixed. */
+	buyer_class?: string | null;
+	/** One-liner on what the buyer class means for monetization. */
+	buyer_class_note?: string | null;
 }
 
 export interface DataQualitySummary {
@@ -861,7 +867,10 @@ export interface AlternativeSolution {
 	// Honest brief: evidence + the critic's voice (mirrors Python AlternativeSolution)
 	demand_quotes?: string[] | null; // verbatim community quotes for the addressed pains (max 3)
 	critic_concern?: string | null; // calibration critic's market_fit reason — the bear case
-	incumbent_parity?: string | null; // web-verified mechanism parity for top ideas ("shipped by MoeGo: …" | "none found")
+	incumbent_parity?: string | null; // web-verified mechanism parity for top ideas ("shipped by MoeGo: …" | "substitute (…)" | "none found")
+	adjacent_market_parity?: string | null; // audience-independent incumbent where the mechanism monetizes ("HigherGov (govcon intel): …"), null = none found
+	source_segment_payability?: number | null; // 0-1 buyer-wallet strength of the source segment (permanent signal; null = segment map failed)
+	source_segment_payability_class?: string | null; // corporate-budget | smb-budget | prosumer-wallet | personal-wallet | mixed
 
 	// Competitive landscape for this solution
 	top_competitors?: string[];

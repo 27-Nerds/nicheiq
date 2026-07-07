@@ -1969,6 +1969,9 @@ It differentiates through {diff_text}.
                     demand_quotes=demand_quotes or None,
                     critic_concern=critic_concern or None,
                     incumbent_parity=getattr(solution, 'incumbent_parity', None),
+                    adjacent_market_parity=getattr(solution, 'adjacent_market_parity', None),
+                    source_segment_payability=getattr(solution, 'source_segment_payability', None),
+                    source_segment_payability_class=getattr(solution, 'source_segment_payability_class', None),
 
                     # Closed-vocabulary filter facets (chips + future filtering).
                     tags=getattr(solution, 'tags', None),
@@ -2242,81 +2245,60 @@ It differentiates through {diff_text}.
             return None
 
         try:
-            if settings.enable_multisource_evidence_headline:
-                # Multi-source headline threads ranked by platform-FAIR normalized engagement (Reddit +
-                # Hacker News + Twitter), not Reddit-only by raw upvotes. normalize_engagement only reads
-                # .platform/.score/.num_responses/.raw_engagement, so each source is duck-typed.
-                from types import SimpleNamespace
-                from ..utils.engagement_normalizer import normalize_engagement
-                _plat = {"hackernews": "Hacker News", "youtube": "YouTube"}
-                candidates: list[tuple[float, TopRedditThread]] = []
-                for post in self.state.social_content.reddit_posts:
-                    eng = normalize_engagement(SimpleNamespace(
-                        platform="reddit", score=post.score, num_responses=post.num_comments,
-                        raw_engagement={"upvotes": post.score, "num_comments": post.num_comments}))
-                    candidates.append((eng, TopRedditThread(
-                        post_id=post.post_id, title=post.title, subreddit=f"r/{post.subreddit}",
-                        platform="reddit", score=post.score, num_comments=post.num_comments, url=post.url,
-                        created_utc=post.created_utc,
-                        key_insight=f"High-engagement discussion in r/{post.subreddit} ({post.score} upvotes, {post.num_comments} comments)")))
-                for post in (self.state.social_content.generic_posts or []):
-                    label = _plat.get(post.platform, post.platform)
-                    candidates.append((normalize_engagement(post), TopRedditThread(
-                        post_id=post.post_id, title=post.title, subreddit=label, platform=post.platform,
-                        score=post.score, num_comments=post.num_responses, url=post.url,
-                        created_utc=getattr(post, "created_utc", None),
-                        key_insight=f"High-engagement discussion on {label} ({post.score} points, {post.num_responses} comments)")))
-                for thread in self.state.social_content.twitter_threads:
-                    likes = thread.original_tweet.likes
-                    replies = getattr(thread.original_tweet, "replies", 0) or 0
-                    eng = normalize_engagement(SimpleNamespace(
-                        platform="twitter", score=likes, num_responses=replies, raw_engagement={}))
-                    candidates.append((eng, TopRedditThread(
-                        post_id=thread.thread_id,
-                        title=(getattr(thread.original_tweet, "text", "") or thread.thread_id)[:120],
-                        subreddit="Twitter", platform="twitter", score=likes, num_comments=replies,
-                        url=thread.original_tweet.url, created_utc=getattr(thread.original_tweet, "created_at", None),
-                        key_insight=f"High-engagement discussion on Twitter ({likes} likes)")))
-                candidates.sort(key=lambda c: c[0], reverse=True)
-                # Per-platform cap (<=60% of the 10-slot headline from any one source) so a small but
-                # high-engagement platform can't sweep the headline and misrepresent where the evidence
-                # actually concentrates (e.g. a 13-post HN minority taking 9/10 slots over 197 Reddit
-                # posts). Backfill past the cap only when fewer sources exist — a single-platform corpus
-                # still fills all 10 (byte-identical to an uncapped sort there).
-                _per_platform_cap = 6
-                picked: list[TopRedditThread] = []
-                counts: dict[str, int] = {}
-                for _eng, thread in candidates:
-                    if len(picked) >= 10:
-                        break
-                    if counts.get(thread.platform, 0) >= _per_platform_cap:
-                        continue
-                    picked.append(thread)
-                    counts[thread.platform] = counts.get(thread.platform, 0) + 1
-                if len(picked) < 10:
-                    seen = {id(t) for t in picked}
-                    picked += [t for _e, t in candidates if id(t) not in seen][:10 - len(picked)]
-                top_reddit_threads = picked
-            else:
-                # Default (dark flag off): Reddit-only by raw score — byte-identical to before.
-                reddit_posts = sorted(
-                    self.state.social_content.reddit_posts,
-                    key=lambda p: p.score,
-                    reverse=True
-                )[:10]
-                top_reddit_threads = [
-                    TopRedditThread(
-                        post_id=post.post_id,
-                        title=post.title,
-                        subreddit=post.subreddit,
-                        score=post.score,
-                        num_comments=post.num_comments,
-                        url=post.url,
-                        created_utc=post.created_utc,
-                        key_insight=f"High-engagement discussion ({post.score} score, {post.num_comments} comments) in r/{post.subreddit}"
-                    )
-                    for post in reddit_posts
-                ]
+            # Multi-source headline threads ranked by platform-FAIR normalized engagement (Reddit +
+            # Hacker News + Twitter), not Reddit-only by raw upvotes. normalize_engagement only reads
+            # .platform/.score/.num_responses/.raw_engagement, so each source is duck-typed.
+            from types import SimpleNamespace
+            from ..utils.engagement_normalizer import normalize_engagement
+            _plat = {"hackernews": "Hacker News", "youtube": "YouTube"}
+            candidates: list[tuple[float, TopRedditThread]] = []
+            for post in self.state.social_content.reddit_posts:
+                eng = normalize_engagement(SimpleNamespace(
+                    platform="reddit", score=post.score, num_responses=post.num_comments,
+                    raw_engagement={"upvotes": post.score, "num_comments": post.num_comments}))
+                candidates.append((eng, TopRedditThread(
+                    post_id=post.post_id, title=post.title, subreddit=f"r/{post.subreddit}",
+                    platform="reddit", score=post.score, num_comments=post.num_comments, url=post.url,
+                    created_utc=post.created_utc,
+                    key_insight=f"High-engagement discussion in r/{post.subreddit} ({post.score} upvotes, {post.num_comments} comments)")))
+            for post in (self.state.social_content.generic_posts or []):
+                label = _plat.get(post.platform, post.platform)
+                candidates.append((normalize_engagement(post), TopRedditThread(
+                    post_id=post.post_id, title=post.title, subreddit=label, platform=post.platform,
+                    score=post.score, num_comments=post.num_responses, url=post.url,
+                    created_utc=getattr(post, "created_utc", None),
+                    key_insight=f"High-engagement discussion on {label} ({post.score} points, {post.num_responses} comments)")))
+            for thread in self.state.social_content.twitter_threads:
+                likes = thread.original_tweet.likes
+                replies = getattr(thread.original_tweet, "replies", 0) or 0
+                eng = normalize_engagement(SimpleNamespace(
+                    platform="twitter", score=likes, num_responses=replies, raw_engagement={}))
+                candidates.append((eng, TopRedditThread(
+                    post_id=thread.thread_id,
+                    title=(getattr(thread.original_tweet, "text", "") or thread.thread_id)[:120],
+                    subreddit="Twitter", platform="twitter", score=likes, num_comments=replies,
+                    url=thread.original_tweet.url, created_utc=getattr(thread.original_tweet, "created_at", None),
+                    key_insight=f"High-engagement discussion on Twitter ({likes} likes)")))
+            candidates.sort(key=lambda c: c[0], reverse=True)
+            # Per-platform cap (<=60% of the 10-slot headline from any one source) so a small but
+            # high-engagement platform can't sweep the headline and misrepresent where the evidence
+            # actually concentrates (e.g. a 13-post HN minority taking 9/10 slots over 197 Reddit
+            # posts). Backfill past the cap only when fewer sources exist — a single-platform corpus
+            # still fills all 10 (byte-identical to an uncapped sort there).
+            _per_platform_cap = 6
+            picked: list[TopRedditThread] = []
+            counts: dict[str, int] = {}
+            for _eng, thread in candidates:
+                if len(picked) >= 10:
+                    break
+                if counts.get(thread.platform, 0) >= _per_platform_cap:
+                    continue
+                picked.append(thread)
+                counts[thread.platform] = counts.get(thread.platform, 0) + 1
+            if len(picked) < 10:
+                seen = {id(t) for t in picked}
+                picked += [t for _e, t in candidates if id(t) not in seen][:10 - len(picked)]
+            top_reddit_threads = picked
 
             # Create post ID to metadata mapping
             post_metadata: dict[str, dict[str, Any]] = {}
@@ -2946,58 +2928,6 @@ It differentiates through {diff_text}.
             pain_point_confidence_score=self.state.pain_point_confidence_score,
         )
 
-    @staticmethod
-    def _norm_terms(s: str) -> set:
-        import re as _re
-        return set(_re.sub(r"[^a-z0-9 ]", " ", (s or "").lower()).split())
-
-    def _market_fit_ceiling(self, solution) -> float:
-        """Downgrade-only ceiling for market_fit from the addressed pains' opportunity.
-
-        Matches each `pain_points_addressed` entry to a validated pain (normalized title
-        or ≥0.5 token overlap), takes the MAX ceiling over all that clear; 0.45 when none
-        clear (idea addresses no validated pain strongly). high→1.0 / medium→0.70 / low→0.55.
-        """
-        addressed = getattr(solution, "pain_points_addressed", None) or []
-        pa = getattr(self.state, "pain_point_analysis", None)
-        pains = getattr(pa, "pain_points", None) or [] if pa else []
-        ladder = {"high": 1.0, "medium": 0.70, "low": 0.55}
-        best, matched = 0.0, False
-        for a in addressed:
-            at = self._norm_terms(a)
-            if not at:
-                continue
-            for p in pains:
-                pt = self._norm_terms(getattr(p, "title", ""))
-                if not pt:
-                    continue
-                overlap = len(at & pt) / min(len(at), len(pt))
-                if at == pt or overlap >= 0.5:
-                    lvl = str(getattr(p, "opportunity_level", "") or "").lower()
-                    best = max(best, ladder.get(lvl, 0.55))
-                    matched = True
-        return best if matched else 0.45
-
-    def _apply_verdict_data_caps(self, solution, market_fit, tech_feasibility):
-        """Apply the downgrade-only caps; return (market_fit, tech_feasibility, note)."""
-        from ..utils.score_helpers import score_band  # bands in the user-facing note, never the decimal
-        note_bits = []
-        # tech_feasibility capped by the critic's independent build estimate (sentinel-guarded).
-        bf = getattr(solution, "build_feasibility_score", None)
-        if bf is not None and bf >= 0:
-            if tech_feasibility is None:
-                tech_feasibility = bf
-            elif bf < tech_feasibility:
-                note_bits.append(f"build feasibility independently assessed as {score_band(bf)}")
-                tech_feasibility = bf
-        # market_fit capped by the addressed pain's opportunity ceiling.
-        if market_fit is not None:
-            ceiling = self._market_fit_ceiling(solution)
-            if ceiling < market_fit:
-                note_bits.append(f"market fit bounded to {score_band(ceiling)} by the addressed pain's evidence")
-                market_fit = ceiling
-        return market_fit, tech_feasibility, ("; ".join(note_bits) or None)
-
     def _compute_go_no_go_verdict(
         self,
         selected_solution,
@@ -3028,15 +2958,6 @@ It differentiates through {diff_text}.
         competitive_adv = self.score_accessor.get_competitive_advantage(solution)
         tech_feasibility = self.score_accessor.get_technical_feasibility(solution)
         seo_potential = self.score_accessor.get_seo_score_canonical(solution)
-
-        # Verdict-boundary downgrade-only caps (flagged OFF by default). These ground the
-        # two gating scores WITHOUT mutating the stored fields (composite ranking is
-        # untouched — it reads the raw scores via score_helpers, not these locals).
-        cap_note = None
-        if settings.enable_verdict_data_caps:
-            market_fit, tech_feasibility, cap_note = self._apply_verdict_data_caps(
-                solution, market_fit, tech_feasibility
-            )
 
         # Average over the PRESENT scores (missing optional scores are no longer
         # fabricated as 0.5, so competitive_adv/seo can legitimately be None).
@@ -3131,13 +3052,28 @@ It differentiates through {diff_text}.
             else:
                 primary_concern = "Overall signals fall short of the bar for a recommended build"
 
-        # Transparency: when a data/feasibility cap lowered a gating score and the verdict
-        # is not a clean Go, surface why (reuses primary_concern; no schema change).
-        if cap_note and verdict != "Go":
-            primary_concern = (
-                f"{primary_concern}. Grounded check: {cap_note}." if primary_concern
-                else f"Grounded check: {cap_note}."
-            )
+            # Payability reclassification (product decision, 2026-07-06): No-Go is reserved for
+            # STRUCTURAL blockers (unbuildable, refuted data). A BUILDABLE idea whose market_fit
+            # was grounded by weak buyer payability gets "Conditional / High risk" with the
+            # condition NAMED — a paid analysis should say "validate willingness-to-pay first",
+            # not "no". Scoped to the payability signal: the tech gate and non-payability
+            # No-Gos are untouched, so this only reclassifies what the payability critic
+            # evidence itself demoted.
+            _pay = getattr(solution, "source_segment_payability", None)
+            if (buildability_ok
+                    and isinstance(_pay, (int, float))
+                    and _pay < settings.payability_low_threshold
+                    and market_fit < 0.6 <= tech_feasibility):
+                from ..utils.segment_payability import payability_phrase
+                verdict = "Conditional"
+                risk_level = "High"
+                # Qualitative phrase only — never the raw class token (band-words convention).
+                primary_concern = (
+                    f"The target segment is {payability_phrase(getattr(solution, 'source_segment_payability_class', None))} "
+                    "with weak willingness-to-pay — the build is feasible, but validate real "
+                    "payment intent (pre-sales, paid pilots, or a concierge version) before "
+                    "committing to it"
+                )
 
         # The verdict rationale is built AFTER Phase 2/3 (below) so it explains the FINAL verdict
         # (post-downgrade), in plain band language — never the internal decimals, and never the
@@ -3211,11 +3147,11 @@ It differentiates through {diff_text}.
                 if market_viability_context:
                     logger.info(f"[Verdict Viability Adjustment] {market_viability_context}")
 
-        # Phase 4: SEO kill-question floor (distribution_seo only; dark by default). Grounds an
-        # over-OPTIMISTIC pSEO verdict in the page-universe reality. Null-guard — the kill-question is
-        # optional/fail-soft (only set when enable_seo_kill_question on, for distribution_seo).
+        # Phase 4: SEO kill-question floor (distribution_seo only). Grounds an over-OPTIMISTIC pSEO
+        # verdict in the page-universe reality. Null-guard — the kill-question is optional/fail-soft
+        # (only computed for distribution_seo).
         seo_kill_context = None
-        if settings.enable_seo_kill_question_floor and winning_angle == "distribution_seo":
+        if winning_angle == "distribution_seo":
             kq = getattr(self.state.seo_strategy_report, "seo_kill_question", None) if self.state.seo_strategy_report else None
             if kq is not None:
                 from ..validators.score_validators import ScoreThresholds as _ST4, VerdictValidator as _VV4
@@ -3232,12 +3168,41 @@ It differentiates through {diff_text}.
                 if seo_kill_context:
                     logger.info(f"[Verdict SEO-Kill Floor] {seo_kill_context}")
 
+        # Phase 5: payability floor (permanent since the 2026-07-06 gate pass). A Go for an idea sold
+        # DIRECTLY to a low-payability segment overstates the business — pain without a wallet.
+        # Downgrade-only; abstains on unscored payability or non-direct-paid monetization.
+        from ..validators.score_validators import ScoreThresholds as _ST5, VerdictValidator as _VV5
+        _tags = getattr(solution, "tags", None)
+        verdict, risk_level, primary_concern, payability_context = (
+            _VV5(_ST5.from_settings(settings)).apply_payability_downgrade(
+                verdict=verdict, risk_level=risk_level, primary_concern=primary_concern,
+                payability=getattr(solution, "source_segment_payability", None),
+                payability_class=getattr(solution, "source_segment_payability_class", None),
+                monetization=getattr(_tags, "monetization", None) if _tags is not None else None,
+            )
+        )
+        if payability_context:
+            logger.info(f"[Verdict Payability Floor] {payability_context}")
+
+        # Phase 6 (flagged, default OFF): stacked regulatory + grey-market exposure caps the verdict.
+        # Runs last so its concern outranks earlier downgrades when both fire (structural legal risk).
+        from ..validators.score_validators import ScoreThresholds as _ST6, VerdictValidator as _VV6
+        verdict, risk_level, primary_concern, regulatory_context = (
+            _VV6(_ST6.from_settings(settings)).apply_regulatory_risk_downgrade(
+                verdict=verdict, risk_level=risk_level, primary_concern=primary_concern,
+                risk_flags=getattr(_tags, "risk_flags", None) if _tags is not None else None,
+            )
+        )
+        if regulatory_context:
+            logger.info(f"[Verdict Regulatory Floor] {regulatory_context}")
+
         # Build the verdict explanation now the FINAL verdict is known: LLM-grounded + validated when
         # enabled, else a deterministic band template. Any downgrade is prepended transparently and the
         # score caveat (if any) appended — both deterministic, so the JSON stands on its own.
         downgrade_note = None
         if verdict != pre_downgrade_verdict:
-            downgrade_note = trend_context or market_viability_context or seo_kill_context or "post-verdict validation"
+            downgrade_note = (regulatory_context or trend_context or market_viability_context
+                              or seo_kill_context or payability_context or "post-verdict validation")
         rationale = self._generate_verdict_explanation(
             verdict=verdict,
             primary_concern=primary_concern,
@@ -3258,6 +3223,7 @@ It differentiates through {diff_text}.
             primary_concern=primary_concern,
             trend_context=trend_context,
             market_viability_context=market_viability_context,
+            payability_context=payability_context,
         )
         # Cache for other sections (market_analytics derives its recommendation
         # from the same verdict instead of maintaining parallel thresholds)

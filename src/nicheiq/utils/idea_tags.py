@@ -24,6 +24,7 @@ from nicheiq.models.solution_idea import (
     ProjectTypeTag,
     RiskFlagTag,
     TargetMarketTag,
+    UsageCadenceTag,
 )
 
 if TYPE_CHECKING:
@@ -38,6 +39,14 @@ TARGET_MARKETS = frozenset(get_args(TargetMarketTag))
 MONETIZATION = frozenset(get_args(MonetizationTag))
 GROWTH_CHANNELS = frozenset(get_args(GrowthChannelTag))
 RISK_FLAGS = frozenset(get_args(RiskFlagTag))
+USAGE_CADENCE = frozenset(get_args(UsageCadenceTag))
+
+# Pricing-shape check: usage cadences that clash with subscription billing (buyers churn
+# between events), mapped to the shape to suggest instead. Informational — never a score.
+_CADENCE_SHAPE_FIX = {
+    "episodic": "usage-based pricing or credit packs",
+    "one-shot": "a one-time purchase or paid report",
+}
 
 # Standardized per-dimension cutoffs for strength badges (calibrated to ~top-third on a
 # 60-idea sample; tunable — see docs/IDEA_TAGS.md). Order also breaks primary-strength ties.
@@ -164,14 +173,28 @@ def derive_tag_facets(
     if rationale:
         rationale = rationale[:200]
 
+    monetization = _valid(llm.get("monetization"), MONETIZATION)
+    usage_cadence = _valid(llm.get("usage_cadence"), USAGE_CADENCE)
+
+    # Pricing-shape mismatch: episodic/one-shot usage sold as a subscription churns between
+    # events (a validation tool used at project start, a price-raise kit used yearly).
+    mismatch = monetization == "subscription" and usage_cadence in _CADENCE_SHAPE_FIX
+    shape_note = (
+        f"{usage_cadence} usage but subscription pricing — buyers churn between events; "
+        f"consider {_CADENCE_SHAPE_FIX[usage_cadence]}"
+    ) if mismatch else None
+
     return IdeaTags(
         project_type=_valid(idea.project_type, PROJECT_TYPES),
         data_access=_valid(idea.data_access_model, DATA_ACCESS),
         target_market=_valid(llm.get("target_market"), TARGET_MARKETS),
-        monetization=_valid(llm.get("monetization"), MONETIZATION),
+        monetization=monetization,
         monetization_secondary=_valid(llm.get("monetization_secondary"), MONETIZATION),
         growth_channels=growth,
         risk_flags=risks,
+        usage_cadence=usage_cadence,
+        pricing_shape_mismatch=mismatch,
+        pricing_shape_note=shape_note,
         build_complexity=_build_complexity(idea),
         novelty_level=_novelty_level(idea),
         strengths=strengths,

@@ -13,6 +13,7 @@ from nicheiq.models.solution_idea import (
     RiskFlagTag,
     StrengthTag,
     TargetMarketTag,
+    UsageCadenceTag,
 )
 from nicheiq.utils.idea_tags import STRENGTH_CUTOFFS, derive_tag_facets
 
@@ -202,6 +203,7 @@ def test_facet_vocabularies_are_mutually_exclusive():
         "build_complexity": get_args(BuildComplexityTag),
         "novelty_level": get_args(NoveltyLevelTag),
         "strengths": get_args(StrengthTag),
+        "usage_cadence": get_args(UsageCadenceTag),
     }
     seen: dict[str, str] = {}
     for facet, values in facets.items():
@@ -213,3 +215,34 @@ def test_facet_vocabularies_are_mutually_exclusive():
 def test_strength_cutoff_table_covers_all_strength_values():
     cutoff_keys = {k for k, _, _ in STRENGTH_CUTOFFS}
     assert cutoff_keys == set(get_args(StrengthTag))
+
+
+# --- usage_cadence + pricing-shape mismatch --------------------------------------
+
+def test_usage_cadence_accepted_and_out_of_vocab_dropped():
+    tags = derive_tag_facets(_idea(), {"usage_cadence": "episodic"})
+    assert tags.usage_cadence == "episodic"
+    tags = derive_tag_facets(_idea(), {"usage_cadence": "sometimes"})
+    assert tags.usage_cadence is None
+    assert derive_tag_facets(_idea()).usage_cadence is None  # no LLM facets at all
+
+
+def test_pricing_shape_mismatch_matrix():
+    # episodic + subscription -> mismatch with the recommended shape in the note
+    tags = derive_tag_facets(_idea(), {"monetization": "subscription", "usage_cadence": "episodic"})
+    assert tags.pricing_shape_mismatch is True
+    assert "churn between events" in tags.pricing_shape_note
+    assert "usage-based pricing or credit packs" in tags.pricing_shape_note
+    # one-shot + subscription -> mismatch, one-time recommendation
+    tags = derive_tag_facets(_idea(), {"monetization": "subscription", "usage_cadence": "one-shot"})
+    assert tags.pricing_shape_mismatch is True
+    assert "one-time purchase" in tags.pricing_shape_note
+    # continuous + subscription -> fine
+    tags = derive_tag_facets(_idea(), {"monetization": "subscription", "usage_cadence": "continuous"})
+    assert tags.pricing_shape_mismatch is False and tags.pricing_shape_note is None
+    # episodic + one-time -> fine (shape already matches)
+    tags = derive_tag_facets(_idea(), {"monetization": "one-time", "usage_cadence": "episodic"})
+    assert tags.pricing_shape_mismatch is False and tags.pricing_shape_note is None
+    # missing cadence -> never a mismatch
+    tags = derive_tag_facets(_idea(), {"monetization": "subscription"})
+    assert tags.pricing_shape_mismatch is False and tags.pricing_shape_note is None

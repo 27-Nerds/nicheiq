@@ -38,17 +38,16 @@ def test_reads_model_attrs_not_just_dict():
     assert b["winning_angle"] == "vertical_workflow"
 
 
-def test_seo_crew_angle_vars_gated(monkeypatch):
-    """The SEO crew's _angle_vars: empty (no-op) when the flag is off, real brief when on."""
+def test_seo_crew_angle_vars_builds_brief():
+    """The SEO crew's _angle_vars always builds the real brief (angle-conditioned research is permanent)."""
     from types import SimpleNamespace
     import nicheiq.crews.seo_strategy_crew as sc
-    from nicheiq.config.settings import settings
     crew = sc.SEOStrategyCrew.__new__(sc.SEOStrategyCrew)
     crew.selected_solution = SimpleNamespace(winning_angle="distribution_seo", differentiation_locus="x")
 
-    monkeypatch.setattr(settings, "enable_angle_conditioned_research", False)
-    assert crew._angle_vars() == {"winning_angle": "", "angle_brief": "", "angle_primary_question": ""}
-
-    monkeypatch.setattr(settings, "enable_angle_conditioned_research", True)
     on = crew._angle_vars()
     assert on["winning_angle"] == "distribution_seo" and on["angle_brief"]
+
+    # An idea with no winning_angle is still a no-op (empty vars).
+    crew.selected_solution = SimpleNamespace(winning_angle=None)
+    assert crew._angle_vars() == {"winning_angle": "", "angle_brief": "", "angle_primary_question": ""}

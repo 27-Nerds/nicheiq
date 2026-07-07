@@ -145,20 +145,6 @@ def test_critic_fail_open_on_error():
     assert len(out) == 2  # unchanged, never drops everything
 
 
-def test_critic_noop_when_no_reality_anchor(monkeypatch):
-    # No anchor AND feasibility off → genuine early-exit (no LLM call). Without disabling
-    # feasibility the critic would run a feasibility-only pass and hit the live API.
-    monkeypatch.setattr(M.settings, "enable_feasibility_critic", False)
-    fake = _bind_critic(SimpleNamespace(
-        _format_competitor_mentions=lambda: "",
-        audience_mapping=None,
-        _record_divergent_usage=lambda u: None,
-    ))
-    concepts = [_rc("A"), _rc("B")]
-    out = UnifiedSolutionCrew._score_pool_novelty(fake, concepts)
-    assert out == concepts  # advisory skip, no call
-
-
 # ── convergent crew assembly (regression: must not rely on @crew's self.agents) ──
 
 def test_convergent_crew_builds_with_explicit_agents():

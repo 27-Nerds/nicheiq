@@ -83,3 +83,60 @@ class TestSeoKillCoverageGate:
             winnable_pages=10, median_keyword_difficulty=30.0, penalty_risk_flag=False,
             kd_sample_size=40, page_ceiling=50)
         assert v == "Go" and r == "Low" and ctx is None
+
+
+class TestPayabilityFloor:
+    def _t(self):
+        return VerdictValidator(ScoreThresholds())
+
+    def test_low_payability_direct_paid_caps_go(self):
+        v, r, c, ctx = self._t().apply_payability_downgrade(
+            "Go", "Low", None, payability=0.25, payability_class="personal-wallet",
+            monetization="subscription")
+        assert v == "Conditional" and r == "Medium"
+        assert ctx and "spending personal money" in ctx      # human phrase, not the enum token
+        assert "personal-wallet" not in ctx                  # raw class token never shown
+        assert not re.search(r"\d\.\d", ctx)                # band-clean: no decimals
+        assert c and "willingness-to-pay" in c
+
+    def test_unscored_payability_abstains(self):
+        v, _r, _c, ctx = self._t().apply_payability_downgrade(
+            "Go", "Low", None, payability=None, payability_class=None,
+            monetization="subscription")
+        assert v == "Go" and ctx is None
+
+    def test_above_threshold_abstains(self):
+        v, _r, _c, ctx = self._t().apply_payability_downgrade(
+            "Go", "Low", None, payability=0.6, payability_class="smb-budget",
+            monetization="subscription")
+        assert v == "Go" and ctx is None
+
+    def test_non_direct_paid_abstains(self):
+        # ads/affiliate/commission plays don't need the buyer's wallet
+        for m in ("advertising", "affiliate", "commission", None):
+            v, _r, _c, ctx = self._t().apply_payability_downgrade(
+                "Go", "Low", None, payability=0.25, payability_class="personal-wallet",
+                monetization=m)
+            assert v == "Go" and ctx is None, m
+
+    def test_never_upgrades_no_go_and_keeps_conditional(self):
+        v, r, _c, ctx = self._t().apply_payability_downgrade(
+            "No-Go", "High", "x", payability=0.2, payability_class="personal-wallet",
+            monetization="one-time")
+        assert v == "No-Go" and r == "High" and ctx is not None
+        v2, _r2, _c2, _ctx2 = self._t().apply_payability_downgrade(
+            "Conditional", "Medium", "y", payability=0.2,
+            payability_class="personal-wallet", monetization="usage-based")
+        assert v2 == "Conditional"
+
+    def test_existing_concern_not_overwritten(self):
+        _v, _r, c, _ctx = self._t().apply_payability_downgrade(
+            "Go", "Low", "existing concern", payability=0.2,
+            payability_class="personal-wallet", monetization="subscription")
+        assert c == "existing concern"
+
+    def test_payability_context_field_on_verdict_model(self):
+        from nicheiq.models.executive_summary import GoNoGoVerdict
+        v = GoNoGoVerdict(verdict="Conditional", rationale="r", risk_level="Medium",
+                          payability_context="Buyer payability: …")
+        assert v.payability_context.startswith("Buyer payability")

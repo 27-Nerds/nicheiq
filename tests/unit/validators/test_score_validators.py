@@ -1230,3 +1230,59 @@ class TestConfidenceAdjusterCustomThresholds:
         )
         # 0.15 * 0.70 * 0.75 * 0.80 = 0.063 → clamped to 0.25
         assert result.adjusted_score == pytest.approx(0.25)
+
+
+class TestRegulatoryRiskDowngrade:
+    """Fix #4: stacked regulatory + grey-market verdict downgrade (Phase 6, flagged)."""
+
+    def _validator(self, enabled: bool) -> VerdictValidator:
+        return VerdictValidator(ScoreThresholds(enable_regulatory_risk_downgrade=enabled))
+
+    def test_flag_off_is_noop(self):
+        v = self._validator(False)
+        out = v.apply_regulatory_risk_downgrade("Go", "Low", None, ["regulatory", "grey-market"])
+        assert out == ("Go", "Low", None, None)
+
+    def test_stacked_pair_downgrades_go_and_floors_risk(self):
+        v = self._validator(True)
+        verdict, risk, concern, ctx = v.apply_regulatory_risk_downgrade(
+            "Go", "Low", None, ["regulatory", "grey-market"])
+        assert verdict == "Conditional"
+        assert risk == "Medium"
+        assert concern  # a specific concern is set
+        assert ctx  # context returned as an OUTPUT
+
+    def test_medium_risk_raised_to_high(self):
+        v = self._validator(True)
+        _, risk, _, _ = v.apply_regulatory_risk_downgrade(
+            "Conditional", "Medium", "x", ["regulatory", "grey-market"])
+        assert risk == "High"
+
+    def test_single_flag_is_noop(self):
+        v = self._validator(True)
+        out = v.apply_regulatory_risk_downgrade("Go", "Low", None, ["regulatory"])
+        assert out == ("Go", "Low", None, None)
+
+    def test_never_upgrades_nogo(self):
+        v = self._validator(True)
+        verdict, risk, _, _ = v.apply_regulatory_risk_downgrade(
+            "No-Go", "High", "x", ["regulatory", "grey-market"])
+        assert verdict == "No-Go"
+        assert risk == "High"
+
+    def test_none_and_empty_flags_safe(self):
+        v = self._validator(True)
+        assert v.apply_regulatory_risk_downgrade("Go", "Low", None, None) == ("Go", "Low", None, None)
+        assert v.apply_regulatory_risk_downgrade("Go", "Low", None, []) == ("Go", "Low", None, None)
+
+    def test_case_insensitive_flag_match(self):
+        v = self._validator(True)
+        verdict, _, _, _ = v.apply_regulatory_risk_downgrade(
+            "Go", "Low", None, ["Regulatory", "Grey-Market"])
+        assert verdict == "Conditional"
+
+    def test_from_settings_maps_flag(self):
+        from nicheiq.config.settings import settings
+        thresholds = ScoreThresholds.from_settings(settings)
+        assert hasattr(thresholds, "enable_regulatory_risk_downgrade")
+        assert thresholds.enable_regulatory_risk_downgrade is False  # default OFF

@@ -99,6 +99,11 @@ def test_tournament_cell_picks_lowest_obviousness_and_stamps_provenance(monkeypa
     monkeypatch.setattr(UnifiedSolutionCrew, "_refine_single_concept", fake_refine)
     monkeypatch.setattr(usc.UnifiedSolutionCrew, "_record_divergent_usage", lambda self, u: None, raising=False)
     monkeypatch.setattr(UnifiedSolutionCrew, "_score_cell_winner", lambda self, w, **kw: w)
+    monkeypatch.setattr(UnifiedSolutionCrew, "_repair_blank_idea_fields", lambda self, i: None)
+    # Fix #3b: the winner's source_segment is now RE-DERIVED from the pain (honest affinity), not
+    # the raw load-balanced cell segment. Stub the re-derivation to a known value for this stamp test.
+    monkeypatch.setattr(UnifiedSolutionCrew, "_provenance_segment_for_pain",
+                        lambda self, p: "Budget-rederived", raising=False)
     import nicheiq.crews.idea_improvement_loop_v4 as v4
     monkeypatch.setattr(v4, "tournament_refine_cell_v4", fake_tournament)
 
@@ -109,7 +114,7 @@ def test_tournament_cell_picks_lowest_obviousness_and_stamps_provenance(monkeypa
     assert captured["seed"].concept_name == "novel"          # lowest obviousness seeded
     assert winner.solution_name == "Renamed By Loop"
     assert winner.source_pain == "Desk load cell"            # stamped from cell, not name-join
-    assert winner.source_segment == "Budget"
+    assert winner.source_segment == "Budget-rederived"       # Fix #3b: re-derived from pain, not raw cell
     assert winner.mechanism_tag == "calc"                    # carried from seed concept
     assert winner.obviousness_score == 0.2                   # critic value carried
 
@@ -122,6 +127,7 @@ def test_tournament_cell_drops_blocked_with_floor(monkeypatch):
                             mechanism_tag=None, data_source_tag=None, journey_tag=None,
                             obviousness_score=None, data_feasibility_score=None, build_feasibility_score=None))
     monkeypatch.setattr(UnifiedSolutionCrew, "_score_cell_winner", lambda self, w, **kw: w)
+    monkeypatch.setattr(UnifiedSolutionCrew, "_repair_blank_idea_fields", lambda self, i: None)
     import nicheiq.crews.idea_improvement_loop_v4 as v4
     monkeypatch.setattr(v4, "tournament_refine_cell_v4", lambda cands, g, **kw: cands[0])
 
@@ -151,6 +157,7 @@ def test_tournament_cell_backfills_project_type_from_candidate(monkeypatch):
                               build_feasibility_score=None)
     monkeypatch.setattr(UnifiedSolutionCrew, "_refine_single_concept", lambda self, c, p: refined)
     monkeypatch.setattr(UnifiedSolutionCrew, "_score_cell_winner", lambda self, w, **kw: w)
+    monkeypatch.setattr(UnifiedSolutionCrew, "_repair_blank_idea_fields", lambda self, i: None)
     monkeypatch.setattr(usc.UnifiedSolutionCrew, "_record_divergent_usage", lambda self, u: None, raising=False)
     import nicheiq.crews.idea_improvement_loop_v4 as v4
     monkeypatch.setattr(v4, "tournament_refine_cell_v4", lambda cands, g, **kw: cands[0])
@@ -169,12 +176,35 @@ def test_tournament_cell_keeps_refiner_project_type(monkeypatch):
                               build_feasibility_score=None)
     monkeypatch.setattr(UnifiedSolutionCrew, "_refine_single_concept", lambda self, c, p: refined)
     monkeypatch.setattr(UnifiedSolutionCrew, "_score_cell_winner", lambda self, w, **kw: w)
+    monkeypatch.setattr(UnifiedSolutionCrew, "_repair_blank_idea_fields", lambda self, i: None)
     monkeypatch.setattr(usc.UnifiedSolutionCrew, "_record_divergent_usage", lambda self, u: None, raising=False)
     import nicheiq.crews.idea_improvement_loop_v4 as v4
     monkeypatch.setattr(v4, "tournament_refine_cell_v4", lambda cands, g, **kw: cands[0])
     cell = {"pain": _pain("P"), "segment": None}
     winner = _crew()._tournament_cell(cell=cell, candidates=[_concept("c", obv=0.3)], search=None, usages=[])
     assert winner.project_type == "saas"  # refiner value preserved
+
+
+def test_tournament_cell_repairs_winner_before_scoring(monkeypatch):
+    # The blank-field repair must run on the loop winner, BEFORE the scorer chain — so the
+    # critic / angle classifier / weak-text cap see the repaired text.
+    refined = SimpleNamespace(solution_name="X", source_pain=None, source_segment=None,
+                              mechanism_tag=None, data_source_tag=None, journey_tag=None,
+                              obviousness_score=None, data_feasibility_score=None,
+                              build_feasibility_score=None)
+    order = []
+    monkeypatch.setattr(UnifiedSolutionCrew, "_refine_single_concept", lambda self, c, p: refined)
+    monkeypatch.setattr(UnifiedSolutionCrew, "_repair_blank_idea_fields",
+                        lambda self, i: order.append(("repair", i)))
+    monkeypatch.setattr(UnifiedSolutionCrew, "_score_cell_winner",
+                        lambda self, w, **kw: order.append(("score", w)) or w)
+    monkeypatch.setattr(usc.UnifiedSolutionCrew, "_record_divergent_usage", lambda self, u: None, raising=False)
+    import nicheiq.crews.idea_improvement_loop_v4 as v4
+    monkeypatch.setattr(v4, "tournament_refine_cell_v4", lambda cands, g, **kw: cands[0])
+    cell = {"pain": _pain("P"), "segment": None}
+    _crew()._tournament_cell(cell=cell, candidates=[_concept("c", obv=0.3)], search=None, usages=[])
+    assert [step for step, _ in order] == ["repair", "score"]
+    assert order[0][1] is refined  # repair received the loop winner
 
 
 # --- focus-aware winner-pick (Stage 4) -------------------------------------
@@ -192,6 +222,7 @@ def _pick_seed(monkeypatch, candidates, *, focus="auto"):
 
     monkeypatch.setattr(UnifiedSolutionCrew, "_refine_single_concept", fake_refine)
     monkeypatch.setattr(UnifiedSolutionCrew, "_score_cell_winner", lambda self, w, **kw: w)
+    monkeypatch.setattr(UnifiedSolutionCrew, "_repair_blank_idea_fields", lambda self, i: None)
     monkeypatch.setattr(usc.UnifiedSolutionCrew, "_record_divergent_usage",
                         lambda self, u: None, raising=False)
     import nicheiq.crews.idea_improvement_loop_v4 as v4

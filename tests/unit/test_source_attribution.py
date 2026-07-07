@@ -253,8 +253,8 @@ class TestEvidenceAppendixParallelIds:
 
 
 class TestMultiSourceEvidenceHeadline:
-    """enable_multisource_evidence_headline: headline threads span Reddit + HN + Twitter, ranked by
-    normalized engagement, not Reddit-only by raw upvotes. Off => Reddit-only (byte-identical)."""
+    """Multi-source evidence headline: headline threads span Reddit + HN + Twitter, ranked by
+    normalized engagement, not Reddit-only by raw upvotes."""
 
     def _state(self):
         from types import SimpleNamespace
@@ -276,9 +276,7 @@ class TestMultiSourceEvidenceHeadline:
         gen.score_accessor = MagicMock()
         return gen
 
-    def test_multisource_headline_is_cross_platform_and_engagement_ranked(self, monkeypatch):
-        from nicheiq.config.settings import settings
-        monkeypatch.setattr(settings, "enable_multisource_evidence_headline", True)
+    def test_multisource_headline_is_cross_platform_and_engagement_ranked(self):
         gen = self._state()
         result = gen._generate_evidence_appendix()
         assert result is not None
@@ -287,20 +285,10 @@ class TestMultiSourceEvidenceHeadline:
         # HN (300 points / 180 comments) outranks Reddit (40/5) by normalized engagement
         assert result.top_reddit_threads[0].platform == "hackernews"
 
-    def test_off_is_reddit_only(self, monkeypatch):
-        from nicheiq.config.settings import settings
-        monkeypatch.setattr(settings, "enable_multisource_evidence_headline", False)
-        gen = self._state()
-        result = gen._generate_evidence_appendix()
-        assert result is not None
-        assert all(t.platform == "reddit" for t in result.top_reddit_threads)
-
-    def test_per_platform_cap_keeps_breadth(self, monkeypatch):
+    def test_per_platform_cap_keeps_breadth(self):
         """A small but high-engagement platform (13 HN) must not sweep the 10-slot headline over a
         larger Reddit corpus — capped at <=6 so Reddit (the bulk of the evidence) keeps presence."""
         from types import SimpleNamespace
-        from nicheiq.config.settings import settings
-        monkeypatch.setattr(settings, "enable_multisource_evidence_headline", True)
         gen = self._state()
         # 13 very-high-engagement HN posts + 12 lower-engagement Reddit posts
         gen.state.social_content.generic_posts = [

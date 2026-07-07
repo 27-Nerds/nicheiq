@@ -232,6 +232,10 @@ model Job {
   stopReason        String? @db.VarChar(50) // e.g., 'INSUFFICIENT_DATA'
   stopReasonDetails Json? // Quality metrics, recommendation
 
+  // LLM cost tracking (populated on report-ready for completed research runs)
+  costUsd     Float? // Total run cost in USD (from CostTracker); null until a report completes
+  costSummary Json? // Full cost breakdown: tokens, per-stage rows, actual/estimated source
+
   // Landing page lifecycle (independent of main job status)
   landingPageStatus String? @db.VarChar(20) // null, QUEUED, RUNNING, COMPLETED, FAILED
 

@@ -1,14 +1,13 @@
-"""Phase 3 — market sizing scoped to the addressed pain slice (dark flag enable_scoped_market_sizing).
+"""Phase 3 — market sizing scoped to the addressed pain slice.
 
-Covers: token-overlap pain scoping, the flag gate (off → niche-wide, byte-stable), the qualitative
-scope note, banded severity/WTP (no raw 0-1 leak), and graceful fallback when nothing matches.
+Covers: token-overlap pain scoping, the qualitative scope note, banded severity/WTP (no raw 0-1
+leak), and graceful fallback when nothing matches.
 """
 
 from types import SimpleNamespace
 
 import pytest
 
-from nicheiq.config.settings import settings
 from nicheiq.crews.market_sizing_crew import MarketSizingCrew
 
 
@@ -64,34 +63,24 @@ class TestScopePainsToSolution:
 
 
 class TestFormatPainSignalsScoping:
-    def test_flag_off_is_niche_wide(self, crew, monkeypatch):
-        monkeypatch.setattr(settings, "enable_scoped_market_sizing", False)
-        out = crew._format_pain_signals(_analysis(PAINS), _solution(["anti-cheat cheaters"]))
-        assert "**Scope:**" not in out
-        assert "Pain Points In Scope:** 3" in out  # all three, unscoped
-
-    def test_flag_on_scopes_and_adds_note(self, crew, monkeypatch):
-        monkeypatch.setattr(settings, "enable_scoped_market_sizing", True)
+    def test_scopes_and_adds_note(self, crew):
         out = crew._format_pain_signals(_analysis(PAINS), _solution(["anti-cheat cheaters"]))
         assert "**Scope:**" in out
         assert "1 of 3 validated pains" in out
         assert "Pain Points In Scope:** 1" in out
 
-    def test_flag_on_no_match_falls_back_to_niche(self, crew, monkeypatch):
-        monkeypatch.setattr(settings, "enable_scoped_market_sizing", True)
+    def test_no_match_falls_back_to_niche(self, crew):
         out = crew._format_pain_signals(_analysis(PAINS), _solution(["billing invoice tax"]))
         assert "**Scope:**" not in out  # nothing matched → no false scoping
         assert "Pain Points In Scope:** 3" in out
 
-    def test_no_raw_decimals_in_output(self, crew, monkeypatch):
-        monkeypatch.setattr(settings, "enable_scoped_market_sizing", True)
+    def test_no_raw_decimals_in_output(self, crew):
         out = crew._format_pain_signals(_analysis(PAINS), _solution(["anti-cheat cheaters"]))
         import re
         assert not re.search(r"\d\.\d", out)  # severity/WTP banded, not 0.80
         assert "severity:" in out and "willingness-to-pay:" in out
 
-    def test_flag_on_but_no_solution_is_niche_wide(self, crew, monkeypatch):
-        monkeypatch.setattr(settings, "enable_scoped_market_sizing", True)
+    def test_no_solution_is_niche_wide(self, crew):
         out = crew._format_pain_signals(_analysis(PAINS), None)
         assert "**Scope:**" not in out
         assert "Pain Points In Scope:** 3" in out

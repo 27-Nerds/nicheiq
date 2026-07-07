@@ -25,6 +25,7 @@ Opus judge) shows the loop's ideas beat the current filter→refine flow.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 from loguru import logger
@@ -200,6 +201,10 @@ def review_idea(idea, grounding, reviewer_thread, *, invoke, model_name, reasoni
 
 # STRUCTURAL prose fields: a blank here is a genuine breakage and they rarely change between
 # versions, so carrying the prior value forward is safe (prevents the v1 −3.0 clarity collapse).
+# EXCEPTION: technical_approach and differentiation_factors DESCRIBE the mechanism/data route, so on
+# a data-source pivot (see _sources_pivoted) carrying them forward reinstates a spec that contradicts
+# the new mechanism (the GrayMarketGuard WADA-vs-FDA bleed). On a pivot they are dropped from the
+# carry and left to the reviewer's rewrite / the _repair_blank_idea_fields safety net instead.
 _CARRY_TEXT = ("description", "technical_approach", "pricing_strategy", "conventional_approach",
                "data_acquisition_notes")
 # SURFACE pitch fields (headline, short_description, value_proposition, why_it_works,
@@ -210,13 +215,39 @@ _CARRY_LIST = ("core_features", "target_personas", "data_sources", "differentiat
                "pain_points_addressed")
 _CARRY_NUM = ("market_fit_score", "technical_feasibility_score", "novelty_score")
 
+# Mechanism-describing fields: excluded from carry when the data route pivoted (else stale text bleeds
+# in and contradicts the new mechanism). technical_approach is in _CARRY_TEXT, differentiation_factors
+# in _CARRY_LIST — both are guarded in _carry_forward_fields below.
+_PIVOT_SENSITIVE = frozenset({"technical_approach", "differentiation_factors"})
+
+
+def _sources_pivoted(improved, prior) -> bool:
+    """True if the data sources changed enough to count as a mechanism/route pivot (not a cosmetic
+    rename). Token-Jaccard over data_sources so "FDA MAUDE" → "FDA MAUDE database" (high overlap) is
+    NOT a pivot but WADA-list → FDA/CBP/FAERS (near-zero overlap) IS."""
+    def _tokens(obj) -> set:
+        toks: set[str] = set()
+        for s in (getattr(obj, "data_sources", None) or []):
+            toks |= {w for w in re.split(r"\W+", str(s).lower()) if len(w) > 2}
+        return toks
+    new, old = _tokens(improved), _tokens(prior)
+    if not new or not old:
+        return bool(new) != bool(old)  # one side empty & the other not → pivot; both empty → not
+    union = new | old
+    return (len(new & old) / len(union)) < 0.5
+
 
 def _carry_forward_fields(improved, prior) -> None:
     """Fill fields the improve step left empty so the spec never degrades — WITHOUT introducing the
     stale-surface-field bug. Structural prose / lists / scores carry from the prior version; surface
     PITCH fields never carry the old idea's text (that's what made the spec self-contradict), and an
     empty short_description is derived from the NEW description so it's consistent and never blank."""
+    # Compute the pivot BEFORE the _CARRY_LIST loop refills improved.data_sources from prior, so the
+    # comparison sees the LLM's own new sources, not the restored ones.
+    pivoted = _sources_pivoted(improved, prior)
     for f in _CARRY_TEXT:
+        if pivoted and f in _PIVOT_SENSITIVE:
+            continue
         if not (getattr(improved, f, None) or "").strip():
             setattr(improved, f, getattr(prior, f, None))
     # description collapsing into short_description reads as an empty HOW-IT-WORKS — restore the prior.
@@ -230,7 +261,16 @@ def _carry_forward_fields(improved, prior) -> None:
         nd = (getattr(improved, "description", "") or "").strip()
         if nd:
             improved.short_description = nd[:177].rstrip() + ("…" if len(nd) > 177 else "")
+    # Same rule for the novelty card summary: derive from the NEW why_it_works (never the prior
+    # version's), so it tracks the current mechanism and never ships blank when the long field is
+    # present (live 2026-07-05: an idea shipped missing ONLY this field).
+    if not (getattr(improved, "why_it_works_short", "") or "").strip():
+        w = (getattr(improved, "why_it_works", "") or "").strip()
+        if w:
+            improved.why_it_works_short = w[:117].rstrip() + ("…" if len(w) > 117 else "")
     for f in _CARRY_LIST:
+        if pivoted and f in _PIVOT_SENSITIVE:
+            continue
         if not (getattr(improved, f, None) or []):
             setattr(improved, f, getattr(prior, f, None))
     for f in _CARRY_NUM:
@@ -246,7 +286,9 @@ def improve_idea(critique, ideator_thread, prior, *, invoke, model_name, reasoni
         "Revise the product to fix THAT constraint — WITHOUT weakening the other dimensions and "
         "WITHOUT pivoting off the source pain. Keep everything that already works. Return the "
         "COMPLETE updated spec: every field filled with real content, no blanks, no field copied "
-        "verbatim into another."})
+        "verbatim into another. If the mechanism, data route, or name changed, rewrite "
+        "technical_approach and differentiation_factors (and the surface pitch fields) so they "
+        "describe the revised idea, not the old one."})
     idea, usage = invoke(ideator_thread, BaseSolutionIdea, temperature=0.5,
                          model_name=model_name, reasoning_effort=reasoning_effort)
     _carry_forward_fields(idea, prior)
@@ -376,7 +418,9 @@ def tournament_refine_cell(
             break
         # carry provenance forward (the improve LLM may drop it)
         improved.source_pain = getattr(current, "source_pain", None) or grounding.pain_title
-        improved.source_segment = getattr(current, "source_segment", None) or grounding.audience_segment
+        # Keep the prior idea's provenance; do NOT backfill the arbitrary cell segment when it's
+        # None — the crew re-derives honest provenance (or leaves None) at the terminal stamp sites.
+        improved.source_segment = getattr(current, "source_segment", None)
         current = improved
 
     return best_idea

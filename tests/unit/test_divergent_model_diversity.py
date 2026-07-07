@@ -22,8 +22,9 @@ def _no_inline_critic(monkeypatch):
     """These tests exercise divergent GENERATION mechanics (round-robin, deadline, dedup, cells).
     The per-sample novelty/feasibility critic now runs inline in _one_sample; it has its own tests
     and would otherwise add critic-model invoke_structured calls that pollute the exact-call
-    assertions here. Disabling it makes _score_concepts early-exit (no anchor + feasibility off)."""
-    monkeypatch.setattr(usc.settings, "enable_feasibility_critic", False, raising=False)
+    assertions here. Stub _score_concepts to a no-op so it can't inject those calls."""
+    monkeypatch.setattr(usc.UnifiedSolutionCrew, "_score_concepts",
+                        lambda self, concepts, idx=None: [], raising=False)
 
 
 def _raw(name, obv=-1.0, one_liner=None, why=None):
@@ -156,7 +157,7 @@ class TestDivergentModelRoundRobin:
         elapsed = time.time() - t
 
         # Drain the abandoned 'slow' worker UNDER the mocks before asserting, so it finishes
-        # (early-exits the inline critic — feasibility is off here) instead of leaking real work.
+        # (inline critic stubbed to a no-op) instead of leaking real work.
         release.set()
         time.sleep(0.5)
 
@@ -294,7 +295,6 @@ class TestPartitionedDivergent:
         monkeypatch.setattr(usc.LLMService, "invoke_structured", staticmethod(fake_invoke))
         monkeypatch.setattr(usc, "raw_concept_quality_error", lambda c: None)
         monkeypatch.setattr(usc, "validate_raw_concept_list", lambda b, **k: (True, None))
-        monkeypatch.setattr(usc.settings, "enable_pain_partitioned_divergent", True)
         monkeypatch.setattr(usc.settings, "brainstorm_llms", "m1,m2,m3")
         monkeypatch.setattr(usc.settings, "divergent_max_generators", 8)
         monkeypatch.setattr(usc.settings, "divergent_target_generators", 6)
@@ -377,7 +377,6 @@ class TestPartitionedDivergent:
         monkeypatch.setattr(usc.LLMService, "invoke_structured", staticmethod(fake_invoke))
         monkeypatch.setattr(usc, "raw_concept_quality_error", lambda c: None)
         monkeypatch.setattr(usc, "validate_raw_concept_list", lambda b, **k: (True, None))
-        monkeypatch.setattr(usc.settings, "enable_pain_partitioned_divergent", True)
         monkeypatch.setattr(usc.settings, "brainstorm_llms", "m1,m2")
         monkeypatch.setattr(usc.settings, "divergent_max_generators", 8)
         monkeypatch.setattr(usc.settings, "divergent_target_generators", 6)
@@ -401,10 +400,9 @@ class TestPartitionedDivergent:
         monkeypatch.setattr(usc.LLMService, "invoke_structured", staticmethod(fake_invoke))
         monkeypatch.setattr(usc, "raw_concept_quality_error", lambda c: None)
         monkeypatch.setattr(usc, "validate_raw_concept_list", lambda b, **k: (True, None))
-        monkeypatch.setattr(usc.settings, "enable_pain_partitioned_divergent", True)
         monkeypatch.setattr(usc.settings, "brainstorm_llms", "m1,m2")
         monkeypatch.setattr(usc.settings, "num_divergent_samples", 2)
-        # partition_cells=None => legacy path even with the flag on
+        # partition_cells=None => legacy path
         pooled, _u = crew._generate_divergent_pool({}, partition_cells=None)
         assert len(pooled) == 2  # num_divergent_samples broad samples
 
@@ -558,9 +556,9 @@ class TestCellAssignment:
 
 
 class TestNicheAnchorCells:
-    """Niche-relevance cell selection (settings.enable_niche_anchor_cells): each theme's cell is
-    seeded by its most niche-relevant pain, not just its highest-severity one, with a transparency
-    caveat when a lower-severity pain is chosen."""
+    """Niche-relevance cell selection: each theme's cell is seeded by its most niche-relevant pain,
+    not just its highest-severity one, with a transparency caveat when a lower-severity pain is
+    chosen."""
 
     def _themed(self, title, theme, sev, seg="S1"):
         p = _pain_seg(title, [seg], "medium", sev)

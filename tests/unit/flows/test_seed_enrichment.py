@@ -154,17 +154,6 @@ class TestMaybeEnrichSeed:
     def _flow(self):
         return SimpleNamespace(state=SimpleNamespace(), checkpoint_mgr=MagicMock(), job_id="j1")
 
-    def test_flag_off_skips_collector(self, monkeypatch):
-        from nicheiq.flows import seed_enrichment
-
-        monkeypatch.setattr(seed_enrichment.settings, "enable_seed_enrichment", False)
-        collect = MagicMock()
-        monkeypatch.setattr(seed_enrichment, "collect_seed_evidence", collect)
-        flow = self._flow()
-        maybe_enrich_seed(flow, ["t"], NICHE_DESC)
-        collect.assert_not_called()
-        assert not hasattr(flow.state, "social_content")
-
     def test_success_sets_state_and_checkpoint(self, monkeypatch):
         from nicheiq.flows import seed_enrichment
 

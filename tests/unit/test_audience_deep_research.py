@@ -1,10 +1,9 @@
-"""enable_audience_conditioned_deep_research: forward the resolved audience + frustrations/tools into
-the post-selection competitor task (f-string embed; the crew has no inputs= dict). Off => no-op."""
+"""Audience-conditioned deep research: forward the resolved audience + frustrations/tools into
+the post-selection competitor task (f-string embed; the crew has no inputs= dict)."""
 
 from types import SimpleNamespace
 
 import nicheiq.flows.research_flow as rf
-from nicheiq.config.settings import settings
 
 
 # ResearchFlow.state is a read-only CrewAI property — call the helper as an unbound method with a
@@ -24,12 +23,7 @@ def _selfish(audience="solo indie hackers", tools=None, frus=None, mapping=True)
 
 
 class TestDeepResearchAudienceDirective:
-    def test_off_is_noop(self, monkeypatch):
-        monkeypatch.setattr(settings, "enable_audience_conditioned_deep_research", False)
-        assert _DIRECTIVE(_selfish()) == ""
-
-    def test_on_embeds_audience_tools_frustrations(self, monkeypatch):
-        monkeypatch.setattr(settings, "enable_audience_conditioned_deep_research", True)
+    def test_embeds_audience_tools_frustrations(self):
         d = _DIRECTIVE(_selfish())
         assert "RESOLVED AUDIENCE" in d
         assert "solo indie hackers" in d
@@ -37,11 +31,9 @@ class TestDeepResearchAudienceDirective:
         assert "do not drop" in d.lower() or "substitute" in d.lower()  # ...but framed as substitutes-only, not forced competitors (A/B fix 2026-06-30)
         assert "too manual" in d        # frustrations = gaps to verify
 
-    def test_on_but_no_resolved_audience_is_noop(self, monkeypatch):
-        monkeypatch.setattr(settings, "enable_audience_conditioned_deep_research", True)
+    def test_no_resolved_audience_is_noop(self):
         assert _DIRECTIVE(_selfish(audience=None)) == ""
 
-    def test_on_with_audience_but_no_mapping_still_emits(self, monkeypatch):
-        monkeypatch.setattr(settings, "enable_audience_conditioned_deep_research", True)
+    def test_audience_but_no_mapping_still_emits(self):
         d = _DIRECTIVE(_selfish(mapping=False))
         assert "RESOLVED AUDIENCE" in d and "solo indie hackers" in d

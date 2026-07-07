@@ -195,7 +195,7 @@ class ScoreThresholds(BaseModel):
         description="Phase 3: Weak market viability sets risk floor at Medium",
     )
 
-    # Phase 4: SEO kill-question floor tuning (enable is the plain settings.enable_seo_kill_question_floor).
+    # Phase 4: SEO kill-question floor tuning.
     # The floor keys on KD-coverage-robust signals: DataForSEO omits KD for many (often easy) long-tail
     # intents, so an absolute winnable-page count collapses to ~0 on niches that are actually winnable.
     # We therefore (a) gate on KD-coverage sufficiency and (b) judge winnability as a SHARE of KD'd intents.
@@ -214,6 +214,21 @@ class ScoreThresholds(BaseModel):
     seo_kill_high_kd: float = Field(
         default=60.0,
         description="Median keyword difficulty >= this = slow/unwinnable on a new domain (secondary floor signal)",
+    )
+
+    # Phase 5: payability floor (permanent since the 2026-07-06 calibration-gate pass)
+    payability_low_threshold: float = Field(
+        default=0.35,
+        ge=0.0,
+        le=1.0,
+        description="Segment payability below this counts as LOW (floor trigger)",
+    )
+
+    # Phase 6: stacked regulatory-risk downgrade (flagged experiment, default OFF)
+    enable_regulatory_risk_downgrade: bool = Field(
+        default=False,
+        description="Phase 6: an idea carrying BOTH 'regulatory' and 'grey-market' risk flags caps "
+                    "verdict at Conditional and floors risk at Medium (drop-only)",
     )
 
     @classmethod
@@ -627,6 +642,89 @@ class VerdictValidator:
                 primary_concern = "Distribution play lacks a winnable SEO page universe"
 
         return verdict, risk_level, primary_concern, seo_kill_context
+
+    def apply_payability_downgrade(
+        self,
+        verdict: Literal["Go", "No-Go", "Conditional"],
+        risk_level: Literal["Low", "Medium", "High"],
+        primary_concern: Optional[str],
+        payability: Optional[float],
+        payability_class: Optional[str],
+        monetization: Optional[str],
+    ) -> tuple[
+        Literal["Go", "No-Go", "Conditional"],
+        Literal["Low", "Medium", "High"],
+        Optional[str],
+        Optional[str],
+    ]:
+        """Payability floor (Phase 5, permanent since the 2026-07-06 gate pass): a Go verdict for an idea sold
+        DIRECTLY (subscription/one-time/usage-based) to a low-payability segment overstates the
+        business — the pain may be real, but the wallet isn't. Downgrade-only: caps Go->Conditional
+        and floors risk at Medium; never forces No-Go; abstains (no context) when payability is
+        unscored, above the low threshold, or the idea doesn't monetize by direct payment
+        (ads/affiliate/commission plays don't need the buyer's wallet)."""
+        direct_paid = (monetization or "").strip().lower() in (
+            "subscription", "one-time", "usage-based")
+        low = (isinstance(payability, (int, float))
+               and payability < self.thresholds.payability_low_threshold)
+        if not (low and direct_paid):
+            return verdict, risk_level, primary_concern, None
+
+        if verdict == "Go":
+            verdict = "Conditional"
+        if risk_level == "Low":
+            risk_level = "Medium"
+        # User-facing (feeds the verdict rationale's downgrade note): qualitative phrase only —
+        # never the raw class token or the 0-1 decimal (band-words convention).
+        from ..utils.segment_payability import payability_phrase
+        payability_context = (
+            f"Buyer payability: the target segment is {payability_phrase(payability_class)} "
+            f"with weak willingness-to-pay for {monetization} pricing — held to Conditional, "
+            "risk floored at Medium; validate real payment intent (pre-sales, paid pilots) "
+            "before committing."
+        )
+        if primary_concern is None:
+            primary_concern = "Target segment has weak willingness-to-pay for direct-paid pricing"
+        return verdict, risk_level, primary_concern, payability_context
+
+    def apply_regulatory_risk_downgrade(
+        self,
+        verdict: Literal["Go", "No-Go", "Conditional"],
+        risk_level: Literal["Low", "Medium", "High"],
+        primary_concern: Optional[str],
+        risk_flags: Optional[list],
+    ) -> tuple[
+        Literal["Go", "No-Go", "Conditional"],
+        Literal["Low", "Medium", "High"],
+        Optional[str],
+        Optional[str],
+    ]:
+        """Phase 6 (flagged, default OFF): an idea carrying BOTH 'regulatory' AND 'grey-market' risk
+        flags stacks a structural compliance blocker on top of a legally gray supply chain — a Go
+        here overstates the business. Downgrade-only: caps Go->Conditional and floors risk at Medium
+        (Medium->High); never forces No-Go; abstains (no context) when the flag is off or the stacked
+        pair isn't present. Gated on the pair — a single 'regulatory' flag is common and not, on its
+        own, a downgrade trigger."""
+        if not self.thresholds.enable_regulatory_risk_downgrade:
+            return verdict, risk_level, primary_concern, None
+        flags = {str(f).strip().lower() for f in (risk_flags or [])}
+        if not ({"regulatory", "grey-market"} <= flags):
+            return verdict, risk_level, primary_concern, None
+
+        if verdict == "Go":
+            verdict = "Conditional"
+        if risk_level == "Low":
+            risk_level = "Medium"
+        elif risk_level == "Medium":
+            risk_level = "High"
+        regulatory_context = (
+            "Stacked regulatory exposure: this idea combines a compliance-regulated domain with a "
+            "legally gray (grey-market) supply chain — held to Conditional, risk floored; confirm "
+            "legal viability and regulatory standing before committing."
+        )
+        if primary_concern is None:
+            primary_concern = "Stacked regulatory + grey-market exposure needs legal validation"
+        return verdict, risk_level, primary_concern, regulatory_context
 
     def is_high_priority_pain_point(self, severity_score: float) -> bool:
         """

@@ -4,7 +4,7 @@
    (restricted/blocked data floors, build<=data+margin coupling, sentinel hole).
 2. `feasibility_adjusted_composite` / `apply_feasibility_to_scores` — the downgrade-only
    ranking de-inversion (the critic's build_feasibility lowers the composite the ranker
-   actually sorts on), gated on enable_feasibility_critic and never raising a composite.
+   actually sorts on), never raising a composite.
 3. Over-correction guard: a defect-free idea (public data, high build) is left unchanged.
 """
 
@@ -56,19 +56,13 @@ class TestCapFeasibilityScores:
 # --- feasibility_adjusted_composite (downgrade-only, gated) ------------------
 
 @pytest.fixture
-def critic_on(monkeypatch):
-    monkeypatch.setattr(sh.settings, "enable_feasibility_critic", True)
-
-
-@pytest.fixture
-def critic_off(monkeypatch):
-    monkeypatch.setattr(sh.settings, "enable_feasibility_critic", False)
+def critic_on():
+    """Feasibility critic is always on (enable_feasibility_critic removed 2026-07-06); kept as a
+    marker fixture so the tests below read as the critic-on scenario without editing signatures."""
+    return None
 
 
 class TestFeasibilityAdjustedComposite:
-    def test_noop_when_critic_off(self, critic_off):
-        assert feasibility_adjusted_composite(0.80, 0.88, 0.90, 0.70, 0.85, 0.30) == 0.80
-
     def test_downgrades_when_build_below_tf(self, critic_on):
         # drop = (0.90 - 0.30) / 4 present = 0.15 -> 0.65
         assert feasibility_adjusted_composite(0.80, 0.88, 0.90, 0.70, 0.85, 0.30) == 0.65
@@ -124,13 +118,6 @@ class TestApplyFeasibilityToScores:
         out = apply_feasibility_to_scores(scores, ideas)
         assert out[0].composite_score == 0.70   # untouched
 
-    def test_noop_when_critic_off(self, critic_off):
-        scores = [_score("X", 0.88, 0.90, 0.70, 0.85, 0.85)]
-        ideas = [SimpleNamespace(solution_name="X", build_feasibility_score=0.30)]
-        out = apply_feasibility_to_scores(scores, ideas)
-        assert out[0].composite_score == 0.85   # untouched
-
-
 # --- compute_solution_scores integration + over-correction guard ------------
 
 class TestComputeWithFeasibility:
@@ -177,13 +164,8 @@ class TestFinalizeFeasibility:
         out = self._run({}, idea)
         assert out.build_feasibility_score == pytest.approx(0.55)  # 0.4 + 0.15
 
-    def test_noop_when_critic_off(self, critic_off):
-        idea = SimpleNamespace(
-            solution_name="X", data_feasibility_score=0.4, build_feasibility_score=0.9,
-            data_access_model="public", data_acquisition_notes=None,
-        )
-        out = self._run({}, idea)
-        assert out.build_feasibility_score == 0.9  # untouched
+    # test_noop_when_critic_off deleted 2026-07-07: the feasibility critic is permanent
+    # (enable_feasibility_critic removed), so the critic-off path no longer exists.
 
 
 class TestComputeWithFeasibilityDowngrade:

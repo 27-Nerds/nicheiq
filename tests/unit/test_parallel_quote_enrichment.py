@@ -1108,8 +1108,7 @@ class TestGroundingGate:
             f"--- Result 2 (score: 0.93, post_id: good2, source: reddit) ---\n{self._UNGROUNDED_B}.\n\n"
             f"--- Result 3 (score: 0.90, post_id: bad, source: reddit) ---\n{self._UNGROUNDED_A}.\n"
         )
-        with patch("nicheiq.config.settings.settings.enable_quote_grounding_gate", True):
-            res = crew._enrich_single_pain_point(self._pain(), mock_quote_search_tool)
+        res = crew._enrich_single_pain_point(self._pain(), mock_quote_search_tool)
         ids = {q.post_id for q in res.quotes}
         assert {"good1", "good2"} <= ids   # both grounded quotes kept
         assert "bad" not in ids            # ungrounded dropped (floor already met by the two grounded)
@@ -1120,8 +1119,7 @@ class TestGroundingGate:
         mock_quote_search_tool._run.return_value = (
             f"--- Result 1 (score: 0.95, post_id: x1, source: reddit) ---\n{self._UNGROUNDED_A}.\n"
         )
-        with patch("nicheiq.config.settings.settings.enable_quote_grounding_gate", True):
-            res = crew._enrich_single_pain_point(self._pain(), mock_quote_search_tool)
+        res = crew._enrich_single_pain_point(self._pain(), mock_quote_search_tool)
         assert len(res.quotes) >= 1
 
     def test_floor_protection_keeps_min_when_all_ungrounded(self, mock_quote_search_tool):
@@ -1133,8 +1131,7 @@ class TestGroundingGate:
             f"--- Result 1 (score: 0.95, post_id: p1, source: reddit) ---\n{self._UNGROUNDED_A}.\n\n"
             f"--- Result 2 (score: 0.90, post_id: p2, source: reddit) ---\n{self._UNGROUNDED_B}.\n"
         )
-        with patch("nicheiq.config.settings.settings.enable_quote_grounding_gate", True):
-            res = crew._enrich_single_pain_point(self._pain(), mock_quote_search_tool)
+        res = crew._enrich_single_pain_point(self._pain(), mock_quote_search_tool)
         assert len(res.quotes) == PainPointCrew._MIN_QUOTES  # never emptied on grounding alone
 
 

@@ -105,13 +105,13 @@ class TestScoreThresholdsFromSettings:
 
 @pytest.fixture(autouse=True)
 def _deterministic_verdict_explanation(monkeypatch):
-    """Default the verdict flags off so these tests are deterministic regardless of the prod defaults:
-    no live LLM call (band path) and no SEO kill-floor (the floor-wiring tests opt back in per-test with
-    a real kill-question shape). Angle-aware verdict is always on now (flag removed) but is a lift-only
+    """Default the verdict LLM explanation off so these tests are deterministic regardless of the prod
+    defaults: no live LLM call (band path). The SEO kill-floor is always on now (flag removed) but is a
+    no-op unless a real kill-question shape is on state (the generator fixture defaults it to None; the
+    floor-wiring tests set a real shape per-test). Angle-aware verdict is always on now but is a lift-only
     no-op unless a solution sets a real winning_angle — the non-angle tests here don't, so they stay
     equal-weight; LLM-path tests opt back in per-test."""
     monkeypatch.setattr(settings, "enable_llm_verdict_explanation", False)
-    monkeypatch.setattr(settings, "enable_seo_kill_question_floor", False)
 
 
 @pytest.fixture
@@ -120,6 +120,7 @@ def generator():
     state = MagicMock()
     state.trend_longevity = None
     state.market_sizing = None
+    state.seo_strategy_report = None  # SEO kill-floor no-op unless a test sets a real kill-question
     gen = ReportGenerator(state)
     gen.score_accessor = MagicMock()
     return gen
@@ -367,10 +368,9 @@ class TestLlmVerdictExplanation:
 
 
 class TestSeoKillFloorWiring:
-    """The kill-question floor block: distribution_seo + flag on + failing kill-question → downgrade."""
+    """The kill-question floor block: distribution_seo + failing kill-question → downgrade."""
 
     def test_floor_downgrades_distribution_seo_go(self, generator, monkeypatch):
-        monkeypatch.setattr(settings, "enable_seo_kill_question_floor", True)
         generator._enriched_solution = None
         _set_scores(generator, 0.9, 0.85, 0.9, 0.85)  # solid Go pre-floor
         generator.state.seo_strategy_report = SimpleNamespace(seo_kill_question=SimpleNamespace(
@@ -380,7 +380,6 @@ class TestSeoKillFloorWiring:
         assert v.verdict == "Conditional"  # floored from Go (no winnable page universe)
 
     def test_floor_skips_non_distribution_angle(self, generator, monkeypatch):
-        monkeypatch.setattr(settings, "enable_seo_kill_question_floor", True)
         generator._enriched_solution = None
         _set_scores(generator, 0.9, 0.85, 0.9, 0.85)
         generator.state.seo_strategy_report = SimpleNamespace(seo_kill_question=SimpleNamespace(
@@ -388,13 +387,3 @@ class TestSeoKillFloorWiring:
             kd_sample_size=100, indexable_page_ceiling=120))
         v = generator._compute_go_no_go_verdict(SimpleNamespace(winning_angle="novel_differentiation"))
         assert v.verdict == "Go"  # floor is distribution_seo-only
-
-    def test_floor_off_is_noop(self, generator, monkeypatch):
-        monkeypatch.setattr(settings, "enable_seo_kill_question_floor", False)
-        generator._enriched_solution = None
-        _set_scores(generator, 0.9, 0.85, 0.9, 0.85)
-        generator.state.seo_strategy_report = SimpleNamespace(seo_kill_question=SimpleNamespace(
-            winnable_pages=0, median_keyword_difficulty=20.0, penalty_risk_flag=False,
-            kd_sample_size=100, indexable_page_ceiling=120))
-        v = generator._compute_go_no_go_verdict(SimpleNamespace(winning_angle="distribution_seo"))
-        assert v.verdict == "Go"  # flag off → floor skipped

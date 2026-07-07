@@ -171,11 +171,8 @@ def feasibility_adjusted_composite(
     so the marginal drop must use the SAME weighting: w_tf·(tf−build)/Σw_present, not the plain
     1/n_present. ``angle=None`` keeps the exact equal-weight arithmetic (byte-identical no-op).
 
-    No-op when the feasibility critic is off, build is unscored (sentinel -1.0 / None),
-    or build >= technical_feasibility.
+    No-op when build is unscored (sentinel -1.0 / None), or build >= technical_feasibility.
     """
-    if not settings.enable_feasibility_critic:
-        return composite_score
     # Defensive: only adjust when both scores are real numbers (bool excluded). A non-numeric
     # build (e.g. unset/sentinel) or build < 0 means "not scored" -> no-op.
     if not isinstance(build_feasibility, (int, float)) or isinstance(build_feasibility, bool):
@@ -280,7 +277,7 @@ def apply_feasibility_to_scores(
     (compute/backfill + the preview-grid stamp). Mixed 'llm'+'backfill' lists therefore carry a
     small cross-source scale gap — accepted for v1, validated by the A/B.
     """
-    if not settings.enable_feasibility_critic or not all_scores:
+    if not all_scores:
         return all_scores
     bf_by_name = {
         idea.solution_name: getattr(idea, "build_feasibility_score", None)

@@ -101,6 +101,9 @@ export const IdeasReadySchema = z.object({
   skip_validation: z.boolean().optional(),
   discovery_data_path: z.string().max(500).optional().default(''),
   preview_report_path: z.string().optional(),
+  // Phase-1 LLM cost breakdown (CostTracker.get_summary()), persisted so the admin
+  // pricing view shows spend on awaiting-selection runs before Phase-2 completes.
+  cost_summary: z.record(z.any()).optional(),
 });
 
 export type IdeasReadyInput = z.infer<typeof IdeasReadySchema>;

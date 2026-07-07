@@ -199,8 +199,8 @@ def _improve(crit, thread, prior, *, invoke, model, effort):
         "Fix THAT without weakening the others or pivoting off the source pain. Remember the DATA HONESTY "
         "rule: flag uncertain routes with [NEEDS-VERIFY: ...], don't assert. Return the COMPLETE spec — "
         "if the mechanism, data route, or name changed, rewrite headline, short_description, "
-        "value_proposition, why_it_works, and innovation_angle so they describe the revised idea, "
-        "not the old one."})
+        "value_proposition, why_it_works, innovation_angle, technical_approach, and "
+        "differentiation_factors so they describe the revised idea, not the old one."})
     idea, usage = invoke(thread, BaseSolutionIdea, temperature=0.5, model_name=model, reasoning_effort=effort)
     _carry_forward_fields(idea, prior)
     thread.append({"role": "assistant", "content": _idea_to_text(idea)})
@@ -392,7 +392,9 @@ def tournament_refine_cell_v4(
         except Exception as e:
             logger.warning(f"[v4] improve failed r{r}: {str(e)[:80]}"); break
         improved.source_pain = getattr(current, "source_pain", None) or grounding.pain_title
-        improved.source_segment = getattr(current, "source_segment", None) or grounding.audience_segment
+        # Do NOT backfill the arbitrary cell segment when None — the crew re-derives honest
+        # provenance (or leaves None) at the terminal stamp sites (_provenance_segment_for_pain).
+        improved.source_segment = getattr(current, "source_segment", None)
         current = improved
 
     # SEPARATE verification stage (decoupled from the loop) — resolves the data routes the loop ignored.

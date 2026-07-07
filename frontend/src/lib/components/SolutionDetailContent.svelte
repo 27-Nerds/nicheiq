@@ -64,6 +64,7 @@
             (t.monetization_secondary ? ` + ${humanizeTag(t.monetization_secondary)}` : ""),
         ),
       );
+    if (t.usage_cadence) items.push(chip(t.usage_cadence));
     return items;
   });
   // Growth: show all channels - programmatic-SEO is a meaningful positive (scalable organic
@@ -87,6 +88,13 @@
         description: solution.data_acquisition_notes?.trim() || tagDescription(t.data_access),
       });
     for (const r of t.risk_flags ?? []) items.push(chip(r));
+    // Pricing-shape mismatch (code-derived): episodic/one-shot usage sold as a subscription —
+    // the note explains the churn risk and the shape to consider instead.
+    if (t.pricing_shape_mismatch)
+      items.push({
+        label: "Pricing-shape mismatch",
+        description: t.pricing_shape_note?.trim() || tagDescription(t.usage_cadence ?? ""),
+      });
     return items;
   });
 

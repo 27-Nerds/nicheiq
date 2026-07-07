@@ -248,6 +248,25 @@ def test_strong_fit_with_frictions_keeps_strong_headline(monkeypatch):
         assert v.key_challenges
 
 
+def test_moderate_fit_high_difficulty_narrative_reconciles():
+    """Wedding-photographers run (2026-07-07): 'Software Fit: Moderate' next to a 'high'
+    difficulty band read as a contradiction — the fallback narrative must attribute the
+    difficulty to frictions, not a worse fit (same reconciliation the strong branch has)."""
+    from nicheiq.utils.niche_difficulty import _fallback_narrative
+    fp = SimpleNamespace(
+        software_addressability=0.6, difficulty_level="high", n_pains=6,
+        full_share=0.4, key_points=[], low_confidence=False,
+        dominant_project_type="saas", shape_concentration=0.5,
+    )
+    headline, lead = _fallback_narrative(fp, "x")
+    assert headline.startswith("Software Fit: Moderate")
+    assert "frictions" in lead and "not a worse fit" in lead
+    # medium difficulty: no friction clause needed
+    fp.difficulty_level = "medium"
+    _, lead2 = _fallback_narrative(fp, "x")
+    assert "frictions" not in lead2
+
+
 def test_wtp_signals_computed_and_weak_wtp_keypoint():
     from nicheiq.utils.niche_difficulty import _WEAK_WTP_CHALLENGE, _wtp_judgment
     pains = [SimpleNamespace(tool_addressable="full", commercial_intent=ci)
@@ -285,3 +304,176 @@ def test_wtp_reaches_prompt(monkeypatch):
     generate_niche_difficulty_verdict(fp, "x", _nc())
     assert "Willingness to pay" in captured["prompt"]
     assert "weak — no pain crosses" in captured["prompt"]
+
+
+# --- buyer class (who pays here) --------------------------------------------------
+
+def _seg(name, budget="High"):
+    return SimpleNamespace(segment_name=name, budget_sensitivity=budget)
+
+
+def test_segment_budget_brief_computed_and_reaches_prompt(monkeypatch):
+    from types import SimpleNamespace as NS
+    from nicheiq.utils import llm_service
+    captured = {}
+
+    def _cap(**kw):
+        captured["prompt"] = kw.get("prompt")
+        return (NS(headline="", narrative_summary=""), None)
+    monkeypatch.setattr(llm_service.LLMService, "invoke_structured", staticmethod(_cap))
+    fp = assess_niche_difficulty(
+        [_pain()] * 4, [_idea(novelty=0.6)] * 4, _nc(),
+        segments=[_seg("Bootstrapped Solo Founder"), _seg("Technical Founder", "Medium")])
+    assert fp.segment_budget_brief == (
+        "Bootstrapped Solo Founder (budget sensitivity: High); "
+        "Technical Founder (budget sensitivity: Medium)")
+    generate_niche_difficulty_verdict(fp, "x", _nc())
+    assert "Buyer segments" in captured["prompt"]
+    assert "Bootstrapped Solo Founder" in captured["prompt"]
+
+
+def test_buyer_class_validated_and_low_class_adds_challenge(monkeypatch):
+    from types import SimpleNamespace as NS
+    from nicheiq.utils import llm_service
+    monkeypatch.setattr(
+        llm_service.LLMService, "invoke_structured",
+        staticmethod(lambda **kw: (NS(headline="", narrative_summary="n",
+                                      buyer_class="indie-hobbyist"), None)))
+    fp = assess_niche_difficulty([_pain()] * 4, [_idea(novelty=0.6)] * 4, _nc(),
+                                 segments=[_seg("Indie Builders")])
+    v, _ = generate_niche_difficulty_verdict(fp, "x", _nc())
+    assert v.buyer_class == "indie-hobbyist"
+    assert "personal money" in v.buyer_class_note
+    assert v.buyer_class_note in v.key_challenges   # low payability surfaces as a challenge
+
+
+def test_buyer_class_off_vocab_dropped(monkeypatch):
+    from types import SimpleNamespace as NS
+    from nicheiq.utils import llm_service
+    monkeypatch.setattr(
+        llm_service.LLMService, "invoke_structured",
+        staticmethod(lambda **kw: (NS(headline="", narrative_summary="n",
+                                      buyer_class="rich-people"), None)))
+    fp = assess_niche_difficulty([_pain()] * 4, [_idea(novelty=0.6)] * 4, _nc())
+    v, _ = generate_niche_difficulty_verdict(fp, "x", _nc())
+    assert v.buyer_class is None and v.buyer_class_note is None
+
+
+def test_buyer_class_none_on_llm_failure():
+    # LLM path raises inside generate_ (no llm_service available in hermetic env is fine —
+    # monkeypatch it to raise to be explicit)
+    import pytest as _p
+    from nicheiq.utils import llm_service
+
+    class _Boom:
+        @staticmethod
+        def invoke_structured(**kw):
+            raise RuntimeError("down")
+    fp = assess_niche_difficulty([_pain()] * 4, [_idea(novelty=0.6)] * 4, _nc())
+    _orig = llm_service.LLMService.invoke_structured
+    llm_service.LLMService.invoke_structured = _Boom.invoke_structured
+    try:
+        v, _ = generate_niche_difficulty_verdict(fp, "x", _nc())
+    finally:
+        llm_service.LLMService.invoke_structured = _orig
+    assert v.buyer_class is None
+    assert v.headline  # deterministic fallback intact
+
+
+def test_high_payability_class_no_extra_challenge(monkeypatch):
+    from types import SimpleNamespace as NS
+    from nicheiq.utils import llm_service
+    monkeypatch.setattr(
+        llm_service.LLMService, "invoke_structured",
+        staticmethod(lambda **kw: (NS(headline="", narrative_summary="n",
+                                      buyer_class="budgeted-business"), None)))
+    fp = assess_niche_difficulty([_pain()] * 4, [_idea(novelty=0.6)] * 4, _nc())
+    v, _ = generate_niche_difficulty_verdict(fp, "x", _nc())
+    assert v.buyer_class == "budgeted-business"
+    assert v.buyer_class_note and "budget authority" in v.buyer_class_note
+    assert v.buyer_class_note not in v.key_challenges  # only LOW classes become challenges
+
+
+# --- web-verified competition + usage-shape signals (2026-07-06) -------------------
+
+def _cidea(parity=None, adjacent=None, cadence=None, novelty=0.6):
+    i = _idea(novelty=novelty)
+    i.incumbent_parity = parity
+    i.adjacent_market_parity = adjacent
+    i.tags = SimpleNamespace(usage_cadence=cadence)
+    return i
+
+
+def test_competition_and_cadence_aggregates():
+    ideas = [
+        _cidea(parity="substitute (census.gov): free", cadence="episodic"),
+        _cidea(parity="shipped by X: y", cadence="one-shot"),
+        _cidea(parity="partial by X: y", adjacent="V (cat): e", cadence="continuous"),
+        _cidea(parity="none found", adjacent="V (cat): e", cadence="periodic"),
+    ]
+    fp = assess_niche_difficulty([_pain()] * 4, ideas, _nc())
+    assert fp.substitute_share == 0.25
+    assert fp.verified_incumbent_share == 0.5
+    assert fp.adjacent_incumbent_share == 0.5
+    assert fp.episodic_usage_share == 0.5
+
+
+def test_substitute_and_incumbent_challenges_fire():
+    from nicheiq.utils.niche_difficulty import (_INCUMBENT_DENSE_CHALLENGE,
+                                                _SUBSTITUTE_CHALLENGE)
+    ideas = [_cidea(parity="substitute (x): y"), _cidea(parity="shipped by A: b"),
+             _cidea(parity="shipped by A: b"), _cidea(parity="partial by A: b")]
+    fp = assess_niche_difficulty([_pain()] * 4, ideas, _nc())
+    assert _SUBSTITUTE_CHALLENGE in fp.key_points
+    assert _INCUMBENT_DENSE_CHALLENGE in fp.key_points
+
+
+def test_adjacent_money_challenge_needs_weak_wallets():
+    from nicheiq.utils.niche_difficulty import _ADJACENT_MONEY_CHALLENGE
+    ideas = [_cidea(adjacent="V (cat): e") for _ in range(4)]
+    weak = [_seg("Indie", "High")]
+    for s in weak:
+        s.payability_score, s.payability_class = 0.2, "personal-wallet"
+    fp = assess_niche_difficulty([_pain()] * 4, ideas, _nc(), segments=weak)
+    assert fp.segment_payability_mean == 0.2
+    assert _ADJACENT_MONEY_CHALLENGE in fp.key_points
+    # healthy wallets -> adjacent presence alone is not the "sell elsewhere" story
+    rich = [_seg("Agency", "Low")]
+    for s in rich:
+        s.payability_score, s.payability_class = 0.7, "smb-budget"
+    fp2 = assess_niche_difficulty([_pain()] * 4, ideas, _nc(), segments=rich)
+    assert _ADJACENT_MONEY_CHALLENGE not in fp2.key_points
+
+
+def test_episodic_challenge_defers_to_wtp_challenge():
+    from nicheiq.utils.niche_difficulty import (_EPISODIC_CHALLENGE, _WEAK_WTP_CHALLENGE)
+    ideas = [_cidea(cadence="episodic") for _ in range(4)]
+    # strong buying signals -> WTP challenge absent -> episodic note fires
+    pains = [SimpleNamespace(tool_addressable="full", commercial_intent=0.8) for _ in range(4)]
+    fp = assess_niche_difficulty(pains, ideas, _nc())
+    assert _EPISODIC_CHALLENGE in fp.key_points
+    # weak buying signals -> WTP challenge already carries the pricing-shape advice
+    pains = [SimpleNamespace(tool_addressable="full", commercial_intent=0.3) for _ in range(4)]
+    fp2 = assess_niche_difficulty(pains, ideas, _nc())
+    assert _WEAK_WTP_CHALLENGE in fp2.key_points
+    assert _EPISODIC_CHALLENGE not in fp2.key_points
+
+
+def test_segment_brief_carries_wallet_class_and_prompt_gets_new_words(monkeypatch):
+    from types import SimpleNamespace as NS
+    from nicheiq.utils import llm_service
+    captured = {}
+
+    def _cap(**kw):
+        captured["prompt"] = kw.get("prompt")
+        return (NS(headline="", narrative_summary=""), None)
+    monkeypatch.setattr(llm_service.LLMService, "invoke_structured", staticmethod(_cap))
+    seg = _seg("Indie Builders", "High")
+    seg.payability_score, seg.payability_class = 0.15, "personal-wallet"
+    ideas = [_cidea(parity="substitute (x): y", cadence="episodic") for _ in range(4)]
+    fp = assess_niche_difficulty([_pain()] * 4, ideas, _nc(), segments=[seg])
+    assert "wallet: personal-wallet" in fp.segment_budget_brief
+    generate_niche_difficulty_verdict(fp, "x", _nc())
+    p = captured["prompt"]
+    assert "already free/DIY" in p and "ADJACENT commercial market" in p
+    assert "episodically" in p

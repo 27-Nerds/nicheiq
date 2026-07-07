@@ -61,3 +61,44 @@ class TestDirectionAwareGate:
         off = _verdict(generator, "distribution_seo")
         monkeypatch.setattr(settings, "enable_direction_aware_eval", True)
         assert _verdict(generator, "distribution_seo") == off
+
+
+class TestPayabilityReclassification:
+    """2026-07-06 product decision: No-Go is reserved for STRUCTURAL blockers. A buildable idea
+    whose market_fit was grounded by weak buyer payability presents as Conditional/High with the
+    validation condition named — a paid analysis says "validate willingness-to-pay", not "no"."""
+
+    def _sol(self, pay=0.2, cls="personal-wallet"):
+        return SimpleNamespace(winning_angle=None, source_segment_payability=pay,
+                               source_segment_payability_class=cls, tags=None)
+
+    def test_buildable_weak_wallet_no_go_becomes_conditional_high(self, generator):
+        # mf grounded to 0.4 by payability evidence; tech fine -> would be score-No-Go
+        _scores(generator, mf=0.4, tech=0.75, seo=0.4, nov=0.4)
+        v = generator._compute_go_no_go_verdict(self._sol(), narrative_rationale="ok")
+        assert v.verdict == "Conditional"
+        assert v.risk_level == "High"
+        assert "willingness-to-pay" in v.primary_concern
+        assert "spending personal money" in v.primary_concern   # human phrase, not the enum token
+        assert "personal-wallet" not in v.primary_concern
+        import re
+        assert not re.search(r"\d\.\d", v.primary_concern)     # band-clean: no decimals
+
+    def test_unbuildable_stays_no_go(self, generator):
+        _scores(generator, mf=0.4, tech=0.4, seo=0.4, nov=0.4)   # tech below 0.6 = structural
+        v = generator._compute_go_no_go_verdict(self._sol(), narrative_rationale="ok")
+        assert v.verdict == "No-Go"
+
+    def test_no_payability_stays_no_go(self, generator):
+        _scores(generator, mf=0.4, tech=0.75, seo=0.4, nov=0.4)
+        v = generator._compute_go_no_go_verdict(self._sol(pay=None, cls=None),
+                                                narrative_rationale="ok")
+        assert v.verdict == "No-Go"       # unscored payability: no reclassification (fail-open)
+
+    def test_healthy_wallet_no_go_stays_no_go(self, generator):
+        _scores(generator, mf=0.4, tech=0.75, seo=0.4, nov=0.4)
+        v = generator._compute_go_no_go_verdict(self._sol(pay=0.65, cls="smb-budget"),
+                                                narrative_rationale="ok")
+        assert v.verdict == "No-Go"       # weak market with a REAL wallet is a genuine No-Go
+
+

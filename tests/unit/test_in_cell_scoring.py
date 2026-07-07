@@ -259,7 +259,6 @@ def _pain_idea(**over):
 
 
 def test_pain_relevance_trims_to_kept(monkeypatch):
-    monkeypatch.setattr(usc.settings, "enable_pain_relevance_filter", True)
     monkeypatch.setattr(usc.LLMService, "invoke_structured",
                         lambda **kw: (usc._PainRelevance(keep=[1]), None))  # keep extra #1 = "B"
     idea = _pain_idea()
@@ -268,7 +267,6 @@ def test_pain_relevance_trims_to_kept(monkeypatch):
 
 
 def test_pain_relevance_always_keeps_source(monkeypatch):
-    monkeypatch.setattr(usc.settings, "enable_pain_relevance_filter", True)
     monkeypatch.setattr(usc.LLMService, "invoke_structured",
                         lambda **kw: (usc._PainRelevance(keep=[]), None))  # keep nothing
     idea = _pain_idea()
@@ -276,15 +274,7 @@ def test_pain_relevance_always_keeps_source(monkeypatch):
     assert idea.pain_points_addressed == ["A"]           # source pain is never dropped
 
 
-def test_pain_relevance_flag_off_is_noop(monkeypatch):
-    monkeypatch.setattr(usc.settings, "enable_pain_relevance_filter", False)
-    idea = _pain_idea()
-    _crew()._filter_pain_relevance([idea])
-    assert idea.pain_points_addressed == ["A", "B", "C"]
-
-
 def test_pain_relevance_failsoft_keeps_all(monkeypatch):
-    monkeypatch.setattr(usc.settings, "enable_pain_relevance_filter", True)
     def _boom(**kw):
         raise RuntimeError("llm down")
     monkeypatch.setattr(usc.LLMService, "invoke_structured", staticmethod(_boom))
@@ -297,7 +287,6 @@ def test_pain_relevance_failsoft_keeps_all(monkeypatch):
 
 def _patch_chain(monkeypatch, order):
     monkeypatch.setattr(usc.settings, "enable_score_calibration", True)
-    monkeypatch.setattr(usc.settings, "enable_feasibility_critic", True)
     monkeypatch.setattr(UnifiedSolutionCrew, "_finalize_feasibility",
                         lambda self, ideas: order.append("feas"))
     monkeypatch.setattr(UnifiedSolutionCrew, "_calibrate_batch",
@@ -309,35 +298,34 @@ def _patch_chain(monkeypatch, order):
                         lambda self, *, batch: (0, None))
     monkeypatch.setattr(UnifiedSolutionCrew, "_finalize_seo_realism",
                         lambda self, ideas: order.append("seo"))
-    monkeypatch.setattr(UnifiedSolutionCrew, "_apply_tags_to",
-                        lambda self, ideas: order.append("tags") or None)
 
 
 def test_score_cell_winner_runs_chain_in_order(monkeypatch):
+    # In-cell tagging was removed 2026-07-06 (post-union clears + re-tags the FULL set from
+    # final post-parity scores, so a per-cell tag call was pure discard).
     order: list = []
     _patch_chain(monkeypatch, order)
     _crew()._score_cell_winner(_idea("W"), skip_selection=True, usages=[])
-    assert order == ["feas", "cal", "val", "seo", "tags"]
+    assert order == ["feas", "cal", "val", "seo"]
 
 
 def test_score_cell_winner_skips_seo_on_legacy_path(monkeypatch):
     order: list = []
     _patch_chain(monkeypatch, order)
     _crew()._score_cell_winner(_idea("W"), skip_selection=False, usages=[])
-    assert order == ["feas", "cal", "val", "tags"]   # no SEO on the one-shot path
+    assert order == ["feas", "cal", "val"]   # no SEO on the one-shot path
 
 
 def test_score_cell_winner_funnels_usage(monkeypatch):
     monkeypatch.setattr(usc.settings, "enable_score_calibration", True)
-    monkeypatch.setattr(usc.settings, "enable_feasibility_critic", False)
+    monkeypatch.setattr(UnifiedSolutionCrew, "_finalize_feasibility", lambda self, ideas: None)
     monkeypatch.setattr(UnifiedSolutionCrew, "_validate_idea_caps", lambda self, idea: [])
     monkeypatch.setattr(UnifiedSolutionCrew, "_finalize_seo_realism", lambda self, ideas: None)
     monkeypatch.setattr(UnifiedSolutionCrew, "_calibrate_batch", lambda self, *, batch: (1, "CAL_U"))
     monkeypatch.setattr(UnifiedSolutionCrew, "_classify_batch", lambda self, *, batch: (0, None))
-    monkeypatch.setattr(UnifiedSolutionCrew, "_apply_tags_to", lambda self, ideas: "TAG_U")
     usages: list = []
     _crew()._score_cell_winner(_idea("W"), skip_selection=True, usages=usages)
-    assert usages == ["CAL_U", "TAG_U"]   # both LLM usages funnel into the shared sink
+    assert usages == ["CAL_U"]   # LLM usage funnels into the shared sink
 
 
 # --- post-union idempotency (finish only stragglers) ----------------------
@@ -388,7 +376,6 @@ def test_validate_idea_caps_solo_dev_untouched_when_within_build():
 
 def test_finalize_dev_time_sets_grounded_estimate(monkeypatch):
     from nicheiq.crews.unified_solution_crew import _DevTimeEstimate
-    monkeypatch.setattr(usc.settings, "enable_grounded_dev_time", True)
     monkeypatch.setattr(usc.LLMService, "invoke_structured",
                         lambda **kw: (_DevTimeEstimate(rationale="data pipeline is the long pole",
                                                        estimate="6-10 weeks"), {"u": 1}))
@@ -406,7 +393,6 @@ def test_finalize_dev_time_prompt_has_calibration_bands(monkeypatch):
     # pip-audit + public API + arithmetic build). The bands tie the estimate to observable
     # component properties; data_feasibility now rides along as an anchor.
     from nicheiq.crews.unified_solution_crew import _DevTimeEstimate
-    monkeypatch.setattr(usc.settings, "enable_grounded_dev_time", True)
     captured = {}
     def _cap(**kw):
         captured["prompt"] = kw.get("prompt")
@@ -449,7 +435,6 @@ def test_reconcile_dev_time_band_arithmetic():
 
 
 def test_finalize_dev_time_failsoft_keeps_prior(monkeypatch):
-    monkeypatch.setattr(usc.settings, "enable_grounded_dev_time", True)
     def _boom(**kw):
         raise RuntimeError("LLM down")
     monkeypatch.setattr(usc.LLMService, "invoke_structured", staticmethod(_boom))
@@ -460,3 +445,19 @@ def test_finalize_dev_time_failsoft_keeps_prior(monkeypatch):
     idea = _idea("DT2", core_features=["a"], estimated_development_time="2-3 months")
     c._finalize_dev_time([idea])
     assert idea.estimated_development_time == "2-3 months"   # fail-soft: prior estimate kept
+
+
+def test_pipeline_clears_tags_before_full_retag():
+    # 2026-07-06: generator LLMs can fabricate a whole `tags` object through the shared
+    # BaseSolutionIdea schema (observed live on a bundle: invented 'market-fit' strength at
+    # mf 0.6), and in-cell tags bucket on PRE-parity scores. The pipeline must clear tags for
+    # the FULL set right before the post-union _apply_tags so every idea is re-derived once
+    # from FINAL scores. Source-pin (execute_pipeline is too heavy to run hermetically).
+    import inspect
+    src = inspect.getsource(UnifiedSolutionCrew.execute_pipeline)
+    clear_idx = src.find("_idea.tags = None")
+    apply_idx = src.find("self._apply_tags(refined_solutions)")
+    assert clear_idx != -1 and apply_idx != -1 and clear_idx < apply_idx
+    # and the in-cell chain no longer tags (pure discard once the post-union re-tag exists)
+    cell_src = inspect.getsource(UnifiedSolutionCrew._score_cell_winner)
+    assert "_apply_tags_to" not in cell_src

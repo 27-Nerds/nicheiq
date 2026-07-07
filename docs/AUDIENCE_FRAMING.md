@@ -72,6 +72,24 @@ worth exploring" group is collapsed by default to keep your audience in focus, b
 it's always one click away. We'd rather show you the full set with your audience
 front-and-center than quietly drop ideas you didn't ask us to drop.
 
+## Who pays: buyer class and segment payability (2026-07-06)
+
+Audience identity and audience *wallet* are different questions. Two signals answer the second:
+
+- **Niche buyer class** (always on) — the Research Reality Check classifies who actually pays in
+  the niche as a whole: `budgeted-business | smb-operator | prosumer | indie-hobbyist | consumer
+  | mixed`, judged from the audience segments' budget sensitivity and the pains' buying signals.
+  The rule is: judge the **wallet, not the job title** — "founders validating side-project ideas"
+  spend personal money (indie-hobbyist) even though they run "businesses". Low-payability classes
+  surface a "Who pays here" warning next to the software-fit verdict.
+- **Segment payability** (permanent since the 2026-07-06 gate pass) — each audience segment gets a 0-1
+  payability score and wallet class (`corporate-budget | smb-budget | prosumer-wallet |
+  personal-wallet`), blended from budget authority + existing-spend evidence (incumbent pricing,
+  money quotes, pain commercial intent) with deterministic class priors. Ideas inherit their
+  source segment's payability; it grounds market_fit, can hold direct-paid Go verdicts to
+  Conditional, and reclassifies buildable weak-wallet No-Gos as Conditional with the validation
+  condition named. Full mechanics: **Idea Scoring Methodology → Who pays**.
+
 ## Honest limitations
 
 - **The audience label is our reading of your words.** Classifying "is this a

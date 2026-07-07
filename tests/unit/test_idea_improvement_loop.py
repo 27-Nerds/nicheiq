@@ -4,7 +4,8 @@ Verifies the mechanism: tournament selection, mirrored-thread roles, keep-best, 
 meets_bar, plateau handling, provenance carry-forward, and fail-soft on invoke errors.
 """
 from nicheiq.crews.idea_improvement_loop import (
-    CandidateChoice, CellGrounding, IdeaCritique, tournament_refine_cell,
+    CandidateChoice, CellGrounding, IdeaCritique, _carry_forward_fields,
+    tournament_refine_cell,
 )
 from nicheiq.models.solution_idea import BaseSolutionIdea
 
@@ -97,3 +98,30 @@ def test_single_candidate_skips_selection_call():
     winner = tournament_refine_cell([_idea("solo")], GROUND, invoke=invoke)
     assert winner.solution_name == "solo"
     assert calls["i"] == 1
+
+
+def test_carry_derives_why_it_works_short_from_new_why_it_works():
+    improved, prior = _idea("A"), _idea("A0")
+    improved.why_it_works = "Community data shows founders record calls but never mine them for patterns."
+    _carry_forward_fields(improved, prior)
+    assert improved.why_it_works_short
+    assert len(improved.why_it_works_short) <= 120
+    assert improved.why_it_works_short.startswith("Community data shows")
+
+
+def test_carry_never_backfills_why_it_works_short_from_prior():
+    # BOTH blank on improved: the prior's pitch must never leak (stale-pitch protection).
+    improved, prior = _idea("A"), _idea("A0")
+    prior.why_it_works = "old pitch"
+    prior.why_it_works_short = "old short pitch"
+    _carry_forward_fields(improved, prior)
+    assert not improved.why_it_works
+    assert not improved.why_it_works_short
+
+
+def test_carry_short_clamped_at_120_with_ellipsis():
+    improved, prior = _idea("A"), _idea("A0")
+    improved.why_it_works = "x" * 300
+    _carry_forward_fields(improved, prior)
+    assert len(improved.why_it_works_short) <= 120
+    assert improved.why_it_works_short.endswith("…")

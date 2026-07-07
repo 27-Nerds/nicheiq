@@ -37,6 +37,13 @@ COLD_START_HEAVY = 0.50
 AUDIENCE_FIT_WEAK = 0.50
 SATURATION_DUP = 0.35       # share of brainstormed concepts dropped as already-existing -> crowded
 MIN_SAMPLE = 3              # below this (pains AND ideas) -> low_confidence
+# Web-verified competition + usage-shape thresholds (2026-07-06, from the parity/adjacent probes
+# and the usage_cadence tag). Informational only — they color key_points/prose, never the band.
+SUBSTITUTE_HEAVY = 0.25     # >= this share of ideas face a free/DIY route to the same outcome
+INCUMBENT_DENSE = 0.50      # >= this share have a web-verified shipped/partial incumbent
+ADJACENT_MONEY = 0.50       # >= this share have an adjacent-market commercial incumbent
+EPISODIC_HEAVY = 0.50       # >= this share are episodic/one-shot usage products
+PAYABILITY_WEAK_MEAN = 0.40 # mean segment payability below this = weak wallets overall
 
 # Surfaced when the data + pains are solid but the tool ecosystem is mature: a large share of
 # brainstormed concepts were flagged as versions of products that already ship.
@@ -45,6 +52,26 @@ _SATURATION_CHALLENGE = (
     "the brainstormed concepts were flagged as versions of products that already ship. The bar "
     "here is differentiation, not feasibility; find a sharper wedge, or consider a niche with "
     "the same data richness but fewer incumbents."
+)
+
+_SUBSTITUTE_CHALLENGE = (
+    "A meaningful share of these outcomes is already obtainable free or DIY (an official data "
+    "source, a spreadsheet, a manual routine) — a paid product here must beat the free route on "
+    "convenience and completeness, not merely exist."
+)
+_EPISODIC_CHALLENGE = (
+    "Most products in this niche would be used episodically — bought around an event, idle "
+    "between events. Subscriptions churn in that shape; favor one-time purchases, credits, or "
+    "usage-based pricing."
+)
+_ADJACENT_MONEY_CHALLENGE = (
+    "The mechanisms here already make money in an adjacent commercial market with stronger "
+    "wallets — the same product sold to that adjacent buyer may be the better business; sold "
+    "here, it competes with those vendors' marketing budgets."
+)
+_INCUMBENT_DENSE_CHALLENGE = (
+    "Web checks found shipping products covering most of these ideas' core mechanisms — the "
+    "bar is head-on differentiation against named incumbents, not filling an empty field."
 )
 
 # Mechanism tags / project types that signal a derivative "lookup / reference"
@@ -81,10 +108,88 @@ class NicheDifficultyFactPack(BaseModel):
     # Willingness-to-pay signals from the pains' commercial intent (None = no pains carried it)
     commercial_intent_max: Optional[float] = None
     high_commercial_share: Optional[float] = None
+    # Deterministic buyer evidence for the buyer-class narration: Stage-4 segment names with
+    # their budget sensitivity (+ wallet class when payability ran), words only (None = no
+    # audience mapping available).
+    segment_budget_brief: Optional[str] = None
+    # Mean evidence-blended segment payability (None = payability not scored this run)
+    segment_payability_mean: Optional[float] = None
+    # Web-verified competition signals aggregated from the parity + adjacent probes
+    # (2026-07-06): shares over the FINAL idea set. substitute = a free/DIY route already
+    # delivers the outcome; verified incumbents = shipped/partial parity; adjacent = a
+    # commercial product monetizes the mechanism in an audience-independent market.
+    substitute_share: float = 0.0
+    verified_incumbent_share: float = 0.0
+    adjacent_incumbent_share: float = 0.0
+    # Share of ideas whose buyer USES them episodically / one-shot (tags.usage_cadence)
+    episodic_usage_share: float = 0.0
     difficulty_level: str = "medium"
     low_confidence: bool = False
     flags: list[str] = Field(default_factory=list)
     key_points: list[str] = Field(default_factory=list)
+
+
+# Closed vocabulary for the niche's buyer class (who actually pays here), and the payability
+# tier each class implies. LLM-classified in the narrative call, vocab-validated post-call.
+BUYER_CLASSES = ("budgeted-business", "smb-operator", "prosumer", "indie-hobbyist",
+                 "consumer", "mixed")
+_BUYER_CLASS_PAYABILITY = {
+    "budgeted-business": "high", "smb-operator": "medium", "mixed": "medium",
+    "prosumer": "low", "indie-hobbyist": "low", "consumer": "low",
+}
+_BUYER_CLASS_NOTES = {
+    "budgeted-business": "Buyers here are businesses with real budget authority — direct paid "
+                         "pricing is viable.",
+    "smb-operator": "Buyers here are small-business operators — price-aware but used to paying "
+                    "for tools that save time or win customers.",
+    "mixed": "Buyers here span several wallet types — pick the segment with budget authority "
+             "and price for it.",
+    "prosumer": "Buyers here are prosumers paying out of pocket — expect low price ceilings "
+                "and high churn on subscriptions.",
+    "indie-hobbyist": "Buyers here are indie/hobbyist builders spending personal money "
+                      "episodically — a historically low-willingness-to-pay segment; favor "
+                      "one-time pricing, free-tool distribution, or an adjacent buyer with "
+                      "budget.",
+    "consumer": "Buyers here are consumers — low price points, high support load; software "
+                "here usually monetizes via ads/affiliate or stays free.",
+}
+
+
+def derive_monetization_directive(pains, segments) -> str:
+    """A deterministic, PRE-ideation monetization prior for the pricing prompt, from the same
+    signals assess_niche_difficulty uses (segment payability mean + pain commercial-intent) — NOT
+    the LLM-classified buyer_class, which doesn't exist yet at ideation time. The per-pain WTP stays
+    the override so a mostly-weak niche's one genuinely commercial pain can still price as a
+    subscription (avoids over-suppression on mixed niches)."""
+    ci_present = [c for c in (getattr(p, "commercial_intent", None) for p in (pains or []))
+                  if isinstance(c, (int, float))]
+    commercial_intent_max = max(ci_present) if ci_present else None
+    has_commercial_pain = commercial_intent_max is not None and commercial_intent_max >= 0.6
+
+    pay_scores = [p for p in (getattr(s, "payability_score", None) for s in (segments or []))
+                  if isinstance(p, (int, float))]
+    payability_mean = (sum(pay_scores) / len(pay_scores)) if pay_scores else None
+    weak_wallet = payability_mean is not None and payability_mean < PAYABILITY_WEAK_MEAN
+    mean_clause = f" (mean segment payability {payability_mean:.2f})" if payability_mean is not None else ""
+
+    override = ("Subscription is correct and expected for an idea whose addressed pain shows "
+                "WTP ≥ 5/10 — key that exception to the WTP number, do not blanket-refuse subscription.")
+
+    if weak_wallet and not has_commercial_pain:
+        return ("MONETIZATION DIRECTIVE — weak-wallet niche" + mean_clause + ": buyers pay out of "
+                "pocket with low price ceilings, and no pain crosses the commercial-intent bar. "
+                "DEFAULT to a free tool with distribution monetization (ads / affiliate / lead-gen / "
+                "a cheap team tier), NOT per-seat subscription. " + override)
+    if weak_wallet and has_commercial_pain:
+        return ("MONETIZATION DIRECTIVE — mostly weak-wallet niche" + mean_clause + " with a few "
+                "genuinely commercial pains: DEFAULT to free + distribution monetization, but "
+                + override)
+    if payability_mean is not None:
+        return ("MONETIZATION DIRECTIVE — wallets look viable" + mean_clause + ": price to the "
+                "addressed pain's WTP; direct paid / subscription pricing is on the table where WTP "
+                "supports it.")
+    return ("MONETIZATION DIRECTIVE: match pricing to the addressed pain's WTP (shown as WTP x/10) "
+            "and project type — do not default every idea to freemium subscription.")
 
 
 class NicheDifficultyNarrative(BaseModel):
@@ -95,6 +200,10 @@ class NicheDifficultyNarrative(BaseModel):
         ..., description="Verdict line, EXACTLY 'Software Fit: <fixed rating> — <niche-specific clause>'"
     )
     narrative_summary: str = Field(..., description="2-4 sentence candid verdict")
+    buyer_class: str = Field(
+        "", description="EXACTLY one of: budgeted-business | smb-operator | prosumer | "
+                        "indie-hobbyist | consumer | mixed"
+    )
 
 
 def _share(items, predicate) -> float:
@@ -109,14 +218,17 @@ def _median(values: list[float]) -> Optional[float]:
 
 
 def assess_niche_difficulty(
-    pains, ideas, niche_context, concept_duplication_rate: Optional[float] = None
+    pains, ideas, niche_context, concept_duplication_rate: Optional[float] = None,
+    segments=None,
 ) -> Optional[NicheDifficultyFactPack]:
     """Classify niche software-fit difficulty from persisted signals.
 
     `concept_duplication_rate` (optional) is the share of brainstormed concepts the novelty
     critic flagged as already-existing — a tool-ecosystem saturation signal the surviving ideas
-    can't show. Returns None only when there is nothing to judge (no pains AND no ideas),
-    so the caller can leave the field null and the UI hides the section.
+    can't show. `segments` (optional) are the Stage-4 audience segments — their names + budget
+    sensitivity become the buyer-class evidence brief. Returns None only when there is nothing
+    to judge (no pains AND no ideas), so the caller can leave the field null and the UI hides
+    the section.
     """
     pains = pains or []
     ideas = ideas or []
@@ -181,6 +293,38 @@ def assess_niche_difficulty(
     commercial_intent_max = round(max(ci_present), 3) if ci_present else None
     high_commercial_share = (round(sum(1 for c in ci_present if c >= 0.6) / len(ci_present), 3)
                              if ci_present else None)
+
+    # Buyer evidence brief: segment names + budget sensitivity (+ evidence-blended wallet class
+    # when payability ran), words only for the LLM; the numeric mean stays a fact-pack field.
+    segment_budget_brief = None
+    seg_lines = []
+    pay_scores = []
+    for s in (segments or [])[:5]:
+        name = (getattr(s, "segment_name", "") or "").strip()
+        if not name:
+            continue
+        budget = (getattr(s, "budget_sensitivity", "") or "unknown").strip()
+        pay = getattr(s, "payability_score", None)
+        pay_cls = getattr(s, "payability_class", None)
+        if isinstance(pay, (int, float)):
+            pay_scores.append(pay)
+        wallet = f"; wallet: {pay_cls}" if pay_cls else ""
+        seg_lines.append(f"{name} (budget sensitivity: {budget}{wallet})")
+    if seg_lines:
+        segment_budget_brief = "; ".join(seg_lines)
+    segment_payability_mean = round(sum(pay_scores) / len(pay_scores), 2) if pay_scores else None
+
+    # Web-verified competition + usage-shape aggregates (2026-07-06): shares over the FINAL
+    # idea set from the parity/adjacent probes and the usage_cadence tag.
+    substitute_share = _share(
+        ideas, lambda i: str(getattr(i, "incumbent_parity", "") or "").startswith("substitute"))
+    verified_incumbent_share = _share(
+        ideas, lambda i: str(getattr(i, "incumbent_parity", "") or "").startswith(("shipped", "partial")))
+    adjacent_incumbent_share = _share(
+        ideas, lambda i: bool(getattr(i, "adjacent_market_parity", None)))
+    episodic_usage_share = _share(
+        ideas, lambda i: getattr(getattr(i, "tags", None), "usage_cadence", None)
+        in ("episodic", "one-shot"))
 
     # --- Friction flags (drive both band escalation and the key-points list) ---
     flags: list[str] = []
@@ -279,11 +423,33 @@ def assess_niche_difficulty(
     if commercial_intent_max is not None and commercial_intent_max < 0.6:
         key_points = [*key_points, _WEAK_WTP_CHALLENGE]
 
+    # Web-verified competition + usage-shape notes (2026-07-06): informational appends in the
+    # same spirit — they never touch the band or the escalation flags.
+    if substitute_share >= SUBSTITUTE_HEAVY:
+        key_points = [*key_points, _SUBSTITUTE_CHALLENGE]
+    if verified_incumbent_share >= INCUMBENT_DENSE:
+        key_points = [*key_points, _INCUMBENT_DENSE_CHALLENGE]
+    if (adjacent_incumbent_share >= ADJACENT_MONEY
+            and segment_payability_mean is not None
+            and segment_payability_mean < PAYABILITY_WEAK_MEAN):
+        # The strategic inversion: mechanisms proven to monetize elsewhere + weak wallets HERE.
+        key_points = [*key_points, _ADJACENT_MONEY_CHALLENGE]
+    if episodic_usage_share >= EPISODIC_HEAVY and _WEAK_WTP_CHALLENGE not in key_points:
+        # Usage shape, distinct from buying signals; skip when the WTP challenge already carries
+        # the monetization-shape advice (two pricing warnings read as nagging).
+        key_points = [*key_points, _EPISODIC_CHALLENGE]
+
     return NicheDifficultyFactPack(
         n_pains=len(pains),
         n_ideas=len(ideas),
         commercial_intent_max=commercial_intent_max,
         high_commercial_share=high_commercial_share,
+        segment_budget_brief=segment_budget_brief,
+        segment_payability_mean=segment_payability_mean,
+        substitute_share=round(substitute_share, 3),
+        verified_incumbent_share=round(verified_incumbent_share, 3),
+        adjacent_incumbent_share=round(adjacent_incumbent_share, 3),
+        episodic_usage_share=round(episodic_usage_share, 3),
         none_share=round(none_share, 3),
         partial_share=round(partial_share, 3),
         full_share=round(full_share, 3),
@@ -443,6 +609,11 @@ def _fallback_narrative(fp: NicheDifficultyFactPack, niche: Optional[str]) -> tu
             "A tool earns its keep, but the easy framings are weaker than they look — "
             "pick the wedge carefully."
         )
+        if fp.difficulty_level in ("high", "very_high"):
+            lead += (
+                " Overall difficulty still rates high — that's frictions (cold start, "
+                "crowded tooling), not a worse fit; see the factors below."
+            )
     if fp.key_points:
         lead += " " + fp.key_points[0]
     if fp.low_confidence:
@@ -463,6 +634,7 @@ def generate_niche_difficulty_verdict(
     fp = fact_pack
     headline, narrative = _fallback_narrative(fp, niche)
     usage = None
+    buyer_class = None
 
     try:
         from .llm_service import LLMService
@@ -496,6 +668,11 @@ def generate_niche_difficulty_verdict(
             audience_scope=fp.audience_scope or "n/a",
             audience_fit_ratio=_share_word(fp.audience_fit_ratio),
             willingness_to_pay=_wtp_judgment(fp.commercial_intent_max, fp.high_commercial_share),
+            buyer_segments=fp.segment_budget_brief or "n/a",
+            substitute_share=_share_word(fp.substitute_share),
+            verified_incumbent_share=_share_word(fp.verified_incumbent_share),
+            adjacent_incumbent_share=_share_word(fp.adjacent_incumbent_share),
+            episodic_usage_share=_share_word(fp.episodic_usage_share),
             key_points=" | ".join(fp.key_points) or "n/a",
             low_confidence=fp.low_confidence,
         )
@@ -519,15 +696,33 @@ def generate_niche_difficulty_verdict(
             )
         if result.narrative_summary.strip():
             narrative = result.narrative_summary.strip()
+        # Buyer class: accept only closed-vocab values (off-vocab → None, UI hides the row) —
+        # same accept-or-fallback pattern as the headline rating word above.
+        bc = (getattr(result, "buyer_class", "") or "").strip().lower()
+        if bc in BUYER_CLASSES:
+            buyer_class = bc
+        elif bc:
+            logger.warning(f"[Niche Difficulty] off-vocab buyer_class '{bc[:40]}' — dropped.")
     except Exception as e:  # noqa: BLE001 — best-effort; deterministic fallback already set
         logger.warning(f"[Niche Difficulty] prose LLM failed: {e}. Using deterministic narrative.")
+
+    # Buyer-class note + low-payability challenge (deterministic from the validated class).
+    buyer_class_note = _BUYER_CLASS_NOTES.get(buyer_class) if buyer_class else None
+    key_challenges = list(fp.key_points)
+    if (buyer_class and _BUYER_CLASS_PAYABILITY.get(buyer_class) == "low"
+            and _WEAK_WTP_CHALLENGE not in key_challenges and buyer_class_note):
+        # The WTP challenge (from pain buying-signals) already carries the monetization-shape
+        # advice; only add the buyer-class angle when it isn't there yet.
+        key_challenges.append(buyer_class_note)
 
     verdict = NicheDifficultyVerdict(
         difficulty_level=fp.difficulty_level,
         software_addressability=fp.software_addressability,
         headline=headline,
         narrative_summary=narrative,
-        key_challenges=fp.key_points,
+        key_challenges=key_challenges,
         low_confidence=fp.low_confidence,
+        buyer_class=buyer_class,
+        buyer_class_note=buyer_class_note,
     )
     return verdict, usage

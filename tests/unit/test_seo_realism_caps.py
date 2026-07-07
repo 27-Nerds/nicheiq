@@ -6,16 +6,15 @@ import nicheiq.utils.seo_helpers as sh
 KW = dict(
     require_saas_for_gating=True, gated_saas_ceiling=0.5,
     thin_pages_threshold=50, thin_pages_ceiling=0.4,
-    high_score_min_pages=300, moderate_pages_ceiling=0.7, handseed_ceiling=0.6,
+    high_score_min_pages=300, moderate_pages_ceiling=0.7,
 )
 
 
-def _call(seo, *, project_type=None, data_access_model=None, content_generation_model=None,
+def _call(seo, *, project_type=None, data_access_model=None,
           estimated_indexable_pages=None, **over):
     kw = {**KW, **over}
     return sh.cap_seo_realism_score(
         seo, project_type=project_type, data_access_model=data_access_model,
-        content_generation_model=content_generation_model,
         estimated_indexable_pages=estimated_indexable_pages, **kw)
 
 
@@ -56,24 +55,6 @@ class TestRuleB_ThinPages:
         assert score == 0.95 and note is None
 
 
-class TestRuleC_HandSeeded:
-    def test_handseeded_capped(self):
-        assert _call(0.8, content_generation_model="Manual content marketing via blog")[0] == 0.6
-
-    def test_programmatic_uncapped(self):
-        score, note = _call(0.8, content_generation_model="Aggregated data creates comparison pages")
-        assert score == 0.8 and note is None
-
-    def test_mixed_programmatic_wins(self):
-        # contains both 'blog' and 'programmatic' -> programmatic exemption wins
-        score, _ = _call(0.8, content_generation_model="Programmatic blog generation")
-        assert score == 0.8
-
-    def test_disabled_when_ceiling_none(self):
-        score, _ = _call(0.8, content_generation_model="Manual blog", handseed_ceiling=None)
-        assert score == 0.8
-
-
 class TestDataSourcingIsNotSEO:
     def test_unofficial_data_not_capped(self):
         # SEO depends on indexable pages, not data sourcing. 'unofficial'/ToS-gray data is a
@@ -89,8 +70,7 @@ class TestInvariants:
         assert _call(0.2, project_type="saas", data_access_model="restricted")[0] == 0.2
 
     def test_idempotent(self):
-        kw = dict(project_type="saas", data_access_model="restricted", estimated_indexable_pages=10,
-                  content_generation_model="Manual blog seeding")
+        kw = dict(project_type="saas", data_access_model="restricted", estimated_indexable_pages=10)
         once, _ = _call(0.95, **kw)
         twice, note2 = _call(once, **kw)
         assert twice == once and note2 is None
@@ -110,23 +90,13 @@ class TestWrapper:
     def _settings(self, **over):
         base = dict(seo_cap_require_saas_for_gating=True, seo_cap_gated_saas_ceiling=0.5,
                     seo_cap_thin_pages_threshold=50, seo_cap_thin_pages_ceiling=0.4,
-                    seo_cap_high_score_min_pages=300, seo_cap_moderate_pages_ceiling=0.7,
-                    seo_cap_handseed_ceiling=0.6, enable_seo_handseed_cap=False)
+                    seo_cap_high_score_min_pages=300, seo_cap_moderate_pages_ceiling=0.7)
         base.update(over)
         return SimpleNamespace(**base)
 
     def test_reads_idea_and_settings(self):
         idea = SimpleNamespace(seo_scalability_score=0.9, project_type="saas",
-                               data_access_model="restricted", content_generation_model=None,
+                               data_access_model="restricted",
                                estimated_indexable_pages=None)
         score, note = sh.cap_idea_seo_realism(idea, self._settings())
         assert score == 0.5 and note is not None
-
-    def test_handseed_off_by_default(self):
-        idea = SimpleNamespace(seo_scalability_score=0.9, project_type="directory",
-                               data_access_model="public",
-                               content_generation_model="Manual blog content", estimated_indexable_pages=None)
-        # enable_seo_handseed_cap False -> Rule C disabled -> uncapped
-        assert sh.cap_idea_seo_realism(idea, self._settings())[0] == 0.9
-        # enabled -> capped
-        assert sh.cap_idea_seo_realism(idea, self._settings(enable_seo_handseed_cap=True))[0] == 0.6

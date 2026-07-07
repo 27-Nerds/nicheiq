@@ -291,6 +291,14 @@ class ResearchFlow(Flow[ResearchState]):
         if not self.checkpoint_mgr.load_checkpoint_folder(checkpoint):
             return False
 
+        # Seed the cost tracker with Phase-1 usage if this checkpoint carries it, so a
+        # Phase-2 continuation reports cumulative cost. Only interactive Phase-1 writes the
+        # file; one-shot / catalog deep-research never do, so there is no double-count.
+        cost_rows = self.checkpoint_mgr.load_cost_breakdown()
+        if cost_rows:
+            self.cost_tracker.load_state(cost_rows)
+            logger.info(f"Restored {len(cost_rows)} cost usage(s) from checkpoint")
+
         # Re-sync entry_mode restored from checkpoint metadata onto the flow (load only
         # restores ResearchState; the flow attr won't update by itself). Keeps audience
         # framing correct if Stage 1 re-runs on resume. (Regenerate/phase-2 read framing from
@@ -351,11 +359,9 @@ class ResearchFlow(Flow[ResearchState]):
 
     def _deep_research_audience_directive(self) -> str:
         """Front-load WHO the idea must serve + their real frustrations/current tools for the
-        post-selection deep research. Empty string when the flag is off or no audience resolved —
-        so it's a pure no-op by default. DISTINCT from enable_audience_aware_research (Phase-1 only).
+        post-selection deep research. Empty string when no audience resolved — so it's a pure
+        no-op then. DISTINCT from the Phase-1 audience-aware search/pain-mining bias.
         """
-        if not settings.enable_audience_conditioned_deep_research:
-            return ""
         nc, am = self.state.niche_context, self.state.audience_mapping
         aud = (getattr(nc, "resolved_primary_audience", None) or getattr(nc, "user_target_audience", None)) if nc else None
         if not aud:
@@ -399,15 +405,14 @@ class ResearchFlow(Flow[ResearchState]):
             for p in (solution.target_personas or [])[:4]
         )
 
-        # Angle-conditioned research: front-load the idea's winning-angle defensibility question (gated;
-        # empty -> no change). For novel ideas it focuses competitor research on the nearest rival's gap +
-        # clone speed; for distribution_seo on who owns the SERP + beatability; for workflow on switching cost.
+        # Angle-conditioned research: front-load the idea's winning-angle defensibility question.
+        # For novel ideas it focuses competitor research on the nearest rival's gap + clone speed;
+        # for distribution_seo on who owns the SERP + beatability; for workflow on switching cost.
         angle_directive = ""
-        if settings.enable_angle_conditioned_research:
-            from ..utils.angle_brief import build_angle_brief
-            _ab = build_angle_brief(solution).get("angle_brief", "")
-            if _ab:
-                angle_directive = f"\n**ANGLE PRIORITY (answer this first):** {_ab}\n"
+        from ..utils.angle_brief import build_angle_brief
+        _ab = build_angle_brief(solution).get("angle_brief", "")
+        if _ab:
+            angle_directive = f"\n**ANGLE PRIORITY (answer this first):** {_ab}\n"
 
         # Audience-conditioned deep research (gated; empty -> no change). The crew task has no
         # inputs= dict, so the directive is embedded as text in the task description.
@@ -1895,6 +1900,9 @@ RULES:
                                 getattr(solution, "calibration_notes", None),
                                 "market_fit", max_len=280) or None,
                             "incumbent_parity": getattr(solution, "incumbent_parity", None),
+                            "adjacent_market_parity": getattr(solution, "adjacent_market_parity", None),
+                            "source_segment_payability": getattr(solution, "source_segment_payability", None),
+                            "source_segment_payability_class": getattr(solution, "source_segment_payability_class", None),
                             # Closed-vocabulary filter facets (chips + future filtering).
                             "tags": (
                                 solution.tags.model_dump()
@@ -2151,6 +2159,9 @@ RULES:
             # Check if we should stop after a specific stage (interactive mode)
             if stop_after_phase is not None and stop_after_phase <= 1:
                 logger.info(f"Stopping after Phase {stop_after_phase} (interactive mode)")
+                # Persist Phase-1 cost into the checkpoint so the separate Phase-2 process
+                # can seed its tracker and report cumulative (Phase-1 + Phase-2) cost.
+                self.checkpoint_mgr.save_cost_breakdown(self.cost_tracker.export_state())
                 # CLI deliverable (review-3 fix): the preview materializer previously ran only
                 # in the worker path, so --stop-after-phase 1 printed "Report saved to: "
                 # with an empty path. Materialize here and return the real path (fail-soft).
@@ -3607,14 +3618,11 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
 
     def _audience_for_research(self) -> str | None:
         """Part C gate. Returns the user's target audience for SOFT, ADDITIVE research
-        bias (queries + pain mining) ONLY when:
-          - settings.enable_audience_aware_research is on, AND
-          - Stage-1 classified a focusable audience (segment_of_niche | community).
+        bias (queries + pain mining) ONLY when Stage-1 classified a focusable audience
+        (segment_of_niche | community).
         Excludes 'niche' (no audience) and 'too_broad' (biasing would broaden, not focus).
         Returns None otherwise → research stays fully broad (default). Never narrows.
         """
-        if not settings.enable_audience_aware_research:
-            return None
         nc = getattr(self.state, "niche_context", None)
         if nc is None:
             return None
@@ -3935,7 +3943,10 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                 _nctx = self.state.niche_context
                 _niche = getattr(_nctx, "niche_description", None) or self.niche_description
                 _dup_rate = getattr(unified_crew, "_concept_already_exists_share", None)
-                _fact_pack = assess_niche_difficulty(_pains, _ideas, _nctx, concept_duplication_rate=_dup_rate)
+                _segments = getattr(self.state.audience_mapping, "audience_segments", None)
+                _fact_pack = assess_niche_difficulty(
+                    _pains, _ideas, _nctx, concept_duplication_rate=_dup_rate,
+                    segments=_segments)
                 if _fact_pack is not None:
                     _verdict, _usage = generate_niche_difficulty_verdict(
                         _fact_pack, _niche, _nctx
@@ -3957,6 +3968,18 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                     )
             except Exception as e:  # noqa: BLE001 — non-critical enrichment
                 logger.warning(f"[Niche Difficulty] verdict step failed: {e}")
+
+            # Segment payability was written back onto audience_mapping's segments DURING the
+            # pipeline, but the stage_4 checkpoint was saved before that — re-save so
+            # segment-level payability survives resume (idea-level stamps persist via stage_5_3).
+            if self.state.audience_mapping is not None:
+                _segs = getattr(self.state.audience_mapping, "audience_segments", None) or []
+                if any(getattr(s, "payability_score", None) is not None for s in _segs):
+                    try:
+                        self.checkpoint_mgr.save_stage(
+                            "stage_4_audience_mapping", self.state.audience_mapping)
+                    except Exception as _e:  # noqa: BLE001
+                        logger.warning(f"[Payability] stage_4 re-save skipped: {_e}")
 
             # Surface any uncovered high-severity pains (post-crew coverage check).
             # MERGE (don't overwrite) — preserve any earlier caveat (e.g. the Stage-4 breadth
@@ -4297,7 +4320,7 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
         (contains-seed) on them -> grade the results -> MERGE the idea-intent survivors. Purely additive:
         never removes an existing keyword. Fail-soft: any error returns the input unchanged.
         """
-        if not settings.enable_contains_seed_enrichment or not selected_solution or not enriched_keywords:
+        if not selected_solution or not enriched_keywords:
             return enriched_keywords
         try:
             from ..utils.validation.keyword_intent_validator import (
@@ -5358,8 +5381,7 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             # SEO kill-question (distribution_seo deep research): attach a deterministic thesis
             # stress-test (page ceiling, winnable pages, penalty risk) so the report flags pSEO ideas
             # that score great on keyword volume but have no real page universe / face a penalty.
-            if (settings.enable_seo_kill_question
-                    and getattr(selected_solution, "winning_angle", None) == "distribution_seo"):
+            if getattr(selected_solution, "winning_angle", None) == "distribution_seo":
                 try:
                     seo_strategy.seo_kill_question = self._compute_seo_kill_question(
                         enriched_keywords, selected_solution)
@@ -7243,7 +7265,7 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             refined_programmatic = refined_programmatic_result.get('assessment', '')
 
             # SEO-realism cap on the refined score (downgrade-only). Pages are NOW known, so
-            # Rule B engages here (in addition to A/C). Stage 12 runs AFTER ranking is locked,
+            # Rule B engages here (in addition to A). Stage 12 runs AFTER ranking is locked,
             # so capping the selected solution's displayed/verdict SEO cannot reorder anything.
             refined_seo_score = refined_scalability['score']
             from ..utils.seo_helpers import cap_seo_realism_score
@@ -7251,7 +7273,6 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                 refined_seo_score,
                 project_type=getattr(selected_solution, "project_type", None),
                 data_access_model=getattr(selected_solution, "data_access_model", None),
-                content_generation_model=getattr(selected_solution, "content_generation_model", None),
                 estimated_indexable_pages=page_count,
                 require_saas_for_gating=settings.seo_cap_require_saas_for_gating,
                 gated_saas_ceiling=settings.seo_cap_gated_saas_ceiling,
@@ -7259,8 +7280,6 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                 thin_pages_ceiling=settings.seo_cap_thin_pages_ceiling,
                 high_score_min_pages=settings.seo_cap_high_score_min_pages,
                 moderate_pages_ceiling=settings.seo_cap_moderate_pages_ceiling,
-                handseed_ceiling=(settings.seo_cap_handseed_ceiling
-                                  if settings.enable_seo_handseed_cap else None),
             )
             if _note:
                 logger.info(f"[Stage 12][SEO-REALISM] {selected_solution_name}: "

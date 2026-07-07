@@ -54,6 +54,11 @@ class GoNoGoVerdict(BaseModel):
         default=None,
         description="Market viability adjustment explanation, if any. None = no adjustment applied."
     )
+    payability_context: Optional[str] = Field(
+        default=None,
+        description="Buyer-payability floor explanation (Phase 5), if any. "
+                    "None = no adjustment applied."
+    )
 
 
 class VerdictExplanation(BaseModel):

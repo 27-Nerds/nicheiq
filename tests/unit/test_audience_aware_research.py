@@ -1,4 +1,4 @@
-"""Tests for Part C — soft, opt-in audience-aware research.
+"""Tests for Part C — soft audience-aware research.
 
 Covers the gate (_audience_for_research), the additive query-generation bias
 (_audience_focus_block + allotment bump), and the pain-crew audience lens
@@ -35,25 +35,17 @@ class TestAudienceForResearch:
         )
         return flow
 
-    def test_off_by_default(self, monkeypatch):
-        monkeypatch.setattr(settings, "enable_audience_aware_research", False)
-        flow = self._flow("segment_of_niche", "experienced tirzepatide users")
-        assert flow._audience_for_research() is None
-
     @pytest.mark.parametrize("scope", ["segment_of_niche", "community"])
-    def test_on_focusable_scopes_return_audience(self, monkeypatch, scope):
-        monkeypatch.setattr(settings, "enable_audience_aware_research", True)
+    def test_focusable_scopes_return_audience(self, scope):
         flow = self._flow(scope, "experienced tirzepatide users")
         assert flow._audience_for_research() == "experienced tirzepatide users"
 
     @pytest.mark.parametrize("scope", ["niche", "too_broad"])
-    def test_on_excluded_scopes_return_none(self, monkeypatch, scope):
-        monkeypatch.setattr(settings, "enable_audience_aware_research", True)
+    def test_excluded_scopes_return_none(self, scope):
         flow = self._flow(scope, "older adults")
         assert flow._audience_for_research() is None
 
-    def test_no_niche_context_returns_none(self, monkeypatch):
-        monkeypatch.setattr(settings, "enable_audience_aware_research", True)
+    def test_no_niche_context_returns_none(self):
         flow = rf.ResearchFlow.__new__(rf.ResearchFlow)
         flow._state = SimpleNamespace(niche_context=None)
         assert flow._audience_for_research() is None

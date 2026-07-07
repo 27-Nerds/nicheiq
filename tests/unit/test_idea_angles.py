@@ -94,6 +94,12 @@ class TestApply:
         assert reloaded.angle_rationale == "r"
         assert reloaded.novelty_rationale == "n"
 
+    def test_novelty_rationale_prompt_bans_numeric_citation(self):
+        # scores can be re-capped/re-calibrated after the classifier writes (parity pass) —
+        # a quoted number goes stale (live 2026-07-05: "0.45" cited against a final 0.7).
+        prompt, _ = _angle_self()._angle_static_prompt()
+        assert "NEVER" in prompt and "cite the numeric score" in prompt
+
 
 class TestNoOps:
     def test_fail_open_leaves_angle_none(self, monkeypatch):
@@ -132,3 +138,19 @@ class TestParallel:
                     for i in range(n)]
         _run(monkeypatch, ideas, verdicts)
         assert all(i.winning_angle == "distribution_seo" for i in ideas)
+
+
+def test_rationales_sanitized_of_numeric_scores(monkeypatch):
+    # Defense-in-depth beyond the prompt ban: any decimal the classifier sneaks into the
+    # user-facing comments is banded deterministically at stamping time.
+    idea = _idea("A")
+    _run(monkeypatch, [idea], [_verdict(
+        "A", winning_angle="distribution_seo",
+        angle_rationale="Edge is the data slice; novelty sits at 0.45 which is fine here.",
+        novelty_rationale="Low mechanism-novelty (0.45) is expected for an aggregator.",
+        differentiation_locus="freshness beats rivals scoring 0.30 on updates",
+    )])
+    import re
+    for f in (idea.angle_rationale, idea.novelty_rationale, idea.differentiation_locus):
+        assert not re.search(r"\d\.\d", f), f
+    assert "(limited)" in idea.novelty_rationale     # banded, not deleted

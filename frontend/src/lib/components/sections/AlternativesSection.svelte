@@ -439,6 +439,39 @@ import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
               </p>
             </div>
           {/if}
+          {#if solution.adjacent_market_parity}
+            <div class="mt-4 p-3 rounded border border-border">
+              <div class="text-xs text-text-muted font-medium mb-1">
+                Adjacent market check (audience-independent, web-verified)
+              </div>
+              <p class="text-sm text-text-secondary">
+                {solution.adjacent_market_parity} — this product monetizes the same
+                mechanism/data in its own market, so it shapes both the competition and where
+                the money actually is.
+              </p>
+            </div>
+          {/if}
+          {#if solution.source_segment_payability_class}
+            <div class="mt-4 p-3 rounded border border-border">
+              <div class="text-xs text-text-muted font-medium mb-1">Who pays</div>
+              <p class="text-sm text-text-secondary">
+                {#if solution.source_segment_payability_class === "corporate-budget"}
+                  Buyers with organizational budget authority — direct paid pricing is viable.
+                {:else if solution.source_segment_payability_class === "smb-budget"}
+                  Small-business operators paying from business revenue — price-aware but used to
+                  paying for tools that earn their keep.
+                {:else if solution.source_segment_payability_class === "prosumer-wallet"}
+                  Prosumers paying out of pocket — expect low price ceilings and churn-prone
+                  subscriptions; validate willingness-to-pay before committing.
+                {:else if solution.source_segment_payability_class === "personal-wallet"}
+                  Individuals spending personal money episodically — a historically
+                  low-willingness-to-pay buyer; favor one-time pricing or free-tool distribution.
+                {:else}
+                  Mixed buyer types — pick the segment with budget authority and price for it.
+                {/if}
+              </p>
+            </div>
+          {/if}
 
           <!-- Pivot Trigger -->
           {#if solution.pivot_trigger}

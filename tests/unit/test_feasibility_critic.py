@@ -42,9 +42,8 @@ def _verdicts(items, drop_names=None):
     )
 
 
-class TestMergedCriticFlagOn:
+class TestMergedCritic:
     def _run(self, monkeypatch, concepts, result):
-        monkeypatch.setattr(usc.settings, "enable_feasibility_critic", True)
         monkeypatch.setattr(
             usc.LLMService, "invoke_structured",
             staticmethod(lambda **kw: (result, SimpleNamespace())),
@@ -112,7 +111,6 @@ class TestMergedCriticFlagOn:
         assert len(out) == 6
 
     def test_fail_open(self, monkeypatch):
-        monkeypatch.setattr(usc.settings, "enable_feasibility_critic", True)
         def boom(**kw):
             raise RuntimeError("x")
         monkeypatch.setattr(usc.LLMService, "invoke_structured", staticmethod(boom))
@@ -120,78 +118,7 @@ class TestMergedCriticFlagOn:
         out = usc.UnifiedSolutionCrew._score_pool_novelty(_critic_self(), concepts)
         assert len(out) == 2  # unchanged
 
-    def test_flag_off_runs_novelty_only(self, monkeypatch):
-        monkeypatch.setattr(usc.settings, "enable_feasibility_critic", False)
-        result = _verdicts([{"name": "A", "independent_obviousness": 0.2, "already_exists": False}])
-        monkeypatch.setattr(
-            usc.LLMService, "invoke_structured",
-            staticmethod(lambda **kw: (result, SimpleNamespace())),
-        )
-        out = usc.UnifiedSolutionCrew._score_pool_novelty(_critic_self(), [_rc("A")])
-        a = out[0]
-        assert a.obviousness_score == 0.2
-        # feasibility fields untouched (sentinels)
-        assert a.build_feasibility_score == -1.0 and a.data_access_model is None
-
-
-# ---- verdict-boundary caps ----
-
-import nicheiq.report.report_generator as rg
-
-
-def _gen_with_pains(pains):
-    gen = rg.ReportGenerator.__new__(rg.ReportGenerator)
-    gen.state = SimpleNamespace(pain_point_analysis=SimpleNamespace(pain_points=pains))
-    return gen
-
-
-def _pain(title, opp):
-    return SimpleNamespace(title=title, opportunity_level=opp)
-
-
-def _sol(name="S", pains=None, mfs=None, tf=None, bf=None):
-    return SimpleNamespace(
-        solution_name=name, pain_points_addressed=pains or [],
-        market_fit_score=mfs, technical_feasibility_score=tf, build_feasibility_score=bf,
-    )
-
-
-class TestVerdictCaps:
-    def test_build_cap_downgrade_only(self):
-        gen = _gen_with_pains([])
-        sol = _sol(bf=0.4)
-        mf, tf, note = gen._apply_verdict_data_caps(sol, market_fit=0.8, tech_feasibility=0.9)
-        assert tf == 0.4 and note and "build feasibility" in note  # lowered
-
-    def test_build_cap_never_raises(self):
-        gen = _gen_with_pains([])
-        sol = _sol(bf=0.95)
-        _mf, tf, _note = gen._apply_verdict_data_caps(sol, market_fit=0.8, tech_feasibility=0.7)
-        assert tf == 0.7  # critic higher → keep self
-
-    def test_sentinel_never_caps(self):
-        gen = _gen_with_pains([])
-        sol = _sol(bf=-1.0)
-        _mf, tf, _note = gen._apply_verdict_data_caps(sol, market_fit=0.8, tech_feasibility=0.7)
-        assert tf == 0.7  # sentinel ignored
-
-    def test_market_fit_ceiling_low_pain(self):
-        gen = _gen_with_pains([_pain("invoicing is painful", "low")])
-        sol = _sol(pains=["invoicing is painful"])
-        mf, _tf, note = gen._apply_verdict_data_caps(sol, market_fit=0.9, tech_feasibility=0.8)
-        assert mf == 0.55 and note and "market fit" in note
-
-    def test_market_fit_high_pain_uncapped(self):
-        gen = _gen_with_pains([_pain("invoicing is painful", "high")])
-        sol = _sol(pains=["invoicing is painful"])
-        mf, _tf, _note = gen._apply_verdict_data_caps(sol, market_fit=0.9, tech_feasibility=0.8)
-        assert mf == 0.9  # high → ceiling 1.0 → no cap
-
-    def test_market_fit_no_match_floor(self):
-        gen = _gen_with_pains([_pain("totally different topic", "high")])
-        sol = _sol(pains=["unrelated idea about gardening robots"])
-        mf, _tf, _note = gen._apply_verdict_data_caps(sol, market_fit=0.9, tech_feasibility=0.8)
-        assert mf == 0.45  # no pain clears → floor
+# ---- verdict-boundary caps (enable_verdict_data_caps) removed 2026-07-07 (never validated) ----
 
 
 # ---- Phase 5: trend longevity downgrade-only reconcile ----

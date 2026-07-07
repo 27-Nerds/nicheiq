@@ -114,16 +114,8 @@ class Settings(BaseSettings):
         default=12, ge=1, le=40,
         description="Keywords graded per LLM call. Small (<=12) to bound batch-composition + truncation effects.",
     )
-    enable_contains_seed_enrichment: bool = Field(
-        default=True,
-        description=(
-            "Stage 6 additive discovery (validated 2026-07-01): after broad expansion, grade the keyword "
-            "set, take its idea-intent keywords as GROUNDED seeds, run DataForSEO keyword_suggestions "
-            "(contains-seed) on them, grade the results, and MERGE the idea-intent long-tail (never "
-            "removes). Surfaces 4-12x more idea-intent keywords the broad Google-Ads expansion misses "
-            "(feeds honest market-sizing beachhead + SEO viability). ~$0.13/report. Escape hatch: False."
-        ),
-    )
+    # Stage 6 additive contains-seed discovery: permanent since 2026-07-01 A/B —
+    # enable_contains_seed_enrichment removed 2026-07-06.
     contains_seed_max_seeds: int = Field(
         default=8, ge=1, le=20,
         description="Max grounded idea-intent seeds to contains-seed expand (cost = ~$0.01/seed).",
@@ -242,8 +234,8 @@ class Settings(BaseSettings):
             "completed. Guards against a single runaway model (e.g. a reasoning model "
             "held open by OpenRouter keep-alive bytes, which the per-call read-timeout "
             "does NOT cap) stalling the whole pipeline. Allows a sample's 2x retry "
-            "before abandoning. NOTE: in pain-partitioned mode (enable_pain_partitioned_"
-            "divergent) the fan-out runs up to divergent_max_generators (8) agents in "
+            "before abandoning. NOTE: pain-partitioned divergent (permanent) fans out"
+            " — the fan-out runs up to divergent_max_generators (8) agents in "
             "parallel; with the lowered per-sample timeout each finishes fast, but set "
             "this to >=600 when using slower models so a straggler isn't abandoned early."
         )
@@ -269,29 +261,9 @@ class Settings(BaseSettings):
             "(keep-best across rounds). 2 matches the validated mentor-loop default."
         )
     )
-    enable_pain_partitioned_divergent: bool = Field(
-        default=True,
-        description=(
-            "Pain-partitioned divergent ideation: instead of N broad samples each "
-            "generating 8-12 concepts off the same pain list, run ONE narrow generator "
-            "per selected diverse pain (capped at divergent_max_generators), each asked "
-            "for a few concepts under a distinct persona + a "
-            "hard-reserved non-info-product slot. Guarantees pain coverage by construction "
-            "and breaks the info-product monoculture. Default OFF (land dark); flip on to "
-            "A/B vs the legacy broad-sample path."
-        )
-    )
-    enable_niche_anchor_cells: bool = Field(
-        default=True,
-        description=(
-            "Bias each (pain × segment) generator cell toward the pain that best matches the "
-            "niche description (deterministic token_jaccard relevance), so a theme's cell is "
-            "seeded by the niche-defining pain rather than its highest-severity but off-niche "
-            "theme-mate. When a lower-severity pain is chosen this way, a transparency caveat is "
-            "added (it addresses the user's stated focus, not the top-severity research pain). "
-            "Off ⇒ legacy severity-only cell selection."
-        )
-    )
+    # Pain-partitioned divergent ideation: one narrow generator per selected diverse pain
+    # (falls back to the legacy broad-sample path below 2 cells). Permanent —
+    # enable_pain_partitioned_divergent removed 2026-07-06 (previously off in prod; prod now runs it).
     divergent_max_generators: int = Field(
         default=8,
         ge=2,
@@ -360,10 +332,6 @@ class Settings(BaseSettings):
         default=3, ge=1, le=6,
         description="Max losers the salvage gate may promote per run (each costs one expansion call).",
     )
-    parity_probe_top_k: int = Field(
-        default=3, ge=1, le=6,
-        description="How many top-composite ideas get the mechanism-parity probe + re-score.",
-    )
     provisional_seo_rank_ceiling: float = Field(
         default=0.7, ge=0.0, le=1.0,
         description=(
@@ -400,17 +368,6 @@ class Settings(BaseSettings):
             "Enable the (source_pain × data_source_tag) near-duplicate dedup in the divergent "
             "pool — collapses concepts solving the same pain from the same data source that the "
             "M/D/J structural gate misses (no-op in the legacy broad path where source_pain is None)."
-        )
-    )
-    enable_addressability_ideation_gate: bool = Field(
-        default=True,
-        description=(
-            "Exclude pains the scorer judged non-tool-addressable (tool_addressable == 'none': "
-            "lifestyle/cultural/structural/governance, no software solution) from idea-generator "
-            "cell selection, so they don't burn a generator slot. Reuses the existing scoring "
-            "verdict (no extra LLM call). Floor-protected (keeps the full set if too few addressable "
-            "pains remain to seed ideation). Excluded pains still appear in the report catalog. "
-            "env: ENABLE_ADDRESSABILITY_IDEATION_GATE."
         )
     )
     diversity_max_final_ideas: int = Field(
@@ -491,24 +448,11 @@ class Settings(BaseSettings):
             "may still leave fewer; duplicates are never re-added to hit this target."
         )
     )
-    enable_feasibility_critic: bool = Field(
-        default=True,
-        description=(
-            "Enable the merged novelty+feasibility critic (adds build_feasibility / "
-            "data_feasibility / data_access_model + drop_names to the independent critic "
-            "pass). Default OFF so it can land dark and be validated before it can drop "
-            "or annotate concepts. When OFF the critic behaves as the novelty-only critic."
-        )
-    )
-    enable_verdict_data_caps: bool = Field(
-        default=False,
-        description=(
-            "Enable the downgrade-only verdict-boundary caps (technical_feasibility capped "
-            "by the critic's build_feasibility; market_fit capped by the addressed pain's "
-            "opportunity ceiling). Default OFF; flip on only after the rank-stability + "
-            "calibration gates. Caps NEVER mutate stored scores — ranking is unaffected."
-        )
-    )
+    # Merged novelty+feasibility critic (adds build_feasibility / data_feasibility /
+    # data_access_model + drop_names to the independent critic pass): permanent —
+    # enable_feasibility_critic removed 2026-07-06 (previously off in prod; prod now runs it).
+    # enable_verdict_data_caps removed 2026-07-07 (never validated — downgrade-only
+    # verdict-boundary caps never left dark; deleted rather than made permanent).
     feasibility_build_data_coupling_margin: float = Field(
         default=0.15,
         ge=0.0,
@@ -531,16 +475,10 @@ class Settings(BaseSettings):
     )
     # --- SEO-realism caps (downgrade-only, mirrors the feasibility caps) -------------------
     # Always on now (the enable_seo_realism_caps flag was removed). Downgrade-only caps on
-    # seo_scalability_score (account-gated SaaS, thin/combinatorial page counts, hand-seeded
-    # content) — NEVER raise a score or recompute the composite, so RANKING is unaffected.
-    enable_seo_handseed_cap: bool = Field(
-        default=False,
-        description=(
-            "Enable Rule C (hand-seeded / non-programmatic content cap) — a brittle substring "
-            "heuristic on the free-text content_generation_model. Off by default so v1 ships the "
-            "structured-field rules (A account-gating + B page counts) only."
-        )
-    )
+    # seo_scalability_score (account-gated SaaS, thin/combinatorial page counts) — NEVER
+    # raise a score or recompute the composite, so RANKING is unaffected.
+    # Rule C (enable_seo_handseed_cap / seo_cap_handseed_ceiling — hand-seeded content cap)
+    # removed 2026-07-07 as unreliable (brittle substring heuristic, never validated).
     seo_cap_require_saas_for_gating: bool = Field(
         default=True,
         description=(
@@ -568,10 +506,6 @@ class Settings(BaseSettings):
     seo_cap_moderate_pages_ceiling: float = Field(
         default=0.7, ge=0.0, le=1.0,
         description="Rule B ceiling for moderate page counts (threshold <= pages < high_score_min_pages)."
-    )
-    seo_cap_handseed_ceiling: float = Field(
-        default=0.6, ge=0.0, le=1.0,
-        description="Rule C ceiling: hand-seeded / non-programmatic content (only when enable_seo_handseed_cap)."
     )
     divergent_dedup_similarity_threshold: float = Field(
         default=0.85,
@@ -684,30 +618,13 @@ class Settings(BaseSettings):
             "reference judge on all ranking criteria (overconfidence reduced, not just lowered)."
         )
     )
-    enable_grounded_dev_time: bool = Field(
-        default=True,
-        description=(
-            "Replace the refiner's throwaway dev-time point guess with a grounded estimate: a "
-            "targeted web search for comparable build complexity + a decomposed, reason-first LLM "
-            "judgment anchored to the build_feasibility score, returning an honest RANGE. Off => "
-            "keep the generator's raw estimate."
-        )
-    )
     # Targeted novelty-enhancement pass (per-cell, after calibration). For a VALIDATED-but-OBVIOUS
     # idea (decent market_fit AND high obviousness), ask the ideator for a more differentiated
     # MECHANISM on the SAME pain + SAME data, re-score it, and KEEP the revision ONLY if novelty
-    # rises without market_fit / feasibility regressing. Dark by default — prototype A/B (9 runs /
-    # 3 niches) showed 0/8 worse, 0/8 drifted, 6/8 genuinely better (Opus-audited); flip on after a
-    # live A/B. Gate keeps cost bounded (~half of ideas qualify; only gated ideas pay the 2 calls).
-    enable_novelty_enhance: bool = Field(
-        default=True,
-        description=(
-            "Master switch for the targeted novelty-enhancement pass. When True, a validated-but-"
-            "obvious cell winner gets one ideator revision (more differentiated mechanism, same pain "
-            "+ data); the revision is re-scored and kept ONLY if it strictly improves (novelty lift, "
-            "no market_fit/feasibility regression). Accept-guarded so it can never worsen the set."
-        )
-    )
+    # rises without market_fit / feasibility regressing. Accept-guarded so it can never worsen the
+    # set. Gate keeps cost bounded (~half of ideas qualify; only gated ideas pay the 2 calls).
+    # Permanent since A/B (9 runs / 3 niches: 0/8 worse, 0/8 drifted, 6/8 genuinely better,
+    # Opus-audited) — enable_novelty_enhance removed 2026-07-06.
     novelty_enhance_min_market_fit: float = Field(
         default=0.5, ge=0.0, le=1.0,
         description="Gate: only enhance ideas whose calibrated market_fit is at least this (validated demand).",
@@ -747,16 +664,6 @@ class Settings(BaseSettings):
     idea_angle_reasoning_effort: str = Field(
         default="medium",
         description="Reasoning effort for the angle classifier (reasoning-ON path), mirroring the calibration critic.",
-    )
-    enable_pain_relevance_filter: bool = Field(
-        default=True,
-        description=(
-            "Post-union: trim each idea's pain_points_addressed to the pains its MECHANISM actually "
-            "addresses. The grounded matcher fills that field with EVERY validated pain affecting the "
-            "idea's SEGMENT (good provenance, but it over-claims — e.g. a capsule-art tool listing "
-            "'identify underserved genres'). A cheap LLM (function_calling_llm) drops the same-audience-"
-            "but-unaddressed pains; the source pain is always kept. Fail-soft per idea → keep the full list."
-        )
     )
     novelty_enhance_llm: str = Field(
         default="openrouter/deepseek/deepseek-v4-pro:nitro",
@@ -828,16 +735,8 @@ class Settings(BaseSettings):
         default="gpt-4.1-mini",
         description="Model for pain point analysis/validation in Stage 6 (use non-reasoning model to allow max_tokens)"
     )
-    enable_quote_grounding_gate: bool = Field(
-        default=True,
-        description=(
-            "Deterministic grounding gate on Stage-3 quote enrichment: drop a displayed "
-            "representative_quote when it is not a verbatim/fuzzy substring of its cited source "
-            "post body (catches off-source/mis-attributed fragments the fail-open stance gate lets "
-            "through). Floor-protected (never pushes a pain below the low-evidence floor) and "
-            "fail-open when the source body is unknown. env: ENABLE_QUOTE_GROUNDING_GATE."
-        )
-    )
+    # Deterministic grounding gate on Stage-3 quote enrichment: permanent —
+    # enable_quote_grounding_gate removed 2026-07-06.
     quote_grounding_threshold: float = Field(
         default=0.9,
         ge=0.0,
@@ -1029,10 +928,6 @@ class Settings(BaseSettings):
         default=True,
         description="Enable/disable YouTube transcript collection (requires youtube-transcript-api)"
     )
-    enable_seed_enrichment: bool = Field(
-        default=True,
-        description="Best-effort live-evidence enrichment (Hacker News) for catalog-seeded jobs; failures never block the job"
-    )
     min_hn_points: int = Field(
         default=5, description="Minimum points for Hacker News stories"
     )
@@ -1090,16 +985,10 @@ class Settings(BaseSettings):
     num_search_queries: int = Field(
         default=40, description="Number of search queries to generate for discovering pain points"
     )
-    enable_audience_aware_research: bool = Field(
-        default=True,
-        description=(
-            "Part C master gate. When True AND Stage-1 detected a focusable audience "
-            "(audience_scope in {segment_of_niche, community}), search-query generation and "
-            "pain mining get a SOFT, ADDITIVE audience bias — broad coverage is preserved, "
-            "never narrowed. Default False (research stays fully broad; audience is output-only). "
-            "env: ENABLE_AUDIENCE_AWARE_RESEARCH."
-        )
-    )
+    # Part C audience-aware research: when Stage-1 detected a focusable audience
+    # (audience_scope in {segment_of_niche, community}), search-query generation and pain mining
+    # get a SOFT, ADDITIVE audience bias (broad coverage preserved, never narrowed). Permanent —
+    # enable_audience_aware_research removed 2026-07-06 (previously off in prod; prod now runs it).
     audience_query_allotment: int = Field(
         default=6,
         description=(
@@ -1457,61 +1346,11 @@ class Settings(BaseSettings):
         le=1.0,
         description="Minimum coverage rate for keyword enrichment (validated/total). Default 0.30 = warn if <30% pass validation"
     )
-    # SEO kill-question (Stage 6 deep research, distribution_seo ideas only). Deterministic thesis
-    # stress-test computed from the already-validated keyword set (page ceiling, KD distribution,
-    # winnable pages, penalty risk) + a small SERP sample. Dark by default; flip on after the A/B.
-    enable_seo_kill_question: bool = Field(
-        default=True,
-        description=(
-            "Run the deterministic SEO kill-question for a distribution_seo selected solution in Stage 6 "
-            "(page-ceiling + KD distribution + forum-soft-SERP bonus + penalty-risk flag). On by default "
-            "(A/B-validated 2026-06-30); set False to disable. Only fires for distribution_seo ideas."
-        ),
-    )
-    enable_multisource_evidence_headline: bool = Field(
-        default=True,
-        description=(
-            "EvidenceAppendix headline threads: when True, rank across Reddit + Hacker News + Twitter by "
-            "normalized engagement (platform-fair) instead of Reddit-only by raw upvotes, with a per-source "
-            "cap (<=60% of the 10 slots) so a small high-engagement platform can't sweep the headline. On by "
-            "default (A/B-validated 2026-06-30: surfaces genuinely-high HN threads the Reddit-only path hid, "
-            "cap keeps multi-source breadth). Set False for the legacy Reddit-only-by-score behavior."
-        ),
-    )
-    enable_audience_conditioned_deep_research: bool = Field(
-        default=True,
-        description=(
-            "Forward the Stage-1 resolved primary audience + its frustrations/current-tools into the "
-            "POST-SELECTION deep research (competitor task + SEO seed generation), so the research targets "
-            "the resolved audience. DISTINCT from enable_audience_aware_research (which only biases Phase-1 "
-            "search/pain-mining). On by default (A/B-validated 2026-06-30: 4/4 distinct-audience checkpoints "
-            "Opus-judged ON_BETTER after the directive reword that stops audience tools from displacing the "
-            "solution's direct competitors; honesty preserved — never force-profiles irrelevant named tools)."
-        ),
-    )
-    enable_seo_kill_question_floor: bool = Field(
-        default=True,
-        description=(
-            "Ground an over-OPTIMISTIC distribution_seo Go/No-Go verdict in the SEO kill-question: when "
-            "the page universe isn't winnable (winnable SHARE low / KD high), cap Go->Conditional + floor "
-            "risk (downgrade-only). Keyed on the KD/winnability axis the SEO composite excludes (no "
-            "double-count). KD-coverage-gated: abstains (fail-soft) when KD covers too little of the page "
-            "universe to trust. On by default (A/B-validated 2026-06-30: 0/14 prior false-positives after "
-            "the coverage gate + share threshold; 8/8 dense checkpoints correctly silent). Set False to disable."
-        ),
-    )
-    enable_scoped_market_sizing: bool = Field(
-        default=True,
-        description=(
-            "Scope market sizing to the SERVICEABLE slice the selected idea actually addresses: narrow the "
-            "pain corpus to the idea's pain_points_addressed and prompt the LLM to size that slice (not the "
-            "whole niche), with top-down keyword volume kept only as a labeled cross-check and a qualitative "
-            "scope note instead of a fabricated bottom-up SAM. On by default (A/B-validated 2026-06-30: on a "
-            "strong-contrast niche [2-3 of 29 pains] it consistently corrected an over-optimistic Strong/"
-            "Aggressive verdict to Moderate/Measured — Opus-judged ON_BETTER — while a weak-contrast niche was "
-            "a correct no-op; thin data — only one strong-contrast checkpoint was cached). Set False to disable."
-        ),
-    )
+    # SEO kill-question (Stage 6 deep research, distribution_seo ideas only) + its verdict floor,
+    # multi-source evidence headline, audience-conditioned deep research, and scoped market sizing:
+    # all permanent since 2026-06-30 A/B — enable_seo_kill_question, enable_seo_kill_question_floor,
+    # enable_multisource_evidence_headline, enable_audience_conditioned_deep_research, and
+    # enable_scoped_market_sizing removed 2026-07-06.
     seo_kill_question_serp_sample: int = Field(
         default=5, ge=0, le=15,
         description="Representative queries to SERP-sample for the SEO kill-question beatability read (0 = skip SERP).",
@@ -1532,18 +1371,11 @@ class Settings(BaseSettings):
         default=0.5, ge=0.0, le=1.0,
         description="Below this KD-coverage fraction (kd_sample_size / page_ceiling), the kill-question display flags winnability as indicative-only.",
     )
-    # Angle-conditioned deep research: front-load the selected idea's winning-angle kill-question into the
-    # Stage-2 crew prompts (SEO + competitor) so they investigate what actually validates/kills THAT angle.
-    # The brief only ADDS the question — it never tells a crew to suppress off-angle critique; it explicitly
-    # asks the crew to stress-test the angle and report true intensity. Off => the crews receive empty angle
-    # vars => byte-identical to today. On by default (A/B-validated 2026-06-30); set False to disable.
-    enable_angle_conditioned_research: bool = Field(
-        default=True,
-        description=(
-            "Merge the per-idea angle brief (build_angle_brief) into the Stage-2 SEO + competitor crew "
-            "prompts so each front-loads the winning angle's kill-question. Off => empty angle vars (no change)."
-        ),
-    )
+    # Angle-conditioned deep research is always on now (the enable_angle_conditioned_research flag
+    # was removed 2026-07-07, A/B-validated 2026-06-30). The Stage-2 SEO + competitor crews always
+    # front-load the selected idea's winning-angle kill-question (build_angle_brief); the brief only
+    # ADDS the question and asks the crew to stress-test the angle honestly — it never suppresses
+    # off-angle critique.
     keyword_enrichment_target_coverage: float = Field(
         default=0.60,
         ge=0.0,
@@ -1684,6 +1516,26 @@ class Settings(BaseSettings):
             "while a misclassification still passes via tech (never wrongly demotes). An INDEPENDENT tech "
             "buildability floor (tech >= verdict_conditional_min_individual_score) still blocks un-buildable "
             "ideas from Go. Dark pending the neutral-Opus-anchored A/B; env ENABLE_DIRECTION_AWARE_EVAL."
+        ),
+    )
+    # Segment payability is PERMANENT (flags removed 2026-07-06 after same-day calibration-gate
+    # passes vs a neutral Fable panel — payability: market_fit signed error +0.051 -> -0.006,
+    # verdict kappa 0.142 -> 0.248; adjacent evidence: MAE unchanged, kappa 0.197 -> 0.256).
+    # These thresholds are the remaining tuning levers (0.0 disables the cap/floor/reclassify).
+    payability_low_threshold: float = Field(
+        default=0.35, ge=0.0, le=1.0,
+        description="Segment payability below this counts as LOW (cap + verdict floor trigger).",
+    )
+    payability_market_fit_cap: float = Field(
+        default=0.55, ge=0.0, le=1.0,
+        description="market_fit ceiling for ideas whose segment payability is LOW (downgrade-only).",
+    )
+    enable_regulatory_risk_downgrade: bool = Field(
+        default=False,
+        description=(
+            "Phase 6 verdict floor (flagged experiment, default OFF): an idea carrying BOTH "
+            "'regulatory' and 'grey-market' risk flags caps its Go/No-Go verdict at Conditional and "
+            "floors risk at Medium (drop-only). A lone 'regulatory' flag is not a trigger."
         ),
     )
     enable_llm_verdict_explanation: bool = Field(

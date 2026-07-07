@@ -31,8 +31,9 @@ ANGLES = list(_ANGLE_WEIGHTS)
 
 
 @pytest.fixture
-def critic_on(monkeypatch):
-    monkeypatch.setattr(settings, "enable_feasibility_critic", True)
+def critic_on():
+    """Feasibility critic is always on (enable_feasibility_critic removed 2026-07-06); kept as a
+    marker fixture so the critic-on tests read clearly without editing their signatures."""
     yield
 
 
@@ -104,7 +105,6 @@ class TestThreadingAndStamp:
         return BaseSolutionIdea(**base)
 
     def test_compute_solution_scores_uses_winning_angle(self, monkeypatch):
-        monkeypatch.setattr(settings, "enable_feasibility_critic", False)
         seo_idea = self._idea("Seo", "distribution_seo")
         none_idea = self._idea("Plain", None)
         scores = compute_solution_scores([seo_idea, none_idea])
@@ -123,7 +123,6 @@ class TestThreadingAndStamp:
         # ranks by it (the grid short-circuits to adjusted_composite_score when present).
         from worker.tasks import _solution_to_preview_dict
         idea = self._idea("Seo", "distribution_seo")
-        monkeypatch.setattr(sh.settings, "enable_feasibility_critic", False)
         stamped = _solution_to_preview_dict(idea)
         # provisional seo rank-capped 0.9 -> 0.7 in the stamp (stored score stays 0.9)
         assert stamped["adjusted_composite_score"] == _composite_for_angle(0.6, 0.6, 0.3, 0.7, "distribution_seo")
@@ -160,7 +159,6 @@ class TestProvisionalSeoCeiling:
         assert sh.ranking_seo(0.95, {}) == 0.95
 
     def test_stored_score_stays_raw_composite_uses_cap(self, monkeypatch):
-        monkeypatch.setattr(settings, "enable_feasibility_critic", False)
         scores = compute_solution_scores([self._idea("Spec")])
         s = scores[0]
         assert s.seo_growth_potential_score == 0.9  # display parity — never mutated
@@ -168,7 +166,6 @@ class TestProvisionalSeoCeiling:
 
     def test_speculative_seo_no_longer_outranks_verified_idea(self, monkeypatch):
         # The run-2 shape: speculative-seo bundle vs a stronger verified idea.
-        monkeypatch.setattr(settings, "enable_feasibility_critic", False)
         spec = self._idea("SpecBundle", market_fit_score=0.45, technical_feasibility_score=0.8,
                           novelty_score=0.5, seo_scalability_score=0.95)
         solid = self._idea("Verified", market_fit_score=0.7, technical_feasibility_score=0.85,

@@ -56,7 +56,6 @@ def test_drop_marks_excluded_from_dump():
 def test_already_exists_precedes_no_route_in_refill(monkeypatch):
     """A concept marked BOTH already_exists and no_route is classified as already_exists
     (matches the monolith's short-circuit) → refilled AFTER the pure no_route drop."""
-    monkeypatch.setattr(usc.settings, "enable_feasibility_critic", True)
     fake = SimpleNamespace(_critic_feasibility=None)
     finalize = UnifiedSolutionCrew._finalize_critic_pool.__get__(fake)
 
@@ -73,7 +72,6 @@ def test_already_exists_precedes_no_route_in_refill(monkeypatch):
 
 def test_pipelined_equals_pooled(monkeypatch):
     """score-per-sample → finalize is equivalent to the pooled wrapper (kept set + stash)."""
-    monkeypatch.setattr(usc.settings, "enable_feasibility_critic", True)
     verdicts = usc._NoveltyVerdicts(verdicts=[
         _verdict("A", independent_obviousness=0.2),
         _verdict("B", already_exists=True, independent_obviousness=0.9),
@@ -100,7 +98,6 @@ def test_pipelined_equals_pooled(monkeypatch):
 
 
 def test_finalizer_is_pure_no_llm_call(monkeypatch):
-    monkeypatch.setattr(usc.settings, "enable_feasibility_critic", True)
     called = []
     monkeypatch.setattr(
         usc.LLMService, "invoke_structured",

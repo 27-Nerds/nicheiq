@@ -456,10 +456,10 @@ BRAINSTORM_LLM=gpt-4o
 # Catches cross-model / cross-wording dups the name + M/D/J-tag dedup misses. 0.0 disables; floor-guarded
 # to 6 concepts; FAIL-OPEN on embedding error. Embeddings always use OpenAI (no OpenRouter endpoint).
 
-# --- Pain-partitioned divergent ideation -----------------------------------------------------
-# ENABLE_PAIN_PARTITIONED_DIVERGENT=false
-# When ON, divergent generation runs ONE narrow generator per selected diverse pain (capped at
-# DIVERGENT_MAX_GENERATORS) instead of N broad samples over the same pain list. Each generator focuses on
+# --- Pain-partitioned divergent ideation (permanent; flag removed 2026-07-06) ----------------
+# Divergent generation runs ONE narrow generator per selected diverse pain (capped at
+# DIVERGENT_MAX_GENERATORS) instead of N broad samples over the same pain list (falls back to the
+# broad-sample path below 2 cells). Each generator focuses on
 # its single pain, reasons as a REAL audience segment (Stage 6.5; falls back to generic stance archetypes).
 # Pain coverage is guaranteed by construction and idea clustering is broken. Info-products
 # (directory/aggregator/comparison) are NOT penalized — they are first-class SEO monetization outcomes;
@@ -504,8 +504,7 @@ BRAINSTORM_LLM=gpt-4o
 #   Rule B — thin/few page counts (the core SEO signal), ONLY post-Stage-12 when estimated_indexable_pages
 #            is known: < SEO_CAP_THIN_PAGES_THRESHOLD (50) -> SEO_CAP_THIN_PAGES_CEILING (0.4);
 #            < SEO_CAP_HIGH_SCORE_MIN_PAGES (300) -> SEO_CAP_MODERATE_PAGES_CEILING (0.7).
-#   Rule C — hand-seeded/non-programmatic content (string heuristic on content_generation_model),
-#            gated separately by ENABLE_SEO_HANDSEED_CAP (default off; validated unreliable) -> SEO_CAP_HANDSEED_CEILING (0.6).
+#   (Rule C — hand-seeded/non-programmatic content cap — removed 2026-07-07 as unreliable.)
 # NEVER raises a score and NEVER recomputes the composite: applied on the Stage-1 preview (no Task-4
 # ranking exists there) and on the selected solution at Stage 12 (after ranking is locked), so solution
 # RANKING is unaffected — only the displayed score + the Go/No-Go verdict become realistic. Fail-open.
@@ -515,21 +514,15 @@ BRAINSTORM_LLM=gpt-4o
 # SEO_CAP_THIN_PAGES_CEILING=0.4
 # SEO_CAP_HIGH_SCORE_MIN_PAGES=300
 # SEO_CAP_MODERATE_PAGES_CEILING=0.7
-# SEO_CAP_HANDSEED_CEILING=0.6
-# ENABLE_SEO_HANDSEED_CAP=false
 # (Data sourcing — unofficial/ToS-gray — is intentionally NOT an SEO cap; it's a feasibility concern.)
 
-# Feasibility grounding (BOTH default false — turn on only after a calibration / rank-stability run)
-# ENABLE_FEASIBILITY_CRITIC=false
-# Merges build + data feasibility into the independent critic: scores build_feasibility / data_feasibility,
-# classifies data_access_model (public | freemium | paywalled | unofficial | restricted), KEEPS ToS-gray
-# 'unofficial' ideas (unofficial API / scraping lib) and drops only genuine no-route ones. Surfaces the data
-# fields in the report (alternatives badge + the selected-solution "Data Feasibility" ring). Fail-open.
-# ENABLE_VERDICT_DATA_CAPS=false
-# Downgrade-only verdict-boundary caps: technical_feasibility capped by the critic's independent build estimate;
-# market_fit capped by the addressed pain's opportunity ceiling. Caps NEVER mutate stored scores — composite
-# ranking and the selected idea are unchanged; only the Go/No-Go verdict becomes more conservative. Requires
-# ENABLE_FEASIBILITY_CRITIC for the build cap to have data.
+# Feasibility grounding
+# The merged build+data feasibility critic is PERMANENT (flag removed 2026-07-06; previously off in
+# prod — prod now runs it): it scores build_feasibility / data_feasibility, classifies data_access_model
+# (public | freemium | paywalled | unofficial | restricted), KEEPS ToS-gray 'unofficial' ideas (unofficial
+# API / scraping lib) and drops only genuine no-route ones. Surfaces the data fields in the report
+# (alternatives badge + the selected-solution "Data Feasibility" ring). Fail-open.
+# (ENABLE_VERDICT_DATA_CAPS — downgrade-only verdict-boundary caps — removed 2026-07-07, never validated.)
 
 # Realism score-calibration critic (default ON)
 ENABLE_SCORE_CALIBRATION=true
@@ -565,13 +558,17 @@ NOVELTY_ENHANCE_SKIP_SEO_FLOOR=0.5
 # competitor 5.5, SEO 6, pricing 7, market-sizing 9, report 14). See the in-app help page /help/deep-research
 # and docs/DEEP_RESEARCH_IMPROVEMENT_PLAN.md.
 #
-# Shipped ON (A/B-validated 2026-06-30):
-ENABLE_ANGLE_CONDITIONED_RESEARCH=true
-# Front-load the selected idea's winning-angle kill-question into the SEO + competitor crew prompts so deep
-# research investigates what validates/kills THAT angle (honestly stress-tested, never inflated).
-ENABLE_SEO_KILL_QUESTION=true
-# Deterministic SEO-thesis stress-test for distribution_seo ideas in Stage 6 (page ceiling + KD distribution +
-# forum-soft-SERP bonus + penalty-risk flag). Catches the pSEO mirage. Only fires for distribution_seo.
+# Angle-conditioned research: PERMANENT (ENABLE_ANGLE_CONDITIONED_RESEARCH flag removed 2026-07-07,
+# A/B-validated 2026-06-30). Always front-loads the selected idea's winning-angle kill-question into the
+# SEO + competitor crew prompts so deep research investigates what validates/kills THAT angle (honestly
+# stress-tested, never inflated).
+# SEO kill-question: PERMANENT (flag removed 2026-07-06). Deterministic SEO-thesis stress-test for
+# distribution_seo ideas in Stage 6 (page ceiling + KD distribution + forum-soft-SERP bonus +
+# penalty-risk flag). Catches the pSEO mirage. Only fires for distribution_seo.
+# (Segment payability + substitute/adjacent critic evidence are PERMANENT — their enable flags were
+# removed 2026-07-06 after same-day calibration-gate passes vs a neutral Fable panel. Remaining
+# tuning levers: PAYABILITY_LOW_THRESHOLD (default 0.35; 0.0 disables the cap/floor/reclassify)
+# and PAYABILITY_MARKET_FIT_CAP (default 0.55).)
 ENABLE_LLM_VERDICT_EXPLANATION=true
 # Explain the DECIDED Go/No-Go verdict with an LLM (told the verdict + score BANDS + angle + any downgrade),
 # validated to match the verdict's stance and use NO raw decimals; deterministic band template as fallback.
@@ -580,25 +577,21 @@ ENABLE_ANGLE_AWARE_VERDICT=true
 # penalized for low novelty, but a winning_angle misclassification can never DEMOTE it. min(market_fit,tech) gate
 # unchanged (boundary-grid A/B: 4 correct lifts, 0 demotes).
 #
-# DARK by default — each pending a per-flag A/B over cached checkpoints before flip:
-# ENABLE_SEO_KILL_QUESTION_FLOOR=false
-# Ground an over-OPTIMISTIC distribution_seo verdict in the kill-question: when the page universe isn't winnable
-# (winnable_pages low / median KD high), cap Go->Conditional + floor risk Low->Medium (downgrade-only). Keyed on
-# the KD/winnability axis the SEO composite EXCLUDES by design, so it's new information, not a double-count of the
-# existing thin-page Rule-B (penalty_risk_flag is strictly secondary here).
-# ENABLE_SCOPED_MARKET_SIZING=false
-# Size the SERVICEABLE slice the selected idea actually addresses, not the whole niche: narrow the pain corpus to
-# the idea's pain_points_addressed (token-overlap match), keep top-down keyword volume only as a labeled
-# cross-check, and emit a qualitative "addresses N of M pains" scope note — NO fabricated bottom-up SAM (there is
-# no headcount/ACV data to build one from). Falls back to niche-wide when nothing matches.
-# ENABLE_AUDIENCE_CONDITIONED_DEEP_RESEARCH=false
-# Forward the Stage-1 RESOLVED audience (tools_currently_used / frustrations_with_existing) into the competitor
-# task prompt + the SEO seed-generation vocabulary, so deep research judges against the real buyer. Distinct from
-# ENABLE_AUDIENCE_AWARE_RESEARCH (which only biases the Phase-1 search/pain-mining, not the post-selection stages).
-# ENABLE_MULTISOURCE_EVIDENCE_HEADLINE=false
-# Rank the report's evidence appendix across ALL sources (Reddit + HN/YouTube + Twitter) by normalized engagement
-# and surface a per-thread platform tag, vs the Reddit-only-by-raw-score default. Keeps the top_reddit_threads JSON
-# key for backward compatibility.
+# PERMANENT (A/B-validated 2026-06-30; flags removed 2026-07-06):
+# SEO kill-question verdict floor: ground an over-OPTIMISTIC distribution_seo verdict in the kill-question: when
+# the page universe isn't winnable (winnable_pages low / median KD high), cap Go->Conditional + floor risk
+# Low->Medium (downgrade-only). Keyed on the KD/winnability axis the SEO composite EXCLUDES by design, so it's new
+# information, not a double-count of the existing thin-page Rule-B (penalty_risk_flag is strictly secondary here).
+# Scoped market sizing: size the SERVICEABLE slice the selected idea actually addresses, not the whole niche:
+# narrow the pain corpus to the idea's pain_points_addressed (token-overlap match), keep top-down keyword volume
+# only as a labeled cross-check, and emit a qualitative "addresses N of M pains" scope note — NO fabricated
+# bottom-up SAM (there is no headcount/ACV data to build one from). Falls back to niche-wide when nothing matches.
+# Audience-conditioned deep research: forward the Stage-1 RESOLVED audience (tools_currently_used /
+# frustrations_with_existing) into the competitor task prompt + the SEO seed-generation vocabulary, so deep
+# research judges against the real buyer. Distinct from the Phase-1 audience-aware search/pain-mining bias.
+# Multi-source evidence headline: rank the report's evidence appendix across ALL sources (Reddit + HN/YouTube +
+# Twitter) by normalized engagement and surface a per-thread platform tag, vs the old Reddit-only-by-raw-score
+# path. Keeps the top_reddit_threads JSON key for backward compatibility.
 
 # Idea-improvement loop — creative MENTOR (runs after calibration, before the deterministic caps)
 IDEATION_MENTOR_LLM=gpt-5.4-mini
@@ -611,7 +604,7 @@ IDEATION_MENTOR_LLM=gpt-5.4-mini
 IDEATION_MENTOR_REASONING_EFFORT=medium
 # Mentor depth — judges soft dimensions + proposes a creative direction, so it benefits from reasoning.
 
-# Novelty-enhance pass — refiner model (flag-gated; see ENABLE_NOVELTY_ENHANCE)
+# Novelty-enhance pass — refiner model (novelty-enhance is permanent; flag removed 2026-07-06)
 NOVELTY_ENHANCE_LLM=openrouter/deepseek/deepseek-v4-pro:nitro
 # Refiner for the targeted novelty-enhance pass: when a validated-but-obvious cell winner is gated in, this
 # model proposes a more differentiated MECHANISM on the same pain + data; the revision is re-scored and kept
@@ -899,11 +892,10 @@ NUM_SEARCH_QUERIES=40
 # Higher = more diverse results but more API calls
 # Recommended: 30-50 for thorough coverage
 
-ENABLE_AUDIENCE_AWARE_RESEARCH=false
-# Part C master gate (default: false). When true AND Stage-1 detected a focusable
-# audience (audience_scope = segment_of_niche or community), query generation and
-# pain mining get a SOFT, ADDITIVE audience bias. Broad coverage is preserved —
-# never narrowed. Off => research stays fully broad; audience is output-only.
+# Part C audience-aware research: PERMANENT (flag removed 2026-07-06; previously off in prod —
+# prod now runs it). When Stage-1 detected a focusable audience (audience_scope = segment_of_niche
+# or community), query generation and pain mining get a SOFT, ADDITIVE audience bias. Broad
+# coverage is preserved — never narrowed; audience-less niches are a no-op.
 
 AUDIENCE_QUERY_ALLOTMENT=6
 # Extra Reddit query slots reserved for audience-flavored queries when the gate

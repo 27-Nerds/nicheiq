@@ -149,7 +149,7 @@ Stage 5 consumes the same unfenced structured shapes in the normal pipeline.
 **Quality passes (`flows/seed_enrichment.py`, both best-effort):** remix jobs (>1 pain) get an
 LLM-synthesized cross-niche `niche_context` (one structured call; the deterministic template from
 `catalog_seed.py` is the fallback on any failure). All seeded modes then run a targeted Hacker News
-evidence pass (`enable_seed_enrichment`, default on): pain/idea-derived queries → relevance
+evidence pass (permanent): pain/idea-derived queries → relevance
 post-filter + dedup → if ≥3 posts survive, `state.social_content` is set and checkpointed as
 `stage_2_social_content` (so Phase-2 resume keeps it, the stage-11 trend crew gets real data
 instead of its "Risky" missing-data fallback, and the report's evidence appendix has sources).
@@ -214,12 +214,12 @@ filter/refine/select tasks above:
    `obviousness_score` (0-1, **lower = more original** = the fraction of competent builders
    who'd also propose it) and **drops ideas that already exist** as shipping products. This
    critic's score *overwrites* the ideator's own obviousness estimate — it is the system's
-   trustworthy originality signal. When `enable_feasibility_critic` is on, this SAME pass also
+   trustworthy originality signal. This SAME pass also
    scores **build feasibility** + **data feasibility** (`data_access_model`: public/freemium/
    paywalled/unofficial/restricted), keeping ToS-gray-but-obtainable (`unofficial`) ideas and
-   dropping only genuine no-route ones. Build feasibility later **downgrade-only caps** the
-   verdict's technical_feasibility (when `enable_verdict_data_caps` is on); the data fields are
-   surfaced and, post-selection, reconciled against Stage-13's verified findings (estimate→verified).
+   dropping only genuine no-route ones. The data fields are surfaced and, post-selection,
+   reconciled against Stage-13's verified findings (estimate→verified). (The build-feasibility
+   verdict cap, `enable_verdict_data_caps`, was removed 2026-07-07 — never validated.)
 3. **Pool + dedup** (`_pool_and_dedup_raw_concepts`) across all samples, capped at
    `divergent_pool_cap` (default 12). Falls back to a single divergent sample if the pool
    comes back too small.
@@ -256,10 +256,31 @@ filter/refine/select tasks above:
      the community competitor-mentions block with a web-searched map of real paid products, their
      pricing, and gaps.
    - **Mechanism-parity probe** (post-calibration): web-verifies whether an incumbent already
-     SHIPS the top-`parity_probe_top_k` ideas' core mechanisms (targeted Serper queries against the
-     probed incumbents + one extraction), then re-scores those ideas with the parity evidence in
-     critic context and stamps `incumbent_parity` on each (rendered in the report's honest brief).
-     Evidence-in-context only — the critic decides what parity means; no hard caps.
+     SHIPS each idea's core mechanism (targeted Serper queries against the probed incumbents + one
+     extraction), then re-scores ALL ideas (batched) with the parity evidence in critic context and
+     stamps `incumbent_parity` on each (rendered in the report's honest brief). Probe-all since
+     2026-07-06 (was top-K): a second evidence-informed pass for some ideas but not others polluted
+     the relative ranking. After the re-score the downgrade-only caps are re-asserted and the
+     classifier outputs (`winning_angle` + rationales) cleared, so the post-union angle pass
+     re-derives every idea's rationale against the FINAL capped scores — no stale score citations.
+     Evidence-in-context only — the critic decides what parity means; no hard caps ('none found'
+     is absence of evidence, never a score lift). Parity levels (2026-07-06): shipped / partial /
+     **substitute** (free/DIY route — free official data, spreadsheet, manual workflow — already
+     delivers the outcome) / none. An **adjacent-market probe** additionally groups ideas into
+     mechanism families (`mechanism_tag` + `data_source_tag`), reformulates each family into
+     audience-independent commercial categories (one cheap LLM call), searches those, and stamps
+     `adjacent_market_parity` (name-verified against snippets; hallucinated incumbents dropped) —
+     catching incumbents the idea's own audience framing hides (govcon intel behind a
+     "failed-RFP digest for founders"). A **coverage tripwire** appends a quality caveat when
+     ≥80% of ideas come back "none found" with no adjacent coverage. Substitute + adjacent
+     evidence also feeds the recal critic (permanent since the 2026-07-06 gate replay; display always on).
+   - **Segment payability** (permanent since the 2026-07-06 gate pass): one batched LLM call scores each
+     Stage-4 segment's wallet (budget sensitivity + incumbent pricing + pain commercial-intent
+     evidence, blended with deterministic class priors); ideas inherit it via `source_segment`
+     (niche-mean fallback keeps coverage uniform), the critic reads it as a per-idea evidence
+     line, cap (d) holds market_fit ≤ 0.55 below the low threshold, and a Phase-5 verdict floor
+     holds direct-paid Go verdicts to Conditional. The niche-level **buyer_class** ("who pays
+     here") rides the niche-difficulty narrative call and is always on.
    The calibration critic itself samples **N=3 per batch, per-criterion median**
    (`score_calibration_samples`; single draws carry ~0.03-0.05 stddev — gate-validated vs the
    67-idea neutral-Opus panel: κ 0.19→0.256).
@@ -268,12 +289,14 @@ filter/refine/select tasks above:
    (`distribution_seo` / `novel_differentiation` / `vertical_workflow`) with an `angle_rationale`
    and a `novelty_rationale`; the union ranks each idea by its OWN angle's weights (distribution
    upweights SEO + market_fit with a small non-zero novelty weight; novel upweights novelty;
-   workflow upweights feasibility). A post-union **straggler-finisher** classifies any coverage-net
-   re-injected idea the in-cell pass skipped. The per-run **`idea_focus`** steer (auto | novelty |
+   workflow upweights feasibility). A post-union **angle pass** re-classifies the FULL set after
+   the parity re-score (the probe clears every idea's classifier outputs), so all shipped angles +
+   rationales are derived against final scores; the in-cell labels only route the novelty enhance.
+   The per-run **`idea_focus`** steer (auto | novelty |
    distribution, default auto) pulls three levers at once: it skews generation toward the chosen
    angle, biases winner-pick, and tilts the ranking emphasis — auto leaves the classifier unbiased
    and every winning_angle label stays truthful regardless of the steer.
-   Optionally (`enable_novelty_enhance`, after calibrate+caps, before SEO/tags) a **targeted
+   Optionally (after calibrate+caps, before SEO/tags) a **targeted
    novelty pass** (`_novelty_enhance`) fires on VALIDATED-but-OBVIOUS winners (market_fit ≥ gate AND
    obviousness ≥ gate): the refiner (`novelty_enhance_llm`, default deepseek-v4-pro) proposes a more
    differentiated MECHANISM on the SAME pain + data, the revision is re-scored, and it is KEPT only
@@ -429,16 +452,16 @@ Stages 6–10 run *after* a single idea is selected, so they're tuned to pressur
 idea rather than survey the niche. Several refinements gate this behavior (see
 `docs/DEEP_RESEARCH_IMPROVEMENT_PLAN.md` and `docs/ENV_REFERENCE.md`):
 
-- **Angle-conditioned research** (ON): the selected idea's `winning_angle` kill-question is
+- **Angle-conditioned research** (permanent): the selected idea's `winning_angle` kill-question is
   front-loaded into the SEO + competitor prompts so they investigate what would validate or kill
   *that* angle.
-- **Audience-conditioned deep research** (`ENABLE_AUDIENCE_CONDITIONED_DEEP_RESEARCH`, dark):
-  forwards the Stage-1 resolved audience (tools used / frustrations) into the competitor prompt and
-  SEO seed vocabulary, so the analysis judges against the real buyer.
-- **SEO kill-question verdict floor** (`ENABLE_SEO_KILL_QUESTION_FLOOR`, dark): tempers an
-  over-optimistic distribution_seo Go when the page universe isn't winnable — keyed on the
-  winnability/KD axis the SEO composite excludes, so no double-count.
-- **Scoped market sizing** (`ENABLE_SCOPED_MARKET_SIZING`, dark): sizes the serviceable slice the
+- **Audience-conditioned deep research** (permanent): forwards the Stage-1 resolved audience
+  (tools used / frustrations) into the competitor prompt and SEO seed vocabulary, so the analysis
+  judges against the real buyer.
+- **SEO kill-question verdict floor** (permanent): tempers an over-optimistic distribution_seo Go
+  when the page universe isn't winnable — keyed on the winnability/KD axis the SEO composite
+  excludes, so no double-count.
+- **Scoped market sizing** (permanent): sizes the serviceable slice the
   idea's `pain_points_addressed` represent, not the whole niche; keyword volume is a labeled
   cross-check and the SAM stays qualitative (no fabricated bottom-up number).
 - The Go/No-Go verdict averages **lift-only** by angle and its explanation uses score *bands*, never

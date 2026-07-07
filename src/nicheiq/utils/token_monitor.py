@@ -937,6 +937,29 @@ class CostTracker:
             "stage_breakdown": [u.to_dict() for u in self.stage_usages]
         }
 
+    def export_state(self) -> list[dict[str, Any]]:
+        """Serialize the recorded per-stage usages for checkpoint persistence.
+
+        Used to carry Phase-1 cost across the two-process interactive split: the
+        Phase-1 worker saves this into the checkpoint and the Phase-2 process seeds
+        a fresh tracker via load_state() so the final cost_summary is cumulative.
+        """
+        return [u.to_dict() for u in self.stage_usages]
+
+    def load_state(self, rows: list[dict[str, Any]]) -> None:
+        """Restore usages previously produced by export_state() (extends, does not replace).
+
+        Defensive against schema drift: each row is filtered to StageUsage's fields.
+        """
+        fields = set(StageUsage.__dataclass_fields__)
+        for row in rows or []:
+            try:
+                self.stage_usages.append(
+                    StageUsage(**{k: v for k, v in row.items() if k in fields})
+                )
+            except Exception as e:  # never let a malformed row break resume
+                logger.warning(f"[CostTracker] Skipping unreadable usage row on restore: {e}")
+
     def log_summary(self) -> None:
         """
         Log formatted cost summary.

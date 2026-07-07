@@ -1476,7 +1476,7 @@ class PainPointCrew:
         # the existing low_evidence flag handle the rest). Fail-open when the source body is unknown.
         # Only narrows DISPLAY; matched_post_ids (mention_count) is untouched.
         grounding_rejected = 0
-        if settings.enable_quote_grounding_gate and final_quotes:
+        if final_quotes:
             body_map = self._post_body_map
             grounded: list = []
             ungrounded: list = []

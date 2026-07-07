@@ -55,5 +55,49 @@ class TestAlternativeSolutionFields:
                     best_suited_for="b", pivot_trigger="p")
         alt = AlternativeSolution(**base)
         assert alt.demand_quotes is None and alt.critic_concern is None  # legacy-safe
-        alt2 = AlternativeSolution(**base, demand_quotes=["q"], critic_concern="c")
+        assert alt.adjacent_market_parity is None
+        alt2 = AlternativeSolution(**base, demand_quotes=["q"], critic_concern="c",
+                                   adjacent_market_parity="HigherGov (govcon intel): feeds")
         assert alt2.demand_quotes == ["q"] and alt2.critic_concern == "c"
+        assert alt2.adjacent_market_parity == "HigherGov (govcon intel): feeds"
+
+
+class TestScoreMentionSanitizer:
+    """critic_concern is user-facing — the critic's raw 0-1 decimals become band words."""
+
+    def test_decimals_become_band_words(self):
+        from nicheiq.utils.calibration_notes import humanize_score_mentions
+        assert humanize_score_mentions(
+            "Addresses a validated 0.60-severity pain with a novel mechanism (0.45)"
+        ) == "Addresses a validated moderate-severity pain with a novel mechanism (limited)"
+        assert humanize_score_mentions("scores 0.85 on evidence") == "scores strong on evidence"
+
+    def test_dollars_and_large_numbers_untouched(self):
+        from nicheiq.utils.calibration_notes import humanize_score_mentions
+        assert humanize_score_mentions("charges $0.99 and 3.5x more") == "charges $0.99 and 3.5x more"
+        assert humanize_score_mentions("v1.5 of the API") == "v1.5 of the API"
+
+    def test_extraction_is_band_clean(self):
+        import re
+        from nicheiq.utils.calibration_notes import extract_criterion_reason
+        notes = "market_fit: Addresses a validated 0.60-severity pain (0.45 linkage) | tech: fine"
+        out = extract_criterion_reason(notes, "market_fit")
+        assert not re.search(r"\d\.\d", out)
+        assert "moderate-severity" in out
+
+    def test_wallet_class_tokens_become_plain_english(self):
+        # observed leak (wedding-photographers run 2026-07-07): the critic echoed the
+        # payability input line's enum token into a user-facing critic_concern
+        from nicheiq.utils.calibration_notes import humanize_score_mentions
+        assert humanize_score_mentions(
+            "benchmarks appeal to hobbyists with personal-wallet payability (0.15)"
+        ) == "benchmarks appeal to hobbyists with personal out-of-pocket payability (weak)"
+        assert humanize_score_mentions("SMB-Budget buyers already pay for CRMs") == \
+            "small-business budget buyers already pay for CRMs"
+
+    def test_wallet_extraction_is_token_clean(self):
+        from nicheiq.utils.calibration_notes import extract_criterion_reason
+        notes = "market_fit: weak — corporate-budget rhetoric but prosumer-wallet reality | tech: ok"
+        out = extract_criterion_reason(notes, "market_fit")
+        assert "corporate-budget" not in out and "prosumer-wallet" not in out
+        assert "corporate budget" in out and "prosumer out-of-pocket" in out

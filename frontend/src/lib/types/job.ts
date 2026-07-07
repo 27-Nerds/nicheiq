@@ -48,6 +48,11 @@ export interface IdeaTags {
   monetization_secondary?: string | null;
   growth_channels?: string[];
   risk_flags?: string[];
+  /** How often the buyer USES the product (not how it bills): continuous | periodic | episodic | one-shot. */
+  usage_cadence?: string | null;
+  /** Code-derived: episodic/one-shot usage sold as a subscription (buyers churn between events). */
+  pricing_shape_mismatch?: boolean;
+  pricing_shape_note?: string | null;
   build_complexity?: string | null;
   novelty_level?: string | null;
   strengths?: StrengthKey[];

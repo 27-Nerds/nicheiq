@@ -178,7 +178,12 @@ def create_progress_callback(
     return callback
 
 
-def publish_report_ready(job_id: str, report_path: str, winner_name: str = None) -> None:
+def publish_report_ready(
+    job_id: str,
+    report_path: str,
+    winner_name: str = None,
+    cost_summary: Optional[dict] = None,
+) -> None:
     """
     Notify backend that the research report is ready (before landing page).
     This triggers "report ready" notification so users can view reports immediately.
@@ -187,6 +192,8 @@ def publish_report_ready(job_id: str, report_path: str, winner_name: str = None)
         job_id: The job UUID
         report_path: Path to the generated report JSON
         winner_name: Optional name of the winning solution
+        cost_summary: Optional LLM cost breakdown (CostTracker.get_summary()) to persist
+            on the Job row for the admin pricing view
     """
     try:
         payload = {
@@ -196,6 +203,8 @@ def publish_report_ready(job_id: str, report_path: str, winner_name: str = None)
         }
         if winner_name:
             payload["winner_name"] = winner_name
+        if cost_summary:
+            payload["cost_summary"] = cost_summary
 
         response = requests.post(
             f"{_get_backend_url()}/api/workers/report-ready",
@@ -264,7 +273,7 @@ def publish_job_failed(job_id: str, error: str, stage: Optional[float] = None) -
 
 
 
-def notify_ideas_ready(job_id: str, solutions: list[dict], checkpoint_path: str, total_to_validate: int = 0, skip_validation: bool = False, discovery_data_path: str = "", preview_report_path: str | None = None) -> None:
+def notify_ideas_ready(job_id: str, solutions: list[dict], checkpoint_path: str, total_to_validate: int = 0, skip_validation: bool = False, discovery_data_path: str = "", preview_report_path: str | None = None, cost_summary: Optional[dict] = None) -> None:
     """
     Notify backend that Phase 1 solution ideas are ready.
 
@@ -294,6 +303,8 @@ def notify_ideas_ready(job_id: str, solutions: list[dict], checkpoint_path: str,
     }
     if preview_report_path:
         payload["preview_report_path"] = preview_report_path
+    if cost_summary:
+        payload["cost_summary"] = cost_summary
 
     retry_delays = (2.0, 5.0, 10.0)
     last_error: Exception = RuntimeError("unreachable")

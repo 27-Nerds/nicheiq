@@ -51,6 +51,11 @@ const TAG_LABELS: Record<string, string> = {
   "tos-risk": "Terms risk",
   "grey-market": "Gray-area market",
   "trust-dependent": "Trust-dependent",
+  // usage_cadence
+  continuous: "Daily-use tool",
+  periodic: "Periodic use",
+  episodic: "Episodic use",
+  "one-shot": "One-shot use",
 };
 
 /** Humanize a tag value to a display label (sentence case), falling back to title-casing. */
@@ -119,6 +124,11 @@ const TAG_DESCRIPTIONS: Record<string, string> = {
   "tos-risk": "Data acquisition may violate a platform's terms of service.",
   "grey-market": "Operates in a legally ambiguous market.",
   "trust-dependent": "Success hinges on trust that's hard to build or easy to game.",
+  // usage_cadence (how often the buyer USES it — not how it bills)
+  continuous: "Used as part of a daily or weekly workflow.",
+  periodic: "Used on a recurring calendar cadence (monthly reports, quarterly filings).",
+  episodic: "Used when an irregular event triggers it (validating an idea, raising prices) — subscriptions churn between events.",
+  "one-shot": "Delivers its value once — fits one-time pricing better than a subscription.",
   // strengths (derived from scores, standardized cutoffs)
   "market-fit": "Strong product-market-fit signal (market-fit score ≥ 0.82).",
   "seo-power": "High programmatic-SEO scalability (SEO score ≥ 0.85).",

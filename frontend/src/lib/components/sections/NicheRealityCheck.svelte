@@ -66,6 +66,44 @@
       ?.replace(/^software\s+fit:\s*[^—-]+[—-]\s*/i, "")
       .trim() || verdict.headline,
   );
+
+  // "Who pays here" — buyer class from the niche verdict. Low-payability classes get the
+  // warning tint (severity ramp, never orange).
+  const BUYER_CLASS_LABELS: Record<string, string> = {
+    "budgeted-business": "Businesses with budget",
+    "smb-operator": "Small-business operators",
+    prosumer: "Prosumers (personal wallet)",
+    "indie-hobbyist": "Indie builders (personal wallet)",
+    consumer: "Consumers",
+    mixed: "Mixed buyer types",
+  };
+  const LOW_PAYABILITY = new Set(["prosumer", "indie-hobbyist", "consumer"]);
+  const buyerLabel = $derived(
+    verdict.buyer_class ? (BUYER_CLASS_LABELS[verdict.buyer_class] ?? verdict.buyer_class) : null,
+  );
+  const buyerLow = $derived(!!verdict.buyer_class && LOW_PAYABILITY.has(verdict.buyer_class));
+
+  // "Overall difficulty" — the composite band (fit + frictions). A DIFFERENT axis from the
+  // fit badge above: it can be "high" on a moderate/strong-fit niche when frictions (cold
+  // start, crowded tooling) stack up, so the high case carries a disambiguating note.
+  const DIFFICULTY_LABELS: Record<string, string> = {
+    low: "Low",
+    medium: "Medium",
+    high: "High",
+    very_high: "Very high",
+  };
+  const difficultyLabel = $derived(
+    verdict.difficulty_level ? (DIFFICULTY_LABELS[verdict.difficulty_level] ?? null) : null,
+  );
+  const difficultyHigh = $derived(
+    verdict.difficulty_level === "high" || verdict.difficulty_level === "very_high",
+  );
+  // Only explain the axis split when it would otherwise read as a contradiction.
+  const difficultyNote = $derived(
+    difficultyHigh && (fitBand === "strong" || fitBand === "moderate")
+      ? "Reflects frictions like cold start and crowded tooling — not a worse software fit."
+      : null,
+  );
 </script>
 
 <section class="reality-check reality-check--{context}" aria-label="Software fit">
@@ -88,6 +126,30 @@
           <span class="rc-marker"></span>
         </div>
       </div>
+
+      {#if difficultyLabel}
+        <div class="rc-buyer">
+          <div class="rc-meter-head">
+            <span>Overall difficulty</span>
+            <strong class:rc-buyer-low-text={difficultyHigh}>{difficultyLabel}</strong>
+          </div>
+          {#if difficultyNote}
+            <p class="rc-buyer-note">{difficultyNote}</p>
+          {/if}
+        </div>
+      {/if}
+
+      {#if buyerLabel}
+        <div class="rc-buyer">
+          <div class="rc-meter-head">
+            <span>Who pays here</span>
+            <strong class:rc-buyer-low-text={buyerLow}>{buyerLabel}</strong>
+          </div>
+          {#if verdict.buyer_class_note}
+            <p class="rc-buyer-note">{verdict.buyer_class_note}</p>
+          {/if}
+        </div>
+      {/if}
 
       {#if verdict.low_confidence}
         <p class="rc-note">Limited sample. Treat this as directional.</p>
@@ -299,6 +361,25 @@
     color: var(--color-text-muted);
     margin: 0;
     font-style: italic;
+  }
+
+  .rc-buyer {
+    display: grid;
+    gap: 0.3rem;
+    padding-top: 0.56rem;
+    border-top: 1px solid var(--color-border);
+  }
+
+  .rc-buyer-low-text {
+    color: var(--color-warning-dark, var(--color-text-secondary));
+  }
+
+  .rc-buyer-note {
+    font-size: 0.74rem;
+    line-height: 1.45;
+    color: var(--color-text-secondary);
+    margin: 0;
+    text-wrap: pretty;
   }
 
   @media (min-width: 760px) {

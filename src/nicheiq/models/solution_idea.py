@@ -176,6 +176,9 @@ NoveltyLevelTag = Literal["conventional", "moderate", "novel"]
 StrengthTag = Literal[
     "market-fit", "seo-power", "innovator", "quick-build", "solo-friendly"
 ]
+# How often the buyer USES the product — not how it bills. Episodic usage sold as a
+# subscription churns between events; the deterministic pricing-shape check reads this.
+UsageCadenceTag = Literal["continuous", "periodic", "episodic", "one-shot"]
 
 
 class IdeaTags(BaseModel):
@@ -200,6 +203,14 @@ class IdeaTags(BaseModel):
     monetization_secondary: Optional[MonetizationTag] = Field(default=None)
     growth_channels: list[GrowthChannelTag] = Field(default_factory=list)
     risk_flags: list[RiskFlagTag] = Field(default_factory=list)
+    usage_cadence: Optional[UsageCadenceTag] = Field(
+        default=None, description="How often the buyer uses the product (not how it bills)"
+    )
+
+    # Code-derived pricing-shape check: usage cadence vs monetization (episodic/one-shot
+    # usage sold as a subscription churns between events). Informational — never a score.
+    pricing_shape_mismatch: bool = Field(default=False)
+    pricing_shape_note: Optional[str] = Field(default=None)
 
     # Code-derived from scores
     build_complexity: Optional[BuildComplexityTag] = Field(default=None)
@@ -274,6 +285,16 @@ class BaseSolutionIdea(BaseModel):
     )
     source_segment: Optional[str] = Field(
         default=None, description="Name of the audience segment the generating cell reasoned as"
+    )
+    # Payability inherited from source_segment (permanent buyer-wallet signal): stamped in code so
+    # the pure cap in _validate_idea_caps can read it off the idea. None = flag off / unscored.
+    source_segment_payability: Optional[float] = Field(
+        default=None, ge=0.0, le=1.0,
+        description="CODE-FILLED after generation — ALWAYS leave null/omit this field"
+    )
+    source_segment_payability_class: Optional[str] = Field(
+        default=None,
+        description="CODE-FILLED after generation — ALWAYS leave null/omit this field"
     )
     audience_fit: Optional[bool] = Field(
         default=None,
@@ -614,6 +635,14 @@ class BaseSolutionIdea(BaseModel):
             "Web-verified mechanism-parity finding for top ideas, e.g. 'shipped by MoeGo: "
             "route optimization (Smart Schedule)' or 'none found'. Set by the parity probe; "
             "None when the probe didn't run for this idea."
+        ),
+    )
+    adjacent_market_parity: Optional[str] = Field(
+        default=None,
+        description=(
+            "CODE-FILLED by the web-verified adjacent-market probe — ALWAYS leave null/omit "
+            "this field. (Audience-independent incumbent in the adjacent commercial market the "
+            "mechanism monetizes in; None = no finding / probe didn't run.)"
         ),
     )
     idea_tier: str = Field(

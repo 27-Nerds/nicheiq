@@ -157,6 +157,39 @@ class CheckpointManager:
             logger.warning(f"Failed to save checkpoint for {stage_name}: {e}")
             # Don't fail the pipeline for checkpoint errors
 
+    def save_cost_breakdown(self, rows: list) -> None:
+        """Persist the run's cost-tracker stage usages (from CostTracker.export_state()).
+
+        Written as cost_tracker.json in the checkpoint folder so the Phase-2 process
+        (a separate worker task loading this checkpoint) can seed its fresh tracker and
+        report cumulative Phase-1 + Phase-2 cost. Best-effort — never fails the pipeline.
+        """
+        if not settings.checkpoint_enabled:
+            return
+        try:
+            checkpoint_folder = self._init_checkpoint_folder()
+            cost_file = checkpoint_folder / "cost_tracker.json"
+            with open(cost_file, "w", encoding="utf-8") as f:
+                json.dump(rows, f, indent=2, ensure_ascii=False, default=str)
+            logger.info(f"✓ Checkpoint saved: cost_tracker ({len(rows)} usages)")
+        except Exception as e:
+            logger.warning(f"Failed to save cost breakdown checkpoint: {e}")
+
+    def load_cost_breakdown(self) -> list | None:
+        """Read cost_tracker.json from the loaded checkpoint folder (None if absent)."""
+        if self.checkpoint_folder is None:
+            return None
+        cost_file = self.checkpoint_folder / "cost_tracker.json"
+        if not cost_file.exists():
+            return None
+        try:
+            with open(cost_file, encoding="utf-8") as f:
+                rows = json.load(f)
+            return rows if isinstance(rows, list) else None
+        except Exception as e:
+            logger.warning(f"Failed to load cost breakdown checkpoint: {e}")
+            return None
+
     def flush_metadata(self) -> None:
         """Rewrite metadata.json from current state WITHOUT marking a stage completed.
 

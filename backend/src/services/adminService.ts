@@ -48,6 +48,7 @@ export async function getReportStats() {
     completedJobs,
     failedJobs,
     recentJobs,
+    costAggregate,
   ] = await Promise.all([
     prisma.job.count(),
     prisma.job.count({ where: { status: 'COMPLETED' } }),
@@ -70,8 +71,16 @@ export async function getReportStats() {
         createdAt: true,
         startedAt: true,
         completedAt: true,
+        costUsd: true,
+        costSummary: true,
         user: { select: { id: true, email: true, name: true } },
       },
+    }),
+    // Spend aggregate across all jobs that recorded cost (nulls excluded by Prisma).
+    prisma.job.aggregate({
+      _sum: { costUsd: true },
+      _avg: { costUsd: true },
+      _count: { costUsd: true },
     }),
   ]);
 
@@ -105,6 +114,9 @@ export async function getReportStats() {
       stage: f.currentStageName,
       count: f._count,
     })),
+    totalCostUsd: costAggregate._sum.costUsd ?? 0,
+    avgCostUsd: costAggregate._avg.costUsd ?? 0,
+    costedJobs: costAggregate._count.costUsd ?? 0,
     recentJobs,
   };
 }

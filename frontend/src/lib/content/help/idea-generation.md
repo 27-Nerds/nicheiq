@@ -16,7 +16,7 @@ Finally we drop near-duplicates across the set ([SemDeDup, Abbas et al., 2023](h
 
 ### What you'll see on each idea
 
-The scores (shown as percentages, with an overall green / amber / red composite and a conservative go / no-go) are market fit, feasibility, solo-dev feasibility, SEO, and originality. The [scoring page](/help/methodology) goes into what each one means and how far to trust it.
+The scores (shown as percentages, with an overall green / amber / red composite and a conservative go / no-go) are market fit, feasibility, solo-dev feasibility, SEO, and originality. The [scoring page](/help/methodology) goes into what each one means and how far to trust it. Each idea also carries a web-verified competition check (including whether a free or do-it-yourself route already delivers the outcome, and whether the mechanism is already sold commercially in an adjacent market under a different audience), plus a read on [who actually pays and how often they'd use it](/help/methodology) — because a loud pain sold to a buyer without a wallet is not a business.
 
 One thing worth knowing about those numbers: they aren't the idea's own self-grade. The model that comes up with an idea tends to like its own work and marks it generously, so once an idea is written up in full a separate model goes back over it and re-scores it against the same yardstick, leaning conservative when the evidence is thin ([Zheng et al., 2023](https://arxiv.org/abs/2306.05685)). So a 70% for market fit is a second opinion that has already argued the optimism back down, not the first number the idea gave itself.
 

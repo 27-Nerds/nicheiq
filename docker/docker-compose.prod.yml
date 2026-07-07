@@ -197,13 +197,9 @@ services:
       DIVERGENT_KEEP_FRACTION: ${DIVERGENT_KEEP_FRACTION:-0.5}
       DIVERGENT_DEDUP_SIMILARITY_THRESHOLD: ${DIVERGENT_DEDUP_SIMILARITY_THRESHOLD:-0.85}
       # Pain-partitioned divergent ideation (one narrow generator per selected pain)
-      ENABLE_PAIN_PARTITIONED_DIVERGENT: ${ENABLE_PAIN_PARTITIONED_DIVERGENT:-false}
       DIVERGENT_MAX_GENERATORS: ${DIVERGENT_MAX_GENERATORS:-8}
       DIVERGENT_MAX_WORKERS: ${DIVERGENT_MAX_WORKERS:-8}
       DIVERGENT_PARTITIONED_KEEP_FRACTION: ${DIVERGENT_PARTITIONED_KEEP_FRACTION:-0.67}
-      # Feasibility grounding (default OFF — enable after a calibration / rank-stability run)
-      ENABLE_FEASIBILITY_CRITIC: ${ENABLE_FEASIBILITY_CRITIC:-false}
-      ENABLE_VERDICT_DATA_CAPS: ${ENABLE_VERDICT_DATA_CAPS:-false}
       # Ideation convergent tiers: judge = novelty critic + evaluator; refine = idea refiner
       IDEATION_JUDGE_LLM: ${IDEATION_JUDGE_LLM:-gpt-5.4-mini}
       IDEATION_JUDGE_REASONING_EFFORT: ${IDEATION_JUDGE_REASONING_EFFORT:-low}
@@ -223,10 +219,9 @@ services:
       LANDING_PAGE_VALIDATION_REASONING_EFFORT: ${LANDING_PAGE_VALIDATION_REASONING_EFFORT:-low}
       # Final solution refinement pass (turns surviving concepts into full scored ideas)
       SOLUTION_REFINEMENT_ENABLED: ${SOLUTION_REFINEMENT_ENABLED:-true}
-      # SEO realism caps (downgrade-only, always on) + page-count/handseed ceilings
-      ENABLE_SEO_HANDSEED_CAP: ${ENABLE_SEO_HANDSEED_CAP:-false}
+      # SEO realism caps (downgrade-only, always on) + page-count ceilings
+      # (Rule C hand-seed cap removed 2026-07-07 as unreliable)
       SEO_CAP_GATED_SAAS_CEILING: ${SEO_CAP_GATED_SAAS_CEILING:-0.5}
-      SEO_CAP_HANDSEED_CEILING: ${SEO_CAP_HANDSEED_CEILING:-0.6}
       SEO_CAP_HIGH_SCORE_MIN_PAGES: ${SEO_CAP_HIGH_SCORE_MIN_PAGES:-300}
       SEO_CAP_MODERATE_PAGES_CEILING: ${SEO_CAP_MODERATE_PAGES_CEILING:-0.7}
       SEO_CAP_REQUIRE_SAAS_FOR_GATING: ${SEO_CAP_REQUIRE_SAAS_FOR_GATING:-true}
@@ -283,8 +278,7 @@ services:
       COST_LOGGING_ENABLED: ${COST_LOGGING_ENABLED:-true}
       # Search Config
       NUM_SEARCH_QUERIES: ${NUM_SEARCH_QUERIES:-40}
-      # Part C: soft, additive audience bias on queries + pain mining (broad set preserved). Default off.
-      ENABLE_AUDIENCE_AWARE_RESEARCH: ${ENABLE_AUDIENCE_AWARE_RESEARCH:-false}
+      # Part C: soft, additive audience bias on queries + pain mining (broad set preserved).
       AUDIENCE_QUERY_ALLOTMENT: ${AUDIENCE_QUERY_ALLOTMENT:-6}
       MAX_REDDIT_CONTENT_TOKENS: ${MAX_REDDIT_CONTENT_TOKENS:-150000}
       # Reddit Quality Filters

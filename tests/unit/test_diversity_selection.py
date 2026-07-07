@@ -212,6 +212,12 @@ class TestCarryProvenance:
         crew = usc.UnifiedSolutionCrew.__new__(usc.UnifiedSolutionCrew)
         monkeypatch.setattr(crew, "_grounded_pains_for", lambda p, s, cap=5: (grounded or []),
                             raising=False)
+        # Fix #3b: _carry_provenance no longer copies the concept's (load-balanced) source_segment;
+        # on a successful join it RE-DERIVES honest provenance from the pain. Stub it here so these
+        # join tests observe "re-derivation fired" without wiring the full segment matcher (that
+        # logic is covered in test_ideation_quality_fixes.py).
+        monkeypatch.setattr(crew, "_provenance_segment_for_pain", lambda p: "REDERIVED",
+                            raising=False)
         return crew
 
     def test_exact_name_carries_provenance(self, monkeypatch):
@@ -227,7 +233,7 @@ class TestCarryProvenance:
         refined = SimpleNamespace(solution_ideas=[sol])
         hits = crew._carry_provenance(refined, raw)
         assert hits == 0  # exact match, not fuzzy
-        assert sol.source_segment == "Skincare Enthusiasts"
+        assert sol.source_segment == "REDERIVED"  # Fix #3b: re-derived on join, not carried
         assert sol.mechanism_tag == "aggregates-coa"
         assert sol.pain_points_addressed == ["the real pain"]  # code-filled
 
@@ -275,7 +281,7 @@ class TestCarryProvenance:
         refined = SimpleNamespace(solution_ideas=[sol])
         hits = crew._carry_provenance(refined, raw)
         assert hits == 1
-        assert sol.source_segment == "Experienced Buyers"   # real segment, overrides the guess
+        assert sol.source_segment == "REDERIVED"   # Fix #3b: re-derived on join, overrides the guess
         assert sol.mechanism_tag == "curated-comparison-pages"
 
     def test_ambiguous_match_leaves_value(self, monkeypatch):
@@ -322,8 +328,8 @@ class TestCarryProvenance:
             mechanism_tag=None, data_source_tag=None, journey_tag=None, obviousness_score=None)
         refined = SimpleNamespace(solution_ideas=[exact, renamed])
         hits = crew._carry_provenance(refined, raw)
-        assert exact.source_segment == "Seg-Claimed"     # exact match claims PurityDB
-        assert renamed.source_segment == "Own Guess"     # could not steal the claimed sibling
+        assert exact.source_segment == "REDERIVED"       # Fix #3b: re-derived on the exact-match join
+        assert renamed.source_segment == "Own Guess"     # could not steal the claimed sibling → untouched
         assert hits == 0
 
     def test_no_raw_concepts_noop(self, monkeypatch):

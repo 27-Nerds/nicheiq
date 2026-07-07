@@ -70,6 +70,25 @@
     }
     return null;
   }
+
+  function formatCost(usd: number | null | undefined): string {
+    if (usd == null) return "—";
+    // Per-stage LLM costs are often sub-cent — keep 4 decimals below $1.
+    return `$${usd.toFixed(usd < 1 ? 4 : 2)}`;
+  }
+
+  function formatTokens(n: number | null | undefined): string {
+    return (n ?? 0).toLocaleString();
+  }
+
+  function costSourceVariant(source: string | undefined): StatusVariant {
+    const map: Record<string, StatusVariant> = {
+      actual: "success",
+      estimated: "muted",
+      mixed: "warning",
+    };
+    return source ? map[source] || "muted" : "muted";
+  }
 </script>
 
 <svelte:head>
@@ -81,7 +100,7 @@
 
   {#if stats}
     <!-- Overview Cards -->
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
       <div class="bg-bg-surface border border-border rounded-xl p-5">
         <p class="text-sm text-text-muted mb-1">Success Rate</p>
         <p class="text-3xl font-bold text-success">{stats.successRate}%</p>
@@ -109,6 +128,15 @@
         </p>
         <p class="text-xs text-text-muted mt-1">
           {stats.completedJobs} completed of {stats.totalJobs} total
+        </p>
+      </div>
+      <div class="bg-bg-surface border border-border rounded-xl p-5">
+        <p class="text-sm text-text-muted mb-1">Total Spend</p>
+        <p class="text-3xl font-bold text-text-primary">
+          {formatCost(stats.totalCostUsd)}
+        </p>
+        <p class="text-xs text-text-muted mt-1">
+          {formatCost(stats.avgCostUsd)} avg · {stats.costedJobs} runs tracked
         </p>
       </div>
     </div>
@@ -166,8 +194,9 @@
               <th class="text-left py-2 pr-4 text-text-muted font-medium"
                 >Stage</th
               >
-              <th class="text-left py-2 text-text-muted font-medium">Created</th
+              <th class="text-left py-2 pr-4 text-text-muted font-medium">Created</th
               >
+              <th class="text-right py-2 text-text-muted font-medium">Cost</th>
             </tr>
           </thead>
           <tbody>
@@ -199,14 +228,15 @@
                 <td class="py-2 pr-4 text-text-secondary"
                   >{job.currentStageName || "-"}</td
                 >
-                <td class="py-2 text-text-muted">{formatDate(job.createdAt)}</td
+                <td class="py-2 pr-4 text-text-muted">{formatDate(job.createdAt)}</td
                 >
+                <td class="py-2 text-right text-text-secondary">{formatCost(job.costUsd)}</td>
               </tr>
 
               {#if isExpanded}
                 {@const details = parseErrorDetails(job.errorDetails)}
                 <tr class="border-b border-border/50 bg-bg-elevated/30">
-                  <td colspan="6" class="px-4 py-4">
+                  <td colspan="7" class="px-4 py-4">
                     <div class="space-y-3 text-sm">
                       {#if isFailed}
                         <!-- Error Code & Stage -->
@@ -276,6 +306,92 @@
                               class="max-h-48 overflow-auto whitespace-pre-wrap text-xs text-text-secondary bg-bg-surface border border-border rounded-lg p-3 font-mono">{job.errorMessage}</pre>
                           </div>
                         {/if}
+                      {/if}
+
+                      <!-- Pricing breakdown -->
+                      {#if job.costSummary}
+                        <div>
+                          <div
+                            class="flex flex-wrap items-center gap-x-6 gap-y-1 mb-2"
+                          >
+                            <span class="text-text-muted">Pricing breakdown:</span>
+                            <span class="text-text-primary font-medium"
+                              >{formatCost(job.costSummary.total_cost)}</span
+                            >
+                            <Badge
+                              variant={costSourceVariant(
+                                job.costSummary.total_cost_source,
+                              )}
+                              size="sm"
+                              >{job.costSummary.total_cost_source ||
+                                "estimated"}</Badge
+                            >
+                            <span class="text-text-secondary text-xs">
+                              {formatTokens(job.costSummary.total_prompt_tokens)} in
+                              · {formatTokens(
+                                job.costSummary.total_completion_tokens,
+                              )} out · {formatTokens(
+                                job.costSummary.total_tokens,
+                              )} total tokens
+                            </span>
+                          </div>
+                          {#if job.costSummary.stage_breakdown?.length}
+                            <div class="overflow-x-auto">
+                              <table class="w-full text-xs">
+                                <thead>
+                                  <tr class="border-b border-border">
+                                    <th
+                                      class="text-left py-1.5 pr-4 text-text-muted font-medium"
+                                      >Stage</th
+                                    >
+                                    <th
+                                      class="text-left py-1.5 pr-4 text-text-muted font-medium"
+                                      >Model</th
+                                    >
+                                    <th
+                                      class="text-right py-1.5 pr-4 text-text-muted font-medium"
+                                      >Tokens (in/out)</th
+                                    >
+                                    <th
+                                      class="text-right py-1.5 pr-4 text-text-muted font-medium"
+                                      >Cost</th
+                                    >
+                                    <th
+                                      class="text-left py-1.5 text-text-muted font-medium"
+                                      >Source</th
+                                    >
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {#each job.costSummary.stage_breakdown as row}
+                                    <tr class="border-b border-border/50">
+                                      <td class="py-1.5 pr-4 text-text-primary"
+                                        >{row.stage}</td
+                                      >
+                                      <td
+                                        class="py-1.5 pr-4 text-text-secondary font-mono"
+                                        >{row.model}</td
+                                      >
+                                      <td
+                                        class="py-1.5 pr-4 text-right text-text-secondary"
+                                        >{formatTokens(row.prompt_tokens)} / {formatTokens(
+                                          row.completion_tokens,
+                                        )}</td
+                                      >
+                                      <td
+                                        class="py-1.5 pr-4 text-right text-text-primary"
+                                        >{formatCost(row.total_cost)}</td
+                                      >
+                                      <td class="py-1.5 text-text-muted"
+                                        >{row.cost_source}</td
+                                      >
+                                    </tr>
+                                  {/each}
+                                </tbody>
+                              </table>
+                            </div>
+                          {/if}
+                        </div>
                       {/if}
 
                       <!-- Download buttons -->

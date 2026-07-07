@@ -26,7 +26,7 @@ import {
   RegenerationFailedSchema,
 } from '../types/job.js';
 import { notifyJobStart, notifyJobComplete, notifyJobError } from '../services/notificationService.js';
-import { AssetType } from '@prisma/client';
+import { AssetType, Prisma } from '@prisma/client';
 import type { JobStatus as JobStatusType } from '@prisma/client';
 import { bigramSimilarity, canonicalizeAddressedTitles, normalizeTitle } from '../services/titleMatching.js';
 import { requireInternalService } from '../middleware/auth.js';
@@ -347,6 +347,7 @@ const ReportReadySchema = z.object({
   job_id: z.string().uuid(),
   report_path: z.string().min(1).max(500),
   winner_name: z.string().max(255).optional(),
+  cost_summary: z.record(z.any()).optional(),
 });
 
 /**
@@ -382,6 +383,18 @@ workersRouter.post('/report-ready', async (req: Request, res: Response) => {
       select: { userId: true, niche: true, selectedSolutions: true },
     });
 
+    // Single Job update: LLM cost breakdown (for the admin pricing view) + Phase-2 winner.
+    const jobUpdate: Prisma.JobUpdateInput = {};
+
+    // Cost: persist only when the summary reports real spend. Writing NULL for empty /
+    // $0 / partial-retry summaries keeps them out of the admin average and count.
+    const cost = data.cost_summary;
+    const totalCost = typeof cost?.total_cost === 'number' ? cost.total_cost : null;
+    if (cost && totalCost && totalCost > 0) {
+      jobUpdate.costUsd = totalCost;
+      jobUpdate.costSummary = cost as Prisma.InputJsonValue;
+    }
+
     // Persist Phase 2 winner if provided. Normalized comparison (trim + collapse
     // whitespace + casefold): the Python side may sanitize/echo the name with
     // trivial drift, which must not silently drop winner persistence.
@@ -390,12 +403,13 @@ workersRouter.post('/report-ready', async (req: Request, res: Response) => {
       const winnerNorm = normalizeName(data.winner_name);
       const matched = job.selectedSolutions.find((s) => normalizeName(s) === winnerNorm);
       if (matched) {
-        await prisma.job.update({
-          where: { id: data.job_id },
-          // Persist the user-selected spelling, not the worker echo.
-          data: { selectedSolution: matched },
-        });
+        // Persist the user-selected spelling, not the worker echo.
+        jobUpdate.selectedSolution = matched;
       }
+    }
+
+    if (Object.keys(jobUpdate).length > 0) {
+      await prisma.job.update({ where: { id: data.job_id }, data: jobUpdate });
     }
 
     if (isFirstDelivery && job?.userId) {
@@ -789,6 +803,16 @@ workersRouter.post('/ideas-ready', async (req: Request, res: Response) => {
     const { prisma } = await import('../services/db.js');
     const { JobStatus } = await import('@prisma/client');
 
+    // Phase-1 LLM cost (for the admin pricing view). Persist only real spend so empty /
+    // $0 summaries don't create misleading rows. When Phase-2 completes, report-ready
+    // overwrites this with the cumulative Phase-1 + Phase-2 total.
+    const cost = data.cost_summary;
+    const totalCost = typeof cost?.total_cost === 'number' ? cost.total_cost : null;
+    const costData: Prisma.JobUpdateManyMutationInput =
+      cost && totalCost && totalCost > 0
+        ? { costUsd: totalCost, costSummary: cost as Prisma.InputJsonValue }
+        : {};
+
     // Atomic conditional update: RUNNING → AWAITING_SELECTION
     const result = await prisma.job.updateMany({
       where: {
@@ -801,6 +825,7 @@ workersRouter.post('/ideas-ready', async (req: Request, res: Response) => {
         phase1CheckpointPath: data.checkpoint_path,
         ideasShownAt: new Date(),
         awaitingSelectionAt: new Date(),
+        ...costData,
       },
     });
 

@@ -468,10 +468,10 @@ class MarketSizingCrew:
     ) -> str:
         """Format pain point signals for market validation.
 
-        When ``enable_scoped_market_sizing`` is on and the solution declares which pains it
-        addresses, narrow the niche-wide pain corpus to just the addressed slice so the LLM
-        sizes the SERVICEABLE market, not the whole niche (top-down keyword volume already
-        captures the niche). Bands severity/WTP so no raw 0-1 score leaks into the sizing prose.
+        When the solution declares which pains it addresses, narrow the niche-wide pain corpus
+        to just the addressed slice so the LLM sizes the SERVICEABLE market, not the whole niche
+        (top-down keyword volume already captures the niche). Bands severity/WTP so no raw 0-1
+        score leaks into the sizing prose.
         """
         if not pain_point_analysis or not pain_point_analysis.pain_points:
             return "No pain point data available."
@@ -480,8 +480,7 @@ class MarketSizingCrew:
         pains = all_pains
         scope_note = None
         if (
-            settings.enable_scoped_market_sizing
-            and selected_solution is not None
+            selected_solution is not None
             and getattr(selected_solution, "pain_points_addressed", None)
         ):
             scoped = self._scope_pains_to_solution(all_pains, selected_solution.pain_points_addressed)
