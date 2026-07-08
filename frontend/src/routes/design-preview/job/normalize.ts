@@ -64,7 +64,6 @@ export interface IdeaVM {
   conventional: string | null;
   innovation: string | null;
   seoOpportunity: string | null;
-  indexablePages: number | null;
   cacOrganic: string | null;
   cacPaid: string | null;
   queries: string[];
@@ -79,7 +78,7 @@ export interface IdeaVM {
   dataAccessModel: string | null;
   dataSources: string[];
   noveltyRationale: string | null;
-  calibrationNotes: string | null;
+  criticNote: string | null;
   incumbentParity: string | null;
   adjacentParity: string | null;
   rank: number; // 1-based, by score
@@ -216,6 +215,30 @@ function weakest(s: Signals): { label: string; value: number } {
     }
   }
   return { label: best[1], value: bestV };
+}
+
+/**
+ * calibration_notes is an internal per-criterion audit (not user-facing raw).
+ * Distill it to a single critic concern — the note for the weakest signal's
+ * criterion — mirroring the pipeline's extract_criterion_reason. Never surface
+ * the whole pipe-delimited string.
+ */
+const CRIT_KEY: Record<keyof Signals, string> = {
+  marketFit: "market_fit",
+  seo: "seo_scalability",
+  feasibility: "technical_feasibility",
+  originality: "obviousness",
+  novelty: "novelty",
+};
+function distillCritic(notes: string | null | undefined, signals: Signals): string | null {
+  if (!notes) return null;
+  const weakKey = (Object.keys(signals) as (keyof Signals)[]).reduce((a, b) =>
+    signals[a] <= signals[b] ? a : b,
+  );
+  const crit = CRIT_KEY[weakKey];
+  const segs = notes.split("|").map((s) => s.trim());
+  const seg = segs.find((s) => s.toLowerCase().startsWith(crit)) ?? segs[0] ?? "";
+  return seg.replace(/^[a-z_]+\s*:\s*/i, "").trim() || null;
 }
 
 /* token-overlap match of an idea's addressed pains to the report's detailed pains */
@@ -365,8 +388,6 @@ export function normalizeJob(
         conventional: (i.conventional_approach as string) ?? null,
         innovation: (i.innovation_angle as string) ?? null,
         seoOpportunity: (i.programmatic_seo_opportunity as string) ?? null,
-        indexablePages:
-          typeof i.estimated_indexable_pages === "number" ? i.estimated_indexable_pages : null,
         cacOrganic: (i.estimated_cac_organic as string) ?? null,
         cacPaid: (i.estimated_cac_paid as string) ?? null,
         queries: ((i.organic_discovery_queries as string[]) ?? []).slice(0, 12),
@@ -380,7 +401,7 @@ export function normalizeJob(
         dataAccessModel: (i.data_access_model as string) ?? null,
         dataSources: ((i.data_sources as string[]) ?? []).slice(0, 6),
         noveltyRationale: (i.novelty_rationale as string) ?? null,
-        calibrationNotes: (i.calibration_notes as string) ?? null,
+        criticNote: distillCritic(i.calibration_notes as string, signals),
         incumbentParity: (i.incumbent_parity as string) ?? null,
         adjacentParity: (i.adjacent_market_parity as string) ?? null,
         rank: 0, // stamped after sort

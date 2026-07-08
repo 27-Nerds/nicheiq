@@ -1254,10 +1254,8 @@
     border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 46%, transparent);
     border-radius: 1.125rem;
     background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(255, 255, 255, 0.34)),
       color-mix(in srgb, var(--color-bg-surface) 78%, var(--color-bg-elevated));
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.86),
       0 22px 64px rgba(24, 24, 27, 0.05);
   }
 
@@ -1378,10 +1376,8 @@
     border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 52%, transparent);
     border-radius: 0.875rem;
     background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.42)),
       color-mix(in srgb, var(--color-bg-elevated) 94%, var(--color-bg-surface));
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.86),
       0 18px 48px rgba(24, 24, 27, 0.045);
   }
 
@@ -1449,9 +1445,7 @@
     border-color: color-mix(in srgb, var(--color-border-emphasis) 34%, transparent);
     border-radius: 0.875rem;
     background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.68), rgba(255, 255, 255, 0.18)),
       color-mix(in srgb, var(--color-bg-elevated) 88%, var(--color-bg-surface));
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.74);
   }
 
   :global(.discovery-dossier .section-container.expandable .section-content) {

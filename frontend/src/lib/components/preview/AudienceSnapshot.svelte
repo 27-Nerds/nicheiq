@@ -201,7 +201,6 @@
     border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 36%, transparent);
     border-radius: 0.625rem;
     background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(255, 255, 255, 0.22)),
       color-mix(in srgb, var(--color-bg-elevated) 84%, var(--color-bg-surface));
   }
 

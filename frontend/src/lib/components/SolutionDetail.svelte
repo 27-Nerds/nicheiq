@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
+  import { untrack } from "svelte";
   import {
     ChevronLeft,
     ChevronRight,
@@ -59,6 +60,26 @@
   }: Props = $props();
 
   let modalEl: HTMLDivElement | undefined = $state();
+  let bodyEl: HTMLDivElement | undefined = $state();
+
+  // Overview = shortlist-decision snapshot; detail = the 7-card deep reference.
+  let activeTab = $state<"overview" | "detail">("overview");
+  let starting = $state(false); // guards double-submit + shows a pending Start CTA
+
+  // Reset to Overview and scroll to top whenever the pager moves to another idea.
+  $effect(() => {
+    solution.solution_name;
+    untrack(() => {
+      activeTab = "overview";
+      starting = false;
+      if (bodyEl) bodyEl.scrollTop = 0;
+    });
+  });
+
+  function setTab(tab: "overview" | "detail") {
+    activeTab = tab;
+    if (bodyEl) bodyEl.scrollTop = 0; // don't land mid-content when the view swaps
+  }
 
   // On open, move focus into the dialog and remember the trigger; on close, return
   // focus to it so keyboard users aren't dumped at the top of the page.
@@ -122,7 +143,8 @@
   }
 
   function handleStartValidation() {
-    if (!onStartValidation || !canStart || disabled) return;
+    if (!onStartValidation || !canStart || disabled || starting) return;
+    starting = true; // pending state; reset if the pager moves to another idea
     onStartValidation();
   }
 
@@ -140,9 +162,10 @@
     if (!open) return;
     if (e.key === 'Escape') { onClose(); return; }
     if (e.key === 'Tab') { trapTab(e); return; }
-    // Arrow paging only when focus isn't in a control that uses arrows itself.
+    // Arrow paging only when focus isn't in a control that uses arrows itself
+    // (form fields, or the tablist — where arrows belong to tab switching, not paging).
     const t = e.target as HTMLElement | null;
-    if (t && (t.closest('input, textarea, select, [contenteditable="true"]'))) return;
+    if (t && t.closest('input, textarea, select, [contenteditable="true"], [role="tablist"]')) return;
     if (e.key === 'ArrowLeft') { e.preventDefault(); navigatePrev(); }
     if (e.key === 'ArrowRight') { e.preventDefault(); navigateNext(); }
   }
@@ -233,7 +256,7 @@
         </div>
         <div class="modal-actions">
           {#if total > 1}
-            <div class="modal-nav" aria-label="Navigate ideas">
+            <div class="modal-nav" role="group" aria-label="Navigate ideas">
               <button
                 type="button"
                 class="modal-nav-btn"
@@ -268,8 +291,40 @@
         </div>
       </div>
 
+      <!-- Tab bar: decision snapshot vs deep reference -->
+      <div class="modal-tabs" role="tablist" aria-label="Idea detail views">
+        <button
+          type="button"
+          role="tab"
+          id="idea-tab-overview"
+          aria-selected={activeTab === "overview"}
+          aria-controls="idea-tabpanel"
+          class="modal-tab"
+          class:is-active={activeTab === "overview"}
+          onclick={() => setTab("overview")}
+        >Overview</button>
+        <button
+          type="button"
+          role="tab"
+          id="idea-tab-detail"
+          aria-selected={activeTab === "detail"}
+          aria-controls="idea-tabpanel"
+          class="modal-tab"
+          class:is-active={activeTab === "detail"}
+          onclick={() => setTab("detail")}
+        >Full detail</button>
+      </div>
+
       <!-- Scrollable body -->
-      <div class="modal-body">
+      <div
+        class="modal-body"
+        id="idea-tabpanel"
+        role="tabpanel"
+        tabindex="0"
+        bind:this={bodyEl}
+        aria-labelledby={activeTab === "overview" ? "idea-tab-overview" : "idea-tab-detail"}
+      >
+        {#if activeTab === "overview"}
         <section class="modal-score-panel" aria-label="Ranking rationale">
           <div class="score-panel-summary">
             <span class="score-panel-label">Decision rationale</span>
@@ -292,7 +347,14 @@
             {/each}
           </div>
         </section>
-        <SolutionDetailContent {solution} />
+        <SolutionDetailContent
+          {solution}
+          view="overview"
+          onViewFull={() => { setTab("detail"); document.getElementById("idea-tab-detail")?.focus(); }}
+        />
+        {:else}
+        <SolutionDetailContent {solution} view="detail" />
+        {/if}
       </div>
 
       <!-- Sticky footer select CTA -->
@@ -332,9 +394,10 @@
                 type="button"
                 class="modal-start-primary"
                 onclick={handleStartValidation}
-                disabled={!canStart || disabled}
+                disabled={!canStart || disabled || starting}
+                aria-busy={starting}
               >
-                {startLabel}
+                {starting ? "Starting…" : startLabel}
               </button>
             {/if}
           </div>
@@ -353,7 +416,7 @@
     align-items: center;
     justify-content: center;
     padding: clamp(0.75rem, 2vw, 1.5rem);
-    background: rgba(245, 244, 242, 0.9);
+    background: color-mix(in srgb, var(--color-bg-base) 90%, transparent);
     backdrop-filter: blur(2px);
   }
 
@@ -365,15 +428,10 @@
     width: min(54rem, calc(100vw - 1.5rem));
     max-height: min(88vh, 48rem);
     overflow: hidden;
-    background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.54)),
-      var(--color-bg-elevated);
+    background: var(--color-bg-elevated);
     border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 78%, transparent);
     border-radius: 0.75rem;
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.86),
-      0 1px 0 rgba(255, 255, 255, 0.72),
-      0 24px 64px rgba(24, 24, 27, 0.12);
+    box-shadow: var(--shadow-lg);
   }
 
   .modal-header {
@@ -381,7 +439,7 @@
     align-items: flex-start;
     justify-content: space-between;
     gap: 1.25rem;
-    padding: 0.95rem 1.05rem 0.82rem;
+    padding: 1rem 1rem 0.875rem;
     border-bottom: 1px solid var(--color-border);
     background: color-mix(in srgb, var(--color-bg-elevated) 94%, var(--color-bg-surface));
     flex-shrink: 0;
@@ -406,14 +464,14 @@
 
   .modal-kicker {
     display: block;
-    margin-bottom: 0.28rem;
+    margin-bottom: 0.25rem;
     color: var(--color-text-muted);
     font-size: 0.6875rem;
     font-weight: 700;
   }
 
   .modal-subtitle {
-    margin: 0.18rem 0 0;
+    margin: 0.125rem 0 0;
     font-family: var(--font-mono);
     font-size: 0.625rem;
     color: var(--color-text-muted);
@@ -423,7 +481,7 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    margin-top: 0.55rem;
+    margin-top: 0.5rem;
     flex-wrap: wrap;
     color: var(--color-text-muted);
     font-size: 0.75rem;
@@ -432,15 +490,23 @@
   .score-token {
     display: inline-flex;
     align-items: center;
-    gap: 0.36rem;
+    gap: 0.375rem;
     min-height: 1.45rem;
-    padding: 0.08rem 0.44rem 0.08rem 0.34rem;
+    padding: 0.125rem 0.5rem 0.125rem 0.375rem;
     border: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
     border-radius: 999px;
     background: color-mix(in srgb, var(--color-bg-surface) 58%, transparent);
     font-family: var(--font-mono);
     font-size: 0.8125rem;
     font-weight: 800;
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+
+  /* The composite-score token is a Popover trigger — signal it's clickable on hover/focus. */
+  .modal-meta :global(.popover-trigger:hover .score-token),
+  .modal-meta :global(.popover-trigger:focus-visible .score-token) {
+    border-color: var(--color-border-emphasis);
+    background: var(--color-bg-surface);
   }
 
   .score-dot {
@@ -459,8 +525,8 @@
   .modal-nav {
     display: inline-flex;
     align-items: center;
-    gap: 0.28rem;
-    padding: 0.2rem;
+    gap: 0.25rem;
+    padding: 0.25rem;
     background: color-mix(in srgb, var(--color-bg-surface) 78%, var(--color-bg-elevated));
     border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 72%, transparent);
     border-radius: 0.625rem;
@@ -476,9 +542,7 @@
     background: transparent;
     color: var(--color-text-muted);
     cursor: pointer;
-    transition:
-      transform 220ms cubic-bezier(0.32, 0.72, 0, 1),
-      background 220ms cubic-bezier(0.32, 0.72, 0, 1),
+    transition:      background 220ms cubic-bezier(0.32, 0.72, 0, 1),
       color 220ms cubic-bezier(0.32, 0.72, 0, 1);
   }
 
@@ -487,7 +551,7 @@
   }
 
   .modal-position {
-    padding: 0 0.22rem;
+    padding: 0 0.25rem;
     font-size: 0.75rem;
     color: var(--color-text-muted);
     font-variant-numeric: tabular-nums;
@@ -498,14 +562,13 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 0.55rem;
+    gap: 0.5rem;
     border: 1px solid var(--color-border-emphasis);
     background: var(--color-bg-elevated);
     color: var(--color-text-secondary);
     cursor: pointer;
     font-weight: 700;
     transition:
-      transform 220ms cubic-bezier(0.32, 0.72, 0, 1),
       border-color 220ms cubic-bezier(0.32, 0.72, 0, 1),
       color 220ms cubic-bezier(0.32, 0.72, 0, 1),
       background 220ms cubic-bezier(0.32, 0.72, 0, 1);
@@ -513,20 +576,22 @@
 
   .modal-select-primary {
     min-height: 2.36rem;
-    padding: 0.48rem 0.92rem;
+    padding: 0.5rem 0.875rem;
     border-radius: 0.625rem;
     font-size: 0.8125rem;
   }
 
-  .modal-select-primary:hover:not(:disabled) {    border-color: var(--color-accent);
+  .modal-select-primary:hover:not(:disabled) {
+    border-color: var(--color-accent);
     background: color-mix(in srgb, var(--color-accent) 5%, var(--color-bg-elevated));
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
+  /* Shortlisted = a positive filled state, clearly distinct from the un-selected button. */
   .modal-select-primary.is-selected {
-    color: var(--color-text-secondary);
-    background: var(--color-bg-surface);
-    border-color: var(--color-border-emphasis);
+    color: var(--color-accent-dark);
+    background: var(--color-accent-subtle);
+    border-color: color-mix(in srgb, var(--color-accent) 40%, var(--color-border));
   }
 
   .modal-select-primary:disabled {
@@ -563,9 +628,7 @@
     background: transparent;
     color: var(--color-text-muted);
     cursor: pointer;
-    transition:
-      transform 220ms cubic-bezier(0.32, 0.72, 0, 1),
-      background 220ms cubic-bezier(0.32, 0.72, 0, 1),
+    transition:      background 220ms cubic-bezier(0.32, 0.72, 0, 1),
       color 220ms cubic-bezier(0.32, 0.72, 0, 1);
   }
 
@@ -581,26 +644,79 @@
     outline-offset: 2px;
   }
 
+  .modal-tabs {
+    display: flex;
+    gap: 0.25rem;
+    flex-shrink: 0;
+    padding: 0 1rem;
+    background: var(--color-bg-elevated);
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .modal-tab {
+    position: relative;
+    padding: 0.625rem 0.25rem;
+    margin-right: 1.125rem;
+    border: 0;
+    background: transparent;
+    color: var(--color-text-muted);
+    font-family: var(--font-body);
+    font-size: 0.8125rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: color 0.15s ease;
+  }
+
+  .modal-tab::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -1px;
+    height: 2px;
+    background: var(--color-accent);
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+
+  .modal-tab:hover {
+    color: var(--color-text-secondary);
+  }
+
+  .modal-tab.is-active {
+    color: var(--color-text-primary);
+  }
+
+  .modal-tab.is-active::after {
+    opacity: 1;
+  }
+
+  .modal-tab:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 0.25rem;
+  }
+
   .modal-body {
     flex: 1;
     display: grid;
-    gap: 0.86rem;
+    gap: 0.875rem;
+    align-content: start;
     min-height: 0;
     overflow-y: auto;
-    padding: 0.86rem 1.05rem 0.98rem;
+    padding: 0.875rem 1rem 1rem;
     background: color-mix(in srgb, var(--color-bg-elevated) 96%, var(--color-bg-surface));
   }
 
   .modal-score-panel {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    gap: 0.9rem;
+    gap: 0.875rem;
     align-items: center;
-    padding: 0.68rem;
+    padding: 0.625rem;
     background: color-mix(in srgb, var(--color-bg-surface) 46%, var(--color-bg-elevated));
     border: 1px solid color-mix(in srgb, var(--color-border) 78%, transparent);
     border-radius: 0.625rem;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
   }
 
   .score-panel-summary {
@@ -617,7 +733,7 @@
   }
 
   .score-panel-summary p {
-    margin: 0.26rem 0 0;
+    margin: 0.25rem 0 0;
     color: var(--color-text-secondary);
     font-size: 0.75rem;
     line-height: 1.42;
@@ -626,8 +742,8 @@
 
   .score-votes {
     display: inline-flex;
-    margin-top: 0.55rem;
-    color: var(--color-accent);
+    margin-top: 0.5rem;
+    color: var(--color-text-secondary);
     font-size: 0.75rem;
     font-weight: 600;
   }
@@ -636,7 +752,7 @@
     display: grid;
     grid-template-columns: repeat(5, minmax(3.42rem, 1fr));
     justify-content: flex-end;
-    gap: 0.28rem;
+    gap: 0.25rem;
     align-self: start;
     overflow: visible;
     border: 0;
@@ -645,17 +761,15 @@
 
   .score-item {
     display: grid;
-    gap: 0.18rem;
+    gap: 0.125rem;
     min-width: 0;
     width: 100%;
     min-height: 3.1rem;
-    padding: 0.42rem 0.5rem;
+    padding: 0.375rem 0.5rem;
     background: color-mix(in srgb, var(--color-bg-elevated) 84%, var(--color-bg-surface));
     border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 62%, transparent);
     border-radius: 0.5rem;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
     transition:
-      transform 220ms cubic-bezier(0.32, 0.72, 0, 1),
       border-color 220ms cubic-bezier(0.32, 0.72, 0, 1),
       background 220ms cubic-bezier(0.32, 0.72, 0, 1);
   }
@@ -671,7 +785,8 @@
     opacity: 1;
   }
 
-  .score-item:hover {    border-color: var(--color-border-emphasis);
+  .score-item:hover {
+    border-color: var(--color-border-emphasis);
     background: var(--color-bg-elevated);
   }
 
@@ -695,17 +810,16 @@
     justify-content: space-between;
     gap: 1rem;
     flex-shrink: 0;
-    padding: 0.66rem 1.05rem;
+    padding: 0.625rem 1rem;
     border-top: 1px solid var(--color-border);
     background: color-mix(in srgb, var(--color-bg-surface) 72%, var(--color-bg-elevated));
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
   }
 
   .modal-footer-status {
     display: flex;
     align-items: baseline;
     flex-wrap: wrap;
-    gap: 0.28rem 0.55rem;
+    gap: 0.25rem 0.5rem;
     min-width: 0;
     color: var(--color-text-muted);
     font-size: 0.75rem;
@@ -736,7 +850,7 @@
     align-items: center;
     justify-content: center;
     min-height: 2.36rem;
-    padding: 0.48rem 0.95rem;
+    padding: 0.5rem 1rem;
     border: 1px solid var(--color-accent-hover);
     border-radius: 0.625rem;
     background: var(--color-accent-hover);
@@ -744,9 +858,7 @@
     font-size: 0.8125rem;
     font-weight: 800;
     cursor: pointer;
-    transition:
-      transform 220ms cubic-bezier(0.32, 0.72, 0, 1),
-      border-color 220ms cubic-bezier(0.32, 0.72, 0, 1),
+    transition:      border-color 220ms cubic-bezier(0.32, 0.72, 0, 1),
       background 220ms cubic-bezier(0.32, 0.72, 0, 1),
       color 220ms cubic-bezier(0.32, 0.72, 0, 1);
   }
@@ -791,7 +903,7 @@
     .modal-footer {
       align-items: stretch;
       flex-direction: column;
-      padding: 0.8rem 1rem;
+      padding: 0.75rem 1rem;
     }
     .modal-footer-actions {
       width: 100%;

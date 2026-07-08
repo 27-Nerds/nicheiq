@@ -38,6 +38,14 @@
     isVisible = false;
   }
 
+  // WCAG 1.4.13 — content on hover/focus must be dismissible without moving the pointer.
+  function onKeydown(e: KeyboardEvent) {
+    if (e.key === "Escape" && isVisible) {
+      e.stopPropagation();
+      hide();
+    }
+  }
+
   function positionPortal() {
     if (!triggerRef || !portalEl) return;
     const rect = triggerRef.getBoundingClientRect();
@@ -106,6 +114,8 @@
   });
 </script>
 
+<!-- Tooltip trigger (WAI-ARIA button role); the description is exposed via aria-describedby
+     regardless, and Escape dismisses it (WCAG 1.4.13). -->
 <span
   class="tooltip-wrapper {className}"
   bind:this={triggerRef}
@@ -113,6 +123,7 @@
   onmouseleave={hide}
   onfocus={show}
   onblur={hide}
+  onkeydown={onKeydown}
   role="button"
   tabindex="0"
   aria-describedby={descId}

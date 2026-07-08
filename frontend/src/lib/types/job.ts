@@ -102,8 +102,15 @@ export interface SolutionPreview {
   technical_approach?: string | null;
   data_acquisition_notes?: string | null;
   data_access_model?: string | null;
+  data_sources?: string[] | null;
   data_feasibility_score?: number | null;
   build_feasibility_score?: number | null;
+  // Structural-dedup reference tags (hyphenated phrases): how users reach value / core mechanism.
+  journey_tag?: string | null;
+  mechanism_tag?: string | null;
+  // Competitive parity — set only by the web-verified parity probe (top ideas only); null otherwise.
+  incumbent_parity?: string | null;
+  adjacent_market_parity?: string | null;
   // Grounded generation provenance — the (pain × segment) cell that produced this idea.
   source_pain?: string | null;
   source_segment?: string | null;

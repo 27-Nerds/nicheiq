@@ -178,11 +178,9 @@
     margin-top: 1.02rem;
     padding: 0.9rem 0.96rem;
     background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.18)),
       color-mix(in srgb, var(--color-bg-surface) 74%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 42%, transparent);
     border-radius: 0.75rem;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
   }
 
   .rc-head {

@@ -53,10 +53,30 @@
 	--color-severity-medium-bg: #FEF9E7;
 
 	/* ========================================
+	   Severity as TEXT — darkened for WCAG AA on light backgrounds
+	   (the *-critical/-high/-medium above are calibrated for fills, not text)
+	   ======================================== */
+	--color-success-text: #166534;
+	--color-warning-text: #9A3412;
+	--color-error-text: #B91C1C;
+
+	/* Pure white, for text/glyphs on accent or dark surfaces */
+	--color-white: #FFFFFF;
+
+	/* ========================================
 	   Opportunity — Green
 	   ======================================== */
 	--color-opportunity: #1A7F5A;
 	--color-opportunity-bg: #E6F5EE;
+
+	/* ========================================
+	   Idea-preview card identities (job page)
+	   ======================================== */
+	--color-lavender: #E9E6F7;
+	--color-lavender-header: #F3F1FC;
+	--color-lavender-ink: #2E2A4D;
+	--color-verdict: #26221F;
+	--color-verdict-header: #322D29;
 
 	/* ========================================
 	   Border Colors — semantic variants

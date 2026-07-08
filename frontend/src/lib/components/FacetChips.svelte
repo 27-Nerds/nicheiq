@@ -53,7 +53,7 @@
     border-radius: 0.375rem;
     border: 1px solid var(--color-border);
     background: var(--color-bg-elevated);
-    color: var(--color-text-muted);
+    color: var(--color-text-secondary);
     white-space: nowrap;
   }
   .facet-chip-info {

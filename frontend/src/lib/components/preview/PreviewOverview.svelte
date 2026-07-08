@@ -89,9 +89,7 @@
     border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 48%, transparent);
     border-radius: 0.72rem;
     background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(255, 255, 255, 0.28)),
       color-mix(in srgb, var(--color-bg-surface) 68%, transparent);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
   }
 
   .overview-facts div {

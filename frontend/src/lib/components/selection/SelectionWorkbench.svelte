@@ -684,12 +684,10 @@
     gap: 0.68rem;
     padding: 1rem;
     background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(255, 255, 255, 0.38)),
       var(--color-bg-elevated);
     border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 58%, transparent);
     border-radius: 0.75rem;
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.84),
       0 18px 54px rgba(24, 24, 27, 0.045);
   }
   .workbench.has-tray {
@@ -1077,7 +1075,6 @@
     border: 1px solid var(--color-border-emphasis);
     border-radius: 1rem;
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.86),
       0 18px 48px rgba(24, 24, 27, 0.08);
   }
   .coverage-disclosure li {
@@ -1098,7 +1095,6 @@
     background: var(--color-bg-surface);
     border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 56%, transparent);
     border-radius: 0.5rem;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.68);
   }
   .row {
     display: grid;
@@ -1441,7 +1437,6 @@
     border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 78%, transparent);
     border-radius: 0.75rem;
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.9),
       0 18px 48px rgba(24, 24, 27, 0.11);
   }
   .tray-picks {
