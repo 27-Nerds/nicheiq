@@ -1232,6 +1232,15 @@
     min-height: calc(100dvh - 3.5rem);
   }
 
+  /* Below the desktop-sidebar breakpoint the sidebar is hidden; stack the shell
+     so the in-flow selection mobile nav becomes a full-width top bar instead of
+     being stretched into a full-height flex column. */
+  @media (max-width: 1279px) {
+    .job-page-shell {
+      flex-direction: column;
+    }
+  }
+
   .job-page-content {
     width: min(56rem, 100%);
     margin: 0 auto;
