@@ -33,7 +33,7 @@
     if (currentTier === -1) return helpText;
     if (currentTier === 0) return `Tip: be more specific — e.g., "${qualityTiers.best.example}"`;
     if (currentTier === 1) return "Try adding who and what problem they face";
-    return "Specific enough to get good results.";
+    return "Looks specific — good to go.";
   });
 </script>
 

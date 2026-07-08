@@ -20,5 +20,5 @@ export const load: PageServerLoad = async ({ parent }) => {
     console.error('Failed to fetch discover data for /new:', error);
   }
 
-  return { catalogPainPoints, catalogIdeas: [], hasCatalogData };
+  return { catalogPainPoints, hasCatalogData };
 };

@@ -260,6 +260,18 @@ def _solution_to_preview_dict(solution) -> dict:
     # (each idea by its own winning_angle; angle=None ideas fall back to an equal-weight mean).
     from nicheiq.utils.score_helpers import angle_ranked_composite
     d["adjusted_composite_score"] = angle_ranked_composite(d)
+
+    # Distill the calibration critic's market_fit reason into ONE user-facing note
+    # (mirrors the alternatives path in research_flow) and DROP the raw
+    # calibration_notes. The raw string is an internal per-criterion audit,
+    # model-flagged not-user-facing; model_dump() would otherwise leak it to the
+    # selection payload. The overlay's "How we scored it" card renders critic_concern.
+    from nicheiq.utils.calibration_notes import extract_criterion_reason
+    d["critic_concern"] = (
+        extract_criterion_reason(d.get("calibration_notes"), "market_fit", max_len=280)
+        or None
+    )
+    d.pop("calibration_notes", None)
     return d
 
 

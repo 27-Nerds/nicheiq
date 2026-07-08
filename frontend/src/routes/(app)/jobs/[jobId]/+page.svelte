@@ -1229,7 +1229,7 @@
   /* ═══ Page shell: sidebar + content ═══ */
   .job-page-shell {
     display: flex;
-    min-height: 100vh;
+    min-height: calc(100dvh - 3.5rem);
   }
 
   .job-page-content {
@@ -1252,11 +1252,10 @@
     margin-top: 1.18rem;
     padding: 0.62rem;
     border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 46%, transparent);
-    border-radius: 1.125rem;
+    border-radius: var(--radius-xl);
     background:
       color-mix(in srgb, var(--color-bg-surface) 78%, var(--color-bg-elevated));
-    box-shadow:
-      0 22px 64px rgba(24, 24, 27, 0.05);
+    box-shadow: var(--shadow-sm);
   }
 
   .dossier-header {
@@ -1470,7 +1469,7 @@
 
   :global(.job-selection-header .page-header-actions) {
     justify-self: end;
-    padding-top: 1.55rem;
+    padding-top: 0;
   }
 
   :global(.job-selection-header h1) {

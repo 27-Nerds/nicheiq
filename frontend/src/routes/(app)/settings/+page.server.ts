@@ -6,6 +6,7 @@ interface NotificationPreferences {
   emailOnJobStart: boolean;
   emailOnJobComplete: boolean;
   emailOnJobError: boolean;
+  emailOnSolutionsReady: boolean;
 }
 
 interface UserProfile {
@@ -26,6 +27,7 @@ export const load: PageServerLoad = async ({ parent }) => {
     emailOnJobStart: true,
     emailOnJobComplete: true,
     emailOnJobError: true,
+    emailOnSolutionsReady: true,
   };
 
   if (!userId) {

@@ -39,21 +39,14 @@
   };
 
   const colors = $derived(Icon ? colorMap[iconColor] : null);
-  // When a breadcrumb is present, page actions ride on that top row (paired with the
-  // breadcrumb) instead of floating mid-height beside a tall title block.
   const hasBreadcrumb = $derived(!!(breadcrumbItems && breadcrumbCurrent));
-  const actionsInTitleRow = $derived(!!actions && !hasBreadcrumb);
+  const actionsInTitleRow = $derived(!!actions);
 </script>
 
 <div class="page-header mb-8 {className}">
   {#if breadcrumbItems && breadcrumbCurrent}
     <div class="page-header-top flex items-center justify-between gap-4 flex-wrap">
       <Breadcrumb items={breadcrumbItems} current={breadcrumbCurrent} />
-      {#if actions}
-        <div class="page-header-actions">
-          {@render actions()}
-        </div>
-      {/if}
     </div>
   {/if}
 
@@ -79,7 +72,7 @@
         {/if}
       </div>
     </div>
-    {#if actions && !hasBreadcrumb}
+    {#if actions}
       <div class="page-header-actions">
         {@render actions()}
       </div>

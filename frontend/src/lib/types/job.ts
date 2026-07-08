@@ -111,6 +111,10 @@ export interface SolutionPreview {
   // Competitive parity — set only by the web-verified parity probe (top ideas only); null otherwise.
   incumbent_parity?: string | null;
   adjacent_market_parity?: string | null;
+  // Distilled bear case — the calibration critic's market_fit reason, distilled
+  // (via extract_criterion_reason) to one user-facing note. NOT the raw
+  // calibration_notes. Emitted in the same preview payload as the parity fields.
+  critic_concern?: string | null;
   // Grounded generation provenance — the (pain × segment) cell that produced this idea.
   source_pain?: string | null;
   source_segment?: string | null;

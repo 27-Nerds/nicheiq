@@ -86,7 +86,9 @@
   // --- Retry-from-job (replaces deprecated NewResearchModal flow) ---
   const fromJobId = $derived(page.url.searchParams.get("fromJob") ?? "");
   const prefilledNiche = $derived(
-    page.url.searchParams.get("prefilled") ?? "",
+    page.url.searchParams.get("prefilled") ??
+      page.url.searchParams.get("niche") ??
+      "",
   );
   // Apply prefilled niche + force entryMode=idea on initial mount. Untracked
   // so subsequent niche edits don't re-trigger.
@@ -117,7 +119,10 @@
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
-          if (entry.target === sentinelEl) ctaAboveViewport = !entry.isIntersecting;
+          if (entry.target === sentinelEl) {
+            ctaAboveViewport =
+              !entry.isIntersecting && entry.boundingClientRect.top < 0;
+          }
           if (entry.target === ctaEndEl) ctaEndInView = entry.isIntersecting;
         }
       },
@@ -167,7 +172,7 @@
       audience: {
         label: "Who are you building for?",
         icon: Users,
-        colorClass: "text-indigo-500",
+        colorClass: "text-accent",
         placeholders: [
           "e.g., Solo content creators with 10k+ followers struggling to monetize",
           "e.g., First-time parents overwhelmed by conflicting baby care advice",
@@ -192,7 +197,7 @@
       discovery: {
         label: "What's capturing your attention?",
         icon: TrendingUp,
-        colorClass: "text-emerald-500",
+        colorClass: "text-accent",
         placeholders: [
           "e.g., AI tools, remote work, creator economy, health tech",
           "e.g., Senior care technology, aging in place, caregiver burnout",
@@ -382,8 +387,6 @@
     <header class="max-w-3xl mx-auto px-4 sm:px-6 new-hero">
       <p class="new-kicker">
         <span class="k-accent">NEW RESEARCH</span>
-        <span class="k-dot">·</span>
-        <span>pick a starting point</span>
       </p>
       <h1 class="new-h1">What are you exploring?</h1>
       <p class="new-lede">
@@ -395,7 +398,7 @@
 
     <!-- Mode cards -->
     <div class="max-w-3xl mx-auto mb-6 px-4 sm:px-6">
-      <SectionDivider num={1} label="Starting point" />
+      <SectionDivider label="Starting point" />
       <EntryModeCards selected={entryMode} onselect={(mode) => entryMode = mode} />
     </div>
 
@@ -461,7 +464,7 @@
               ></textarea>
 
               {#if !niche.trim()}
-                <div class="absolute bottom-3 left-0 right-0 z-10 pointer-events-none">
+                <div class="example-row pointer-events-none">
                   <p class="text-xs text-text-secondary">
                     Try:
                     {#each displayedExamples as example, i}
@@ -486,6 +489,7 @@
                     onclick={handleFeelingLucky}
                     disabled={loading || suggestLoading || showSuccess}
                     title="Try a different topic"
+                    aria-label="Try a different topic"
                     class="pressable pointer-events-auto w-8 h-8 flex items-center justify-center rounded-md
                            border border-border bg-bg-elevated text-text-muted
                            hover:border-border-emphasis hover:text-text-primary
@@ -502,6 +506,7 @@
                     onclick={handleExpandThis}
                     disabled={loading || suggestLoading || showSuccess}
                     title="Refine with AI"
+                    aria-label="Refine with AI"
                     class="pressable pointer-events-auto w-8 h-8 flex items-center justify-center rounded-md
                            border border-border bg-bg-elevated text-text-muted
                            hover:border-border-emphasis hover:text-text-primary
@@ -523,7 +528,7 @@
               {#if niche.length > 0}
                 <span
                   class="text-xs tabular-nums shrink-0 ml-2 {niche.length > MAX_NICHE_LENGTH * 0.9
-                    ? 'text-warning'
+                    ? 'text-[color:var(--color-warning-text)]'
                     : 'text-text-muted'}"
                 >
                   {niche.length}/{MAX_NICHE_LENGTH}
@@ -532,7 +537,12 @@
             </div>
 
             {#if suggestError}
-              <p class="text-xs text-error mt-1.5">{suggestError}</p>
+              <p
+                class="text-xs text-[color:var(--color-error-text)] mt-1.5"
+                aria-live="polite"
+              >
+                {suggestError}
+              </p>
             {/if}
           </div>
         </div>
@@ -543,6 +553,8 @@
             <button
               type="button"
               onclick={() => showProjectTypes = !showProjectTypes}
+              aria-expanded={showProjectTypes}
+              aria-controls="business-model-panel"
               class="text-xs text-text-muted hover:text-text-secondary transition-colors flex items-center gap-1"
             >
               <span class="font-medium">Business model filter</span>
@@ -555,13 +567,14 @@
             </p>
             {#if showProjectTypes}
               {@const allSelected = selectedProjectTypes.length === PROJECT_TYPES.length}
-              <div class="flex flex-wrap gap-2 mt-2">
+              <div id="business-model-panel" class="flex flex-wrap gap-2 mt-2">
                 <button
                   type="button"
                   onclick={() => selectedProjectTypes = allSelected ? [] : PROJECT_TYPES.map(t => t.value)}
                   disabled={loading || showSuccess}
+                  aria-pressed={allSelected}
                   class="text-xs py-1.5 transition-colors
-                    {allSelected ? 'text-accent font-medium' : 'text-text-muted hover:text-text-secondary'}
+                    {allSelected ? 'text-[color:var(--color-accent-dark)] font-medium' : 'text-text-muted hover:text-text-secondary'}
                     disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   All
@@ -571,9 +584,10 @@
                     type="button"
                     onclick={() => toggleProjectType(type.value)}
                     disabled={loading || showSuccess}
+                    aria-pressed={selectedProjectTypes.includes(type.value)}
                     class="text-xs px-3 py-1.5 rounded-md border transition-colors
                       {selectedProjectTypes.includes(type.value)
-                      ? 'bg-accent/10 border-accent/40 text-accent font-medium'
+                      ? 'bg-[color:var(--color-accent-subtle)] border-[color:var(--color-border-accent)] text-[color:var(--color-accent-dark)] font-medium'
                       : 'bg-bg-elevated border-border text-text-muted hover:border-border-emphasis hover:text-text-secondary'}
                       disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -588,6 +602,8 @@
             <button
               type="button"
               onclick={() => showFocus = !showFocus}
+              aria-expanded={showFocus}
+              aria-controls="idea-focus-panel"
               class="text-xs text-text-muted hover:text-text-secondary transition-colors flex items-center gap-1"
             >
               <span class="font-medium">Idea focus</span>
@@ -596,16 +612,17 @@
               <ChevronDown class="w-3 h-3 transition-transform duration-200 {showFocus ? 'rotate-180' : ''}" />
             </button>
             {#if showFocus}
-              <div class="flex flex-wrap gap-2 mt-2">
+              <div id="idea-focus-panel" class="flex flex-wrap gap-2 mt-2">
                 {#each IDEA_FOCUSES as focus}
                   <button
                     type="button"
                     onclick={() => selectedFocus = focus.value}
                     disabled={loading || showSuccess}
                     title={focus.hint}
+                    aria-pressed={selectedFocus === focus.value}
                     class="text-xs px-3 py-1.5 rounded-md border transition-colors
                       {selectedFocus === focus.value
-                      ? 'bg-accent/10 border-accent/40 text-accent font-medium'
+                      ? 'bg-[color:var(--color-accent-subtle)] border-[color:var(--color-border-accent)] text-[color:var(--color-accent-dark)] font-medium'
                       : 'bg-bg-elevated border-border text-text-muted hover:border-border-emphasis hover:text-text-secondary'}
                       disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -619,22 +636,28 @@
             {/if}
           </div>
 
-          <div bind:this={sentinelEl}></div>
-
           <!-- Process timeline (contextual, near submit) -->
           <div class="mb-4">
             <ProcessTimeline {stageCosts} />
           </div>
 
           {#if error}
-            <div class="flex items-center gap-2 p-3 bg-error/10 border border-error/20 rounded-lg text-error text-sm mb-4">
+            <div
+              role="alert"
+              class="flex items-center gap-2 p-3 bg-error/10 border border-error/20 rounded-lg text-[color:var(--color-error-text)] text-sm mb-4"
+            >
               <AlertCircle class="w-4 h-4 shrink-0" />
               <span>{error}</span>
             </div>
           {/if}
 
+          <div bind:this={sentinelEl}></div>
+
           {#if showSuccess}
-            <div class="w-full py-3 rounded-lg bg-success/10 border border-success/20 text-success text-base font-medium text-center flex items-center justify-center gap-2 transition-all duration-300">
+            <div
+              aria-live="polite"
+              class="w-full py-3 rounded-lg bg-success/10 border border-success/20 text-[color:var(--color-success-text)] text-base font-medium text-center flex items-center justify-center gap-2 transition-all duration-300"
+            >
               <CheckCircle2 class="w-5 h-5" />
               Analyzing {niche.length > 30 ? niche.slice(0, 30) + '\u2026' : niche}...
             </div>
@@ -646,7 +669,7 @@
               iconPosition="end"
               label="Discover ideas"
               disabled={!niche.trim()}
-              class="btn-primary w-full justify-center text-base py-3"
+              class="btn-primary w-full justify-center text-base py-3 min-w-[12rem]"
             />
           {:else}
             <Button
@@ -706,10 +729,7 @@
     margin: 0 0 14px;
   }
   .new-kicker .k-accent {
-    color: var(--color-accent);
-  }
-  .new-kicker .k-dot {
-    opacity: 0.5;
+    color: var(--color-accent-dark);
   }
   .new-h1 {
     font-family: var(--font-display);
@@ -742,9 +762,24 @@
   }
   .input-shell:focus-within {
     border-color: var(--color-text-primary);
-    box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.04);
+    box-shadow: 0 0 0 3px var(--color-accent-subtle);
   }
   .input-shell-inner :global(textarea:focus-visible) {
     outline: none;
+  }
+
+  .example-row {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0.75rem;
+    z-index: 10;
+  }
+
+  @media (max-width: 640px) {
+    .example-row {
+      position: static;
+      margin-top: 0.5rem;
+    }
   }
 </style>

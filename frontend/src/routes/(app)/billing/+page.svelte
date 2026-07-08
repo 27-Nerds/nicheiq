@@ -4,23 +4,21 @@
   import {
     Coins,
     Gift,
-    ArrowUpRight,
-    ArrowDownRight,
-    Clock,
     CheckCircle,
     RefreshCw,
     History,
-    Wrench,
     ShoppingCart,
+    RotateCw,
+    ArrowRight,
+    ChevronDown,
   } from "lucide-svelte";
   import InlineFeedback from "$lib/components/ui/InlineFeedback.svelte";
   import { CORE_STAGES, ADDON_STAGES } from "$lib/config/billable-stages";
   import { DEFAULT_STAGE_COSTS, computeFullResearchCost } from "$lib/types/job";
   import type { StageCosts } from "$lib/types/job";
   import AlertBanner from "$lib/components/ui/AlertBanner.svelte";
-  import EditorialHero from "$lib/components/ui/EditorialHero.svelte";
-  import type { KickerSegment } from "$lib/components/ui/EditorialHero.svelte";
-  import SectionDivider from "$lib/components/catalog/seo/SectionDivider.svelte";
+  import PageHeader from "$lib/components/ui/PageHeader.svelte";
+  import AccountSidebar from "$lib/components/layout/AccountSidebar.svelte";
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
   import PricingCard from "$lib/components/ui/PricingCard.svelte";
   import PlanCard from "$lib/components/ui/PlanCard.svelte";
@@ -66,6 +64,13 @@
         ? 'sm:grid-cols-2 max-w-3xl mx-auto'
         : 'sm:grid-cols-3 max-w-4xl mx-auto',
   );
+  const packageGridClass = $derived(
+    packages.length === 1
+      ? 'sm:grid-cols-1 max-w-xs'
+      : packages.length === 2
+        ? 'sm:grid-cols-2 max-w-2xl'
+        : 'sm:grid-cols-3',
+  );
   const subscription = $derived(
     (data.subscription as UserSubscription | null) ?? null,
   );
@@ -110,27 +115,35 @@
   });
 
   const availableCredits = $derived(billing.available ?? billing.balance);
+  const loadError = $derived(data.loadError as boolean);
 
-  // Section numbering: plans (if any) + one-time packages (if any) precede
-  // the promo / activity / how-it-works dividers.
-  const baseSectionNum = $derived(
-    (plans.length > 0 ? 1 : 0) + (packages.length > 0 ? 1 : 0),
+  // Low-credit banner CTA target: the plan area (in Overview) when unsubscribed
+  // (and plans exist), otherwise the Buy-credits panel.
+  const lowCreditHref = $derived(
+    isTerminal && plans.length > 0
+      ? "#overview"
+      : packages.length > 0
+        ? "#buy"
+        : plans.length > 0
+          ? "#overview"
+          : "#buy",
   );
-  const heroKicker = $derived<KickerSegment[]>([
-    { text: "BILLING", tone: "accent" },
-    { text: String(availableCredits), tone: "num" },
-    { text: "credits", tone: "muted" },
-  ]);
+
   const balanceHeroStats = $derived<Stat[]>([
-    {
-      value: availableCredits,
-      label: "Available",
-      tone: availableCredits === 0 ? "amber" : "default",
-    },
+    // A spend/balance is not a warning — keep the numbers neutral (no orange tint).
+    { value: availableCredits, label: "Available", tone: "default" },
     { value: monthlyAllowance, label: "Monthly", tone: "go" },
     { value: purchasedBalance, label: "Purchased", tone: "default" },
-    { value: billing.totalUsed, label: "Used", tone: "amber" },
+    { value: billing.totalUsed, label: "Used", tone: "default" },
   ]);
+
+  // Billing-history row helpers.
+  // Dot: credit-IN (purchase / promo / refund → positive) = success green;
+  // a job deduction (negative) = muted.
+  const txDotColor = (tx: Transaction): string =>
+    tx.amount > 0
+      ? "var(--color-success-text)"
+      : "var(--color-text-muted)";
 
   // Promo code state
   let promoCode = $state("");
@@ -149,6 +162,10 @@
 
   // Refresh state
   let isRefreshing = $state(false);
+
+  // "What a run costs" collapsible (collapsed by default — returning users
+  // rarely need the per-stage breakdown).
+  let costsOpen = $state(false);
 
   // Dismiss success/canceled banners
   function dismissBanner() {
@@ -262,22 +279,6 @@
     isRefreshing = false;
   }
 
-  function getTransactionIcon(type: string) {
-    switch (type) {
-      case "PURCHASE":
-      case "PROMO_REDEMPTION":
-        return { icon: ArrowUpRight, class: "text-success bg-success/10" };
-      case "JOB_DEDUCTION":
-        return { icon: ArrowDownRight, class: "text-warning bg-warning/10" };
-      case "REFUND":
-        return { icon: ArrowUpRight, class: "text-accent bg-accent/10" };
-      case "ADMIN_ADJUSTMENT":
-        return { icon: Wrench, class: "text-secondary bg-secondary/10" };
-      default:
-        return { icon: Clock, class: "text-text-muted bg-bg-elevated" };
-    }
-  }
-
   function formatTransactionType(type: string): string {
     switch (type) {
       case "PURCHASE":
@@ -356,43 +357,30 @@
 </script>
 
 <svelte:head>
-  <title>Billing - NicheIQ</title>
+  <title>Research credits - NicheIQ</title>
 </svelte:head>
 
-<div class="max-w-5xl mx-auto">
-  {#snippet refreshButton()}
-    <button
-      onclick={refreshData}
-      disabled={isRefreshing}
-      aria-label="Refresh billing data"
-      class="btn-secondary !px-3"
-      title="Refresh"
-    >
-      <RefreshCw class="w-4 h-4 {isRefreshing ? 'animate-spin' : ''}" />
-    </button>
-  {/snippet}
-  <EditorialHero
-    kicker={heroKicker}
-    title="Research credits"
-    lede="Manage your credits and view transaction history"
-    actions={refreshButton}
-  />
-
-  <!-- Balance Hero -->
-  <div class="mb-8">
-    <StatStrip stats={balanceHeroStats} emphasis />
-    {#if monthlyAllowance > 0 || subscription}
-      <p class="text-xs text-text-muted mt-3 flex items-center gap-1.5">
-        <Coins class="w-3.5 h-3.5 text-accent" />
-        <span class="font-mono tabular-nums text-text-secondary">{monthlyAllowance}</span> monthly
-        {#if billing.monthlyAllowancePeriodEnd}
-          <span>(resets {formatPlanDate(billing.monthlyAllowancePeriodEnd)})</span>
-        {/if}
-        <span class="text-text-muted/60">+</span>
-        <span class="font-mono tabular-nums text-text-secondary">{purchasedBalance}</span> purchased
-      </p>
-    {/if}
-  </div>
+<div class="acct-page">
+  <AccountSidebar />
+  <main class="acct-main">
+    {#snippet refreshButton()}
+      <button
+        onclick={refreshData}
+        disabled={isRefreshing}
+        aria-label="Refresh billing data"
+        class="btn-secondary !px-3"
+        title="Refresh"
+      >
+        <RefreshCw class="w-4 h-4 {isRefreshing ? 'animate-spin' : ''}" />
+      </button>
+    {/snippet}
+    <PageHeader
+      breadcrumbItems={[{ label: "Dashboard", href: "/dashboard" }]}
+      breadcrumbCurrent="Billing"
+      title="Research credits"
+      subtitle="What you have, and how to get more."
+      actions={refreshButton}
+    />
 
   <!-- Success Banner -->
   {#if success}
@@ -461,24 +449,62 @@
     </AlertBanner>
   {/if}
 
-  <!-- Info Banner (if no credits) -->
-  {#if availableCredits === 0 && !success && !subSuccess}
+  <!-- Load-error Banner (billing fetch failed — credits are safe) -->
+  {#if loadError}
+    <AlertBanner
+      variant="error"
+      title="Couldn't load your billing"
+      message="This is a loading problem — your credits are safe. Try again in a moment."
+      class="mb-8"
+    >
+      <button type="button" onclick={() => location.reload()} class="btn-secondary mt-3">
+        <RotateCw class="w-4 h-4" /> Retry
+      </button>
+    </AlertBanner>
+  {/if}
+
+  <!-- Info Banner (if no credits) — with a working CTA into Plans / Buy credits -->
+  {#if availableCredits === 0 && !success && !subSuccess && !loadError}
     <AlertBanner
       variant="info"
       title="You need research credits to start new research"
       message="Subscribe to a plan for monthly credits + full catalog access, buy a one-time credit package, or redeem a promo code."
       class="mb-8"
-    />
+    >
+      <a href={lowCreditHref} class="banner-cta mt-3">
+        {isTerminal && plans.length > 0 ? "See plans" : "Buy credits"}
+        <ArrowRight class="w-3.5 h-3.5" />
+      </a>
+    </AlertBanner>
   {/if}
 
-  <!-- Subscription Plans Section -->
-  {#if plans.length > 0}
-    <div class="mb-8" id="plans">
-      <SectionDivider num={1} label="Subscription plans" />
-      <p class="text-sm text-text-muted mb-4">
-        Monthly credits that reset each cycle plus full catalog access. Manage,
-        switch, or cancel anytime via the billing portal.
+  <!-- OVERVIEW · balance ledger + plan -->
+  <section id="overview" class="wb-panel">
+    <div class="wb-head">
+      <h2 class="wb-title">Credits &amp; plan</h2>
+      <span class="wb-meta">{availableCredits} available</span>
+    </div>
+
+    <StatStrip stats={balanceHeroStats} emphasis />
+    {#if monthlyAllowance > 0 || subscription}
+      <p class="balance-note">
+        <Coins class="w-3.5 h-3.5 text-accent" />
+        <span class="font-mono tabular-nums text-text-secondary">{monthlyAllowance}</span> monthly
+        {#if billing.monthlyAllowancePeriodEnd}
+          <span>(resets {formatPlanDate(billing.monthlyAllowancePeriodEnd)})</span>
+        {/if}
+        <span class="text-text-muted/60">+</span>
+        <span class="font-mono tabular-nums text-text-secondary">{purchasedBalance}</span> purchased
       </p>
+    {/if}
+
+    {#if plans.length > 0}
+      <div class="wb-sub" id="plans">
+        <p class="wb-sublabel">Your plan</p>
+        <p class="text-sm text-text-muted mb-4">
+          Monthly credits that reset each cycle plus full catalog access. Manage,
+          switch, or cancel anytime via the billing portal.
+        </p>
 
       {#if subscriptionError}
         <InlineFeedback message={subscriptionError} variant="error" class="mb-4" />
@@ -486,7 +512,7 @@
 
       <!-- Current subscription summary -->
       {#if subscription && isActiveLike}
-        <div class="card mb-4 flex flex-wrap items-center justify-between gap-3 py-3 px-4 border-l-2 border-l-accent/40">
+        <div class="card mb-4 flex flex-wrap items-center justify-between gap-3 py-3 px-4">
           <div class="text-sm">
             {#if subStatus === "TRIALING"}
               <span class="font-semibold text-text-primary">Trial — {trialDaysLeft} {trialDaysLeft === 1 ? "day" : "days"} left</span>
@@ -503,7 +529,7 @@
             onclick={openPortal}
             loading={portalLoading}
             loadingText="Opening..."
-            label={willCancel ? "Resume via portal" : "Manage subscription"}
+            label={willCancel ? "Resume plan" : "Manage subscription"}
             class="btn-secondary !py-1.5 !text-sm"
           />
         </div>
@@ -528,7 +554,7 @@
                   onclick={openPortal}
                   loading={portalLoading}
                   loadingText="Opening..."
-                  label={subStatus === "PAST_DUE" ? "Manage via portal" : "Switch via portal"}
+                  label={subStatus === "PAST_DUE" ? "Manage via portal" : "Switch plan"}
                   class="{plan.isPopular ? 'btn-primary' : 'btn-secondary'} w-full"
                 />
               {:else if isTerminal}
@@ -555,186 +581,183 @@
           </PlanCard>
         {/each}
       </div>
-    </div>
-  {/if}
+      </div>
+    {/if}
+  </section>
 
-  <!-- Buy Credits Section -->
+  <!-- BUY · one-time packages + collapsible run-cost breakdown -->
   {#if packages.length > 0}
-    <div class="mb-8">
-      <SectionDivider num={plans.length > 0 ? 2 : 1} label="Buy credits (one-time)" />
+    <section id="buy" class="wb-panel">
+      <div class="wb-head">
+        <h2 class="wb-title">Buy credits</h2>
+        <span class="wb-meta">One-time top-up</span>
+      </div>
 
       {#if checkoutError}
         <InlineFeedback message={checkoutError} variant="error" class="mb-4" />
       {/if}
 
-      <div class="grid gap-4 sm:grid-cols-3">
+      <div class="grid gap-4 {packageGridClass}">
         {#each packages as pkg (pkg.id)}
           <PricingCard {pkg} variant="compact">
             {#snippet actions()}
-              <SubmitButton onclick={() => startCheckout(pkg.id)} disabled={checkoutLoading !== null} loading={checkoutLoading === pkg.id} loadingText="Processing..." icon={ShoppingCart} label={pkg.ctaText || "Buy Now"} class="{pkg.isPopular ? 'btn-primary' : 'btn-secondary'} w-full" />
+              <SubmitButton onclick={() => startCheckout(pkg.id)} disabled={checkoutLoading !== null} loading={checkoutLoading === pkg.id} loadingText="Processing..." icon={ShoppingCart} label={pkg.ctaText || "Buy"} class="{pkg.isPopular ? 'btn-primary' : 'btn-secondary'} w-full" />
             {/snippet}
           </PricingCard>
         {/each}
       </div>
 
       {#if fullResearchCost > 0}
-        <div id="credit-costs" class="card mt-4 py-3 px-4 border-l-2 border-l-accent/30">
-          <p class="text-xs uppercase tracking-wider text-accent/60 font-mono mb-2">* Credit costs per stage</p>
-
-          <!-- Core stages: horizontal row -->
-          <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-            {#each CORE_STAGES as stage}
-              {@const cost = stageCosts[stage.key]}
-              {@const Icon = stage.icon}
-              <span class="inline-flex items-center gap-1.5">
-                <Icon class="w-3.5 h-3.5 text-accent/70" />
-                <span class="text-text-secondary">{stage.label}</span>
-                {#if cost === 0}
-                  <span class="badge-sm badge-success inline-flex items-center gap-0.5">
-                    <CheckCircle class="w-2.5 h-2.5" /> Free
-                  </span>
-                {:else}
-                  <span class="font-mono font-bold text-text-primary tabular-nums">{cost}<span class="text-text-muted text-xs font-normal"> credits</span></span>
-                {/if}
-              </span>
-            {/each}
-          </div>
-
-          <!-- Summary row -->
-          <div class="border-t border-accent/15 mt-2 pt-2 flex items-center justify-between">
-            <span class="text-sm text-text-secondary flex items-center gap-1.5">
-              <Coins class="w-3.5 h-3.5 text-accent" />
-              Full research
+        <div id="credit-costs" class="card mt-4 py-3 px-4">
+          <button
+            type="button"
+            class="costs-toggle"
+            onclick={() => (costsOpen = !costsOpen)}
+            aria-expanded={costsOpen}
+            aria-controls="credit-costs-body"
+          >
+            <span class="costs-toggle-label">What a run costs</span>
+            <span class="costs-toggle-meta">
+              <span class="font-mono tabular-nums text-text-primary">{fullResearchCost}</span> credits full research
+              <ChevronDown class="w-3.5 h-3.5 {costsOpen ? 'chev-open' : ''}" />
             </span>
-            <span class="font-mono text-sm font-bold text-accent tabular-nums">{fullResearchCost} credits</span>
-          </div>
+          </button>
 
-          <!-- Add-ons -->
-          <div class="border-t border-border/10 mt-2 pt-2">
-            <span class="text-xs text-text-muted/50 font-mono">Add-ons</span>
-            <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs mt-1">
-              {#each ADDON_STAGES as stage}
-                {@const cost = stageCosts[stage.key]}
-                {@const Icon = stage.icon}
-                <span class="inline-flex items-center gap-1">
-                  <Icon class="w-3 h-3 text-secondary/60" />
-                  <span class="text-text-muted">{stage.label}</span>
-                  {#if cost === 0}
-                    <span class="badge-sm badge-success inline-flex items-center gap-0.5 text-xs">
-                      <CheckCircle class="w-2.5 h-2.5" /> Free
-                    </span>
-                  {:else}
-                    <span class="font-mono font-semibold text-text-secondary tabular-nums">{cost}<span class="text-text-muted/70 font-normal"> credits</span></span>
-                  {/if}
+          {#if costsOpen}
+            <div id="credit-costs-body" class="mt-3">
+              <!-- Core stages: horizontal row -->
+              <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                {#each CORE_STAGES as stage}
+                  {@const cost = stageCosts[stage.key]}
+                  {@const Icon = stage.icon}
+                  <span class="inline-flex items-center gap-1.5">
+                    <Icon class="w-3.5 h-3.5 text-text-muted" />
+                    <span class="text-text-secondary">{stage.label}</span>
+                    {#if cost === 0}
+                      <span class="badge-sm badge-success inline-flex items-center gap-0.5">
+                        <CheckCircle class="w-2.5 h-2.5" /> Free
+                      </span>
+                    {:else}
+                      <span class="font-mono font-bold text-text-primary tabular-nums">{cost}<span class="text-text-muted text-xs font-normal"> credits</span></span>
+                    {/if}
+                  </span>
+                {/each}
+              </div>
+
+              <!-- Summary row -->
+              <div class="border-t border-border/60 mt-2 pt-2 flex items-center justify-between">
+                <span class="text-sm text-text-secondary flex items-center gap-1.5">
+                  <Coins class="w-3.5 h-3.5 text-text-muted" />
+                  Full research
                 </span>
-              {/each}
+                <span class="font-mono text-sm font-bold text-text-primary tabular-nums">{fullResearchCost} credits</span>
+              </div>
+
+              <!-- Add-ons -->
+              <div class="border-t border-border/40 mt-2 pt-2">
+                <span class="text-xs text-text-muted font-mono">Add-ons</span>
+                <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs mt-1">
+                  {#each ADDON_STAGES as stage}
+                    {@const cost = stageCosts[stage.key]}
+                    {@const Icon = stage.icon}
+                    <span class="inline-flex items-center gap-1">
+                      <Icon class="w-3 h-3 text-text-muted" />
+                      <span class="text-text-muted">{stage.label}</span>
+                      {#if cost === 0}
+                        <span class="badge-sm badge-success inline-flex items-center gap-0.5 text-xs">
+                          <CheckCircle class="w-2.5 h-2.5" /> Free
+                        </span>
+                      {:else}
+                        <span class="font-mono font-semibold text-text-secondary tabular-nums">{cost}<span class="text-text-muted/70 font-normal"> credits</span></span>
+                      {/if}
+                    </span>
+                  {/each}
+                </div>
+              </div>
             </div>
-          </div>
+          {/if}
         </div>
       {/if}
-    </div>
+    </section>
   {/if}
 
-  <div class="grid gap-8 md:grid-cols-2">
-    <!-- Promo Code Section -->
-    <div class="card">
-      <SectionDivider num={baseSectionNum + 1} label="Redeem promo code" />
-      <p class="text-sm text-text-muted mb-4">
-        Enter your code to receive credits
-      </p>
+  <!-- HISTORY · one divided list panel (dashboard .list recipe) -->
+  <section id="history" class="wb-section">
+    <div class="wb-head">
+      <h2 class="wb-title">Billing history</h2>
+      {#if billing.recentTransactions.length > 0}
+        <span class="wb-meta">{billing.recentTransactions.length} recent</span>
+      {/if}
+    </div>
 
-      <div class="space-y-4">
-        <div>
-          <input
-            type="text"
-            bind:value={promoCode}
-            placeholder="Enter promo code"
-            class="input w-full uppercase tracking-wider"
-            maxlength="50"
-            disabled={isRedeeming}
-            onkeydown={(e) => e.key === "Enter" && redeemPromoCode()}
-          />
-        </div>
+    {#if billing.recentTransactions.length === 0}
+      <div class="text-center py-8 text-text-muted">
+        <History class="w-8 h-8 mx-auto mb-2 opacity-50" />
+        <p class="text-sm">No transactions yet</p>
+      </div>
+    {:else}
+      <div class="tx-list">
+        {#each billing.recentTransactions as tx (tx.id)}
+          <div class="tx-row">
+            <span class="tx-dot" style:background={txDotColor(tx)}></span>
+            <span class="tx-type">{formatTransactionType(tx.type)}</span>
+            <span class="tx-desc" title={tx.description || ""}>{tx.description || "—"}</span>
+            <span
+              class="tx-amount"
+              class:tx-amount-pos={tx.amount > 0}
+            >{tx.amount > 0 ? "+" : ""}{tx.amount}</span>
+            <span class="tx-date" title={formatDate(tx.createdAt)}>{formatRelativeDate(tx.createdAt)}</span>
+          </div>
+        {/each}
+      </div>
+    {/if}
+  </section>
 
-        {#if promoError}
-          <InlineFeedback message={promoError} variant="error" />
-        {/if}
+  <!-- REDEEM · promo code -->
+  <section class="wb-panel">
+    <div class="wb-head">
+      <h2 class="wb-title">Redeem a code</h2>
+    </div>
+    <p class="text-sm text-text-muted mb-4">
+      Enter a promo code to add credits to your balance.
+    </p>
 
-        {#if promoSuccess}
-          <InlineFeedback message={promoSuccess} variant="success" />
-        {/if}
-
+    <div class="redeem-row flex flex-col sm:flex-row gap-3">
+        <input
+          type="text"
+          bind:value={promoCode}
+          placeholder="Enter promo code"
+          aria-label="Promo code"
+          class="input min-w-0 flex-1 uppercase tracking-wider"
+          maxlength="50"
+          disabled={isRedeeming}
+          onkeydown={(e) => e.key === "Enter" && redeemPromoCode()}
+        />
         <SubmitButton
           onclick={redeemPromoCode}
           disabled={!promoCode.trim()}
           loading={isRedeeming}
           loadingText="Redeeming..."
           icon={Gift}
-          label="Redeem Code"
+          label="Redeem code"
+          class="btn-primary redeem-button"
         />
       </div>
-    </div>
 
-    <!-- Recent Transactions -->
-    <div class="card">
-      <SectionDivider num={baseSectionNum + 2} label="Recent activity" />
-      <p class="text-sm text-text-muted mb-4">Your latest transactions</p>
-
-      {#if billing.recentTransactions.length === 0}
-        <div class="text-center py-8 text-text-muted">
-          <History class="w-8 h-8 mx-auto mb-2 opacity-50" />
-          <p class="text-sm">No transactions yet</p>
-        </div>
-      {:else}
-        <div class="space-y-3">
-          {#each billing.recentTransactions as tx, i}
-            {@const txInfo = getTransactionIcon(tx.type)}
-            {@const TxIcon = txInfo.icon}
-            <div
-              class="flex items-center gap-3 p-3 rounded-lg bg-bg-elevated/50 border border-border/50 animate-fade-slide-in"
-              style="animation-delay: {Math.min(i, 5) * 50}ms"
-            >
-              <div class="p-2 rounded-lg {txInfo.class}">
-                <TxIcon class="w-4 h-4" />
-              </div>
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center justify-between gap-2">
-                  <span class="text-sm font-medium text-text-primary truncate">
-                    {formatTransactionType(tx.type)}
-                  </span>
-                  <span
-                    class="text-sm font-semibold font-mono tabular-nums {tx.amount > 0
-                      ? 'text-success'
-                      : 'text-warning'}"
-                  >
-                    {tx.amount > 0 ? "+" : ""}{tx.amount}
-                  </span>
-                </div>
-                <div class="flex items-center justify-between gap-2 mt-0.5">
-                  <span
-                    class="text-xs text-text-muted truncate"
-                    title={tx.description || ""}
-                  >
-                    {tx.description || "-"}
-                  </span>
-                  <span
-                    class="text-xs text-text-muted shrink-0"
-                    title={formatDate(tx.createdAt)}
-                  >
-                    {formatRelativeDate(tx.createdAt)}
-                  </span>
-                </div>
-              </div>
-            </div>
-          {/each}
-        </div>
+      {#if promoError}
+        <InlineFeedback message={promoError} variant="error" class="mt-3" />
       {/if}
-    </div>
-  </div>
 
-  <!-- How Credits Work — closing colophon, mono step numbers (no tint circles) -->
-  <div class="mt-12">
-    <SectionDivider num={baseSectionNum + 3} label="How credits work" />
+      {#if promoSuccess}
+        <InlineFeedback message={promoSuccess} variant="success" class="mt-3" />
+      {/if}
+  </section>
+
+  <!-- HOW CREDITS WORK · closing colophon, mono step numbers (no tint circles) -->
+  <section class="wb-section wb-section--colophon">
+    <div class="wb-head">
+      <h2 class="wb-title">How credits work</h2>
+    </div>
     <div class="grid gap-6 sm:grid-cols-3 mt-2">
       <div class="flex items-start gap-3">
         <span class="hcw-num">01</span>
@@ -766,10 +789,98 @@
         </div>
       </div>
     </div>
-  </div>
+  </section>
+  </main>
 </div>
 
 <style>
+  /* ── Account shell (verbatim with the settings page for a consistent shell) ── */
+  .acct-page {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    min-height: calc(100dvh - 3.5rem);
+    background: var(--color-bg-base);
+  }
+  .acct-main {
+    padding: var(--space-8) clamp(var(--space-6), 4vw, var(--space-10)) var(--space-16);
+    max-width: 60rem;
+    min-width: 0;
+  }
+  @media (max-width: 900px) {
+    .acct-page { grid-template-columns: 1fr; }
+    .acct-main { padding: var(--space-6) var(--space-5) var(--space-12); max-width: none; }
+  }
+
+  /* ── Workbench panels (job-page "Ranked candidates" framed-panel idiom) ── */
+  .wb-panel {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-xl);
+    background: var(--color-bg-elevated);
+    box-shadow: var(--shadow-sm);
+    padding: var(--space-6);
+    scroll-margin-top: 4.5rem;
+  }
+  /* History / colophon read as framed sections without a boxed card wrapper —
+     the divided list (and the colophon grid) carry their own chrome. */
+  .wb-section { scroll-margin-top: 4.5rem; }
+  .wb-section--colophon { margin-top: var(--space-4); }
+  .wb-panel + .wb-panel,
+  .wb-panel + .wb-section,
+  .wb-section + .wb-panel { margin-top: var(--space-6); }
+
+  .wb-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
+  }
+  .wb-title {
+    font-family: var(--font-display);
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--color-text-primary);
+  }
+  .wb-meta {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Plan sub-block inside the Overview panel, divided off the balance ledger.
+     Keeps the #plans deep-link target (used by unlock/top-up CTAs). */
+  .wb-sub {
+    margin-top: var(--space-6);
+    padding-top: var(--space-6);
+    border-top: 1px solid var(--color-border);
+    scroll-margin-top: 4.5rem;
+  }
+  .wb-sublabel {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+    margin-bottom: var(--space-2);
+  }
+
+  /* Monthly + purchased split line under the balance ledger. */
+  .balance-note {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    margin-top: var(--space-3);
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+  }
+
   .hcw-num {
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
@@ -779,5 +890,144 @@
     color: var(--color-text-muted);
     padding-top: 1px;
     flex-shrink: 0;
+  }
+
+  /* Ghost link CTA inside the low-credit banner (accent-dark text + arrow). */
+  .banner-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: var(--color-accent-dark);
+    transition: color 0.13s ease;
+  }
+  .banner-cta:hover { color: var(--color-accent-hover); }
+  .banner-cta:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+
+  /* "What a run costs" collapsible header. */
+  .costs-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    width: 100%;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    text-align: left;
+  }
+  .costs-toggle-label {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+  }
+  .costs-toggle:hover .costs-toggle-label { color: var(--color-text-secondary); }
+  .costs-toggle:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 3px;
+    border-radius: var(--radius-sm);
+  }
+  .costs-toggle-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.8125rem;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+  }
+  .costs-toggle-meta :global(.chev-open) { transform: rotate(180deg); }
+  .costs-toggle-meta :global(svg) { transition: transform 0.15s ease; }
+
+  /* ── Billing-history list panel (dashboard .list / .row recipe) ── */
+  .tx-list {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-xl);
+    background: var(--color-bg-elevated);
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+  }
+  .tx-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: 0.875rem var(--space-5);
+    border-bottom: 1px solid var(--color-border);
+  }
+  .tx-row:last-child { border-bottom: none; }
+  .tx-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .tx-type {
+    flex: 0 0 11rem;
+    min-width: 0;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tx-desc {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 0.8125rem;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: left;
+  }
+  .tx-amount {
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 0.875rem;
+    font-weight: 700;
+    /* A deduction is not a warning — negative uses text-secondary, not orange. */
+    color: var(--color-text-secondary);
+  }
+  .tx-amount-pos { color: var(--color-success-text); }
+  .tx-date {
+    flex-shrink: 0;
+    width: 4.5rem;
+    text-align: right;
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+  }
+
+  :global(.redeem-button) {
+    flex-shrink: 0;
+    width: 100%;
+  }
+  @media (min-width: 640px) {
+    :global(.redeem-button) {
+      width: auto;
+      min-width: 12rem;
+    }
+  }
+
+  @media (max-width: 560px) {
+    .tx-desc { display: none; }
+    .tx-type { flex-basis: auto; }
+  }
+
+  /* Reduced-motion: kill the refresh spinner + chevron rotation transition. */
+  @media (prefers-reduced-motion: reduce) {
+    :global(.animate-spin) { animation: none !important; }
+    .costs-toggle-meta :global(svg) { transition: none !important; }
   }
 </style>

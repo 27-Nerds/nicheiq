@@ -685,10 +685,13 @@
     padding: 1rem;
     background:
       var(--color-bg-elevated);
-    border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 58%, transparent);
-    border-radius: 0.75rem;
+    /* Machined shell — softer hairline border + inset top highlight, mirroring
+       the dashboard list panel so the workbench reads as fixed hardware. */
+    border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 52%, transparent);
+    border-radius: var(--radius-lg);
     box-shadow:
-      0 18px 54px rgba(24, 24, 27, 0.045);
+      var(--shadow-sm),
+      inset 0 1px 0 color-mix(in srgb, white 72%, transparent);
   }
   .workbench.has-tray {
     padding-bottom: 6.2rem;
@@ -711,7 +714,10 @@
     padding: 0 0.1rem 0.72rem;
     background: transparent;
     border: 0;
-    border-bottom: 1px solid var(--color-border);
+    /* Machined seam, not a flat rule: emphasis hairline with a faint highlight
+       riding just beneath it. */
+    border-bottom: 1px solid color-mix(in srgb, var(--color-border-emphasis) 42%, transparent);
+    box-shadow: 0 1px 0 color-mix(in srgb, white 55%, transparent);
     border-radius: 0;
   }
   .cmd-title {
@@ -744,7 +750,7 @@
     margin: 0.72rem 0 0;
     padding: 0.28rem;
     border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 38%, transparent);
-    border-radius: 0.75rem;
+    border-radius: var(--radius-md);
     background: color-mix(in srgb, var(--color-bg-elevated) 74%, transparent);
   }
   .cmd-proof div {
@@ -900,7 +906,7 @@
   .regen-focus-btn.is-active {
     background: var(--color-bg-elevated);
     border-color: color-mix(in srgb, var(--color-accent) 24%, transparent);
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
   .regen-focus-btn:disabled {
     opacity: 0.55;
@@ -1113,10 +1119,11 @@
   }
   .row-head {
     min-height: 1.75rem;
-    padding: 0.32rem 0.7rem;
+    padding: 0.4rem 0.7rem;
     border: 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-border-emphasis) 42%, transparent);
     border-radius: 0;
-    background: var(--color-bg-surface);
+    background: color-mix(in srgb, var(--color-bg-surface) 74%, var(--color-bg-elevated));
     box-shadow: none;
   }
   .row:not(.row-head):hover {
@@ -1124,7 +1131,7 @@
   }
   .row-sel {
     background: color-mix(in srgb, var(--color-accent) 3%, var(--color-bg-elevated));
-    box-shadow: inset 2px 0 0 color-mix(in srgb, var(--color-accent) 74%, var(--color-border-emphasis));
+    box-shadow: inset 2px 0 0 color-mix(in srgb, var(--color-accent) 58%, var(--color-border-emphasis));
   }
   .row-maxed { opacity: 1; }
 
@@ -1136,14 +1143,16 @@
     font-variant-numeric: tabular-nums;
     text-align: center;
   }
+  /* Mono uppercase header, matching the dashboard list-head "hardware" label. */
   .row-head .cell-rank,
   .row-head .cell-select-label,
   .row-head .cell-title-label {
-    font-family: var(--font-body);
-    font-size: 0.75rem;
-    font-weight: 700;
-    text-transform: none;
-    letter-spacing: 0;
+    font-family: var(--font-mono);
+    font-size: 0.5625rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    line-height: 1;
     color: var(--color-text-muted);
   }
   .row-head .cell-title-label { padding-left: 0; }
@@ -1367,11 +1376,11 @@
     font-variant-numeric: tabular-nums;
   }
   .cell-metric-head {
-    font-family: var(--font-body);
-    font-size: 0.75rem;
-    font-weight: 700;
-    text-transform: none;
-    letter-spacing: 0;
+    font-family: var(--font-mono);
+    font-size: 0.5625rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
     color: var(--color-text-muted);
     background: transparent;
     border: none;

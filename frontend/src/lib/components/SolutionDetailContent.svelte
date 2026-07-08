@@ -431,6 +431,15 @@
             </div>
           {/each}
         </dl>
+        <!-- Distilled bear case — the counterpoint to the per-criterion rationale
+             above. Uses the pre-distilled critic_concern (one note), never the raw
+             calibration_notes. None-safe: most ideas without a critique show nothing. -->
+        {#if solution.critic_concern?.trim()}
+          <div class="fd-critic">
+            <span class="mini-label">Independent critic's take</span>
+            <p>{solution.critic_concern}</p>
+          </div>
+        {/if}
       </section>
     {/if}
   </div>
@@ -907,6 +916,22 @@
   }
 
   .fd-score-row dd {
+    margin: 0;
+    color: var(--color-text-secondary);
+    font-size: 0.8125rem;
+    line-height: 1.45;
+    text-wrap: pretty;
+  }
+
+  /* Distilled bear case — hairline-separated counterpoint under the score list. */
+  .fd-critic {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--color-border);
+    display: grid;
+    gap: 0.25rem;
+  }
+  .fd-critic p {
     margin: 0;
     color: var(--color-text-secondary);
     font-size: 0.8125rem;

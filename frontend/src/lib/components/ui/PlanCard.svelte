@@ -173,7 +173,7 @@
 		position: relative;
 		display: flex;
 		flex-direction: column;
-		border-radius: var(--radius-2xl);
+		border-radius: var(--radius-lg);
 		border: 1px solid var(--color-border);
 		background: var(--color-bg-elevated);
 		overflow: hidden;
@@ -275,7 +275,7 @@
 		color: var(--color-text-primary);
 	}
 	.card-price.price-success {
-		color: var(--color-success);
+		color: var(--color-accent-dark);
 	}
 
 	.card-credits {

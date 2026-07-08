@@ -38,12 +38,13 @@
           >{creditCost} credits · first ideas ~15 min</span
         >
       </div>
+
     </div>
     {#if hasCredits}
       <button
         type="submit"
         disabled={disabled || loading}
-        class="btn-primary shrink-0 flex items-center gap-2 px-5 py-2.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+        class="sticky-cta-button btn-primary shrink-0 flex items-center gap-2 px-5 py-2.5 text-sm"
       >
         {#if loading}
           <Loader2 class="w-4 h-4 animate-spin" />
@@ -65,3 +66,12 @@
     {/if}
   </div>
 </div>
+<style>
+  .sticky-cta-button:disabled {
+    border: 1px solid var(--color-border);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-muted);
+    cursor: not-allowed;
+    opacity: 1;
+  }
+</style>

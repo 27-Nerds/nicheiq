@@ -105,11 +105,13 @@ export const load: PageServerLoad = async ({ parent, url }) => {
       canceled,
       subSuccess,
       subCanceled,
+      loadError: false,
     };
   }
 
   // Billing — SECOND fetch (test relies on this call order).
   let billing: BillingData = { ...DEFAULT_BILLING };
+  let loadError = false;
   try {
     const response = await fetchBackend('/api/billing', {
       headers: { 'X-User-ID': userId },
@@ -117,9 +119,11 @@ export const load: PageServerLoad = async ({ parent, url }) => {
     if (response.ok) {
       billing = await response.json();
     } else {
+      loadError = true;
       console.error('Failed to fetch billing info:', response.statusText);
     }
   } catch (error) {
+    loadError = true;
     console.error('Error fetching billing info:', error);
   }
 
@@ -128,5 +132,5 @@ export const load: PageServerLoad = async ({ parent, url }) => {
     fetchSubscription(userId),
   ]);
 
-  return { billing, packages, plans, subscription, success, canceled, subSuccess, subCanceled };
+  return { billing, packages, plans, subscription, success, canceled, subSuccess, subCanceled, loadError };
 };

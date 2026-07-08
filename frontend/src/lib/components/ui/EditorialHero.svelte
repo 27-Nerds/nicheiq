@@ -65,7 +65,8 @@
     opacity: 0.5;
   }
   .k-accent {
-    color: var(--color-accent);
+    /* accent-dark (7.3:1) not raw accent (3.56:1) — the kicker is TEXT. */
+    color: var(--color-accent-dark);
   }
   .k-num {
     color: var(--color-text-primary);

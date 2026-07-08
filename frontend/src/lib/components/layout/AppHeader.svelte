@@ -42,6 +42,17 @@
   // Primary wayfinding nav (left group). Active = the brand accent-dot motif.
   const dashboardActive = $derived(page.url.pathname === "/dashboard");
   const catalogActive = $derived(isCatalogPath(page.url.pathname));
+  const newActive = $derived(page.url.pathname === "/new");
+  const billingActive = $derived(page.url.pathname === "/billing");
+
+  // Sidebar-shell routes have a left sidebar at the viewport edge, so the header
+  // goes full-width to line the logo up with the sidebar and match the body.
+  // (Centered-content full-bleed pages like /new & /report keep the max-w header.)
+  const fullBleedHeader = $derived(
+    !!page.route.id &&
+      (/\/(dashboard|billing|settings)$/.test(page.route.id) ||
+        /\/jobs\/[^/]+$/.test(page.route.id)),
+  );
 
   let showUserMenu = $state(false);
   let imageError = $state(false);
@@ -100,7 +111,7 @@
 {/snippet}
 
 <header class="app-header bg-bg-surface border-b border-border">
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+  <div class="{fullBleedHeader ? 'w-full' : 'max-w-7xl mx-auto'} px-4 sm:px-6 lg:px-8">
     <div class="flex justify-between h-14 items-center">
       <!-- Left group: logo + primary wayfinding nav -->
       <div class="flex items-center gap-6">
@@ -121,7 +132,12 @@
       </div>
 
       <nav class="flex items-center gap-1">
-        <a href="/new" class="new-research-action">
+        <a
+          href="/new"
+          class="new-research-action"
+          class:active={newActive}
+          aria-current={newActive ? "page" : undefined}
+        >
           <Plus class="w-4 h-4" />
           <span class="hidden sm:inline">New Research</span>
         </a>
@@ -129,7 +145,9 @@
         <!-- Credit Balance -->
         <a
           href="/billing"
-          class="flex items-center gap-2 ml-2 px-3 py-1.5 rounded-lg hover:bg-bg-elevated transition-colors border border-transparent hover:border-border"
+          class="credit-action flex items-center gap-2 ml-2 px-3 py-1.5 rounded-lg hover:bg-bg-elevated transition-colors border border-transparent hover:border-border"
+          class:active={billingActive}
+          aria-current={billingActive ? "page" : undefined}
           title={balanceTooltip}
         >
           <Coins class="w-4 h-4 text-accent" />
@@ -268,11 +286,17 @@
       background 180ms cubic-bezier(0.32, 0.72, 0, 1);
   }
 
-  .new-research-action:hover {
+  .new-research-action:hover,
+  .new-research-action.active {
     transform: translateY(-1px);
     border-color: var(--color-border-emphasis);
     color: var(--color-text-primary);
     background: var(--color-bg-surface);
+  }
+
+  .credit-action.active {
+    border-color: var(--color-border-emphasis);
+    background: var(--color-bg-elevated);
   }
 
   .new-research-action:active {
