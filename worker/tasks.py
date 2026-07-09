@@ -1250,7 +1250,7 @@ def run_catalog_ideas(
                 description=pp_data.get("description", ""),
                 mention_count=pp_data.get("mentionCount", pp_data.get("mention_count", 0)),
                 severity_score=pp_data.get("severityScore", pp_data.get("severity_score", 0.5)),
-                willingness_to_pay=pp_data.get("willingnessToPayScore", pp_data.get("willingness_to_pay", 0.5)),
+                commercial_intent=pp_data.get("commercialIntentScore", pp_data.get("commercial_intent", 0.5)),
                 opportunity_level=pp_data.get("opportunityLevel", pp_data.get("opportunity_level", "medium")),
                 representative_quotes=pp_data.get("representativeQuotes", pp_data.get("representative_quotes", [])) or [],
                 source_platforms=pp_data.get("sourcePlatforms", pp_data.get("source_platforms")) or [],

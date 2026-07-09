@@ -14,6 +14,14 @@ Design rules (anti-slop):
   default analysis). So the brief is purely additive and safe when angle eval produced nothing.
 """
 
+# Plain-English angle names for prose — never leak the internal snake_case key into a prompt the
+# crews read (they echo it into user-facing report text).
+_ANGLE_PLAIN: dict[str, str] = {
+    "distribution_seo": "distribution / SEO",
+    "novel_differentiation": "novel differentiation",
+    "vertical_workflow": "vertical workflow",
+}
+
 # Per-angle: where the edge lives + the single most decisive deep-research question (the "kill question").
 _ANGLE_BRIEF: dict[str, dict[str, str]] = {
     "distribution_seo": {
@@ -57,7 +65,7 @@ def build_angle_brief(solution) -> dict:
     locus = (_g("differentiation_locus") or "").strip()
     locus_clause = f" Its claimed edge: {locus}." if locus else ""
     brief = (
-        f"This idea's winning GTM angle is {angle} — it {spec['edge']}.{locus_clause} "
+        f"This idea's winning GTM angle is {_ANGLE_PLAIN.get(angle, angle)} — it {spec['edge']}.{locus_clause} "
         f"ANSWER THIS FIRST: {spec['kill']} Investigate where the edge lives for THIS angle; do not "
         f"penalize the idea for being weak on an off-angle dimension (e.g. low mechanism-novelty is "
         f"expected for a distribution play). But STRESS-TEST the angle — answering the kill-question "
