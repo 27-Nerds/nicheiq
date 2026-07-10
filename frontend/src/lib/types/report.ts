@@ -85,8 +85,24 @@ export interface Report {
 	// Data Quality Summary (top-level)
 	data_quality_summary?: DataQualitySummary;
 
+	// Portfolio-funnel findings: pains/ideas examined but ultimately not carried forward
+	// (demoted winners, rejected backfill candidates).
+	examined_ruled_out?: RuledOutFinding[];
+	// Groups of surviving ideas that are variants of the same underlying product
+	// (a merge was proposed but rejected, so they remain separate entries).
+	overlap_groups?: OverlapGroup[];
+
+	// Web-verified incumbent landscape + niche wallet read, gathered alongside the parity
+	// probe (see incumbent_parity on solutions). Absent on legacy/older reports.
+	market_reality?: MarketReality;
+
 	// Research Reality Check — candid software-fit verdict
 	niche_difficulty_verdict?: NicheDifficultyVerdict;
+
+	// LLM-narrated honest assessment of the visible idea pool (strengths/weaknesses across
+	// all candidates), computed once in Stage 5. null when the pool was empty or the
+	// grounded LLM pass failed its name-coverage guardrail.
+	idea_portfolio_summary?: string | null;
 
 	// Stage timing summary (pipeline execution timing)
 	stage_timing_summary?: StageTimingSummary;
@@ -665,6 +681,10 @@ export interface ResearchMetadata {
 	started_at?: string;
 	// Quality summary
 	data_quality_summary?: DataQualitySummary;
+	// Portfolio-funnel stage counts (pains_identified, cells_run, concepts_generated,
+	// survived_critics, winners, salvaged, demoted, merge_groups, variants_absorbed,
+	// backfill_run, backfill_accepted, candidates_shown — any key may be absent).
+	funnel_counts?: Record<string, number>;
 }
 
 export interface SubredditBreakdown {
@@ -691,6 +711,50 @@ export interface DataQualitySummary {
 	pain_point_confidence_score?: number; // 0-1 (based on unique sources, subreddit diversity, quote density, pain point count)
 	overall_data_quality: string; // HIGH, MEDIUM, LOW
 	quality_caveats: string[];
+}
+
+// A pain/idea that was examined during the portfolio funnel but ultimately not carried
+// forward — either a winner demoted for thin market signal, or a backfill candidate
+// rejected on review. Surfaced so users see the pains that were considered, not just the
+// ones that survived.
+export interface RuledOutFinding {
+	pain_title: string;
+	reason: string;
+	market_fit: number | null;
+	market_fit_band: 'very-low' | 'low';
+	prior_tier: string;
+	source: 'demoted_winner' | 'backfill_rejected';
+	evidence: string;
+}
+
+// A set of surviving ideas identified as variants of the same underlying product. A merge
+// was proposed but rejected, so the ideas remain as separate list entries.
+export interface OverlapGroup {
+	idea_names: string[];
+	shared_product: string;
+}
+
+// A single web-verified incumbent tool found while probing the niche's competitive
+// landscape (distinct from the per-idea incumbent_parity/adjacent_market_parity strings —
+// this is the aggregated niche-level tool list shown in the "Market reality" disclosure).
+export interface MarketRealityIncumbent {
+	name: string;
+	pricing?: string | null;
+	focus?: string | null;
+	gap?: string | null;
+	source?: string | null;
+}
+
+// The niche's buyer-wallet read, gathered alongside the incumbent probe.
+export interface MarketRealityWallet {
+	wallet_class?: string | null;
+	evidence?: string | null;
+	free_density?: string | null;
+}
+
+export interface MarketReality {
+	incumbents: MarketRealityIncumbent[];
+	wallet?: MarketRealityWallet | null;
 }
 
 // RunnerUpSolution interface removed - use alternative_solutions instead
@@ -736,13 +800,21 @@ export interface SolutionDetails {
 	why_it_works_short?: string;
 	solo_dev_feasibility?: number;
 	// Portfolio-funnel provenance tier: 'single' (cell winner) | 'salvaged' (critic-rescued loser)
-	// | 'bundle' (synthesis-stage multi-pain product). Absent on legacy reports = 'single'.
+	// | 'bundle' (synthesis-stage multi-pain product) | 'merged' (synthesized from overlapping
+	// variants). Absent on legacy reports = 'single'.
 	idea_tier?: string;
+	// Portfolio-funnel lifecycle status: 'active' | 'demoted' | 'restored' | 'absorbed'.
+	candidate_status?: string | null;
+	// Names of the variant ideas synthesized into this one (only set when idea_tier === 'merged').
+	merged_from?: string[] | null;
 	// Angle-aware evaluation (set when angle eval is on; absent otherwise)
 	winning_angle?: string | null; // distribution_seo | novel_differentiation | vertical_workflow
 	angle_rationale?: string | null; // user-facing comment: the angle + where differentiation lives
 	novelty_rationale?: string | null; // user-facing: why this novelty score fits the project_type
 	differentiation_locus?: string | null; // WHERE the edge lives (or honest "thin me-too")
+	// Multi-Frame Idea Generation Portfolio: which generation frame minted this idea's cell.
+	// CODE-FILLED, never LLM-set. pain | gap | data_asset | spend_adjacent | workflow
+	source_frame?: string | null;
 	// Data feasibility (annotate-only; from the ideation feasibility critic)
 	data_feasibility_score?: number;
 	data_access_model?: string; // public | freemium | paywalled | unofficial | restricted | blocked | unverified
@@ -853,6 +925,10 @@ export interface AlternativeSolution {
 	solo_dev_feasibility?: number; // 0-1 scale matching Python float
 	// Portfolio-funnel provenance tier (see selected_solution_details.idea_tier)
 	idea_tier?: string;
+	// Portfolio-funnel lifecycle status: 'active' | 'demoted' | 'restored' | 'absorbed'.
+	candidate_status?: string | null;
+	// Names of the variant ideas synthesized into this one (only set when idea_tier === 'merged').
+	merged_from?: string[] | null;
 	// Angle-aware evaluation (set when angle eval is on; absent otherwise)
 	winning_angle?: string | null;
 	angle_rationale?: string | null;
@@ -871,6 +947,9 @@ export interface AlternativeSolution {
 	adjacent_market_parity?: string | null; // audience-independent incumbent where the mechanism monetizes ("HigherGov (govcon intel): …"), null = none found
 	source_segment_payability?: number | null; // 0-1 buyer-wallet strength of the source segment (permanent signal; null = segment map failed)
 	source_segment_payability_class?: string | null; // corporate-budget | smb-budget | prosumer-wallet | personal-wallet | mixed
+	// Multi-Frame Idea Generation Portfolio: which generation frame minted this idea's cell.
+	// CODE-FILLED, never LLM-set. pain | gap | data_asset | spend_adjacent | workflow
+	source_frame?: string | null;
 
 	// Competitive landscape for this solution
 	top_competitors?: string[];

@@ -459,6 +459,149 @@ def test_episodic_challenge_defers_to_wtp_challenge():
     assert _EPISODIC_CHALLENGE not in fp2.key_points
 
 
+# --- niche wallet probe (2026-07-09) ----------------------------------------------
+
+def test_wallet_brief_none_is_backward_compatible():
+    # Omitting niche_wallet_brief entirely must behave identically to today.
+    fp_default = assess_niche_difficulty([_pain()] * 4, [_idea(novelty=0.6)] * 4, _nc())
+    fp_explicit_none = assess_niche_difficulty(
+        [_pain()] * 4, [_idea(novelty=0.6)] * 4, _nc(), niche_wallet_brief=None)
+    assert fp_default.key_points == fp_explicit_none.key_points
+    assert fp_default.wallet_class is None
+    assert fp_explicit_none.wallet_class is None
+
+
+def test_free_culture_wallet_appends_keypoint():
+    from nicheiq.utils.niche_difficulty import _wallet_challenge
+    brief = {"wallet_class": "free-culture", "evidence": "$0-25/mo total, start free",
+              "free_density": "high"}
+    fp = assess_niche_difficulty(
+        [_pain()] * 4, [_idea(novelty=0.6)] * 4, _nc(), niche_wallet_brief=brief)
+    assert fp.wallet_class == "free-culture"
+    assert _wallet_challenge("$0-25/mo total, start free") in fp.key_points
+
+
+def test_paying_wallet_no_keypoint():
+    brief = {"wallet_class": "paying", "evidence": "tools run $19-59/mo", "free_density": "low"}
+    fp = assess_niche_difficulty(
+        [_pain()] * 4, [_idea(novelty=0.6)] * 4, _nc(), niche_wallet_brief=brief)
+    assert fp.wallet_class == "paying"
+    assert not any("free-tool culture" in k for k in fp.key_points)
+
+
+def test_free_culture_wallet_deduped_against_substitute_challenge():
+    from nicheiq.utils.niche_difficulty import _SUBSTITUTE_CHALLENGE
+    ideas = [_cidea(parity="substitute (x): y") for _ in range(4)]
+    brief = {"wallet_class": "free-culture", "evidence": "start free", "free_density": "high"}
+    fp = assess_niche_difficulty([_pain()] * 4, ideas, _nc(), niche_wallet_brief=brief)
+    assert _SUBSTITUTE_CHALLENGE in fp.key_points
+    assert not any("free-tool culture" in k for k in fp.key_points)
+
+
+def test_free_culture_wallet_deduped_against_weak_wtp_challenge():
+    from nicheiq.utils.niche_difficulty import _WEAK_WTP_CHALLENGE
+    pains = [SimpleNamespace(tool_addressable="full", commercial_intent=0.3) for _ in range(4)]
+    brief = {"wallet_class": "free-culture", "evidence": "start free", "free_density": "high"}
+    fp = assess_niche_difficulty(pains, [_idea(novelty=0.6)] * 4, _nc(), niche_wallet_brief=brief)
+    assert _WEAK_WTP_CHALLENGE in fp.key_points
+    assert not any("free-tool culture" in k for k in fp.key_points)
+
+
+def test_paying_wallet_positive_keypoint():
+    from nicheiq.utils.niche_difficulty import _wallet_positive_note
+    brief = {"wallet_class": "paying", "evidence": "tools run $19-59/mo", "free_density": "low"}
+    fp = assess_niche_difficulty(
+        [_pain()] * 4, [_idea(novelty=0.6)] * 4, _nc(), niche_wallet_brief=brief)
+    assert fp.wallet_class == "paying"
+    assert _wallet_positive_note("tools run $19-59/mo") in fp.key_points
+
+
+def test_mixed_wallet_no_keypoint():
+    brief = {"wallet_class": "mixed", "evidence": "some pay, some don't", "free_density": "medium"}
+    fp = assess_niche_difficulty(
+        [_pain()] * 4, [_idea(novelty=0.6)] * 4, _nc(), niche_wallet_brief=brief)
+    assert fp.wallet_class == "mixed"
+    assert not any("demonstrably pay" in k for k in fp.key_points)
+    assert not any("free-tool culture" in k for k in fp.key_points)
+
+
+# --- incumbent map probe (2026-07-10) -----------------------------------------------
+
+def _row(name, pricing="", focus="", gap="", source=""):
+    return {"name": name, "pricing": pricing, "focus": focus, "gap": gap, "source": source}
+
+
+def test_incumbent_map_none_is_backward_compatible():
+    fp_default = assess_niche_difficulty([_pain()] * 4, [_idea(novelty=0.6)] * 4, _nc())
+    fp_explicit_none = assess_niche_difficulty(
+        [_pain()] * 4, [_idea(novelty=0.6)] * 4, _nc(), incumbent_map=None)
+    assert fp_default.key_points == fp_explicit_none.key_points
+    assert fp_default.incumbent_count is None and fp_default.priced_count is None
+    assert fp_explicit_none.incumbent_count is None and fp_explicit_none.priced_count is None
+
+
+def test_incumbent_map_dense_fires_keypoint_and_counts():
+    rows = [_row(f"Tool {i}", pricing="$19/mo") for i in range(6)] + \
+        [_row("Tool 6", pricing="unknown"), _row("Tool 7", pricing="")]
+    fp = assess_niche_difficulty(
+        [_pain()] * 4, [_idea(novelty=0.6)] * 4, _nc(), incumbent_map=rows)
+    assert fp.incumbent_count == 8
+    assert fp.priced_count == 6
+    assert any("dense tool ecosystem" in k and "8 tools web-verified, 6 with published pricing" in k
+               for k in fp.key_points)
+    assert any(k.endswith("Thin early signal; Deep Research validates.") for k in fp.key_points)
+
+
+def test_incumbent_map_below_threshold_no_keypoint():
+    rows = [_row(f"Tool {i}", pricing="$19/mo") for i in range(7)]
+    fp = assess_niche_difficulty(
+        [_pain()] * 4, [_idea(novelty=0.6)] * 4, _nc(), incumbent_map=rows)
+    assert fp.incumbent_count == 7
+    assert not any("dense tool ecosystem" in k for k in fp.key_points)
+
+
+def test_incumbent_map_priced_count_detects_digits_and_dollar_sign():
+    rows = [_row("A", pricing="Free"), _row("B", pricing="$0"), _row("C", pricing="Contact us"),
+            _row("D", pricing="From 10 EUR")]
+    fp = assess_niche_difficulty(
+        [_pain()] * 4, [_idea(novelty=0.6)] * 4, _nc(), incumbent_map=rows)
+    assert fp.incumbent_count == 4
+    assert fp.priced_count == 2  # "$0" and "From 10 EUR" carry a digit/$; "Free"/"Contact us" don't
+
+
+# --- SERP-owned probe (2026-07-10) ----------------------------------------------------
+
+def test_serp_owned_share_none_is_backward_compatible():
+    fp_default = assess_niche_difficulty([_pain()] * 4, [_idea(novelty=0.6)] * 4, _nc())
+    fp_explicit_none = assess_niche_difficulty(
+        [_pain()] * 4, [_idea(novelty=0.6)] * 4, _nc(), serp_owned_share=None)
+    assert fp_default.key_points == fp_explicit_none.key_points
+    assert fp_default.serp_owned_share is None
+    assert fp_explicit_none.serp_owned_share is None
+
+
+def test_serp_owned_heavy_fires_keypoint():
+    from nicheiq.utils.niche_difficulty import _SERP_OWNED_CHALLENGE
+    fp = assess_niche_difficulty(
+        [_pain()] * 4, [_idea(novelty=0.6)] * 4, _nc(), serp_owned_share=0.5)
+    assert fp.serp_owned_share == 0.5
+    assert _SERP_OWNED_CHALLENGE in fp.key_points
+
+    fp_below = assess_niche_difficulty(
+        [_pain()] * 4, [_idea(novelty=0.6)] * 4, _nc(), serp_owned_share=0.49)
+    assert _SERP_OWNED_CHALLENGE not in fp_below.key_points
+
+
+# --- all-None regression across every new kwarg simultaneously ------------------------
+
+def test_all_new_inputs_none_together_is_byte_identical_to_legacy():
+    baseline = assess_niche_difficulty([_pain()] * 4, [_idea(novelty=0.6)] * 4, _nc())
+    with_defaults = assess_niche_difficulty(
+        [_pain()] * 4, [_idea(novelty=0.6)] * 4, _nc(),
+        incumbent_map=None, serp_owned_share=None, niche_wallet_brief=None)
+    assert baseline == with_defaults
+
+
 def test_segment_brief_carries_wallet_class_and_prompt_gets_new_words(monkeypatch):
     from types import SimpleNamespace as NS
     from nicheiq.utils import llm_service

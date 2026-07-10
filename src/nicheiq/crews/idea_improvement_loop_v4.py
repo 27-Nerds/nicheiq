@@ -29,7 +29,9 @@ from pydantic import BaseModel, Field
 from ..config.settings import settings
 from ..models.solution_idea import BaseSolutionIdea
 from ..utils.llm_service import LLMService
-from ..utils.public_data_sources import llm_confirm_known_route, retrieve_known_sources
+from ..utils.public_data_sources import (
+    llm_confirm_known_route, match_known_public_source, retrieve_known_sources,
+)
 from .idea_improvement_loop import (
     CellGrounding, _carry_forward_fields, _idea_to_text, _ONPAIN_SLACK,
 )
@@ -47,6 +49,35 @@ _ANGLE_LOOP_WEIGHTS = {
     "novel_differentiation": {"market_fit": 0.35, "novelty": 0.40, "seo_surface": 0.10, "clarity": 0.15},
 }
 _VERIFY_RE = re.compile(r"\[NEEDS[-\s]?VERIFY:\s*([^\]]+)\]", re.I)
+
+
+def _relocate_needs_verify_flags(idea) -> None:
+    """Defense-in-depth: the ideator prompt directs [NEEDS-VERIFY: ...] flags to data_acquisition_notes
+    only, but LLMs sometimes drop them into the data_sources list. Strip any flagged items from
+    data_sources (which must stay clean source NAMES) and append the flags to data_acquisition_notes so
+    the verifier still sees them. Idempotent. Runs after each ideator turn (so the echoed spec in the
+    thread never teaches the LLM that data_sources is where flags belong) and at verify_data_routes
+    entry (so no contaminated list can ever reach the search-query builder)."""
+    sources = getattr(idea, "data_sources", None)
+    if not sources:
+        return
+    clean: list[str] = []
+    found: list[str] = []
+    for s in sources:
+        flags = _VERIFY_RE.findall(str(s))
+        if flags:
+            found.extend(flags)
+        else:
+            clean.append(s)
+    if not found:
+        return
+    idea.data_sources = clean or None
+    note = (getattr(idea, "data_acquisition_notes", "") or "").strip()
+    for f in found:
+        tag = f"[NEEDS-VERIFY: {f.strip()}]"
+        if tag.lower() not in note.lower():
+            note = (note + " " + tag).strip() if note else tag
+    idea.data_acquisition_notes = note
 
 
 class IdeaCritiqueV4(BaseModel):
@@ -129,8 +160,29 @@ def _angle_directive(g: CellGrounding) -> str:
     return ""
 
 
+def _frame_directive(g: CellGrounding) -> str:
+    """Multi-Frame Idea Generation Portfolio (2026-07-10): a non-pain cell has no single SOURCE
+    PAIN — it is seeded from a typed FOCUS (gap/data-asset/workflow) and anchored
+    to a VALIDATED set of pains at mint time (`anchor_pains_for_frame_focus`). Two-clause
+    market_fit lock so the reviewer doesn't score honest frame ideation as pain drift: (a) does
+    it fit the frame's own FOCUS, (b) does it serve one of the listed ANCHOR PAINS. '' for a pain
+    cell (frame_type '' or 'pain') — byte-identical to before."""
+    if not g.frame_type or g.frame_type == "pain":
+        return ""
+    from ..utils.frames import FRAME_REGISTRY
+    spec = FRAME_REGISTRY.get(g.frame_type)
+    mf_anchor = spec.mf_anchor if spec is not None else "does it fit the FOCUS below"
+    return (
+        f"\nPRODUCT FRAME = {g.frame_type.upper()} — this idea is seeded from THE FOCUS below, "
+        "NOT a single source pain. Score market_fit on TWO clauses together: (a) "
+        f"{mf_anchor}; (b) it must serve at least one of THE ANCHOR PAINS listed (exact titles). "
+        "An idea that fails EITHER clause scores market_fit ≤ 0.3, however clever.\n"
+    )
+
+
 def _reviewer_system(g: CellGrounding) -> dict:
     return {"role": "system", "content": (
+        _frame_directive(g) +
         _angle_directive(g) +
         "You are a CREATIVE PRODUCT MENTOR for a solo developer — not a grader. Your job is to GUIDE the "
         "ideator toward a sharper, more ORIGINAL, genuinely BUILDABLE product that nails the source pain "
@@ -169,9 +221,11 @@ def _ideator_system(g: CellGrounding) -> dict:
         "piling on features/platforms/enterprise scope. A smaller, more surprising idea beats a bigger one.\n"
         "(2) DATA HONESTY: you are NOT rewarded for naming an official API. Prefer angles that need only "
         "gettable data (public datasets, official APIs, first-party / user-submitted data, computed/static "
-        "values). For ANY data route you are not CERTAIN a public/official source exposes, write it as "
-        "`[NEEDS-VERIFY: does <source> expose <exactly what you need>?]` — never assert an API can do "
-        "something you're unsure of (a separate tool checks these; a refuted guess gets capped).\n"
+        "values). For ANY data route you are not CERTAIN a public/official source exposes, write the flag "
+        "`[NEEDS-VERIFY: does <source> expose <exactly what you need>?]` ONLY inside `data_acquisition_notes` "
+        "— NEVER inside the `data_sources` list, which must hold clean source NAMES only (e.g. 'Reddit API', "
+        "'SEC EDGAR'). Never assert an API can do something you're unsure of (a separate tool checks these; "
+        "a refuted guess gets capped).\n"
         "(3) Return a COMPLETE spec every time — every field filled, none blank or duplicated. "
         "CRITICAL: headline, short_description, value_proposition, why_it_works, and innovation_angle "
         "must DESCRIBE THE SAME IDEA as description and data_sources. If you change the mechanism, data "
@@ -197,11 +251,14 @@ def _improve(crit, thread, prior, *, invoke, model, effort):
     thread.append({"role": "user", "content":
         f"Reviewer feedback. Binding constraint: {crit.binding_constraint}. Directive: {crit.directive}. "
         "Fix THAT without weakening the others or pivoting off the source pain. Remember the DATA HONESTY "
-        "rule: flag uncertain routes with [NEEDS-VERIFY: ...], don't assert. Return the COMPLETE spec — "
+        "rule: flag uncertain routes with [NEEDS-VERIFY: ...] ONLY in `data_acquisition_notes` (never in "
+        "the `data_sources` list — that holds clean source names only), don't assert. Return the COMPLETE "
+        "spec — "
         "if the mechanism, data route, or name changed, rewrite headline, short_description, "
         "value_proposition, why_it_works, innovation_angle, technical_approach, and "
         "differentiation_factors so they describe the revised idea, not the old one."})
     idea, usage = invoke(thread, BaseSolutionIdea, temperature=0.5, model_name=model, reasoning_effort=effort)
+    _relocate_needs_verify_flags(idea)
     _carry_forward_fields(idea, prior)
     thread.append({"role": "assistant", "content": _idea_to_text(idea)})
     return idea, usage
@@ -218,11 +275,25 @@ def _canonicalize_route(access_model: str, obtainable: bool) -> str:
     return am or "blocked"
 
 
+# A no-op web search: no Google query can confirm/refute these — they're the verdict's
+# `self_sourced` axis, which the LLM judge already reasons about from the claim text.
+_NON_WEB_HINTS = (
+    "user input", "user-provided", "user provided", "manual entry", "internal", "proprietary",
+    "static values", "crowdsourced", "self-reported", "self reported",
+)
+
+
+def _is_non_web_source(item: str) -> bool:
+    low = (item or "").lower()
+    return any(h in low for h in _NON_WEB_HINTS)
+
+
 def verify_data_routes(idea, grounding, *, search, invoke, model_name=None, reasoning_effort="medium") -> DataRouteVerdict | None:
     """SEPARATE tool-grounded check (Chain-of-Verification): pull the idea's data claims (+ any
     NEEDS-VERIFY flags), search them, and resolve obtainability. Sets idea.data_access_model (canonical
     vocab) + reconciles data_acquisition_notes so label and notes agree. Fail-soft → None."""
     model_name = model_name or settings.pain_point_validation_llm
+    _relocate_needs_verify_flags(idea)  # guarantee data_sources is clean before building any query
     sources = ", ".join(getattr(idea, "data_sources", None) or [])
     flags = _VERIFY_RE.findall(
         f"{getattr(idea,'technical_approach','') or ''} {getattr(idea,'description','') or ''} "
@@ -250,11 +321,19 @@ def verify_data_routes(idea, grounding, *, search, invoke, model_name=None, reas
         return DataRouteVerdict(self_sourced=False, verdict="supported", access_model="official",
                                 obtainable=True, note=f"Well-known public source: {names}")
 
-    # Targeted retrieval (SAFE-style): a generic availability query + a documentation-seeking query,
-    # so a real public API's docs surface rather than being missed by one generic query.
-    queries = [f"{sources} {claim} data availability access".strip()]
-    if sources:
-        queries.append(f"{sources[:140]} public API documentation endpoint dataset access".strip())
+    # Targeted retrieval (SAFE-style): a generic availability query, then ONE query per web source
+    # item (not a combined blob). Live case (2026-07-09): a single 6-source combined query buried
+    # EPA RSL among 6 named items and returned 9 EPA hits, 1 USDA, 0 for the other 4 — the verdict
+    # LLM then judged those 4 sources on silence. Per-item queries give each source a fair shot.
+    # `claim` is either the NEEDS-VERIFY questions (when flags exist) or the clean sources — never
+    # both, so the query is never a duplicated/polluted string shipped to the search API.
+    original_items = list(getattr(idea, "data_sources", None) or [])
+    web_items = [s for s in original_items if not _is_non_web_source(s)]
+    queries = [f"{claim} data availability access".strip()] if flags else []
+    # skip items the allowlist pre-pass already recognizes — no need to spend a query on them.
+    unmatched_web_items = [s for s in web_items if not match_known_public_source(s)]
+    for item in unmatched_web_items[:3]:
+        queries.append(f"{item[:80]} public API documentation dataset access".strip())
     snippets = ""
     if search is not None:
         for q in queries:
@@ -262,7 +341,7 @@ def verify_data_routes(idea, grounding, *, search, invoke, model_name=None, reas
                 snippets += (search(q) or "")[:1200] + "\n"
             except Exception as e:
                 logger.warning(f"[v4-verify] search failed: {str(e)[:80]}")
-    snippets = snippets.strip()[:2400]
+    snippets = snippets.strip()[:6000]
     prompt = (
         "You verify whether a SOLO DEVELOPER can actually obtain the data this product needs. Decide "
         "from the web-search evidence below — do NOT assume an API you don't recognize exists just "
@@ -294,7 +373,14 @@ def verify_data_routes(idea, grounding, *, search, invoke, model_name=None, reas
         "in any country, an official statistics agency, or a large platform whose free public API is "
         "widely documented), treat it as 'supported' with the access model you know to be true — sparse "
         "or ambiguous snippets must NOT downgrade a famous source. This exception NEVER applies to "
-        "niche or vendor-specific APIs you don't recognize; those still require corroborating evidence."
+        "niche or vendor-specific APIs you don't recognize; those still require corroborating evidence.\n"
+        "CADENCE CHECK (2026-07-10, live case: a product assumed a WEEKLY marriage-index feed off a "
+        "source the evidence showed was a static 1908-2017 HISTORICAL index): even a real, accessible "
+        "source can fail the claimed mechanism if it does not publish often enough. If the evidence "
+        "shows the source's actual publication cadence is staler than what the claimed mechanism needs "
+        "(e.g. a 'daily'/'weekly'/'real-time' feature built on a source that is a static or "
+        "historical/archival dataset), set obtainable=False and cite the cadence mismatch in `note`, "
+        "even if verdict='supported' on access."
     )
     try:
         verdict, _ = LLMService.invoke_structured(

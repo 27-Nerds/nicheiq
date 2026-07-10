@@ -332,6 +332,42 @@ class Settings(BaseSettings):
         default=3, ge=1, le=6,
         description="Max losers the salvage gate may promote per run (each costs one expansion call).",
     )
+    demotion_market_fit_max: float = Field(
+        default=0.4, ge=0.0, le=1.0,
+        description=(
+            "Weak-winner demotion bar on FINAL post-parity calibrated market_fit_score. Ideas "
+            "below it are demoted from the visible candidate list into 'examined & ruled out' "
+            "findings. 0 disables demotion (and with it backfill/merge acceptance gating)."
+        ),
+    )
+    backfill_max_cells: int = Field(
+        default=3, ge=0, le=6,
+        description=(
+            "Max extra single-cell generation runs per pipeline run to top the visible candidate "
+            "list back up after demotion. 0 disables backfill."
+        ),
+    )
+    backfill_target_visible: int = Field(
+        default=6, ge=0, le=12,
+        description=(
+            "Top-up trigger and stop for backfill: extra cells run only while visible (non-demoted, "
+            "non-absorbed) candidates fall below this count."
+        ),
+    )
+    min_visible_candidates: int = Field(
+        default=3, ge=0, le=6,
+        description=(
+            "Floor guard: if visible candidates drop below this after demotion, the highest-"
+            "market-fit demoted ideas are restored (candidate_status='restored')."
+        ),
+    )
+    variant_merge_max_groups: int = Field(
+        default=2, ge=0, le=4,
+        description=(
+            "Max overlap groups per run to synthesize into one merged idea. 0 disables variant "
+            "merging."
+        ),
+    )
     provisional_seo_rank_ceiling: float = Field(
         default=0.7, ge=0.0, le=1.0,
         description=(
@@ -352,6 +388,55 @@ class Settings(BaseSettings):
             "~stable (~12-16) regardless of how many cells the affinity graph yields, so the "
             "filter has headroom without exploding cost."
         )
+    )
+    # --- Market-awareness parity caps (downgrade-only, mirrors seo/feasibility caps) -------
+    parity_shipped_market_fit_cap: float = Field(
+        default=0.45, ge=0.0, le=1.0,
+        description=(
+            "market_fit ceiling when a web-verified incumbent SHIPS the idea's core mechanism "
+            "(incumbent_parity == 'shipped'). Idea stays visible (no auto-demote) at this ceiling "
+            "per user decision. 0 disables."
+        ),
+    )
+    parity_partial_market_fit_cap: float = Field(
+        default=0.55, ge=0.0, le=1.0,
+        description=(
+            "market_fit ceiling when a web-verified incumbent partially covers the idea (limited/"
+            "adjacent version; incumbent_parity == 'partial'). 0 disables."
+        ),
+    )
+    parity_substitute_market_fit_cap: float = Field(
+        default=0.50, ge=0.0, le=1.0,
+        description=(
+            "market_fit ceiling when a free/DIY route delivers the core outcome (incumbent_parity "
+            "== 'substitute'). 0 disables."
+        ),
+    )
+    parity_substitute_weak_wallet_cap: float = Field(
+        default=0.35, ge=0.0, le=1.0,
+        description=(
+            "market_fit ceiling when incumbent_parity == 'substitute' AND "
+            "source_segment_payability < payability_low_threshold. Deliberately crosses the 0.4 "
+            "demotion bar — free route + thin wallet is a ruled-out finding, not a live idea. "
+            "0 disables."
+        ),
+    )
+    parity_niche_frame_queries_per_family: int = Field(
+        default=3, ge=0, le=3,
+        description=(
+            "Niche-framed recall queries per mechanism family added to the parity probe (e.g. "
+            "'{cat} for {niche}', 'free {niche} {cat}', plus an outcome-framed query reformulating "
+            "the top category as a buyer OUTCOME) to catch niche landing pages, free substitutes, "
+            "and incumbents whose NAME shares no vocabulary with the idea's mechanism/category "
+            "framing the generic probe misses. 0 disables."
+        ),
+    )
+    parity_pivot_max_revisions: int = Field(
+        default=3, ge=0, le=6,
+        description=(
+            "Max accept-guarded wedge-pivot revisions per run for shipped/partial-capped ideas "
+            "(E2: pivot to the incumbent's gap, keep the validated pain). 0 disables."
+        ),
     )
     # --- Diversity-aware final selection (keep more ideas, de-concentrate) ---
     enable_diversity_caps: bool = Field(
@@ -506,6 +591,35 @@ class Settings(BaseSettings):
     seo_cap_moderate_pages_ceiling: float = Field(
         default=0.7, ge=0.0, le=1.0,
         description="Rule B ceiling for moderate page counts (threshold <= pages < high_score_min_pages)."
+    )
+    # Rule D (owned SERP) — Phase-1 deterministic peek at SERP composition for distribution_seo
+    # ideas, preview path only; Stage-12 keyword grounding supersedes provisional scores entirely.
+    serp_owned_domain_threshold: int = Field(
+        default=7, ge=1, le=10,
+        description=(
+            "Rule D: authority (.gov/.edu/wikipedia) + entrenched non-UGC commercial domain count "
+            "in the idea's representative top-10 results at/above which the SERP is stamped 'owned'."
+        )
+    )
+    serp_owned_seo_ceiling: float = Field(
+        default=0.50, ge=0.0, le=1.0,
+        description="Rule D ceiling on stored seo_scalability_score when the SERP is owned. 0 disables."
+    )
+    serp_probe_queries_per_idea: int = Field(
+        default=2, ge=0, le=4,
+        description=(
+            "SERP-composition probe queries per distribution_seo idea (derived from "
+            "programmatic_seo_opportunity, fallback _mechanism_keywords). 0 disables."
+        )
+    )
+    market_awareness_serper_budget: int = Field(
+        default=60, ge=0, le=500,
+        description=(
+            "Shared per-run Serper query budget for the NEW market-awareness probes (parity "
+            "niche-frame queries, niche wallet probe, SERP-composition probe). When exhausted, "
+            "remaining probes skip fail-soft (deflationary signals that don't run simply don't "
+            "deflate — never blocks the pipeline). 0 disables the new probes only."
+        )
     )
     divergent_dedup_similarity_threshold: float = Field(
         default=0.85,
@@ -1529,6 +1643,15 @@ class Settings(BaseSettings):
     payability_market_fit_cap: float = Field(
         default=0.55, ge=0.0, le=1.0,
         description="market_fit ceiling for ideas whose segment payability is LOW (downgrade-only).",
+    )
+    selfissued_trust_market_fit_cap: float = Field(
+        default=0.35, ge=0.0, le=1.0,
+        description=(
+            "market_fit ceiling for ideas that self-issue a trust artifact (badge/certificate/"
+            "verified/trust seal/authenticity) with no third-party verification language — "
+            "self-issued trust signaling is a liability hazard, killed twice by web judgment "
+            "2026-07-10. 0 disables."
+        ),
     )
     enable_regulatory_risk_downgrade: bool = Field(
         default=False,

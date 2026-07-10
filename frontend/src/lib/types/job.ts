@@ -111,6 +111,13 @@ export interface SolutionPreview {
   // Competitive parity — set only by the web-verified parity probe (top ideas only); null otherwise.
   incumbent_parity?: string | null;
   adjacent_market_parity?: string | null;
+  // Buyer-segment payability (0-1) stamped from the segment map; drives the market_fit
+  // payability cap in _validate_idea_caps rule (d).
+  source_segment_payability?: number | null;
+  source_segment_payability_class?: string | null;
+  // Multi-Frame Idea Generation Portfolio: which generation frame minted this idea's cell.
+  // CODE-FILLED, never LLM-set. pain | gap | data_asset | spend_adjacent | workflow
+  source_frame?: string | null;
   // Distilled bear case — the calibration critic's market_fit reason, distilled
   // (via extract_criterion_reason) to one user-facing note. NOT the raw
   // calibration_notes. Emitted in the same preview payload as the parity fields.
@@ -123,6 +130,14 @@ export interface SolutionPreview {
   audience_fit?: boolean | null;
   // Closed-vocabulary filter facets (chips + future filtering). See docs/IDEA_TAGS.md.
   tags?: IdeaTags | null;
+  // Portfolio-funnel provenance tier: 'single' (cell winner) | 'salvaged' (critic-rescued
+  // loser) | 'bundle' (synthesis-stage multi-pain product) | 'merged' (synthesized from
+  // overlapping variants). Absent on legacy reports = 'single'.
+  idea_tier?: string | null;
+  // Portfolio-funnel lifecycle status: 'active' | 'demoted' | 'restored' | 'absorbed'.
+  candidate_status?: string | null;
+  // Names of the variant ideas synthesized into this one (only set when idea_tier === 'merged').
+  merged_from?: string[] | null;
 }
 
 export interface ReportSummary {

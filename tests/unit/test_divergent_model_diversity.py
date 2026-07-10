@@ -492,6 +492,12 @@ class TestCellAssignment:
     def test_widening_adds_pains_to_reach_target(self, monkeypatch):
         crew = usc.UnifiedSolutionCrew.__new__(usc.UnifiedSolutionCrew)
         crew.audience_mapping = SimpleNamespace(audience_segments=[_seg("Solo")])
+        # gap/data_asset/workflow are ALWAYS ON (2026-07-10) — stub their seed enumerators so this
+        # allocator test never reaches a live LLM/search call (they aren't under test here).
+        crew._segment_payability_map = lambda: {}
+        crew._seed_gap_focuses = lambda: []
+        crew._seed_data_asset_focuses = lambda: []
+        crew._seed_workflow_focuses = lambda: []
         monkeypatch.setattr(usc.settings, "divergent_target_generators", 6)
         monkeypatch.setattr(usc.settings, "divergent_max_generators", 8)
         high = [_pain_seg("H", ["Solo"])]                              # 1 edge only
@@ -505,6 +511,12 @@ class TestCellAssignment:
         # idea is a near-duplicate). Widening on THEME count keeps going until themes are diverse.
         crew = usc.UnifiedSolutionCrew.__new__(usc.UnifiedSolutionCrew)
         crew.audience_mapping = SimpleNamespace(audience_segments=[_seg("Perf"), _seg("Aes")])
+        # gap/data_asset/workflow are ALWAYS ON (2026-07-10) — stub their seed enumerators so this
+        # allocator test never reaches a live LLM/search call (they aren't under test here).
+        crew._segment_payability_map = lambda: {}
+        crew._seed_gap_focuses = lambda: []
+        crew._seed_data_asset_focuses = lambda: []
+        crew._seed_workflow_focuses = lambda: []
         monkeypatch.setattr(usc.settings, "divergent_target_generators", 6)
         monkeypatch.setattr(usc.settings, "divergent_max_generators", 8)
 

@@ -28,6 +28,8 @@ def cap_seo_realism_score(
     thin_pages_ceiling: float,
     high_score_min_pages: int,
     moderate_pages_ceiling: float,
+    serp_owned: bool = False,
+    serp_owned_ceiling: float | None = None,
 ) -> tuple[float | None, str | None]:
     """Return ``(capped_seo, note | None)``.
 
@@ -45,6 +47,8 @@ def cap_seo_realism_score(
          (post-Stage-12; a no-op pre-Stage-12, which keeps the cap idempotent across checkpoints):
          ``< thin_pages_threshold`` -> <= ``thin_pages_ceiling``;
          ``< high_score_min_pages`` -> <= ``moderate_pages_ceiling`` (gates the 0.8+ band).
+      D. Owned SERP — ``serp_owned`` is True -> <= ``serp_owned_ceiling`` (Phase-1 deterministic
+         peek at SERP composition; see comment at the rule for detail).
 
     Pre-Stage-12 the page-count truth (Rule B) isn't known, so any cap is a preliminary estimate
     refined after keyword analysis.
@@ -76,6 +80,15 @@ def cap_seo_realism_score(
             notes.append(
                 f"capped to {moderate_pages_ceiling:.2f} ({pages} pages < {high_score_min_pages} for the 0.8+ band)")
 
+    # Rule D — owned SERP: authority (.gov/.edu/wikipedia) + entrenched non-UGC commercial
+    # domains dominate the idea's representative top-10 results (Phase-1 deterministic peek;
+    # Stage-12 keyword grounding supersedes provisional scores entirely).
+    if serp_owned and serp_owned_ceiling and serp_owned_ceiling > 0 and capped > serp_owned_ceiling:
+        capped = serp_owned_ceiling
+        notes.append(
+            f"capped to {serp_owned_ceiling:.2f} (SERP owned by authority/entrenched domains — "
+            "thin early signal; Deep Research validates)")
+
     if capped < seo:
         return capped, ("SEO realism (preliminary estimate, refined after keyword analysis): "
                         + "; ".join(notes))
@@ -98,4 +111,6 @@ def cap_idea_seo_realism(idea, settings) -> tuple[float | None, str | None]:
         thin_pages_ceiling=settings.seo_cap_thin_pages_ceiling,
         high_score_min_pages=settings.seo_cap_high_score_min_pages,
         moderate_pages_ceiling=settings.seo_cap_moderate_pages_ceiling,
+        serp_owned=bool(getattr(idea, "_serp_owned", False)),
+        serp_owned_ceiling=settings.serp_owned_seo_ceiling,
     )

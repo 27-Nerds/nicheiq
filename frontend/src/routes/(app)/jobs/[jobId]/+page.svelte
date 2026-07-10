@@ -174,8 +174,11 @@
         if (sseData && sseData.id) {
           clientJob = sseData as Job;
           if (sseData.solutionIdeas) {
-            if (!localSolutions || sseData.solutionIdeas.length !== localSolutions.length) {
-              clientSolutions = sseData.solutionIdeas as SolutionPreview[];
+            const incoming = sseData.solutionIdeas as SolutionPreview[];
+            const incomingNames = incoming.map((s) => s.solution_name).sort().join('|');
+            const currentNames = (localSolutions ?? []).map((s) => s.solution_name).sort().join('|');
+            if (incomingNames !== currentNames) {
+              clientSolutions = incoming;
             }
           }
         }
@@ -460,6 +463,12 @@
     previewReport?.audience_mapping?.audience_segments?.length ?? 0
   );
 
+  // Portfolio-funnel: findings examined but not carried forward (demoted winners, rejected
+  // backfill candidates) + groups of surviving ideas that are variants of one product.
+  const examinedRuledOut = $derived(previewReport?.examined_ruled_out ?? []);
+  const overlapGroups = $derived(previewReport?.overlap_groups ?? []);
+  const marketReality = $derived(previewReport?.market_reality ?? null);
+
   // Placeholder data for locked sections - use short niche name, not full description
   const niche = $derived(previewReport?.niche ?? job?.niche ?? '');
   const placeholderNiche = $derived(stripLeadingArticle(nicheName || niche));
@@ -494,6 +503,9 @@
     relevant: discoveryData?.methodology?.urls_relevant ?? discussionCount,
     analyzed: (((previewReport?.research_metadata?.reddit_posts_analyzed ?? 0) + (previewReport?.research_metadata?.twitter_threads_analyzed ?? 0) + (previewReport?.research_metadata?.generic_posts_analyzed ?? 0)) || discussionCount),
     problems: previewPainPointCount,
+    // Portfolio-funnel stages (concepts generated → candidates shown), when the backend
+    // reports them. Optional/backward-compatible: undefined on reports without funnel_counts.
+    funnelCounts: previewReport?.research_metadata?.funnel_counts ?? undefined,
   });
 
   // Sticky bar state removed - SelectionWorkbench owns its own fixed tray.
@@ -799,6 +811,10 @@
             jobId={jobId ?? ''}
             solutions={displaySolutions}
             coverageNotes={previewReport?.data_quality_summary?.quality_caveats ?? []}
+            {examinedRuledOut}
+            {overlapGroups}
+            {marketReality}
+            ideaPortfolioSummary={previewReport?.idea_portfolio_summary ?? null}
             {discussionCount}
             painPointCount={previewPainPointCount}
             {segmentCount}

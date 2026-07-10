@@ -19,7 +19,6 @@ from crewai.flow.flow import Flow  # Flow = state container only; the @start/@li
 
 if TYPE_CHECKING:
     from ..models.research_state import NicheContext
-from crewai_tools import SerperDevTool
 from loguru import logger
 
 from ..config.settings import settings
@@ -28,6 +27,7 @@ from ..crews.solution_refinement_crew import SolutionRefinementCrew
 from ..crews.traffic_monetization_crew import TrafficMonetizationCrew
 from ..models.keyword_data import CrewKeywordValidationResult
 from ..models.research_state import ResearchState
+from ..tools.cached_serper_dev_tool import CachedSerperDevTool
 from ..tools.reddit_tool import RedditCollectorTool
 from ..tools.twitter_tool import TwitterCollectorTool
 from ..utils.helpers import find_solution_by_name
@@ -133,7 +133,7 @@ class ResearchFlow(Flow[ResearchState]):
         self._knowledge_objects: list = []
 
         # Initialize tools
-        self.search_tool = SerperDevTool()
+        self.search_tool = CachedSerperDevTool()  # session-cached: benefits the whole run
         self.reddit_tool = RedditCollectorTool()
         self.twitter_tool = TwitterCollectorTool()
         if settings.enable_hackernews:
@@ -418,6 +418,16 @@ class ResearchFlow(Flow[ResearchState]):
         # inputs= dict, so the directive is embedded as text in the task description.
         audience_directive = self._deep_research_audience_directive()
 
+        # Market-data handoff (mirrors angle_directive): the Phase-1 incumbent/wallet probes
+        # already web-verified this idea's parity + the niche's real incumbents — hand them to
+        # Stage-2 competitor research once instead of letting it re-discover them from scratch.
+        market_directive = ""
+        from ..utils.market_brief import build_market_brief
+        _mb = build_market_brief(self.state, solution)
+        _mb_parts = [p for p in (_mb.get("market_brief", ""), _mb.get("market_incumbent_table", "")) if p]
+        if _mb_parts:
+            market_directive = "\n**MARKET REALITY (already web-verified — deepen, don't re-discover):**\n" + "\n\n".join(_mb_parts) + "\n"
+
         task_description = f"""Analyze the competitive landscape for a specific solution.
 
 **Solution:** {solution.solution_name}
@@ -427,7 +437,7 @@ class ResearchFlow(Flow[ResearchState]):
 **Core Features:** {features_str}
 **Target Personas:** {personas_str}
 **Niche:** {niche_desc}
-{angle_directive}{audience_directive}
+{angle_directive}{audience_directive}{market_directive}
 
 WORKFLOW:
 1. Generate search queries for this solution's competitive space
@@ -1798,10 +1808,11 @@ RULES:
                     # Honest brief: pain-title → community quotes (same helper as Phase 2)
                     from ..utils.calibration_notes import extract_criterion_reason
                     from ..utils.honest_brief import build_quotes_by_pain, demand_quotes_for
+                    from ..models.solution_idea import visible_ideas
                     quotes_by_pain = build_quotes_by_pain(
                         getattr(getattr(state, "pain_point_analysis", None), "pain_points", None))
 
-                    for solution in idea_gen.solution_ideas:
+                    for solution in visible_ideas(idea_gen.solution_ideas):
                         description = getattr(solution, "description", "") or ""
                         tech_approach = getattr(solution, "technical_approach", "") or ""
                         diff_factors = getattr(solution, "differentiation_factors", []) or []
@@ -1903,11 +1914,15 @@ RULES:
                             "adjacent_market_parity": getattr(solution, "adjacent_market_parity", None),
                             "source_segment_payability": getattr(solution, "source_segment_payability", None),
                             "source_segment_payability_class": getattr(solution, "source_segment_payability_class", None),
+                            # Multi-Frame Idea Generation Portfolio: which frame minted this idea's cell
+                            "source_frame": getattr(solution, "source_frame", None),
                             # Closed-vocabulary filter facets (chips + future filtering).
                             "tags": (
                                 solution.tags.model_dump()
                                 if getattr(solution, "tags", None) else None
                             ),
+                            "candidate_status": getattr(solution, "candidate_status", None),
+                            "merged_from": getattr(solution, "merged_from", None),
                         }
                         alternative_solutions.append(alt)
 
@@ -1977,6 +1992,7 @@ RULES:
                     "filtering_stats": fs,
                     "started_at": state.started_at.isoformat() if getattr(state, "started_at", None) else None,
                     "completed_stages": getattr(state, "completed_stages", []),
+                    "funnel_counts": dict(getattr(state, "idea_funnel_counts", None) or {}),
                 }
 
                 # Phase 5.5 — full quality-signal panel. pain_point_quality_tier
@@ -1995,6 +2011,15 @@ RULES:
                     # them next to the ideas the user is choosing among.
                     "quality_caveats": list(getattr(state, "idea_coverage_caveats", None) or []),
                 }
+                report["examined_ruled_out"] = list(getattr(state, "idea_ruled_out", None) or [])
+                report["overlap_groups"] = list(getattr(state, "idea_overlap_groups", None) or [])
+                # Market-data handoff: same web-verified facts the final report's market_reality
+                # carries — shown once here so Phase-2 deep research (utils/market_brief.py)
+                # never re-discovers them.
+                report["market_reality"] = {
+                    "incumbents": list(getattr(state, "niche_incumbent_map", None) or []),
+                    "wallet": dict(getattr(state, "niche_wallet_brief", None) or {}),
+                }
             except Exception as e:
                 logger.debug(f"[Preview Report] Metadata section failed: {e}")
                 report["generated_at"] = datetime.utcnow().isoformat()
@@ -2004,6 +2029,9 @@ RULES:
             # Research Reality Check (computed end of Phase 1; visible on the discovery screen).
             _verdict = getattr(state, "niche_difficulty_verdict", None)
             report["niche_difficulty_verdict"] = _verdict.model_dump() if _verdict else None
+
+            # Idea portfolio summary (computed end of Phase 1 alongside the verdict above).
+            report["idea_portfolio_summary"] = getattr(state, "idea_portfolio_summary", None)
 
             # ── Write to file ──
             job_id = getattr(self, "job_id", None) or getattr(state, "job_id", None)
@@ -2683,11 +2711,11 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             reddit_queries = [q for q in search_queries if q.platform in ("reddit", "both")]
             logger.info(f"[Reddit] Searching for relevant discussions ({len(reddit_queries)}/{len(search_queries)} queries)...")
             reddit_results = []
-            for search_query in reddit_queries:
+            reddit_query_strs = [f"site:reddit.com {sq.query}" for sq in reddit_queries]
+            batch_results = self.search_tool.batch_run_raw(reddit_query_strs) if reddit_query_strs else {}
+            for search_query, q_str in zip(reddit_queries, reddit_query_strs):
                 try:
-                    results = self.search_tool.run(
-                        search_query=f"site:reddit.com {search_query.query}"
-                    )
+                    results = batch_results.get(q_str, {})
                     search_items = SearchHelper.extract_results_from_serper(results, "reddit.com")
                     reddit_results.extend(search_items)
                 except Exception as e:
@@ -2700,22 +2728,18 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             freshness_serper_count = 0
             if settings.reddit_freshness_search_enabled:
                 freshness_queries = reddit_queries[:max(1, math.ceil(len(reddit_queries) * settings.reddit_freshness_query_fraction))]
-                freshness_errors = 0
-                for search_query in freshness_queries:
-                    if freshness_errors >= 2:
-                        logger.warning("[Reddit] Freshness search circuit breaker: 2 consecutive errors")
-                        break
+                freshness_query_strs = [f"site:reddit.com {sq.query}" for sq in freshness_queries]
+                freshness_batch = (
+                    self.search_tool.batch_run_raw(freshness_query_strs, tbs=settings.reddit_freshness_tbs)
+                    if freshness_query_strs else {}
+                )
+                for search_query, q_str in zip(freshness_queries, freshness_query_strs):
                     try:
-                        results = SearchHelper.serper_search_with_date_filter(
-                            f"site:reddit.com {search_query.query}",
-                            tbs=settings.reddit_freshness_tbs,
-                        )
+                        results = freshness_batch.get(q_str, {})
                         search_items = SearchHelper.extract_results_from_serper(results, "reddit.com")
                         reddit_results.extend(search_items)
                         freshness_serper_count += len(search_items)
-                        freshness_errors = 0
                     except Exception as e:
-                        freshness_errors += 1
                         logger.error(f"[Reddit] Freshness search failed for '{search_query.query}': {e}")
 
                 logger.info(f"[Reddit] Found {freshness_serper_count} results from freshness search (tbs={settings.reddit_freshness_tbs})")
@@ -2837,11 +2861,11 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             twitter_queries = [q for q in search_queries if q.platform in ("twitter", "both")]
             logger.info(f"[Twitter] Searching for relevant discussions ({len(twitter_queries)}/{len(search_queries)} queries)...")
             twitter_results = []
-            for search_query in twitter_queries:
+            twitter_query_strs = [f"(site:twitter.com OR site:x.com) {sq.query}" for sq in twitter_queries]
+            twitter_batch = self.search_tool.batch_run_raw(twitter_query_strs) if twitter_query_strs else {}
+            for search_query, q_str in zip(twitter_queries, twitter_query_strs):
                 try:
-                    results = self.search_tool.run(
-                        search_query=f"(site:twitter.com OR site:x.com) {search_query.query}"
-                    )
+                    results = twitter_batch.get(q_str, {})
                     twitter_results_1 = SearchHelper.extract_results_from_serper(results, "twitter.com")
                     twitter_results_2 = SearchHelper.extract_results_from_serper(results, "x.com")
                     twitter_results.extend(twitter_results_1 + twitter_results_2)
@@ -2914,10 +2938,11 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             logger.info(f"[YouTube] Searching for videos ({len(yt_queries)} queries)...")
             yt_serper_results = []
             seen_yt_urls: set[str] = set()
-            for query in yt_queries[:10]:
+            yt_search_queries = [SearchHelper.build_youtube_query(q) for q in yt_queries[:10]]
+            yt_batch = self.search_tool.batch_run_raw(yt_search_queries) if yt_search_queries else {}
+            for query, yt_search_query in zip(yt_queries[:10], yt_search_queries):
                 try:
-                    yt_search_query = SearchHelper.build_youtube_query(query)
-                    results = self.search_tool.run(search_query=yt_search_query)
+                    results = yt_batch.get(yt_search_query, {})
                     extracted = SearchHelper.extract_results_from_serper(results, "youtube.com")
                     for r in extracted:
                         if r.url not in seen_yt_urls:
@@ -3787,7 +3812,8 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
         """
         from nicheiq.utils.score_helpers import compute_solution_scores
         from nicheiq.models.solution_selection import SolutionSelection
-        ideas = refined_solutions.solution_ideas
+        from nicheiq.models.solution_idea import visible_ideas
+        ideas = visible_ideas(refined_solutions.solution_ideas) or refined_solutions.solution_ideas
         scores = compute_solution_scores(ideas)
         winner_name = scores[0].solution_name
         winner_idea = next((i for i in ideas if i.solution_name == winner_name), ideas[0])
@@ -3944,9 +3970,19 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                 _niche = getattr(_nctx, "niche_description", None) or self.niche_description
                 _dup_rate = getattr(unified_crew, "_concept_already_exists_share", None)
                 _segments = getattr(self.state.audience_mapping, "audience_segments", None)
+                _wallet_brief = getattr(unified_crew, "_niche_wallet_brief", None) or None
+                # Market-awareness inputs (2026-07-10): web-verified incumbent map (tooling
+                # density) + SERP-owned share among distribution-angle ideas. None when the
+                # probes didn't run — assess_niche_difficulty is byte-identical-legacy then.
+                _inc_map = list(getattr(unified_crew, "_incumbent_rows", None) or []) or None
+                _dist = [i for i in (_ideas or [])
+                         if getattr(i, "winning_angle", None) == "distribution_seo"]
+                _serp_share = (sum(1 for i in _dist if getattr(i, "_serp_owned", False))
+                               / len(_dist) if _dist else None)
                 _fact_pack = assess_niche_difficulty(
                     _pains, _ideas, _nctx, concept_duplication_rate=_dup_rate,
-                    segments=_segments)
+                    segments=_segments, niche_wallet_brief=_wallet_brief,
+                    incumbent_map=_inc_map, serp_owned_share=_serp_share)
                 if _fact_pack is not None:
                     _verdict, _usage = generate_niche_difficulty_verdict(
                         _fact_pack, _niche, _nctx
@@ -3989,6 +4025,64 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             self.state.idea_coverage_caveats = _existing_caveats + [
                 c for c in _crew_caveats if c not in _existing_caveats
             ]
+            self.state.idea_ruled_out = (
+                list(getattr(self.state, "idea_ruled_out", None) or [])
+                + list(getattr(unified_crew, "ruled_out_pains", None) or [])
+            )
+            if getattr(unified_crew, "funnel_counts", None):
+                self.state.idea_funnel_counts = dict(unified_crew.funnel_counts)
+            if getattr(unified_crew, "overlap_groups", None):
+                self.state.idea_overlap_groups = list(unified_crew.overlap_groups)
+            # Market-data handoff: the Phase-1 incumbent/wallet probes are web-verified facts —
+            # shown to the user once (preview/report market_reality) and handed to Phase-2 once
+            # (utils/market_brief.py), never re-discovered independently per crew.
+            self.state.niche_incumbent_map = (
+                list(getattr(self.state, "niche_incumbent_map", None) or [])
+                + list(getattr(unified_crew, "_incumbent_rows", None) or [])
+            )
+            if getattr(unified_crew, "_niche_wallet_brief", None):
+                self.state.niche_wallet_brief = dict(unified_crew._niche_wallet_brief)
+
+            # Idea portfolio summary: one honest-reviewer LLM narrative over the whole visible
+            # idea pool, computed HERE (not in the crew) because this is the site where state,
+            # the niche-difficulty verdict, the wallet brief, the funnel counts, and the
+            # ruled-out ledger are ALL in scope together. Best-effort — never blocks the pipeline.
+            try:
+                from ..utils.idea_portfolio_summary import generate_idea_portfolio_summary
+
+                _verdict = getattr(self.state, "niche_difficulty_verdict", None)
+                _ps_niche = (
+                    getattr(self.state.niche_context, "niche_description", None)
+                    or self.niche_description
+                )
+                _summary, _ps_usage = generate_idea_portfolio_summary(
+                    refined_solutions.solution_ideas if refined_solutions else [],
+                    ruled_out=self.state.idea_ruled_out,
+                    funnel_counts=self.state.idea_funnel_counts,
+                    niche_wallet_brief=self.state.niche_wallet_brief,
+                    niche_difficulty_headline=getattr(_verdict, "headline", None),
+                    niche_difficulty_narrative=getattr(_verdict, "narrative_summary", None),
+                    niche=_ps_niche,
+                )
+                self.state.idea_portfolio_summary = _summary
+                if _ps_usage is not None:
+                    self.cost_tracker.record_llm_usage(
+                        "Stage 5 - Idea Portfolio Summary", _ps_usage.to_dict()
+                    )
+                if _summary:
+                    logger.info(f"[Portfolio Summary] generated ({len(_summary)} chars)")
+            except Exception as e:  # noqa: BLE001 — non-critical enrichment
+                logger.warning(f"[Portfolio Summary] step failed: {e}")
+
+            # Flush now: the crew's own stage_5_3 re-save ran BEFORE this merge, and a Phase-1
+            # stop has no later save_stage — without this the ruled-out ledger / funnel counts /
+            # overlap groups never reach metadata.json and are lost on Phase-2 resume
+            # (live-caught on the 2026-07-09 cottage-food smoke run).
+            if self.checkpoint_mgr:
+                try:
+                    self.checkpoint_mgr.flush_metadata()
+                except Exception as _e:  # noqa: BLE001 — checkpointing must never break the pipeline
+                    logger.debug(f"[Stage 5] metadata flush skipped: {_e}")
 
             if solution_selection is not None:
                 # DEFENSIVE: Validate solution selection - detect error strings
@@ -4907,6 +5001,12 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
         # Create new PricingStrategyCrew instance for thread safety
         pricing_crew = PricingStrategyCrew()
 
+        # Market-data handoff (utils/market_brief.py): same Phase-1 web-verified facts the
+        # competitor/SEO/market-sizing crews receive, so pricing doesn't miss an incumbent's
+        # known price point or re-derive the niche wallet class from scratch.
+        from ..utils.market_brief import build_market_brief
+        _market_vars = build_market_brief(self.state, solution)
+
         # Run pricing analysis
         pricing_result = pricing_crew.analyze(
             selected_solution=solution,
@@ -4920,6 +5020,7 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                 self.state.solution_selection.all_solution_scores
                 if self.state.solution_selection else None
             ),
+            **_market_vars,
         )
 
         if pricing_result:
@@ -5105,6 +5206,7 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
 
         else:
             # ── LLM fallback: Initialize SEOStrategyCrew + run 6a/b/c ──
+            from ..utils.market_brief import build_market_brief
             seo_crew = SEOStrategyCrew(
                 niche=self.niche_description,
                 selected_solution=selected_solution,
@@ -5116,6 +5218,7 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                 audience_mapping=self.state.audience_mapping,
                 covered_keywords=anchor_keyword_strings or None,
                 job_id=self.state.job_id,
+                market_brief_vars=build_market_brief(self.state, selected_solution),
             )
 
             # Check for existing sub-phase checkpoints (enables partial resume)
@@ -5311,6 +5414,7 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
         # ── Strategy creation (shared by both paths) ──
         # When anchor_sufficient=True, seo_crew wasn't initialized above - initialize now for strategy creation
         if anchor_sufficient:
+            from ..utils.market_brief import build_market_brief
             seo_crew = SEOStrategyCrew(
                 niche=self.niche_description,
                 selected_solution=selected_solution,
@@ -5321,6 +5425,7 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                 allowed_project_types=self.state.allowed_project_types,
                 audience_mapping=self.state.audience_mapping,
                 job_id=self.state.job_id,
+                market_brief_vars=build_market_brief(self.state, selected_solution),
             )
 
         try:
@@ -6823,6 +6928,11 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             f"pricing anchor: {'present' if selected_pricing else 'none (derive value from WTP)'}"
         )
 
+        # Market-data handoff (utils/market_brief.py): same Phase-1 web-verified facts the
+        # competitor/pricing/SEO crews receive.
+        from ..utils.market_brief import build_market_brief
+        _market_vars = build_market_brief(self.state, selected_solution)
+
         market_sizing_result = market_sizing_crew.analyze(
             selected_solution=selected_solution,
             keyword_validation=selected_kv,
@@ -6831,6 +6941,7 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             niche_description=self.niche_description,
             seo_strategy_report=self.state.seo_strategy_report,
             pricing_strategy=selected_pricing,
+            **_market_vars,
         )
 
         # Record crew cost

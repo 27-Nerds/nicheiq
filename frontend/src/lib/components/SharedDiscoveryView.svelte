@@ -161,6 +161,24 @@
     problems: painPointCount,
   });
 
+  // Portfolio-funnel findings examined but not carried forward (demoted winners, rejected
+  // backfill candidates) — read-only mirror of the owner's SelectionWorkbench disclosure.
+  const examinedRuledOut = $derived(previewReport?.examined_ruled_out ?? []);
+
+  // Web-verified incumbent landscape + niche wallet read — read-only mirror of the owner's
+  // "Market reality" disclosure.
+  const marketReality = $derived(previewReport?.market_reality ?? null);
+
+  // Analyst summary — LLM-narrated honest assessment of the visible idea pool, read-only
+  // mirror of the owner's SelectionWorkbench "Analyst summary" card. Split into paragraphs
+  // on blank lines (the LLM writes plain text, no markdown).
+  const summaryParagraphs = $derived(
+    (previewReport?.idea_portfolio_summary ?? "")
+      .split(/\n\s*\n/)
+      .map((p) => p.trim())
+      .filter(Boolean),
+  );
+
   // Phase-2 previews removed from shared view — replaced by locked
   // Influencers + Source Posts sections rendered below.
 </script>
@@ -200,6 +218,15 @@
         solutionCount={data.solutions.length}
         {segmentCount}
       />
+    </ExpandableSection>
+  {/if}
+
+  <!-- Analyst summary — read-only mirror of the owner's SelectionWorkbench card. -->
+  {#if summaryParagraphs.length}
+    <ExpandableSection title="Analyst summary" variant="default" defaultOpen={true} id="analyst-summary">
+      {#each summaryParagraphs as para}
+        <p class="analyst-summary-para">{para}</p>
+      {/each}
     </ExpandableSection>
   {/if}
 
@@ -275,6 +302,77 @@
       {#each topPainPoints as pp, i (pp.title ?? i)}
         <PainPointSummaryCard painPoint={pp} rank={i + 1} isTop={i === 0} />
       {/each}
+    </ExpandableSection>
+  {/if}
+
+  <!-- Examined & ruled out — read-only mirror of the owner's disclosure. -->
+  {#if examinedRuledOut.length > 0}
+    <ExpandableSection
+      title="Examined & ruled out"
+      count={examinedRuledOut.length}
+      countSuffix="findings"
+      variant="default"
+      defaultOpen={false}
+      id="ruled-out"
+    >
+      <ul class="ruled-out-list">
+        {#each examinedRuledOut as finding}
+          <li class="ruled-out-row">
+            <div class="ruled-out-main">
+              <span class="ruled-out-pain">{finding.pain_title}</span>
+              <span class="ruled-out-band">{finding.market_fit_band === "very-low" ? "Very thin market" : "Thin market"}</span>
+            </div>
+            <p class="ruled-out-reason">{finding.reason}</p>
+            {#if finding.evidence?.trim()}
+              <p class="ruled-out-evidence">&ldquo;{finding.evidence}&rdquo;</p>
+            {/if}
+          </li>
+        {/each}
+      </ul>
+    </ExpandableSection>
+  {/if}
+
+  <!-- Market reality — read-only mirror of the owner's disclosure. -->
+  {#if marketReality?.incumbents?.length}
+    <ExpandableSection
+      title="Market reality"
+      count={marketReality.incumbents.length}
+      countSuffix="tools"
+      variant="default"
+      defaultOpen={false}
+      id="market-reality"
+    >
+      <div class="market-reality-body">
+        <table class="market-reality-table">
+          <thead>
+            <tr>
+              <th>Tool</th>
+              <th>Pricing</th>
+              <th>Focus</th>
+              <th>Weak at</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each marketReality.incumbents as inc}
+              <tr>
+                <td>{inc.name}</td>
+                <td>{inc.pricing ?? "--"}</td>
+                <td>{inc.focus ?? "--"}</td>
+                <td>{inc.gap ?? "--"}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+        {#if marketReality.wallet?.wallet_class || marketReality.wallet?.evidence}
+          <p class="market-reality-wallet">
+            <span class="market-reality-wallet-label">Niche spend</span>
+            {#if marketReality.wallet.wallet_class}<strong>{marketReality.wallet.wallet_class}</strong>{/if}
+            {#if marketReality.wallet.evidence}
+              {marketReality.wallet.wallet_class ? " — " : ""}{marketReality.wallet.evidence}
+            {/if}
+          </p>
+        {/if}
+      </div>
     </ExpandableSection>
   {/if}
 
@@ -491,12 +589,141 @@
     margin: 0 0 1rem;
   }
 
+  .analyst-summary-para {
+    max-width: 76ch;
+    font-size: 0.8125rem;
+    line-height: 1.55;
+    color: var(--color-text-secondary);
+    margin: 0 0 0.75rem;
+    text-wrap: pretty;
+  }
+  .analyst-summary-para:last-child {
+    margin-bottom: 0;
+  }
+
   .methodology-note {
     font-family: var(--font-mono);
     font-size: 0.6875rem;
     color: var(--color-text-muted);
     margin: 0.75rem 0 0;
     letter-spacing: 0.02em;
+  }
+
+  /* ── Examined & ruled out (read-only mirror of the owner's disclosure) ── */
+  .ruled-out-list {
+    display: grid;
+    gap: 0.62rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .ruled-out-row {
+    display: grid;
+    gap: 0.2rem;
+    padding: 0.62rem 0.7rem;
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+  }
+  .ruled-out-main {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .ruled-out-pain {
+    font-family: var(--font-body);
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+  }
+  .ruled-out-band {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.06rem 0.36rem;
+    border-radius: 0.375rem;
+    border: 1px solid var(--color-border);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-muted);
+    font-family: var(--font-body);
+    font-size: 0.625rem;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .ruled-out-reason {
+    margin: 0;
+    max-width: 78ch;
+    font-size: 0.75rem;
+    line-height: 1.42;
+    color: var(--color-text-secondary);
+    text-wrap: pretty;
+  }
+  .ruled-out-evidence {
+    margin: 0.1rem 0 0;
+    max-width: 74ch;
+    padding-left: 0.6rem;
+    border-left: 1px solid var(--color-border-emphasis);
+    color: var(--color-text-muted);
+    font-size: 0.75rem;
+    font-style: italic;
+    line-height: 1.4;
+  }
+
+  /* ── Market reality (read-only mirror of the owner's disclosure) ── */
+  .market-reality-body {
+    overflow-x: auto;
+  }
+  .market-reality-table {
+    width: 100%;
+    min-width: 28rem;
+    border-collapse: collapse;
+  }
+  .market-reality-table th {
+    padding: 0.28rem 0.5rem;
+    border-bottom: 1px solid var(--color-border-emphasis);
+    font-family: var(--font-mono);
+    font-size: 0.5625rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-text-muted);
+    text-align: left;
+  }
+  .market-reality-table td {
+    padding: 0.4rem 0.5rem;
+    border-bottom: 1px solid var(--color-border);
+    font-size: 0.75rem;
+    line-height: 1.4;
+    color: var(--color-text-secondary);
+    vertical-align: top;
+  }
+  .market-reality-table tr:last-child td {
+    border-bottom: 0;
+  }
+  .market-reality-table td:first-child {
+    font-weight: 700;
+    color: var(--color-text-primary);
+    white-space: nowrap;
+  }
+  .market-reality-wallet {
+    margin: 0.6rem 0 0;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--color-border);
+    font-size: 0.75rem;
+    line-height: 1.42;
+    color: var(--color-text-muted);
+  }
+  .market-reality-wallet-label {
+    margin-right: 0.35rem;
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-text-muted);
+  }
+  .market-reality-wallet strong {
+    color: var(--color-text-secondary);
   }
 
   /* ── Source Posts locked teaser (nested inside Community & Sources) ──

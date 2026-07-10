@@ -34,6 +34,13 @@ def test_phase1_fields_survive_checkpoint_round_trip(tmp_path, monkeypatch):
     save_state.niche_drift_telemetry = {"anchored_pct": 12, "dropped": 0}
     save_state.skipped_stages = [10.0, 11.0]
     save_state.sources_searched = {"reddit": 26, "hackernews": 14}
+    save_state.niche_incumbent_map = [
+        {"name": "Aftershoot", "pricing": "$29/mo", "focus": "AI culling", "gap": "no galleries",
+         "source": "web"}
+    ]
+    save_state.niche_wallet_brief = {"wallet_class": "mixed", "evidence": "most tools $10-30/mo",
+                                      "free_density": "few free routes"}
+    save_state.idea_portfolio_summary = "AlphaTool and BetaTracker both show moderate market fit."
     verdict = NicheDifficultyVerdict(
         difficulty_level="low",
         software_addressability=0.74,
@@ -62,6 +69,16 @@ def test_phase1_fields_survive_checkpoint_round_trip(tmp_path, monkeypatch):
     assert load_state.niche_drift_telemetry == {"anchored_pct": 12, "dropped": 0}
     assert load_state.skipped_stages == [10.0, 11.0]
     assert load_state.sources_searched == {"reddit": 26, "hackernews": 14}
+    assert load_state.niche_incumbent_map == [
+        {"name": "Aftershoot", "pricing": "$29/mo", "focus": "AI culling", "gap": "no galleries",
+         "source": "web"}
+    ]
+    assert load_state.niche_wallet_brief == {
+        "wallet_class": "mixed", "evidence": "most tools $10-30/mo", "free_density": "few free routes"
+    }
+    assert load_state.idea_portfolio_summary == (
+        "AlphaTool and BetaTracker both show moderate market fit."
+    )
     assert load_state.niche_difficulty_verdict is not None
     assert load_state.niche_difficulty_verdict.difficulty_level == "low"
     assert load_state.niche_difficulty_verdict.headline == "Software Fit: Strong"
@@ -100,7 +117,8 @@ _PERSISTED_VIA_METADATA = {
     "filtering_stats", "completed_stages", "fallback_stages", "social_content_metrics",
     "seeded_from_catalog", "stage_completion_timestamps", "idea_focus",
     "idea_coverage_caveats", "pipeline_degradations", "niche_drift_telemetry", "skipped_stages",
-    "sources_searched",
+    "sources_searched", "idea_ruled_out", "idea_funnel_counts", "idea_overlap_groups",
+    "niche_incumbent_map", "niche_wallet_brief", "idea_portfolio_summary",
 }
 # intentionally NOT persisted (re-derived, terminal, unused, or re-set on construction)
 _TRANSIENT = {

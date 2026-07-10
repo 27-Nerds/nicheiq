@@ -20,6 +20,22 @@ class TestPositives:
         assert match_known_public_source("Companies House filing history") == "UK Companies House"
         assert match_known_public_source("cross-reference the NIST NVD feed") == "NIST NVD"
 
+    def test_epa_rsl_and_hud_crosswalk(self):
+        # 2026-07-09 combined-query recall miss (live EPA RSL case) — these datasets are
+        # reachable by web search but were missing their own allowlist entry entirely.
+        assert match_known_public_source("EPA Soil Screening Levels for residential exposure") == \
+            "EPA Regional Screening Levels (RSL)"
+        assert match_known_public_source("USDA Plant Hardiness Zone Map GIS layer") == \
+            "USDA Plant Hardiness Zone Map"
+        assert match_known_public_source("ASPCA Toxic and Non-Toxic Plants list") == \
+            "ASPCA Toxic and Non-Toxic Plants List"
+        assert match_known_public_source("HUD-USPS ZIP Code Crosswalk files") == \
+            "HUD-USPS ZIP Code Crosswalk"
+        assert match_known_public_source("ZIP Code to County Crosswalk public dataset") == \
+            "HUD-USPS ZIP Code Crosswalk"
+        assert match_known_public_source("Census ZIP Code Tabulation Areas relationship file") == \
+            "Census ZIP Code Tabulation Areas (ZCTA)"
+
     def test_github_api_aliases(self):
         for text in ("GitHub API", "the GitHub REST API", "api.github.com endpoints"):
             assert match_known_public_source(text) == "GitHub REST API", text
@@ -80,6 +96,16 @@ class TestRetrieval:
         for expected in ("npm Registry", "PyPI", "RubyGems", "crates.io"):
             assert expected in names
 
+    def test_epa_rsl_and_hud_crosswalk_retrieval_hits(self):
+        pairs = retrieve_known_sources([
+            "EPA Soil Screening Levels for residential exposure",
+            "HUD-USPS ZIP Code Crosswalk files",
+        ])
+        assert pairs == [
+            ("EPA Soil Screening Levels for residential exposure", "EPA Regional Screening Levels (RSL)"),
+            ("HUD-USPS ZIP Code Crosswalk files", "HUD-USPS ZIP Code Crosswalk"),
+        ]
+
 
 class TestLlmConfirm:
     """The retrieval hit is not a verdict — one cheap LLM call validates that the claim
@@ -113,6 +139,22 @@ class TestLlmConfirm:
     def test_empty_matches_none_without_llm(self, monkeypatch):
         self._patch(monkeypatch, RuntimeError("must not be called"))
         assert llm_confirm_known_route([]) is None
+
+    def test_prompt_carries_cadence_clause(self, monkeypatch):
+        """An allowlist hit skips verify_data_routes' cadence check entirely, so the
+        confirm prompt must carry its own (NYC-marriage-index case, 2026-07-10:
+        historical 1908-2017 dump matched via a public portal, claimed as a live feed)."""
+        import nicheiq.utils.llm_service as ls
+        seen = {}
+
+        def _f(**kw):
+            seen.update(kw)
+            return SimpleNamespace(confirmed=True, note="n"), None
+
+        monkeypatch.setattr(ls.LLMService, "invoke_structured", staticmethod(_f))
+        llm_confirm_known_route([("a", "SAM.gov")])
+        assert "cadence" in seen["prompt"]
+        assert "historical-only" in seen["prompt"]
 
 
 class TestListHygiene:

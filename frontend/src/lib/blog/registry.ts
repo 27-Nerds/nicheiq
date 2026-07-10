@@ -38,7 +38,7 @@ export const BLOG_POSTS: BlogPost[] = [
     date: "2026-07-03",
     dateLabel: "July 2026",
     author: "NicheIQ Research Team",
-    readingMins: 11,
+    readingMins: 17,
     coverImage: "/blog/cover.svg",
     ogImage: "/blog/cover-og.svg",
     tags: ["idea generation", "evaluation", "benchmarks", "engineering"],

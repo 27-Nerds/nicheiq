@@ -205,6 +205,44 @@ describe('POST /api/jobs/:jobId/select-solution', () => {
     expect(response.body.error).toContain('not found in available ideas');
   });
 
+  // Demotion/backfill worker-boundary contract: solutionIdeas as stored is
+  // already visible-only (the worker filtered out demoted/absorbed ideas before
+  // POSTing). Selection validation only needs to check membership in the stored
+  // list — it never needs its own demoted/absorbed filter.
+  it('accepts selecting a name present in the stored (visible-only) solutionIdeas', async () => {
+    mockJobFindFirst.mockResolvedValue(makeJob({
+      solutionIdeas: [
+        { name: 'Sol1', candidate_status: 'active' },
+        { name: 'Sol2', candidate_status: 'active' },
+      ],
+    }));
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/select-solution`)
+      .set(authHeaders)
+      .send({ solutionNames: ['Sol1'] });
+
+    expect(response.status).toBe(200);
+    expect(response.body.status).toBe('phase2_queued');
+  });
+
+  it('rejects a stale demoted idea name that the client held but is absent from stored (visible-only) solutionIdeas', async () => {
+    // Stored solutionIdeas represents post-filter state: 'DemotedIdea' was
+    // filtered out by the worker before this payload ever reached the backend.
+    mockJobFindFirst.mockResolvedValue(makeJob({
+      solutionIdeas: [{ name: 'Sol1', candidate_status: 'active' }],
+    }));
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/select-solution`)
+      .set(authHeaders)
+      .send({ solutionNames: ['DemotedIdea'] });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain('not found in available ideas');
+    expect(response.body.missing).toEqual(['DemotedIdea']);
+  });
+
   it('returns 400 when job in wrong status', async () => {
     mockJobFindFirst.mockResolvedValue(makeJob({ status: 'COMPLETED' }));
 

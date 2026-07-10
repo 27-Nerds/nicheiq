@@ -10,6 +10,7 @@ behind the numbers you see on each idea.
 ## Table of Contents
 
 - [Overview](#overview)
+- [Where an idea starts: the uniformity contract](#where-an-idea-starts-the-uniformity-contract)
 - [The eight scores](#the-eight-scores)
 - [How a score is produced](#how-a-score-is-produced)
 - [The honesty guardrails](#the-honesty-guardrails)
@@ -34,6 +35,29 @@ reviewer sit a set of **downgrade-only guardrails**: rules that can *lower* an
 over-optimistic score but can never *raise* one. The result is a deliberately
 conservative number — closer to "what could actually go wrong" than to "how exciting
 does this sound."
+
+## Where an idea starts: the uniformity contract
+
+Ideas don't all begin the same way. Most start from the **pain-point lens** (primary,
+unchanged): a validated pain paired with the audience that feels it. Since 2026-07-10,
+three more **generation lenses** feed the same idea set, each seeded from evidence the
+pipeline has already verified elsewhere in the run rather than re-deriving it:
+**competitor-gap** (one cell from the incumbent probe's per-tool gap findings),
+**data-asset** (one cell from the verified public-data menu — what dataset could be
+assembled and who pays for what it reveals), and **workflow** (one cell from a
+synthesized job-map of pains, motivation drivers, and tool frustrations). Bundles remain
+the cross-pain synthesis peer. Which lens an idea started from is stamped as
+`source_frame` and shown as a "generation lens" chip on the idea.
+
+The uniformity contract this document describes applies identically regardless of
+origin: every idea — pain-point or lens-born — passes through the same independent
+reviewer, the same downgrade-only guardrails, the same data-route verification, the
+same payability and competition checks, and the same calibration critic described
+below. A lens-born idea must also anchor to a validated pain from the discussion or the
+cell is dropped; a lens supplies the seed evidence for a concept, never a shortcut
+around scoring it. Pain-point cells keep reserve priority in the run's cell budget —
+the highest-severity, best-evidenced pains are always covered first, and the other
+three lenses draw from what's left.
 
 ## The eight scores
 

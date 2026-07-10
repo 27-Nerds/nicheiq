@@ -91,6 +91,29 @@ CURATED_SOURCES: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
     ("GDELT", ("gdelt",), ("gdeltproject.org",)),
     ("Common Crawl", ("common crawl",), ("commoncrawl.org",)),
     ("Internet Archive", ("internet archive", "wayback machine"), ("archive.org",)),
+    # 2026-07-09: combined-query recall miss (live EPA RSL case, see idea_improvement_loop_v4
+    # comment) — these canonical public datasets were reachable by web search but missed by
+    # retrieval because they never got their own allowlist entry.
+    ("EPA Regional Screening Levels (RSL)", ("epa regional screening levels", "epa rsl",
+                                              "epa soil screening levels", "regional screening levels",
+                                              "regional screening level table", "soil screening levels"),
+     ("epa.gov",)),
+    ("USDA Plant Hardiness Zone Map", ("usda plant hardiness zone map", "plant hardiness zone map",
+                                       "plant hardiness zone", "usda plant hardiness"),
+     ("planthardiness.ars.usda.gov",)),
+    ("ASPCA Toxic and Non-Toxic Plants List", ("aspca toxic and non-toxic plants",
+                                                "aspca toxic plant list", "aspca plant list",
+                                                "toxic and non-toxic plants list"),
+     ("aspca.org",)),
+    ("HUD-USPS ZIP Code Crosswalk", ("hud usps zip code crosswalk", "hud zip code crosswalk",
+                                     "usps zip code crosswalk", "zip code to county crosswalk",
+                                     "zip-county crosswalk"),
+     ("huduser.gov",)),
+    ("Census ZIP Code Tabulation Areas (ZCTA)", ("zip code tabulation areas", "census zcta",
+                                                  "census county relationship file",
+                                                  "zcta to county relationship file",
+                                                  "census zip code tabulation areas"),
+     ("census.gov",)),
 )
 
 _TOKEN_CUES = r"(?:rest\s+|graphql\s+|public\s+|open\s+|v\d+\s+)?(?:api|apis|dataset|datasets|database|registry|data)"
@@ -229,11 +252,14 @@ def llm_confirm_known_route(matches: list[tuple[str, str]], *, context: str = ""
         f"CLAIM -> MATCHED SOURCE PAIRS:\n{lines}\n\n"
         + (f"IDEA CONTEXT: {context[:400]}\n\n" if context else "")
         + "confirmed=true ONLY if EVERY claimed part (a) actually refers to its matched "
-          "source — not a different product with a similar name — and (b) needs the kind of "
-          "data that source PUBLICLY provides. A public platform whose specific claimed data "
-          "is private, partner-gated, or paid => confirmed=false. When unsure about any "
-          "pair, confirmed=false (a false confirm skips verification; a false reject only "
-          "costs one web search)."
+          "source — not a different product with a similar name — (b) needs the kind of "
+          "data that source PUBLICLY provides, and (c) if the claim or idea context implies "
+          "recurring/fresh data (real-time, weekly, monthly updates), the source is known "
+          "to publish at that cadence — a static, archival, or historical-only dataset "
+          "behind a matched name => confirmed=false. A public platform whose specific "
+          "claimed data is private, partner-gated, or paid => confirmed=false. When unsure "
+          "about any pair, confirmed=false (a false confirm skips verification; a false "
+          "reject only costs one web search)."
     )
     try:
         r, _usage = LLMService.invoke_structured(

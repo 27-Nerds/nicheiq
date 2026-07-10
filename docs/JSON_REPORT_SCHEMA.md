@@ -355,7 +355,8 @@ Actionable GTM strategy for immediate execution.
   "pain_point_quality_tier": "SILVER",
   "pain_point_confidence_score": 0.72,
   "overall_data_quality": "MEDIUM",
-  "quality_caveats": ["string"]
+  "quality_caveats": ["string"],
+  "examined_ruled_out": [RuledOutFinding]
 }
 ```
 
@@ -366,6 +367,7 @@ Actionable GTM strategy for immediate execution.
 | `pain_point_confidence_score` | `number` (0-1) | Weighted confidence score based on evidence metrics (see weights below) |
 | `overall_data_quality` | `"HIGH" \| "MEDIUM" \| "LOW"` | Overall quality |
 | `quality_caveats` | `array[string]` | Warnings about limitations |
+| `examined_ruled_out` | `array[RuledOutFinding]` | Structured "examined & ruled out" findings for weak ideas demoted or rejected during the Stage-5 idea-generation funnel (see `RuledOutFinding` below) |
 
 **Pain Point Quality Tier** measures research evidence breadth and diversity, not niche attractiveness. Tiers are determined by four evidence metrics:
 
@@ -382,6 +384,85 @@ scale (recalibrated from the legacy pad-to-12 scale of 8/5/3).
 | INSUFFICIENT | below BRONZE — pipeline stops | | | |
 
 **Confidence score weights** (single-platform): `unique_source_count` 0.30, `subreddit_diversity` 0.25, `quote_density` 0.25, `pain_point_count` 0.20.
+
+### `RuledOutFinding`
+
+```json
+{
+  "pain_title": "string",
+  "reason": "Buyers in this segment (freelance photographers) rarely pay for tooling — the pain is real but the wallet is thin.",
+  "market_fit": 0.31,
+  "market_fit_band": "low",
+  "prior_tier": "single",
+  "source": "demoted_winner",
+  "evidence": "string"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `pain_title` | `string` | The pain this idea was generated against |
+| `reason` | `string` | Deterministic, user-facing explanation of why the market is thin — composed from the idea's own signals (incumbent parity, buyer payability, buildability), no LLM call |
+| `market_fit` | `number \| null` (0-1) | The idea's `market_fit_score` at time of ruling-out, rounded to 2dp; `null` if unscored |
+| `market_fit_band` | `"very-low" \| "low"` | `very-low` when `market_fit < 0.25`, else `low` |
+| `prior_tier` | `string` | The idea's `idea_tier` (see below) before it was ruled out |
+| `source` | `"demoted_winner" \| "backfill_rejected"` | `demoted_winner` = a cell-tournament winner whose final market_fit fell below the demotion bar; `backfill_rejected` = a Stage-5 backfill candidate that didn't clear the bar |
+| `evidence` | `string` | First representative quote (or description) for `pain_title`, truncated to 220 chars |
+
+Populated by the post-parity demotion/backfill block in `unified_solution_crew.py`. In the
+**final** report it lives at `data_quality_summary.examined_ruled_out`. The **preview** report
+(Phase-1 selection UI) carries the same list at a top-level `examined_ruled_out` field, and also
+exposes top-level `overlap_groups: {idea_names: string[], shared_product: string}[]` — buyer-visible
+variant groups a merge was considered for (see `idea_tier='merged'` below).
+
+### `market_reality: object | null`
+
+```json
+{
+  "incumbents": [
+    {
+      "name": "Aftershoot",
+      "pricing": "$29/mo",
+      "focus": "AI photo culling",
+      "gap": "no client galleries",
+      "source": "web"
+    }
+  ],
+  "wallet": {
+    "wallet_class": "mixed",
+    "evidence": "most tools $10-30/mo, a few free routes",
+    "free_density": "one strong free tier; rest are trials"
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `incumbents` | `array[object]` | Web-verified incumbent products for this niche from the Phase-1 parity probe: `{name, pricing, focus, gap, source}`. `source` is `"corpus-confirmed"` (named by the community, confirmed by search) or `"web"` |
+| `wallet` | `object` | Niche-level tooling-spend signal: `{wallet_class: "paying" \| "mixed" \| "free-culture", evidence, free_density}` |
+
+The market-data handoff (2026-07-10, `src/nicheiq/utils/market_brief.py`): every Phase-1
+web-verified market fact is shown to the user once and handed to Stage-2 deep research
+(competitor / pricing / market-sizing / SEO crews) once, instead of being independently
+re-discovered per crew or dropped silently. `null` when neither the incumbent probe nor the
+wallet probe found data. The **preview** report (Phase-1 selection UI) carries the identical
+shape at a top-level `market_reality` field (always present, `{incumbents: [], wallet: {}}` when
+empty rather than omitted).
+
+### `idea_portfolio_summary: string | null`
+
+One LLM-narrated, honest-reviewer assessment of the whole **visible** idea pool (2-4 plain-text
+paragraphs, no markdown) — a second, orthogonal prose layer alongside `niche_difficulty_verdict`:
+that verdict judges the niche as a whole, this judges the specific ideas the pipeline generated
+for it. Computed once at the end of Stage 5 (`src/nicheiq/utils/idea_portfolio_summary.py`),
+grounded in a deterministic digest of each visible idea's market fit (+ any self-score
+correction), incumbent/adjacent-market parity, risk flags, pricing-shape note, buyer-segment
+payability, dev time, and SEO scalability, plus the `idea_ruled_out` findings, `idea_funnel_counts`,
+`niche_wallet_brief`, and the niche-difficulty verdict's headline/narrative. Every visible idea
+must be named in the output (a deterministic post-call guardrail retries once, then drops the
+summary rather than shipping one that omits an idea). `null` when the pool was empty or the LLM
+pass never produced full name coverage. The **preview** report (Phase-1 selection UI) carries the
+identical field at a top-level `idea_portfolio_summary`.
 
 ---
 
@@ -436,6 +517,8 @@ scale (recalibrated from the legacy pad-to-12 scale of 8/5/3).
   "innovation_angle": "string",
   "why_it_works": "string",
   "solo_dev_feasibility": 0.6,
+  "candidate_status": "active",
+  "merged_from": null,
   "winning_angle": "distribution_seo",
   "angle_rationale": "string",
   "novelty_rationale": "string",
@@ -504,6 +587,8 @@ scale (recalibrated from the legacy pad-to-12 scale of 8/5/3).
 | `programmatic_seo_opportunity_refined` | `string` | Refined SEO assessment |
 | `seo_refinement_metadata` | `object` | SEO calculation details |
 | `tags` | `object\|null` | `IdeaTags` — closed-vocabulary filter facets (chips + future filtering). See **`docs/IDEA_TAGS.md`**. |
+| `candidate_status` | `"active" \| "demoted" \| "restored" \| "absorbed"` | Portfolio-funnel lifecycle status. `demoted`/`absorbed` ideas are filtered out of user-facing lists (`visible_ideas()`) before they can ever be selected, so on `selected_solution_details` this is realistically always `active` or `restored`. Documented for completeness — checkpoints retain the full status. |
+| `merged_from` | `array[string] \| null` | Solution names of the variant ideas this product was synthesized from. Set only when `idea_tier` is `'merged'`; `null` on every other tier. |
 
 ### `site_structure: object` (Stage 10.5 - LLM-generated)
 
@@ -1336,7 +1421,7 @@ Data sourcing strategy for aggregation projects.
 
 ## 13. Research Metadata
 
-### `research_metadata: object` (10 keys)
+### `research_metadata: object` (12 keys)
 
 ```json
 {
@@ -1362,11 +1447,31 @@ Data sourcing strategy for aggregation projects.
     "total_urls_searched": 100,
     "total_urls_relevant": 54,
     "overall_filtering_rate": 0.54
+  },
+  "funnel_counts": {
+    "pains_identified": 10,
+    "cells_run": 24,
+    "concepts_generated": 96,
+    "survived_critics": 40,
+    "winners": 10,
+    "salvaged": 2,
+    "demoted": 3,
+    "merge_groups": 1,
+    "variants_absorbed": 2,
+    "backfill_run": 4,
+    "backfill_accepted": 2,
+    "candidates_shown": 9
   }
 }
 ```
 
 > **Note:** `generic_posts_analyzed` counts posts from non-Reddit/Twitter sources (Hacker News, YouTube, etc.) collected via the `SocialPost` generic model. These posts are stored in `SocialContentCollection.generic_posts` and flow through the same pipeline as Reddit/Twitter content.
+
+> **Note:** `funnel_counts` (`Record<string, number>`) is the Stage-5 idea-generation funnel ledger —
+> how many concepts were generated, survived the critics, won their cell, were salvaged, demoted,
+> merged, or backfilled, down to how many candidates actually shipped. Keys are only present when
+> computed for that run (fail-soft; absent keys should be treated as unknown, not zero). Also
+> surfaced at `research_metadata.funnel_counts` on the preview report.
 ```
 
 ---
@@ -1459,6 +1564,8 @@ Array of 7 recommended next steps.
   "novelty_rationale": "string",
   "differentiation_locus": "string",
   "idea_tier": "single",
+  "candidate_status": "active",
+  "merged_from": null,
   "winning_angle": "distribution_seo",
   "angle_rationale": "string",
   "build_feasibility_score": 0.8,
@@ -1466,6 +1573,10 @@ Array of 7 recommended next steps.
   "demand_quotes": ["verbatim community quote evidencing an addressed pain"],
   "critic_concern": "calibration critic's market_fit reason (the bear case)",
   "incumbent_parity": "partial by MoeGo: schedule management with route optimization",
+  "adjacent_market_parity": "HigherGov (govcon market intelligence): ships procurement award feeds",
+  "source_segment_payability": 0.25,
+  "source_segment_payability_class": "personal-wallet",
+  "source_frame": "gap",
   "top_competitors": ["string"],
   "market_gaps": ["string"],
   "competitive_intensity": "Medium",
@@ -1480,6 +1591,9 @@ Array of 7 recommended next steps.
     "monetization_secondary": null,
     "growth_channels": ["programmatic-seo", "content"],
     "risk_flags": ["grey-market"],
+    "usage_cadence": "episodic",
+    "pricing_shape_mismatch": false,
+    "pricing_shape_note": null,
     "build_complexity": "low",
     "novelty_level": "moderate",
     "strengths": ["seo-power", "solo-friendly"],
@@ -1494,10 +1608,53 @@ pains) and the adversarial half (the independent calibration critic's market_fit
 verbatim). Both are `null` on legacy reports and quote-less pains. Present on Phase-2
 `alternative_solutions` and the Phase-1 preview equivalents.
 
+`incumbent_parity` levels (2026-07-06): `shipped by …` / `partial by …` / `substitute (…)` /
+`"none found"`. `substitute` means no commercial product ships the mechanism but a free/DIY
+route already delivers the outcome (a free official data source, a spreadsheet, a manual
+workflow) — a willingness-to-pay drag, sometimes a distribution wedge. `adjacent_market_parity`
+(2026-07-06) is the **audience-independent** finding: the commercial product that monetizes the
+same mechanism/data in its own market (found by reformulating the mechanism into category
+queries per mechanism family, name-verified against the search snippets); `null` = no finding.
+When ≥80% of ideas come back `"none found"` with no adjacent coverage, a probe-coverage caveat
+is appended to `data_quality_summary.quality_caveats` ("not a green light").
+
+`source_segment_payability` / `source_segment_payability_class` (2026-07-06, permanent):
+the idea's buyer-segment wallet strength (0-1) and
+class (`corporate-budget | smb-budget | prosumer-wallet | personal-wallet | mixed`), inherited
+from the Stage-4 segment via `source_segment` and blended with deterministic class priors.
+`null` when the segment map failed (fail-open). Low payability on a direct-paid idea
+caps market_fit (downgrade-only), can hold a Go verdict to Conditional
+(`go_no_go_verdict.payability_context` explains it), and reclassifies a buildable score-No-Go
+as Conditional/High with the validation condition named. See `docs/SCORING_METHODOLOGY.md`.
+
+`source_frame` (2026-07-10, permanent): which generation FRAME's cell minted this idea —
+`'pain' | 'gap' | 'data_asset' | 'spend_adjacent' | 'workflow'`. **CODE-FILLED**, never an LLM
+self-report — stamped from the (frame × pain × segment) cell that generated the idea and never
+overwritten downstream. `null` on legacy reports predating the Multi-Frame Idea Generation
+Portfolio. Present on `selected_solution_details` (inherited from `BaseSolutionIdea`),
+`alternative_solutions`, and the preview report's raw idea dumps / Stage-5 selection-preview
+payload. The frontend renders it as a neutral "generation lens" chip
+(`pain` → "Pain-point lens", `gap` → "Competitor-gap lens", `data_asset` → "Data-asset lens",
+`workflow` → "Workflow lens"; `spend_adjacent` and `null` render nothing).
+
 `tags` is an `IdeaTags` object of **closed-vocabulary filter facets** (chips now, filtering
 later). It is also present on each `SolutionIdea` and the preview `alternative_solutions`. Every
 value comes from a fixed enum; the card badge reads `tags.primary_strength`. Full vocabulary,
 derivation thresholds, and strength cutoffs: see **`docs/IDEA_TAGS.md`**.
+
+`idea_tier` (2026-07-09): `'single' | 'salvaged' | 'bundle' | 'merged'`. The new `'merged'` value
+marks a synthesis product composing buyer-visible variants a user would see as one product
+(see `overlap_groups` under `RuledOutFinding` above) — its `merged_from` names the absorbed
+variants.
+
+`candidate_status` (`'active' | 'demoted' | 'restored' | 'absorbed'`) and `merged_from`
+(`array[string] | null`, set only when `idea_tier === 'merged'`) are per-solution lifecycle
+fields on `SolutionIdea` (see `selected_solution_details` in Section 5) that also ride the
+**final** report's slimmer `alternative_solutions` model (2026-07-10) as well as the preview
+report's raw idea dumps and the Stage-5 selection-preview payload. Alternatives are drawn from
+`visible_ideas()` (demoted/absorbed already excluded before this array is built), so on
+`alternative_solutions` this is realistically always `active` or `restored` — carried through for
+lineage completeness, not because a demoted/absorbed idea can appear here.
 
 ### `solution_innovation_assessment: object`
 
@@ -1558,7 +1715,7 @@ derivation thresholds, and strength cutoffs: see **`docs/IDEA_TAGS.md`**.
 }
 ```
 
-### `niche_difficulty_verdict: object` (6 keys)
+### `niche_difficulty_verdict: object` (8 keys)
 
 "Research Reality Check" — a candid, bidirectional verdict on how well software can
 actually solve this niche. The `difficulty_level` band and `software_addressability`
@@ -1579,16 +1736,29 @@ report (computed once, read from state). Null when there are no pains and no ide
     "Most pains are only partly software-addressable — build for the decision/advice layer, not the fix.",
     "Most ideas need a data corpus that doesn't exist yet — plan a cold-start play."
   ],
-  "low_confidence": false
+  "low_confidence": false,
+  "buyer_class": "indie-hobbyist",
+  "buyer_class_note": "Buyers here are indie/hobbyist builders spending personal money episodically — ..."
 }
 ```
 
 - `difficulty_level`: `"low" | "medium" | "high" | "very_high"` — surfaced as a "Software
   Fit" badge: low→Strong, medium→Moderate, high→Limited, very_high→Hard.
+- `buyer_class` (2026-07-06): who actually pays in this niche —
+  `budgeted-business | smb-operator | prosumer | indie-hobbyist | consumer | mixed` — classified
+  by the same grounded narrative LLM pass from the Stage-4 segments' budget sensitivity + the
+  pains' buying signals, vocab-validated (off-vocab → `null`, UI hides the row). Low-payability
+  classes (prosumer / indie-hobbyist / consumer) append `buyer_class_note` to `key_challenges`
+  and render with a warning tint in the "Who pays here" row.
 - `software_addressability`: `0–1`, share of the niche's pain a tool can actually fix
   (= `full_share*1.0 + partial_share*0.4 + none_share*0.0`, mirroring the pain-point
   tool-addressability caps).
 - `key_challenges`: bidirectional — frictions for a hard niche, strengths for a strong one.
+  Since 2026-07-06 these also draw on the web-verified competition probes and buyer signals:
+  free/DIY-substitute share ("a paid product must beat the free route"), verified-incumbent
+  density, adjacent-market monetization + weak wallets ("the same product sold to the adjacent
+  buyer may be the better business"), and episodic usage share (pricing-shape warning). All
+  informational — they color the prose and key points, never the difficulty band.
 - `low_confidence`: `true` when the pain/idea sample is too small to be confident.
 
 ---
@@ -1631,7 +1801,9 @@ report (computed once, read from state). Null when there are no pains and no ide
 | `confidence_score` | 0.0 - 1.0 | Higher = more confident |
 | `novelty_score` | 0.0 - 1.0 | Higher = more novel |
 | `novelty_rationale` | string\|null | One line tying the novelty score to the idea's `project_type` (why it's expected/low/high for that type). Shown in the novelty score tooltip |
-| `idea_tier` | string | Portfolio-funnel provenance: `single` (cell-tournament winner), `salvaged` (tournament loser rescued by the calibration critic), `bundle` (synthesis-stage multi-pain product). Drives the alternatives tier badge; absent/`single` on legacy reports |
+| `idea_tier` | string | Portfolio-funnel provenance: `single` (cell-tournament winner), `salvaged` (tournament loser rescued by the calibration critic), `bundle` (synthesis-stage multi-pain product), `merged` (synthesis of buyer-visible variants into one product — see `merged_from`). Drives the alternatives tier badge; absent/`single` on legacy reports |
+| `candidate_status` | string | Portfolio-funnel lifecycle status: `active`, `demoted`, `restored`, `absorbed`. See `selected_solution_details` in Section 5 |
+| `merged_from` | array[string]\|null | Solution names absorbed into a `merged` idea; `null` on every other tier |
 | `winning_angle` | string\|null | `WinningAngle` enum — the angle that gives the idea its best real chance; the idea is judged and ranked on executing *that* angle |
 | `angle_rationale` | string\|null | 1-3 sentences naming the angle, the nearest competitor, and where the idea's differentiation lives |
 | `obviousness_score` | 0.0 - 1.0 | **Lower = more original** (independent novelty critic). Shown as Originality = 1 − this |
@@ -1703,10 +1875,83 @@ report (computed once, read from state). Null when there are no pains and no ide
 | 53 | `seo_calculation_transparency` | `object` |
 | 54 | `niche_difficulty_verdict` | `object` |
 | 55 | `generated_at` | `string` |
+| 56 | `market_reality` | `object \| null` |
+| 57 | `idea_portfolio_summary` | `string \| null` |
 
 ---
 
 ## Version History
+
+- **v2.14** - Generation-lens surfacing (2026-07-10)
+  - New `source_frame: string | null` on `selected_solution_details` (already present via
+    `BaseSolutionIdea`, now documented), `alternative_solutions`, and the preview report's raw
+    idea dumps / Stage-5 selection-preview payload — which Multi-Frame Idea Generation Portfolio
+    frame (`pain | gap | data_asset | spend_adjacent | workflow`) minted the idea's cell.
+    CODE-FILLED, never LLM-set. Rendered as a neutral "generation lens" chip in the idea detail
+    overlay; unknown/missing values render nothing.
+
+- **v2.13** - Idea portfolio summary (2026-07-10)
+  - New top-level `idea_portfolio_summary: string | null` on both the final and preview report —
+    one LLM-narrated honest-reviewer assessment of the whole visible idea pool, computed once at
+    the end of Stage 5 (`src/nicheiq/utils/idea_portfolio_summary.py`), grounded in each visible
+    idea's market fit / parity / risk flags / payability / dev time / SEO scalability plus
+    `idea_ruled_out`, `idea_funnel_counts`, `niche_wallet_brief`, and the niche-difficulty verdict.
+    `null` when the pool was empty or the LLM pass failed its name-coverage guardrail.
+
+- **v2.12** - Market-data handoff (2026-07-10)
+  - New top-level `market_reality: {incumbents: [...], wallet: {...}}` on both the final and
+    preview report — the Phase-1 web-verified incumbent map + niche wallet signal, surfaced once
+    and handed to Stage-2 deep research once via `src/nicheiq/utils/market_brief.py` (mirrors
+    `angle_brief.py`'s design). `null` on the final report when neither probe found data;
+    always-present-but-empty on the preview report.
+  - Closed a residual from v2.11: the final report's `alternative_solutions` model now carries
+    `candidate_status` / `merged_from` (previously dropped — see Section 5.1's note, now updated).
+    `incumbent_parity` / `adjacent_market_parity` were already present.
+
+- **v2.11** - Weak-winner demotion, variant merge, and funnel counts (2026-07-09)
+  - **Demotion**: cell-tournament winners (and backfill candidates) whose final `market_fit_score`
+    falls below the demotion bar are no longer shown as weak ideas — they're demoted
+    (`candidate_status='demoted'`) and surfaced instead as a structured `RuledOutFinding` in
+    `data_quality_summary.examined_ruled_out` (final report) / top-level `examined_ruled_out`
+    (preview report). A floor guard can `restore` a demoted idea if the visible list would
+    otherwise be too short.
+  - **Merge**: buyer-visible variants (ideas a user would see as one product) can be synthesized
+    into a single `idea_tier='merged'` idea with `merged_from` naming the absorbed variants
+    (`candidate_status='absorbed'` on the originals). Rejected merge candidates are grouped for
+    display instead via the preview report's top-level `overlap_groups`.
+  - **Funnel counts**: `research_metadata.funnel_counts` (`Record<string, number>`) surfaces the
+    Stage-5 idea-generation funnel tallies (pains identified, cells run, concepts generated,
+    survived critics, winners, salvaged, demoted, merge groups, variants absorbed, backfill
+    run/accepted, candidates shown) for both the final and preview report.
+  - `candidate_status` / `merged_from` are declared on `SolutionIdea` and ride
+    `selected_solution_details` plus the preview report's `alternative_solutions` and the
+    selection-preview payload; the final report's slimmer `alternative_solutions` model does not
+    carry them (demoted/absorbed ideas are filtered out before that array is built regardless).
+    See `RuledOutFinding` (Section 4) and Section 5.
+
+- **v2.10** - Payability, usage cadence, and audience-independent competition (2026-07-06)
+  - **Ideas** (selected + `alternative_solutions` + preview): new `adjacent_market_parity`
+    (audience-independent incumbent where the mechanism monetizes, per mechanism family,
+    name-verified); `incumbent_parity` gains a `substitute (…)` level (free/DIY route already
+    delivers the outcome); new `source_segment_payability` + `source_segment_payability_class`
+    (permanent; flag removed same day after the gate pass).
+  - **Tags**: new `usage_cadence` facet (`continuous | periodic | episodic | one-shot` — how
+    often the buyer USES it, not how it bills) + deterministic `pricing_shape_mismatch` /
+    `pricing_shape_note` (episodic/one-shot usage sold as a subscription).
+  - **Niche verdict**: `niche_difficulty_verdict` gains `buyer_class`
+    (`budgeted-business | smb-operator | prosumer | indie-hobbyist | consumer | mixed`) +
+    `buyer_class_note` ("who pays here").
+  - **Verdict**: `go_no_go_verdict.payability_context` (Phase-5 payability floor explanation);
+    buildable weak-wallet No-Gos are reclassified as Conditional/High with the validation
+    condition in `primary_concern` (No-Go = structural blockers only). **Segments**:
+    `audience_segments[*]` gain `payability_score` / `payability_class` / `payability_rationale`.
+  - **Caveats**: parity-probe coverage tripwire can append to
+    `data_quality_summary.quality_caveats`.
+  - Both behaviors are PERMANENT — their enable flags were removed after same-day
+    calibration-gate passes vs a neutral Fable panel (payability: market_fit signed error
+    +0.051 -> -0.006, verdict kappa 0.142 -> 0.248; substitute/adjacent critic evidence: MAE
+    unchanged, no deflation, kappa 0.197 -> 0.256). Tuning levers: `PAYABILITY_LOW_THRESHOLD`,
+    `PAYABILITY_MARKET_FIT_CAP`. See `docs/SCORING_METHODOLOGY.md`.
 
 - **v2.9** - Post-selection deep-research surfacing + band hygiene
   - Surfaced `differentiation_locus` (where the idea's edge lives) and `build_feasibility_score`

@@ -45,6 +45,11 @@ ADJACENT_MONEY = 0.50       # >= this share have an adjacent-market commercial i
 EPISODIC_HEAVY = 0.50       # >= this share are episodic/one-shot usage products
 PAYABILITY_WEAK_MEAN = 0.40 # mean segment payability below this = weak wallets overall
 
+# Incumbent map + SERP-ownership probes (2026-07-10): additional market-awareness evidence,
+# informational only — they color key_points, never the band.
+TOOLING_DENSE = 8           # >= this many web-verified incumbent-map rows = a dense tool ecosystem
+SERP_OWNED_HEAVY = 0.5      # >= this share of distribution-angle ideas face SERPs already owned
+
 # Surfaced when the data + pains are solid but the tool ecosystem is mature: a large share of
 # brainstormed concepts were flagged as versions of products that already ship.
 _SATURATION_CHALLENGE = (
@@ -72,6 +77,44 @@ _ADJACENT_MONEY_CHALLENGE = (
 _INCUMBENT_DENSE_CHALLENGE = (
     "Web checks found shipping products covering most of these ideas' core mechanisms — the "
     "bar is head-on differentiation against named incumbents, not filling an empty field."
+)
+
+
+def _wallet_challenge(evidence: str) -> str:
+    """Niche wallet probe (2026-07-09): a Phase-1 signal, not a validated verdict — Deep
+    Research does the real pricing validation."""
+    evidence_clause = f" ({evidence})" if evidence else ""
+    return (
+        f"Community spend norms point to a free-tool culture{evidence_clause} — a paid wedge "
+        "must beat the free route. Thin early signal; Deep Research validates."
+    )
+
+
+def _wallet_positive_note(evidence: str) -> str:
+    """Niche wallet probe (2026-07-10): 'paying' reading is a positive/neutral signal — buyers
+    here already spend on tooling, so willingness-to-pay isn't the primary risk. Still Phase-1;
+    Deep Research does the real pricing validation."""
+    evidence_clause = f" ({evidence})" if evidence else ""
+    return (
+        f"Buyers in this niche demonstrably pay for tooling{evidence_clause} — willingness-to-pay "
+        "is not the primary risk. Thin early signal; Deep Research validates."
+    )
+
+
+def _incumbent_density_challenge(incumbent_count: int, priced_count: int) -> str:
+    """Incumbent-map probe (2026-07-10): a web-verified count of tools already serving this
+    niche — a Phase-1 signal, not a validated competitive audit. Deep Research does the real
+    competitive analysis."""
+    return (
+        f"The niche already runs a dense tool ecosystem ({incumbent_count} tools web-verified, "
+        f"{priced_count} with published pricing) — new products compete for attention inside an "
+        "existing stack. Thin early signal; Deep Research validates."
+    )
+
+
+_SERP_OWNED_CHALLENGE = (
+    "Most distribution-angle concepts face SERPs already owned by authorities/incumbents — "
+    "organic discovery is an uphill route here. Thin early signal; Deep Research validates."
 )
 
 # Mechanism tags / project types that signal a derivative "lookup / reference"
@@ -123,6 +166,16 @@ class NicheDifficultyFactPack(BaseModel):
     adjacent_incumbent_share: float = 0.0
     # Share of ideas whose buyer USES them episodically / one-shot (tags.usage_cadence)
     episodic_usage_share: float = 0.0
+    # Niche wallet probe (2026-07-09): community spend-norm classification from
+    # `_niche_wallet_brief` (paying|mixed|free-culture), None when the probe didn't run.
+    wallet_class: Optional[str] = None
+    # Incumbent-map probe (2026-07-10): web-verified tool count + how many carry published
+    # pricing, from the `incumbent_map` rows (None = the probe didn't run).
+    incumbent_count: Optional[int] = None
+    priced_count: Optional[int] = None
+    # SERP-ownership probe (2026-07-10): share of distribution/SEO-angle ideas stamped
+    # SERP-owned (None = the probe didn't run).
+    serp_owned_share: Optional[float] = None
     difficulty_level: str = "medium"
     low_confidence: bool = False
     flags: list[str] = Field(default_factory=list)
@@ -219,16 +272,25 @@ def _median(values: list[float]) -> Optional[float]:
 
 def assess_niche_difficulty(
     pains, ideas, niche_context, concept_duplication_rate: Optional[float] = None,
-    segments=None,
+    segments=None, niche_wallet_brief: Optional[dict] = None,
+    incumbent_map: Optional[list[dict]] = None, serp_owned_share: Optional[float] = None,
 ) -> Optional[NicheDifficultyFactPack]:
     """Classify niche software-fit difficulty from persisted signals.
 
     `concept_duplication_rate` (optional) is the share of brainstormed concepts the novelty
     critic flagged as already-existing — a tool-ecosystem saturation signal the surviving ideas
     can't show. `segments` (optional) are the Stage-4 audience segments — their names + budget
-    sensitivity become the buyer-class evidence brief. Returns None only when there is nothing
-    to judge (no pains AND no ideas), so the caller can leave the field null and the UI hides
-    the section.
+    sensitivity become the buyer-class evidence brief. `niche_wallet_brief` (optional) is the
+    niche wallet probe's `{wallet_class, evidence, free_density}` dict — `free-culture` surfaces a
+    caution key_point (unless the substitute/WTP challenges already cover it), `paying` surfaces a
+    positive/neutral key_point, `mixed` surfaces nothing. `incumbent_map` (optional) is a list of
+    web-verified competitor rows (`{name, pricing, focus, gap, source}`) — a dense count (>=
+    TOOLING_DENSE) surfaces a caution key_point about an already-crowded tool ecosystem.
+    `serp_owned_share` (optional) is the fraction of distribution/SEO-angle ideas stamped
+    SERP-owned by the probe — a heavy share (>= SERP_OWNED_HEAVY) surfaces a caution key_point
+    about organic-discovery difficulty. All three are None by default (probe didn't run), which
+    reproduces today's output byte-identically. Returns None only when there is nothing to judge
+    (no pains AND no ideas), so the caller can leave the field null and the UI hides the section.
     """
     pains = pains or []
     ideas = ideas or []
@@ -439,6 +501,41 @@ def assess_niche_difficulty(
         # the monetization-shape advice (two pricing warnings read as nagging).
         key_points = [*key_points, _EPISODIC_CHALLENGE]
 
+    # Niche wallet probe (2026-07-09): a 'free-culture' spend norm is a Phase-1 signal that a
+    # paid wedge must beat the free route. Skip the append when the substitute/WTP challenges
+    # already carry that warning (two "buyers won't pay" notes read as nagging).
+    wallet_class = (niche_wallet_brief or {}).get("wallet_class")
+    if (
+        wallet_class == "free-culture"
+        and _SUBSTITUTE_CHALLENGE not in key_points
+        and _WEAK_WTP_CHALLENGE not in key_points
+    ):
+        evidence = ((niche_wallet_brief or {}).get("evidence") or "").strip()
+        key_points = [*key_points, _wallet_challenge(evidence)]
+    elif wallet_class == "paying":
+        # Positive/neutral signal: buyers here already pay for tooling. 'mixed' (and any other
+        # reading) adds nothing — neutral default.
+        evidence = ((niche_wallet_brief or {}).get("evidence") or "").strip()
+        key_points = [*key_points, _wallet_positive_note(evidence)]
+
+    # Incumbent-map probe (2026-07-10): a dense web-verified tool count is a caution signal —
+    # new entrants compete for attention inside an existing stack, not an empty field.
+    incumbent_count = None
+    priced_count = None
+    if incumbent_map:
+        incumbent_count = len(incumbent_map)
+        priced_count = sum(
+            1 for row in incumbent_map
+            if any(ch.isdigit() or ch == "$" for ch in str((row or {}).get("pricing") or ""))
+        )
+        if incumbent_count >= TOOLING_DENSE:
+            key_points = [*key_points, _incumbent_density_challenge(incumbent_count, priced_count)]
+
+    # SERP-ownership probe (2026-07-10): a heavy share of distribution-angle ideas facing
+    # already-owned SERPs is a caution signal about organic-discovery difficulty.
+    if serp_owned_share is not None and serp_owned_share >= SERP_OWNED_HEAVY:
+        key_points = [*key_points, _SERP_OWNED_CHALLENGE]
+
     return NicheDifficultyFactPack(
         n_pains=len(pains),
         n_ideas=len(ideas),
@@ -450,6 +547,10 @@ def assess_niche_difficulty(
         verified_incumbent_share=round(verified_incumbent_share, 3),
         adjacent_incumbent_share=round(adjacent_incumbent_share, 3),
         episodic_usage_share=round(episodic_usage_share, 3),
+        wallet_class=wallet_class,
+        incumbent_count=incumbent_count,
+        priced_count=priced_count,
+        serp_owned_share=(round(serp_owned_share, 3) if serp_owned_share is not None else None),
         none_share=round(none_share, 3),
         partial_share=round(partial_share, 3),
         full_share=round(full_share, 3),

@@ -229,6 +229,9 @@ class MarketSizingCrew:
         niche_description: str,
         seo_strategy_report=None,
         pricing_strategy=None,
+        market_brief: str = "",
+        market_incumbent_table: str = "",
+        market_wallet_line: str = "",
     ) -> MarketSizingResult | None:
         """
         Execute market sizing crew to calculate TAM/SAM/SOM and validate market.
@@ -239,6 +242,10 @@ class MarketSizingCrew:
             pain_point_analysis: Pain point data from Stage 6
             competitive_analysis: Competitive landscape from Stage 7
             niche_description: Niche description for context
+            market_brief: Phase-1 web-verified parity findings + substitute-pressure context
+                (utils/market_brief.py); '' when unavailable => no-op interpolation.
+            market_incumbent_table: Phase-1 web-verified incumbent pricing rows; '' when unavailable.
+            market_wallet_line: Phase-1 niche wallet-class signal; '' when unavailable.
 
         Returns:
             MarketSizingResult with TAM/SAM/SOM estimates and viability verdict, or None if analysis fails
@@ -366,6 +373,11 @@ class MarketSizingCrew:
             "seo_market_enrichment": seo_market_enrichment,
             "seo_som_ceiling_y1": seo_som_ceiling_y1,
             "seo_commercial_intent_pct": seo_commercial_intent_pct,
+            # Market-data handoff (utils/market_brief.py): Phase-1 web-verified parity findings +
+            # incumbent pricing rows + niche wallet signal. Empty strings when unavailable => no-op.
+            "market_brief": market_brief,
+            "market_incumbent_table": market_incumbent_table,
+            "market_wallet_line": market_wallet_line,
         }
 
         try:

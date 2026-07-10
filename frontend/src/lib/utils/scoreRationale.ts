@@ -36,6 +36,45 @@ function firstNonEmpty(...vals: (string | null | undefined)[]): string {
   return "";
 }
 
+// Mirrors settings.payability_low_threshold (src/nicheiq/config/settings.py) — segment
+// payability below this counts as LOW, same bar the backend cap uses.
+const PAYABILITY_LOW_THRESHOLD = 0.35;
+
+/**
+ * Names the single most-restrictive market_fit ceiling that likely applied to this idea,
+ * mirroring `_validate_idea_caps` rules (b)/(d)/(e) in unified_solution_crew.py. Each rule is
+ * downgrade-only and they compose via min() — so when more than one condition is detected here,
+ * the clause for the SMALLEST cap wins (e.g. a 'substitute' parity finding against a thin-wallet
+ * segment mirrors the backend's 0.35 substitute+weak-wallet cap, tighter than either alone).
+ * Returns null when no cap condition is detected on the idea.
+ */
+function marketFitCapHint(idea: SolutionPreview): string | null {
+  const dam = clean(idea.data_access_model).toLowerCase();
+  const parity = clean(idea.incumbent_parity).toLowerCase();
+  const pay = idea.source_segment_payability;
+  const payLow = typeof pay === "number" && pay < PAYABILITY_LOW_THRESHOLD;
+
+  const candidates: { cap: number; clause: string }[] = [];
+
+  if (dam === "unofficial" || dam === "restricted" || dam === "blocked") {
+    candidates.push({ cap: 0.4, clause: "capped at 0.40 — the data route is unverified" });
+  }
+  if (payLow) {
+    candidates.push({ cap: 0.55, clause: "capped — this buyer segment rarely pays for tooling" });
+  }
+  if (parity.startsWith("shipped")) {
+    candidates.push({ cap: 0.45, clause: "held at/below 0.45 — a verified incumbent ships this mechanism" });
+  } else if (parity.startsWith("partial")) {
+    candidates.push({ cap: 0.55, clause: "capped — an incumbent partially covers this position" });
+  } else if (parity.startsWith("substitute")) {
+    candidates.push({ cap: payLow ? 0.35 : 0.5, clause: "capped — a free/DIY route covers the core outcome" });
+  }
+
+  if (!candidates.length) return null;
+  const tightest = candidates.reduce((a, b) => (b.cap < a.cap ? b : a));
+  return `${tightest.clause} (thin early signal; Deep Research validates)`;
+}
+
 /**
  * Returns a short "why we gave this score" string for `key`, or null when the idea
  * carries no grounded rationale for it.
@@ -48,9 +87,14 @@ export function scoreRationale(
 
   let why = "";
   switch (key) {
-    case "market_fit":
+    case "market_fit": {
       why = firstNonEmpty(idea.why_it_works_short, idea.why_it_works, idea.value_proposition);
+      const capHint = marketFitCapHint(idea);
+      if (capHint) {
+        why = why ? `${why} — ${capHint}` : capHint.charAt(0).toUpperCase() + capHint.slice(1);
+      }
       break;
+    }
 
     case "technical_feasibility":
       why = firstNonEmpty(idea.technical_approach, idea.data_acquisition_notes);

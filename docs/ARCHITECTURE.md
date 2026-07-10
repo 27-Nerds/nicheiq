@@ -281,6 +281,28 @@ filter/refine/select tasks above:
      line, cap (d) holds market_fit ≤ 0.55 below the low threshold, and a Phase-5 verdict floor
      holds direct-paid Go verdicts to Conditional. The niche-level **buyer_class** ("who pays
      here") rides the niche-difficulty narrative call and is always on.
+   - **Generation lenses (permanent, 2026-07-10):** each run allocates its cell budget across FOUR
+     generation lenses plus bundles, not pain-point cells alone. **Pain-point** (primary,
+     unchanged) still supplies one cell per `(pain × segment)` with the severity + commercial-
+     evidence floors above, and keeps reserve priority — floors are always covered first, before
+     the other lenses draw from the remaining budget. Three additional single-cell lenses seed
+     from evidence the pipeline has already verified elsewhere in the run rather than re-deriving
+     it: **competitor-gap** (one cell from the incumbent probe's per-tool gap findings +
+     dissatisfaction quotes), **data-asset** (one cell from the verified public-data menu — what
+     dataset could be assembled and who pays for what it reveals — with a publication-cadence
+     check that marks a product unbuildable if it needs data fresher than the source publishes),
+     and **workflow** (one cell from a synthesized job-map: pains + motivation drivers + tool
+     frustrations, JTBD-framed). Bundles remain the cross-pain synthesis peer, unaffected. Every
+     lens idea passes the IDENTICAL scoring/validation gauntlet as pain ideas (feasibility, route
+     verification, payability, parity probes, calibration critic, caps) and must anchor to a
+     validated pain or the cell is dropped. Frame provenance is stamped as `source_frame` and
+     surfaced in the UI as a "generation lens" chip on each idea. An 8-run A/B (2026-07) validated
+     the set: `data_asset` produced a run-winning idea (0.75 market fit, duplicate-grant-expense
+     detection for nonprofit bookkeepers) and the only two accepted variant-merges; `gap`
+     delivered consistent mid-table survivors; `workflow` is high-variance but its wins justify
+     the slot since the demotion machinery honestly retires its failures. A fifth lens
+     (spend-adjacent) was tested and dropped as redundant — its wallet/toolbelt signals already
+     feed every lens via the market-reality context.
    The calibration critic itself samples **N=3 per batch, per-criterion median**
    (`score_calibration_samples`; single draws carry ~0.03-0.05 stddev — gate-validated vs the
    67-idea neutral-Opus panel: κ 0.19→0.256).

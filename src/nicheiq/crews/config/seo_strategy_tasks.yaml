@@ -1111,6 +1111,11 @@ develop_content_technical_strategy:
 
     {angle_brief}
 
+    **MARKET REALITY (Phase-1 web-verified; deepen, do not re-discover):**
+    {market_brief}
+    {market_incumbent_table}
+    {market_wallet_line}
+
     **HOW TO ACCESS KEYWORD DATA (from Task 1e context):**
 
     Task 1e (KeywordSummaryResult) provides sample keywords for your strategy via CrewAI context chaining.

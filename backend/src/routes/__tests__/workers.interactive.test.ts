@@ -302,6 +302,27 @@ describe('POST /api/workers/ideas-ready', () => {
     expect(response.status).toBe(400);
   });
 
+  // Demotion/backfill worker-boundary contract: the Python worker filters
+  // solutionIdeas to VISIBLE ideas only (candidate_status not in demoted/absorbed)
+  // before POSTing. The backend must store the payload verbatim — it never
+  // re-filters and must not strip the new candidate_status/merged_from fields.
+  it('stores solutions verbatim, including candidate_status and merged_from fields, unstripped', async () => {
+    mockJobUpdateMany.mockResolvedValue({ count: 1 });
+    mockJobFindUnique.mockResolvedValue({ userId: null, niche: 'test' });
+
+    const solutions = [
+      { solution_name: 'Sol1', candidate_status: 'active' },
+      { solution_name: 'Sol2', candidate_status: 'active', merged_from: ['OldSol'] },
+    ];
+
+    await request(app)
+      .post('/api/workers/ideas-ready')
+      .send({ ...validPayload, solutions });
+
+    const callArgs = mockJobUpdateMany.mock.calls[0][0];
+    expect(callArgs.data.solutionIdeas).toEqual(solutions);
+  });
+
   it('returns 400 for an empty solutions array', async () => {
     const response = await request(app)
       .post('/api/workers/ideas-ready')
@@ -412,6 +433,42 @@ describe('POST /api/workers/regeneration-complete', () => {
 
     expect(response.status).toBe(400);
     expect(response.body.error).toBe('Validation error');
+  });
+
+  // Demotion/backfill worker-boundary contract (mirrors ideas-ready): the worker
+  // pre-filters to visible-only solutions before POSTing, so the backend must
+  // append them verbatim without stripping candidate_status/merged_from.
+  it('appends worker-sent solutions verbatim, including candidate_status field, unstripped', async () => {
+    mockJobFindFirst.mockResolvedValue({ solutionIdeas: [{ name: 'Old1', candidate_status: 'active' }] });
+    mockJobUpdateMany.mockResolvedValue({ count: 1 });
+
+    const newSolutions = [{ name: 'New1', candidate_status: 'active', merged_from: ['Old2'] }];
+
+    await request(app)
+      .post('/api/workers/regeneration-complete')
+      .send({ ...validPayload, solutions: newSolutions });
+
+    const callArgs = mockJobUpdateMany.mock.calls[0][0];
+    expect(callArgs.data.solutionIdeas).toEqual([
+      { name: 'Old1', candidate_status: 'active' },
+      { name: 'New1', candidate_status: 'active', merged_from: ['Old2'] },
+    ]);
+  });
+
+  // Zero-visible regenerate case: every regenerated idea got demoted/absorbed
+  // again, so the worker sends an empty solutions array. This must be accepted
+  // (not rejected as "invalid"), leaving existing stored solutions untouched.
+  it('accepts an empty solutions array (zero-visible regenerate case) without error', async () => {
+    mockJobFindFirst.mockResolvedValue({ solutionIdeas: [{ name: 'Old1' }] });
+    mockJobUpdateMany.mockResolvedValue({ count: 1 });
+
+    const response = await request(app)
+      .post('/api/workers/regeneration-complete')
+      .send({ ...validPayload, solutions: [] });
+
+    expect(response.status).toBe(200);
+    const callArgs = mockJobUpdateMany.mock.calls[0][0];
+    expect(callArgs.data.solutionIdeas).toEqual([{ name: 'Old1' }]);
   });
 });
 

@@ -286,6 +286,15 @@ class BaseSolutionIdea(BaseModel):
     source_segment: Optional[str] = Field(
         default=None, description="Name of the audience segment the generating cell reasoned as"
     )
+    # Multi-Frame Idea Generation Portfolio: which generation FRAME minted this idea's cell —
+    # 'pain' (default/legacy) | 'gap' | 'data_asset' | 'workflow'.
+    source_frame: Optional[str] = Field(
+        default="pain",
+        description=(
+            "CODE-FILLED after generation — ALWAYS leave as the default; never set by the LLM. "
+            "The typed generation frame that minted this idea's cell."
+        ),
+    )
     # Payability inherited from source_segment (permanent buyer-wallet signal): stamped in code so
     # the pure cap in _validate_idea_caps can read it off the idea. None = flag off / unscored.
     source_segment_payability: Optional[float] = Field(
@@ -322,7 +331,9 @@ class BaseSolutionIdea(BaseModel):
     )
     data_sources: Optional[list[str]] = Field(
         default=None,
-        description="Potential data sources if aggregation is required",
+        description="Potential data sources if aggregation is required — clean source NAMES only "
+        "(e.g. 'Reddit API', 'SEC EDGAR'); never embed [NEEDS-VERIFY: ...] flags here (those go in "
+        "data_acquisition_notes)",
     )
     estimated_development_time: Optional[str] = Field(
         default=None, description="Estimated time to build MVP (grounded range, e.g. '6-10 weeks')"
@@ -654,6 +665,24 @@ class BaseSolutionIdea(BaseModel):
             "Drives the report's tier badge; default 'single' keeps legacy data unchanged."
         ),
     )
+    candidate_status: str = Field(
+        default="active",
+        description=(
+            "Visibility status of this idea in the candidate list: 'active' (shown), "
+            "'demoted' (below the demotion bar - hidden, surfaced as an examined-and-ruled-out finding), "
+            "'restored' (demoted but shown anyway by the min-visible floor guard), "
+            "'absorbed' (variant folded into an idea_tier='merged' synthesis - hidden, recorded as lineage). "
+            "Distinct from idea_tier, which is birth provenance."
+        ),
+    )
+    merged_from: Optional[list[str]] = Field(
+        default=None,
+        description=(
+            "CODE-FILLED on idea_tier='merged' syntheses: solution_names of the variant ideas "
+            "this product was merged from (their candidate_status becomes 'absorbed'). "
+            "None on every other tier — ALWAYS leave null/omit this field."
+        ),
+    )
     # Angle-aware evaluation (set by the in-cell angle classifier; None only on classify fail-soft).
     winning_angle: Optional[str] = Field(
         default=None,
@@ -967,6 +996,14 @@ class RawConcept(BaseModel):
     source_segment: Optional[str] = Field(
         default=None, description="Name of the audience segment the generating cell reasoned as"
     )
+    # Multi-Frame Idea Generation Portfolio: frame identity + focus identity, stamped by
+    # `_one_sample` from the generating cell so `_group_pool_by_cell` can regroup the pool.
+    source_frame: Optional[str] = Field(
+        default=None, description="Generation frame ('pain'|'gap'|'data_asset'|'workflow')"
+    )
+    source_focus_key: Optional[str] = Field(
+        default=None, description="FrameFocus.key of the non-pain focus that generated this concept"
+    )
     why_non_obvious: Optional[str] = Field(
         default=None,
         description=(
@@ -1075,3 +1112,20 @@ class RawConceptList(BaseModel):
         ...,
         description="Pain point titles that informed the concept generation"
     )
+
+
+def visible_ideas(ideas: list) -> list:
+    """The shared visibility projection: ideas the USER sees as candidates.
+
+    Excludes 'demoted' (weak winners surfaced as examined-and-ruled-out findings instead) and
+    'absorbed' (variants folded into an idea_tier='merged' synthesis). Both stay in
+    solution_ideas for state/checkpoint consistency — apply THIS filter at every user-facing
+    boundary (worker preview payloads, preview/final report assembly, headless selection,
+    regenerate payloads). Accepts model objects or dicts."""
+    out = []
+    for i in ideas or []:
+        status = (i.get("candidate_status") if isinstance(i, dict)
+                  else getattr(i, "candidate_status", None)) or "active"
+        if status not in ("demoted", "absorbed"):
+            out.append(i)
+    return out

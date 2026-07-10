@@ -9,6 +9,7 @@ from nicheiq.crews.idea_improvement_loop_v4 import (
     DataRouteVerdict,
     verify_data_routes,
     _canonicalize_route,
+    _relocate_needs_verify_flags,
 )
 from nicheiq.models.solution_idea import BaseSolutionIdea
 
@@ -227,3 +228,124 @@ class TestVerdictPromptPins:
     def test_fabrication_rule_retained(self, monkeypatch):
         prompt = self._capture_prompt(monkeypatch)
         assert "zero" in prompt and "corroboration is fabricated" in prompt
+
+
+# --- NEEDS-VERIFY contamination: flags must never reach the search API ---------
+# Regression for the serper.dev garbage-query bug: the ideator dumped [NEEDS-VERIFY: ...]
+# tags into data_sources; the verifier didn't scan data_sources, so the tags were treated as
+# literal source names and shipped to Serper as a duplicated, bracket-polluted query.
+
+def test_relocate_strips_flags_from_data_sources_into_notes():
+    idea = _idea(data_sources=[
+        "Reddit (r/personalfinance, r/financialindependence)",
+        "[NEEDS-VERIFY: does r/financialindependence expose 529 allocation threads?]",
+        "[NEEDS-VERIFY: do state treasury sites expose a 529 deduction-cap API?]",
+    ], data_acquisition_notes="existing note")
+    _relocate_needs_verify_flags(idea)
+    # data_sources holds clean source names only — no bracket flags remain
+    assert idea.data_sources == ["Reddit (r/personalfinance, r/financialindependence)"]
+    # both flags relocated into the free-text notes the verifier scans
+    assert "NEEDS-VERIFY" in idea.data_acquisition_notes
+    assert "529 allocation threads" in idea.data_acquisition_notes
+    assert "state treasury" in idea.data_acquisition_notes
+    # idempotent
+    before = (list(idea.data_sources or []), idea.data_acquisition_notes)
+    _relocate_needs_verify_flags(idea)
+    assert (list(idea.data_sources or []), idea.data_acquisition_notes) == before
+
+
+def test_verify_never_ships_brackets_or_duplicated_sources_to_search(monkeypatch):
+    captured: list[str] = []
+
+    def _search(q):
+        captured.append(q)
+        return ""
+
+    _patch_llm(monkeypatch, DataRouteVerdict(
+        self_sourced=False, verdict="not_enough_info", note="inconclusive"))
+    idea = _idea(data_sources=[
+        "Reddit (r/personalfinance, r/financialindependence)",
+        "Bogleheads.org forum",
+        "[NEEDS-VERIFY: does r/financialindependence expose 529 vs retirement threads?]",
+        "[NEEDS-VERIFY: do state treasury sites expose a machine-readable 529 API?]",
+    ])
+    verify_data_routes(idea, None, search=_search, invoke=None)
+    # no query carries the literal NEEDS-VERIFY bracket syntax to the search API
+    assert all("[NEEDS-VERIFY" not in q for q in captured), captured
+    # no query is the source list concatenated with itself (the original duplication bug)
+    assert all(q.count("Reddit (r/personalfinance") <= 1 for q in captured), captured
+    # data_sources is clean post-verify
+    assert all("NEEDS-VERIFY" not in s for s in (idea.data_sources or [])), idea.data_sources
+    # the verify questions (not the polluted source list) drove the availability query
+    assert any("529" in q for q in captured), captured
+    # at least one query was issued (web path ran — Reddit/Bogleheads aren't on the allowlist)
+    assert captured, "expected the web-search path to run"
+
+
+# --- combined-query recall fix (2026-07-09) --------------------------------------------------
+# Live evidence: a 6-source combined query returned 9 EPA hits, 1 USDA, 0 for the other 4
+# sources — the verdict LLM judged 4 sources on silence. Fix: per-source queries (capped at 3
+# + 1 flags query), and self-sourced/non-web items (user input, internal, proprietary, ...)
+# never enter a query at all (no Google query could verify them anyway).
+
+def test_non_web_items_excluded_from_queries(monkeypatch):
+    captured: list[str] = []
+
+    def _search(q):
+        captured.append(q)
+        return ""
+
+    _patch_llm(monkeypatch, DataRouteVerdict(
+        self_sourced=False, verdict="not_enough_info", note="inconclusive"))
+    idea = _idea(data_sources=[
+        "VendorFeed XYZ API",
+        "Internal Breed Digging Proprietary Table (curated in-house)",
+        "Property Age Metadata (User input)",
+    ])
+    verify_data_routes(idea, None, search=_search, invoke=None)
+    assert all("Internal Breed Digging" not in q for q in captured), captured
+    assert all("Property Age Metadata" not in q for q in captured), captured
+    assert any("VendorFeed XYZ API" in q for q in captured), captured
+
+
+def test_per_source_query_cap_and_no_combined_blob(monkeypatch):
+    captured: list[str] = []
+
+    def _search(q):
+        captured.append(q)
+        return ""
+
+    _patch_llm(monkeypatch, DataRouteVerdict(
+        self_sourced=False, verdict="not_enough_info", note="inconclusive"))
+    idea = _idea(data_sources=[
+        "VendorFeedOne API", "VendorFeedTwo API", "VendorFeedThree API", "VendorFeedFour API",
+    ])
+    verify_data_routes(idea, None, search=_search, invoke=None)
+    # no flags -> no availability query; capped at 3 per-source queries (4th source dropped)
+    assert len(captured) == 3, captured
+    assert any("VendorFeedOne" in q for q in captured), captured
+    assert any("VendorFeedTwo" in q for q in captured), captured
+    assert any("VendorFeedThree" in q for q in captured), captured
+    assert all("VendorFeedFour" not in q for q in captured), captured
+    # the old combined-sources query (all items joined into one blob) is gone
+    assert all("VendorFeedOne" not in q or "VendorFeedTwo" not in q for q in captured), captured
+
+
+def test_known_allowlist_source_items_skip_their_own_query(monkeypatch):
+    # Live EPA case: sources individually recognized by the (now expanded) allowlist don't
+    # need their own web query — only genuinely unknown items spend a query slot.
+    captured: list[str] = []
+
+    def _search(q):
+        captured.append(q)
+        return ""
+
+    _patch_llm(monkeypatch, DataRouteVerdict(
+        self_sourced=False, verdict="not_enough_info", note="inconclusive"))
+    idea = _idea(data_sources=[
+        "EPA Soil Screening Levels for residential exposure",
+        "VendorMetrics partner feed",
+    ])
+    verify_data_routes(idea, None, search=_search, invoke=None)
+    assert all("EPA Soil Screening" not in q for q in captured), captured
+    assert any("VendorMetrics" in q for q in captured), captured

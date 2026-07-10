@@ -332,7 +332,9 @@ def run_interactive_research(
         if not idea_gen or not hasattr(idea_gen, "solution_ideas") or not idea_gen.solution_ideas:
             raise RuntimeError("Phase 1 did not produce solution ideas")
 
-        solutions = idea_gen.solution_ideas
+        from nicheiq.models.solution_idea import visible_ideas
+
+        solutions = visible_ideas(idea_gen.solution_ideas)
         solution_previews = [_solution_to_preview_dict(s) for s in solutions]
 
         # Get checkpoint path
@@ -442,8 +444,9 @@ def _run_phase2_continuation(
 
     # Compute all_solution_scores from Task 3 fields, then filter to selected solutions
     from nicheiq.utils.score_helpers import compute_solution_scores
+    from nicheiq.models.solution_idea import visible_ideas
     if state.idea_generation and state.idea_generation.solution_ideas:
-        all_scores = compute_solution_scores(state.idea_generation.solution_ideas)
+        all_scores = compute_solution_scores(visible_ideas(state.idea_generation.solution_ideas))
         # Keep only selected solutions' scores (stages 7-8 use top N from this list)
         selected_set = set(selected_solutions)
         state.solution_selection.all_solution_scores = [
@@ -696,7 +699,9 @@ def run_catalog_pain_research(
         idea_gen = getattr(state, "idea_generation", None)
         if not idea_gen or not getattr(idea_gen, "solution_ideas", None):
             raise RuntimeError("Pain research did not produce solution ideas")
-        solutions = idea_gen.solution_ideas
+        from nicheiq.models.solution_idea import visible_ideas
+
+        solutions = visible_ideas(idea_gen.solution_ideas)
         solution_previews = [_solution_to_preview_dict(s) for s in solutions]
 
         checkpoint_path = ""
@@ -960,6 +965,18 @@ def run_regenerate_ideas(
                         "market_fit_score": getattr(s, "market_fit_score", None),
                         "calibration_notes": getattr(s, "calibration_notes", None),
                     }
+        # existing_solution_names (backend-provided) is visible-only. Union in demoted/absorbed
+        # names from the checkpoint so hidden ideas can't be regenerated as "new" — they were
+        # already tried and ruled out / folded into a merge.
+        hidden_names = []
+        if state.idea_generation and hasattr(state.idea_generation, "solution_ideas"):
+            hidden_names = [
+                getattr(s, "solution_name", "")
+                for s in state.idea_generation.solution_ideas
+                if getattr(s, "candidate_status", None) in ("demoted", "absorbed") and getattr(s, "solution_name", "")
+            ]
+        blacklist_names = list(dict.fromkeys(list(existing_solution_names) + hidden_names))
+
         existing_ideas_for_crew = [
             {
                 "name": n,
@@ -971,7 +988,7 @@ def run_regenerate_ideas(
                 "market_fit_score": idea_lookup.get(n.lower(), {}).get("market_fit_score"),
                 "calibration_notes": idea_lookup.get(n.lower(), {}).get("calibration_notes"),
             }
-            for n in existing_solution_names
+            for n in blacklist_names
         ]
 
         competitor_mentions = getattr(state, "competitor_mentions_formatted", None)
@@ -1002,7 +1019,7 @@ def run_regenerate_ideas(
         # same-idea passed the exact-name filter before — detect_catalog_duplicate
         # compares mechanism/value-prop/personas against the existing catalog).
         from nicheiq.utils.validation.crew_guardrails import detect_catalog_duplicate
-        existing_names_lower = {n.lower() for n in existing_solution_names}
+        existing_names_lower = {n.lower() for n in blacklist_names}
 
         def _is_dup(s) -> bool:
             name = getattr(s, "solution_name", "") or getattr(s, "name", "")
@@ -1036,8 +1053,16 @@ def run_regenerate_ideas(
         if flow.checkpoint_mgr and state.idea_generation:
             flow.checkpoint_mgr.save_stage("stage_5_3_refinement", state.idea_generation)
 
-        # Send only NEW previews — backend appends to existing list
-        new_previews = [_solution_to_preview_dict(s) for s in new_solutions]
+        # Send only NEW previews — backend appends to existing list. Filter through the
+        # visibility projection (regenerated ideas default candidate_status='active' so this
+        # is currently a no-op, but it future-proofs the boundary).
+        from nicheiq.models.solution_idea import visible_ideas
+
+        visible_new_solutions = visible_ideas(new_solutions)
+        new_previews = [_solution_to_preview_dict(s) for s in visible_new_solutions]
+
+        if not new_previews:
+            logger.warning(f"[Worker] Regenerate produced 0 visible ideas for job {job_id}")
 
         progress_callback(5, "Solution Pipeline", "completed")
 

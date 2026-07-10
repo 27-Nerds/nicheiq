@@ -1,10 +1,10 @@
-Ideas don't come out of one big brainstorm that gets filtered down. Each of your strongest problems gets worked on its own, by its own small team, so you end up with one well-argued idea per problem instead of ten flavours of whichever problem the brainstorm happened to fixate on.
+Ideas don't come out of one big brainstorm that gets filtered down. Each of your strongest problems gets worked on its own, by its own small team, so you end up with one well-argued idea per problem instead of ten flavours of whichever problem the brainstorm happened to fixate on. That's the main path an idea takes — a few others run alongside it, covered further down.
 
 ### One problem, one team
 
 We start from the strongest problems, the ones with real severity and evidence behind them, and skip the ones software can't actually solve (the lifestyle and structural stuff), so nothing gets wasted inventing tools for non-tool problems.
 
-Then each problem, paired with the audience that actually feels it, gets its own back-and-forth. One model proposes ideas from a fresh angle. A second model — a different family, so it isn't grading its own homework — pushes back: is this genuinely novel, can a solo dev build it, and does it still solve *this* problem rather than some bigger one nobody asked for? They go a couple of rounds and the best version wins. Proposing from several independent angles is a well-worn way to get more out of this kind of reasoning ([Wang et al., 2022, Self-Consistency](https://arxiv.org/abs/2203.11171)), and a second model checking the work catches the confident mistakes ([Dhuliawala et al., 2023, Chain-of-Verification](https://arxiv.org/abs/2309.11495)).
+Then each problem, paired with the audience that actually feels it, gets its own back-and-forth — the main way an idea comes together, though not the only one (more on that below). One model proposes ideas from a fresh angle. A second model — a different family, so it isn't grading its own homework — pushes back: is this genuinely novel, can a solo dev build it, and does it still solve *this* problem rather than some bigger one nobody asked for? They go a couple of rounds and the best version wins. Proposing from several independent angles is a well-worn way to get more out of this kind of reasoning ([Wang et al., 2022, Self-Consistency](https://arxiv.org/abs/2203.11171)), and a second model checking the work catches the confident mistakes ([Dhuliawala et al., 2023, Chain-of-Verification](https://arxiv.org/abs/2309.11495)).
 
 The reason it's set up this way: when every strong problem gets its own team, the best ones can't quietly fall out of a shared pool. The highest-value problem in your niche is guaranteed an idea, instead of being the thing that got merged away while the model polished three variations of an easier one.
 
@@ -13,6 +13,16 @@ A critic scores each idea for novelty and feasibility, and it can only ever lowe
 There's one more step for the ideas where the problem is strong but the solution is predictable. If a problem is clearly worth solving but the idea we landed on is the obvious one most builders would reach for, a model takes a second run at it — not to reword it, but to find a genuinely more original mechanism for the *same* problem, built on the *same* data we already confirmed it can get. The rewrite only sticks if it actually comes out better: more original, and no weaker on whether it solves the problem or whether one person can build it. If it doesn't clear that bar, we keep the original. So this step can sharpen an idea, but it can't blunt one.
 
 Finally we drop near-duplicates across the set ([SemDeDup, Abbas et al., 2023](https://arxiv.org/abs/2303.09540)), so you're not handed three versions of the same idea dressed up as three.
+
+### Four ways an idea can start
+
+Most ideas start life this way: one strong problem, its own team. But a problem isn't the only place a good idea can come from, so three more generation lenses run alongside the pain-point one, each starting from something we've already checked out for your niche rather than guessing:
+
+- **Competitor gap** — built from a close look at where the tools people already use in this niche fall short: a real complaint, a missing feature, a review that says "wish it did X."
+- **Data asset** — built from a dataset we've confirmed you could realistically assemble, asking what it would let someone build and who'd pay to see what it reveals.
+- **Workflow** — built from a map of your audience's actual day-to-day work: the pains, what motivates them, and where their tools keep getting in the way.
+
+Every idea from these three still has to trace back to a real, validated problem from the discussion, or it doesn't make the cut — and it goes through the exact same scoring, the same feasibility and data checks, the same critic as an idea that started life as one problem's own team. The only thing that changes is where it started, and that's the one thing we show you: a small **generation lens** tag on each idea, so you can tell whether it grew out of a pain, a competitor gap, a data opportunity, or a workflow friction. Your strongest, best-evidenced problems still get worked first — the other three lenses fill out what's left of the budget.
 
 ### What you'll see on each idea
 
@@ -24,7 +34,7 @@ The tags fall into four buckets. **Strengths** are what an idea is genuinely goo
 
 ### Each idea is judged on the angle that actually wins for it
 
-Not every idea wins the same way, so we don't grade them all on the same thing. There are three ways an idea can earn its place: it can win by being **found** (lots of SEO pages plus a way to reach people), by being **genuinely different** (a mechanism competitors can't easily copy), or by **owning a workflow** for one specific kind of user. We label each idea with the one that fits it and judge it on that.
+Not every idea wins the same way, so we don't grade them all on the same thing. There are three ways an idea can earn its place: it can win by being **found** (lots of SEO pages plus a way to reach people), by being **genuinely different** (a mechanism competitors can't easily copy), or by **owning a workflow** for one specific kind of user. We label each idea with the one that fits it and judge it on that. This is a different label from the generation lens above — the lens is where an idea started (a pain, a competitor gap, a data opportunity, a workflow friction), the angle is how it actually wins once it exists. A workflow-lens idea doesn't have to win by owning a workflow, and plenty of pain-point ideas do.
 
 This matters most for the catalog-and-directory ideas. A directory wins by being found and by holding a slice of data nobody else has, not by some clever trick. So when one of those scores low on novelty, we don't hold it against the idea: a low-novelty score is normal for that kind of product, and that isn't the game it's playing. The novelty score comes with a one-line note telling you why it reads the way it does for that type of idea.
 
@@ -34,7 +44,7 @@ One last thing on the selection screen: a single line reads out how the niche's 
 
 ### What to keep in mind
 
-The set covers your strongest problems roughly one apiece, so you're seeing breadth by design rather than three takes on the same idea. The critic can still miss subtler infeasibility, so treat feasibility as a strong hunch, not a guarantee.
+The set covers your strongest problems roughly one apiece — plus one idea each from three other generation lenses (a competitor gap, a data opportunity, a workflow friction) — so you're seeing breadth by design rather than three takes on the same idea. The critic can still miss subtler infeasibility, so treat feasibility as a strong hunch, not a guarantee.
 
 ### Sources
 

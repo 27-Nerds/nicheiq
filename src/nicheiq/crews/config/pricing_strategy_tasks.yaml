@@ -38,6 +38,12 @@ pricing_strategy_analysis:
     **Competitive Intensity:** {competitive_intensity}
 
 
+    **MARKET REALITY (Phase-1 web-verified; deepen, do not re-discover):**
+    {market_brief}
+    {market_incumbent_table}
+    {market_wallet_line}
+
+
     **MARKET SIZING & GROWTH:**
     {market_sizing_summary}
 

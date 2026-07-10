@@ -99,6 +99,8 @@ import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
                 <Badge variant="accent" size="sm">Bundle product</Badge>
               {:else if solution.idea_tier === "salvaged"}
                 <Badge variant="info" size="sm">Rescued concept</Badge>
+              {:else if solution.idea_tier === "merged"}
+                <Badge variant="muted" size="sm">Merged</Badge>
               {/if}
               {#if solution.solo_dev_feasibility != null}
                 {@const feasibility = solution.solo_dev_feasibility}

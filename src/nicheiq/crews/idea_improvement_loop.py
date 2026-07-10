@@ -78,9 +78,28 @@ class CellGrounding:
     competitor_mentions: str = ""       # real competitor list for the novelty judgement
     deterministic_flags: list[str] = field(default_factory=list)  # from _validate_idea_scores
     winning_angle: str = ""             # P1b: provisional GTM angle so the loop optimizes on-direction
+    wallet_norm: str = ""                # E1 2026-07-09: niche wallet steer line ('' = probe found nothing)
+    # Multi-Frame Idea Generation Portfolio (2026-07-10): non-pain cell identity. '' (default) or
+    # 'pain' both render the ORIGINAL block below, byte-identical — this is additive-only.
+    frame_type: str = ""                 # '' / 'pain' | 'gap' | 'data_asset' | 'workflow'
+    focus_block: str = ""                # the frame's rendered FrameSpec.brief_formatter(focus) text
 
     def as_block(self) -> str:
         flags = "\n".join(f"  - {f}" for f in self.deterministic_flags) or "  (none)"
+        wallet = f"\n{self.wallet_norm}" if self.wallet_norm else ""
+        if self.frame_type and self.frame_type != "pain":
+            return (
+                f"NICHE: {self.niche}\n"
+                f"TARGET AUDIENCE SEGMENT: {self.audience_segment}\n"
+                f"SEGMENT PROFILE: {self.segment_profile or 'n/a'}\n"
+                f"PRODUCT FRAME: {self.frame_type}\n"
+                f"THE FOCUS:\n{self.focus_block or '  n/a'}\n"
+                f"VALIDATED ANCHOR PAINS (the idea must serve at least one of these):\n"
+                f"{self.pain_evidence or '  n/a'}\n"
+                f"COMPETITORS ALREADY IN THIS SPACE:\n{self.competitor_mentions or '  (none surfaced)'}\n"
+                f"DETERMINISTIC SCORE FLAGS (hard signal — treat as ground truth):\n{flags}"
+                f"{wallet}"
+            )
         return (
             f"NICHE: {self.niche}\n"
             f"TARGET AUDIENCE SEGMENT: {self.audience_segment}\n"
@@ -89,6 +108,7 @@ class CellGrounding:
             f"PAIN EVIDENCE (severity {self.pain_severity or 'n/a'}):\n{self.pain_evidence or '  n/a'}\n"
             f"COMPETITORS ALREADY IN THIS SPACE:\n{self.competitor_mentions or '  (none surfaced)'}\n"
             f"DETERMINISTIC SCORE FLAGS (hard signal — treat as ground truth):\n{flags}"
+            f"{wallet}"
         )
 
 
@@ -131,8 +151,31 @@ def _idea_to_text(idea: BaseSolutionIdea) -> str:
     )
 
 
+def _frame_directive(g: CellGrounding) -> str:
+    """Multi-Frame Idea Generation Portfolio (2026-07-10): a non-pain cell has no single SOURCE
+    PAIN — it is seeded from a typed FOCUS (gap/data-asset/workflow) and anchored
+    to a VALIDATED set of pains at mint time (`anchor_pains_for_frame_focus`). Two-clause
+    market_fit lock so the reviewer doesn't score honest frame ideation as pain drift: (a) does
+    it fit the frame's own FOCUS, (b) does it serve one of the listed ANCHOR PAINS. '' for a pain
+    cell (frame_type '' or 'pain') — byte-identical to before. Ported from
+    idea_improvement_loop_v4 (fix #5: this loop's `_reviewer_system` was still scoring only "THE
+    SOURCE PAIN BELOW" despite `CellGrounding` already being frame-aware)."""
+    if not g.frame_type or g.frame_type == "pain":
+        return ""
+    from ..utils.frames import FRAME_REGISTRY
+    spec = FRAME_REGISTRY.get(g.frame_type)
+    mf_anchor = spec.mf_anchor if spec is not None else "does it fit the FOCUS below"
+    return (
+        f"\nPRODUCT FRAME = {g.frame_type.upper()} — this idea is seeded from THE FOCUS below, "
+        "NOT a single source pain. Score market_fit on TWO clauses together: (a) "
+        f"{mf_anchor}; (b) it must serve at least one of THE ANCHOR PAINS listed (exact titles). "
+        "An idea that fails EITHER clause scores market_fit ≤ 0.3, however clever.\n"
+    )
+
+
 def _reviewer_system(grounding: CellGrounding) -> dict:
     return {"role": "system", "content": (
+        _frame_directive(grounding) +
         "You are a SKEPTICAL product reviewer for a solo-dev SaaS studio. You judge each idea ONLY "
         "against the grounded evidence below — never the idea's own self-scores. Score four "
         "dimensions 0-1:\n"

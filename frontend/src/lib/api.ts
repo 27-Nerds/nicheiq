@@ -24,6 +24,7 @@ export interface CreateJobResponse {
 
 export type { Job, JobAsset, StageProgress as JobProgress, ErrorDetails, ErrorSeverity, SolutionPreview, SolutionValidationData, ReportSummary } from '$lib/types/job';
 import type { Job, SolutionPreview, ReportSummary } from '$lib/types/job';
+import type { RuledOutFinding, OverlapGroup, MarketReality } from '$lib/types/report';
 
 export class ApiError extends Error {
   constructor(
@@ -453,6 +454,14 @@ export interface SharedPreviewReport {
       }>;
     }>;
   } | null;
+  /** Passed through by the sanitizer unless explicitly stripped (it isn't). */
+  examined_ruled_out?: RuledOutFinding[];
+  /** Passed through by the sanitizer unless explicitly stripped (it isn't). */
+  overlap_groups?: OverlapGroup[];
+  /** Passed through by the sanitizer unless explicitly stripped (it isn't). */
+  market_reality?: MarketReality;
+  /** Passed through by the sanitizer unless explicitly stripped (it isn't). */
+  idea_portfolio_summary?: string | null;
 }
 
 /**

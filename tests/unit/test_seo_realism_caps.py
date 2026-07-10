@@ -90,7 +90,8 @@ class TestWrapper:
     def _settings(self, **over):
         base = dict(seo_cap_require_saas_for_gating=True, seo_cap_gated_saas_ceiling=0.5,
                     seo_cap_thin_pages_threshold=50, seo_cap_thin_pages_ceiling=0.4,
-                    seo_cap_high_score_min_pages=300, seo_cap_moderate_pages_ceiling=0.7)
+                    seo_cap_high_score_min_pages=300, seo_cap_moderate_pages_ceiling=0.7,
+                    serp_owned_seo_ceiling=0.5)
         base.update(over)
         return SimpleNamespace(**base)
 

@@ -9,6 +9,7 @@ outputs cleared so _classify_idea_angles re-derives every idea's rationale again
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from nicheiq.config.settings import settings
 from nicheiq.crews.unified_solution_crew import _CRITIC_BATCH, UnifiedSolutionCrew
 
 _CLASSIFIER_FIELDS = ("winning_angle", "angle_rationale", "novelty_rationale",
@@ -30,7 +31,7 @@ def _idea(name, mf, vp="route optimization for mobile groomers", mech="route-opt
 def _crew(with_search=True):
     crew = UnifiedSolutionCrew.__new__(UnifiedSolutionCrew)
     crew.niche_context = SimpleNamespace(niche_description="mobile dog groomers")
-    crew.search_tool = (SimpleNamespace(run=lambda search_query: "MoeGo Smart Schedule route optimization")
+    crew.search_tool = (_search_stub("MoeGo Smart Schedule route optimization")
                         if with_search else None)
     crew.cost_tracker = None
     crew._incumbent_probe_text = "### Web-probed incumbent products..."   # cached
@@ -217,6 +218,14 @@ class TestParityProbe:
         assert any('"MoeGo"' in q for q in queries)
 
 
+def _search_stub(text):
+    """search_tool stand-in supporting both `.run` (single) and `.batch_run` (the
+    _probe_adjacent_markets union batch calls) — always answers with the same fixed text."""
+    return SimpleNamespace(
+        run=lambda search_query: text,
+        batch_run=lambda queries: {q: text for q in queries})
+
+
 def _adjacent_llm(markets=None, findings=None, parity_findings=None):
     """side_effect for invoke_structured that answers by output-model shape: the direct-parity
     judge, the adjacent reformulation, and the adjacent judge each get a matching fake."""
@@ -253,7 +262,7 @@ class TestAdjacentMarketProbe:
 
     def test_family_grouping_and_stamping(self):
         crew = _crew()
-        crew.search_tool = SimpleNamespace(run=lambda search_query: "HigherGov pricing and features")
+        crew.search_tool = _search_stub("HigherGov pricing and features")
         ideas = [self._idea("A"), self._idea("B"),                       # same family
                  self._idea("C", mech="case-study-scraping", data="reddit")]  # other family
         key = "procurement mining|government open data"
@@ -268,10 +277,90 @@ class TestAdjacentMarketProbe:
         assert ideas[2].adjacent_market_parity is None
         assert any("- A: HigherGov" in l for l in lines)
 
+    def _niche_finding(self, key, niche_parity="shipped", niche_covered_by="HigherGov",
+                       niche_evidence="ships a dedicated niche feed",
+                       covered_idea_names=("A",)):
+        return SimpleNamespace(
+            family_key=key, incumbent="", category="", evidence="",
+            niche_parity=niche_parity, niche_covered_by=niche_covered_by,
+            niche_evidence=niche_evidence, covered_idea_names=list(covered_idea_names))
+
+    def test_niche_backfill_stronger_cap_overwrites_weaker(self, monkeypatch):
+        # cap-strictness upgrade (codex-review MAJOR): a stronger 'shipped' niche finding (cap
+        # 0.45) must overwrite an existing weaker 'partial' finding (cap 0.55) — a plain
+        # not-yet-'none' check would have rejected this since the idea already had a finding.
+        monkeypatch.setattr(settings, "parity_shipped_market_fit_cap", 0.45)
+        monkeypatch.setattr(settings, "parity_partial_market_fit_cap", 0.55)
+        crew = _crew()
+        crew.search_tool = _search_stub("HigherGov results")
+        idea = self._idea("A")
+        idea.incumbent_parity = "partial by OldCo: limited overlap"
+        key = "procurement mining|government open data"
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   side_effect=_adjacent_llm(markets=[_market(key, ["procurement data"])],
+                                             findings=[self._niche_finding(key)])):
+            crew._probe_adjacent_markets([idea])
+        assert idea.incumbent_parity == "shipped by HigherGov: ships a dedicated niche feed"
+
+    def test_niche_backfill_weaker_cap_does_not_overwrite_stronger(self, monkeypatch):
+        # inverse: a 'substitute' niche finding (cap 0.50) must NOT overwrite an existing
+        # 'shipped' finding (cap 0.45, stricter) — the existing finding is stronger.
+        monkeypatch.setattr(settings, "parity_shipped_market_fit_cap", 0.45)
+        monkeypatch.setattr(settings, "parity_substitute_market_fit_cap", 0.50)
+        crew = _crew()
+        crew.search_tool = _search_stub("HigherGov results")
+        idea = self._idea("A")
+        idea.incumbent_parity = "shipped by Acme: already ships it"
+        key = "procurement mining|government open data"
+        finding = self._niche_finding(key, niche_parity="substitute", niche_covered_by="FreeGovData",
+                                      niche_evidence="free DIY route exists")
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   side_effect=_adjacent_llm(markets=[_market(key, ["procurement data"])],
+                                             findings=[finding])):
+            crew._probe_adjacent_markets([idea])
+        assert idea.incumbent_parity == "shipped by Acme: already ships it"   # untouched
+
+    def test_niche_backfill_overwrites_empty_finding(self):
+        # no cap (empty/'none') = no ceiling = always overwritable.
+        crew = _crew()
+        crew.search_tool = _search_stub("HigherGov results")
+        idea = self._idea("A")
+        idea.incumbent_parity = None
+        key = "procurement mining|government open data"
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   side_effect=_adjacent_llm(markets=[_market(key, ["procurement data"])],
+                                             findings=[self._niche_finding(key)])):
+            crew._probe_adjacent_markets([idea])
+        assert idea.incumbent_parity == "shipped by HigherGov: ships a dedicated niche feed"
+
+    def test_niche_frame_queries_include_outcome_query(self):
+        # Fix 1 (2026-07-10, live-motivated): incumbent NAMES often share no vocabulary with the
+        # idea's mechanism/category framing ("parity: none found" on ideas killed by The Wedding
+        # Report and the Berkeley Function-Calling Leaderboard) — an outcome-framed query
+        # (preferring the family's reformulated budget_line) is now added per family, and the
+        # setting's default/le were raised to 3 so it fires alongside the existing two.
+        assert settings.parity_niche_frame_queries_per_family == 3
+        crew = _crew()
+        crew.niche_context = SimpleNamespace(niche_description="wedding photographers")
+        queries: list[str] = []
+        crew.search_tool = SimpleNamespace(
+            run=lambda search_query: "results",
+            batch_run=lambda qs: (queries.extend(qs), {q: "results" for q in qs})[1])
+        ideas = [self._idea("A")]
+        key = "procurement mining|government open data"
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   side_effect=_adjacent_llm(markets=[_market(key, ["procurement data"])],
+                                             findings=[_adj_finding(key)])):
+            crew._probe_adjacent_markets(ideas)
+        # _market() stamps budget_line="ops budget" — used verbatim as the outcome query.
+        assert "ops budget" in queries
+        assert "procurement data for wedding photographers" in queries
+        assert "free wedding photographers procurement data" in queries
+
     def test_hallucinated_incumbent_dropped(self):
         # incumbent name absent from the search snippets -> finding discarded
         crew = _crew()
-        crew.search_tool = SimpleNamespace(run=lambda search_query: "generic results, nothing relevant")
+        crew.search_tool = _search_stub("generic results, nothing relevant")
         ideas = [self._idea("A")]
         key = "procurement mining|government open data"
         with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
@@ -283,7 +372,7 @@ class TestAdjacentMarketProbe:
 
     def test_reformulation_failure_fail_soft(self):
         crew = _crew()
-        crew.search_tool = SimpleNamespace(run=lambda search_query: "results")
+        crew.search_tool = _search_stub("results")
         ideas = [self._idea("A")]
         with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
                    side_effect=RuntimeError("down")):
@@ -292,7 +381,7 @@ class TestAdjacentMarketProbe:
 
     def test_snippets_fenced_and_prompt_audience_independent(self):
         crew = _crew()
-        crew.search_tool = SimpleNamespace(run=lambda search_query: "HigherGov results")
+        crew.search_tool = _search_stub("HigherGov results")
         ideas = [self._idea("A")]
         key = "procurement mining|government open data"
         prompts = []
@@ -313,7 +402,7 @@ class TestAdjacentMarketProbe:
     def test_adjacent_findings_feed_recal(self):
         key = "procurement mining|government open data"
         crew = _crew()
-        crew.search_tool = SimpleNamespace(run=lambda search_query: "HigherGov results")
+        crew.search_tool = _search_stub("HigherGov results")
         ideas = [self._idea(f"I{k}") for k in range(5)]
         nones = [_finding(f"I{k}", parity="none", covered_by="") for k in range(5)]
         with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
@@ -324,12 +413,31 @@ class TestAdjacentMarketProbe:
             crew._probe_mechanism_parity(ideas)
         extra = crew._recalibrated[0]["extra_context"]
         assert "ADJACENT-MARKET INCUMBENTS" in extra and "HigherGov" in extra
-        assert ideas[0].adjacent_market_parity is not None   # display stamped
+
+    def test_backfill_reflected_in_recal_extra_not_stale(self):
+        # codex-review MAJOR: the MECHANISM PARITY CHECK block fed to the recal critic must
+        # reflect each idea's FINAL (post-niche-backfill) finding, not the pre-backfill
+        # 'none found' line assembled before the adjacent probe ran.
+        key = "procurement mining|government open data"
+        crew = _crew()
+        crew.search_tool = _search_stub("HigherGov results")
+        ideas = [self._idea("A")]
+        nones = [_finding("A", parity="none", covered_by="")]
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   side_effect=_adjacent_llm(
+                       markets=[_market(key, ["procurement data"])],
+                       findings=[self._niche_finding(key)],
+                       parity_findings=nones)):
+            crew._probe_mechanism_parity(ideas)
+        extra = crew._recalibrated[0]["extra_context"]
+        assert "- A: shipped by HigherGov: ships a dedicated niche feed" in extra
+        assert "- A: none found" not in extra
+        assert ideas[0].incumbent_parity == "shipped by HigherGov: ships a dedicated niche feed"
 
     def test_tripwire_suppressed_when_adjacent_covers_half(self):
         key = "procurement mining|government open data"
         crew = _crew()
-        crew.search_tool = SimpleNamespace(run=lambda search_query: "HigherGov results")
+        crew.search_tool = _search_stub("HigherGov results")
         # 6 ideas, all direct-parity NONE (would fire the tripwire) but all covered by an
         # adjacent finding -> caveat suppressed.
         ideas = [self._idea(f"I{k}") for k in range(6)]

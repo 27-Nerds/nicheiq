@@ -257,6 +257,9 @@ class PricingStrategyCrew:
         market_sizing=None,
         audience_mapping=None,
         solution_scores: list | None = None,
+        market_brief: str = "",
+        market_incumbent_table: str = "",
+        market_wallet_line: str = "",
     ) -> PricingStrategyResult | None:
         """
         Execute pricing strategy crew to generate pricing recommendations.
@@ -270,6 +273,10 @@ class PricingStrategyCrew:
             market_sizing: Optional market sizing result from Stage 9
             audience_mapping: Optional audience mapping result from Stage 6.5
             solution_scores: Optional list of SolutionScores from keyword validation
+            market_brief: Phase-1 web-verified parity findings + substitute-pressure context
+                (utils/market_brief.py); '' when unavailable => no-op interpolation.
+            market_incumbent_table: Phase-1 web-verified incumbent pricing rows; '' when unavailable.
+            market_wallet_line: Phase-1 niche wallet-class signal; '' when unavailable.
 
         Returns:
             PricingStrategyResult with recommended pricing strategy, or None if analysis fails
@@ -319,6 +326,11 @@ class PricingStrategyCrew:
             "market_sizing_summary": market_sizing_summary,
             "audience_budget_sensitivity": audience_budget_sensitivity,
             "solution_rank_context": solution_rank_context,
+            # Market-data handoff (utils/market_brief.py): Phase-1 web-verified parity findings +
+            # incumbent pricing rows + niche wallet signal. Empty strings when unavailable => no-op.
+            "market_brief": market_brief,
+            "market_incumbent_table": market_incumbent_table,
+            "market_wallet_line": market_wallet_line,
         }
 
         try:

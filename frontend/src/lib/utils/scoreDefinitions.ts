@@ -4,13 +4,14 @@
  * Copy is grounded in the ACTUAL backend lifecycle (generator self-score → independent realism
  * critic re-scores & replaces it → deterministic downgrade-only caps), verified against
  * src/nicheiq/crews/unified_solution_crew.py and src/nicheiq/utils/seo_helpers.py. Keep these
- * accurate when editing: market-fit really is hard-capped at 40% on an unverified data route, and
- * solo-dev is re-scored by the same critic (weighing ongoing ops burden) then held at or below the
- * build-feasibility estimate.
+ * accurate when editing: market-fit really is hard-capped at 40% on an unverified data route (and
+ * separately capped for a thin-wallet buyer segment or a web-verified incumbent/substitute — see
+ * `_validate_idea_caps` rules (b)/(d)/(e)), and solo-dev is re-scored by the same critic (weighing
+ * ongoing ops burden) then held at or below the build-feasibility estimate.
  */
 export const SCORE_DEFINITIONS = {
   market_fit:
-    "Market Fit — how well the idea fits real, validated demand, weighted by how severe the pains it addresses are. An independent critic re-scores it conservatively, and it's capped at 40% when the data the idea needs can't be obtained through a verified route.",
+    "Market Fit — how well the idea fits real, validated demand, weighted by how severe the pains it addresses are. An independent critic re-scores it against the pain evidence and web-verified market findings, then it's hard-capped (never raised) when the data route is unverified, the buyer segment's wallet is thin, or a verified incumbent or free substitute already occupies the position.",
   technical_feasibility:
     "Feasibility — whether the idea can be built at all with today's tech and obtainable data (capability, not effort). Held at or below an independent build-feasibility estimate.",
   competitive_advantage:

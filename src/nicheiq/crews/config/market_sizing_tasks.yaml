@@ -51,6 +51,12 @@ market_sizing_analysis:
     **Total Competitors Identified:** {competitor_count}
 
 
+    **MARKET REALITY (Phase-1 web-verified; deepen, do not re-discover):**
+    {market_brief}
+    {market_incumbent_table}
+    {market_wallet_line}
+
+
     **PRE-COMPUTED MARKET SIGNALS (from Python -- treat as facts):**
     - Suggested Saturation Level: {suggested_saturation_level}
     - {strive_pre_check}

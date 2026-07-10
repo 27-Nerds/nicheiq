@@ -541,6 +541,7 @@ class SEOStrategyCrew:
         audience_mapping: "AudienceMappingResult | None" = None,
         covered_keywords: list[str] | None = None,
         job_id: str | None = None,
+        market_brief_vars: dict | None = None,
     ):
         """
         Initialize SEOStrategyCrew with SELECTED solution focus.
@@ -560,6 +561,9 @@ class SEOStrategyCrew:
             allowed_project_types: Optional project type constraints from user
             audience_mapping: Optional audience intelligence from Stage 6.5 (common_vocabulary for keywords)
             covered_keywords: Optional list of keyword strings already covered by anchor enrichment
+            market_brief_vars: Optional pre-computed `build_market_brief()` result
+                (utils/market_brief.py) — Phase-1 web-verified incumbent/wallet facts. None/missing
+                keys => the corresponding {market_brief}/... interpolation is a no-op.
         """
         # Don't call super().__init__() when using @CrewBase decorator
         # The decorator handles parent class initialization
@@ -573,6 +577,7 @@ class SEOStrategyCrew:
         self.audience_mapping = audience_mapping
         self.covered_keywords = covered_keywords
         self.job_id = job_id
+        self._market_brief_vars = market_brief_vars or {}
 
         # Initialize DataForSEO tools for keyword expansion and search volume
         self.dataforseo_expand_tool = DataForSEOExpandTool()
@@ -2120,6 +2125,18 @@ class SEOStrategyCrew:
         from ..utils.angle_brief import build_angle_brief
         return build_angle_brief(self.selected_solution)
 
+    def _market_vars(self) -> dict:
+        """Market-data handoff vars for the SEO task prompts (mirrors `_angle_vars`). Sourced from
+        the pre-computed `market_brief_vars` passed into the constructor (built once by
+        `research_flow.py` via `utils/market_brief.py`) — empty strings when unavailable, so the
+        {market_brief}/{market_incumbent_table}/{market_wallet_line} interpolations are a no-op."""
+        mv = self._market_brief_vars or {}
+        return {
+            "market_brief": mv.get("market_brief", ""),
+            "market_incumbent_table": mv.get("market_incumbent_table", ""),
+            "market_wallet_line": mv.get("market_wallet_line", ""),
+        }
+
     def create_strategy_multitask(
         self,
         enriched_keywords: list,
@@ -2442,6 +2459,8 @@ class SEOStrategyCrew:
                     "max_category_groups": cat_max,
                     # Angle-conditioned research (empty vars when disabled => no change).
                     **self._angle_vars(),
+                    # Market-data handoff (utils/market_brief.py; empty vars when unavailable).
+                    **self._market_vars(),
                 }
             )
 
@@ -2879,6 +2898,8 @@ class SEOStrategyCrew:
                     "tier2_ranking_time": difficulty_metrics["tier2_ranking_time"],
                     # Angle-conditioned research (empty vars when disabled => no change).
                     **self._angle_vars(),
+                    # Market-data handoff (utils/market_brief.py; empty vars when unavailable).
+                    **self._market_vars(),
                 }
             )
 

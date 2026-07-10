@@ -186,7 +186,9 @@ class StateAccessor:
         if not self.state.idea_generation:
             return []
 
-        all_solutions = [sol.solution_name for sol in self.state.idea_generation.solution_ideas]
+        from ...models.solution_idea import visible_ideas
+        all_solutions = [sol.solution_name
+                         for sol in visible_ideas(self.state.idea_generation.solution_ideas)]
 
         if selected_first and self.state.solution_selection:
             selected_name = self.state.solution_selection.selected_solution_name
@@ -204,7 +206,9 @@ class StateAccessor:
             Summary text or default message if unavailable
         """
         if self.state.idea_generation and self.state.idea_generation.solution_ideas:
-            names = [s.solution_name for s in self.state.idea_generation.solution_ideas]
+            from ...models.solution_idea import visible_ideas
+            names = [s.solution_name
+                     for s in visible_ideas(self.state.idea_generation.solution_ideas)]
             return f"Generated {len(names)} solution concepts: {', '.join(names)}."
         return "No solution ideas generated."
 

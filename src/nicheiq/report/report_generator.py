@@ -297,6 +297,16 @@ class ReportGenerator:
         # Research Reality Check — computed end of Phase 1, carried on state (no re-generation).
         final_report.niche_difficulty_verdict = getattr(self.state, "niche_difficulty_verdict", None)
 
+        # Market-data handoff: same Phase-1 web-verified incumbent/wallet facts already shown on
+        # the preview report's top-level market_reality (see research_flow._materialize_preview_report)
+        # and handed to Stage-2 deep research once (utils/market_brief.py) — shown here again so the
+        # final report doesn't silently drop the evidence behind the parity findings.
+        final_report.market_reality = self._generate_market_reality()
+
+        # Idea portfolio summary — computed once in Stage 5 alongside the difficulty verdict
+        # above (see utils/idea_portfolio_summary.py); carried on state, never regenerated here.
+        final_report.idea_portfolio_summary = getattr(self.state, "idea_portfolio_summary", None)
+
         final_report.refinement_highlights = self._generate_refinement_highlights()
         if final_report.refinement_highlights:
             logger.info(
@@ -1325,6 +1335,7 @@ class ReportGenerator:
                 filtering_stats=self.state.filtering_stats,
                 # Pipeline timing metadata
                 started_at=self.state.started_at.isoformat() if self.state.started_at else None,
+                funnel_counts=dict(getattr(self.state, "idea_funnel_counts", None) or {}),
             )
         except Exception as e:
             logger.warning(f"Failed to generate research metadata: {e}")
@@ -1458,10 +1469,21 @@ class ReportGenerator:
                 pain_point_confidence_score=confidence,
                 overall_data_quality=overall,
                 quality_caveats=quality_caveats,
+                examined_ruled_out=list(getattr(self.state, "idea_ruled_out", None) or []),
             )
         except Exception as e:
             logger.warning(f"Failed to generate data quality summary: {e}")
             return None
+
+    def _generate_market_reality(self) -> dict | None:
+        """Market-data handoff (see utils/market_brief.py): the Phase-1 web-verified incumbent
+        map + niche wallet signal, surfaced once at the report's top level. None when neither
+        probe found data (mirrors the preview report's always-present-but-empty shape)."""
+        incumbents = list(getattr(self.state, "niche_incumbent_map", None) or [])
+        wallet = dict(getattr(self.state, "niche_wallet_brief", None) or {})
+        if not incumbents and not wallet:
+            return None
+        return {"incumbents": incumbents, "wallet": wallet}
 
     def _generate_refinement_highlights(self) -> RefinementHighlights | None:
         """
@@ -1784,8 +1806,10 @@ class ReportGenerator:
             if not runner_up_names:
                 return None
 
-            # Find full solution details from idea_generation stage
-            all_solutions = {idea.solution_name: idea for idea in idea_generation.solution_ideas}
+            # Find full solution details from idea_generation stage (demoted/absorbed excluded —
+            # never surface a hidden idea as an alternative)
+            from ..models.solution_idea import visible_ideas
+            all_solutions = {idea.solution_name: idea for idea in visible_ideas(idea_generation.solution_ideas)}
 
             # Build competitive landscapes map for enhanced alternative solutions
             competitive_landscapes = {}
@@ -1938,6 +1962,8 @@ It differentiates through {diff_text}.
                     solo_dev_feasibility=solo_dev_feasibility_val,  # Pass-through float
                     # Angle-aware evaluation (pass-through; None when angle eval is off)
                     idea_tier=getattr(solution, 'idea_tier', None) or "single",
+                    candidate_status=getattr(solution, 'candidate_status', None) or "active",
+                    merged_from=getattr(solution, 'merged_from', None),
                     winning_angle=getattr(solution, 'winning_angle', None),
                     angle_rationale=getattr(solution, 'angle_rationale', None),
                     novelty_rationale=getattr(solution, 'novelty_rationale', None),
@@ -1972,6 +1998,8 @@ It differentiates through {diff_text}.
                     adjacent_market_parity=getattr(solution, 'adjacent_market_parity', None),
                     source_segment_payability=getattr(solution, 'source_segment_payability', None),
                     source_segment_payability_class=getattr(solution, 'source_segment_payability_class', None),
+                    # Multi-Frame Idea Generation Portfolio: which frame minted this idea's cell
+                    source_frame=getattr(solution, 'source_frame', None),
 
                     # Closed-vocabulary filter facets (chips + future filtering).
                     tags=getattr(solution, 'tags', None),

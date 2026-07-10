@@ -48,6 +48,79 @@ describe("scoreRationale", () => {
     ).toBe("Est. build: 6 weeks");
   });
 
+  it("market_fit appends the unverified-data-route cap clause", () => {
+    expect(
+      scoreRationale(base({ why_it_works_short: "strong pain", data_access_model: "restricted" }), "market_fit"),
+    ).toBe(
+      "strong pain — capped at 0.40 — the data route is unverified (thin early signal; Deep Research validates)",
+    );
+  });
+
+  it("market_fit appends the thin-wallet-segment cap clause", () => {
+    expect(
+      scoreRationale(base({ why_it_works_short: "strong pain", source_segment_payability: 0.2 }), "market_fit"),
+    ).toBe(
+      "strong pain — capped — this buyer segment rarely pays for tooling (thin early signal; Deep Research validates)",
+    );
+  });
+
+  it("market_fit appends the shipped-incumbent-parity cap clause", () => {
+    expect(
+      scoreRationale(base({ why_it_works_short: "strong pain", incumbent_parity: "shipped" }), "market_fit"),
+    ).toBe(
+      "strong pain — held at/below 0.45 — a verified incumbent ships this mechanism (thin early signal; Deep Research validates)",
+    );
+  });
+
+  it("market_fit appends the partial-incumbent-parity cap clause", () => {
+    expect(
+      scoreRationale(base({ why_it_works_short: "strong pain", incumbent_parity: "partial" }), "market_fit"),
+    ).toBe(
+      "strong pain — capped — an incumbent partially covers this position (thin early signal; Deep Research validates)",
+    );
+  });
+
+  it("market_fit appends the free/DIY-substitute cap clause", () => {
+    expect(
+      scoreRationale(base({ why_it_works_short: "strong pain", incumbent_parity: "substitute" }), "market_fit"),
+    ).toBe(
+      "strong pain — capped — a free/DIY route covers the core outcome (thin early signal; Deep Research validates)",
+    );
+  });
+
+  it("market_fit picks the smallest applicable cap when multiple conditions apply", () => {
+    // unverified data route (0.40) is tighter than shipped-parity (0.45)
+    expect(
+      scoreRationale(
+        base({ why_it_works_short: "strong pain", data_access_model: "unofficial", incumbent_parity: "shipped" }),
+        "market_fit",
+      ),
+    ).toBe(
+      "strong pain — capped at 0.40 — the data route is unverified (thin early signal; Deep Research validates)",
+    );
+    // substitute + thin wallet composes to 0.35 (tighter than the plain 0.55 payability cap alone)
+    expect(
+      scoreRationale(
+        base({ why_it_works_short: "strong pain", incumbent_parity: "substitute", source_segment_payability: 0.1 }),
+        "market_fit",
+      ),
+    ).toBe(
+      "strong pain — capped — a free/DIY route covers the core outcome (thin early signal; Deep Research validates)",
+    );
+  });
+
+  it("market_fit uses the cap clause alone (capitalized) when no grounded rationale exists", () => {
+    expect(
+      scoreRationale(base({ value_proposition: "", data_access_model: "blocked" }), "market_fit"),
+    ).toBe("Capped at 0.40 — the data route is unverified (thin early signal; Deep Research validates)");
+  });
+
+  it("market_fit has no cap clause when no cap condition is detected", () => {
+    expect(scoreRationale(base({ why_it_works_short: "strong pain", data_access_model: "public" }), "market_fit")).toBe(
+      "strong pain",
+    );
+  });
+
   it("composite prefixes the blend note", () => {
     expect(scoreRationale(base({ why_it_works_short: "strong pain" }), "composite")).toBe(
       "Overall: blends fit, feasibility, novelty & SEO. strong pain",

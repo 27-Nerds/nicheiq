@@ -267,6 +267,18 @@ class CheckpointManager:
         metadata["idea_focus"] = getattr(self.state, "idea_focus", "auto")
         if getattr(self.state, "idea_coverage_caveats", None):
             metadata["idea_coverage_caveats"] = self.state.idea_coverage_caveats
+        if getattr(self.state, "idea_ruled_out", None):
+            metadata["idea_ruled_out"] = self.state.idea_ruled_out
+        if getattr(self.state, "idea_funnel_counts", None):
+            metadata["idea_funnel_counts"] = self.state.idea_funnel_counts
+        if getattr(self.state, "idea_overlap_groups", None):
+            metadata["idea_overlap_groups"] = self.state.idea_overlap_groups
+        if getattr(self.state, "niche_incumbent_map", None):
+            metadata["niche_incumbent_map"] = self.state.niche_incumbent_map
+        if getattr(self.state, "niche_wallet_brief", None):
+            metadata["niche_wallet_brief"] = self.state.niche_wallet_brief
+        if getattr(self.state, "idea_portfolio_summary", None):
+            metadata["idea_portfolio_summary"] = self.state.idea_portfolio_summary
         if getattr(self.state, "pipeline_degradations", None):
             metadata["pipeline_degradations"] = self.state.pipeline_degradations
         if getattr(self.state, "niche_drift_telemetry", None):
@@ -598,6 +610,18 @@ class CheckpointManager:
             self.state.idea_focus = metadata["idea_focus"]
         if metadata.get("idea_coverage_caveats"):
             self.state.idea_coverage_caveats = metadata["idea_coverage_caveats"]
+        if metadata.get("idea_ruled_out"):
+            self.state.idea_ruled_out = metadata["idea_ruled_out"]
+        if metadata.get("idea_funnel_counts"):
+            self.state.idea_funnel_counts = metadata["idea_funnel_counts"]
+        if metadata.get("idea_overlap_groups"):
+            self.state.idea_overlap_groups = metadata["idea_overlap_groups"]
+        if metadata.get("niche_incumbent_map"):
+            self.state.niche_incumbent_map = metadata["niche_incumbent_map"]
+        if metadata.get("niche_wallet_brief"):
+            self.state.niche_wallet_brief = metadata["niche_wallet_brief"]
+        if metadata.get("idea_portfolio_summary"):
+            self.state.idea_portfolio_summary = metadata["idea_portfolio_summary"]
         if metadata.get("pipeline_degradations"):
             self.state.pipeline_degradations = metadata["pipeline_degradations"]
         if metadata.get("niche_drift_telemetry"):

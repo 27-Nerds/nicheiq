@@ -175,6 +175,11 @@ class DataQualitySummary(BaseModel):
         default_factory=list,
         description="Warnings about data limitations or quality issues"
     )
+    examined_ruled_out: list[dict] = Field(
+        default_factory=list,
+        description="Structured findings for weak ideas demoted/rejected during the "
+                     "idea-generation funnel (see ResearchState.idea_ruled_out)"
+    )
 
 
 class NicheDifficultyVerdict(BaseModel):
@@ -352,6 +357,12 @@ class ResearchMetadata(BaseModel):
     # Pipeline timing metadata
     started_at: Optional[str] = Field(default=None, description="Pipeline start time (ISO 8601)")
 
+    funnel_counts: dict = Field(
+        default_factory=dict,
+        description="Idea-generation funnel tallies (pains_identified, cells_run, winners, "
+                    "demoted, backfill_run/accepted, candidates_shown, ...)"
+    )
+
 class AlternativeSolution(BaseModel):
     """Enhanced alternative solution with competitive analysis details."""
 
@@ -387,6 +398,17 @@ class AlternativeSolution(BaseModel):
 
     # Portfolio-funnel provenance tier (mirrors BaseSolutionIdea.idea_tier; drives the report badge)
     idea_tier: str = Field(default="single", description="single | salvaged | bundle")
+    # Mirrors BaseSolutionIdea.candidate_status / merged_from — alternatives are drawn from
+    # visible_ideas() (demoted/absorbed already excluded), so this is realistically always
+    # 'active' or 'restored' here; carried through for completeness / lineage transparency.
+    candidate_status: str = Field(
+        default="active",
+        description="Portfolio-funnel visibility status: active | demoted | restored | absorbed "
+                     "(mirrors BaseSolutionIdea.candidate_status)")
+    merged_from: Optional[list[str]] = Field(
+        default=None,
+        description="Solution names this idea was synthesized from when idea_tier='merged'; "
+                     "None on every other tier (mirrors BaseSolutionIdea.merged_from)")
     # Angle-aware evaluation (mirrors BaseSolutionIdea; set when angle eval is on, None otherwise)
     winning_angle: Optional[str] = Field(default=None, description="distribution_seo | novel_differentiation | vertical_workflow")
     angle_rationale: Optional[str] = Field(default=None, description="User-facing comment: the angle + where differentiation lives")
@@ -438,6 +460,12 @@ class AlternativeSolution(BaseModel):
     source_segment_payability_class: Optional[str] = Field(
         default=None,
         description="corporate-budget | smb-budget | prosumer-wallet | personal-wallet | mixed")
+    # Multi-Frame Idea Generation Portfolio: which generation FRAME minted this idea's cell
+    # (mirrors BaseSolutionIdea.source_frame; CODE-FILLED, never LLM-set).
+    source_frame: Optional[str] = Field(
+        default=None,
+        description="pain | gap | data_asset | workflow (mirrors "
+        "BaseSolutionIdea.source_frame); None when not carried through")
 
     # Closed-vocabulary filter facets (chips + future filtering). See docs/IDEA_TAGS.md.
     tags: Optional[IdeaTags] = Field(default=None, description="Closed-vocabulary filter facets")
@@ -630,6 +658,24 @@ class FinalReport(BaseModel):
     niche_difficulty_verdict: Optional[NicheDifficultyVerdict] = Field(
         default=None,
         description="Research Reality Check: candid verdict on how hard this niche is to solve with software"
+    )
+    market_reality: Optional[dict] = Field(
+        default=None,
+        description=(
+            "Phase-1 web-verified market facts, shown once and handed to Phase-2 deep-research "
+            "once (see utils/market_brief.py): {incumbents: [{name, pricing, focus, gap, source}], "
+            "wallet: {wallet_class, evidence, free_density}}. None when neither probe found data. "
+            "Mirrors the preview report's top-level market_reality field."
+        ),
+    )
+    idea_portfolio_summary: Optional[str] = Field(
+        default=None,
+        description=(
+            "LLM-narrated honest assessment of the visible idea pool, grounded in verified "
+            "Phase-1 signals. Computed once in Stage 5 (see utils/idea_portfolio_summary.py) "
+            "and carried on state; None when the pool was empty or the LLM pass failed its "
+            "name-coverage guardrail. Mirrors the preview report's top-level field."
+        ),
     )
     refinement_highlights: Optional[RefinementHighlights] = Field(
         default=None,
@@ -1636,6 +1682,54 @@ class ResearchState(BaseModel):
     # Caveats from post-crew pain-coverage enforcement (high-severity pains a
     # solution set could not cover). Surfaced in the data-quality summary.
     idea_coverage_caveats: list[str] = Field(default_factory=list)
+    idea_ruled_out: list[dict] = Field(
+        default_factory=list,
+        description=(
+            "Structured 'examined & ruled out' findings from Stage 5: {pain_title, reason, "
+            "market_fit, market_fit_band, prior_tier, source, evidence}."
+        ),
+    )
+    idea_funnel_counts: dict = Field(
+        default_factory=dict,
+        description=(
+            "Stage-5 research-funnel tallies for the UI ledger (pains_identified, cells_run, "
+            "concepts_generated, survived_critics, winners, salvaged, demoted, merge_groups, "
+            "variants_absorbed, backfill_run, backfill_accepted, candidates_shown)."
+        ),
+    )
+    idea_overlap_groups: list[dict] = Field(
+        default_factory=list,
+        description=(
+            "Variant-overlap groups a buyer would see as one product: {idea_names, "
+            "shared_product}. Groups whose merge was accepted are absorbed into an "
+            "idea_tier='merged' idea; the rest drive the UI's grouped-variant display."
+        ),
+    )
+    niche_incumbent_map: list[dict] = Field(
+        default_factory=list,
+        description=(
+            "Web-verified incumbent products for this niche from the Phase-1 parity probe: "
+            "{name, pricing, focus, gap, source}. Mirrors UnifiedSolutionCrew._incumbent_rows; "
+            "handed to Stage-2 deep-research crews (see utils/market_brief.py) and the report's "
+            "market_reality section."
+        ),
+    )
+    niche_wallet_brief: dict = Field(
+        default_factory=dict,
+        description=(
+            "Niche-level tooling-spend signal from the Phase-1 wallet probe: "
+            "{wallet_class, evidence, free_density}. Mirrors "
+            "UnifiedSolutionCrew._niche_wallet_brief."
+        ),
+    )
+    idea_portfolio_summary: str | None = Field(
+        default=None,
+        description=(
+            "LLM-narrated honest assessment of the visible idea pool, grounded in verified "
+            "Phase-1 signals (see utils/idea_portfolio_summary.py). None when the pool was "
+            "empty or the grounded LLM pass failed its name-coverage guardrail."
+        ),
+    )
     # Generic degradation ledger: every FAIL-OPEN gate or silent quality reduction anywhere in the
     # pipeline appends a one-line summary here (e.g. "Quote stance filter unavailable for 20/24 pain
     # points — quotes kept unfiltered"). Surfaced verbatim in data_quality_summary.quality_caveats.

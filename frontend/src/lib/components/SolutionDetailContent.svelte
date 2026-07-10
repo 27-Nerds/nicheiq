@@ -1,11 +1,12 @@
 <script lang="ts">
-  import { Telescope } from "lucide-svelte";
+  import { Telescope, TriangleAlert } from "lucide-svelte";
   import { renderTechnicalContent } from "$lib/utils/format";
   import type { SolutionPreview } from "$lib/types/job";
   import FacetChips from "$lib/components/FacetChips.svelte";
   import Tooltip from "$lib/components/ui/Tooltip.svelte";
   import { humanizeTag, tagDescription } from "$lib/utils/ideaTagLabels";
   import { angleLabel } from "$lib/utils/ideaAngleLabels";
+  import { sourceFrameLabel } from "$lib/utils/sourceFrameLabels";
   import { strengthEntry, SUPERPOWERS_DETAILED } from "$lib/utils/superpower";
   import { scoreRationale } from "$lib/utils/scoreRationale";
   import { originalityMetric } from "$lib/utils/solution-utils";
@@ -19,6 +20,11 @@
   }
 
   let { solution, view = "overview", onViewFull }: Props = $props();
+
+  // Deterministic weak-signal note: a 'restored' candidate was demoted for thin market signal,
+  // then brought back so its pain stays represented on the shortlist. Framed as a property of
+  // the opportunity, not a flaw in the concept or a limit of the analysis.
+  const isWeakSignal = $derived(solution.candidate_status === "restored");
 
   // Grounded generation provenance: the (pain × segment) cell that produced this idea.
   const provenance = $derived.by(() => {
@@ -57,6 +63,8 @@
         ),
       );
     if (t.usage_cadence) items.push(chip(t.usage_cadence));
+    const frameLabel = sourceFrameLabel(solution.source_frame);
+    if (frameLabel) items.push({ label: frameLabel, description: "How this idea's generation cell was framed." });
     return items;
   });
   // Growth channels — a distribution facet, so it lives in the Full-detail economics card.
@@ -116,6 +124,14 @@
   const mechanismTag = $derived(solution.mechanism_tag ? humanizeTag(solution.mechanism_tag) : null);
   const hasParity = $derived(!!(solution.incumbent_parity?.trim() || solution.adjacent_market_parity?.trim()));
 
+  // Overview-only note: a web-verified incumbent finding, surfaced under "The read" as a
+  // calm early signal (not an error) — full parity detail lives in the Full-detail card.
+  const overviewIncumbentNote = $derived.by(() => {
+    const p = solution.incumbent_parity?.trim();
+    if (!p || p.toLowerCase().startsWith("none")) return null;
+    return p;
+  });
+
   // Card 7 — the per-criterion scoring rationale (same user-facing text as the Overview
   // score-detail popovers; NOT the not-user-facing calibration_notes).
   const scoreCriteria = $derived.by(() => {
@@ -166,6 +182,12 @@
       </dl>
     {/if}
 
+    {#if solution.idea_tier === "merged" && solution.merged_from?.length}
+      <p class="merged-note">
+        Synthesized from {solution.merged_from.length} variant{solution.merged_from.length === 1 ? "" : "s"}: {solution.merged_from.join(", ")}
+      </p>
+    {/if}
+
     {#if strengthChips.length > 0 || modelItems.length > 0 || watchOutItems.length > 0}
       <div class="facet-panel">
         {#if strengthChips.length > 0}
@@ -214,6 +236,25 @@
             {solution.differentiation_locus}
           </p>
         {/if}
+        {#if overviewIncumbentNote}
+          <p class="subnote">
+            <span class="font-medium text-text-secondary">Web-verified incumbent:</span>
+            {overviewIncumbentNote} — thin early signal; Deep Research validates.
+          </p>
+        {/if}
+      </div>
+    {/if}
+
+    {#if isWeakSignal}
+      <div class="weak-note">
+        <TriangleAlert class="weak-note-icon" aria-hidden="true" />
+        <div class="weak-note-body">
+          <span class="weak-note-title">Thin market signal</span>
+          <p>
+            This is the strongest concept we found for its pain, but the market signal is thin —
+            we're showing it so the pain stays represented. Treat it as a lower-confidence bet.
+          </p>
+        </div>
       </div>
     {/if}
 
@@ -514,6 +555,15 @@
     border-radius: 0;
   }
 
+  .merged-note {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    color: var(--color-text-muted);
+    text-wrap: pretty;
+  }
+
   .body-copy {
     margin: 0;
     max-width: 74ch;
@@ -637,6 +687,45 @@
   .insight-callout .subnote {
     color: var(--color-text-muted);
     font-size: 0.8125rem;
+  }
+
+  /* Weak-signal note — a calm, neutral aside (not an error): a LOW-FIT candidate is honest about
+     the thin market for its pain, framed as an opportunity property, not a flaw. */
+  .weak-note {
+    display: flex;
+    gap: 0.55rem;
+    align-items: flex-start;
+    margin-top: 0.75rem;
+    padding: 0.6rem 0.7rem;
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    background: var(--color-bg-surface);
+  }
+  .weak-note :global(.weak-note-icon) {
+    width: 15px;
+    height: 15px;
+    flex-shrink: 0;
+    margin-top: 1px;
+    color: var(--color-text-muted);
+  }
+  .weak-note-body {
+    display: grid;
+    gap: 0.12rem;
+    min-width: 0;
+  }
+  .weak-note-title {
+    font-family: var(--font-body);
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--color-text-secondary);
+  }
+  .weak-note p {
+    margin: 0;
+    max-width: 72ch;
+    color: var(--color-text-muted);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    text-wrap: pretty;
   }
 
   /* ── Full detail cards ── */

@@ -242,12 +242,20 @@ def _build_partitioned_block(
     pain_focus: str, persona: str, concepts_target: int, allow_zero: bool,
     allowed_types: list[str] | None = None, preferred_type: str | None = None,
     data_menu: str = "", dissatisfaction: str = "",
+    wallet: str = "", market_reality: str = "",
+    focus_header: str = "THE ONE PAIN TO SOLVE:", anchor_block: str = "",
 ) -> str:
     """The per-agent override prefix injected at the TOP of the divergent task as
     {partitioned_mode_block}. Empty string => byte-identical legacy prompt. When present it
     redirects this generator to ONE pain and explicitly overrides the pool-level quotas
     (8-12 concepts / >=4 pains / >=4 techniques / >=3 project types) that don't apply to a
-    single narrow agent. The archetype steer RESPECTS the UI's allowed_project_types."""
+    single narrow agent. The archetype steer RESPECTS the UI's allowed_project_types.
+
+    `focus_header`/`anchor_block` let a non-pain frame cell (Multi-Frame Idea Generation
+    Portfolio) reuse this SAME builder: `pain_focus` becomes the frame's own
+    `FrameSpec.brief_formatter(focus)` text and `focus_header` becomes the frame's
+    `FrameSpec.focus_header`. Both default to the ORIGINAL pain-frame values, so a pain-frame
+    call site is byte-identical to before."""
     archetype = _archetype_directive(allowed_types, preferred_type=preferred_type)
     zero_clause = (
         "If — and ONLY if — there is genuinely no strong product fit for this pain, you may "
@@ -270,9 +278,12 @@ def _build_partitioned_block(
            f"(NO smart-device/vendor APIs you can't confirm, NO scraping fragile private sites, NO "
            f"cold-start user-generated data as the core value):\n{data_menu}\n" if data_menu else "")
         + (f"\n{dissatisfaction}\n" if dissatisfaction else "")
-        + "\nTHE ONE PAIN TO SOLVE:\n"
+        + (f"\n{wallet}\n" if wallet else "")
+        + (f"\n{market_reality}\n" if market_reality else "")
+        + f"\n{focus_header}\n"
         f"{pain_focus}\n\n"
-        "═══════════════════════════════════════════════════════════════════════════\n\n"
+        + (f"{anchor_block}\n\n" if anchor_block else "")
+        + "═══════════════════════════════════════════════════════════════════════════\n\n"
     )
 
 
@@ -287,6 +298,14 @@ _FOCUS_ROTATIONS = {
 }
 # Project types that lean to the distribution_seo angle (used by the focus-aware winner-pick).
 _DISTRIBUTION_PROJECT_TYPES = {"directory", "aggregator", "comparison-tool"}
+# Multi-Frame Idea Generation Portfolio: the 3 deterministic ALWAYS-AVAILABLE routes
+# `_build_data_menu` appends in code — universal (not niche-specific), so excluded from
+# `_seed_data_asset_focuses` (a "verified data asset" seed must be a real niche-specific finding).
+_GENERIC_DATA_ROUTES = (
+    "Google keyword search data via DataForSEO (licensed) — volumes, competition, per-region queries",
+    "Public community discussions (Reddit/HN/forums, public) — pain language, tool mentions",
+    "Deterministic arithmetic on the user's own inputs (none) — calculators/planners need no external data",
+)
 # P1a: below this seo_scalability, an idea has no SEO surface to win on, so idea_focus='distribution'
 # must NOT force distribution_seo (mirrors the classifier's hard floor). Force = strong prior, not absolute.
 _ANGLE_FORCE_SEO_FLOOR = 0.35
@@ -932,6 +951,15 @@ class UnifiedSolutionCrew:
         # Caveats from post-crew pain-coverage enforcement (set in execute_pipeline).
         self.coverage_caveats: list[str] = []
 
+        # Weak-winner demotion / variant-merge / backfill artifacts (read by the flow post-crew,
+        # persisted to checkpoint metadata like coverage_caveats).
+        self.ruled_out_pains: list[dict] = []
+        self.overlap_groups: list[dict] = []
+        self.funnel_counts: dict = {}
+        # Tournament-branch context stashed for the post-union demote/merge/backfill block
+        # (search closure, usage sink, counts live inside the `if use_tournament:` scope).
+        self._tournament_ctx: dict | None = None
+
         logger.info(
             f"UnifiedSolutionCrew initialized with {len(pain_point_analysis.pain_points)} pain points "
             f"(direct context injection, no RAG)"
@@ -1010,8 +1038,22 @@ class UnifiedSolutionCrew:
 
     def _probe_incumbents(self) -> str:
         """Portfolio funnel F4: web-probe the REAL incumbent products for this niche (names, pricing,
-        focus, gaps) via 2 Serper queries + one small extraction call. Cached on the instance;
-        fail-soft -> ''. The output block instructs downstream consumers to design the WEDGE."""
+        focus, gaps) via 3 Serper queries + one small extraction call. Cached on the instance;
+        fail-soft -> ''. The output block instructs downstream consumers to design the WEDGE.
+
+        Niche-native-tool blind spot (live-motivated: wedding-photographers run + web-judge
+        calibration, 2026-07-10): the original 2 enterprise-SaaS-framed queries ("best software
+        tools for X", "X app pricing per month") found the enterprise players but missed the
+        cheap, niche-native tools the persona actually pays for — PhotoPills ($10 app), Zenfolio
+        Smart Pricing (a feature inside a platform, not a standalone SaaS), The LawTog ($30
+        template pack). The Stage-2 corpus and audience mapping already NAME these tools; the
+        probe just never looked there. Fix: (1) a 3rd persona-toolbelt-framed query that surfaces
+        listicles of the niche's real toolbelt, (2) corpus-derived candidate names (from
+        `audience_mapping.tools_currently_used` + bolded names in `competitor_mentions_text`,
+        mirroring `_build_dissatisfaction_block`'s name-collection pattern) fed to the extractor
+        as RECALL HINTS only — the extractor still only confirms names it can see evidence for
+        in the search results, never invents, and (3) one budgeted verification query for
+        corpus candidates the first 3 queries' snippets didn't surface."""
         cached = getattr(self, "_incumbent_probe_text", None)
         if cached is not None:
             return cached
@@ -1024,7 +1066,8 @@ class UnifiedSolutionCrew:
                 return ""
             snippets = []
             for q in (f"best software tools for {niche}"[:120],
-                      f"{niche} app pricing per month"[:120]):
+                      f"{niche} app pricing per month"[:120],
+                      f"best apps and tools for {niche}"[:120]):
                 try:
                     snippets.append(str(search_tool.run(search_query=q))[:3000])
                 except Exception:
@@ -1032,6 +1075,37 @@ class UnifiedSolutionCrew:
             if not snippets:
                 self._incumbent_probe_text = ""
                 return ""
+
+            # Corpus toolbelt seeding — names the community already mentions, as recall hints
+            # for the extractor (not a source of truth; the search results still gate inclusion).
+            import re as _re
+            candidate_names: list[str] = []
+            audience_mapping = getattr(self, "audience_mapping", None)
+            if audience_mapping and getattr(audience_mapping, "tools_currently_used", None):
+                candidate_names += list(audience_mapping.tools_currently_used)
+            candidate_names += _re.findall(
+                r"\*\*([^*]+)\*\*", getattr(self, "competitor_mentions_text", "") or "")
+            seen_candidates: set[str] = set()
+            deduped_candidates: list[str] = []
+            for name in candidate_names:
+                key = name.strip().lower()
+                if key and key not in seen_candidates:
+                    seen_candidates.add(key)
+                    deduped_candidates.append(name.strip())
+
+            combined_snippets = "\n".join(snippets)
+            # Verification query: corpus candidates not already surfaced by the first 3 queries'
+            # snippets get one combined, budgeted lookup (never invented, only confirmed/denied).
+            unfound_candidates = [
+                name for name in deduped_candidates
+                if name.lower() not in combined_snippets.lower()
+            ][:3]
+            if unfound_candidates:
+                verify_query = f"{' '.join(unfound_candidates)} pricing"[:120]
+                verify_result = self._ma_search(verify_query)
+                if verify_result:
+                    snippets.append(str(verify_result)[:3000])
+                    combined_snippets = "\n".join(snippets)
 
             from pydantic import BaseModel, Field as _F
 
@@ -1044,13 +1118,21 @@ class UnifiedSolutionCrew:
             class _Incumbents(BaseModel):
                 incumbents: list[_Incumbent] = _F(default_factory=list)
 
+            candidate_hint = ""
+            if deduped_candidates:
+                candidate_hint = (
+                    "\n\nCANDIDATE TOOLS the community already mentions (include any of these "
+                    "you can CONFIRM from the search results, with what the results show about "
+                    f"them): {', '.join(deduped_candidates[:15])}")
+
             r, usage = LLMService.invoke_structured(
-                prompt=(f"Niche: {niche}\n\nSearch results:\n{chr(10).join(snippets)}\n\n"
-                        "Extract the REAL software products/tools serving this niche (max 8). Only "
+                prompt=(f"Niche: {niche}\n\nSearch results:\n{combined_snippets}"
+                        f"{candidate_hint}\n\n"
+                        "Extract the REAL software products/tools serving this niche (max 12). Only "
                         "products actually named in the results — never invent. Return JSON."),
                 output_model=_Incumbents, temperature=0, timeout=120,
                 model_name=settings.report_structured_llm, reasoning_effort="minimal")
-            rows = [i for i in (r.incumbents or []) if (i.name or "").strip()][:8]
+            rows = [i for i in (r.incumbents or []) if (i.name or "").strip()][:12]
             if rows:
                 lines = "\n".join(
                     f"- {i.name} ({i.pricing or 'pricing unknown'}): {i.focus or 'n/a'}."
@@ -1059,7 +1141,9 @@ class UnifiedSolutionCrew:
                         f"do NOT duplicate):\n{lines}")
                 # structured rows for the mechanism-parity probe (name+focus matching)
                 self._incumbent_rows = [
-                    {"name": i.name, "pricing": i.pricing, "focus": i.focus, "gap": i.gap}
+                    {"name": i.name, "pricing": i.pricing, "focus": i.focus, "gap": i.gap,
+                     "source": "corpus-confirmed" if i.name.strip().lower() in seen_candidates
+                     else "web"}
                     for i in rows]
             if hasattr(self, "cost_tracker") and self.cost_tracker and usage is not None:
                 self.cost_tracker.record_llm_usage("Stage 7 - Incumbent Probe", usage.to_dict())
@@ -1068,6 +1152,115 @@ class UnifiedSolutionCrew:
             logger.warning(f"[IncumbentProbe] failed (non-fatal): {str(e)[:100]}")
             text = ""
         self._incumbent_probe_text = text
+        return text
+
+    def _probe_niche_wallet(self) -> dict:
+        """Niche-level tooling-spend probe (2026-07-09; live-motivated: cottage-food's own
+        community documents '$0-25/mo total, start free' — one search away, never checked).
+        Budgeted Serper queries + one minimal-effort extraction, reusing the incumbent rows'
+        price points. Returns {wallet_class: 'paying'|'mixed'|'free-culture', evidence, free_density}
+        — an EVIDENCE FEED for the finer-grained segment-payability machinery and the
+        niche-difficulty verdict, never an authority over them ('mixed' whenever priced tools or
+        a paying pro sub-segment appear). Cached; fail-soft -> {}."""
+        cached = getattr(self, "_niche_wallet_brief", None)
+        if cached is not None:
+            return cached
+        out: dict = {}
+        try:
+            niche = ((getattr(getattr(self, "niche_context", None),
+                              "niche_description", "") or "").strip())[:80]
+            if not niche:
+                self._niche_wallet_brief = {}
+                return {}
+            # Community-framed queries (codex plan-review: beats the abstract "how much do X
+            # pay"); the free-routes query often dedups against the parity leg via the session
+            # cache. All budgeted via _ma_search.
+            wallet_queries = [f"{niche} software pricing",
+                              f"site:reddit.com {niche} software cost",
+                              f"free tools for {niche}"]
+            result_map = self._ma_search_batch(wallet_queries)
+            snippets = [result_map[q][:2500] for q in wallet_queries if result_map.get(q)]
+            if not snippets:
+                self._niche_wallet_brief = {}
+                return {}
+
+            from pydantic import BaseModel, Field as _F
+            from ..utils.content_security import fence_content
+
+            class _NicheWallet(BaseModel):
+                wallet_class: str = _F(
+                    "", description=("'paying' (priced tools with evident adoption), 'mixed' "
+                                     "(priced tools or a paying pro sub-segment exist alongside a "
+                                     "free-tool norm), or 'free-culture' (community norm is free/"
+                                     "DIY tooling with no meaningful paid adoption)"))
+                evidence: str = _F("", description="<=25 words, from the results only — cite the "
+                                                   "spend norm or price points found")
+                free_density: str = _F("", description="<=15 words: how many/which free routes "
+                                                       "the results show")
+
+            incumbent_prices = "\n".join(
+                f"- {r.get('name')}: {r.get('pricing') or 'unknown'}"
+                for r in (getattr(self, "_incumbent_rows", None) or [])[:8])
+            r, usage = LLMService.invoke_structured(
+                prompt=(f"Niche: {niche}\n\nKnown incumbent price points:\n"
+                        f"{incumbent_prices or '- none collected'}\n\n"
+                        + fence_content("\n".join(snippets), source="web-search",
+                                        label="UNTRUSTED WEB RESULTS")
+                        + "\n\nClassify this niche's software-spend norm from the results ONLY. "
+                          "Default to 'mixed' whenever priced tools OR a paying professional "
+                          "sub-segment appear — 'free-culture' requires the community norm to be "
+                          "clearly free/DIY with no meaningful paid adoption. Never invent "
+                          "evidence. Return JSON."),
+                output_model=_NicheWallet, temperature=0, timeout=90,
+                model_name=settings.report_structured_llm, reasoning_effort="minimal")
+            if hasattr(self, "cost_tracker") and self.cost_tracker and usage is not None:
+                self.cost_tracker.record_llm_usage("Stage 7 - Niche Wallet", usage.to_dict())
+            wc = (r.wallet_class or "").strip().lower()
+            if wc in ("paying", "mixed", "free-culture"):
+                out = {"wallet_class": wc, "evidence": (r.evidence or "").strip()[:200],
+                       "free_density": (r.free_density or "").strip()[:120]}
+                logger.info(f"[NicheWallet] {wc}: {out['evidence'][:90]}")
+        except Exception as e:
+            logger.warning(f"[NicheWallet] failed (non-fatal): {str(e)[:100]}")
+            out = {}
+        self._niche_wallet_brief = out
+        return out
+
+    def _wallet_prompt_line(self) -> str:
+        """One-line wallet steer for prompts ('' when the probe found nothing) — Phase-1 signal
+        wording, never a verdict."""
+        w = getattr(self, "_niche_wallet_brief", None) or {}
+        if not w.get("wallet_class"):
+            return ""
+        return (f"NICHE WALLET (thin early signal; Deep Research validates): documented tooling "
+                f"spend is '{w['wallet_class']}' — {w.get('evidence') or 'no detail'}. "
+                f"Free routes: {w.get('free_density') or 'unknown'}.")
+
+    def _build_market_reality_block(self) -> str:
+        """MARKET REALITY pack (E1, 2026-07-09): a compact incumbent map injected into every
+        generation cell brief so ideas are born differentiated instead of deflated post-hoc —
+        zero new searches, built from the already-collected `_incumbent_rows` (+ the wallet
+        brief's free-route signal when present). '' when no incumbents were probed. Cached."""
+        cached = getattr(self, "_market_reality_text", None)
+        if cached is not None:
+            return cached
+        text = ""
+        rows = getattr(self, "_incumbent_rows", None) or []
+        if rows:
+            lines = "\n".join(
+                f"- {r.get('name')} ({r.get('pricing') or 'pricing unknown'}): "
+                f"{r.get('focus') or 'n/a'} — weak at: {r.get('gap') or 'n/a'}"
+                for r in rows[:8])
+            wallet = getattr(self, "_niche_wallet_brief", None) or {}
+            free_density = wallet.get("free_density") or ""
+            text = (
+                "MARKET REALITY (web-probed; thin early signals — Deep Research validates):\n"
+                f"{lines}\n"
+                + (f"Free routes: {free_density}\n" if free_density else "")
+                + "Your concept must attack a named gap or use the free route as distribution — "
+                  "head-on clones of a shipped product get capped."
+            )
+        self._market_reality_text = text
         return text
 
     def _segment_payability_map(self) -> dict:
@@ -1179,6 +1372,80 @@ class UnifiedSolutionCrew:
     # cost at ≤2 LLM calls + ≤(2×cap) searches regardless of idea count.
     _ADJACENT_FAMILY_CAP = 6
 
+    def _ma_search(self, query: str) -> str | None:
+        """Budgeted Serper call for the NEW market-awareness queries (niche-frame recall, wallet,
+        SERP composition). Shared hard budget `market_awareness_serper_budget` (0 disables these
+        probes entirely); when exhausted the remaining probes skip fail-soft — a deflationary
+        signal that doesn't run simply doesn't deflate. Session cache still dedups repeats — a
+        cache HIT is checked BEFORE the budget gate and never consumes it (codex-review MAJOR:
+        budget was previously burned on repeats the tool would have served for free).
+        Returns the result string or None (budget out / no tool / query failed)."""
+        budget = settings.market_awareness_serper_budget
+        if budget <= 0:
+            return None
+        tool = getattr(self, "search_tool", None)
+        if tool is None:
+            return None
+        cache = getattr(tool, "_cache", None)
+        if isinstance(cache, dict):
+            cached = cache.get(query.strip().lower())
+            if cached is not None:
+                return str(cached)
+        used = getattr(self, "_ma_serper_calls", 0)
+        if used >= budget:
+            return None
+        try:
+            self._ma_serper_calls = used + 1
+            return str(tool.run(search_query=query))
+        except Exception:
+            return None
+
+    def _ma_search_batch(self, queries: list[str]) -> dict[str, str]:
+        """Batched budgeted Serper call — same budget semantics as `_ma_search`, one Serper
+        batch request instead of N sequential ones. Cache hits are served for free (checked
+        BEFORE the budget gate, same as `_ma_search`); only actual cache-misses count against
+        `_ma_serper_calls`, and the miss list is truncated to the remaining budget — queries
+        beyond it are never sent and resolve to ''. Returns {query: result_string} for every
+        query in `queries` (duplicates included; '' on budget-exhaustion/no-tool/failure)."""
+        if not queries:
+            return {}
+        budget = settings.market_awareness_serper_budget
+        if budget <= 0:
+            return {q: "" for q in queries}
+        tool = getattr(self, "search_tool", None)
+        if tool is None:
+            return {q: "" for q in queries}
+        cache = getattr(tool, "_cache", None)
+
+        seen: set[str] = set()
+        unique_queries: list[str] = []
+        for q in queries:
+            key = q.strip().lower()
+            if key not in seen:
+                seen.add(key)
+                unique_queries.append(q)
+
+        miss_queries = [
+            q for q in unique_queries
+            if not (isinstance(cache, dict) and q.strip().lower() in cache)
+        ]
+        used = getattr(self, "_ma_serper_calls", 0)
+        remaining = max(0, budget - used)
+        allowed_misses = miss_queries[:remaining]
+        truncated = {q.strip().lower() for q in miss_queries[remaining:]}
+
+        to_fetch = [q for q in unique_queries if q.strip().lower() not in truncated]
+        result_map: dict[str, str] = {}
+        if to_fetch:
+            self._ma_serper_calls = used + len(allowed_misses)
+            try:
+                result_map = tool.batch_run(to_fetch)
+            except Exception as e:
+                logger.warning(f"[MaSearchBatch] batch_run failed (non-fatal): {str(e)[:100]}")
+                result_map = {}
+
+        return {q: (result_map.get(q, "") or "") for q in queries}
+
     def _probe_adjacent_markets(self, top: list) -> tuple[list[str], int]:
         """Audience-independent incumbent probe (JTBD budget-line analysis): the direct parity
         probe searches by each idea's OWN audience framing, so it misses incumbents in the
@@ -1201,6 +1468,18 @@ class UnifiedSolutionCrew:
 
             def _norm(v) -> str:
                 return " ".join(str(v or "").lower().replace("-", " ").replace("_", " ").split())
+
+            def _parity_cap(par: str) -> float | None:
+                """Maps a (lowercased) incumbent_parity prefix to its market_fit cap — None
+                means no cap (always overwritable). Mirrors rule (e) in _validate_idea_caps."""
+                p = (par or "").strip().lower()
+                if p.startswith("shipped"):
+                    return settings.parity_shipped_market_fit_cap
+                if p.startswith("partial"):
+                    return settings.parity_partial_market_fit_cap
+                if p.startswith("substitute"):
+                    return settings.parity_substitute_market_fit_cap
+                return None
 
             # 1. Deterministic family detection: mechanism_tag + data_source_tag (both stamped
             #    at birth); fallback = project_type + first mechanism keyword.
@@ -1249,46 +1528,123 @@ class UnifiedSolutionCrew:
                 self.cost_tracker.record_llm_usage("Stage 7 - Adjacent Market Probe", usage.to_dict())
             cats_by_key = {m.family_key.strip(): [c for c in (m.categories or []) if c.strip()][:3]
                            for m in (getattr(r, "markets", None) or []) if m.family_key}
+            budget_line_by_key = {m.family_key.strip(): (m.budget_line or "").strip()
+                                   for m in (getattr(r, "markets", None) or []) if m.family_key}
 
             # 3. Search the top category per family (2 queries), fail-soft per query.
-            snippets_by_key: dict[str, str] = {}
+            #    PLUS niche-framed recall queries (budgeted; live-motivated 2026-07-09: the
+            #    audience-framed direct probe missed ReciPal's dedicated cottage-food landing
+            #    page and every free substitute): "{cat} for {niche}" catches niche landing
+            #    pages, "free {niche} {cat}" hunts the free/DIY routes.
+            niche_short = ((getattr(getattr(self, "niche_context", None),
+                                    "niche_description", "") or "").strip())[:80]
+            n_frame = settings.parity_niche_frame_queries_per_family
+            # Collect the per-family base queries (unbudgeted, as before) and niche-frame
+            # queries (budgeted) up front, then fire exactly two batch calls for the whole
+            # run instead of 2-4 sequential searches per family.
+            fam_cats: dict[str, str] = {}
+            base_queries: list[str] = []
+            niche_queries_by_key: dict[str, list[str]] = {}
+            all_niche_queries: list[str] = []
             for key, _members in fam_items:
                 cats = cats_by_key.get(key) or []
                 if not cats:
                     continue
                 cat = cats[0][:80]
-                chunks = []
-                for q in (f"{cat} software", f"{cat} pricing"):
-                    try:
-                        chunks.append(str(search_tool.run(search_query=q))[:1500])
-                    except Exception:
-                        continue
-                if chunks:
-                    snippets_by_key[key] = "\n".join(chunks)
+                fam_cats[key] = cat
+                base_queries.extend([f"{cat} software", f"{cat} pricing"])
+                if niche_short and n_frame > 0:
+                    # Outcome-framed query (2026-07-10, live-motivated): the category/pricing
+                    # queries above miss incumbents whose NAME shares no vocabulary with the
+                    # idea's mechanism/category framing — "parity: none found" on ideas killed
+                    # by The Wedding Report and the Berkeley Function-Calling Leaderboard, both
+                    # named nothing like the category label. Reformulate the top category as a
+                    # buyer OUTCOME instead: prefer the family's own reformulated budget_line
+                    # (already outcome-shaped), else compose one from the category.
+                    outcome_q = (budget_line_by_key.get(key) or f"{cat} data for {niche_short}")[:80]
+                    frame_qs = [f"{cat} for {niche_short}", f"free {niche_short} {cat}",
+                                outcome_q][:n_frame]
+                    niche_queries_by_key[key] = frame_qs
+                    all_niche_queries.extend(frame_qs)
+
+            snippets_by_key: dict[str, str] = {}
+            if fam_cats:
+                try:
+                    base_results = search_tool.batch_run(base_queries)
+                except Exception as e:
+                    logger.warning(f"[AdjacentProbe] base category batch failed (non-fatal): "
+                                    f"{str(e)[:100]}")
+                    base_results = {}
+                niche_results = (
+                    self._ma_search_batch(all_niche_queries) if all_niche_queries else {})
+                for key, cat in fam_cats.items():
+                    chunks = []
+                    for q in (f"{cat} software", f"{cat} pricing"):
+                        res = base_results.get(q)
+                        if res:
+                            chunks.append(res[:1500])
+                    for q in niche_queries_by_key.get(key, []):
+                        res = niche_results.get(q)
+                        if res:
+                            chunks.append(res[:1500])
+                    if chunks:
+                        snippets_by_key[key] = "\n".join(chunks)
             if not snippets_by_key:
                 return [], 0
 
-            # 4. Judge (one batched call), snippets fenced per project convention.
+            # 4. Judge (one batched call), snippets fenced per project convention. Extended
+            #    (2026-07-09) with a NICHE-parity verdict per family + a per-idea coverage list
+            #    (codex-review: family keys are free-text-ish, so a family finding must name
+            #    which member ideas it actually covers before it may upgrade their
+            #    incumbent_parity).
             class _AdjacentIncumbentFinding(BaseModel):
                 family_key: str = ""
                 incumbent: str = _F("", description="product name, '' if none in the results")
                 category: str = ""
                 evidence: str = _F("", description="what it ships, <=20 words, from results only")
+                niche_parity: str = _F(
+                    "", description=(
+                        "For THIS NICHE specifically: 'shipped' if the results show a product "
+                        "serving this niche's version of the job (e.g. a dedicated niche landing "
+                        "page); 'substitute' if the results show a FREE/DIY route delivering the "
+                        "core outcome for this niche; '' if the results show neither."))
+                niche_covered_by: str = _F(
+                    "", description="the product/free-route name behind niche_parity, from results only")
+                niche_evidence: str = _F("", description="<=20 words, from results only")
+                covered_idea_names: list[str] = _F(
+                    default_factory=list,
+                    description=("EXACT member-idea names (from the family's MEMBER IDEAS list) "
+                                 "whose value prop + mechanism the niche finding actually covers "
+                                 "— omit ideas it does not cover"))
 
             class _AdjacentIncumbentFindings(BaseModel):
                 findings: list[_AdjacentIncumbentFinding] = _F(default_factory=list)
 
+            fam_by_key_pre = dict(fam_items)
+
+            def _member_lines(members) -> str:
+                return "\n".join(
+                    f"  - {sanitize_social_content(getattr(m, 'solution_name', '') or '?')}: "
+                    f"{sanitize_social_content((getattr(m, 'value_proposition', '') or ''))[:140]}"
+                    for m in members[:6])
+
             judge_rows = "\n\n".join(
                 f"### family_key: {key}\ncategories: {', '.join(cats_by_key.get(key) or [])}\n"
+                f"MEMBER IDEAS:\n{_member_lines(fam_by_key_pre.get(key) or [])}\n"
                 + fence_content(snips, source="web-search", label="UNTRUSTED WEB RESULTS")
                 for key, snips in snippets_by_key.items())
             j, jusage = LLMService.invoke_structured(
-                prompt=("For EACH family below, judge from the search results ONLY whether a "
+                prompt=("For EACH family below, judge from the search results ONLY: (1) whether a "
                         "commercial product already monetizes this mechanism/data in its own "
-                        "market (regardless of the audience our ideas target). Name the single "
+                        "market (regardless of the audience our ideas target) — name the single "
                         "strongest incumbent and its category; incumbent='' if the results show "
-                        "none. Cite only what the results actually show — never invent products "
-                        "or features. Return JSON.\n\n" + judge_rows),
+                        "none. (2) whether the results show, FOR THIS NICHE specifically, a "
+                        "product that ships this job (niche_parity='shipped') or a free/DIY route "
+                        "that delivers the core outcome (niche_parity='substitute') — and list the "
+                        "EXACT member-idea names that finding actually covers (an idea whose value "
+                        "prop or mechanism differs is NOT covered). Cite only what the results "
+                        "actually show — never invent products, features, or coverage. "
+                        "Return JSON.\n\n" + judge_rows),
                 output_model=_AdjacentIncumbentFindings, temperature=0, timeout=120,
                 model_name=settings.report_structured_llm, reasoning_effort="minimal")
             if jusage is not None and hasattr(self, "cost_tracker") and self.cost_tracker:
@@ -1296,32 +1652,159 @@ class UnifiedSolutionCrew:
 
             # 5. Stamp findings; hallucination guard: the incumbent name must literally appear
             #    in that family's snippets (mirrors the by-INPUT-name allow-list pattern).
-            fam_by_key = dict(fam_items)
+            fam_by_key = fam_by_key_pre
             adjacent_lines: list[str] = []
             covered = 0
+            backfilled = 0
             for f in (getattr(j, "findings", None) or []):
                 key = (f.family_key or "").strip()
                 members = fam_by_key.get(key)
+                if not members:
+                    continue
+                snips_lower = (snippets_by_key.get(key) or "").lower()
                 name = (f.incumbent or "").strip()
-                if not members or not name:
-                    continue
-                if name.lower() not in (snippets_by_key.get(key) or "").lower():
-                    logger.info(f"[AdjacentProbe] dropped unverifiable incumbent '{name[:40]}' "
-                                "(name not in search results)")
-                    continue
-                note = f"{name} ({(f.category or 'adjacent market').strip()}): " \
-                       f"{(f.evidence or 'monetizes this mechanism').strip()}"
-                for idea in members:
-                    idea.adjacent_market_parity = note
-                    covered += 1
-                    adjacent_lines.append(f"- {getattr(idea, 'solution_name', '?')}: {note}")
-            if adjacent_lines:
-                logger.info(f"[AdjacentProbe] {covered} idea(s) matched adjacent incumbents "
-                            f"across {len(snippets_by_key)} famil(ies)")
+                if name:
+                    if name.lower() not in snips_lower:
+                        logger.info(f"[AdjacentProbe] dropped unverifiable incumbent '{name[:40]}' "
+                                    "(name not in search results)")
+                    else:
+                        note = f"{name} ({(f.category or 'adjacent market').strip()}): " \
+                               f"{(f.evidence or 'monetizes this mechanism').strip()}"
+                        for idea in members:
+                            idea.adjacent_market_parity = note
+                            covered += 1
+                            adjacent_lines.append(
+                                f"- {getattr(idea, 'solution_name', '?')}: {note}")
+
+                # Niche-parity BACK-FILL (2026-07-09): cap-strictness-upgrade-only, per-idea-
+                # checked. A family verdict may only overwrite a member's incumbent_parity when
+                # (i) it is 'shipped' or 'substitute', (ii) the covered_by name appears in this
+                # family's snippets (hallucination guard), (iii) the judge NAMED the idea in
+                # covered_idea_names (codex-review: free-text family keys over-stamp), and (iv)
+                # the proposed finding's market_fit cap is STRICTLY LOWER than the idea's current
+                # finding's cap (codex-review MAJOR: a plain not-yet-'none' check let a stronger
+                # niche finding lose to a weaker existing one — no cap counts as no ceiling, so
+                # it's always overwritable). Runs BEFORE the caller's recalibration, so calibrated
+                # scores always reflect the final parity finding (uniformity contract).
+                np = (getattr(f, "niche_parity", "") or "").strip().lower()
+                nb = (getattr(f, "niche_covered_by", "") or "").strip()
+                if np in ("shipped", "substitute") and nb and nb.lower() in snips_lower:
+                    named = {(n or "").strip().lower()
+                             for n in (getattr(f, "covered_idea_names", None) or [])}
+                    ev = (getattr(f, "niche_evidence", "") or "serves this niche").strip()
+                    note = (f"shipped by {nb}: {ev}" if np == "shipped"
+                            else f"substitute ({nb}): {ev}")
+                    new_cap = _parity_cap(np)
+                    for idea in members:
+                        iname = (getattr(idea, "solution_name", "") or "").strip().lower()
+                        cur = (getattr(idea, "incumbent_parity", None) or "").strip().lower()
+                        cur_cap = _parity_cap(cur)
+                        if iname in named and (cur_cap is None or
+                                                (new_cap is not None and new_cap < cur_cap)):
+                            idea.incumbent_parity = note
+                            backfilled += 1
+                            logger.info(f"[AdjacentProbe] niche back-fill: "
+                                        f"'{getattr(idea, 'solution_name', '?')}' -> {note[:80]}")
+                elif np in ("shipped", "substitute") and nb:
+                    logger.info(f"[AdjacentProbe] dropped unverifiable niche finding "
+                                f"'{nb[:40]}' (name not in search results)")
+            if adjacent_lines or backfilled:
+                logger.info(f"[AdjacentProbe] {covered} idea(s) matched adjacent incumbents, "
+                            f"{backfilled} niche back-fill(s) across "
+                            f"{len(snippets_by_key)} famil(ies)")
             return adjacent_lines, covered
         except Exception as e:
             logger.warning(f"[AdjacentProbe] failed (non-fatal): {str(e)[:120]}")
             return [], 0
+
+    # Authority suffixes are matched directly in _probe_serp_composition (host == "wikipedia.org"
+    # or a proper ".suffix" endswith — no substring `in` checks, which false-positive on hosts
+    # like "wikipedia.org.evil.com"; codex-review MINOR).
+    # Mirrors research_flow._UGC_SERP_DOMAINS (Phase-2 doctrine: UGC SERPs are ranking ROOM,
+    # not entrenched competition — codex plan-review).
+    _UGC_SERP_DOMAINS = (
+        "reddit.com", "quora.com", "stackexchange.com", "stackoverflow.com", "medium.com",
+        "blogspot.", "wordpress.com", "pinterest.", "facebook.com", "youtube.com", "tumblr.",
+        "github.com", "news.ycombinator", "linkedin.com",
+    )
+
+    def _probe_serp_composition(self, ideas: list) -> None:
+        """Phase-1 SERP-composition peek (2026-07-09; live-motivated: seo 0.9 survived on an idea
+        whose actual SERPs are .gov + entrenched players). DISTRIBUTION_SEO ideas only, preview
+        path only, deterministic classification only — stamps `_serp_owned` (runtime attr) which
+        Rule D in cap_seo_realism_score reads to cap the STORED provisional score. Never touches
+        Phase 2 (Stage-12 keyword grounding supersedes provisional scores; also guarded on
+        seo_scalability_score_refined is None). Budgeted via _ma_search; fail-soft."""
+        import re as _re
+        from urllib.parse import urlparse
+
+        nq = settings.serp_probe_queries_per_idea
+        if nq <= 0:
+            return
+
+        # 1. Collect (idea, queries) pairs for eligible ideas first — one batched search for
+        #    the union of all queries instead of N sequential _ma_search calls.
+        idea_queries = []
+        all_queries: list[str] = []
+        for idea in ideas:
+            try:
+                if getattr(idea, "winning_angle", None) != "distribution_seo":
+                    continue
+                if getattr(idea, "seo_scalability_score_refined", None) is not None:
+                    continue
+                # Representative queries from the idea's own described page pattern.
+                pseo = (getattr(idea, "programmatic_seo_opportunity", "") or "").strip()
+                base = " ".join(pseo.split()[:8]) if pseo else self._mechanism_keywords(idea)
+                if not base:
+                    continue
+                queries = [base, f"{base} guide"][:nq]
+                idea_queries.append((idea, queries))
+                all_queries.extend(queries)
+            except Exception as e:
+                logger.warning(f"[SerpProbe] idea skipped (non-fatal): {str(e)[:100]}")
+        if not idea_queries:
+            return
+        result_map = self._ma_search_batch(all_queries)
+
+        # 2. Per-idea classification from the returned map — logic/guards unchanged.
+        for idea, queries in idea_queries:
+            try:
+                domain_hits: dict[str, int] = {}
+                authority = set()
+                sampled = 0
+                for q in queries:
+                    res = result_map.get(q)
+                    if not res:
+                        continue
+                    sampled += 1
+                    urls = _re.findall(r"https?://[^\s'\"\\)\]}>,]+", res)[:10]
+                    seen_roots = set()
+                    for u in urls:
+                        host = (urlparse(u).hostname or "").lower().removeprefix("www.")
+                        if not host:
+                            continue
+                        if host == "wikipedia.org" or host.endswith(
+                                (".wikipedia.org", ".gov", ".edu", ".mil")):
+                            authority.add(host)
+                            continue
+                        if any(d in host for d in self._UGC_SERP_DOMAINS):
+                            continue  # UGC = ranking room, never entrenched
+                        root = ".".join(host.split(".")[-2:])
+                        if root not in seen_roots:
+                            seen_roots.add(root)
+                            domain_hits[root] = domain_hits.get(root, 0) + 1
+                if sampled < 2:
+                    continue  # need both queries for the repeat signal
+                entrenched = {d for d, c in domain_hits.items() if c >= 2}
+                owned = len(authority) + len(entrenched)
+                if owned >= settings.serp_owned_domain_threshold:
+                    idea._serp_owned = True
+                    logger.info(
+                        f"[SerpProbe] '{getattr(idea, 'solution_name', '?')}' SERP owned "
+                        f"(authority={len(authority)}, entrenched={len(entrenched)}) — "
+                        "Rule D will cap provisional SEO")
+            except Exception as e:
+                logger.warning(f"[SerpProbe] idea skipped (non-fatal): {str(e)[:100]}")
 
     def _probe_mechanism_parity(self, ideas: list) -> None:
         """Mechanism-parity probe (A/B-validated 2026-07-02, always on): web-verify whether an
@@ -1420,6 +1903,7 @@ class UnifiedSolutionCrew:
             parity_lines = []      # display + critic feed (gate-validated 2026-07-06: substitute
             # + adjacent evidence feeds the recal critic permanently — flag removed)
             none_n = 0
+            probed_ideas = []
             for idea in top:
                 f = by_name.get((getattr(idea, "solution_name", "") or "").strip().lower())
                 if f is None:
@@ -1433,6 +1917,7 @@ class UnifiedSolutionCrew:
                     none_n += 1
                 idea.incumbent_parity = note
                 parity_lines.append(f"- {getattr(idea, 'solution_name', '?')}: {note}")
+                probed_ideas.append(idea)
             if not parity_lines:
                 return
             logger.info(f"[ParityProbe] {len(parity_lines)} idea(s) checked: "
@@ -1441,6 +1926,19 @@ class UnifiedSolutionCrew:
             # Adjacent-market probe: audience-independent incumbents per mechanism family.
             # Stamps adjacent_market_parity; the evidence also feeds the recal critic below.
             adjacent_lines, adjacent_covered = self._probe_adjacent_markets(top)
+
+            # Rebuild parity_lines (+ none_n) from each idea's CURRENT incumbent_parity: the
+            # adjacent probe's niche back-fill above may have overwritten a probed idea's
+            # finding AFTER the loop that assembled parity_lines ran — the recal extra block
+            # must reflect the FINAL finding, not the stale pre-backfill one (codex-review
+            # MAJOR).
+            parity_lines = []
+            none_n = 0
+            for idea in probed_ideas:
+                note = (getattr(idea, "incumbent_parity", None) or "none found").strip()
+                if note.lower().startswith("none"):
+                    none_n += 1
+                parity_lines.append(f"- {getattr(idea, 'solution_name', '?')}: {note}")
 
             # Tripwire: near-universal "none found" usually means the audience-framed searches
             # missed the adjacent commercial market — surface it as a caveat the selection UI
@@ -1679,14 +2177,17 @@ class UnifiedSolutionCrew:
         })
 
     def _one_sample(self, inputs: dict, idx: int, lens: str, model: str, effort: str | None,
-                    *, partitioned_block: str = "", min_concepts: int = 1,
-                    allow_zero: bool = False, timeout: int = 180,
-                    source_pain: str | None = None, source_segment: str | None = None,
-                    concept_count: str = "8-12", score_inline: bool = False):
+                *, partitioned_block: str = "", min_concepts: int = 1,
+                allow_zero: bool = False, timeout: int = 180,
+                source_pain: str | None = None, source_segment: str | None = None,
+                source_frame: str | None = None, source_focus_key: str | None = None,
+                concept_count: str = "8-12", score_inline: bool = False):
         """One divergent generator call (validate + at most one re-prompt). Shared by the
         legacy broad path and the pain-partitioned path. In partitioned mode, stamps each
         returned concept with its (pain × segment) cell provenance (per-cell boundary — the
-        flat fanout pool would otherwise lose which cell produced which concept).
+        flat fanout pool would otherwise lose which cell produced which concept). Multi-Frame:
+        `source_frame`/`source_focus_key` additionally stamp a non-pain cell's frame identity
+        (None on both -> byte-identical to before).
 
         When `score_inline` is True, the novelty/feasibility critic scores this sample's concepts
         IN THIS THREAD before returning (pipelined with the still-running generators); the
@@ -1728,6 +2229,10 @@ class UnifiedSolutionCrew:
                     c.source_pain = source_pain
                 if source_segment is not None:
                     c.source_segment = source_segment
+                if source_frame is not None:
+                    c.source_frame = source_frame
+                if source_focus_key is not None:
+                    c.source_focus_key = source_focus_key
             ok, err = validate_raw_concept_list(
                 batch, min_concepts=min_concepts, check_technique_diversity=False
             )
@@ -1926,7 +2431,23 @@ class UnifiedSolutionCrew:
         near-duplicates. `_assign_generator_cells`'s per-theme cap then keeps one theme from
         monopolizing. Each theme's cell is seeded by its most niche-relevant pain (not just its
         highest-severity one) so the niche-defining pain isn't shadowed by a higher-severity
-        theme-mate. Returns the cell list (the caller drops to legacy if < 2)."""
+        theme-mate. Returns the cell list (the caller drops to legacy if < 2).
+
+        Multi-Frame Idea Generation Portfolio (2026-07-10, adopted permanently after the A/B
+        concluded): also mints typed NON-PAIN frame cells (gap / data-asset / workflow) via
+        `_mint_frame_cells`, ALWAYS ON (1 cell each per run, budget permitting) — the reserve-carve
+        below only touches `target`/`cap` when >=1 frame cell actually minted, so a run where no
+        frame seed data exists (e.g. no incumbents probed) still allocates byte-identically to the
+        legacy pain-only allocator.
+        Reserve math (Codex-reviewed, reordered by fix #2): pain_min = min(max_gen,
+        unique_floor_count + 2), clamped (+ warn-logged) so the floor guarantees can never push it
+        past max_gen; max_frames = max_gen - pain_min is computed BEFORE minting and passed to
+        `_mint_frame_cells` as its budget, so seed enumerators never run for a frame cell the
+        reserve math would only discard; pain_target = max(target - frames, pain_min) — frame
+        cells are carved OUT of the SAME budget, never additive to it. Every pain cell is stamped
+        frame='pain', focus=None (ONLY when >=1 frame cell minted — fix #1) so downstream
+        consumers can branch on `cell.get('frame') or 'pain'` uniformly (Codex BLOCKER-1: no
+        cell['pain'] alias reliance)."""
         am = getattr(self, "audience_mapping", None)
         segments = list(getattr(am, "audience_segments", None) or []) if am else []
         target = settings.divergent_target_generators
@@ -1950,7 +2471,7 @@ class UnifiedSolutionCrew:
 
         def _theme_count(cs: list) -> int:
             return len({getattr(c["pain"], "parent_theme_id", None) for c in cs
-                        if getattr(c["pain"], "parent_theme_id", None)})
+                        if c.get("pain") is not None and getattr(c["pain"], "parent_theme_id", None)})
 
         pains = list(selected_pains)
         if sev_floor:
@@ -1980,9 +2501,48 @@ class UnifiedSolutionCrew:
                     pains.append(fp)
                     seen.add(id(fp))
 
+        # Multi-Frame: compute the reserve budget FIRST (fix #2) — this is pure arithmetic over
+        # `all_pains`, zero extra I/O, so it costs nothing even when no frame seed data ends up
+        # minting anything. `_mint_frame_cells` then gets `max_frames` as its budget and never runs
+        # a seed enumerator for a cell the reserve math would only discard.
+        unique_floor_ids: set = set()
+        if sev_floor:
+            unique_floor_ids |= {id(p) for p in sorted(
+                all_pains, key=lambda p: getattr(p, "severity_score", 0) or 0, reverse=True
+            )[:sev_floor]}
+        if com_floor:
+            def _ci(p):
+                v = getattr(p, "commercial_intent", None)
+                return v if isinstance(v, (int, float)) and not isinstance(v, bool) else 0.0
+            unique_floor_ids |= {id(p) for p in sorted(
+                [p for p in all_pains if _ci(p) >= com_min],
+                key=lambda p: (_ci(p), getattr(p, "severity_score", 0) or 0), reverse=True
+            )[:com_floor]}
+        # Fix #3: floors+2 can exceed max_gen on a small niche (few pains, low cap) — clamp so
+        # pain_min never itself exceeds the cap (which would otherwise push pain_target above
+        # pain_cap downstream), and warn since this is a degradation of the floor guarantees.
+        pain_min = min(cap, len(unique_floor_ids) + 2)
+        if pain_min < len(unique_floor_ids) + 2:
+            logger.warning(
+                f"[FrameSeed] pain_min clamped {len(unique_floor_ids) + 2} -> {pain_min} "
+                f"(max_gen={cap} too small for the floor guarantees; frame budget forced to 0)")
+        max_frames = max(0, cap - pain_min)
+
+        try:
+            frame_cells = self._mint_frame_cells(all_pains, segments, budget=max_frames)
+        except Exception as e:
+            logger.warning(f"[FrameSeed] frame cell minting failed (non-fatal): {str(e)[:120]}")
+            frame_cells = []
+
+        pain_target, pain_cap = target, cap
+        if frame_cells:
+            frames_n = len(frame_cells)
+            pain_target = max(target - frames_n, pain_min)
+            pain_cap = max(1, cap - frames_n)
+
         def _alloc() -> list:
             return _assign_generator_cells(
-                pains, segments, target=target, max_gen=cap, relevance=relevance,
+                pains, segments, target=pain_target, max_gen=pain_cap, relevance=relevance,
                 severity_floor=sev_floor, commercial_floor=com_floor,
                 commercial_min_intent=com_min)
 
@@ -1992,19 +2552,282 @@ class UnifiedSolutionCrew:
         # Widen while the cells (a) under-fill the target OR (b) span fewer distinct themes than
         # the target, i.e. there's still theme diversity to gain. Stop once cells cover `target`
         # distinct themes (rich-enough spread) or we run out of pains / hit the cap.
-        while (widened < len(extra) and len(cells) < cap
-               and (len(cells) < target or _theme_count(cells) < target)):
+        while (widened < len(extra) and len(cells) < pain_cap
+               and (len(cells) < pain_target or _theme_count(cells) < pain_target)):
             pains.append(extra[widened])
             widened += 1
             cells = _alloc()
+        if frame_cells:  # only stamp when a frame actually minted — all-zero stays byte-identical
+            for c in cells:  # additive stamp: every pain cell now carries an explicit frame identity
+                c["frame"] = "pain"
+                c.setdefault("focus", None)
         # Transparency: flag cells whose pain was chosen for niche-fit over a higher-severity
         # theme-mate, so the report can note "addresses your stated focus, not the top-severity pain".
         self._anchor_severity_notes = self._build_anchor_severity_notes(cells, all_pains, relevance)
         logger.info(
             f"[Divergent][partitioned] cells={len(cells)} themes={_theme_count(cells)} "
-            f"(segments={len(segments)}, widened_pains={widened}, target={target}, "
-            f"anchor_notes={len(self._anchor_severity_notes)})")
-        return cells
+            f"(segments={len(segments)}, widened_pains={widened}, target={pain_target}, "
+            f"anchor_notes={len(self._anchor_severity_notes)}, frame_cells={len(frame_cells)})")
+        return cells + frame_cells
+
+    # gap/data_asset/workflow are ALWAYS ON (adopted permanently 2026-07-10 after the Multi-Frame
+    # A/B concluded) — each mints exactly 1 cell per run, budget/seed-data permitting.
+    _FRAME_CELL_COUNT = 1
+
+    def _mint_frame_cells(self, pains: list, segments: list, budget: int) -> list[dict]:
+        """Multi-Frame Idea Generation Portfolio: enumerate seed candidates for each non-pain
+        frame (gap/data_asset/workflow, ALWAYS ON), validate SPECIFIC pain linkage via
+        `anchor_pains_for_frame_focus` (drop on empty — never a generic 'top pains' fallback),
+        and mint up to `_FRAME_CELL_COUNT` (1) cell per frame with a per-frame segment-affinity
+        pick. FRAME_REGISTRY order (gap, data_asset, workflow) is the mint PRIORITY order.
+
+        `budget` is the caller's reserve capacity (fix #2): [] IMMEDIATELY at budget<=0, and once
+        `budget` cells have been minted the loop STOPS enumerating entirely — a lower-priority
+        frame's seed enumerator (search/LLM, incl. the workflow synthesis call) is never invoked
+        once capacity is exhausted, so a trimmed frame costs nothing (no more mint-then-trim)."""
+        from ..utils.frames import FRAME_REGISTRY, anchor_pains_for_frame_focus
+        import dataclasses as _dc
+
+        if budget <= 0:
+            return []
+        wanted = [(frame, spec) for frame, spec in FRAME_REGISTRY.items() if frame != "pain"]
+        if not wanted:
+            return []
+        try:
+            payability_map = self._segment_payability_map()
+        except Exception:
+            payability_map = {}
+
+        seed_fns = {
+            "gap": self._seed_gap_focuses,
+            "data_asset": self._seed_data_asset_focuses,
+            "workflow": self._seed_workflow_focuses,
+        }
+        pains_by_title = {(getattr(p, "title", "") or ""): p for p in pains if getattr(p, "title", "")}
+        minted: list[dict] = []
+        for frame, spec in wanted:
+            if len(minted) >= budget:
+                break  # capacity exhausted — never call a lower-priority frame's seed enumerator
+            n = min(self._FRAME_CELL_COUNT, budget - len(minted))
+            try:
+                candidates = seed_fns[frame]()
+            except Exception as e:
+                logger.warning(f"[FrameSeed] {frame} seed enumerator failed: {str(e)[:120]}")
+                continue
+            picked = 0
+            for focus in candidates:
+                if picked >= n:
+                    break
+                titles = anchor_pains_for_frame_focus(focus, pains)
+                if not titles:
+                    continue
+                anchored = _dc.replace(focus, anchor_pain_titles=titles)
+                anchor_objs = [pains_by_title[t] for t in titles if t in pains_by_title]
+                seg = self._frame_focus_segment(
+                    frame, anchored, anchor_objs, segments, payability_map, picked)
+                minted.append({"frame": frame, "focus": anchored, "segment": seg, "pain": None})
+                picked += 1
+            logger.info(
+                f"[FrameSeed] {frame}: minted {picked}/{n} cell(s) from "
+                f"{len(candidates)} candidate(s)")
+        return minted
+
+    @staticmethod
+    def _frame_focus_segment(frame: str, focus, anchor_pains: list, segments: list,
+                             payability_map: dict, idx: int):
+        """Per-frame segment affinity (Codex-reviewed design): gap -> payability-ranked overlap
+        with the focus's own anchor pains; workflow -> the job-map's OWN target segment when the
+        synthesis call named one (it's grounded in that segment's motivation_drivers already);
+        data-asset (and workflow with no named segment) -> highest-payability segment overall;
+        round-robin fallback when no segments/payability data exist."""
+        if not segments:
+            return None
+        from ..utils.segment_payability import norm_segment_name
+
+        def _pay(s):
+            e = (payability_map.get(norm_segment_name(getattr(s, "segment_name", "") or ""))
+                 if payability_map else None)
+            return e.payability_score if e is not None else -1.0
+
+        if frame == "gap" and anchor_pains:
+            cand: list = []
+            seen: set = set()
+            for p in anchor_pains:
+                for s in _candidate_segments_for_pain(p, segments):
+                    name = getattr(s, "segment_name", "") or ""
+                    if name not in seen:
+                        seen.add(name)
+                        cand.append(s)
+            if cand:
+                return max(cand, key=_pay) if payability_map else cand[0]
+        if frame == "workflow":
+            wanted = (getattr(focus, "payload", {}) or {}).get("segment_name", "")
+            wanted = (wanted or "").strip().lower()
+            if wanted:
+                named = next((s for s in segments
+                             if (getattr(s, "segment_name", "") or "").strip().lower() == wanted), None)
+                if named is not None:
+                    return named
+        if payability_map:
+            return max(segments, key=_pay)
+        return segments[idx % len(segments)]
+
+    def _seed_gap_focuses(self) -> list:
+        """Gap-frame candidate seeds: web-probed incumbent rows (`_incumbent_rows`) with a real
+        (non-empty, non-'n/a') structural gap, ranked with DISSATISFACTION-QUOTED incumbents
+        first — a real buyer complaint about a named tool is stronger seed evidence than a probed
+        gap alone. Payload: {incumbent_name, pricing, gap, dissatisfaction_quote}."""
+        from ..utils.frames import FrameFocus
+
+        self._build_dissatisfaction_block()  # ensures _dissatisfaction_signals is populated (cached)
+        signals = getattr(self, "_dissatisfaction_signals", None) or []
+        quote_by_name: dict = {}
+        for s in signals:
+            name, sep, _rest = s.partition(" — ")
+            name = name.strip().lower()
+            if sep and name and name not in quote_by_name:
+                quote_by_name[name] = s
+        rows = getattr(self, "_incumbent_rows", None) or []
+        scored = []
+        for r in rows:
+            gap = (r.get("gap") or "").strip()
+            if not gap or gap.lower() == "n/a":
+                continue
+            name = (r.get("name") or "").strip()
+            if not name:
+                continue
+            scored.append((1 if name.lower() in quote_by_name else 0, name, r))
+        scored.sort(key=lambda t: -t[0])
+        return [
+            FrameFocus(
+                frame="gap", key=f"gap:{name.lower()}",
+                payload={"incumbent_name": name, "pricing": r.get("pricing") or "",
+                         "gap": r.get("gap") or "",
+                         "dissatisfaction_quote": quote_by_name.get(name.lower(), "")},
+                anchor_pain_titles=[],
+            )
+            for _, name, r in scored
+        ]
+
+    def _seed_data_asset_focuses(self) -> list:
+        """Data-asset frame candidate seeds: bullets parsed from the verified data-route menu
+        (`_build_data_menu`), EXCLUDING the 3 deterministic generic routes it always appends
+        (DataForSEO keyword data / public community discussions / user-input arithmetic —
+        universal, not a niche-specific 'asset'). Payload carries `cadence_note` (2026-07-10,
+        data-currency gate) so the frame brief forces the ideator to check the source's actual
+        publication cadence instead of assuming freshness (live case: a merged data_asset idea
+        assumed a WEEKLY feed off a 1908-2017 HISTORICAL index)."""
+        from ..utils.frames import _DATA_ASSET_CADENCE_NOTE, FrameFocus
+
+        menu = self._build_data_menu()
+        focuses = []
+        for line in menu.splitlines():
+            line = line.strip()
+            if not line.startswith("- "):
+                continue
+            route = line[2:].strip()
+            if not route or route in _GENERIC_DATA_ROUTES:
+                continue
+            focuses.append(FrameFocus(
+                frame="data_asset", key=f"data_asset:{route[:60].lower()}",
+                payload={"route_text": route, "cadence_note": _DATA_ASSET_CADENCE_NOTE},
+                anchor_pain_titles=[],
+            ))
+        return focuses
+
+    def _seed_workflow_focuses(self) -> list:
+        """Workflow/JTBD frame candidate seeds: ONE structured LLM call composing 1-2 ODI-style
+        job-maps ({job_statement, steps_text, tools_text}) from the top validated pains + the
+        audience segments' motivation_drivers + the niche-wide tools/frustrations. Unlike
+        gap/data-asset there is no first-class per-segment workflow field to PARSE — this is a
+        synthesis step, not an extraction. Cached on the instance; fail-soft -> []."""
+        cached = getattr(self, "_workflow_focus_cache", None)
+        if cached is not None:
+            return cached
+        from ..utils.frames import FrameFocus
+
+        focuses: list = []
+        try:
+            from pydantic import BaseModel, Field as _F
+
+            class _JobMap(BaseModel):
+                job_statement: str = _F(
+                    "", description="ODI-style: 'When <situation>, I want to <motivation>, so "
+                                    "I can <outcome>' (<=25 words)")
+                steps_text: str = _F("", description="3-6 steps of the job, comma-separated")
+                tools_text: str = _F("", description="tools currently used for this job, comma-separated")
+                segment_name: str = _F(
+                    "", description="the audience segment this job-map is for, EXACT name from the list given")
+
+            class _JobMaps(BaseModel):
+                jobs: list[_JobMap] = _F(default_factory=list)
+
+            segs = list(getattr(getattr(self, "audience_mapping", None), "audience_segments", None) or [])
+            if not segs:
+                self._workflow_focus_cache = []
+                return []
+            niche = getattr(getattr(self, "niche_context", None), "niche_description", "") or ""
+            pains = getattr(getattr(self, "pain_point_analysis", None), "pain_points", None) or []
+            pain_lines = "\n".join(f"- {getattr(p, 'title', '')}" for p in pains[:8])
+            seg_lines = "\n".join(
+                f"- {getattr(s, 'segment_name', '?')}: motivations="
+                f"{', '.join(getattr(s, 'motivation_drivers', None) or [])}"
+                for s in segs[:6])
+            am = getattr(self, "audience_mapping", None)
+            tools_used = ", ".join((getattr(am, "tools_currently_used", None) or [])[:10]) if am else ""
+            frustrations = ", ".join(
+                (getattr(am, "frustrations_with_existing", None) or [])[:8]) if am else ""
+            r, usage = LLMService.invoke_structured(
+                prompt=(
+                    f"Niche: {niche}\n\nValidated pains:\n{pain_lines}\n\n"
+                    f"Audience segments:\n{seg_lines}\n\n"
+                    f"Tools the audience currently uses: {tools_used or 'unknown'}\n"
+                    f"Frustrations with existing tools: {frustrations or 'unknown'}\n\n"
+                    "Compose 1-2 Jobs-to-be-Done job-maps this audience is trying to get done (ODI "
+                    "style: situation + motivation + desired outcome), each tied to ONE named "
+                    "segment above, with the 3-6 concrete STEPS of the job and the tools currently "
+                    "used for each step. Ground every job in the pains/segments given — do not "
+                    "invent a job the evidence doesn't support. Return JSON."),
+                output_model=_JobMaps, temperature=0.3, timeout=90,
+                model_name=settings.brainstorm_llm, reasoning_effort="medium", creative=True)
+            if hasattr(self, "cost_tracker") and self.cost_tracker and usage is not None:
+                self.cost_tracker.record_llm_usage("Stage 7 - Workflow Frame", usage.to_dict())
+            seg_by_name = {(getattr(s, "segment_name", "") or "").strip().lower(): s for s in segs}
+            for j in (r.jobs or [])[:2]:
+                job_statement = (j.job_statement or "").strip()
+                if not job_statement:
+                    continue
+                seg_obj = seg_by_name.get((j.segment_name or "").strip().lower())
+                focuses.append(FrameFocus(
+                    frame="workflow", key=f"workflow:{job_statement[:60].lower()}",
+                    payload={
+                        "job_statement": job_statement,
+                        "steps_text": (j.steps_text or "").strip(),
+                        "tools_text": (j.tools_text or "").strip(),
+                        "segment_name": (getattr(seg_obj, "segment_name", None)
+                                        if seg_obj is not None else (j.segment_name or "")),
+                    },
+                    anchor_pain_titles=[],
+                ))
+            logger.info(f"[FrameSeed] workflow: synthesized {len(focuses)} job-map(s)")
+        except Exception as e:
+            logger.warning(f"[FrameSeed] workflow synthesis failed (non-fatal): {str(e)[:120]}")
+            focuses = []
+        self._workflow_focus_cache = focuses
+        return focuses
+
+    @staticmethod
+    def _format_anchor_pains_block(titles: list[str], pains_by_title: dict) -> str:
+        """Render a frame cell's VALIDATED anchor pains (exact titles, from
+        `anchor_pains_for_frame_focus`) into the block appended to its generation brief."""
+        if not titles:
+            return ""
+        lines = ["ANCHOR PAINS (ground every concept in at least one of these):"]
+        for t in titles:
+            p = pains_by_title.get(t)
+            desc = (getattr(p, "description", "") or "")[:140] if p is not None else ""
+            lines.append(f"- {t}: {desc}" if desc else f"- {t}")
+        return "\n".join(lines)
 
     @staticmethod
     def _build_anchor_severity_notes(cells: list, all_pains: list, relevance: dict | None) -> list:
@@ -2040,16 +2863,29 @@ class UnifiedSolutionCrew:
     def _generate_divergent_pool_partitioned(self, inputs, cells, pool, deadline) -> tuple[list, object]:
         """Pain-partitioned divergent generation: one narrow generator per (pain × segment) cell.
 
-        `cells` is the output of `_assign_generator_cells` (dicts {pain, segment}), already
-        ordered high->low opportunity and capped at divergent_max_generators. Per-cell concept
-        count is dynamic to a stable raw-pool target; provenance is stamped per cell."""
+        `cells` is the output of `_build_partition_cells` (dicts {frame, pain, segment} for a
+        pain cell, {frame, focus, segment, pain=None} for a Multi-Frame non-pain cell), already
+        ordered high->low opportunity (pain cells) then frame cells, and capped at
+        divergent_max_generators. Per-cell concept count is dynamic to a stable raw-pool target;
+        provenance is stamped per cell. A non-pain frame cell renders via its own
+        `FrameSpec.brief_formatter`/`focus_header` (not `_format_one_pain`) and ALWAYS allows a
+        zero-concept result (`FrameSpec.always_allow_zero`) — a focus with no strong fit is a
+        valid outcome, never a manufactured idea."""
+        from ..utils.frames import FRAME_REGISTRY
+
         cells = list(cells)[:settings.divergent_max_generators]
         n = len(cells)
         # Dynamic per-cell count: keep the raw pool ~stable (~target_pool) regardless of cell
         # count. Floor 3 (the binding constraint is >=6 surviving dedup), cap 4 (narrow-cell
         # quality ceiling). per_cell is a PROMPT TARGET only — min_concepts stays 1/0.
         per_cell = max(3, min(4, round(settings.divergent_target_pool / max(n, 1))))
-        n_zero_allowed = n // 3          # grounded cells: only the weakest tail may return 0
+        # The weakest-tail allow_zero policy applies to the PAIN subset only — a non-pain frame
+        # cell's allow_zero comes from its own FrameSpec (always True today), never the index-based
+        # tail, so it's unaffected by how many frame cells are appended after the pain cells.
+        pain_cells_only = [c for c in cells if (c.get("frame") or "pain") == "pain"]
+        n_pain = len(pain_cells_only)
+        n_zero_allowed = n_pain // 3
+        pain_rank = {id(c): idx for idx, c in enumerate(pain_cells_only)}
         per_call_timeout = min(settings.divergent_sample_deadline_seconds, 90)
         allowed_types = getattr(self, "allowed_project_types", None)
         # Focus generation-skew: bias the per-cell archetype rotation toward the focus angle's shapes.
@@ -2062,10 +2898,46 @@ class UnifiedSolutionCrew:
         data_menu = self._build_data_menu()
         # Incumbent-dissatisfaction signals (A/B-validated, always on) — '' when none survive the gate.
         dissatisfaction = self._build_dissatisfaction_block()
+        self._probe_niche_wallet()  # cache the wallet brief (budgeted, fail-soft)
+        wallet = self._wallet_prompt_line()
+        market_reality = self._build_market_reality_block()
+        pains_by_title = {(getattr(p, "title", "") or ""): p
+                          for p in (getattr(getattr(self, "pain_point_analysis", None),
+                                            "pain_points", None) or [])}
+
+        def _cell_block(cell, archetype_pref, allow_zero, persona):
+            """Returns (block, source_pain, source_focus_key) for one cell — the pain path is
+            BYTE-IDENTICAL to before (default focus_header/anchor_block); a frame cell renders
+            via its FrameSpec instead."""
+            frame = cell.get("frame") or "pain"
+            if frame == "pain":
+                pain = cell["pain"]
+                block = _build_partitioned_block(
+                    pain_focus=_format_one_pain(pain), persona=persona,
+                    concepts_target=per_cell, allow_zero=allow_zero,
+                    allowed_types=allowed_types, preferred_type=archetype_pref,
+                    data_menu=data_menu, dissatisfaction=dissatisfaction,
+                    wallet=wallet, market_reality=market_reality,
+                )
+                return block, getattr(pain, "title", None), None
+            spec = FRAME_REGISTRY[frame]
+            focus = cell.get("focus")
+            anchor_titles = list(getattr(focus, "anchor_pain_titles", None) or [])
+            anchor_block = self._format_anchor_pains_block(anchor_titles, pains_by_title)
+            block = _build_partitioned_block(
+                pain_focus=spec.brief_formatter(focus), persona=persona,
+                concepts_target=per_cell, allow_zero=allow_zero,
+                allowed_types=allowed_types, preferred_type=archetype_pref,
+                data_menu=data_menu, dissatisfaction=dissatisfaction,
+                wallet=wallet, market_reality=market_reality,
+                focus_header=spec.focus_header, anchor_block=anchor_block,
+            )
+            return block, None, getattr(focus, "key", None)
 
         briefs, jobs = [], []
         for i, cell in enumerate(cells):
-            pain = cell["pain"]
+            frame = cell.get("frame") or "pain"
+            pain = cell.get("pain")
             seg = cell.get("segment")
             persona = (_format_segment_persona(seg) if seg is not None
                        else _DIVERGENT_PERSONAS[i % len(_DIVERGENT_PERSONAS)])
@@ -2073,20 +2945,20 @@ class UnifiedSolutionCrew:
             model, effort = pool[i % len(pool)]
             lens = _LENS_PARTITIONED_PREFIX + _DIVERGENT_LENSES[i % len(_DIVERGENT_LENSES)]
             archetype_pref = rotation[i % len(rotation)]
-            allow_zero = i >= n - n_zero_allowed
-            block = _build_partitioned_block(
-                pain_focus=_format_one_pain(pain), persona=persona,
-                concepts_target=per_cell, allow_zero=allow_zero,
-                allowed_types=allowed_types, preferred_type=archetype_pref,
-                data_menu=data_menu, dissatisfaction=dissatisfaction,
-            )
-            briefs.append({"idx": i, "pain": getattr(pain, "title", "?"), "segment": seg_name,
-                           "persona": persona, "model": model, "archetype": archetype_pref,
-                           "per_cell": per_cell, "allow_zero": allow_zero})
+            if frame == "pain":
+                allow_zero = pain_rank[id(cell)] >= n_pain - n_zero_allowed
+            else:
+                allow_zero = FRAME_REGISTRY[frame].always_allow_zero
+            block, source_pain, source_focus_key = _cell_block(cell, archetype_pref, allow_zero, persona)
+            briefs.append({"idx": i, "frame": frame,
+                           "pain": getattr(pain, "title", "?") if pain is not None else frame,
+                           "segment": seg_name, "persona": persona, "model": model,
+                           "archetype": archetype_pref, "per_cell": per_cell, "allow_zero": allow_zero})
             jobs.append({"inputs": inputs, "idx": i, "lens": lens, "model": model, "effort": effort,
                          "partitioned_block": block, "min_concepts": 0 if allow_zero else 1,
                          "allow_zero": allow_zero, "timeout": per_call_timeout,
-                         "source_pain": getattr(pain, "title", None), "source_segment": seg_name,
+                         "source_pain": source_pain, "source_segment": seg_name,
+                         "source_frame": frame, "source_focus_key": source_focus_key,
                          "concept_count": str(per_cell), "score_inline": True})
 
         pooled, all_usages = self._run_divergent_fanout(
@@ -2094,16 +2966,23 @@ class UnifiedSolutionCrew:
 
         # Iterative pre-dedup top-up: post-dedup abort floor is 6 (dedup only lowers), so keep
         # topping up the strongest cells (no zero) until the pool reaches ~9, at most 2 extra.
+        # Rotates PAIN cells only — a frame cell's allow_zero=True is an honest "no fit" signal a
+        # forced top-up would defeat, and this loop is a legacy pain-pool safety net. Fix #7: no
+        # `or cells` fallback — an all-frame-cells pool (no pain cells at all) must skip top-up
+        # entirely rather than top up from a frame cell, which would produce a blank pain_points
+        # top-up idea with no frame stamp.
+        topup_source = pain_cells_only
         topped_up = 0
-        while len(pooled) < 9 and topped_up < 2 and cells:
-            cell = cells[topped_up % len(cells)]   # rotate from the highest-opportunity cells
+        while len(pooled) < 9 and topped_up < 2 and topup_source:
+            cell = topup_source[topped_up % len(topup_source)]   # rotate from the highest-opportunity cells
             seg = cell.get("segment")
             persona = (_format_segment_persona(seg) if seg is not None
                        else _DIVERGENT_PERSONAS[0])
             block = _build_partitioned_block(
                 pain_focus=_format_one_pain(cell["pain"]), persona=persona,
                 concepts_target=4, allow_zero=False, allowed_types=allowed_types,
-                data_menu=data_menu, dissatisfaction=dissatisfaction)
+                data_menu=data_menu, dissatisfaction=dissatisfaction,
+                wallet=wallet, market_reality=market_reality)
             extra, eu = self._one_sample(
                 inputs, idx=90 + topped_up, lens=_LENS_PARTITIONED_PREFIX + _DIVERGENT_LENSES[0], model=pool[0][0],
                 effort=pool[0][1], partitioned_block=block, min_concepts=1, allow_zero=False,
@@ -2121,12 +3000,13 @@ class UnifiedSolutionCrew:
             seg_counts[getattr(c, "source_segment", None) or "?"] = (
                 seg_counts.get(getattr(c, "source_segment", None) or "?", 0) + 1)
         max_seg_share = (max(seg_counts.values()) / len(pooled)) if pooled else 0.0
+        n_frame_cells = n - n_pain
         logger.info(
             "[Divergent][partitioned] telemetry: "
             + json.dumps({"n_generators": n, "per_cell": per_cell, "n_zero_allowed": n_zero_allowed,
                           "pool_pre_dedup": len(pooled), "topped_up": topped_up,
                           "distinct_segments": len([k for k in seg_counts if k != "?"]),
-                          "max_segment_share": round(max_seg_share, 2),
+                          "max_segment_share": round(max_seg_share, 2), "frame_cells": n_frame_cells,
                           "fallback_fired": len(pooled) < 6, "briefs": briefs}, default=str)[:2200]
         )
         logger.info(f"[Divergent][partitioned] {n} cells → {len(pooled)} pooled concepts (pre-dedup)")
@@ -2605,6 +3485,16 @@ class UnifiedSolutionCrew:
             "Never RAISE market_fit because payability is high; it is a reality check, "
             "not a bonus.\n\n"
         )
+        # Niche wallet (E1, 2026-07-09): the run's web-probed tooling-spend norm — same
+        # cache-and-reuse pattern as _menu/_dissat above. '' when the probe found nothing
+        # (getattr-guarded: some unit harnesses drive this off a bare SimpleNamespace 'self').
+        _wallet_fn = getattr(self, "_wallet_prompt_line", None)
+        _wallet = _wallet_fn() if callable(_wallet_fn) else ""
+        if _wallet:
+            static_prompt += (
+                f"{_wallet} Treat this as the ceiling on realistic willingness-to-pay; never "
+                "RAISE market_fit above it.\n\n"
+            )
         # P1c: angle-conditional rule for distribution_seo ideas (each idea's winning_angle is shown in
         # its row). Suspends the obviousness→novelty coherence lock for SEO plays ONLY, but keeps novelty
         # BOUNDED and obviousness HONEST — the exemption stops the penalty, it does not license inflation.
@@ -2642,6 +3532,16 @@ class UnifiedSolutionCrew:
                 pains = ", ".join(str(p) for p in (getattr(i, "pain_points_addressed", None) or [])[:4])
                 sp = (getattr(i, "source_pain", "") or "").strip().lower()
                 sev = sev_by_pain.get(sp)
+                if sev is None:
+                    # Multi-Frame: a frame idea has no single source_pain — fall back to the
+                    # STRONGEST of its VALIDATED anchor pains (pain_points_addressed), never "n/a"
+                    # when a real severity is known for at least one of them.
+                    addressed = [str(p).strip().lower()
+                                for p in (getattr(i, "pain_points_addressed", None) or [])]
+                    sevs = [sev_by_pain[t] for t in addressed
+                           if isinstance(sev_by_pain.get(t), (int, float))]
+                    if sevs:
+                        sev = max(sevs)
                 sev_s = f"{sev:.2f}" if isinstance(sev, (int, float)) else "n/a"
 
                 def _g(attr, n=240):
@@ -3038,6 +3938,61 @@ class UnifiedSolutionCrew:
                      f"({cls}); cap {cap:.2f}")
             idea.market_fit_score = round(cap, 2)
 
+        # (e) market_fit ≤ parity cap when a WEB-VERIFIED incumbent finding exists (downgrade-only,
+        # min-composes with (b)/(d); live-motivated 2026-07-09: mf 0.75 shipped-parity idea +
+        # a substitute finding with zero numeric consequence). Ceilings, not re-scores — the
+        # calibration critic already saw parity as soft context; this is the hard floor under it.
+        # substitute + thin wallet crosses the 0.4 demotion bar BY DESIGN (free route + no wallet
+        # = an examined-and-ruled-out finding, not a candidate). Each cap 0-disables.
+        mf = getattr(idea, "market_fit_score", None)
+        par = (getattr(idea, "incumbent_parity", None) or "").strip().lower()
+        if isinstance(mf, (int, float)) and par and not par.startswith("none"):
+            pcap = None
+            if par.startswith("shipped"):
+                pcap = settings.parity_shipped_market_fit_cap
+            elif par.startswith("partial"):
+                pcap = settings.parity_partial_market_fit_cap
+            elif par.startswith("substitute"):
+                pay = getattr(idea, "source_segment_payability", None)
+                weak = (isinstance(pay, (int, float))
+                        and pay < settings.payability_low_threshold)
+                pcap = (settings.parity_substitute_weak_wallet_cap if weak
+                        else settings.parity_substitute_market_fit_cap)
+            if pcap is not None and pcap > 0 and mf > pcap:
+                f.append(f"market_fit {mf:.2f} unsupported — incumbent parity "
+                         f"({par[:60]}); cap {pcap:.2f}")
+                idea.market_fit_score = round(pcap, 2)
+
+        # (f) market_fit ≤ selfissued_trust cap — recurring false-positive pre-filter, downgrade-
+        # only, min-composes with (b)/(d)/(e) (live-motivated 2026-07-10: web judgment killed this
+        # SAME pattern twice — a self-issued "verified badge"/"trust seal" is a liability hazard,
+        # not a credibility product; a trust mark nobody but the product itself stands behind
+        # cannot deliver the buyer value it claims). Implemented conservatively to avoid false
+        # positives: requires BOTH a trust-artifact word in the NAME-or-value_proposition (the
+        # strongest signal a trust artifact is the pitch) AND the absence of third-party
+        # verification language anywhere in the idea text — an idea that also says "third-party",
+        # "independent", "accredited", or "lab-tested" is exempt even if it uses "generate"/"badge".
+        # NOTE: the sibling OSS-wallet false positive (an idea monetizing free open-source tooling)
+        # is deliberately left OUT of this deterministic rule — it's already handled upstream by
+        # the wallet probe's free-culture classification feeding caps (b)/(d) above; a second
+        # pre-filter for the same signal would double-cap it.
+        mf = getattr(idea, "market_fit_score", None)
+        cap = settings.selfissued_trust_market_fit_cap
+        if isinstance(mf, (int, float)) and cap > 0 and mf > cap:
+            name = (getattr(idea, "solution_name", "") or "")
+            vp = (getattr(idea, "value_proposition", "") or "")
+            desc = (getattr(idea, "description", "") or "")
+            name_vp = f"{name} {vp}".lower()
+            full = f"{name} {vp} {desc}".lower()
+            trust_words = ("badge", "certificate", "verified", "trust seal", "authenticity")
+            thirdparty_words = ("third-party", "independent", "accredited", "lab-tested")
+            has_trust = any(w in name_vp for w in trust_words)
+            has_thirdparty = any(w in full for w in thirdparty_words)
+            if has_trust and not has_thirdparty:
+                f.append(f"market_fit {mf:.2f} unsupported — self-issued trust artifact, no "
+                         f"third-party verification; cap {cap:.2f}")
+                idea.market_fit_score = round(cap, 2)
+
         # (c) solo_dev ≤ build_feasibility + margin (downgrade-only). The calibration critic now
         # re-scores solo_dev (ops-burden-weighted) — this is the logical floor under that re-score:
         # you can't solo-run what you can't build. Mirrors the build≤data coupling.
@@ -3094,11 +4049,49 @@ class UnifiedSolutionCrew:
 
     def _build_cell_grounding_from_cell(self, cell: dict):
         """Build the CellGrounding (audience + source pain + evidence + competitors) the per-cell
-        tournament reviewer judges against, directly from a (pain × segment) cell."""
+        tournament reviewer judges against, directly from a (pain × segment) cell. A Multi-Frame
+        non-pain cell (frame != 'pain') instead grounds on its FOCUS + VALIDATED ANCHOR PAINS —
+        the pain branch below is UNCHANGED (byte-identical CellGrounding for a pain cell)."""
         from .idea_improvement_loop import CellGrounding
         niche = getattr(self.niche_context, "niche_description", "") if self.niche_context else ""
-        pain = cell.get("pain")
         seg = cell.get("segment")
+        seg_name = (getattr(seg, "segment_name", "") or "") if seg else ""
+        profile = ""
+        if seg:
+            profile = (f"motivations: {', '.join(getattr(seg, 'motivation_drivers', None) or [])}; "
+                       f"expertise: {getattr(seg, 'expertise_level', '?')}; "
+                       f"budget: {getattr(seg, 'budget_sensitivity', '?')}")
+        frame = cell.get("frame") or "pain"
+        if frame != "pain":
+            from ..utils.frames import FRAME_REGISTRY
+            spec = FRAME_REGISTRY.get(frame)
+            focus = cell.get("focus")
+            focus_block = spec.brief_formatter(focus) if spec is not None and focus is not None else ""
+            anchor_titles = list(getattr(focus, "anchor_pain_titles", None) or []) if focus else []
+            pains_by_title = {
+                (getattr(p, "title", "") or ""): p
+                for p in (getattr(getattr(self, "pain_point_analysis", None),
+                                  "pain_points", None) or [])
+            }
+            lines = []
+            for t in anchor_titles:
+                p = pains_by_title.get(t)
+                if p is None:
+                    lines.append(f"  - {t}")
+                    continue
+                quote = next(iter((getattr(p, "representative_quotes", None) or [])[:1]), "")
+                desc = (getattr(p, "description", "") or "")[:160]
+                tail = f' — "{quote}"' if quote else ""
+                lines.append(f"  - {t}: {desc}{tail}" if desc else f"  - {t}{tail}")
+            evidence = "\n".join(lines) or "  n/a"
+            return CellGrounding(
+                niche=niche, audience_segment=seg_name or "the niche audience",
+                segment_profile=profile, pain_title="", pain_evidence=evidence, pain_severity="",
+                competitor_mentions=(self.competitor_mentions_text or "")[:1500],
+                wallet_norm=self._wallet_prompt_line(),
+                frame_type=frame, focus_block=focus_block,
+            )
+        pain = cell.get("pain")
         sp = (getattr(pain, "title", "") or "") if pain else ""
         quotes = "\n".join(f'  "{q}"' for q in (getattr(pain, "representative_quotes", None) or [])[:3]) if pain else ""
         evidence = ((getattr(pain, "description", "") or "") + "\n" + quotes) if pain else ""
@@ -3106,36 +4099,41 @@ class UnifiedSolutionCrew:
         if pain:
             lvl = getattr(pain, "opportunity_level", None)
             sev = str(getattr(lvl, "value", lvl) or getattr(pain, "severity_score", "") or "")
-        seg_name = (getattr(seg, "segment_name", "") or "") if seg else ""
-        profile = ""
-        if seg:
-            profile = (f"motivations: {', '.join(getattr(seg, 'motivation_drivers', None) or [])}; "
-                       f"expertise: {getattr(seg, 'expertise_level', '?')}; "
-                       f"budget: {getattr(seg, 'budget_sensitivity', '?')}")
         return CellGrounding(
             niche=niche, audience_segment=seg_name or "the niche audience", segment_profile=profile,
             pain_title=sp, pain_evidence=evidence, pain_severity=sev,
             competitor_mentions=(self.competitor_mentions_text or "")[:1500],
+            wallet_norm=self._wallet_prompt_line(),
         )
 
     @staticmethod
     def _group_pool_by_cell(pooled: list, cells: list) -> list:
         """Bucket the flat critic-scored concept pool back into its (pain × segment) cells by the
-        provenance stamped during generation (`source_pain`/`source_segment`). Returns a list of
-        (cell, [concepts]) for cells that produced ≥1 concept — the per-cell tournament inputs."""
-        def _key(pain_title, seg_name):
-            return ((pain_title or "").strip().lower(), (seg_name or "").strip().lower())
+        provenance stamped during generation (`source_pain`/`source_segment`, or for a Multi-Frame
+        non-pain cell `source_frame`/`source_focus_key`). Returns a list of (cell, [concepts]) for
+        cells that produced ≥1 concept — the per-cell tournament inputs. Key = (frame,
+        focus_key-or-pain-title, segment) — for a pain cell frame='pain' is implicit and this
+        collapses to the ORIGINAL (pain_title, segment) key, byte-identical grouping."""
+        def _key(frame, ident, seg_name):
+            return ((frame or "pain").strip().lower(), (ident or "").strip().lower(),
+                    (seg_name or "").strip().lower())
 
         groups: dict = {}
         for c in pooled or []:
-            groups.setdefault(_key(getattr(c, "source_pain", None), getattr(c, "source_segment", None)),
-                              []).append(c)
+            frame = getattr(c, "source_frame", None) or "pain"
+            ident = (getattr(c, "source_pain", None) if frame == "pain"
+                     else getattr(c, "source_focus_key", None))
+            groups.setdefault(_key(frame, ident, getattr(c, "source_segment", None)), []).append(c)
         out = []
         for cell in cells or []:
-            pain = cell.get("pain")
+            frame = cell.get("frame") or "pain"
             seg = cell.get("segment")
-            k = _key(getattr(pain, "title", None), getattr(seg, "segment_name", None) if seg else None)
-            concepts = groups.get(k)
+            seg_name = getattr(seg, "segment_name", None) if seg else None
+            if frame == "pain":
+                ident = getattr(cell.get("pain"), "title", None)
+            else:
+                ident = getattr(cell.get("focus"), "key", None)
+            concepts = groups.get(_key(frame, ident, seg_name))
             if concepts:
                 out.append((cell, concepts))
         return out
@@ -3378,10 +4376,17 @@ class UnifiedSolutionCrew:
         across rounds + separate search-grounded data-route verify). Stamps provenance from the CELL
         (not a name-join — the ideator renames mid-loop), then runs the scorer chain on the winner in
         this thread (`_score_cell_winner`). Pure per-thread; fail-soft → None.
-        """
+
+        Multi-Frame: a non-pain cell (frame != 'pain') has no `pain` — `_refine_single_concept` is
+        dispatched with the cell's FOCUS + VALIDATED ANCHOR PAINS instead, source_pain stays None,
+        and pain_points_addressed is re-asserted from the anchor titles after the tournament loop
+        (the loop's free-text output is never trusted as the code-filled truth, mirroring the pain
+        path's `_grounded_pains_for` code-fill)."""
         from .idea_improvement_loop_v4 import tournament_refine_cell_v4
+        frame = cell.get("frame") or "pain"
         try:
             pain = cell.get("pain")
+            focus = cell.get("focus")
             # pre-rank: drop blocked / no-route, prefer lowest obviousness (most novel); -1 sentinel = neutral.
             usable = [c for c in (candidates or [])
                       if not getattr(c, "critic_no_route", False)
@@ -3393,8 +4398,8 @@ class UnifiedSolutionCrew:
             def _obv(c):
                 o = getattr(c, "obviousness_score", -1.0)
                 return o if isinstance(o, (int, float)) and o >= 0 else 0.5
-            focus = getattr(self, "idea_focus", "auto") or "auto"
-            if focus == "auto":
+            gen_focus = getattr(self, "idea_focus", "auto") or "auto"
+            if gen_focus == "auto":
                 top = min(pool, key=_obv)  # pure lowest-obviousness (most novel)
             else:
                 # Focus-aware, QUALITY-FLOORED tiebreaker: among candidates within a small obviousness
@@ -3404,10 +4409,17 @@ class UnifiedSolutionCrew:
                 best_obv = _obv(min(pool, key=_obv))
                 band = [c for c in pool if _obv(c) <= best_obv + 0.1]
                 preferred = [c for c in band
-                             if _focus_matches_type(focus, getattr(c, "project_type", None))]
+                             if _focus_matches_type(gen_focus, getattr(c, "project_type", None))]
                 top = min(preferred or band, key=_obv)
 
-            expanded = self._refine_single_concept(top, pain)
+            seg = cell.get("segment")
+            if frame == "pain":
+                expanded = self._refine_single_concept(top, pain)
+            else:
+                anchor_titles = list(getattr(focus, "anchor_pain_titles", None) or [])
+                expanded = self._refine_single_concept(
+                    top, None, frame=frame, focus=focus, anchor_pain_titles=anchor_titles,
+                    cell_segment_name=getattr(seg, "segment_name", None) if seg is not None else None)
             grounding = self._build_cell_grounding_from_cell(cell)
             if settings.enable_direction_aware_eval:
                 grounding.winning_angle = self._provisional_angle(expanded) or ""  # P1b: loop optimizes on-direction
@@ -3415,12 +4427,23 @@ class UnifiedSolutionCrew:
                 [expanded], grounding, rounds=settings.tournament_rounds, search=search, usage_sink=usages)
             winner = winner or expanded
 
-            # Stamp provenance from the cell + seed concept (the join the pooled flow does by name).
-            seg = cell.get("segment")
-            winner.source_pain = getattr(pain, "title", None) or getattr(winner, "source_pain", None)
-            # Honest provenance: the segment with real affinity to the pain, not the load-balanced
-            # cell segment (which mislabels no-affinity pains). None when nothing fits.
-            winner.source_segment = self._provenance_segment_for_pain(pain)
+            if frame == "pain":
+                # Stamp provenance from the cell + seed concept (the join the pooled flow does by name).
+                winner.source_pain = getattr(pain, "title", None) or getattr(winner, "source_pain", None)
+                # Honest provenance: the segment with real affinity to the pain, not the load-balanced
+                # cell segment (which mislabels no-affinity pains). None when nothing fits.
+                winner.source_segment = self._provenance_segment_for_pain(pain)
+            else:
+                winner.source_pain = None
+                winner.source_segment = (
+                    getattr(seg, "segment_name", None) if seg is not None
+                    else getattr(winner, "source_segment", None))
+                # Anchor pains are the code-filled truth for a frame idea — never trust the loop's
+                # free-text drift (mirrors the pain path's grounded-titles code-fill).
+                anchor_titles = list(getattr(focus, "anchor_pain_titles", None) or [])
+                if anchor_titles:
+                    winner.pain_points_addressed = anchor_titles
+            winner.source_frame = frame
             # Backfill project_type + the facet tags from the seed concept (RawConcept always has a
             # project_type; the refiner only sometimes re-emits it, so without this the idea's
             # project_type is often None — losing the UI chip + the angle/skip-gate type signal).
@@ -3446,7 +4469,8 @@ class UnifiedSolutionCrew:
             winner = self._score_cell_winner(winner, skip_selection=skip_selection, usages=usages)
             return winner
         except Exception as e:  # noqa: BLE001 — fail-soft; the pool drops a None
-            logger.warning(f"[TOURNAMENT] cell '{getattr(cell.get('pain'),'title','?')}' failed: {str(e)[:120]}")
+            ident = getattr(cell.get("pain"), "title", None) if frame == "pain" else frame
+            logger.warning(f"[TOURNAMENT] cell '{ident}' failed: {str(e)[:120]}")
             return None
 
     def _pool_and_dedup_raw_concepts(self, concepts: list, keep_fraction: float | None = None) -> list:
@@ -3640,12 +4664,20 @@ class UnifiedSolutionCrew:
             )
         return "\n\n".join(lines) if lines else "(no concepts)"
 
-    def _refine_single_concept(self, concept, pain):
+    def _refine_single_concept(self, concept, pain, *, frame: str = "pain", focus=None,
+                               anchor_pain_titles: list[str] | None = None,
+                               cell_segment_name: str | None = None):
         """Expand ONE pooled concept into a COMPLETE BaseSolutionIdea via the brainstorm
         model — so a re-injected (coverage) idea is as complete as the others.
 
         Returns a fully-populated BaseSolutionIdea, or falls back to the lightweight
-        stub synthesizer on any failure (never raises)."""
+        stub synthesizer on any failure (never raises).
+
+        Multi-Frame Idea Generation Portfolio: `frame='pain'` (default) reproduces the ORIGINAL
+        pain-only prompt byte-for-byte. For a non-pain frame, `pain` is None and the FOCUS block +
+        VALIDATED ANCHOR PAINS replace the single-pain framing; `pain_points_addressed` is
+        code-filled from `anchor_pain_titles` (never `_grounded_pains_for`, which stays
+        pain-frame-only) and `source_pain` is left None."""
         from ..models.solution_idea import BaseSolutionIdea
         from ..utils.validation.crew_guardrails import _synthesize_idea_from_concept
 
@@ -3665,15 +4697,31 @@ class UnifiedSolutionCrew:
             "subscription; WTP >= 5/10 → paid / subscription is on the table. If you propose a "
             "subscription, the rationale must name this pain's WTP.\n"
         )
+        if frame == "pain":
+            anchor_line = f"pain_points_addressed MUST include \"{pain_title}\".\n\n"
+            focus_line = f"This concept addresses the high-severity pain: \"{pain_title}\".\n\n"
+        else:
+            from ..utils.frames import FRAME_REGISTRY
+            spec = FRAME_REGISTRY.get(frame)
+            focus_text = spec.brief_formatter(focus) if spec is not None and focus is not None else ""
+            titles = anchor_pain_titles or []
+            anchor_line = (
+                "pain_points_addressed MUST be EXACTLY this validated list (no additions, no "
+                f"omissions): {', '.join(titles) or pain_title}.\n\n"
+            )
+            focus_line = (
+                f"This concept is seeded from the {frame.upper()} FRAME (not a single source pain):\n"
+                f"{focus_text}\n\n"
+            )
         prompt = (
             "Expand this ONE solution concept into a COMPLETE product specification with "
             "the SAME depth and field coverage as a fully-refined idea. "
             + _FULL_FIELD_SPEC + "\n"
-            f"pain_points_addressed MUST include \"{pain_title}\".\n\n"
-            f"NICHE: {niche}\n"
+            + anchor_line
+            + f"NICHE: {niche}\n"
             f"ALLOWED PROJECT TYPES: {allowed}\n"
             + pricing_directive +
-            f"This concept addresses the high-severity pain: \"{pain_title}\".\n\n"
+            focus_line +
             f"CONCEPT NAME: {concept.concept_name}\n"
             f"ONE-LINER: {concept.one_liner}\n"
             f"PROJECT TYPE: {concept.project_type}\n"
@@ -3721,24 +4769,37 @@ class UnifiedSolutionCrew:
                 idea.market_fit_score = 0.5
             if idea.technical_feasibility_score is None:
                 idea.technical_feasibility_score = 0.5
-            # Grounded provenance + CODE-FILLED pain_points_addressed (override the LLM): prefer
-            # the concept's stamped cell, else the pain passed in. Direct-refine path (coverage /
-            # reinjection), so the concept→idea link is exact (no rename join needed).
-            src_pain = getattr(concept, "source_pain", None) or pain_title
-            # Honest provenance from the pain's real affinity, not the concept's load-balanced cell.
-            src_seg = self._provenance_segment_for_pain(pain if pain is not None else src_pain)
-            idea.source_pain = src_pain
-            idea.source_segment = src_seg
-            grounded = self._grounded_pains_for(src_pain, src_seg)
-            # Fall back to the validated source_pain (a real PainPoint.title), NOT the LLM's free-text
-            # self-reported pains — those paraphrase/duplicate/fabricate. Always a validated title.
-            idea.pain_points_addressed = (
-                grounded or ([src_pain] if src_pain else None) or [pain_title or "high-severity pain"])
+            if frame == "pain":
+                # Grounded provenance + CODE-FILLED pain_points_addressed (override the LLM): prefer
+                # the concept's stamped cell, else the pain passed in. Direct-refine path (coverage /
+                # reinjection), so the concept→idea link is exact (no rename join needed).
+                src_pain = getattr(concept, "source_pain", None) or pain_title
+                # Honest provenance from the pain's real affinity, not the concept's load-balanced cell.
+                src_seg = self._provenance_segment_for_pain(pain if pain is not None else src_pain)
+                idea.source_pain = src_pain
+                idea.source_segment = src_seg
+                grounded = self._grounded_pains_for(src_pain, src_seg)
+                # Fall back to the validated source_pain (a real PainPoint.title), NOT the LLM's free-text
+                # self-reported pains — those paraphrase/duplicate/fabricate. Always a validated title.
+                idea.pain_points_addressed = (
+                    grounded or ([src_pain] if src_pain else None) or [pain_title or "high-severity pain"])
+            else:
+                idea.source_pain = None
+                idea.source_segment = cell_segment_name
+                idea.pain_points_addressed = list(anchor_pain_titles or [])
+            idea.source_frame = frame
             return idea
         except Exception as e:
             logger.warning(f"[REINJECT] full refinement of '{concept.concept_name}' failed, "
                            f"using stub: {str(e)[:120]}")
-            return _synthesize_idea_from_concept(concept, pain)
+            stub = _synthesize_idea_from_concept(concept, pain)
+            if frame != "pain":
+                stub.source_frame = frame
+                stub.source_pain = None
+                stub.source_segment = cell_segment_name
+                if anchor_pain_titles:
+                    stub.pain_points_addressed = list(anchor_pain_titles)
+            return stub
 
     @staticmethod
     def _derive_why_short(idea) -> None:
@@ -4198,11 +5259,7 @@ class UnifiedSolutionCrew:
                 output_model=_Routes, temperature=0, timeout=120,
                 model_name=settings.brainstorm_llm, reasoning_effort="medium")
             routes = [s.strip() for s in (r.routes or []) if s and s.strip()][:8]
-            routes += [
-                "Google keyword search data via DataForSEO (licensed) — volumes, competition, per-region queries",
-                "Public community discussions (Reddit/HN/forums, public) — pain language, tool mentions",
-                "Deterministic arithmetic on the user's own inputs (none) — calculators/planners need no external data",
-            ]
+            routes += list(_GENERIC_DATA_ROUTES)
             menu = "\n".join(f"- {s}" for s in routes)
             if hasattr(self, "cost_tracker") and self.cost_tracker and usage is not None:
                 self.cost_tracker.record_llm_usage("Stage 7 - Data Menu", usage.to_dict())
@@ -4272,12 +5329,17 @@ class UnifiedSolutionCrew:
                 if hasattr(self, "cost_tracker") and self.cost_tracker and usage is not None:
                     self.cost_tracker.record_llm_usage("Stage 7 - Dissatisfaction Gate", usage.to_dict())
             block = format_dissatisfaction_block(signals)
+            # Raw signals ('<Name> — "<quote>" (<source>)'), kept alongside the rendered block so
+            # the gap frame seed (_seed_gap_focuses) can rank incumbents with a real buyer
+            # complaint first without re-running detection.
+            self._dissatisfaction_signals = signals
             if candidates:
                 logger.info(f"[Dissatisfaction] {len(signals)}/{len(candidates)} candidate "
                             f"signal(s) kept: {', '.join(s.split(' — ')[0] for s in signals) or 'none'}")
         except Exception as e:
             logger.warning(f"[Dissatisfaction] detection failed (non-fatal): {str(e)[:100]}")
             block = ""
+            self._dissatisfaction_signals = []
         self._dissatisfaction_text = block
         return block
 
@@ -4286,18 +5348,35 @@ class UnifiedSolutionCrew:
     _SALVAGE_MARGIN = 0.05       # ...or land within this of its own cell's winner, whichever is higher
 
     @staticmethod
-    def _loser_stub_idea(c, tier: str = "salvaged"):
+    def _loser_stub_idea(c, cell: dict | None = None, tier: str = "salvaged"):
         """Map a RawConcept tournament loser to a minimal-but-scoreable BaseSolutionIdea (the fields
         the calibration critic's fence reads). Promoted losers get the FULL expansion afterwards —
-        this stub exists only so the critic can gate promotion cheaply."""
+        this stub exists only so the critic can gate promotion cheaply.
+
+        Multi-Frame (fix #4): a non-pain cell's loser has no `source_pain` — stamping the stub from
+        `getattr(c, "source_pain", None)` alone leaves `pain_points_addressed` empty and the
+        calibration critic's severity lookup falls through to "n/a". For a non-pain `cell`, stamp
+        `source_frame=frame`, `source_pain=None`, and seed `pain_points_addressed` from the cell's
+        focus's VALIDATED anchor pains instead."""
         from ..models.solution_idea import BaseSolutionIdea
+
+        frame = (cell or {}).get("frame") or "pain"
+        if frame == "pain":
+            source_pain = getattr(c, "source_pain", None)
+            pain_points_addressed = [p for p in [source_pain] if p]
+        else:
+            source_pain = None
+            focus = (cell or {}).get("focus")
+            pain_points_addressed = list(getattr(focus, "anchor_pain_titles", None) or [])
         return BaseSolutionIdea.model_validate({
             "solution_name": getattr(c, "concept_name", "") or "unnamed",
             "description": getattr(c, "one_liner", "") or "",
             "value_proposition": getattr(c, "one_liner", "") or "",
             "core_features": [getattr(c, "mechanism_tag", None) or "core feature"],
             "target_personas": [getattr(c, "source_segment", None) or "target user"],
-            "pain_points_addressed": [p for p in [getattr(c, "source_pain", None)] if p],
+            "pain_points_addressed": pain_points_addressed,
+            "source_pain": source_pain,
+            "source_frame": frame,
             "innovation_angle": getattr(c, "why_non_obvious", "") or "",
             "why_it_works": getattr(c, "why_non_obvious", "") or "",
             "technical_approach": f"{getattr(c, 'data_route', '') or ''}. "
@@ -4374,7 +5453,7 @@ class UnifiedSolutionCrew:
             # real pools run ~4 eligible losers, the cap never binds; kept at the original 10.
             losers = losers[:10]
 
-            stubs = [self._loser_stub_idea(c) for c in losers]
+            stubs = [self._loser_stub_idea(c, cell=loser_cell.get(id(c))) for c in losers]
             self._calibrate_batch(batch=stubs)
 
             def _comp(i) -> float:
@@ -4421,7 +5500,19 @@ class UnifiedSolutionCrew:
                     logger.debug(f"[Salvage] per-pain cap: skipping "
                                  f"{getattr(c, 'concept_name', '?')} ({pain_key[:40]})")
                     continue
-                expanded = self._refine_single_concept(c, cell.get("pain"))
+                frame = cell.get("frame") or "pain"
+                if frame == "pain":
+                    expanded = self._refine_single_concept(c, cell.get("pain"))
+                else:
+                    # Multi-Frame: salvage a non-pain cell's loser via the SAME frame dispatch
+                    # `_tournament_cell` uses for its winner — never the bare pain=None call,
+                    # which would degrade to an empty pain_points_addressed.
+                    focus = cell.get("focus")
+                    anchor_titles = list(getattr(focus, "anchor_pain_titles", None) or [])
+                    seg = cell.get("segment")
+                    expanded = self._refine_single_concept(
+                        c, None, frame=frame, focus=focus, anchor_pain_titles=anchor_titles,
+                        cell_segment_name=getattr(seg, "segment_name", None) if seg is not None else None)
                 if expanded is not None:
                     expanded.idea_tier = "salvaged"
                     out.append(expanded)
@@ -4434,16 +5525,15 @@ class UnifiedSolutionCrew:
             logger.warning(f"[Salvage] gate failed (non-fatal, no losers rescued): {str(e)[:120]}")
             return []
 
-    def _note_idea_overlap(self, ideas: list) -> None:
-        """Post-union overlap NOTE (codex-review finding: 3 same-theme vLLM-config ideas coexisted
-        with no signal). Deterministic detectors CANNOT catch this — measured on the motivating
-        pool: max name+VP embedding cosine 0.572 (thresholding would no-op or flag everything in a
-        themed niche) and zero >=2 M/D/J tag matches (post-refinement tags too fine-grained,
-        bundles untagged). Product-overlap is a semantic judgment, so ONE small structured call
-        groups ideas a buyer would see as variants of the same product, and the groups are surfaced
-        as a coverage caveat — informational only, nothing is dropped or merged. Fail-soft."""
+    def _group_variant_overlaps(self, ideas: list) -> list[dict]:
+        """Group final ideas a BUYER would see as variants of the same product (semantic judgment —
+        deterministic detectors were measured and don't work: max name+VP embedding cosine 0.572 on
+        the motivating pool, zero >=2 tag matches). ONE small structured call. Returns
+        [{"idea_names": [...], "shared_product": str}] and stores them on self.overlap_groups for
+        the flow/report; the caller decides what to do with the groups (variant merge / grouped
+        display). Replaces the old caveat-string-only _note_idea_overlap. Fail-soft -> []."""
         if len(ideas) < 3:
-            return
+            return []
         try:
             from pydantic import BaseModel, Field as _F
 
@@ -4469,18 +5559,673 @@ class UnifiedSolutionCrew:
             valid_names = {(getattr(i, "solution_name", "") or "").strip().lower() for i in ideas}
             if hasattr(self, "cost_tracker") and self.cost_tracker and usage is not None:
                 self.cost_tracker.record_llm_usage("Stage 7 - Overlap Note", usage.to_dict())
+            groups: list[dict] = []
             for g in (r.groups or []):
                 members = [n for n in (g.idea_names or [])
                            if (n or "").strip().lower() in valid_names]
                 if len(members) < 2:
                     continue
-                msg = (f"{len(members)} ideas overlap as one product "
-                       f"({g.shared_product or 'same buyer job'}): {'; '.join(members)} — "
-                       "consider them variants to pick between or merge, not separate bets.")
-                self.coverage_caveats = list(getattr(self, "coverage_caveats", None) or []) + [msg]
-                logger.info(f"[OverlapNote] {msg}")
+                groups.append({"idea_names": members,
+                               "shared_product": g.shared_product or "same buyer job"})
+                logger.info(f"[OverlapNote] {len(members)} variants of one product "
+                            f"({g.shared_product or 'same buyer job'}): {'; '.join(members)}")
+            self.overlap_groups = groups
+            return groups
         except Exception as e:
-            logger.warning(f"[OverlapNote] failed (non-fatal, no note): {str(e)[:100]}")
+            logger.warning(f"[OverlapNote] failed (non-fatal, no groups): {str(e)[:100]}")
+            return []
+
+    # ── Weak-winner demotion / variant merge / backfill (post-parity deliverable-quality block) ──
+
+    def _compose_ruled_out_reason(self, idea) -> tuple[str, str]:
+        """Deterministic, user-facing reason WHY an idea's market is thin — composed from signals
+        already on the idea (no LLM call; fix-at-source honesty convention). Priority order matches
+        signal strength: web-verified incumbent parity > segment payability > buildability > the
+        mild-demand default. Returns (reason, market_fit_band)."""
+        mf = getattr(idea, "market_fit_score", None)
+        mf = mf if isinstance(mf, (int, float)) else 0.0
+        band = "very-low" if mf < 0.25 else "low"
+        parity = (getattr(idea, "incumbent_parity", None) or "").strip()
+        pl = parity.lower()
+        if pl.startswith(("shipped", "partial")):
+            reason = (f"Already well-served — {parity}. A new entrant here competes head-on with "
+                      "an incumbent rather than filling a gap.")
+        elif pl.startswith("substitute"):
+            reason = (f"Buyers already solve this without paid tooling ({parity}); willingness "
+                      "to pay is weak.")
+        else:
+            pay = getattr(idea, "source_segment_payability", None)
+            dam = (getattr(idea, "data_access_model", None) or "").strip().lower()
+            bf = getattr(idea, "build_feasibility_score", None)
+            if isinstance(pay, (int, float)) and pay < settings.payability_low_threshold:
+                seg = getattr(idea, "source_segment", None) or "this audience"
+                reason = (f"Buyers in this segment ({seg}) rarely pay for tooling — the pain is "
+                          "real but the wallet is thin.")
+            elif dam in ("unofficial", "restricted", "blocked") or (
+                    isinstance(bf, (int, float)) and bf < 0.5):
+                reason = ("No defensible, buildable mechanism on obtainable data — the viable "
+                          "versions of this idea can't be built as scoped.")
+            else:
+                reason = ("Mild demand: the pain is real but too weak or too niche to anchor a "
+                          "paid product on its own.")
+        return reason, band
+
+    def _record_ruled_out(self, idea, source: str) -> None:
+        """Append a structured 'examined & ruled out' finding for a demoted winner or a rejected
+        backfill idea. The finding is the user-facing verdict that replaces showing the weak idea."""
+        reason, band = self._compose_ruled_out_reason(idea)
+        sp = (getattr(idea, "source_pain", None)
+              or (getattr(idea, "pain_points_addressed", None) or [None])[0]
+              or getattr(idea, "solution_name", "?"))
+        evidence = ""
+        try:
+            for p in getattr(self.pain_point_analysis, "pain_points", []) or []:
+                if (getattr(p, "title", "") or "").strip().lower() == str(sp).strip().lower():
+                    quotes = getattr(p, "representative_quotes", None) or []
+                    evidence = (quotes[0] if quotes else (getattr(p, "description", "") or ""))[:220]
+                    break
+        except Exception:
+            evidence = ""
+        mf = getattr(idea, "market_fit_score", None)
+        self.ruled_out_pains.append({
+            "idea_name": getattr(idea, "solution_name", "?"),
+            "pain_title": str(sp),
+            "reason": reason,
+            "market_fit": round(mf, 2) if isinstance(mf, (int, float)) else None,
+            "market_fit_band": band,
+            "prior_tier": getattr(idea, "idea_tier", "single") or "single",
+            "source": source,
+            "evidence": evidence,
+        })
+
+    def _sweep_demote(self, ideas: list) -> int:
+        """Demote every ACTIVE idea (any tier — salvage's 0.55 floor is pre-parity) whose FINAL
+        post-parity market_fit is below the demotion bar. Demoted ideas STAY in solution_ideas
+        (min_length / checkpoint safety); visibility is filtered at the boundaries via
+        visible_ideas(). Returns the number demoted."""
+        bar = settings.demotion_market_fit_max
+        if bar <= 0:
+            return 0
+        n = 0
+        for i in ideas:
+            if getattr(i, "candidate_status", "active") != "active":
+                continue
+            mf = getattr(i, "market_fit_score", None)
+            if isinstance(mf, (int, float)) and mf < bar:
+                i.candidate_status = "demoted"
+                self._record_ruled_out(i, source="demoted_winner")
+                n += 1
+                logger.info(f"[Demote] '{getattr(i, 'solution_name', '?')}' mf={mf:.2f} < {bar}")
+        return n
+
+    def _pick_backfill_cells(self, ideas: list, cells: list, max_n: int) -> list[dict]:
+        """Pick up to max_n backfill cells: UNTRIED pains first (never allocated a generator cell
+        and not any idea's source_pain), ranked by the same (opportunity, severity) key the
+        allocator uses; fallback = a second angle on a strong visible pain with a DIFFERENT
+        segment. NOT a re-invoke of _assign_generator_cells (its floors would re-fire on the
+        filtered pool and re-pick already-used pains). Pure; no I/O."""
+        tried = set()
+        for c in cells or []:
+            t = (getattr(c.get("pain"), "title", "") or "").strip().lower()
+            if t:
+                tried.add(t)
+        for i in ideas or []:
+            t = (getattr(i, "source_pain", "") or "").strip().lower()
+            if t:
+                tried.add(t)
+        pains = list(getattr(self.pain_point_analysis, "pain_points", []) or [])
+        segments = list(getattr(getattr(self, "audience_mapping", None),
+                                "audience_segments", []) or [])
+
+        def _sev(p):
+            return getattr(p, "severity_score", 0) or 0
+
+        untried = [p for p in pains
+                   if (getattr(p, "title", "") or "").strip().lower() not in tried]
+        untried.sort(key=lambda p: (_opportunity_rank(p), _sev(p)), reverse=True)
+        out: list[dict] = []
+        for p in untried[:max_n]:
+            cand = _candidate_segments_for_pain(p, segments) if segments else []
+            out.append({"pain": p, "segment": cand[0] if cand else None})
+        if len(out) < max_n:
+            # Fallback: strong visible pain × a segment its idea did NOT reason as.
+            strong = sorted(
+                (i for i in ideas if getattr(i, "candidate_status", "active") == "active"),
+                key=lambda i: getattr(i, "market_fit_score", 0) or 0, reverse=True)
+            by_title = {(getattr(p, "title", "") or "").strip().lower(): p for p in pains}
+            picked_pains = {(getattr(c["pain"], "title", "") or "").strip().lower() for c in out}
+            for i in strong:
+                if len(out) >= max_n:
+                    break
+                sp = (getattr(i, "source_pain", "") or "").strip().lower()
+                p = by_title.get(sp)
+                if p is None or sp in picked_pains:
+                    continue
+                used_seg = (getattr(i, "source_segment", "") or "").strip().lower()
+                for s in (_candidate_segments_for_pain(p, segments) if segments else []):
+                    s_name = (getattr(s, "segment_name", "") or "").strip().lower()
+                    if s_name and s_name != used_seg:
+                        out.append({"pain": p, "segment": s})
+                        picked_pains.add(sp)
+                        break
+        return out[:max_n]
+
+    def _run_backfill_cell(self, cell: dict, crew_inputs: dict, search, usages: list,
+                           skip_selection: bool = False):
+        """Fresh single-cell generation → per-cell tournament → in-cell scoring for ONE backfill
+        cell picked post-union (its pain never had a generator, so the existing pool holds no
+        concepts for it). Returns a fully-scored idea or None. Fail-soft."""
+        try:
+            pain = cell.get("pain")
+            seg = cell.get("segment")
+            persona = (_format_segment_persona(seg) if seg is not None else _DIVERGENT_PERSONAS[0])
+            pool = settings.brainstorm_pool_resolved
+            model, effort = pool[0]
+            block = _build_partitioned_block(
+                pain_focus=_format_one_pain(pain), persona=persona,
+                concepts_target=4, allow_zero=False,
+                allowed_types=getattr(self, "allowed_project_types", None),
+                data_menu=self._build_data_menu(),
+                dissatisfaction=self._build_dissatisfaction_block(),
+                wallet=self._wallet_prompt_line(),
+                market_reality=self._build_market_reality_block(),
+            )
+            concepts, gen_usages = self._one_sample(
+                crew_inputs, idx=95, lens=_LENS_PARTITIONED_PREFIX + _DIVERGENT_LENSES[0],
+                model=model, effort=effort, partitioned_block=block, min_concepts=1,
+                allow_zero=False, timeout=90,
+                source_pain=getattr(pain, "title", None),
+                source_segment=getattr(seg, "segment_name", None) if seg is not None else None,
+                score_inline=True)
+            if gen_usages:
+                usages.extend(gen_usages if isinstance(gen_usages, list) else [gen_usages])
+            if not concepts:
+                return None
+            return self._tournament_cell(cell=cell, candidates=concepts, search=search,
+                                         usages=usages, skip_selection=skip_selection)
+        except Exception as e:
+            logger.warning(f"[Backfill] cell failed (non-fatal): {str(e)[:120]}")
+            return None
+
+    def _synthesize_variant_merge(self, variants: list, shared_product: str):
+        """ONE structured synthesis call merging 2+ variant ideas (same buyer job) into a single
+        product taking the strongest mechanism/features/GTM of each — a synthesis of EXISTING
+        designs, not an invention. Same slim-schema → full-field expansion path as bundles.
+        Returns a BaseSolutionIdea (idea_tier='merged', merged_from set) or None. Fail-soft."""
+        try:
+            from pydantic import BaseModel, Field as _F
+
+            class _Merged(BaseModel):
+                solution_name: str = ""
+                project_type: str = ""
+                value_proposition: str = ""
+                description: str = ""
+                core_features: list[str] = _F(default_factory=list)
+                target_personas: list[str] = _F(default_factory=list)
+                conventional_approach: str = ""
+                innovation_angle: str = ""
+                why_it_works: str = ""
+                technical_approach: str = ""
+                data_access_model: str = _F(
+                    "", description="EXACTLY one of: public | freemium | paywalled | "
+                                    "unofficial | restricted | none")
+                market_fit_score: float | None = None
+                technical_feasibility_score: float | None = None
+                build_feasibility_score: float = 0.7
+                data_feasibility_score: float = 0.7
+                programmatic_seo_opportunity: str = ""
+
+            niche = getattr(getattr(self, "niche_context", None), "niche_description", "") or ""
+            variant_lines = "\n\n".join(
+                f"### {getattr(v, 'solution_name', '?')}\n"
+                f"- value_prop: {(getattr(v, 'value_proposition', '') or '')[:200]}\n"
+                f"- mechanism: {(getattr(v, 'technical_approach', '') or '')[:250]}\n"
+                f"- features: {'; '.join((getattr(v, 'core_features', None) or [])[:5])}\n"
+                f"- innovation: {(getattr(v, 'innovation_angle', '') or '')[:200]}"
+                for v in variants)
+            r, usage = LLMService.invoke_structured(
+                prompt=(
+                    f"Niche: {niche}\n\nThese product ideas are VARIANTS of the same product "
+                    f"({shared_product}) — same buyer job, overlapping value:\n\n{variant_lines}\n\n"
+                    "Design the ONE product a buyer would actually want: merge the variants, "
+                    "taking the strongest mechanism, the most valuable features, and the best "
+                    "go-to-market angle from each. This is a synthesis of EXISTING designs, not a "
+                    "new invention — do not add speculative capabilities none of the variants "
+                    "had. Solo-developer buildable AND operable; fill every field honestly (all "
+                    "*_score fields on a 0-1 scale)."),
+                output_model=_Merged, temperature=0.3, timeout=180,
+                model_name=settings.brainstorm_llm, reasoning_effort="medium", creative=True)
+            if hasattr(self, "cost_tracker") and self.cost_tracker and usage is not None:
+                self.cost_tracker.record_llm_usage("Stage 7 - Variant Merge", usage.to_dict())
+            d = r.model_dump()
+            d["idea_tier"] = "merged"
+            if not d.get("description"):
+                d["description"] = d.get("value_proposition", "")
+            if not d.get("core_features"):
+                d["core_features"] = ["merged workflow"]
+            if not d.get("target_personas"):
+                d["target_personas"] = ["primary audience member"]
+            # Closed-vocab data route + percent-scale normalization (same defenses as bundles).
+            _dam = (d.get("data_access_model") or "").strip().lower()
+            d["data_access_model"] = _dam if _dam in (
+                "public", "freemium", "paywalled", "unofficial", "restricted", "none") else None
+            d.setdefault("market_fit_score", 0.5)
+            d.setdefault("technical_feasibility_score", 0.6)
+            for k in ("build_feasibility_score", "data_feasibility_score",
+                      "market_fit_score", "technical_feasibility_score"):
+                v = d.get(k)
+                if isinstance(v, (int, float)) and not isinstance(v, bool):
+                    if 1.0 < v <= 100.0:
+                        v = v / 100.0
+                    d[k] = max(0.0, min(1.0, v))
+            # Pains: list = union of the variants'; source_pain = highest-severity member pain.
+            union, seen = [], set()
+            for v in variants:
+                for t in (getattr(v, "pain_points_addressed", None) or []):
+                    k = (t or "").strip().lower()
+                    if k and k not in seen:
+                        seen.add(k)
+                        union.append(t)
+            d["pain_points_addressed"] = union or ["merged variant pains"]
+            slim = BaseSolutionIdea.model_validate(d)
+            sev_by_title = {
+                (getattr(p, "title", "") or "").strip().lower():
+                    (getattr(p, "severity_score", 0) or 0)
+                for p in getattr(self.pain_point_analysis, "pain_points", []) or []}
+            src_pains = [getattr(v, "source_pain", None) for v in variants]
+            src_pains = [s for s in src_pains if s]
+            slim.source_pain = (max(src_pains, key=lambda s: sev_by_title.get(s.strip().lower(), 0))
+                                if src_pains else None)
+            slim.source_segment = getattr(variants[0], "source_segment", None)
+            # source_frame: whichever member contributed the WINNING source_pain (or the first
+            # member's frame when no variant carries one — e.g. an all-frame-born group).
+            winner_member = next(
+                (v for v in variants if getattr(v, "source_pain", None) == slim.source_pain),
+                variants[0]) if slim.source_pain else variants[0]
+            slim.source_frame = getattr(winner_member, "source_frame", None) or "pain"
+            merged_names = [getattr(v, "solution_name", "?") for v in variants]
+            expanded = self._expand_bundle(slim) or slim
+            # Re-assert the fields the merge owns (expansion may rebuild the model).
+            expanded.idea_tier = "merged"
+            expanded.merged_from = merged_names
+            expanded.source_pain = slim.source_pain
+            expanded.source_segment = slim.source_segment
+            expanded.source_frame = slim.source_frame
+            expanded.pain_points_addressed = slim.pain_points_addressed
+            return expanded
+        except Exception as e:
+            logger.warning(f"[Merge] synthesis failed (non-fatal, group kept as-is): {str(e)[:120]}")
+            return None
+
+    @staticmethod
+    def _merge_acceptable(merged, members: list, bar: float) -> bool:
+        """Accept-guard for a merged idea (composite + per-dimension, not mf-only — a ±0.05
+        market-fit gate sits inside the critic's own noise band): the angle-ranked composite must
+        not lose to the best variant, no feasibility axis may regress > 0.05, and the merged idea
+        must clear the demotion bar itself."""
+        from ..utils.score_helpers import _composite_for_angle
+
+        def _comp(i):
+            return _composite_for_angle(
+                getattr(i, "market_fit_score", None),
+                getattr(i, "technical_feasibility_score", None),
+                getattr(i, "novelty_score", None),
+                getattr(i, "seo_scalability_score", None),
+                getattr(i, "winning_angle", None))
+
+        mf = getattr(merged, "market_fit_score", None)
+        if not (isinstance(mf, (int, float)) and mf >= bar):
+            return False
+        best = max(members, key=_comp)
+        if _comp(merged) < _comp(best):
+            return False
+        for dim in ("technical_feasibility_score", "build_feasibility_score",
+                    "data_feasibility_score", "solo_dev_feasibility"):
+            b = getattr(best, dim, None)
+            m = getattr(merged, dim, None)
+            if isinstance(b, (int, float)) and isinstance(m, (int, float)) and m < b - 0.05:
+                return False
+        return True
+
+    def _parity_pivot_revisions(self, refined_solutions) -> tuple[int, int]:
+        """E2 wedge-pivot (2026-07-09): a shipped/partial parity finding is a WEDGE problem —
+        pain real, buyers pay, position occupied — the one failure mode evidence CAN fix
+        (vs. substitute+weak-wallet = market problem, never rewritten). For up to
+        `parity_pivot_max_revisions` visible shipped/partial-capped ideas: ONE revision call fed
+        the finding + the incumbent's known gap + dissatisfaction signals, then the FULL
+        `_score_wave` sequence (uniformity contract — same scoring as every birth path; rule (e)
+        applies to the revision too). Accept only if the revision's angle composite beats the
+        capped original AND its own parity finding cleared — else the cap stands. In-place 1:1
+        replacement (same provenance, list length unchanged). Returns (attempted, accepted)."""
+        from ..utils.score_helpers import _composite_for_angle
+
+        max_n = settings.parity_pivot_max_revisions
+        if max_n <= 0:
+            return 0, 0
+
+        def _comp(i):
+            return _composite_for_angle(
+                getattr(i, "market_fit_score", None),
+                getattr(i, "technical_feasibility_score", None),
+                getattr(i, "novelty_score", None),
+                getattr(i, "seo_scalability_score", None),
+                getattr(i, "winning_angle", None))
+
+        ideas = refined_solutions.solution_ideas
+        eligible = [i for i in ideas
+                    if getattr(i, "candidate_status", "active") == "active"
+                    and (getattr(i, "incumbent_parity", None) or "").strip().lower()
+                        .startswith(("shipped", "partial"))]
+        eligible.sort(key=_comp, reverse=True)  # pivot the strongest capped ideas first
+        attempted = accepted = 0
+        gaps_by_name = {(r.get("name") or "").strip().lower(): (r.get("gap") or "")
+                        for r in (getattr(self, "_incumbent_rows", None) or [])}
+        for orig in eligible[:max_n]:
+            try:
+                attempted += 1
+                finding = (getattr(orig, "incumbent_parity", "") or "").strip()
+                inc_name = ""
+                for token in finding.replace("shipped by", "").replace("partial by", "").split(":")[0].split("("):
+                    inc_name = token.strip()
+                    break
+                gap = gaps_by_name.get(inc_name.lower(), "")
+                dissat = (getattr(self, "_dissatisfaction_text", None) or "")[:600]
+
+                from pydantic import BaseModel, Field as _F
+
+                class _Pivot(BaseModel):
+                    solution_name: str = ""
+                    value_proposition: str = ""
+                    description: str = ""
+                    core_features: list[str] = _F(default_factory=list)
+                    conventional_approach: str = ""
+                    innovation_angle: str = ""
+                    why_it_works: str = ""
+                    technical_approach: str = ""
+                    data_access_model: str = _F(
+                        "", description="EXACTLY one of: public | freemium | paywalled | "
+                                        "unofficial | restricted | none")
+                    market_fit_score: float | None = None
+                    technical_feasibility_score: float | None = None
+                    build_feasibility_score: float = 0.7
+                    data_feasibility_score: float = 0.7
+                    programmatic_seo_opportunity: str = ""
+
+                r, usage = LLMService.invoke_structured(
+                    prompt=(
+                        f"An incumbent already occupies this idea's position:\n"
+                        f"FINDING: {finding}\n"
+                        f"INCUMBENT'S KNOWN GAP: {gap or 'not recorded'}\n"
+                        f"USER DISSATISFACTION SIGNALS: {dissat or 'none recorded'}\n\n"
+                        f"THE IDEA (validated pain — keep it):\n"
+                        f"- name: {getattr(orig, 'solution_name', '')}\n"
+                        f"- value_prop: {(getattr(orig, 'value_proposition', '') or '')[:250]}\n"
+                        f"- mechanism: {(getattr(orig, 'technical_approach', '') or '')[:300]}\n\n"
+                        "PIVOT THE WEDGE: keep the validated pain, but move the product to attack "
+                        "the incumbent's gap or the segment it ignores — a position the finding "
+                        "does NOT cover. This is a repositioning of an EXISTING design, not an "
+                        "invention: no speculative capabilities, solo-developer buildable, fill "
+                        "every field honestly (scores 0-1)."),
+                    output_model=_Pivot, temperature=0.3, timeout=180,
+                    model_name=settings.brainstorm_llm, reasoning_effort="medium", creative=True)
+                if hasattr(self, "cost_tracker") and self.cost_tracker and usage is not None:
+                    self.cost_tracker.record_llm_usage("Stage 7 - Parity Pivot", usage.to_dict())
+                d = r.model_dump()
+                if not d.get("solution_name") or not d.get("value_proposition"):
+                    continue
+                d.setdefault("market_fit_score", 0.5)
+                d.setdefault("technical_feasibility_score", 0.6)
+                for k in ("build_feasibility_score", "data_feasibility_score",
+                          "market_fit_score", "technical_feasibility_score"):
+                    v = d.get(k)
+                    if isinstance(v, (int, float)) and not isinstance(v, bool):
+                        d[k] = max(0.0, min(1.0, v / 100.0 if 1.0 < v <= 100.0 else v))
+                _dam = (d.get("data_access_model") or "").strip().lower()
+                d["data_access_model"] = _dam if _dam in (
+                    "public", "freemium", "paywalled", "unofficial", "restricted", "none") else None
+                d["description"] = d.get("description") or d.get("value_proposition", "")
+                d["core_features"] = d.get("core_features") or ["pivoted workflow"]
+                d["pain_points_addressed"] = list(
+                    getattr(orig, "pain_points_addressed", None) or ["pivoted pain"])
+                d["target_personas"] = list(getattr(orig, "target_personas", None) or ["primary audience member"])
+                rev = BaseSolutionIdea.model_validate(d)
+                rev.source_pain = getattr(orig, "source_pain", None)
+                rev.source_segment = getattr(orig, "source_segment", None)
+                # Fix #6: a frame idea's `source_frame` was dropped on pivot reconstruction —
+                # without this, an accepted pivot of a non-pain-cell idea silently resets to
+                # 'pain', losing its frame identity for every downstream frame-aware consumer.
+                rev.source_frame = getattr(orig, "source_frame", None) or "pain"
+                rev.idea_tier = getattr(orig, "idea_tier", "single") or "single"
+
+                self._score_wave([rev])  # full per-idea sequence; rule (e) re-applies
+
+                # Incomplete-vector guard (codex-review MAJOR): _Pivot's schema omits novelty/
+                # seo/obviousness/solo_dev, and the angle composite drops None dims — without
+                # this check a pivot could win on a partial vector never scored against the
+                # same dimensions as its original. The calibration critic fills these during
+                # _score_wave above; require them present before comparing composites at all.
+                score_dims = [getattr(rev, k, None) for k in
+                              ("market_fit_score", "technical_feasibility_score",
+                               "novelty_score", "seo_scalability_score")]
+                if not all(isinstance(v, (int, float)) and not isinstance(v, bool)
+                           for v in score_dims):
+                    logger.info(f"[ParityPivot] rejected pivot of "
+                                f"'{getattr(orig, 'solution_name', '?')}' — incomplete score "
+                                "vector after scoring (missing market_fit/technical/novelty/seo)")
+                    continue
+
+                rev_par = (getattr(rev, "incumbent_parity", None) or "").strip().lower()
+                if _comp(rev) > _comp(orig) and rev_par.startswith("none"):
+                    idx = ideas.index(orig)
+                    ideas[idx] = rev
+                    accepted += 1
+                    logger.info(f"[ParityPivot] accepted '{rev.solution_name}' "
+                                f"(composite {_comp(orig):.3f} -> {_comp(rev):.3f}) "
+                                f"replacing '{getattr(orig, 'solution_name', '?')}'")
+                else:
+                    logger.info(f"[ParityPivot] rejected pivot of "
+                                f"'{getattr(orig, 'solution_name', '?')}' "
+                                f"(composite {_comp(rev):.3f} vs {_comp(orig):.3f}, "
+                                f"parity '{rev_par[:40] or 'none'}') — needs explicit clearance "
+                                "('none found'), not just non-shipped/partial — cap stands")
+            except Exception as e:
+                logger.warning(f"[ParityPivot] attempt failed (non-fatal): {str(e)[:120]}")
+        return attempted, accepted
+
+    def _score_wave(self, wave: list, *, birth_verified: list | None = None) -> None:
+        """Run the full per-idea pass sequence on ideas born in the post-parity block (they
+        missed the set-wide passes that already ran; merged ideas additionally missed birth-time
+        route verification — `birth_verified` names are registered so `_verify_pool_routes`
+        targets exactly the unverified subset). Every step fail-soft."""
+        if not wave:
+            return
+        self._birth_verified_names = set(
+            getattr(self, "_birth_verified_names", set()) or set())
+        self._birth_verified_names.update(
+            getattr(w, "solution_name", "") for w in (birth_verified or []))
+        for step_name, fn in (
+                ("feasibility", lambda: self._finalize_feasibility(wave)),
+                ("pool-contract", lambda: self._finalize_idea_pool(wave)),
+                ("route-verify", lambda: self._verify_pool_routes(wave)),
+                ("pain-relevance", lambda: self._filter_pain_relevance(wave)),
+                ("payability", lambda: [self._stamp_payability(w) for w in wave]),
+                ("dev-time", lambda: self._finalize_dev_time(wave)),
+                ("parity", lambda: self._probe_mechanism_parity(wave)),
+                ("caps", lambda: [self._validate_idea_caps(w) for w in wave]),
+                ("angles", lambda: self._classify_idea_angles(wave)),
+        ):
+            try:
+                fn()
+            except Exception as e:
+                logger.warning(f"[Wave] {step_name} skipped: {str(e)[:120]}")
+
+    def _backfill_and_demote(self, refined_solutions, *, skip_selection: bool) -> None:
+        """Post-parity deliverable-quality block — TOURNAMENT PATH ONLY (the legacy/convergent
+        path captures its solution_selection before this point, so a sweep there could leave a
+        demoted idea as the selected winner; codex-review MAJOR). Order matters: demote → merge
+        variants (accept/absorb FIRST, so backfill sizing sees the post-merge visible count;
+        codex-review MAJOR) → backfill untried pains in one parallel wave → floor-guard (which
+        also retracts the ruled-out findings of restored ideas; codex-review MAJOR) → funnel
+        counts. Fail-soft throughout; never raises."""
+        from ..models.solution_idea import visible_ideas
+
+        ctx = getattr(self, "_tournament_ctx", None)
+        if not ctx:
+            return  # legacy/convergent path keeps its historical behavior untouched
+        ideas = refined_solutions.solution_ideas
+        bar = settings.demotion_market_fit_max
+        funnel: dict = {
+            "pains_identified": len(getattr(self.pain_point_analysis, "pain_points", []) or []),
+        }
+        for k in ("cells_run", "concepts_generated", "survived_critics", "winners", "salvaged"):
+            if k in ctx:
+                funnel[k] = ctx[k]
+
+        demoted = 0
+        if bar > 0:
+            try:
+                demoted = self._sweep_demote(ideas)
+            except Exception as e:
+                logger.warning(f"[Demote] sweep skipped: {str(e)[:120]}")
+        funnel["demoted"] = demoted
+
+        # ── E2 wedge-pivot for shipped/partial-capped ideas (before merge/backfill so a
+        # pivoted idea participates in overlap grouping + the visible count). Fail-soft.
+        if bar > 0:
+            try:
+                p_att, p_acc = self._parity_pivot_revisions(refined_solutions)
+                funnel["pivots_attempted"] = p_att
+                funnel["pivots_accepted"] = p_acc
+            except Exception as e:
+                logger.warning(f"[ParityPivot] skipped: {str(e)[:120]}")
+
+        if bar > 0:
+            # ── Variant merge FIRST (accept/absorb before backfill sizing): group visible
+            # ideas, synthesize one product per group, score, accept-guard.
+            merge_groups_accepted = 0
+            variants_absorbed = 0
+            try:
+                groups = self._group_variant_overlaps(visible_ideas(ideas))
+                merge_candidates: list[tuple] = []
+                if settings.variant_merge_max_groups > 0:
+                    by_name = {(getattr(i, "solution_name", "") or "").strip().lower(): i
+                               for i in ideas}
+                    for g in groups[: settings.variant_merge_max_groups]:
+                        members = [by_name.get((n or "").strip().lower())
+                                   for n in g["idea_names"]]
+                        members = [m for m in members if m is not None
+                                   and getattr(m, "candidate_status", "active") == "active"]
+                        if len(members) < 2:
+                            continue
+                        merged = self._synthesize_variant_merge(members, g["shared_product"])
+                        if merged is not None:
+                            merge_candidates.append((merged, members))
+                if merge_candidates:
+                    self._score_wave([m for m, _ in merge_candidates])
+                    for merged, members in merge_candidates:
+                        if self._merge_acceptable(merged, members, bar):
+                            ideas.append(merged)
+                            for m in members:
+                                m.candidate_status = "absorbed"
+                            merge_groups_accepted += 1
+                            variants_absorbed += len(members)
+                            logger.info(
+                                f"[Merge] accepted '{getattr(merged, 'solution_name', '?')}' "
+                                f"absorbing {len(members)} variant(s)")
+                        else:
+                            logger.info(
+                                f"[Merge] rejected '{getattr(merged, 'solution_name', '?')}' "
+                                "(did not beat best variant) — variants kept, grouped display")
+            except Exception as e:
+                logger.warning(f"[Merge] variant merge skipped: {str(e)[:120]}")
+            funnel["merge_groups"] = merge_groups_accepted
+            funnel["variants_absorbed"] = variants_absorbed
+
+            # ── Backfill wave: sized on the POST-merge visible count.
+            backfill_winners: list = []
+            attempted = 0
+            try:
+                visible_now = visible_ideas(ideas)
+                needed = settings.backfill_target_visible - len(visible_now)
+                cap = settings.backfill_max_cells
+                if needed > 0 and cap > 0:
+                    cells = self._pick_backfill_cells(
+                        ideas, ctx.get("partition_cells") or [], min(needed, cap))
+                    attempted = len(cells)
+                    if cells:
+                        jobs = [{"cell": c, "crew_inputs": ctx["crew_inputs"],
+                                 "search": ctx.get("search"), "usages": ctx["usages"],
+                                 "skip_selection": skip_selection} for c in cells]
+                        logger.info(
+                            f"[Backfill] running {len(jobs)} backfill cell(s) "
+                            f"(visible={len(visible_now)}, "
+                            f"target={settings.backfill_target_visible})")
+                        backfill_winners = [w for w in self._run_parallel(
+                            self._run_backfill_cell, jobs,
+                            deadline=settings.divergent_sample_deadline_seconds,
+                            max_workers=min(len(jobs), settings.divergent_max_workers),
+                            label="Backfill") if w is not None]
+            except Exception as e:
+                logger.warning(f"[Backfill] wave skipped: {str(e)[:120]}")
+            funnel["backfill_run"] = attempted
+
+            accepted_backfill = 0
+            if backfill_winners:
+                self._score_wave(backfill_winners, birth_verified=backfill_winners)
+                for w in backfill_winners:
+                    mf = getattr(w, "market_fit_score", None)
+                    if isinstance(mf, (int, float)) and mf >= bar:
+                        ideas.append(w)
+                        accepted_backfill += 1
+                        logger.info(f"[Backfill] accepted "
+                                    f"'{getattr(w, 'solution_name', '?')}' (mf={mf:.2f})")
+                    else:
+                        self._record_ruled_out(w, source="backfill_rejected")
+                        logger.info(f"[Backfill] rejected '{getattr(w, 'solution_name', '?')}' "
+                                    "→ ruled-out finding")
+            funnel["backfill_accepted"] = accepted_backfill
+
+            # Set-level consistency over the final union (deterministic, downgrade-only).
+            if merge_groups_accepted or backfill_winners:
+                try:
+                    self._validate_idea_scores(ideas)
+                except Exception as e:
+                    logger.warning(f"[Wave] set-level validation skipped: {str(e)[:120]}")
+
+        # ── Floor guard: never ship fewer than min_visible_candidates. A restored idea is
+        # visible again, so its ruled-out finding is retracted (stale-finding codex MAJOR).
+        try:
+            floor = settings.min_visible_candidates
+            vis = visible_ideas(ideas)
+            if len(vis) < floor:
+                demoted_pool = sorted(
+                    (i for i in ideas if getattr(i, "candidate_status", "") == "demoted"),
+                    key=lambda i: getattr(i, "market_fit_score", 0) or 0, reverse=True)
+                for i in demoted_pool[: floor - len(vis)]:
+                    i.candidate_status = "restored"
+                    name = getattr(i, "solution_name", "?")
+                    self.ruled_out_pains = [
+                        f for f in self.ruled_out_pains if f.get("idea_name") != name]
+                    self.coverage_caveats = list(self.coverage_caveats or []) + [
+                        f"'{name}' is shown despite a thin market signal — it was the strongest "
+                        "concept for its pain and the list would otherwise be too short."]
+                    logger.info(f"[FloorGuard] restored '{name}'")
+        except Exception as e:
+            logger.warning(f"[FloorGuard] skipped: {str(e)[:120]}")
+
+        # Multi-Frame Idea Generation Portfolio: per-frame funnel tally over the final visible set
+        # (A/B outcome attribution — Task 9 live phase reads this). Fail-soft, never blocks shipping.
+        try:
+            by_frame: dict = {}
+            for i in visible_ideas(ideas):
+                f = getattr(i, "source_frame", None) or "pain"
+                by_frame[f] = by_frame.get(f, 0) + 1
+            funnel["by_frame"] = by_frame
+        except Exception as e:
+            logger.warning(f"[Funnel] by_frame tally skipped: {str(e)[:120]}")
+
+        funnel["candidates_shown"] = len(visible_ideas(ideas))
+        self.funnel_counts = funnel
 
     def _carry_provenance(self, refined_solutions, raw_concepts) -> int:
         """Carry M/D/J tags + (pain × segment) provenance from the divergent pool onto the
@@ -4512,6 +6257,13 @@ class UnifiedSolutionCrew:
             obv = getattr(c, "obviousness_score", None)
             if obv is not None and obv >= 0:
                 sol.obviousness_score = obv
+            # Multi-Frame Idea Generation Portfolio: carry the frame identity too. A non-pain
+            # concept has no source_pain to re-derive grounded pains from here (the CONVERGENT
+            # legacy path — tournament-path frame ideas are already grounded in
+            # `_tournament_cell`/`_refine_single_concept`), so pain_points_addressed is left as
+            # the refiner emitted it — same "not touched" behavior this function already
+            # tolerates for any concept lacking source_pain.
+            sol.source_frame = getattr(c, "source_frame", None) or "pain"
             src_pain = getattr(c, "source_pain", None)
             if src_pain:
                 sol.source_pain = src_pain
@@ -4521,6 +6273,8 @@ class UnifiedSolutionCrew:
                 # Always validated titles: grounded set, else just the source pain — never keep the
                 # LLM's free-text self-reported pains (paraphrase/duplicate/fabricate).
                 sol.pain_points_addressed = grounded or [src_pain]
+            elif getattr(c, "source_segment", None):
+                sol.source_segment = c.source_segment
 
         by_name: dict = {}
         for c in raw_concepts.concepts:
@@ -4912,6 +6666,13 @@ class UnifiedSolutionCrew:
 
         clamped = 0
         for idea in ideas or []:
+            # candidate_status RESET-THEN-STAMP (live-caught 2026-07-10 cottage-food litmus:
+            # generator/expansion LLMs fabricated "ACCEPTED"/"ready" — the field is visible in
+            # their schemas, and fields on BaseSolutionIdea get invented; never trust-if-present).
+            # This pass runs on every birth path BEFORE any code stamps demoted/absorbed/restored
+            # (the demote/merge/backfill block runs later in the same flow), so an unconditional
+            # reset here can never wipe a legitimate stamp — it only clears birth fabrication.
+            idea.candidate_status = "active"
             # project_type closed vocab (frontend chips + archetype logic key off it)
             pt = (getattr(idea, "project_type", None) or "").strip().lower()
             if pt and pt not in self._PROJECT_TYPE_VOCAB:
@@ -5341,6 +7102,15 @@ class UnifiedSolutionCrew:
         """
         logger.info("Starting Unified Solution Pipeline (Divergent-Convergent Architecture)...")
 
+        # Per-run artifacts of the demote/merge/backfill block — reset here so a reused crew
+        # instance (direct callers / tests) can't act on a stale tournament context or leak a
+        # previous run's findings (codex-review MINOR, 2026-07-09).
+        self._tournament_ctx = None
+        self.ruled_out_pains = []
+        self.overlap_groups = []
+        self.funnel_counts = {}
+        self._ma_serper_calls = 0  # market-awareness search budget counter (per run)
+
         if not self.pain_point_analysis.pain_points:
             raise ValueError(
                 "No pain points provided - cannot generate solutions. "
@@ -5516,6 +7286,9 @@ class UnifiedSolutionCrew:
                 self.pain_point_analysis.pain_points,
                 list(getattr(self.audience_mapping, "audience_segments", None) or []),
             )
+            _wallet_line = self._wallet_prompt_line()
+            if _wallet_line:
+                monetization_directive = f"{monetization_directive} {_wallet_line}"
             # Stash for the tournament refine path (_refine_single_concept), which builds a custom
             # prompt and does NOT render the solution_refinement task where the pricing block lives.
             self._monetization_directive = monetization_directive
@@ -5565,6 +7338,7 @@ class UnifiedSolutionCrew:
             pooled, divergent_usages = self._generate_divergent_pool(
                 crew_inputs, partition_cells=partition_cells)
             self._record_divergent_usage(divergent_usages)
+            _funnel_concepts_generated = len(pooled)  # raw pool, pre-critic/pre-dedup
             # Critic scoring already ran PER SAMPLE inside _generate_divergent_pool (score_inline)
             # — here we only partition by the marks + floor-guard (the scores/usage are already in).
             pooled = self._finalize_critic_pool(pooled)          # independent critic (before dedup)
@@ -5645,6 +7419,16 @@ class UnifiedSolutionCrew:
                 base_solutions = IdeaGenerationResult(solution_ideas=ideas)
                 logger.info(f"  [Tournament] {n_winners} per-cell winners + {n_salvaged} salvaged + "
                             f"{len(ideas) - n_winners - n_salvaged} bundles (from {len(jobs)} cells)")
+                # Context for the post-parity demote/merge/backfill block — these names (search
+                # closure, usage sink, cells) exist only in this branch; the block runs later in
+                # common code and must not NameError on the convergent fallback.
+                self._tournament_ctx = {
+                    "search": search, "usages": t_usages, "partition_cells": partition_cells,
+                    "crew_inputs": crew_inputs, "cells_run": len(jobs),
+                    "concepts_generated": _funnel_concepts_generated,
+                    "survived_critics": len(pooled),
+                    "winners": n_winners, "salvaged": n_salvaged,
+                }
             else:
                 # ── CONVERGENT crew: refine → (select) ── (the deduped pool is the refiner's input)
                 self._last_crew = self._convergent_crew(skip_selection)  # for usage_metrics
@@ -5869,11 +7653,26 @@ class UnifiedSolutionCrew:
             except Exception as e:
                 logger.warning(f"Idea-score validation skipped: {e}")
 
+            # Deliverable-quality block (tournament path only; scores are FINAL here — post-parity,
+            # post-validation): demote weak winners into ruled-out findings, merge buyer-visible
+            # variants into one product, backfill untried pains, floor-guard, funnel counts.
+            # Fail-soft inside; never raises.
+            try:
+                self._backfill_and_demote(refined_solutions, skip_selection=skip_selection)
+            except Exception as e:
+                logger.warning(f"Demote/merge/backfill block skipped: {e}")
+
             # SEO-realism caps (downgrade-only). PREVIEW PATH ONLY: with skip_selection there is
             # no Task-4 selection / flow-level backfill, so capping the stored seo_scalability_score
             # here cannot reorder anything. In the full pipeline ranking is locked AFTER this crew
             # (flow backfill), so the cap is applied later — at Stage 12 for the selected solution.
             if skip_selection:
+                # SERP-composition peek first (stamps _serp_owned; Rule D in the cap reads it).
+                # Distribution_seo ideas only; angles are already classified above.
+                try:
+                    self._probe_serp_composition(refined_solutions.solution_ideas)
+                except Exception as e:
+                    logger.warning(f"SERP-composition probe skipped: {e}")
                 try:
                     self._finalize_seo_realism(refined_solutions.solution_ideas)
                 except Exception as e:
@@ -5884,17 +7683,16 @@ class UnifiedSolutionCrew:
             # the user can judge whether concentration is real opportunity or tunnel-vision. We
             # deliberately do NOT cap by pain — pain is the one axis where concentration may
             # signal where the value is, not a lazy set.
+            # Runs on the VISIBLE subset so the coverage caveats match what the user actually
+            # sees (demoted/absorbed ideas are hidden by the boundary filters).
             try:
-                self._pain_coverage_summary(refined_solutions.solution_ideas)
+                from ..models.solution_idea import visible_ideas as _visible
+                self._pain_coverage_summary(_visible(refined_solutions.solution_ideas))
             except Exception as e:
                 logger.warning(f"Pain-coverage summary skipped: {e}")
 
-            # Overlap note (informational, never drops): flags final ideas a buyer would see
-            # as variants of one product. Fail-soft inside the method.
-            try:
-                self._note_idea_overlap(refined_solutions.solution_ideas)
-            except Exception as e:
-                logger.warning(f"Overlap note skipped: {e}")
+            # (Variant-overlap grouping moved into _backfill_and_demote above — groups now drive
+            # the variant MERGE and the structured overlap_groups display instead of a caveat.)
 
             # Closed-vocabulary tag facets (chips + future filtering). Runs LAST so it reads the
             # FINAL scores/data fields (feasibility + SEO realism caps above mutate the very
@@ -5946,6 +7744,7 @@ class UnifiedSolutionCrew:
                 logger.info(f"  - Selected: {solution_selection.selected_solution_name}")
             else:
                 logger.info("  - Selection: skipped (interactive mode)")
+            logger.info(f"  - Market-awareness Serper calls: {getattr(self, '_ma_serper_calls', 0)}/{settings.market_awareness_serper_budget}")
 
             return (refined_solutions, solution_selection)
 
