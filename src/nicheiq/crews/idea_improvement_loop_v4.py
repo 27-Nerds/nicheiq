@@ -22,6 +22,7 @@ the two system prompts, and the verification stage are new.
 from __future__ import annotations
 
 import re
+from typing import Literal
 
 from loguru import logger
 from pydantic import BaseModel, Field
@@ -113,10 +114,11 @@ class DataRouteVerdict(BaseModel):
             "publicly downloadable datasets, user-entered values, or first-party submissions."
         ),
     )
-    verdict: str = Field(
+    verdict: Literal["supported", "refuted", "not_enough_info"] = Field(
         "not_enough_info",
         description=(
-            "one of: 'supported' (evidence shows a real, accessible public/official route), "
+            "EXACTLY one of the three literal values — never explanation text (reasoning goes in "
+            "`note`): 'supported' (evidence shows a real, accessible public/official route), "
             "'refuted' (evidence shows it's removed / gated / paywalled / nonexistent), or "
             "'not_enough_info' (evidence neither confirms nor refutes)."
         ),
@@ -380,7 +382,12 @@ def verify_data_routes(idea, grounding, *, search, invoke, model_name=None, reas
         "shows the source's actual publication cadence is staler than what the claimed mechanism needs "
         "(e.g. a 'daily'/'weekly'/'real-time' feature built on a source that is a static or "
         "historical/archival dataset), set obtainable=False and cite the cadence mismatch in `note`, "
-        "even if verdict='supported' on access."
+        "even if verdict='supported' on access.\n"
+        "MULTI-SOURCE CLAIMS: when the claim names several sources, the single verdict covers the "
+        "claim AS A WHOLE — 'supported' only if EVERY required source passes; if any is refuted, "
+        "'refuted'; otherwise 'not_enough_info'. Name the failing source in `note`; never put "
+        "deliberation in `verdict`. (2026-07-10 live case: a 3-source claim produced a reasoning "
+        "dump in the verdict field.)"
     )
     try:
         verdict, _ = LLMService.invoke_structured(
