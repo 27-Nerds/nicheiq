@@ -467,6 +467,7 @@ RULES:
             checkpoint_mgr=self.checkpoint_mgr,
             job_id=self.state.job_id,
             idea_focus=getattr(self, "idea_focus", "auto"),
+            cost_tracker=self.cost_tracker,
         )
 
         researcher_agent = unified_crew.competitive_researcher()
@@ -3350,6 +3351,7 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             ),
             target_audience=self._audience_for_research(),
             job_id=self.state.job_id,
+            cost_tracker=self.cost_tracker,
         )
 
         result = pain_point_crew.analyze()
@@ -4025,6 +4027,7 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                 job_id=self.state.job_id,
                 competitor_mentions_text=self.state.competitor_mentions_formatted,
                 idea_focus=getattr(self, "idea_focus", "auto"),
+                cost_tracker=self.cost_tracker,
             )
 
             # Execute complete pipeline

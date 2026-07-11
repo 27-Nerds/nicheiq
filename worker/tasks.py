@@ -1005,6 +1005,7 @@ def run_regenerate_ideas(
             competitor_mentions_text=competitor_mentions,
             # Batch override > restored run-level focus > default. Run-level state stays immutable.
             idea_focus=(idea_focus or getattr(flow, "idea_focus", "auto") or "auto"),
+            cost_tracker=flow.cost_tracker,
         )
 
         # Execute pipeline with skip_selection=True (no Task 4 needed for regeneration)

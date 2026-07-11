@@ -371,7 +371,7 @@ class PainPointCrew:
             return persona_from_niche(self.niche_description)[0]
         return self.niche_description
 
-    def __init__(self, reddit_posts: list[RedditPost] = None, twitter_threads: list[TwitterThread] = None, generic_posts: list[SocialPost] = None, niche_description: str = "", market_segments: list[str] = None, industry_boundaries: str = "", job_id: str | None = None, niche_anchor_terms: list[str] | None = None, target_audience: str | None = None):
+    def __init__(self, reddit_posts: list[RedditPost] = None, twitter_threads: list[TwitterThread] = None, generic_posts: list[SocialPost] = None, niche_description: str = "", market_segments: list[str] = None, industry_boundaries: str = "", job_id: str | None = None, niche_anchor_terms: list[str] | None = None, target_audience: str | None = None, cost_tracker=None):
         """
         Initialize PainPointCrew with social content as knowledge sources.
 
@@ -384,6 +384,8 @@ class PainPointCrew:
             niche_description: Description of the niche being analyzed
             market_segments: Key market segments identified in niche validation
             industry_boundaries: Industry boundaries definition for context
+            cost_tracker: Optional CostTracker instance shared with the flow, used to
+                record direct (non-kickoff) LLM call usage (e.g. stance gate)
         """
         # Don't call super().__init__() when using @CrewBase decorator
         # The decorator handles parent class initialization
@@ -458,6 +460,7 @@ class PainPointCrew:
         from ..utils.validation.niche_anchor import build_anchor_matchers
         self._anchor_matchers = build_anchor_matchers(self.niche_anchor_terms)
         self.job_id = job_id
+        self.cost_tracker = cost_tracker
         self.knowledge_sources = []
 
         # Store formatted content for direct injection into Task 1 (categorization)
@@ -1406,7 +1409,7 @@ class PainPointCrew:
         # Defensive getattr: helpers are also exercised on bare instances (object.__new__) in tests.
         self._stance_gate_calls = getattr(self, "_stance_gate_calls", 0) + 1
         try:
-            result, _usage = LLMService.invoke_structured(
+            result, usage = LLMService.invoke_structured(
                 prompt=prompt,
                 output_model=BatchStanceResponse,
                 temperature=0,
@@ -1414,6 +1417,8 @@ class PainPointCrew:
                 model_name=settings.stance_validation_llm,
                 reasoning_effort="minimal",
             )
+            if self.cost_tracker and usage is not None:
+                self.cost_tracker.record_llm_usage("Stage 6 - Stance Validation", usage.to_dict())
         except Exception as e:
             # summarized into degradation_events at end of analyze()
             self._stance_gate_failures = getattr(self, "_stance_gate_failures", 0) + 1
@@ -2366,6 +2371,11 @@ class PainPointCrew:
                 extraction_output.extracted_pain_points, self._post_body_map, self._post_source_map)
             corpus_evidence = {"composition": composition, "pain_sources": pain_sources}
             audience_for_critic = self._audience_for_critic()
+            # TODO(cost-tracking): assess_audience_coverage() discards its LLM call's usage
+            # internally (`verdict, _ = invoke(...)` in audience_coverage.py) and returns only
+            # the verdict, so there's no usage to record here without changing its return
+            # signature (shared by scripts/audience_coverage_critic_ab.py + ~10 unit tests that
+            # assume a bare-verdict return). Left unrecorded rather than reworking that contract.
             aud_verdict = assess_audience_coverage(
                 [pp.title for pp in extraction_output.extracted_pain_points],
                 audience_for_critic,

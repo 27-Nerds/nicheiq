@@ -974,6 +974,7 @@ class UnifiedSolutionCrew:
         existing_ideas: list[dict] | None = None,
         competitor_mentions_text: str | None = None,
         idea_focus: str = "auto",
+        cost_tracker=None,
     ):
         """
         Initialize UnifiedSolutionCrew with pain points and optional context.
@@ -991,6 +992,8 @@ class UnifiedSolutionCrew:
                 avoid duplicating
             competitor_mentions_text: Optional pre-computed competitor mentions string
                 to skip LLM extraction on regeneration
+            cost_tracker: Optional CostTracker instance shared with the flow, used to
+                record crew-level LLM usage (defaults to None for standalone/legacy use)
         """
         self.pain_point_analysis = pain_point_analysis
         self.social_content = social_content
@@ -1003,6 +1006,7 @@ class UnifiedSolutionCrew:
         self.existing_ideas = existing_ideas or []
         self.competitor_mentions_text = competitor_mentions_text
         self.existing_idea_names = {i["name"].lower() for i in self.existing_ideas if i.get("name")}
+        self.cost_tracker = cost_tracker
 
         # Initialize search tool for competitive research
         self.search_tool = CachedSerperDevTool()
