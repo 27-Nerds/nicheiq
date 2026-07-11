@@ -6420,6 +6420,13 @@ class UnifiedSolutionCrew:
                 ("payability", lambda: [self._stamp_payability(w) for w in wave]),
                 ("dev-time", lambda: self._finalize_dev_time(wave)),
                 ("parity", lambda: self._probe_mechanism_parity(wave)),
+                # Independent realism critic on wave-born ideas (pivot revisions, variant
+                # merges, red-team revisions carry only generator self-scores at this point;
+                # observed live 2026-07-11 as "generator self-assessment" caveats). Mirrors
+                # the in-cell order: after parity evidence, before caps re-assert and the
+                # angle classifier read the (now calibrated) scores. The wrapper skips ideas
+                # already calibrated and no-ops when enable_score_calibration is off.
+                ("calibrate", lambda: self._calibrate_idea_scores(wave)),
                 ("caps", lambda: [self._validate_idea_caps(w) for w in wave]),
                 ("angles", lambda: self._classify_idea_angles(wave)),
         ):
@@ -7234,8 +7241,18 @@ class UnifiedSolutionCrew:
                     idea.data_acquisition_notes = (
                         f"Known public data source: {names} (allowlist-verified)")[:160]
                     clamped += 1
-        # Evaluation-completeness accounting (informational — the systemic-LLM breaker halts
-        # runs where the passes died wholesale; isolated gaps stay visible to the user)
+        if clamped:
+            logger.info(f"[PoolContract] normalized {clamped} field(s)")
+
+    def _account_evaluation_completeness(self, ideas: list) -> None:
+        """Evaluation-completeness accounting (informational — the systemic-LLM breaker halts
+        runs where the passes died wholesale; isolated gaps stay visible to the user). Runs
+        ONCE at the END of the flow, after every catch-up evaluator (straggler calibration/
+        angle passes, the pivot+merge wave, red-team revisions) — running it earlier flagged
+        ideas the straggler passes were about to evaluate seconds later (observed live
+        2026-07-11: a wave-born merge was reported as un-evaluated even though the wave's own
+        angle step classified it right after). Appends at most one caveat. Mutates
+        self.coverage_caveats; never raises."""
         missing = [getattr(i, "solution_name", "?") for i in ideas or []
                    if getattr(i, "winning_angle", None) is None
                    and getattr(i, "novelty_score", None) is None
@@ -7245,10 +7262,7 @@ class UnifiedSolutionCrew:
                    f"(angle/novelty/critic): {'; '.join(missing[:4])} — treat their scores "
                    "as generator self-assessment.")
             self.coverage_caveats = list(getattr(self, "coverage_caveats", None) or []) + [msg]
-            logger.warning(f"[PoolContract] {msg}")
-        if clamped or missing:
-            logger.info(f"[PoolContract] normalized {clamped} field(s), "
-                        f"{len(missing)} under-evaluated idea(s)")
+            logger.warning(f"[EvalCompleteness] {msg}")
 
     def _pain_coverage_summary(self, ideas: list) -> None:
         """Informational pain-coverage signal (NO drops, NO reorder). Appends a caveat to
@@ -8205,6 +8219,15 @@ class UnifiedSolutionCrew:
                 self._pain_coverage_summary(_visible(refined_solutions.solution_ideas))
             except Exception as e:
                 logger.warning(f"Pain-coverage summary skipped: {e}")
+
+            # Evaluation-completeness caveat — ONCE, after every catch-up evaluator above
+            # (straggler calibration/angle, pivot+merge wave, red-team revisions), on the
+            # visible subset so the caveat matches what the user actually sees.
+            try:
+                from ..models.solution_idea import visible_ideas as _visible
+                self._account_evaluation_completeness(_visible(refined_solutions.solution_ideas))
+            except Exception as e:
+                logger.warning(f"Evaluation-completeness accounting skipped: {e}")
 
             # (Variant-overlap grouping moved into _backfill_and_demote above — groups now drive
             # the variant MERGE and the structured overlap_groups display instead of a caveat.)

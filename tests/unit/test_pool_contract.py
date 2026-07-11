@@ -115,14 +115,23 @@ class TestDataAccessAndCompleteness:
         ideas = [_idea(),
                  _idea(solution_name="Ghost1", winning_angle=None, novelty_score=None,
                        calibration_notes=None)]
-        crew._finalize_idea_pool(ideas)
+        crew._account_evaluation_completeness(ideas)
         assert len(crew.coverage_caveats) == 1
         assert "Ghost1" in crew.coverage_caveats[0]
         assert "generator self-assessment" in crew.coverage_caveats[0]
 
     def test_fully_evaluated_pool_no_caveat(self):
         crew = _crew()
-        crew._finalize_idea_pool([_idea(), _idea(solution_name="Y")])
+        crew._account_evaluation_completeness([_idea(), _idea(solution_name="Y")])
+        assert crew.coverage_caveats == []
+
+    def test_pool_contract_emits_no_caveat(self):
+        # the accounting moved OUT of _finalize_idea_pool (it ran before the straggler
+        # calibration/angle passes and the pivot+merge wave, flagging ideas the catch-up
+        # evaluators were about to cover) — the contract now only normalizes fields
+        crew = _crew()
+        crew._finalize_idea_pool([_idea(solution_name="Ghost1", winning_angle=None,
+                                        novelty_score=None, calibration_notes=None)])
         assert crew.coverage_caveats == []
 
 
@@ -130,3 +139,11 @@ def test_contract_runs_after_reinjection():
     # order pin: the contract must cover coverage-net re-injections (they join LAST)
     src = inspect.getsource(UnifiedSolutionCrew.execute_pipeline)
     assert src.index("enforce_pain_coverage(") < src.index("_finalize_idea_pool(")
+
+
+def test_completeness_accounting_runs_after_red_team():
+    # order pin: the caveat must be computed AFTER every catch-up evaluator — the straggler
+    # calibration/angle passes, the pivot+merge wave, and red-team revisions
+    src = inspect.getsource(UnifiedSolutionCrew.execute_pipeline)
+    assert src.index("run_red_team_review(") < src.index("_account_evaluation_completeness(")
+    assert src.index("_backfill_and_demote(") < src.index("_account_evaluation_completeness(")

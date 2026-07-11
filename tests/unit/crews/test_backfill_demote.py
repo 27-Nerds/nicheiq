@@ -319,6 +319,7 @@ class TestBackfillAndDemote:
         crew._probe_mechanism_parity = lambda wave: None
         crew._validate_idea_caps = lambda w: None
         crew._classify_idea_angles = lambda wave: None
+        crew._calibrate_idea_scores = lambda wave: None
         crew._validate_idea_scores = lambda ideas: None
 
     def _minimal_ctx(self):
@@ -780,3 +781,4 @@ class TestScoreWaveBirthVerifiedNames:
         crew._probe_mechanism_parity = lambda wave: None
         crew._validate_idea_caps = lambda w: None
         crew._classify_idea_angles = lambda wave: None
+        crew._calibrate_idea_scores = lambda wave: None

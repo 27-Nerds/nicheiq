@@ -843,10 +843,13 @@ class Settings(BaseSettings):
         )
     )
     score_calibration_reasoning_effort: str = Field(
-        default="medium",
+        default="none",
         description=(
-            "Reasoning effort for the calibration critic. 'medium' default — it must weigh "
-            "evidence against the bands, a notch above the cheaper objective-scoring judge tier."
+            "Reasoning effort for the calibration critic. 'none' default: reasoning-medium "
+            "intermittently empties the tool-call via :nitro routing (_ScoreCalibrations 'not "
+            "found in any channel' → calibration silently skipped, ideas ship with generator "
+            "self-scores); reasoning adds no measurable quality (none≈low≈med) at ~4-5x "
+            "output cost."
         )
     )
     score_calibration_samples: int = Field(

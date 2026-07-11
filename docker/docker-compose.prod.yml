@@ -222,7 +222,8 @@ services:
       # Realism calibration critic: independent post-refinement re-score of the 5 idea criteria, replaces optimistic self-scores (A/B-validated vs a gpt-5.2 reference)
       ENABLE_SCORE_CALIBRATION: ${ENABLE_SCORE_CALIBRATION:-true}
       SCORE_CALIBRATION_LLM: ${SCORE_CALIBRATION_LLM:-openrouter/qwen/qwen3.7-max}
-      SCORE_CALIBRATION_REASONING_EFFORT: ${SCORE_CALIBRATION_REASONING_EFFORT:-medium}
+      # (reasoning MUST stay off: medium intermittently empties the tool-call → calibration silently skipped)
+      SCORE_CALIBRATION_REASONING_EFFORT: ${SCORE_CALIBRATION_REASONING_EFFORT:-none}
       # In-cell winning-angle classifier + adversarial red-team + novelty-enhance refiner
       IDEA_ANGLE_LLM: ${IDEA_ANGLE_LLM:-openrouter/qwen/qwen3.7-max}
       IDEA_ANGLE_REASONING_EFFORT: ${IDEA_ANGLE_REASONING_EFFORT:-medium}
