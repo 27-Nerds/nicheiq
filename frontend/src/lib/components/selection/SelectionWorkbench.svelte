@@ -457,12 +457,12 @@
         {/if}
       </aside>
     {:else}
-      <aside class="cmd-status is-empty" aria-label="Vote status">
-        <div class="cmd-status-top">
-          <strong>{totalVotes}</strong>
-          <span>vote{totalVotes === 1 ? "" : "s"}</span>
+      <aside class="cmd-status cmd-status--votes" aria-label="Vote status">
+        <div class="vote-tally">
+          <span class="vote-tally-num">{totalVotes}</span>
+          <span class="vote-tally-label">vote{totalVotes === 1 ? "" : "s"} so far</span>
         </div>
-        <p class="cmd-status-empty">Your vote helps the owner prioritize.</p>
+        <p class="vote-tally-hint">Your vote helps the owner prioritize.</p>
       </aside>
     {/if}
   </header>
@@ -1075,6 +1075,41 @@
     max-width: 12rem;
   }
 
+  /* visitor-mode vote tally (replaces the selection status) */
+  .cmd-status--votes {
+    gap: 0.34rem;
+    align-content: start;
+  }
+  .vote-tally {
+    display: flex;
+    align-items: baseline;
+    justify-content: flex-end;
+    gap: 0.42rem;
+  }
+  .vote-tally-num {
+    font-family: var(--font-mono);
+    font-size: 1.5rem;
+    font-weight: 800;
+    line-height: 1;
+    color: var(--color-text-primary);
+    font-variant-numeric: tabular-nums;
+  }
+  .vote-tally-label {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    color: var(--color-text-muted);
+  }
+  .vote-tally-hint {
+    margin: 0;
+    max-width: 13rem;
+    justify-self: end;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    color: var(--color-text-muted);
+    text-align: right;
+    text-wrap: pretty;
+  }
+
   .regen-group {
     display: inline-flex;
     align-items: center;
@@ -1227,6 +1262,10 @@
     justify-content: flex-end;
     gap: 0.4rem;
     flex-shrink: 0;
+    /* keep the chips (and their right-anchored popovers) on the right edge even when
+       the shape line is absent — space-between with a single child parks it at
+       flex-start and the popover would overflow the left viewport edge */
+    margin-left: auto;
   }
   .coverage-disclosure {
     position: relative;
@@ -1290,7 +1329,7 @@
     width: min(42rem, 72vw);
     margin: 0.45rem 0 0;
     padding: 0.85rem 0.95rem;
-    background: color-mix(in srgb, var(--color-bg-elevated) 98%, transparent);
+    background: var(--color-bg-elevated);
     border: 1px solid var(--color-border-emphasis);
     border-radius: 1rem;
     box-shadow:
@@ -1316,7 +1355,7 @@
     width: min(46rem, 76vw);
     margin: 0.45rem 0 0;
     padding: 0.85rem 0.95rem;
-    background: color-mix(in srgb, var(--color-bg-elevated) 98%, transparent);
+    background: var(--color-bg-elevated);
     border: 1px solid var(--color-border-emphasis);
     border-radius: 1rem;
     box-shadow: 0 18px 48px rgba(24, 24, 27, 0.08);
@@ -2046,6 +2085,13 @@
       width: 100%;
       justify-self: stretch;
     }
+    .vote-tally {
+      justify-content: flex-start;
+    }
+    .vote-tally-hint {
+      justify-self: start;
+      text-align: left;
+    }
     .context-notes {
       display: grid;
       grid-template-columns: minmax(0, 1fr);
@@ -2151,6 +2197,16 @@
       width: 100%;
       min-height: 2.25rem;
       font-size: 0.75rem;
+    }
+    /* visitor mode: anchor the vote pill as a full-width tap target (same
+       affordance as the owner's full-width Shortlist control above) */
+    .cell-action :global(> div) {
+      width: 100%;
+    }
+    .cell-action :global(button) {
+      width: 100%;
+      justify-content: center;
+      min-height: 2.25rem;
     }
     .tray {
       position: fixed;

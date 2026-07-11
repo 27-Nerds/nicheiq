@@ -887,8 +887,13 @@
     }
     .modal-actions {
       width: 100%;
-      justify-content: space-between;
+      justify-content: flex-start;
       flex-wrap: wrap;
+    }
+    /* pager stays left; the vote action (when present) docks with the close
+       button on the right instead of floating mid-air */
+    .modal-nav {
+      margin-right: auto;
     }
     .modal-body {
       padding: 1rem;
