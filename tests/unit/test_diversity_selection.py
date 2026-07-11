@@ -100,6 +100,24 @@ class TestDiversityCaps:
         crew._enforce_diversity_caps(ideas)
         assert len(ideas) == 7  # disabled -> untouched
 
+    def test_equal_composite_tiebreak_by_name_regardless_of_input_order(self, monkeypatch):
+        # 2026-07-10 audit: completion-order tie-breaking made cap results depend on network
+        # latency. Two ideas tied on composite (same segment, mechanism cap disabled) must
+        # resolve the segment-cap slot the SAME way regardless of which one is first in the
+        # input list — normalized solution_name breaks the tie.
+        crew = _crew(monkeypatch, seg=1, mech=10, ptype=10, min_final=1, max_final=10)
+        alpha_first = [
+            _idea("Alpha", "RCB", "saas", "m1", nov=0.4, mf=0.7),
+            _idea("Zebra", "RCB", "saas", "m2", nov=0.4, mf=0.7),
+        ]
+        zebra_first = [
+            _idea("Zebra", "RCB", "saas", "m2", nov=0.4, mf=0.7),
+            _idea("Alpha", "RCB", "saas", "m1", nov=0.4, mf=0.7),
+        ]
+        for ideas in (alpha_first, zebra_first):
+            crew._enforce_diversity_caps(ideas)
+            assert [i.solution_name for i in ideas] == ["Alpha"]
+
 
 class TestPainSourceDedup:
     def _rc(self, name, pain, source):

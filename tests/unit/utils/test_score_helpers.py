@@ -82,6 +82,21 @@ class TestComputeSolutionScores:
         assert scores[1].rank == 2
         assert scores[2].rank == 3
 
+    def test_equal_composite_tiebreak_by_name_regardless_of_input_order(self):
+        # 2026-07-10 audit: completion-order tie-breaking made equal-composite results depend
+        # on network latency. Equal composites now order by normalized solution_name.
+        a_first = [
+            _FakeIdea("Alpha", 0.5, 0.5, 0.5, 0.5),
+            _FakeIdea("Zebra", 0.5, 0.5, 0.5, 0.5),
+        ]
+        z_first = [
+            _FakeIdea("Zebra", 0.5, 0.5, 0.5, 0.5),
+            _FakeIdea("Alpha", 0.5, 0.5, 0.5, 0.5),
+        ]
+        for ideas in (a_first, z_first):
+            scores = compute_solution_scores(ideas)
+            assert [s.solution_name for s in scores] == ["Alpha", "Zebra"]
+
 
 # ---------- backfill_solution_scores ----------
 
@@ -158,3 +173,18 @@ class TestBackfillSolutionScores:
         assert result[0].rank == 1
         assert result[1].solution_name == "Low"
         assert result[1].rank == 2
+
+    def test_equal_composite_tiebreak_by_name_regardless_of_input_order(self):
+        # 2026-07-10 audit: completion-order tie-breaking made equal-composite results depend
+        # on network latency. Equal composites now order by normalized solution_name.
+        a_first = [
+            _FakeIdea("Alpha", 0.5, 0.5, 0.5, 0.5),
+            _FakeIdea("Zebra", 0.5, 0.5, 0.5, 0.5),
+        ]
+        z_first = [
+            _FakeIdea("Zebra", 0.5, 0.5, 0.5, 0.5),
+            _FakeIdea("Alpha", 0.5, 0.5, 0.5, 0.5),
+        ]
+        for ideas in (a_first, z_first):
+            result = backfill_solution_scores(None, ideas)
+            assert [s.solution_name for s in result] == ["Alpha", "Zebra"]

@@ -342,7 +342,9 @@ def compute_solution_scores(solution_ideas: list[BaseSolutionIdea]) -> list[Solu
                 score_source='interactive',
             )
         )
-    scores.sort(key=lambda s: s.composite_score, reverse=True)
+    # Secondary key (normalized solution_name) so equal composites order deterministically —
+    # completion-order tie-breaking made results depend on network latency (audit 2026-07-10).
+    scores.sort(key=lambda s: (-s.composite_score, (s.solution_name or "").strip().lower()))
     for i, s in enumerate(scores, 1):
         s.rank = i
     return scores
@@ -386,8 +388,10 @@ def backfill_solution_scores(
             )
             logger.info(f"Backfilled scores for '{idea.solution_name}'")
 
-    # Re-rank entire list by composite_score
-    result.sort(key=lambda s: s.composite_score, reverse=True)
+    # Re-rank entire list by composite_score. Secondary key (normalized solution_name) so equal
+    # composites order deterministically — completion-order tie-breaking made results depend on
+    # network latency (audit 2026-07-10).
+    result.sort(key=lambda s: (-s.composite_score, (s.solution_name or "").strip().lower()))
     for i, s in enumerate(result, 1):
         s.rank = i
     return result

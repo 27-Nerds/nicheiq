@@ -656,6 +656,29 @@ class BaseSolutionIdea(BaseModel):
             "mechanism monetizes in; None = no finding / probe didn't run.)"
         ),
     )
+    red_team_verdict: Optional[str] = Field(
+        default=None,
+        description=(
+            "CODE-FILLED by the adversarial red-team pass over top visible ideas — ALWAYS leave "
+            "null/omit this field. One of 'survives' | 'weakened' | 'killed'; None = idea not "
+            "red-teamed."
+        ),
+    )
+    red_team_caveats: Optional[list[str]] = Field(
+        default=None,
+        description=(
+            "CODE-FILLED by the red-team pass — ALWAYS leave null/omit this field. Up to 3 "
+            "evidence-cited kill/weaken caveats; None = idea not red-teamed."
+        ),
+    )
+    red_team_revised: Optional[bool] = Field(
+        default=None,
+        description=(
+            "CODE-FILLED by the red-team revision tail — ALWAYS leave null/omit this field. "
+            "True when the adversarial pass produced a revision that BEAT the original and "
+            "cleared its own parity re-probe (the shown idea IS the revision); None otherwise."
+        ),
+    )
     idea_tier: str = Field(
         default="single",
         description=(

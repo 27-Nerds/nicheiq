@@ -11,7 +11,8 @@ from nicheiq.utils.idea_portfolio_summary import (
 
 
 def _idea(name, *, status="active", source_frame=None, market_fit=0.6, market_fit_raw=None,
-          risk_flags=None, pricing_shape_note=None):
+          risk_flags=None, pricing_shape_note=None, red_team_verdict=None, red_team_caveats=None,
+          red_team_revised=None):
     return SimpleNamespace(
         solution_name=name,
         candidate_status=status,
@@ -27,6 +28,9 @@ def _idea(name, *, status="active", source_frame=None, market_fit=0.6, market_fi
         tags=SimpleNamespace(
             risk_flags=risk_flags or [], pricing_shape_note=pricing_shape_note
         ),
+        red_team_verdict=red_team_verdict,
+        red_team_caveats=red_team_caveats,
+        red_team_revised=red_team_revised,
     )
 
 
@@ -82,6 +86,26 @@ class TestDigestBuilder:
         assert "winners=3" in digest
         assert "mixed" in digest
         assert "priced tools exist" in digest
+
+    def test_includes_red_team_verdict_and_first_caveat(self):
+        idea = _idea("KilledIdea", red_team_verdict="killed",
+                      red_team_caveats=["free in Truckstop"])
+        digest = build_idea_portfolio_digest([idea])
+        assert "red-team verdict: killed" in digest
+        assert "free in Truckstop" in digest
+
+    def test_revised_clause_supersedes_stale_verdict(self):
+        idea = _idea("RevisedIdea", red_team_verdict="killed",
+                      red_team_caveats=["free in Truckstop"], red_team_revised=True)
+        digest = build_idea_portfolio_digest([idea])
+        assert "revised after red-team review" in digest
+        assert "red-team verdict: killed" not in digest
+
+    def test_weakened_verdict_still_shown_without_revision(self):
+        idea = _idea("WeakenedIdea", red_team_verdict="weakened",
+                      red_team_caveats=["minor overlap noted"])
+        digest = build_idea_portfolio_digest([idea])
+        assert "red-team verdict: weakened (minor overlap noted)" in digest
 
 
 class TestGenerateSummary:

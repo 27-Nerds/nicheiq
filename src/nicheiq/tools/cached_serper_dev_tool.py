@@ -37,6 +37,13 @@ class CachedSerperDevTool(SerperDevTool):
             logger.debug(f"Cache hit for: {search_query[:50]}... (hits: {self._hits})")
             return self._cache[cache_key]
 
+        # No lock here (deliberate, 2026-07-10 parallelization audit): the check-then-fetch is
+        # not atomic, so two threads racing on the SAME cache-miss key can both call
+        # super()._run() and both write self._cache[cache_key] — a double-fetch. This is
+        # cost-only (an extra Serper credit) and self-healing (the cache converges to whichever
+        # write lands last); it never produces a wrong or stale result, so it isn't worth a lock
+        # here or in batch_run/batch_run_raw's equivalent miss-check. See the same audit for the
+        # locks that WERE warranted (`_ma_search`/`_ma_search_batch` budget bookkeeping).
         self._misses += 1
         logger.debug(f"Cache miss for: {search_query[:50]}... (misses: {self._misses})")
         result = super()._run(**kwargs)

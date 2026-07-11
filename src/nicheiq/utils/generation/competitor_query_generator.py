@@ -261,6 +261,17 @@ Pain Points Addressed:
                         logger.warning(f"Skipping query {i}: missing 'query' field")
                         continue
 
+                    # The solution name is INVENTED — it has zero web presence, so a query
+                    # containing it returns nothing and makes real competitors look absent
+                    # (live-caught 2026-07-10). The prompt forbids it; this enforces it.
+                    name_head = re.split(r"[(:]", sanitized_solution, maxsplit=1)[0].strip().lower()
+                    if len(name_head) >= 4 and name_head in q['query'].lower():
+                        logger.warning(
+                            f"Skipping query {i}: contains the invented solution name "
+                            f"('{q['query'][:80]}')"
+                        )
+                        continue
+
                     # Ensure all expected fields exist with defaults
                     # Support new intent-based types
                     valid_types = [

@@ -101,6 +101,22 @@ class TestValidateIdeaCapsRuleE:
         assert idea.market_fit_score == 0.75
         assert f == []
 
+    def test_bundled_free_caps_075_to_040(self, monkeypatch):
+        monkeypatch.setattr(settings, "parity_bundled_free_cap", 0.40)
+        crew = _crew()
+        idea = _idea(mf=0.75, incumbent_parity="bundled_free (Truckstop): free broker credit scores")
+        f = crew._validate_idea_caps(idea)
+        assert idea.market_fit_score == 0.40
+        assert any("incumbent parity" in x for x in f)
+
+    def test_bundled_free_cap_zero_disables(self, monkeypatch):
+        monkeypatch.setattr(settings, "parity_bundled_free_cap", 0)
+        crew = _crew()
+        idea = _idea(mf=0.75, incumbent_parity="bundled_free (Truckstop): free broker credit scores")
+        f = crew._validate_idea_caps(idea)
+        assert idea.market_fit_score == 0.75
+        assert f == []
+
     def test_min_composes_with_payability_cap_d(self, monkeypatch):
         monkeypatch.setattr(settings, "payability_low_threshold", 0.35)
         monkeypatch.setattr(settings, "payability_market_fit_cap", 0.55)
@@ -285,6 +301,47 @@ class TestMaSearchBatch:
         monkeypatch.setattr(settings, "market_awareness_serper_budget", 5)
         crew = _crew()
         assert crew._ma_search_batch(["q1"]) == {"q1": ""}
+
+    def test_budget_exempt_bypasses_drained_budget(self, monkeypatch):
+        # Live-caught 2026-07-10: red-team runs last, shared budget drained -> zero
+        # evidence. budget_exempt callers carry their OWN cap and must still fetch.
+        monkeypatch.setattr(settings, "market_awareness_serper_budget", 2)
+        crew = _crew()
+        crew._ma_serper_calls = 2  # shared budget fully spent
+        crew.search_tool = MagicMock()
+        crew.search_tool._cache = {}
+        crew.search_tool.batch_run.return_value = {"q1": "r1"}
+        assert crew._ma_search_batch(["q1"]) == {"q1": ""}  # gated without exemption
+        out = crew._ma_search_batch(["q1"], budget_exempt=True)
+        assert out == {"q1": "r1"}
+
+
+# ---------------------------------------------------------------------------
+# _ma_search_batch — budget-lock thread safety (2026-07-10 parallelization audit)
+# ---------------------------------------------------------------------------
+
+class TestMaSearchBatchThreadSafety:
+    def test_concurrent_calls_never_exceed_budget(self, monkeypatch):
+        # The check-truncate-increment budget bookkeeping must be atomic under concurrent
+        # callers, or `_ma_serper_calls` can overrun the shared budget.
+        from concurrent.futures import ThreadPoolExecutor
+
+        budget = 10
+        monkeypatch.setattr(settings, "market_awareness_serper_budget", budget)
+        crew = _crew()
+        crew.search_tool = MagicMock()
+        crew.search_tool._cache = {}
+        crew.search_tool.batch_run.side_effect = lambda qs: {q: "r" for q in qs}
+        crew._get_ma_search_lock()  # pre-create so the lazy-init race isn't part of this test
+
+        def _worker(worker_id):
+            queries = [f"w{worker_id}-q{i}" for i in range(5)]  # all unique -> all cache misses
+            crew._ma_search_batch(queries)
+
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            list(ex.map(_worker, range(8)))
+
+        assert crew._ma_serper_calls == budget
 
 
 # ---------------------------------------------------------------------------
@@ -772,3 +829,22 @@ class TestCandidateStatusResetThenStamp:
         except Exception:
             pass  # later vocab steps may need more attrs; the reset happens first
         assert all(i.candidate_status == "active" for i in ideas)
+
+    def test_source_frame_normalized_to_closed_vocab(self):
+        # Tournament-born ideas arrive with source_frame=None; generator LLMs can
+        # fabricate values. Both normalize to 'pain'; real frame stamps are kept.
+        crew = UnifiedSolutionCrew.__new__(UnifiedSolutionCrew)
+        crew.cost_tracker = None
+        def _mk(name, frame):
+            return SimpleNamespace(candidate_status="active", project_type="saas",
+                                   data_access_model="public", data_acquisition_notes=None,
+                                   solution_name=name, market_fit_score=0.5,
+                                   technical_feasibility_score=0.6, data_sources=None,
+                                   source_frame=frame)
+        ideas = [_mk("A", None), _mk("B", "SPEND_ADJACENT"), _mk("C", "gap"),
+                 _mk("D", "data_asset"), _mk("E", "workflow")]
+        try:
+            crew._finalize_idea_pool(ideas)
+        except Exception:
+            pass
+        assert [i.source_frame for i in ideas] == ["pain", "pain", "gap", "data_asset", "workflow"]

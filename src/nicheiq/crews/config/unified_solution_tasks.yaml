@@ -708,7 +708,10 @@ competitive_analysis:
     Task 1 output (IdeaGenerationResult) is available in your context via CrewAI context chaining.
 
     **CRITICAL**: Extract the following fields from EACH solution in Task 1 output:
-    - solution_name (use for competitor searches)
+    - solution_name (identifier for your output ONLY — NEVER put this name in a web search:
+      it is an invented name with zero web presence, so searching it wastes queries and makes
+      real competitors look absent. Search by category, mechanism, and pain vocabulary via
+      the generate_competitor_queries tool instead)
     - description (understand what problem it solves)
     - core_features (identify feature gaps vs competitors)
     - target_personas (identify underserved segments)

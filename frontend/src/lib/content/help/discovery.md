@@ -8,7 +8,7 @@ It runs in order, and each step feeds the next:
 2. We scan public discussion, searching the places your audience actually hangs out.
 3. We pull the recurring problems out of those conversations and back them with evidence. (See [How pain points are gathered](/help/pain-points).)
 4. We map who has those problems: the buyer segments, communities, and voices behind them.
-5. We sketch a varied, vetted shortlist of things you could build. (See [How ideas are generated](/help/idea-generation).)
+5. We sketch a varied, vetted shortlist of things you could build, with a plain-language analyst summary sitting above it that reads the whole set honestly before you do. (See [How ideas are generated](/help/idea-generation).)
 
 ### Understanding your niche
 

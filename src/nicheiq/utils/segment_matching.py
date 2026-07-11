@@ -75,3 +75,59 @@ def match_pain_to_segments(pain, segments, *, max_segments: int = 2) -> list[str
         return []
     keep = sorted((sc for sc in scored if sc[0] >= max(1, best - 1) and sc[1]), reverse=True)
     return [name for _, name in keep[:max_segments]]
+
+
+def normalize_hub_name(name) -> str:
+    """Strip a leading 'r/' (case-insensitive) and lowercase, so 'r/OwnerOperators' (from a
+    segment's discovery_channels/community_hubs) and the bare 'OwnerOperators' (from a collected
+    RedditPost.subreddit) collapse to the same key. Shared between ``match_pain_by_provenance``
+    and the hub-validation step that builds ``validated_hubs_by_segment``."""
+    if not name:
+        return ""
+    n = str(name).strip().lower()
+    if n.startswith("r/"):
+        n = n[2:]
+    return n
+
+
+def match_pain_by_provenance(
+    pain, segments, post_to_subreddit, validated_hubs_by_segment, *, max_segments: int = 2
+) -> list[str]:
+    """Provenance-grounded counterpart to ``match_pain_to_segments``: instead of comparing pain
+    vocabulary to segment vocabulary, checks which segment's VALIDATED community hubs the pain's
+    ACTUAL source posts came from.
+
+    ``post_to_subreddit`` maps post_id -> raw subreddit/platform label (built once per run from
+    the collected corpus). ``validated_hubs_by_segment`` maps segment_name -> a set of normalized
+    (see ``normalize_hub_name``) hub names that survived validation for that segment. Returns []
+    when the pain has no source-post evidence, or none of it overlaps a validated hub -- a wrong
+    provenance claim is worse than leaving the field None (lexical ``affected_segments`` stays as
+    fallback either way). Caps at ``max_segments``, mirroring ``match_pain_to_segments``'s
+    within-one-hit tie-keep so a genuinely multi-segment pain isn't arbitrarily narrowed to one.
+    """
+    if not segments or not validated_hubs_by_segment:
+        return []
+    post_ids = list(getattr(pain, "source_post_ids", None) or []) + list(
+        getattr(pain, "matched_post_ids", None) or []
+    )
+    source_subs = {
+        normalize_hub_name(post_to_subreddit.get(pid))
+        for pid in post_ids if pid
+    }
+    source_subs.discard("")
+    if not source_subs:
+        return []
+    scored = []
+    for s in segments:
+        name = getattr(s, "segment_name", "") or ""
+        if not name:
+            continue
+        hubs = validated_hubs_by_segment.get(name) or set()
+        overlap = len(source_subs & hubs)
+        if overlap > 0:
+            scored.append((overlap, name))
+    if not scored:
+        return []
+    best = max(sc for sc, _ in scored)
+    keep = sorted((sc for sc in scored if sc[0] >= max(1, best - 1)), reverse=True)
+    return [name for _, name in keep[:max_segments]]

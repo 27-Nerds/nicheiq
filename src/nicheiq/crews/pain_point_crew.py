@@ -355,6 +355,22 @@ class PainPointCrew:
             "pains — all scores stay strictly evidence-based."
         )
 
+    def _audience_for_critic(self) -> str:
+        """Workstream B: the audience string fed to the audience-coverage critic.
+
+        A stated `target_audience` (segment/community runs) is used as-is, unchanged from
+        before. On plain-niche runs (no stated audience) the critic otherwise gets the whole
+        niche_description, which is often too broad to resolve sub-audiences against; when
+        `audience_critic_plain_niche_persona` is on, feed it the leading persona clause
+        instead. Critic-only — never widens/narrows what gets researched or extracted.
+        """
+        if self.target_audience:
+            return self.target_audience
+        if settings.audience_critic_plain_niche_persona:
+            from ..utils.audience_coverage import persona_from_niche
+            return persona_from_niche(self.niche_description)[0]
+        return self.niche_description
+
     def __init__(self, reddit_posts: list[RedditPost] = None, twitter_threads: list[TwitterThread] = None, generic_posts: list[SocialPost] = None, niche_description: str = "", market_segments: list[str] = None, industry_boundaries: str = "", job_id: str | None = None, niche_anchor_terms: list[str] | None = None, target_audience: str | None = None):
         """
         Initialize PainPointCrew with social content as knowledge sources.
@@ -1146,6 +1162,65 @@ class PainPointCrew:
             m[p.post_id] = " ".join(t for t in parts if t)
         self._post_body_map_cache = m
         return m
+
+    @property
+    def _post_source_map(self) -> dict[str, str]:
+        """Lazy `post_id -> source label` map, built alongside `_post_body_map` from the same RAW
+        posts, for the audience-coverage critic's per-pain attribution (Part A, A2). Label =
+        "r/<subreddit>" for Reddit, the post's `platform` for generic sources, "twitter" for
+        Twitter threads (which carry neither field).
+        """
+        cached = getattr(self, "_post_source_map_cache", None)
+        if cached is not None:
+            return cached
+
+        m: dict[str, str] = {}
+        for p in getattr(self, "_raw_reddit_posts", None) or []:
+            m[p.post_id] = f"r/{p.subreddit}"
+        for th in getattr(self, "_raw_twitter_threads", None) or []:
+            m[th.thread_id] = "twitter"
+        for p in getattr(self, "_raw_generic_posts", None) or []:
+            m[p.post_id] = getattr(p, "platform", "") or "unknown"
+        self._post_source_map_cache = m
+        return m
+
+    @staticmethod
+    def _attribute_pain_sources(pain_points, post_body_map, post_source_map) -> dict[str, list[str] | None]:
+        """Cheap deterministic approximation of "which corpus sources does each pain draw from",
+        feeding the audience-coverage critic's prompt only (Part A, A2 -- never touches scores).
+
+        The real provenance join (`segment_matching.match_pain_by_provenance`) happens post-
+        enrichment at Stage 4, once `matched_post_ids` exists; this runs BEFORE quote enrichment,
+        so it can only approximate via anchor_keyword overlap against raw post bodies, normalized
+        the same way `segment_matching._tokens` does (imported, not duplicated).
+
+        Matching is PER-POST (a pain is attributed to a post's source label only when >=1
+        normalized anchor token appears in THAT post's own tokens), not a per-source unioned
+        vocabulary pool -- the latter is community-vocabulary overlap, not provenance, and
+        over-attributes/over-misses relative to what actually grounds the pain.
+
+        Returns `None` for a pain whose anchor tokens all normalize away (short/stopword anchors
+        -- genuinely unattributable, distinct from a pain that WAS searched and matched nothing).
+        """
+        from ..utils.segment_matching import _tokens
+
+        post_tokens: list[tuple[str, set[str]]] = []  # (source_label, this post's own tokens)
+        for post_id, body in post_body_map.items():
+            label = post_source_map.get(post_id)
+            if not label or not body:
+                continue
+            post_tokens.append((label, _tokens(body)))
+
+        pain_sources: dict[str, list[str] | None] = {}
+        for pain in pain_points:
+            keyword_tokens = _tokens(" ".join(pain.anchor_keywords or []))
+            if not keyword_tokens:
+                pain_sources[pain.title] = None
+                continue
+            pain_sources[pain.title] = sorted(
+                {label for label, toks in post_tokens if keyword_tokens & toks}
+            )
+        return pain_sources
 
     @staticmethod
     def _is_quote_grounded(quote: str, source_body: str, threshold: float = 0.9) -> bool:
@@ -2280,14 +2355,21 @@ class PainPointCrew:
             # sub-groups the CORPUS clearly discusses but the extraction crowded out (the 6a4600ca
             # regression: a 2:1 fan-vs-player corpus yielded player-heavy pains). Its directive feeds
             # the SAME corrective re-extraction. Fail-soft → no-rebalance verdict.
-            from ..utils.audience_coverage import assess_audience_coverage
-            corpus_titles = [getattr(p, "title", "") for p in
-                             list(self.reddit_posts or []) + list(self.generic_posts or [])
-                             if getattr(p, "title", "")][:70]
+            # Workstream A: ground the critic quantitatively (composition shares + per-pain
+            # source attribution) instead of a flat unweighted title slice.
+            # Workstream B: on plain-niche runs (no stated target_audience), feed the critic a
+            # persona clause instead of the whole niche string, so it has a resolvable "who".
+            from ..utils.audience_coverage import assess_audience_coverage, corpus_composition
+            corpus_posts = list(self.reddit_posts or []) + list(self.generic_posts or [])
+            composition = corpus_composition(corpus_posts)
+            pain_sources = self._attribute_pain_sources(
+                extraction_output.extracted_pain_points, self._post_body_map, self._post_source_map)
+            corpus_evidence = {"composition": composition, "pain_sources": pain_sources}
+            audience_for_critic = self._audience_for_critic()
             aud_verdict = assess_audience_coverage(
                 [pp.title for pp in extraction_output.extracted_pain_points],
-                self.target_audience or self.niche_description,
-                self.market_segments or [], corpus_titles)
+                audience_for_critic,
+                self.market_segments or [], corpus_evidence=corpus_evidence)
             if aud_verdict.rebalance_needed:
                 logger.warning(
                     f"Audience-coverage gap: extraction under-serves {aud_verdict.under_covered_audiences} "
@@ -2312,8 +2394,14 @@ class PainPointCrew:
                     # Re-run the audience critic on the retry to confirm the rebalance helped.
                     retry_aud = assess_audience_coverage(
                         [pp.title for pp in retry_extraction.extracted_pain_points],
-                        self.target_audience or self.niche_description,
-                        self.market_segments or [], corpus_titles,
+                        audience_for_critic,
+                        self.market_segments or [],
+                        corpus_evidence={
+                            "composition": composition,
+                            "pain_sources": self._attribute_pain_sources(
+                                retry_extraction.extracted_pain_points,
+                                self._post_body_map, self._post_source_map),
+                        },
                     ) if aud_verdict.rebalance_needed else aud_verdict
                     # Safe-by-construction adoption: NEVER lose theme coverage; adopt only when the
                     # retry improves theme coverage OR shrinks the audience gap (original wins ties).

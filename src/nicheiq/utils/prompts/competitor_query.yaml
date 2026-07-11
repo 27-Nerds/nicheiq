@@ -173,6 +173,12 @@ template: |
 
   ### SPECIFICITY REQUIREMENTS (CRITICAL)
 
+  **NEVER include the solution's own name in any query.** The solution name in the context
+  is an INVENTED product name with zero web presence — a query containing it returns nothing
+  useful and makes real competitors look absent. Use the name only to infer the category and
+  vertical (Step C.5); every query must be built from category, incumbent, mechanism, or
+  pain vocabulary.
+
   Every query MUST include 1+ specificity markers:
 
   **A. Named Competitors (inferred from Step 1):**

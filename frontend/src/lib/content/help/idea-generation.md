@@ -42,6 +42,14 @@ You also get a steer. The **Idea focus** control has three settings: **Auto** le
 
 One last thing on the selection screen: a single line reads out how the niche's ideas split across these angles, for example "Distribution-leaning niche: 3 of 5 viable ideas win by being found (SEO), not by a novel mechanism." It's a quick way to see what kind of opportunity this niche actually is before you dig in.
 
+### The strongest ideas get one more fight before you see them
+
+Scoring an idea well and an idea surviving contact with the real world aren't the same test, so the ideas with the strongest market fit go through one more round before they reach you: an adversarial review (internally we sometimes call it a red-team pass). Fresh web searches look specifically for reasons the idea might not hold up — a competitor that shows up under the category's own name rather than the idea's phrasing, a capability some other tool already gives away for free, a mechanism that handles the clean version of the problem but not the messy one most users actually have. Every finding comes with the evidence attached, and the review lands on one of three calls: the idea survives, it's weakened, or it's killed outright. If the search comes back empty, nothing changes — we don't invent a flaw to justify the step, and we don't treat silence as a clean bill of health either.
+
+When the review finds something fixable, we take one shot at repairing it. The rewrite has to earn its way back in through the exact same scoring the original went through — same critic, same checks — or the original stands, caveats and all. This isn't cosmetic: in one case it turned a plain lookup tool (a commodity three other sites already offer) into an eligibility check plus the paperwork it triggers — a sharper, harder-to-copy version of the same idea, and one an independent human review had reached the same way on its own.
+
+You'll also see a short **analyst summary** sitting above the idea list on every completed run: a plain-language read of the whole set, grounded only in what the run actually verified — market fit, who's really going to pay, what the competition check turned up, any risk flags, why anything got ruled out. It names every idea in front of you and closes by pointing at the one or two most worth taking to deep validation. Occasionally that honest read is "nothing here is worth paying to validate further" — that's not the system coming up empty, it's the same discipline working in the other direction, and it's a lot cheaper than finding out the hard way.
+
 ### What to keep in mind
 
 The set covers your strongest problems roughly one apiece — plus one idea each from three other generation lenses (a competitor gap, a data opportunity, a workflow friction) — so you're seeing breadth by design rather than three takes on the same idea. The critic can still miss subtler infeasibility, so treat feasibility as a strong hunch, not a guarantee.

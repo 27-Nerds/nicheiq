@@ -480,3 +480,303 @@ class TestBackfillAndDemote:
         assert rejected_findings[0]["market_fit"] == 0.2
         assert not any(f["source"] == "backfill_rejected" and f["pain_title"] == "Accepted"
                        for f in crew.ruled_out_pains)
+
+
+# ---------------------------------------------------------------------------
+# Wave consolidation (2026-07-10): pivot revisions + variant-merge composites are generated
+# in parallel and scored together in ONE `_score_wave` call, with the overlap rule (pivot
+# precedence over merge-group membership) resolved before generation.
+# ---------------------------------------------------------------------------
+
+def _run_parallel_sync(fn, jobs, **kw):
+    """Deterministic stand-in for `_run_parallel`: runs every job synchronously, in order,
+    instead of on a thread pool — keeps these tests free of real concurrency/timing."""
+    return [fn(**job) for job in jobs]
+
+
+class TestWaveConsolidation:
+    def _base_settings(self, monkeypatch):
+        monkeypatch.setattr(settings, "demotion_market_fit_max", 0.4)
+        monkeypatch.setattr(settings, "min_visible_candidates", 0)
+        monkeypatch.setattr(settings, "backfill_target_visible", 0)
+        monkeypatch.setattr(settings, "backfill_max_cells", 0)
+        monkeypatch.setattr(settings, "variant_merge_max_groups", 2)
+
+    def _pivot_and_merge_setup(self, monkeypatch):
+        """One shipped/partial-capped idea (pivot candidate) + a 2-member variant group, wired
+        so generation and scoring are fully mocked/deterministic."""
+        self._base_settings(monkeypatch)
+        crew = _crew()
+        crew._tournament_ctx = {"crew_inputs": {}, "usages": [], "partition_cells": []}
+
+        orig_pivot = _idea("Shipped", mf=0.45, incumbent_parity="shipped by Acme")
+        member_a = _idea("VariantA", mf=0.5)
+        member_b = _idea("VariantB", mf=0.5)
+        ideas = [orig_pivot, member_a, member_b]
+        refined = SimpleNamespace(solution_ideas=ideas)
+
+        crew._pivot_candidates = MagicMock(return_value=[orig_pivot])
+        crew._group_variant_overlaps = lambda visible: [
+            {"idea_names": ["VariantA", "VariantB"], "shared_product": "Widget"}]
+
+        pivot_rev = _idea("PivotedApp", mf=0.7)
+        merged_idea = _idea("MergedApp", mf=0.7)
+        crew._generate_pivot_revision = MagicMock(return_value=pivot_rev)
+        crew._synthesize_variant_merge = MagicMock(return_value=merged_idea)
+        crew._run_parallel = MagicMock(side_effect=_run_parallel_sync)
+
+        return crew, refined, ideas, orig_pivot, member_a, member_b, pivot_rev, merged_idea
+
+    def test_pivot_and_merge_scored_in_one_wave_call(self, monkeypatch):
+        (crew, refined, ideas, orig_pivot, member_a, member_b, pivot_rev,
+         merged_idea) = self._pivot_and_merge_setup(monkeypatch)
+
+        score_wave_calls: list = []
+        crew._score_wave = MagicMock(
+            side_effect=lambda wave, **kw: score_wave_calls.append(list(wave)))
+        crew._pivot_acceptable = MagicMock(return_value=False)
+        crew._merge_acceptable = MagicMock(return_value=False)
+
+        crew._backfill_and_demote(refined, skip_selection=False)
+
+        assert len(score_wave_calls) == 1
+        assert pivot_rev in score_wave_calls[0]
+        assert merged_idea in score_wave_calls[0]
+
+    def test_winning_pivot_accepted_losing_merge_rejected(self, monkeypatch):
+        (crew, refined, ideas, orig_pivot, member_a, member_b, pivot_rev,
+         merged_idea) = self._pivot_and_merge_setup(monkeypatch)
+        crew._score_wave = lambda wave, **kw: None
+        crew._pivot_acceptable = MagicMock(return_value=True)
+        crew._merge_acceptable = MagicMock(return_value=False)
+
+        crew._backfill_and_demote(refined, skip_selection=False)
+
+        assert pivot_rev in ideas
+        assert orig_pivot not in ideas
+        assert merged_idea not in ideas
+        assert member_a.candidate_status == "active"
+        assert member_b.candidate_status == "active"
+        assert crew.funnel_counts["pivots_attempted"] == 1
+        assert crew.funnel_counts["pivots_accepted"] == 1
+        assert crew.funnel_counts["merge_groups"] == 0
+
+    def test_losing_pivot_rejected_winning_merge_accepted(self, monkeypatch):
+        (crew, refined, ideas, orig_pivot, member_a, member_b, pivot_rev,
+         merged_idea) = self._pivot_and_merge_setup(monkeypatch)
+        crew._score_wave = lambda wave, **kw: None
+        crew._pivot_acceptable = MagicMock(return_value=False)
+        crew._merge_acceptable = MagicMock(return_value=True)
+
+        crew._backfill_and_demote(refined, skip_selection=False)
+
+        assert orig_pivot in ideas
+        assert pivot_rev not in ideas
+        assert merged_idea in ideas
+        assert member_a.candidate_status == "absorbed"
+        assert member_b.candidate_status == "absorbed"
+        assert crew.funnel_counts["pivots_accepted"] == 0
+        assert crew.funnel_counts["merge_groups"] == 1
+        assert crew.funnel_counts["variants_absorbed"] == 2
+
+    def test_overlap_rule_two_member_group_dissolves(self, monkeypatch):
+        self._base_settings(monkeypatch)
+        crew = _crew()
+        crew._tournament_ctx = {"crew_inputs": {}, "usages": [], "partition_cells": []}
+
+        overlap_idea = _idea("Shipped", mf=0.45, incumbent_parity="shipped by Acme")
+        member_b = _idea("VariantB", mf=0.5)
+        ideas = [overlap_idea, member_b]
+        refined = SimpleNamespace(solution_ideas=ideas)
+
+        crew._pivot_candidates = MagicMock(return_value=[overlap_idea])
+        crew._group_variant_overlaps = lambda visible: [
+            {"idea_names": ["Shipped", "VariantB"], "shared_product": "Widget"}]
+        crew._generate_pivot_revision = MagicMock(return_value=None)
+        crew._synthesize_variant_merge = MagicMock()
+        crew._run_parallel = MagicMock(side_effect=_run_parallel_sync)
+        crew._score_wave = lambda wave, **kw: None
+
+        crew._backfill_and_demote(refined, skip_selection=False)
+
+        # 'Shipped' is claimed by the pivot -> group left with only 'VariantB' (<2) dissolves;
+        # no merge job is ever built, so synthesis is never called.
+        crew._synthesize_variant_merge.assert_not_called()
+        assert crew.funnel_counts["merge_groups"] == 0
+
+    def test_overlap_rule_three_member_group_survives_with_two(self, monkeypatch):
+        self._base_settings(monkeypatch)
+        crew = _crew()
+        crew._tournament_ctx = {"crew_inputs": {}, "usages": [], "partition_cells": []}
+
+        overlap_idea = _idea("Shipped", mf=0.45, incumbent_parity="shipped by Acme")
+        member_b = _idea("VariantB", mf=0.5)
+        member_c = _idea("VariantC", mf=0.5)
+        ideas = [overlap_idea, member_b, member_c]
+        refined = SimpleNamespace(solution_ideas=ideas)
+
+        crew._pivot_candidates = MagicMock(return_value=[overlap_idea])
+        crew._group_variant_overlaps = lambda visible: [
+            {"idea_names": ["Shipped", "VariantB", "VariantC"], "shared_product": "Widget"}]
+        crew._generate_pivot_revision = MagicMock(return_value=None)
+        merged_idea = _idea("MergedApp", mf=0.6)
+        crew._synthesize_variant_merge = MagicMock(return_value=merged_idea)
+        crew._run_parallel = MagicMock(side_effect=_run_parallel_sync)
+        crew._score_wave = lambda wave, **kw: None
+        crew._merge_acceptable = MagicMock(return_value=False)
+
+        crew._backfill_and_demote(refined, skip_selection=False)
+
+        # 'Shipped' claimed by the pivot -> group left with 'VariantB'+'VariantC' (still >=2)
+        # survives and a merge is attempted over exactly those two.
+        crew._synthesize_variant_merge.assert_called_once()
+        called_members = crew._synthesize_variant_merge.call_args[0][0]
+        called_names = sorted(getattr(m, "solution_name") for m in called_members)
+        assert called_names == ["VariantB", "VariantC"]
+
+    # -- self.overlap_groups sync (codex review 2026-07-11 REGRESSION) --------------------
+    # `self.overlap_groups` drives grouped-variant display in the report; the contract is
+    # that it reflects RESOLVED groups (post pivot-precedence stripping, dissolved groups
+    # dropped) and that an accepted merge's group is pruned so only rejected/never-attempted
+    # groups linger.
+
+    def test_overlap_groups_resolved_after_pivot_precedence_strip(self, monkeypatch):
+        self._base_settings(monkeypatch)
+        crew = _crew()
+        crew._tournament_ctx = {"crew_inputs": {}, "usages": [], "partition_cells": []}
+
+        overlap_idea = _idea("Shipped", mf=0.45, incumbent_parity="shipped by Acme")
+        member_b = _idea("VariantB", mf=0.5)
+        member_c = _idea("VariantC", mf=0.5)
+        ideas = [overlap_idea, member_b, member_c]
+        refined = SimpleNamespace(solution_ideas=ideas)
+
+        crew._pivot_candidates = MagicMock(return_value=[overlap_idea])
+        crew._group_variant_overlaps = lambda visible: [
+            {"idea_names": ["Shipped", "VariantB", "VariantC"], "shared_product": "Widget"}]
+        crew._generate_pivot_revision = MagicMock(return_value=None)
+        merged_idea = _idea("MergedApp", mf=0.6)
+        crew._synthesize_variant_merge = MagicMock(return_value=merged_idea)
+        crew._run_parallel = MagicMock(side_effect=_run_parallel_sync)
+        crew._score_wave = lambda wave, **kw: None
+        crew._merge_acceptable = MagicMock(return_value=False)  # rejected -> group retained
+
+        crew._backfill_and_demote(refined, skip_selection=False)
+
+        # 'Shipped' was stripped by pivot precedence -> self.overlap_groups reflects the
+        # RESOLVED 2-member group, not the raw 3-member group _group_variant_overlaps returned.
+        assert crew.overlap_groups == [
+            {"idea_names": ["VariantB", "VariantC"], "shared_product": "Widget"}]
+
+    def test_overlap_groups_dissolved_group_not_retained(self, monkeypatch):
+        self._base_settings(monkeypatch)
+        crew = _crew()
+        crew._tournament_ctx = {"crew_inputs": {}, "usages": [], "partition_cells": []}
+
+        overlap_idea = _idea("Shipped", mf=0.45, incumbent_parity="shipped by Acme")
+        member_b = _idea("VariantB", mf=0.5)
+        ideas = [overlap_idea, member_b]
+        refined = SimpleNamespace(solution_ideas=ideas)
+
+        crew._pivot_candidates = MagicMock(return_value=[overlap_idea])
+        crew._group_variant_overlaps = lambda visible: [
+            {"idea_names": ["Shipped", "VariantB"], "shared_product": "Widget"}]
+        crew._generate_pivot_revision = MagicMock(return_value=None)
+        crew._synthesize_variant_merge = MagicMock()
+        crew._run_parallel = MagicMock(side_effect=_run_parallel_sync)
+        crew._score_wave = lambda wave, **kw: None
+
+        crew._backfill_and_demote(refined, skip_selection=False)
+
+        # Group left with only 'VariantB' (<2) dissolves -> must not linger in overlap_groups.
+        assert crew.overlap_groups == []
+
+    def test_overlap_groups_accepted_merge_group_removed(self, monkeypatch):
+        (crew, refined, ideas, orig_pivot, member_a, member_b, pivot_rev,
+         merged_idea) = self._pivot_and_merge_setup(monkeypatch)
+        crew._score_wave = lambda wave, **kw: None
+        crew._pivot_acceptable = MagicMock(return_value=False)
+        crew._merge_acceptable = MagicMock(return_value=True)
+
+        crew._backfill_and_demote(refined, skip_selection=False)
+
+        # The merge was accepted (members absorbed) -> its group must be pruned.
+        assert crew.overlap_groups == []
+
+    def test_overlap_groups_rejected_merge_group_retained(self, monkeypatch):
+        (crew, refined, ideas, orig_pivot, member_a, member_b, pivot_rev,
+         merged_idea) = self._pivot_and_merge_setup(monkeypatch)
+        crew._score_wave = lambda wave, **kw: None
+        crew._pivot_acceptable = MagicMock(return_value=False)
+        crew._merge_acceptable = MagicMock(return_value=False)
+
+        crew._backfill_and_demote(refined, skip_selection=False)
+
+        # The merge was rejected (variants kept, still separate) -> group stays for the
+        # frontend's pick-between-these hint.
+        assert crew.overlap_groups == [
+            {"idea_names": ["VariantA", "VariantB"], "shared_product": "Widget"}]
+
+
+# ---------------------------------------------------------------------------
+# _dedup_tournament_winners: post-tournament winner dedup determinism (2026-07-10 audit)
+# ---------------------------------------------------------------------------
+
+class TestDedupTournamentWinners:
+    def test_keeps_higher_composite_duplicate_regardless_of_completion_order(self):
+        weak = _idea("Widget", mf=0.3, technical_feasibility_score=0.3, novelty_score=0.3,
+                     seo_scalability_score=0.3)
+        strong = _idea("Widget", mf=0.9, technical_feasibility_score=0.9, novelty_score=0.9,
+                       seo_scalability_score=0.9)
+        # weak "completes" first
+        out = UnifiedSolutionCrew._dedup_tournament_winners([weak, strong])
+        assert len(out) == 1 and out[0] is strong
+        # strong "completes" first — same result regardless of completion order
+        out2 = UnifiedSolutionCrew._dedup_tournament_winners([strong, weak])
+        assert len(out2) == 1 and out2[0] is strong
+
+    def test_equal_composite_and_name_keeps_first_seen(self):
+        first = _idea("Widget", mf=0.5, technical_feasibility_score=0.5, novelty_score=0.5,
+                      seo_scalability_score=0.5)
+        second = _idea("Widget", mf=0.5, technical_feasibility_score=0.5, novelty_score=0.5,
+                       seo_scalability_score=0.5)
+        out = UnifiedSolutionCrew._dedup_tournament_winners([first, second])
+        assert len(out) == 1 and out[0] is first
+
+    def test_distinct_names_and_empty_names_all_preserved(self):
+        a = _idea("Alpha", mf=0.5)
+        b = _idea("Beta", mf=0.5)
+        no_name = _idea("", mf=0.5, solution_name=None)  # missing entirely — never deduped
+        out = UnifiedSolutionCrew._dedup_tournament_winners([a, None, b, no_name])
+        assert out == [a, b, no_name]
+
+
+# ---------------------------------------------------------------------------
+# _score_wave: `_birth_verified_names` in-place update (2026-07-10 parallelization audit)
+# ---------------------------------------------------------------------------
+
+class TestScoreWaveBirthVerifiedNames:
+    def test_updates_in_place_preserving_set_identity(self):
+        crew = _crew()
+        self._install_noop_wave_methods(crew)
+        crew._birth_verified_names = {"Pre-existing"}
+        original_set = crew._birth_verified_names
+
+        new_idea = _idea("New")
+        crew._score_wave([new_idea], birth_verified=[new_idea])
+
+        # Identity preserved (no reassignment) — only in-place additions.
+        assert crew._birth_verified_names is original_set
+        assert crew._birth_verified_names == {"Pre-existing", "New"}
+
+    @staticmethod
+    def _install_noop_wave_methods(crew):
+        crew._finalize_feasibility = lambda wave: None
+        crew._finalize_idea_pool = lambda wave: None
+        crew._verify_pool_routes = lambda wave: None
+        crew._filter_pain_relevance = lambda wave: None
+        crew._stamp_payability = lambda w: None
+        crew._finalize_dev_time = lambda wave: None
+        crew._probe_mechanism_parity = lambda wave: None
+        crew._validate_idea_caps = lambda w: None
+        crew._classify_idea_angles = lambda wave: None

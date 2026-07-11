@@ -111,6 +111,71 @@ class TestPainSegmentMatching:
         assert self._match(self._pain("anything"), []) == []
 
 
+class TestPainProvenanceMatching:
+    """Workstream C: PainPoint.evidence_segments -- provenance-grounded (which segment's
+    validated community the pain's ACTUAL source posts came from), a ground-truth complement
+    to the lexical affected_segments vocabulary match exercised above.
+    """
+
+    from nicheiq.utils.segment_matching import match_pain_by_provenance, normalize_hub_name
+    _match = staticmethod(match_pain_by_provenance)
+    _norm = staticmethod(normalize_hub_name)
+
+    @staticmethod
+    def _seg(name):
+        return SimpleNamespace(segment_name=name)
+
+    @staticmethod
+    def _pain(source_post_ids=(), matched_post_ids=()):
+        return SimpleNamespace(
+            source_post_ids=list(source_post_ids),
+            matched_post_ids=list(matched_post_ids),
+        )
+
+    _SEGS = [_seg.__func__("Owner-Operators"), _seg.__func__("Fleet Managers")]
+
+    def test_match_via_hub_overlap(self):
+        p = self._pain(source_post_ids=["p1", "p2"])
+        post_to_subreddit = {"p1": "OwnerOperators", "p2": "Truckers"}
+        validated = {"Owner-Operators": {"owneroperators", "truckers"}, "Fleet Managers": {"logistics"}}
+        assert self._match(p, self._SEGS, post_to_subreddit, validated) == ["Owner-Operators"]
+
+    def test_empty_provenance_returns_empty(self):
+        p = self._pain(source_post_ids=[])
+        validated = {"Owner-Operators": {"owneroperators"}}
+        assert self._match(p, self._SEGS, {}, validated) == []
+
+    def test_no_hub_overlap_returns_empty(self):
+        p = self._pain(source_post_ids=["p1"])
+        post_to_subreddit = {"p1": "somerandomsub"}
+        validated = {"Owner-Operators": {"owneroperators"}}
+        assert self._match(p, self._SEGS, post_to_subreddit, validated) == []
+
+    def test_no_validated_hubs_returns_empty(self):
+        p = self._pain(source_post_ids=["p1"])
+        assert self._match(p, self._SEGS, {"p1": "owneroperators"}, {}) == []
+
+    def test_matched_post_ids_also_counted(self):
+        # source_post_ids empty but matched_post_ids (wider vector-hit set) carries evidence
+        p = self._pain(source_post_ids=[], matched_post_ids=["p9"])
+        post_to_subreddit = {"p9": "Truckers"}
+        validated = {"Owner-Operators": {"owneroperators"}, "Fleet Managers": {"truckers"}}
+        assert self._match(p, self._SEGS, post_to_subreddit, validated) == ["Fleet Managers"]
+
+    def test_normalizes_r_prefix_and_case(self):
+        assert self._norm("r/OwnerOperators") == "owneroperators"
+        assert self._norm("R/Truckers") == "truckers"
+        assert self._norm("") == ""
+        assert self._norm(None) == ""
+
+    def test_caps_at_two_segments(self):
+        p = self._pain(source_post_ids=["p1", "p2", "p3"])
+        post_to_subreddit = {"p1": "a", "p2": "b", "p3": "c"}
+        segs = [self._seg(n) for n in ("S1", "S2", "S3")]
+        validated = {"S1": {"a"}, "S2": {"b"}, "S3": {"c"}}
+        assert len(self._match(p, segs, post_to_subreddit, validated)) <= 2
+
+
 class TestContextWindowFix:
     """Regression: high-content agents must NOT let CrewAI auto-summarize the corpus.
 

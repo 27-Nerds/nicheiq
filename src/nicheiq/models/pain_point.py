@@ -453,6 +453,13 @@ class PainPoint(BaseModel):
             "(e.g., ['Solo Founders', 'Marketing Managers']). Populated when audience mapping available."
         )
     )
+    evidence_segments: Optional[list[str]] = Field(
+        default=None,
+        description=(
+            "Segments whose validated community hubs the pain's ACTUAL source posts came from "
+            "(provenance-grounded, vs lexical affected_segments). None = not computed."
+        )
+    )
 
     # NEW: Solution approach mapping (from Stage 10 report generation)
     solution_approach: Optional[str] = Field(

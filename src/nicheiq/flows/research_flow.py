@@ -32,7 +32,7 @@ from ..tools.reddit_tool import RedditCollectorTool
 from ..tools.twitter_tool import TwitterCollectorTool
 from ..utils.helpers import find_solution_by_name
 from ..utils.keyword_filtering import check_keyword_relevance
-from ..utils.segment_matching import match_pain_to_segments
+from ..utils.segment_matching import match_pain_by_provenance, match_pain_to_segments, normalize_hub_name
 from ..utils.score_refinement import (
     refine_cac_organic,
     refine_programmatic_opportunity,
@@ -2048,6 +2048,74 @@ RULES:
             logger.warning(f"[Preview Report] Failed to materialize: {e}")
             return None
 
+    def _build_post_to_subreddit(self) -> dict[str, str]:
+        """post_id -> raw subreddit (Reddit) or platform label (generic sources), built once per
+        run from the collected corpus. Feeds the provenance-grounded evidence_segments signal
+        (workstream C) -- which segment's community a pain's ACTUAL source posts came from, as
+        opposed to the lexical affected_segments vocabulary match."""
+        sc = getattr(self.state, "social_content", None)
+        out: dict[str, str] = {}
+        if not sc:
+            return out
+        for p in (sc.reddit_posts or []):
+            if p.post_id:
+                out[p.post_id] = p.subreddit
+        for p in (sc.generic_posts or []):
+            if p.post_id:
+                out[p.post_id] = p.platform
+        return out
+
+    def _build_validated_hubs_by_segment(
+        self, audience_result, post_to_subreddit: dict[str, str]
+    ) -> dict[str, set[str]] | None:
+        """Validate each segment's LLM-recalled community hubs before they're allowed to drive
+        provenance matching (C) -- an unvalidated hub name is exactly the "hallucinated r/CottageFood"
+        failure mode ``reddit_tool.validate_subreddits`` exists to catch elsewhere in the pipeline.
+
+        Validation source (decision): subreddits ACTUALLY PRESENT in the collected corpus
+        (``post_to_subreddit`` values) -- real by construction, zero API calls, always available
+        (unlike a live PRAW client, which Stage 4 has no guaranteed access to).
+        ``reddit_tool.validate_subreddits`` / ``discover_subreddits`` remain the live-API
+        enrichment path for widening sparse segment hub lists; out of scope this round (plan
+        workstream C risk note: "measure the validated-hub hit-rate first").
+
+        Per-segment candidates come from that segment's own ``discovery_channels`` (free-text like
+        "Reddit (r/OwnerOperators, r/Truckers)" -- parsed with the same anchor-parsing regex used
+        for Stage-1 anchor communities). When a segment's own discovery_channels yields no
+        corpus-validated hub, that segment simply has no validated hubs this run -- it is NOT
+        backfilled from the niche-wide ``community_hubs`` prior, which is shared across all
+        segments and would let one niche-hub post attribute its pain to multiple unrelated
+        segments, contradicting evidence_segments' provenance contract.
+
+        Returns None (never a guess) on any unexpected failure -- callers must treat None as
+        "skip the provenance pass this run", leaving evidence_segments None (lexical
+        affected_segments is untouched either way).
+        """
+        try:
+            from ..tools.reddit_tool import RedditCollectorTool as _RedditTool
+
+            corpus_subs = {normalize_hub_name(v) for v in post_to_subreddit.values()}
+            corpus_subs.discard("")
+            if not corpus_subs:
+                return {}
+
+            out: dict[str, set[str]] = {}
+            for seg in audience_result.audience_segments or []:
+                name = getattr(seg, "segment_name", "") or ""
+                if not name:
+                    continue
+                own = {
+                    normalize_hub_name(n)
+                    for n in _RedditTool.extract_subreddits_from_anchors(
+                        getattr(seg, "discovery_channels", None) or []
+                    )
+                } & corpus_subs
+                out[name] = own
+            return out
+        except Exception as e:
+            logger.warning(f"[Stage 4] Provenance hub validation failed, skipping evidence_segments: {e}")
+            return None
+
     def _map_pain_points_to_segments(self, audience_result) -> None:
         """
         Map pain points to audience segments based on keyword matching.
@@ -2060,6 +2128,10 @@ RULES:
         - Solution targeting based on segment-pain alignment
         - Marketing messaging specific to segment needs
 
+        Also populates PainPoint.evidence_segments (workstream C) -- a provenance-grounded
+        signal (which segment's validated community the pain's ACTUAL source posts came from),
+        gated by settings.pain_provenance_segments.
+
         Args:
             audience_result: AudienceMappingResult from Stage 6.5
         """
@@ -2071,16 +2143,39 @@ RULES:
         # nothing overlaps. See utils/segment_matching for why exact-token matching under-mapped.
         segments = audience_result.audience_segments
         mapped_count = 0
+
+        validated_hubs_by_segment: dict[str, set[str]] | None = None
+        post_to_subreddit: dict[str, str] = {}
+        if settings.pain_provenance_segments:
+            post_to_subreddit = self._build_post_to_subreddit()
+            validated_hubs_by_segment = self._build_validated_hubs_by_segment(
+                audience_result, post_to_subreddit
+            )
+
+        provenance_count = 0
         for pain_point in self.state.pain_point_analysis.pain_points:
             matched = match_pain_to_segments(pain_point, segments)
             if matched:
                 pain_point.affected_segments = matched
                 mapped_count += 1
 
+            if validated_hubs_by_segment:
+                provenance = match_pain_by_provenance(
+                    pain_point, segments, post_to_subreddit, validated_hubs_by_segment
+                )
+                if provenance:
+                    pain_point.evidence_segments = provenance
+                    provenance_count += 1
+
         if mapped_count > 0:
             logger.info(
                 f"[Stage 4] Mapped {mapped_count}/{len(self.state.pain_point_analysis.pain_points)} "
                 f"pain points to audience segments"
+            )
+        if validated_hubs_by_segment is not None:
+            logger.info(
+                f"[Stage 4] Provenance-matched {provenance_count}/{len(self.state.pain_point_analysis.pain_points)} "
+                f"pain points to segments via source-post hub overlap"
             )
 
     def _replay_completed_stages_progress(self, completed_stages: list[str]) -> None:
@@ -3571,10 +3666,21 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
         # Check if audience mapping was already completed in parallel
         if self.state.audience_mapping:
             logger.info("[Stage 4] Audience mapping already completed (parallel execution)")
-            # Re-run segment mapping if pain points lack affected_segments (checkpoint resume case)
+            # Re-run segment mapping if pain points lack affected_segments (checkpoint resume case),
+            # OR if provenance is enabled but a legacy checkpoint's fully-populated lexical mapping
+            # skipped it entirely, leaving evidence_segments None forever. The mapping is
+            # deterministic and idempotent, so re-running it on resume is safe.
+            pain_points = self.state.pain_point_analysis.pain_points if self.state.pain_point_analysis else []
+            needs_lexical_mapping = any(pp.affected_segments is None for pp in pain_points)
+            needs_provenance_mapping = (
+                settings.pain_provenance_segments
+                and self.state.social_content
+                and pain_points
+                and all(getattr(pp, "evidence_segments", None) is None for pp in pain_points)
+            )
             if (self.state.pain_point_analysis
                     and self.state.audience_mapping.audience_segments
-                    and any(pp.affected_segments is None for pp in self.state.pain_point_analysis.pain_points)):
+                    and (needs_lexical_mapping or needs_provenance_mapping)):
                 self._map_pain_points_to_segments(self.state.audience_mapping)
                 self.checkpoint_mgr.save_stage("stage_3_pain_points", self.state.pain_point_analysis)
             self.state.current_stage = 5
@@ -3763,6 +3869,11 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
           idea_coverage_caveats.
         - niche / None: no-op.
         Re-checkpoints niche_context so resolved fields survive resume/regenerate.
+
+        EXCEPTION (2026-07): divergent_stated_audience_floor_count reads resolved_primary_audience
+        at allocation to guarantee <=N cells for stated-audience pains — a deliberate, bounded
+        (default 1 cell) allocation floor mirroring the severity/commercial floors. It biases WHICH
+        already-extracted pains get ideated; it never changes what was researched or extracted.
         """
         nc = getattr(self.state, "niche_context", None)
         if nc is None:

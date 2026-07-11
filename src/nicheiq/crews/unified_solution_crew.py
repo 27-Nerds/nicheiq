@@ -20,6 +20,7 @@ Benefits:
 import copy
 import json
 import re
+import threading
 from collections import Counter
 from types import SimpleNamespace
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -449,9 +450,27 @@ def _candidate_segments_for_pain(pain, segments: list) -> list:
     return list(segments)
 
 
+def _stated_audience_floor_pains(all_pains: list, stated_audience: str | None, count: int) -> list:
+    """Top-`count` pains (by severity) whose evidence_segments (provenance, preferred) or lexical
+    affected_segments token-overlap the user's stated-audience string. Single source of truth for
+    the Round 0c audience-floor logic — shared by the pain-injection call site and the Multi-Frame
+    reserve-budget fold so the two can never drift out of sync."""
+    if not count or not stated_audience:
+        return []
+    from ..utils.segment_matching import _tokens
+    aud_tokens = _tokens(stated_audience)
+
+    def _aud_match(p):
+        segs = getattr(p, "evidence_segments", None) or getattr(p, "affected_segments", None) or []
+        return any(_tokens(seg) & aud_tokens for seg in segs)
+    return sorted([p for p in all_pains if _aud_match(p)],
+                  key=lambda p: getattr(p, "severity_score", 0) or 0, reverse=True)[:count]
+
+
 def _assign_generator_cells(pains: list, segments: list, *, target: int, max_gen: int,
                             relevance: dict | None = None, severity_floor: int = 0,
-                            commercial_floor: int = 0, commercial_min_intent: float = 0.6) -> list:
+                            commercial_floor: int = 0, commercial_min_intent: float = 0.6,
+                            stated_audience_floor: int = 0, stated_audience: str | None = None) -> list:
     """Assign divergent generator cells from the (pain × segment) affinity graph.
 
     One cell per real (pain × affected-segment) edge, de-clustered by BUILD-TIME per-segment
@@ -507,8 +526,15 @@ def _assign_generator_cells(pains: list, segments: list, *, target: int, max_gen
         th = getattr(pain, "parent_theme_id", None)
         return th is None or relax or theme_count.get(th, 0) < per_theme_cap
 
-    def _pick(pain):
+    def _pick(pain, preferred_segment=None):
         used = per_pain_used.setdefault(id(pain), set())
+        # preferred_segment (Round 0c only): the segment the audience floor guaranteed this pain
+        # FOR — honor it directly instead of falling through to the affected_segments/lexical
+        # candidate list, which can point at an unrelated segment.
+        if preferred_segment is not None:
+            pname = getattr(preferred_segment, "segment_name", "") or ""
+            if pname not in used:
+                return preferred_segment
         opts = [s for s in cand[id(pain)] if (getattr(s, "segment_name", "") or "") not in used]
         if not opts:
             return None
@@ -554,6 +580,38 @@ def _assign_generator_cells(pains: list, segments: list, *, target: int, max_gen
             if len(cells) >= limit:
                 break
             s = _pick(p)
+            if s is not None:
+                _take(p, s)
+                floored.add(id(p))
+    if stated_audience_floor and stated_audience and segments:  # Round 0c: guarantee top-N pains
+        # matching the user's STATED audience a cell. Mirrors the severity/commercial floors: the
+        # ranking key never reads the stated audience, so a pain the user explicitly asked about
+        # can get zero ideation while the loudest sub-population fills every cell. Match prefers
+        # PainPoint.evidence_segments (provenance) over lexical affected_segments, token-overlapping
+        # the stated-audience string against each matched segment name. Skips pains already floored
+        # by severity/commercial (no double-spend, and the audience floor can never displace them).
+        from ..utils.segment_matching import _tokens
+        aud_tokens = _tokens(stated_audience)
+
+        def _aud_match_segments(p):
+            # Segment name(s) (evidence_segments preferred, else affected_segments) that overlap
+            # the stated-audience string — these are the segment(s) the floor is guaranteeing FOR.
+            segs = getattr(p, "evidence_segments", None) or getattr(p, "affected_segments", None) or []
+            return [seg for seg in segs if _tokens(seg) & aud_tokens]
+
+        def _aud_match(p):
+            return bool(_aud_match_segments(p))
+        eligible = [p for p in pains if id(p) not in floored and _aud_match(p)]
+        seg_by_name = {(getattr(s, "segment_name", "") or "").strip().lower(): s for s in segments}
+        for p in sorted(eligible, key=_sev, reverse=True)[:stated_audience_floor]:
+            if len(cells) >= limit:
+                break
+            preferred = None
+            for name in _aud_match_segments(p):
+                preferred = seg_by_name.get(str(name).strip().lower())
+                if preferred is not None:
+                    break
+            s = _pick(p, preferred_segment=preferred)
             if s is not None:
                 _take(p, s)
                 floored.add(id(p))
@@ -880,6 +938,13 @@ class _SolutionTagItem(BaseModel):
 class _SolutionTagBatch(BaseModel):
     model_config = ConfigDict(extra='ignore')
     tags: list[_SolutionTagItem] = Field(default_factory=list)
+
+
+# Guards the lazy-creation path of `_get_ma_search_lock` (codex review 2026-07-11): two
+# concurrent callers can both observe `self._ma_search_lock is None` and each create their
+# OWN `threading.Lock()`, defeating the budget lock entirely. Test objects built via
+# `__new__` skip the eager per-run init, so the lazy path is reachable in practice.
+_MA_LOCK_CREATION = threading.Lock()
 
 
 @CrewBase
@@ -1372,6 +1437,25 @@ class UnifiedSolutionCrew:
     # cost at ≤2 LLM calls + ≤(2×cap) searches regardless of idea count.
     _ADJACENT_FAMILY_CAP = 6
 
+    def _get_ma_search_lock(self) -> threading.Lock:
+        """Guards the check-truncate-increment budget bookkeeping in `_ma_search`/
+        `_ma_search_batch` only — never held during the network call itself (2026-07-10
+        parallelization audit: completion-order/thread races on `_ma_serper_calls` could let
+        concurrent callers each pass the check-then-increment and jointly overrun budget).
+        Eagerly (re)created per run alongside `_ma_serper_calls`; this lazily falls back for
+        callers that never go through that reset (e.g. direct/test use). The lazy path is
+        itself guarded by a module-level creation lock (codex review 2026-07-11) — without it,
+        two concurrent callers can both see `None` and each install their own lock, silently
+        defeating the budget guard for one of them."""
+        lock = getattr(self, "_ma_search_lock", None)
+        if lock is None:
+            with _MA_LOCK_CREATION:
+                lock = getattr(self, "_ma_search_lock", None)
+                if lock is None:
+                    lock = threading.Lock()
+                    self._ma_search_lock = lock
+        return lock
+
     def _ma_search(self, query: str) -> str | None:
         """Budgeted Serper call for the NEW market-awareness queries (niche-frame recall, wallet,
         SERP composition). Shared hard budget `market_awareness_serper_budget` (0 disables these
@@ -1391,25 +1475,35 @@ class UnifiedSolutionCrew:
             cached = cache.get(query.strip().lower())
             if cached is not None:
                 return str(cached)
-        used = getattr(self, "_ma_serper_calls", 0)
-        if used >= budget:
-            return None
-        try:
+        # Budget bookkeeping only — never held during the network call (2026-07-10
+        # parallelization audit).
+        with self._get_ma_search_lock():
+            used = getattr(self, "_ma_serper_calls", 0)
+            if used >= budget:
+                return None
             self._ma_serper_calls = used + 1
+        try:
             return str(tool.run(search_query=query))
         except Exception:
             return None
 
-    def _ma_search_batch(self, queries: list[str]) -> dict[str, str]:
+    def _ma_search_batch(self, queries: list[str], *, budget_exempt: bool = False) -> dict[str, str]:
         """Batched budgeted Serper call — same budget semantics as `_ma_search`, one Serper
         batch request instead of N sequential ones. Cache hits are served for free (checked
         BEFORE the budget gate, same as `_ma_search`); only actual cache-misses count against
         `_ma_serper_calls`, and the miss list is truncated to the remaining budget — queries
         beyond it are never sent and resolve to ''. Returns {query: result_string} for every
-        query in `queries` (duplicates included; '' on budget-exhaustion/no-tool/failure)."""
+        query in `queries` (duplicates included; '' on budget-exhaustion/no-tool/failure).
+
+        `budget_exempt=True`: the shared market-awareness budget does not gate this call —
+        for callers with their OWN query cap (red-team: `red_team_searches_per_idea`).
+        Live-caught 2026-07-10: the red-team runs last in the pipeline, found the shared
+        budget drained, and reviewed the top idea on zero evidence."""
         if not queries:
             return {}
         budget = settings.market_awareness_serper_budget
+        if budget_exempt:
+            budget = getattr(self, "_ma_serper_calls", 0) + len(queries)
         if budget <= 0:
             return {q: "" for q in queries}
         tool = getattr(self, "search_tool", None)
@@ -1429,15 +1523,20 @@ class UnifiedSolutionCrew:
             q for q in unique_queries
             if not (isinstance(cache, dict) and q.strip().lower() in cache)
         ]
-        used = getattr(self, "_ma_serper_calls", 0)
-        remaining = max(0, budget - used)
-        allowed_misses = miss_queries[:remaining]
-        truncated = {q.strip().lower() for q in miss_queries[remaining:]}
+        # Budget bookkeeping only — never held during the network call (2026-07-10
+        # parallelization audit): the remaining/truncation math and the counter increment must
+        # be atomic or concurrent callers can each see a stale `used` and jointly overrun budget.
+        with self._get_ma_search_lock():
+            used = getattr(self, "_ma_serper_calls", 0)
+            remaining = max(0, budget - used)
+            allowed_misses = miss_queries[:remaining]
+            truncated = {q.strip().lower() for q in miss_queries[remaining:]}
+            to_fetch = [q for q in unique_queries if q.strip().lower() not in truncated]
+            if to_fetch:
+                self._ma_serper_calls = used + len(allowed_misses)
 
-        to_fetch = [q for q in unique_queries if q.strip().lower() not in truncated]
         result_map: dict[str, str] = {}
         if to_fetch:
-            self._ma_serper_calls = used + len(allowed_misses)
             try:
                 result_map = tool.batch_run(to_fetch)
             except Exception as e:
@@ -1479,6 +1578,8 @@ class UnifiedSolutionCrew:
                     return settings.parity_partial_market_fit_cap
                 if p.startswith("substitute"):
                     return settings.parity_substitute_market_fit_cap
+                if p.startswith("bundled_free"):
+                    return settings.parity_bundled_free_cap
                 return None
 
             # 1. Deterministic family detection: mechanism_tag + data_source_tag (both stamped
@@ -1717,6 +1818,137 @@ class UnifiedSolutionCrew:
             logger.warning(f"[AdjacentProbe] failed (non-fatal): {str(e)[:120]}")
             return [], 0
 
+    def _probe_toolbelt_free_bundle(self, top: list) -> tuple[list[str], int]:
+        """Toolbelt/free-bundle parity probe (2026-07-10, live-motivated): the direct parity
+        probe (`_probe_mechanism_parity`) searches by each idea's OWN vocabulary, so it misses a
+        capability already BUNDLED FREE in a tool the niche already uses, or given away as a
+        loss-leader elsewhere (live: broker credit scores are free-bundled in Truckstop/DAT and
+        compiled by Carrier411/Highway/TransCredit — BrokerPay Shield mis-scored 'none' because
+        the probe never searched those tools' own feature vocabulary; Etsy natively prints USPS
+        SCAN forms free in-platform — ShipProof was wrongly viable). Reuses `_mechanism_keywords`
+        for the capability phrase (same derivation as the parity probe) and the niche's own
+        `audience_mapping.tools_currently_used` toolbelt inventory. Budgeted to <=6 queries total
+        across `top` (one `_ma_search_batch` call) + one classify call. Stamps
+        `incumbent_parity = "bundled_free (<tool_or_route>): <evidence>"` — strictness-upgrade-
+        only, mirroring the adjacent-probe niche back-fill guard (a stronger finding may only
+        overwrite a weaker/no existing cap, never loosen one).
+
+        Returns (per-idea evidence lines, count of ideas covered by a finding). Fail-soft ->
+        ([], 0)."""
+        try:
+            search_tool = getattr(self, "search_tool", None)
+            if search_tool is None or not top:
+                return [], 0
+            from pydantic import BaseModel, Field as _F
+            from ..utils.content_security import fence_content
+
+            def _parity_cap(par: str) -> float | None:
+                """Mirrors the sibling helper in `_probe_adjacent_markets` — None means no cap
+                (always overwritable)."""
+                p = (par or "").strip().lower()
+                if p.startswith("shipped"):
+                    return settings.parity_shipped_market_fit_cap
+                if p.startswith("partial"):
+                    return settings.parity_partial_market_fit_cap
+                if p.startswith("substitute"):
+                    return settings.parity_substitute_market_fit_cap
+                if p.startswith("bundled_free"):
+                    return settings.parity_bundled_free_cap
+                return None
+
+            niche_short = ((getattr(getattr(self, "niche_context", None),
+                                    "niche_description", "") or "").strip())[:80]
+            toolbelt = list(getattr(getattr(self, "audience_mapping", None),
+                                     "tools_currently_used", None) or [])[:3]
+
+            # 1. Build queries per idea (toolbelt-feature + free-bundle), truncated to 6 total
+            #    across the whole run (session cache dedups repeats against the parity leg).
+            idea_kw: dict[str, str] = {}
+            queries: list[str] = []
+            for idea in top:
+                kw = self._mechanism_keywords(idea)
+                if not kw:
+                    continue
+                name = (getattr(idea, "solution_name", "") or "").strip()
+                if not name:
+                    continue
+                idea_kw[name] = kw
+                for tool in toolbelt:
+                    queries.append(f"{tool} {kw}"[:120])
+                queries.append(f"{kw} free"[:120])
+                if niche_short:
+                    queries.append(f"free {kw} {niche_short}"[:120])
+            queries = queries[:6]
+            if not queries:
+                return [], 0
+
+            result_map = self._ma_search_batch(queries)
+            snippets = [f"[{q}]\n{res[:1500]}" for q, res in result_map.items() if res]
+            if not snippets:
+                return [], 0
+
+            class _ToolbeltFinding(BaseModel):
+                idea_name: str = ""
+                tool_or_route: str = _F("", description="tool name or free route, '' if none")
+                evidence: str = _F("", description="what it bundles/gives free, <=20 words")
+                outcome: str = _F("none", description="bundled_free | none")
+
+            class _ToolbeltFindings(BaseModel):
+                findings: list[_ToolbeltFinding] = _F(default_factory=list)
+
+            idea_lines = "\n".join(
+                f"- {getattr(i, 'solution_name', '?')}: "
+                f"{(getattr(i, 'value_proposition', '') or '')[:160]}"
+                for i in top if (getattr(i, "solution_name", "") or "").strip() in idea_kw)
+            if not idea_lines:
+                return [], 0
+
+            r, usage = LLMService.invoke_structured(
+                prompt=(f"Niche: {niche_short or 'n/a'}\n\nIDEAS under evaluation:\n{idea_lines}\n\n"
+                        f"Toolbelt tools this niche already uses: "
+                        f"{', '.join(toolbelt) or 'none known'}\n\n"
+                        + fence_content("\n\n".join(snippets), source="web-search",
+                                        label="UNTRUSTED WEB RESULTS")
+                        + "\n\nFor EACH idea, judge from the search results ONLY whether the "
+                          "idea's core capability is already BUNDLED FREE in a tool this niche "
+                          "uses, or given away as a loss-leader elsewhere: outcome=bundled_free "
+                          "(name the tool/route in tool_or_route, cite what it bundles/gives "
+                          "free in evidence), outcome=none (no evidence of either). Cite only "
+                          "what the results actually show — never invent features. Return JSON."),
+                output_model=_ToolbeltFindings, temperature=0, timeout=120,
+                model_name=settings.report_structured_llm, reasoning_effort="minimal")
+            if usage is not None and hasattr(self, "cost_tracker") and self.cost_tracker:
+                self.cost_tracker.record_llm_usage(
+                    "Stage 7 - Toolbelt Free-Bundle Probe", usage.to_dict())
+
+            by_name = {(f.idea_name or "").strip().lower(): f for f in (r.findings or [])}
+            snips_lower = "\n".join(snippets).lower()
+            lines: list[str] = []
+            covered = 0
+            for idea in top:
+                name = (getattr(idea, "solution_name", "") or "").strip()
+                f = by_name.get(name.lower())
+                if f is None or (f.outcome or "").strip().lower() != "bundled_free":
+                    continue
+                route = (f.tool_or_route or "").strip()
+                if not route or route.lower() not in snips_lower:
+                    logger.info(f"[ToolbeltProbe] dropped unverifiable route '{route[:40]}' "
+                                "(name not in search results)")
+                    continue
+                note = f"bundled_free ({route}): {(f.evidence or 'free in-tool').strip()}"
+                cur = (getattr(idea, "incumbent_parity", None) or "").strip().lower()
+                cur_cap = _parity_cap(cur)
+                new_cap = _parity_cap("bundled_free")
+                if cur_cap is None or (new_cap is not None and new_cap < cur_cap):
+                    idea.incumbent_parity = note
+                    covered += 1
+                    lines.append(f"- {name}: {note}")
+                    logger.info(f"[ToolbeltProbe] '{name}' -> {note[:80]}")
+            return lines, covered
+        except Exception as e:
+            logger.warning(f"[ToolbeltProbe] failed (non-fatal): {str(e)[:120]}")
+            return [], 0
+
     # Authority suffixes are matched directly in _probe_serp_composition (host == "wikipedia.org"
     # or a proper ".suffix" endswith — no substring `in` checks, which false-positive on hosts
     # like "wikipedia.org.evil.com"; codex-review MINOR).
@@ -1926,6 +2158,12 @@ class UnifiedSolutionCrew:
             # Adjacent-market probe: audience-independent incumbents per mechanism family.
             # Stamps adjacent_market_parity; the evidence also feeds the recal critic below.
             adjacent_lines, adjacent_covered = self._probe_adjacent_markets(top)
+
+            # Toolbelt/free-bundle probe: capability already free in a tool the niche uses, or a
+            # loss-leader elsewhere — the parity probe above only searches the idea's OWN
+            # vocabulary. Stamps incumbent_parity (strictness-upgrade-only); the rebuild below
+            # picks up the finding automatically.
+            self._probe_toolbelt_free_bundle(top)
 
             # Rebuild parity_lines (+ none_n) from each idea's CURRENT incumbent_parity: the
             # adjacent probe's niche back-fill above may have overwritten a probed idea's
@@ -2277,6 +2515,52 @@ class UnifiedSolutionCrew:
             ex.shutdown(wait=False, cancel_futures=True)
         return results
 
+    @staticmethod
+    def _dedup_tournament_winners(winners: list) -> list:
+        """Union of per-cell winners, DEDUP ONLY (normalized-name; minimal filtering — no
+        diversity caps). Distinct cells rarely collide, so this stays a light floor.
+        Completion-order tie-breaking made results depend on network latency (audit 2026-07-10):
+        on a name collision, keep the HIGHER-composite duplicate (the same composite the ranking
+        uses — score_helpers.py's compute_solution_scores), tie -> lexicographically smaller
+        normalized name. Ideas with no solution_name were never deduped (empty key never matches
+        a prior key) — preserved as-is. Extracted from `execute_pipeline`'s tournament-winner
+        union step (2026-07-10) so the tie-break logic is unit-testable in isolation."""
+        from ..utils.score_helpers import (
+            _composite_for_angle, feasibility_adjusted_composite, ranking_seo)
+
+        def _rank_composite(idea) -> float:
+            mf = getattr(idea, "market_fit_score", None)
+            tf = getattr(idea, "technical_feasibility_score", None)
+            ca = getattr(idea, "novelty_score", None)
+            seo = getattr(idea, "seo_scalability_score", None)
+            bf = getattr(idea, "build_feasibility_score", None)
+            angle = getattr(idea, "winning_angle", None)
+            rseo = ranking_seo(seo, idea)
+            return feasibility_adjusted_composite(
+                _composite_for_angle(mf, tf, ca, rseo, angle), mf, tf, ca, rseo, bf, angle)
+
+        ideas: list = []
+        key_idx: dict = {}
+        for w in winners:
+            if w is None:
+                continue
+            key = "".join((getattr(w, "solution_name", "") or "").lower().split())
+            if not key:
+                ideas.append(w)
+                continue
+            idx = key_idx.get(key)
+            if idx is None:
+                key_idx[key] = len(ideas)
+                ideas.append(w)
+                continue
+            existing = ideas[idx]
+            c_w, c_e = _rank_composite(w), _rank_composite(existing)
+            name_w = (getattr(w, "solution_name", "") or "").strip().lower()
+            name_e = (getattr(existing, "solution_name", "") or "").strip().lower()
+            if c_w > c_e or (c_w == c_e and name_w < name_e):
+                ideas[idx] = w
+        return ideas
+
     def _run_divergent_fanout(self, jobs: list[dict], deadline: int, max_workers: int) -> tuple[list, list]:
         """Run a list of generator jobs in parallel under a wall-clock deadline; collect
         whatever finishes. Thin wrapper over `_run_parallel` that flattens the per-sample
@@ -2501,6 +2785,25 @@ class UnifiedSolutionCrew:
                     pains.append(fp)
                     seen.add(id(fp))
 
+        aud_floor = settings.divergent_stated_audience_floor_count
+        _nc = getattr(self, "niche_context", None)
+        stated_audience = (getattr(_nc, "resolved_primary_audience", None)
+                           or getattr(_nc, "user_target_audience", None))
+        if aud_floor and stated_audience:
+            # Same injection logic for the stated-audience floor: the user's stated audience
+            # (resolved_primary_audience, else the raw user_target_audience) can name a pain the
+            # opportunity/theme/severity/commercial ranking never surfaces — inject the top-N
+            # matching pains from the FULL set up front so Round 0c can guarantee them. Match
+            # prefers PainPoint.evidence_segments (provenance) over lexical affected_segments,
+            # token-overlapping the stated-audience string against each segment name; a pain with
+            # no real overlap never qualifies (2026-07-11 insurance run: commission-reconciliation
+            # pains lost to Applied-Epic AMS complaints).
+            seen = {id(p) for p in pains}
+            for fp in _stated_audience_floor_pains(all_pains, stated_audience, aud_floor):
+                if id(fp) not in seen:
+                    pains.append(fp)
+                    seen.add(id(fp))
+
         # Multi-Frame: compute the reserve budget FIRST (fix #2) — this is pure arithmetic over
         # `all_pains`, zero extra I/O, so it costs nothing even when no frame seed data ends up
         # minting anything. `_mint_frame_cells` then gets `max_frames` as its budget and never runs
@@ -2518,6 +2821,9 @@ class UnifiedSolutionCrew:
                 [p for p in all_pains if _ci(p) >= com_min],
                 key=lambda p: (_ci(p), getattr(p, "severity_score", 0) or 0), reverse=True
             )[:com_floor]}
+        if aud_floor and stated_audience:
+            unique_floor_ids |= {id(p) for p in _stated_audience_floor_pains(
+                all_pains, stated_audience, aud_floor)}
         # Fix #3: floors+2 can exceed max_gen on a small niche (few pains, low cap) — clamp so
         # pain_min never itself exceeds the cap (which would otherwise push pain_target above
         # pain_cap downstream), and warn since this is a degradation of the floor guarantees.
@@ -2544,7 +2850,8 @@ class UnifiedSolutionCrew:
             return _assign_generator_cells(
                 pains, segments, target=pain_target, max_gen=pain_cap, relevance=relevance,
                 severity_floor=sev_floor, commercial_floor=com_floor,
-                commercial_min_intent=com_min)
+                commercial_min_intent=com_min, stated_audience_floor=aud_floor,
+                stated_audience=stated_audience)
 
         cells = _alloc()
         extra = list(extra_pains or [])
@@ -3958,6 +4265,8 @@ class UnifiedSolutionCrew:
                         and pay < settings.payability_low_threshold)
                 pcap = (settings.parity_substitute_weak_wallet_cap if weak
                         else settings.parity_substitute_market_fit_cap)
+            elif par.startswith("bundled_free"):
+                pcap = settings.parity_bundled_free_cap
             if pcap is not None and pcap > 0 and mf > pcap:
                 f.append(f"market_fit {mf:.2f} unsupported — incumbent parity "
                          f"({par[:60]}); cap {pcap:.2f}")
@@ -5896,12 +6205,45 @@ class UnifiedSolutionCrew:
         `_score_wave` sequence (uniformity contract — same scoring as every birth path; rule (e)
         applies to the revision too). Accept only if the revision's angle composite beats the
         capped original AND its own parity finding cleared — else the cap stands. In-place 1:1
-        replacement (same provenance, list length unchanged). Returns (attempted, accepted)."""
+        replacement (same provenance, list length unchanged). Returns (attempted, accepted).
+
+        Standalone convenience wrapper (candidate → generate → score → accept-guard, ONE pivot
+        scored at a time via its own `_score_wave` call) built from the same primitives
+        `_backfill_and_demote` now uses to batch pivot generation together with variant-merge
+        generation into a single combined `_score_wave` call (2026-07-10 wave consolidation) —
+        see `_pivot_candidates`, `_generate_pivot_revision`, `_pivot_acceptable`."""
+        candidates = self._pivot_candidates(refined_solutions)
+        if not candidates:
+            return 0, 0
+        ideas = refined_solutions.solution_ideas
+        attempted = accepted = 0
+        gaps_by_name = {(r.get("name") or "").strip().lower(): (r.get("gap") or "")
+                        for r in (getattr(self, "_incumbent_rows", None) or [])}
+        for orig in candidates:
+            attempted += 1
+            try:
+                rev = self._generate_pivot_revision(orig, gaps_by_name)
+                if rev is None:
+                    continue
+                self._score_wave([rev])  # full per-idea sequence; rule (e) re-applies
+                if self._pivot_acceptable(orig, rev):
+                    idx = ideas.index(orig)
+                    ideas[idx] = rev
+                    accepted += 1
+            except Exception as e:
+                logger.warning(f"[ParityPivot] attempt failed (non-fatal): {str(e)[:120]}")
+        return attempted, accepted
+
+    def _pivot_candidates(self, refined_solutions) -> list:
+        """Eligible shipped/partial-capped ideas for a parity pivot, strongest composite first,
+        capped at `parity_pivot_max_revisions`. Extracted from `_parity_pivot_revisions`
+        (2026-07-10 wave consolidation) so `_backfill_and_demote` can determine this set (and
+        resolve overlap against merge groups) BEFORE generation runs."""
         from ..utils.score_helpers import _composite_for_angle
 
         max_n = settings.parity_pivot_max_revisions
         if max_n <= 0:
-            return 0, 0
+            return []
 
         def _comp(i):
             return _composite_for_angle(
@@ -5917,120 +6259,138 @@ class UnifiedSolutionCrew:
                     and (getattr(i, "incumbent_parity", None) or "").strip().lower()
                         .startswith(("shipped", "partial"))]
         eligible.sort(key=_comp, reverse=True)  # pivot the strongest capped ideas first
-        attempted = accepted = 0
-        gaps_by_name = {(r.get("name") or "").strip().lower(): (r.get("gap") or "")
-                        for r in (getattr(self, "_incumbent_rows", None) or [])}
-        for orig in eligible[:max_n]:
-            try:
-                attempted += 1
-                finding = (getattr(orig, "incumbent_parity", "") or "").strip()
-                inc_name = ""
-                for token in finding.replace("shipped by", "").replace("partial by", "").split(":")[0].split("("):
-                    inc_name = token.strip()
-                    break
-                gap = gaps_by_name.get(inc_name.lower(), "")
-                dissat = (getattr(self, "_dissatisfaction_text", None) or "")[:600]
+        return eligible[:max_n]
 
-                from pydantic import BaseModel, Field as _F
+    def _generate_pivot_revision(self, orig, gaps_by_name: dict):
+        """ONE LLM revision call for a shipped/partial-capped idea — GENERATION ONLY; scoring
+        (`_score_wave`) and the accept-guard (`_pivot_acceptable`) are applied by the caller.
+        Extracted from `_parity_pivot_revisions` (2026-07-10 wave consolidation) so
+        `_backfill_and_demote` can run this in parallel via `_run_parallel`, alongside variant-
+        merge generation. Returns a BaseSolutionIdea revision, or None on any failure
+        (fail-soft)."""
+        try:
+            finding = (getattr(orig, "incumbent_parity", "") or "").strip()
+            inc_name = ""
+            for token in finding.replace("shipped by", "").replace("partial by", "").split(":")[0].split("("):
+                inc_name = token.strip()
+                break
+            gap = gaps_by_name.get(inc_name.lower(), "")
+            dissat = (getattr(self, "_dissatisfaction_text", None) or "")[:600]
 
-                class _Pivot(BaseModel):
-                    solution_name: str = ""
-                    value_proposition: str = ""
-                    description: str = ""
-                    core_features: list[str] = _F(default_factory=list)
-                    conventional_approach: str = ""
-                    innovation_angle: str = ""
-                    why_it_works: str = ""
-                    technical_approach: str = ""
-                    data_access_model: str = _F(
-                        "", description="EXACTLY one of: public | freemium | paywalled | "
-                                        "unofficial | restricted | none")
-                    market_fit_score: float | None = None
-                    technical_feasibility_score: float | None = None
-                    build_feasibility_score: float = 0.7
-                    data_feasibility_score: float = 0.7
-                    programmatic_seo_opportunity: str = ""
+            from pydantic import BaseModel, Field as _F
 
-                r, usage = LLMService.invoke_structured(
-                    prompt=(
-                        f"An incumbent already occupies this idea's position:\n"
-                        f"FINDING: {finding}\n"
-                        f"INCUMBENT'S KNOWN GAP: {gap or 'not recorded'}\n"
-                        f"USER DISSATISFACTION SIGNALS: {dissat or 'none recorded'}\n\n"
-                        f"THE IDEA (validated pain — keep it):\n"
-                        f"- name: {getattr(orig, 'solution_name', '')}\n"
-                        f"- value_prop: {(getattr(orig, 'value_proposition', '') or '')[:250]}\n"
-                        f"- mechanism: {(getattr(orig, 'technical_approach', '') or '')[:300]}\n\n"
-                        "PIVOT THE WEDGE: keep the validated pain, but move the product to attack "
-                        "the incumbent's gap or the segment it ignores — a position the finding "
-                        "does NOT cover. This is a repositioning of an EXISTING design, not an "
-                        "invention: no speculative capabilities, solo-developer buildable, fill "
-                        "every field honestly (scores 0-1)."),
-                    output_model=_Pivot, temperature=0.3, timeout=180,
-                    model_name=settings.brainstorm_llm, reasoning_effort="medium", creative=True)
-                if hasattr(self, "cost_tracker") and self.cost_tracker and usage is not None:
-                    self.cost_tracker.record_llm_usage("Stage 7 - Parity Pivot", usage.to_dict())
-                d = r.model_dump()
-                if not d.get("solution_name") or not d.get("value_proposition"):
-                    continue
-                d.setdefault("market_fit_score", 0.5)
-                d.setdefault("technical_feasibility_score", 0.6)
-                for k in ("build_feasibility_score", "data_feasibility_score",
-                          "market_fit_score", "technical_feasibility_score"):
-                    v = d.get(k)
-                    if isinstance(v, (int, float)) and not isinstance(v, bool):
-                        d[k] = max(0.0, min(1.0, v / 100.0 if 1.0 < v <= 100.0 else v))
-                _dam = (d.get("data_access_model") or "").strip().lower()
-                d["data_access_model"] = _dam if _dam in (
-                    "public", "freemium", "paywalled", "unofficial", "restricted", "none") else None
-                d["description"] = d.get("description") or d.get("value_proposition", "")
-                d["core_features"] = d.get("core_features") or ["pivoted workflow"]
-                d["pain_points_addressed"] = list(
-                    getattr(orig, "pain_points_addressed", None) or ["pivoted pain"])
-                d["target_personas"] = list(getattr(orig, "target_personas", None) or ["primary audience member"])
-                rev = BaseSolutionIdea.model_validate(d)
-                rev.source_pain = getattr(orig, "source_pain", None)
-                rev.source_segment = getattr(orig, "source_segment", None)
-                # Fix #6: a frame idea's `source_frame` was dropped on pivot reconstruction —
-                # without this, an accepted pivot of a non-pain-cell idea silently resets to
-                # 'pain', losing its frame identity for every downstream frame-aware consumer.
-                rev.source_frame = getattr(orig, "source_frame", None) or "pain"
-                rev.idea_tier = getattr(orig, "idea_tier", "single") or "single"
+            class _Pivot(BaseModel):
+                solution_name: str = ""
+                value_proposition: str = ""
+                description: str = ""
+                core_features: list[str] = _F(default_factory=list)
+                conventional_approach: str = ""
+                innovation_angle: str = ""
+                why_it_works: str = ""
+                technical_approach: str = ""
+                data_access_model: str = _F(
+                    "", description="EXACTLY one of: public | freemium | paywalled | "
+                                    "unofficial | restricted | none")
+                market_fit_score: float | None = None
+                technical_feasibility_score: float | None = None
+                build_feasibility_score: float = 0.7
+                data_feasibility_score: float = 0.7
+                programmatic_seo_opportunity: str = ""
 
-                self._score_wave([rev])  # full per-idea sequence; rule (e) re-applies
+            r, usage = LLMService.invoke_structured(
+                prompt=(
+                    f"An incumbent already occupies this idea's position:\n"
+                    f"FINDING: {finding}\n"
+                    f"INCUMBENT'S KNOWN GAP: {gap or 'not recorded'}\n"
+                    f"USER DISSATISFACTION SIGNALS: {dissat or 'none recorded'}\n\n"
+                    f"THE IDEA (validated pain — keep it):\n"
+                    f"- name: {getattr(orig, 'solution_name', '')}\n"
+                    f"- value_prop: {(getattr(orig, 'value_proposition', '') or '')[:250]}\n"
+                    f"- mechanism: {(getattr(orig, 'technical_approach', '') or '')[:300]}\n\n"
+                    "PIVOT THE WEDGE: keep the validated pain, but move the product to attack "
+                    "the incumbent's gap or the segment it ignores — a position the finding "
+                    "does NOT cover. This is a repositioning of an EXISTING design, not an "
+                    "invention: no speculative capabilities, solo-developer buildable, fill "
+                    "every field honestly (scores 0-1)."),
+                output_model=_Pivot, temperature=0.3, timeout=180,
+                model_name=settings.brainstorm_llm, reasoning_effort="medium", creative=True)
+            if hasattr(self, "cost_tracker") and self.cost_tracker and usage is not None:
+                self.cost_tracker.record_llm_usage("Stage 7 - Parity Pivot", usage.to_dict())
+            d = r.model_dump()
+            if not d.get("solution_name") or not d.get("value_proposition"):
+                return None
+            d.setdefault("market_fit_score", 0.5)
+            d.setdefault("technical_feasibility_score", 0.6)
+            for k in ("build_feasibility_score", "data_feasibility_score",
+                      "market_fit_score", "technical_feasibility_score"):
+                v = d.get(k)
+                if isinstance(v, (int, float)) and not isinstance(v, bool):
+                    d[k] = max(0.0, min(1.0, v / 100.0 if 1.0 < v <= 100.0 else v))
+            _dam = (d.get("data_access_model") or "").strip().lower()
+            d["data_access_model"] = _dam if _dam in (
+                "public", "freemium", "paywalled", "unofficial", "restricted", "none") else None
+            d["description"] = d.get("description") or d.get("value_proposition", "")
+            d["core_features"] = d.get("core_features") or ["pivoted workflow"]
+            d["pain_points_addressed"] = list(
+                getattr(orig, "pain_points_addressed", None) or ["pivoted pain"])
+            d["target_personas"] = list(getattr(orig, "target_personas", None) or ["primary audience member"])
+            rev = BaseSolutionIdea.model_validate(d)
+            rev.source_pain = getattr(orig, "source_pain", None)
+            rev.source_segment = getattr(orig, "source_segment", None)
+            # Fix #6: a frame idea's `source_frame` was dropped on pivot reconstruction —
+            # without this, an accepted pivot of a non-pain-cell idea silently resets to
+            # 'pain', losing its frame identity for every downstream frame-aware consumer.
+            rev.source_frame = getattr(orig, "source_frame", None) or "pain"
+            rev.idea_tier = getattr(orig, "idea_tier", "single") or "single"
+            return rev
+        except Exception as e:
+            logger.warning(f"[ParityPivot] attempt failed (non-fatal): {str(e)[:120]}")
+            return None
 
-                # Incomplete-vector guard (codex-review MAJOR): _Pivot's schema omits novelty/
-                # seo/obviousness/solo_dev, and the angle composite drops None dims — without
-                # this check a pivot could win on a partial vector never scored against the
-                # same dimensions as its original. The calibration critic fills these during
-                # _score_wave above; require them present before comparing composites at all.
-                score_dims = [getattr(rev, k, None) for k in
-                              ("market_fit_score", "technical_feasibility_score",
-                               "novelty_score", "seo_scalability_score")]
-                if not all(isinstance(v, (int, float)) and not isinstance(v, bool)
-                           for v in score_dims):
-                    logger.info(f"[ParityPivot] rejected pivot of "
-                                f"'{getattr(orig, 'solution_name', '?')}' — incomplete score "
-                                "vector after scoring (missing market_fit/technical/novelty/seo)")
-                    continue
+    @staticmethod
+    def _pivot_acceptable(orig, rev) -> bool:
+        """Accept-guard for a SCORED pivot revision — extracted from `_parity_pivot_revisions`
+        (2026-07-10 wave consolidation), conditions UNCHANGED: all four score dims numeric
+        (codex-review MAJOR incomplete-vector guard) AND the revision's angle composite beats
+        the capped original AND its own parity finding explicitly cleared to 'none' — else the
+        cap stands."""
+        from ..utils.score_helpers import _composite_for_angle
 
-                rev_par = (getattr(rev, "incumbent_parity", None) or "").strip().lower()
-                if _comp(rev) > _comp(orig) and rev_par.startswith("none"):
-                    idx = ideas.index(orig)
-                    ideas[idx] = rev
-                    accepted += 1
-                    logger.info(f"[ParityPivot] accepted '{rev.solution_name}' "
-                                f"(composite {_comp(orig):.3f} -> {_comp(rev):.3f}) "
-                                f"replacing '{getattr(orig, 'solution_name', '?')}'")
-                else:
-                    logger.info(f"[ParityPivot] rejected pivot of "
-                                f"'{getattr(orig, 'solution_name', '?')}' "
-                                f"(composite {_comp(rev):.3f} vs {_comp(orig):.3f}, "
-                                f"parity '{rev_par[:40] or 'none'}') — needs explicit clearance "
-                                "('none found'), not just non-shipped/partial — cap stands")
-            except Exception as e:
-                logger.warning(f"[ParityPivot] attempt failed (non-fatal): {str(e)[:120]}")
-        return attempted, accepted
+        def _comp(i):
+            return _composite_for_angle(
+                getattr(i, "market_fit_score", None),
+                getattr(i, "technical_feasibility_score", None),
+                getattr(i, "novelty_score", None),
+                getattr(i, "seo_scalability_score", None),
+                getattr(i, "winning_angle", None))
+
+        # Incomplete-vector guard (codex-review MAJOR): _Pivot's schema omits novelty/
+        # seo/obviousness/solo_dev, and the angle composite drops None dims — without
+        # this check a pivot could win on a partial vector never scored against the
+        # same dimensions as its original. The calibration critic fills these during
+        # _score_wave above; require them present before comparing composites at all.
+        score_dims = [getattr(rev, k, None) for k in
+                      ("market_fit_score", "technical_feasibility_score",
+                       "novelty_score", "seo_scalability_score")]
+        if not all(isinstance(v, (int, float)) and not isinstance(v, bool)
+                   for v in score_dims):
+            logger.info(f"[ParityPivot] rejected pivot of "
+                        f"'{getattr(orig, 'solution_name', '?')}' — incomplete score "
+                        "vector after scoring (missing market_fit/technical/novelty/seo)")
+            return False
+
+        rev_par = (getattr(rev, "incumbent_parity", None) or "").strip().lower()
+        if _comp(rev) > _comp(orig) and rev_par.startswith("none"):
+            logger.info(f"[ParityPivot] accepted '{rev.solution_name}' "
+                        f"(composite {_comp(orig):.3f} -> {_comp(rev):.3f}) "
+                        f"replacing '{getattr(orig, 'solution_name', '?')}'")
+            return True
+        logger.info(f"[ParityPivot] rejected pivot of "
+                    f"'{getattr(orig, 'solution_name', '?')}' "
+                    f"(composite {_comp(rev):.3f} vs {_comp(orig):.3f}, "
+                    f"parity '{rev_par[:40] or 'none'}') — needs explicit clearance "
+                    "('none found'), not just non-shipped/partial — cap stands")
+        return False
 
     def _score_wave(self, wave: list, *, birth_verified: list | None = None) -> None:
         """Run the full per-idea pass sequence on ideas born in the post-parity block (they
@@ -6039,8 +6399,13 @@ class UnifiedSolutionCrew:
         targets exactly the unverified subset). Every step fail-soft."""
         if not wave:
             return
-        self._birth_verified_names = set(
-            getattr(self, "_birth_verified_names", set()) or set())
+        # In-place update only (2026-07-10 parallelization audit): the previous copy-then-assign
+        # (`self._birth_verified_names = set(getattr(...))`) rebuilt a NEW set from a snapshot and
+        # then reassigned the attribute — if two `_score_wave` calls ever overlap, whichever
+        # reassignment lands last silently discards the other's update. `set.update`/`add` mutate
+        # the SAME object in place, so no snapshot is taken and no update can be lost.
+        if not isinstance(getattr(self, "_birth_verified_names", None), set):
+            self._birth_verified_names = set()
         self._birth_verified_names.update(
             getattr(w, "solution_name", "") for w in (birth_verified or []))
         for step_name, fn in (
@@ -6062,11 +6427,12 @@ class UnifiedSolutionCrew:
     def _backfill_and_demote(self, refined_solutions, *, skip_selection: bool) -> None:
         """Post-parity deliverable-quality block — TOURNAMENT PATH ONLY (the legacy/convergent
         path captures its solution_selection before this point, so a sweep there could leave a
-        demoted idea as the selected winner; codex-review MAJOR). Order matters: demote → merge
-        variants (accept/absorb FIRST, so backfill sizing sees the post-merge visible count;
-        codex-review MAJOR) → backfill untried pains in one parallel wave → floor-guard (which
-        also retracts the ruled-out findings of restored ideas; codex-review MAJOR) → funnel
-        counts. Fail-soft throughout; never raises."""
+        demoted idea as the selected winner; codex-review MAJOR). Order matters: demote → pivot
+        + merge candidates generated/scored in ONE consolidated wave (accept/absorb FIRST, so
+        backfill sizing sees the post-merge visible count; codex-review MAJOR; wave consolidation
+        2026-07-10) → backfill untried pains in one parallel wave → floor-guard (which also
+        retracts the ruled-out findings of restored ideas; codex-review MAJOR) → funnel counts.
+        Fail-soft throughout; never raises."""
         from ..models.solution_idea import visible_ideas
 
         ctx = getattr(self, "_tournament_ctx", None)
@@ -6089,24 +6455,66 @@ class UnifiedSolutionCrew:
                 logger.warning(f"[Demote] sweep skipped: {str(e)[:120]}")
         funnel["demoted"] = demoted
 
-        # ── E2 wedge-pivot for shipped/partial-capped ideas (before merge/backfill so a
-        # pivoted idea participates in overlap grouping + the visible count). Fail-soft.
         if bar > 0:
+            # ── Wave consolidation (2026-07-10 audit finding 2.5): E2 wedge-pivot revisions and
+            # variant-merge composites used to each get their OWN full `_score_wave` on 1-2
+            # ideas — the parity stage inside `_score_wave` gathers evidence PER WAVE, so tiny
+            # waves both multiplied web probes and weakened calibration context. Now: determine
+            # BOTH candidate sets from the post-sweep pool, resolve any overlap between them,
+            # GENERATE everything in parallel (generation LLM calls only — independent of each
+            # other), SCORE it all in ONE wave, then apply each accept-guard INDIVIDUALLY with
+            # unchanged conditions. Backfill and red-team are untouched — still their own later
+            # waves, in their existing order.
+            p_att = p_acc = merge_groups_accepted = variants_absorbed = 0
+            not_evaluated = 0
+            pivot_results: list = []
+            merge_results: list = []
+            merge_job_groups: dict[int, dict] = {}
+            # Discovery + generation + scoring only — pre-mutation, so a failure ANYWHERE in
+            # here is safe to abort wholesale (codex review 2026-07-11: this used to be one
+            # broad try covering the accept loops too, so an exception while accepting
+            # candidate N silently dropped decisions for N+1..end). Each candidate's own
+            # accept-guard/replacement/counter block below gets its OWN try/except instead,
+            # mirroring the standalone `_parity_pivot_revisions` wrapper's per-candidate
+            # isolation.
             try:
-                p_att, p_acc = self._parity_pivot_revisions(refined_solutions)
-                funnel["pivots_attempted"] = p_att
-                funnel["pivots_accepted"] = p_acc
-            except Exception as e:
-                logger.warning(f"[ParityPivot] skipped: {str(e)[:120]}")
-
-        if bar > 0:
-            # ── Variant merge FIRST (accept/absorb before backfill sizing): group visible
-            # ideas, synthesize one product per group, score, accept-guard.
-            merge_groups_accepted = 0
-            variants_absorbed = 0
-            try:
+                pivot_candidates = self._pivot_candidates(refined_solutions)
+                p_att = len(pivot_candidates)
                 groups = self._group_variant_overlaps(visible_ideas(ideas))
-                merge_candidates: list[tuple] = []
+
+                # Overlap rule: an idea that is both a pivot candidate and a member of a merge
+                # group -> pivot takes precedence; remove it from the group. A group left with
+                # <2 members dissolves (no merge attempted for it).
+                pivot_names = {(getattr(i, "solution_name", "") or "").strip().lower()
+                               for i in pivot_candidates}
+                resolved_groups = []
+                for g in groups:
+                    remaining = [n for n in g["idea_names"]
+                                 if (n or "").strip().lower() not in pivot_names]
+                    removed = len(g["idea_names"]) - len(remaining)
+                    if removed:
+                        logger.info(
+                            f"[WaveOverlap] pivot precedence removed {removed} member(s) from "
+                            f"merge group ({g.get('shared_product', 'same buyer job')}); "
+                            f"{len(remaining)} remain")
+                    if len(remaining) >= 2:
+                        resolved_groups.append({**g, "idea_names": remaining})
+                groups = resolved_groups
+                # `self.overlap_groups` drives grouped-variant display (contract: only groups
+                # whose members are ALL still separate visible ideas are shown — see
+                # SelectionWorkbench.svelte's `rejectedOverlapGroups`). `_group_variant_overlaps`
+                # above stamped it with the UNRESOLVED groups (codex review 2026-07-11
+                # REGRESSION: could retain pivot-precedence-stripped members and now-dissolved
+                # groups); rewrite it to the resolved set. Accepted-merge groups are pruned
+                # below as each accept lands, so only rejected/never-attempted groups remain.
+                self.overlap_groups = list(groups)
+
+                gaps_by_name = {(r.get("name") or "").strip().lower(): (r.get("gap") or "")
+                                for r in (getattr(self, "_incumbent_rows", None) or [])}
+                pivot_jobs = [{"orig": orig, "gaps_by_name": gaps_by_name}
+                              for orig in pivot_candidates]
+
+                merge_jobs: list[dict] = []
                 if settings.variant_merge_max_groups > 0:
                     by_name = {(getattr(i, "solution_name", "") or "").strip().lower(): i
                                for i in ideas}
@@ -6117,27 +6525,101 @@ class UnifiedSolutionCrew:
                                    and getattr(m, "candidate_status", "active") == "active"]
                         if len(members) < 2:
                             continue
-                        merged = self._synthesize_variant_merge(members, g["shared_product"])
-                        if merged is not None:
-                            merge_candidates.append((merged, members))
-                if merge_candidates:
-                    self._score_wave([m for m, _ in merge_candidates])
-                    for merged, members in merge_candidates:
-                        if self._merge_acceptable(merged, members, bar):
-                            ideas.append(merged)
-                            for m in members:
-                                m.candidate_status = "absorbed"
-                            merge_groups_accepted += 1
-                            variants_absorbed += len(members)
-                            logger.info(
-                                f"[Merge] accepted '{getattr(merged, 'solution_name', '?')}' "
-                                f"absorbing {len(members)} variant(s)")
-                        else:
-                            logger.info(
-                                f"[Merge] rejected '{getattr(merged, 'solution_name', '?')}' "
-                                "(did not beat best variant) — variants kept, grouped display")
+                        merge_jobs.append(
+                            {"members": members, "shared_product": g["shared_product"]})
+                        # id(members) survives the ThreadPoolExecutor round trip unchanged
+                        # (same list object, threads not processes) — used below to find which
+                        # overlap group an accepted merge came from.
+                        merge_job_groups[id(members)] = g
+
+                def _pivot_gen(orig, gaps_by_name):
+                    return orig, self._generate_pivot_revision(orig, gaps_by_name)
+
+                def _merge_gen(members, shared_product):
+                    return members, self._synthesize_variant_merge(members, shared_product)
+
+                pivot_results = (
+                    self._run_parallel(
+                        _pivot_gen, pivot_jobs,
+                        deadline=settings.divergent_sample_deadline_seconds,
+                        max_workers=min(len(pivot_jobs), settings.divergent_max_workers),
+                        label="ParityPivotGen")
+                    if pivot_jobs else [])
+                merge_results = (
+                    self._run_parallel(
+                        _merge_gen, merge_jobs,
+                        deadline=settings.divergent_sample_deadline_seconds,
+                        max_workers=min(len(merge_jobs), settings.divergent_max_workers),
+                        label="VariantMergeGen")
+                    if merge_jobs else [])
+
+                wave_candidates = [rev for _, rev in pivot_results if rev is not None]
+                wave_candidates += [merged for _, merged in merge_results if merged is not None]
+                if wave_candidates:
+                    # Scoring pivots and merge composites together in ONE wave (2026-07-10 wave
+                    # consolidation) changes each candidate's parity/calibration context vs the
+                    # old flow, where pivots and merges each got their own tiny 1-2-idea wave —
+                    # a fuller comparison set gives better-calibrated scores and fewer redundant
+                    # web probes. This is intentional/DEFENSIBLE (codex review 2026-07-11), but
+                    # it is NOT accept-decision-equivalent to the old per-candidate waves.
+                    self._score_wave(wave_candidates)
             except Exception as e:
-                logger.warning(f"[Merge] variant merge skipped: {str(e)[:120]}")
+                pivot_results = []
+                merge_results = []
+                logger.warning(
+                    f"[Wave] pivot/merge discovery+generation+scoring skipped, no candidates "
+                    f"evaluated (non-fatal): {str(e)[:120]}")
+
+            for orig, rev in pivot_results:
+                try:
+                    if rev is not None and self._pivot_acceptable(orig, rev):
+                        idx = ideas.index(orig)
+                        ideas[idx] = rev
+                        p_acc += 1
+                except Exception as e:
+                    not_evaluated += 1
+                    logger.warning(
+                        f"[Wave] pivot accept-guard failed for "
+                        f"'{getattr(orig, 'solution_name', '?')}' (non-fatal, decision not "
+                        f"evaluated): {str(e)[:120]}")
+
+            for members, merged in merge_results:
+                if merged is None:
+                    continue
+                try:
+                    if self._merge_acceptable(merged, members, bar):
+                        ideas.append(merged)
+                        for m in members:
+                            m.candidate_status = "absorbed"
+                        merge_groups_accepted += 1
+                        variants_absorbed += len(members)
+                        g = merge_job_groups.get(id(members))
+                        if g is not None:
+                            try:
+                                self.overlap_groups.remove(g)
+                            except ValueError:
+                                pass
+                        logger.info(
+                            f"[Merge] accepted '{getattr(merged, 'solution_name', '?')}' "
+                            f"absorbing {len(members)} variant(s)")
+                    else:
+                        logger.info(
+                            f"[Merge] rejected '{getattr(merged, 'solution_name', '?')}' "
+                            "(did not beat best variant) — variants kept, grouped display")
+                except Exception as e:
+                    not_evaluated += 1
+                    logger.warning(
+                        f"[Wave] merge accept-guard failed for "
+                        f"'{getattr(merged, 'solution_name', '?')}' (non-fatal, decision not "
+                        f"evaluated): {str(e)[:120]}")
+
+            if not_evaluated:
+                logger.warning(
+                    f"[Wave] aborted after {p_acc} pivot accept(s) + {merge_groups_accepted} "
+                    f"merge accept(s) committed; {not_evaluated} candidate decision(s) not "
+                    "evaluated due to isolated failures")
+            funnel["pivots_attempted"] = p_att
+            funnel["pivots_accepted"] = p_acc
             funnel["merge_groups"] = merge_groups_accepted
             funnel["variants_absorbed"] = variants_absorbed
 
@@ -6366,7 +6848,13 @@ class UnifiedSolutionCrew:
                 and not isinstance(getattr(i, "novelty_score"), bool)
                 and getattr(i, "novelty_score") >= bold_thresh]
         if bold:
-            protected.add(id(max(bold, key=lambda i: getattr(i, "novelty_score", 0.0))))
+            # Deterministic tie-break (same convention as elsewhere, e.g. `_dedup_tournament_
+            # winners`/mechanism-family ordering below): highest novelty first, then
+            # lexicographically smallest normalized solution_name — plain `max()` fell back to
+            # input order on a novelty tie, which isn't deterministic across birth paths.
+            protected.add(id(min(bold, key=lambda i: (
+                -getattr(i, "novelty_score", 0.0),
+                (getattr(i, "solution_name", "") or "").strip().lower()))))
         try:
             from ..utils.validation.crew_guardrails import (
                 _high_severity_pains, _pain_terms, _idea_blob_terms, _fuzzy_set_overlap,
@@ -6380,7 +6868,10 @@ class UnifiedSolutionCrew:
             logger.warning(f"[DIVERSITY] sole-coverage protection skipped: {e}")
 
         # Mechanism FAMILIES — greedy pairwise (strongest-first anchors), NOT transitive clustering.
-        order = sorted(ideas, key=lambda i: -_composite(i))
+        # Secondary key (normalized solution_name): completion-order tie-breaking made results
+        # depend on network latency (audit 2026-07-10).
+        order = sorted(ideas, key=lambda i: (
+            -_composite(i), (getattr(i, "solution_name", "") or "").strip().lower()))
         fam_of: dict = {}
         fam_anchor: list = []
         for i in order:
@@ -6662,6 +7153,7 @@ class UnifiedSolutionCrew:
         data_access_model, free-text project_type breaking the frontend type chips) was a
         per-path escape. This is the ONE choke point that normalizes closed-vocab fields and
         accounts for evaluation completeness on everything that ships. Mutates in place."""
+        from ..utils.frames import FRAME_REGISTRY
         from ..utils.public_data_sources import llm_confirm_known_route, retrieve_known_sources
 
         clamped = 0
@@ -6673,6 +7165,15 @@ class UnifiedSolutionCrew:
             # (the demote/merge/backfill block runs later in the same flow), so an unconditional
             # reset here can never wipe a legitimate stamp — it only clears birth fabrication.
             idea.candidate_status = "active"
+            # source_frame closed vocab (funnel by_frame + lens chip key off it): the stamps
+            # set it at birth, but tournament-born ideas can arrive with None and generator
+            # LLMs can fabricate values — normalize both to the legacy default 'pain'.
+            sf = (getattr(idea, "source_frame", None) or "").strip().lower()
+            if sf not in FRAME_REGISTRY:
+                if sf:
+                    logger.info(f"[PoolContract] '{idea.solution_name}' source_frame "
+                                f"'{sf}' not a known frame — normalized to 'pain'")
+                idea.source_frame = "pain"
             # project_type closed vocab (frontend chips + archetype logic key off it)
             pt = (getattr(idea, "project_type", None) or "").strip().lower()
             if pt and pt not in self._PROJECT_TYPE_VOCAB:
@@ -7110,6 +7611,11 @@ class UnifiedSolutionCrew:
         self.overlap_groups = []
         self.funnel_counts = {}
         self._ma_serper_calls = 0  # market-awareness search budget counter (per run)
+        # Guards the check-truncate-increment budget bookkeeping in `_ma_search`/
+        # `_ma_search_batch` only — never held during the network call itself (2026-07-10
+        # parallelization audit). Eagerly (re)created here per run; `_get_ma_search_lock`
+        # lazily falls back for callers that never go through this reset (e.g. direct/test use).
+        self._ma_search_lock = threading.Lock()
 
         if not self.pain_point_analysis.pain_points:
             raise ValueError(
@@ -7389,15 +7895,7 @@ class UnifiedSolutionCrew:
                     self._record_divergent_usage(t_usages)
                 # Union of per-cell winners, DEDUP ONLY (normalized-name; minimal filtering — no
                 # diversity caps). Distinct cells rarely collide, so this stays a light floor.
-                ideas, _seen = [], set()
-                for w in winners:
-                    if w is None:
-                        continue
-                    key = "".join((getattr(w, "solution_name", "") or "").lower().split())
-                    if key and key in _seen:
-                        continue
-                    _seen.add(key)
-                    ideas.append(w)
+                ideas = self._dedup_tournament_winners(winners)
                 if not ideas:
                     raise ValueError("Per-cell tournaments produced no ideas.")
                 # Portfolio funnel F1 (salvage gate, dark): rescue losers the full critic rates
@@ -7661,6 +8159,19 @@ class UnifiedSolutionCrew:
                 self._backfill_and_demote(refined_solutions, skip_selection=skip_selection)
             except Exception as e:
                 logger.warning(f"Demote/merge/backfill block skipped: {e}")
+
+            # Adversarial red-team pass over the top visible ideas (post-demote, pre-portfolio-
+            # summary): survives/weakened/killed verdict per top idea; a killed verdict that
+            # names a shipped/bundled-free alternative applies the existing parity cap via
+            # `_validate_idea_caps` — downgrade-only, no parallel capping mechanism. Runs BEFORE
+            # SEO-realism/tags/final-score re-derivation so those layers read any capped scores.
+            # No-op when red_team_top_k == 0 (no LLM call, no searches). Fail-soft per idea
+            # inside the module; this outer try/except is defense-in-depth.
+            try:
+                from ..utils.red_team_review import run_red_team_review
+                run_red_team_review(self, refined_solutions)
+            except Exception as e:
+                logger.warning(f"Red-team review skipped: {e}")
 
             # SEO-realism caps (downgrade-only). PREVIEW PATH ONLY: with skip_selection there is
             # no Task-4 selection / flow-level backfill, so capping the stored seo_scalability_score

@@ -470,6 +470,16 @@ BRAINSTORM_LLM=gpt-4o
 # DIVERGENT_PARTITIONED_KEEP_FRACTION=0.67  # keep-fraction override (narrow pain-separated concepts dedup
 #                                   # far less than broad samples, so 0.5 over-discards them)
 
+# --- Stated-audience cell-floor guarantee (Round 0c) --------------------------------------------
+# DIVERGENT_STATED_AUDIENCE_FLOOR_COUNT=1
+# Guarantee the top-N pains matching the user's STATED audience (resolved_primary_audience, else
+# the raw user_target_audience) each get a generator cell. Cell allocation ranks by opportunity/
+# theme/severity/commercial and never reads the stated audience, so a pain the user explicitly
+# asked about can get zero ideation while the loudest sub-population fills every cell. Match uses
+# PainPoint.evidence_segments (provenance) else lexical affected_segments, token-overlapped
+# against the stated-audience string; requires a REAL overlap -- no stated audience or no match =
+# no-op. 0 disables (byte-identical to legacy allocation). Range 0-4.
+
 # --- Diversity-aware final selection -----------------------------------------------------------
 # ENABLE_DIVERSITY_CAPS=false
 # When ON, the convergent stage keeps MORE diverse ideas instead of squeezing to ~5. The post-crew
@@ -900,6 +910,19 @@ NUM_SEARCH_QUERIES=40
 AUDIENCE_QUERY_ALLOTMENT=6
 # Extra Reddit query slots reserved for audience-flavored queries when the gate
 # above is on. Added ON TOP of NUM_SEARCH_QUERIES so the broad set is untouched.
+
+PAIN_PROVENANCE_SEGMENTS=true
+# Populate PainPoint.evidence_segments from source-post provenance (subreddit -> validated
+# segment hub overlap), alongside the existing lexical affected_segments. A segment's hubs are
+# validated against subreddits ACTUALLY PRESENT in the collected corpus (zero extra API calls); a
+# segment with no corpus-validated hubs of its own gets no evidence_segments matches (never
+# inherits another segment's hubs). false = legacy (evidence_segments always None).
+
+AUDIENCE_CRITIC_PLAIN_NICHE_PERSONA=true
+# On plain-niche runs (no stated target_audience), feed the audience-coverage critic (Part 4, the
+# separate grounded pain-critique pass) a persona clause derived from niche_description instead of
+# the whole niche string, so it has a concrete "who" to resolve sub-audiences against. false =
+# legacy (critic gets the full niche string).
 ```
 
 ### Reddit Quality Filters

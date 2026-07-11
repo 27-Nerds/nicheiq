@@ -60,12 +60,22 @@ def _idea_digest_line(idea) -> str:
     risk_flags = list(getattr(tags, "risk_flags", None) or []) if tags is not None else []
     pricing_note = (getattr(tags, "pricing_shape_note", None) or "").strip() if tags is not None else ""
 
+    rt_verdict = (getattr(idea, "red_team_verdict", None) or "").strip()
+    rt_caveats = list(getattr(idea, "red_team_caveats", None) or [])
+    rt_clause = ""
+    if getattr(idea, "red_team_revised", None):
+        rt_clause = "; revised after red-team review"
+    elif rt_verdict:
+        first = f" ({rt_caveats[0]})" if rt_caveats else ""
+        rt_clause = f"; red-team verdict: {rt_verdict}{first}"
+
     return (
         f"- {name}: market fit {mf_band}{corrected}; SEO scalability {seo_band}; "
         f"dev time {dev_time}; buyer-segment payability {pay_band} ({pay_class}); "
         f"incumbent parity: {parity}; adjacent-market parity: {adjacent}; "
         f"risk flags: {', '.join(risk_flags) if risk_flags else 'none'}; "
         f"pricing note: {pricing_note or 'none'}"
+        + rt_clause
     )
 
 

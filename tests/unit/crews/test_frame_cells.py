@@ -116,6 +116,91 @@ class TestBuildPartitionCellsAllocator:
 
 
 # ---------------------------------------------------------------------------
+# _build_partition_cells: stated-audience floor (Round 0c, workstream D of the audience-rebalance
+# plan) — mirrors the severity/commercial floor injection + reserve-math tests above.
+# ---------------------------------------------------------------------------
+
+class TestStatedAudienceFloorAllocator:
+    def test_floor_lifts_matching_pain_not_in_selected(self, monkeypatch):
+        # max_gen == target (no slack) so the multi-frame widen loop can never fire and confound
+        # the assertion — the ONLY way "Commission pain" (outside selected_pains, only reachable
+        # via extra_pains -> all_pains) can appear is the Round-0c injection.
+        monkeypatch.setattr(settings, "divergent_target_generators", 2)
+        monkeypatch.setattr(settings, "divergent_max_generators", 2)
+        monkeypatch.setattr(settings, "divergent_severity_floor_count", 0)
+        monkeypatch.setattr(settings, "divergent_commercial_floor_count", 0)
+        monkeypatch.setattr(settings, "divergent_stated_audience_floor_count", 1)
+        selected = [_pain("P0", severity=0.5), _pain("P1", severity=0.45)]
+        matching = _pain("Commission pain", severity=0.3, affected_segments=["Insurance Agents"])
+        segA = _segment("SegA")
+        crew = _crew(pain_point_analysis=SimpleNamespace(pain_points=selected + [matching]),
+                     audience_mapping=SimpleNamespace(audience_segments=[segA]),
+                     niche_context=SimpleNamespace(niche_description="",
+                                                    resolved_primary_audience="insurance agents",
+                                                    user_target_audience=None))
+
+        cells = crew._build_partition_cells(selected, [matching])
+        titles = [getattr(c["pain"], "title", None) for c in cells if c.get("frame", "pain") == "pain"]
+
+        assert "Commission pain" in titles
+
+    def test_no_stated_audience_is_noop(self, monkeypatch):
+        monkeypatch.setattr(settings, "divergent_target_generators", 2)
+        monkeypatch.setattr(settings, "divergent_max_generators", 2)
+        monkeypatch.setattr(settings, "divergent_severity_floor_count", 0)
+        monkeypatch.setattr(settings, "divergent_commercial_floor_count", 0)
+        monkeypatch.setattr(settings, "divergent_stated_audience_floor_count", 1)
+        selected = [_pain("P0", severity=0.5), _pain("P1", severity=0.45)]
+        matching = _pain("Commission pain", severity=0.3, affected_segments=["Insurance Agents"])
+        segA = _segment("SegA")
+        # Both resolved_primary_audience and user_target_audience are None (plain-niche run) —
+        # the whole floor block must no-op even though the count is 1 and a matching pain exists.
+        crew = _crew(pain_point_analysis=SimpleNamespace(pain_points=selected + [matching]),
+                     audience_mapping=SimpleNamespace(audience_segments=[segA]),
+                     niche_context=SimpleNamespace(niche_description="",
+                                                    resolved_primary_audience=None,
+                                                    user_target_audience=None))
+
+        cells = crew._build_partition_cells(selected, [matching])
+        titles = [getattr(c["pain"], "title", None) for c in cells if c.get("frame", "pain") == "pain"]
+
+        assert "Commission pain" not in titles
+
+    def test_reserve_math_accounts_for_audience_floor_pain(self, monkeypatch):
+        monkeypatch.setattr(settings, "divergent_target_generators", 3)
+        monkeypatch.setattr(settings, "divergent_max_generators", 5)
+        monkeypatch.setattr(settings, "divergent_severity_floor_count", 0)
+        monkeypatch.setattr(settings, "divergent_commercial_floor_count", 0)
+        monkeypatch.setattr(settings, "divergent_stated_audience_floor_count", 1)
+        # Floored pain matches the stated audience but has LOW severity/opportunity, so plain
+        # opportunity-ranked allocation would never pick it without the Round-0c floor — the frame
+        # reserve math must still leave it room (unique_floor_ids must fold in the audience floor).
+        floored = _pain("Commission pain", severity=0.2, opportunity="low",
+                        affected_segments=["Insurance Agents"])
+        others = [_pain(f"P{i}", severity=0.6 - i * 0.05, opportunity="high") for i in range(3)]
+        pains = [floored] + others
+        segA = _segment("SegA")
+        crew = _crew(pain_point_analysis=SimpleNamespace(pain_points=pains),
+                     audience_mapping=SimpleNamespace(audience_segments=[segA]),
+                     niche_context=SimpleNamespace(niche_description="",
+                                                    resolved_primary_audience="insurance agents",
+                                                    user_target_audience=None))
+        gap_focus = FrameFocus(frame="gap", key="gap:acme", payload={"incumbent_name": "Acme"},
+                               anchor_pain_titles=["P0"])
+        crew._mint_frame_cells = lambda pains, segments, budget: [
+            {"frame": "gap", "focus": gap_focus, "segment": segA, "pain": None}
+        ]
+
+        cells = crew._build_partition_cells(pains, [])
+        pain_titles = [getattr(c["pain"], "title", None) for c in cells if c["frame"] == "pain"]
+        frame_count = sum(1 for c in cells if c["frame"] != "pain")
+
+        assert "Commission pain" in pain_titles
+        assert frame_count == 1
+        assert len(cells) <= settings.divergent_max_generators
+
+
+# ---------------------------------------------------------------------------
 # _mint_frame_cells: seed gates
 # ---------------------------------------------------------------------------
 
@@ -391,6 +476,23 @@ class TestOlderLoopReviewerFrameDirective:
         content = _older_reviewer_system(g)["content"]
         assert "PRODUCT FRAME" not in content
         assert "THE SOURCE PAIN BELOW" in content  # original pain-path prompt untouched
+
+
+class TestReviewerModalCaseInstruction:
+    """The v4 reviewer's `_reviewer_system` prompt includes a MODAL CASE bullet (2026-07-10)
+    telling the reviewer to state the most common concrete instance of the source pain and
+    score market_fit ≤ 0.4 (flag NEEDS-VERIFY: modal-case) when the specced mechanism wouldn't
+    handle it."""
+
+    def test_modal_case_instruction_present(self):
+        g = CellGrounding(
+            niche="cottage food", audience_segment="Home bakers", segment_profile="",
+            pain_title="Pricing takes too long", pain_evidence="evidence", pain_severity="high",
+            competitor_mentions="", wallet_norm="",
+        )
+        content = _reviewer_system(g)["content"]
+        assert "MODAL CASE" in content
+        assert "NEEDS-VERIFY: modal-case" in content
 
 
 # ---------------------------------------------------------------------------

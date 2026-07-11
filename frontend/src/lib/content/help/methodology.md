@@ -56,6 +56,8 @@ Read these as bands, not decimals. A 0.63 and a 0.61 are the same thing. They re
 
 The point was never a perfect number. We'd rather hand you a cautious score with the reasoning attached than a confident one that falls apart the moment you push on it.
 
+That honesty runs all the way to the top of a report, too. A set can end with a plain "nothing here is worth paying to validate further," evidence attached — a pool's best-looking idea losing its shine because a web check found that the incumbent it would compete with already bundles the same capability into its own sales process, for instance. Telling you that costs you nothing. A confident recommendation that falls apart under real diligence costs you a paid validation cycle.
+
 ### Sources
 
 - Jakob Nielsen, [Severity Ratings for Usability Problems](https://www.nngroup.com/articles/how-to-rate-the-severity-of-usability-problems/) (Nielsen Norman Group)

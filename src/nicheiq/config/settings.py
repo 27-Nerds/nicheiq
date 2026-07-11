@@ -324,6 +324,20 @@ class Settings(BaseSettings):
             "the floor a no-op in exactly the case that motivated it); K=1 already bounds blast radius."
         ),
     )
+    divergent_stated_audience_floor_count: int = Field(
+        default=1, ge=0, le=4,
+        description=(
+            "Guarantee the top-N pains matching the user's STATED audience each get a generator cell "
+            "(Round 0c, mirrors severity/commercial floors). Allocation ranks by opportunity/theme/"
+            "severity/commercial and never reads the stated audience, so a pain the user explicitly "
+            "asked about can get zero ideation while the loudest sub-population fills every cell "
+            "(2026-07-11 insurance run: commission-reconciliation pains lost to Applied-Epic AMS "
+            "complaints). Match uses PainPoint.evidence_segments (provenance) else affected_segments "
+            "overlap with resolved_primary_audience/user_target_audience; requires a REAL overlap — no "
+            "stated audience or no match = no-op. 0 disables (byte-identical legacy). A/B: "
+            "scripts/stated_audience_floor_ab.py. env DIVERGENT_STATED_AUDIENCE_FLOOR_COUNT."
+        ),
+    )
     synthesis_max_bundles: int = Field(
         default=2, ge=1, le=3,
         description="Max bundled products the synthesis stage may add per run.",
@@ -419,6 +433,17 @@ class Settings(BaseSettings):
             "source_segment_payability < payability_low_threshold. Deliberately crosses the 0.4 "
             "demotion bar — free route + thin wallet is a ruled-out finding, not a live idea. "
             "0 disables."
+        ),
+    )
+    parity_bundled_free_cap: float = Field(
+        default=0.40, ge=0.0, le=1.0,
+        description=(
+            "market_fit ceiling when the idea's capability is already BUNDLED FREE in a tool the "
+            "niche uses, or given away as a loss-leader (incumbent_parity == 'bundled_free'). "
+            "Live-motivated 2026-07-10: broker credit scores are free-bundled in Truckstop/DAT "
+            "and compiled by Carrier411/Highway/TransCredit (BrokerPay Shield mis-scored 'none' "
+            "because probes searched the idea's OWN vocabulary, not the category's); Etsy natively "
+            "prints USPS SCAN forms free in-platform (ShipProof was wrongly viable). 0 disables."
         ),
     )
     parity_niche_frame_queries_per_family: int = Field(
@@ -822,6 +847,29 @@ class Settings(BaseSettings):
             "N=1 restores the single-call path. env SCORE_CALIBRATION_SAMPLES."
         )
     )
+    red_team_review_llm: str = Field(
+        default="openrouter/qwen/qwen3.7-max",
+        description=(
+            "Model for the adversarial red-team pass over the top visible ideas (post-demote, "
+            "pre-portfolio-summary). Same class as score_calibration_llm — must be a reasoning "
+            "model so reasoning_effort='high' is honored. Independent of the brainstorm pool "
+            "(attacker ≠ generator)."
+        ),
+    )
+    red_team_top_k: int = Field(
+        default=2, ge=0, le=4,
+        description=(
+            "Number of top visible ideas (by market_fit) to red-team. 0 skips the pass entirely "
+            "— no LLM call, no searches issued."
+        ),
+    )
+    red_team_searches_per_idea: int = Field(
+        default=6, ge=0, le=10,
+        description=(
+            "Max budgeted searches per idea for the red-team pass (category-outcome, "
+            "free-alternative, platform-native query classes)."
+        ),
+    )
     ideation_refine_max_tokens: int = Field(
         default=32768,
         ge=16384,
@@ -998,6 +1046,23 @@ class Settings(BaseSettings):
             "+ the large task prompt + output + reasoning fit a 32k-64k-context open-weight model; "
             "raise it for large-context models (Gemini 2.5). Token counting is approximate for "
             "non-OpenAI tokenizers, so a safety margin is applied."
+        ),
+    )
+    pain_provenance_segments: bool = Field(
+        default=True,
+        description=(
+            "Populate PainPoint.evidence_segments from source-post provenance (subreddit -> "
+            "validated segment hub overlap), alongside lexical affected_segments. False = legacy "
+            "(None). env PAIN_PROVENANCE_SEGMENTS."
+        ),
+    )
+    audience_critic_plain_niche_persona: bool = Field(
+        default=True,
+        description=(
+            "On plain-niche runs (no stated audience), feed the audience-coverage critic a "
+            "persona clause derived from niche_description instead of the whole niche string, "
+            "so it can resolve sub-audiences. False = legacy. env "
+            "AUDIENCE_CRITIC_PLAIN_NICHE_PERSONA."
         ),
     )
 
