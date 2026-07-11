@@ -1068,7 +1068,7 @@ def run_regenerate_ideas(
         progress_callback(5, "Solution Pipeline", "completed")
 
         # Notify backend with new solutions
-        notify_regeneration_complete(job_id, new_previews)
+        notify_regeneration_complete(job_id, new_previews, cost_summary=_resolve_cost_summary(flow))
 
         return {"status": "regenerated", "job_id": job_id, "new_count": len(new_previews)}
 
@@ -1309,6 +1309,9 @@ def run_catalog_ideas(
         )
 
         # Create UnifiedSolutionCrew with pain points and existing ideas blacklist
+        from nicheiq.utils.token_monitor import CostTracker
+
+        tracker = CostTracker()
         crew = UnifiedSolutionCrew(
             pain_point_analysis=pain_analysis,
             social_content=None,
@@ -1316,6 +1319,7 @@ def run_catalog_ideas(
             audience_mapping=None,
             job_id=job_id,
             existing_ideas=existing_ideas,
+            cost_tracker=tracker,
         )
 
         # Execute pipeline (skip_selection=True → no Task 4)
@@ -1328,7 +1332,9 @@ def run_catalog_ideas(
                 job_id, category_id, [], niche,
                 parent_source_job_id=parent_source_job_id,
             )
-            return {"status": "completed", "job_id": job_id, "idea_count": 0}
+            cost_summary = tracker.get_summary()
+            logger.info(f"[CatalogIdeas] LLM cost: ${cost_summary['total_cost']}")
+            return {"status": "completed", "job_id": job_id, "idea_count": 0, "cost_summary": cost_summary}
 
         # Post-hoc safety-net: structural dedup against existing catalog ideas.
         # Exact-name matching alone let RENAMED structural duplicates through —
@@ -1366,11 +1372,14 @@ def run_catalog_ideas(
                     job_id, category_id, [], niche,
                     parent_source_job_id=parent_source_job_id,
                 )
+                cost_summary = tracker.get_summary()
+                logger.info(f"[CatalogIdeas] LLM cost: ${cost_summary['total_cost']}")
                 return {
                     "status": "completed",
                     "job_id": job_id,
                     "idea_count": 0,
                     "note": "regeneration produced only duplicates of existing ideas",
+                    "cost_summary": cost_summary,
                 }
             idea_gen.solution_ideas = filtered
 
@@ -1385,8 +1394,10 @@ def run_catalog_ideas(
             parent_source_job_id=parent_source_job_id,
         )
 
+        cost_summary = tracker.get_summary()
+        logger.info(f"[CatalogIdeas] LLM cost: ${cost_summary['total_cost']}")
         logger.info(f"[Worker] Catalog ideas complete for job {job_id}: {len(idea_previews)} ideas")
-        return {"status": "completed", "job_id": job_id, "idea_count": len(idea_previews)}
+        return {"status": "completed", "job_id": job_id, "idea_count": len(idea_previews), "cost_summary": cost_summary}
 
     except Exception as e:
         from .heartbeat import JobCancelledException

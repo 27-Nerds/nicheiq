@@ -9,7 +9,7 @@ from nicheiq.config.settings import Settings
 def test_settings_default_values():
     """Test that settings have reasonable default values."""
     # This will fail without .env, but tests default values logic
-    assert Settings.model_fields["openai_model_name"].default == "gpt-4.1-mini"
+    assert Settings.model_fields["openai_model_name"].default == "openrouter/google/gemini-3.1-flash-lite"
     assert Settings.model_fields["log_level"].default == "INFO"
     assert Settings.model_fields["max_retries"].default == 3
     assert Settings.model_fields["timeout_seconds"].default == 60

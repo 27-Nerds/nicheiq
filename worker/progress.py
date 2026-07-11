@@ -358,13 +358,19 @@ def notify_ideas_ready(job_id: str, solutions: list[dict], checkpoint_path: str,
 
 
 
-def notify_regeneration_complete(job_id: str, new_solutions: list[dict]) -> None:
+def notify_regeneration_complete(
+    job_id: str,
+    new_solutions: list[dict],
+    cost_summary: Optional[dict] = None,
+) -> None:
     """
     Notify backend that regeneration is complete with new solutions.
 
     Args:
         job_id: The job UUID
         new_solutions: List of new solution preview dicts
+        cost_summary: Optional LLM cost breakdown (CostTracker.get_summary()) for this
+            regeneration batch, accumulated onto the job's existing costUsd by the backend
     """
     try:
         payload = {
@@ -372,6 +378,8 @@ def notify_regeneration_complete(job_id: str, new_solutions: list[dict]) -> None
             "job_id": job_id,
             "solutions": new_solutions,
         }
+        if cost_summary:
+            payload["cost_summary"] = cost_summary
 
         response = requests.post(
             f"{_get_backend_url()}/api/workers/regeneration-complete",

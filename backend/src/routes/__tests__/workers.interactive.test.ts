@@ -470,6 +470,63 @@ describe('POST /api/workers/regeneration-complete', () => {
     const callArgs = mockJobUpdateMany.mock.calls[0][0];
     expect(callArgs.data.solutionIdeas).toEqual([{ name: 'Old1' }]);
   });
+
+  // Cost tracking (regeneration gap fix): unlike report-ready (which OVERWRITES costUsd with
+  // the run's cumulative total), regeneration ADDS spend to an already-settled job, so costUsd
+  // must ACCUMULATE onto whatever was already persisted.
+  it('accumulates costUsd onto an existing value when cost_summary is present', async () => {
+    mockJobFindFirst.mockResolvedValue({ solutionIdeas: [{ name: 'Old1' }], costUsd: 2.5 });
+    mockJobUpdateMany.mockResolvedValue({ count: 1 });
+
+    const cost_summary = { total_cost: 0.75, total_tokens: 1000 };
+
+    await request(app)
+      .post('/api/workers/regeneration-complete')
+      .send({ ...validPayload, cost_summary });
+
+    const callArgs = mockJobUpdateMany.mock.calls[0][0];
+    expect(callArgs.data.costUsd).toBeCloseTo(3.25);
+    expect(callArgs.data.costSummary).toEqual(cost_summary);
+  });
+
+  it('accumulates onto a null existing costUsd as if it were zero', async () => {
+    mockJobFindFirst.mockResolvedValue({ solutionIdeas: [], costUsd: null });
+    mockJobUpdateMany.mockResolvedValue({ count: 1 });
+
+    const cost_summary = { total_cost: 1.2 };
+
+    await request(app)
+      .post('/api/workers/regeneration-complete')
+      .send({ ...validPayload, cost_summary });
+
+    const callArgs = mockJobUpdateMany.mock.calls[0][0];
+    expect(callArgs.data.costUsd).toBeCloseTo(1.2);
+  });
+
+  it('leaves costUsd unchanged when cost_summary is absent', async () => {
+    mockJobFindFirst.mockResolvedValue({ solutionIdeas: [], costUsd: 5 });
+    mockJobUpdateMany.mockResolvedValue({ count: 1 });
+
+    await request(app)
+      .post('/api/workers/regeneration-complete')
+      .send(validPayload);
+
+    const callArgs = mockJobUpdateMany.mock.calls[0][0];
+    expect(callArgs.data.costUsd).toBeUndefined();
+    expect(callArgs.data.costSummary).toBeUndefined();
+  });
+
+  it('leaves costUsd unchanged when cost_summary.total_cost is 0', async () => {
+    mockJobFindFirst.mockResolvedValue({ solutionIdeas: [], costUsd: 5 });
+    mockJobUpdateMany.mockResolvedValue({ count: 1 });
+
+    await request(app)
+      .post('/api/workers/regeneration-complete')
+      .send({ ...validPayload, cost_summary: { total_cost: 0 } });
+
+    const callArgs = mockJobUpdateMany.mock.calls[0][0];
+    expect(callArgs.data.costUsd).toBeUndefined();
+  });
 });
 
 describe('POST /api/workers/regeneration-failed', () => {

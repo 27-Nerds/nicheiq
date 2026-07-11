@@ -55,6 +55,58 @@ def test_fail_soft_on_invoke_error():
 
 
 # ---------------------------------------------------------------------------
+# usage_sink wiring (cost-tracking gap fix): the bare-verdict return contract is
+# unchanged, but callers that pass a list get each LLM invoke's usage appended,
+# same convention as idea_improvement_loop_v4.tournament_refine_cell_v4.
+# ---------------------------------------------------------------------------
+def test_usage_sink_collects_usage_on_normal_path():
+    def invoke(prompt, model_name, reasoning_effort):
+        return AudienceCoverageVerdict(rebalance_needed=False), "usage-1"
+    sink: list = []
+    v = assess_audience_coverage(["p"], "fans", ["s"], ["t"], invoke=invoke, usage_sink=sink)
+    assert v.rebalance_needed is False
+    assert sink == ["usage-1"]
+
+
+def test_usage_sink_collects_usage_on_retry_path():
+    calls = {"n": 0}
+
+    def invoke(prompt, model_name, reasoning_effort):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return AudienceCoverageVerdict(
+                rebalance_needed=True, under_covered_audiences=[], rebalance_directive="",
+                rationale="thin"), "usage-first"
+        return AudienceCoverageVerdict(
+            rebalance_needed=True, under_covered_audiences=["Spectators"],
+            rebalance_directive="surface spectator pains", rationale="thin"), "usage-retry"
+
+    sink: list = []
+    v = assess_audience_coverage(["p"], "fans", ["Spectators"], ["t"], invoke=invoke, usage_sink=sink)
+    assert calls["n"] == 2
+    assert v.rebalance_directive == "surface spectator pains"
+    assert sink == ["usage-first", "usage-retry"]
+
+
+def test_usage_sink_none_is_unchanged_behavior():
+    # Default (no usage_sink) must behave exactly as before -- no sink to mutate, no crash.
+    def invoke(prompt, model_name, reasoning_effort):
+        return AudienceCoverageVerdict(rebalance_needed=False), "usage-1"
+    v = assess_audience_coverage(["p"], "fans", ["s"], ["t"], invoke=invoke)
+    assert v.rebalance_needed is False
+
+
+def test_usage_sink_skips_none_usage():
+    # invoke() functions that return usage=None (the common fake-invoke pattern in this file)
+    # must not append None into the sink.
+    def invoke(prompt, model_name, reasoning_effort):
+        return AudienceCoverageVerdict(rebalance_needed=False), None
+    sink: list = []
+    assess_audience_coverage(["p"], "fans", ["s"], ["t"], invoke=invoke, usage_sink=sink)
+    assert sink == []
+
+
+# ---------------------------------------------------------------------------
 # Empty-directive guard (live-caught via scripts/audience_coverage_critic_ab.py: 4/4
 # deepseek-v4-flash calls returned rebalance_needed=True with an EMPTY rebalance_directive,
 # naming the groups only in rationale -- which pain_point_crew.py never reads -- so the

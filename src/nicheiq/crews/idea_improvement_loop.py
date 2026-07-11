@@ -406,10 +406,10 @@ def tournament_refine_cell(
     ideator_model = ideator_model or settings.ideation_refine_llm
     if ideator_effort is None:
         ideator_effort = settings.ideation_refine_reasoning_effort
-    # Reviewer defaults to a strong reasoning model from a DIFFERENT family than the GLM ideator.
-    reviewer_model = reviewer_model or "gpt-5.4-mini"
+    # Reviewer defaults to the mentor tier — a DIFFERENT family than the GLM ideator.
+    reviewer_model = reviewer_model or settings.ideation_mentor_llm
     if reviewer_effort is None:
-        reviewer_effort = "medium"
+        reviewer_effort = settings.ideation_mentor_reasoning_effort
     rounds = max(1, min(rounds, cap))
 
     def _record(u):

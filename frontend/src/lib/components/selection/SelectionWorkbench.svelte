@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Snippet } from "svelte";
   import { SvelteSet } from "svelte/reactivity";
   import {
     ArrowRight,
@@ -54,6 +55,11 @@
     segmentCount?: number | null;
     onComplete?: () => void;
     onRegenerateStart?: () => void;
+    /** Visitor (read-only) mode: shortlist/Deep-Research affordances are replaced by
+     *  the per-row actionSlot (vote button on the shared view). */
+    interactive?: boolean;
+    totalVotes?: number;
+    actionSlot?: Snippet<[{ solution: SolutionPreview; index: number }]>;
   }
 
   let {
@@ -75,6 +81,9 @@
     segmentCount = null,
     onComplete,
     onRegenerateStart,
+    interactive = true,
+    totalVotes = 0,
+    actionSlot,
   }: Props = $props();
 
   // Analyst summary — split into paragraphs on blank lines (the LLM writes plain text,
@@ -384,10 +393,17 @@
   <header class="cmd">
     <div class="cmd-main">
       <h2 class="cmd-title">Ranked candidates</h2>
-      <p class="cmd-sub">
-        Choose up to 3 candidates for paid validation. Deep Research checks demand,
-        competition, market size, and go-to-market risk.
-      </p>
+      {#if interactive}
+        <p class="cmd-sub">
+          Choose up to 3 candidates for paid validation. Deep Research checks demand,
+          competition, market size, and go-to-market risk.
+        </p>
+      {:else}
+        <p class="cmd-sub">
+          Solution candidates from the discovery run, ranked by composite score.
+          Open a row for full detail and vote for the idea you like most.
+        </p>
+      {/if}
       <!-- Ranking-focused stats only. Evidence counts (discussions, pain points, sources)
            live in the discovery-dossier ledger below — kept distinct to avoid repeating numbers. -->
       <dl class="cmd-proof" aria-label="Candidate summary">
@@ -405,40 +421,50 @@
         </div>
       </dl>
     </div>
-    <aside class="cmd-status" class:is-empty={selectionCount === 0} aria-label="Selection status">
-      <div class="cmd-status-top">
-        <strong>{selectionCount}/{MAX_SELECTIONS}</strong>
-        <span>selected</span>
-      </div>
-      {#if selectionCount > 0}
-        <div
-          class="cmd-status-track"
-          aria-hidden="true"
-          style={`--selection-progress:${(selectionCount / MAX_SELECTIONS) * 100}%`}
-        >
-          <span></span>
+    {#if interactive}
+      <aside class="cmd-status" class:is-empty={selectionCount === 0} aria-label="Selection status">
+        <div class="cmd-status-top">
+          <strong>{selectionCount}/{MAX_SELECTIONS}</strong>
+          <span>selected</span>
         </div>
-        <p>Ready to validate {selectionCount} idea{selectionCount === 1 ? "" : "s"}.</p>
-        {#if !canAffordDeep}
-          <p class="cmd-status-warning">{deepCost - creditBalance} more credits needed.</p>
+        {#if selectionCount > 0}
+          <div
+            class="cmd-status-track"
+            aria-hidden="true"
+            style={`--selection-progress:${(selectionCount / MAX_SELECTIONS) * 100}%`}
+          >
+            <span></span>
+          </div>
+          <p>Ready to validate {selectionCount} idea{selectionCount === 1 ? "" : "s"}.</p>
+          {#if !canAffordDeep}
+            <p class="cmd-status-warning">{deepCost - creditBalance} more credits needed.</p>
+          {/if}
+        {:else}
+          <p class="cmd-status-empty">Pick at least one candidate.</p>
         {/if}
-      {:else}
-        <p class="cmd-status-empty">Pick at least one candidate.</p>
-      {/if}
-      <span class="cmd-status-cost">
-        <Coins class="w-3 h-3" aria-hidden="true" />{deepCost} credits / one-time
-      </span>
-      {#if selectionCount === 0}
-        <button
-          type="button"
-          class="cmd-status-cta"
-          onclick={handleValidate}
-          disabled={!canSubmit || selectLoading}
-        >
-          {statusCtaLabel}
-        </button>
-      {/if}
-    </aside>
+        <span class="cmd-status-cost">
+          <Coins class="w-3 h-3" aria-hidden="true" />{deepCost} credits / one-time
+        </span>
+        {#if selectionCount === 0}
+          <button
+            type="button"
+            class="cmd-status-cta"
+            onclick={handleValidate}
+            disabled={!canSubmit || selectLoading}
+          >
+            {statusCtaLabel}
+          </button>
+        {/if}
+      </aside>
+    {:else}
+      <aside class="cmd-status is-empty" aria-label="Vote status">
+        <div class="cmd-status-top">
+          <strong>{totalVotes}</strong>
+          <span>vote{totalVotes === 1 ? "" : "s"}</span>
+        </div>
+        <p class="cmd-status-empty">Your vote helps the owner prioritize.</p>
+      </aside>
+    {/if}
   </header>
 
   {#if regenerateError}
@@ -526,7 +552,7 @@
     <!-- Column header (desktop) -->
     <div class="row row-head">
       <span class="cell-rank">#</span>
-      <span class="cell-select-label">Pick</span>
+      <span class="cell-select-label">{interactive ? "Pick" : "Vote"}</span>
       <span class="cell-title-label">Opportunity</span>
       {#each SORT_COLS as col}
         <button
@@ -558,31 +584,37 @@
       >
         <span class="cell-rank">{i + 1}</span>
 
-        <label
-          class="cell-select select-control"
-          class:sel={isSel}
-          class:maxed
-          title={maxed ? "Deselect one to add this" : undefined}
-        >
-          <input
-            type="checkbox"
-            class="sr-only"
-            checked={isSel}
-            disabled={maxed || selectLoading}
-            onchange={() => toggle(s.solution_name)}
-            aria-label={isSel ? `Deselect ${m.title}` : `Select ${m.title}`}
-          />
-          {#if isSel}
-            <span class="select-marker"><span class="select-order">{order}</span></span>
-            <span class="select-copy">Picked</span>
-          {:else if maxed}
-            <span class="select-marker"><span class="select-dash" aria-hidden="true">-</span></span>
-            <span class="select-copy">Full</span>
-          {:else}
-            <span class="select-marker"><Plus class="select-plus w-3.5 h-3.5" aria-hidden="true" /></span>
-            <span class="select-copy">Shortlist</span>
-          {/if}
-        </label>
+        {#if interactive}
+          <label
+            class="cell-select select-control"
+            class:sel={isSel}
+            class:maxed
+            title={maxed ? "Deselect one to add this" : undefined}
+          >
+            <input
+              type="checkbox"
+              class="sr-only"
+              checked={isSel}
+              disabled={maxed || selectLoading}
+              onchange={() => toggle(s.solution_name)}
+              aria-label={isSel ? `Deselect ${m.title}` : `Select ${m.title}`}
+            />
+            {#if isSel}
+              <span class="select-marker"><span class="select-order">{order}</span></span>
+              <span class="select-copy">Picked</span>
+            {:else if maxed}
+              <span class="select-marker"><span class="select-dash" aria-hidden="true">-</span></span>
+              <span class="select-copy">Full</span>
+            {:else}
+              <span class="select-marker"><Plus class="select-plus w-3.5 h-3.5" aria-hidden="true" /></span>
+              <span class="select-copy">Shortlist</span>
+            {/if}
+          </label>
+        {:else}
+          <span class="cell-select cell-action">
+            {#if actionSlot}{@render actionSlot({ solution: s, index: i })}{/if}
+          </span>
+        {/if}
 
         <button
           type="button"
@@ -736,7 +768,7 @@
   {/if}
 
   <!-- ── Selection tray (fixed) ── -->
-  {#if showTray}
+  {#if interactive && showTray}
   <div class="tray" role="region" aria-label="Your selection">
     <div class="tray-inner">
       <div class="tray-picks">
@@ -790,39 +822,60 @@
 </div>
 
 <!-- Confirmation modal -->
-<SelectSolutionModal
-  bind:open={modalOpen}
-  solutionNames={Array.from(selectedNames)}
-  {solutions}
-  loading={selectLoading}
-  error={selectError}
-  creditCost={deepCost}
-  onConfirm={handleConfirmSelection}
-  onCancel={handleCancelModal}
-/>
+{#if interactive}
+  <SelectSolutionModal
+    bind:open={modalOpen}
+    solutionNames={Array.from(selectedNames)}
+    {solutions}
+    loading={selectLoading}
+    error={selectError}
+    creditCost={deepCost}
+    onConfirm={handleConfirmSelection}
+    onCancel={handleCancelModal}
+  />
+{/if}
 
 <!-- Detail modal -->
 {#if modalIndex !== null && sortedSolutions[modalIndex]}
-  <SolutionDetail
-    open={modalIndex !== null}
-    solution={sortedSolutions[modalIndex]}
-    solutions={sortedSolutions}
-    currentIndex={modalIndex}
-    isSelected={selectedNames.has(sortedSolutions[modalIndex].solution_name)}
-    selectionIndex={selectionIndexOf(sortedSolutions[modalIndex].solution_name)}
-    selectedCount={selectionCount}
-    maxSelections={MAX_SELECTIONS}
-    maxReached={selectedNames.size >= MAX_SELECTIONS}
-    disabled={selectLoading}
-    canStart={canSubmit}
-    canAffordStart={canAffordDeep}
-    startCost={deepCost}
-    onSelect={handleToggleAdapter}
-    onStartValidation={handleValidate}
-    onNavigate={handleNavigate}
-    onClose={handleCloseDetail}
-    voteCount={solutionVotes[sortedSolutions[modalIndex].solution_name] ?? 0}
-  />
+  {@const detailIndex = modalIndex}
+  {#if interactive}
+    <SolutionDetail
+      open={modalIndex !== null}
+      solution={sortedSolutions[modalIndex]}
+      solutions={sortedSolutions}
+      currentIndex={modalIndex}
+      isSelected={selectedNames.has(sortedSolutions[modalIndex].solution_name)}
+      selectionIndex={selectionIndexOf(sortedSolutions[modalIndex].solution_name)}
+      selectedCount={selectionCount}
+      maxSelections={MAX_SELECTIONS}
+      maxReached={selectedNames.size >= MAX_SELECTIONS}
+      disabled={selectLoading}
+      canStart={canSubmit}
+      canAffordStart={canAffordDeep}
+      startCost={deepCost}
+      onSelect={handleToggleAdapter}
+      onStartValidation={handleValidate}
+      onNavigate={handleNavigate}
+      onClose={handleCloseDetail}
+      voteCount={solutionVotes[sortedSolutions[modalIndex].solution_name] ?? 0}
+    />
+  {:else}
+    {#snippet detailAction()}
+      {#if actionSlot}
+        {@render actionSlot({ solution: sortedSolutions[detailIndex], index: detailIndex })}
+      {/if}
+    {/snippet}
+    <SolutionDetail
+      open={modalIndex !== null}
+      solution={sortedSolutions[modalIndex]}
+      solutions={sortedSolutions}
+      currentIndex={modalIndex}
+      onNavigate={handleNavigate}
+      onClose={handleCloseDetail}
+      actionSlot={detailAction}
+      voteCount={solutionVotes[sortedSolutions[modalIndex].solution_name] ?? 0}
+    />
+  {/if}
 {/if}
 
 <style>
@@ -1417,6 +1470,12 @@
   .cell-select-label {
     text-align: center;
   }
+  /* visitor-mode action cell (vote button rendered via actionSlot) */
+  .cell-action {
+    display: flex;
+    justify-content: center;
+    min-width: 0;
+  }
   .select-control {
     position: relative;
     justify-self: center;
@@ -1989,6 +2048,7 @@
     }
     .context-notes {
       display: grid;
+      grid-template-columns: minmax(0, 1fr);
       gap: 0.55rem;
     }
     .shape-line {
@@ -2008,6 +2068,12 @@
     .market-reality-body {
       position: static;
       width: 100%;
+    }
+    .market-reality-table {
+      min-width: 0;
+    }
+    .market-reality-table td:first-child {
+      white-space: normal;
     }
     .regen-group {
       flex-wrap: wrap;

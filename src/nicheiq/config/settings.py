@@ -68,14 +68,20 @@ class Settings(BaseSettings):
 
     # OpenAI Configuration
     openai_api_key: str = Field(..., description="OpenAI API key")
-    openai_model_name: str = Field(default="gpt-4.1-mini", description="OpenAI model to use (safe non-reasoning default; prod overrides via env)")
+    openai_model_name: str = Field(
+        default="openrouter/google/gemini-3.1-flash-lite",
+        description=(
+            "Workhorse model for ~23 agents + structured tiers. First-party (Google) via "
+            "OpenRouter = reliable tool calls, 1M ctx, cheap. Was gpt-4.1-mini."
+        )
+    )
     function_calling_llm: str = Field(
-        default="gpt-4o-mini",
-        description="Model to use for function/tool calling (cheaper model recommended)"
+        default="openrouter/google/gemini-2.5-flash-lite",
+        description="Model to use for function/tool calling (first-party reliable tool calls, matches the workhorse). Was gpt-4o-mini."
     )
     content_analysis_llm: str = Field(
-        default="gpt-4.1-mini",
-        description="Model for content analysis (gpt-4.1-mini: needs 1M context for large Reddit content; gpt-4o is only 128K)"
+        default="openrouter/deepseek/deepseek-v4-flash",
+        description="Model for content analysis (needs ~1M context for large Reddit content; cheap input). Was gpt-4.1-mini."
     )
     content_analysis_reasoning_effort: str = Field(
         default="none",
@@ -95,8 +101,11 @@ class Settings(BaseSettings):
         )
     )
     thread_validation_llm: str = Field(
-        default="gpt-4o-mini",
-        description="Model to use for thread relevance validation in Stage 5 (gpt-4o-mini or gpt-3.5-turbo for cost efficiency)"
+        default="openrouter/inception/mercury-2-20260304:nitro",
+        description=(
+            "Model to use for thread relevance validation in Stage 5. mercury-2 won the 6-model "
+            "benchmark (F1 0.93, ~9.6 threads/s, best speed/quality). Was gpt-4o-mini."
+        )
     )
     keyword_relevance_llm: str = Field(
         default="openrouter/google/gemini-3.1-flash-lite",
@@ -180,15 +189,21 @@ class Settings(BaseSettings):
         )
     )
     stance_validation_llm: str = Field(
-        default="gpt-4o-mini",
+        default="openrouter/inception/mercury-2-20260304:nitro",
         description=(
             "Model for pain-point quote stance verification (does a retrieved quote "
-            "genuinely express the pain). Cheap classifier; gpt-4o-mini recommended."
+            "genuinely express the pain). Cheap classifier; mercury-2 6/6 @ ~0.7s with "
+            "perfect stance quality. Was gpt-4o-mini."
         ),
     )
     brainstorm_llm: str = Field(
-        default="gpt-5.2",
-        description="Model to use for solution brainstorming/ideation (gpt-5.2 recommended for creative thinking)"
+        default="openrouter/openai/gpt-5.2",
+        description=(
+            "Model for solution brainstorming/ideation AND the Stage-7 probe/synthesis helpers "
+            "(Niche Anchors, Data Menu, Workflow Frame, Synthesis, Parity Pivot, Variant Merge, "
+            "Red Team Revision). Same gpt-5.2 as before, routed via OpenRouter so costs are "
+            "provider-reported (actual) and every tier shares one API path."
+        )
     )
     brainstorm_llms: str = Field(
         default="",
@@ -693,53 +708,53 @@ class Settings(BaseSettings):
     #   REFINE = final-idea refiner + single-concept (re-injected) refiner (structured
     #            enhancement; writes user-facing copy, so keeps the full model by default).
     ideation_judge_llm: str = Field(
-        default="gpt-5.4-mini",
+        default="openrouter/z-ai/glm-4.7-20251222:nitro",
         description=(
             "Model for convergent JUDGE steps (novelty critic + concept evaluator/filter). "
-            "A reasoning mini is enough — these are scoring/classification tasks, not creative "
-            "generation. Cheaper than brainstorm_llm; must be a reasoning model so "
-            "reasoning_effort is honored (gpt-5*/o-series)."
+            "Scoring/classification tasks, not creative generation. glm-4.7 emits clean complete "
+            "JSON on the forced-tool path (model_ab_pain_pipeline.py) and is nitro-fast. "
+            "Was gpt-5.4-mini."
         )
     )
     ideation_judge_reasoning_effort: str = Field(
-        default="low",
+        default="none",
         description=(
-            "Reasoning effort for the JUDGE tier (novelty critic + evaluator). 'low' default — "
-            "objective scoring against fixed criteria. Bump toward 'medium' if obviousness "
-            "discrimination degrades on the cheaper judge model."
+            "Reasoning effort for the JUDGE tier (novelty critic + evaluator). 'none' required "
+            "for glm-4.7: reasoning-ON dumps unbounded CoT and truncates the tool call; "
+            "forced-tool reasoning-off fills the schema in ~2s (judge_model_ab.py)."
         )
     )
     ideation_refine_llm: str = Field(
-        default="gpt-5.2",
+        default="openrouter/z-ai/glm-4.7-20251222:nitro",
         description=(
             "Model for the REFINE tier (final solution refiner + single-concept/re-injected "
-            "refiner). Defaults to the full brainstorm model because it writes the user-facing "
-            "idea copy (innovation_angle, why_it_works, value prop); drop to a reasoning mini "
-            "to cut cost once a run confirms the articulation quality holds."
+            "refiner). Writes the user-facing idea copy. glm-4.7: clean complete JSON, 100% "
+            "field coverage in the A/B, good copy quality. Was gpt-5.2."
         )
     )
     ideation_refine_reasoning_effort: str = Field(
-        default="medium",
+        default="none",
         description=(
-            "Reasoning effort for the REFINE tier. 'medium' default — structured enhancement, "
-            "not divergent ideation, so it doesn't need the creative tier's 'high'."
+            "Reasoning effort for the REFINE tier. 'none' keeps glm-4.7 output clean/complete "
+            "(reasoning-ON truncates the tool call). If copy quality is thin, try 'low'."
         )
     )
     ideation_mentor_llm: str = Field(
-        default="gpt-5.4-mini",
+        default="openrouter/deepseek/deepseek-v4-pro:nitro",
         description=(
             "Model for the creative MENTOR in the idea-improvement loop (Stage 7, post-calibration) "
             "— the reviewer that guides weak ideas toward sharper, buildable, on-pain revisions. "
-            "Must be a DIFFERENT family than the ideator (ideation_refine_llm) so it doesn't self-"
-            "judge leniently. gpt-5.4-mini won a 6-model bake-off (validated +0.21/+0.97 vs baseline "
-            "across two runs); re-tune via scripts/idea_improvement_ab.py --v4 --reviewer-model."
+            "Must be a DIFFERENT family than the ideator (ideation_refine_llm, glm) so it doesn't "
+            "self-judge leniently. deepseek-v4-pro beat gpt-5.4-mini in a blind Opus A/B across 3 "
+            "niches (12-7) at ~2.5x lower cost; re-tune via scripts/idea_improvement_ab.py --v4."
         )
     )
     ideation_mentor_reasoning_effort: str = Field(
-        default="medium",
+        default="none",
         description=(
-            "Reasoning effort for the mentor/reviewer tier. 'medium' default — it judges three soft "
-            "dimensions and proposes a creative direction, so it benefits from reasoning."
+            "Reasoning effort for the mentor/reviewer tier. MUST be 'none' for deepseek: reasoning "
+            "triggers the guided-decoding bug (JSON binds to the reasoning stream, content empty). "
+            "Blind A/B showed reasoning adds no quality (none≈low≈med) at 4-5x output cost."
         )
     )
 
@@ -894,8 +909,12 @@ class Settings(BaseSettings):
         description="Model to use for keyword relevance validation in Phase 6c (gpt-5-nano at minimal reasoning effort for cost efficiency)"
     )
     pain_point_validation_llm: str = Field(
-        default="gpt-4.1-mini",
-        description="Model for pain point analysis/validation in Stage 6 (use non-reasoning model to allow max_tokens)"
+        default="openrouter/deepseek/deepseek-v4-flash:nitro",
+        description=(
+            "Model for pain point analysis/validation in Stage 6. A/B winner "
+            "(model_ab_pain_pipeline.py): 12 pains 100% grounded + valid scoring, nitro-fast "
+            "on the crew path. Was gpt-4.1-mini (non-reasoning to allow max_tokens)."
+        )
     )
     # Deterministic grounding gate on Stage-3 quote enrichment: permanent —
     # enable_quote_grounding_gate removed 2026-07-06.
@@ -925,15 +944,22 @@ class Settings(BaseSettings):
         description="Severity is clamped DOWN to this when a pain has too few stance-verified quotes. Heuristic prior, NOT outcome-calibrated."
     )
     competitor_extraction_llm: str = Field(
-        default="gpt-4.1-mini",
-        description="Model for extracting product/brand/tool names from social discussion sentences"
+        default="openrouter/google/gemini-2.5-flash-lite",
+        description=(
+            "Model for extracting product/brand/tool names from social discussion sentences. "
+            "Full recall + fast (13/13 brands @ 1.3s); short list output so gemini doesn't "
+            "truncate. Was gpt-4.1-mini."
+        )
     )
     report_structured_llm: str = Field(
-        default="gpt-4.1-mini",
+        default="openrouter/x-ai/grok-4.3",
         description=(
             "Model for LIST-HEAVY report invoke_structured schemas (FeatureComparison, "
-            "First30DaysPlaybook, MarketingNarrative, IdealCustomerProfile). gemini-2.5-"
-            "flash-lite truncates ~25% on long list outputs; grok-4.3 is reliable + cheap. "
+            "First30DaysPlaybook, MarketingNarrative, IdealCustomerProfile) AND the Stage-7 "
+            "structured probes (Incumbent, Parity, Adjacent Market, Toolbelt, Segment "
+            "Payability, Niche Wallet, Overlap Note, Dissatisfaction Gate). gemini-2.5-"
+            "flash-lite truncates ~25% on long list outputs; grok-4.3 is reliable + cheap "
+            "(3/3 @ 3-6s, report_schema_model_test.py). Was gpt-4.1-mini. "
             "Single-object narratives stay on OPENAI_MODEL_NAME (gemini)."
         ),
     )

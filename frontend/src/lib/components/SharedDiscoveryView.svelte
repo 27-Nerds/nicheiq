@@ -1,8 +1,7 @@
 <script lang="ts">
   import { Loader2, CheckCircle, MessageCircle, BarChart3 } from "lucide-svelte";
 
-  import SolutionDetail from "$lib/components/SolutionDetail.svelte";
-  import SolutionGrid from "$lib/components/solutions/SolutionGrid.svelte";
+  import SelectionWorkbench from "$lib/components/selection/SelectionWorkbench.svelte";
   import VoteButton from "$lib/components/ui/VoteButton.svelte";
   import ExpandableSection from "$lib/components/ui/ExpandableSection.svelte";
   import SharedViewBanner from "$lib/components/share/SharedViewBanner.svelte";
@@ -12,11 +11,15 @@
   import MarketSnapshot from "$lib/components/preview/MarketSnapshot.svelte";
   import PainPointSummaryCard from "$lib/components/preview/PainPointSummaryCard.svelte";
   import CommunitySourcesSection from "$lib/components/preview/CommunitySourcesSection.svelte";
-  import AudienceSection from "$lib/components/sections/AudienceSection.svelte";
+  import AudienceSnapshot from "$lib/components/preview/AudienceSnapshot.svelte";
+  import NicheRealityCheck from "$lib/components/sections/NicheRealityCheck.svelte";
 
   import { submitDiscoveryVote } from "$lib/api";
   import type { DiscoveryShareData, VoteSummary } from "$lib/api";
-  import { LOCKED_SOURCE_POSTS } from "$lib/data/lockedSharedPlaceholders";
+  import {
+    LOCKED_INFLUENCERS,
+    LOCKED_SOURCE_POSTS,
+  } from "$lib/data/lockedSharedPlaceholders";
   import type { SolutionPreview } from "$lib/types/job";
   import type { DetailedPainPoint, AudienceMapping } from "$lib/types/report";
 
@@ -27,7 +30,7 @@
 
   let { data, shareToken }: Props = $props();
 
-  // ── Vote / viewer / modal state (preserved 1:1 from previous version) ──
+  // ── Vote / viewer state ──
 
   const initialVoteSummary = $derived(data.voteSummary);
   let voteSummaryOverride = $state<VoteSummary | null>(null);
@@ -37,11 +40,6 @@
   let voting = $state(false);
   let comment = $state("");
   let commentSubmitted = $state(false);
-  let modalIndex = $state<number | null>(null);
-
-  function openDetail(i: number) { modalIndex = i; }
-  function handleNavigate(i: number) { modalIndex = i; }
-  function handleCloseDetail() { modalIndex = null; }
 
   $effect(() => {
     if (typeof window !== "undefined") {
@@ -113,7 +111,7 @@
     }
   }
 
-  // ── Data-source derivations (swapped from data.discoveryFindings to previewReport + discoveryData) ──
+  // ── Data-source derivations ──
 
   const previewReport = $derived(data.previewReport);
   const discoveryData = $derived(data.discoveryData);
@@ -132,6 +130,9 @@
       .sort((a, b) => (b.severity_score ?? 0) - (a.severity_score ?? 0)),
   );
 
+  // Mirror of the owner's selection-phase cap: highest-signal clusters only.
+  const visiblePainPoints = $derived(topPainPoints.slice(0, 8));
+
   const audienceMapping = $derived(
     (previewReport?.audience_mapping ?? null) as AudienceMapping | null,
   );
@@ -142,289 +143,229 @@
     previewReport?.pain_point_analytics?.total_pain_points ?? detailedPainPoints.length,
   );
 
-  // Funnel stats mirror owner page
+  // Discussion count mirrors the owner page's fallback chain; filtering_stats is
+  // stripped from the public payload, so posts-analyzed is the primary source here.
   const postsAnalyzedCount = $derived(
     (previewReport?.research_metadata?.reddit_posts_analyzed ?? 0) +
       (previewReport?.research_metadata?.generic_posts_analyzed ?? 0),
   );
-
-  const scannedCount = $derived(discoveryData?.methodology?.urls_searched ?? 0);
-  const relevantCount = $derived(
-    discoveryData?.methodology?.urls_relevant ?? postsAnalyzedCount,
-  );
+  const relevantCount = $derived(discoveryData?.methodology?.urls_relevant ?? 0);
+  const analyzedCount = $derived(postsAnalyzedCount || relevantCount);
   const totalEngagement = $derived(discoveryData?.methodology?.total_engagement ?? 0);
 
-  const realFunnelStats = $derived({
-    scanned: scannedCount,
-    relevant: relevantCount,
-    analyzed: postsAnalyzedCount || relevantCount,
-    problems: painPointCount,
-  });
-
-  // Portfolio-funnel findings examined but not carried forward (demoted winners, rejected
-  // backfill candidates) — read-only mirror of the owner's SelectionWorkbench disclosure.
+  // Workbench mirrors (same fields the owner's SelectionWorkbench receives).
   const examinedRuledOut = $derived(previewReport?.examined_ruled_out ?? []);
-
-  // Web-verified incumbent landscape + niche wallet read — read-only mirror of the owner's
-  // "Market reality" disclosure.
   const marketReality = $derived(previewReport?.market_reality ?? null);
 
-  // Analyst summary — LLM-narrated honest assessment of the visible idea pool, read-only
-  // mirror of the owner's SelectionWorkbench "Analyst summary" card. Split into paragraphs
-  // on blank lines (the LLM writes plain text, no markdown).
-  const summaryParagraphs = $derived(
-    (previewReport?.idea_portfolio_summary ?? "")
-      .split(/\n\s*\n/)
-      .map((p) => p.trim())
-      .filter(Boolean),
-  );
+  // Software-fit verdict — mirror of the owner's Overview NicheRealityCheck.
+  const nicheVerdict = $derived(previewReport?.niche_difficulty_verdict ?? null);
 
-  // Phase-2 previews removed from shared view — replaced by locked
-  // Influencers + Source Posts sections rendered below.
+  // Data caveats — mirror of the owner's SelectionWorkbench "Data caveats" disclosure.
+  const coverageNotes = $derived(
+    (previewReport?.data_quality_summary?.quality_caveats ?? []).filter((n) => n?.trim()),
+  );
 </script>
 
 <SharedViewBanner variant="discovery" shareToken={shareToken} />
 
 <div class="shared-discovery-root">
-  <!-- Niche header (chrome: title + funnel stats, matches owner's PageHeader role) -->
+  <!-- Niche header (visitor stand-in for the owner's PageHeader) -->
   <header class="niche-header">
     <h1 class="niche-title">{data.niche}</h1>
-    {#if realFunnelStats.scanned > 0 || realFunnelStats.analyzed > 0}
-      <div class="niche-funnel">
-        {#if realFunnelStats.scanned > 0}
-          <span class="funnel-chip"><strong>{realFunnelStats.scanned.toLocaleString()}</strong> scanned</span>
-        {/if}
-        {#if realFunnelStats.relevant > 0}
-          <span class="funnel-chip"><strong>{realFunnelStats.relevant.toLocaleString()}</strong> relevant</span>
-        {/if}
-        {#if realFunnelStats.analyzed > 0}
-          <span class="funnel-chip"><strong>{realFunnelStats.analyzed.toLocaleString()}</strong> examined</span>
-        {/if}
-        {#if realFunnelStats.problems > 0}
-          <span class="funnel-chip"><strong>{realFunnelStats.problems}</strong> problems</span>
-        {/if}
-      </div>
-    {/if}
+    <p class="niche-sub">
+      Discovery found {data.solutions.length} ranked candidate{data.solutions.length === 1 ? "" : "s"}.
+      Vote for the idea you like most — it helps the owner prioritize.
+    </p>
   </header>
 
-  <!-- Overview (mirrors the owner's first content section) -->
-  {#if nicheDescription}
-    <ExpandableSection title="Overview" variant="success" defaultOpen={true} id="overview">
-      <PreviewOverview
-        nicheName={data.niche}
-        nicheDescription={nicheDescription}
-        discussionCount={realFunnelStats.analyzed}
-        painPointCount={painPointCount}
-        solutionCount={data.solutions.length}
-        {segmentCount}
+  <!-- Ranked candidates — the same workbench the owner sees, in visitor (vote) mode. -->
+  <SelectionWorkbench
+    jobId=""
+    solutions={data.solutions}
+    creditBalance={0}
+    interactive={false}
+    totalVotes={voteSummary.totalVotes}
+    {coverageNotes}
+    {examinedRuledOut}
+    overlapGroups={previewReport?.overlap_groups ?? []}
+    {marketReality}
+    ideaPortfolioSummary={previewReport?.idea_portfolio_summary ?? null}
+    {segmentCount}
+    solutionVotes={voteSummary.solutionVotes}
+  >
+    {#snippet actionSlot({ solution }: { solution: SolutionPreview; index: number })}
+      <VoteButton
+        count={voteSummary.solutionVotes[solution.solution_name] ?? 0}
+        total={voteSummary.totalVotes}
+        voted={viewerVotedSolution === solution.solution_name}
+        onVote={() => handleVote(solution.solution_name)}
+        {voting}
+        compact
       />
-    </ExpandableSection>
-  {/if}
+    {/snippet}
+  </SelectionWorkbench>
 
-  <!-- Analyst summary — read-only mirror of the owner's SelectionWorkbench card. -->
-  {#if summaryParagraphs.length}
-    <ExpandableSection title="Analyst summary" variant="default" defaultOpen={true} id="analyst-summary">
-      {#each summaryParagraphs as para}
-        <p class="analyst-summary-para">{para}</p>
-      {/each}
-    </ExpandableSection>
-  {/if}
-
-  <!-- Opportunities zone — warm wrapper around vote banner + Opportunities section -->
-  <div class="opportunities-zone">
-    <!-- Vote action banner (replaces the owner's "Select up to 3 solutions" banner) -->
-    <div class="action-banner">
-      <div class="action-banner-badge">Vote</div>
-      <p class="action-banner-text">
-        Which idea do you like most? Your vote helps the owner prioritize.
-        {#if voteSummary.totalVotes > 0}
-          <strong>{voteSummary.totalVotes} vote{voteSummary.totalVotes === 1 ? "" : "s"}</strong> so far.
-        {/if}
-      </p>
-    </div>
-
-    <!-- Opportunities grid (shared with owner via SolutionGrid) -->
-    <ExpandableSection
-      title="Opportunities"
-      count={data.solutions.length}
-      countSuffix="opportunities"
-      variant="default"
-      defaultOpen={true}
-      id="opportunities"
-    >
-      <SolutionGrid
-        solutions={data.solutions}
-        onOpen={openDetail}
-        voteCounts={voteSummary.solutionVotes}
-      >
-        {#snippet actionSlot({ solution }: { solution: SolutionPreview; index: number })}
-          <VoteButton
-            count={voteSummary.solutionVotes[solution.solution_name] ?? 0}
-            total={voteSummary.totalVotes}
-            voted={viewerVotedSolution === solution.solution_name}
-            onVote={() => handleVote(solution.solution_name)}
-            {voting}
-          />
-        {/snippet}
-      </SolutionGrid>
-    </ExpandableSection>
-  </div>
-
-  <!-- Market Snapshot -->
-  {#if discoveryData?.discussion_trend?.length}
-    <ExpandableSection
-      title="Market Snapshot"
-      icon={BarChart3}
-      defaultOpen={true}
-      id="market-snapshot"
-    >
-      <MarketSnapshot
-        postsAnalyzed={realFunnelStats.analyzed}
-        subredditCount={discoveryData?.subreddit_names?.length ?? 0}
-        totalEngagement={totalEngagement}
-        trend={discoveryData.discussion_trend}
-        growthPct={discoveryData.discussion_growth_pct ?? null}
-      />
-    </ExpandableSection>
-  {/if}
-
-  <!-- Pain Points -->
-  {#if topPainPoints.length > 0}
-    <ExpandableSection
-      title="Pain Points"
-      count={painPointCount}
-      countSuffix="clusters"
-      variant="success"
-      defaultOpen={true}
-      id="pain-points"
-    >
-      <p class="section-intro">What are people struggling with? Each pain point scored by frequency, severity, and commercial intent.</p>
-      {#each topPainPoints as pp, i (pp.title ?? i)}
-        <PainPointSummaryCard painPoint={pp} rank={i + 1} isTop={i === 0} />
-      {/each}
-    </ExpandableSection>
-  {/if}
-
-  <!-- Examined & ruled out — read-only mirror of the owner's disclosure. -->
-  {#if examinedRuledOut.length > 0}
-    <ExpandableSection
-      title="Examined & ruled out"
-      count={examinedRuledOut.length}
-      countSuffix="findings"
-      variant="default"
-      defaultOpen={false}
-      id="ruled-out"
-    >
-      <ul class="ruled-out-list">
-        {#each examinedRuledOut as finding}
-          <li class="ruled-out-row">
-            <div class="ruled-out-main">
-              <span class="ruled-out-pain">{finding.pain_title}</span>
-              <span class="ruled-out-band">{finding.market_fit_band === "very-low" ? "Very thin market" : "Thin market"}</span>
-            </div>
-            <p class="ruled-out-reason">{finding.reason}</p>
-            {#if finding.evidence?.trim()}
-              <p class="ruled-out-evidence">&ldquo;{finding.evidence}&rdquo;</p>
-            {/if}
-          </li>
-        {/each}
-      </ul>
-    </ExpandableSection>
-  {/if}
-
-  <!-- Market reality — read-only mirror of the owner's disclosure. -->
-  {#if marketReality?.incumbents?.length}
-    <ExpandableSection
-      title="Market reality"
-      count={marketReality.incumbents.length}
-      countSuffix="tools"
-      variant="default"
-      defaultOpen={false}
-      id="market-reality"
-    >
-      <div class="market-reality-body">
-        <table class="market-reality-table">
-          <thead>
-            <tr>
-              <th>Tool</th>
-              <th>Pricing</th>
-              <th>Focus</th>
-              <th>Weak at</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each marketReality.incumbents as inc}
-              <tr>
-                <td>{inc.name}</td>
-                <td>{inc.pricing ?? "--"}</td>
-                <td>{inc.focus ?? "--"}</td>
-                <td>{inc.gap ?? "--"}</td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-        {#if marketReality.wallet?.wallet_class || marketReality.wallet?.evidence}
-          <p class="market-reality-wallet">
-            <span class="market-reality-wallet-label">Niche spend</span>
-            {#if marketReality.wallet.wallet_class}<strong>{marketReality.wallet.wallet_class}</strong>{/if}
-            {#if marketReality.wallet.evidence}
-              {marketReality.wallet.wallet_class ? " — " : ""}{marketReality.wallet.evidence}
-            {/if}
-          </p>
-        {/if}
+  <!-- Discovery dossier — same structure as the owner's selection phase. -->
+  {#if previewReport || discoveryData}
+    <div class="discovery-sections discovery-dossier">
+      <div class="dossier-header">
+        <div>
+          <p class="dossier-eyebrow">Discovery dossier</p>
+          <h2 class="dossier-title">Evidence behind the shortlist</h2>
+          <p class="dossier-copy">Market context, demand signals, pain clusters, and source quality from the discovery run.</p>
+        </div>
+        <dl class="dossier-ledger" aria-label="Discovery evidence summary">
+          <div>
+            <dt>Discussions</dt>
+            <dd>{analyzedCount.toLocaleString()}</dd>
+          </div>
+          <div>
+            <dt>Pain points</dt>
+            <dd>{painPointCount}</dd>
+          </div>
+          <div>
+            <dt>Sources</dt>
+            <dd>{discoveryData?.subreddit_names?.length ?? 0}</dd>
+          </div>
+        </dl>
       </div>
-    </ExpandableSection>
-  {/if}
 
-  <!-- Audience — rendered at full width without ExpandableSection; the
-       AudienceSection component owns its own section chrome + hero strip.
-       Key Influencers subsection renders inside (lockedInfluencers={true}). -->
-  {#if audienceMapping}
-    <AudienceSection data={audienceMapping} lockedInfluencers={true} />
-  {/if}
-
-  <!-- Community & Sources (real data + locked Source Posts subsection inline) -->
-  {#if discoveryData || previewReport?.evidence_appendix}
-    <ExpandableSection
-      title="Community & Sources"
-      count={discoveryData?.subreddit_names?.length ?? 0}
-      countSuffix="communities"
-      variant="success"
-      defaultOpen={false}
-      id="community"
-    >
-      <CommunitySourcesSection
-        subredditNames={discoveryData?.subreddit_names}
-        communityHubs={audienceMapping?.community_hubs}
-        postsAnalyzed={postsAnalyzedCount || undefined}
-        sourcesSearched={discoveryData?.sources_searched}
-      />
-      {#if discoveryData?.methodology}
-        <p class="methodology-note">
-          Based on {discoveryData.methodology.urls_searched.toLocaleString()} URLs scanned ·
-          {discoveryData.methodology.urls_relevant} relevant ({discoveryData.methodology.filtering_rate}%) ·
-          {discoveryData.methodology.quality_tier} quality
-        </p>
+      <!-- Overview -->
+      {#if previewReport}
+        <ExpandableSection
+          title="Overview"
+          variant="default"
+          defaultOpen={false}
+          id="overview"
+        >
+          <PreviewOverview
+            nicheName={data.niche}
+            nicheDescription={nicheDescription}
+            discussionCount={analyzedCount}
+            painPointCount={painPointCount}
+            solutionCount={data.solutions.length}
+            {segmentCount}
+            showFacts={false}
+          />
+          {#if nicheVerdict}
+            <NicheRealityCheck verdict={nicheVerdict} context="discovery" />
+          {/if}
+        </ExpandableSection>
       {/if}
 
-      <!-- Source Posts: locked placeholder subsection (mirrors owner's DiscoveryEvidence position) -->
-      <div class="locked-source-posts">
-        <h4 class="locked-subsection-title">Source Posts</h4>
-        <div class="locked-header">
-          <span class="locked-pill">Unlocks with Deep Research</span>
-        </div>
-        <div class="locked-body preview-blur preview-locked" aria-hidden="true">
-          {#each LOCKED_SOURCE_POSTS as post, i (i)}
-            <div class="locked-post-row">
-              <span class="locked-post-title">{post.title}</span>
-              <span class="locked-post-sub">r/{post.subreddit}</span>
-              <span class="locked-post-score">▲ {post.score}</span>
-              <span class="locked-post-age">{post.age}</span>
-            </div>
+      <!-- Market Snapshot -->
+      {#if discoveryData?.discussion_trend?.length}
+        <ExpandableSection
+          title="Market Snapshot"
+          icon={BarChart3}
+          defaultOpen={false}
+          id="market-snapshot"
+        >
+          <MarketSnapshot
+            postsAnalyzed={analyzedCount}
+            subredditCount={discoveryData?.subreddit_names?.length ?? 0}
+            totalEngagement={totalEngagement}
+            trend={discoveryData.discussion_trend}
+            growthPct={discoveryData.discussion_growth_pct ?? null}
+          />
+        </ExpandableSection>
+      {/if}
+
+      <!-- Pain Points -->
+      {#if visiblePainPoints.length > 0}
+        <ExpandableSection
+          title="Pain Points"
+          count={painPointCount}
+          countSuffix="clusters"
+          variant="default"
+          defaultOpen={false}
+          id="pain-points"
+        >
+          <p class="section-intro">The highest-signal pain clusters from discovery, ranked by severity and commercial intent.</p>
+          {#each visiblePainPoints as pp, i (pp.title ?? i)}
+            <PainPointSummaryCard painPoint={pp} rank={i + 1} isTop={i === 0} />
           {/each}
-        </div>
-      </div>
-    </ExpandableSection>
+          {#if topPainPoints.length > visiblePainPoints.length}
+            <p class="section-footnote">
+              Showing the {visiblePainPoints.length} highest-signal clusters. {topPainPoints.length - visiblePainPoints.length} lower-priority clusters stay in the discovery record.
+            </p>
+          {/if}
+        </ExpandableSection>
+      {/if}
+
+      <!-- Audience (+ locked Key Influencers teaser) -->
+      {#if audienceMapping}
+        <ExpandableSection
+          title="Audience"
+          count={segmentCount}
+          countSuffix="segments"
+          variant="default"
+          defaultOpen={false}
+          id="audience"
+        >
+          <AudienceSnapshot data={audienceMapping} />
+          <div class="locked-subsection">
+            <h4 class="locked-subsection-title">Key Influencers</h4>
+            <div class="locked-header">
+              <span class="locked-pill">Unlocks with Deep Research</span>
+            </div>
+            <div class="locked-body preview-blur preview-locked" aria-hidden="true">
+              {#each LOCKED_INFLUENCERS as inf, i (i)}
+                <div class="locked-post-row">
+                  <span class="locked-post-title">{inf.name}</span>
+                  <span class="locked-post-sub">{inf.platform}</span>
+                  <span class="locked-post-score">{inf.follower_estimate}</span>
+                </div>
+              {/each}
+            </div>
+          </div>
+        </ExpandableSection>
+      {/if}
+
+      <!-- Community & Sources (real data + locked Source Posts subsection inline) -->
+      {#if discoveryData || previewReport?.evidence_appendix}
+        <ExpandableSection
+          title="Community & Sources"
+          count={discoveryData?.subreddit_names?.length ?? 0}
+          countSuffix="sources"
+          variant="default"
+          defaultOpen={false}
+          id="community"
+        >
+          <CommunitySourcesSection
+            subredditNames={discoveryData?.subreddit_names}
+            communityHubs={audienceMapping?.community_hubs}
+            postsAnalyzed={postsAnalyzedCount || undefined}
+            sourcesSearched={discoveryData?.sources_searched}
+          />
+          {#if discoveryData?.methodology}
+            <p class="methodology-note">
+              Based on {discoveryData.methodology.urls_searched.toLocaleString()} URLs scanned ·
+              {discoveryData.methodology.urls_relevant} relevant ({discoveryData.methodology.filtering_rate}%) ·
+              {discoveryData.methodology.quality_tier} quality
+            </p>
+          {/if}
+
+          <!-- Source Posts: locked placeholder subsection (mirrors owner's DiscoveryEvidence position) -->
+          <div class="locked-subsection">
+            <h4 class="locked-subsection-title">Source Posts</h4>
+            <div class="locked-header">
+              <span class="locked-pill">Unlocks with Deep Research</span>
+            </div>
+            <div class="locked-body preview-blur preview-locked" aria-hidden="true">
+              {#each LOCKED_SOURCE_POSTS as post, i (i)}
+                <div class="locked-post-row">
+                  <span class="locked-post-title">{post.title}</span>
+                  <span class="locked-post-sub">r/{post.subreddit}</span>
+                  <span class="locked-post-score">▲ {post.score}</span>
+                  <span class="locked-post-age">{post.age}</span>
+                </div>
+              {/each}
+            </div>
+          </div>
+        </ExpandableSection>
+      {/if}
+    </div>
   {/if}
 
   <!-- Visitor CTA (replaces owner's DeepResearchCTABlock) -->
@@ -468,33 +409,9 @@
   {/if}
 </div>
 
-<!-- Solution detail modal -->
-{#if modalIndex !== null && modalIndex < data.solutions.length}
-  {@const idx = modalIndex}
-  <SolutionDetail
-    open={true}
-    solution={data.solutions[idx]}
-    solutions={data.solutions}
-    currentIndex={idx}
-    onNavigate={handleNavigate}
-    onClose={handleCloseDetail}
-  >
-    {#snippet actionSlot()}
-      <VoteButton
-        count={voteSummary.solutionVotes[data.solutions[idx].solution_name] ?? 0}
-        total={voteSummary.totalVotes}
-        voted={viewerVotedSolution === data.solutions[idx].solution_name}
-        onVote={() => handleVote(data.solutions[idx].solution_name)}
-        {voting}
-        compact
-      />
-    {/snippet}
-  </SolutionDetail>
-{/if}
-
 <style>
   .shared-discovery-root {
-    max-width: 64rem;
+    width: min(76rem, 100%);
     margin: 0 auto;
     padding: 1.5rem 1rem;
     display: flex;
@@ -517,70 +434,13 @@
     margin: 0;
   }
 
-  .niche-funnel {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    margin-top: 0.5rem;
-  }
-
-  .funnel-chip {
-    font-family: var(--font-mono);
-    font-size: 0.6875rem;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: var(--color-text-muted);
-    padding: 0.25rem 0.625rem;
-    border: 1px solid var(--color-border);
-    border-radius: 9999px;
-    background: var(--color-bg-elevated);
-  }
-  .funnel-chip strong {
-    color: var(--color-text-primary);
-    font-weight: 700;
-  }
-
-  /* Warm wrapper around vote banner + Opportunities section (mirrors job page) */
-  .opportunities-zone {
-    background: rgba(234, 88, 12, 0.04);
-    border: 1px solid rgba(234, 88, 12, 0.10);
-    border-radius: var(--radius-lg, 0.75rem);
-    padding: var(--space-4, 1rem);
-    margin-bottom: var(--space-4, 1rem);
-  }
-
-  .action-banner {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.875rem 1rem;
-    margin-bottom: var(--space-3, 0.75rem);
-    border: 1px solid rgba(234, 88, 12, 0.18);
-    border-radius: var(--radius-lg, 0.75rem);
-    background: rgba(234, 88, 12, 0.10);
-  }
-
-  .action-banner-badge {
-    font-family: var(--font-mono);
-    font-size: 0.625rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    padding: 0.25rem 0.5rem;
-    border-radius: 9999px;
-    background: var(--color-accent);
-    color: white;
-    white-space: nowrap;
-  }
-
-  .action-banner-text {
+  .niche-sub {
     margin: 0;
+    max-width: 70ch;
     font-size: 0.875rem;
-    color: var(--color-text-secondary);
     line-height: 1.5;
-  }
-  .action-banner-text strong {
-    color: var(--color-text-primary);
+    color: var(--color-text-secondary);
+    text-wrap: pretty;
   }
 
   .section-intro {
@@ -589,16 +449,12 @@
     margin: 0 0 1rem;
   }
 
-  .analyst-summary-para {
-    max-width: 76ch;
-    font-size: 0.8125rem;
-    line-height: 1.55;
-    color: var(--color-text-secondary);
-    margin: 0 0 0.75rem;
+  .section-footnote {
+    margin: 0.85rem 0 0;
+    font-size: 0.75rem;
+    line-height: 1.42;
+    color: var(--color-text-muted);
     text-wrap: pretty;
-  }
-  .analyst-summary-para:last-child {
-    margin-bottom: 0;
   }
 
   .methodology-note {
@@ -609,126 +465,9 @@
     letter-spacing: 0.02em;
   }
 
-  /* ── Examined & ruled out (read-only mirror of the owner's disclosure) ── */
-  .ruled-out-list {
-    display: grid;
-    gap: 0.62rem;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-  .ruled-out-row {
-    display: grid;
-    gap: 0.2rem;
-    padding: 0.62rem 0.7rem;
-    background: var(--color-bg-surface);
-    border: 1px solid var(--color-border);
-    border-radius: 0.5rem;
-  }
-  .ruled-out-main {
-    display: flex;
-    align-items: baseline;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-  }
-  .ruled-out-pain {
-    font-family: var(--font-body);
-    font-size: 0.8125rem;
-    font-weight: 700;
-    color: var(--color-text-primary);
-  }
-  .ruled-out-band {
-    display: inline-flex;
-    align-items: center;
-    padding: 0.06rem 0.36rem;
-    border-radius: 0.375rem;
-    border: 1px solid var(--color-border);
-    background: var(--color-bg-elevated);
-    color: var(--color-text-muted);
-    font-family: var(--font-body);
-    font-size: 0.625rem;
-    font-weight: 700;
-    white-space: nowrap;
-  }
-  .ruled-out-reason {
-    margin: 0;
-    max-width: 78ch;
-    font-size: 0.75rem;
-    line-height: 1.42;
-    color: var(--color-text-secondary);
-    text-wrap: pretty;
-  }
-  .ruled-out-evidence {
-    margin: 0.1rem 0 0;
-    max-width: 74ch;
-    padding-left: 0.6rem;
-    border-left: 1px solid var(--color-border-emphasis);
-    color: var(--color-text-muted);
-    font-size: 0.75rem;
-    font-style: italic;
-    line-height: 1.4;
-  }
-
-  /* ── Market reality (read-only mirror of the owner's disclosure) ── */
-  .market-reality-body {
-    overflow-x: auto;
-  }
-  .market-reality-table {
-    width: 100%;
-    min-width: 28rem;
-    border-collapse: collapse;
-  }
-  .market-reality-table th {
-    padding: 0.28rem 0.5rem;
-    border-bottom: 1px solid var(--color-border-emphasis);
-    font-family: var(--font-mono);
-    font-size: 0.5625rem;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--color-text-muted);
-    text-align: left;
-  }
-  .market-reality-table td {
-    padding: 0.4rem 0.5rem;
-    border-bottom: 1px solid var(--color-border);
-    font-size: 0.75rem;
-    line-height: 1.4;
-    color: var(--color-text-secondary);
-    vertical-align: top;
-  }
-  .market-reality-table tr:last-child td {
-    border-bottom: 0;
-  }
-  .market-reality-table td:first-child {
-    font-weight: 700;
-    color: var(--color-text-primary);
-    white-space: nowrap;
-  }
-  .market-reality-wallet {
-    margin: 0.6rem 0 0;
-    padding-top: 0.5rem;
-    border-top: 1px solid var(--color-border);
-    font-size: 0.75rem;
-    line-height: 1.42;
-    color: var(--color-text-muted);
-  }
-  .market-reality-wallet-label {
-    margin-right: 0.35rem;
-    font-family: var(--font-mono);
-    font-size: 0.625rem;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--color-text-muted);
-  }
-  .market-reality-wallet strong {
-    color: var(--color-text-secondary);
-  }
-
-  /* ── Source Posts locked teaser (nested inside Community & Sources) ──
+  /* ── Locked teaser subsections (Key Influencers, Source Posts) ──
    * .locked-header + .locked-pill live in src/lib/styles/preview-capped.css (global). */
-  .locked-source-posts {
+  .locked-subsection {
     margin-top: 1.25rem;
     padding-top: 1rem;
     border-top: 1px solid var(--color-border);

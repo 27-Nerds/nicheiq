@@ -219,6 +219,7 @@ def assess_audience_coverage(
     invoke=_default_invoke,
     model_name: str | None = None,
     reasoning_effort: str = "medium",
+    usage_sink: list | None = None,
 ) -> AudienceCoverageVerdict:
     """Return a grounded verdict on whether the extracted pains under-serve audiences the corpus
     contains. Fail-soft: any error → no-rebalance verdict (never blocks extraction).
@@ -227,6 +228,12 @@ def assess_audience_coverage(
     richer, structured alternative: {"composition": corpus_composition(...) output,
     "pain_sources": {pain_title: [source_label, ...]}}. When both are omitted (or empty), this is a
     no-op short circuit -- same as the legacy `corpus_sample`-only contract.
+
+    `usage_sink`, when provided, collects each LLM invoke's usage (including the retry from the
+    directive guard below) via `usage_sink.append(usage)` -- same convention as
+    idea_improvement_loop_v4's tournament_refine_cell_v4. The verdict's bare-return contract is
+    unchanged (shared by ~10 tests + scripts/audience_coverage_critic_ab.py); callers that want cost
+    tracking pass a list and record its entries themselves.
 
     Deterministic empty-directive guard (live-caught via scripts/audience_coverage_critic_ab.py: 4/4
     deepseek-v4-flash calls returned rebalance_needed=True with an EMPTY rebalance_directive while
@@ -244,7 +251,9 @@ def assess_audience_coverage(
     try:
         prompt = _render_prompt(pain_titles, target_audience, market_segments, corpus_sample,
                                  corpus_evidence if has_evidence else None)
-        verdict, _ = invoke(prompt, model_name, reasoning_effort)
+        verdict, usage = invoke(prompt, model_name, reasoning_effort)
+        if usage_sink is not None and usage is not None:
+            usage_sink.append(usage)
         if verdict.rebalance_needed and not verdict.rebalance_directive.strip():
             logger.warning(
                 "[AudienceCoverage] rebalance_needed=True but rebalance_directive is empty "
@@ -257,7 +266,9 @@ def assess_audience_coverage(
                 "under_covered_audiences). Naming the groups only in rationale does not count; that "
                 "field is never read by the pipeline."
             )
-            verdict, _ = invoke(retry_prompt, model_name, reasoning_effort)
+            verdict, usage = invoke(retry_prompt, model_name, reasoning_effort)
+            if usage_sink is not None and usage is not None:
+                usage_sink.append(usage)
             if verdict.rebalance_needed and not verdict.rebalance_directive.strip():
                 logger.warning(
                     "[AudienceCoverage] retry still returned rebalance_needed=True with an empty "

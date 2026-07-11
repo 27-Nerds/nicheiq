@@ -933,7 +933,7 @@ workersRouter.post('/regeneration-complete', async (req: Request, res: Response)
         status: { in: [JobStatus.REGENERATING, JobStatus.QUEUED] },
         ideasRegeneratedAt: { not: null },  // Guard: only regen-queued, not initial queued
       },
-      select: { solutionIdeas: true, userId: true, niche: true },
+      select: { solutionIdeas: true, userId: true, niche: true, costUsd: true },
     });
 
     if (!job) {
@@ -943,6 +943,17 @@ workersRouter.post('/regeneration-complete', async (req: Request, res: Response)
 
     const existingSolutions = (job.solutionIdeas as any[]) || [];
     const mergedSolutions = [...existingSolutions, ...data.solutions];
+
+    // Regeneration LLM cost (for the admin pricing view). Unlike report-ready (which OVERWRITES
+    // costUsd with the run's cumulative total), regeneration ADDS spend to an already-settled
+    // job — so costUsd must ACCUMULATE. costSummary is replaced with the latest batch's breakdown
+    // rather than merged (cheap; a full stage_breakdown merge isn't worth the complexity here).
+    const cost = data.cost_summary;
+    const batchCost = typeof cost?.total_cost === 'number' ? cost.total_cost : null;
+    const costData: Prisma.JobUpdateManyMutationInput =
+      cost && batchCost && batchCost > 0
+        ? { costUsd: (job.costUsd ?? 0) + batchCost, costSummary: cost as Prisma.InputJsonValue }
+        : {};
 
     // Atomic update: REGENERATING/QUEUED → AWAITING_SELECTION (skip validation)
     const result = await prisma.job.updateMany({
@@ -954,6 +965,7 @@ workersRouter.post('/regeneration-complete', async (req: Request, res: Response)
       data: {
         status: JobStatus.AWAITING_SELECTION,
         solutionIdeas: mergedSolutions as any,
+        ...costData,
       },
     });
 

@@ -56,7 +56,9 @@ def is_reasoning_model(model: str) -> bool:
 
     See: https://community.openai.com/t/temperature-in-gpt-5-models/1337133
     """
-    model_lower = model.lower()
+    # Strip vendor/provider prefixes so OpenRouter ids match too
+    # (e.g. "openai/gpt-5.2" from an "openrouter/openai/gpt-5.2" tier).
+    model_lower = model.lower().rsplit("/", 1)[-1]
     # GPT-5 series (gpt-5, gpt-5-mini, gpt-5.1, gpt-5.2, etc.)
     if model_lower.startswith("gpt-5"):
         return True

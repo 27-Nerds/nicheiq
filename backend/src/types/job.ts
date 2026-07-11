@@ -112,6 +112,10 @@ export const RegenerationCompleteSchema = z.object({
   worker_id: z.string().min(1),
   job_id: z.string().uuid(),
   solutions: z.array(z.record(z.any())),
+  // Per-batch LLM cost breakdown (CostTracker.get_summary()) for this regeneration.
+  // Accumulated onto the job's existing costUsd (regeneration adds spend to an
+  // already-completed job, unlike report-ready which sets the initial total).
+  cost_summary: z.record(z.any()).optional(),
 });
 
 export type RegenerationCompleteInput = z.infer<typeof RegenerationCompleteSchema>;

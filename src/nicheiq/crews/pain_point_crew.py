@@ -371,6 +371,28 @@ class PainPointCrew:
             return persona_from_niche(self.niche_description)[0]
         return self.niche_description
 
+    def _run_audience_coverage_critic(
+        self, pain_titles: list[str], audience: str, market_segments: list[str], corpus_evidence: dict
+    ):
+        """Run the audience-coverage critic and record its LLM usage against self.cost_tracker.
+
+        Thin wrapper around assess_audience_coverage — isolated so both call sites (the initial
+        pass and the post-retry re-check) share one recording path instead of duplicating the
+        usage_sink + tracker.record_llm_usage boilerplate.
+        """
+        from ..utils.audience_coverage import assess_audience_coverage
+
+        usage_sink: list = []
+        verdict = assess_audience_coverage(
+            pain_titles, audience, market_segments, corpus_evidence=corpus_evidence,
+            usage_sink=usage_sink,
+        )
+        tracker = getattr(self, "cost_tracker", None)
+        if tracker:
+            for u in usage_sink:
+                tracker.record_llm_usage("Stage 6 - Audience Coverage Critic", u.to_dict())
+        return verdict
+
     def __init__(self, reddit_posts: list[RedditPost] = None, twitter_threads: list[TwitterThread] = None, generic_posts: list[SocialPost] = None, niche_description: str = "", market_segments: list[str] = None, industry_boundaries: str = "", job_id: str | None = None, niche_anchor_terms: list[str] | None = None, target_audience: str | None = None, cost_tracker=None):
         """
         Initialize PainPointCrew with social content as knowledge sources.
@@ -1417,8 +1439,9 @@ class PainPointCrew:
                 model_name=settings.stance_validation_llm,
                 reasoning_effort="minimal",
             )
-            if self.cost_tracker and usage is not None:
-                self.cost_tracker.record_llm_usage("Stage 6 - Stance Validation", usage.to_dict())
+            tracker = getattr(self, "cost_tracker", None)
+            if tracker and usage is not None:
+                tracker.record_llm_usage("Stage 6 - Stance Validation", usage.to_dict())
         except Exception as e:
             # summarized into degradation_events at end of analyze()
             self._stance_gate_failures = getattr(self, "_stance_gate_failures", 0) + 1
@@ -2364,22 +2387,17 @@ class PainPointCrew:
             # source attribution) instead of a flat unweighted title slice.
             # Workstream B: on plain-niche runs (no stated target_audience), feed the critic a
             # persona clause instead of the whole niche string, so it has a resolvable "who".
-            from ..utils.audience_coverage import assess_audience_coverage, corpus_composition
+            from ..utils.audience_coverage import corpus_composition
             corpus_posts = list(self.reddit_posts or []) + list(self.generic_posts or [])
             composition = corpus_composition(corpus_posts)
             pain_sources = self._attribute_pain_sources(
                 extraction_output.extracted_pain_points, self._post_body_map, self._post_source_map)
             corpus_evidence = {"composition": composition, "pain_sources": pain_sources}
             audience_for_critic = self._audience_for_critic()
-            # TODO(cost-tracking): assess_audience_coverage() discards its LLM call's usage
-            # internally (`verdict, _ = invoke(...)` in audience_coverage.py) and returns only
-            # the verdict, so there's no usage to record here without changing its return
-            # signature (shared by scripts/audience_coverage_critic_ab.py + ~10 unit tests that
-            # assume a bare-verdict return). Left unrecorded rather than reworking that contract.
-            aud_verdict = assess_audience_coverage(
+            aud_verdict = self._run_audience_coverage_critic(
                 [pp.title for pp in extraction_output.extracted_pain_points],
                 audience_for_critic,
-                self.market_segments or [], corpus_evidence=corpus_evidence)
+                self.market_segments or [], corpus_evidence)
             if aud_verdict.rebalance_needed:
                 logger.warning(
                     f"Audience-coverage gap: extraction under-serves {aud_verdict.under_covered_audiences} "
@@ -2402,17 +2420,20 @@ class PainPointCrew:
                         retry_extraction, categorization_output
                     )
                     # Re-run the audience critic on the retry to confirm the rebalance helped.
-                    retry_aud = assess_audience_coverage(
-                        [pp.title for pp in retry_extraction.extracted_pain_points],
-                        audience_for_critic,
-                        self.market_segments or [],
-                        corpus_evidence={
-                            "composition": composition,
-                            "pain_sources": self._attribute_pain_sources(
-                                retry_extraction.extracted_pain_points,
-                                self._post_body_map, self._post_source_map),
-                        },
-                    ) if aud_verdict.rebalance_needed else aud_verdict
+                    if aud_verdict.rebalance_needed:
+                        retry_aud = self._run_audience_coverage_critic(
+                            [pp.title for pp in retry_extraction.extracted_pain_points],
+                            audience_for_critic,
+                            self.market_segments or [],
+                            {
+                                "composition": composition,
+                                "pain_sources": self._attribute_pain_sources(
+                                    retry_extraction.extracted_pain_points,
+                                    self._post_body_map, self._post_source_map),
+                            },
+                        )
+                    else:
+                        retry_aud = aud_verdict
                     # Safe-by-construction adoption: NEVER lose theme coverage; adopt only when the
                     # retry improves theme coverage OR shrinks the audience gap (original wins ties).
                     theme_ok = len(retry_uncovered) <= len(uncovered)
