@@ -42,11 +42,13 @@ vi.mock('../../services/db.js', () => ({
 const mockGetJob = vi.fn();
 const mockGetJobAsset = vi.fn();
 const mockUpdateJobStatus = vi.fn();
+const mockCancelJob = vi.fn();
 
 vi.mock('../../services/jobService.js', () => ({
   getJob: (...args: any[]) => mockGetJob(...args),
   updateJobStatus: (...args: any[]) => mockUpdateJobStatus(...args),
   getJobAsset: (...args: any[]) => mockGetJobAsset(...args),
+  cancelJob: (...args: any[]) => mockCancelJob(...args),
 }));
 
 const mockCreateJobAndChargeDiscovery = vi.fn();
@@ -190,6 +192,7 @@ beforeEach(async () => {
   mockStatSync.mockReturnValue({ size: 12 });
   mockGetQueueLength.mockResolvedValue(0);
   mockGetQueueStats.mockResolvedValue({ position: 1, aheadCount: 0, totalQueued: 1 });
+  mockCancelJob.mockResolvedValue({ cancelled: true, creditRefunded: 0 });
 });
 
 // ============================================
@@ -383,7 +386,8 @@ describe('Security Audit: Jobs API', () => {
         undefined,
         'interactive', // jobMode
         undefined, // entryMode
-        undefined // ideaFocus (persisted on the Job row since the resume-completeness fix)
+        undefined, // ideaFocus (persisted on the Job row since the resume-completeness fix)
+        false // chatMode (Phase B: entitlement-coerced server-side, false when not requested)
       );
     });
 
@@ -868,6 +872,7 @@ describe('Security Audit: Jobs API', () => {
         userId: targetUserId,
         status: JobStatus.COMPLETED,
       });
+      mockCancelJob.mockResolvedValue({ cancelled: false, reason: 'not_cancellable', status: JobStatus.COMPLETED });
 
       const res = await request(app)
         .post(`/api/jobs/${targetJobId}/cancel`)
@@ -891,6 +896,7 @@ describe('Security Audit: Jobs API', () => {
         userId: targetUserId,
         status: JobStatus.COMPLETED,
       });
+      mockCancelJob.mockResolvedValue({ cancelled: false, reason: 'not_cancellable', status: JobStatus.COMPLETED });
 
       const res = await request(app)
         .delete(`/api/jobs/${targetJobId}`)
@@ -906,6 +912,7 @@ describe('Security Audit: Jobs API', () => {
         userId: targetUserId,
         status: JobStatus.CANCELLED,
       });
+      mockCancelJob.mockResolvedValue({ cancelled: false, reason: 'not_cancellable', status: JobStatus.CANCELLED });
 
       const res = await request(app)
         .delete(`/api/jobs/${targetJobId}`)
@@ -921,6 +928,7 @@ describe('Security Audit: Jobs API', () => {
         userId: targetUserId,
         status: JobStatus.COMPLETED,
       });
+      mockCancelJob.mockResolvedValue({ cancelled: false, reason: 'not_cancellable', status: JobStatus.COMPLETED });
 
       const res = await request(app)
         .post(`/api/jobs/${targetJobId}/cancel`)
@@ -936,6 +944,7 @@ describe('Security Audit: Jobs API', () => {
         userId: targetUserId,
         status: JobStatus.FAILED,
       });
+      mockCancelJob.mockResolvedValue({ cancelled: false, reason: 'not_cancellable', status: JobStatus.FAILED });
 
       const res = await request(app)
         .post(`/api/jobs/${targetJobId}/cancel`)

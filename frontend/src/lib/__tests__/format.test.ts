@@ -103,6 +103,21 @@ describe('renderMarkdown sanitization', () => {
 		// Safe text + paragraph wrapping survives
 		expect(out).toContain('Safe text');
 	});
+
+	it('keeps relative links in-tab (no target=_blank) but forces target=_blank on external links', () => {
+		const out = renderMarkdown(
+			'[Try this niche](/new?niche=pet%20sitters) or [read more](https://example.com/x)',
+			{ allowLinks: true }
+		);
+		expect(out).toContain('href="/new?niche=pet%20sitters"');
+		expect(out).toContain('href="https://example.com/x"');
+		// Split into the two anchors to check each one's target independently.
+		const relativeAnchor = out.match(/<a[^>]*href="\/new[^>]*>/)?.[0] ?? '';
+		const externalAnchor = out.match(/<a[^>]*href="https:\/\/example\.com[^>]*>/)?.[0] ?? '';
+		expect(relativeAnchor).not.toContain('target=');
+		expect(externalAnchor).toContain('target="_blank"');
+		expect(externalAnchor).toContain('rel="noopener noreferrer nofollow"');
+	});
 });
 
 describe('renderTechnicalContent sanitization', () => {

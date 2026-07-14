@@ -127,6 +127,22 @@
       </div>
     {/if}
 
+    <!-- User adjustments honesty block (guided research gate patches) -->
+    {#if report.user_adjusted && report.user_adjustments?.length}
+      <div class="mb-4 p-3 rounded-lg border border-border bg-bg-base flex items-start gap-3">
+        <Info class="w-4 h-4 text-text-muted shrink-0 mt-0.5" />
+        <div class="text-sm text-text-secondary">
+          <span class="font-medium text-text-primary">User adjustments.</span>
+          You modified this run at a research checkpoint before it continued.
+          <ul class="mt-1 list-disc pl-4 space-y-0.5">
+            {#each report.user_adjustments as note}
+              <li>{note}</li>
+            {/each}
+          </ul>
+        </div>
+      </div>
+    {/if}
+
     <!-- Unified Hero Section (merged header + executive summary) -->
     {#if report.executive_dashboard}
       <UnifiedHero

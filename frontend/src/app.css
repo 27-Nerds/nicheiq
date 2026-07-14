@@ -21,6 +21,7 @@
 @import "./lib/styles/components.css";
 @import "./lib/styles/preview-capped.css";
 @import "./lib/styles/discovery-dossier.css";
+@import "./lib/styles/ledger.css";
 
 /* ========================================
    Tailwind Theme Extensions

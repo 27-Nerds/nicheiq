@@ -81,20 +81,34 @@ class CellGrounding:
     wallet_norm: str = ""                # E1 2026-07-09: niche wallet steer line ('' = probe found nothing)
     # Multi-Frame Idea Generation Portfolio (2026-07-10): non-pain cell identity. '' (default) or
     # 'pain' both render the ORIGINAL block below, byte-identical — this is additive-only.
-    frame_type: str = ""                 # '' / 'pain' | 'gap' | 'data_asset' | 'workflow'
+    frame_type: str = ""                 # '' / 'pain' | 'gap' | 'data_asset' | 'workflow' | 'user_seed'
     focus_block: str = ""                # the frame's rendered FrameSpec.brief_formatter(focus) text
+    # User-seed pipeline (eager-meandering-feather.md Phase 4): True only for a 'user_seed' cell
+    # whose free text matched NO validated pain — the reviewer must judge it as an explicit
+    # unanchored hypothesis (see `_frame_directive`) rather than a pain-anchored frame idea. False
+    # (default) for every other frame, including an ANCHORED user_seed — those get the SAME
+    # two-clause anchor treatment as gap/data_asset/workflow (full parity).
+    unanchored: bool = False
+    # Exact product brief for a user_seed. The anchor may shape evaluation, but revisions
+    # must preserve this identity. Empty for every non-seed frame.
+    user_seed_text: str = ""
 
     def as_block(self) -> str:
         flags = "\n".join(f"  - {f}" for f in self.deterministic_flags) or "  (none)"
         wallet = f"\n{self.wallet_norm}" if self.wallet_norm else ""
         if self.frame_type and self.frame_type != "pain":
+            anchor_header = (
+                "NO VALIDATED PAIN MATCHED — evaluate as an UNANCHORED HYPOTHESIS on its own merits:"
+                if self.unanchored else
+                "VALIDATED ANCHOR PAINS (the idea must serve at least one of these):"
+            )
             return (
                 f"NICHE: {self.niche}\n"
                 f"TARGET AUDIENCE SEGMENT: {self.audience_segment}\n"
                 f"SEGMENT PROFILE: {self.segment_profile or 'n/a'}\n"
                 f"PRODUCT FRAME: {self.frame_type}\n"
                 f"THE FOCUS:\n{self.focus_block or '  n/a'}\n"
-                f"VALIDATED ANCHOR PAINS (the idea must serve at least one of these):\n"
+                f"{anchor_header}\n"
                 f"{self.pain_evidence or '  n/a'}\n"
                 f"COMPETITORS ALREADY IN THIS SPACE:\n{self.competitor_mentions or '  (none surfaced)'}\n"
                 f"DETERMINISTIC SCORE FLAGS (hard signal — treat as ground truth):\n{flags}"

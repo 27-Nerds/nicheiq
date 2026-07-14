@@ -32,7 +32,9 @@ export async function enqueueJob(
   resume: boolean = false,
   jobMode?: string,
   entryMode?: string,
-  ideaFocus?: string
+  ideaFocus?: string,
+  chatMode?: boolean,
+  dispatchId?: string
 ): Promise<void> {
   const jobData = JSON.stringify({
     job_id: jobId,
@@ -43,6 +45,11 @@ export async function enqueueJob(
     job_mode: jobMode || null,
     entry_mode: entryMode || null,
     idea_focus: ideaFocus || 'auto',
+    chat_mode: chatMode ?? false,
+    // The attempt this message represents. The worker echoes it on every callback, and the
+    // backend CASes on it — so a duplicate delivery of THIS message, or a message from a run
+    // that has since been superseded, matches nothing and mutates nothing.
+    dispatch_id: dispatchId ?? null,
     created_at: new Date().toISOString(),
   });
 
@@ -52,15 +59,46 @@ export async function enqueueJob(
 }
 
 /**
+ * Enqueue a guided-mode (chatMode) gate continuation — resume from a G1/G2 stage gate,
+ * optionally apply a patch, then either run to the next stop (`mode: 'continue'`) or
+ * apply-and-re-notify the SAME gate (`mode: 'apply_stay'`). See worker/tasks.py
+ * `continue_from_gate` and routes/jobs.ts `POST /:jobId/gate-action`.
+ */
+export async function enqueueContinueFromGateJob(
+  jobId: string,
+  checkpointPath: string,
+  gateStage: number,
+  mode: 'continue' | 'apply_stay',
+  patch?: Record<string, unknown>,
+  dispatchId?: string
+): Promise<void> {
+  const jobData = JSON.stringify({
+    job_id: jobId,
+    checkpoint_path: checkpointPath,
+    gate_stage: gateStage,
+    mode,
+    ...(patch ? { patch } : {}),
+    task_type: 'continue_from_gate',
+    dispatch_id: dispatchId ?? null,
+    created_at: new Date().toISOString(),
+  });
+
+  await redis.lpush(QUEUE_NAME, jobData);
+  console.log(`Enqueued continue_from_gate job ${jobId} (gate_stage=${gateStage}, mode=${mode}) to ${QUEUE_NAME}`);
+}
+
+/**
  * Enqueue a landing-page-only generation task
  */
 export async function enqueueLandingPageJob(
   jobId: string,
   reportPath: string,
-  pageMode: string = 'coming_soon'
+  pageMode: string = 'coming_soon',
+  dispatchId?: string
 ): Promise<void> {
   const jobData = JSON.stringify({
     job_id: jobId,
+    dispatch_id: dispatchId ?? null,
     report_path: reportPath,
     page_mode: pageMode,
     task_type: 'landing_page',
@@ -79,6 +117,7 @@ export async function enqueuePhase2Job(
   checkpointPath: string,
   selectedSolutions: string[],
   selectionRationale?: string,
+  dispatchId?: string,
 ): Promise<void> {
   const jobData = JSON.stringify({
     job_id: jobId,
@@ -87,6 +126,7 @@ export async function enqueuePhase2Job(
     selected_solution: selectedSolutions[0],  // backward compat for in-flight workers
     selection_rationale: selectionRationale || '',
     task_type: 'research_phase2',
+    dispatch_id: dispatchId ?? null,
     created_at: new Date().toISOString(),
   });
 
@@ -102,7 +142,8 @@ export async function enqueueRegenerateJob(
   checkpointPath: string,
   existingSolutionNames: string[],
   niche: string,
-  ideaFocus?: string
+  ideaFocus?: string,
+  dispatchId?: string
 ): Promise<void> {
   const jobData = JSON.stringify({
     job_id: jobId,
@@ -112,11 +153,41 @@ export async function enqueueRegenerateJob(
     task_type: 'regenerate_ideas',
     // Batch-scoped GTM-focus override (omitted => worker uses the run's original focus).
     idea_focus: ideaFocus,
+    dispatch_id: dispatchId ?? null,
     created_at: new Date().toISOString(),
   });
 
   await redis.lpush(QUEUE_NAME, jobData);
   console.log(`Enqueued regenerate ideas job ${jobId} to ${QUEUE_NAME}`);
+}
+
+/**
+ * Enqueue a user-composed idea seed (plans/eager-meandering-feather.md Phase 5 —
+ * "generate an idea from your own idea" at selection chat). See worker/tasks.py run_seed_idea.
+ */
+export async function enqueueSeedIdeaJob(
+  jobId: string,
+  checkpointPath: string,
+  niche: string,
+  seedText: string,
+  painRef?: string,
+  toolRef?: string,
+  dispatchId?: string
+): Promise<void> {
+  const jobData = JSON.stringify({
+    job_id: jobId,
+    checkpoint_path: checkpointPath,
+    niche,
+    seed_text: seedText,
+    pain_ref: painRef ?? null,
+    tool_ref: toolRef ?? null,
+    task_type: 'seed_idea',
+    dispatch_id: dispatchId ?? null,
+    created_at: new Date().toISOString(),
+  });
+
+  await redis.lpush(QUEUE_NAME, jobData);
+  console.log(`Enqueued seed idea job ${jobId} to ${QUEUE_NAME}`);
 }
 
 /**
@@ -128,9 +199,11 @@ export async function enqueueCatalogPainPointsJob(
   categoryName: string,
   categoryDescription: string,
   parentCategoryName: string,
+  dispatchId?: string
 ): Promise<void> {
   const jobData = JSON.stringify({
     job_id: jobId,
+    dispatch_id: dispatchId ?? null,
     category_id: categoryId,
     category_name: categoryName,
     category_description: categoryDescription,
@@ -155,9 +228,11 @@ export async function enqueueCatalogIdeasJob(
   existingIdeas: Array<{name: string, description: string, value_proposition?: string, target_personas?: string[]}> = [],
   parentSourceJobId?: string,
   contentCategorization?: unknown,
+  dispatchId?: string
 ): Promise<void> {
   const jobData = JSON.stringify({
     job_id: jobId,
+    dispatch_id: dispatchId ?? null,
     category_id: categoryId,
     pain_points: painPoints,
     niche,
@@ -189,9 +264,11 @@ export async function enqueuePainResearchJob(
   niche: string,
   userId?: string,
   allowedProjectTypes?: string[],
+  dispatchId?: string
 ): Promise<void> {
   const jobData = JSON.stringify({
     job_id: jobId,
+    dispatch_id: dispatchId ?? null,
     pain_seeds: painSeeds,
     niche,
     user_id: userId,

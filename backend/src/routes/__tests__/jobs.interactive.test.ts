@@ -17,6 +17,10 @@ vi.mock('../../services/db.js', () => ({
     job: {
       findFirst: (...args: any[]) => mockJobFindFirst(...args),
       update: (...args: any[]) => mockJobUpdate(...args),
+      // Enqueue compensation is now a GUARDED updateMany scoped to its own dispatch, not an
+      // unconditional update() — an ambiguous enqueue error must not stomp a worker that already
+      // picked the job up, refund its credit, and wipe its selections.
+      updateMany: (...args: any[]) => mockJobUpdateMany(...args),
     },
     creditTransaction: {
       findFirst: (...args: any[]) => mockCreditTransactionFindFirst(...args),
@@ -115,7 +119,7 @@ beforeEach(async () => {
 
   // Default transaction: execute callback with tx that has job.updateMany
   mockTransaction.mockImplementation(async (callback: any) => {
-    const tx = { job: { updateMany: mockJobUpdateMany } };
+    const tx = { job: { updateMany: mockJobUpdateMany, update: async () => ({}) }, jobDispatch: { create: async () => ({ id: 'dispatch-test' }), updateMany: async () => ({ count: 1 }) }, };
     return callback(tx);
   });
 
@@ -153,6 +157,7 @@ describe('POST /api/jobs/:jobId/select-solution', () => {
       '/cp/path',
       ['Sol1'],
       undefined,
+      'dispatch-test',
     );
   });
 
@@ -338,7 +343,9 @@ describe('POST /api/jobs/:jobId/regenerate-ideas', () => {
       '/cp/path',
       ['A', 'B'],
       'test niche',
-      undefined // ideaFocus: not set in this fixture (5th arg added with the idea_focus steer)
+      undefined, // ideaFocus: not set in this fixture (5th arg added with the idea_focus steer)
+      'dispatch-test', // regeneration gets its own dispatch — a stale regen-A failure must not
+                       // revert regen-B and refund B's charge
     );
   });
 
@@ -439,10 +446,35 @@ describe('POST /api/jobs/:jobId/regenerate-ideas', () => {
 
     expect(response.status).toBe(500);
     expect(refundForRegenerationStage).toHaveBeenCalledWith(jobId, 1);
-    expect(mockJobUpdate).toHaveBeenCalledWith({
-      where: { id: jobId },
-      data: { status: 'AWAITING_SELECTION', queuedAt: null },
+    // Compensation is a GUARDED updateMany scoped to this attempt's dispatch — not the old
+    // unconditional update(). An enqueue error is ambiguous (the message may have landed and only
+    // the ack failed), so an unconditional revert could stomp a REGENERATING worker back to
+    // AWAITING_SELECTION and refund a credit for work that is actually running.
+    expect(mockJobUpdateMany).toHaveBeenCalledWith({
+      where: { id: jobId, status: 'QUEUED', activeDispatchId: 'dispatch-test' },
+      data: { status: 'AWAITING_SELECTION', queuedAt: null, activeDispatchId: null },
     });
+  });
+
+  it('does NOT refund or revert when the attempt is no longer queued under this dispatch', async () => {
+    // The ambiguous-enqueue case: Redis actually accepted the message, a worker picked it up, and
+    // only our ack failed. The guarded update matches nothing — and the refund must not fire, or
+    // the user gets their credit back for regeneration that is running right now.
+    const { refundForRegenerationStage } = await import('../../services/creditService.js');
+    mockJobFindFirst.mockResolvedValue(makeJob());
+    mockEnqueueRegenerateJob.mockRejectedValue(new Error('ack timeout'));
+    mockJobUpdateMany.mockImplementation(async (args: any) =>
+      // the flip inside the transaction still succeeds; only the compensating revert misses
+      args?.where?.activeDispatchId ? { count: 0 } : { count: 1 },
+    );
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/regenerate-ideas`)
+      .set(authHeaders)
+      .send({});
+
+    expect(response.status).toBe(500);
+    expect(refundForRegenerationStage).not.toHaveBeenCalled();
   });
 });
 

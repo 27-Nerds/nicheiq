@@ -453,8 +453,10 @@ def test_pipeline_clears_tags_before_full_retag():
     # mf 0.6), and in-cell tags bucket on PRE-parity scores. The pipeline must clear tags for
     # the FULL set right before the post-union _apply_tags so every idea is re-derived once
     # from FINAL scores. Source-pin (execute_pipeline is too heavy to run hermetically).
+    # The clear+re-tag pass lives in `_finalize_evaluator_passes` (shared tail extracted from
+    # execute_pipeline so it can also compose into `_finalize_seed_tail`).
     import inspect
-    src = inspect.getsource(UnifiedSolutionCrew.execute_pipeline)
+    src = inspect.getsource(UnifiedSolutionCrew._finalize_evaluator_passes)
     clear_idx = src.find("_idea.tags = None")
     apply_idx = src.find("self._apply_tags(refined_solutions)")
     assert clear_idx != -1 and apply_idx != -1 and clear_idx < apply_idx

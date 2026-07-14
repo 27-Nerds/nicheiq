@@ -8,8 +8,8 @@
  */
 
 import { prisma } from './db.js';
-import { JobStatus, StageStatus } from '@prisma/client';
-import { failJob } from './jobService.js';
+import { JobStatus, StageStatus, DispatchKind } from '@prisma/client';
+import { failJob, cancelSeedIdeaDispatch } from './jobService.js';
 import { notifyJobError } from './notificationService.js';
 import { getPhaseContext } from '../utils/phaseContext.js';
 import { refundForStage } from './creditService.js';
@@ -130,6 +130,7 @@ async function findStaleJobs(): Promise<Array<{
   startedAt: Date | null;
   currentStage: number | null;
   selectedSolutions: string[];
+  activeDispatchId: string | null;
   exceededMaxRuntime: boolean;
 }>> {
   const staleThreshold = new Date(Date.now() - STALE_THRESHOLD_MS);
@@ -176,6 +177,7 @@ async function findStaleJobs(): Promise<Array<{
       startedAt: true,
       currentStage: true,
       selectedSolutions: true,
+      activeDispatchId: true,
     },
   });
 
@@ -242,7 +244,28 @@ async function markJobFailed(job: {
   userId: string | null;
   currentStage: number | null;
   selectedSolutions: string[];
+  activeDispatchId: string | null;
 }, reason: string): Promise<void> {
+  // A SEED_IDEA dispatch is an operation ON TOP OF an already-settled AWAITING_SELECTION job —
+  // a crashed worker must not fail the WHOLE research job over it (plan: eager-meandering-
+  // feather.md Phase 5, "op-scoped cancel + heartbeat"). Settle just that dispatch, refund its
+  // numbered seed_idea_N charge, and restore AWAITING_SELECTION with the pool intact instead of
+  // calling failJob — mirrors cancelJob's own SEED_IDEA branch (shared helper, same contract).
+  if (job.activeDispatchId) {
+    const dispatch = await prisma.jobDispatch.findUnique({
+      where: { id: job.activeDispatchId },
+      select: { id: true, kind: true, seedOrdinal: true, sourceMessageId: true },
+    });
+    if (dispatch?.kind === DispatchKind.SEED_IDEA) {
+      console.log(
+        `[Heartbeat] Job ${job.id} seed-idea dispatch ${dispatch.id} stale — restoring ` +
+        `AWAITING_SELECTION (parent job left alive): ${reason}`
+      );
+      await cancelSeedIdeaDispatch(job.id, dispatch, JobStatus.RUNNING, 'SYSTEM_FAULT');
+      return;
+    }
+  }
+
   console.log(`[Heartbeat] Job ${job.id} failed: ${reason}`);
 
   // Use failJob which handles credit refunds

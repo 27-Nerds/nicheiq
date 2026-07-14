@@ -67,3 +67,13 @@ export async function getPreviewReportForJob(jobId: string): Promise<unknown | n
   writeToCache(previewReportCache, jobId, data);
   return data;
 }
+
+/**
+ * Drop a job's cached preview report so the next read re-parses the on-disk file. The
+ * worker's preview-report asset is keyed by job_id and gets overwritten in place (e.g. a
+ * seed dispatch re-materializes it to add a ruled-out record) — the file path never
+ * changes, but the CACHE_TTL window would otherwise keep serving the pre-seed snapshot.
+ */
+export function invalidatePreviewReportCache(jobId: string): void {
+  previewReportCache.delete(jobId);
+}

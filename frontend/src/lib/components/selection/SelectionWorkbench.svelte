@@ -11,7 +11,20 @@
     ArrowDown,
     X,
   } from "lucide-svelte";
-  import { selectSolution, regenerateIdeas, ApiError } from "$lib/api";
+  import {
+    selectSolution,
+    regenerateIdeas,
+    seedIdea,
+    getStageCosts,
+    ApiError,
+    type IdeaFocus,
+    type NewIdeaSeedPatch,
+  } from "$lib/api";
+  import ChatThread from "$lib/components/chat/ChatThread.svelte";
+  import { selectionSuggestions } from "$lib/components/chat/suggestions";
+  import { chatLedger } from "$lib/stores/chatLedger.svelte";
+  import { chatPanel } from "$lib/stores/chatPanel.svelte";
+  import { MessageSquare } from "lucide-svelte";
   import { creditTopUp } from "$lib/stores/creditTopUp.svelte";
   import {
     DEFAULT_STAGE_COSTS,
@@ -31,6 +44,7 @@
   import { humanizeTag, tagDescription } from "$lib/utils/ideaTagLabels";
   import { angleLabel, angleDescription } from "$lib/utils/ideaAngleLabels";
   import Tooltip from "$lib/components/ui/Tooltip.svelte";
+  import WorkspaceOverlay from "$lib/components/ui/WorkspaceOverlay.svelte";
   import SelectSolutionModal from "$lib/components/SelectSolutionModal.svelte";
   import SolutionDetail from "$lib/components/SolutionDetail.svelte";
 
@@ -50,11 +64,17 @@
     overlapGroups?: OverlapGroup[] | null;
     marketReality?: MarketReality | null;
     ideaPortfolioSummary?: string | null;
+    userAdjustments?: string[] | null;
     discussionCount?: number | null;
     painPointCount?: number | null;
     segmentCount?: number | null;
     onComplete?: () => void;
     onRegenerateStart?: () => void;
+    /** Fired once a submitted idea seed settles (accepted/demoted/failed/refunded).
+     *  SSE's sorted-name diff misses a same-name demotion/score change and can't see
+     *  a brand-new ruled-out entry at all — the parent must force BOTH getSolutions()
+     *  and getPreviewReport() here rather than rely on the existing SSE reconciliation. */
+    onSeedSettled?: (outcome: "accepted" | "demoted" | "failed" | "refunded") => void;
     /** Visitor (read-only) mode: shortlist/Deep-Research affordances are replaced by
      *  the per-row actionSlot (vote button on the shared view). */
     interactive?: boolean;
@@ -76,11 +96,13 @@
     overlapGroups = [],
     marketReality = null,
     ideaPortfolioSummary = null,
+    userAdjustments = [],
     discussionCount = null,
     painPointCount = null,
     segmentCount = null,
     onComplete,
     onRegenerateStart,
+    onSeedSettled,
     interactive = true,
     totalVotes = 0,
     actionSlot,
@@ -109,6 +131,38 @@
     }
   });
 
+  // Handle on the embedded ChatThread — lets a regenerate/confirm-selection
+  // action cancel an in-flight chat stream first, so ChatThread's own local
+  // `messages` state can't mutate after the parent has already moved on.
+  let chatThreadRef: ChatThread | undefined = $state();
+  // Weak-pool starter chip (2026-07-12) — ChatThread learns this from the chat-history
+  // response (GET /:jobId/chat/history's `weakPool` flag) and reports it back via
+  // bind:weakPool, so this doesn't need its own second history fetch.
+  let weakPool = $state(false);
+
+  // ── Focus management for the analyst window ──
+  // Opening/closing swaps the launcher and the window in the DOM, which destroys
+  // whichever element the keyboard user was standing on. Without this, activating
+  // the launcher dumped focus to <body>, and closing did the same in reverse.
+  let launcherEl: HTMLButtonElement | undefined = $state();
+  let restoreFocusToLauncher = $state(false);
+
+  $effect(() => {
+    if (chatPanel.isOpen || !restoreFocusToLauncher || !launcherEl) return;
+    launcherEl.focus();
+    restoreFocusToLauncher = false;
+  });
+
+  function closeChatOverlay() {
+    if (chatPanel.isExpanded) {
+      chatPanel.dock();
+    } else {
+      restoreFocusToLauncher = true;
+      chatPanel.close();
+    }
+  }
+
+
   // ── Regeneration state ──
   let regenerating = $state(false);
   let regenerateError = $state("");
@@ -125,14 +179,21 @@
     if (!isRegenerating && regenerating) regenerating = false;
   });
 
-  async function handleRegenerate() {
-    if (regenerating || isRegenerating) return;
+  // `focusOverride` lets the chat patch card ("Apply changes") drive the same
+  // call the manual focus buttons use, instead of duplicating the credit/402
+  // handling in ChatThread — the tool only ever proposes a change; this is the
+  // one place it's actually applied (regenerate-ideas route, unchanged).
+  async function handleRegenerate(focusOverride?: IdeaFocus) {
+    if (regenerating || isRegenerating || seedPending || chatLedger.hasPendingSeed) return;
+    const focus = focusOverride ?? regenerateFocus;
+    regenerateFocus = focus;
     regenerating = true;
     regenerateError = "";
+    chatThreadRef?.stopStreaming();
     try {
       await regenerateIdeas(
         jobId,
-        regenerateFocus === "auto" ? undefined : regenerateFocus,
+        focus === "auto" ? undefined : focus,
       );
       onRegenerateStart?.();
     } catch (e) {
@@ -149,6 +210,224 @@
       regenerating = false;
     }
   }
+
+  async function handleApplyPatch(ideaFocus: IdeaFocus) {
+    await handleRegenerate(ideaFocus);
+  }
+
+  // ── Idea seed (chat-composed idea evaluation) ──
+  //
+  // Same purchase idiom as gate Continue: the price shown is the price charged,
+  // required (not optional) — the server 409s (PRICE_CHANGED) rather than silently
+  // charging a different number if `seed_idea` was re-priced mid-session.
+  let seedPending = $state(false);
+  let seedError = $state("");
+  let seedCostOverride = $state<number | null>(null);
+  const seedCost = $derived(seedCostOverride ?? stageCosts.seed_idea ?? null);
+  let seedPollTimer: ReturnType<typeof setInterval> | null = null;
+  let seedHighlightName = $state<string | null>(null);
+  let seedHighlightRuledOutIndex = $state<number | null>(null);
+  let seedBanner = $state<{ outcome: "accepted" | "demoted" | "failed" | "refunded" } | null>(null);
+
+  // One paid pool-mutation operation at a time (mirrors the backend's single
+  // `Job.activeDispatchId`) — gates the seed card, regenerate, shortlist toggles,
+  // detail-select, confirm-selection, and chat compose. Backend CAS stays the
+  // authoritative guard; this is UX-only. `chatLedger.hasPendingSeed` folds in the
+  // durable (reload-surviving) case, not just this session's own submit.
+  const poolMutationBusy = $derived(
+    regenerating || isRegenerating || seedPending || chatLedger.hasPendingSeed,
+  );
+
+  function stopSeedPoll() {
+    if (seedPollTimer) {
+      clearInterval(seedPollTimer);
+      seedPollTimer = null;
+    }
+  }
+
+  function scrollAndHighlightSolution(name: string) {
+    seedHighlightName = name;
+    requestAnimationFrame(() => {
+      for (const row of document.querySelectorAll<HTMLElement>("[data-solution-name]")) {
+        if (row.dataset.solutionName === name) {
+          row.scrollIntoView({ behavior: "smooth", block: "center" });
+          break;
+        }
+      }
+    });
+    setTimeout(() => {
+      if (seedHighlightName === name) seedHighlightName = null;
+    }, 4000);
+  }
+
+  function scrollAndHighlightRuledOut(index: number) {
+    seedHighlightRuledOutIndex = index;
+    requestAnimationFrame(() => {
+      for (const row of document.querySelectorAll<HTMLElement>("[data-ruled-out-index]")) {
+        if (row.dataset.ruledOutIndex === String(index)) {
+          row.scrollIntoView({ behavior: "smooth", block: "center" });
+          break;
+        }
+      }
+    });
+    setTimeout(() => {
+      if (seedHighlightRuledOutIndex === index) seedHighlightRuledOutIndex = null;
+    }, 4000);
+  }
+
+  /** Set once settlement is detected; consumed by the $effect below once the
+   *  parent's FORCED getSolutions()/getPreviewReport() refresh (onSeedSettled)
+   *  lands new `solutions`/`examinedRuledOut` props. Reconciles by OUTCOME —
+   *  "is there a row that wasn't here before" — never by re-diffing names in
+   *  general (the SSE sorted-name-diff bug this plan explicitly avoids repeating;
+   *  a brand-new seed's name is guaranteed novel, which is what makes this safe). */
+  let pendingSeedReconcile = $state<{
+    outcome: "accepted" | "demoted" | "failed" | "refunded";
+    priorNames: Set<string>;
+    priorRuledOutCount: number;
+  } | null>(null);
+
+  $effect(() => {
+    const reconcile = pendingSeedReconcile;
+    if (!reconcile) return;
+    if (reconcile.outcome === "accepted") {
+      const newName = solutions.map((s) => s.solution_name).find((n) => !reconcile.priorNames.has(n));
+      if (newName) {
+        pendingSeedReconcile = null;
+        scrollAndHighlightSolution(newName);
+      }
+      // else: the forced refresh hasn't landed in props yet — this effect re-runs
+      // the moment `solutions` changes.
+    } else if (reconcile.outcome === "demoted") {
+      if ((examinedRuledOut?.length ?? 0) > reconcile.priorRuledOutCount) {
+        const idx = (examinedRuledOut ?? []).findIndex((f) => f.source_frame === "user_seed");
+        pendingSeedReconcile = null;
+        if (idx >= 0) scrollAndHighlightRuledOut(idx);
+      }
+    } else {
+      pendingSeedReconcile = null;
+    }
+  });
+
+  /** Identity of the in-flight seed, kept in reactive state so the settlement effect
+   *  below can resolve the instant `chatLedger`'s shared store updates — not just on
+   *  this component's own 6s tick. */
+  let inFlightSeed = $state<{
+    sourceMessageId: string;
+    priorNames: Set<string>;
+    priorRuledOutCount: number;
+  } | null>(null);
+
+  function settleSeed(
+    outcome: "accepted" | "demoted" | "failed" | "refunded",
+    priorNames: Set<string>,
+    priorRuledOutCount: number,
+  ) {
+    // Idempotency guard: the reactive effect below and the interval tick in
+    // beginSeedSettlementPoll can both observe the same `chatLedger.reload()` and race to
+    // call this — whichever gets here first wins, the other becomes a no-op instead of
+    // double-firing onSeedSettled.
+    if (!inFlightSeed) return;
+    stopSeedPoll();
+    inFlightSeed = null;
+    seedPending = false;
+    seedBanner = { outcome };
+    pendingSeedReconcile = { outcome, priorNames, priorRuledOutCount };
+    onSeedSettled?.(outcome);
+  }
+
+  // Reactive (primary) settlement signal: the job page's own SSE handler forces a
+  // `chatLedger.reload()` the instant job.status arrives at AWAITING_SELECTION — this
+  // effect resolves the moment that reload lands rather than waiting on the interval's
+  // next 6s tick, since `chatLedger`'s outcome map is `$state` and shared across both
+  // components. The interval in beginSeedSettlementPoll below is now a BACKSTOP for a
+  // dropped/delayed SSE event, not the primary signal.
+  $effect(() => {
+    if (!inFlightSeed) return;
+    const outcome = chatLedger.seedOutcome(inFlightSeed.sourceMessageId);
+    if (outcome && outcome !== "pending") {
+      settleSeed(outcome, inFlightSeed.priorNames, inFlightSeed.priorRuledOutCount);
+    }
+  });
+
+  /** After a successful submit, poll the ledger for the durable settlement receipt
+   *  (chatLedger reloads server history — the SAME mechanism that reconstructs
+   *  applied-patch state, not a parallel client store). Backstop only (see the
+   *  reactive effect above) — kept because SSE delivery isn't guaranteed. */
+  function beginSeedSettlementPoll(sourceMessageId: string, priorNames: Set<string>, priorRuledOutCount: number) {
+    stopSeedPoll();
+    inFlightSeed = { sourceMessageId, priorNames, priorRuledOutCount };
+    let attempts = 0;
+    // ~20 minutes at 6s — a real seed run (tournament + score_wave + red-team + SEO
+    // probes) routinely exceeds the old 4-minute ceiling. Generous because this is now
+    // a backstop, not the primary signal.
+    const MAX_ATTEMPTS = 200;
+    seedPollTimer = setInterval(async () => {
+      attempts++;
+      await chatLedger.reload();
+      const outcome = chatLedger.seedOutcome(sourceMessageId);
+      if (outcome && outcome !== "pending") {
+        settleSeed(outcome, priorNames, priorRuledOutCount);
+      } else if (attempts >= MAX_ATTEMPTS) {
+        stopSeedPoll();
+        inFlightSeed = null;
+        seedPending = false;
+      }
+    }, 6000);
+  }
+
+  async function handleSeed(patch: NewIdeaSeedPatch, sourceMessageId: string) {
+    if (poolMutationBusy) return;
+    // `seedPending` (local) is the in-flight latch for THIS request — it locks the UI
+    // the instant the button is clicked, before the server has even accepted it. Only
+    // once seedIdea() actually SUCCEEDS does chatLedger get the durable "pending" mark
+    // (see markSeedPending below) — marking it up front would leave the card stuck
+    // showing "Evaluating…" forever after a 402/409/network failure, since there would
+    // be no server receipt to ever move it out of that state.
+    seedPending = true;
+    seedError = "";
+    seedBanner = null;
+    chatThreadRef?.stopStreaming();
+    const priorNames = new Set(solutions.map((s) => s.solution_name));
+    const priorRuledOutCount = examinedRuledOut?.length ?? 0;
+    try {
+      await seedIdea(jobId, {
+        free_text: patch.free_text,
+        pain_ref: patch.pain_ref,
+        tool_ref: patch.tool_ref,
+        rationale: patch.rationale,
+        sourceMessageId,
+        expectedCost: seedCost ?? 0,
+      });
+      chatLedger.markSeedPending(sourceMessageId);
+      beginSeedSettlementPoll(sourceMessageId, priorNames, priorRuledOutCount);
+    } catch (e) {
+      seedPending = false;
+      if (e instanceof ApiError && e.status === 402) {
+        const body = e.details as { balance?: number; required?: number } | undefined;
+        creditTopUp.show({
+          balance: body?.balance ?? creditBalance,
+          required: body?.required ?? seedCost ?? 0,
+          stageName: "idea evaluation",
+        });
+      } else if (e instanceof ApiError && e.status === 409) {
+        try {
+          const fresh = await getStageCosts();
+          seedCostOverride = fresh.seed_idea ?? null;
+          seedError = "The price changed — review the new cost and try again.";
+        } catch {
+          seedError = "The price changed — reload the page to see the new cost.";
+        }
+      } else {
+        seedError = e instanceof Error ? e.message : "Failed to submit your idea";
+      }
+    }
+  }
+
+  // A live poll interval must not outlive the component (navigating away mid-evaluation).
+  $effect(() => {
+    return () => stopSeedPoll();
+  });
 
   // ── Derived display values ──
   const shape = $derived(opportunityShape(solutions));
@@ -249,6 +528,20 @@
     return arr;
   });
 
+  // Suggested questions name the ACTUAL ranked candidates and the actions open right
+  // now (shortlist, regenerate, or step back and question the niche) — recomputed as
+  // the ranking, the shortlist, and the conversation change.
+  const chatSuggestions = $derived(
+    selectionSuggestions({
+      solutions: sortedSolutions,
+      messages: chatLedger.segmentMessages(5),
+      weakPool,
+      canRegenerate: canRegenerate && !regenerating && !isRegenerating,
+      hasSelection: selectionCount > 0,
+      poolMutationBusy,
+    }),
+  );
+
   const SORT_COLS: { key: SortKey; label: string; tooltip?: string }[] = [
     { key: "score", label: "Score", tooltip: SCORE_DEFINITIONS.composite },
     { key: "fit", label: "Market fit", tooltip: SCORE_DEFINITIONS.market_fit },
@@ -273,7 +566,7 @@
     return sortedSolutions.findIndex((s) => s.solution_name === name);
   }
   function toggle(name: string) {
-    if (selectLoading) return;
+    if (selectLoading || poolMutationBusy) return;
     if (selectedNames.has(name)) selectedNames.delete(name);
     else if (selectedNames.size < MAX_SELECTIONS) selectedNames.add(name);
   }
@@ -292,7 +585,7 @@
   }
 
   function handleValidate() {
-    if (!canSubmit) return;
+    if (!canSubmit || poolMutationBusy) return;
     if (!canAffordDeep) {
       creditTopUp.show({
         balance: creditBalance,
@@ -305,8 +598,10 @@
     modalOpen = true;
   }
   async function handleConfirmSelection(rationale: string) {
+    if (poolMutationBusy) return;
     selectLoading = true;
     selectError = "";
+    chatThreadRef?.stopStreaming();
     try {
       await selectSolution(jobId, {
         solutionNames: Array.from(selectedNames),
@@ -387,6 +682,7 @@
   }
 </script>
 
+<div class="workbench-shell">
 <div class="workbench" class:has-tray={showTray} id="opportunities">
   <span id="solution-selector" class="workbench-anchor" aria-hidden="true"></span>
   <!-- ── Command header ── -->
@@ -450,7 +746,7 @@
             type="button"
             class="cmd-status-cta"
             onclick={handleValidate}
-            disabled={!canSubmit || selectLoading}
+            disabled={!canSubmit || selectLoading || poolMutationBusy}
           >
             {statusCtaLabel}
           </button>
@@ -471,7 +767,23 @@
     <p class="regen-error">{regenerateError}</p>
   {/if}
 
-  {#if shape || (coverageNotes && coverageNotes.length) || marketReality?.incumbents?.length}
+  {#if seedError}
+    <p class="regen-error">{seedError}</p>
+  {/if}
+
+  {#if seedBanner}
+    <p class="seed-banner" class:seed-banner--accepted={seedBanner.outcome === "accepted"}>
+      {#if seedBanner.outcome === "accepted"}
+        Evaluation complete — the result was added to ranked candidates below.
+      {:else if seedBanner.outcome === "demoted"}
+        We tested your idea — it didn't clear the market-fit bar. See why below.
+      {:else}
+        Evaluation failed — your credits were refunded.
+      {/if}
+    </p>
+  {/if}
+
+  {#if shape || (coverageNotes && coverageNotes.length) || (userAdjustments && userAdjustments.length) || marketReality?.incumbents?.length}
     <div class="context-notes">
       {#if shape}
         <div class="shape-line">
@@ -480,6 +792,21 @@
         </div>
       {/if}
       <div class="context-disclosures">
+        {#if userAdjustments && userAdjustments.length}
+          <details class="coverage-disclosure">
+            <summary>
+              <span>User adjustments</span>
+              <strong>{userAdjustments.length}</strong>
+            </summary>
+            <ul>
+              {#each userAdjustments as note}
+                {#if note?.trim()}
+                  <li>{note}</li>
+                {/if}
+              {/each}
+            </ul>
+          </details>
+        {/if}
         {#if coverageNotes && coverageNotes.length}
           <details class="coverage-disclosure">
             <summary>
@@ -581,6 +908,8 @@
         class="row"
         class:row-sel={isSel}
         class:row-maxed={maxed}
+        class:row-seed-highlight={seedHighlightName === s.solution_name}
+        data-solution-name={s.solution_name}
       >
         <span class="cell-rank">{i + 1}</span>
 
@@ -595,7 +924,7 @@
               type="checkbox"
               class="sr-only"
               checked={isSel}
-              disabled={maxed || selectLoading}
+              disabled={maxed || selectLoading || poolMutationBusy}
               onchange={() => toggle(s.solution_name)}
               aria-label={isSel ? `Deselect ${m.title}` : `Select ${m.title}`}
             />
@@ -703,18 +1032,28 @@
   {/if}
 
   {#if examinedRuledOut && examinedRuledOut.length > 0}
-    <div class="ruled-out-panel">
+    <div class="ruled-out-panel" id="examined-ruled-out">
       <div class="ruled-out-head">
         <span>Examined &amp; ruled out</span>
         <strong>{examinedRuledOut.length}</strong>
       </div>
       <ul class="ruled-out-list">
-        {#each examinedRuledOut as finding}
-          <li class="ruled-out-row">
+        {#each examinedRuledOut as finding, i}
+          <li
+            class="ruled-out-row"
+            class:ruled-out-row--highlight={seedHighlightRuledOutIndex === i}
+            data-ruled-out-index={i}
+          >
             <div class="ruled-out-main">
-              <span class="ruled-out-pain">{finding.pain_title}</span>
+              <span class="ruled-out-pain">{finding.idea_name || finding.pain_title}</span>
+              {#if finding.source_frame === "user_seed"}
+                <span class="ruled-out-badge">Your idea</span>
+              {/if}
               <span class="ruled-out-band">{ruledOutBandLabel(finding.market_fit_band)}</span>
             </div>
+            {#if finding.idea_name && finding.idea_name !== finding.pain_title}
+              <p class="ruled-out-provenance"><strong>Pain</strong> {finding.pain_title}</p>
+            {/if}
             <p class="ruled-out-reason">{finding.reason}</p>
             {#if finding.evidence?.trim()}
               <p class="ruled-out-evidence">&ldquo;{finding.evidence}&rdquo;</p>
@@ -737,7 +1076,7 @@
             <button
               type="button"
               onclick={() => (regenerateFocus = focus.value)}
-              disabled={regenerating || isRegenerating}
+              disabled={poolMutationBusy}
               class="regen-focus-btn"
               class:is-active={regenerateFocus === focus.value}
               aria-pressed={regenerateFocus === focus.value}
@@ -748,8 +1087,8 @@
         </div>
         <button
           type="button"
-          onclick={handleRegenerate}
-          disabled={regenerating || isRegenerating || !canAffordRegenerate}
+          onclick={() => handleRegenerate()}
+          disabled={poolMutationBusy || !canAffordRegenerate}
           class="regen-btn"
         >
           {#if regenerating || isRegenerating}
@@ -782,7 +1121,7 @@
                   type="button"
                   class="tray-x"
                   aria-label="Remove {p.title}"
-                  disabled={selectLoading}
+                  disabled={selectLoading || poolMutationBusy}
                   onclick={() => toggle(p.name)}
                 >
                   <X class="w-3 h-3" aria-hidden="true" />
@@ -801,7 +1140,7 @@
         <button
           type="button"
           class="tray-cta"
-          disabled={!canSubmit || selectLoading}
+          disabled={!canSubmit || selectLoading || poolMutationBusy}
           onclick={handleValidate}
         >
           {#if selectLoading}
@@ -820,6 +1159,55 @@
   </div>
   {/if}
 </div>
+
+</div>
+
+<!-- ═══ Analyst window (G3 — chatMode-independent; never in the visitor view) ═══
+     An OVERLAY, not a column: the candidate table keeps the whole page, and the
+     analyst floats over the corner of it — the messenger idiom, which is what a
+     companion that you consult while working actually is. Expanding centres it at
+     reading width; closing leaves a single launcher pill. -->
+{#if interactive}
+  <WorkspaceOverlay
+    open={chatPanel.isOpen}
+    modal={chatPanel.isExpanded}
+    label="Analyst conversation"
+    onClose={closeChatOverlay}
+  >
+      <ChatThread
+        bind:this={chatThreadRef}
+        bind:weakPool
+        {jobId}
+        dock="rail"
+        currentIdeaFocus={regenerateFocus}
+        applying={poolMutationBusy}
+        blocked={poolMutationBusy}
+        onApplyPatch={handleApplyPatch}
+        {seedCost}
+        onSeedSubmit={handleSeed}
+        starters={chatSuggestions}
+        focused={chatPanel.isExpanded}
+        onToggleFocus={() => chatPanel.toggleExpanded()}
+        onCollapse={() => {
+          restoreFocusToLauncher = true;
+          chatPanel.close();
+        }}
+      />
+  </WorkspaceOverlay>
+
+  {#if !chatPanel.isOpen}
+    <button
+      type="button"
+      class="chat-launcher"
+      bind:this={launcherEl}
+      aria-expanded={false}
+      onclick={() => chatPanel.open()}
+    >
+      <MessageSquare class="w-4 h-4" aria-hidden="true" />
+      Ask the analyst
+    </button>
+  {/if}
+{/if}
 
 <!-- Confirmation modal -->
 {#if interactive}
@@ -849,7 +1237,7 @@
       selectedCount={selectionCount}
       maxSelections={MAX_SELECTIONS}
       maxReached={selectedNames.size >= MAX_SELECTIONS}
-      disabled={selectLoading}
+      disabled={selectLoading || poolMutationBusy}
       canStart={canSubmit}
       canAffordStart={canAffordDeep}
       startCost={deepCost}
@@ -879,6 +1267,59 @@
 {/if}
 
 <style>
+  /* The candidate table owns the page — the analyst is an OVERLAY, never a column
+     and never a slab in the flow. (Two earlier attempts: a 20rem grid rail crushed
+     the analyst's prose to ~35 CPL; a wider track just moved the crushing onto the
+     table, then stacked a wall of chat into the page below 1440px.) */
+  .workbench-shell {
+    display: block;
+  }
+
+  /* ── Launcher: the one way back in, always the same corner ── */
+  .chat-launcher {
+    position: fixed;
+    right: clamp(0.75rem, 2vw, 1.5rem);
+    bottom: clamp(0.75rem, 2vw, 1.5rem);
+    z-index: var(--z-overlay, 30);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-height: 2.75rem;
+    padding: 0.6rem 1rem;
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-emphasis);
+    border-radius: 9999px;
+    box-shadow: var(--shadow-md);
+    color: var(--color-text-primary);
+    font-family: var(--font-body);
+    font-size: 0.8125rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: border-color 150ms var(--selection-motion), box-shadow 150ms var(--selection-motion),
+      transform 150ms var(--selection-motion);
+  }
+  .chat-launcher:hover {
+    border-color: var(--color-accent);
+    box-shadow: var(--shadow-lg);
+  }
+  .chat-launcher:active {
+    transform: scale(0.98);
+  }
+  .chat-launcher:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  :global(.job-page-shell.has-sticky-bar) .chat-launcher {
+    bottom: calc(clamp(0.75rem, 2vw, 1.5rem) + 5rem);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .chat-launcher { transition: none; }
+    .chat-launcher:active { transform: none; }
+  }
+
+
   .workbench {
     --selection-motion: cubic-bezier(0.32, 0.72, 0, 1);
     position: relative;
@@ -1050,7 +1491,7 @@
     border: 1px solid var(--color-accent-hover);
     border-radius: 0.5rem;
     background: var(--color-accent-hover);
-    color: white;
+    color: var(--color-text-on-accent);
     font-family: var(--font-body);
     font-size: 0.75rem;
     font-weight: 800;
@@ -1217,6 +1658,38 @@
     text-align: right;
   }
 
+  /* Idea-seed settlement banner — points at the row/panel entry the reconcile
+     effect just scrolled to and highlighted, rather than leaving the outcome
+     only visible back in the (possibly docked/collapsed) analyst window. */
+  .seed-banner {
+    margin: 0;
+    padding: 0.5rem 0.7rem;
+    border: 1px solid var(--color-border-emphasis);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-surface);
+    color: var(--color-text-secondary);
+    font-size: 0.8125rem;
+    line-height: 1.4;
+  }
+  .seed-banner--accepted {
+    border-color: color-mix(in srgb, var(--color-success) 30%, transparent);
+    background: color-mix(in srgb, var(--color-success) 6%, var(--color-bg-surface));
+    color: var(--color-success-text);
+  }
+
+  /* Momentary landing highlight for a settled seed — the row it scrolls to. */
+  .row-seed-highlight {
+    animation: seed-row-flash 2.4s ease-out;
+  }
+  @keyframes seed-row-flash {
+    0%, 15% { background: color-mix(in srgb, var(--color-accent) 14%, transparent); }
+    100% { background: transparent; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .row-seed-highlight,
+    .ruled-out-row--highlight { animation: none; }
+  }
+
   .cell-metric-head:focus-visible,
   .cmd-status-cta:focus-visible,
   .regen-focus-btn:focus-visible,
@@ -1231,9 +1704,13 @@
   /* ── Context notes ── */
   .context-notes {
     display: flex;
+    /* The disclosure chips have fixed min-widths (~35rem for all three); when the
+       chat rail narrows the workbench they must DROP BELOW the shape line instead
+       of crushing its text column to one word per line. */
+    flex-wrap: wrap;
     align-items: flex-start;
     justify-content: space-between;
-    gap: 1rem;
+    gap: 0.5rem 1rem;
     padding: 0.02rem 0.05rem 0.18rem;
   }
   .shape-line {
@@ -1242,6 +1719,8 @@
     gap: 0.62rem;
     align-items: baseline;
     margin: 0;
+    /* Claims the row when the chip cluster can't fit beside it (wrap threshold). */
+    flex: 1 1 24rem;
     font-size: 0.8125rem;
     color: var(--color-text-secondary);
     line-height: 1.42;
@@ -1552,7 +2031,7 @@
   .select-control.sel .select-marker {
     border-color: var(--color-accent);
     background: var(--color-accent);
-    color: white;
+    color: var(--color-text-on-accent);
   }
   .select-control.maxed {
     border-color: var(--color-border);
@@ -1800,6 +2279,9 @@
     background: var(--color-bg-elevated);
   }
   .ruled-out-row:first-child { border-top: 0; }
+  .ruled-out-row--highlight {
+    animation: seed-row-flash 2.4s ease-out;
+  }
   .ruled-out-main {
     display: flex;
     align-items: baseline;
@@ -1811,6 +2293,34 @@
     font-size: 0.8125rem;
     font-weight: 700;
     color: var(--color-text-primary);
+  }
+  /* Marks a demoted entry as the user's OWN composed idea, not a portfolio
+     backfill/winner — orange reserved for this one interactive/brand marker,
+     matching the design system's "orange = brand" carve-out. */
+  .ruled-out-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.06rem 0.36rem;
+    border-radius: 0.375rem;
+    border: 1px solid color-mix(in srgb, var(--color-accent) 40%, transparent);
+    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+    color: var(--color-accent-dark);
+    font-family: var(--font-mono);
+    font-size: 0.5625rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+  }
+  .ruled-out-provenance {
+    margin: 0;
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+  }
+  .ruled-out-provenance strong {
+    font-weight: 700;
+    color: var(--color-text-secondary);
+    margin-right: 0.3rem;
   }
   .ruled-out-band {
     display: inline-flex;
@@ -1990,7 +2500,7 @@
   .tray-x:hover {
     transform: scale(1.06);
     background: var(--color-accent);
-    color: white;
+    color: var(--color-text-on-accent);
   }
   .tray-x:disabled {
     opacity: 0.5;
@@ -2024,7 +2534,7 @@
     min-height: 2.35rem;
     padding: 0.42rem 0.48rem 0.42rem 0.86rem;
     background: var(--color-accent-hover);
-    color: white;
+    color: var(--color-text-on-accent);
     border: none;
     border-radius: 0.625rem;
     font-family: var(--font-body);
@@ -2253,4 +2763,5 @@
       font-size: 0.875rem;
     }
   }
+
 </style>

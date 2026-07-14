@@ -8,8 +8,10 @@ neither the stage-payload nor the metadata channel.
 from nicheiq.config.settings import settings
 from nicheiq.flows.checkpoint_manager import CheckpointManager
 from nicheiq.models.research_state import (
+    AudienceScope,
     NicheContext,
     NicheDifficultyVerdict,
+    PainScope,
     ResearchState,
 )
 
@@ -40,7 +42,15 @@ def test_phase1_fields_survive_checkpoint_round_trip(tmp_path, monkeypatch):
     ]
     save_state.niche_wallet_brief = {"wallet_class": "mixed", "evidence": "most tools $10-30/mo",
                                       "free_density": "few free routes"}
+    save_state.niche_data_menu_text = "- Public permit records (city open-data portal)"
+    save_state.niche_dissatisfaction_text = ""  # probed, found nothing — must round-trip as '', not None
     save_state.idea_portfolio_summary = "AlphaTool and BetaTracker both show moderate market fit."
+    save_state.user_pain_scope = PainScope(excluded_titles=["Noisy pain"], pinned_titles=["Keep this"])
+    save_state.user_audience_scope = AudienceScope(
+        excluded_segments=["Enterprise buyers"], segment_emphasis={"Solo founders": "high"},
+        primary_target_segment="Solo founders",
+    )
+    save_state.user_adjusted = True
     verdict = NicheDifficultyVerdict(
         difficulty_level="low",
         software_addressability=0.74,
@@ -76,12 +86,22 @@ def test_phase1_fields_survive_checkpoint_round_trip(tmp_path, monkeypatch):
     assert load_state.niche_wallet_brief == {
         "wallet_class": "mixed", "evidence": "most tools $10-30/mo", "free_density": "few free routes"
     }
+    assert load_state.niche_data_menu_text == "- Public permit records (city open-data portal)"
+    assert load_state.niche_dissatisfaction_text == ""  # not None — the '' round-tripped, not just truthy text
     assert load_state.idea_portfolio_summary == (
         "AlphaTool and BetaTracker both show moderate market fit."
     )
     assert load_state.niche_difficulty_verdict is not None
     assert load_state.niche_difficulty_verdict.difficulty_level == "low"
     assert load_state.niche_difficulty_verdict.headline == "Software Fit: Strong"
+    assert load_state.user_pain_scope is not None
+    assert load_state.user_pain_scope.excluded_titles == ["Noisy pain"]
+    assert load_state.user_pain_scope.pinned_titles == ["Keep this"]
+    assert load_state.user_audience_scope is not None
+    assert load_state.user_audience_scope.excluded_segments == ["Enterprise buyers"]
+    assert load_state.user_audience_scope.segment_emphasis == {"Solo founders": "high"}
+    assert load_state.user_audience_scope.primary_target_segment == "Solo founders"
+    assert load_state.user_adjusted is True
 
 
 def test_idea_focus_defaults_auto_when_never_set(tmp_path, monkeypatch):
@@ -119,6 +139,8 @@ _PERSISTED_VIA_METADATA = {
     "idea_coverage_caveats", "pipeline_degradations", "niche_drift_telemetry", "skipped_stages",
     "sources_searched", "idea_ruled_out", "idea_funnel_counts", "idea_overlap_groups",
     "niche_incumbent_map", "niche_wallet_brief", "idea_portfolio_summary",
+    "user_pain_scope", "user_audience_scope", "user_adjusted",
+    "niche_data_menu_text", "niche_dissatisfaction_text",
 }
 # intentionally NOT persisted (re-derived, terminal, unused, or re-set on construction)
 _TRANSIENT = {

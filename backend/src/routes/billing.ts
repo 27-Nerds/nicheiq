@@ -7,6 +7,7 @@ import {
   PromoCodeError,
   RateLimitError,
   getStageCost,
+  getGuidedSegmentCosts,
 } from '../services/creditService.js';
 import { getPackages, getPackageById, createCheckoutSession } from '../services/stripeService.js';
 import {
@@ -261,14 +262,28 @@ billingRouter.post('/checkout', requireInternalAuth, async (req: AuthenticatedRe
  */
 billingRouter.get('/stage-costs', requireInternalAuth, async (_req: AuthenticatedRequest, res: Response) => {
   try {
-    const [discovery, deep_research, landing_page, regenerate_ideas] = await Promise.all([
+    const [discovery, deep_research, landing_page, regenerate_ideas, seed_idea, guidedSegmentCosts] = await Promise.all([
       getStageCost('discovery'),
       getStageCost('deep_research'),
       getStageCost('landing_page'),
       getStageCost('regenerate_ideas'),
+      getStageCost('seed_idea'),
+      getGuidedSegmentCosts(),
     ]);
 
-    res.json({ discovery, deep_research, landing_page, regenerate_ideas });
+    res.json({
+      discovery,
+      deep_research,
+      landing_page,
+      regenerate_ideas,
+      seed_idea,
+      guided: {
+        s1: guidedSegmentCosts.guided_s1,
+        s2_4: guidedSegmentCosts.guided_s2_4,
+        s5: guidedSegmentCosts.guided_s5,
+        total: guidedSegmentCosts.total,
+      },
+    });
   } catch (error) {
     console.error('Failed to get stage costs:', error);
     res.status(500).json({ error: 'Failed to get stage costs' });

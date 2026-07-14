@@ -136,6 +136,97 @@ class TestSweepDemote:
 
 
 # ---------------------------------------------------------------------------
+# _sweep_no_buyer_demote (TIScalperAudit case, 2026-07-12)
+# ---------------------------------------------------------------------------
+
+class TestNoBuyerDemote:
+    def _wallet_crew(self, wallet_class="free-culture", **extra):
+        pains = [_pain("Ticket scalping frustrates fans", tool_addressable="none")]
+        crew = _crew(
+            _niche_wallet_brief={"wallet_class": wallet_class} if wallet_class else {},
+            **extra,
+        )
+        crew.pain_point_analysis = SimpleNamespace(pain_points=pains)
+        return crew
+
+    def test_tiscalperaudit_shaped_idea_demoted(self, monkeypatch):
+        monkeypatch.setattr(settings, "demotion_market_fit_max", 0.4)
+        monkeypatch.setattr(settings, "no_buyer_demotion", True)
+        monkeypatch.setattr(settings, "payability_low_threshold", 0.35)
+        crew = self._wallet_crew(wallet_class="free-culture")
+        idea = _idea(
+            "TIScalperAudit", mf=0.40,  # exactly AT the demotion bar — survives it
+            pain_points_addressed=["Ticket scalping frustrates fans"],
+            source_segment_payability=0.2,
+        )
+        n = crew._sweep_demote([idea])
+        assert n == 1
+        assert idea.candidate_status == "demoted"
+        assert len(crew.ruled_out_pains) == 1
+        finding = crew.ruled_out_pains[0]
+        assert finding["source"] == "no_buyer"
+        assert "not software" in finding["reason"]
+
+    def test_paying_niche_equivalent_not_demoted(self, monkeypatch):
+        monkeypatch.setattr(settings, "demotion_market_fit_max", 0.4)
+        monkeypatch.setattr(settings, "no_buyer_demotion", True)
+        monkeypatch.setattr(settings, "payability_low_threshold", 0.35)
+        crew = self._wallet_crew(wallet_class="paying")
+        idea = _idea(
+            "TIScalperAudit", mf=0.40,
+            pain_points_addressed=["Ticket scalping frustrates fans"],
+            source_segment_payability=0.2,
+        )
+        n = crew._sweep_demote([idea])
+        assert n == 0
+        assert idea.candidate_status == "active"
+        assert crew.ruled_out_pains == []
+
+    def test_flag_off_is_noop(self, monkeypatch):
+        monkeypatch.setattr(settings, "demotion_market_fit_max", 0.4)
+        monkeypatch.setattr(settings, "no_buyer_demotion", False)
+        monkeypatch.setattr(settings, "payability_low_threshold", 0.35)
+        crew = self._wallet_crew(wallet_class="free-culture")
+        idea = _idea(
+            "TIScalperAudit", mf=0.40,
+            pain_points_addressed=["Ticket scalping frustrates fans"],
+            source_segment_payability=0.2,
+        )
+        n = crew._sweep_demote([idea])
+        assert n == 0
+        assert idea.candidate_status == "active"
+
+    def test_fully_tool_addressable_pain_exempt(self, monkeypatch):
+        monkeypatch.setattr(settings, "demotion_market_fit_max", 0.4)
+        monkeypatch.setattr(settings, "no_buyer_demotion", True)
+        monkeypatch.setattr(settings, "payability_low_threshold", 0.35)
+        crew = self._wallet_crew(wallet_class="free-culture")
+        crew.pain_point_analysis.pain_points[0].tool_addressable = "full"
+        idea = _idea(
+            "BuildableIdea", mf=0.40,
+            pain_points_addressed=["Ticket scalping frustrates fans"],
+            source_segment_payability=0.2,
+        )
+        n = crew._sweep_demote([idea])
+        assert n == 0
+        assert idea.candidate_status == "active"
+
+    def test_high_payability_exempt(self, monkeypatch):
+        monkeypatch.setattr(settings, "demotion_market_fit_max", 0.4)
+        monkeypatch.setattr(settings, "no_buyer_demotion", True)
+        monkeypatch.setattr(settings, "payability_low_threshold", 0.35)
+        crew = self._wallet_crew(wallet_class="free-culture")
+        idea = _idea(
+            "WellFundedAdvocacy", mf=0.40,
+            pain_points_addressed=["Ticket scalping frustrates fans"],
+            source_segment_payability=0.8,
+        )
+        n = crew._sweep_demote([idea])
+        assert n == 0
+        assert idea.candidate_status == "active"
+
+
+# ---------------------------------------------------------------------------
 # _compose_ruled_out_reason
 # ---------------------------------------------------------------------------
 

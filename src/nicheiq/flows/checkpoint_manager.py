@@ -105,16 +105,24 @@ class CheckpointManager:
         logger.info(f"✓ Checkpoint folder created: {self.checkpoint_folder}")
         return self.checkpoint_folder
 
-    def save_stage(self, stage_name: str, stage_data: Any) -> None:
+    def save_stage(self, stage_name: str, stage_data: Any) -> bool:
         """
         Save individual stage data to checkpoint folder.
 
         Args:
             stage_name: Stage identifier (e.g., "stage_2_social_content")
             stage_data: Pydantic model or dict to serialize
+
+        Returns:
+            True if the save succeeded (or checkpointing is disabled — nothing to fail),
+            False if it was attempted and failed. Exceptions are still swallowed (logged
+            only) so ordinary pipeline stage saves never abort the run — callers that need
+            to know whether the write actually landed (e.g. gate_patches.py, where a
+            swallowed failure would silently discard a user's edit) MUST check this return
+            value (Codex review finding 5).
         """
         if not settings.checkpoint_enabled:
-            return
+            return True
 
         try:
             # Initialize checkpoint folder if first checkpoint
@@ -152,10 +160,12 @@ class CheckpointManager:
             self._update_checkpoint_metadata(stage_name)
 
             logger.info(f"✓ Checkpoint saved: {stage_name}")
+            return True
 
         except Exception as e:
             logger.warning(f"Failed to save checkpoint for {stage_name}: {e}")
             # Don't fail the pipeline for checkpoint errors
+            return False
 
     def save_cost_breakdown(self, rows: list) -> None:
         """Persist the run's cost-tracker stage usages (from CostTracker.export_state()).
@@ -277,6 +287,13 @@ class CheckpointManager:
             metadata["niche_incumbent_map"] = self.state.niche_incumbent_map
         if getattr(self.state, "niche_wallet_brief", None):
             metadata["niche_wallet_brief"] = self.state.niche_wallet_brief
+        # `is not None` (not truthy): '' is a real "probed, found nothing" result for these two —
+        # dropping it on save would make a later resume re-probe work this run already paid for
+        # (eager-meandering-feather.md Phase 4, section C).
+        if getattr(self.state, "niche_data_menu_text", None) is not None:
+            metadata["niche_data_menu_text"] = self.state.niche_data_menu_text
+        if getattr(self.state, "niche_dissatisfaction_text", None) is not None:
+            metadata["niche_dissatisfaction_text"] = self.state.niche_dissatisfaction_text
         if getattr(self.state, "idea_portfolio_summary", None):
             metadata["idea_portfolio_summary"] = self.state.idea_portfolio_summary
         if getattr(self.state, "pipeline_degradations", None):
@@ -287,6 +304,16 @@ class CheckpointManager:
             metadata["skipped_stages"] = self.state.skipped_stages
         if getattr(self.state, "sources_searched", None):
             metadata["sources_searched"] = self.state.sources_searched
+
+        # Guided-mode (chatMode) gate-patch fields (flows/gate_patches.py) — must round-trip
+        # through resume like idea_focus above, since they are consumed later at the ideation
+        # allocation choke point (UnifiedSolutionCrew._build_partition_cells), not at patch time.
+        if getattr(self.state, "user_pain_scope", None) is not None:
+            metadata["user_pain_scope"] = self.state.user_pain_scope.model_dump()
+        if getattr(self.state, "user_audience_scope", None) is not None:
+            metadata["user_audience_scope"] = self.state.user_audience_scope.model_dump()
+        if getattr(self.state, "user_adjusted", False):
+            metadata["user_adjusted"] = True
 
         # Stage completion timestamps (for timing summary in final report)
         if hasattr(self.state, 'stage_completion_timestamps') and self.state.stage_completion_timestamps:
@@ -620,6 +647,12 @@ class CheckpointManager:
             self.state.niche_incumbent_map = metadata["niche_incumbent_map"]
         if metadata.get("niche_wallet_brief"):
             self.state.niche_wallet_brief = metadata["niche_wallet_brief"]
+        # "in" (not truthy): a saved '' ("probed, found nothing") must round-trip distinct from
+        # "key absent" (never probed) — mirrors the `is not None` write above.
+        if "niche_data_menu_text" in metadata:
+            self.state.niche_data_menu_text = metadata["niche_data_menu_text"]
+        if "niche_dissatisfaction_text" in metadata:
+            self.state.niche_dissatisfaction_text = metadata["niche_dissatisfaction_text"]
         if metadata.get("idea_portfolio_summary"):
             self.state.idea_portfolio_summary = metadata["idea_portfolio_summary"]
         if metadata.get("pipeline_degradations"):
@@ -630,6 +663,16 @@ class CheckpointManager:
             self.state.skipped_stages = metadata["skipped_stages"]
         if metadata.get("sources_searched"):
             self.state.sources_searched = metadata["sources_searched"]
+
+        # Guided-mode (chatMode) gate-patch fields — see the matching write block above.
+        if metadata.get("user_pain_scope"):
+            from ..models.research_state import PainScope
+            self.state.user_pain_scope = PainScope(**metadata["user_pain_scope"])
+        if metadata.get("user_audience_scope"):
+            from ..models.research_state import AudienceScope
+            self.state.user_audience_scope = AudienceScope(**metadata["user_audience_scope"])
+        if metadata.get("user_adjusted"):
+            self.state.user_adjusted = True
 
         # Restore stage completion timestamps
         if metadata.get("stage_completion_timestamps"):
@@ -696,7 +739,30 @@ class CheckpointManager:
                     f"Discarding — resetting to stage {gate['stage']} for re-run."
                 )
                 setattr(self.state, attr_name, None)
-                self.state.current_stage = min(self.state.current_stage, gate["stage"])
+                n = gate["stage"]
+                self.state.current_stage = min(self.state.current_stage, n)
+                # Cascade fix (mirrors the reconstruction-failure rewind above): lowering
+                # current_stage alone leaves downstream stages' "already completed" markers on
+                # disk, silently suppressing their re-run even though their inputs were just
+                # discarded (e.g. a gated empty pain_point_analysis leaving stage 4's audience
+                # mapping marker in place, reused against regenerated pains). Prune completed
+                # entries at/after the reset stage on disk AND in-memory, same as above.
+                completed = metadata.get("completed_stages") or []
+                pruned = [s for s in completed if (_stage_num_from_filename(s) or 0) < n]
+                if pruned != completed:
+                    metadata["completed_stages"] = pruned
+                    try:
+                        meta_path = folder_path / "metadata.json"
+                        if meta_path.exists():
+                            with open(meta_path, encoding="utf-8") as f:
+                                disk_meta = json.load(f)
+                            disk_meta["completed_stages"] = pruned
+                            with open(meta_path, "w", encoding="utf-8") as f:
+                                json.dump(disk_meta, f, indent=2, default=str)
+                    except Exception as e:
+                        logger.warning(f"Could not rewrite pruned completed_stages on disk: {e}")
+                if getattr(self.state, "completed_stages", None):
+                    self.state.completed_stages = [s for s in self.state.completed_stages if s < n]
 
     def get_completed_stages(self, folder_path: Path | None = None) -> list[str]:
         """Get list of completed stage identifiers from checkpoint folder."""

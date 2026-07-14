@@ -8,9 +8,12 @@ from nicheiq.flows.research_flow import ResearchFlow
 
 def test_stop_branch_materializes_and_returns_path():
     src = inspect.getsource(ResearchFlow._execute_remaining_stages)
+    # Slice to the END of the stop branch (its `return`), not a fixed character count —
+    # a char window silently breaks when anything is inserted inside the branch.
     stop = src.index("Stopping after Phase")
-    assert "_materialize_preview_report" in src[stop:stop + 900]
-    assert 'return preview_path or ""' in src[stop:stop + 900]
+    branch = src[stop:src.index("\n\n", stop)]
+    assert "_materialize_preview_report" in branch
+    assert 'return preview_path or ""' in branch
 
 
 def test_preview_emits_build_feasibility():

@@ -53,7 +53,7 @@ eventsRouter.get('/:jobId/events', requireInternalAuth, async (req: Authenticate
   res.flushHeaders();
 
   // Send initial state with queue position if queued
-  const interactiveStatuses = ['AWAITING_SELECTION', 'REGENERATING', 'RUNNING_PHASE2'];
+  const interactiveStatuses = ['AWAITING_SELECTION', 'REGENERATING', 'RUNNING_PHASE2', 'AWAITING_GATE'];
   const includeSolutions = interactiveStatuses.includes(job.status) ||
     (job.status === JobStatus.QUEUED && (job.solutionIdeas as any[])?.length > 0) ||
     (job.status === JobStatus.COMPLETED && (job.selectedSolutions as string[])?.length > 0);

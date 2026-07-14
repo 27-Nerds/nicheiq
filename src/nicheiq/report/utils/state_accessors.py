@@ -31,6 +31,62 @@ if TYPE_CHECKING:
     from ...models.social_content import SocialContentCollection
 
 
+def build_user_adjustments_summary(state: "ResearchState") -> list[str]:
+    """Compact, human-readable notes describing which guided-mode gate(s) (flows/gate_patches.py)
+    were user-adjusted and what changed. Module-level (not a StateAccessor method) so both
+    ReportGenerator (via StateAccessor.get_user_adjustments_summary) and
+    ResearchFlow._materialize_preview_report (no StateAccessor there) can call it directly.
+
+    Reads `user_pain_scope`/`user_audience_scope` (G2's only structured record) plus the
+    `user_adjusted` flag. G1 patches overwrite niche_context fields in place with no
+    before/after record kept, so a G1-only edit degrades to a generic note.
+
+    Returns an empty list when state.user_adjusted is falsy.
+    """
+    if not getattr(state, "user_adjusted", False):
+        return []
+
+    notes: list[str] = []
+    pain_scope = getattr(state, "user_pain_scope", None)
+    audience_scope = getattr(state, "user_audience_scope", None)
+    gate2_touched = pain_scope is not None or audience_scope is not None
+
+    if pain_scope:
+        if pain_scope.excluded_titles:
+            notes.append(
+                f"Gate 2 (audience & pains): excluded {len(pain_scope.excluded_titles)} "
+                f"pain point(s) from ideation — {', '.join(pain_scope.excluded_titles)}."
+            )
+        if pain_scope.pinned_titles:
+            notes.append(
+                f"Gate 2 (audience & pains): pinned {len(pain_scope.pinned_titles)} "
+                f"pain point(s) as required focus — {', '.join(pain_scope.pinned_titles)}."
+            )
+
+    if audience_scope:
+        if audience_scope.excluded_segments:
+            notes.append(
+                f"Gate 2 (audience & pains): excluded {len(audience_scope.excluded_segments)} "
+                f"audience segment(s) — {', '.join(audience_scope.excluded_segments)}."
+            )
+        if audience_scope.segment_emphasis:
+            emphasis_parts = [f"{name} ({level})" for name, level in audience_scope.segment_emphasis.items()]
+            notes.append(f"Gate 2 (audience & pains): adjusted segment emphasis — {', '.join(emphasis_parts)}.")
+        if audience_scope.primary_target_segment:
+            notes.append(
+                f"Gate 2 (audience & pains): set primary target segment to "
+                f"\"{audience_scope.primary_target_segment}\"."
+            )
+
+    if gate2_touched and not notes:
+        notes.append("Gate 2 (audience & pains): the target audience description was adjusted.")
+
+    if not gate2_touched:
+        notes.append("Gate 1 (niche context): niche details were adjusted before research began.")
+
+    return notes
+
+
 class StateAccessor:
     """
     Defensive accessor layer for ResearchState data.
@@ -87,6 +143,10 @@ class StateAccessor:
     def get_trend_longevity(self):
         """Get Stage 11 trend longevity analysis result."""
         return self.state.trend_longevity
+
+    def get_user_adjustments_summary(self) -> list[str]:
+        """Guided-mode honesty block: human-readable notes for gate patches applied to this run."""
+        return build_user_adjustments_summary(self.state)
 
     # ==================================================================================
     # Derived Data Access Methods

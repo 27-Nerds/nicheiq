@@ -138,6 +138,9 @@
         <p class="text-xs text-text-muted mt-1">
           {formatCost(stats.avgCostUsd)} avg · {stats.costedJobs} runs tracked
         </p>
+        <p class="text-xs text-text-muted mt-1">
+          {formatCost(stats.totalChatCostUsd)} chat cost · {formatCost(stats.avgChatCostUsd)} avg · {stats.chatCostedJobs} runs tracked
+        </p>
       </div>
     </div>
 
@@ -230,7 +233,14 @@
                 >
                 <td class="py-2 pr-4 text-text-muted">{formatDate(job.createdAt)}</td
                 >
-                <td class="py-2 text-right text-text-secondary">{formatCost(job.costUsd)}</td>
+                <td class="py-2 text-right text-text-secondary">
+                  {formatCost(job.costUsd)}
+                  {#if job.chatCostUsd}
+                    <span class="block text-xs text-text-muted"
+                      >+{formatCost(job.chatCostUsd)} chat</span
+                    >
+                  {/if}
+                </td>
               </tr>
 
               {#if isExpanded}

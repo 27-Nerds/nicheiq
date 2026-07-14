@@ -24,10 +24,10 @@ _ANCHOR_GROUNDING_LINE = (
     "rejected."
 )
 
-_EXPECTED_FRAMES = {"pain", "gap", "data_asset", "workflow"}
+_EXPECTED_FRAMES = {"pain", "gap", "data_asset", "workflow", "user_seed"}
 
 
-def test_registry_has_exactly_four_frames():
+def test_registry_has_exactly_five_frames():
     assert set(FRAME_REGISTRY.keys()) == _EXPECTED_FRAMES
     # spend_adjacent was deleted permanently 2026-07-10 (Multi-Frame A/B concluded).
     assert "spend_adjacent" not in FRAME_REGISTRY
@@ -64,6 +64,13 @@ def test_pain_brief_formatter_passes_prerendered_text_through_unchanged():
 @pytest.mark.parametrize("frame_key", ["gap", "data_asset", "workflow"])
 def test_non_pain_specs_allow_zero(frame_key):
     assert FRAME_REGISTRY[frame_key].always_allow_zero is True
+
+
+def test_user_seed_spec_never_allows_zero():
+    # A paid user seed MUST return >=1 concept — unlike a research-derived focus, "no fit" is
+    # not a valid outcome here.
+    assert FRAME_REGISTRY["user_seed"].always_allow_zero is False
+    assert FRAME_REGISTRY["user_seed"].focus_header == "THE IDEA THE USER WANTS BUILT:"
 
 
 def test_gap_formatter_renders_payload_and_grounding_line():
@@ -113,6 +120,39 @@ def test_workflow_formatter_renders_payload_and_grounding_line():
     assert "get the venue booked" in rendered
     assert "shortlist -> call -> compare -> deposit -> confirm" in rendered
     assert "spreadsheets, email, phone" in rendered
+    assert _ANCHOR_GROUNDING_LINE in rendered
+
+
+def test_user_seed_formatter_renders_seed_text_as_primary_directive():
+    focus = FrameFocus(
+        frame="user_seed", key="seed-1",
+        payload={"seed_text": "A tool that tracks late invoices for freelance plumbers"},
+        anchor_pain_titles=[],
+    )
+    rendered = FRAME_REGISTRY["user_seed"].brief_formatter(focus)
+    assert rendered.startswith("A tool that tracks late invoices for freelance plumbers")
+    assert "INCUMBENT/TOOL TO DISPLACE" not in rendered
+    assert _ANCHOR_GROUNDING_LINE not in rendered  # unanchored: no anchor list to ground in
+
+
+def test_user_seed_formatter_renders_optional_tool_ref():
+    focus = FrameFocus(
+        frame="user_seed", key="seed-2",
+        payload={"seed_text": "A cheaper alternative to QuickBooks for solo landscapers",
+                 "tool_ref": "QuickBooks"},
+        anchor_pain_titles=[],
+    )
+    rendered = FRAME_REGISTRY["user_seed"].brief_formatter(focus)
+    assert "INCUMBENT/TOOL TO DISPLACE: QuickBooks" in rendered
+
+
+def test_user_seed_formatter_appends_grounding_line_only_when_anchored():
+    focus = FrameFocus(
+        frame="user_seed", key="seed-3",
+        payload={"seed_text": "Automated late-invoice reminders for plumbers"},
+        anchor_pain_titles=["Chasing unpaid invoices manually"],
+    )
+    rendered = FRAME_REGISTRY["user_seed"].brief_formatter(focus)
     assert _ANCHOR_GROUNDING_LINE in rendered
 
 

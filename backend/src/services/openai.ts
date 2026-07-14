@@ -1,9 +1,14 @@
 import OpenAI from 'openai';
 import type {
   ChatCompletion,
+  ChatCompletionChunk,
   ChatCompletionCreateParamsNonStreaming,
+  ChatCompletionCreateParamsStreaming,
   ChatCompletionMessageParam,
+  ChatCompletionTool,
+  ChatCompletionToolChoiceOption,
 } from 'openai/resources/chat/completions';
+import type { Stream } from 'openai/streaming';
 import { CONFIG } from '../config.js';
 
 /**
@@ -59,6 +64,13 @@ export interface ChatCompleteOpts {
   /** Output budget. Mapped to max_completion_tokens for reasoning models. */
   maxTokens?: number;
   responseFormat?: ChatCompletionCreateParamsNonStreaming['response_format'];
+  /** Chat agent tools (v1.1) — the unstreamed tool-resolution rounds in chat.ts's
+   *  multi-round loop call this (not chatCompleteStream) so the full tool_calls array
+   *  is available in one shot, without delta reassembly. */
+  tools?: ChatCompletionTool[];
+  toolChoice?: ChatCompletionToolChoiceOption;
+  /** Abort the upstream request (e.g. on client disconnect mid tool-loop). */
+  signal?: AbortSignal;
 }
 
 /**
@@ -73,7 +85,7 @@ export interface ChatCompleteOpts {
  * Non-reasoning models pass `temperature`/`max_tokens` through unchanged.
  */
 export async function chatComplete(opts: ChatCompleteOpts): Promise<ChatCompletion> {
-  const { model, messages, temperature, maxTokens, responseFormat } = opts;
+  const { model, messages, temperature, maxTokens, responseFormat, tools, toolChoice, signal } = opts;
 
   // Route by 'openrouter/' prefix. Strip the prefix FIRST so both the model sent
   // to the API and the reasoning-model detection use the bare id.
@@ -83,6 +95,8 @@ export async function chatComplete(opts: ChatCompleteOpts): Promise<ChatCompleti
 
   const params: ChatCompletionCreateParamsNonStreaming = { model: baseModel, messages };
   if (responseFormat) params.response_format = responseFormat;
+  if (tools) params.tools = tools;
+  if (toolChoice) params.tool_choice = toolChoice;
 
   if (isReasoningModel(baseModel)) {
     if (maxTokens !== undefined) params.max_completion_tokens = maxTokens;
@@ -95,5 +109,56 @@ export async function chatComplete(opts: ChatCompleteOpts): Promise<ChatCompleti
     if (maxTokens !== undefined) params.max_tokens = maxTokens;
   }
 
-  return clientForCall.chat.completions.create(params);
+  return clientForCall.chat.completions.create(params, signal ? { signal } : undefined);
+}
+
+export interface ChatCompleteStreamOpts {
+  model: string;
+  messages: ChatCompletionMessageParam[];
+  temperature?: number;
+  /** Output budget. Mapped to max_completion_tokens for reasoning models. */
+  maxTokens?: number;
+  tools?: ChatCompletionTool[];
+  toolChoice?: ChatCompletionToolChoiceOption;
+  /** Abort the upstream request (e.g. on client disconnect). */
+  signal?: AbortSignal;
+}
+
+/**
+ * Streaming entry point for the guided-chat feature (backend/src/routes/chat.ts).
+ * Mirrors `chatComplete()`'s reasoning-model handling but adds `stream: true` +
+ * `stream_options: { include_usage: true }` so the final chunk carries token usage
+ * for cost tracking, and threads through `tools`/`toolChoice` for the
+ * `propose_modification` tool. Left as a separate function (rather than adding a
+ * `stream` flag to `chatComplete`) so the well-tested non-streaming path stays
+ * untouched.
+ */
+export async function chatCompleteStream(
+  opts: ChatCompleteStreamOpts
+): Promise<Stream<ChatCompletionChunk>> {
+  const { model, messages, temperature, maxTokens, tools, toolChoice, signal } = opts;
+
+  const isOpenRouter = model.toLowerCase().startsWith(OPENROUTER_PREFIX);
+  const baseModel = isOpenRouter ? model.slice(OPENROUTER_PREFIX.length) : model;
+  const clientForCall = getClient(isOpenRouter ? 'openrouter' : 'openai');
+
+  const params: ChatCompletionCreateParamsStreaming = {
+    model: baseModel,
+    messages,
+    stream: true,
+    stream_options: { include_usage: true },
+  };
+  if (tools) params.tools = tools;
+  if (toolChoice) params.tool_choice = toolChoice;
+
+  if (isReasoningModel(baseModel)) {
+    if (maxTokens !== undefined) params.max_completion_tokens = maxTokens;
+    const effort: string = 'minimal';
+    params.reasoning_effort = effort as ChatCompletionCreateParamsStreaming['reasoning_effort'];
+  } else {
+    if (temperature !== undefined) params.temperature = temperature;
+    if (maxTokens !== undefined) params.max_tokens = maxTokens;
+  }
+
+  return clientForCall.chat.completions.create(params, signal ? { signal } : undefined);
 }

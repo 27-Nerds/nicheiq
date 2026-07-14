@@ -356,7 +356,37 @@ FAQ_GENERATE_RATE_HOURLY=30
 FAQ_SAVE_RATE_HOURLY=60
 # Per-admin per-hour cap on FAQ save calls. Saves are cheap (Prisma update +
 # Redis cache bust) but kept gated as a defense-in-depth measure.
+
+# Guided research chat (plans/eager-meandering-feather.md) — grounded Q&A on
+# AWAITING_SELECTION (G3, all entitled users) and, once chatMode is on for a job,
+# the G1/G2 stage gates (Phase B). Entitled-only; requireInternalAuth + isEntitledUser
+# gate every call in routes/chat.ts.
+CHAT_LLM_MODEL=gpt-5-mini
+# Model for the guided-chat endpoint (POST /api/jobs/:jobId/chat). MUST be
+# strict-tool-capable (the single `propose_modification` tool call is Zod-validated
+# before any patch card renders) — prefer an OpenAI-direct model id here, not an
+# OpenRouter passthrough, per the plan's Decisions section.
+# Code-level fallback when unset: 'gpt-5-mini'.
+
+CHAT_RATE_HOURLY=20
+# Maximum chat messages per user per hour across all their jobs (checkChatRateLimit).
+# Independent of the per-job 30-user-turn lifetime cap (R7 cost-runaway guard).
+
+CHAT_RATE_DAILY=80
+# Maximum chat messages per user per day across all their jobs.
 ```
+
+### Guided Research Gates (Phase B — plans/eager-meandering-feather.md)
+
+No new environment variables — the G1 (post-Stage-1) / G2 (post-Stage-4) stage-gate
+machinery is entirely code-configured. Noted here for discoverability:
+
+- `chatMode` is a per-job opt-in (paid users only, coerced server-side via `isEntitledUser`
+  in `POST /api/jobs`) — it is NOT a global environment toggle.
+- The `apply_stay` patch-apply cap (5 per gate) and the chat 30-user-turn cap are both
+  hardcoded in `routes/jobs.ts` / `routes/chat.ts` respectively, not env-configurable in v1.
+- Gate-reached emails reuse the existing `emailOnSolutionsReady` notification preference —
+  no new preference field or env var.
 
 ### Model Selection
 

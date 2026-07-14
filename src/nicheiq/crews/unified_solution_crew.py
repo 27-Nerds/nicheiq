@@ -22,6 +22,7 @@ import json
 import re
 import threading
 from collections import Counter
+from dataclasses import dataclass
 from types import SimpleNamespace
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from concurrent.futures import TimeoutError as FuturesTimeoutError
@@ -29,6 +30,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..flows.checkpoint_manager import CheckpointManager
+    from ..models.research_state import AudienceScope, PainScope
 
 from crewai import Agent, Crew, Task
 from .safe_task import SafeTask
@@ -288,6 +290,21 @@ def _build_partitioned_block(
     )
 
 
+@dataclass(frozen=True)
+class SeedRequest:
+    """User-seed pipeline contract (eager-meandering-feather.md Phase 4/5): one user-composed
+    idea submission, as `UnifiedSolutionCrew.execute_seed_pipeline` expects it. `seed_text` is
+    the REQUIRED free text; `pain_ref`/`tool_ref` are the OPTIONAL chat references
+    `resolve_seed_anchors` tries first. `dispatch_id` becomes the seed's `FrameFocus.key` and its
+    LLM-usage log identifier — should be the stable dispatch id Phase 5's `dispatchService`
+    assigns for this attempt, never regenerated per call."""
+
+    seed_text: str
+    pain_ref: str | None = None
+    tool_ref: str | None = None
+    dispatch_id: str = "seed"
+
+
 # Per-cell archetype nudge rotation (pool-level project-type spread; filtered by allowed_types).
 _ARCHETYPE_ROTATION = ["saas", "comparison-tool", "marketplace", "directory", "aggregator"]
 # Focus-skewed rotations (used only when idea_focus != 'auto'). Still include off-focus shapes for
@@ -470,7 +487,8 @@ def _stated_audience_floor_pains(all_pains: list, stated_audience: str | None, c
 def _assign_generator_cells(pains: list, segments: list, *, target: int, max_gen: int,
                             relevance: dict | None = None, severity_floor: int = 0,
                             commercial_floor: int = 0, commercial_min_intent: float = 0.6,
-                            stated_audience_floor: int = 0, stated_audience: str | None = None) -> list:
+                            stated_audience_floor: int = 0, stated_audience: str | None = None,
+                            pinned_titles: set | None = None) -> list:
     """Assign divergent generator cells from the (pain × segment) affinity graph.
 
     One cell per real (pain × affected-segment) edge, de-clustered by BUILD-TIME per-segment
@@ -615,6 +633,20 @@ def _assign_generator_cells(pains: list, segments: list, *, target: int, max_gen
             if s is not None:
                 _take(p, s)
                 floored.add(id(p))
+    if pinned_titles:                        # Round 0d: G2 guided-mode gate — unconditional
+        # guarantee (no threshold, unlike the floors above) for user-pinned pain titles. Mirrors
+        # the severity floor's bypass-the-theme-cap placement; skips a pain already floored by an
+        # earlier round (no double-spend).
+        for p in pains:
+            if len(cells) >= limit:
+                break
+            if id(p) in floored:
+                continue
+            if getattr(p, "title", None) in pinned_titles:
+                s = _pick(p)
+                if s is not None:
+                    _take(p, s)
+                    floored.add(id(p))
     for p in pains_ordered:                 # Round 1: theme-spread coverage (1 cell per pain)
         if len(cells) >= limit:             # stop at target so a deep pain pool doesn't overshoot
             break
@@ -975,6 +1007,8 @@ class UnifiedSolutionCrew:
         competitor_mentions_text: str | None = None,
         idea_focus: str = "auto",
         cost_tracker=None,
+        user_pain_scope: "PainScope | None" = None,
+        user_audience_scope: "AudienceScope | None" = None,
     ):
         """
         Initialize UnifiedSolutionCrew with pain points and optional context.
@@ -994,6 +1028,10 @@ class UnifiedSolutionCrew:
                 to skip LLM extraction on regeneration
             cost_tracker: Optional CostTracker instance shared with the flow, used to
                 record crew-level LLM usage (defaults to None for standalone/legacy use)
+            user_pain_scope: Optional guided-mode G2 patch (flows/gate_patches.py) —
+                pain exclude/pin scope consumed only in _build_partition_cells
+            user_audience_scope: Optional guided-mode G2 patch — audience segment
+                exclude/emphasis/primary scope consumed only in _build_partition_cells
         """
         self.pain_point_analysis = pain_point_analysis
         self.social_content = social_content
@@ -1007,6 +1045,8 @@ class UnifiedSolutionCrew:
         self.competitor_mentions_text = competitor_mentions_text
         self.existing_idea_names = {i["name"].lower() for i in self.existing_ideas if i.get("name")}
         self.cost_tracker = cost_tracker
+        self.user_pain_scope = user_pain_scope
+        self.user_audience_scope = user_audience_scope
 
         # Initialize search tool for competitive research
         self.search_tool = CachedSerperDevTool()
@@ -1363,6 +1403,81 @@ class UnifiedSolutionCrew:
                     pass
         self._payability_map = pay_map
         return pay_map
+
+    @staticmethod
+    def _payability_map_from_segments(segments: list) -> dict:
+        """Reconstruct the `{norm_segment_name: SegmentPayability}` map `_segment_payability_map`
+        caches, from the payability fields ALREADY persisted directly on each `AudienceSegment`
+        (`payability_score`/`payability_class`/`payability_rationale` — declared fields, written
+        back by `_segment_payability_map` above, so they survive model_dump / checkpoint
+        round-trip on their own). No separate top-level state field is needed for this cache —
+        `audience_mapping` is itself always part of a hydrated crew's constructor input. Segments
+        never Stage-4-scored (no numeric `payability_score`) are skipped, not defaulted."""
+        from ..utils.segment_payability import SegmentPayability, norm_segment_name
+
+        out: dict = {}
+        for s in segments or []:
+            score = getattr(s, "payability_score", None)
+            if not isinstance(score, (int, float)):
+                continue
+            name = getattr(s, "segment_name", "") or ""
+            out[norm_segment_name(name)] = SegmentPayability(
+                segment_name=name, payability_score=score,
+                payability_class=getattr(s, "payability_class", "") or "",
+                rationale=getattr(s, "payability_rationale", "") or "",
+            )
+        return out
+
+    def hydrate_from_state(self, state) -> None:
+        """User-seed pipeline (eager-meandering-feather.md Phase 4/5, section C): restore this
+        crew's Phase-1 evidence caches from PERSISTED research state instead of cold-re-probing
+        (LLM/search calls) work an earlier run already paid for. No crew survives a checkpoint
+        resume — the worker builds exactly ONE hydrated crew per seed submission and should call
+        this right after construction, before `execute_seed_pipeline`.
+
+        Restores the SAME instance attrs the lazy `_probe_*`/`_build_*` methods cache on first
+        call (`getattr(self, "_x", None) is not None` -> return cached), so calling them after
+        hydration is a pure in-memory read, never a fresh probe:
+          - `_incumbent_rows`       <- state.niche_incumbent_map (web-verified incumbent rows)
+          - `_niche_wallet_brief`   <- state.niche_wallet_brief
+          - `_data_menu_text`       <- state.niche_data_menu_text
+          - `_dissatisfaction_text` <- state.niche_dissatisfaction_text
+          - `_payability_map`       <- reconstructed from the audience segments' OWN persisted
+                                       payability fields (`_payability_map_from_segments`)
+
+        `_market_reality_text` is deliberately NOT hydrated here: `_build_market_reality_block`
+        is a pure, zero-I/O render of `_incumbent_rows` + `_niche_wallet_brief` (no LLM/search
+        call), so once those two are hydrated the next call to it renders fresh and correct —
+        persisting a third copy of the same information would be redundant.
+
+        Only fills a cache that is genuinely present in `state` AND not already set on this
+        instance (idempotent — never clobbers a value this process already probed itself).
+        Fail-soft: hydration is a pure optimization, never required for correctness — a missing
+        piece just means one extra probe later, not a broken seed."""
+        try:
+            if getattr(self, "_incumbent_rows", None) is None:
+                rows = list(getattr(state, "niche_incumbent_map", None) or [])
+                if rows:
+                    self._incumbent_rows = rows
+            if getattr(self, "_niche_wallet_brief", None) is None:
+                wallet = dict(getattr(state, "niche_wallet_brief", None) or {})
+                if wallet:
+                    self._niche_wallet_brief = wallet
+            if getattr(self, "_data_menu_text", None) is None:
+                menu = getattr(state, "niche_data_menu_text", None)
+                if menu is not None:
+                    self._data_menu_text = menu
+            if getattr(self, "_dissatisfaction_text", None) is None:
+                diss = getattr(state, "niche_dissatisfaction_text", None)
+                if diss is not None:
+                    self._dissatisfaction_text = diss
+            if getattr(self, "_payability_map", None) is None:
+                segs = getattr(getattr(self, "audience_mapping", None), "audience_segments", None) or []
+                pay_map = self._payability_map_from_segments(segs)
+                if pay_map:
+                    self._payability_map = pay_map
+        except Exception as e:  # noqa: BLE001 — hydration is best-effort, never fatal
+            logger.warning(f"[Seed] state hydration skipped (non-fatal): {str(e)[:120]}")
 
     def _provenance_segment_for_pain(self, pain_or_title) -> str | None:
         """Honest source_segment for a pain: the audience segment with real token affinity
@@ -2742,6 +2857,32 @@ class UnifiedSolutionCrew:
         cap = settings.divergent_max_generators
         sev_floor = settings.divergent_severity_floor_count
 
+        # G2 guided-mode gate: audience-scope exclusion/reorder (non-destructive — never
+        # mutates `am.audience_segments` itself, only this cell-building pass's view of it).
+        # Empty/absent scope => byte-identical to legacy behavior (test-locked).
+        audience_scope = getattr(self, "user_audience_scope", None)
+        if audience_scope and segments:
+            excluded_seg = set(getattr(audience_scope, "excluded_segments", None) or [])
+            if excluded_seg:
+                segments = [s for s in segments if getattr(s, "segment_name", None) not in excluded_seg]
+            emphasis = getattr(audience_scope, "segment_emphasis", None) or {}
+            if emphasis:
+                def _emphasis_rank(s):
+                    lvl = emphasis.get(getattr(s, "segment_name", None))
+                    return 0 if lvl == "high" else (2 if lvl == "low" else 1)
+                segments = sorted(segments, key=_emphasis_rank)
+
+        # G2 guided-mode gate: pain-scope exclusion, applied at the TOP — before selected_pains/
+        # extra_pains are merged into all_pains and before ANY floor injection below — so a
+        # severity/commercial/audience floor can never resurrect an excluded pain (review A2:
+        # floors pull from all_pains). Empty/absent scope => the list objects are left untouched,
+        # byte-identical to legacy behavior (test-locked).
+        pain_scope = getattr(self, "user_pain_scope", None)
+        excluded_titles = set(getattr(pain_scope, "excluded_titles", None) or []) if pain_scope else set()
+        if excluded_titles:
+            selected_pains = [p for p in selected_pains if getattr(p, "title", None) not in excluded_titles]
+            extra_pains = [p for p in (extra_pains or []) if getattr(p, "title", None) not in excluded_titles]
+
         # Niche-relevance per pain — a deterministic lexical match (token_jaccard, stemmed +
         # stopword-stripped) between the pain text and the niche description. Biases each theme's
         # cell toward the pain the user actually asked about. No niche text ⇒ None ⇒ severity-only
@@ -2808,6 +2949,18 @@ class UnifiedSolutionCrew:
                     pains.append(fp)
                     seen.add(id(fp))
 
+        # G2 guided-mode gate: pinned-pain floor, injected via the SAME pattern as the floors
+        # above (guarantees a cell the way sev/com/aud floors do) — a user-pinned pain is never
+        # left to widening alone. No-op when no titles are pinned (byte-identical, test-locked).
+        pinned_titles = list(getattr(pain_scope, "pinned_titles", None) or []) if pain_scope else []
+        if pinned_titles:
+            pinned_set = set(pinned_titles)
+            seen = {id(p) for p in pains}
+            for fp in all_pains:
+                if getattr(fp, "title", None) in pinned_set and id(fp) not in seen:
+                    pains.append(fp)
+                    seen.add(id(fp))
+
         # Multi-Frame: compute the reserve budget FIRST (fix #2) — this is pure arithmetic over
         # `all_pains`, zero extra I/O, so it costs nothing even when no frame seed data ends up
         # minting anything. `_mint_frame_cells` then gets `max_frames` as its budget and never runs
@@ -2828,6 +2981,9 @@ class UnifiedSolutionCrew:
         if aud_floor and stated_audience:
             unique_floor_ids |= {id(p) for p in _stated_audience_floor_pains(
                 all_pains, stated_audience, aud_floor)}
+        if pinned_titles:
+            pinned_set = set(pinned_titles)
+            unique_floor_ids |= {id(p) for p in all_pains if getattr(p, "title", None) in pinned_set}
         # Fix #3: floors+2 can exceed max_gen on a small niche (few pains, low cap) — clamp so
         # pain_min never itself exceeds the cap (which would otherwise push pain_target above
         # pain_cap downstream), and warn since this is a degradation of the floor guarantees.
@@ -2855,7 +3011,8 @@ class UnifiedSolutionCrew:
                 pains, segments, target=pain_target, max_gen=pain_cap, relevance=relevance,
                 severity_floor=sev_floor, commercial_floor=com_floor,
                 commercial_min_intent=com_min, stated_audience_floor=aud_floor,
-                stated_audience=stated_audience)
+                stated_audience=stated_audience,
+                pinned_titles=set(pinned_titles) if pinned_titles else None)
 
         cells = _alloc()
         extra = list(extra_pains or [])
@@ -2901,7 +3058,12 @@ class UnifiedSolutionCrew:
 
         if budget <= 0:
             return []
-        wanted = [(frame, spec) for frame, spec in FRAME_REGISTRY.items() if frame != "pain"]
+        # 'user_seed' is registered in FRAME_REGISTRY so the shared brief/anchor machinery
+        # (_cell_block, _build_cell_grounding_from_cell, _refine_single_concept) works for it
+        # generically, but it is NEVER auto-minted here — a seed cell exists only when a user
+        # explicitly submits one via `_run_seed_cell` (there is no `seed_fns["user_seed"]`).
+        wanted = [(frame, spec) for frame, spec in FRAME_REGISTRY.items()
+                  if frame not in ("pain", "user_seed")]
         if not wanted:
             return []
         try:
@@ -4397,12 +4559,20 @@ class UnifiedSolutionCrew:
                 tail = f' — "{quote}"' if quote else ""
                 lines.append(f"  - {t}: {desc}{tail}" if desc else f"  - {t}{tail}")
             evidence = "\n".join(lines) or "  n/a"
+            # User-seed pipeline: 'user_seed' is the one frame that can genuinely mint with ZERO
+            # anchor pains (gap/data_asset/workflow always drop an unanchored focus at mint time —
+            # see `_mint_frame_cells`). `_frame_directive` reads this flag to switch the reviewer
+            # onto the honest "unanchored hypothesis" rule instead of the two-clause anchor cap.
+            unanchored = frame == "user_seed" and not anchor_titles
             return CellGrounding(
                 niche=niche, audience_segment=seg_name or "the niche audience",
                 segment_profile=profile, pain_title="", pain_evidence=evidence, pain_severity="",
                 competitor_mentions=(self.competitor_mentions_text or "")[:1500],
                 wallet_norm=self._wallet_prompt_line(),
-                frame_type=frame, focus_block=focus_block,
+                frame_type=frame, focus_block=focus_block, unanchored=unanchored,
+                user_seed_text=(
+                    str((getattr(focus, "payload", None) or {}).get("seed_text", "") or "").strip()
+                    if frame == "user_seed" and focus is not None else ""),
             )
         pain = cell.get("pain")
         sp = (getattr(pain, "title", "") or "") if pain else ""
@@ -4552,6 +4722,14 @@ class UnifiedSolutionCrew:
             rev = self._enhance_idea_mechanism(idea, usages=usages)
             if rev is None:
                 return idea
+            if getattr(idea, "source_frame", None) == "user_seed":
+                from ..utils.seed_fidelity import is_seed_faithful
+                seed_text = getattr(self, "_current_seed_text", "") or ""
+                if seed_text and not is_seed_faithful(seed_text, rev):
+                    logger.info(
+                        f"[NOVELTY-ENHANCE] rejected off-seed revision "
+                        f"'{getattr(rev, 'solution_name', '?')}'")
+                    return idea
             self._finalize_feasibility([rev])
             if settings.enable_score_calibration:
                 _a, u = self._calibrate_batch(batch=[rev])
@@ -4684,8 +4862,9 @@ class UnifiedSolutionCrew:
         """One per-cell ideator↔judge tournament → ONE best, fully-scored idea (per-cell-tournament
         architecture).
 
-        Pre-ranks the cell's critic-scored candidates (drop blocked, prefer most novel), expands the
-        winner RawConcept → full BaseSolutionIdea, then runs `tournament_refine_cell_v4` (keep-best
+        Pre-ranks the cell's critic-scored candidates (drop blocked; prefer seed fidelity for a
+        user submission, otherwise prefer most novel), expands the winner RawConcept → full
+        BaseSolutionIdea, then runs `tournament_refine_cell_v4` (keep-best
         across rounds + separate search-grounded data-route verify). Stamps provenance from the CELL
         (not a name-join — the ideator renames mid-loop), then runs the scorer chain on the winner in
         this thread (`_score_cell_winner`). Pure per-thread; fail-soft → None.
@@ -4700,7 +4879,7 @@ class UnifiedSolutionCrew:
         try:
             pain = cell.get("pain")
             focus = cell.get("focus")
-            # pre-rank: drop blocked / no-route, prefer lowest obviousness (most novel); -1 sentinel = neutral.
+            # Pre-rank: drop blocked/no-route; user seeds prefer fidelity, other frames novelty.
             usable = [c for c in (candidates or [])
                       if not getattr(c, "critic_no_route", False)
                       and (getattr(c, "data_access_model", None) or "").strip().lower() != "blocked"]
@@ -4712,7 +4891,15 @@ class UnifiedSolutionCrew:
                 o = getattr(c, "obviousness_score", -1.0)
                 return o if isinstance(o, (int, float)) and o >= 0 else 0.5
             gen_focus = getattr(self, "idea_focus", "auto") or "auto"
-            if gen_focus == "auto":
+            if frame == "user_seed":
+                from ..utils.seed_fidelity import seed_fidelity_score
+                seed_text = str(
+                    (getattr(focus, "payload", None) or {}).get("seed_text", "") or ""
+                ).strip()
+                # Fidelity outranks novelty for a user submission. Novelty is only a
+                # tiebreaker among variants of the product the user actually described.
+                top = max(pool, key=lambda c: (seed_fidelity_score(seed_text, c), -_obv(c)))
+            elif gen_focus == "auto":
                 top = min(pool, key=_obv)  # pure lowest-obviousness (most novel)
             else:
                 # Focus-aware, QUALITY-FLOORED tiebreaker: among candidates within a small obviousness
@@ -4739,6 +4926,11 @@ class UnifiedSolutionCrew:
             winner = tournament_refine_cell_v4(
                 [expanded], grounding, rounds=settings.tournament_rounds, search=search, usage_sink=usages)
             winner = winner or expanded
+            # RESET-THEN-STAMP: unanchored_hypothesis is a CODE-FILLED field, but it lives on the
+            # same BaseSolutionIdea schema the generator/loop LLMs populate, so it can arrive
+            # fabricated (True/False) like any other "leave null" field. Clear it unconditionally
+            # before the frame-specific stamping below decides the real, honest value.
+            winner.unanchored_hypothesis = None
 
             if frame == "pain":
                 # Stamp provenance from the cell + seed concept (the join the pooled flow does by name).
@@ -4756,6 +4948,13 @@ class UnifiedSolutionCrew:
                 anchor_titles = list(getattr(focus, "anchor_pain_titles", None) or [])
                 if anchor_titles:
                     winner.pain_points_addressed = anchor_titles
+                elif frame == "user_seed":
+                    # Unanchored seed: no validated pain to code-fill. Force-EMPTY rather than
+                    # trust whatever the loop's free text produced — the anchor_line prompt tells
+                    # the model to leave this empty, but a fabricated pain must never survive to
+                    # the pool regardless of what the LLM actually returned.
+                    winner.pain_points_addressed = []
+                    winner.unanchored_hypothesis = True
             winner.source_frame = frame
             # Backfill project_type + the facet tags from the seed concept (RawConcept always has a
             # project_type; the refiner only sometimes re-emits it, so without this the idea's
@@ -5018,10 +5217,20 @@ class UnifiedSolutionCrew:
             spec = FRAME_REGISTRY.get(frame)
             focus_text = spec.brief_formatter(focus) if spec is not None and focus is not None else ""
             titles = anchor_pain_titles or []
-            anchor_line = (
-                "pain_points_addressed MUST be EXACTLY this validated list (no additions, no "
-                f"omissions): {', '.join(titles) or pain_title}.\n\n"
-            )
+            if titles:
+                anchor_line = (
+                    "pain_points_addressed MUST be EXACTLY this validated list (no additions, "
+                    f"no omissions): {', '.join(titles)}.\n\n"
+                )
+            else:
+                # user_seed unanchored (the only frame that can mint with zero anchor pains —
+                # gap/data_asset/workflow always drop a focus with none at mint time): there is
+                # no validated pain to name, so the model must NOT invent one.
+                anchor_line = (
+                    "pain_points_addressed: this idea has NO validated anchor pain from this "
+                    "run's research — leave pain_points_addressed EMPTY ([]). Do NOT invent or "
+                    "name a pain point; this is an explicit unanchored hypothesis.\n\n"
+                )
             focus_line = (
                 f"This concept is seeded from the {frame.upper()} FRAME (not a single source pain):\n"
                 f"{focus_text}\n\n"
@@ -5056,6 +5265,13 @@ class UnifiedSolutionCrew:
                 creative=True,
             )
             self._record_divergent_usage([usage])
+            if frame == "user_seed":
+                from ..utils.seed_fidelity import is_seed_faithful
+                seed_text = str(
+                    (getattr(focus, "payload", None) or {}).get("seed_text", "") or ""
+                ).strip()
+                if seed_text and not is_seed_faithful(seed_text, idea):
+                    raise ValueError("refinement replaced the user-submitted product")
             # Carry structural tags + guarantee the two required scores are present.
             idea.solution_name = idea.solution_name or concept.concept_name
             idea.mechanism_tag = concept.mechanism_tag
@@ -5923,10 +6139,25 @@ class UnifiedSolutionCrew:
                           "paid product on its own.")
         return reason, band
 
-    def _record_ruled_out(self, idea, source: str) -> None:
+    def _record_ruled_out(self, idea, source: str, reason_override: str | None = None) -> None:
         """Append a structured 'examined & ruled out' finding for a demoted winner or a rejected
-        backfill idea. The finding is the user-facing verdict that replaces showing the weak idea."""
-        reason, band = self._compose_ruled_out_reason(idea)
+        backfill idea. The finding is the user-facing verdict that replaces showing the weak idea.
+        `reason_override` lets a caller (e.g. the no-buyer demotion rule) supply its own honest
+        reason class instead of the generic thin-market composition.
+
+        Also stamps `source_frame` (Multi-Frame Idea Generation Portfolio — 'pain' | 'gap' |
+        'data_asset' | 'workflow' | 'user_seed') and, when this crew is mid-seed-request
+        (`execute_seed_pipeline`), the dispatch id that submitted it — so a demoted seed can be
+        badged "Your idea" in the ruled-out panel (eager-meandering-feather.md Phase 5/6).
+        `dispatch_id` is None for every non-seed ruled-out finding (demoted_winner/no_buyer/
+        backfill_rejected from the normal pool never run inside a seed request)."""
+        if reason_override is not None:
+            reason = reason_override
+            _mf = getattr(idea, "market_fit_score", None)
+            _mf = _mf if isinstance(_mf, (int, float)) else 0.0
+            band = "very-low" if _mf < 0.25 else "low"
+        else:
+            reason, band = self._compose_ruled_out_reason(idea)
         sp = (getattr(idea, "source_pain", None)
               or (getattr(idea, "pain_points_addressed", None) or [None])[0]
               or getattr(idea, "solution_name", "?"))
@@ -5949,6 +6180,8 @@ class UnifiedSolutionCrew:
             "prior_tier": getattr(idea, "idea_tier", "single") or "single",
             "source": source,
             "evidence": evidence,
+            "source_frame": getattr(idea, "source_frame", None) or "pain",
+            "dispatch_id": getattr(self, "_current_seed_dispatch_id", None),
         })
 
     def _sweep_demote(self, ideas: list) -> int:
@@ -5969,6 +6202,51 @@ class UnifiedSolutionCrew:
                 self._record_ruled_out(i, source="demoted_winner")
                 n += 1
                 logger.info(f"[Demote] '{getattr(i, 'solution_name', '?')}' mf={mf:.2f} < {bar}")
+        n += self._sweep_no_buyer_demote(ideas)
+        return n
+
+    def _sweep_no_buyer_demote(self, ideas: list) -> int:
+        """No-buyer demotion (2026-07-12; TIScalperAudit case: an advocacy idea whose anchor pains
+        have no software fix and whose audience won't pay survived the market_fit demotion bar at
+        EXACTLY mf=0.40 — 'absence of incumbents' read as an opportunity gap when it was really
+        'users, not customers'). Downgrade-only and INDEPENDENT of the mf bar (can fire above it).
+        Fires when ALL align: every one of the idea's anchor pains (pain_points_addressed, matched
+        against pain_point_analysis by title) is NOT fully tool-addressable (tool_addressable !=
+        'full' — partial/none means the fix is policy/platform change, not software), the idea's
+        source-segment payability is LOW (source_segment_payability < payability_low_threshold OR
+        source_segment_payability_class == 'personal-wallet'), AND the run's niche wallet probe
+        classified spend as 'free-culture'. settings.no_buyer_demotion=False disables (no-op)."""
+        if not settings.no_buyer_demotion:
+            return 0
+        wallet = getattr(self, "_niche_wallet_brief", None) or {}
+        if (wallet.get("wallet_class") or "").strip().lower() != "free-culture":
+            return 0
+        pains_by_title = {(getattr(p, "title", "") or "").strip().lower(): p
+                          for p in (getattr(self.pain_point_analysis, "pain_points", []) or [])}
+        n = 0
+        for i in ideas:
+            if getattr(i, "candidate_status", "active") != "active":
+                continue
+            addressed = getattr(i, "pain_points_addressed", None) or []
+            anchor_pains = [pains_by_title.get(str(t).strip().lower()) for t in addressed]
+            anchor_pains = [p for p in anchor_pains if p is not None]
+            if not anchor_pains:
+                continue
+            if any(getattr(p, "tool_addressable", "full") == "full" for p in anchor_pains):
+                continue
+            pay = getattr(i, "source_segment_payability", None)
+            pay_cls = (getattr(i, "source_segment_payability_class", None) or "").strip().lower()
+            low_pay = (isinstance(pay, (int, float)) and pay < settings.payability_low_threshold) or (
+                pay_cls == "personal-wallet")
+            if not low_pay:
+                continue
+            i.candidate_status = "demoted"
+            self._record_ruled_out(i, source="no_buyer", reason_override=(
+                "Real pain, but its fix is platform/policy change, not software — the research "
+                "found users here, not customers."))
+            n += 1
+            logger.info(f"[Demote] '{getattr(i, 'solution_name', '?')}' no-buyer "
+                        f"(wallet=free-culture, payability={pay})")
         return n
 
     def _pick_backfill_cells(self, ideas: list, cells: list, max_n: int) -> list[dict]:
@@ -6058,6 +6336,204 @@ class UnifiedSolutionCrew:
                                          usages=usages, skip_selection=skip_selection)
         except Exception as e:
             logger.warning(f"[Backfill] cell failed (non-fatal): {str(e)[:120]}")
+            return None
+
+    def _build_seed_crew_inputs(self) -> dict:
+        """Minimal `crew_inputs`-equivalent for the standalone user-seed pipeline (eager-
+        meandering-feather.md Phase 4). No `execute_pipeline` call precedes a seed — the worker
+        hydrates ONE crew (section C) and calls `execute_seed_pipeline` directly — so there is no
+        `crew_inputs` local to reuse. This mirrors the SUBSET of execute_pipeline's crew_inputs
+        the `divergent_exploration` template actually reads for surrounding context; the seed's
+        own specifics (free text, tool ref, anchor pains) live in `partitioned_block`, not here.
+
+        Reuses the same free functions/self-methods execute_pipeline calls (`_format_
+        audience_context`, `_format_competitor_mentions`, `extract_pain_points_by_priority`,
+        `format_pain_points_for_agents`, `derive_monetization_directive`) so those stay a single
+        source of truth; only the niche/user-segment/theme-category formatting — inlined directly
+        in `execute_pipeline` rather than extracted into a method — is duplicated here (small,
+        stable derivations; see execute_pipeline's own crew_inputs construction if this drifts).
+        Pure derivation from already-hydrated instance state; no gating/funnel/blacklist logic
+        (a lone seed isn't selecting from a curated pain list or deduping against a pool)."""
+        from ..utils.niche_difficulty import derive_monetization_directive
+        from ..utils.pain_point_formatters import (
+            extract_pain_points_by_priority, format_pain_points_for_agents)
+
+        high_priority, medium_priority, _low_priority = extract_pain_points_by_priority(
+            self.pain_point_analysis)
+        high_priority_list = format_pain_points_for_agents(
+            pain_points=high_priority, format_type="detailed", sort_by="severity",
+            limit=12, include_quotes=True)
+        medium_priority_list = format_pain_points_for_agents(
+            pain_points=medium_priority, format_type="compact", sort_by="severity", limit=10)
+
+        if self.niche_context:
+            market_segments_formatted = "\n".join(f"- {seg}" for seg in self.niche_context.market_segments)
+            niche_description = self.niche_context.niche_description
+            industry_boundaries = self.niche_context.industry_boundaries
+        else:
+            market_segments_formatted = "Not provided"
+            niche_description = "Not provided"
+            industry_boundaries = "Not provided"
+
+        user_segments_formatted = "Not available"
+        cc = getattr(self.pain_point_analysis, "content_categorization", None)
+        if cc and cc.user_segments:
+            user_segments_formatted = "\n".join(
+                f"**{seg.segment_name}** ({seg.mention_frequency} frequency)\n"
+                f"  Primary concerns: {', '.join(seg.primary_concerns)}"
+                for seg in cc.user_segments)
+
+        theme_categories_formatted = "Not available"
+        if cc and cc.theme_categories:
+            theme_lines = []
+            for t in sorted(cc.theme_categories, key=lambda x: x.mention_count, reverse=True):
+                keywords = ", ".join(f'"{k}"' for k in t.anchor_keywords[:6])
+                theme_lines.append(
+                    f"- **{t.category_name}** ({t.mention_count} mentions): "
+                    f"keywords: [{keywords}] — {t.definition}"
+                )
+            theme_categories_formatted = "\n".join(theme_lines)
+
+        audience_context = self._format_audience_context()
+        try:
+            self._segment_payability_map()
+        except Exception as e:
+            logger.warning(f"[Seed] segment payability for monetization directive skipped: {e}")
+        monetization_directive = derive_monetization_directive(
+            self.pain_point_analysis.pain_points,
+            list(getattr(self.audience_mapping, "audience_segments", None) or []),
+        )
+        wallet_line = self._wallet_prompt_line()
+        if wallet_line:
+            monetization_directive = f"{monetization_directive} {wallet_line}"
+        # Stash like execute_pipeline does: _refine_single_concept reads this attr directly (it
+        # builds a custom prompt and does not render the solution_refinement task).
+        self._monetization_directive = monetization_directive
+
+        return {
+            "monetization_directive": monetization_directive,
+            "analysis_summary": self.pain_point_analysis.analysis_summary,
+            "high_priority_count": len(high_priority),
+            "medium_priority_count": len(medium_priority),
+            "high_priority_list": high_priority_list,
+            "medium_priority_list": medium_priority_list,
+            "top_categories": ', '.join(str(c) for c in (self.pain_point_analysis.top_categories or [])),
+            "total_pain_points": len(self.pain_point_analysis.pain_points),
+            "total_mentions": self.pain_point_analysis.total_mentions,
+            "allowed_project_types": (
+                ', '.join(self.allowed_project_types) if self.allowed_project_types
+                else "All types allowed"),
+            "niche_description": niche_description,
+            "market_segments": market_segments_formatted,
+            "industry_boundaries": industry_boundaries,
+            "user_segments": user_segments_formatted,
+            **audience_context,
+            "existing_ideas_blacklist": "None (user-seed pipeline — not deduplicated against the pool)",
+            "existing_ideas_blacklist_compact": "None (user-seed pipeline)",
+            "regeneration_directive": "",
+            "competitor_mentions": self._format_competitor_mentions(),
+            "theme_categories": theme_categories_formatted,
+            "partitioned_mode_block": "",
+            "concept_count": "8-12",
+        }
+
+    def _run_seed_cell(self, *, seed_text: str, pain_ref: str | None = None,
+                       tool_ref: str | None = None, dispatch_id: str = "seed",
+                       search=None, usages: list):
+        """User-seed pipeline entry point (eager-meandering-feather.md Phase 4, sections B/D):
+        resolve the user's free-text idea to an exact validated pain (+ segment) if one genuinely
+        matches (`resolve_seed_anchors`), build the 'user_seed' FrameFocus/cell, and run the SAME
+        per-cell birth path every other frame uses — fresh generation -> per-cell tournament ->
+        in-cell scoring (`_one_sample` -> `_tournament_cell` -> `_score_cell_winner`: refinement,
+        route-verify, provenance, blank-repair, payability, cell-scoring). NEVER a hand-built
+        BaseSolutionIdea + bare `_score_wave` — that path skips all of the above.
+
+        `usages` is the caller's shared LLM-usage sink (mutated in place, mirroring every other
+        cell-birth call site — `_run_backfill_cell`, `_tournament_cell`). Returns the fully-scored
+        idea, or None on total failure (fail-soft; the caller decides how to surface a birth
+        failure — a paid seed that fails to birth ANYTHING is the caller's problem, e.g. a refund,
+        not this method's)."""
+        from ..utils.frames import FRAME_REGISTRY, FrameFocus
+        from ..utils.seed_resolver import resolve_seed_anchors
+
+        pains = list(getattr(self.pain_point_analysis, "pain_points", None) or [])
+        segments = list(getattr(getattr(self, "audience_mapping", None), "audience_segments", None) or [])
+        try:
+            resolved = resolve_seed_anchors(seed_text, pain_ref, tool_ref, pains, segments)
+            anchor_titles, segment = list(resolved.anchor_pain_titles), resolved.segment
+        except Exception as e:
+            logger.warning(f"[Seed] anchor resolution failed (non-fatal, treated as unanchored): {str(e)[:120]}")
+            anchor_titles, segment = [], None
+
+        focus = FrameFocus(
+            frame="user_seed", key=dispatch_id or "seed",
+            payload={"seed_text": seed_text or "", "tool_ref": tool_ref or ""},
+            anchor_pain_titles=anchor_titles,
+        )
+        cell = {"frame": "user_seed", "focus": focus, "pain": None, "segment": segment}
+
+        try:
+            spec = FRAME_REGISTRY["user_seed"]
+            persona = (_format_segment_persona(segment) if segment is not None
+                      else _DIVERGENT_PERSONAS[0])
+            pool = settings.brainstorm_pool_resolved
+            model, effort = pool[0]
+            pains_by_title = {(getattr(p, "title", "") or ""): p for p in pains}
+            anchor_block = self._format_anchor_pains_block(anchor_titles, pains_by_title)
+            block = _build_partitioned_block(
+                pain_focus=spec.brief_formatter(focus), persona=persona,
+                concepts_target=4, allow_zero=spec.always_allow_zero,
+                allowed_types=getattr(self, "allowed_project_types", None),
+                data_menu=self._build_data_menu(),
+                dissatisfaction=self._build_dissatisfaction_block(),
+                wallet=self._wallet_prompt_line(),
+                market_reality=self._build_market_reality_block(),
+                focus_header=spec.focus_header, anchor_block=anchor_block,
+            )
+            concepts, gen_usages = self._one_sample(
+                self._build_seed_crew_inputs(), idx=97,
+                lens=_LENS_PARTITIONED_PREFIX + _DIVERGENT_LENSES[0],
+                model=model, effort=effort, partitioned_block=block, min_concepts=1,
+                allow_zero=spec.always_allow_zero, timeout=90,
+                source_frame="user_seed", source_focus_key=focus.key,
+                source_segment=getattr(segment, "segment_name", None) if segment is not None else None,
+                score_inline=True)
+            if gen_usages:
+                usages.extend(gen_usages if isinstance(gen_usages, list) else [gen_usages])
+            from ..utils.seed_fidelity import is_seed_faithful
+            faithful = [c for c in concepts if is_seed_faithful(seed_text, c)]
+            if faithful:
+                concepts = faithful
+            else:
+                # The generator ignored the product brief. Never reward that drift by
+                # selecting the most novel replacement; refine the submitted brief itself.
+                from ..models.solution_idea import RawConcept
+                clean_seed = " ".join((seed_text or "").split()).strip()
+                keyword_base = " ".join(clean_seed.split()[:8]) or "user product idea"
+                logger.warning(
+                    f"[Seed] {len(concepts)} generated concept(s) abandoned the submitted "
+                    "product — falling back to the original brief")
+                concepts = [RawConcept(
+                    concept_name=(clean_seed.rstrip(".")[:80] or "User-submitted idea"),
+                    one_liner=clean_seed or "User-submitted product idea",
+                    ideation_technique="atomic_feature",
+                    project_type="other",
+                    target_keywords=[keyword_base, f"{keyword_base} app"],
+                    why_non_obvious=(
+                        "User-provided product brief; preserve its core mechanism during refinement."),
+                    source_frame="user_seed",
+                    source_focus_key=focus.key,
+                    source_segment=(
+                        getattr(segment, "segment_name", None) if segment is not None else None),
+                )]
+            winner = self._tournament_cell(
+                cell=cell, candidates=concepts, search=search, usages=usages, skip_selection=True)
+            if winner is None:
+                return None
+            winner.idea_tier = "single"
+            return winner
+        except Exception as e:  # noqa: BLE001 — fail-soft, mirrors _run_backfill_cell
+            logger.warning(f"[Seed] cell failed (non-fatal): {str(e)[:160]}")
             return None
 
     def _synthesize_variant_merge(self, variants: list, shared_product: str):
@@ -6719,6 +7195,270 @@ class UnifiedSolutionCrew:
 
         funnel["candidates_shown"] = len(visible_ideas(ideas))
         self.funnel_counts = funnel
+
+    def _finalize_evaluator_passes(
+        self,
+        refined_solutions,
+        *,
+        skip_selection: bool,
+        solution_selection: SolutionSelection | None = None,
+    ) -> None:
+        """Post-`_backfill_and_demote` evaluator passes, shared by two composition sites:
+
+        - `execute_pipeline`: called AFTER `_backfill_and_demote` (portfolio maintenance —
+          births backfill cells, floor-restores demoted ideas — stays in execute_pipeline,
+          it does not belong in a per-idea finalizer) and BEFORE the caller's checkpoint
+          save (`stage_5_3_refinement` re-save is a caller responsibility so a future seed
+          path never overwrites the pool checkpoint).
+        - `_finalize_seed_tail` (seed entry point, unused until the seed-pipeline phase):
+          called AFTER `_sweep_demote` only, with NO backfill/pivot/merge/floor-restore and
+          NO save.
+
+        Runs: adversarial red-team, SERP-composition probe + SEO-realism caps (preview path
+        only), pain-coverage transparency, evaluation-completeness accounting (once, on the
+        visible subset), closed-vocabulary tag re-derivation (full re-tag from FINAL scores),
+        phantom-name pruning against `solution_selection` (if provided), and the systemic-LLM
+        halt check.
+
+        Every pass above is individually fail-soft (try/except + warning) EXCEPT the final
+        `raise_if_systemic()` check, which is intentionally left uncaught so a payment/auth
+        breaker tripped mid-pass fails the stage rather than persisting a half-evaluated pool.
+        Callers must NOT wrap this method in a blanket try/except that would swallow that
+        signal (`execute_pipeline` doesn't — see its call site).
+        """
+        # Adversarial red-team pass over the top visible ideas (post-demote, pre-portfolio-
+        # summary): survives/weakened/killed verdict per top idea; a killed verdict that
+        # names a shipped/bundled-free alternative applies the existing parity cap via
+        # `_validate_idea_caps` — downgrade-only, no parallel capping mechanism. Runs BEFORE
+        # SEO-realism/tags/final-score re-derivation so those layers read any capped scores.
+        # No-op when red_team_top_k == 0 (no LLM call, no searches). Fail-soft per idea
+        # inside the module; this outer try/except is defense-in-depth.
+        try:
+            from ..utils.red_team_review import run_red_team_review
+            run_red_team_review(self, refined_solutions)
+        except Exception as e:
+            logger.warning(f"Red-team review skipped: {e}")
+
+        # SEO-realism caps (downgrade-only). PREVIEW PATH ONLY: with skip_selection there is
+        # no Task-4 selection / flow-level backfill, so capping the stored seo_scalability_score
+        # here cannot reorder anything. In the full pipeline ranking is locked AFTER this crew
+        # (flow backfill), so the cap is applied later — at Stage 12 for the selected solution.
+        if skip_selection:
+            # SERP-composition peek first (stamps _serp_owned; Rule D in the cap reads it).
+            # Distribution_seo ideas only; angles are already classified above.
+            try:
+                self._probe_serp_composition(refined_solutions.solution_ideas)
+            except Exception as e:
+                logger.warning(f"SERP-composition probe skipped: {e}")
+            try:
+                self._finalize_seo_realism(refined_solutions.solution_ideas)
+            except Exception as e:
+                logger.warning(f"SEO-realism caps skipped: {e}")
+
+        # Pain-coverage transparency (informational; NEVER drops/reorders): surface how
+        # concentrated the FINAL set is on one pain + which validated pains have no idea, so
+        # the user can judge whether concentration is real opportunity or tunnel-vision. We
+        # deliberately do NOT cap by pain — pain is the one axis where concentration may
+        # signal where the value is, not a lazy set.
+        # Runs on the VISIBLE subset so the coverage caveats match what the user actually
+        # sees (demoted/absorbed ideas are hidden by the boundary filters).
+        try:
+            from ..models.solution_idea import visible_ideas as _visible
+            self._pain_coverage_summary(_visible(refined_solutions.solution_ideas))
+        except Exception as e:
+            logger.warning(f"Pain-coverage summary skipped: {e}")
+
+        # Evaluation-completeness caveat — ONCE, after every catch-up evaluator above
+        # (straggler calibration/angle, pivot+merge wave, red-team revisions), on the
+        # visible subset so the caveat matches what the user actually sees.
+        try:
+            from ..models.solution_idea import visible_ideas as _visible
+            self._account_evaluation_completeness(_visible(refined_solutions.solution_ideas))
+        except Exception as e:
+            logger.warning(f"Evaluation-completeness accounting skipped: {e}")
+
+        # (Variant-overlap grouping moved into _backfill_and_demote above — groups now drive
+        # the variant MERGE and the structured overlap_groups display instead of a caveat.)
+
+        # Closed-vocabulary tag facets (chips + future filtering). Runs LAST so it reads the
+        # FINAL scores/data fields (feasibility + SEO realism caps above mutate the very
+        # values derive_tag_facets buckets on). Fail-soft: never blocks the pipeline.
+        # RE-TAG THE FULL SET (2026-07-06): tags sit on the same model the generator LLMs
+        # emit, so a birth-path LLM can fabricate a whole tags object that the straggler
+        # skip (`tags is not None`) would then trust (observed live: a bundle shipped
+        # invented strengths incl. 'market-fit' at mf 0.6); and in-cell tags bucket on
+        # PRE-parity scores, stale after the uniform parity re-calibration. Clearing here
+        # makes _apply_tags re-derive every idea's tags once, from FINAL scores — the same
+        # throwaway-then-rederive doctrine the angle classifier outputs follow.
+        try:
+            for _idea in refined_solutions.solution_ideas:
+                _idea.tags = None
+            self._apply_tags(refined_solutions)
+        except Exception as e:
+            logger.warning(f"Tag facet assignment skipped: {e}")
+
+        # Prune phantom names: Task-4 scored the pre-diversity set, but _enforce_diversity_caps
+        # dropped ideas from refined_solutions. Keep the selection's name-bearing fields
+        # consistent with the FINAL idea set (else downstream find_solution_by_name errors on
+        # ghost names and the report renders dropped runner-ups).
+        if solution_selection is not None:
+            self._prune_selection_to_ideas(solution_selection, refined_solutions.solution_ideas)
+
+        # Systemic-LLM halt point: if a payment/auth failure tripped the breaker during
+        # the post-union passes (each is fail-soft and would have silently skipped), the
+        # pool is half-evaluated — FAIL the stage rather than persist/rank it. Resume
+        # re-runs Stage 5 whole once the account is fixed.
+        from ..utils.llm_service import LLMService as _LLMSvc
+        _LLMSvc.raise_if_systemic()
+
+    def _finalize_seed_tail(self, seed_ideas: list) -> None:
+        """SEED entry point (unused until the seed-pipeline phase — Phase 4 of
+        eager-meandering-feather.md wires `_run_seed_cell` → this method). Runs
+        `_sweep_demote(seed_ideas)` + `_finalize_evaluator_passes(...)` — NOTHING else.
+
+        `seed_ideas` is a plain list (typically length 1: the seed idea plus any
+        birth-path variants), NOT an `IdeaGenerationResult` — that model enforces
+        `min_length=3` and cannot hold a lone seed. `_finalize_evaluator_passes`
+        needs a `.solution_ideas`-bearing container, so this method wraps the list
+        in a throwaway `SimpleNamespace` before delegating; the wrapper is never
+        persisted or returned.
+
+        Deliberately does NOT call `_backfill_and_demote`. That method is portfolio
+        maintenance, not per-idea finalization, and running it on a seed would corrupt
+        the seed's own fate:
+          - It births up to 3 unrelated backfill cells sized off `backfill_target_visible`
+            — a seed submission has no business spawning brand-new pool ideas.
+          - Its floor guard (`min_visible_candidates`) RESTORES demoted ideas and DELETES
+            their ruled-out entries whenever the post-sweep visible count is under the
+            floor. A single weak seed evaluated alongside the existing pool would trip
+            that guard based on the POOL's size, not the seed's own merit — silently
+            resurrecting the seed (or some unrelated demoted idea) and erasing the
+            seed's honest demotion. The user's "your idea didn't clear the bar" outcome
+            must depend only on the seed's own score, never on how many OTHER ideas
+            happen to be visible at settlement time.
+
+        Also does NOT save a checkpoint — the caller (worker, post-merge) saves once
+        after merging the seed outcome into the pool, so this pass must never write
+        `stage_5_3_refinement` itself.
+
+        Caller contract (not yet satisfiable — this method is unused today): the crew
+        instance must already be hydrated per `_run_seed_cell`'s prerequisites, and
+        `self._tournament_ctx` must be SET before calling `_sweep_demote` /
+        `_finalize_evaluator_passes` on a single-seed list — several of the passes above
+        (e.g. red-team, pain-coverage) read crew state that only a hydrated, tournament-
+        context-bearing crew provides. Wiring that hydration is out of scope for this
+        refactor (see eager-meandering-feather.md Phase 4/5); this method exists now so
+        `_finalize_evaluator_passes` can be composed both ways without a second copy of
+        the tail logic.
+        """
+        from types import SimpleNamespace
+
+        self._sweep_demote(seed_ideas)
+        self._finalize_evaluator_passes(
+            SimpleNamespace(solution_ideas=seed_ideas),
+            skip_selection=True,
+            solution_selection=None,
+        )
+
+    def execute_seed_pipeline(self, seed: "SeedRequest"):
+        """User-seed pipeline entry point (eager-meandering-feather.md Phase 4): the worker's
+        dispatch-settled counterpart to `execute_pipeline`, for exactly ONE user-composed idea.
+        `seed` is a `SeedRequest` (or any object/dict exposing `seed_text`/`pain_ref`/`tool_ref`/
+        `dispatch_id` the same way).
+
+        (a) Reset the SAME per-op scratch state `execute_pipeline` resets at its own entry, so a
+            crew instance (the worker builds exactly ONE, hydrated — section C) never acts on a
+            stale tournament context / ruled-out ledger / search budget left over from anything
+            else. Also SETS `self._tournament_ctx` (unlike the None-reset in execute_pipeline) —
+            this crew IS in tournament-branch mode for its one cell, and `_finalize_seed_tail`'s
+            caller contract requires it non-None before `_sweep_demote`/evaluator passes run.
+        (b) `_run_seed_cell` — the REAL birth path (fresh generation -> per-cell tournament ->
+            in-cell scoring). Then `_score_wave([idea], birth_verified=[idea])` for the SAME
+            post-union completion a backfill winner gets (pool-contract normalization, pain-
+            relevance, dev-time, mechanism parity, calibrate, caps, angles) — passing the idea as
+            `birth_verified` skips re-running route-verify, since `_tournament_cell` already ran
+            it in-cell via `verify_data_routes`. This exactly mirrors `_backfill_and_demote`'s
+            `self._score_wave(backfill_winners, birth_verified=backfill_winners)` call, the one
+            other birth path that also goes through `_tournament_cell` first — so nothing here
+            double-runs what the cell path already did.
+        (c) `_finalize_seed_tail([idea])` — `_sweep_demote` + the shared evaluator passes
+            (red-team / SEO-realism / tags / final-score). NEVER `_backfill_and_demote`: that is
+            portfolio maintenance (births unrelated backfill cells, floor-restores demotions off
+            the POOL's size) and running it on a lone seed would make the seed's own honest fate
+            depend on unrelated ideas — see `_finalize_seed_tail`'s docstring.
+        (d) Returns the ONE idea, active OR demoted — honestly. The caller (worker Phase 5)
+            decides what a demoted seed means for the user (e.g. a refund); this method never
+            hides or overrides the outcome.
+
+        Returns None only when birth itself failed (`_run_seed_cell` returned None — e.g. the
+        generator produced zero concepts). Does NOT save a checkpoint — the worker saves once,
+        post-merge into the pool (Phase 5)."""
+        self._tournament_ctx = None
+        self.ruled_out_pains = []
+        self.overlap_groups = []
+        self.funnel_counts = {}
+        self._ma_serper_calls = 0
+        self._ma_search_lock = threading.Lock()
+        self._birth_verified_names = set()
+
+        def _get(attr: str):
+            return seed.get(attr) if isinstance(seed, dict) else getattr(seed, attr, None)
+
+        seed_text = _get("seed_text") or ""
+        self._current_seed_text = seed_text
+        pain_ref = _get("pain_ref")
+        tool_ref = _get("tool_ref")
+        dispatch_id = _get("dispatch_id") or "seed"
+        # Read by `_record_ruled_out` (via `_sweep_demote` in `_finalize_seed_tail` below) so a
+        # DEMOTED seed's ruled-out finding carries the dispatch id — never set for any other
+        # birth path (execute_pipeline never touches this attr), so every non-seed finding still
+        # gets `dispatch_id: None`.
+        self._current_seed_dispatch_id = dispatch_id
+
+        search = None
+        if getattr(self, "search_tool", None) is not None:
+            def search(q):  # noqa: E731
+                try:
+                    return str(self.search_tool.run(search_query=q))
+                except Exception:
+                    return ""
+        usages: list = []
+        # Mirrors the shape execute_pipeline stashes at its own tournament-branch entry
+        # (search/usages/cells_run) — `partition_cells`/`crew_inputs` stay None: no pool-wide
+        # cell allocation or dedup blacklist exists for a lone seed.
+        self._tournament_ctx = {
+            "search": search, "usages": usages, "partition_cells": None,
+            "crew_inputs": None, "cells_run": 1,
+        }
+
+        idea = self._run_seed_cell(
+            seed_text=seed_text, pain_ref=pain_ref, tool_ref=tool_ref,
+            dispatch_id=dispatch_id, search=search, usages=usages)
+        if idea is None:
+            self._record_divergent_usage(usages)
+            return None
+
+        from ..utils.seed_fidelity import is_seed_faithful
+        if not is_seed_faithful(seed_text, idea):
+            logger.error("[Seed] birth violated the user-seed identity lock; refusing replacement")
+            self._record_divergent_usage(usages)
+            return None
+
+        self._score_wave([idea], birth_verified=[idea])
+        if not is_seed_faithful(seed_text, idea):
+            logger.error("[Seed] scoring replaced the submitted product; refusing replacement")
+            self._record_divergent_usage(usages)
+            return None
+
+        seed_ideas = [idea]
+        self._finalize_seed_tail(seed_ideas)
+        idea = seed_ideas[0]
+        if not is_seed_faithful(seed_text, idea):
+            logger.error("[Seed] final evaluation replaced the submitted product; refusing replacement")
+            self._record_divergent_usage(usages)
+            return None
+        self._record_divergent_usage(usages)
+        return idea
 
     def _carry_provenance(self, refined_solutions, raw_concepts) -> int:
         """Carry M/D/J tags + (pain × segment) provenance from the divergent pool onto the
@@ -7626,6 +8366,10 @@ class UnifiedSolutionCrew:
         # previous run's findings (codex-review MINOR, 2026-07-09).
         self._tournament_ctx = None
         self.ruled_out_pains = []
+        # A non-seed run must always stamp dispatch_id: None on its own ruled-out records
+        # (see the comment at `_current_seed_dispatch_id`'s seed-path setter) — never leak a
+        # PRIOR run's seed dispatch id onto this run's findings.
+        self._current_seed_dispatch_id = None
         self.overlap_groups = []
         self.funnel_counts = {}
         self._ma_serper_calls = 0  # market-awareness search budget counter (per run)
@@ -8178,90 +8922,18 @@ class UnifiedSolutionCrew:
             except Exception as e:
                 logger.warning(f"Demote/merge/backfill block skipped: {e}")
 
-            # Adversarial red-team pass over the top visible ideas (post-demote, pre-portfolio-
-            # summary): survives/weakened/killed verdict per top idea; a killed verdict that
-            # names a shipped/bundled-free alternative applies the existing parity cap via
-            # `_validate_idea_caps` — downgrade-only, no parallel capping mechanism. Runs BEFORE
-            # SEO-realism/tags/final-score re-derivation so those layers read any capped scores.
-            # No-op when red_team_top_k == 0 (no LLM call, no searches). Fail-soft per idea
-            # inside the module; this outer try/except is defense-in-depth.
-            try:
-                from ..utils.red_team_review import run_red_team_review
-                run_red_team_review(self, refined_solutions)
-            except Exception as e:
-                logger.warning(f"Red-team review skipped: {e}")
-
-            # SEO-realism caps (downgrade-only). PREVIEW PATH ONLY: with skip_selection there is
-            # no Task-4 selection / flow-level backfill, so capping the stored seo_scalability_score
-            # here cannot reorder anything. In the full pipeline ranking is locked AFTER this crew
-            # (flow backfill), so the cap is applied later — at Stage 12 for the selected solution.
-            if skip_selection:
-                # SERP-composition peek first (stamps _serp_owned; Rule D in the cap reads it).
-                # Distribution_seo ideas only; angles are already classified above.
-                try:
-                    self._probe_serp_composition(refined_solutions.solution_ideas)
-                except Exception as e:
-                    logger.warning(f"SERP-composition probe skipped: {e}")
-                try:
-                    self._finalize_seo_realism(refined_solutions.solution_ideas)
-                except Exception as e:
-                    logger.warning(f"SEO-realism caps skipped: {e}")
-
-            # Pain-coverage transparency (informational; NEVER drops/reorders): surface how
-            # concentrated the FINAL set is on one pain + which validated pains have no idea, so
-            # the user can judge whether concentration is real opportunity or tunnel-vision. We
-            # deliberately do NOT cap by pain — pain is the one axis where concentration may
-            # signal where the value is, not a lazy set.
-            # Runs on the VISIBLE subset so the coverage caveats match what the user actually
-            # sees (demoted/absorbed ideas are hidden by the boundary filters).
-            try:
-                from ..models.solution_idea import visible_ideas as _visible
-                self._pain_coverage_summary(_visible(refined_solutions.solution_ideas))
-            except Exception as e:
-                logger.warning(f"Pain-coverage summary skipped: {e}")
-
-            # Evaluation-completeness caveat — ONCE, after every catch-up evaluator above
-            # (straggler calibration/angle, pivot+merge wave, red-team revisions), on the
-            # visible subset so the caveat matches what the user actually sees.
-            try:
-                from ..models.solution_idea import visible_ideas as _visible
-                self._account_evaluation_completeness(_visible(refined_solutions.solution_ideas))
-            except Exception as e:
-                logger.warning(f"Evaluation-completeness accounting skipped: {e}")
-
-            # (Variant-overlap grouping moved into _backfill_and_demote above — groups now drive
-            # the variant MERGE and the structured overlap_groups display instead of a caveat.)
-
-            # Closed-vocabulary tag facets (chips + future filtering). Runs LAST so it reads the
-            # FINAL scores/data fields (feasibility + SEO realism caps above mutate the very
-            # values derive_tag_facets buckets on). Fail-soft: never blocks the pipeline.
-            # RE-TAG THE FULL SET (2026-07-06): tags sit on the same model the generator LLMs
-            # emit, so a birth-path LLM can fabricate a whole tags object that the straggler
-            # skip (`tags is not None`) would then trust (observed live: a bundle shipped
-            # invented strengths incl. 'market-fit' at mf 0.6); and in-cell tags bucket on
-            # PRE-parity scores, stale after the uniform parity re-calibration. Clearing here
-            # makes _apply_tags re-derive every idea's tags once, from FINAL scores — the same
-            # throwaway-then-rederive doctrine the angle classifier outputs follow.
-            try:
-                for _idea in refined_solutions.solution_ideas:
-                    _idea.tags = None
-                self._apply_tags(refined_solutions)
-            except Exception as e:
-                logger.warning(f"Tag facet assignment skipped: {e}")
-
-            # Prune phantom names: Task-4 scored the pre-diversity set, but _enforce_diversity_caps
-            # dropped ideas from refined_solutions. Keep the selection's name-bearing fields
-            # consistent with the FINAL idea set (else downstream find_solution_by_name errors on
-            # ghost names and the report renders dropped runner-ups).
-            if solution_selection is not None:
-                self._prune_selection_to_ideas(solution_selection, refined_solutions.solution_ideas)
-
-            # Systemic-LLM halt point: if a payment/auth failure tripped the breaker during
-            # the post-union passes (each is fail-soft and would have silently skipped), the
-            # pool is half-evaluated — FAIL the stage rather than persist/rank it. Resume
-            # re-runs Stage 5 whole once the account is fixed.
-            from ..utils.llm_service import LLMService as _LLMSvc
-            _LLMSvc.raise_if_systemic()
+            # Shared evaluator-pass tail (red-team / SERP-SEO-realism / pain-coverage /
+            # evaluation-completeness / tag re-derivation / phantom-name pruning / systemic-
+            # LLM halt check) — extracted so the same tail can be composed for a seed via
+            # `_finalize_seed_tail`. Not wrapped in a try/except here: each pass inside is
+            # already individually fail-soft, and the trailing `raise_if_systemic()` must be
+            # allowed to propagate to this method's own outer try/except (below) so a tripped
+            # breaker fails the stage instead of persisting a half-evaluated pool.
+            self._finalize_evaluator_passes(
+                refined_solutions,
+                skip_selection=skip_selection,
+                solution_selection=solution_selection,
+            )
 
             # Re-save the FINAL ideas: calibrate/angle/validate/SEO-caps/tags all mutate them
             # AFTER the mid-pipeline stage_5_3 save above. Without this re-save the durable

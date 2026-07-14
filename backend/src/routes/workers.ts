@@ -17,16 +17,27 @@ import {
   markWorkerShutdown,
 } from '../services/heartbeatService.js';
 import { failJob, updateStageProgress, completeJob, getJob, addJobAsset, getJobAsset } from '../services/jobService.js';
-import { refundForStage, refundForRegenerationStage } from '../services/creditService.js';
+import { refundForStage, refundForRegenerationStage, refundForSeedIdeaStage, isGuidedSegment } from '../services/creditService.js';
 import { broadcastProgress } from '../services/progressBroadcastService.js';
 import { notifySolutionsReady, notifyPhase2Start, notifyRegenerationComplete, notifyLandingPageReady } from '../services/notificationService.js';
 import {
   IdeasReadySchema,
   RegenerationCompleteSchema,
   RegenerationFailedSchema,
+  GateReachedSchema,
+  GateFailedSchema,
+  SeedIdeaCompleteSchema,
+  SeedIdeaFailedSchema,
 } from '../types/job.js';
-import { notifyJobStart, notifyJobComplete, notifyJobError } from '../services/notificationService.js';
-import { AssetType, Prisma } from '@prisma/client';
+import { notifyJobStart, notifyJobComplete, notifyJobError, notifyGateReached } from '../services/notificationService.js';
+import {
+  dispatchGuard,
+  diagnoseGuardMiss,
+  startDispatchedJob,
+  settleDispatch,
+} from '../services/dispatchService.js';
+import { buildSeedEnvelope, buildSeedReceiptContent } from '../utils/ledgerEvents.js';
+import { AssetType, Prisma, DispatchState, DispatchKind } from '@prisma/client';
 import type { JobStatus as JobStatusType } from '@prisma/client';
 import { bigramSimilarity, canonicalizeAddressedTitles, normalizeTitle } from '../services/titleMatching.js';
 import { requireInternalService } from '../middleware/auth.js';
@@ -200,6 +211,9 @@ workersRouter.post('/shutdown', async (req: Request, res: Response) => {
 const JobStartedSchema = z.object({
   worker_id: z.string().min(1),
   job_id: z.string().uuid(),
+  // The claim. This callback is where AUTHORIZED becomes CLAIMED — the boundary that decides
+  // whether a later cancel owes the user a refund (nothing ran) or not (work started).
+  dispatch_id: z.string().uuid().optional(),
 });
 
 /**
@@ -222,26 +236,73 @@ workersRouter.post('/job-started', async (req: Request, res: Response) => {
     const hasSelections = existingJob?.selectedSolutions && existingJob.selectedSolutions.length > 0;
     const isRegenerate = existingJob?.ideasRegeneratedAt != null && !hasSelections;
     const isPhase2 = !isRegenerate && hasSelections;
-    const runningStatus = isRegenerate ? JobStatus.REGENERATING : isPhase2 ? JobStatus.RUNNING_PHASE2 : JobStatus.RUNNING;
 
-    // Atomic conditional update - only if job is in startable state
-    // This prevents overwriting CANCELLED status when a job was cancelled while in queue
-    const result = await prisma.job.updateMany({
-      where: {
-        id: data.job_id,
-        status: { in: [JobStatus.QUEUED, JobStatus.PENDING] },
-      },
-      data: {
-        workerId: data.worker_id,
-        lastHeartbeat: new Date(),
-        status: runningStatus,
-        startedAt: new Date(),
-        errorMessage: null, // Clear any retry messages from previous attempts
-      },
-    });
+    // A SEED_IDEA dispatch takes precedence over the heuristics above: `ideasRegeneratedAt` is
+    // a run-level marker that stays set forever once a job has EVER regenerated, so a seed
+    // submitted on a job that regenerated earlier this run would otherwise misread as
+    // isRegenerate (`ideasRegeneratedAt != null && !hasSelections` — both true for a seed op
+    // too) and get labelled REGENERATING. The dispatch kind is exact; the heuristics are a
+    // fallback for the legacy (undispatched) path only.
+    const dispatchKind = data.dispatch_id
+      ? (await prisma.jobDispatch.findUnique({ where: { id: data.dispatch_id }, select: { kind: true } }))?.kind
+      : null;
+    const runningStatus =
+      dispatchKind === DispatchKind.SEED_IDEA ? JobStatus.RUNNING
+      : isRegenerate ? JobStatus.REGENERATING
+      : isPhase2 ? JobStatus.RUNNING_PHASE2
+      : JobStatus.RUNNING;
+
+    // For dispatched work, start the Job and claim the Dispatch in one job-first transaction.
+    // Cancellation updates the Job first too, so exactly one side crosses the billing boundary:
+    // either RUNNING + CLAIMED commit together, or cancellation leaves the dispatch refundable.
+    let result: { count: number };
+    if (data.dispatch_id) {
+      const outcome = await startDispatchedJob(data.dispatch_id, data.worker_id, {
+        jobId: data.job_id,
+        runningStatus,
+      });
+      if (!outcome) {
+        console.warn(
+          `[Workers] Job ${data.job_id} dispatch ${data.dispatch_id} could not start — telling ${data.worker_id} to skip`
+        );
+        return res.json({ status: 'ok', shouldCancel: true, stale: true });
+      }
+      result = { count: outcome === 'started' ? 1 : 0 };
+    } else {
+      // Narrow legacy path: a worker without a dispatch id may only start a job that has no
+      // active dispatch. Dispatched jobs always use the transaction above.
+      result = await prisma.job.updateMany({
+        where: {
+          id: data.job_id,
+          status: { in: [JobStatus.QUEUED, JobStatus.PENDING] },
+          ...dispatchGuard(data.dispatch_id),
+        },
+        data: {
+          workerId: data.worker_id,
+          lastHeartbeat: new Date(),
+          status: runningStatus,
+          startedAt: new Date(),
+          errorMessage: null,
+        },
+      });
+    }
 
     // If no rows updated, check why
     if (result.count === 0) {
+      const miss = await diagnoseGuardMiss(data.job_id, data.dispatch_id, [
+        JobStatus.QUEUED,
+        JobStatus.PENDING,
+      ]);
+
+      // The job has moved on to a different attempt than the one this worker is holding. Not an
+      // error — the system working. Tell the worker to drop it.
+      if (miss === 'stale_dispatch') {
+        console.warn(
+          `[Workers] Job ${data.job_id} — stale dispatch ${data.dispatch_id ?? '(none)'} on job-started; signaling worker to skip`
+        );
+        return res.json({ status: 'ok', shouldCancel: true, stale: true });
+      }
+
       const job = await prisma.job.findUnique({
         where: { id: data.job_id },
         select: { status: true },
@@ -255,6 +316,9 @@ workersRouter.post('/job-started', async (req: Request, res: Response) => {
         JobStatus.FAILED,
         JobStatus.COMPLETED,
         JobStatus.AWAITING_SELECTION,
+        // Guided mode: a requeued duplicate worker must not keep running while the user is
+        // reviewing/chatting at the gate (Codex 17).
+        JobStatus.AWAITING_GATE,
       ]);
       if (!job || doNotRun.has(job.status)) {
         console.log(
@@ -262,7 +326,8 @@ workersRouter.post('/job-started', async (req: Request, res: Response) => {
         );
         return res.json({ status: 'ok', shouldCancel: true });
       }
-      // Job might already be RUNNING (duplicate call) - proceed normally
+      // A dispatched zero-count result is the transaction's verified same-worker retry. Legacy
+      // jobs retain the historical already-running behavior because they have no attempt id.
       console.log(`[Workers] Job ${data.job_id} not updated (status: ${job.status})`);
     }
 
@@ -594,6 +659,7 @@ const ProgressSchema = z.object({
   report_path: z.string().max(500).optional(),
   landing_path: z.string().max(500).optional(),
   artifact: z.record(z.unknown()).optional(),
+  dispatch_id: z.string().uuid().optional(),
 });
 
 /**
@@ -638,6 +704,28 @@ workersRouter.post('/progress', async (req: Request, res: Response) => {
       : data.status === 'skipped' ? StageStatus.SKIPPED
       : data.status === 'failed' ? StageStatus.FAILED
       : StageStatus.PENDING;
+
+    // 0. Reject progress from a superseded attempt BEFORE it writes anything.
+    //
+    // This endpoint mutates JobProgress, which is the ledger everything else reads — including,
+    // once segment billing lands, how much work a cancelled run actually consumed. A stale worker
+    // writing here doesn't just add noise; it rewrites history that money depends on.
+    if (data.dispatch_id) {
+      const { prisma: progressDb } = await import('../services/db.js');
+      const owner = await progressDb.job.findUnique({
+        where: { id: data.job_id },
+        select: { activeDispatchId: true },
+      });
+      if (owner && (owner.activeDispatchId ?? null) !== data.dispatch_id) {
+        console.warn(
+          `[Workers] Ignoring progress for job ${data.job_id} from stale dispatch ${data.dispatch_id} ` +
+          `(active: ${owner.activeDispatchId ?? 'none'})`
+        );
+        // shouldCancel tells the worker to stop, which is what we want: it is running work nobody
+        // is waiting for.
+        return res.json({ status: 'ok', stale: true, shouldCancel: true });
+      }
+    }
 
     // 1. Update stage progress in database
     await updateStageProgress(
@@ -813,11 +901,17 @@ workersRouter.post('/ideas-ready', async (req: Request, res: Response) => {
         ? { costUsd: totalCost, costSummary: cost as Prisma.InputJsonValue }
         : {};
 
-    // Atomic conditional update: RUNNING → AWAITING_SELECTION
+    // Atomic conditional update: RUNNING → AWAITING_SELECTION.
+    //
+    // The dispatch guard matters MORE here than at the gate callbacks, not less: a guided G2
+    // Continue does not end at /gate-reached — it runs on to stage 5 and terminates HERE. Guarding
+    // only the two gate endpoints would have left the entire G2 continuation unprotected, which is
+    // to say the busiest path in the whole flow.
     const result = await prisma.job.updateMany({
       where: {
         id: data.job_id,
         status: JobStatus.RUNNING,
+        ...dispatchGuard(data.dispatch_id),
       },
       data: {
         status: JobStatus.AWAITING_SELECTION,
@@ -825,9 +919,20 @@ workersRouter.post('/ideas-ready', async (req: Request, res: Response) => {
         phase1CheckpointPath: data.checkpoint_path,
         ideasShownAt: new Date(),
         awaitingSelectionAt: new Date(),
+        // The guided continuation is over — disarm the CAS so a straggler callback for it now
+        // matches nothing.
+        ...(data.dispatch_id ? { activeDispatchId: null } : {}),
         ...costData,
       },
     });
+
+    // Close the dispatch record itself (the Job-side disarm rode the update above).
+    if (result.count > 0 && data.dispatch_id) {
+      await prisma.jobDispatch.updateMany({
+        where: { id: data.dispatch_id },
+        data: { state: DispatchState.COMPLETED, settledAt: new Date() },
+      });
+    }
 
     if (result.count === 0) {
       // Distinguish WHY the conditional update missed (mirrors the /job-complete precedent):
@@ -1067,6 +1172,627 @@ workersRouter.post('/regeneration-failed', async (req: Request, res: Response) =
       return;
     }
     console.error('[Workers] Regeneration failed error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/workers/seed-complete
+ * Worker reports a user-composed idea seed (plans/eager-meandering-feather.md Phase 5) finished
+ * birth + scoring and was already merged/saved by the worker. Merges the ONE outcome idea
+ * (active or demoted — the worker never drops a paid seed) into the pool and settles the
+ * dispatch, mirroring /regeneration-complete's merge but on the DispatchKind.SEED_IDEA
+ * lifecycle (dispatchGuard/settleDispatch) rather than the legacy status-field guard.
+ */
+workersRouter.post('/seed-complete', async (req: Request, res: Response) => {
+  try {
+    const data = SeedIdeaCompleteSchema.parse(req.body);
+    const { prisma } = await import('../services/db.js');
+    const { JobStatus } = await import('@prisma/client');
+
+    const cost = data.cost_summary;
+    const batchCost = typeof cost?.total_cost === 'number' ? cost.total_cost : null;
+
+    // Read + merge + flip + settle all inside ONE transaction, so the merged solutionIdeas
+    // array is never built from a snapshot that could go stale before the write lands.
+    const result = await prisma.$transaction(async (tx) => {
+      const current = await tx.job.findFirst({
+        where: {
+          id: data.job_id,
+          status: { in: [JobStatus.QUEUED, JobStatus.RUNNING] },
+          ...dispatchGuard(data.dispatch_id),
+        },
+        select: { solutionIdeas: true, costUsd: true },
+      });
+      if (!current) return { count: 0 };
+
+      // A demoted seed must NOT enter the selectable pool — it belongs only in the
+      // preview report's `examined_ruled_out` ledger (worker re-materializes that asset
+      // separately; see the cache invalidation below). Only an accepted seed is appended.
+      const mergedSolutions = data.outcome === 'accepted'
+        ? [...(((current.solutionIdeas as any[]) || [])), data.idea]
+        : ((current.solutionIdeas as any[]) || []);
+      const costData: Prisma.JobUpdateManyMutationInput =
+        cost && batchCost && batchCost > 0
+          ? { costUsd: (current.costUsd ?? 0) + batchCost, costSummary: cost as Prisma.InputJsonValue }
+          : {};
+
+      const flipped = await tx.job.updateMany({
+        where: {
+          id: data.job_id,
+          status: { in: [JobStatus.QUEUED, JobStatus.RUNNING] },
+          ...dispatchGuard(data.dispatch_id),
+        },
+        data: {
+          status: JobStatus.AWAITING_SELECTION,
+          solutionIdeas: mergedSolutions as any,
+          ...costData,
+        },
+      });
+      if (flipped.count === 0) return { count: 0 };
+
+      if (data.dispatch_id) {
+        await settleDispatch(tx, data.dispatch_id, DispatchState.COMPLETED);
+
+        // Durable 'seed_settled' receipt (continuous-analyst-ledger idiom) — a SEPARATE row
+        // from the 'seed_submitted' one written at admission, keyed on the SAME
+        // sourceMessageId the dispatch itself carries, so the seed card resolves its
+        // terminal state across a reload without the worker having to resend it.
+        const dispatch = await tx.jobDispatch.findUnique({
+          where: { id: data.dispatch_id },
+          select: { sourceMessageId: true },
+        });
+        if (dispatch?.sourceMessageId) {
+          await tx.chatMessage.create({
+            data: {
+              jobId: data.job_id,
+              gateStage: 5,
+              role: 'receipt',
+              content: buildSeedReceiptContent('seed_settled', data.outcome),
+              patchJson: buildSeedEnvelope(
+                'seed_settled', dispatch.sourceMessageId, data.outcome, data.idea,
+              ) as unknown as object,
+            },
+          });
+        }
+      }
+      return { count: flipped.count };
+    });
+
+    if (result.count === 0) {
+      const current = await prisma.job.findUnique({
+        where: { id: data.job_id },
+        select: { status: true, activeDispatchId: true },
+      });
+      if (!current) {
+        res.status(404).json({ error: 'Job not found' });
+        return;
+      }
+      // Superseded attempt — checked before the idempotency/cancellation reads below, which
+      // would otherwise mistake another attempt's arrival for "my own, already landed".
+      if ((current.activeDispatchId ?? null) !== (data.dispatch_id ?? null)) {
+        const dispatch = data.dispatch_id
+          ? await prisma.jobDispatch.findUnique({ where: { id: data.dispatch_id }, select: { state: true } })
+          : null;
+        if (dispatch?.state === DispatchState.COMPLETED) {
+          // A previous delivery of THIS attempt already landed and the response was lost.
+          res.json({ status: 'ok', idempotent: true });
+          return;
+        }
+        console.warn(
+          `[Workers] Stale seed-complete for job ${data.job_id}: dispatch ${data.dispatch_id ?? '(none)'} ` +
+          `is not the job's active dispatch (${current.activeDispatchId ?? 'none'}) — ignoring`
+        );
+        res.json({ status: 'ok', stale: true });
+        return;
+      }
+      if (current.status === JobStatus.CANCELLED) {
+        console.log(
+          `[Workers] Seed-complete for job ${data.job_id}: job was cancelled — nothing to deliver, not retrying`
+        );
+        res.json({ status: 'ok' });
+        return;
+      }
+      res.status(409).json({
+        error: `Job not in QUEUED/RUNNING state (current: ${current.status})`,
+        state: current.status,
+      });
+      return;
+    }
+
+    // The worker re-materializes the preview report in place (same path, keyed by job_id)
+    // whenever a seed settles, to fold in the new ruled-out/accepted record — drop the
+    // in-memory cache so the next read re-parses it instead of serving the pre-seed
+    // snapshot for up to CACHE_TTL.
+    const { invalidatePreviewReportCache } = await import('../services/assetService.js');
+    invalidatePreviewReportCache(data.job_id);
+
+    broadcastProgress(data.job_id, { stage: 5, name: 'Solution Pipeline', status: 'completed' });
+
+    console.log(`[Workers] Seed idea complete for job ${data.job_id}: outcome=${data.outcome}`);
+    res.json({ status: 'ok' });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation error', details: error.errors });
+      return;
+    }
+    console.error('[Workers] Seed-complete error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/workers/seed-failed
+ * Worker reports that a user-composed idea seed failed BEFORE anything was merged/saved.
+ * Reverts QUEUED/RUNNING -> AWAITING_SELECTION, settles the dispatch, and refunds the numbered
+ * seed_idea_N charge — mirrors /gate-failed's dispatch-settlement shape, not /regeneration-
+ * failed's legacy status-field guard.
+ */
+workersRouter.post('/seed-failed', async (req: Request, res: Response) => {
+  try {
+    const data = SeedIdeaFailedSchema.parse(req.body);
+    const { prisma } = await import('../services/db.js');
+    const { JobStatus } = await import('@prisma/client');
+
+    const dispatch = data.dispatch_id
+      ? await prisma.jobDispatch.findUnique({ where: { id: data.dispatch_id } })
+      : null;
+
+    const result = await prisma.$transaction(async (tx) => {
+      const reverted = await tx.job.updateMany({
+        where: {
+          id: data.job_id,
+          status: { in: [JobStatus.QUEUED, JobStatus.RUNNING] },
+          ...dispatchGuard(data.dispatch_id),
+        },
+        data: { status: JobStatus.AWAITING_SELECTION },
+      });
+      if (reverted.count === 0) return { count: 0 };
+
+      if (data.dispatch_id) {
+        await settleDispatch(tx, data.dispatch_id, DispatchState.FAILED, 'SYSTEM_FAULT');
+
+        // Durable 'seed_settled' receipt with outcome='failed' — the birth produced nothing,
+        // so the seed card resolves to its terminal failed state on reload instead of
+        // staying stuck on the 'seed_submitted' (evaluating) receipt forever.
+        if (dispatch?.sourceMessageId) {
+          await tx.chatMessage.create({
+            data: {
+              jobId: data.job_id,
+              gateStage: 5,
+              role: 'receipt',
+              content: buildSeedReceiptContent('seed_settled', 'failed'),
+              patchJson: buildSeedEnvelope(
+                'seed_settled', dispatch.sourceMessageId, 'failed',
+              ) as unknown as object,
+            },
+          });
+        }
+      }
+      return { count: reverted.count };
+    });
+
+    if (result.count === 0) {
+      const settled = await prisma.job.findUnique({
+        where: { id: data.job_id },
+        select: { status: true, activeDispatchId: true },
+      });
+      if (settled && (settled.activeDispatchId ?? null) !== (data.dispatch_id ?? null)) {
+        console.warn(
+          `[Workers] Stale seed-failed for job ${data.job_id}: dispatch ${data.dispatch_id ?? '(none)'} ` +
+          `is not active (${settled.activeDispatchId ?? 'none'}) — ignoring, not reverting`
+        );
+        res.json({ status: 'ok', stale: true });
+        return;
+      }
+      if (settled?.status === JobStatus.AWAITING_SELECTION) {
+        res.json({ status: 'ok', idempotent: true });
+        return;
+      }
+      res.status(409).json({ error: 'Job not in QUEUED/RUNNING state for a seed idea' });
+      return;
+    }
+
+    // The birth produced nothing — refund the numbered seed_idea_N charge. Promotes the
+    // dispatch FAILED -> REFUNDED once the credit is actually back (mirrors /gate-failed's
+    // own two-step settle: settleDispatch above records WHY it ended, this records that the
+    // money came back — the same distinction JobDispatch.state's own doc comment describes).
+    if (dispatch?.seedOrdinal != null) {
+      try {
+        const refund = await refundForSeedIdeaStage(data.job_id, dispatch.seedOrdinal);
+        if (refund) {
+          console.log(
+            `[Workers] Refunded ${Math.abs(refund.amount)} credits for job ${data.job_id} — seed idea failed`
+          );
+          if (data.dispatch_id) {
+            await prisma.jobDispatch.updateMany({
+              where: { id: data.dispatch_id },
+              data: { state: DispatchState.REFUNDED },
+            });
+          }
+        }
+      } catch (refundErr) {
+        console.error(`[Workers] Failed to refund seed idea credits for job ${data.job_id}:`, refundErr);
+      }
+    }
+
+    // Clear worker's current job
+    await registerWorkerHeartbeat(data.worker_id, null);
+
+    broadcastProgress(data.job_id, { stage: 5, name: 'Solution Pipeline', status: 'completed' });
+
+    console.log(`[Workers] Seed idea failed for job ${data.job_id}, reverted to AWAITING_SELECTION: ${data.error_message}`);
+    res.json({ status: 'ok' });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation error', details: error.errors });
+      return;
+    }
+    console.error('[Workers] Seed-failed error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================
+// Guided Mode Worker Endpoints (Phase B — G1/G2 stage gates)
+// ============================================
+
+/**
+ * POST /api/workers/gate-reached
+ * Worker reports a guided-mode (chatMode) job reached a G1 (post-Stage-1) or G2
+ * (post-Stage-4) stage gate — either the FIRST arrival (RUNNING -> AWAITING_GATE) or a
+ * RE-arrival at the SAME gate after an `apply_stay` gate-action round-trip
+ * (QUEUED -> AWAITING_GATE, refreshed gateArtifact). Mirrors /ideas-ready's atomic-update +
+ * idempotency contract (Codex 11 / DR A4): a lost-response retry reads back as
+ * `{idempotent:true}`; CANCELLED has nothing to deliver to (quiet 200); any other
+ * conflicting state raises a 409 so a reached gate is never silently discarded.
+ */
+workersRouter.post('/gate-reached', async (req: Request, res: Response) => {
+  try {
+    const data = GateReachedSchema.parse(req.body);
+    const { prisma } = await import('../services/db.js');
+    const { JobStatus } = await import('@prisma/client');
+
+    // Live cost-tracker summary (mirrors /ideas-ready): persist only real spend so an
+    // empty/$0 summary never creates a misleading row.
+    const cost = data.cost_summary;
+    const totalCost = typeof cost?.total_cost === 'number' ? cost.total_cost : null;
+    const costData: Prisma.JobUpdateManyMutationInput =
+      cost && totalCost && totalCost > 0
+        ? { costUsd: totalCost, costSummary: cost as Prisma.InputJsonValue }
+        : {};
+
+    // A genuinely NEW gate (different from the job's current gateStage) resets the
+    // apply_stay cap counter; a same-stage re-arrival (the apply_stay round-trip) leaves it
+    // untouched — the counter is incremented by the gate-action route on each accepted apply.
+    const preRow = await prisma.job.findUnique({
+      where: { id: data.job_id },
+      select: { gateStage: true },
+    });
+    const isNewGate = preRow?.gateStage !== data.gate_stage;
+
+    // Monotonic guard (Codex review finding 9, REGRESSION, top-3): a delayed retry of a
+    // PREVIOUS gate's notification (e.g. a duplicate worker execution surviving the reliable
+    // queue's stale-claim requeue sweep) must not rewind a job that has already legitimately
+    // progressed to a LATER gate. Reject as a no-op (200, not mutated) when the incoming
+    // gate_stage regresses behind the job's currently recorded gateStage — the simplest
+    // reliable guard given the existing payload shape (no new gate-token plumbing needed).
+    if (preRow?.gateStage != null && data.gate_stage < preRow.gateStage) {
+      console.warn(
+        `[Workers] Stale gate-reached for job ${data.job_id}: incoming gate_stage=${data.gate_stage} ` +
+        `< current gateStage=${preRow.gateStage} — ignoring (superseded by a later gate)`
+      );
+      res.json({ status: 'ok', stale: true });
+      return;
+    }
+
+    // Arrival, receipt promotion and dispatch settlement in ONE transaction.
+    //
+    // These used to be three separate top-level calls, and the receipt promotion's failure was
+    // swallowed by a .catch(console.error) — leaving the artifact committed while its audit row
+    // still said 'submitted', which the retry then skipped as "idempotent, nothing to do". The
+    // ledger would claim a change had never been applied when it had.
+    //
+    // The CAS is on dispatch AND status. Status alone lets a *matching* callback resurrect a
+    // CANCELLED job; dispatch alone lets a superseded attempt land. Both, or neither.
+    const result = await prisma.$transaction(async (tx) => {
+      const flipped = await tx.job.updateMany({
+        where: {
+          id: data.job_id,
+          status: { in: [JobStatus.RUNNING, JobStatus.QUEUED] },
+          ...dispatchGuard(data.dispatch_id),
+        },
+        data: {
+          status: JobStatus.AWAITING_GATE,
+          gateStage: data.gate_stage,
+          gateArtifact: data.gate_artifact as Prisma.InputJsonValue,
+          gateReachedAt: new Date(),
+          phase1CheckpointPath: data.checkpoint_path,
+          ...(isNewGate ? { gateApplyCount: 0 } : {}),
+          ...costData,
+        },
+      });
+
+      if (flipped.count === 0) return { count: 0 };
+
+      // A same-gate re-arrival IS the completion of an apply_stay round-trip: the refreshed
+      // artifact in this very payload reflects the user's patch. Promote the receipt gate-action
+      // wrote from 'submitted' to 'applied' — the ledger only claims a change once the pipeline
+      // has actually re-derived with it. In-transaction, so a failure here rolls the arrival back
+      // rather than silently desynchronising the record from the artifact.
+      if (!isNewGate) {
+        const pending = await tx.chatMessage.findFirst({
+          where: { jobId: data.job_id, gateStage: data.gate_stage, role: 'receipt' },
+          orderBy: { createdAt: 'desc' },
+          select: { id: true, patchJson: true },
+        });
+        const envelope = pending?.patchJson as { event?: string } | null;
+        if (pending && envelope?.event === 'gate_patch_submitted') {
+          await tx.chatMessage.update({
+            where: { id: pending.id },
+            data: {
+              patchJson: {
+                ...(pending.patchJson as object),
+                event: 'gate_patch_applied',
+              } as Prisma.InputJsonValue,
+            },
+          });
+        }
+      }
+
+      // The attempt delivered. Close it and disarm the CAS, so any straggler callback still in
+      // flight for this dispatch now matches nothing.
+      if (data.dispatch_id) {
+        await settleDispatch(tx, data.dispatch_id, DispatchState.COMPLETED);
+      }
+
+      return { count: flipped.count };
+    });
+
+    if (result.count === 0) {
+      const job = await prisma.job.findUnique({
+        where: { id: data.job_id },
+        select: { status: true, gateStage: true, gateReachedAt: true, activeDispatchId: true },
+      });
+      if (!job) {
+        res.status(404).json({ error: 'Job not found' });
+        return;
+      }
+
+      // The job has moved on to a different attempt than the one this callback is reporting for.
+      // Checked BEFORE the idempotency branch below, which would otherwise mistake a superseded
+      // attempt's arrival for "my own delivery, already landed".
+      // Both sides are ?? null-normalised: an absent column reads `undefined`, and `undefined !==
+      // null` would condemn a perfectly good legacy callback as stale.
+      if ((job.activeDispatchId ?? null) !== (data.dispatch_id ?? null)) {
+        console.warn(
+          `[Workers] Stale gate-reached for job ${data.job_id}: dispatch ${data.dispatch_id ?? '(none)'} ` +
+          `is not the job's active dispatch (${job.activeDispatchId ?? 'none'}) — ignoring`
+        );
+        res.json({ status: 'ok', stale: true });
+        return;
+      }
+
+      if (job.status === JobStatus.CANCELLED) {
+        console.log(
+          `[Workers] Gate-reached for job ${data.job_id}: job was cancelled — nothing to deliver, not retrying`
+        );
+        res.json({ status: 'ok' });
+        return;
+      }
+      if (job.status === JobStatus.AWAITING_GATE && job.gateStage === data.gate_stage && job.gateReachedAt !== null) {
+        // A previous attempt landed and the response was lost — idempotent success.
+        res.json({ status: 'ok', idempotent: true });
+        return;
+      }
+      res.status(409).json({
+        error: `Job not in RUNNING/QUEUED state (current: ${job.status})`,
+        state: job.status,
+      });
+      return;
+    }
+
+    // Broadcast progress update to SSE clients so the job page re-fetches and shows the gate.
+    broadcastProgress(data.job_id, {
+      stage: data.gate_stage,
+      name: data.gate_stage === 1 ? 'Niche Validation' : 'Audience Mapping',
+      status: 'completed',
+    });
+
+    // Send "gate reached" email notification — gates wait indefinitely (same semantics as
+    // AWAITING_SELECTION), so this email is the funnel back to a paused run. Sent on every
+    // arrival (including an apply_stay re-arrival at the same gate) — low-frequency,
+    // user-initiated action, so a repeat email is rare and expected, not spammy.
+    const job = await prisma.job.findUnique({
+      where: { id: data.job_id },
+      select: { userId: true, niche: true },
+    });
+    if (job?.userId) {
+      const user = await prisma.user.findUnique({ where: { id: job.userId }, select: { email: true } });
+      if (user?.email) {
+        notifyGateReached(job.userId, user.email, data.job_id, job.niche, data.gate_stage).catch(err => {
+          console.error('Failed to send gate-reached notification:', err);
+        });
+      }
+    }
+
+    console.log(`[Workers] Gate reached for job ${data.job_id}: stage ${data.gate_stage}`);
+    res.json({ status: 'ok' });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation error', details: error.errors });
+      return;
+    }
+    console.error('[Workers] Gate reached error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/workers/gate-failed
+ * Worker reports that a gate continuation (`continue_from_gate`) failed — either resuming
+ * the checkpoint or running to the next stop. Reverts QUEUED -> AWAITING_GATE (mirrors
+ * /regeneration-failed's QUEUED -> AWAITING_SELECTION revert) so the existing gate
+ * artifact/patch history is preserved and the run is retryable, instead of FAILED (which
+ * would trigger an incorrect credit refund).
+ */
+workersRouter.post('/gate-failed', async (req: Request, res: Response) => {
+  try {
+    const data = GateFailedSchema.parse(req.body);
+    const { prisma } = await import('../services/db.js');
+    const { JobStatus } = await import('@prisma/client');
+
+    // What this failure is FOR. Without the dispatch, a failure could only be aimed at
+    // "(job, status, gateStage)" — so a delayed failure from attempt A reverted attempt B, and
+    // a payload with gate_stage=null dropped the stage filter ENTIRELY and could revert any
+    // QUEUED/RUNNING job at all. The dispatch id makes the target exact.
+    const dispatch = data.dispatch_id
+      ? await prisma.jobDispatch.findUnique({ where: { id: data.dispatch_id } })
+      : null;
+
+    // A failed apply must give the steering budget back. gateApplyCount is incremented before the
+    // stage runs and was never restored, so five infrastructure failures permanently burned a
+    // user's five applies without a single successful change. The budget means SUCCESSFUL applies.
+    const failedApply = dispatch?.kind === 'APPLY_STAY';
+
+    // Revert + settle in one transaction, so the job cannot land back at the gate with its budget
+    // still spent and a receipt still claiming a change is pending.
+    const result = await prisma.$transaction(async (tx) => {
+      const reverted = await tx.job.updateMany({
+        where: {
+          id: data.job_id,
+          status: { in: [JobStatus.QUEUED, JobStatus.RUNNING] },
+          ...dispatchGuard(data.dispatch_id),
+          // Keep the stage predicate for the LEGACY (undispatched) path only — there it is the
+          // only targeting we have. With a dispatch id the guard above is strictly better, and
+          // the stage is redundant.
+          ...(!data.dispatch_id && data.gate_stage !== null ? { gateStage: data.gate_stage } : {}),
+        },
+        data: {
+          status: JobStatus.AWAITING_GATE,
+          gateReachedAt: new Date(),
+          // Restore the apply this attempt consumed. Guarded so it can never go negative.
+          ...(failedApply ? { gateApplyCount: { decrement: 1 } } : {}),
+        },
+      });
+
+      if (reverted.count === 0) return { count: 0 };
+
+      if (failedApply) {
+        // Drop the 'submitted' receipt. It promised a change that never happened, and leaving it
+        // there strands the proposal card mid-state forever — the promotion path only ever looks
+        // for the NEWEST receipt, so an orphan is never repaired.
+        const pending = await tx.chatMessage.findFirst({
+          where: { jobId: data.job_id, gateStage: dispatch?.gateStage ?? undefined, role: 'receipt' },
+          orderBy: { createdAt: 'desc' },
+          select: { id: true, patchJson: true },
+        });
+        const envelope = pending?.patchJson as { event?: string } | null;
+        if (pending && envelope?.event === 'gate_patch_submitted') {
+          await tx.chatMessage.delete({ where: { id: pending.id } });
+        }
+      }
+
+      if (data.dispatch_id) {
+        await settleDispatch(tx, data.dispatch_id, DispatchState.FAILED, data.failure_kind);
+      }
+
+      return { count: reverted.count };
+    });
+
+    // Give the segment back when WE broke it — and only then.
+    //
+    // This has to happen here, not in failJob: an ordinary continuation failure never reaches
+    // failJob at all (the worker routes it to /gate-failed, which just puts the job back at its
+    // gate). A refund promise that lived only in failJob would be one the code never keeps.
+    //
+    // A rejected user patch is NOT a system fault and gets nothing back — otherwise "submit a
+    // deliberately invalid patch, collect a refund, repeat" is free research.
+    if (
+      result.count > 0 &&
+      dispatch?.segment &&
+      dispatch.chargeId &&
+      data.failure_kind === 'SYSTEM_FAULT'
+    ) {
+      if (!isGuidedSegment(dispatch.segment)) {
+        console.warn(`[Workers] Dispatch ${dispatch.id} has unrecognised segment '${dispatch.segment}' — skipping refund`);
+      } else {
+        try {
+          const refund = await refundForStage(data.job_id, dispatch.segment);
+          if (refund) {
+            console.log(
+              `[Workers] Refunded ${Math.abs(refund.amount)} credits for job ${data.job_id} — ` +
+              `system fault on segment ${dispatch.segment}`
+            );
+            await prisma.jobDispatch.updateMany({
+              where: { id: dispatch.id },
+              data: { state: DispatchState.REFUNDED },
+            });
+          }
+        } catch (refundErr) {
+          console.error(`[Workers] Failed to refund segment for job ${data.job_id}:`, refundErr);
+        }
+      }
+    }
+
+    if (result.count === 0) {
+      // Idempotency (finding 10, AMEND): a retried delivery landing after an earlier attempt
+      // already reverted the job reads back as success instead of a spurious 409.
+      const settled = await prisma.job.findUnique({
+        where: { id: data.job_id },
+        select: { status: true, gateStage: true, activeDispatchId: true },
+      });
+
+      // Superseded attempt — checked before idempotency, which would otherwise read another
+      // attempt's successful revert as "my own, already landed". Both sides ?? null-normalised
+      // (an absent column reads undefined, which would wrongly read as "different").
+      if (settled && (settled.activeDispatchId ?? null) !== (data.dispatch_id ?? null)) {
+        console.warn(
+          `[Workers] Stale gate-failed for job ${data.job_id}: dispatch ${data.dispatch_id ?? '(none)'} ` +
+          `is not active (${settled.activeDispatchId ?? 'none'}) — ignoring, not reverting`
+        );
+        res.json({ status: 'ok', stale: true });
+        return;
+      }
+
+      if (
+        settled
+        && settled.status === JobStatus.AWAITING_GATE
+        && (data.gate_stage === null || settled.gateStage === data.gate_stage)
+      ) {
+        res.json({ status: 'ok', idempotent: true });
+        return;
+      }
+      res.status(409).json({ error: 'Job not in QUEUED/RUNNING state for a gate continuation' });
+      return;
+    }
+
+    // Clear worker's current job
+    await registerWorkerHeartbeat(data.worker_id, null);
+
+    const job = await prisma.job.findUnique({
+      where: { id: data.job_id },
+      select: { gateStage: true },
+    });
+
+    // Broadcast so the frontend re-fetches and shows the (unchanged) gate again instead of
+    // staying stuck on the optimistic "Resuming research..." state.
+    broadcastProgress(data.job_id, {
+      stage: job?.gateStage ?? data.gate_stage ?? 0,
+      name: 'Gate',
+      status: 'completed',
+    });
+
+    console.log(
+      `[Workers] Gate continuation failed for job ${data.job_id} (gate_stage=${data.gate_stage}), reverted to AWAITING_GATE: ${data.error_message}`
+    );
+    res.json({ status: 'ok' });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation error', details: error.errors });
+      return;
+    }
+    console.error('[Workers] Gate failed error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

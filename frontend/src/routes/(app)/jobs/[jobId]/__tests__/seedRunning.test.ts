@@ -1,0 +1,132 @@
+/**
+ * Blocker 2 (outcome-delivery review): a SEED_IDEA claim flips job.status to
+ * QUEUED/RUNNING for the duration of the birth pipeline — exactly like a
+ * regen/gate round-trip. Before the fix, `isSelectionPhase` only looked at
+ * job.status, so this transition unmounted SelectionWorkbench in favor of
+ * ResearchProgressScreen, destroying the settlement poll (`beginSeedSettlementPoll`)
+ * and the "Evaluating…" banner along with it. `seedRunning` (derived from
+ * `chatLedger.hasPendingSeed` + job.status) now keeps the workbench mounted through
+ * that round-trip, mirroring the pre-existing `gateApplyPending` idiom.
+ */
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, cleanup, waitFor } from "@testing-library/svelte";
+import { page } from "$app/state";
+import { chatLedger } from "$lib/stores/chatLedger.svelte";
+import { getChatHistory } from "$lib/api";
+import type { Job } from "$lib/types/job";
+
+vi.mock("$lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("$lib/api")>();
+  return {
+    ...actual,
+    subscribeToProgress: vi.fn(() => () => {}),
+    shouldKeepSSEOpen: vi.fn(() => false),
+    getReportSummary: vi.fn(() => Promise.resolve(null)),
+    getDiscoveryShareStatus: vi.fn(() => Promise.resolve({ isShared: false, solutionVotes: {} })),
+    regenerateIdeas: vi.fn(),
+    getSolutions: vi.fn(() => Promise.resolve({ solutions: [] })),
+    getDiscoveryData: vi.fn(() => Promise.resolve(null)),
+    getPreviewReport: vi.fn(() => Promise.resolve(null)),
+    getChatHistory: vi.fn(() => Promise.resolve({ messages: [], weakPool: false })),
+  };
+});
+
+import PageComponent from "../+page.svelte";
+
+const PENDING_SEED_HISTORY = {
+  messages: [
+    {
+      id: "seed-receipt-1",
+      gateStage: 5,
+      role: "receipt" as const,
+      content: "",
+      patchJson: {
+        kind: "ledger_event" as const,
+        version: 1,
+        event: "seed_submitted" as const,
+        patch: {},
+        rows: [],
+        sourceMessageId: "asst-seed-1",
+      },
+      truncated: false,
+      createdAt: "2026-07-13T00:00:00.000Z",
+    },
+  ],
+  weakPool: false,
+};
+
+function baseJob(overrides: Partial<Job> = {}): Job {
+  return {
+    id: "job-1",
+    niche: "test niche",
+    status: "AWAITING_SELECTION",
+    entryMode: "standard",
+    solutionIdeas: [
+      { solution_name: "Alpha Idea", description: "d", value_proposition: "v" } as never,
+    ],
+    selectedSolutions: [],
+    assets: [],
+    stagesCompleted: 5,
+    totalStages: 16,
+    ...overrides,
+  } as unknown as Job;
+}
+
+function baseData(job: Job) {
+  return {
+    job,
+    solutions: job.solutionIdeas ?? [],
+    reportSummary: null,
+    discoveryData: null,
+    solutionVotes: {},
+    previewReport: null,
+    userEmail: "test@example.com",
+    catalogPainPoints: [],
+    creditBalance: 100,
+    stageCosts: { discovery: 5, deep_research: 15, landing_page: 5, regenerate_ideas: 2, seed_idea: 3 },
+  };
+}
+
+describe("+page.svelte — workbench stays mounted through a seed's QUEUED/RUNNING round-trip", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    chatLedger.reset();
+    (page as any).params = { jobId: "job-1" };
+    // `clearAllMocks` clears call history but NOT a prior test's `mockResolvedValue`
+    // implementation — pin the default here so each test starts from the same base.
+    vi.mocked(getChatHistory).mockResolvedValue({ messages: [], weakPool: false } as never);
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("renders SelectionWorkbench (not the progress screen) when a seed dispatch flips status to RUNNING", async () => {
+    vi.mocked(getChatHistory).mockResolvedValue(PENDING_SEED_HISTORY as never);
+    const job = baseJob({ status: "RUNNING" });
+
+    render(PageComponent, { props: { data: baseData(job) as never } });
+
+    // chatLedger.init(job.id) fires in the mount effect — hasPendingSeed becomes true once
+    // the mocked seed_submitted receipt resolves, which is what `seedRunning` depends on.
+    await waitFor(() => expect(chatLedger.hasPendingSeed).toBe(true));
+
+    // SelectionWorkbench's shortlist checkbox — proof the workbench (not
+    // ResearchProgressScreen, which has no such control) is mounted.
+    await waitFor(() =>
+      expect(document.querySelector('input[aria-label="Select Alpha Idea"]')).not.toBeNull(),
+    );
+  });
+
+  it("renders the progress screen (not the workbench) when RUNNING with no pending seed", async () => {
+    const job = baseJob({ status: "RUNNING", solutionIdeas: [] });
+
+    render(PageComponent, { props: { data: baseData(job) as never } });
+
+    // No seed_submitted receipt this time (default empty history from the mock override below).
+    await waitFor(() => expect(chatLedger.jobId).toBe("job-1"));
+    expect(chatLedger.hasPendingSeed).toBe(false);
+
+    expect(document.querySelector('input[aria-label="Select Alpha Idea"]')).toBeNull();
+  });
+});

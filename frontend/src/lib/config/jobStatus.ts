@@ -26,6 +26,10 @@ interface StatusMeta {
 
 export const STATUS: Record<JobStatus, StatusMeta> = {
   AWAITING_SELECTION: { label: 'Ideas ready', color: 'var(--color-accent)', cta: 'Review ideas' },
+  // Guided-mode (Phase B) G1/G2 stage gate — same "waiting on you" semantic as
+  // AWAITING_SELECTION (positive milestone, not an error), so it shares the color
+  // and review bucket rather than reading as progress or a failure.
+  AWAITING_GATE: { label: 'Checkpoint reached', color: 'var(--color-accent)', cta: 'Review checkpoint' },
   FAILED: { label: 'Failed', color: 'var(--color-error-text)', cta: 'Resume' },
   // "In progress" statuses are BLUE, not warning-orange: --color-warning-text is
   // byte-identical to --color-accent-dark, so orange progress collided with the
@@ -65,6 +69,7 @@ export function isHardFail(job: Pick<Job, 'status' | 'stopReason'>): boolean {
 // computing, or waiting on the user. Not for queued/pending/terminal states.
 const LIVE_STATUSES = new Set<JobStatus>([
   'AWAITING_SELECTION',
+  'AWAITING_GATE',
   'RUNNING',
   'RUNNING_PHASE2',
   'REGENERATING',
@@ -83,8 +88,8 @@ const PROGRESS_STATUSES = new Set<JobStatus>([
 ]);
 
 /**
- * Map a job to its lifecycle bucket. The 9 raw statuses collapse to 5 groups:
- *   review   — AWAITING_SELECTION (positive: ideas ready, pick for deep research)
+ * Map a job to its lifecycle bucket. The 10 raw statuses collapse to 5 groups:
+ *   review   — AWAITING_SELECTION / AWAITING_GATE (positive: waiting on you, not an error)
  *   progress — anything actively computing or queued
  *   done     — COMPLETED
  *   failed   — a hard (resumable) FAILED — an error, kept apart from 'review'
@@ -92,7 +97,7 @@ const PROGRESS_STATUSES = new Set<JobStatus>([
  */
 export function bucketOf(job: Pick<Job, 'status' | 'stopReason'>): LifecycleBucket {
   const status = job.status?.toUpperCase();
-  if (status === 'AWAITING_SELECTION') return 'review';
+  if (status === 'AWAITING_SELECTION' || status === 'AWAITING_GATE') return 'review';
   if (PROGRESS_STATUSES.has(status as JobStatus)) return 'progress';
   if (status === 'COMPLETED') return 'done';
   if (isHardFail(job)) return 'failed';

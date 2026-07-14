@@ -16,6 +16,8 @@
   } from "lucide-svelte";
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
   import Button from "$lib/components/ui/Button.svelte";
+  import Tooltip from "$lib/components/ui/Tooltip.svelte";
+  import type { UserSubscription } from "$lib/types/billing";
   import EntryModeCards from "$lib/components/new-research/EntryModeCards.svelte";
   import CatalogTrendingGrid from "$lib/components/new-research/CatalogTrendingGrid.svelte";
   import ProcessTimeline from "$lib/components/new-research/ProcessTimeline.svelte";
@@ -77,6 +79,22 @@
   ] as const;
   let selectedFocus = $state<"auto" | "novelty" | "distribution">("auto");
   let showFocus = $state(false);
+
+  // --- Guided research (Phase B — chatMode opt-in, paid-gated) ---
+  const subscription = $derived((page.data.subscription as UserSubscription | null) ?? null);
+  // Mirror the backend's isEntitledUser semantics: ADMIN role counts as entitled, not only an
+  // active subscription (backend coerces chatMode server-side either way — this only controls
+  // the toggle's enabled state). fullCatalogAccess isn't exposed client-side; those users are
+  // rare and the server still honors them if the flag is sent.
+  const hasActiveSubscription = $derived(
+    page.data.session?.user?.role === "ADMIN" ||
+      (!!subscription &&
+        (subscription.status === "ACTIVE" || subscription.status === "TRIALING") &&
+        !!subscription.currentPeriodEnd &&
+        new Date(subscription.currentPeriodEnd).getTime() > Date.now()),
+  );
+  let showGuided = $state(false);
+  let chatMode = $state(false);
 
   // --- Input state ---
   let niche = $state("");
@@ -344,6 +362,7 @@
             allowedProjectTypes: selectedProjectTypes,
           }),
           ...(selectedFocus !== "auto" && { ideaFocus: selectedFocus }),
+          ...(chatMode && hasActiveSubscription && { chatMode: true }),
           entryMode,
         }),
       });
@@ -633,6 +652,62 @@
               <p class="text-xs text-text-muted mt-1.5">
                 {IDEA_FOCUSES.find((f) => f.value === selectedFocus)?.hint}
               </p>
+            {/if}
+          </div>
+
+          <div class="mb-4">
+            <button
+              type="button"
+              onclick={() => (showGuided = !showGuided)}
+              aria-expanded={showGuided}
+              aria-controls="guided-research-panel"
+              class="text-xs text-text-muted hover:text-text-secondary transition-colors flex items-center gap-1"
+            >
+              <span class="font-medium">Guided research</span>
+              <span>&middot;</span>
+              <span>{chatMode ? "On" : "Off"}</span>
+              <ChevronDown class="w-3 h-3 transition-transform duration-200 {showGuided ? 'rotate-180' : ''}" />
+            </button>
+            {#if showGuided}
+              <div id="guided-research-panel" class="mt-2 flex items-start gap-3 rounded-md border border-border bg-bg-elevated p-3">
+                <div class="flex-1 min-w-0">
+                  <p class="text-xs font-medium text-text-primary">Pause at checkpoints to review and steer the research</p>
+                  <p class="text-[11px] text-text-muted mt-1">
+                    Research stops after the niche is validated, and again after pain points and audience are mapped &mdash; chat with the analyst or adjust scope before it continues.
+                  </p>
+                </div>
+                {#if hasActiveSubscription}
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={chatMode}
+                    aria-label="Guided research"
+                    onclick={() => (chatMode = !chatMode)}
+                    disabled={loading || showSuccess}
+                    class="shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition-colors
+                      {chatMode ? 'bg-[color:var(--color-accent)]' : 'bg-border'}
+                      disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <span
+                      class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform {chatMode ? 'translate-x-6' : 'translate-x-1'}"
+                    ></span>
+                  </button>
+                {:else}
+                  <Tooltip content="Guided research is a subscriber feature — upgrade to pause and steer research at checkpoints." position="left">
+                    {#snippet children()}
+                      <span
+                        role="switch"
+                        aria-checked="false"
+                        aria-disabled="true"
+                        aria-label="Guided research (subscriber feature)"
+                        class="shrink-0 relative inline-flex h-6 w-11 items-center rounded-full bg-border opacity-50 cursor-not-allowed"
+                      >
+                        <span class="inline-block h-4 w-4 translate-x-1 transform rounded-full bg-white"></span>
+                      </span>
+                    {/snippet}
+                  </Tooltip>
+                {/if}
+              </div>
             {/if}
           </div>
 

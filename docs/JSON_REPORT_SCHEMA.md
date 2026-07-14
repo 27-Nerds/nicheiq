@@ -36,6 +36,8 @@ This document provides a comprehensive reference for the NicheIQ research report
 | `niche` | `string` | The niche being researched |
 | `generated_at` | `string` (ISO datetime) | Report generation timestamp |
 | `seeded_from_catalog` | `boolean` | `true` when the run was seeded from a catalog pain/idea (entry mode `pain_research` / `deep_idea`) instead of a fresh discovery scrape. Such reports have thinner community evidence; the UI shows a "seeded from catalog" badge. Defaults to `false`. |
+| `user_adjusted` | `boolean` | Guided-research honesty block: `true` once any gate patch (Gate 1 niche context, or Gate 2 audience/pain scope) was applied by the user during this run via chat. Stamped by `apply_gate_patch` (`flows/gate_patches.py`). Defaults to `false`. |
+| `user_adjustments` | `string[]` | Compact, human-readable notes describing which gate(s) were user-adjusted and what changed (e.g. excluded/pinned pain titles, excluded segments, segment emphasis, primary segment override). Derived from `user_pain_scope`/`user_audience_scope`; a Gate-1-only edit degrades to a generic note since G1 patches overwrite `niche_context` in place with no before/after record. Empty when `user_adjusted` is `false`. |
 
 **Example:**
 ```json
@@ -1881,6 +1883,17 @@ report (computed once, read from state). Null when there are no pains and no ide
 ---
 
 ## Version History
+
+- **v2.15** - Guided-research honesty block (2026-07-11)
+  - New top-level `user_adjusted: boolean` and `user_adjustments: string[]` on both the final and
+    preview report — surfaces guided-research (chatMode) gate patches applied during the run.
+    `user_adjusted` mirrors `ResearchState.user_adjusted` (stamped by `apply_gate_patch`,
+    `flows/gate_patches.py`); `user_adjustments` is built by
+    `report/utils/state_accessors.py::build_user_adjustments_summary()` from
+    `user_pain_scope`/`user_audience_scope` (Gate 2) with a generic fallback note for a
+    Gate-1-only edit (no diff is kept for niche-context overwrites). Rendered as a "User
+    adjustments" note at the top of `ReportContent.svelte` and as a "User adjustments"
+    disclosure in `SelectionWorkbench.svelte`, alongside the existing "Data caveats" one.
 
 - **v2.14** - Generation-lens surfacing (2026-07-10)
   - New `source_frame: string | null` on `selected_solution_details` (already present via

@@ -620,6 +620,19 @@ class FinalReport(BaseModel):
         description="True if this report was generated from a catalog-seeded run (pain_research / deep_idea)."
     )
 
+    # Guided-mode (chatMode) honesty block (Phase C): True once any gate patch (G1 niche
+    # context or G2 audience/pain scope, flows/gate_patches.py) was applied to this run.
+    # Drives a "User adjustments" note in the report/preview UI alongside user_adjustments.
+    user_adjusted: bool = Field(
+        default=False,
+        description="True once any guided-mode gate patch has been applied to this run."
+    )
+    user_adjustments: list[str] = Field(
+        default_factory=list,
+        description="Compact, human-readable notes describing which gate(s) were user-adjusted "
+        "and what changed. Empty when user_adjusted is False."
+    )
+
     # Executive Dashboard (Phase 1 Enhancement) - TOP-LEVEL SUMMARY
     executive_dashboard: Optional[ExecutiveDashboard] = Field(
         default=None,
@@ -1633,6 +1646,37 @@ class TrendLongevityResult(BaseModel):
         return self
 
 
+class PainScope(BaseModel):
+    """G2 guided-mode gate patch: user-scoped view over Stage 3's pain points, consumed
+    ONLY at the ideation allocation choke point (UnifiedSolutionCrew._build_partition_cells).
+    Non-destructive — pain_point_analysis.pain_points itself is never mutated; excluded pains
+    are filtered at the top of cell-building (so severity/commercial/audience floors cannot
+    resurrect them) and pinned pains are injected via the same floor-injection pattern."""
+
+    model_config = ConfigDict(extra='ignore')
+
+    excluded_titles: list[str] = Field(
+        default_factory=list, description="Pain titles to exclude from ideation cell-building")
+    pinned_titles: list[str] = Field(
+        default_factory=list, description="Pain titles to guarantee a generator cell, like a floor")
+
+
+class AudienceScope(BaseModel):
+    """G2 guided-mode gate patch: user-scoped view over Stage 4's audience_mapping, consumed
+    ONLY at the ideation allocation choke point. Non-destructive — audience_mapping.audience_segments
+    is never mutated (pains' affected/evidence_segments reference those entries); exclusions/emphasis
+    only filter/reorder the segment list `_build_partition_cells` reads."""
+
+    model_config = ConfigDict(extra='ignore')
+
+    excluded_segments: list[str] = Field(
+        default_factory=list, description="Segment names to exclude from ideation cell-building")
+    segment_emphasis: dict[str, str] = Field(
+        default_factory=dict, description="Segment name -> 'high' | 'low' emphasis for reordering")
+    primary_target_segment: Optional[str] = Field(
+        default=None, description="User-overridden primary segment name (must match an existing segment)")
+
+
 class ResearchState(BaseModel):
     """Complete state for the research flow."""
 
@@ -1673,6 +1717,19 @@ class ResearchState(BaseModel):
             "toward distribution_seo). 'auto' is neutral — the angle agent decides per idea."
         ),
     )
+
+    # Guided-mode (chatMode) gate patches — set by apply_gate_patch (flows/gate_patches.py) from
+    # a user-approved G2 patch, consumed only at UnifiedSolutionCrew._build_partition_cells (the
+    # allocation choke point). None/default means byte-identical behavior to a non-guided run.
+    user_pain_scope: Optional[PainScope] = Field(
+        default=None, description="G2 patch: pain inclusion/exclusion scope for ideation")
+    user_audience_scope: Optional[AudienceScope] = Field(
+        default=None, description="G2 patch: audience segment scope for ideation")
+    # Stamped True by apply_gate_patch on ANY accepted G1/G2 patch — surfaced in the report's
+    # honesty block (Phase C) so a modified run is never silently indistinguishable from a
+    # default one.
+    user_adjusted: bool = Field(
+        default=False, description="True once any guided-mode gate patch has been applied")
 
     # Niche-fidelity telemetry (non-scoring; surfaced as report caveats in Stage 10).
     # Keys may include: anchors_active (bool), anchor_entity_count (int),
@@ -1720,6 +1777,28 @@ class ResearchState(BaseModel):
             "Niche-level tooling-spend signal from the Phase-1 wallet probe: "
             "{wallet_class, evidence, free_density}. Mirrors "
             "UnifiedSolutionCrew._niche_wallet_brief."
+        ),
+    )
+    # User-seed pipeline (eager-meandering-feather.md Phase 4, section C): the ONE crew a later
+    # seed idea uses is hydrated from persisted state rather than cold-re-probing paid Phase-1
+    # work. `_incumbent_rows`/`_niche_wallet_brief` already had a state home above (niche_incumbent
+    # _map/niche_wallet_brief); these two mirror the same pattern for the two caches that didn't:
+    # `UnifiedSolutionCrew._data_menu_text`/`._dissatisfaction_text` are otherwise instance-only.
+    niche_data_menu_text: str | None = Field(
+        default=None,
+        description=(
+            "Rendered VERIFIED data-route menu from the Phase-1 data-menu probe (one LLM call). "
+            "Mirrors UnifiedSolutionCrew._data_menu_text. None = never probed this run (not the "
+            "same as '' = probed, found nothing — a hydrated crew must distinguish the two so it "
+            "doesn't skip a real probe)."
+        ),
+    )
+    niche_dissatisfaction_text: str | None = Field(
+        default=None,
+        description=(
+            "Rendered incumbent-dissatisfaction block from the Phase-1 dissatisfaction-signal "
+            "probe. Mirrors UnifiedSolutionCrew._dissatisfaction_text. None = never probed this "
+            "run; '' = probed, no qualifying signal found."
         ),
     )
     idea_portfolio_summary: str | None = Field(

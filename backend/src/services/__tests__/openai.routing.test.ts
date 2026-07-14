@@ -98,3 +98,50 @@ describe('chatComplete provider routing', () => {
     expect(constructorCalls).toHaveLength(2);
   });
 });
+
+describe('chatCompleteStream', () => {
+  beforeEach(() => {
+    constructorCalls.length = 0;
+    createSpy.mockClear();
+  });
+
+  it('sets stream:true + stream_options.include_usage, and forwards tools/temperature', async () => {
+    const { chatCompleteStream } = await freshChatComplete();
+    await chatCompleteStream({ model: 'gpt-4.1-mini', messages, temperature: 0.4, maxTokens: 800, tools: [{ type: 'function', function: { name: 'noop', parameters: {} } }] });
+
+    const params = createSpy.mock.calls[0][0];
+    expect(params.stream).toBe(true);
+    expect(params.stream_options).toEqual({ include_usage: true });
+    expect(params.temperature).toBe(0.4);
+    expect(params.max_tokens).toBe(800);
+    expect(params.tools).toHaveLength(1);
+    expect(params.reasoning_effort).toBeUndefined();
+  });
+
+  it('applies reasoning-model rules (max_completion_tokens + reasoning_effort minimal, no temperature)', async () => {
+    const { chatCompleteStream } = await freshChatComplete();
+    await chatCompleteStream({ model: 'gpt-5-mini', messages, temperature: 0.4, maxTokens: 800 });
+
+    const params = createSpy.mock.calls[0][0];
+    expect(params.temperature).toBeUndefined();
+    expect(params.max_tokens).toBeUndefined();
+    expect(params.max_completion_tokens).toBe(800);
+    expect(params.reasoning_effort).toBe('minimal');
+  });
+
+  it('passes an AbortSignal through as request options (second create() arg)', async () => {
+    const { chatCompleteStream } = await freshChatComplete();
+    const controller = new AbortController();
+    await chatCompleteStream({ model: 'gpt-4.1-mini', messages, signal: controller.signal });
+
+    expect(createSpy.mock.calls[0][1]).toEqual({ signal: controller.signal });
+  });
+
+  it('routes openrouter/* models to the OpenRouter client with a stripped model id', async () => {
+    const { chatCompleteStream } = await freshChatComplete();
+    await chatCompleteStream({ model: 'openrouter/google/gemma-2-27b-it', messages });
+
+    expect(constructorCalls[0].baseURL).toBe('https://openrouter.ai/api/v1');
+    expect(createSpy.mock.calls[0][0].model).toBe('google/gemma-2-27b-it');
+  });
+});

@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 import nicheiq.crews.unified_solution_crew as usc
 from nicheiq.crews.unified_solution_crew import UnifiedSolutionCrew
+from nicheiq.utils.frames import FrameFocus
 
 
 def _crew():
@@ -117,6 +118,55 @@ def test_tournament_cell_picks_lowest_obviousness_and_stamps_provenance(monkeypa
     assert winner.source_segment == "Budget-rederived"       # Fix #3b: re-derived from pain, not raw cell
     assert winner.mechanism_tag == "calc"                    # carried from seed concept
     assert winner.obviousness_score == 0.2                   # critic value carried
+
+
+def test_user_seed_tournament_prioritizes_fidelity_over_novelty(monkeypatch):
+    expanded = SimpleNamespace(
+        solution_name="Esports Fantasy Cards",
+        source_pain=None,
+        source_segment=None,
+        mechanism_tag=None,
+        data_source_tag=None,
+        journey_tag=None,
+        obviousness_score=None,
+        data_feasibility_score=None,
+        build_feasibility_score=None,
+        pain_points_addressed=[],
+    )
+    captured = {}
+
+    def fake_refine(self, concept, pain, **kwargs):
+        captured["seed"] = concept
+        return expanded
+
+    monkeypatch.setattr(UnifiedSolutionCrew, "_refine_single_concept", fake_refine)
+    monkeypatch.setattr(UnifiedSolutionCrew, "_repair_blank_idea_fields", lambda self, i: None)
+    monkeypatch.setattr(UnifiedSolutionCrew, "_stamp_payability", lambda self, i: None)
+    monkeypatch.setattr(UnifiedSolutionCrew, "_score_cell_winner", lambda self, w, **kw: w)
+    import nicheiq.crews.idea_improvement_loop_v4 as v4
+    monkeypatch.setattr(v4, "tournament_refine_cell_v4", lambda cands, g, **kw: cands[0])
+
+    seed = "A fantasy cards collection game for esports fans."
+    focus = FrameFocus(
+        frame="user_seed",
+        key="submitted-idea",
+        payload={"seed_text": seed},
+        anchor_pain_titles=[],
+    )
+    off_seed = _concept("PatchZero", obv=0.1)
+    off_seed.one_liner = "A Wayback Machine wrapper for esports reporting"
+    faithful = _concept("Esports Fantasy Cards", obv=0.8)
+    faithful.one_liner = "A collectible fantasy card game for esports fans"
+
+    winner = _crew()._tournament_cell(
+        cell={"frame": "user_seed", "focus": focus, "pain": None, "segment": None},
+        candidates=[off_seed, faithful],
+        search=None,
+        usages=[],
+    )
+
+    assert winner is expanded
+    assert captured["seed"] is faithful
 
 
 def test_tournament_cell_drops_blocked_with_floor(monkeypatch):

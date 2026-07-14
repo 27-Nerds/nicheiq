@@ -12,6 +12,11 @@ const mockResolveFreePreviewPainId = vi.fn().mockResolvedValue(null);
 
 // prisma — only the methods the routes under test reach.
 const mockPrisma = {
+  jobDispatch: { create: async () => ({ id: 'dispatch-test' }) },
+  $transaction: async (cb: any) =>
+    typeof cb === 'function'
+      ? cb({ job: { update: async () => ({}) }, jobDispatch: { create: async () => ({ id: 'dispatch-test' }) } })
+      : Promise.all(cb),
   catalogPainPoint: { findMany: vi.fn(), groupBy: vi.fn() },
   catalogCategory: { findUnique: vi.fn() },
   catalogIdea: { findMany: vi.fn() },
@@ -327,6 +332,7 @@ describe('POST /api/admin/catalog/categories/:id/generate-ideas', () => {
       expect.any(Array),
       sourceJobIdMeaningful,
       { themes: ['a'] },
+      'dispatch-test', // catalog jobs carry a dispatch too — the rule is uniform
     );
   });
 });

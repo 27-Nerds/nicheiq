@@ -487,6 +487,40 @@ describe('App Settings', () => {
       .expect(400);
   });
 
+  // Selection-chat "generate an idea from your own idea" (plans/eager-meandering-feather.md) —
+  // token_cost_seed_idea must be allowlisted the same way every other flat stage price is.
+  it('PUT /api/admin/settings/token_cost_seed_idea saves a valid integer price', async () => {
+    mockSetAppSetting.mockResolvedValue(undefined);
+
+    const response = await request(app)
+      .put('/api/admin/settings/token_cost_seed_idea')
+      .set(adminHeaders)
+      .send({ value: '3' })
+      .expect(200);
+
+    expect(response.body).toEqual({ key: 'token_cost_seed_idea', value: '3' });
+    expect(mockSetAppSetting).toHaveBeenCalledWith('token_cost_seed_idea', '3', 'admin-123');
+  });
+
+  it('PUT /api/admin/settings/token_cost_seed_idea rejects an out-of-range value', async () => {
+    await request(app)
+      .put('/api/admin/settings/token_cost_seed_idea')
+      .set(adminHeaders)
+      .send({ value: '-5' })
+      .expect(400);
+  });
+
+  it('GET /api/admin/settings/token_cost_seed_idea is allowlisted for reads too', async () => {
+    mockGetAppSetting.mockResolvedValue('3');
+
+    const response = await request(app)
+      .get('/api/admin/settings/token_cost_seed_idea')
+      .set(adminHeaders)
+      .expect(200);
+
+    expect(response.body).toEqual({ key: 'token_cost_seed_idea', value: '3' });
+  });
+
   it('PUT /api/admin/settings/:key returns 400 for invalid share URL format', async () => {
     await request(app)
       .put('/api/admin/settings/sample_report_url')

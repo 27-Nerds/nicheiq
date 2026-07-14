@@ -71,6 +71,36 @@ class TestProcessJobRouting:
     @patch('worker.heartbeat.notify_job_completed')
     @patch('worker.heartbeat.set_current_job')
     @patch('worker.heartbeat.notify_job_started', return_value=True)
+    def test_seed_idea_routes_correctly(
+        self, mock_started, mock_set_job, mock_completed
+    ):
+        with patch('worker.tasks.run_seed_idea') as mock_task:
+            mock_task.return_value = {"status": "seed_settled", "outcome": "accepted"}
+            from worker.queue_consumer import process_job
+            process_job({
+                "job_id": "job-1",
+                "task_type": "seed_idea",
+                "checkpoint_path": "/tmp/cp",
+                "niche": "test",
+                "seed_text": "an idea from the user",
+                "pain_ref": "Pain A",
+                "tool_ref": "Spreadsheets",
+                "dispatch_id": "dispatch-1",
+            })
+            mock_task.assert_called_once()
+            call_kwargs = mock_task.call_args[1]
+            assert call_kwargs["seed"] == {
+                "seed_text": "an idea from the user",
+                "pain_ref": "Pain A",
+                "tool_ref": "Spreadsheets",
+            }
+            assert call_kwargs["dispatch_id"] == "dispatch-1"
+            assert call_kwargs["checkpoint_path"] == "/tmp/cp"
+            assert call_kwargs["niche"] == "test"
+
+    @patch('worker.heartbeat.notify_job_completed')
+    @patch('worker.heartbeat.set_current_job')
+    @patch('worker.heartbeat.notify_job_started', return_value=True)
     def test_interactive_mode_routes_to_interactive_research(
         self, mock_started, mock_set_job, mock_completed
     ):
@@ -125,6 +155,84 @@ class TestProcessJobRouting:
     @patch('worker.heartbeat.notify_job_completed')
     @patch('worker.heartbeat.set_current_job')
     @patch('worker.heartbeat.notify_job_started', return_value=True)
+    def test_interactive_chat_mode_threads_through(
+        self, mock_started, mock_set_job, mock_completed
+    ):
+        with patch('worker.tasks.run_interactive_research') as mock_task:
+            mock_task.return_value = {"status": "awaiting_gate", "gate_stage": 1}
+            from worker.queue_consumer import process_job
+            process_job({
+                "job_id": "job-1",
+                "niche": "test niche",
+                "job_mode": "interactive",
+                "chat_mode": True,
+            })
+            mock_task.assert_called_once()
+            call_kwargs = mock_task.call_args[1]
+            assert call_kwargs["chat_mode"] is True
+
+    @patch('worker.heartbeat.notify_job_completed')
+    @patch('worker.heartbeat.set_current_job')
+    @patch('worker.heartbeat.notify_job_started', return_value=True)
+    def test_interactive_defaults_chat_mode_false(
+        self, mock_started, mock_set_job, mock_completed
+    ):
+        with patch('worker.tasks.run_interactive_research') as mock_task:
+            mock_task.return_value = {"status": "awaiting_selection"}
+            from worker.queue_consumer import process_job
+            process_job({
+                "job_id": "job-1",
+                "niche": "test niche",
+                "job_mode": "interactive",
+            })
+            call_kwargs = mock_task.call_args[1]
+            assert call_kwargs["chat_mode"] is False
+
+    @patch('worker.heartbeat.notify_job_completed')
+    @patch('worker.heartbeat.set_current_job')
+    @patch('worker.heartbeat.notify_job_started', return_value=True)
+    def test_continue_from_gate_routes_correctly(
+        self, mock_started, mock_set_job, mock_completed
+    ):
+        with patch('worker.tasks.continue_from_gate') as mock_task:
+            mock_task.return_value = {"status": "awaiting_gate", "gate_stage": 4}
+            from worker.queue_consumer import process_job
+            process_job({
+                "job_id": "job-1",
+                "task_type": "continue_from_gate",
+                "checkpoint_path": "/tmp/cp",
+                "gate_stage": 1,
+                "mode": "continue",
+            })
+            mock_task.assert_called_once()
+            call_kwargs = mock_task.call_args[1]
+            assert call_kwargs["checkpoint_path"] == "/tmp/cp"
+            assert call_kwargs["gate_stage"] == 1
+            assert call_kwargs["mode"] == "continue"
+
+    @patch('worker.heartbeat.notify_job_completed')
+    @patch('worker.heartbeat.set_current_job')
+    @patch('worker.heartbeat.notify_job_started', return_value=True)
+    def test_continue_from_gate_threads_patch_and_defaults_mode(
+        self, mock_started, mock_set_job, mock_completed
+    ):
+        with patch('worker.tasks.continue_from_gate') as mock_task:
+            mock_task.return_value = {"status": "awaiting_gate", "gate_stage": 1}
+            from worker.queue_consumer import process_job
+            process_job({
+                "job_id": "job-1",
+                "task_type": "continue_from_gate",
+                "checkpoint_path": "/tmp/cp",
+                "gate_stage": 1,
+                "patch": {"niche_description": "Edited"},
+            })
+            call_kwargs = mock_task.call_args[1]
+            assert call_kwargs["mode"] == "continue"
+            assert call_kwargs["patch"] == {"niche_description": "Edited"}
+
+    @patch('worker.heartbeat.notify_job_completed')
+    @patch('worker.heartbeat.set_current_job')
+    @patch('worker.heartbeat.notify_job_started', return_value=True)
     def test_landing_page_routes_correctly(
         self, mock_started, mock_set_job, mock_completed
     ):
@@ -162,6 +270,65 @@ class TestCompletionHandling:
     @patch('worker.heartbeat.notify_job_completed')
     @patch('worker.heartbeat.set_current_job')
     @patch('worker.heartbeat.notify_job_started', return_value=True)
+    def test_awaiting_gate_skips_completion_notification(
+        self, mock_started, mock_set_job, mock_completed
+    ):
+        """A gate-stopped job (G1 or G2) must NOT get notify_job_completed — it releases the
+        worker without a completion notification, mirroring awaiting_selection (DR B3/Codex 6:
+        otherwise a gate stop looks like a finished job)."""
+        with patch('worker.tasks.run_interactive_research') as mock_task:
+            mock_task.return_value = {"status": "awaiting_gate", "job_id": "job-1", "gate_stage": 1}
+            from worker.queue_consumer import process_job
+            process_job({
+                "job_id": "job-1",
+                "task_type": "research",
+                "niche": "test",
+                "job_mode": "interactive",
+                "chat_mode": True,
+            })
+            mock_completed.assert_not_called()
+
+    @patch('worker.heartbeat.notify_job_completed')
+    @patch('worker.heartbeat.set_current_job')
+    @patch('worker.heartbeat.notify_job_started', return_value=True)
+    def test_continue_from_gate_awaiting_gate_skips_completion(
+        self, mock_started, mock_set_job, mock_completed
+    ):
+        with patch('worker.tasks.continue_from_gate') as mock_task:
+            mock_task.return_value = {"status": "awaiting_gate", "gate_stage": 4}
+            from worker.queue_consumer import process_job
+            process_job({
+                "job_id": "job-1",
+                "task_type": "continue_from_gate",
+                "checkpoint_path": "/tmp/cp",
+                "gate_stage": 1,
+            })
+            mock_completed.assert_not_called()
+
+    @patch('worker.heartbeat.notify_job_completed')
+    @patch('worker.heartbeat.set_current_job')
+    @patch('worker.heartbeat.notify_job_started', return_value=True)
+    def test_continue_from_gate_awaiting_selection_calls_completion(
+        self, mock_started, mock_set_job, mock_completed
+    ):
+        """A G2 continuation that reaches AWAITING_SELECTION follows the SAME skip-completion
+        rule as the non-guided interactive path — this task_type isn't in the special-cased
+        elif branches, so it falls to the default notify_job_completed... EXCEPT the
+        awaiting_selection status check runs first and short-circuits it."""
+        with patch('worker.tasks.continue_from_gate') as mock_task:
+            mock_task.return_value = {"status": "awaiting_selection", "job_id": "job-1"}
+            from worker.queue_consumer import process_job
+            process_job({
+                "job_id": "job-1",
+                "task_type": "continue_from_gate",
+                "checkpoint_path": "/tmp/cp",
+                "gate_stage": 4,
+            })
+            mock_completed.assert_not_called()
+
+    @patch('worker.heartbeat.notify_job_completed')
+    @patch('worker.heartbeat.set_current_job')
+    @patch('worker.heartbeat.notify_job_started', return_value=True)
     def test_regenerate_ideas_calls_completion(
         self, mock_started, mock_set_job, mock_completed
     ):
@@ -173,6 +340,27 @@ class TestCompletionHandling:
                 "task_type": "regenerate_ideas",
                 "checkpoint_path": "/tmp/cp",
                 "niche": "test",
+            })
+            mock_completed.assert_called_once_with("job-1")
+
+    @patch('worker.heartbeat.notify_job_completed')
+    @patch('worker.heartbeat.set_current_job')
+    @patch('worker.heartbeat.notify_job_started', return_value=True)
+    def test_seed_idea_calls_completion(
+        self, mock_started, mock_set_job, mock_completed
+    ):
+        """run_seed_idea already delivered the outcome itself (notify_seed_complete); the
+        consumer's own notify_job_completed here is generic worker-release bookkeeping, same
+        as regenerate_ideas."""
+        with patch('worker.tasks.run_seed_idea') as mock_task:
+            mock_task.return_value = {"status": "seed_settled", "outcome": "demoted"}
+            from worker.queue_consumer import process_job
+            process_job({
+                "job_id": "job-1",
+                "task_type": "seed_idea",
+                "checkpoint_path": "/tmp/cp",
+                "niche": "test",
+                "seed_text": "an idea",
             })
             mock_completed.assert_called_once_with("job-1")
 
@@ -256,6 +444,205 @@ class TestRegenerationFailureHandling:
                 "niche": "test",
             })
             mock_job_failed.assert_called_once()
+
+
+class TestGateFailureHandling:
+    """Tests for continue_from_gate failure revert logic in queue consumer (mirrors
+    TestRegenerationFailureHandling — Codex 7 / lead #4)."""
+
+    @patch('worker.heartbeat.notify_job_failed')
+    @patch('worker.heartbeat.notify_job_completed')
+    @patch('worker.heartbeat.set_current_job')
+    @patch('worker.heartbeat.notify_job_started', return_value=True)
+    def test_gate_failure_calls_notify_gate_failed(
+        self, mock_started, mock_set_job, mock_completed, mock_job_failed
+    ):
+        with patch('worker.tasks.continue_from_gate') as mock_task:
+            err = RuntimeError("Invalid gate patch: unknown field")
+            err.gate_stage = 1
+            mock_task.side_effect = err
+            with patch('worker.progress.notify_gate_failed') as mock_gate_failed:
+                from worker.queue_consumer import process_job
+                process_job({
+                    "job_id": "job-1",
+                    "task_type": "continue_from_gate",
+                    "checkpoint_path": "/tmp/cp",
+                    "gate_stage": 1,
+                })
+                mock_gate_failed.assert_called_once_with(
+                    "job-1", 1, "Invalid gate patch: unknown field")
+                mock_job_failed.assert_not_called()
+
+    @patch('worker.heartbeat.notify_job_failed')
+    @patch('worker.heartbeat.notify_job_completed')
+    @patch('worker.heartbeat.set_current_job')
+    @patch('worker.heartbeat.notify_job_started', return_value=True)
+    def test_gate_failure_falls_back_to_job_data_gate_stage(
+        self, mock_started, mock_set_job, mock_completed, mock_job_failed
+    ):
+        """If the exception was raised before gate_stage was stamped onto it (e.g. a truly
+        unexpected error), fall back to the dispatched job payload's gate_stage."""
+        with patch('worker.tasks.continue_from_gate') as mock_task:
+            mock_task.side_effect = RuntimeError("unexpected")
+            with patch('worker.progress.notify_gate_failed') as mock_gate_failed:
+                from worker.queue_consumer import process_job
+                process_job({
+                    "job_id": "job-1",
+                    "task_type": "continue_from_gate",
+                    "checkpoint_path": "/tmp/cp",
+                    "gate_stage": 4,
+                })
+                mock_gate_failed.assert_called_once_with("job-1", 4, "unexpected")
+
+    @patch('worker.heartbeat.notify_job_failed')
+    @patch('worker.heartbeat.notify_job_completed')
+    @patch('worker.heartbeat.set_current_job')
+    @patch('worker.heartbeat.notify_job_started', return_value=True)
+    def test_gate_failure_falls_through_to_job_failed_on_revert_error(
+        self, mock_started, mock_set_job, mock_completed, mock_job_failed
+    ):
+        with patch('worker.tasks.continue_from_gate') as mock_task:
+            err = RuntimeError("LLM error")
+            err.gate_stage = 1
+            mock_task.side_effect = err
+            with patch('worker.progress.notify_gate_failed') as mock_gate_failed:
+                mock_gate_failed.side_effect = Exception("Backend unreachable")
+                from worker.queue_consumer import process_job
+                process_job({
+                    "job_id": "job-1",
+                    "task_type": "continue_from_gate",
+                    "checkpoint_path": "/tmp/cp",
+                    "gate_stage": 1,
+                })
+                mock_gate_failed.assert_called_once()
+                mock_job_failed.assert_called_once_with("job-1", "LLM error", None)
+
+    @patch('worker.heartbeat.notify_job_failed')
+    @patch('worker.heartbeat.notify_job_completed')
+    @patch('worker.heartbeat.set_current_job')
+    @patch('worker.heartbeat.notify_job_started', return_value=True)
+    def test_gate_failure_revert_not_delivered_falls_through_to_job_failed(
+        self, mock_started, mock_set_job, mock_completed, mock_job_failed
+    ):
+        """Codex review findings 4/6 (BLOCKER): notify_gate_failed no longer raises on a
+        swallowed delivery failure — it RETURNS False. The consumer must check that return
+        value and fall through to notify_job_failed instead of treating the job as recovered
+        (previously this `return`ed unconditionally, leaving the job silently stuck QUEUED)."""
+        with patch('worker.tasks.continue_from_gate') as mock_task:
+            err = RuntimeError("LLM error")
+            err.gate_stage = 1
+            mock_task.side_effect = err
+            with patch('worker.progress.notify_gate_failed', return_value=False) as mock_gate_failed:
+                from worker.queue_consumer import process_job
+                process_job({
+                    "job_id": "job-1",
+                    "task_type": "continue_from_gate",
+                    "checkpoint_path": "/tmp/cp",
+                    "gate_stage": 1,
+                })
+                mock_gate_failed.assert_called_once_with("job-1", 1, "LLM error")
+                mock_job_failed.assert_called_once_with("job-1", "LLM error", None)
+
+
+class TestSeedIdeaFailureHandling:
+    """Seed-idea failures (eager-meandering-feather.md Phase 5) must NEVER fall through to
+    notify_job_failed — that path would refund the wrong charge ('discovery'/segment) and fail
+    the whole parent job over a small paid follow-up request. Two distinct outcomes: a genuine
+    pipeline failure (notify_seed_failed, refund-eligible) vs a delivery-only failure (the merge
+    already landed and was saved — nothing to revert, never refunded)."""
+
+    @patch('worker.heartbeat.notify_job_failed')
+    @patch('worker.heartbeat.notify_job_completed')
+    @patch('worker.heartbeat.set_current_job')
+    @patch('worker.heartbeat.notify_job_started', return_value=True)
+    def test_pipeline_failure_calls_notify_seed_failed_not_job_failed(
+        self, mock_started, mock_set_job, mock_completed, mock_job_failed
+    ):
+        with patch('worker.tasks.run_seed_idea') as mock_task:
+            mock_task.side_effect = RuntimeError("Seed pipeline did not produce an idea")
+            with patch('worker.progress.notify_seed_failed', return_value=True) as mock_seed_failed:
+                from worker.queue_consumer import process_job
+                process_job({
+                    "job_id": "job-1",
+                    "task_type": "seed_idea",
+                    "checkpoint_path": "/tmp/cp",
+                    "niche": "test",
+                    "seed_text": "an idea",
+                })
+                mock_seed_failed.assert_called_once_with(
+                    "job-1", "Seed pipeline did not produce an idea")
+                mock_job_failed.assert_not_called()
+
+    @patch('worker.heartbeat.notify_job_failed')
+    @patch('worker.heartbeat.notify_job_completed')
+    @patch('worker.heartbeat.set_current_job')
+    @patch('worker.heartbeat.notify_job_started', return_value=True)
+    def test_seed_failed_not_delivered_still_never_falls_through(
+        self, mock_started, mock_set_job, mock_completed, mock_job_failed
+    ):
+        """Unlike gate-failed, a seed op has NO fallback to notify_job_failed even when its own
+        revert notification fails to deliver — the parent job must stay untouched either way."""
+        with patch('worker.tasks.run_seed_idea') as mock_task:
+            mock_task.side_effect = RuntimeError("boom")
+            with patch('worker.progress.notify_seed_failed', return_value=False) as mock_seed_failed:
+                from worker.queue_consumer import process_job
+                process_job({
+                    "job_id": "job-1",
+                    "task_type": "seed_idea",
+                    "checkpoint_path": "/tmp/cp",
+                    "niche": "test",
+                    "seed_text": "an idea",
+                })
+                mock_seed_failed.assert_called_once()
+                mock_job_failed.assert_not_called()
+
+    @patch('worker.heartbeat.notify_job_failed')
+    @patch('worker.heartbeat.notify_job_completed')
+    @patch('worker.heartbeat.set_current_job')
+    @patch('worker.heartbeat.notify_job_started', return_value=True)
+    def test_notify_seed_failed_raising_never_falls_through(
+        self, mock_started, mock_set_job, mock_completed, mock_job_failed
+    ):
+        with patch('worker.tasks.run_seed_idea') as mock_task:
+            mock_task.side_effect = RuntimeError("boom")
+            with patch('worker.progress.notify_seed_failed') as mock_seed_failed:
+                mock_seed_failed.side_effect = Exception("Backend unreachable")
+                from worker.queue_consumer import process_job
+                process_job({
+                    "job_id": "job-1",
+                    "task_type": "seed_idea",
+                    "checkpoint_path": "/tmp/cp",
+                    "niche": "test",
+                    "seed_text": "an idea",
+                })
+                mock_seed_failed.assert_called_once()
+                mock_job_failed.assert_not_called()
+
+    @patch('worker.heartbeat.notify_job_failed')
+    @patch('worker.heartbeat.notify_job_completed')
+    @patch('worker.heartbeat.set_current_job')
+    @patch('worker.heartbeat.notify_job_started', return_value=True)
+    def test_delivery_only_failure_never_calls_seed_failed_or_job_failed(
+        self, mock_started, mock_set_job, mock_completed, mock_job_failed
+    ):
+        """The seed was born, merged, and SAVED — only notify_seed_complete's delivery failed
+        (run_seed_idea tags the exception `seed_delivery_only`). This must NEVER be treated as a
+        pipeline failure: no refund (notify_seed_failed), no whole-job failure."""
+        with patch('worker.tasks.run_seed_idea') as mock_task:
+            err = RuntimeError("backend unreachable after retries")
+            err.seed_delivery_only = True
+            mock_task.side_effect = err
+            with patch('worker.progress.notify_seed_failed') as mock_seed_failed:
+                from worker.queue_consumer import process_job
+                process_job({
+                    "job_id": "job-1",
+                    "task_type": "seed_idea",
+                    "checkpoint_path": "/tmp/cp",
+                    "niche": "test",
+                    "seed_text": "an idea",
+                })
+                mock_seed_failed.assert_not_called()
+                mock_job_failed.assert_not_called()
 
 
 # ── Reliable queue (2026-07-02 infra review): BLMOVE + processing ack + stale requeue ──

@@ -7,6 +7,10 @@ export interface Report {
 	executive_summary: string;
 	/** True when generated from a catalog-seeded run (thinner community evidence). */
 	seeded_from_catalog?: boolean;
+	/** Guided-mode honesty block (Phase C): true once any gate patch (G1/G2) was applied. */
+	user_adjusted?: boolean;
+	/** Compact human-readable notes for which gate(s) were adjusted and what changed. */
+	user_adjustments?: string[];
 	executive_dashboard?: ExecutiveDashboard;
 	go_to_market_blueprint?: GoToMarketBlueprint;
 	market_analytics?: MarketAnalytics;
@@ -723,8 +727,15 @@ export interface RuledOutFinding {
 	market_fit: number | null;
 	market_fit_band: 'very-low' | 'low';
 	prior_tier: string;
-	source: 'demoted_winner' | 'backfill_rejected';
+	source: 'demoted_winner' | 'backfill_rejected' | 'no_buyer';
 	evidence: string;
+	/** The idea's actual name — the panel's real primary (pain_title is secondary
+	 *  provenance). Optional so older cached reports without it still render. */
+	idea_name?: string | null;
+	/** Which generation frame minted the idea (see sourceFrameLabels.ts's closed
+	 *  vocabulary) — 'user_seed' marks a chat-composed idea seed that was tested
+	 *  and demoted, rendered with a "Your idea" badge. */
+	source_frame?: string | null;
 }
 
 // A set of surviving ideas identified as variants of the same underlying product. A merge
@@ -945,6 +956,8 @@ export interface AlternativeSolution {
 	critic_concern?: string | null; // calibration critic's market_fit reason — the bear case
 	incumbent_parity?: string | null; // web-verified mechanism parity for top ideas ("shipped by MoeGo: …" | "substitute (…)" | "none found")
 	adjacent_market_parity?: string | null; // audience-independent incumbent where the mechanism monetizes ("HigherGov (govcon intel): …"), null = none found
+	red_team_verdict?: string | null; // adversarial pass verdict: survives | weakened | killed
+	red_team_caveats?: string[] | null; // evidence-cited caveats from the red-team pass
 	source_segment_payability?: number | null; // 0-1 buyer-wallet strength of the source segment (permanent signal; null = segment map failed)
 	source_segment_payability_class?: string | null; // corporate-budget | smb-budget | prosumer-wallet | personal-wallet | mixed
 	// Multi-Frame Idea Generation Portfolio: which generation frame minted this idea's cell.

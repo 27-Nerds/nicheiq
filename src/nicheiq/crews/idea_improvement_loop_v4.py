@@ -31,10 +31,16 @@ from ..config.settings import settings
 from ..models.solution_idea import BaseSolutionIdea
 from ..utils.llm_service import LLMService
 from ..utils.public_data_sources import (
-    llm_confirm_known_route, match_known_public_source, retrieve_known_sources,
+    llm_confirm_known_route,
+    match_known_public_source,
+    retrieve_known_sources,
 )
+from ..utils.seed_fidelity import is_seed_faithful
 from .idea_improvement_loop import (
-    CellGrounding, _carry_forward_fields, _idea_to_text, _ONPAIN_SLACK,
+    _ONPAIN_SLACK,
+    CellGrounding,
+    _carry_forward_fields,
+    _idea_to_text,
 )
 
 _DEFAULT_ROUNDS = 2
@@ -163,18 +169,40 @@ def _angle_directive(g: CellGrounding) -> str:
 
 
 def _frame_directive(g: CellGrounding) -> str:
-    """Multi-Frame Idea Generation Portfolio (2026-07-10): a non-pain cell has no single SOURCE
-    PAIN — it is seeded from a typed FOCUS (gap/data-asset/workflow) and anchored
-    to a VALIDATED set of pains at mint time (`anchor_pains_for_frame_focus`). Two-clause
-    market_fit lock so the reviewer doesn't score honest frame ideation as pain drift: (a) does
-    it fit the frame's own FOCUS, (b) does it serve one of the listed ANCHOR PAINS. '' for a pain
-    cell (frame_type '' or 'pain') — byte-identical to before."""
+    """Frame-specific market-fit rules plus the immutable user-seed product lock."""
     if not g.frame_type or g.frame_type == "pain":
         return ""
+
+    seed_lock = ""
+    if g.frame_type == "user_seed":
+        seed_text = (g.user_seed_text or g.focus_block or "").strip()
+        seed_lock = (
+            "\nUSER-SEED IDENTITY LOCK — the submitted product is the object being evaluated, "
+            "not raw material for a replacement idea. Preserve its product category, core artifact/"
+            "mechanism, interaction model, and target audience. The anchor pain may shape features "
+            "and lower market_fit, but it must NEVER replace the submitted product with a different "
+            "tool. Allowed changes: rules, workflow, data route, positioning, distribution, scope, "
+            "and monetization around the same product. Keep the brief's distinctive product terms "
+            "visible in the revised product copy. If the brief conflicts with the anchor, keep the "
+            f"brief and score the mismatch honestly.\nORIGINAL USER BRIEF: {seed_text}\n"
+        )
+
+    if g.frame_type == "user_seed" and g.unanchored:
+        return seed_lock + (
+            "\nPRODUCT FRAME = USER_SEED (UNANCHORED HYPOTHESIS) — the user proposed this idea "
+            "directly via chat; this run's research found NO validated pain that specifically "
+            "matches it. There is no anchor pain to score against and none should be invented. "
+            "Score market_fit on how plausibly this idea would serve the audience/pain it "
+            "describes (or the niche audience generally, if none is named) — judge it as an "
+            "honest, UNGROUNDED hypothesis on its own merits. Do NOT apply any market_fit cap for "
+            "lacking an anchor, and do NOT claim in your rationale or the idea's copy that it is "
+            "'research-validated' or grounded in this run's evidence — if anything, note plainly "
+            "that it is the user's own hypothesis.\n"
+        )
     from ..utils.frames import FRAME_REGISTRY
     spec = FRAME_REGISTRY.get(g.frame_type)
     mf_anchor = spec.mf_anchor if spec is not None else "does it fit the FOCUS below"
-    return (
+    return seed_lock + (
         f"\nPRODUCT FRAME = {g.frame_type.upper()} — this idea is seeded from THE FOCUS below, "
         "NOT a single source pain. Score market_fit on TWO clauses together: (a) "
         f"{mf_anchor}; (b) it must serve at least one of THE ANCHOR PAINS listed (exact titles). "
@@ -219,7 +247,9 @@ def _reviewer_system(g: CellGrounding) -> dict:
 
 
 def _ideator_system(g: CellGrounding) -> dict:
+    seed_lock = _frame_directive(g) if g.frame_type == "user_seed" else ""
     return {"role": "system", "content": (
+        seed_lock +
         "You are a sharp, imaginative SaaS ideator for a solo developer, working WITH a creative mentor. "
         "Design ONE product that solves the source pain below, then evolve it each turn by taking the "
         "mentor's creative direction and running with it. HARD RULES:\n"
@@ -489,6 +519,13 @@ def tournament_refine_cell_v4(
             _rec(u)
         except Exception as e:
             logger.warning(f"[v4] improve failed r{r}: {str(e)[:80]}"); break
+        if (grounding.frame_type == "user_seed"
+                and grounding.user_seed_text
+                and not is_seed_faithful(grounding.user_seed_text, improved)):
+            logger.warning(
+                f"[v4] rejected off-seed revision '{getattr(improved, 'solution_name', '?')}' "
+                "— keeping the submitted product mechanism")
+            break
         improved.source_pain = getattr(current, "source_pain", None) or grounding.pain_title
         # Do NOT backfill the arbitrary cell segment when None — the crew re-derives honest
         # provenance (or leaves None) at the terminal stamp sites (_provenance_segment_for_pain).

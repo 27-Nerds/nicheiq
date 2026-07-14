@@ -16,6 +16,7 @@ enum JobStatus {
   QUEUED // Added to Redis queue
   RUNNING // Worker is processing
   AWAITING_SELECTION // Ideas ready, waiting for user selection
+  AWAITING_GATE // Guided mode (chatMode): paused at a G1/G2 stage gate for review/chat
   REGENERATING // User requested new ideas, regenerating
   RUNNING_PHASE2 // User selected solution, running deep investigation
   COMPLETED // Successfully finished
@@ -45,6 +46,37 @@ enum AssetType {
 enum UserRole {
   USER
   ADMIN
+}
+
+// When a job pays for its discovery phase. IMMUTABLE once set — it is the billing contract the
+// run was sold under, and every money branch (continue / cancel / failure / price display) reads
+// it. The default is deliberately the OLD model so that anything written by an old instance
+// during a rolling deploy, or backfilled by the migration, is treated as already-paid and can
+// never be charged a second time.
+enum BillingModel {
+  DISCOVERY_PREPAID_V1 // full `discovery` charged at job creation (all non-guided jobs, and every guided job created before segment billing)
+  GUIDED_SEGMENTS_V1 // guided: paid per gate segment as the user authorizes each one
+}
+
+// A single attempt to run work for a job: the unit a worker callback must name.
+// Correlating callbacks on (job, status, gateStage) is what let a delayed or duplicated
+// message rewind a healthy run or settle the wrong attempt.
+enum DispatchKind {
+  CONTINUE // advance past a gate (buys the next segment)
+  APPLY_STAY // re-run the gate's stage with a patch, re-arrive at the SAME gate (free)
+  REGENERATE // regenerate ideas at selection
+  SEED_IDEA // birth + score a user-composed idea seed at selection (paid, numbered seed_idea_N)
+}
+
+// authorized -> claimed -> completed | failed | refunded.
+// The authorized/claimed boundary is what makes "cancel refunds work no worker picked up"
+// answerable: before CLAIMED nothing ran, so the charge comes back.
+enum DispatchState {
+  AUTHORIZED // charged and queued; no worker has taken it
+  CLAIMED // a worker started it — the user is now paying for work that ran
+  COMPLETED
+  FAILED
+  REFUNDED
 }
 
 // Credit transaction types
@@ -208,6 +240,14 @@ model Job {
   selectionRationale     String?   @db.Text // User's reason for selection
   ideasRegeneratedAt     DateTime? // When ideas were last regenerated (null = not regenerated)
   regenerationCount      Int       @default(0) // Number of times ideas have been regenerated
+  // Number of user-composed idea seeds submitted for this job (selection-chat "generate an idea
+  // from your own idea"). Incremented with the SAME optimistic-lock CAS as regenerationCount
+  // (updateMany guarded on the value just read) so it is the ordinal source for `seed_idea_N`
+  // ledger stages — a Job column rather than deriving from JobDispatch row count, because
+  // deriving from a COUNT(*) is not atomic under concurrent requests (two simultaneous seeds
+  // could both count 0 and both claim ordinal 1), while the CAS on this column guarantees a
+  // strictly increasing, race-free sequence exactly like regeneration already relies on.
+  seedIdeaCount          Int       @default(0)
   awaitingSelectionAt    DateTime? // When job entered AWAITING_SELECTION
   ideasShownAt           DateTime? // When ideas were first shown to user
   phase1CheckpointPath   String?   @db.VarChar(500) // Path to phase 1 checkpoint for resuming phase 2
@@ -248,6 +288,40 @@ model Job {
   catalogCategoryId String?
   catalogCategory   CatalogCategory? @relation(fields: [catalogCategoryId], references: [id], onDelete: SetNull)
 
+  // Guided chat (Phase A — see plans/eager-meandering-feather.md). `chatMode` opts a job
+  // into the G1/G2 stage gates (Phase B); G3 chat (AWAITING_SELECTION) is
+  // chatMode-INDEPENDENT and available to all entitled users regardless of this flag.
+  chatMode    Boolean @default(false)
+  chatCostUsd Float?  @default(0) // Cumulative chat LLM cost for this job (USD)
+
+  // Guided-mode stage gates (Phase B). gateStage is 1 (post-Stage-1, G1) or 4
+  // (post-Stage-4, G2) while status=AWAITING_GATE; null otherwise (including at
+  // AWAITING_SELECTION — that gate's sentinel lives only in ChatMessage.gateStage=5).
+  // gateArtifact is the card payload the worker built for this stop (_extract_stage_artifact
+  // for G1, the composite _build_g2_gate_artifact for G2) — also the gate-action patch
+  // cross-check reference. gateReachedAt is cleared on every gate-action apply/continue so a
+  // stale value can't be read as "still at this gate" (Codex 11 guard).
+  gateStage     Int?
+  gateArtifact  Json?
+  gateReachedAt DateTime?
+  // apply_stay cap (Decisions: "apply_stay is capped per gate — 5 applies", SC3 — the
+  // 30-turn chat cap does not cover applies, this is a separate counter). Counts accepted
+  // apply_stay gate-actions for the CURRENT gateStage; reset to 0 whenever a gate-reached
+  // notification arrives for a DIFFERENT gateStage than the job's current one (a genuinely
+  // new gate, not a same-gate apply_stay round-trip).
+  gateApplyCount Int @default(0)
+
+  // Billing contract for this run. Immutable after creation — see BillingModel.
+  billingModel BillingModel @default(DISCOVERY_PREPAID_V1)
+
+  // The dispatch a worker is currently authorized to report against. Denormalised onto Job
+  // (as well as living in JobDispatch) because every worker callback guards with
+  // `updateMany({ where: { id, activeDispatchId, status: {in: [...]} } })`, and Prisma's
+  // updateMany cannot join — the CAS predicate has to be satisfiable from this row alone.
+  // Null = no dispatch outstanding (and the narrow legacy path for pre-migration workers).
+  activeDispatchId String?      @db.VarChar(36)
+  dispatches       JobDispatch[]
+
   // Timestamps
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -261,6 +335,7 @@ model Job {
   creditTransactions CreditTransaction[]
   share              ReportShare?
   discoveryShare     DiscoveryShare?
+  chatMessages       ChatMessage[]
 
   // Indexes for common queries
   @@index([userId])
@@ -268,6 +343,61 @@ model Job {
   @@index([createdAt])
   @@index([workerId])
   @@index([lastHeartbeat])
+}
+
+// One row per attempt to run work. Three jobs at once:
+//
+//  1. NONCE. Its id rides the queue payload and comes back on every worker callback, which
+//     CAS against Job.activeDispatchId. A callback naming a superseded dispatch is stale and
+//     mutates nothing — which is what stops a delayed /gate-failed from reverting a *newer*
+//     attempt, or a duplicate /gate-reached from rewinding a job that has moved on.
+//  2. OUTBOX. It is written in the same transaction as the charge and the status flip, so the
+//     intent to run is durable before the Redis enqueue. An enqueue error is ambiguous (the
+//     LPUSH may have landed anyway), so delivery is RETRIED against this row rather than
+//     compensated — reverting on an ambiguous error is how you end up doing free work.
+//  3. SETTLEMENT TARGET. chargeId names the exact CreditTransaction this attempt paid for, so a
+//     failure refunds *that* charge — not "the latest one", which during a free apply_stay would
+//     hand back money for a segment that completed successfully.
+model JobDispatch {
+  id    String @id @default(uuid())
+  jobId String
+  job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  kind      DispatchKind
+  gateStage Int? // the gate this dispatch departed FROM (1 or 4); null for REGENERATE
+
+  // The segment this attempt bought, as a CreditTransaction.stage value (guided_s2_4, guided_s5).
+  // Null when the attempt is free — every APPLY_STAY, and any CONTINUE on a DISCOVERY_PREPAID_V1
+  // job, which already paid for the whole phase up front.
+  segment  String? @db.VarChar(50)
+  chargeId String? // CreditTransaction.id — the exact row a refund must settle
+
+  // SEED_IDEA linkage. Null for every other kind.
+  // seedOrdinal mirrors Job.seedIdeaCount at the moment this dispatch was opened — the same
+  // number the numbered `seed_idea_N` charge/refund uses — so a later settlement or a card on
+  // the (not-yet-built) chat ledger can resolve straight from the dispatch row without a second
+  // lookup against the credit ledger.
+  seedOrdinal      Int?
+  // The chat message id (durable, server-side) that proposed this seed — this is what gives the
+  // (not-yet-built) seed card a stable identity across a ledger reload, mirroring how apply_stay
+  // receipts already key off sourceMessageId (see GateActionSchema). Nullable: chat isn't wired
+  // to dispatch yet (Phase 7 of plans/eager-meandering-feather.md), but the column exists now so
+  // that work doesn't need another migration.
+  sourceMessageId  String? @db.VarChar(64)
+
+  state    DispatchState @default(AUTHORIZED)
+  workerId String?       @db.VarChar(100)
+
+  // Why it failed, when it did. /gate-failed currently conflates a rejected user patch with a
+  // genuine system fault; only the latter gives the money back, so the distinction is recorded.
+  failureKind String? @db.VarChar(30) // SYSTEM_FAULT | USER_PATCH_REJECTED | STALE_CHECKPOINT
+
+  createdAt DateTime  @default(now())
+  claimedAt DateTime?
+  settledAt DateTime?
+
+  @@index([jobId, state])
+  @@index([state, createdAt]) // outbox sweep: AUTHORIZED rows whose delivery needs retrying
 }
 
 // Worker heartbeat tracking (for detecting crashed workers)
@@ -332,6 +462,44 @@ model JobAsset {
 
   @@unique([jobId, assetType])
   @@index([jobId])
+}
+
+// ============================================
+// Guided Chat (Phase A — plans/eager-meandering-feather.md)
+// ============================================
+
+// One row per chat turn (user message or assistant reply) on a job's guided-chat
+// thread. `gateStage` is the stage the message is anchored to — 1|4 will be used by
+// Phase B's G1/G2 gates; Phase A only ever writes `5` (the G3/AWAITING_SELECTION
+// sentinel — `Job.gateStage` itself stays null at AWAITING_SELECTION, see
+// backend/src/routes/chat.ts). `patchJson` holds the assistant's proposed
+// `propose_modification` tool-call args (reassembled + Zod-validated) when the
+// turn produced a patch card; null for plain-text replies. `truncated` is set when
+// the client aborted mid-stream and the partial assistant reply was persisted anyway.
+model ChatMessage {
+  id    String @id @default(uuid())
+  jobId String
+  job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  gateStage Int // 1 | 4 | 5 (5 = G3/AWAITING_SELECTION)
+  role      String  @db.VarChar(16) // 'user' | 'assistant'
+  content   String  @db.Text
+  patchJson Json? // Proposed patch (propose_modification tool args), assistant turns only
+  // Read-only tool invocations made while resolving this turn (chat agent tools v1.1):
+  // array of {name, args, label} — assistant turns only; the label is the same string
+  // emitted as the SSE `tool` event, so a reload renders identical ledger receipts.
+  toolCallsJson Json?
+  // Follow-up questions the analyst itself proposed for this turn (string[]) — the
+  // chips shown under the composer. Assistant turns only; null when generation failed
+  // (the client falls back to deterministic, state-derived suggestions).
+  suggestionsJson Json?
+  costUsd   Float? // LLM cost for this turn (assistant turns only)
+  truncated Boolean @default(false) // Client aborted mid-stream; content is partial
+
+  createdAt DateTime @default(now())
+
+  @@index([jobId])
+  @@index([jobId, gateStage])
 }
 
 // ============================================

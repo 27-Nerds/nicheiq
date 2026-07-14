@@ -1,0 +1,12 @@
+Your NicheIQ Research Paused for Review
+
+Your guided research on "{{NICHE}}" has reached the {{GATE_LABEL}} checkpoint and is waiting for you.
+
+What's next:
+- Review what the analyst found so far
+- Ask questions or request changes in chat
+- Continue research when you're ready — it waits for you, no rush
+
+Review Checkpoint: {{STATUS_URL}}
+
+Job ID: {{JOB_ID}}

@@ -31,6 +31,42 @@ def _get_worker_id() -> str:
     return get_worker_id()
 
 
+# ── Dispatch identity ────────────────────────────────────────────────────────────────────
+# The backend hands us a dispatch id with the queue payload; it must ride back on EVERY
+# callback for that job. The backend CASes on it, so a callback from a superseded attempt
+# (a duplicate delivery, or a worker whose job was cancelled and restarted) matches nothing
+# and mutates nothing — instead of rewinding a run that has already moved on.
+#
+# It lives in a module-level registry rather than as an argument because the progress
+# callbacks are invoked from deep inside the research pipeline, which has no reason to know
+# about billing or dispatch identity. Keyed by job_id so a multi-job worker process can't
+# leak one job's id onto another's callback.
+#
+# Absent = this job was dispatched by a backend that predates dispatch ids. We send nothing
+# and the backend falls back to its narrow legacy path. That is why the worker ships FIRST:
+# it must tolerate absence before the backend starts requiring presence.
+_ACTIVE_DISPATCH: dict[str, str] = {}
+
+
+def set_active_dispatch(job_id: str, dispatch_id: Optional[str]) -> None:
+    """Record the dispatch this worker is authorized to report against for `job_id`."""
+    if dispatch_id:
+        _ACTIVE_DISPATCH[job_id] = dispatch_id
+    else:
+        _ACTIVE_DISPATCH.pop(job_id, None)
+
+
+def clear_active_dispatch(job_id: str) -> None:
+    """Drop the dispatch id once the job is released (success or failure)."""
+    _ACTIVE_DISPATCH.pop(job_id, None)
+
+
+def _dispatch_payload(job_id: str) -> dict[str, str]:
+    """Spread into a callback body: {"dispatch_id": ...} when known, {} when not."""
+    dispatch_id = _ACTIVE_DISPATCH.get(job_id)
+    return {"dispatch_id": dispatch_id} if dispatch_id else {}
+
+
 # Stage name mapping (matches backend/src/types/job.ts)
 STAGE_NAMES = {
     1: "Niche Validation",
@@ -90,6 +126,7 @@ def publish_progress_via_api(
             "stage": stage,
             "name": name,
             "status": status,
+            **_dispatch_payload(job_id),
         }
 
         if error is not None:
@@ -300,6 +337,10 @@ def notify_ideas_ready(job_id: str, solutions: list[dict], checkpoint_path: str,
         "total_to_validate": total_to_validate,
         "skip_validation": skip_validation,
         "discovery_data_path": discovery_data_path,
+        # G2's Continue does NOT end at /gate-reached — it runs to stage 5 and terminates HERE.
+        # Without the dispatch id this callback is the unguarded back door into the whole
+        # guided flow.
+        **_dispatch_payload(job_id),
     }
     if preview_report_path:
         payload["preview_report_path"] = preview_report_path
@@ -424,6 +465,125 @@ def notify_regeneration_failed(job_id: str, error_message: str) -> None:
         logger.error(f"[Progress] Failed to notify regeneration failed: {e}")
 
 
+def notify_seed_complete(
+    job_id: str,
+    idea: dict,
+    outcome: str,
+    cost_summary: Optional[dict] = None,
+) -> None:
+    """
+    Notify backend that a user-composed idea seed (eager-meandering-feather.md Phase 5)
+    finished birth + scoring and was already MERGED and SAVED into the pool checkpoint by the
+    caller. `outcome` is 'accepted' (cleared the market-fit bar) or 'demoted' (didn't) — both
+    are delivered; a demoted seed still surfaces to the user (Examined & ruled out), never
+    silently discarded (a paid request must not vanish).
+
+    Mirrors `notify_gate_reached`'s retry-then-RAISE contract, deliberately NOT
+    `notify_regeneration_complete`'s swallow-and-log: this delivery is the seed's ONLY
+    transition out of QUEUED/RUNNING, and by the time this is called the merge is already
+    durable on disk — the money is owed regardless of whether this call lands. Raising on
+    exhausted retries lets the caller (`run_seed_idea`) tell a genuine pipeline failure apart
+    from "the work is done and saved but nobody was told" — the backend must never refund or
+    discard on the latter, only retry delivery against the dispatch id.
+
+    Args:
+        job_id: The job UUID
+        idea: The seed's preview dict (`_solution_to_preview_dict`) — exactly one idea, active
+            or demoted.
+        outcome: 'accepted' | 'demoted'
+        cost_summary: Optional live cost-tracker summary for the admin pricing view.
+    """
+    payload: dict[str, Any] = {
+        "worker_id": _get_worker_id(),
+        "job_id": job_id,
+        "idea": idea,
+        "outcome": outcome,
+        **_dispatch_payload(job_id),
+    }
+    if cost_summary:
+        payload["cost_summary"] = cost_summary
+
+    retry_delays = (2.0, 5.0, 10.0)
+    last_error: Exception = RuntimeError("unreachable")
+    for attempt, delay in enumerate((*retry_delays, None), start=1):
+        try:
+            response = requests.post(
+                f"{_get_backend_url()}/api/workers/seed-complete",
+                json=payload,
+                headers={"x-internal-service": _get_internal_secret()},
+                timeout=30,
+            )
+            if response.status_code in (404, 409):
+                try:
+                    state = (response.json() or {}).get("state", "")
+                except ValueError:
+                    state = ""
+                if response.status_code == 409 and state == "CANCELLED":
+                    logger.warning(
+                        f"[Progress] Seed-complete for job {job_id}: job was cancelled — "
+                        "nothing to deliver, not retrying"
+                    )
+                    return
+                msg = (
+                    f"Seed-complete rejected for job {job_id}: HTTP {response.status_code}"
+                    + (f", job state {state}" if state else "")
+                    + " — seed outcome could not be delivered"
+                )
+                logger.error(f"[Progress] {msg}")
+                raise RuntimeError(msg)
+            response.raise_for_status()
+            logger.info(f"[Progress] Seed-complete notification sent for job {job_id} (outcome={outcome})")
+            return
+        except requests.exceptions.RequestException as e:
+            last_error = e
+            if delay is None:
+                break
+            logger.warning(
+                f"[Progress] Seed-complete attempt {attempt} failed for job {job_id}, "
+                f"retrying in {delay}s: {e}"
+            )
+            time.sleep(delay)
+
+    logger.error(f"[Progress] Failed to notify seed complete for job {job_id} after {attempt} attempts")
+    raise last_error
+
+
+def notify_seed_failed(job_id: str, error_message: str) -> bool:
+    """
+    Notify backend that a user-composed idea seed FAILED BEFORE anything was merged or saved
+    (birth itself produced nothing — `execute_seed_pipeline` returned None, or the pipeline
+    raised). Reverts QUEUED/RUNNING -> AWAITING_SELECTION and refunds the numbered
+    `seed_idea_N` charge, mirroring `notify_gate_failed`'s bool-return contract.
+
+    Returns:
+        True if the revert was delivered, False otherwise. Callers MUST check this and never
+        fall through to the generic job-failure path on a seed op — that path would refund the
+        wrong charge ('discovery'/segment) for a job that never charged either of those a
+        second time.
+    """
+    try:
+        payload = {
+            "worker_id": _get_worker_id(),
+            "job_id": job_id,
+            "error_message": error_message[:2000],
+            **_dispatch_payload(job_id),
+        }
+
+        response = requests.post(
+            f"{_get_backend_url()}/api/workers/seed-failed",
+            json=payload,
+            headers={"x-internal-service": _get_internal_secret()},
+            timeout=30,
+        )
+        response.raise_for_status()
+        logger.info(f"[Progress] Seed-failed notification sent for job {job_id}")
+        return True
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"[Progress] Failed to notify seed failed: {e}")
+        return False
+
+
 def notify_catalog_pain_points_ready(
     job_id: str,
     category_id: str,
@@ -515,6 +675,134 @@ def notify_catalog_ideas_ready(
     except requests.exceptions.RequestException as e:
         logger.error(f"[Progress] Failed to notify catalog ideas ready: {e}")
         raise
+
+
+def notify_gate_reached(
+    job_id: str,
+    gate_stage: int,
+    checkpoint_path: str,
+    gate_artifact: dict,
+    cost_summary: Optional[dict] = None,
+) -> None:
+    """
+    Notify backend that a guided-mode (chatMode) gate was reached (G1 after Stage 1, G2
+    after Stage 4) — or re-reached after an `apply_stay` gate-action round-trip, with a
+    refreshed artifact for the SAME gate.
+
+    Mirrors `notify_ideas_ready`'s retry + idempotency contract: this delivery is the job's
+    ONLY transition out of RUNNING/QUEUED for a gate stop, so a swallowed failure would leave
+    it stuck forever — raise on exhausted retries so the worker's standard failure path
+    (notify_job_failed) takes over instead of a silent stall. A 409 with state=CANCELLED
+    returns quietly (nothing to deliver to); any other 404/409 raises since a reached gate
+    silently discarded is a real loss the operator needs to see.
+
+    Args:
+        job_id: The job UUID
+        gate_stage: 1 (G1, post-Stage-1) or 4 (G2, post-Stage-4)
+        checkpoint_path: The EFFECTIVE post-resume checkpoint path
+            (flow.checkpoint_mgr.checkpoint_folder) — NEVER the path the resume was given,
+            since a cross-job resume forks to a new folder (Codex 10).
+        gate_artifact: The gate card payload (_extract_stage_artifact(1) for G1,
+            _build_g2_gate_artifact() for G2) — also the patch cross-check reference.
+        cost_summary: Optional live cost-tracker summary for the admin pricing view.
+    """
+    payload: dict[str, Any] = {
+        "worker_id": _get_worker_id(),
+        "job_id": job_id,
+        "gate_stage": gate_stage,
+        "checkpoint_path": checkpoint_path,
+        "gate_artifact": gate_artifact,
+        **_dispatch_payload(job_id),
+    }
+    if cost_summary:
+        payload["cost_summary"] = cost_summary
+
+    retry_delays = (2.0, 5.0, 10.0)
+    last_error: Exception = RuntimeError("unreachable")
+    for attempt, delay in enumerate((*retry_delays, None), start=1):
+        try:
+            response = requests.post(
+                f"{_get_backend_url()}/api/workers/gate-reached",
+                json=payload,
+                headers={"x-internal-service": _get_internal_secret()},
+                timeout=30,
+            )
+            if response.status_code in (404, 409):
+                try:
+                    state = (response.json() or {}).get("state", "")
+                except ValueError:
+                    state = ""
+                if response.status_code == 409 and state == "CANCELLED":
+                    logger.warning(
+                        f"[Progress] Gate-reached for job {job_id}: job was cancelled — "
+                        "nothing to deliver, not retrying"
+                    )
+                    return
+                msg = (
+                    f"Gate-reached rejected for job {job_id}: HTTP {response.status_code}"
+                    + (f", job state {state}" if state else "")
+                    + " — reached gate could not be delivered"
+                )
+                logger.error(f"[Progress] {msg}")
+                raise RuntimeError(msg)
+            response.raise_for_status()
+            logger.info(f"[Progress] Gate-reached notification sent for job {job_id} (gate_stage={gate_stage})")
+            return
+        except requests.exceptions.RequestException as e:
+            last_error = e
+            if delay is None:
+                break
+            logger.warning(
+                f"[Progress] Gate-reached attempt {attempt} failed for job {job_id}, "
+                f"retrying in {delay}s: {e}"
+            )
+            time.sleep(delay)
+
+    logger.error(f"[Progress] Failed to notify gate reached for job {job_id} after {attempt} attempts")
+    raise last_error
+
+
+def notify_gate_failed(job_id: str, gate_stage: int, error_message: str) -> bool:
+    """
+    Notify backend that a gate CONTINUATION (`continue_from_gate`) failed — either resuming
+    the checkpoint or re-running stages toward the next stop. Reverts the job QUEUED ->
+    AWAITING_GATE (mirrors `notify_regeneration_failed`'s QUEUED -> AWAITING_SELECTION revert)
+    so the user's existing gate artifact/patch history is preserved and the run is retryable,
+    instead of being marked FAILED (which would trigger an incorrect credit refund).
+
+    Args:
+        job_id: The job UUID
+        gate_stage: The gate stage the job was trying to continue from (1 or 4)
+        error_message: Description of what went wrong
+
+    Returns:
+        True if the revert was delivered, False otherwise. Callers MUST check this (Codex
+        review findings 4/6) — a swallowed delivery failure here would leave the job stuck in
+        QUEUED forever with nobody told; on False the caller must fall through to the generic
+        notify_job_failed path instead of treating the job as recovered.
+    """
+    try:
+        payload = {
+            "worker_id": _get_worker_id(),
+            "job_id": job_id,
+            "gate_stage": gate_stage,
+            "error_message": error_message[:2000],
+            **_dispatch_payload(job_id),
+        }
+
+        response = requests.post(
+            f"{_get_backend_url()}/api/workers/gate-failed",
+            json=payload,
+            headers={"x-internal-service": _get_internal_secret()},
+            timeout=30,
+        )
+        response.raise_for_status()
+        logger.info(f"[Progress] Gate-failed notification sent for job {job_id} (gate_stage={gate_stage})")
+        return True
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"[Progress] Failed to notify gate failed: {e}")
+        return False
 
 
 def notify_job_quality_gate_stop(

@@ -8,11 +8,80 @@ export type JobStatus =
   | 'QUEUED'
   | 'RUNNING'
   | 'AWAITING_SELECTION'
+  | 'AWAITING_GATE'
   | 'REGENERATING'
   | 'RUNNING_PHASE2'
   | 'COMPLETED'
   | 'FAILED'
   | 'CANCELLED';
+
+// ============================================
+// Guided mode (Phase B — plans/eager-meandering-feather.md): G1 (post-Stage-1) / G2
+// (post-Stage-4) stage gates. Mirrors the Python artifact builders
+// (`_build_stage_artifact(1)` / `_build_g2_gate_artifact` in research_flow.py) and the
+// Zod whitelists in backend/src/types/job.ts (GateG1PatchSchema / GateG2PatchSchema).
+// ============================================
+
+/** `_build_stage_artifact(1)` — G1 gate card data (niche-context fields only). */
+export interface GateG1Artifact {
+  type: 'niche_validation';
+  niche_description: string | null;
+  market_segments: string[];
+  industry_boundaries: string | null;
+  /** G1-editable audience fields + derived search plan (refreshed on apply_stay). */
+  user_target_audience?: string | null;
+  audience_scope?: string | null;
+  anchor_entities?: string[];
+  disambiguation_exclusions?: string[];
+}
+
+/** One entry of `_build_g2_gate_artifact()`'s `pains` list. */
+export interface GateG2PainEntry {
+  title: string;
+  severity: number | null;
+  opportunity: string | null;
+}
+
+/** One entry of `_build_g2_gate_artifact()`'s `segments` list. */
+export interface GateG2SegmentEntry {
+  segment_name: string;
+  size_estimate: string | null;
+  payability_class: string | null;
+  payability_score: number | null;
+}
+
+/** `_build_g2_gate_artifact()` — G2 gate card data (full pain titles + segments). */
+export interface GateG2Artifact {
+  type: 'audience_mapping_gate';
+  pains: GateG2PainEntry[];
+  segments: GateG2SegmentEntry[];
+  primary_target?: string | null;
+  /** Set to 'pain_scope_only' when audience_mapping failed (DR N4 degraded path). */
+  degraded?: string;
+}
+
+export type GateArtifact = GateG1Artifact | GateG2Artifact | Record<string, unknown>;
+
+/** Mirrors backend `GateG1PatchSchema` (backend/src/types/job.ts) — field SHAPE only,
+ *  cross-checked against the job's gateArtifact server-side. */
+export interface GateG1PatchFields {
+  niche_description?: string;
+  market_segments?: string[];
+  industry_boundaries?: string;
+  user_target_audience?: string;
+}
+
+/** Mirrors backend `GateG2PatchSchema`. */
+export interface GateG2PatchFields {
+  user_target_audience?: string;
+  primary_target_segment?: string;
+  excluded_segments?: string[];
+  segment_emphasis?: Record<string, 'high' | 'low'>;
+  pain_scope?: {
+    excluded_titles: string[];
+    pinned_titles: string[];
+  };
+}
 
 export type ErrorSeverity = 'info' | 'warning' | 'error';
 
@@ -195,13 +264,26 @@ export interface StopReasonDetails {
 
 // -- Billable stage types (single source of truth) --
 
-export type BillableStageName = 'discovery' | 'deep_research' | 'landing_page' | 'regenerate_ideas';
+export type BillableStageName = 'discovery' | 'deep_research' | 'landing_page' | 'regenerate_ideas' | 'seed_idea';
 
 export interface StageCosts {
   discovery: number;
   deep_research: number;
   landing_page: number;
   regenerate_ideas: number;
+  /** Selection-chat "generate an idea from your own idea" (flat, like regenerate_ideas — NOT
+   *  part of `guided`, which is discovery-segment-only pricing). Optional so older deployments
+   *  don't break callers. */
+  seed_idea?: number;
+  /** Guided-mode (Phase B) per-checkpoint segment prices, returned alongside the flat
+   *  costs above once the endpoint is redeployed — optional so older deployments don't
+   *  break callers. s1 = discovery, s2_4 = audience + pain analysis, s5 = idea generation. */
+  guided?: {
+    s1: number;
+    s2_4: number;
+    s5: number;
+    total: number;
+  };
 }
 
 export const DEFAULT_STAGE_COSTS: StageCosts = {
@@ -209,6 +291,7 @@ export const DEFAULT_STAGE_COSTS: StageCosts = {
   deep_research: 15,
   landing_page: 5,
   regenerate_ideas: 2,
+  seed_idea: 2,
 };
 
 export function computeFullResearchCost(costs: StageCosts): number {
@@ -261,4 +344,13 @@ export interface Job {
   solutionIdeas?: SolutionPreview[] | null;
   solutionIdeasCount?: number | null;
   canRegenerate?: boolean;
+  // Guided mode (Phase B) — chatMode opts a job into the G1/G2 stage gates;
+  // gateStage/gateArtifact/gateReachedAt are only set while status=AWAITING_GATE
+  // (null otherwise, including at AWAITING_SELECTION).
+  chatMode?: boolean;
+  gateStage?: 1 | 4 | null;
+  gateArtifact?: GateArtifact | null;
+  gateReachedAt?: string | null;
+  /** apply_stay count for the CURRENT gate — capped at 5 (gate-action route). */
+  gateApplyCount?: number | null;
 }

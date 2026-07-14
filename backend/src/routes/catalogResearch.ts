@@ -15,7 +15,8 @@ import {
 import { enqueuePainResearchJob, enqueueDeepIdeaResearchJob } from '../services/queueService.js';
 import { requireInternalAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { jobCreationLimiter } from '../middleware/rateLimit.js';
-import { JobStatus, StageStatus, Prisma } from '@prisma/client';
+import { JobStatus, StageStatus, Prisma, DispatchKind } from '@prisma/client';
+import { openDispatch } from '../services/dispatchService.js';
 import { PIPELINE_STAGES } from '../types/job.js';
 import { CONFIG } from '../config.js';
 
@@ -145,7 +146,10 @@ catalogResearchRouter.post(
       // is compensated: once the payload is on Redis the worker WILL run the job,
       // so a failed post-enqueue status update must never trigger a refund.
       try {
-        await enqueuePainResearchJob(job.id, painSeeds, niche, userId);
+        const painResearchDispatch = await prisma.$transaction((tx) =>
+          openDispatch(tx, { jobId: job.id, kind: DispatchKind.CONTINUE })
+        );
+        await enqueuePainResearchJob(job.id, painSeeds, niche, userId, undefined, painResearchDispatch);
       } catch (enqueueError) {
         console.error(`[CatalogResearch] enqueue pain-research failed for ${job.id}:`, enqueueError);
         // FAILED first so a refund error can't leave the job stuck PENDING+charged.

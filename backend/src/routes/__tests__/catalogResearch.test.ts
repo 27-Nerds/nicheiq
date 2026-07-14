@@ -53,6 +53,7 @@ const mockCatalogIdeaFindUnique = vi.fn();
 const mockTransaction = vi.fn();
 vi.mock('../../services/db.js', () => ({
   prisma: {
+    jobDispatch: { create: async () => ({ id: 'dispatch-test' }), updateMany: async () => ({ count: 1 }) },
     job: { update: (...a: unknown[]) => mockJobUpdate(...a) },
     catalogIdea: {
       findUnique: (...a: unknown[]) => mockCatalogIdeaFindUnique(...a),
@@ -117,7 +118,12 @@ beforeEach(async () => {
   });
   mockTransaction.mockImplementation(async (cb: (tx: unknown) => unknown) =>
     cb({
-      job: { create: (...a: unknown[]) => mockTxJobCreate(...a) },
+      job: {
+        create: (...a: unknown[]) => mockTxJobCreate(...a),
+        update: async () => ({}),
+      },
+      // every queue message now carries a dispatch, catalog jobs included
+      jobDispatch: { create: async () => ({ id: 'dispatch-test' }) },
       catalogIdeaResearch: {
         findUnique: (...a: unknown[]) => mockCirFindUnique(...a),
         create: (...a: unknown[]) => mockCirCreate(...a),

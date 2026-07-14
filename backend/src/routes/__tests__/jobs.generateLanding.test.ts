@@ -16,6 +16,7 @@ const mockPrismaTransaction = vi.fn();
 
 vi.mock('../../services/db.js', () => ({
   prisma: {
+    jobDispatch: { create: async () => ({ id: 'dispatch-test' }), updateMany: async () => ({ count: 1 }) },
     job: {
       findFirst: (...args: any[]) => mockJobFindFirst(...args),
       findUnique: (...args: any[]) => mockJobFindUnique(...args),
@@ -188,6 +189,10 @@ describe('POST /api/jobs/:jobId/generate-landing', () => {
         create: vi.fn().mockResolvedValue({}),
         upsert: vi.fn().mockResolvedValue({}),
       },
+      // Landing-page generation runs on an already-COMPLETED job that still carries the
+      // activeDispatchId of the research run. It needs its OWN attempt, or its callbacks would be
+      // matched against a dispatch belonging to a different run.
+      jobDispatch: { create: vi.fn().mockResolvedValue({ id: 'dispatch-test' }) },
     };
     mockPrismaTransaction.mockImplementation(async (cb: any) => cb(mockTx));
     return mockTx;
@@ -240,7 +245,7 @@ describe('POST /api/jobs/:jobId/generate-landing', () => {
     });
 
     // Should enqueue landing page job with correct report path
-    expect(mockEnqueueLandingPageJob).toHaveBeenCalledWith(JOB_ID, 'outputs/job-1/report.json');
+    expect(mockEnqueueLandingPageJob).toHaveBeenCalledWith(JOB_ID, 'outputs/job-1/report.json', undefined, 'dispatch-test');
   });
 
   it('rejects non-COMPLETED job → 400', async () => {
@@ -385,7 +390,7 @@ describe('POST /api/jobs/:jobId/generate-landing', () => {
       .post(`/api/jobs/${JOB_ID}/generate-landing`)
       .set(validUserHeaders);
 
-    expect(mockEnqueueLandingPageJob).toHaveBeenCalledWith(JOB_ID, reportPath);
+    expect(mockEnqueueLandingPageJob).toHaveBeenCalledWith(JOB_ID, reportPath, undefined, 'dispatch-test');
   });
 
   it('no auth headers → 401', async () => {

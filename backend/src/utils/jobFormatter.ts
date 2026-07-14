@@ -48,6 +48,16 @@ export function formatJobResponse(job: JobWithRelations, options: FormatOptions 
     ideasShownAt: job.ideasShownAt?.toISOString() || null,
     // Lean count so list payloads can show "N candidates ready" without the full array
     solutionIdeasCount: Array.isArray(job.solutionIdeas) ? job.solutionIdeas.length : null,
+    // Guided mode (Phase B — plans/eager-meandering-feather.md): chatMode opts a job into
+    // the G1/G2 stage gates; gateStage/gateArtifact/gateReachedAt are only set while
+    // status=AWAITING_GATE (null otherwise, including at AWAITING_SELECTION).
+    chatMode: job.chatMode ?? false,
+    gateStage: job.gateStage ?? null,
+    gateArtifact: job.gateArtifact ?? null,
+    gateReachedAt: job.gateReachedAt?.toISOString() || null,
+    // apply_stay counter for the CURRENT gate (gate-action route caps at 5) — the
+    // GateWorkbench "change limit reached" affordance reads this.
+    gateApplyCount: job.gateApplyCount ?? 0,
   };
 
   // Optional fields based on endpoint needs

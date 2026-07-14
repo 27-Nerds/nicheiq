@@ -7,6 +7,8 @@
     shouldKeepSSEOpen,
     getReportSummary,
     getDiscoveryShareStatus,
+    regenerateIdeas,
+    ApiError,
   } from "$lib/api";
   import Badge from "$lib/components/ui/Badge.svelte";
   import PageHeader from "$lib/components/ui/PageHeader.svelte";
@@ -24,6 +26,7 @@
     Copy,
   } from "lucide-svelte";
   import { creditTopUp } from "$lib/stores/creditTopUp.svelte";
+  import { chatLedger } from "$lib/stores/chatLedger.svelte";
   import { getAdjustedStageCounts } from "$lib/utils/stages";
   import { mapVerdict } from "$lib/types/publicCatalog";
   import type { Job, SolutionPreview, ReportSummary } from "$lib/types/job";
@@ -42,6 +45,7 @@
   import AudienceSnapshot from "$lib/components/preview/AudienceSnapshot.svelte";
   import CommunitySourcesSection from "$lib/components/preview/CommunitySourcesSection.svelte";
   import SelectionWorkbench from "$lib/components/selection/SelectionWorkbench.svelte";
+  import GateWorkbench from "$lib/components/gate/GateWorkbench.svelte";
   import ResearchProgressScreen from "$lib/components/preview/ResearchProgressScreen.svelte";
 
   import DeepResearchCTABlock from "$lib/components/preview/DeepResearchCTABlock.svelte";
@@ -138,6 +142,17 @@
   let discoveryShareOpen = $state(false);
   let discoveryLoading = $state(false);
   let lastHandledStatus = $state('');
+  // apply_stay round-trips can re-arrive at the SAME gate (status stays
+  // AWAITING_GATE the whole time) — gateReachedAt is the only signal that a
+  // fresh artifact landed, so the chat-reload effect below tracks it too.
+  let lastGateReachedAt = $state<string | null>(null);
+  // Solutions fetch state for the AWAITING_SELECTION empty state (0 candidates) —
+  // distinguishes "still loading" from "fetch failed" from "genuinely zero".
+  let solutionsLoading = $state(false);
+  let solutionsFetchFailed = $state(false);
+  let solutionsFetchAttempted = $state(false);
+  let regeneratingFromEmpty = $state(false);
+  let regenerateFromEmptyError = $state("");
 
   const jobId = $derived(page.params.jobId);
 
@@ -155,6 +170,23 @@
     job?.status === 'QUEUED' &&
     (job?.solutionIdeas?.length ?? 0) > 0 &&
     !(job?.selectedSolutions?.length)
+  );
+
+  // Guided-mode (Phase B) gate: gate-action('apply_stay') flips the job through
+  // AWAITING_GATE -> QUEUED -> RUNNING -> AWAITING_GATE (refreshed) — a real status
+  // change, but a SHORT round-trip that should keep GateWorkbench mounted (with its
+  // own refresh-skeleton) rather than handing off to the full progress screen. Only
+  // GateWorkbench's own apply_stay call sets this; gate-action('continue') never does
+  // (it's a genuine resume, so it SHOULD hand off to ResearchProgressScreen). It's
+  // cleared on the happy path by the AWAITING_GATE effect below, and on EVERY
+  // apply_stay failure (cap 409, concurrency conflict, compensation, network) by
+  // GateWorkbench's onApplyStayError — otherwise a failed apply would leave this
+  // stuck true and a later successful Continue would keep GateWorkbench mounted
+  // instead of handing off to the progress screen.
+  let gateApplyPending = $state(false);
+  const isGatePhase = $derived(
+    job?.status === 'AWAITING_GATE' ||
+    (gateApplyPending && ['QUEUED', 'RUNNING'].includes(job?.status ?? ''))
   );
 
   // Use local solutions (updated via SSE) or fall back to job data
@@ -210,6 +242,53 @@
     try { clientPreviewReport = await getPreviewReport(id); }
     catch { /* graceful fallback - old jobs won't have preview report */ }
     finally { previewReportLoading = false; }
+  }
+
+  // AWAITING_SELECTION solutions fetch — shared by the SSE status-transition
+  // effect, the initial-load auto-fetch, and the empty-state Retry button, so
+  // "loading" / "fetch failed" / "genuinely zero" stay distinguishable everywhere.
+  async function fetchSolutions() {
+    if (!jobId || solutionsLoading) return;
+    solutionsLoading = true;
+    solutionsFetchFailed = false;
+    try {
+      const d = await getSolutions(jobId);
+      clientSolutions = d.solutionIdeas ?? [];
+    } catch {
+      solutionsFetchFailed = true;
+      // Fall back to whatever the job object already carries (e.g. from SSE)
+      // rather than leaving clientSolutions stuck on a stale null.
+      clientSolutions = job?.solutionIdeas ?? clientSolutions;
+    } finally {
+      solutionsLoading = false;
+      solutionsFetchAttempted = true;
+    }
+  }
+
+  // "Generate more ideas" for the AWAITING_SELECTION zero-candidates case — same
+  // regenerate-ideas call SelectionWorkbench's own regen button uses, just without
+  // a ranked set to attach it to.
+  async function regenerateFromEmpty() {
+    if (!job || !jobId || regeneratingFromEmpty) return;
+    regeneratingFromEmpty = true;
+    regenerateFromEmptyError = "";
+    try {
+      await regenerateIdeas(jobId);
+      clientJob = { ...job, status: 'QUEUED' };
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 402) {
+        const body = e.details as { balance?: number; required?: number } | undefined;
+        creditTopUp.show({
+          balance: body?.balance ?? (page.data.creditBalance as number) ?? 0,
+          required: body?.required ?? (page.data.stageCosts as any)?.regenerate_ideas ?? 0,
+          stageName: "idea regeneration",
+        });
+      } else {
+        regenerateFromEmptyError = e instanceof Error ? e.message : "Failed to generate ideas";
+      }
+    } finally {
+      regeneratingFromEmpty = false;
+    }
   }
 
   async function refreshJob() {
@@ -313,10 +392,24 @@
     loading = false;
     error = "";
     discoveryLoading = false;
+    gateApplyPending = false;
     summaryFetched = !!d.reportSummary;
     hasPlayedReveal = d.job?.status === 'COMPLETED';
     showReveal = d.job?.status === 'COMPLETED';
     lastHandledStatus = d.job?.status ?? '';
+    lastGateReachedAt = d.job?.gateReachedAt ?? null;
+    solutionsLoading = false;
+    solutionsFetchFailed = false;
+    solutionsFetchAttempted = false;
+    regeneratingFromEmpty = false;
+    regenerateFromEmptyError = "";
+
+    // Load the chat ledger regardless of whether SelectionWorkbench/ChatThread ever
+    // mount this visit — its durable seed-evaluation receipts (chatLedger.hasPendingSeed)
+    // feed the AWAITING_SELECTION mount guard below, which must know about a still-
+    // evaluating (or just-settled) idea seed even on a reload where displaySolutions
+    // and examinedRuledOut both happen to be empty.
+    if (d.job?.id) void chatLedger.init(d.job.id);
 
     // Side effect: SSE subscription
     unsubscribeSSE?.();
@@ -332,23 +425,43 @@
     const currentJob = job;
     if (!currentJob || !jobId) return;
     const status = currentJob.status;
-    if (status === lastHandledStatus) return;
+    const gateReachedAt = currentJob.gateReachedAt ?? null;
+    const statusChanged = status !== lastHandledStatus;
+    const gateReArrived = status === 'AWAITING_GATE' && gateReachedAt !== lastGateReachedAt;
+    if (!statusChanged && !gateReArrived) return;
     lastHandledStatus = status;
+    lastGateReachedAt = gateReachedAt;
 
-    if (['AWAITING_SELECTION', 'REGENERATING'].includes(status)) {
+    if (statusChanged && ['AWAITING_SELECTION', 'REGENERATING'].includes(status)) {
       if (!localSolutions || localSolutions.length === 0) {
-        getSolutions(jobId)
-          .then(d => { clientSolutions = d.solutionIdeas ?? null; })
-          .catch(() => { clientSolutions = currentJob.solutionIdeas ?? null; });
+        void fetchSolutions();
       }
       pollVotes(jobId);
       loadDiscoveryData(jobId);
       loadPreviewReport(jobId);
     }
 
-    if (['COMPLETED', 'FAILED', 'RUNNING_PHASE2'].includes(status)) {
+    if (statusChanged && ['COMPLETED', 'FAILED', 'RUNNING_PHASE2'].includes(status)) {
       loadDiscoveryData(jobId);
       loadPreviewReport(jobId);
+    }
+
+    // apply_stay round-trip complete — the gate re-arrived (possibly at the same
+    // gateStage, refreshed artifact). Drop the "keep GateWorkbench mounted" override.
+    if (status === 'AWAITING_GATE' && gateApplyPending) {
+      gateApplyPending = false;
+    }
+
+    // The chat ledger cache is stale on every checkpoint/selection/terminal arrival —
+    // the server-created opening messages for the new stage aren't visible until we
+    // force a reload. gateReArrived covers the same-gate apply_stay round-trip, where
+    // status never actually changes.
+    if (
+      (statusChanged && (status === 'AWAITING_GATE' || status === 'AWAITING_SELECTION')) ||
+      gateReArrived ||
+      (statusChanged && ['COMPLETED', 'FAILED', 'CANCELLED'].includes(status))
+    ) {
+      void chatLedger.reload();
     }
   });
 
@@ -359,6 +472,7 @@
       case "FAILED": return "error";
       case "CANCELLED": return "muted";
       case "AWAITING_SELECTION": return "accent";
+      case "AWAITING_GATE": return "accent";
       case "REGENERATING": return "warning";
       default: return "warning";
     }
@@ -367,6 +481,7 @@
   function getStatusLabel(status: string): string {
     switch (status) {
       case "AWAITING_SELECTION": return "Ready for Selection";
+      case "AWAITING_GATE": return "Checkpoint reached";
       case "QUEUED": return "Queued";
       case "REGENERATING": return "Generating New Ideas";
       case "RUNNING_PHASE2": return "Deep Analysis";
@@ -401,12 +516,38 @@
   );
 
 
+  // Durable (survives a reload — see chatLedger.hasPendingSeed), not a parallel
+  // client store: a chat-composed idea seed still being evaluated for THIS job.
+  const seedPending = $derived(chatLedger.jobId === jobId && chatLedger.hasPendingSeed);
+
+  // A SEED_IDEA claim flips job.status to QUEUED/RUNNING for the birth pipeline's
+  // duration, exactly like a regen/gate round-trip — mirrors the gateApplyPending
+  // idiom above: the workbench must stay mounted (with its own pending banner) so
+  // beginSeedSettlementPoll/onSeedSettled keep running, instead of the progress
+  // screen unmounting it out from under the in-flight seed.
+  const seedRunning = $derived(seedPending && ['QUEUED', 'RUNNING'].includes(job?.status ?? ''));
+
   // ── Unified dashboard state ──
   const isSelectionPhase = $derived(
-    ['AWAITING_SELECTION', 'REGENERATING'].includes(job?.status ?? '') || isRegenQueued
+    ['AWAITING_SELECTION', 'REGENERATING'].includes(job?.status ?? '') || isRegenQueued || seedRunning
   );
+  // Selection (G3) and guided-gate (G1/G2) phases share the same full-width,
+  // aside-less hero/layout treatment — they're both "here's a checkpoint, review
+  // it" screens rather than the running-research editorial hero.
+  const isWorkbenchPhase = $derived(isSelectionPhase || isGatePhase);
+
+  // A job can arrive at AWAITING_SELECTION already zero-candidate on the initial
+  // (SSR) load — the SSE status-transition effect above never fires for that case
+  // since the status hasn't "changed" client-side. Auto-fetch once so the empty
+  // state can tell "loading" apart from "fetch failed" apart from "genuinely zero"
+  // instead of rendering nothing.
+  $effect(() => {
+    if (isSelectionPhase && displaySolutions.length === 0 && !solutionsLoading && !solutionsFetchAttempted) {
+      void fetchSolutions();
+    }
+  });
   const isGeneratingP1 = $derived(
-    ['RUNNING', 'QUEUED', 'PENDING'].includes(job?.status ?? '') && !isRegenQueued
+    ['RUNNING', 'QUEUED', 'PENDING'].includes(job?.status ?? '') && !isRegenQueued && !isGatePhase && !seedRunning
   );
   const isGeneratingP2 = $derived(job?.status === 'RUNNING_PHASE2');
   const isGenerating = $derived(isGeneratingP1 || isGeneratingP2);
@@ -440,11 +581,19 @@
   const pageTitle = $derived(
     isSelectionPhase
       ? 'Select candidates for Deep Research'
-      : titleCase(nicheName) || 'Research Progress',
+      : isGatePhase
+        ? (job?.gateStage === 1 ? 'Niche checkpoint' : 'Audience checkpoint')
+        : titleCase(nicheName) || 'Research Progress',
   );
 
   const selectionSubtitle = $derived(
     `${sentenceHeading(nicheName)}. Discovery found ${displaySolutions.length} ranked ${displaySolutions.length === 1 ? 'candidate' : 'candidates'}. Choose up to 3 for validation.`,
+  );
+
+  const gateSubtitle = $derived(
+    job?.gateStage === 1
+      ? `${sentenceHeading(nicheName)}. Review the niche framing before discovery search runs.`
+      : `${sentenceHeading(nicheName)}. Review pain points and audience before ideation runs.`,
   );
 
   const discussionCount = $derived(
@@ -468,6 +617,14 @@
   const examinedRuledOut = $derived(previewReport?.examined_ruled_out ?? []);
   const overlapGroups = $derived(previewReport?.overlap_groups ?? []);
   const marketReality = $derived(previewReport?.market_reality ?? null);
+
+  // A seed's settlement can add a brand-new pool candidate OR a brand-new ruled-out
+  // entry that the SSE stream's sorted-name diff has no way to see (it only reconciles
+  // NAMES it already knew about) — force both fetches rather than relying on SSE here.
+  function handleSeedSettled() {
+    void fetchSolutions();
+    void loadPreviewReport(jobId ?? '');
+  }
 
   // Placeholder data for locked sections - use short niche name, not full description
   const niche = $derived(previewReport?.niche ?? job?.niche ?? '');
@@ -613,12 +770,14 @@
     <PhaseNav
       jobStatus={job.status}
       entryMode={job.entryMode}
-      mode={isSelectionPhase ? 'selection' : 'default'}
+      mode={isSelectionPhase ? 'selection' : isGatePhase ? 'gate' : 'default'}
       selectionCount={displaySolutions.length}
       selectedCount={job.selectedSolutions?.length ?? 0}
+      chatMode={job.chatMode ?? false}
+      gateStage={job.gateStage ?? null}
     />
   {/if}
-  <main class="job-page-content" class:job-page-content--selection={isSelectionPhase}>
+  <main class="job-page-content" class:job-page-content--selection={isWorkbenchPhase}>
     {#if loading}
       <div class="text-center py-12">
         <Loader2 class="w-10 h-10 text-accent mx-auto animate-spin" />
@@ -656,15 +815,15 @@
         />
       {:else}
       <!-- ═══ EDITORIAL HERO (1fr | 320px grid) ═══ -->
-      <div class="job-hero-grid" class:job-hero-grid--selection={isSelectionPhase}>
+      <div class="job-hero-grid" class:job-hero-grid--selection={isWorkbenchPhase}>
         <div class="job-hero-main">
           <PageHeader
-            class={isSelectionPhase ? 'job-selection-header' : ''}
-            icon={isSelectionPhase ? undefined : Telescope}
+            class={isWorkbenchPhase ? 'job-selection-header' : ''}
+            icon={isWorkbenchPhase ? undefined : Telescope}
             breadcrumbItems={[{ label: 'Dashboard', href: '/dashboard' }]}
-            breadcrumbCurrent={isSelectionPhase ? 'Selection' : titleCase(nicheName) || 'Research'}
+            breadcrumbCurrent={isSelectionPhase ? 'Selection' : isGatePhase ? 'Checkpoint' : titleCase(nicheName) || 'Research'}
             title={pageTitle}
-            subtitle={isSelectionPhase ? selectionSubtitle : undefined}
+            subtitle={isSelectionPhase ? selectionSubtitle : isGatePhase ? gateSubtitle : undefined}
           >
             {#snippet metadata()}
               {#if job && nicheName !== job.niche}
@@ -691,7 +850,7 @@
                     <span>Share</span>
                   </button>
                 {/if}
-                {#if !isSelectionPhase}
+                {#if !isWorkbenchPhase}
                   <Badge variant={getStatusVariant(isRegenQueued ? 'REGENERATING' : job.status)}>
                     {#if ['RUNNING', 'RUNNING_PHASE2', 'REGENERATING'].includes(job.status) || isRegenQueued}
                       <Loader2 class="w-3.5 h-3.5 animate-spin" />
@@ -703,7 +862,7 @@
             {/snippet}
           </PageHeader>
         </div>
-        {#if !isSelectionPhase}
+        {#if !isWorkbenchPhase}
           <aside class="job-hero-aside">
             <JobHeroAside
               state={asideState}
@@ -723,7 +882,7 @@
         {/if}
       </div>
 
-      {#if !isSelectionPhase}
+      {#if !isWorkbenchPhase}
         <!-- ═══ PROGRESS STEPPER ═══ -->
         <ProgressStepper
           currentStep={stepperStep}
@@ -806,7 +965,7 @@
       <!-- ═══ DASHBOARD SECTIONS ═══ -->
       {#if !isGeneratingP1}
 
-        {#if isSelectionPhase && displaySolutions.length > 0}
+        {#if isSelectionPhase && (displaySolutions.length > 0 || examinedRuledOut.length > 0 || seedPending)}
           <SelectionWorkbench
             jobId={jobId ?? ''}
             solutions={displaySolutions}
@@ -815,6 +974,7 @@
             {overlapGroups}
             {marketReality}
             ideaPortfolioSummary={previewReport?.idea_portfolio_summary ?? null}
+            userAdjustments={previewReport?.user_adjustments ?? []}
             {discussionCount}
             painPointCount={previewPainPointCount}
             {segmentCount}
@@ -826,6 +986,77 @@
             {solutionVotes}
             onComplete={handleSelectionComplete}
             onRegenerateStart={() => { clientJob = { ...job!, status: 'QUEUED' }; }}
+            onSeedSettled={handleSeedSettled}
+          />
+        {:else if isSelectionPhase}
+          <!-- ═══ ZERO-CANDIDATE STATES ═══ Selection reached but nothing to show:
+               loading (still fetching), fetch failed (real error, retry), or a
+               genuinely empty result (offer to regenerate / start over). ── -->
+          <div class="card p-8 text-center mb-6">
+            {#if solutionsLoading}
+              <Loader2 class="w-8 h-8 text-accent mx-auto animate-spin" />
+              <p class="mt-4 text-text-secondary">Loading candidates&hellip;</p>
+            {:else if solutionsFetchFailed}
+              <div class="p-3 rounded-xl bg-error/10 border border-error/20 w-fit mx-auto">
+                <AlertTriangle class="w-8 h-8 text-error" />
+              </div>
+              <h2 class="mt-4 text-xl font-semibold text-text-primary">Couldn't load candidates</h2>
+              <p class="mt-2 text-text-secondary">Something went wrong fetching the shortlist for this run.</p>
+              <SubmitButton
+                onclick={fetchSolutions}
+                loading={solutionsLoading}
+                loadingText="Retrying..."
+                icon={RotateCw}
+                keepIconOnLoad
+                label="Retry"
+                class="btn-primary mt-6 inline-flex items-center gap-2"
+              />
+            {:else}
+              <div class="p-3 rounded-xl bg-text-muted/10 w-fit mx-auto">
+                <Package class="w-8 h-8 text-text-muted" />
+              </div>
+              <h2 class="mt-4 text-xl font-semibold text-text-primary">No candidates yet</h2>
+              <p class="mt-2 text-text-secondary">Discovery didn't produce a shortlist for this run.</p>
+              {#if job.canRegenerate}
+                <SubmitButton
+                  onclick={regenerateFromEmpty}
+                  loading={regeneratingFromEmpty}
+                  loadingText="Generating..."
+                  label="Generate more ideas"
+                  class="btn-primary mt-6 inline-block"
+                />
+                {#if regenerateFromEmptyError}
+                  <p class="mt-3 text-sm text-error">{regenerateFromEmptyError}</p>
+                {/if}
+              {:else}
+                <button onclick={() => goto(`/new?fromJob=${job.id}&prefilled=${encodeURIComponent(job.niche)}`)} class="mt-6 inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:text-accent-hover transition-colors">
+                  Start new research <ArrowRight class="w-4 h-4" />
+                </button>
+              {/if}
+            {/if}
+          </div>
+        {/if}
+
+        {#if isGatePhase && (job.gateStage === 1 || job.gateStage === 4)}
+          <GateWorkbench
+            jobId={jobId ?? ''}
+            gateStage={job.gateStage}
+            gateArtifact={job.gateArtifact ?? null}
+            gateApplyCount={job.gateApplyCount ?? 0}
+            gateReachedAt={job.gateReachedAt ?? null}
+            guidedCosts={page.data.stageCosts?.guided ?? null}
+            onContinueStart={() => {
+              // Continue ALWAYS clears a lingering apply_stay override: if the SSE stream
+              // died during a long gate dwell, the apply's re-arrival was never observed and
+              // gateApplyPending stayed true — without this clear, the optimistic QUEUED
+              // below keeps the workbench mounted (disabled "Resuming research…") instead of
+              // handing off to the progress screen (live-caught 2026-07-12).
+              gateApplyPending = false;
+              clientJob = { ...job!, status: 'QUEUED' };
+              connectSSE(); // revive a possibly-dead stream exactly when updates matter
+            }}
+            onApplyStayStart={() => { gateApplyPending = true; connectSSE(); }}
+            onApplyStayError={() => { gateApplyPending = false; }}
           />
         {/if}
 
@@ -998,7 +1229,10 @@
         {/if}
 
         <!-- ═══ DEEP RESEARCH PREVIEW SECTIONS ═══ -->
-        {#if !isCompleted && !isSelectionPhase}
+        <!-- Suppressed at guided-gate checkpoints: mid-Phase-1 there is no real data
+             behind the funnel/SEO/competitor previews, and the checkpoint ledger is
+             the page's single job. -->
+        {#if !isCompleted && !isSelectionPhase && !isGatePhase}
           <!-- Capped preview: UnifiedHero with real blurred content -->
           <div class="preview-capped">
             <UnifiedHero

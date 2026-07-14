@@ -116,15 +116,46 @@ def _workflow_brief(focus: FrameFocus) -> str:
     return "\n".join(lines)
 
 
+def _user_seed_brief(focus: FrameFocus) -> str:
+    """User-seed frame (eager-meandering-feather.md Phase 4): the user's own free-text idea is
+    the PRIMARY directive — not a research-derived focus. Optional `tool_ref` names an incumbent/
+    tool the user wants to displace. The generic `_ANCHOR_GROUNDING_LINE` is appended ONLY when
+    the seed resolved to a genuine anchor pain (`focus.anchor_pain_titles` non-empty) — an
+    unanchored seed has no anchor list to ground in, and the reviewer's `user_seed` rule (not
+    this brief) is what tells the ideator/critic to treat it as an honest, ungrounded hypothesis
+    instead of fabricating one."""
+    p = focus.payload
+    seed_text = str(p.get("seed_text", "") or "").strip()
+    lines = [
+        "USER-PROVIDED PRODUCT BRIEF — IMMUTABLE CORE:",
+        seed_text,
+        (
+            "\nPreserve the product category, core artifact/mechanism, interaction model, "
+            "and target audience described above. Generate implementation variants AROUND "
+            "that product; do not replace it with a different product that merely addresses "
+            "the evaluation anchor. You may improve its rules, workflow, data, positioning, "
+            "distribution, and monetization. If the anchor conflicts with the brief, keep the "
+            "brief and let market_fit score the mismatch honestly."
+        ),
+    ]
+    tool_ref = (p.get("tool_ref") or "").strip()
+    if tool_ref:
+        lines.append(f"\nINCUMBENT/TOOL TO DISPLACE: {tool_ref}")
+    if focus.anchor_pain_titles:
+        lines.append(_ANCHOR_GROUNDING_LINE)
+    return "\n".join(lines)
+
+
 def _focus_seed_text(focus: FrameFocus) -> str:
-    """The IDENTITY-bearing seed text of a focus (gap/route/tool/job) — deliberately excludes the
-    generic instructional prose (`_ANCHOR_GROUNDING_LINE` and the brief_formatter's directive
-    sentences), so token overlap below measures SPECIFIC linkage, not boilerplate."""
+    """The IDENTITY-bearing seed text of a focus (gap/route/tool/job/user-seed) — deliberately
+    excludes the generic instructional prose (`_ANCHOR_GROUNDING_LINE` and the brief_formatter's
+    directive sentences), so token overlap below measures SPECIFIC linkage, not boilerplate."""
     p = focus.payload
     parts = (
         p.get("incumbent_name", ""), p.get("gap", ""), p.get("dissatisfaction_quote", ""),
         p.get("route_text", ""),
         p.get("job_statement", ""), p.get("steps_text", ""), p.get("tools_text", ""),
+        p.get("seed_text", ""), p.get("tool_ref", ""),
     )
     return " ".join(str(x) for x in parts if x)
 
@@ -201,5 +232,16 @@ FRAME_REGISTRY: dict[str, FrameSpec] = {
         focus_header="THE JOB THE PERSONA IS TRYING TO GET DONE:",
         mf_anchor="does it own the most painful step of the named job end-to-end for this persona",
         always_allow_zero=True,
+    ),
+    # User-seed pipeline (eager-meandering-feather.md Phase 4): the ONE frame that is never
+    # auto-minted by `_mint_frame_cells` — a seed cell is built explicitly by `_run_seed_cell`
+    # from the user's chat submission. `always_allow_zero=False`: unlike a research-derived focus
+    # (where "no strong fit" is a valid, honest outcome), a paid user seed MUST return >=1 concept.
+    "user_seed": FrameSpec(
+        frame="user_seed",
+        brief_formatter=_user_seed_brief,
+        focus_header="THE IDEA THE USER WANTS BUILT:",
+        mf_anchor="does it deliver the product the user described, for the audience/pain it's anchored to",
+        always_allow_zero=False,
     ),
 }

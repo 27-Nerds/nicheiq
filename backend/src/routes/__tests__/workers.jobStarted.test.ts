@@ -8,6 +8,8 @@ import request from 'supertest';
 const mockJobUpdateMany = vi.fn();
 const mockJobFindUnique = vi.fn();
 const mockJobUpdate = vi.fn();
+const mockDispatchFindUnique = vi.fn();
+const mockDispatchUpdateMany = vi.fn();
 
 vi.mock('../../services/db.js', () => ({
   prisma: {
@@ -15,6 +17,12 @@ vi.mock('../../services/db.js', () => ({
       updateMany: (...args: any[]) => mockJobUpdateMany(...args),
       findUnique: (...args: any[]) => mockJobFindUnique(...args),
       update: (...args: any[]) => mockJobUpdate(...args),
+    },
+    jobDispatch: {
+      findUnique: (...args: any[]) => mockDispatchFindUnique(...args),
+      // claimDispatch (the real dispatchService.js) reaches for this via the same mocked
+      // prisma when a test sends a dispatch_id.
+      updateMany: (...args: any[]) => mockDispatchUpdateMany(...args),
     },
   },
 }));
@@ -93,6 +101,18 @@ beforeEach(async () => {
   app = express();
   app.use(express.json());
 
+  const { prisma } = await import('../../services/db.js');
+  (prisma as any).$transaction = async (cb: any) => cb({
+    job: {
+      updateMany: (...args: any[]) => mockJobUpdateMany(...args),
+      findUnique: (...args: any[]) => mockJobFindUnique(...args),
+    },
+    jobDispatch: {
+      updateMany: (...args: any[]) => mockDispatchUpdateMany(...args),
+      findUnique: (...args: any[]) => mockDispatchFindUnique(...args),
+    },
+  });
+
   const { workersRouter } = await import('../workers.js');
   app.use('/api/workers', workersRouter);
 });
@@ -137,6 +157,10 @@ describe('POST /api/workers/job-started', () => {
         where: {
           id: jobId,
           status: { in: ['QUEUED', 'PENDING'] },
+          // This worker sent no dispatch id, so it may only start a job that has no active
+          // dispatch. That is the narrow legacy path — NOT a bypass. A worker that omits the id
+          // for a job which HAS an active dispatch is a stale worker, and must not start it.
+          activeDispatchId: null,
         },
         data: expect.objectContaining({
           status: 'RUNNING',
@@ -175,7 +199,7 @@ describe('POST /api/workers/job-started', () => {
 
     // Infra review round 2: a stale-requeued job whose heartbeat monitor already marked it
     // FAILED (and refunded it) must NOT be blessed to run again.
-    it.each(['FAILED', 'COMPLETED', 'AWAITING_SELECTION'])(
+    it.each(['FAILED', 'COMPLETED', 'AWAITING_SELECTION', 'AWAITING_GATE'])(
       'returns shouldCancel: true for terminal/settled state %s',
       async (status) => {
         mockJobUpdateMany.mockResolvedValue({ count: 0 });
@@ -268,6 +292,8 @@ describe('POST /api/workers/job-started', () => {
         where: {
           id: jobId,
           status: { in: ['QUEUED', 'PENDING'] },
+          // No dispatch id sent -> may only start a job with no active dispatch (legacy path).
+          activeDispatchId: null,
         },
         data: expect.objectContaining({
           status: 'REGENERATING',
@@ -290,6 +316,8 @@ describe('POST /api/workers/job-started', () => {
         where: {
           id: jobId,
           status: { in: ['QUEUED', 'PENDING'] },
+          // No dispatch id sent -> may only start a job with no active dispatch (legacy path).
+          activeDispatchId: null,
         },
         data: expect.objectContaining({
           status: 'RUNNING_PHASE2',
@@ -317,6 +345,122 @@ describe('POST /api/workers/job-started', () => {
         })
       );
     });
+
+    it('a SEED_IDEA dispatch takes precedence: RUNNING, not REGENERATING, even when ideasRegeneratedAt is set from an earlier regeneration this run', async () => {
+      // ideasRegeneratedAt is a run-level marker that never clears — a seed submitted on a job
+      // that regenerated earlier this run would otherwise satisfy the isRegenerate heuristic
+      // (ideasRegeneratedAt != null && !hasSelections is true for a seed op too) and get
+      // mislabelled REGENERATING. The dispatch kind must win.
+      const dispatchId = '00000000-0000-0000-0000-0000000000aa';
+      mockJobUpdateMany.mockResolvedValue({ count: 1 });
+      mockDispatchUpdateMany.mockResolvedValue({ count: 1 }); // claimDispatch succeeds
+      mockDispatchFindUnique.mockResolvedValue({ kind: 'SEED_IDEA' });
+      mockJobFindUnique
+        .mockResolvedValueOnce({ selectedSolutions: [], ideasRegeneratedAt: new Date() })
+        .mockResolvedValueOnce({ id: jobId, niche: 'test', userId: null, user: null });
+
+      await request(app)
+        .post('/api/workers/job-started')
+        .send({ worker_id: 'worker-1', job_id: jobId, dispatch_id: dispatchId });
+
+      expect(mockDispatchFindUnique).toHaveBeenCalledWith({
+        where: { id: dispatchId },
+        select: { kind: true },
+      });
+      expect(mockJobUpdateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: 'RUNNING' }),
+        })
+      );
+    });
+
+    describe('atomic dispatched start', () => {
+      const dispatchId = '00000000-0000-0000-0000-0000000000bb';
+
+      it('updates the Job before claiming the Dispatch', async () => {
+        mockJobUpdateMany.mockResolvedValue({ count: 1 });
+        mockDispatchUpdateMany.mockResolvedValue({ count: 1 });
+        mockDispatchFindUnique.mockResolvedValue({ kind: 'CONTINUE' });
+        mockJobFindUnique
+          .mockResolvedValueOnce({ selectedSolutions: [], ideasRegeneratedAt: null })
+          .mockResolvedValueOnce({ id: jobId, niche: 'test', userId: null, user: null });
+
+        const response = await request(app)
+          .post('/api/workers/job-started')
+          .send({ worker_id: 'worker-1', job_id: jobId, dispatch_id: dispatchId });
+
+        expect(response.body.shouldCancel).toBe(false);
+        expect(mockJobUpdateMany.mock.invocationCallOrder[0])
+          .toBeLessThan(mockDispatchUpdateMany.mock.invocationCallOrder[0]);
+        expect(mockDispatchUpdateMany).toHaveBeenCalledWith({
+          where: {
+            id: dispatchId,
+            jobId,
+            OR: [
+              { state: 'AUTHORIZED' },
+              { state: 'CLAIMED', workerId: 'worker-1' },
+            ],
+          },
+          data: {
+            state: 'CLAIMED',
+            workerId: 'worker-1',
+            claimedAt: expect.any(Date),
+          },
+        });
+      });
+
+      it('rejects the worker when the dispatch claim loses after the Job CAS', async () => {
+        mockJobUpdateMany.mockResolvedValue({ count: 1 });
+        mockDispatchUpdateMany.mockResolvedValue({ count: 0 });
+        mockDispatchFindUnique.mockResolvedValue({ kind: 'CONTINUE' });
+        mockJobFindUnique.mockResolvedValue({ selectedSolutions: [], ideasRegeneratedAt: null });
+
+        const response = await request(app)
+          .post('/api/workers/job-started')
+          .send({ worker_id: 'worker-1', job_id: jobId, dispatch_id: dispatchId });
+
+        expect(response.body).toMatchObject({ shouldCancel: true, stale: true });
+        expect(mockRegisterWorkerHeartbeat).not.toHaveBeenCalled();
+      });
+
+      it('accepts a committed retry only for the worker that owns the claim', async () => {
+        mockJobUpdateMany.mockResolvedValue({ count: 0 });
+        mockDispatchFindUnique
+          .mockResolvedValueOnce({ kind: 'CONTINUE' })
+          .mockResolvedValueOnce({ jobId, state: 'CLAIMED', workerId: 'worker-1' });
+        mockJobFindUnique
+          .mockResolvedValueOnce({ selectedSolutions: [], ideasRegeneratedAt: null })
+          .mockResolvedValueOnce({ status: 'RUNNING', activeDispatchId: dispatchId, workerId: 'worker-1' })
+          .mockResolvedValueOnce({ status: 'RUNNING', activeDispatchId: dispatchId })
+          .mockResolvedValueOnce({ status: 'RUNNING' });
+
+        const response = await request(app)
+          .post('/api/workers/job-started')
+          .send({ worker_id: 'worker-1', job_id: jobId, dispatch_id: dispatchId });
+
+        expect(response.body.shouldCancel).toBe(false);
+        expect(mockRegisterWorkerHeartbeat).toHaveBeenCalledWith('worker-1', jobId);
+        expect(mockDispatchUpdateMany).not.toHaveBeenCalled();
+      });
+
+      it('rejects a second worker after another worker committed the start', async () => {
+        mockJobUpdateMany.mockResolvedValue({ count: 0 });
+        mockDispatchFindUnique
+          .mockResolvedValueOnce({ kind: 'CONTINUE' })
+          .mockResolvedValueOnce({ jobId, state: 'CLAIMED', workerId: 'worker-1' });
+        mockJobFindUnique
+          .mockResolvedValueOnce({ selectedSolutions: [], ideasRegeneratedAt: null })
+          .mockResolvedValueOnce({ status: 'RUNNING', activeDispatchId: dispatchId, workerId: 'worker-1' });
+
+        const response = await request(app)
+          .post('/api/workers/job-started')
+          .send({ worker_id: 'worker-2', job_id: jobId, dispatch_id: dispatchId });
+
+        expect(response.body).toMatchObject({ shouldCancel: true, stale: true });
+        expect(mockRegisterWorkerHeartbeat).not.toHaveBeenCalled();
+      });
+    });
+
   });
 
   describe('validation', () => {

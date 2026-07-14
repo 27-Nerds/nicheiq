@@ -175,6 +175,15 @@ def _attempt_red_team_revision(crew, refined_solutions, orig, result, evidence) 
         rev.source_segment = getattr(orig, "source_segment", None)
         rev.source_frame = getattr(orig, "source_frame", None) or "pain"
         rev.idea_tier = getattr(orig, "idea_tier", "single") or "single"
+        if rev.source_frame == "user_seed":
+            from .seed_fidelity import is_seed_faithful
+            seed_text = getattr(crew, "_current_seed_text", "") or ""
+            if seed_text and not is_seed_faithful(seed_text, rev):
+                logger.info(
+                    f"[RedTeamRevision] rejected off-seed revision "
+                    f"'{getattr(rev, 'solution_name', '?')}' — the submitted product "
+                    "mechanism is immutable")
+                return False
 
         crew._score_wave([rev])  # full per-idea sequence; parity re-probe + rule (e) re-apply
 
@@ -267,7 +276,9 @@ def run_red_team_review(crew, refined_solutions) -> None:
                   "bundled alternatives where the buyer already lives; (3) does the mechanism "
                   "handle the MODAL case of the pain (the common form, not an edge case); (4) "
                   "any urgency mechanics the scores can't see (deadline/race dynamics) — the "
-                  "one PRO-idea question. Cite only what the evidence actually shows — never "
+                  "one PRO-idea question; (5) WHO PAYS and why — if the honest answer is "
+                  "'nobody; it pressures a platform or serves users who won't pay', say so. "
+                  "Cite only what the evidence actually shows — never "
                   "invent products or features. Verdict: survives | weakened | killed, plus up "
                   "to 3 evidence-cited caveats and up to 1 uplift note. Return JSON."
             )

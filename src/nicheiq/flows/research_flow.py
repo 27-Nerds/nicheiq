@@ -27,6 +27,7 @@ from ..crews.solution_refinement_crew import SolutionRefinementCrew
 from ..crews.traffic_monetization_crew import TrafficMonetizationCrew
 from ..models.keyword_data import CrewKeywordValidationResult
 from ..models.research_state import ResearchState
+from ..report.utils.state_accessors import build_user_adjustments_summary
 from ..tools.cached_serper_dev_tool import CachedSerperDevTool
 from ..tools.reddit_tool import RedditCollectorTool
 from ..tools.twitter_tool import TwitterCollectorTool
@@ -321,7 +322,7 @@ class ResearchFlow(Flow[ResearchState]):
         return True
 
     def run_with_resume(self, auto_resume: bool = True, stop_after_phase: int | None = None,
-                        allow_cross_job: bool = False) -> str:
+                        allow_cross_job: bool = False, stop_after_stage: float | None = None) -> str:
         """
         Execute research pipeline with checkpoint resume support.
 
@@ -330,6 +331,10 @@ class ResearchFlow(Flow[ResearchState]):
             stop_after_phase: If set, stop execution after this phase completes (1 = after solution pipeline)
             allow_cross_job: Permit auto-resume to adopt a different job's checkpoint for the
                 same niche (CLI --resume only; worker retries keep the default False).
+            stop_after_stage: Guided-mode (chatMode) gate stop — distinct from stop_after_phase.
+                1 stops after Stage 1 (niche validation, G1); 4 stops after Stage 4 (audience
+                mapping, G2), before Stage 5 runs. Unlike stop_after_phase, a stage-gate stop
+                does NOT materialize a preview report (the run isn't done with Phase 1 yet).
 
         Returns:
             Path to final report
@@ -347,7 +352,8 @@ class ResearchFlow(Flow[ResearchState]):
             # Pass None for stage_name - the callback will look it up from STAGE_NAMES
             self._emit_progress(self.state.current_stage, None, "running")
 
-            return self._execute_remaining_stages(stop_after_phase=stop_after_phase)
+            return self._execute_remaining_stages(
+                stop_after_phase=stop_after_phase, stop_after_stage=stop_after_stage)
 
         # No checkpoint or resume failed - run normal flow
         logger.info("Starting fresh research run")
@@ -355,7 +361,8 @@ class ResearchFlow(Flow[ResearchState]):
         # Fresh full run: the single execution path for ALL cases. There is no CrewAI
         # @start/@listen graph; _execute_remaining_stages drives every stage directly.
         # current_stage defaults to 1, completed_stages is empty, so all stages run sequentially.
-        return self._execute_remaining_stages(stop_after_phase=stop_after_phase)
+        return self._execute_remaining_stages(
+            stop_after_phase=stop_after_phase, stop_after_stage=stop_after_stage)
 
     def _deep_research_audience_directive(self) -> str:
         """Front-load WHO the idea must serve + their real frustrations/current tools for the
@@ -1128,6 +1135,160 @@ RULES:
             logger.warning(f"Failed to extract artifact for stage {stage}: {e}")
             return None
 
+    def _warm_gate_segment_payability(self, am, ppa) -> None:
+        """Preliminary segment-payability scoring for the G2 gate card, computed ONLY when
+        every segment still lacks a score. Production payability is normally warmed lazily
+        inside Stage 5 (`UnifiedSolutionCrew._segment_payability_map`, with incumbent-pricing
+        evidence) — but the G2 gate stops BEFORE Stage 5, so guided runs showed 'n/a' on every
+        segment at exactly the moment the user decides segment emphasis (live-caught on the
+        first guided run, 2026-07-12). This gate-time pass runs WITHOUT incumbent rows
+        (preliminary, fail-soft); Stage 5 later re-scores with full evidence as always, so
+        non-guided runs are byte-identical and idea stamping quality is unchanged."""
+        try:
+            segments = list(getattr(am, "audience_segments", None) or [])
+            if not segments or any(getattr(s, "payability_score", None) is not None for s in segments):
+                return
+            from ..utils.segment_payability import norm_segment_name, score_segment_payability
+
+            pains = list(getattr(ppa, "pain_points", None) or []) if ppa else []
+            niche = getattr(getattr(self.state, "niche_context", None), "niche_description", "") or ""
+            pay_map, usage = score_segment_payability(segments, pains, None, niche)
+            if usage is not None and getattr(self, "cost_tracker", None):
+                self.cost_tracker.record_llm_usage(
+                    "Stage 4 - Segment Payability (gate preview)", usage.to_dict())
+            for seg in segments:
+                entry = pay_map.get(norm_segment_name(getattr(seg, "segment_name", "") or ""))
+                if entry is not None:
+                    seg.payability_score = entry.payability_score
+                    seg.payability_class = entry.payability_class
+                    seg.payability_rationale = entry.rationale or None
+        except Exception as e:  # noqa: BLE001 — gate card enrichment must never block the gate
+            logger.warning(f"[Gate G2] payability preview failed (non-fatal): {str(e)[:120]}")
+
+    def _build_g2_gate_artifact(self) -> dict | None:
+        """Dedicated composite gate artifact for the guided-mode G2 stop (after Stage 4).
+
+        `_build_stage_artifact(4)` only carries counts (segment_count, primary_target,
+        community_hubs) — too thin for the gate card AND the patch cross-check reference
+        (Zod validates a `pain_scope`/`excluded_segments` patch against the titles/names
+        this artifact lists, so both need the FULL identifiers). This builds a self-contained
+        composite: full pain titles from Stage 3 + full segment names + payability labels from
+        Stage 4, with its own (larger) size allowance since it must list every pain/segment,
+        not a top-N sample.
+
+        Degraded path (DR N4): if audience_mapping is missing/failed (Stage 4 prerequisites
+        not met), still returns a pain-scope-only artifact so the gate isn't a dead end —
+        the G2 patch's audience-scoping fields simply have nothing to validate against.
+        Returns None only if pain_point_analysis is ALSO unavailable.
+        """
+        ppa = self.state.pain_point_analysis
+        am = self.state.audience_mapping
+        if not ppa and not am:
+            return None
+
+        artifact: dict = {"type": "audience_mapping_gate"}
+
+        if ppa:
+            artifact["pains"] = [
+                {"title": p.title, "severity": p.severity_score, "opportunity":
+                    p.opportunity_level.value if hasattr(p.opportunity_level, "value") else str(p.opportunity_level)}
+                for p in ppa.pain_points
+            ]
+        else:
+            artifact["pains"] = []
+            artifact["degraded"] = "pain_scope_only"
+
+        if am:
+            self._warm_gate_segment_payability(am, ppa)
+            artifact["primary_target"] = am.primary_target_segment
+            artifact["segments"] = [
+                {
+                    "segment_name": s.segment_name,
+                    "size_estimate": s.size_estimate,
+                    "payability_class": s.payability_class,
+                    "payability_score": s.payability_score,
+                }
+                for s in am.audience_segments
+            ]
+        else:
+            artifact["segments"] = []
+
+        try:
+            max_size = 16384  # own (larger) allowance — lists every pain/segment, not top-N
+            if len(json.dumps(artifact)) > max_size:
+                logger.warning("G2 gate artifact exceeds 16KB, truncating pain/segment lists")
+                artifact["pains"] = artifact["pains"][:40]
+                artifact["segments"] = artifact["segments"][:10]
+
+            # Hard second check (Codex review finding 3, AMEND): the first truncation only
+            # caps LIST LENGTH, not per-item field length — a run with unusually long pain
+            # titles or segment names could still exceed the budget. Progressively shrink
+            # further (halving list lengths, then truncating long string fields) until it
+            # fits; never emit an oversized artifact.
+            attempts = 0
+            while len(json.dumps(artifact)) > max_size and attempts < 6:
+                attempts += 1
+                shrank = False
+                if len(artifact["pains"]) > 1:
+                    artifact["pains"] = artifact["pains"][: max(1, len(artifact["pains"]) // 2)]
+                    shrank = True
+                if len(artifact["segments"]) > 1:
+                    artifact["segments"] = artifact["segments"][: max(1, len(artifact["segments"]) // 2)]
+                    shrank = True
+                if not shrank:
+                    # Lists are already at their floor (<=1 item each) — truncate long
+                    # string fields as the last resort.
+                    for pain in artifact["pains"]:
+                        title = pain.get("title")
+                        if isinstance(title, str) and len(title) > 120:
+                            pain["title"] = title[:117] + "..."
+                    for seg in artifact["segments"]:
+                        name = seg.get("segment_name")
+                        if isinstance(name, str) and len(name) > 120:
+                            seg["segment_name"] = name[:117] + "..."
+
+            if len(json.dumps(artifact)) > max_size:
+                # Absolute last resort — never return an oversized artifact.
+                logger.error("G2 gate artifact still exceeds 16KB after truncation, dropping lists")
+                artifact["pains"] = artifact["pains"][:1]
+                artifact["segments"] = []
+        except Exception as e:
+            logger.warning(f"Failed to size-check G2 gate artifact: {e}")
+
+        return artifact
+
+    def _rederive_niche_context_dependents(self, niche_context: "NicheContext") -> None:
+        """Re-derive Stage 1's DEPENDENT fields on an already-edited NicheContext after a G1
+        guided-mode patch (Decisions §G1 / review B1 / Codex 2-3: "no downstream recompute"
+        was true for G2 but false for G1 — Stage 1's own anchor/scope fields are derived FROM
+        niche_description/user_target_audience, so editing those leaves anchor_entities /
+        disambiguation_exclusions / anchor_communities / audience_jargon / community_search_terms
+        and audience_scope stale/inconsistent before Stage 2 consumes them).
+
+        Deliberately does NOT re-run the primary niche-context LLM call (`_generate_niche_context`
+        regenerates niche_description/market_segments/industry_boundaries/user_target_audience
+        from scratch, which would discard the user's just-applied patch) — instead re-runs only
+        the isolated anchor-extraction call (`_extract_niche_anchors`, ONE cheap LLM call) against
+        the EDITED niche_context in place, mirroring exactly what `_generate_niche_context` does
+        with those two calls, and deterministically re-derives audience_scope (no LLM call: a
+        classification call would risk disagreeing with the user's own edited
+        user_target_audience). Mutates `niche_context` in place; never raises (mirrors
+        `_extract_niche_anchors`'s own fail-soft contract).
+        """
+        # Deterministic audience_scope re-derivation: the classifier's OWN hard rule (see
+        # _generate_niche_context) is "user_target_audience is null iff audience_scope=='niche'"
+        # — apply the same rule in reverse from the (possibly user-edited) audience field.
+        if (niche_context.user_target_audience or "").strip():
+            if (niche_context.audience_scope or "niche") == "niche":
+                niche_context.audience_scope = "segment_of_niche"
+        else:
+            niche_context.audience_scope = "niche"
+
+        try:
+            self._extract_niche_anchors(niche_context.niche_input, niche_context)
+        except Exception as e:  # pragma: no cover - _extract_niche_anchors is itself fail-soft
+            logger.warning(f"[Gate G1] niche-context dependent re-derivation failed (non-fatal): {e}")
+
     def _build_stage_artifact(self, stage: float) -> dict | None:
         """Build artifact dict for a specific stage from current state."""
         if stage == 1 and self.state.niche_context:
@@ -1137,6 +1298,14 @@ RULES:
                 "niche_description": ctx.niche_description,
                 "market_segments": ctx.market_segments[:5],
                 "industry_boundaries": ctx.industry_boundaries,
+                # G1 gate card + patch-diff "before" values: the gate's whitelist can edit
+                # user_target_audience, and applies re-derive the anchors — without these
+                # fields an audience edit refreshed the card byte-identically and the UI
+                # honestly showed "no change" (live-caught on the first guided run, 2026-07-12).
+                "user_target_audience": getattr(ctx, "user_target_audience", None),
+                "audience_scope": getattr(ctx, "audience_scope", None),
+                "anchor_entities": list(getattr(ctx, "anchor_entities", None) or [])[:8],
+                "disambiguation_exclusions": list(getattr(ctx, "disambiguation_exclusions", None) or [])[:4],
             }
         elif stage == 2 and self.state.social_content:
             sc = self.state.social_content
@@ -1913,6 +2082,12 @@ RULES:
                                 "market_fit", max_len=280) or None,
                             "incumbent_parity": getattr(solution, "incumbent_parity", None),
                             "adjacent_market_parity": getattr(solution, "adjacent_market_parity", None),
+                            # Adversarial red-team pass (Stage 5, post-demote) — survives/weakened/
+                            # killed verdict + evidence-cited caveats. Threaded through so the G3
+                            # chat dossier (backend/src/routes/chat.ts) can cite it; not otherwise
+                            # surfaced on the preview report UI.
+                            "red_team_verdict": getattr(solution, "red_team_verdict", None),
+                            "red_team_caveats": getattr(solution, "red_team_caveats", None),
                             "source_segment_payability": getattr(solution, "source_segment_payability", None),
                             "source_segment_payability_class": getattr(solution, "source_segment_payability_class", None),
                             # Multi-Frame Idea Generation Portfolio: which frame minted this idea's cell
@@ -2033,6 +2208,17 @@ RULES:
 
             # Idea portfolio summary (computed end of Phase 1 alongside the verdict above).
             report["idea_portfolio_summary"] = getattr(state, "idea_portfolio_summary", None)
+
+            # Guided-mode (chatMode) honesty block (Phase C): gate patches applied earlier in
+            # THIS run (G1/G2 — see flows/gate_patches.py) are already stamped on state by the
+            # time Phase 1 completes and this preview is materialized.
+            try:
+                report["user_adjusted"] = getattr(state, "user_adjusted", False)
+                report["user_adjustments"] = build_user_adjustments_summary(state)
+            except Exception as e:
+                logger.debug(f"[Preview Report] User adjustments section failed: {e}")
+                report["user_adjusted"] = False
+                report["user_adjustments"] = []
 
             # ── Write to file ──
             job_id = getattr(self, "job_id", None) or getattr(state, "job_id", None)
@@ -2216,7 +2402,8 @@ RULES:
                     logger.info(f"[Resume] Replaying completed status for stage {stage_num}: {stage_name}")
                     self._emit_progress(stage_num, stage_name, "completed")
 
-    def _execute_remaining_stages(self, stop_after_phase: int | None = None, skip_bulk_replay: bool = False) -> str:
+    def _execute_remaining_stages(self, stop_after_phase: int | None = None, skip_bulk_replay: bool = False,
+                                   stop_after_stage: float | None = None) -> str:
         """
         Execute remaining stages after checkpoint resume.
         Manually calls stage methods based on current_stage.
@@ -2228,6 +2415,9 @@ RULES:
                 Phase 2 skip branches will emit staggered progress instead.
                 Used by interactive Phase 2 continuation to avoid all stages
                 flashing green at once.
+            stop_after_stage: Guided-mode gate stop (1 = after Stage 1, 4 = after Stage 4,
+                before Stage 5). Distinct from stop_after_phase: does NOT materialize a
+                preview report, only saves cost breakdown + returns the stage artifact.
         """
         REPLAY_STAGGER_DELAY = 0.25  # seconds between replayed stage transitions
 
@@ -2247,6 +2437,14 @@ RULES:
             if current <= 1:
                 self.stage_1_validate_niche()
 
+            # Guided-mode G1 gate: stop after Stage 1, before Stage 2 runs. Distinct from
+            # stop_after_phase — no preview report is materialized (Phase 1 isn't done),
+            # just the cost breakdown + the Stage-1 artifact for the gate card.
+            if stop_after_stage is not None and stop_after_stage == 1:
+                logger.info("Stopping after Stage 1 (guided-mode gate G1)")
+                self.checkpoint_mgr.save_cost_breakdown(self.cost_tracker.export_state())
+                return json.dumps(self._extract_stage_artifact(1) or {})
+
             if current <= 2:
                 self.stage_2_search_and_discover()
 
@@ -2263,6 +2461,35 @@ RULES:
                     logger.info("Skipping Stage 4 (Audience Mapping) - prerequisites not met")
             elif "stage_4_audience_mapping" in completed_stages:
                 logger.info("Skipping Stage 4 (Audience Mapping) - already completed")
+
+            # Guided-mode G2 gate: stop after Stage 4, before Stage 5 runs. Placed
+            # unconditionally after the Stage-4 block (not gated on it having succeeded) —
+            # a failed audience-mapping prerequisite check still leaves pain_point_analysis
+            # available, so the gate degrades to a pain-scope-only card (DR N4) instead of
+            # never stopping. Distinct from stop_after_phase — no preview report.
+            if stop_after_stage is not None and stop_after_stage == 4:
+                g2_artifact = self._build_g2_gate_artifact()
+                if g2_artifact is None:
+                    # Neither pain_point_analysis nor audience_mapping survived — a gate
+                    # stop here would produce an unusable AWAITING_GATE with an empty
+                    # artifact (dead-end loop, nothing to review or patch). Do NOT stop:
+                    # log and fall through to continue the run past the gate entirely.
+                    logger.warning(
+                        "G2 gate artifact unavailable (no pain analysis or audience "
+                        "mapping) — skipping G2 gate stop and continuing the run"
+                    )
+                else:
+                    logger.info("Stopping after Stage 4 (guided-mode gate G2)")
+                    # Stage 3's parallel execution path calls
+                    # save_stage("stage_4_audience_mapping", ...) at :3772 BEFORE advancing
+                    # self.state.current_stage to 5 at :3784, so metadata.json's
+                    # current_stage is stamped with the stale pre-advance value. Flush now
+                    # so a G2-stopped checkpoint reloads at current_stage=5 (stages 1-4
+                    # already marked complete) instead of re-running Stage 3 + Stage 4 on
+                    # continuation (duplicate cost, identifier drift vs the validated patch).
+                    self.checkpoint_mgr.flush_metadata()
+                    self.checkpoint_mgr.save_cost_breakdown(self.cost_tracker.export_state())
+                    return json.dumps(g2_artifact)
 
             # Stage 5: Unified Solution Pipeline
             if "stage_5_6_selection" not in completed_stages:
@@ -4028,6 +4255,8 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                 competitor_mentions_text=self.state.competitor_mentions_formatted,
                 idea_focus=getattr(self, "idea_focus", "auto"),
                 cost_tracker=self.cost_tracker,
+                user_pain_scope=getattr(self.state, "user_pain_scope", None),
+                user_audience_scope=getattr(self.state, "user_audience_scope", None),
             )
 
             # Execute complete pipeline
@@ -4156,6 +4385,14 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             )
             if getattr(unified_crew, "_niche_wallet_brief", None):
                 self.state.niche_wallet_brief = dict(unified_crew._niche_wallet_brief)
+            # Same handoff for the two remaining instance-only Phase-1 caches (eager-meandering-
+            # feather.md Phase 4, section C) — without this a later user-seed pipeline would
+            # cold-re-probe (LLM calls) work this run already paid for. `is not None` (not
+            # truthy) because '' is a real "probed, found nothing" result, not "never probed".
+            if getattr(unified_crew, "_data_menu_text", None) is not None:
+                self.state.niche_data_menu_text = unified_crew._data_menu_text
+            if getattr(unified_crew, "_dissatisfaction_text", None) is not None:
+                self.state.niche_dissatisfaction_text = unified_crew._dissatisfaction_text
 
             # Idea portfolio summary: one honest-reviewer LLM narrative over the whole visible
             # idea pool, computed HERE (not in the crew) because this is the site where state,

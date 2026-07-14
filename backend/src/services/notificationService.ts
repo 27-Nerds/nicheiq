@@ -1,5 +1,5 @@
 import { prisma } from './db.js';
-import { sendCompletionEmail, sendFailureEmail, sendJobStartEmail, sendSolutionsReadyEmail, sendSelectionReminderEmail, sendPhase2StartEmail, sendRegenerationCompleteEmail, sendLandingPageReadyEmail } from './emailService.js';
+import { sendCompletionEmail, sendFailureEmail, sendJobStartEmail, sendSolutionsReadyEmail, sendSelectionReminderEmail, sendPhase2StartEmail, sendRegenerationCompleteEmail, sendLandingPageReadyEmail, sendGateReachedEmail } from './emailService.js';
 import type { PhaseContextForEmail } from './emailService.js';
 
 export type NotificationType = 'jobStart' | 'jobComplete' | 'jobError' | 'solutionsReady';
@@ -137,6 +137,26 @@ export async function notifySolutionsReady(
     return;
   }
   await sendSolutionsReadyEmail(email, jobId, niche, solutionCount);
+}
+
+/**
+ * Send guided-mode gate-reached email if user preferences allow (Phase B — mirrors
+ * notifySolutionsReady; reuses the 'solutionsReady' preference bucket — both are
+ * "your run needs your attention" notifications and the plan does not call for a new
+ * dedicated preference field/migration for this).
+ */
+export async function notifyGateReached(
+  userId: string | null | undefined,
+  email: string,
+  jobId: string,
+  niche: string,
+  gateStage: 1 | 4
+): Promise<void> {
+  if (!(await shouldNotifyUser(userId, 'solutionsReady', jobId))) {
+    console.log(`[Notification] Skipping gate-reached email for job ${jobId} - disabled by preference`);
+    return;
+  }
+  await sendGateReachedEmail(email, jobId, niche, gateStage);
 }
 
 /**

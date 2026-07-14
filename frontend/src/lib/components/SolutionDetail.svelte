@@ -6,8 +6,8 @@
     ChevronRight,
     X,
   } from "lucide-svelte";
-  import { portal } from "$lib/actions/portal";
   import Badge from "$lib/components/ui/Badge.svelte";
+  import WorkspaceOverlay from "$lib/components/ui/WorkspaceOverlay.svelte";
   import SolutionDetailContent from "$lib/components/SolutionDetailContent.svelte";
   import Popover from "$lib/components/ui/Popover.svelte";
   import { scoreRationale } from "$lib/utils/scoreRationale";
@@ -59,7 +59,6 @@
     voteCount = 0,
   }: Props = $props();
 
-  let modalEl: HTMLDivElement | undefined = $state();
   let bodyEl: HTMLDivElement | undefined = $state();
 
   // Overview = shortlist-decision snapshot; detail = the 7-card deep reference.
@@ -80,16 +79,6 @@
     activeTab = tab;
     if (bodyEl) bodyEl.scrollTop = 0; // don't land mid-content when the view swaps
   }
-
-  // On open, move focus into the dialog and remember the trigger; on close, return
-  // focus to it so keyboard users aren't dumped at the top of the page.
-  $effect(() => {
-    if (open && modalEl) {
-      const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      modalEl.focus();
-      return () => trigger?.focus?.();
-    }
-  });
 
   const total = $derived(solutions.length);
 
@@ -158,10 +147,7 @@
     onNavigate(next);
   }
 
-  function handleKeydown(e: KeyboardEvent) {
-    if (!open) return;
-    if (e.key === 'Escape') { onClose(); return; }
-    if (e.key === 'Tab') { trapTab(e); return; }
+  function handleOverlayKeydown(e: KeyboardEvent) {
     // Arrow paging only when focus isn't in a control that uses arrows itself
     // (form fields, or the tablist — where arrows belong to tab switching, not paging).
     const t = e.target as HTMLElement | null;
@@ -170,35 +156,7 @@
     if (e.key === 'ArrowRight') { e.preventDefault(); navigateNext(); }
   }
 
-  // Keyboard focus trap — keep Tab cycling inside the dialog (aria-modal handles AT).
-  function trapTab(e: KeyboardEvent) {
-    if (!modalEl) return;
-    const focusables = Array.from(
-      modalEl.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      ),
-    ).filter((el) => el.offsetParent !== null || el === document.activeElement);
-    if (focusables.length === 0) { e.preventDefault(); modalEl.focus(); return; }
-    const first = focusables[0];
-    const last = focusables[focusables.length - 1];
-    const active = document.activeElement;
-    if (e.shiftKey && (active === first || active === modalEl)) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && active === last) {
-      e.preventDefault();
-      first.focus();
-    }
-  }
-
-  function handleBackdropClick(e: MouseEvent) {
-    if (e.target === e.currentTarget) {
-      onClose();
-    }
-  }
 </script>
-
-<svelte:window onkeydown={handleKeydown} />
 
 <!-- Click-popover content: methodology ("what it measures") + this idea's reasoning. -->
 {#snippet scoreDetail(def: string, why: string | null, value: number | null | undefined)}
@@ -214,23 +172,15 @@
   </div>
 {/snippet}
 
-{#if open}
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <div
-    use:portal
-    class="detail-backdrop"
-    onclick={handleBackdropClick}
-    role="dialog"
-    aria-modal="true"
-    aria-label="Solution details: {displayTitle}"
-    tabindex="-1"
-  >
+<WorkspaceOverlay
+  {open}
+  size="standard"
+  label={`Solution details: ${displayTitle}`}
+  onClose={onClose}
+  onKeydown={handleOverlayKeydown}
+>
     <!-- Modal card -->
-    <div
-      bind:this={modalEl}
-      class="modal-card"
-      tabindex="-1"
-    >
+    <div class="modal-card">
       <!-- Header -->
       <div class="modal-header">
         <div class="modal-title-group">
@@ -404,34 +354,17 @@
         </div>
       {/if}
     </div>
-  </div>
-{/if}
+</WorkspaceOverlay>
 
 <style>
-  .detail-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 50;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: clamp(0.75rem, 2vw, 1.5rem);
-    background: color-mix(in srgb, var(--color-bg-base) 90%, transparent);
-    backdrop-filter: blur(2px);
-  }
-
   .modal-card {
     position: relative;
-    z-index: 1;
     display: flex;
     flex-direction: column;
-    width: min(54rem, calc(100vw - 1.5rem));
-    max-height: min(88vh, 48rem);
+    width: 100%;
+    height: 100%;
     overflow: hidden;
     background: var(--color-bg-elevated);
-    border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 78%, transparent);
-    border-radius: 0.75rem;
-    box-shadow: var(--shadow-lg);
   }
 
   .modal-header {
@@ -877,10 +810,6 @@
 
   /* On smaller screens, position arrows at edge */
   @media (max-width: 900px) {
-    .modal-card {
-      max-height: 92vh;
-      border-radius: 0.75rem;
-    }
     .modal-header {
       flex-direction: column;
       padding: 1rem;

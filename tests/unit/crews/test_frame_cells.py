@@ -249,7 +249,7 @@ class TestSeedGates:
 class TestSpendAdjacentRemoved:
     def test_not_in_frame_registry(self):
         assert "spend_adjacent" not in FRAME_REGISTRY
-        assert set(FRAME_REGISTRY.keys()) == {"pain", "gap", "data_asset", "workflow"}
+        assert set(FRAME_REGISTRY.keys()) == {"pain", "gap", "data_asset", "workflow", "user_seed"}
 
     def test_seeder_method_removed(self):
         assert not hasattr(UnifiedSolutionCrew, "_seed_spend_focuses")

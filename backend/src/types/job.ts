@@ -23,9 +23,23 @@ export const CreateJobSchema = z.object({
   entryMode: z.enum(['idea', 'audience', 'discovery', 'pain_research', 'pain_remix', 'deep_idea']).optional(),
   // GTM-focus steer for idea generation/ranking emphasis (only active when angle eval is on).
   ideaFocus: z.enum(['auto', 'novelty', 'distribution']).optional(),
+  // Guided research (Phase B) opt-in — server-side coerced to false for non-entitled users
+  // (routes/jobs.ts job-create), so this is a pure "requested" flag at the schema layer.
+  chatMode: z.boolean().optional(),
 });
 
 export type CreateJobInput = z.infer<typeof CreateJobSchema>;
+
+// The dispatch a worker callback claims to be reporting for. Every guarded callback CASes on
+// this against Job.activeDispatchId, so a message from a superseded attempt matches nothing and
+// mutates nothing.
+//
+// OPTIONAL on purpose, and it must stay optional until the queue has drained: a worker deployed
+// before the backend, or a message that was already queued when this shipped, carries no id.
+// Absence is NOT a free pass — the route only takes its legacy path when the JOB also has no
+// active dispatch. Treating a missing id as "skip the check" would quietly reinstate every race
+// this exists to close.
+export const DispatchIdSchema = z.string().uuid().optional();
 
 // Progress update from Python worker
 export const ProgressUpdateSchema = z.object({
@@ -33,6 +47,7 @@ export const ProgressUpdateSchema = z.object({
   name: z.string(),
   status: z.enum(['running', 'completed', 'skipped', 'failed']),
   error: z.string().optional(),
+  dispatch_id: DispatchIdSchema,
 });
 
 export type ProgressUpdate = z.infer<typeof ProgressUpdateSchema>;
@@ -104,6 +119,9 @@ export const IdeasReadySchema = z.object({
   // Phase-1 LLM cost breakdown (CostTracker.get_summary()), persisted so the admin
   // pricing view shows spend on awaiting-selection runs before Phase-2 completes.
   cost_summary: z.record(z.any()).optional(),
+  // G2's Continue terminates HERE, not at /gate-reached — it runs on to stage 5. Guarding only
+  // the gate callbacks would have left the entire G2 continuation unprotected.
+  dispatch_id: DispatchIdSchema,
 });
 
 export type IdeasReadyInput = z.infer<typeof IdeasReadySchema>;
@@ -127,6 +145,139 @@ export const RegenerationFailedSchema = z.object({
 });
 
 export type RegenerationFailedInput = z.infer<typeof RegenerationFailedSchema>;
+
+// ============================================
+// User-seed pipeline (plans/eager-meandering-feather.md Phase 5): "generate an idea from your
+// own idea" at selection chat. Paid, numbered (seed_idea_N), dispatch-lifecycle-backed (like
+// guided Continue) rather than the legacy status-field guard regenerate_ideas still uses.
+// ============================================
+
+// POST /:jobId/seed-idea body
+export const SeedIdeaSchema = z.object({
+  free_text: z.string().trim().min(1).max(2000),
+  pain_ref: z.string().max(500).optional(),
+  tool_ref: z.string().max(300).optional(),
+  // The frontend's SeedIdeaRequest also carries an optional `rationale` (the analyst's
+  // free text for why it proposed this) — not validated/stored here, silently dropped by
+  // this non-strict object (unlike GateActionSchema's patches, a seed has no field
+  // whitelist to enforce).
+  /** Chat message that proposed this seed — REQUIRED (unlike GateActionSchema's optional
+   *  sourceMessageId): a seed's card identity IS this id. Stamped onto the dispatch AND the
+   *  durable `seed_submitted`/`seed_settled` receipts so the card can resolve its state
+   *  across a ledger reload. */
+  sourceMessageId: z.string().min(1).max(64),
+  /** The price the seed card showed. REQUIRED (unlike guided Continue's optional field) — a
+   *  seed's price is always confirmed up front, never inferred from a free discovery run. */
+  expectedCost: z.number().int().min(0).max(1000),
+});
+
+export type SeedIdeaInput = z.infer<typeof SeedIdeaSchema>;
+
+export const SeedIdeaCompleteSchema = z.object({
+  worker_id: z.string().min(1),
+  job_id: z.string().uuid(),
+  // Exactly one outcome idea — active OR demoted; the worker never drops a paid seed
+  // (keep-with-caveat dedup instead — see `duplicate_of` on the idea dict).
+  idea: z.object({ solution_name: z.string().min(1) }).passthrough(),
+  outcome: z.enum(['accepted', 'demoted']),
+  cost_summary: z.record(z.any()).optional(),
+  dispatch_id: DispatchIdSchema,
+});
+
+export type SeedIdeaCompleteInput = z.infer<typeof SeedIdeaCompleteSchema>;
+
+export const SeedIdeaFailedSchema = z.object({
+  worker_id: z.string().min(1),
+  job_id: z.string().uuid(),
+  error_message: z.string().max(2000),
+  dispatch_id: DispatchIdSchema,
+});
+
+export type SeedIdeaFailedInput = z.infer<typeof SeedIdeaFailedSchema>;
+
+// ============================================
+// Guided mode (Phase B — plans/eager-meandering-feather.md): G1 (post-Stage-1) / G2
+// (post-Stage-4) stage gates. Worker → backend notification schemas + the gate-action
+// patch whitelist (kept in lockstep with the Python Pydantic whitelist in
+// src/nicheiq/flows/gate_patches.py — shared valid/invalid fixtures test BOTH layers, R4).
+// ============================================
+
+export const GateReachedSchema = z.object({
+  worker_id: z.string().min(1),
+  job_id: z.string().uuid(),
+  gate_stage: z.union([z.literal(1), z.literal(4)]),
+  // The EFFECTIVE post-resume checkpoint path (fork semantics) — never the input path a
+  // continuation was given.
+  checkpoint_path: z.string().min(1).max(500),
+  gate_artifact: z.record(z.any()),
+  cost_summary: z.record(z.any()).optional(),
+  dispatch_id: DispatchIdSchema,
+});
+
+export type GateReachedInput = z.infer<typeof GateReachedSchema>;
+
+export const GateFailedSchema = z.object({
+  worker_id: z.string().min(1),
+  job_id: z.string().uuid(),
+  gate_stage: z.union([z.literal(1), z.literal(4)]).nullable(),
+  error_message: z.string().max(2000),
+  dispatch_id: DispatchIdSchema,
+  // Only a SYSTEM_FAULT gives the money back. Today this endpoint conflates a rejected user
+  // patch with a genuine infrastructure failure, and refunding both is an abuse path: submit a
+  // deliberately invalid patch, get refunded, repeat. Defaults to SYSTEM_FAULT so an older
+  // worker that cannot classify is treated the way it is treated today.
+  failure_kind: z.enum(['SYSTEM_FAULT', 'USER_PATCH_REJECTED', 'STALE_CHECKPOINT'])
+    .default('SYSTEM_FAULT'),
+});
+
+export type GateFailedInput = z.infer<typeof GateFailedSchema>;
+
+// Gate patch whitelists (G1/G2 — plan §"Patch whitelists"). NO add-segment in v1;
+// excluded_segments/segment_emphasis/primary_target_segment/pain_scope titles are
+// cross-checked against the job's stored gateArtifact at the route layer (jobs.ts
+// gate-action), not here — this schema only enforces SHAPE.
+export const GateG1PatchSchema = z.object({
+  niche_description: z.string().max(2000).optional(),
+  market_segments: z.array(z.string().max(120)).max(8).optional(),
+  industry_boundaries: z.string().max(2000).optional(),
+  user_target_audience: z.string().max(500).optional(),
+}).strict();
+
+export type GateG1PatchInput = z.infer<typeof GateG1PatchSchema>;
+
+export const GateG2PatchSchema = z.object({
+  user_target_audience: z.string().max(500).optional(),
+  primary_target_segment: z.string().max(255).optional(),
+  excluded_segments: z.array(z.string().max(255)).optional(),
+  segment_emphasis: z.record(z.enum(['high', 'low'])).optional(),
+  pain_scope: z.object({
+    excluded_titles: z.array(z.string().max(500)).default([]),
+    pinned_titles: z.array(z.string().max(500)).default([]),
+  }).strict().optional(),
+}).strict();
+
+export type GateG2PatchInput = z.infer<typeof GateG2PatchSchema>;
+
+// POST /:jobId/gate-action body
+export const GateActionSchema = z.object({
+  action: z.enum(['continue', 'apply_stay']),
+  gateStage: z.union([z.literal(1), z.literal(4)]),
+  patch: z.record(z.any()).optional(),
+  /** Chat message that proposed this patch, when it came from the analyst — stored on
+   *  the durable receipt so the proposal card can render its terminal "Applied" state
+   *  after a reload. Absent for the inline exclude-pain chips (no proposing message). */
+  sourceMessageId: z.string().max(64).optional(),
+  /** The price the Continue button showed. Continue is now a purchase, so the number the user
+   *  agreed to must be the number they are charged — if an admin re-priced the segment between
+   *  the gate rendering and the click, the route 409s instead of quietly charging something else. */
+  expectedCost: z.number().int().min(0).max(1000).optional(),
+}).superRefine((data, ctx) => {
+  if (data.action === 'apply_stay' && !data.patch) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'patch is required for apply_stay' });
+  }
+});
+
+export type GateActionInput = z.infer<typeof GateActionSchema>;
 
 // API response types
 export interface JobResponse {

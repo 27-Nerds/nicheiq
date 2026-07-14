@@ -72,15 +72,16 @@ export async function getReportStats() {
         startedAt: true,
         completedAt: true,
         costUsd: true,
+        chatCostUsd: true,
         costSummary: true,
         user: { select: { id: true, email: true, name: true } },
       },
     }),
     // Spend aggregate across all jobs that recorded cost (nulls excluded by Prisma).
     prisma.job.aggregate({
-      _sum: { costUsd: true },
-      _avg: { costUsd: true },
-      _count: { costUsd: true },
+      _sum: { costUsd: true, chatCostUsd: true },
+      _avg: { costUsd: true, chatCostUsd: true },
+      _count: { costUsd: true, chatCostUsd: true },
     }),
   ]);
 
@@ -117,6 +118,9 @@ export async function getReportStats() {
     totalCostUsd: costAggregate._sum.costUsd ?? 0,
     avgCostUsd: costAggregate._avg.costUsd ?? 0,
     costedJobs: costAggregate._count.costUsd ?? 0,
+    totalChatCostUsd: costAggregate._sum.chatCostUsd ?? 0,
+    avgChatCostUsd: costAggregate._avg.chatCostUsd ?? 0,
+    chatCostedJobs: costAggregate._count.chatCostUsd ?? 0,
     recentJobs,
   };
 }
@@ -388,6 +392,23 @@ function integerValidator(min: number, max: number) {
   };
 }
 
+/**
+ * Stricter than integerValidator: requires the value to be exactly a non-negative integer
+ * (no decimals, no trailing garbage). integerValidator's parseInt would silently accept "1.5"
+ * or "1abc" as 1 — a silent price change nobody typed.
+ */
+function strictNonNegativeIntegerValidator(min: number, max: number) {
+  return (value: string): string | null => {
+    if (!/^\d+$/.test(value.trim())) {
+      return `Must be a whole number between ${min} and ${max}`;
+    }
+    const num = Number(value.trim());
+    if (!Number.isSafeInteger(num) || num < min || num > max)
+      return `Must be a whole number between ${min} and ${max}`;
+    return null;
+  };
+}
+
 function ctaJsonValidator(opts?: { requireCountPlaceholder?: boolean }) {
   return (value: string): string | null => {
     let parsed: unknown;
@@ -439,6 +460,10 @@ const SETTINGS_VALIDATORS: Record<string, (value: string) => string | null> = {
   token_cost_deep_research: integerValidator(0, 100),
   token_cost_landing_page: integerValidator(0, 100),
   token_cost_regenerate_ideas: integerValidator(0, 100),
+  token_cost_seed_idea: integerValidator(0, 100),
+  token_cost_guided_s1: strictNonNegativeIntegerValidator(0, 100),
+  token_cost_guided_s2_4: strictNonNegativeIntegerValidator(0, 100),
+  token_cost_guided_s5: strictNonNegativeIntegerValidator(0, 100),
   registration_credits: integerValidator(0, 1000),
   cta_header: ctaJsonValidator(),
   cta_hero_primary: ctaJsonValidator(),

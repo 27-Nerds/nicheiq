@@ -7,6 +7,10 @@ const TOKEN_COST_KEYS = [
   'token_cost_deep_research',
   'token_cost_landing_page',
   'token_cost_regenerate_ideas',
+  'token_cost_seed_idea',
+  'token_cost_guided_s1',
+  'token_cost_guided_s2_4',
+  'token_cost_guided_s5',
 ] as const;
 
 const CTA_KEYS = [

@@ -9,7 +9,8 @@ import logging
 
 import pytest
 from unittest.mock import MagicMock
-from nicheiq.report.utils.state_accessors import StateAccessor
+from nicheiq.report.utils.state_accessors import StateAccessor, build_user_adjustments_summary
+from nicheiq.models.research_state import PainScope, AudienceScope
 
 
 class TestStateAccessorInitialization:
@@ -741,3 +742,81 @@ class TestPrimarySearchVolume:
         )
         accessor = StateAccessor(state)
         assert accessor.get_volume_filter_ratio() is None
+
+
+class TestUserAdjustmentsSummary:
+    """Tests for build_user_adjustments_summary (Phase C report honesty block)."""
+
+    def test_empty_when_not_adjusted(self):
+        state = MagicMock()
+        state.user_adjusted = False
+        assert build_user_adjustments_summary(state) == []
+
+    def test_g1_only_fallback_note(self):
+        """user_adjusted True but no G2 scope objects -> generic G1 note."""
+        state = MagicMock()
+        state.user_adjusted = True
+        state.user_pain_scope = None
+        state.user_audience_scope = None
+        notes = build_user_adjustments_summary(state)
+        assert len(notes) == 1
+        assert "Gate 1" in notes[0]
+
+    def test_g2_excluded_pain_titles(self):
+        state = MagicMock()
+        state.user_adjusted = True
+        state.user_pain_scope = PainScope(excluded_titles=["Too much manual data entry"])
+        state.user_audience_scope = None
+        notes = build_user_adjustments_summary(state)
+        assert any("excluded 1 pain point" in n and "Too much manual data entry" in n for n in notes)
+
+    def test_g2_pinned_pain_titles(self):
+        state = MagicMock()
+        state.user_adjusted = True
+        state.user_pain_scope = PainScope(pinned_titles=["Slow onboarding", "No mobile app"])
+        state.user_audience_scope = None
+        notes = build_user_adjustments_summary(state)
+        assert any("pinned 2 pain point" in n for n in notes)
+
+    def test_g2_excluded_segments(self):
+        state = MagicMock()
+        state.user_adjusted = True
+        state.user_pain_scope = None
+        state.user_audience_scope = AudienceScope(excluded_segments=["Enterprise IT"])
+        notes = build_user_adjustments_summary(state)
+        assert any("excluded 1 audience segment" in n and "Enterprise IT" in n for n in notes)
+
+    def test_g2_segment_emphasis(self):
+        state = MagicMock()
+        state.user_adjusted = True
+        state.user_pain_scope = None
+        state.user_audience_scope = AudienceScope(segment_emphasis={"Freelancers": "high"})
+        notes = build_user_adjustments_summary(state)
+        assert any("segment emphasis" in n and "Freelancers (high)" in n for n in notes)
+
+    def test_g2_primary_segment(self):
+        state = MagicMock()
+        state.user_adjusted = True
+        state.user_pain_scope = None
+        state.user_audience_scope = AudienceScope(primary_target_segment="Solo consultants")
+        notes = build_user_adjustments_summary(state)
+        assert any("Solo consultants" in n for n in notes)
+
+    def test_g2_touched_but_only_target_audience_changed(self):
+        """G2 patch touched only user_target_audience (no scope-visible field) -> generic G2 note,
+        not the G1 fallback (audience_scope object exists but is otherwise empty)."""
+        state = MagicMock()
+        state.user_adjusted = True
+        state.user_pain_scope = None
+        state.user_audience_scope = AudienceScope()  # set unconditionally by _apply_g2
+        notes = build_user_adjustments_summary(state)
+        assert len(notes) == 1
+        assert "Gate 2" in notes[0]
+
+    def test_state_accessor_delegates(self):
+        state = MagicMock()
+        state.user_adjusted = True
+        state.user_pain_scope = PainScope(excluded_titles=["X"])
+        state.user_audience_scope = None
+        accessor = StateAccessor(state)
+        assert accessor.get_user_adjustments_summary() == build_user_adjustments_summary(state)

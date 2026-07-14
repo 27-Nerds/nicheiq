@@ -234,12 +234,19 @@ def notify_job_started(job_id: str) -> bool:
     global _current_job_id
     _current_job_id = job_id
 
+    # Claim the dispatch, don't just announce arrival. The backend turns this into the
+    # AUTHORIZED -> CLAIMED transition, which is what decides whether a later cancel owes the
+    # user a refund (nothing ran) or not (work started). It also rejects a SECOND worker for
+    # the same dispatch instead of waving it through as a duplicate.
+    from .progress import _dispatch_payload
+
     try:
         response = requests.post(
             f"{_get_backend_url()}/api/workers/job-started",
             json={
                 "worker_id": WORKER_ID,
                 "job_id": job_id,
+                **_dispatch_payload(job_id),
             },
             headers={"x-internal-service": _get_internal_secret()},
             timeout=HEARTBEAT_TIMEOUT_SECONDS,

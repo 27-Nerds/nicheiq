@@ -754,6 +754,9 @@ class ReportGenerator:
             # Transparency: catalog-seeded runs (pain_research / deep_idea) have thinner
             # community evidence; the flag drives the "seeded from catalog" UI badge.
             seeded_from_catalog=getattr(self.state, 'seeded_from_catalog', False),
+            # Guided-mode honesty block (Phase C): surfaces gate patches applied during this run.
+            user_adjusted=getattr(self.state, 'user_adjusted', False),
+            user_adjustments=self.accessor.get_user_adjustments_summary(),
             executive_summary=f"Market research completed for {self.state.niche_context.niche_description}. "
             f"Identified {len(self.state.pain_point_analysis.pain_points) if self.state.pain_point_analysis else 0} validated pain points and "
             f"{len(recommended_solutions)} solution concepts. "

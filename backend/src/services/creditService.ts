@@ -7,6 +7,8 @@ import {
   UserCredits,
   CreditTransaction,
   Job,
+  BillingModel,
+  DispatchKind,
 } from '@prisma/client';
 import { PIPELINE_STAGES, DISCOVERY_PHASE_MAX_STAGE } from '../types/job.js';
 
@@ -32,6 +34,23 @@ export class InsufficientCreditsError extends Error {
     this.required = required;
     this.monthlyAllowance = opts?.monthlyAllowance ?? 0;
     this.purchasedBalance = opts?.purchasedBalance ?? currentBalance;
+  }
+}
+
+/**
+ * The price the client confirmed no longer matches the price actually in effect. Thrown from
+ * INSIDE the charging transaction (see chargeForStageWithPriceCasInTx) — by the time this is
+ * thrown, nothing has been charged and nothing else in that transaction commits.
+ */
+export class PriceChangedError extends Error {
+  public expectedCost: number;
+  public actualCost: number;
+
+  constructor(expectedCost: number, actualCost: number) {
+    super(`Price changed: client expected ${expectedCost}, actual price is ${actualCost}`);
+    this.name = 'PriceChangedError';
+    this.expectedCost = expectedCost;
+    this.actualCost = actualCost;
   }
 }
 
@@ -68,13 +87,51 @@ export class RateLimitError extends Error {
 // Per-Stage Token Charging
 // ============================================
 
-export type StageName = 'discovery' | 'deep_research' | 'landing_page' | 'regenerate_ideas';
+/**
+ * Guided mode pays for discovery a segment at a time, as the user authorizes each one — rather
+ * than paying for the whole phase up front and arguing about refunds afterwards. The segments are
+ * the three points where the user is actually present and deciding:
+ *
+ *   guided_s1     job creation      buys stage 1  (niche validation)   -> lands at G1
+ *   guided_s2_4   Continue at G1    buys stages 2-4                    -> lands at G2
+ *   guided_s5     Continue at G2    buys stage 5                       -> lands at selection
+ *
+ * NAMING IS LOad-BEARING: cost lookup builds its settings key mechanically as
+ * `token_cost_${stage}` (see below), so these names are what produce `token_cost_guided_s1` etc.
+ * Name them anything else and the admin override silently never loads — the panel would appear to
+ * work while changing nothing.
+ */
+export const GUIDED_SEGMENTS = ['guided_s1', 'guided_s2_4', 'guided_s5'] as const;
+export type GuidedSegment = (typeof GUIDED_SEGMENTS)[number];
 
-const DEFAULT_STAGE_COSTS: Record<StageName, number> = {
+/** How many pipeline stages each segment actually runs — the basis of the default split. */
+const GUIDED_SEGMENT_WEIGHT: Record<GuidedSegment, number> = {
+  guided_s1: 1,
+  guided_s2_4: 3,
+  guided_s5: 1,
+};
+const GUIDED_TOTAL_WEIGHT = 5; // stages 1..5 = the whole discovery phase
+
+export type StageName =
+  | 'discovery'
+  | 'deep_research'
+  | 'landing_page'
+  | 'regenerate_ideas'
+  // Selection-chat "generate an idea from your own idea" (plans/eager-meandering-feather.md).
+  // FLAT, like regenerate_ideas — deliberately NOT inside the `guided` segment group, which is
+  // discovery-segment-only pricing; folding this in there would corrupt the guided total and
+  // BillingModel math. Numbered per-seed ledger stages (`seed_idea_1`, `seed_idea_2`, ...) look
+  // their PRICE up under this flat name but record/refund under the numbered one — see
+  // chargeForSeedIdeaInTx.
+  | 'seed_idea'
+  | GuidedSegment;
+
+const DEFAULT_STAGE_COSTS: Record<Exclude<StageName, GuidedSegment>, number> = {
   discovery: 5,
   deep_research: 15,
   landing_page: 5,
   regenerate_ideas: 2,
+  seed_idea: 2,
 };
 
 const STAGE_LABELS: Record<StageName, string> = {
@@ -82,7 +139,32 @@ const STAGE_LABELS: Record<StageName, string> = {
   deep_research: 'Deep Research',
   landing_page: 'Landing Page',
   regenerate_ideas: 'Generate More Ideas',
+  seed_idea: 'Generate From Your Idea',
+  guided_s1: 'Niche validation',
+  guided_s2_4: 'Audience & pain analysis',
+  guided_s5: 'Idea generation',
 };
+
+export function isGuidedSegment(stage: string): stage is GuidedSegment {
+  return (GUIDED_SEGMENTS as readonly string[]).includes(stage);
+}
+
+/**
+ * The default price of a guided segment: discovery's price, split in proportion to the work each
+ * segment does. So a 5-credit discovery becomes 1 / 3 / 1 — NOT equal thirds, which would charge
+ * the same for the segment that runs three stages as for the ones that run one.
+ *
+ * Floor each share, then give the remainder to the LAST segment, so the three always sum to
+ * exactly the discovery price and a full guided run costs the same as a standard one.
+ */
+function deriveGuidedSegmentCost(discoveryCost: number, segment: GuidedSegment): number {
+  const floors = GUIDED_SEGMENTS.map((s) =>
+    Math.floor((discoveryCost * GUIDED_SEGMENT_WEIGHT[s]) / GUIDED_TOTAL_WEIGHT),
+  );
+  const remainder = discoveryCost - floors.reduce((a, b) => a + b, 0);
+  const idx = GUIDED_SEGMENTS.indexOf(segment);
+  return floors[idx] + (idx === GUIDED_SEGMENTS.length - 1 ? remainder : 0);
+}
 
 /**
  * Internal helper: get cost for a stage using any Prisma client (regular or tx).
@@ -95,10 +177,40 @@ async function _getStageCostWithClient(
     where: { key: 'token_cost_' + stage },
   });
   if (setting?.value != null) {
-    const parsed = parseInt(setting.value, 10);
-    if (!isNaN(parsed) && parsed >= 0) return parsed;
+    // Exact integers only. parseInt would happily read "1.5" and "1abc" as 1 — a silent price
+    // change nobody typed.
+    if (/^\d+$/.test(setting.value.trim())) {
+      const parsed = Number(setting.value.trim());
+      if (Number.isSafeInteger(parsed) && parsed >= 0) return parsed;
+    }
+    console.warn(`[Credits] Ignoring non-integer price for ${stage}: ${JSON.stringify(setting.value)}`);
   }
+
+  // Unset -> derive automatically from the discovery price ("if it's not set, do it
+  // automatically"). Derived, not a static default, so an admin who re-prices discovery re-prices
+  // the guided segments with it and the two can never silently disagree.
+  if (isGuidedSegment(stage)) {
+    const discoveryCost = await _getStageCostWithClient(client, 'discovery');
+    return deriveGuidedSegmentCost(discoveryCost, stage);
+  }
+
   return DEFAULT_STAGE_COSTS[stage];
+}
+
+/** The three guided prices, and their total. Used by the gate UI and the billing endpoint. */
+export async function getGuidedSegmentCosts(): Promise<{
+  guided_s1: number;
+  guided_s2_4: number;
+  guided_s5: number;
+  total: number;
+}> {
+  const [s1, s24, s5] = await Promise.all(GUIDED_SEGMENTS.map((s) => getStageCost(s)));
+  return { guided_s1: s1, guided_s2_4: s24, guided_s5: s5, total: s1 + s24 + s5 };
+}
+
+/** Which segment a Continue at this gate buys. G1 buys stages 2-4; G2 buys stage 5. */
+export function segmentForGateContinue(gateStage: 1 | 4): GuidedSegment {
+  return gateStage === 1 ? 'guided_s2_4' : 'guided_s5';
 }
 
 /**
@@ -145,6 +257,60 @@ export async function chargeForStageInTx(
   if (cost === 0) return { cost: 0 };
 
   const transaction = await _chargeForStageImpl(tx, userId, jobId, stage, niche, cost);
+  return { cost, transaction };
+}
+
+/**
+ * Charge for a stage inside an existing transaction, with a HARDENED price compare-and-swap.
+ *
+ * The plain pattern (gate-action's original guided-Continue check) read the price ONCE before
+ * the transaction to compare against `expectedCost`, then let `chargeForStageInTx` read the
+ * price AGAIN, separately, inside the transaction to actually charge. A reprice landing between
+ * those two reads could still charge a number the CAS never saw — the check passed against a
+ * price that was, by the time of the charge, already stale.
+ *
+ * This closes that gap by reading the price exactly ONCE, inside this same transaction, comparing
+ * it to `expectedCost`, and charging with that identical number — there is no second read left to
+ * race. `expectedCost` is REQUIRED (not optional): this helper exists specifically for money
+ * paths where a missing price confirmation must 400 before ever reaching here, never fall through
+ * to a charge.
+ *
+ * `priceStage` is the flat stage the price is looked up (and admin-priced) under; `ledgerStage`
+ * is the stage the CreditTransaction is recorded under, which may be numbered (e.g. `seed_idea_2`)
+ * so repeated attempts don't collide on the (job, type, stage, cycle) unique constraint.
+ *
+ * Unlike the numbered callers (seed idea, regeneration), a flat `ledgerStage` like a gate segment
+ * (`guided_s2_4`) is charged under the SAME name every time — there is no per-attempt numbering to
+ * dodge the unique constraint with. So if an earlier attempt at this exact stage already charged
+ * (e.g. the charge committed but the subsequent enqueue failed, and compensation refunded it —
+ * refunding adds an offsetting ledger row, it does not remove the original charge), a naive
+ * cycle=0 retry would collide with that row and 500 with P2002 even though the money was already
+ * made whole. Auto-detecting the next unused cycle — exactly the arithmetic `chargeForResume`
+ * already does for a whole-job resume — is what lets that retry actually succeed.
+ */
+export async function chargeForStageWithPriceCasInTx(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  jobId: string,
+  priceStage: StageName,
+  ledgerStage: string,
+  niche: string,
+  expectedCost: number,
+  description?: string,
+): Promise<{ cost: number; transaction?: CreditTransaction }> {
+  const cost = await _getStageCostWithClient(tx, priceStage);
+  if (cost !== expectedCost) {
+    throw new PriceChangedError(expectedCost, cost);
+  }
+  if (cost === 0) return { cost: 0 };
+
+  const priorCharges = await tx.creditTransaction.findMany({
+    where: { relatedJobId: jobId, type: CreditTransactionType.JOB_DEDUCTION, stage: ledgerStage },
+    select: { cycle: true },
+  });
+  const cycle = priorCharges.length ? Math.max(...priorCharges.map((c) => c.cycle)) + 1 : 0;
+
+  const transaction = await _chargeForStageImpl(tx, userId, jobId, ledgerStage, niche, cost, description, cycle);
   return { cost, transaction };
 }
 
@@ -237,6 +403,37 @@ export async function chargeForRegenerationInTx(
 }
 
 /**
+ * Charge for a user-composed idea seed inside an existing transaction, with a required price CAS.
+ * Mirrors chargeForRegenerationInTx's numbered-stage shape (regenerate_ideas_N), but MUST use the
+ * price CAS: unlike regeneration, seed pricing is shown to the user as a specific number right
+ * before they click, so the confirmed price and the charged price must be provably the same read.
+ *
+ * Looks the PRICE up under the flat `seed_idea` stage (what admins price), but records/refunds
+ * under the numbered `seed_idea_${seedOrdinal}` ledger stage — a constant stage would collide
+ * with the FIRST seed's charge on the (job, type, stage, cycle) unique constraint the moment a
+ * second seed is submitted.
+ */
+export async function chargeForSeedIdeaInTx(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  jobId: string,
+  seedOrdinal: number,
+  niche: string,
+  expectedCost: number,
+): Promise<{ cost: number; transaction?: CreditTransaction }> {
+  return chargeForStageWithPriceCasInTx(
+    tx,
+    userId,
+    jobId,
+    'seed_idea',
+    `seed_idea_${seedOrdinal}`,
+    niche,
+    expectedCost,
+    `Generate From Your Idea (#${seedOrdinal}): ${niche.substring(0, 100)}`,
+  );
+}
+
+/**
  * Refund credits for a specific stage of a job.
  * Only refunds if: (a) an original charge exists and (b) no refund for that stage yet.
  */
@@ -255,6 +452,16 @@ export async function refundForRegenerationStage(
   regenerationNumber: number,
 ): Promise<CreditTransaction | null> {
   return _refundForStageImpl(jobId, `regenerate_ideas_${regenerationNumber}`);
+}
+
+/**
+ * Refund credits for a numbered seed-idea stage (e.g., seed_idea_2).
+ */
+export async function refundForSeedIdeaStage(
+  jobId: string,
+  seedOrdinal: number,
+): Promise<CreditTransaction | null> {
+  return _refundForStageImpl(jobId, `seed_idea_${seedOrdinal}`);
 }
 
 /**
@@ -307,12 +514,26 @@ async function _refundForStageImpl(
       const row = locked[0];
       if (!row) return null;
 
-      // Restore to the ORIGINATING bucket. The monthly portion goes back to the monthly
-      // allowance ONLY if it's still the same (unexpired) cycle — otherwise those
-      // use-it-or-lose-it credits are gone and the whole refund lands in purchased. This
-      // closes the monthly→purchased laundering vector (same-cycle monthly stays monthly)
-      // without resurrecting expired monthly credits into a new cycle.
+      // Restore each portion of the charge to the bucket it actually came from.
+      //
+      // A charge can be SPLIT — say 4 credits of expiring monthly allowance plus 1 purchased. The
+      // two halves are not the same kind of money, and a refund must not launder one into the
+      // other:
+      //
+      //   monthly portion, SAME (unexpired) cycle -> back to the monthly allowance. Still expiring.
+      //   monthly portion, cycle already ENDED    -> NOTHING. Those credits were use-it-or-lose-it
+      //                                              and the period they belonged to is over. They
+      //                                              cannot come back as anything.
+      //   purchased portion                       -> ALWAYS back to the purchased balance. That is
+      //                                              money the user actually paid; it is owed back
+      //                                              regardless of when the refund happens.
+      //
+      // The previous version paid the whole refund into `balance` whenever the cycle had expired,
+      // which turned expiring allowance into PERMANENT purchased credit. That was reachable on
+      // purpose: burn a lapsing allowance on jobs at the end of the month, cancel them the next
+      // month, and collect credits that never expire.
       const fromMonthly = unrefundedCharge.fromMonthly ?? 0;
+      const fromPurchased = refundAmount - fromMonthly;
       const sameCycle =
         fromMonthly > 0 &&
         unrefundedCharge.monthlyPeriodStart != null &&
@@ -321,15 +542,27 @@ async function _refundForStageImpl(
         row.monthlyAllowancePeriodEnd != null &&
         row.monthlyAllowancePeriodEnd.getTime() > Date.now();
       const monthlyRestore = sameCycle ? fromMonthly : 0;
-      const purchasedRestore = refundAmount - monthlyRestore;
+      const purchasedRestore = fromPurchased;
+
+      // What the user actually gets back. Less than the charge when a lapsed monthly portion is
+      // written off — so the ledger row, the balance change and totalUsed must all agree on THIS
+      // number, not on the original charge.
+      const actualRefund = monthlyRestore + purchasedRestore;
       const availableBefore = spendableMonthly(row) + row.balance;
+
+      if (actualRefund < refundAmount) {
+        console.log(
+          `[CreditService] Job ${jobId} stage ${stage}: writing off ${refundAmount - actualRefund} ` +
+          `credit(s) of expired monthly allowance (refunding ${actualRefund} of ${refundAmount})`
+        );
+      }
 
       await tx.userCredits.update({
         where: { userId: job.userId! },
         data: {
           monthlyAllowance: { increment: monthlyRestore },
           balance: { increment: purchasedRestore },
-          totalUsed: { decrement: refundAmount },
+          totalUsed: { decrement: actualRefund },
         },
       });
 
@@ -337,9 +570,9 @@ async function _refundForStageImpl(
         data: {
           userId: job.userId!,
           type: CreditTransactionType.REFUND,
-          amount: refundAmount,
+          amount: actualRefund,
           balanceBefore: availableBefore,
-          balanceAfter: availableBefore + refundAmount,
+          balanceAfter: availableBefore + actualRefund,
           fromMonthly: monthlyRestore,
           relatedJobId: jobId,
           stage,
@@ -361,12 +594,25 @@ async function _refundForStageImpl(
 
 /**
  * Map numeric errorStage + job status to the StageName that should be refunded.
+ *
+ * `activeDispatchKind` is an optional hint for the SEED_IDEA case: unlike regeneration, a seed
+ * op does not move the parent job out of AWAITING_SELECTION (the pool stays visible while it
+ * runs), so jobStatus alone can never distinguish "this job is just sitting at selection" from
+ * "this job is sitting at selection with a seed attempt in flight" — the dispatch kind is the
+ * only signal that can. Callers that know the job's active dispatch (or the dispatch a callback
+ * named) should pass its kind through; callers that don't simply omit it and fall through to the
+ * existing heuristics unchanged.
  */
 export function determineFailedStage(
   errorStage: number | null | undefined,
   jobStatus: string,
+  activeDispatchKind?: DispatchKind | string | null,
 ): StageName | null {
   if (jobStatus === JobStatus.REGENERATING) return null; // Handled separately with numbered stages
+  // Handled separately with numbered seed_idea_N stages — see chargeForSeedIdeaInTx /
+  // refundForSeedIdeaStage. Refunding via the flat 'discovery'/'deep_research' guess below would
+  // refund the WRONG charge (or none at all): the seed never paid for either of those stages.
+  if (activeDispatchKind === DispatchKind.SEED_IDEA) return null;
   if (errorStage === 15) return 'landing_page';
   if (errorStage != null && errorStage > DISCOVERY_PHASE_MAX_STAGE) return 'deep_research';
   if (errorStage != null && errorStage <= DISCOVERY_PHASE_MAX_STAGE) return 'discovery';
@@ -391,6 +637,7 @@ export async function createJobAndChargeDiscovery(
   jobMode?: string,
   entryMode?: string,
   ideaFocus?: string,
+  chatMode?: boolean,
 ): Promise<{ job: Job; transaction?: CreditTransaction }> {
   const stages = PIPELINE_STAGES.filter(s => s.number !== 15);
 
@@ -405,6 +652,17 @@ export async function createJobAndChargeDiscovery(
         jobMode,
         entryMode: entryMode || null,
         ideaFocus: ideaFocus || null,
+        chatMode: chatMode ?? false,
+        // The billing contract this run is sold under, fixed at creation and never changed.
+        // Guided runs pay per segment as the user authorizes each one; everything else pays for
+        // the whole discovery phase up front, exactly as before.
+        //
+        // Every money branch (Continue, cancel, failure, price display) reads this marker rather
+        // than inferring from chatMode or a date — jobs that predate segment billing are stamped
+        // DISCOVERY_PREPAID_V1 by the migration's default, so they can never be charged twice.
+        billingModel: chatMode
+          ? BillingModel.GUIDED_SEGMENTS_V1
+          : BillingModel.DISCOVERY_PREPAID_V1,
         status: JobStatus.PENDING,
         totalStages: stages.length,
         progress: {
@@ -421,8 +679,16 @@ export async function createJobAndChargeDiscovery(
       },
     });
 
-    // Charge for discovery with the real job ID (rolls back job on insufficient credits)
-    const chargeResult = await chargeForStageInTx(tx, userId, job.id, 'discovery', niche);
+    // What creating the job actually buys.
+    //
+    // Guided: only the first segment (stage 1, niche validation) — enough to reach the first
+    // checkpoint. The user pays for the rest at the checkpoints, where they can see what they're
+    // buying and decline. This is what makes the checkpoint mean something: before, all 5 credits
+    // were taken here and Continue was free, so the gate could not gate spend at all.
+    //
+    // Everything else: the whole discovery phase, unchanged.
+    const entryStage: StageName = chatMode ? 'guided_s1' : 'discovery';
+    const chargeResult = await chargeForStageInTx(tx, userId, job.id, entryStage, niche);
 
     return { job, transaction: chargeResult.transaction };
   });

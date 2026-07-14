@@ -271,6 +271,35 @@ export async function sendSolutionsReadyEmail(
 }
 
 /**
+ * Send guided-mode gate-reached notification email (Phase B — G1/G2 stage gates).
+ * Mirrors sendSolutionsReadyEmail: gates wait indefinitely (same semantics as
+ * AWAITING_SELECTION), so this email IS the funnel back to a paused run.
+ */
+export async function sendGateReachedEmail(
+  to: string,
+  jobId: string,
+  niche: string,
+  gateStage: 1 | 4
+): Promise<void> {
+  const vars = {
+    JOB_ID: jobId,
+    NICHE: truncateNiche(niche),
+    GATE_LABEL: gateStage === 1 ? 'niche validation' : 'audience mapping',
+    STATUS_URL: `${CONFIG.baseUrl}/jobs/${jobId}`,
+  };
+
+  try {
+    const html = renderTemplate(loadTemplate('gateReached.html'), vars);
+    const text = renderTemplate(loadTemplate('gateReached.txt'), vars);
+
+    await sendEmail(to, 'Your NicheIQ Research Is Waiting for You', text, html);
+    console.log(`Gate reached email sent to ${to} for job ${jobId} (gate_stage=${gateStage})`);
+  } catch (error) {
+    console.error('Failed to send gate reached email:', error);
+  }
+}
+
+/**
  * Send Phase 2 (deep research) start notification email
  */
 export async function sendPhase2StartEmail(

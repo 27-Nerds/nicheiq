@@ -87,6 +87,9 @@
     { key: "token_cost_deep_research", label: "Deep Research", default: 15 },
     { key: "token_cost_regenerate_ideas", label: "Generate More Ideas", default: 2 },
     { key: "token_cost_landing_page", label: "Landing Page", default: 5 },
+    { key: "token_cost_guided_s1", label: "Guided · Niche validation", default: 1 },
+    { key: "token_cost_guided_s2_4", label: "Guided · Audience & pain analysis", default: 3 },
+    { key: "token_cost_guided_s5", label: "Guided · Idea generation", default: 1 },
   ] as const;
 
   const CTA_SECTIONS = [
@@ -208,7 +211,9 @@
   <div class="bg-bg-surface border border-border rounded-xl p-5">
     <h3 class="text-lg font-semibold text-text-primary mb-1">Token Pricing</h3>
     <p class="text-sm text-text-muted mb-4">
-      Configure how many credits each stage costs. Set to 0 to make a stage free.
+      Configure how many credits each stage costs. Set to 0 to make a stage free. Guided runs
+      charge per checkpoint instead of one lump sum — leave a Guided price unset to split the
+      Discovery price across it automatically.
     </p>
 
     <div class="space-y-4">

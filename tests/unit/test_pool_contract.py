@@ -143,7 +143,40 @@ def test_contract_runs_after_reinjection():
 
 def test_completeness_accounting_runs_after_red_team():
     # order pin: the caveat must be computed AFTER every catch-up evaluator — the straggler
-    # calibration/angle passes, the pivot+merge wave, and red-team revisions
-    src = inspect.getsource(UnifiedSolutionCrew.execute_pipeline)
-    assert src.index("run_red_team_review(") < src.index("_account_evaluation_completeness(")
-    assert src.index("_backfill_and_demote(") < src.index("_account_evaluation_completeness(")
+    # calibration/angle passes, the pivot+merge wave, and red-team revisions.
+    # `_finalize_evaluator_passes` is the shared tail (extracted from execute_pipeline so it
+    # can also compose into `_finalize_seed_tail`) — red-team and the completeness accounting
+    # both live there now; the pivot+merge wave stays inside `_backfill_and_demote`, which
+    # execute_pipeline calls before handing off to `_finalize_evaluator_passes`.
+    tail_src = inspect.getsource(UnifiedSolutionCrew._finalize_evaluator_passes)
+    assert tail_src.index("run_red_team_review(") < tail_src.index("_account_evaluation_completeness(")
+    pipeline_src = inspect.getsource(UnifiedSolutionCrew.execute_pipeline)
+    assert pipeline_src.index("_backfill_and_demote(") < pipeline_src.index("_finalize_evaluator_passes(")
+
+
+def test_finalize_seed_tail_never_calls_backfill_and_demote():
+    # `_finalize_seed_tail` is the (currently unused) seed entry point: `_sweep_demote` +
+    # `_finalize_evaluator_passes`, NOTHING else. `_backfill_and_demote` is portfolio
+    # maintenance — it births up to 3 unrelated backfill cells AND its floor guard RESTORES
+    # demoted ideas + DELETES their ruled-out entries when <3 remain, so a weak seed's
+    # honest demotion must never be routed through it (backfill/pivot/merge/floor-restore
+    # all live inside that one method — never calling it rules out all four).
+    src = inspect.getsource(UnifiedSolutionCrew._finalize_seed_tail)
+    assert "self._backfill_and_demote(" not in src
+
+    crew = _crew()
+    calls = []
+    crew._sweep_demote = lambda ideas: calls.append(("sweep_demote", ideas))
+    crew._finalize_evaluator_passes = (
+        lambda refined_solutions, **kw: calls.append(("finalize_evaluator_passes", refined_solutions, kw)))
+    crew._backfill_and_demote = lambda *a, **kw: calls.append(("backfill_and_demote", a, kw))
+
+    seed = [_idea(solution_name="Seed")]
+    crew._finalize_seed_tail(seed)
+
+    names = [c[0] for c in calls]
+    assert names == ["sweep_demote", "finalize_evaluator_passes"]  # backfill_and_demote absent
+    assert calls[0][1] is seed
+    passed_container, kwargs = calls[1][1], calls[1][2]
+    assert list(passed_container.solution_ideas) == seed
+    assert kwargs == {"skip_selection": True, "solution_selection": None}

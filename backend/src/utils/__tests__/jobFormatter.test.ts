@@ -96,3 +96,52 @@ describe('formatJobResponse includeSolutionIdeas', () => {
     expect(result.solutionIdeas).toBeNull();
   });
 });
+
+// Phase B — plans/eager-meandering-feather.md: guided-mode (chatMode) G1/G2 stage gates.
+describe('formatJobResponse guided-mode fields', () => {
+  it('defaults chatMode to false and gate fields to null when absent', () => {
+    const job = makeJob({});
+
+    const result = formatJobResponse(job);
+
+    expect(result.chatMode).toBe(false);
+    expect(result.gateStage).toBeNull();
+    expect(result.gateArtifact).toBeNull();
+    expect(result.gateReachedAt).toBeNull();
+  });
+
+  it('serves chatMode/gateStage/gateArtifact/gateReachedAt when the job is AWAITING_GATE', () => {
+    const gateReachedAt = new Date('2026-07-11T12:00:00Z');
+    const gateArtifact = { type: 'niche_validation', niche_description: 'x' };
+    const job = makeJob({
+      status: 'AWAITING_GATE',
+      chatMode: true,
+      gateStage: 1,
+      gateArtifact,
+      gateReachedAt,
+    });
+
+    const result = formatJobResponse(job);
+
+    expect(result.chatMode).toBe(true);
+    expect(result.gateStage).toBe(1);
+    expect(result.gateArtifact).toEqual(gateArtifact);
+    expect(result.gateReachedAt).toBe(gateReachedAt.toISOString());
+  });
+
+  it('gateStage stays null at AWAITING_SELECTION (the G3 sentinel lives only in ChatMessage)', () => {
+    const job = makeJob({ status: 'AWAITING_SELECTION', chatMode: true, gateStage: null });
+
+    const result = formatJobResponse(job);
+
+    expect(result.gateStage).toBeNull();
+  });
+
+  it('defaults gateApplyCount to 0 and serves the persisted count (apply-cap surfacing)', () => {
+    const fresh = formatJobResponse(makeJob({}));
+    expect(fresh.gateApplyCount).toBe(0);
+
+    const applied = formatJobResponse(makeJob({ status: 'AWAITING_GATE', gateStage: 1, gateApplyCount: 3 }));
+    expect(applied.gateApplyCount).toBe(3);
+  });
+});

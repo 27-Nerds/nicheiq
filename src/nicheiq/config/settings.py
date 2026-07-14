@@ -369,6 +369,18 @@ class Settings(BaseSettings):
             "findings. 0 disables demotion (and with it backfill/merge acceptance gating)."
         ),
     )
+    no_buyer_demotion: bool = Field(
+        default=True,
+        description=(
+            "Downgrade-only rule (added 2026-07-12, TIScalperAudit case: an advocacy idea whose "
+            "anchor pains have no software fix and whose audience won't pay survived the "
+            "demotion bar at EXACTLY mf=0.40 — 'absence of incumbents' read as an opportunity "
+            "gap when it was really 'users, not customers'). Demotes an active idea when ALL "
+            "align: every anchor pain is NOT fully tool-addressable, its source-segment "
+            "payability is LOW, and the run's niche wallet probe classified spend as "
+            "'free-culture'. False disables (no-op)."
+        ),
+    )
     backfill_max_cells: int = Field(
         default=3, ge=0, le=6,
         description=(

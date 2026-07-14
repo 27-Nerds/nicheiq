@@ -18,9 +18,20 @@
     /** Seeded-flow mode. 'deep_idea' skips discovery (stages 1-5) and runs deep-research
      *  immediately, so its discovery phase shows as seeded/done while deep-research is active. */
     entryMode?: string | null;
-    mode?: "default" | "selection";
+    /** 'gate' = guided-mode checkpoint (AWAITING_GATE): the page is a single
+     *  checkpoint ledger with no scrollable sections, so the sidebar orients
+     *  (gate rail + what-runs-next) instead of navigating. */
+    mode?: "default" | "selection" | "gate";
     selectionCount?: number;
     selectedCount?: number;
+    /** Guided mode (Phase B) — chatMode opts a job into the G1/G2 stage gates.
+     *  gateStage (1|4) is only set while jobStatus=AWAITING_GATE. When both are
+     *  present, the Discovery group shows a compact gate rail (diamond markers =
+     *  decision points, circle = passive progress) so the sidebar orients the user
+     *  at a checkpoint instead of just showing "WHAT · active" (scope-capped to
+     *  markers in this existing nav — no new nav component, SC2). */
+    chatMode?: boolean;
+    gateStage?: 1 | 4 | null;
   }
 
   let {
@@ -30,13 +41,28 @@
     mode = "default",
     selectionCount = 0,
     selectedCount = 0,
+    chatMode = false,
+    gateStage = null,
   }: Props = $props();
+
+  // Gate-rail step states, derived purely from which gate the job is CURRENTLY
+  // sitting at (gateStage is only non-null while AWAITING_GATE) — Niche precedes
+  // Evidence precedes Audience, so a later gate implies the earlier ones are done.
+  const gateRailSteps = $derived.by(() => {
+    if (!chatMode || !gateStage) return null;
+    return {
+      niche: gateStage === 1 ? "active" : "done",
+      evidence: gateStage === 4 ? "done" : "upcoming",
+      audience: gateStage === 4 ? "active" : "upcoming",
+    } as const;
+  });
 
   let scrollProgress = $state(0);
   let trackedSection = $state("");
   let isOpen = $state(false);
 
   const isSelectionMode = $derived(mode === "selection");
+  const isGateMode = $derived(mode === "gate");
   const currentSection = $derived(activeSection || trackedSection || (isSelectionMode ? "opportunities" : ""));
 
   // Phase badge states
@@ -207,7 +233,50 @@
   background={isSelectionMode ? "var(--color-bg-base)" : "var(--color-bg-elevated)"}
   label="Research phases"
 >
-  {#if isSelectionMode}
+  {#if isGateMode}
+    <!-- Checkpoint page: nothing to scroll to — orient instead of navigate.
+         No done-checkmarks (nothing has run yet) and no Preview links (the
+         phase-2 preview scaffold is suppressed at gates). -->
+    <SidebarGroup label="Discovery">
+      {#snippet trailing()}
+        <span class="phase-badge badge-success">{discoveryLabel}</span>
+      {/snippet}
+      {#if gateRailSteps}
+        <div class="gate-rail" aria-label="Guided research checkpoints">
+          <span class="gate-rail-step" class:is-active={gateRailSteps.niche === "active"} class:is-done={gateRailSteps.niche === "done"}>
+            <span class="gate-rail-marker gate-rail-marker--diamond" aria-hidden="true"></span>
+            Niche
+          </span>
+          <span class="gate-rail-arrow" aria-hidden="true">&rarr;</span>
+          <span class="gate-rail-step" class:is-done={gateRailSteps.evidence === "done"}>
+            <span class="gate-rail-marker gate-rail-marker--circle" aria-hidden="true"></span>
+            Evidence
+          </span>
+          <span class="gate-rail-arrow" aria-hidden="true">&rarr;</span>
+          <span class="gate-rail-step" class:is-active={gateRailSteps.audience === "active"} class:is-upcoming={gateRailSteps.audience === "upcoming"}>
+            <span class="gate-rail-marker gate-rail-marker--diamond" aria-hidden="true"></span>
+            Audience
+          </span>
+        </div>
+      {/if}
+      <div class="next-card" aria-label="What runs after this checkpoint">
+        <span class="next-card-title">{gateStage === 1 ? "Next: evidence search" : "Next: idea generation"}</span>
+        <span class="next-card-text">
+          {gateStage === 1
+            ? "Scans community discussions in this niche for pain signals."
+            : "Generates solution candidates from the scoped pains and segments."}
+        </span>
+      </div>
+    </SidebarGroup>
+
+    <SidebarDivider />
+    <SidebarGroup label="Deep Research">
+      <div class="next-card" aria-label="Deep Research unlocks later">
+        <span class="next-card-title">Validation</span>
+        <span class="next-card-text">Validates the ideas you shortlist after discovery.</span>
+      </div>
+    </SidebarGroup>
+  {:else if isSelectionMode}
     <SidebarGroup label="Candidates">
       {#if opportunitySection}
         {@const isActive = currentSection === opportunitySection.id}
@@ -265,6 +334,25 @@
             {badge?.label}
           </span>
         {/snippet}
+
+        {#if phase.id === 'discovery' && gateRailSteps}
+          <div class="gate-rail" aria-label="Guided research checkpoints">
+            <span class="gate-rail-step" class:is-active={gateRailSteps.niche === "active"} class:is-done={gateRailSteps.niche === "done"}>
+              <span class="gate-rail-marker gate-rail-marker--diamond" aria-hidden="true"></span>
+              Niche
+            </span>
+            <span class="gate-rail-arrow" aria-hidden="true">&rarr;</span>
+            <span class="gate-rail-step" class:is-done={gateRailSteps.evidence === "done"}>
+              <span class="gate-rail-marker gate-rail-marker--circle" aria-hidden="true"></span>
+              Evidence
+            </span>
+            <span class="gate-rail-arrow" aria-hidden="true">&rarr;</span>
+            <span class="gate-rail-step" class:is-active={gateRailSteps.audience === "active"} class:is-upcoming={gateRailSteps.audience === "upcoming"}>
+              <span class="gate-rail-marker gate-rail-marker--diamond" aria-hidden="true"></span>
+              Audience
+            </span>
+          </div>
+        {/if}
 
         {#if phase.id === 'deep-research' && !unlocked}
           <!-- Blurred preview items first (scrollable on page) -->
@@ -376,7 +464,8 @@
 {/if}
 
 <!-- ═══ MOBILE BOTTOM BAR ═══ -->
-{#if !isSelectionMode}
+<!-- Suppressed in gate mode: a checkpoint page has no sections to jump between. -->
+{#if !isSelectionMode && !isGateMode}
 <nav class="sidebar-mobile" class:open={isOpen}>
   <button
     class="mobile-toggle"
@@ -529,6 +618,65 @@
     font-weight: 600;
     color: var(--color-accent);
     letter-spacing: 0.02em;
+  }
+
+  /* ── Gate rail (guided mode — Discovery group) ──
+     Diamonds = decision points (gates), circle = passive progress. Orange marks
+     the CURRENT checkpoint (the one legitimate accent use per the review/pending
+     semantic); done steps read muted-filled, upcoming steps read hollow/faint. */
+  .gate-rail {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin: 0.15rem 1.5rem 0.6rem;
+    padding: 0.5rem 0.65rem;
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.55rem;
+  }
+  .gate-rail-step {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: var(--color-text-muted);
+  }
+  .gate-rail-step.is-done {
+    color: var(--color-text-secondary);
+  }
+  .gate-rail-step.is-active {
+    color: var(--color-accent-dark);
+  }
+  .gate-rail-arrow {
+    color: var(--color-text-muted);
+    opacity: 0.5;
+    font-size: 0.625rem;
+  }
+  .gate-rail-marker {
+    flex-shrink: 0;
+    width: 6px;
+    height: 6px;
+    background: var(--color-text-muted);
+    opacity: 0.45;
+  }
+  .gate-rail-marker--diamond {
+    transform: rotate(45deg);
+    border-radius: 1px;
+  }
+  .gate-rail-marker--circle {
+    border-radius: 50%;
+  }
+  .gate-rail-step.is-done .gate-rail-marker {
+    background: var(--color-text-secondary);
+    opacity: 0.8;
+  }
+  .gate-rail-step.is-active .gate-rail-marker {
+    background: var(--color-accent);
+    opacity: 1;
   }
 
   /* ── Deep-research "next" card (selection sidebar) ── */

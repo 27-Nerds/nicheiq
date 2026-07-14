@@ -61,12 +61,15 @@ REQUEUE_SWEEP_INTERVAL_SECONDS = 10 * 60
 TASK_TYPE_LANDING_PAGE = "landing_page"
 TASK_TYPE_RESEARCH_PHASE2 = "research_phase2"
 TASK_TYPE_REGENERATE_IDEAS = "regenerate_ideas"
+TASK_TYPE_SEED_IDEA = "seed_idea"
 TASK_TYPE_CATALOG_PAIN_POINTS = "catalog_pain_points"
 TASK_TYPE_CATALOG_IDEAS = "catalog_ideas"
 TASK_TYPE_CATALOG_PAIN_RESEARCH = "catalog_pain_research"
 TASK_TYPE_CATALOG_DEEP_RESEARCH = "catalog_deep_research"
+TASK_TYPE_CONTINUE_FROM_GATE = "continue_from_gate"
 JOB_MODE_INTERACTIVE = "interactive"
 STATUS_AWAITING_SELECTION = "awaiting_selection"
+STATUS_AWAITING_GATE = "awaiting_gate"
 
 # Graceful shutdown
 shutdown_requested = False
@@ -145,6 +148,16 @@ def process_job(job_data: dict) -> None:
     current_job_id = job_id
     logger.info(f"Processing job {job_id} (task_type={task_type})")
 
+    # Register the dispatch id BEFORE anything reports home — notify_job_started is itself a
+    # guarded callback, so the id has to be in place before that first call. Missing id (an
+    # older backend, or a message that was already in the queue when this shipped) is fine:
+    # every callback simply omits the field and the backend takes its legacy path.
+    from .progress import set_active_dispatch, clear_active_dispatch
+    dispatch_id = job_data.get("dispatch_id")
+    set_active_dispatch(job_id, dispatch_id)
+    if dispatch_id:
+        logger.info(f"Job {job_id} dispatch={dispatch_id}")
+
     try:
         # Notify backend that we're starting this job
         from .heartbeat import notify_job_started, set_current_job
@@ -183,6 +196,20 @@ def process_job(job_data: dict) -> None:
                 existing_solution_names=job_data.get("existing_solution_names", []),
                 niche=job_data.get("niche", ""),
                 idea_focus=job_data.get("idea_focus"),
+            )
+        elif task_type == TASK_TYPE_SEED_IDEA:
+            from .tasks import run_seed_idea
+
+            result = run_seed_idea(
+                job_id=job_id,
+                checkpoint_path=job_data["checkpoint_path"],
+                seed={
+                    "seed_text": job_data.get("seed_text", ""),
+                    "pain_ref": job_data.get("pain_ref"),
+                    "tool_ref": job_data.get("tool_ref"),
+                },
+                niche=job_data.get("niche", ""),
+                dispatch_id=job_data.get("dispatch_id"),
             )
         elif task_type == TASK_TYPE_CATALOG_PAIN_POINTS:
             from .tasks import run_catalog_pain_points
@@ -229,6 +256,16 @@ def process_job(job_data: dict) -> None:
                 niche=job_data.get("niche", ""),
                 user_id=job_data.get("user_id"),
             )
+        elif task_type == TASK_TYPE_CONTINUE_FROM_GATE:
+            from .tasks import continue_from_gate
+
+            result = continue_from_gate(
+                job_id=job_id,
+                checkpoint_path=job_data["checkpoint_path"],
+                gate_stage=job_data["gate_stage"],
+                mode=job_data.get("mode", "continue"),
+                patch=job_data.get("patch"),
+            )
         else:
             # Default research task
             niche = job_data.get("niche")
@@ -238,8 +275,9 @@ def process_job(job_data: dict) -> None:
             job_mode = job_data.get("job_mode")
             entry_mode = job_data.get("entry_mode")
             idea_focus = job_data.get("idea_focus")
+            chat_mode = job_data.get("chat_mode", False)
 
-            logger.info(f"Processing research for user {user_id or 'anonymous'}: {niche[:50]}... (resume={resume}, mode={job_mode})")
+            logger.info(f"Processing research for user {user_id or 'anonymous'}: {niche[:50]}... (resume={resume}, mode={job_mode}, chat_mode={chat_mode})")
 
             if job_mode == JOB_MODE_INTERACTIVE:
                 from .tasks import run_interactive_research
@@ -252,6 +290,7 @@ def process_job(job_data: dict) -> None:
                     resume=resume,
                     entry_mode=entry_mode,
                     idea_focus=idea_focus,
+                    chat_mode=chat_mode,
                 )
             else:
                 from .tasks import run_research_job
@@ -267,14 +306,21 @@ def process_job(job_data: dict) -> None:
         logger.info(f"Job {job_id} completed: {result}")
 
         # For interactive jobs that are awaiting selection, don't notify completion
-        if isinstance(result, dict) and result.get("status") == STATUS_AWAITING_SELECTION:
-            logger.info(f"Job {job_id} awaiting user selection - worker releasing without completion notification")
+        if isinstance(result, dict) and result.get("status") in (STATUS_AWAITING_SELECTION, STATUS_AWAITING_GATE):
+            logger.info(
+                f"Job {job_id} awaiting {result.get('status')} - worker releasing without "
+                "completion notification"
+            )
         elif task_type in (TASK_TYPE_CATALOG_PAIN_POINTS, TASK_TYPE_CATALOG_IDEAS):
             logger.info(f"Job {job_id} catalog generation complete - worker releasing")
             from .heartbeat import notify_job_completed
             notify_job_completed(job_id)
         elif task_type == TASK_TYPE_REGENERATE_IDEAS:
             logger.info(f"Job {job_id} regeneration complete - worker releasing")
+            from .heartbeat import notify_job_completed
+            notify_job_completed(job_id)
+        elif task_type == TASK_TYPE_SEED_IDEA:
+            logger.info(f"Job {job_id} seed idea settled - worker releasing")
             from .heartbeat import notify_job_completed
             notify_job_completed(job_id)
         else:
@@ -314,6 +360,59 @@ def process_job(job_data: dict) -> None:
                 logger.error(f"Failed to revert regeneration for {job_id}: {revert_err}")
                 # Fall through to notify_job_failed as last resort
 
+        # Seed-idea failures (eager-meandering-feather.md Phase 5) must NEVER fall through to
+        # the generic notify_job_failed — that path refunds 'discovery'/segment, a charge the
+        # seed op never made, and would mark the WHOLE research job FAILED over a small paid
+        # follow-up request. Two distinct outcomes, neither of which is a generic job failure:
+        #
+        #   1. seed_delivery_only: the merge already landed and was SAVED (run_seed_idea's own
+        #      notify_seed_complete exhausted its retries) — the money is owed. Nothing to
+        #      revert; log loudly for a manual retry against the dispatch id and stop.
+        #   2. genuine pipeline failure (birth produced nothing, or raised before any merge):
+        #      notify_seed_failed reverts QUEUED/RUNNING -> AWAITING_SELECTION and refunds
+        #      seed_idea_N. Its own delivery failure is ALSO not escalated to notify_job_failed
+        #      — same reasoning as case 1, just the opposite charge.
+        if task_type == TASK_TYPE_SEED_IDEA:
+            if getattr(e, "seed_delivery_only", False):
+                logger.error(
+                    f"Seed idea for job {job_id} completed and was saved, but delivery to the "
+                    "backend failed — leaving the job as-is (never refund/discard a saved "
+                    "outcome); needs a manual retry against the dispatch id."
+                )
+                return
+            try:
+                from .progress import notify_seed_failed
+                delivered = notify_seed_failed(job_id, error_msg)
+                if not delivered:
+                    logger.error(
+                        f"Seed-failed revert not delivered for {job_id} — the job may be stuck "
+                        "QUEUED/RUNNING; NOT falling through to notify_job_failed (would "
+                        "incorrectly refund/fail the parent job for a seed-only failure)"
+                    )
+            except Exception as revert_err:
+                logger.error(f"Failed to revert seed idea for {job_id}: {revert_err}")
+            return  # never generic notify_job_failed for a seed op, delivered or not
+
+        # Gate-continuation failures (an invalid/stale patch, or a stage error while running
+        # to the next stop) should revert to AWAITING_GATE, not FAILED — mirrors the
+        # regeneration-failure interception above (Codex 7 / lead #4). Preserves the existing
+        # gate artifact/patch history and avoids an incorrect credit refund; the user can retry.
+        if task_type == TASK_TYPE_CONTINUE_FROM_GATE:
+            try:
+                from .progress import notify_gate_failed
+                gate_stage = getattr(e, "gate_stage", None) or job_data.get("gate_stage")
+                delivered = notify_gate_failed(job_id, gate_stage, error_msg)
+                if delivered:
+                    return  # Don't fall through to notify_job_failed
+                logger.error(
+                    f"Gate-failed revert not delivered for {job_id} — falling through to "
+                    "notify_job_failed (never leave the job silently stuck in QUEUED)"
+                )
+                # Fall through to notify_job_failed as last resort
+            except Exception as revert_err:
+                logger.error(f"Failed to revert gate continuation for {job_id}: {revert_err}")
+                # Fall through to notify_job_failed as last resort
+
         # Extract stage from exception if available (set by tasks.py)
         failed_stage = getattr(e, 'failed_stage', None)
 
@@ -325,6 +424,10 @@ def process_job(job_data: dict) -> None:
         current_job_id = None
         from .heartbeat import set_current_job
         set_current_job(None)
+        # Drop the dispatch id with the job. A worker process handles many jobs in sequence,
+        # and a leaked id would be stamped onto the NEXT job's callbacks — where it would match
+        # nothing and silently no-op every one of them.
+        clear_active_dispatch(job_id)
         # Force a collection cycle so glibc (with MALLOC_ARENA_MAX=2) can return
         # arenas to the OS between jobs. Then log current RSS for leak-watching.
         gc.collect()

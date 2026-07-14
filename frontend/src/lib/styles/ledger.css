@@ -1,0 +1,140 @@
+/**
+ * Shared ledger vocabulary — the pieces the analyst thread and the segmented ledger
+ * were each writing for themselves. Two blinking carets with two keyframes, two green
+ * checks, two byte-identical field-label recipes, and the primary/ghost buttons written
+ * three times: the drift had already started (receipt gap 0.55rem vs proposal 0.6rem;
+ * success tint 5%/26% vs 4%/24%). One definition, one place.
+ *
+ * Global rather than a Svelte component so both components (and the gate card) can use
+ * the same class names without a wrapper for every button.
+ */
+
+:root {
+	/* The chat/ledger family's shared easing — was redeclared per component as
+	   --chat-motion / --ledger-motion / --selection-motion with the same curve. */
+	--ledger-motion: cubic-bezier(0.32, 0.72, 0, 1);
+	/* The mono gutter that YOU / ANALYST / SYSTEM tags sit in. Copy-pasted as a magic
+	   3.6rem into two files, with different padding, so adjacent rows didn't line up. */
+	--ledger-tag-col: 3.6rem;
+	--ledger-gutter: 0.9rem;
+}
+
+/* ── The caret: the analyst is writing. Not a bouncing-dot cartoon. ── */
+.ledger-caret {
+	display: inline-block;
+	width: 0.5em;
+	height: 0.95em;
+	margin-left: 1px;
+	background: var(--color-text-secondary);
+	vertical-align: text-bottom;
+	animation: ledger-caret-blink 1s step-end infinite;
+}
+@keyframes ledger-caret-blink {
+	50% {
+		opacity: 0;
+	}
+}
+
+/* ── The stamp: something landed on the record. Green means exactly this. ── */
+.ledger-check {
+	color: var(--color-success-text);
+	font-weight: 800;
+}
+
+/* ── Field rows: a mono micro-label over the value it names. ── */
+.ledger-field {
+	display: grid;
+	gap: var(--space-1);
+}
+.ledger-field dt {
+	font-family: var(--font-mono);
+	font-size: 0.625rem;
+	font-weight: 800;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--color-text-muted);
+}
+.ledger-field dd {
+	margin: 0;
+	font-size: 0.8125rem;
+	line-height: 1.5;
+	color: var(--color-text-primary);
+	word-break: break-word;
+}
+
+/* ── Buttons. The primary recipe existed three times (proposal Apply, receipt
+     Continue, the run page's CTA), the ghost twice. Orange = the click that changes
+     the research; everything else is an outline. ── */
+.ledger-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-1-5);
+	min-height: 2.25rem;
+	padding: var(--space-2) var(--space-3);
+	border-radius: var(--radius-md);
+	font-family: var(--font-body);
+	font-size: 0.75rem;
+	font-weight: 700;
+	cursor: pointer;
+	transition:
+		background 180ms var(--ledger-motion),
+		border-color 180ms var(--ledger-motion),
+		color 180ms var(--ledger-motion),
+		transform 180ms var(--ledger-motion);
+}
+.ledger-btn:focus-visible {
+	outline: 2px solid var(--color-accent);
+	outline-offset: 2px;
+}
+.ledger-btn:active:not(:disabled) {
+	transform: scale(0.98);
+}
+
+.ledger-btn--primary {
+	background: var(--color-accent-hover);
+	border: 1px solid var(--color-accent-hover);
+	color: var(--color-text-on-accent);
+}
+.ledger-btn--primary:hover:not(:disabled) {
+	background: var(--color-accent-dark);
+}
+.ledger-btn--primary:disabled {
+	opacity: 0.55;
+	cursor: not-allowed;
+}
+
+.ledger-btn--ghost {
+	background: transparent;
+	/* 1.4.11: a ghost button's border is its only edge and must clear 3:1. */
+	border: 1px solid var(--color-input-border);
+	color: var(--color-text-secondary);
+}
+.ledger-btn--ghost:hover:not(:disabled) {
+	border-color: var(--color-text-secondary);
+	color: var(--color-text-primary);
+}
+.ledger-btn--ghost:disabled {
+	opacity: 0.55;
+	cursor: not-allowed;
+}
+
+/* A button that is WORKING is not inert: its label is the status the user is waiting
+   to read, so it keeps full contrast. Only genuinely-dead controls get dimmed. */
+.ledger-btn.is-busy:disabled {
+	opacity: 1;
+	cursor: progress;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ledger-caret {
+		animation: none;
+		opacity: 0.6;
+	}
+	.ledger-btn {
+		transition: none;
+	}
+	.ledger-btn:active:not(:disabled) {
+		transform: none;
+	}
+}

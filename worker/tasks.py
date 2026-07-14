@@ -24,6 +24,9 @@ from .progress import (
     notify_regeneration_complete,
     notify_catalog_pain_points_ready,
     notify_catalog_ideas_ready,
+    notify_gate_reached,
+    notify_gate_failed,
+    notify_seed_complete,
 )
 from .status import mark_job_running
 
@@ -283,6 +286,7 @@ def run_interactive_research(
     resume: bool = False,
     entry_mode: Optional[str] = None,
     idea_focus: Optional[str] = None,
+    chat_mode: bool = False,
 ) -> dict:
     """
     Interactive research task: runs Phase 1, validates solutions, waits for user selection.
@@ -292,8 +296,14 @@ def run_interactive_research(
     If user selects during validation → immediately continue to Phase 2
     If validation completes without selection → return awaiting_selection
 
+    chat_mode (guided research, Phase B): stops after Stage 1 instead of running the full
+    Phase 1 (stages 1→5) — the G1 gate. Subsequent gate continuations (G1→G2, G2→rest of
+    Phase 1) are handled entirely by `continue_from_gate`; this task is only ever the FIRST
+    dispatch of a guided-mode job.
+
     Returns:
         {"status": "completed", "report_path": str} or {"status": "awaiting_selection"}
+        or (chat_mode) {"status": "awaiting_gate", "gate_stage": 1, ...}
     """
     logger.info(f"[Worker] Starting interactive research job {job_id} for niche: {niche[:100]}...")
 
@@ -321,6 +331,28 @@ def run_interactive_research(
 
         if not resume:
             progress_callback(1, "Niche Analysis", "running")
+
+        if chat_mode:
+            # ======= Guided mode: stop after Stage 1 (G1 gate) =======
+            logger.info(f"[Worker] Running Stage 1 only for job {job_id} (chat_mode, resume={resume})")
+            flow.run_with_resume(auto_resume=resume, stop_after_stage=1)
+
+            # DR B2: branch BEFORE the "Phase 1 did not produce solution ideas" hard-raise
+            # below — a G1 stop means solution_ideas don't exist yet (Stage 5 hasn't run), so
+            # that check would instantly fail a guided-mode job.
+            checkpoint_path = ""
+            if flow.checkpoint_mgr and flow.checkpoint_mgr.checkpoint_folder:
+                checkpoint_path = str(flow.checkpoint_mgr.checkpoint_folder)
+            gate_artifact = flow._extract_stage_artifact(1) or {}
+            notify_gate_reached(
+                job_id, gate_stage=1, checkpoint_path=checkpoint_path,
+                gate_artifact=gate_artifact, cost_summary=_resolve_cost_summary(flow),
+            )
+            logger.info(f"[Worker] Job {job_id} entering AWAITING_GATE (stage 1)")
+            return {
+                "status": "awaiting_gate", "job_id": job_id, "gate_stage": 1,
+                "checkpoint_path": checkpoint_path,
+            }
 
         # ======= PHASE 1: Run stages 1→5 (idea generation) =======
         logger.info(f"[Worker] Running Phase 1 for job {job_id} (resume={resume})")
@@ -381,8 +413,19 @@ def run_interactive_research(
 
         if isinstance(e, QualityGateStopException):
             logger.info(f"[Worker] Interactive job {job_id} stopped by quality gate: {e.reason}")
-            notify_job_quality_gate_stop(job_id, e.reason, e.details, e.stage)
-            return None
+            delivered = notify_job_quality_gate_stop(job_id, e.reason, e.details, e.stage)
+            if delivered:
+                return None
+            # Delivery failed — don't silently leave the job stuck in RUNNING/QUEUED (Codex
+            # review finding 6). Re-raise so queue_consumer's generic notify_job_failed path
+            # takes over instead of treating this as a recovered stop.
+            logger.error(
+                f"[Worker] Quality-gate-stop not delivered for {job_id} — re-raising to "
+                "fall through to notify_job_failed"
+            )
+            if hasattr(flow, "state") and flow.state:
+                e.failed_stage = flow.state.current_stage  # type: ignore
+            raise
 
         error_msg = str(e)
         logger.error(f"[Worker] Interactive job {job_id} failed: {error_msg}\n{traceback.format_exc()}")
@@ -391,6 +434,210 @@ def run_interactive_research(
         if hasattr(flow, "state") and flow.state:
             failed_stage = flow.state.current_stage
         e.failed_stage = failed_stage  # type: ignore
+        raise
+
+    finally:
+        try:
+            if flow is not None:
+                flow.cleanup_collections()
+        except Exception as cleanup_err:
+            logger.debug(f"Knowledge cleanup error (non-fatal): {cleanup_err}")
+
+
+def _notify_phase1_complete_from_gate(job_id: str, flow) -> dict:
+    """Shared tail for continue_from_gate's transition to AWAITING_SELECTION — used both by
+    the normal gate_stage==4 continuation and the degenerate-G2 fallback (gate_stage==1 whose
+    G2 gate artifact came back None, so the flow already skipped the gate stop and ran through
+    to the Phase-1-completion stop instead — Codex review finding 2)."""
+    state = flow.state
+    idea_gen = getattr(state, "idea_generation", None)
+    if not idea_gen or not hasattr(idea_gen, "solution_ideas") or not idea_gen.solution_ideas:
+        raise RuntimeError("Phase 1 did not produce solution ideas")
+
+    from nicheiq.models.solution_idea import visible_ideas
+
+    solutions = visible_ideas(idea_gen.solution_ideas)
+    solution_previews = [_solution_to_preview_dict(s) for s in solutions]
+    final_checkpoint_path = str(flow.checkpoint_mgr.checkpoint_folder)
+
+    discovery_data_path = ""
+    preview_report_path = ""
+    preview_output_dir = str(settings.checkpoint_dir)
+    try:
+        result = flow._materialize_discovery_data(preview_output_dir)
+        if result:
+            discovery_data_path = result
+            logger.info(f"[Worker] Discovery data materialized: {discovery_data_path}")
+    except Exception as e:
+        logger.warning(f"[Worker] Failed to materialize discovery data: {e}")
+    try:
+        result = flow._materialize_preview_report(preview_output_dir)
+        if result:
+            preview_report_path = result
+            logger.info(f"[Worker] Preview report materialized: {preview_report_path}")
+    except Exception as e:
+        logger.warning(f"[Worker] Failed to materialize preview report: {e}")
+
+    notify_ideas_ready(
+        job_id, solution_previews, final_checkpoint_path, len(solutions),
+        skip_validation=True, discovery_data_path=discovery_data_path,
+        preview_report_path=preview_report_path, cost_summary=_resolve_cost_summary(flow),
+    )
+    logger.info(f"[Worker] Job {job_id} entering AWAITING_SELECTION (from G2)")
+    return {"status": "awaiting_selection", "job_id": job_id}
+
+
+def continue_from_gate(
+    job_id: str,
+    checkpoint_path: str,
+    gate_stage: int,
+    mode: str = "continue",
+    patch: Optional[dict] = None,
+) -> dict:
+    """
+    Continue a guided-mode (chatMode) job from a G1 (Stage 1) or G2 (Stage 4) gate.
+
+    mode='continue' (default): apply an optional patch, then run to the NEXT stop —
+        G1 -> stop_after_stage=4 (G2); G2 -> stop_after_phase=1 (Phase 1 complete,
+        AWAITING_SELECTION, same shape as `run_interactive_research`'s non-chat-mode path).
+    mode='apply_stay': apply the (required) patch, then re-notify the SAME gate with a
+        refreshed artifact — the run does NOT advance past this gate (the regeneration
+        round-trip shape: gate -> QUEUED -> worker -> same gate, per the plan's Decisions).
+
+    Replicates `run_research_phase2`/`_run_phase2_continuation`'s full setup sequence:
+    progress callback binding, mark_job_running, resume_from_checkpoint (restores cost
+    rows via load_state — NEVER manually load state or construct crews without the
+    tracker), skip_bulk_replay=True (the interactive frontend already has prior stages
+    rendered green from the live run, DR N2). Reports the EFFECTIVE post-resume checkpoint
+    path back on every notification (fork semantics — a cross-job resume forks to a new
+    folder, Codex 10), never the input `checkpoint_path`.
+
+    A GatePatchError (invalid/stale patch) or any other failure here is NOT retried as a
+    generic job failure — the caller (queue_consumer) intercepts this task_type's exception
+    and calls notify_gate_failed, reverting the job QUEUED -> AWAITING_GATE (retryable,
+    preserves the existing gate artifact/patch history) instead of FAILED.
+    """
+    logger.info(f"[Worker] continue_from_gate job={job_id} gate_stage={gate_stage} mode={mode}")
+
+    if mode == "apply_stay" and not patch:
+        raise RuntimeError("apply_stay requires a patch")
+
+    output_base = Path(os.environ.get("NICHEIQ_OUTPUT_DIR", "./output/jobs"))
+    output_dir = output_base / job_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    flow = None
+    try:
+        from nicheiq.flows.research_flow import ResearchFlow
+        from nicheiq.flows.gate_patches import GatePatchError, apply_gate_patch
+
+        progress_callback = create_progress_callback(job_id)
+
+        # niche_description="" — loaded from checkpoint, mirrors run_research_phase2.
+        flow = ResearchFlow(niche_description="", job_id=job_id)
+        flow.progress_callback = progress_callback
+
+        mark_job_running(job_id)
+
+        loaded = flow.resume_from_checkpoint(checkpoint_path)
+        if not loaded:
+            raise RuntimeError(f"Failed to load checkpoint from {checkpoint_path}")
+
+        if patch:
+            try:
+                apply_gate_patch(flow.state, gate_stage, patch, flow=flow)
+            except GatePatchError as e:
+                raise RuntimeError(f"Invalid gate patch: {e}") from e
+
+        if mode == "apply_stay":
+            if gate_stage == 1:
+                gate_artifact = flow._extract_stage_artifact(1) or {}
+            elif gate_stage == 4:
+                gate_artifact = flow._build_g2_gate_artifact()
+                if gate_artifact is None:
+                    # Neither pain analysis nor audience mapping survived the patch — there
+                    # is nothing left to gate on. Route to the failure path (queue_consumer
+                    # -> notify_gate_failed -> revert QUEUED -> AWAITING_GATE, retryable)
+                    # instead of silently re-notifying an empty {} card (finding 2).
+                    raise RuntimeError("G2 gate artifact unavailable after apply_stay patch")
+            else:
+                raise RuntimeError(f"Unsupported gate_stage for apply_stay: {gate_stage}")
+            effective_checkpoint_path = str(flow.checkpoint_mgr.checkpoint_folder)
+            notify_gate_reached(
+                job_id, gate_stage=gate_stage, checkpoint_path=effective_checkpoint_path,
+                gate_artifact=gate_artifact, cost_summary=_resolve_cost_summary(flow),
+            )
+            logger.info(f"[Worker] Job {job_id} apply_stay complete — re-notified gate {gate_stage}")
+            return {
+                "status": "awaiting_gate", "job_id": job_id, "gate_stage": gate_stage,
+                "checkpoint_path": effective_checkpoint_path,
+            }
+
+        # mode == "continue": run to the NEXT stop.
+        if gate_stage == 1:
+            # stop_after_phase=1 bounds the degenerate-G2 fallthrough (finding 2): if the
+            # flow skips the G2 stop because neither pain analysis nor audience mapping
+            # survived, it would otherwise run the ENTIRE remaining pipeline unattended
+            # inside this one task. Passing both is safe in the normal case — the
+            # stop_after_stage==4 return inside the ladder fires first, so stop_after_phase=1
+            # is never reached.
+            flow._execute_remaining_stages(
+                stop_after_stage=4, stop_after_phase=1, skip_bulk_replay=True)
+            effective_checkpoint_path = str(flow.checkpoint_mgr.checkpoint_folder)
+            gate_artifact = flow._build_g2_gate_artifact()
+            if gate_artifact is not None:
+                notify_gate_reached(
+                    job_id, gate_stage=4, checkpoint_path=effective_checkpoint_path,
+                    gate_artifact=gate_artifact, cost_summary=_resolve_cost_summary(flow),
+                )
+                logger.info(f"[Worker] Job {job_id} entering AWAITING_GATE (stage 4)")
+                return {
+                    "status": "awaiting_gate", "job_id": job_id, "gate_stage": 4,
+                    "checkpoint_path": effective_checkpoint_path,
+                }
+            # Degenerate G2 — the flow already skipped the gate stop and continued to the
+            # Phase-1-completion stop instead. Finish exactly like gate_stage==4 does.
+            logger.warning(
+                f"[Worker] Job {job_id} G2 gate unavailable (no pain analysis or audience "
+                "mapping) — skipped the gate and continued to Phase-1 completion"
+            )
+            return _notify_phase1_complete_from_gate(job_id, flow)
+
+        if gate_stage == 4:
+            flow._execute_remaining_stages(stop_after_phase=1, skip_bulk_replay=True)
+            return _notify_phase1_complete_from_gate(job_id, flow)
+
+        raise RuntimeError(f"Unsupported gate_stage: {gate_stage}")
+
+    except Exception as e:
+        from .heartbeat import JobCancelledException
+        from nicheiq.flows.research_flow import QualityGateStopException
+
+        if isinstance(e, JobCancelledException):
+            logger.info(f"[Worker] continue_from_gate job {job_id} cancelled by user")
+            raise
+
+        if isinstance(e, QualityGateStopException):
+            logger.info(f"[Worker] continue_from_gate job {job_id} stopped by quality gate: {e.reason}")
+            delivered = notify_job_quality_gate_stop(job_id, e.reason, e.details, e.stage)
+            if delivered:
+                return None
+            # Delivery failed — don't silently leave the job stuck in RUNNING/QUEUED (Codex
+            # review finding 6, "same discipline" as notify_gate_failed). Re-raise so this
+            # falls through to queue_consumer's TASK_TYPE_CONTINUE_FROM_GATE handling
+            # (notify_gate_failed, and ultimately notify_job_failed if that also fails).
+            logger.error(
+                f"[Worker] Quality-gate-stop not delivered for {job_id} — re-raising to "
+                "fall through to the gate-failure/job-failure safety net"
+            )
+            e.gate_stage = gate_stage  # type: ignore
+            raise
+
+        error_msg = str(e)
+        logger.error(
+            f"[Worker] continue_from_gate failed for job {job_id}: {error_msg}\n{traceback.format_exc()}"
+        )
+        e.gate_stage = gate_stage  # type: ignore
         raise
 
     finally:
@@ -1080,6 +1327,214 @@ def run_regenerate_ideas(
 
         logger.error(f"[Worker] Regeneration failed for job {job_id}: {e}\n{traceback.format_exc()}")
         e.failed_stage = 7  # type: ignore
+        raise
+
+    finally:
+        try:
+            if flow is not None:
+                flow.cleanup_collections()
+        except Exception as cleanup_err:
+            logger.debug(f"Knowledge cleanup error (non-fatal): {cleanup_err}")
+
+
+def run_seed_idea(
+    job_id: str,
+    checkpoint_path: str,
+    seed: dict,
+    niche: str,
+    dispatch_id: Optional[str] = None,
+) -> dict:
+    """
+    User-seed pipeline (eager-meandering-feather.md Phase 5): birth + score exactly ONE
+    user-composed idea and merge it into the existing pool. Clones `run_regenerate_ideas`'s
+    spine (resume checkpoint -> build ONE crew -> run -> merge -> re-save), but:
+
+    - The crew is HYDRATED (`crew.hydrate_from_state`), never re-run cold — a seed must not
+      re-probe paid Phase-1 evidence (incumbents, wallet brief, data menu, payability) the user
+      already paid for.
+    - Birth/tournament/scoring/finalization all live in `UnifiedSolutionCrew.
+      execute_seed_pipeline` (Phase 4) — the REAL per-cell birth path
+      (`_run_seed_cell` -> `_tournament_cell` -> `_score_cell_winner`), never a hand-built idea.
+    - The seed may come back ACTIVE or DEMOTED — both are sent; the UI shows a demoted seed in
+      Examined & ruled out rather than hiding it. Only a TOTAL birth failure (`execute_seed_
+      pipeline` returns None) is a pipeline failure.
+    - Dedup is keep-with-caveat, NEVER drop: a paid request must not vanish from the pool. A
+      seed that structurally duplicates an existing pool idea (`detect_catalog_duplicate`) is
+      merged anyway, with `duplicate_of` stamped naming the existing idea.
+    - This function does the WORKER's own authoritative `save_stage("stage_5_3_refinement")`
+      post-merge — `execute_seed_pipeline`'s own tail (`_finalize_seed_tail`) deliberately never
+      saves, so the seed can't race/overwrite the pool checkpoint mid-evaluation.
+
+    `seed` is `{'seed_text': str, 'pain_ref': str | None, 'tool_ref': str | None}` — the
+    chat-composed idea (free text required, refs optional; pain/tool resolution itself happens
+    inside `execute_seed_pipeline` via `resolve_seed_anchors`, not here).
+
+    Delivery of the outcome (`notify_seed_complete`) raises on exhausted retries rather than
+    swallowing — by the time it's called the merge is already saved, so a delivery failure must
+    never be mistaken for a pipeline failure (which would wrongly refund a completed request).
+    The exception is tagged `seed_delivery_only` so queue_consumer can tell the two apart.
+    """
+    logger.info(f"[Worker] Seed idea for job {job_id}: {(seed.get('seed_text') or '')[:80]!r}")
+
+    flow = None
+    try:
+        from nicheiq.flows.research_flow import ResearchFlow
+
+        progress_callback = create_progress_callback(job_id)
+
+        flow = ResearchFlow(niche_description=niche, job_id=job_id)
+        flow.progress_callback = progress_callback
+
+        loaded = flow.resume_from_checkpoint(checkpoint_path)
+        if not loaded:
+            raise RuntimeError(f"Failed to load checkpoint from {checkpoint_path}")
+
+        state = flow.state
+        progress_callback(5, "Solution Pipeline", "running")
+
+        from nicheiq.crews.unified_solution_crew import SeedRequest, UnifiedSolutionCrew
+
+        pain_points = getattr(state, "pain_point_analysis", None)
+        social_content = getattr(state, "social_content", None)
+        niche_context = getattr(state, "niche_context", None)
+        audience = getattr(state, "audience_mapping", None)
+        competitor_mentions = getattr(state, "competitor_mentions_formatted", None)
+
+        crew = UnifiedSolutionCrew(
+            pain_point_analysis=pain_points,
+            social_content=social_content,
+            allowed_project_types=flow.allowed_project_types,
+            niche_context=niche_context,
+            audience_mapping=audience,
+            checkpoint_mgr=flow.checkpoint_mgr,
+            job_id=job_id,
+            competitor_mentions_text=competitor_mentions,
+            idea_focus=(getattr(flow, "idea_focus", "auto") or "auto"),
+            cost_tracker=flow.cost_tracker,
+        )
+        # No crew survives a checkpoint resume — restore the Phase-1 evidence caches this
+        # process already paid for instead of cold-re-probing them (Phase 4 section C).
+        crew.hydrate_from_state(state)
+
+        idea = crew.execute_seed_pipeline(SeedRequest(
+            seed_text=seed.get("seed_text") or "",
+            pain_ref=seed.get("pain_ref"),
+            tool_ref=seed.get("tool_ref"),
+            dispatch_id=dispatch_id or "seed",
+        ))
+
+        if idea is None:
+            raise RuntimeError("Seed pipeline did not produce an idea")
+
+        old_solutions = list(getattr(state.idea_generation, "solution_ideas", None) or [])
+
+        # Dedup: keep-with-caveat, NEVER drop. A paid seed is merged regardless of whether it
+        # structurally duplicates an existing pool idea — only stamped, mirroring
+        # run_regenerate_ideas's detect_catalog_duplicate check but with the opposite outcome
+        # (regeneration may discard a batch duplicate; a lone paid seed never does).
+        try:
+            from nicheiq.utils.validation.crew_guardrails import detect_catalog_duplicate
+
+            for existing in old_solutions:
+                existing_dict = {
+                    "name": getattr(existing, "solution_name", "") or getattr(existing, "name", ""),
+                    "description": getattr(existing, "description", ""),
+                    "mechanism_tag": getattr(existing, "mechanism_tag", None),
+                    "data_source_tag": getattr(existing, "data_source_tag", None),
+                    "journey_tag": getattr(existing, "journey_tag", None),
+                }
+                if detect_catalog_duplicate(idea, existing_dict):
+                    idea.duplicate_of = existing_dict["name"] or None
+                    logger.info(
+                        f"[Seed] job {job_id}: seed idea structurally duplicates "
+                        f"'{idea.duplicate_of}' — kept, caveat stamped"
+                    )
+                    break
+        except Exception as e:
+            logger.warning(f"[Seed] duplicate check skipped (non-fatal): {e}")
+
+        merged_solutions = old_solutions + [idea]
+        if state.idea_generation:
+            state.idea_generation.solution_ideas = merged_solutions
+
+        # A DEMOTED seed must land in "Examined & ruled out", not the selectable pool —
+        # merge this dispatch's ruled-out record(s) into the state ledger (mirrors
+        # research_flow.py's post-Stage-5 merge at :4371-4374). Filtered to `dispatch_id`
+        # since a reused crew instance could in principle carry more than this seed's own
+        # entry. `save_stage` below flushes this via its metadata side effect — no separate
+        # persistence call needed (checkpoint_manager.py's `_update_checkpoint_metadata`
+        # reads `self.state.idea_ruled_out` directly, not the `stage_data` argument).
+        state.idea_ruled_out = list(getattr(state, "idea_ruled_out", None) or []) + [
+            r for r in (crew.ruled_out_pains or []) if r.get("dispatch_id") == dispatch_id
+        ]
+
+        # The WORKER's own authoritative save — execute_seed_pipeline/_finalize_seed_tail
+        # deliberately never saves, so this is the ONLY write of the merged pool.
+        if flow.checkpoint_mgr and state.idea_generation:
+            flow.checkpoint_mgr.save_stage("stage_5_3_refinement", state.idea_generation)
+
+        # Re-materialize the preview report so the SAME asset the UI reads
+        # (assetService.ts / AssetType.PREVIEW_REPORT) reflects the new ruled-out record —
+        # `_materialize_preview_report` is keyed by job_id, so this overwrites the exact
+        # file the earlier Phase-1 materialization wrote (research_flow.py's
+        # `_materialize_preview_report` call sites at ~:474/968 use the same output_dir).
+        try:
+            flow._materialize_preview_report(str(settings.checkpoint_dir))
+        except Exception as e:
+            logger.warning(f"[Seed] Failed to re-materialize preview report for job {job_id}: {e}")
+
+        progress_callback(5, "Solution Pipeline", "completed")
+
+        outcome = "accepted" if getattr(idea, "candidate_status", "active") == "active" else "demoted"
+        preview = _solution_to_preview_dict(idea)
+
+        # The merge is DONE and SAVED at this point — the money is owed no matter what happens
+        # next. A delivery failure here must never be read as a pipeline failure by the caller.
+        try:
+            notify_seed_complete(job_id, preview, outcome, cost_summary=_resolve_cost_summary(flow))
+        except Exception as delivery_err:
+            delivery_err.seed_delivery_only = True  # type: ignore
+            raise
+
+        return {"status": "seed_settled", "job_id": job_id, "outcome": outcome}
+
+    except Exception as e:
+        from .heartbeat import JobCancelledException
+
+        if isinstance(e, JobCancelledException):
+            raise
+
+        if getattr(e, "seed_delivery_only", False):
+            logger.error(
+                f"[Worker] Seed idea for job {job_id} completed and was saved, but delivery to "
+                f"the backend failed: {e}. This is a DELIVERY failure, not a pipeline failure — "
+                "must not be refunded or discarded."
+            )
+            # ...except queue_consumer's seed_delivery_only handler can't actually deliver on
+            # that promise: it just logs and returns, leaving the job RUNNING — which the
+            # heartbeat's stale-dispatch sweep will eventually cancel and REFUND anyway. Once
+            # that refund fires it must be honest: revert the merge (and its ruled-out record)
+            # from the checkpoint here so the unpaid seed doesn't survive as a ghost idea in
+            # the eventual report. Save-before-notify above is otherwise correct — Phase 2
+            # resolves selections off the checkpoint, not off this notification.
+            try:
+                if flow.checkpoint_mgr and state.idea_generation:
+                    state.idea_generation.solution_ideas = old_solutions
+                    state.idea_ruled_out = [
+                        r for r in (getattr(state, "idea_ruled_out", None) or [])
+                        if r.get("dispatch_id") != dispatch_id
+                    ]
+                    flow.checkpoint_mgr.save_stage("stage_5_3_refinement", state.idea_generation)
+                    logger.info(
+                        f"[Worker] Reverted unpaid seed merge for job {job_id} pending refund "
+                        "(delivery never landed)"
+                    )
+            except Exception as revert_err:
+                logger.error(f"[Worker] Failed to revert seed checkpoint for {job_id}: {revert_err}")
+            raise
+
+        logger.error(f"[Worker] Seed idea failed for job {job_id}: {e}\n{traceback.format_exc()}")
+        e.failed_stage = 5  # type: ignore
         raise
 
     finally:

@@ -287,13 +287,32 @@ class BaseSolutionIdea(BaseModel):
         default=None, description="Name of the audience segment the generating cell reasoned as"
     )
     # Multi-Frame Idea Generation Portfolio: which generation FRAME minted this idea's cell —
-    # 'pain' (default/legacy) | 'gap' | 'data_asset' | 'workflow'.
+    # 'pain' (default/legacy) | 'gap' | 'data_asset' | 'workflow' | 'user_seed'.
     source_frame: Optional[str] = Field(
         default="pain",
         description=(
             "CODE-FILLED after generation — ALWAYS leave as the default; never set by the LLM. "
             "The typed generation frame that minted this idea's cell."
         ),
+    )
+    # User-seed pipeline (eager-meandering-feather.md Phase 4): True only for a 'user_seed' idea
+    # whose free text matched NO validated pain at resolve time — evaluated on its own merits
+    # (no market_fit cap, no fabricated pain) rather than as research-grounded. CODE-FILLED by
+    # `resolve_seed_anchors`/`_run_seed_cell`; None for every non-seed idea and for an ANCHORED
+    # seed (those get full parity — honest severity from the real matched pain). The UI uses this
+    # to label the idea "your hypothesis — not grounded in this run's evidence".
+    unanchored_hypothesis: Optional[bool] = Field(
+        default=None,
+        description="CODE-FILLED after generation — ALWAYS leave null/omit this field",
+    )
+    # User-seed pipeline (eager-meandering-feather.md Phase 5): worker-side dedup keep-with-
+    # caveat. A seed is a PAID request — it is never dropped for structurally duplicating an
+    # existing pool idea (detect_catalog_duplicate), unlike a regeneration batch, which may
+    # discard duplicates outright. Names the existing idea it duplicates instead. CODE-FILLED
+    # by the worker (run_seed_idea); None for every idea that isn't a structural duplicate.
+    duplicate_of: Optional[str] = Field(
+        default=None,
+        description="CODE-FILLED after generation — ALWAYS leave null/omit this field",
     )
     # Payability inherited from source_segment (permanent buyer-wallet signal): stamped in code so
     # the pure cap in _validate_idea_caps can read it off the idea. None = flag off / unscored.

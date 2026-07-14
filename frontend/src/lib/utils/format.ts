@@ -30,14 +30,24 @@ const SANITIZER_ALLOWED_ATTR = ['class'];
 
 // One-time hook: force safe rel/target on any sanitized anchor (only fires when
 // `a` is on the allow-list — i.e. the allowLinks path below). DOMPurify already
-// strips javascript:/data: hrefs; this just hardens external links.
+// strips javascript:/data: hrefs; this just hardens external links. Relative,
+// same-origin hrefs (e.g. the chat analyst's `/new?niche=...` pivot links) stay
+// in the current tab — they're app navigation, not an outbound link — so only
+// absolute (http/https/protocol-relative) hrefs get target=_blank.
 let _linkHookInstalled = false;
 function ensureLinkHook(): void {
 	if (_linkHookInstalled) return;
 	DOMPurify.addHook('afterSanitizeAttributes', (node: Element) => {
 		if (node.tagName === 'A' && node.hasAttribute('href')) {
-			node.setAttribute('target', '_blank');
-			node.setAttribute('rel', 'noopener noreferrer nofollow');
+			const href = node.getAttribute('href') || '';
+			const isRelative = href.startsWith('/') && !href.startsWith('//');
+			if (isRelative) {
+				node.removeAttribute('target');
+				node.removeAttribute('rel');
+			} else {
+				node.setAttribute('target', '_blank');
+				node.setAttribute('rel', 'noopener noreferrer nofollow');
+			}
 		}
 	});
 	_linkHookInstalled = true;

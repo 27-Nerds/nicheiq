@@ -21,10 +21,13 @@ vi.mock('../../services/db.js', () => ({
   },
 }));
 
+const mockCancelJob = vi.fn();
+
 vi.mock('../../services/jobService.js', () => ({
   getJob: vi.fn(),
   updateJobStatus: vi.fn(),
   getJobAsset: vi.fn(),
+  cancelJob: (...args: any[]) => mockCancelJob(...args),
 }));
 
 const mockRefundForStage = vi.fn();
@@ -104,6 +107,7 @@ beforeEach(async () => {
   mockJobUpdate.mockResolvedValue({ id: 'job-1', status: 'CANCELLED' });
   mockUpdateMany.mockResolvedValue({ count: 1 });
   mockRefundForStage.mockResolvedValue({ id: 'refund-1', amount: 5 });
+  mockCancelJob.mockResolvedValue({ cancelled: true, creditRefunded: 0 });
 
   app = express();
   app.use(express.json());
@@ -115,73 +119,74 @@ beforeEach(async () => {
 // ============================================
 // Tests
 // ============================================
-describe('POST /api/jobs/:jobId/cancel - stage marking', () => {
+describe('POST /api/jobs/:jobId/cancel - delegates to cancelJob service', () => {
   const jobId = '00000000-0000-0000-0000-000000000001';
 
-  it('marks running stages as FAILED when cancelling a RUNNING job', async () => {
-    mockJobFindFirst.mockResolvedValue({
-      id: jobId,
-      userId: 'user-123',
-      status: 'RUNNING',
-    });
+  it('calls cancelJob with the jobId after the ownership check passes', async () => {
+    mockJobFindFirst.mockResolvedValue({ id: jobId, userId: 'user-123', status: 'RUNNING' });
+
+    await request(app)
+      .post(`/api/jobs/${jobId}/cancel`)
+      .set(authHeaders);
+
+    expect(mockCancelJob).toHaveBeenCalledWith(jobId);
+  });
+
+  it('maps {cancelled: true, creditRefunded > 0} to 200 with the refund message', async () => {
+    mockJobFindFirst.mockResolvedValue({ id: jobId, userId: 'user-123', status: 'RUNNING' });
+    mockCancelJob.mockResolvedValue({ cancelled: true, creditRefunded: 5 });
 
     const response = await request(app)
       .post(`/api/jobs/${jobId}/cancel`)
       .set(authHeaders);
 
     expect(response.status).toBe(200);
-    expect(mockUpdateMany).toHaveBeenCalledWith({
-      where: { jobId, status: 'RUNNING' },
-      data: {
-        status: 'FAILED',
-        errorMessage: 'Cancelled by user',
-      },
+    expect(response.body).toEqual({
+      status: 'cancelled',
+      message: 'Job cancelled and credit refunded',
+      creditRefunded: 5,
     });
   });
 
-  it('sets error message to "Cancelled by user"', async () => {
-    mockJobFindFirst.mockResolvedValue({
-      id: jobId,
-      userId: 'user-123',
-      status: 'RUNNING',
-    });
+  it('maps {cancelled: true, creditRefunded: 0} to 200 without the refund message', async () => {
+    mockJobFindFirst.mockResolvedValue({ id: jobId, userId: 'user-123', status: 'QUEUED' });
+    mockCancelJob.mockResolvedValue({ cancelled: true, creditRefunded: 0 });
 
-    await request(app)
+    const response = await request(app)
       .post(`/api/jobs/${jobId}/cancel`)
       .set(authHeaders);
 
-    const updateManyCall = mockUpdateMany.mock.calls[0][0];
-    expect(updateManyCall.data.errorMessage).toBe('Cancelled by user');
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      status: 'cancelled',
+      message: 'Job cancelled',
+      creditRefunded: 0,
+    });
   });
 
-  it('calls updateMany even for QUEUED jobs (no-op, no RUNNING stages)', async () => {
-    mockJobFindFirst.mockResolvedValue({
-      id: jobId,
-      userId: 'user-123',
-      status: 'QUEUED',
-    });
+  it('maps {cancelled: false, reason: "not_found"} to 404', async () => {
+    mockJobFindFirst.mockResolvedValue({ id: jobId, userId: 'user-123', status: 'RUNNING' });
+    mockCancelJob.mockResolvedValue({ cancelled: false, reason: 'not_found' });
 
-    await request(app)
+    const response = await request(app)
       .post(`/api/jobs/${jobId}/cancel`)
       .set(authHeaders);
 
-    // updateMany is called but would match 0 rows for QUEUED jobs
-    expect(mockUpdateMany).toHaveBeenCalled();
+    expect(response.status).toBe(404);
+    expect(response.body.error).toBe('Job not found');
   });
 
-  it('does not attempt stage update for already finished jobs', async () => {
-    mockJobFindFirst.mockResolvedValue({
-      id: jobId,
-      userId: 'user-123',
-      status: 'COMPLETED',
-    });
+  it('maps {cancelled: false, reason: "not_cancellable", status: COMPLETED} to 400 "Job already finished"', async () => {
+    mockJobFindFirst.mockResolvedValue({ id: jobId, userId: 'user-123', status: 'COMPLETED' });
+    mockCancelJob.mockResolvedValue({ cancelled: false, reason: 'not_cancellable', status: 'COMPLETED' });
 
     const response = await request(app)
       .post(`/api/jobs/${jobId}/cancel`)
       .set(authHeaders);
 
     expect(response.status).toBe(400);
-    expect(mockUpdateMany).not.toHaveBeenCalled();
+    expect(response.body.error).toBe('Job already finished');
+    expect(response.body.status).toBe('COMPLETED');
   });
 });
 
@@ -190,6 +195,7 @@ describe('POST /api/jobs/:jobId/cancel - post-selection statuses are rejected', 
 
   it('rejects cancel from AWAITING_SELECTION', async () => {
     mockJobFindFirst.mockResolvedValue({ id: jobId, userId: 'user-123', status: 'AWAITING_SELECTION' });
+    mockCancelJob.mockResolvedValue({ cancelled: false, reason: 'not_cancellable', status: 'AWAITING_SELECTION' });
 
     const response = await request(app)
       .post(`/api/jobs/${jobId}/cancel`)
@@ -197,12 +203,11 @@ describe('POST /api/jobs/:jobId/cancel - post-selection statuses are rejected', 
 
     expect(response.status).toBe(400);
     expect(response.body.error).toBe('Cannot cancel job after solution selection');
-    expect(mockRefundForStage).not.toHaveBeenCalled();
-    expect(mockUpdateMany).not.toHaveBeenCalled();
   });
 
   it('rejects cancel from REGENERATING', async () => {
     mockJobFindFirst.mockResolvedValue({ id: jobId, userId: 'user-123', status: 'REGENERATING' });
+    mockCancelJob.mockResolvedValue({ cancelled: false, reason: 'not_cancellable', status: 'REGENERATING' });
 
     const response = await request(app)
       .post(`/api/jobs/${jobId}/cancel`)
@@ -210,12 +215,11 @@ describe('POST /api/jobs/:jobId/cancel - post-selection statuses are rejected', 
 
     expect(response.status).toBe(400);
     expect(response.body.error).toBe('Cannot cancel job after solution selection');
-    expect(mockRefundForStage).not.toHaveBeenCalled();
-    expect(mockUpdateMany).not.toHaveBeenCalled();
   });
 
   it('rejects cancel from RUNNING_PHASE2', async () => {
     mockJobFindFirst.mockResolvedValue({ id: jobId, userId: 'user-123', status: 'RUNNING_PHASE2' });
+    mockCancelJob.mockResolvedValue({ cancelled: false, reason: 'not_cancellable', status: 'RUNNING_PHASE2' });
 
     const response = await request(app)
       .post(`/api/jobs/${jobId}/cancel`)
@@ -223,7 +227,26 @@ describe('POST /api/jobs/:jobId/cancel - post-selection statuses are rejected', 
 
     expect(response.status).toBe(400);
     expect(response.body.error).toBe('Cannot cancel job after solution selection');
-    expect(mockRefundForStage).not.toHaveBeenCalled();
-    expect(mockUpdateMany).not.toHaveBeenCalled();
+  });
+});
+
+// Phase B (DR A1/Codex 12): AWAITING_GATE (guided mode's G1/G2 stage gates) sits strictly
+// BEFORE Stage 5 the same way PENDING/QUEUED/RUNNING do — symmetric with those, NOT with
+// AWAITING_SELECTION (which the block above intentionally keeps non-cancellable).
+describe('POST /api/jobs/:jobId/cancel - AWAITING_GATE is cancellable with discovery refund', () => {
+  const jobId = '00000000-0000-0000-0000-000000000001';
+
+  it('cancels a job AWAITING_GATE and refunds the discovery credit', async () => {
+    mockJobFindFirst.mockResolvedValue({ id: jobId, userId: 'user-123', status: 'AWAITING_GATE' });
+    mockCancelJob.mockResolvedValue({ cancelled: true, creditRefunded: 5 });
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/cancel`)
+      .set(authHeaders);
+
+    expect(response.status).toBe(200);
+    expect(response.body.status).toBe('cancelled');
+    expect(response.body.creditRefunded).toBe(5);
+    expect(mockCancelJob).toHaveBeenCalledWith(jobId);
   });
 });

@@ -45,7 +45,8 @@ import {
   hasMeaningfulResearchContext,
   MEANINGFUL_SELECT,
 } from '../services/researchContextService.js';
-import { JobStatus } from '@prisma/client';
+import { JobStatus, DispatchKind } from '@prisma/client';
+import { openDispatch } from '../services/dispatchService.js';
 import {
   FaqEntrySchema,
   FaqArraySchema,
@@ -579,8 +580,15 @@ adminCatalogRouter.post('/categories/:id/generate-pain-points', async (req: Auth
       throw e;
     }
 
+    // Every queue message carries a dispatch, so every worker callback is addressable — catalog
+    // jobs included. They are fresh rows today (so the null-guard would pass), but relying on
+    // "this job happens to have no dispatch" is exactly the assumption that broke resume.
+    const painDispatch = await prisma.$transaction((tx) =>
+      openDispatch(tx, { jobId: job.id, kind: DispatchKind.CONTINUE })
+    );
+
     // Enqueue the task
-    await enqueueCatalogPainPointsJob(job.id, categoryId, category.name, categoryDesc, category.parent?.name || '');
+    await enqueueCatalogPainPointsJob(job.id, categoryId, category.name, categoryDesc, category.parent?.name || '', painDispatch);
 
     res.json({ jobId: job.id });
   } catch (error) {
@@ -753,6 +761,10 @@ adminCatalogRouter.post('/categories/:id/generate-ideas', async (req: Authentica
       target_personas: Array.isArray(i.targetPersonas) ? (i.targetPersonas as string[]) : [],
     }));
 
+    const ideasDispatch = await prisma.$transaction((tx) =>
+      openDispatch(tx, { jobId: job.id, kind: DispatchKind.CONTINUE })
+    );
+
     await enqueueCatalogIdeasJob(
       job.id,
       categoryId,
@@ -762,6 +774,7 @@ adminCatalogRouter.post('/categories/:id/generate-ideas', async (req: Authentica
       existingIdeasMapped,
       parentSourceJobId,
       parentContext.contentCategorization ?? undefined,
+      ideasDispatch,
     );
 
     res.json({ jobId: job.id });

@@ -104,6 +104,26 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     );
   }
 
+  // Guided-mode (Phase B) G1/G2 stage gates — gateStage/gateArtifact/gateApplyCount
+  // already ride on `job` itself (jobFormatter), so GateWorkbench can render
+  // immediately without waiting on these; discoveryData/previewReport are fetched
+  // here to keep parity with the sibling AWAITING_SELECTION/REGENERATING statuses
+  // for any supporting context surfaced alongside the gate card.
+  if (job.status === 'AWAITING_GATE') {
+    conditionalFetches.push(
+      fetchBackend(`/api/jobs/${params.jobId}/discovery-data`, { headers })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { discoveryData = d; })
+        .catch(() => {})
+    );
+    conditionalFetches.push(
+      fetchBackend(`/api/jobs/${params.jobId}/preview-report`, { headers })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { previewReport = d; })
+        .catch(() => {})
+    );
+  }
+
   if (['FAILED', 'RUNNING_PHASE2'].includes(job.status)) {
     conditionalFetches.push(
       fetchBackend(`/api/jobs/${params.jobId}/discovery-data`, { headers })

@@ -63,6 +63,14 @@ export const CONFIG = {
   suggestRateHourly: parseInt(process.env.SUGGEST_RATE_HOURLY || '25', 10),
   suggestRateDaily: parseInt(process.env.SUGGEST_RATE_DAILY || '50', 10),
 
+  // Guided chat (Phase A — plans/eager-meandering-feather.md). Must be a
+  // strict-tool-capable, OpenAI-direct model (the `propose_modification` tool call
+  // is reassembled from streamed deltas and Zod-validated) — gpt-5-mini is the
+  // cheapest model in the GPT-5 family that reliably honors tool schemas.
+  chatModel: process.env.CHAT_LLM_MODEL || 'gpt-5-mini',
+  chatRateHourly: parseInt(process.env.CHAT_RATE_HOURLY || '20', 10),
+  chatRateDaily: parseInt(process.env.CHAT_RATE_DAILY || '80', 10),
+
   // Stripe
   stripe: {
     secretKey: process.env.STRIPE_SECRET_KEY || '',
