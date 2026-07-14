@@ -992,6 +992,9 @@ describe('POST /api/jobs/:jobId/chat — rich G3 dossier from the preview report
     expect(g3Prompt).toContain('YOU MAY ADVISE');
     expect(g3Prompt).toContain('HONESTY RULES');
     expect(g3Prompt).toContain('PLAIN LANGUAGE ONLY');
+    expect(g3Prompt).toContain('NICHEIQ PRODUCT AND METHODOLOGY KNOWLEDGE');
+    expect(g3Prompt).toContain('specialized, repeatable decision workflow versus flexible, general-purpose investigation');
+    expect(g3Prompt).toContain('Never use general product knowledge as evidence that this run found something');
 
     mockJobFindFirst.mockResolvedValue(
       makeJob({ status: 'AWAITING_GATE', gateStage: 1, gateArtifact: { type: 'niche_validation', niche_description: 'x' } })
@@ -1000,6 +1003,7 @@ describe('POST /api/jobs/:jobId/chat — rich G3 dossier from the preview report
     const g1Prompt = mockChatCompleteStream.mock.calls[1][0].messages[0].content as string;
     expect(g1Prompt).toContain('YOU MAY ADVISE');
     expect(g1Prompt).toContain('PLAIN LANGUAGE ONLY');
+    expect(g1Prompt).toContain('NICHEIQ PRODUCT AND METHODOLOGY KNOWLEDGE');
   });
 
   it('adds the adjacent-niche pivot instruction only when the pool is weak', async () => {
@@ -1222,6 +1226,9 @@ describe('POST /api/jobs/:jobId/chat — chat agent tools (v1.1)', () => {
 
     await request(app).post(`/api/jobs/${jobId}/chat`).set(authHeaders).send({ message: 'hi' });
     expect(mockChatCompleteStream.mock.calls[0][0].tools).toHaveLength(1);
+    expect(mockChatCompleteStream.mock.calls[0][0].messages[0].content).toContain(
+      'NICHEIQ PRODUCT AND METHODOLOGY KNOWLEDGE'
+    );
 
     mockGetDiscoveryDataForJob.mockResolvedValue(makeDiscoveryData());
     await request(app).post(`/api/jobs/${jobId}/chat`).set(authHeaders).send({ message: 'hi again' });
