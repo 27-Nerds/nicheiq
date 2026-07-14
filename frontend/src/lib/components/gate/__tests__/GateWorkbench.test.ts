@@ -102,6 +102,28 @@ describe("GateWorkbench — apply_stay failure/re-arrival state flow (findings 1
     expect(onApplyStayError).not.toHaveBeenCalled();
   });
 
+  it("shows queue confirmation, then the live worker state during apply_stay", async () => {
+    vi.mocked(gateAction).mockResolvedValueOnce({ status: "queued", message: "applied" });
+
+    const { getByText, findByText, rerender } = render(GateWorkbench, {
+      props: {
+        ...baseProps,
+        gateReachedAt: "2026-07-10T10:00:00.000Z",
+        jobStatus: "AWAITING_GATE",
+      },
+    });
+
+    await excludeAndApply(getByText);
+    await findByText("Change queued for a worker");
+
+    await rerender({
+      ...baseProps,
+      gateReachedAt: "2026-07-10T10:00:00.000Z",
+      jobStatus: "RUNNING",
+    });
+    await findByText("Worker is rebuilding this checkpoint");
+  });
+
   it("finding 13(a): a re-stamped gateReachedAt at the SAME gateStage clears `applying` (gate-failed revert self-heals)", async () => {
     vi.mocked(gateAction).mockResolvedValueOnce({ status: "ok", message: "applied" });
 

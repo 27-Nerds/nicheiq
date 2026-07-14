@@ -2,10 +2,9 @@
   // The continuous analyst ledger (continuous-analyst-ledger plan, Phase 1):
   // ONE per-job thread, segmented by checkpoint. Past segments collapse to
   // read-only disclosure rows; the active checkpoint is the only expanded,
-  // writable segment; pipeline runs appear as SYSTEM activity — live while
-  // running (job SSE), frozen into boundary markers afterwards. The composer
-  // never disappears: it yields to a working-status footer while stages run
-  // and to a closed-transcript footer once the run is terminal.
+  // writable segment. While the pipeline runs, the latest conversation stays
+  // visible and job SSE replaces only its composer with queue/stage status.
+  // Terminal runs close the transcript; completed work remains in markers.
   //
   // Segment chrome renders ONLY when there is history beyond the active
   // segment — a first arrival at G1 looks exactly like the plain conversation.
@@ -16,6 +15,7 @@
   import ChatThread from "./ChatThread.svelte";
   import LedgerActivityRow from "./LedgerActivityRow.svelte";
   import Sheet from "$lib/components/ui/Sheet.svelte";
+  import { getAdjustedStageCounts } from "$lib/utils/stages";
 
   /** 'history' = past segments + markers only, no footer — used above a surface
    *  that owns the ACTIVE conversation itself (GateWorkbench / SelectionWorkbench),
@@ -37,6 +37,7 @@
     /** Working-state live data (job SSE fields, passed straight from the job). */
     jobStatus?: string | null;
     currentStageName?: string | null;
+    currentStage?: number | null;
     stagesCompleted?: number | null;
     totalStages?: number | null;
     progressPercent?: number | null;
@@ -51,8 +52,6 @@
     currentIdeaFocus?: IdeaFocus;
     onApplyGatePatch?: (patch: GateG1PatchFields | GateG2PatchFields, messageId?: string) => void | Promise<void>;
     onApplyPatch?: (ideaFocus: IdeaFocus) => void | Promise<void>;
-    onContinue?: () => void;
-    continuing?: boolean;
     appliedPatchIds?: ReadonlySet<string>;
     /** Suggested questions for the ACTIVE segment — rendered inside the thread,
      *  above its composer. */
@@ -68,6 +67,7 @@
     expandInSheet = false,
     jobStatus = null,
     currentStageName = null,
+    currentStage = null,
     stagesCompleted = null,
     totalStages = null,
     progressPercent = null,
@@ -79,8 +79,6 @@
     currentIdeaFocus = "auto",
     onApplyGatePatch,
     onApplyPatch,
-    onContinue,
-    continuing = false,
     appliedPatchIds,
     starters = [],
     weakPool = $bindable(false),
@@ -118,13 +116,17 @@
     void chatLedger.init(jobId);
   });
 
-  // Segments other than the actively-composed one — i.e. closed history. In
-  // 'history' mode the active gate's conversation lives in the surface below
-  // (GateWorkbench/SelectionWorkbench), so it's excluded here too.
+  // While the worker runs, keep the most recent conversation mounted and lock
+  // only its composer. Earlier segments remain collapsible history.
+  const workingConversationStage = $derived(chatLedger.segments.at(-1)?.gateStage ?? 1);
+
+  // Segments other than the active conversation — i.e. closed history. In
+  // 'history' mode the active gate's conversation lives in the surface below.
   const pastSegments = $derived(
     chatLedger.segments.filter(
       (s) =>
         !((interactionState === "composing" || interactionState === "history") && s.gateStage === activeGateStage) &&
+        !(interactionState === "working" && s.gateStage === workingConversationStage) &&
         // Only conversational/receipt rows make a segment worth showing.
         s.messages.some((m) => m.role === "user" || m.role === "assistant" || m.role === "receipt"),
     ),
@@ -159,59 +161,29 @@
     else expandedStages.add(gateStage);
   }
 
-  // ── Live-activity staleness guard: a frozen precise percent reads as stuck. ──
-  let lastProgressAt = $state(Date.now());
-  let now = $state(Date.now());
-  $effect(() => {
-    // Any live-progress field changing re-stamps freshness.
-    void progressPercent;
-    void stagesCompleted;
-    void currentStageName;
-    lastProgressAt = Date.now();
-  });
-  $effect(() => {
-    if (interactionState !== "working") return;
-    const t = setInterval(() => {
-      now = Date.now();
-    }, 5000);
-    return () => clearInterval(t);
-  });
-  const progressStale = $derived(interactionState === "working" && now - lastProgressAt > 45_000);
-
   const isQueuedish = $derived(jobStatus === "QUEUED" || jobStatus === "PENDING");
-  const liveText = $derived.by(() => {
-    if (progressStale) return "Still working… (reconnecting)";
-    if (isQueuedish) return `In queue${queuePosition ? ` · position ${queuePosition}` : ""}`;
-    const stageBit =
-      stagesCompleted != null && totalStages ? `stage ${stagesCompleted} of ${totalStages}` : "working";
-    const phase = jobStatus === "RUNNING_PHASE2" ? "Deep research" : jobStatus === "REGENERATING" ? "New ideas" : "Discovery";
-    return currentStageName ? `${phase} · ${currentStageName} · ${stageBit}` : `${phase} · ${stageBit}`;
-  });
-
-  const workingHeadline = $derived.by(() => {
-    switch (jobStatus) {
-      case "REGENERATING":
-        return "NEW IDEAS GENERATING";
-      case "RUNNING_PHASE2":
-        return "REPORT GENERATING";
-      default:
-        return "ANALYST OPENS AT THE NEXT CHECKPOINT";
+  const workerStageCounts = $derived(
+    getAdjustedStageCounts({
+      stagesCompleted: stagesCompleted ?? 0,
+      totalStages: totalStages ?? 0,
+      currentStage: currentStage ?? 0,
+      status: jobStatus ?? "",
+    }),
+  );
+  const workingTitle = $derived(
+    isQueuedish ? "Research queued" : currentStageName || "Research in progress",
+  );
+  const workingDetail = $derived.by(() => {
+    if (isQueuedish) {
+      return queuePosition
+        ? `Queue position ${queuePosition}. The analyst unlocks when the worker reaches the next checkpoint.`
+        : "Waiting for a worker. The analyst unlocks at the next checkpoint.";
     }
-  });
-  const workingLine = $derived.by(() => {
-    const stageBit =
-      stagesCompleted != null && totalStages ? `stage ${stagesCompleted} of ${totalStages}` : "the next stage";
-    switch (jobStatus) {
-      case "QUEUED":
-      case "PENDING":
-        return `In queue${queuePosition ? ` · position ${queuePosition}` : ""}`;
-      case "REGENERATING":
-        return `Working on ${stageBit} — the analyst returns when they're ready.`;
-      case "RUNNING_PHASE2":
-        return `Working on ${stageBit}. This is the final leg — your report opens when it's done.`;
-      default:
-        return `Working on ${stageBit}`;
-    }
+    const stage = workerStageCounts.total
+      ? `Stage ${workerStageCounts.completed} of ${workerStageCounts.total}`
+      : "Worker active";
+    const percent = progressPercent != null ? ` · ${Math.round(progressPercent)}%` : "";
+    return `${stage}${percent}. The conversation stays here and unlocks automatically when research pauses.`;
   });
 </script>
 
@@ -295,20 +267,21 @@
       {currentIdeaFocus}
       {onApplyGatePatch}
       {onApplyPatch}
-      {onContinue}
-      {continuing}
       appliedPatchIds={appliedPatchIds ?? chatLedger.appliedPatchIds}
       {starters}
       bind:weakPool
     />
   {:else if interactionState === "working"}
-    <LedgerActivityRow live text={liveText} percent={isQueuedish ? null : progressPercent} stale={progressStale} />
-    <footer class="ledger-working">
-      <span class="ledger-working-headline">{workingHeadline}</span>
-      <span class="ledger-working-line">
-        {workingLine}<span class="ledger-caret" aria-hidden="true"></span>
-      </span>
-    </footer>
+    <ChatThread
+      bind:this={chatThreadRef}
+      showHistoryRetry={false}
+      {jobId}
+      dock="main"
+      gateStage={workingConversationStage}
+      blocked
+      blockedTitle={workingTitle}
+      blockedDetail={workingDetail}
+    />
   {:else if interactionState === "readonly"}
     <footer class="ledger-closed">
       {chatLedger.usedTurns}/{chatLedger.maxTurns} questions used &middot; conversation closed
@@ -529,32 +502,6 @@
     background: var(--color-accent-subtle);
     border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
     border-radius: 9999px;
-  }
-
-  /* ── Working-status footer — replaces the composer zone entirely: the ledger's
-     own pending vocabulary (mono lines + block-caret), nothing control-shaped. ── */
-  .ledger-working {
-    display: grid;
-    gap: var(--space-1);
-    min-height: 3.3rem;
-    padding: var(--space-3) var(--space-3);
-    border-top: 1px solid var(--color-border);
-    background: color-mix(in srgb, var(--color-bg-surface) 60%, transparent);
-  }
-  .ledger-working-headline {
-    font-family: var(--font-mono);
-    font-size: 0.625rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--color-text-muted);
-  }
-  .ledger-working-line {
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
-    font-weight: 500;
-    font-variant-numeric: tabular-nums;
-    color: var(--color-text-secondary);
   }
 
   .ledger-closed {

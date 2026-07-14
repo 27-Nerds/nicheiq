@@ -1090,6 +1090,28 @@ describe('GET /api/jobs/:jobId/chat/history — G3 opening message', () => {
     expect(response.body.messages).toHaveLength(1);
   });
 
+  it('creates the G3 opening when history contains only earlier checkpoint messages', async () => {
+    mockJobFindFirst.mockResolvedValue({ id: jobId, status: 'AWAITING_SELECTION', niche: 'test niche', solutionIdeas: [] });
+    mockGetPreviewReportForJob.mockResolvedValue(makePreviewReport());
+    mockChatMessageFindManyTop
+      .mockResolvedValueOnce([
+        { id: 'g1', gateStage: 1, role: 'assistant', content: 'Stage 1 summary', patchJson: null, truncated: false, createdAt: new Date() },
+      ])
+      .mockResolvedValueOnce([
+        { id: 'g1', gateStage: 1, role: 'assistant', content: 'Stage 1 summary', patchJson: null, truncated: false, createdAt: new Date() },
+        { id: 'g3', gateStage: 5, role: 'assistant', content: 'Idea summary', patchJson: null, truncated: false, createdAt: new Date() },
+      ]);
+
+    const response = await request(app).get(`/api/jobs/${jobId}/chat/history`).set(authHeaders);
+
+    expect(response.status).toBe(200);
+    expect(mockChatComplete).toHaveBeenCalledTimes(1);
+    expect(mockTxChatMessageCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ gateStage: 5, origin: 'opening' }) }),
+    );
+    expect(response.body.messages).toHaveLength(2);
+  });
+
   it('fails soft to the deterministic composition when the LLM call throws', async () => {
     mockJobFindFirst.mockResolvedValue({ id: jobId, status: 'AWAITING_SELECTION', niche: 'test niche', solutionIdeas: [] });
     mockGetPreviewReportForJob.mockResolvedValue(makePreviewReport());

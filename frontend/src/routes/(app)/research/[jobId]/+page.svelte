@@ -109,7 +109,7 @@
   <title>{nicheTitle} - Guided research - NicheIQ</title>
 </svelte:head>
 
-<div class="research-page">
+<div class="research-page" class:research-page--working={isWorking}>
   {#if loadError}
     <div class="research-error" role="alert">
       <p>{loadError}</p>
@@ -148,6 +148,7 @@
         gateArtifact={job.gateArtifact ?? null}
         gateApplyCount={job.gateApplyCount ?? 0}
         gateReachedAt={job.gateReachedAt ?? null}
+        jobStatus={job.status}
         guidedCosts={page.data.stageCosts?.guided ?? null}
         onContinueStart={() => {
           job = { ...job!, status: "QUEUED" };
@@ -186,6 +187,7 @@
           <ResearchProgressScreen
             phase={workingPhase}
             jobStatus={job.status}
+            embedded
             niche={job.niche}
             entryMode={job.entryMode}
             {userEmail}
@@ -193,6 +195,7 @@
             stagesCompleted={job.stagesCompleted ?? 0}
             totalStages={job.totalStages ?? 0}
             currentStage={job.currentStage ?? 0}
+            currentStageName={job.currentStageName}
             queuePosition={job.queuePosition ?? undefined}
             selectedNames={job.selectedSolutions ?? []}
             solutionIdeas={job.solutionIdeas ?? []}
@@ -205,6 +208,7 @@
             interactionState="working"
             jobStatus={job.status}
             currentStageName={job.currentStageName}
+            currentStage={job.currentStage}
             stagesCompleted={job.stagesCompleted}
             totalStages={job.totalStages}
             progressPercent={job.progressPercent}
@@ -265,6 +269,9 @@
     gap: var(--space-6);
     align-content: start;
   }
+  .research-page--working {
+    width: min(72rem, 100%);
+  }
 
   .research-loading,
   .research-error {
@@ -317,6 +324,7 @@
   .research-head {
     display: grid;
     gap: 0.35rem;
+    max-width: 56rem;
   }
   .research-crumb {
     display: flex;
@@ -354,22 +362,27 @@
   .run-shell-rail :global(.ledger--card) {
     box-shadow: none;
   }
-  @media (min-width: 1280px) {
-    /* The shell breaks OUT of the page column: it needs 40rem + 20rem + gap, which
-       does not fit inside 48rem — the rail was winning and squeezing the hero to
-       ~26rem. Widen the shell itself rather than starving the primary. */
+  @media (min-width: 1024px) {
     .run-shell {
-      width: min(64rem, calc(100vw - 5rem));
-      margin-inline: auto;
-      grid-template-columns: minmax(0, 40rem) 20rem;
+      grid-template-columns: minmax(0, 1fr) minmax(20rem, 21.5rem);
       gap: var(--space-6);
-      justify-content: center;
       align-items: start;
     }
     .run-shell-rail {
       position: sticky;
       top: 4rem;
       max-height: calc(100dvh - 5rem);
+    }
+  }
+
+  @media (max-width: 640px) {
+    .research-page {
+      padding: 1.25rem 1rem 4rem;
+      gap: var(--space-5);
+    }
+    .research-title {
+      font-size: 1.35rem;
+      text-wrap: balance;
     }
   }
 

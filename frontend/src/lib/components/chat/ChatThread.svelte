@@ -72,15 +72,15 @@
      *  like onApplyPatch owns regenerate; this just hands back the approved seed
      *  and the id of the proposing message (the card's durable identity). */
     onSeedSubmit?: (patch: NewIdeaSeedPatch, messageId: string) => void | Promise<void>;
-    /** G1/G2 only — wired to GateWorkbench's Continue action so the latest
-     *  applied-change receipt can offer "Continue research" right where the user
-     *  is looking, without a second code path. */
-    onContinue?: () => void;
-    continuing?: boolean;
     /** True while the parent is mid-mutation (regenerate/apply_stay/continue) —
      *  locks every way to submit a turn (composer, Enter, starter/follow-up chips)
      *  so a chat turn can't race a checkpoint transition into a 409. */
     blocked?: boolean;
+    /** Live job state shown in place of the composer while `blocked`. The parent
+     * owns these labels because it has the worker/SSE fields; ChatThread only
+     * owns the persistent analyst surface. */
+    blockedTitle?: string;
+    blockedDetail?: string;
     /** Starter questions derived from state by the caller. Used only before the user
      *  starts this conversation; once a turn exists, only analyst-authored follow-ups
      *  can render. This prevents a failed suggestion call from snapping back to an
@@ -128,9 +128,9 @@
     appliedPatchIds = new Set<string>(),
     seedCost = null,
     onSeedSubmit,
-    onContinue,
-    continuing = false,
     blocked = false,
+    blockedTitle = "Research is active",
+    blockedDetail = "The analyst will unlock at the next checkpoint.",
     starters = [],
     starterPrompt = null,
     onStarterConsumed,
@@ -514,10 +514,6 @@
     jumpToLatest();
   }
 
-  // The inline "Continue research" affordance rides only the NEWEST entry when
-  // that entry is a receipt — one focal action, placed at the moment of change.
-  const lastEntryId = $derived(messages.at(-1)?.id ?? null);
-
   const CONTEXTUAL_FALLBACKS = [
     "Go deeper on this answer",
     "Show the supporting evidence",
@@ -604,7 +600,7 @@
         </div>
       {/if}
     </header>
-    {#if dock === "rail" && messages.length === 0}
+    {#if dock === "rail" && messages.length === 0 && !operationBlocked}
       <p class="chat-head-copy">Ask about these findings, or tell me what to change.</p>
     {/if}
   {/if}
@@ -644,7 +640,11 @@
       </p>
     {:else}
       {#if messages.length === 0}
-        <p class="chat-status">No questions yet — ask about scores, gaps, or what to try next.</p>
+        <p class="chat-status">
+          {operationBlocked
+            ? "The conversation will unlock when research reaches the next checkpoint."
+            : "No questions yet — ask about scores, gaps, or what to try next."}
+        </p>
       {/if}
       {#each messages as msg (msg.id)}
         {#if msg.role === "receipt" && msg.receipt}
@@ -666,17 +666,6 @@
                   {/each}
                 </dl>
                 <p class="receipt-note">{msg.receipt.note}</p>
-                {#if onContinue && !readOnly && msg.id === lastEntryId}
-                  <button type="button" class="ledger-btn ledger-btn--primary receipt-continue" class:is-busy={continuing} disabled={continuing || applying} onclick={onContinue}>
-                    {#if continuing}
-                      <Loader2 class="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
-                      Resuming research&hellip;
-                    {:else}
-                      Continue research
-                      <ArrowRight class="w-3.5 h-3.5" aria-hidden="true" />
-                    {/if}
-                  </button>
-                {/if}
               </div>
             </div>
           </div>
@@ -950,7 +939,13 @@
   {#if locked}
     <p class="chat-status chat-status--locked" role="status">Guided chat is a subscriber feature — upgrade to ask the analyst about these ideas.</p>
   {:else if operationBlocked}
-    <p class="chat-status chat-status--locked" role="status">The analyst is paused while the current research update finishes. Its result and follow-up will appear here automatically.</p>
+    <div class="chat-operation" role="status" aria-live="polite">
+      <span class="chat-operation-pulse" aria-hidden="true"></span>
+      <span class="chat-operation-copy">
+        <strong>{blockedTitle}</strong>
+        <span>{blockedDetail}</span>
+      </span>
+    </div>
   {:else if sendError}
     <p class="chat-error" role="alert">
       {sendError}
@@ -971,18 +966,20 @@
     </p>
   {/if}
 
-  <div class="chat-input">
-    <Composer
-      bind:value={input}
-      placeholder="Ask a follow-up or request a change…"
-      label="Message the analyst"
-      disabled={locked || !historyLoaded || atTurnCap || operationBlocked || loadFailed}
-      busy={sending}
-      size={focused ? "roomy" : "compact"}
-      onSubmit={() => void send()}
-      onStop={stopStreaming}
-    />
-  </div>
+  {#if !operationBlocked}
+    <div class="chat-input">
+      <Composer
+        bind:value={input}
+        placeholder="Ask a follow-up or request a change…"
+        label="Message the analyst"
+        disabled={locked || !historyLoaded || atTurnCap || loadFailed}
+        busy={sending}
+        size={focused ? "roomy" : "compact"}
+        onSubmit={() => void send()}
+        onStop={stopStreaming}
+      />
+    </div>
+  {/if}
   {/if}
 </aside>
 
@@ -1078,7 +1075,8 @@
   }
   .chat-thread--main .chat-input,
   .chat-thread--main .chat-error,
-  .chat-thread--main .chat-status--locked {
+  .chat-thread--main .chat-status--locked,
+  .chat-thread--main .chat-operation {
     padding-left: var(--space-5);
     padding-right: var(--space-5);
   }
@@ -1286,6 +1284,65 @@
   .chat-status--locked {
     padding: var(--space-1-5) var(--space-3) 0;
     color: var(--color-text-secondary);
+  }
+  .chat-operation {
+    position: relative;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: var(--space-3);
+    min-height: 4.25rem;
+    padding: var(--space-3) var(--space-4);
+    overflow: hidden;
+    border-top: 1px solid var(--color-border);
+    background: color-mix(in srgb, var(--chat-wash) 82%, transparent);
+  }
+  .chat-operation::after {
+    content: "";
+    position: absolute;
+    inset: auto 0 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--color-accent), transparent);
+    transform: translateX(-100%);
+    animation: chat-operation-track 1.8s var(--chat-motion) infinite;
+  }
+  @keyframes chat-operation-track {
+    to { transform: translateX(100%); }
+  }
+  .chat-operation-pulse {
+    position: relative;
+    width: 0.625rem;
+    height: 0.625rem;
+    border-radius: 50%;
+    background: var(--color-accent);
+  }
+  .chat-operation-pulse::after {
+    content: "";
+    position: absolute;
+    inset: -0.3rem;
+    border: 1px solid color-mix(in srgb, var(--color-accent) 38%, transparent);
+    border-radius: inherit;
+    animation: chat-operation-pulse 1.8s ease-out infinite;
+  }
+  @keyframes chat-operation-pulse {
+    0% { opacity: 0.85; transform: scale(0.65); }
+    75%, 100% { opacity: 0; transform: scale(1.35); }
+  }
+  .chat-operation-copy {
+    display: grid;
+    gap: 0.15rem;
+    min-width: 0;
+  }
+  .chat-operation-copy strong {
+    font-family: var(--font-display);
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+  }
+  .chat-operation-copy span {
+    font-size: 0.6875rem;
+    line-height: 1.4;
+    color: var(--color-text-muted);
   }
 
   .entry {
@@ -1690,13 +1747,9 @@
   .proposal-apply {
     min-width: 9.5rem;
   }
-  .receipt-continue {
-    justify-self: start;
-    min-width: 11.5rem;
-  }  /* Applying… is a STATUS, not an inert control — don't grey out the one line the
+  /* Applying… is a STATUS, not an inert control — don't grey out the one line the
      user is waiting to read. */
-  .proposal-apply.is-busy:disabled,
-  .receipt-continue.is-busy:disabled {
+  .proposal-apply.is-busy:disabled {
     opacity: 1;
     cursor: progress;
   }  .proposal-apply:focus-visible,
@@ -1706,10 +1759,8 @@
   }
   @media (prefers-reduced-motion: reduce) {
     .proposal-apply,
-    .proposal-dismiss,
-    .receipt-continue { transition: none; }
-    .proposal-apply:active:not(:disabled),
-    .receipt-continue:active:not(:disabled) { transform: none; }
+    .proposal-dismiss { transition: none; }
+    .proposal-apply:active:not(:disabled) { transform: none; }
   }
 
   /* ═══ Seed card — the user's OWN idea, priced like a purchase ═══
@@ -2064,8 +2115,7 @@
     font-size: 0.6875rem;
   }
   .chat-thread--rail .proposal-apply,
-  .chat-thread--rail .proposal-dismiss,
-  .chat-thread--rail .receipt-continue {
+  .chat-thread--rail .proposal-dismiss {
     min-height: 2rem;
     padding: var(--space-1-5) var(--space-3);
     font-size: 0.6875rem;
@@ -2094,6 +2144,10 @@
       transition: none;
       transform: none;
     }
+    .chat-operation::after,
+    .chat-operation-pulse::after {
+      animation: none;
+    }
   }
 
   @media (max-width: 420px) {
@@ -2107,6 +2161,29 @@
     }
     .chat-head-actions {
       margin-left: 0;
+    }
+    .chat-thread--main .entry,
+    .chat-thread--main .chat-status,
+    .chat-thread--main .chat-input,
+    .chat-thread--main .chat-error,
+    .chat-thread--main .chat-status--locked,
+    .chat-thread--main .chat-operation {
+      padding-left: var(--space-3);
+      padding-right: var(--space-3);
+    }
+    .chat-thread--main .entry-user .entry-body {
+      max-width: 92%;
+    }
+    .proposal-actions {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .proposal-actions :global(.ledger-btn) {
+      justify-content: center;
+      width: 100%;
+    }
+    .proposal-apply {
+      min-width: 0;
     }
   }
 

@@ -97,40 +97,59 @@ describe("SegmentedLedger", () => {
     await findByText(/1 change applied/);
   });
 
-  it("keeps the ledger on screen while a stage runs — status instead of a composer", async () => {
+  it("keeps the analyst conversation on screen while a stage runs — status instead of a composer", async () => {
     const { findByText, queryByRole } = render(SegmentedLedger, {
       props: {
         jobId: "job-1",
         interactionState: "working",
         jobStatus: "RUNNING",
+        currentStage: 3,
+        currentStageName: "Audience research",
         stagesCompleted: 3,
         totalStages: 16,
         progressPercent: 38,
       },
     });
 
-    await findByText("ANALYST OPENS AT THE NEXT CHECKPOINT");
-    await findByText(/Working on stage 3 of 16/);
-    // A live SYSTEM row reports the machine's progress…
-    await findByText(/38%/);
-    // …and the composer is REPLACED, not disabled — a dead input reads as breakage.
+    await findByText("Conversation");
+    await findByText("Audience research");
+    await findByText(/Stage 3 of 15 · 38%/);
+    // The thread remains visible, but the composer is replaced rather than left
+    // as a dead input while the worker owns the run.
     expect(queryByRole("textbox", { name: "Message the analyst" })).toBeNull();
   });
 
-  it("speaks the final leg's language during deep research", async () => {
+  it("shows the active deep-research stage in the persistent analyst panel", async () => {
     const { findByText } = render(SegmentedLedger, {
       props: {
         jobId: "job-1",
         interactionState: "working",
         jobStatus: "RUNNING_PHASE2",
+        currentStage: 12,
+        currentStageName: "Competitive validation",
         stagesCompleted: 12,
         totalStages: 16,
         progressPercent: 70,
       },
     });
 
-    await findByText("REPORT GENERATING");
-    await findByText(/This is the final leg/);
+    await findByText("Competitive validation");
+    await findByText(/Stage 11 of 15 · 70%/);
+  });
+
+  it("shows queue position in place of the composer before a worker starts", async () => {
+    const { findByText, queryByRole } = render(SegmentedLedger, {
+      props: {
+        jobId: "job-1",
+        interactionState: "working",
+        jobStatus: "QUEUED",
+        queuePosition: 2,
+      },
+    });
+
+    await findByText("Research queued");
+    await findByText(/Queue position 2/);
+    expect(queryByRole("textbox", { name: "Message the analyst" })).toBeNull();
   });
 
   it("closes the transcript when the run is terminal", async () => {

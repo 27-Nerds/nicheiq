@@ -804,6 +804,7 @@
           stagesCompleted={job.stagesCompleted ?? 0}
           totalStages={job.totalStages ?? 0}
           currentStage={job.currentStage}
+          currentStageName={job.currentStageName}
           queuePosition={job.queuePosition ?? undefined}
           catalogPainPoints={data.catalogPainPoints ?? []}
           selectedNames={job.selectedSolutions ?? []}
@@ -1044,12 +1045,13 @@
             gateArtifact={job.gateArtifact ?? null}
             gateApplyCount={job.gateApplyCount ?? 0}
             gateReachedAt={job.gateReachedAt ?? null}
+            jobStatus={job.status}
             guidedCosts={page.data.stageCosts?.guided ?? null}
             onContinueStart={() => {
               // Continue ALWAYS clears a lingering apply_stay override: if the SSE stream
               // died during a long gate dwell, the apply's re-arrival was never observed and
               // gateApplyPending stayed true — without this clear, the optimistic QUEUED
-              // below keeps the workbench mounted (disabled "Resuming research…") instead of
+              // below keeps the workbench mounted (disabled "Sending to worker…") instead of
               // handing off to the progress screen (live-caught 2026-07-12).
               gateApplyPending = false;
               clientJob = { ...job!, status: 'QUEUED' };

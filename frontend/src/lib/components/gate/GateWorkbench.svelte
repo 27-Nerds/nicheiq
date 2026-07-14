@@ -25,6 +25,9 @@
     gateArtifact: GateArtifact | null;
     gateApplyCount: number;
     gateReachedAt: string | null;
+    /** Live job status from SSE, used to distinguish request, queue, and worker
+     * execution while an apply-and-stay round-trip is in flight. */
+    jobStatus?: string | null;
     /** Guided-mode per-checkpoint segment prices (backend `GET /api/billing/stage-costs`'s
      *  `guided` object). Null until the layout's stage-costs fetch resolves, or on a
      *  backend that hasn't been redeployed with the field yet — Continue then renders
@@ -58,6 +61,7 @@
     gateArtifact,
     gateApplyCount,
     gateReachedAt,
+    jobStatus = null,
     guidedCosts = null,
     onContinueStart,
     onApplyStayStart,
@@ -124,8 +128,36 @@
   // ── Apply-stay: the ONE apply path shared by chat-proposed patches (via
   //    ChatThread's onApplyGatePatch) and the inline exclude-pain chips below. ──
   let applying = $state(false);
+  let applyQueued = $state(false);
   let applySnapshotReachedAt = $state<string | null>(null);
   let applyError = $state("");
+  const applyActivity = $derived.by(() => {
+    if (!applying) return null;
+    if (jobStatus === "RUNNING" || jobStatus === "RUNNING_PHASE2") {
+      return {
+        title: "Worker is rebuilding this checkpoint",
+        detail: "The analyst is re-deriving the framing with your change. You can leave this page open.",
+      };
+    }
+    if (applyQueued || jobStatus === "QUEUED" || jobStatus === "PENDING") {
+      return {
+        title: "Change queued for a worker",
+        detail: "Your change is saved. The checkpoint will refresh automatically when a worker picks it up.",
+      };
+    }
+    return {
+      title: "Submitting your change",
+      detail: "Waiting for the research queue to confirm the update.",
+    };
+  });
+  const blockedTitle = $derived(
+    continuing ? "Starting the next research stage" : applyActivity?.title ?? "Research is active",
+  );
+  const blockedDetail = $derived(
+    continuing
+      ? "Waiting for the worker queue to confirm. Live stage progress will replace this checkpoint."
+      : applyActivity?.detail ?? "The analyst will unlock when the update finishes.",
+  );
 
   // Patch keys → framing-document field keys, so a completed apply can mark the
   // exact fields it changed (excluded_segments/segment_emphasis both land on the
@@ -162,6 +194,7 @@
     // a refreshed artifact — the round-trip this "apply_stay" kicked off is done.
     if (applying && gateReachedAt && gateReachedAt !== applySnapshotReachedAt) {
       applying = false;
+      applyQueued = false;
       applySnapshotReachedAt = null;
       excludedPainTitles = new SvelteSet();
       if (pendingPatch) {
@@ -188,6 +221,7 @@
   async function applyPatch(patch: GateG1PatchFields | GateG2PatchFields, messageId?: string) {
     if (applying || applyCapReached) return;
     applying = true;
+    applyQueued = false;
     applySnapshotReachedAt = gateReachedAt;
     applyError = "";
     lastChangedFields = new SvelteSet();
@@ -201,8 +235,12 @@
       // (optimistic, never persisted) would dangle — send only server-issued ones.
       const sourceMessageId = messageId && !messageId.startsWith("local-") ? messageId : undefined;
       await gateAction(jobId, { action: "apply_stay", gateStage, patch, sourceMessageId });
+      // The API only returns after the atomic QUEUED flip and Redis enqueue both
+      // succeed, so this is a truthful queue confirmation even if SSE is delayed.
+      if (applying) applyQueued = true;
     } catch (e) {
       applying = false;
+      applyQueued = false;
       applySnapshotReachedAt = null;
       pendingPatch = null;
       pendingApplyMessageId = null;
@@ -402,12 +440,6 @@
         {/if}
       </div>
 
-      {#if applying}
-        <p class="framing-busy" role="status">
-          <Loader2 class="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
-          Re-deriving the framing with your change&hellip;
-        </p>
-      {/if}
       {#if applyCapReached}
         <p class="gate-cap-note">Change limit reached for this checkpoint (5 max) — continue research to move forward.</p>
       {/if}
@@ -428,9 +460,9 @@
       {applying}
       {applyCapReached}
       appliedPatchIds={allAppliedIds}
-      onContinue={handleContinue}
-      {continuing}
       blocked={applying || continuing}
+      {blockedTitle}
+      {blockedDetail}
       starters={continuing ? [] : suggestions}
       onApplyGatePatch={applyPatch}
     />
@@ -456,8 +488,8 @@
         {/if}
         <button type="button" class="gate-continue-btn" disabled={continuing || applying} onclick={handleContinue}>
           {#if continuing}
-            <Loader2 class="w-4 h-4 animate-spin" aria-hidden="true" />
-            Resuming research&hellip;
+            <span class="gate-worker-mark" aria-hidden="true"></span>
+            Sending to worker&hellip;
           {:else}
             Continue research{continueCost != null ? ` · ${continueCost} ${continueCost === 1 ? "credit" : "credits"}` : ""}
             <span class="gate-continue-chip" aria-hidden="true">
@@ -578,16 +610,26 @@
     gap: 0.5rem;
     transition: opacity 150ms var(--gate-motion);
   }
-  .framing-busy {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    margin: 0;
-    font-family: var(--font-mono);
-    font-size: 0.6875rem;
-    color: var(--color-text-secondary);
+  .gate-worker-mark {
+    position: relative;
+    flex-shrink: 0;
+    width: 0.625rem;
+    height: 0.625rem;
+    border-radius: 50%;
+    background: var(--color-accent);
   }
-
+  .gate-worker-mark::after {
+    content: "";
+    position: absolute;
+    inset: -0.3rem;
+    border: 1px solid color-mix(in srgb, var(--color-accent) 40%, transparent);
+    border-radius: inherit;
+    animation: gate-operation-pulse 1.8s ease-out infinite;
+  }
+  @keyframes gate-operation-pulse {
+    0% { opacity: 0.85; transform: scale(0.65); }
+    75%, 100% { opacity: 0; transform: scale(1.35); }
+  }
   /* Fields carry constant inner padding so the updated tint never shifts layout. */
   .gate-field {
     margin: 0;
@@ -1000,9 +1042,67 @@
     .gate-continue-btn {
       transition: none;
     }
+    .gate-worker-mark::after {
+      animation: none;
+    }
     .gate-patch-apply:active:not(:disabled),
     .gate-continue-btn:active:not(:disabled) {
       transform: none;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .gate-card {
+      margin: var(--space-6) -0.5rem;
+      padding: 0;
+      background: transparent;
+      border: 0;
+      border-radius: 0;
+    }
+    .gate-inner {
+      border-radius: var(--radius-lg);
+      box-shadow: none;
+    }
+    .gate-head {
+      padding: var(--space-4) var(--space-4) var(--space-3);
+    }
+    .gate-framing {
+      padding: var(--space-3) var(--space-3) var(--space-4);
+    }
+    .framing-head {
+      align-items: flex-start;
+    }
+    .framing-rev {
+      text-align: right;
+    }
+    .gate-segment-row {
+      display: grid;
+      gap: 0.15rem;
+    }
+    .gate-segment-meta {
+      white-space: normal;
+    }
+    .gate-action-bar {
+      align-items: stretch;
+      padding: var(--space-3);
+    }
+    .gate-action-meta {
+      width: 100%;
+    }
+    .gate-action-main {
+      display: grid;
+      width: 100%;
+      justify-content: stretch;
+    }
+    .gate-purchase,
+    .gate-topup,
+    .gate-action-main .gate-error {
+      max-width: none;
+    }
+    .gate-continue-btn {
+      justify-content: center;
+      width: 100%;
+      padding: 0.65rem 0.875rem;
     }
   }
 </style>

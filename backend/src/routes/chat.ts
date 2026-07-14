@@ -2265,11 +2265,9 @@ chatRouter.get('/:jobId/chat/history', requireInternalAuth, validateJobId, async
     select: HISTORY_SELECT,
   });
 
-  // G3-only: compute the pool-health flag (drives the frontend's weak-pool starter chip)
-  // and, when this thread has no messages yet, synthesize + persist ONE opening note.
-  // Idempotent — the empty-history check IS the cost guard, so this can never re-fire for
-  // a job. Wrapped in try/catch as a whole: any assembly failure (bad preview report shape,
-  // etc.) must never break plain history reads.
+  // G3-only: compute the pool-health flag and synthesize one idea-selection opening.
+  // The empty check is stage-scoped because earlier guided-chat messages remain in the
+  // same thread and must not suppress this checkpoint's analyst summary.
   let weakPool = false;
   if (job.status === 'AWAITING_SELECTION') {
     try {
@@ -2282,7 +2280,7 @@ chatRouter.get('/:jobId/chat/history', requireInternalAuth, validateJobId, async
       });
       weakPool = health.weak;
 
-      if (rows.length === 0) {
+      if (!rows.some((row) => row.gateStage === G3_GATE_STAGE)) {
         // Generate OUTSIDE the lock — this is a network call to the LLM, and holding a
         // DB transaction/connection open across it (rather than just around the quick
         // check-then-insert below) would serialize unrelated requests behind however
@@ -2293,15 +2291,14 @@ chatRouter.get('/:jobId/chat/history', requireInternalAuth, validateJobId, async
         const openingModel = generated?.model;
         const openingUsage = generated?.usage;
 
-        // AMEND (conf 70): two concurrent zero-history requests both saw rows.length===0
-        // and both persisted an opening message. Same advisory-lock idiom the POST /chat
-        // turn-cap already uses (hashtext(jobId)) — the lock scope stays short (a count
-        // re-check + a single insert), so only ONE of the racing requests ever inserts;
-        // the loser's already-generated content is simply discarded.
+        // Two concurrent history requests can both observe no G3 rows. The advisory lock
+        // keeps the stage-scoped check and insert atomic, so only one opening is persisted.
         const inserted = await prisma.$transaction(async (tx) => {
           await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${jobId}))`;
-          const stillEmpty = (await tx.chatMessage.count({ where: { jobId } })) === 0;
-          if (!stillEmpty) return false;
+          const stageIsEmpty = (await tx.chatMessage.count({
+            where: { jobId, gateStage: G3_GATE_STAGE },
+          })) === 0;
+          if (!stageIsEmpty) return false;
           await tx.chatMessage.create({
             data: {
               jobId,

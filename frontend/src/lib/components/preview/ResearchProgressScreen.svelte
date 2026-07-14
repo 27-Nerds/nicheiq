@@ -19,6 +19,8 @@
   interface Props {
     phase: "discovery" | "deep_research";
     jobStatus: string;
+    /** The guided-research route already owns the breadcrumb and niche title. */
+    embedded?: boolean;
     niche?: string;
     entryMode?: string | null;
     userEmail?: string | null;
@@ -26,6 +28,7 @@
     stagesCompleted?: number;
     totalStages?: number;
     currentStage?: number;
+    currentStageName?: string | null;
     queuePosition?: number;
     catalogPainPoints?: CatalogTopPainPoint[];
     selectedNames?: string[];
@@ -38,6 +41,7 @@
   let {
     phase,
     jobStatus,
+    embedded = false,
     niche = "",
     entryMode = null,
     userEmail = null,
@@ -45,6 +49,7 @@
     stagesCompleted = 0,
     totalStages = 0,
     currentStage = 0,
+    currentStageName = null,
     queuePosition,
     catalogPainPoints = [],
     selectedNames = [],
@@ -82,6 +87,16 @@
   const stageCounts = $derived(
     getAdjustedStageCounts({ stagesCompleted, totalStages, currentStage, status: jobStatus }),
   );
+  const liveTitle = $derived(
+    isQueued ? "Waiting for a worker" : currentStageName || "Research worker active",
+  );
+  const liveDetail = $derived(
+    isQueued
+      ? queuePosition
+        ? `Queue position ${queuePosition}`
+        : "The run is queued and will start automatically."
+      : `Stage ${stageCounts.completed} of ${stageCounts.total}`,
+  );
 
   // 3-phase pipeline track (replaces the hidden PhaseNav journey cue + the ring):
   // each segment renders done / active / queued / pending, with a fill bar.
@@ -104,13 +119,15 @@
   );
 </script>
 
-<div class="research-progress">
-  <Breadcrumb items={[{ label: "Dashboard", href: "/dashboard" }]} current="Research" />
+<div class="research-progress" class:research-progress--embedded={embedded}>
+  {#if !embedded}
+    <Breadcrumb items={[{ label: "Dashboard", href: "/dashboard" }]} current="Research" />
+  {/if}
 
   <section class="rp-hero">
     <p class="rp-kicker">{kicker}</p>
 
-    {#if niche}
+    {#if niche && !embedded}
       <h1 class="rp-niche">{niche}</h1>
     {/if}
 
@@ -121,6 +138,15 @@
         <span>{provenance.text}</span>
       </p>
     {/if}
+
+    <div class="rp-live" role="status" aria-live="polite">
+      <span class="rp-live-mark" data-state={isQueued ? "queued" : "running"} aria-hidden="true"></span>
+      <span class="rp-live-copy">
+        <strong>{liveTitle}</strong>
+        <span>{liveDetail}</span>
+      </span>
+      <span class="rp-live-value">{isQueued ? "Queued" : `${pct}%`}</span>
+    </div>
 
     <div class="rp-track" role="group" aria-label="Research progress">
       {#each phases as label, i}
@@ -211,6 +237,10 @@
     max-width: 640px;
     margin: 0 auto;
   }
+  .research-progress--embedded {
+    max-width: none;
+    margin: 0;
+  }
 
   /* ── Hero zone — deliberate vertical presence, centered ── */
   /* Top-anchored (not vertically centered in a tall band) so the content sits
@@ -221,6 +251,26 @@
     align-items: center;
     text-align: center;
     padding: 2rem 0 1.5rem;
+  }
+  .research-progress--embedded .rp-hero {
+    position: relative;
+    align-items: stretch;
+    padding: clamp(1.25rem, 3vw, 2rem);
+    overflow: hidden;
+    text-align: left;
+    background:
+      radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--color-accent) 8%, transparent), transparent 19rem),
+      color-mix(in srgb, var(--color-bg-elevated) 96%, #f2e9dc);
+    border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 52%, transparent);
+    border-radius: var(--radius-xl);
+    box-shadow: 0 1.25rem 3.5rem color-mix(in srgb, #6f5539 8%, transparent);
+  }
+  .research-progress--embedded .rp-hero::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 3px;
+    background: var(--color-accent);
   }
 
   .rp-kicker {
@@ -261,6 +311,75 @@
     flex-shrink: 0;
   }
 
+  /* Queue/execution truth from the job record, not an ambiguous spinner. */
+  .rp-live {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+    max-width: 480px;
+    margin: 0 0 1.5rem;
+    padding: 0.75rem 0.875rem;
+    background: color-mix(in srgb, var(--color-bg-surface) 76%, transparent);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+  }
+  .research-progress--embedded .rp-live {
+    max-width: none;
+  }
+  .rp-live-mark {
+    position: relative;
+    width: 0.625rem;
+    height: 0.625rem;
+    border-radius: 50%;
+    background: var(--color-accent);
+  }
+  .rp-live-mark::after {
+    content: "";
+    position: absolute;
+    inset: -0.3rem;
+    border: 1px solid color-mix(in srgb, var(--color-accent) 40%, transparent);
+    border-radius: inherit;
+    animation: rp-live-pulse 1.8s ease-out infinite;
+  }
+  .rp-live-mark[data-state="queued"] {
+    background: var(--color-text-muted);
+  }
+  .rp-live-mark[data-state="queued"]::after {
+    border-color: color-mix(in srgb, var(--color-text-muted) 38%, transparent);
+    animation-duration: 2.8s;
+  }
+  @keyframes rp-live-pulse {
+    0% { opacity: 0.9; transform: scale(0.65); }
+    75%, 100% { opacity: 0; transform: scale(1.35); }
+  }
+  .rp-live-copy {
+    display: grid;
+    gap: 0.1rem;
+    min-width: 0;
+  }
+  .rp-live-copy strong {
+    overflow: hidden;
+    font-family: var(--font-display);
+    font-size: 0.875rem;
+    font-weight: 650;
+    color: var(--color-text-primary);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .rp-live-copy span {
+    font-size: 0.6875rem;
+    color: var(--color-text-muted);
+  }
+  .rp-live-value {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-accent-dark);
+  }
+
   /* ── Pipeline track (Discovery / Deep Research / Build) ── */
   .rp-track {
     display: flex;
@@ -269,6 +388,9 @@
     width: 100%;
     max-width: 480px;
     margin: 0 0 1rem;
+  }
+  .research-progress--embedded .rp-track {
+    max-width: none;
   }
   .rp-seg {
     flex: 1 1 0;
@@ -421,6 +543,9 @@
     .rp-hero > * {
       animation: none;
     }
+    .rp-live-mark::after {
+      animation: none;
+    }
   }
 
   /* ── Reassurance ── */
@@ -443,12 +568,18 @@
     align-items: center;
     gap: 1rem;
   }
+  .research-progress--embedded .rp-actions {
+    align-items: flex-start;
+  }
   .rp-nav {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 0.75rem;
     flex-wrap: wrap;
+  }
+  .research-progress--embedded .rp-nav {
+    justify-content: flex-start;
   }
   /* Lighter than the default btn-secondary for this calm waiting screen, and no
      hover lift (keep the accent border/colour hover). */
@@ -547,6 +678,21 @@
   }
 
   @media (max-width: 480px) {
+    .research-progress--embedded .rp-hero {
+      padding: 1.125rem 1rem 1.25rem;
+      border-radius: var(--radius-lg);
+      box-shadow: none;
+    }
+    .rp-live {
+      margin-bottom: 1.25rem;
+    }
+    .rp-seg-meta {
+      align-items: flex-start;
+      white-space: normal;
+    }
+    .rp-seg-label {
+      line-height: 1.25;
+    }
     .rp-nav {
       flex-direction: column;
       align-items: stretch;
