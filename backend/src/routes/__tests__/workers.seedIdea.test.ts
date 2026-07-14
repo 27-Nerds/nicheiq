@@ -184,7 +184,12 @@ describe('POST /api/workers/seed-complete', () => {
     const response = await request(app).post('/api/workers/seed-complete').send(validPayload);
 
     expect(response.status).toBe(200);
-    expect(mockChatMessageCreate).not.toHaveBeenCalled();
+    expect(mockChatMessageCreate).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ role: 'receipt' }) }),
+    );
+    expect(mockChatMessageCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ origin: 'mutation_followup' }) }),
+    );
   });
 
   it('rejects a stale/superseded dispatch id — CAS matches nothing, job untouched', async () => {

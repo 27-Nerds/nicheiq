@@ -8,6 +8,11 @@ import * as adminService from '../services/adminService.js';
 import { addCredits } from '../services/creditService.js';
 import { CreditTransactionType } from '@prisma/client';
 import { prisma } from '../services/db.js';
+import {
+  ANALYST_MODEL_OPTIONS,
+  ANALYST_MODEL_SETTING_KEY,
+  getDefaultAnalystModel,
+} from '../services/analystModelService.js';
 
 export const adminRouter = Router();
 
@@ -264,6 +269,35 @@ adminRouter.patch('/users/:userId/access', async (req: AuthenticatedRequest, res
 });
 
 // ============================================
+// Grant / revoke chat with Analyst access
+// ============================================
+
+const UpdateChatAnalystAccessSchema = z.object({ chatAnalystAccess: z.boolean() });
+
+adminRouter.patch('/users/:userId/access-chat', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const input = UpdateChatAnalystAccessSchema.parse(req.body);
+    const user = await prisma.user.update({
+      where: { id: req.params.userId },
+      data: { chatAnalystAccess: input.chatAnalystAccess },
+      select: { id: true, email: true, chatAnalystAccess: true },
+    });
+    res.json(user);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation error', details: error.errors });
+      return;
+    }
+    if ((error as { code?: string })?.code === 'P2025') {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+    console.error('Failed to update user chat analyst access:', error);
+    res.status(500).json({ error: 'Failed to update user chat analyst access' });
+  }
+});
+
+// ============================================
 // Add Credits to User
 // ============================================
 
@@ -502,6 +536,22 @@ adminRouter.patch('/plans/:id', async (req: AuthenticatedRequest, res: Response)
 // ============================================
 // App Settings
 // ============================================
+
+adminRouter.get('/settings/analyst-model', async (_req: AuthenticatedRequest, res: Response) => {
+  try {
+    const value = await adminService.getAppSetting(ANALYST_MODEL_SETTING_KEY);
+    res.json({
+      key: ANALYST_MODEL_SETTING_KEY,
+      value,
+      effectiveValue: value ?? getDefaultAnalystModel(),
+      defaultValue: getDefaultAnalystModel(),
+      options: ANALYST_MODEL_OPTIONS,
+    });
+  } catch (error) {
+    console.error('Failed to get analyst model setting:', error);
+    res.status(500).json({ error: 'Failed to get analyst model setting' });
+  }
+});
 
 const UpdateSettingSchema = z.object({
   value: z.coerce.string().max(2000),

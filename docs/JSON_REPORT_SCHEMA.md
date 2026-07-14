@@ -391,25 +391,31 @@ scale (recalibrated from the legacy pad-to-12 scale of 8/5/3).
 
 ```json
 {
+  "idea_name": "InvoiceChaser",
   "pain_title": "string",
   "reason": "Buyers in this segment (freelance photographers) rarely pay for tooling — the pain is real but the wallet is thin.",
   "market_fit": 0.31,
   "market_fit_band": "low",
   "prior_tier": "single",
   "source": "demoted_winner",
-  "evidence": "string"
+  "evidence": "string",
+  "source_frame": "user_seed",
+  "idea": { "solution_name": "InvoiceChaser", "...": "full SolutionPreview payload" }
 }
 ```
 
 | Field | Type | Description |
 |-------|------|-------------|
+| `idea_name` | `string \| null` | Evaluated idea name; optional on legacy findings |
 | `pain_title` | `string` | The pain this idea was generated against |
 | `reason` | `string` | Deterministic, user-facing explanation of why the market is thin — composed from the idea's own signals (incumbent parity, buyer payability, buildability), no LLM call |
 | `market_fit` | `number \| null` (0-1) | The idea's `market_fit_score` at time of ruling-out, rounded to 2dp; `null` if unscored |
 | `market_fit_band` | `"very-low" \| "low"` | `very-low` when `market_fit < 0.25`, else `low` |
 | `prior_tier` | `string` | The idea's `idea_tier` (see below) before it was ruled out |
-| `source` | `"demoted_winner" \| "backfill_rejected"` | `demoted_winner` = a cell-tournament winner whose final market_fit fell below the demotion bar; `backfill_rejected` = a Stage-5 backfill candidate that didn't clear the bar |
+| `source` | `"demoted_winner" \| "backfill_rejected" \| "no_buyer"` | Rule that removed the idea from the selectable pool |
 | `evidence` | `string` | First representative quote (or description) for `pain_title`, truncated to 220 chars |
+| `source_frame` | `string \| null` | Generation frame; `user_seed` identifies a submitted idea |
+| `idea` | `SolutionPreview \| null` | Full read-only evaluated payload for a submitted idea, allowing its details to remain inspectable after demotion; absent on older and non-seed findings |
 
 Populated by the post-parity demotion/backfill block in `unified_solution_crew.py`. In the
 **final** report it lives at `data_quality_summary.examined_ruled_out`. The **preview** report

@@ -5,10 +5,12 @@ import { existsSync, readdirSync, statSync, readFileSync } from 'fs';
 import { resolveAssetPath } from '../utils/assetPath.js';
 import { addCredits } from './creditService.js';
 import { sendCreditBonusEmail } from './emailService.js';
+import { isSupportedAnalystModel } from './analystModelService.js';
 
 /**
  * Get dashboard statistics
  */
+
 export async function getDashboardStats() {
   const [
     totalUsers,
@@ -235,6 +237,7 @@ export async function listUsers(page: number, limit: number, search?: string) {
         role: true,
         createdAt: true,
         fullCatalogAccess: true,
+        chatAnalystAccess: true,
         hasActiveSubscription: true,
         credits: { select: { balance: true, monthlyAllowance: true } },
         subscription: { select: { status: true, plan: { select: { name: true } } } },
@@ -255,6 +258,7 @@ export async function listUsers(page: number, limit: number, search?: string) {
       creditBalance: u.credits?.balance ?? 0,
       monthlyAllowance: u.credits?.monthlyAllowance ?? 0,
       fullCatalogAccess: u.fullCatalogAccess,
+      chatAnalystAccess: u.chatAnalystAccess,
       subscriptionStatus: u.subscription?.status ?? null,
       subscriptionPlanName: u.subscription?.plan?.name ?? null,
       jobCount: u._count.jobs,
@@ -280,6 +284,7 @@ export async function getUserDetail(userId: string) {
       role: true,
       createdAt: true,
       fullCatalogAccess: true,
+      chatAnalystAccess: true,
       hasActiveSubscription: true,
       credits: { select: { balance: true, totalPurchased: true, totalUsed: true, monthlyAllowance: true } },
       subscription: { select: { status: true, currentPeriodEnd: true, cancelAtPeriodEnd: true, plan: { select: { name: true } } } },
@@ -312,6 +317,7 @@ export async function getUserDetail(userId: string) {
     totalPurchased: user.credits?.totalPurchased ?? 0,
     totalUsed: user.credits?.totalUsed ?? 0,
     fullCatalogAccess: user.fullCatalogAccess,
+    chatAnalystAccess: user.chatAnalystAccess,
     hasActiveSubscription: user.hasActiveSubscription,
     subscription: user.subscription
       ? {
@@ -465,6 +471,8 @@ const SETTINGS_VALIDATORS: Record<string, (value: string) => string | null> = {
   token_cost_guided_s2_4: strictNonNegativeIntegerValidator(0, 100),
   token_cost_guided_s5: strictNonNegativeIntegerValidator(0, 100),
   registration_credits: integerValidator(0, 1000),
+  analyst_chat_model: (value) =>
+    isSupportedAnalystModel(value) ? null : 'Select one of the supported analyst models',
   cta_header: ctaJsonValidator(),
   cta_hero_primary: ctaJsonValidator(),
   cta_hero_secondary: ctaJsonValidator(),

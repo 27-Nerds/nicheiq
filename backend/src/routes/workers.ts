@@ -797,6 +797,38 @@ workersRouter.post('/progress', async (req: Request, res: Response) => {
         data.landing_path
       );
 
+      const { prisma: completionDb } = await import('../services/db.js');
+      if (data.dispatch_id) {
+        await completionDb.jobDispatch.updateMany({
+          where: { id: data.dispatch_id },
+          data: { state: DispatchState.COMPLETED, settledAt: new Date() },
+        });
+        await completionDb.job.updateMany({
+          where: { activeDispatchId: data.dispatch_id },
+          data: { activeDispatchId: null },
+        });
+      }
+
+      try {
+        const completedJob = await completionDb.job.findUnique({
+          where: { id: data.job_id },
+          select: { niche: true },
+        });
+        const { getReportJsonForJob } = await import('../services/assetService.js');
+        const report = await getReportJsonForJob(data.job_id);
+        if (completedJob && report) {
+          const { createReportAnalystFollowup } = await import('../services/analystFollowupService.js');
+          await createReportAnalystFollowup({
+            jobId: data.job_id,
+            operationId: data.dispatch_id ?? data.job_id,
+            niche: completedJob.niche,
+            report,
+          });
+        }
+      } catch (followupError) {
+        console.error('[Workers] Failed to create report analyst follow-up:', followupError);
+      }
+
       // Skip email notification here - already sent by /report-ready endpoint
       console.log(`[Workers] Job ${data.job_id} completed - report: ${data.report_path}`);
     }
@@ -1037,8 +1069,9 @@ workersRouter.post('/regeneration-complete', async (req: Request, res: Response)
         id: data.job_id,
         status: { in: [JobStatus.REGENERATING, JobStatus.QUEUED] },
         ideasRegeneratedAt: { not: null },  // Guard: only regen-queued, not initial queued
+        ...dispatchGuard(data.dispatch_id),
       },
-      select: { solutionIdeas: true, userId: true, niche: true, costUsd: true },
+      select: { solutionIdeas: true, userId: true, niche: true, costUsd: true, regenerationCount: true },
     });
 
     if (!job) {
@@ -1066,6 +1099,7 @@ workersRouter.post('/regeneration-complete', async (req: Request, res: Response)
         id: data.job_id,
         status: { in: [JobStatus.REGENERATING, JobStatus.QUEUED] },
         ideasRegeneratedAt: { not: null },
+        ...dispatchGuard(data.dispatch_id),
       },
       data: {
         status: JobStatus.AWAITING_SELECTION,
@@ -1078,6 +1112,18 @@ workersRouter.post('/regeneration-complete', async (req: Request, res: Response)
       res.status(409).json({ error: 'Job state changed during regeneration' });
       return;
     }
+
+    if (data.dispatch_id) {
+      await prisma.$transaction((tx) => settleDispatch(tx, data.dispatch_id!, DispatchState.COMPLETED));
+    }
+
+    const { createRegenerationAnalystFollowup } = await import('../services/analystFollowupService.js');
+    await createRegenerationAnalystFollowup({
+      jobId: data.job_id,
+      dispatchId: data.dispatch_id ?? `legacy-${data.job_id}-${job.regenerationCount}`,
+      niche: job.niche,
+      ideas: data.solutions,
+    });
 
     // Broadcast progress update
     broadcastProgress(data.job_id, {
@@ -1202,7 +1248,7 @@ workersRouter.post('/seed-complete', async (req: Request, res: Response) => {
           status: { in: [JobStatus.QUEUED, JobStatus.RUNNING] },
           ...dispatchGuard(data.dispatch_id),
         },
-        select: { solutionIdeas: true, costUsd: true },
+        select: { solutionIdeas: true, costUsd: true, niche: true },
       });
       if (!current) return { count: 0 };
 
@@ -1256,7 +1302,7 @@ workersRouter.post('/seed-complete', async (req: Request, res: Response) => {
           });
         }
       }
-      return { count: flipped.count };
+      return { count: flipped.count, niche: current.niche };
     });
 
     if (result.count === 0) {
@@ -1306,6 +1352,17 @@ workersRouter.post('/seed-complete', async (req: Request, res: Response) => {
     // snapshot for up to CACHE_TTL.
     const { invalidatePreviewReportCache } = await import('../services/assetService.js');
     invalidatePreviewReportCache(data.job_id);
+
+    if (data.dispatch_id) {
+      const { createSeedAnalystFollowup } = await import('../services/analystFollowupService.js');
+      await createSeedAnalystFollowup({
+        jobId: data.job_id,
+        dispatchId: data.dispatch_id,
+        niche: result.niche!,
+        outcome: data.outcome,
+        idea: data.idea,
+      });
+    }
 
     broadcastProgress(data.job_id, { stage: 5, name: 'Solution Pipeline', status: 'completed' });
 

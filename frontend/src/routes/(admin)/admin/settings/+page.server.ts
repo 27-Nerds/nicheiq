@@ -33,48 +33,36 @@ export const load: PageServerLoad = async ({ parent }) => {
   };
 
   try {
-    const [sampleReportRes, registrationCreditsRes, ...responses] = await Promise.all([
-      fetchBackend(`/api/admin/settings/sample_report_url`, { headers }),
-      fetchBackend(`/api/admin/settings/registration_credits`, { headers }),
-      ...TOKEN_COST_KEYS.map((key) =>
-        fetchBackend(`/api/admin/settings/${key}`, { headers }),
-      ),
-      ...CTA_KEYS.map((key) =>
-        fetchBackend(`/api/admin/settings/${key}`, { headers }),
-      ),
+    const [sampleReportRes, registrationCreditsRes, analystModelRes, ...responses] = await Promise.all([
+      fetchBackend('/api/admin/settings/sample_report_url', { headers }),
+      fetchBackend('/api/admin/settings/registration_credits', { headers }),
+      fetchBackend('/api/admin/settings/analyst-model', { headers }),
+      ...TOKEN_COST_KEYS.map((key) => fetchBackend(`/api/admin/settings/${key}`, { headers })),
+      ...CTA_KEYS.map((key) => fetchBackend(`/api/admin/settings/${key}`, { headers })),
     ]);
 
-    const sampleReportUrl = sampleReportRes.ok
-      ? (await sampleReportRes.json()).value
-      : null;
-
-    const registrationCredits = registrationCreditsRes.ok
-      ? (await registrationCreditsRes.json()).value
-      : null;
+    const sampleReportUrl = sampleReportRes.ok ? (await sampleReportRes.json()).value : null;
+    const registrationCredits = registrationCreditsRes.ok ? (await registrationCreditsRes.json()).value : null;
+    const analystModel = analystModelRes.ok ? await analystModelRes.json() : null;
 
     const tokenCostResponses = responses.slice(0, TOKEN_COST_KEYS.length);
     const ctaResponses = responses.slice(TOKEN_COST_KEYS.length);
-
     const tokenCosts: Record<string, string | null> = {};
     for (let i = 0; i < TOKEN_COST_KEYS.length; i++) {
       const res = tokenCostResponses[i];
-      tokenCosts[TOKEN_COST_KEYS[i]] = res.ok
-        ? (await res.json()).value
-        : null;
+      tokenCosts[TOKEN_COST_KEYS[i]] = res.ok ? (await res.json()).value : null;
     }
 
     const ctaTexts: Record<string, string | null> = {};
     for (let i = 0; i < CTA_KEYS.length; i++) {
       const res = ctaResponses[i];
-      ctaTexts[CTA_KEYS[i]] = res.ok
-        ? (await res.json()).value
-        : null;
+      ctaTexts[CTA_KEYS[i]] = res.ok ? (await res.json()).value : null;
     }
 
-    return { sampleReportUrl, registrationCredits, tokenCosts, ctaTexts };
+    return { sampleReportUrl, registrationCredits, analystModel, tokenCosts, ctaTexts };
   } catch (error) {
     console.error('Failed to fetch settings:', error);
   }
 
-  return { sampleReportUrl: null, registrationCredits: null, tokenCosts: {}, ctaTexts: {} };
+  return { sampleReportUrl: null, registrationCredits: null, analystModel: null, tokenCosts: {}, ctaTexts: {} };
 };

@@ -1,8 +1,8 @@
-"""resolve_seed_anchors: tolerant match of a user idea seed to validated pains + a segment.
+"""resolve_seed_anchors: conservative match of a user idea seed to one validated pain + segment.
 
-Match order: (1) exact pain_ref title match, (2) token-overlap of seed_text/tool_ref against
-pain text (same >=2-shared-stemmed-token gate every Multi-Frame focus uses). No genuine match
--> ([], None), never a forced/fabricated link or a round-robin segment guess.
+An exact pain_ref identifies a candidate but still needs >=3 corroborating product terms.
+Only title + description define pain identity; broad quotes are evidence after matching.
+No genuine match -> ([], None), never a forced link or round-robin segment guess.
 """
 
 from types import SimpleNamespace
@@ -28,8 +28,30 @@ class TestExactPainRefMatch:
     def test_exact_title_match_case_and_whitespace_insensitive(self):
         pains = [_pain("Chasing unpaid invoices manually"), _pain("Other pain")]
         result = resolve_seed_anchors(
-            "some free text", "  chasing UNPAID invoices manually  ", None, pains, [])
+            "Automate chasing unpaid invoices", "  chasing UNPAID invoices manually  ",
+            None, pains, [])
         assert result.anchor_pain_titles == ["Chasing unpaid invoices manually"]
+        assert result.match_kind == "explicit"
+
+    def test_exact_advisory_ref_is_rejected_when_product_does_not_match(self):
+        title = "Cannot find reliable, in-depth esports reporting as a journalist or fan"
+        pains = [_pain(
+            title,
+            description=(
+                "Esports fans turn to creators but lack investigative reporting resources."),
+            quotes=[
+                "State of the Game videos feature a favorite player",
+                "Traditional games journalists interview developers",
+            ],
+        )]
+
+        result = resolve_seed_anchors(
+            "Fantasy cards collection game for esports fans where players open packs and earn",
+            title, None, pains, [])
+
+        assert result.anchor_pain_titles == []
+        assert result.rejected_pain_ref == title
+        assert result.match_kind == "unanchored"
 
     def test_pain_ref_with_no_match_falls_through_to_token_overlap(self):
         pains = [_pain("Late invoice reminders are manual and error prone",
@@ -59,11 +81,10 @@ class TestTokenOverlapFallback:
             "QuickBooks invoicing is too complex for solo landscapers",
             description="solo landscapers find QuickBooks invoicing overwhelming",
         )]
-        # seed_text alone shares only "landscapers" (1 token) with the pain — below the >=2
-        # gate. tool_ref adds "QuickBooks", pushing the combined seed+tool text to 2 shared
-        # distinctive tokens, which is what actually clears the anchor gate.
+        # The product names the job (invoicing) and audience; tool_ref adds QuickBooks.
         result = resolve_seed_anchors(
-            "A cheaper alternative for solo landscapers", "not-a-pain-title", "QuickBooks",
+            "A cheaper invoicing alternative for solo landscapers",
+            "not-a-pain-title", "QuickBooks",
             pains, [])
         assert result.anchor_pain_titles == [
             "QuickBooks invoicing is too complex for solo landscapers"]

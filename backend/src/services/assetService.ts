@@ -11,6 +11,8 @@ const CACHE_MAX = 200;
 const discoveryCache = new Map<string, { data: unknown; ts: number }>();
 const previewReportCache = new Map<string, { data: unknown; ts: number }>();
 
+const reportJsonCache = new Map<string, { data: unknown; ts: number }>();
+
 function readFromCache(cache: Map<string, { data: unknown; ts: number }>, key: string): unknown | null {
   const cached = cache.get(key);
   if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.data;
@@ -66,6 +68,20 @@ export async function getPreviewReportForJob(jobId: string): Promise<unknown | n
   if (data === null) return null;
   writeToCache(previewReportCache, jobId, data);
   return data;
+}
+
+export async function getReportJsonForJob(jobId: string): Promise<unknown | null> {
+  const cached = readFromCache(reportJsonCache, jobId);
+  if (cached) return cached;
+
+  const data = await readAssetJson(jobId, AssetType.REPORT_JSON, 'Report JSON');
+  if (data === null) return null;
+  writeToCache(reportJsonCache, jobId, data);
+  return data;
+}
+
+export function invalidateReportJsonCache(jobId: string): void {
+  reportJsonCache.delete(jobId);
 }
 
 /**

@@ -9,6 +9,7 @@
     Coins,
     ArrowUp,
     ArrowDown,
+    ChevronDown,
     X,
   } from "lucide-svelte";
   import {
@@ -21,6 +22,7 @@
     type NewIdeaSeedPatch,
   } from "$lib/api";
   import ChatThread from "$lib/components/chat/ChatThread.svelte";
+  import IdeaReferenceText from "$lib/components/IdeaReferenceText.svelte";
   import { selectionSuggestions } from "$lib/components/chat/suggestions";
   import { chatLedger } from "$lib/stores/chatLedger.svelte";
   import { chatPanel } from "$lib/stores/chatPanel.svelte";
@@ -43,6 +45,11 @@
   import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
   import { humanizeTag, tagDescription } from "$lib/utils/ideaTagLabels";
   import { angleLabel, angleDescription } from "$lib/utils/ideaAngleLabels";
+  import {
+    buildIdeaReferences,
+    matchIdeaReferences,
+    type IdeaReference,
+  } from "$lib/utils/ideaReferences";
   import Tooltip from "$lib/components/ui/Tooltip.svelte";
   import WorkspaceOverlay from "$lib/components/ui/WorkspaceOverlay.svelte";
   import SelectSolutionModal from "$lib/components/SelectSolutionModal.svelte";
@@ -116,6 +123,21 @@
       .map((p) => p.trim())
       .filter(Boolean),
   );
+  // The generator contract puts the validation recommendation last. Surface that
+  // decision first, while keeping the preceding analysis available on demand.
+  const summaryRecommendation = $derived(summaryParagraphs.at(-1) ?? "");
+  const summarySupportingNotes = $derived(summaryParagraphs.slice(0, -1));
+  const ideaReferences = $derived(
+    buildIdeaReferences(solutions, examinedRuledOut ?? []),
+  );
+  const analystPickNames = $derived(new Set(
+    matchIdeaReferences(summaryRecommendation, ideaReferences)
+      .flatMap((segment) => (
+        segment.reference?.kind === "ranked" && segment.reference.solutionName
+          ? [segment.reference.solutionName]
+          : []
+      )),
+  ));
 
   // ── Selection state ──
   let selectedNames = new SvelteSet<string>();
@@ -123,6 +145,10 @@
   let selectLoading = $state(false);
   let selectError = $state("");
   let modalIndex = $state<number | null>(null); // index into original `solutions`
+  let ruledOutDetail = $state<RuledOutFinding | null>(null);
+  let ruledOutExpanded = $state(true);
+  let summaryExpanded = $state(false);
+  let returnToChatState = $state<"docked" | "expanded" | null>(null);
 
   // Restore pre-existing selections (e.g. page reload mid-selection)
   $effect(() => {
@@ -575,6 +601,7 @@
     toggle(name);
   }
   function openDetail(name: string) {
+    ruledOutDetail = null;
     modalIndex = rankedIndexOf(name);
   }
   function handleNavigate(index: number) {
@@ -582,6 +609,41 @@
   }
   function handleCloseDetail() {
     modalIndex = null;
+    restoreChatAfterDetail();
+  }
+  function openRuledOutDetail(finding: RuledOutFinding) {
+    modalIndex = null;
+    ruledOutDetail = finding;
+  }
+  function handleCloseRuledOutDetail() {
+    ruledOutDetail = null;
+    restoreChatAfterDetail();
+  }
+  function restoreChatAfterDetail() {
+    const state = returnToChatState;
+    returnToChatState = null;
+    if (state === "expanded") {
+      chatPanel.expand();
+    } else if (state === "docked") {
+      chatPanel.dock();
+    }
+  }
+
+  function openIdeaReference(reference: IdeaReference) {
+    if (reference.kind === "ranked" && reference.solutionName) {
+      openDetail(reference.solutionName);
+      return;
+    }
+    if (reference.kind === "ruled-out" && reference.ruledOutIndex !== undefined) {
+      const finding = examinedRuledOut?.[reference.ruledOutIndex];
+      if (finding) openRuledOutDetail(finding);
+    }
+  }
+
+  function openChatIdeaReference(reference: IdeaReference) {
+    returnToChatState = chatPanel.isExpanded ? "expanded" : "docked";
+    chatPanel.close();
+    openIdeaReference(reference);
   }
 
   function handleValidate() {
@@ -643,7 +705,9 @@
 
   // Per-row derived helpers (called in snippet to keep markup lean)
   function rowMeta(s: SolutionPreview) {
-    const sourcePain = s.source_pain?.trim() || s.pain_points_addressed?.[0]?.trim() || null;
+    const sourcePain = s.source_pain?.trim()
+      || s.pain_points_addressed?.[0]?.trim()
+      || (s.unanchored_hypothesis ? "No validated pain match" : null);
     const risk =
       s.tags?.risk_flags?.[0]
         ? humanizeTag(s.tags.risk_flags[0])
@@ -691,7 +755,7 @@
       <h2 class="cmd-title">Ranked candidates</h2>
       {#if interactive}
         <p class="cmd-sub">
-          Choose up to 3 candidates for paid validation. Deep Research checks demand,
+          Shortlist up to 3 candidates for paid validation. Deep Research checks demand,
           competition, market size, and go-to-market risk.
         </p>
       {:else}
@@ -867,10 +931,42 @@
 
   {#if summaryParagraphs.length}
     <section class="analyst-summary" aria-label="Analyst summary">
-      <p class="analyst-summary-eyebrow">Analyst summary</p>
-      {#each summaryParagraphs as para}
-        <p class="analyst-summary-text">{para}</p>
-      {/each}
+      <header class="analyst-summary-head">
+        <h3>Analyst recommendation</h3>
+      </header>
+
+      <div class="analyst-summary-body">
+        <p class="analyst-summary-text analyst-summary-text--verdict">
+          <IdeaReferenceText
+            content={summaryRecommendation}
+            references={ideaReferences}
+            onOpen={openIdeaReference}
+          />
+        </p>
+
+        {#if summarySupportingNotes.length}
+          <details
+            class="analyst-summary-details"
+            ontoggle={(event) => (summaryExpanded = event.currentTarget.open)}
+          >
+            <summary>
+              <span>{summaryExpanded ? "Hide full analysis" : "Read full analysis"}</span>
+              <ChevronDown class="analyst-summary-chevron" aria-hidden="true" />
+            </summary>
+            <div class="analyst-summary-notes">
+              {#each summarySupportingNotes as para}
+                <p class="analyst-summary-text">
+                  <IdeaReferenceText
+                    content={para}
+                    references={ideaReferences}
+                    onOpen={openIdeaReference}
+                  />
+                </p>
+              {/each}
+            </div>
+          </details>
+        {/if}
+      </div>
     </section>
   {/if}
 
@@ -904,6 +1000,7 @@
       {@const isSel = selectedNames.has(s.solution_name)}
       {@const order = selectionIndexOf(s.solution_name)}
       {@const maxed = !isSel && selectedNames.size >= MAX_SELECTIONS}
+      {@const isAnalystPick = analystPickNames.has(s.solution_name)}
       <div
         class="row"
         class:row-sel={isSel}
@@ -949,10 +1046,15 @@
           type="button"
           class="cell-title"
           onclick={() => openDetail(s.solution_name)}
-          aria-label="Review details for {m.title}. Score {Math.round(m.score * 100)} of 100, market fit {pct(s.market_fit_score)} percent, feasibility {m.feasPct} percent, build time {m.build}."
+          aria-label={`${isAnalystPick ? "Recommended by the analyst. " : ""}Review details for ${m.title}. Score ${Math.round(m.score * 100)} of 100, market fit ${pct(s.market_fit_score)} percent, feasibility ${m.feasPct} percent, build time ${m.build}.`}
         >
           <span class="title-block">
-            <span class="opp-title">{m.title}</span>
+            <span class="opp-title-line">
+              <span class="opp-title">{m.title}</span>
+              {#if isAnalystPick}
+                <span class="analyst-pick">Recommended</span>
+              {/if}
+            </span>
             <span class="opp-summary">{m.summary}</span>
             <span class="mobile-metrics" aria-hidden="true">
               <span>Market <strong>{pct(s.market_fit_score)}{#if s.market_fit_score != null}%{/if}</strong></span>
@@ -1033,34 +1135,55 @@
 
   {#if examinedRuledOut && examinedRuledOut.length > 0}
     <div class="ruled-out-panel" id="examined-ruled-out">
-      <div class="ruled-out-head">
+      <button
+        type="button"
+        class="ruled-out-head"
+        aria-expanded={ruledOutExpanded}
+        aria-controls="examined-ruled-out-list"
+        aria-label={`Examined and ruled out, ${examinedRuledOut.length} ideas`}
+        onclick={() => (ruledOutExpanded = !ruledOutExpanded)}
+      >
         <span>Examined &amp; ruled out</span>
         <strong>{examinedRuledOut.length}</strong>
-      </div>
-      <ul class="ruled-out-list">
-        {#each examinedRuledOut as finding, i}
-          <li
-            class="ruled-out-row"
-            class:ruled-out-row--highlight={seedHighlightRuledOutIndex === i}
-            data-ruled-out-index={i}
-          >
-            <div class="ruled-out-main">
-              <span class="ruled-out-pain">{finding.idea_name || finding.pain_title}</span>
-              {#if finding.source_frame === "user_seed"}
-                <span class="ruled-out-badge">Your idea</span>
-              {/if}
-              <span class="ruled-out-band">{ruledOutBandLabel(finding.market_fit_band)}</span>
-            </div>
-            {#if finding.idea_name && finding.idea_name !== finding.pain_title}
-              <p class="ruled-out-provenance"><strong>Pain</strong> {finding.pain_title}</p>
-            {/if}
-            <p class="ruled-out-reason">{finding.reason}</p>
-            {#if finding.evidence?.trim()}
-              <p class="ruled-out-evidence">&ldquo;{finding.evidence}&rdquo;</p>
-            {/if}
-          </li>
-        {/each}
-      </ul>
+        <ChevronDown
+          class={`ruled-out-chevron ${ruledOutExpanded ? "ruled-out-chevron--open" : ""}`}
+          aria-hidden="true"
+        />
+      </button>
+      {#if ruledOutExpanded}
+        <ul class="ruled-out-list" id="examined-ruled-out-list">
+          {#each examinedRuledOut as finding, i}
+            <li
+              class="ruled-out-row"
+              class:ruled-out-row--highlight={seedHighlightRuledOutIndex === i}
+              data-ruled-out-index={i}
+            >
+              <button
+                type="button"
+                class="ruled-out-row-button"
+                onclick={() => openRuledOutDetail(finding)}
+                aria-label="Review analysis for {finding.idea_name || finding.pain_title}. This idea was ruled out."
+              >
+                <div class="ruled-out-main">
+                  <span class="ruled-out-pain">{finding.idea_name || finding.pain_title}</span>
+                  {#if finding.source_frame === "user_seed"}
+                    <span class="ruled-out-badge">Your idea</span>
+                  {/if}
+                  <span class="ruled-out-band">{ruledOutBandLabel(finding.market_fit_band)}</span>
+                  <span class="ruled-out-view">View analysis <ArrowRight class="ruled-out-view-icon" aria-hidden="true" /></span>
+                </div>
+                {#if finding.idea_name && finding.idea_name !== finding.pain_title}
+                  <p class="ruled-out-provenance"><strong>Pain</strong> {finding.pain_title}</p>
+                {/if}
+                <p class="ruled-out-reason">{finding.reason}</p>
+                {#if finding.evidence?.trim()}
+                  <p class="ruled-out-evidence">&ldquo;{finding.evidence}&rdquo;</p>
+                {/if}
+              </button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
     </div>
   {/if}
 
@@ -1186,6 +1309,8 @@
         {seedCost}
         onSeedSubmit={handleSeed}
         starters={chatSuggestions}
+        {ideaReferences}
+        onOpenIdeaReference={openChatIdeaReference}
         focused={chatPanel.isExpanded}
         onToggleFocus={() => chatPanel.toggleExpanded()}
         onCollapse={() => {
@@ -1264,6 +1389,75 @@
       voteCount={solutionVotes[sortedSolutions[modalIndex].solution_name] ?? 0}
     />
   {/if}
+{/if}
+
+{#if ruledOutDetail}
+  {@const finding = ruledOutDetail}
+  {@const idea = finding.idea}
+  {@const title = finding.idea_name || finding.pain_title}
+  <WorkspaceOverlay
+    open={true}
+    size="standard"
+    label={`Ruled-out analysis: ${title}`}
+    onClose={handleCloseRuledOutDetail}
+  >
+    <article class="ruled-out-detail-card">
+      <header class="ruled-out-detail-head">
+        <span class="ruled-out-detail-kicker">Examined &amp; ruled out</span>
+        <h2>{title}</h2>
+        <div class="ruled-out-detail-badges">
+          {#if finding.source_frame === "user_seed"}<span class="ruled-out-badge">Your idea</span>{/if}
+          <span class="ruled-out-band">{ruledOutBandLabel(finding.market_fit_band)}</span>
+        </div>
+        <button
+          type="button"
+          class="ruled-out-detail-close"
+          aria-label="Close ruled-out analysis"
+          onclick={handleCloseRuledOutDetail}
+        ><X aria-hidden="true" /></button>
+      </header>
+      <div class="ruled-out-detail-body">
+        {#if idea?.short_description || idea?.description}
+          <section>
+            <h3>What it does</h3>
+            <p>{idea.short_description || idea.description}</p>
+          </section>
+        {/if}
+        {#if idea?.value_proposition}
+          <section>
+            <h3>Value proposition</h3>
+            <p>{idea.value_proposition}</p>
+          </section>
+        {/if}
+        <section class="ruled-out-verdict">
+          <h3>Why it was ruled out</h3>
+          <p>{finding.reason}</p>
+        </section>
+        <dl class="ruled-out-detail-facts">
+          <div><dt>Pain evaluated</dt><dd>{finding.pain_title}</dd></div>
+          <div>
+            <dt>Market fit</dt>
+            <dd>{finding.market_fit != null ? `${Math.round(finding.market_fit * 100)}%` : "Not scored"}</dd>
+          </div>
+          {#if idea?.estimated_development_time}
+            <div><dt>Build estimate</dt><dd>{idea.estimated_development_time}</dd></div>
+          {/if}
+        </dl>
+        {#if finding.evidence?.trim()}
+          <section>
+            <h3>Evidence considered</h3>
+            <blockquote>&ldquo;{finding.evidence}&rdquo;</blockquote>
+          </section>
+        {/if}
+        {#if idea?.core_features?.length}
+          <section>
+            <h3>Core features</h3>
+            <ul>{#each idea.core_features as feature}<li>{feature}</li>{/each}</ul>
+          </section>
+        {/if}
+      </div>
+    </article>
+  </WorkspaceOverlay>
 {/if}
 
 <style>
@@ -1896,28 +2090,102 @@
   /* ── Analyst summary ── */
   .analyst-summary {
     display: grid;
-    gap: 0.5rem;
-    margin-top: 1rem;
-    padding: 0.9rem 0.96rem;
-    background: color-mix(in srgb, var(--color-bg-surface) 74%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 42%, transparent);
-    border-radius: 0.75rem;
+    grid-template-columns: minmax(8.5rem, 11rem) minmax(0, 1fr);
+    column-gap: clamp(1.25rem, 3vw, 2.75rem);
+    align-items: start;
+    margin-top: 0.72rem;
+    padding: 1rem 0.2rem 1.05rem;
+    border-top: 1px solid color-mix(in srgb, var(--color-border-emphasis) 52%, transparent);
   }
-  .analyst-summary-eyebrow {
-    font-size: 0.6875rem;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: var(--color-text-muted);
+  .analyst-summary-head {
+    padding-top: 0.08rem;
+  }
+  .analyst-summary-head h3 {
+    max-width: 9rem;
     margin: 0;
+    font-family: var(--font-display);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    line-height: 1.35;
+    color: var(--color-text-secondary);
+    text-wrap: balance;
+  }
+  .analyst-summary-body {
+    min-width: 0;
+    max-width: 72ch;
   }
   .analyst-summary-text {
-    max-width: 76ch;
-    font-size: 0.8125rem;
-    line-height: 1.55;
-    color: var(--color-text-secondary);
+    max-width: none;
     margin: 0;
+    font-size: 0.8125rem;
+    line-height: 1.58;
+    color: var(--color-text-secondary);
     text-wrap: pretty;
+  }
+  .analyst-summary-text--verdict {
+    color: var(--color-text-primary);
+    font-size: 0.875rem;
+    font-weight: 400;
+  }
+  .analyst-summary :global(button.idea-reference-link) {
+    color: inherit;
+    font-weight: 600;
+    text-decoration-line: underline;
+    text-decoration-style: dotted;
+    text-decoration-color: var(--color-border-emphasis);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.18em;
+    transition: color 160ms ease, text-decoration-color 160ms ease;
+  }
+  .analyst-summary :global(button.idea-reference-link:hover) {
+    color: var(--color-accent-dark);
+    text-decoration-color: currentColor;
+  }
+  .analyst-summary-details {
+    margin-top: 0.72rem;
+    padding-top: 0.58rem;
+    border-top: 1px solid var(--color-border);
+  }
+  .analyst-summary-details summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.38rem;
+    padding: 0.08rem 0;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    list-style: none;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    transition: color 160ms ease;
+  }
+  .analyst-summary-details summary::-webkit-details-marker { display: none; }
+  .analyst-summary-details summary:hover {
+    color: var(--color-text-primary);
+  }
+  .analyst-summary-details summary:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 3px;
+    border-radius: 0.125rem;
+  }
+  .analyst-summary-chevron {
+    width: 0.75rem;
+    height: 0.75rem;
+    flex: 0 0 auto;
+    transition: transform 180ms var(--selection-motion);
+  }
+  .analyst-summary-details[open] .analyst-summary-chevron {
+    transform: rotate(180deg);
+  }
+  .analyst-summary-notes {
+    display: grid;
+    gap: 0;
+    padding: 0.82rem 0 0.12rem;
+  }
+  .analyst-summary-notes .analyst-summary-text + .analyst-summary-text {
+    margin-top: 0.88rem;
+    padding-top: 0.88rem;
+    border-top: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
   }
 
   /* ── Opportunity list ── */
@@ -2104,6 +2372,20 @@
     gap: 0.18rem;
     min-width: 0;
   }
+  .opp-title-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem 0.45rem;
+  }
+  .analyst-pick {
+    color: var(--color-accent-dark);
+    font-size: 0.625rem;
+    font-style: italic;
+    font-weight: 600;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
   .opp-title {
     font-family: var(--font-display);
     font-size: 0.8125rem;
@@ -2245,6 +2527,7 @@
     align-items: center;
     gap: 0.4rem;
     padding: 0.4rem 0.7rem;
+    border: 0;
     border-bottom: 1px solid color-mix(in srgb, var(--color-border-emphasis) 42%, transparent);
     background: color-mix(in srgb, var(--color-bg-surface) 74%, var(--color-bg-elevated));
     font-family: var(--font-mono);
@@ -2253,6 +2536,10 @@
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: var(--color-text-muted);
+    width: 100%;
+    appearance: none;
+    text-align: left;
+    cursor: pointer;
   }
   .ruled-out-head strong {
     display: grid;
@@ -2265,6 +2552,13 @@
     color: var(--color-text-secondary);
     font-family: var(--font-mono);
   }
+  .ruled-out-chevron {
+    width: 0.9rem;
+    height: 0.9rem;
+    margin-left: auto;
+    transition: transform 160ms ease;
+  }
+  .ruled-out-chevron--open { transform: rotate(180deg); }
   .ruled-out-list {
     display: grid;
     margin: 0;
@@ -2272,13 +2566,30 @@
     list-style: none;
   }
   .ruled-out-row {
-    display: grid;
-    gap: 0.2rem;
-    padding: 0.62rem 0.7rem;
     border-top: 1px solid var(--color-border);
     background: var(--color-bg-elevated);
   }
   .ruled-out-row:first-child { border-top: 0; }
+  .ruled-out-row-button {
+    display: grid;
+    gap: 0.2rem;
+    width: 100%;
+    padding: 0.62rem 0.7rem;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background 140ms ease;
+  }
+  .ruled-out-row-button:hover {
+    background: color-mix(in srgb, var(--color-accent) 4%, transparent);
+  }
+  .ruled-out-row-button:focus-visible {
+    position: relative;
+    outline: 2px solid var(--color-accent);
+    outline-offset: -2px;
+  }
   .ruled-out-row--highlight {
     animation: seed-row-flash 2.4s ease-out;
   }
@@ -2294,6 +2605,19 @@
     font-weight: 700;
     color: var(--color-text-primary);
   }
+  .ruled-out-view {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    margin-left: auto;
+    color: var(--color-text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.5625rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .ruled-out-view-icon { width: 0.75rem; height: 0.75rem; }
   /* Marks a demoted entry as the user's OWN composed idea, not a portfolio
      backfill/winner — orange reserved for this one interactive/brand marker,
      matching the design system's "orange = brand" carve-out. */
@@ -2352,6 +2676,104 @@
     font-size: 0.75rem;
     font-style: italic;
     line-height: 1.4;
+  }
+  .ruled-out-detail-card {
+    display: flex;
+    flex-direction: column;
+    max-height: 100%;
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    border-radius: 0.75rem;
+    background: var(--color-bg-surface);
+  }
+  .ruled-out-detail-head {
+    position: relative;
+    display: grid;
+    gap: 0.55rem;
+    padding: 1.35rem 4rem 1.15rem 1.5rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .ruled-out-detail-head h2 {
+    margin: 0;
+    color: var(--color-text-primary);
+    font-size: 1.35rem;
+    line-height: 1.15;
+  }
+  .ruled-out-detail-kicker,
+  .ruled-out-detail-body h3,
+  .ruled-out-detail-facts dt {
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--color-text-muted);
+  }
+  .ruled-out-detail-badges { display: flex; gap: 0.4rem; }
+  .ruled-out-detail-close {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    display: grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    background: var(--color-bg-elevated);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+  }
+  .ruled-out-detail-close:hover { color: var(--color-text-primary); }
+  .ruled-out-detail-close:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+  .ruled-out-detail-close :global(svg) { width: 1rem; height: 1rem; }
+  .ruled-out-detail-body {
+    display: grid;
+    gap: 1rem;
+    padding: 1.25rem 1.5rem 1.5rem;
+    overflow-y: auto;
+  }
+  .ruled-out-detail-body section { display: grid; gap: 0.35rem; }
+  .ruled-out-detail-body h3,
+  .ruled-out-detail-body p,
+  .ruled-out-detail-body blockquote { margin: 0; }
+  .ruled-out-detail-body p,
+  .ruled-out-detail-body li,
+  .ruled-out-detail-body dd {
+    color: var(--color-text-secondary);
+    font-size: 0.875rem;
+    line-height: 1.55;
+  }
+  .ruled-out-verdict {
+    padding: 0.85rem 0.95rem;
+    border-left: 3px solid var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 6%, transparent);
+  }
+  .ruled-out-detail-facts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+    gap: 0.75rem;
+    margin: 0;
+  }
+  .ruled-out-detail-facts div {
+    display: grid;
+    gap: 0.25rem;
+    padding: 0.75rem;
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+  }
+  .ruled-out-detail-facts dd { margin: 0; }
+  .ruled-out-detail-body blockquote {
+    padding-left: 0.75rem;
+    border-left: 1px solid var(--color-border-emphasis);
+    color: var(--color-text-secondary);
+    font-size: 0.875rem;
+    font-style: italic;
+    line-height: 1.5;
   }
 
   /* metric cells */
@@ -2577,6 +2999,14 @@
   @media (max-width: 859px) {
     .workbench { padding: 0.88rem 0.88rem 1.25rem; }
     .workbench.has-tray { padding-bottom: 6rem; }
+    .analyst-summary {
+      grid-template-columns: minmax(0, 1fr);
+      row-gap: 0.45rem;
+      padding: 0.9rem 0 1rem;
+    }
+    .analyst-summary-head h3 {
+      max-width: none;
+    }
     .cmd {
       grid-template-columns: 1fr;
       align-items: flex-start;

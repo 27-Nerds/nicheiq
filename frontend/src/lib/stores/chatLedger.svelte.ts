@@ -32,9 +32,9 @@ export interface LedgerSegment {
 }
 
 /** Display order of segments — pipeline order, not numeric quirks. */
-const SEGMENT_ORDER = [1, 4, 5];
+const SEGMENT_ORDER = [1, 4, 5, 6];
 
-const MAX_TURNS = 30;
+const DEFAULT_MAX_TURNS = 30;
 
 /** "Keep as is" is local-only server-side (no dismiss endpoint), and `fetchHistory`
  *  rebuilds every persisted row from scratch on each reload — so without a durable
@@ -90,6 +90,8 @@ let _appliedPatchIds = $state<Set<string>>(new Set());
 let _dismissedIds = $state<Set<string>>(new Set());
 /** Server-reported global turn usage (Phase 2 history response); null → derive locally. */
 let _serverUsedTurns = $state<number | null>(null);
+let _serverMaxTurns = $state(DEFAULT_MAX_TURNS);
+let _operationActive = $state(false);
 /** Seed card state, rebuilt fresh from durable receipts on every fetch — see SeedOutcome. */
 let _seedOutcomes = $state<Map<string, SeedOutcome>>(new Map());
 let _loadPromise: Promise<void> | null = null;
@@ -197,6 +199,9 @@ async function fetchHistory(): Promise<void> {
     _weakPool = res.weakPool ?? false;
     const used = (res as { usedTurns?: number }).usedTurns;
     _serverUsedTurns = typeof used === "number" ? used : null;
+    const max = (res as { maxTurns?: number }).maxTurns;
+    _serverMaxTurns = typeof max === "number" ? max : DEFAULT_MAX_TURNS;
+    _operationActive = Boolean(res.activeOperation);
     _loadFailed = false;
   } catch {
     // GET /chat/history is auth+ownership only — any failure is a genuine load
@@ -217,7 +222,8 @@ export const chatLedger = {
   get weakPool() { return _weakPool; },
   get appliedPatchIds() { return _appliedPatchIds; },
   get usedTurns() { return _usedTurns; },
-  get maxTurns() { return MAX_TURNS; },
+  get maxTurns() { return _serverMaxTurns; },
+  get operationActive() { return _operationActive; },
   /** True while ANY seed for this job is still being evaluated. Durable (rebuilt from
    *  the server's `seed_submitted`/`seed_settled` receipts on every fetch), so it's
    *  true immediately after a page reload mid-evaluation — even before SelectionWorkbench
@@ -267,6 +273,8 @@ export const chatLedger = {
     _weakPool = false;
     _appliedPatchIds = new Set();
     _serverUsedTurns = null;
+    _serverMaxTurns = DEFAULT_MAX_TURNS;
+    _operationActive = false;
     _seedOutcomes = new Map();
     _seedResults = new Map();
     _dismissedIds = loadDismissedIds(jobId);

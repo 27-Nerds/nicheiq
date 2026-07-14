@@ -3,9 +3,11 @@
   import Breadcrumb from "./Breadcrumb.svelte";
 
   type IconColor = "accent" | "secondary" | "warning";
+  type TitleVariant = "default" | "research-topic";
 
   interface Props {
     title: string;
+    titleVariant?: TitleVariant;
     subtitle?: string;
     icon?: ComponentType;
     iconColor?: IconColor;
@@ -21,6 +23,7 @@
   let {
     icon: Icon,
     title,
+    titleVariant = "default",
     subtitle,
     iconColor = "accent",
     breadcrumbItems,
@@ -41,9 +44,11 @@
   const colors = $derived(Icon ? colorMap[iconColor] : null);
   const hasBreadcrumb = $derived(!!(breadcrumbItems && breadcrumbCurrent));
   const actionsInTitleRow = $derived(!!actions);
+  const isResearchTopic = $derived(titleVariant === "research-topic");
+  const isLongResearchTopic = $derived(isResearchTopic && title.trim().length > 96);
 </script>
 
-<div class="page-header mb-8 {className}">
+<div class="page-header mb-8 {className}" class:page-header--research-topic={isResearchTopic}>
   {#if breadcrumbItems && breadcrumbCurrent}
     <div class="page-header-top flex items-center justify-between gap-4 flex-wrap">
       <Breadcrumb items={breadcrumbItems} current={breadcrumbCurrent} />
@@ -58,12 +63,17 @@
         </div>
       {/if}
       <div>
-        <h1 class="text-2xl font-bold text-text-primary flex items-center gap-3 text-balance">
+        <h1
+          class="page-header-title text-2xl font-bold text-text-primary flex items-center gap-3 text-balance"
+          class:page-header-title--research-topic={isResearchTopic}
+          class:page-header-title--long={isLongResearchTopic}
+          title={isLongResearchTopic ? title : undefined}
+        >
           {title}
           {#if badge}{@render badge()}{/if}
         </h1>
         {#if subtitle}
-          <p class="text-text-muted mt-1 text-pretty">{subtitle}</p>
+          <p class="page-header-subtitle text-text-muted mt-1 text-pretty">{subtitle}</p>
         {/if}
         {#if metadata}
           <div class="mt-2">
@@ -85,3 +95,45 @@
     </div>
   {/if}
 </div>
+
+<style>
+  .page-header--research-topic {
+    margin-bottom: 0;
+  }
+
+  .page-header-title--research-topic {
+    max-width: 42ch;
+    font-family: var(--font-display);
+    font-size: clamp(1.55rem, 2.3vw, 2rem);
+    line-height: 1.08;
+    letter-spacing: -0.025em;
+    text-wrap: balance;
+  }
+
+  .page-header-title--research-topic.page-header-title--long {
+    display: -webkit-box;
+    max-width: 64ch;
+    overflow: hidden;
+    font-size: clamp(1.35rem, 1.8vw, 1.625rem);
+    line-height: 1.18;
+    letter-spacing: -0.018em;
+    text-wrap: pretty;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+  }
+
+  .page-header--research-topic .page-header-subtitle {
+    max-width: 52rem;
+    margin-top: 0.55rem;
+    font-size: 0.9375rem;
+    line-height: 1.5;
+  }
+
+  @media (max-width: 639px) {
+    .page-header-title--research-topic.page-header-title--long {
+      -webkit-line-clamp: 4;
+      line-clamp: 4;
+    }
+  }
+</style>

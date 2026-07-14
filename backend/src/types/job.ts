@@ -129,6 +129,7 @@ export type IdeasReadyInput = z.infer<typeof IdeasReadySchema>;
 export const RegenerationCompleteSchema = z.object({
   worker_id: z.string().min(1),
   job_id: z.string().uuid(),
+  dispatch_id: z.string().uuid().optional(),
   solutions: z.array(z.record(z.any())),
   // Per-batch LLM cost breakdown (CostTracker.get_summary()) for this regeneration.
   // Accumulated onto the job's existing costUsd (regeneration adds spend to an

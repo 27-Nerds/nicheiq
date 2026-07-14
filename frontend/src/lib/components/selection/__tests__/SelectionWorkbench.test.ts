@@ -299,6 +299,10 @@ describe("SelectionWorkbench — ruled-out panel: idea name primary + 'Your idea
       prior_tier: "winner",
       source: "demoted_winner",
       evidence: "Only a handful of mentions",
+      idea: solution("InvoiceChaser", {
+        market_fit_score: 0.2,
+        short_description: "Automates invoice follow-up",
+      }),
     },
     {
       pain_title: "Manual reconciliation",
@@ -327,6 +331,127 @@ describe("SelectionWorkbench — ruled-out panel: idea name primary + 'Your idea
     expect(queryByText("Your idea")).not.toBeNull(); // sanity: exactly one badge exists
     expect(document.querySelectorAll(".ruled-out-badge")).toHaveLength(1);
   });
+
+  it("labels an accepted unanchored submitted idea without inventing a pain", async () => {
+    const unanchored = solution("Esports Fantasy Cards", {
+      source_frame: "user_seed",
+      unanchored_hypothesis: true,
+      source_pain: null,
+      pain_points_addressed: [],
+    });
+    const { findByText } = render(SelectionWorkbench, {
+      props: { ...baseProps, solutions: [unanchored], examinedRuledOut: [] },
+    });
+
+    await findByText("No validated pain match");
+  });
+
+  it("opens a submitted ruled-out idea in the read-only details view", async () => {
+    const { findByLabelText, findByRole, findByText } = render(SelectionWorkbench, {
+      props: { ...baseProps, examinedRuledOut: RULED_OUT },
+    });
+
+    await fireEvent.click(await findByLabelText(
+      "Review analysis for InvoiceChaser. This idea was ruled out.",
+    ));
+    await findByRole("dialog", { name: "Ruled-out analysis: InvoiceChaser" });
+    await findByText("Automates invoice follow-up");
+  });
+
+  it("opens summary analysis for a legacy ruled-out finding without an idea payload", async () => {
+    const { findByLabelText, findByRole } = render(SelectionWorkbench, {
+      props: { ...baseProps, examinedRuledOut: RULED_OUT },
+    });
+
+    await fireEvent.click(await findByLabelText(
+      "Review analysis for Manual reconciliation. This idea was ruled out.",
+    ));
+    const dialog = await findByRole("dialog", { name: "Ruled-out analysis: Manual reconciliation" });
+    expect(dialog).toHaveTextContent("No buyer identified");
+  });
+
+  it("toggles the ruled-out list from the section header", async () => {
+    const { findByRole, queryByText } = render(SelectionWorkbench, {
+      props: { ...baseProps, examinedRuledOut: RULED_OUT },
+    });
+
+    const toggle = await findByRole("button", { name: "Examined and ruled out, 2 ideas" });
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(queryByText("InvoiceChaser")).toBeNull();
+  });
+
+  it("opens a ranked idea from its shortened analyst-summary name", async () => {
+    chatPanel.close();
+    const proMatchDesk = solution("ProMatchDesk (CS2+Dota 2)");
+    const { findByRole } = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: [proMatchDesk],
+        examinedRuledOut: [],
+        ideaPortfolioSummary: "ProMatchDesk is the strongest reporting workflow.",
+      },
+    });
+
+    await fireEvent.click(await findByRole(
+      "button", { name: "Open idea details for ProMatchDesk (CS2+Dota 2)" },
+    ));
+    await findByRole(
+      "dialog", { name: "Solution details: ProMatchDesk (CS2+Dota 2)" },
+    );
+  });
+
+  it("surfaces the final recommendation, marks its idea, and discloses supporting analysis", async () => {
+    const { findByLabelText, findByText, queryByText } = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        ideaPortfolioSummary: [
+          "The pool has moderate market fit overall.",
+          "Free incumbents make willingness to pay the central risk.",
+          "Alpha Idea most deserves deeper validation because it has the clearest buyer.",
+        ].join("\n\n"),
+      },
+    });
+
+    const section = await findByLabelText("Analyst summary");
+    const renderedNotes = section.querySelectorAll(".analyst-summary-text");
+    expect(renderedNotes[0]).toHaveTextContent(
+      "Alpha Idea most deserves deeper validation because it has the clearest buyer.",
+    );
+
+    const alphaRow = document.querySelector('[data-solution-name="Alpha Idea"]');
+    const betaRow = document.querySelector('[data-solution-name="Beta Idea"]');
+    expect(alphaRow).toHaveTextContent("Recommended");
+    expect(betaRow).not.toHaveTextContent("Recommended");
+
+    const disclosureLabel = await findByText("Read full analysis");
+    const disclosure = disclosureLabel.closest("details");
+    const toggle = disclosureLabel.closest("summary");
+    expect(disclosure).not.toHaveAttribute("open");
+    expect(queryByText("Hide full analysis")).toBeNull();
+    expect(toggle).not.toBeNull();
+    await fireEvent.click(toggle!);
+    expect(disclosure).toHaveAttribute("open");
+    await findByText("Hide full analysis");
+    expect(queryByText("Read full analysis")).toBeNull();
+  });
+
+  it("opens a ruled-out idea directly from the analyst summary", async () => {
+    chatPanel.close();
+    const { findByRole } = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        examinedRuledOut: RULED_OUT,
+        ideaPortfolioSummary: "InvoiceChaser was examined but ruled out.",
+      },
+    });
+
+    await fireEvent.click(await findByRole(
+      "button", { name: "Open idea details for InvoiceChaser" },
+    ));
+    await findByRole("dialog", { name: "Ruled-out analysis: InvoiceChaser" });
+  });
 });
 
 describe("SelectionWorkbench — shared workspace overlay", () => {
@@ -339,6 +464,38 @@ describe("SelectionWorkbench — shared workspace overlay", () => {
 
   afterEach(() => {
     cleanup();
+  });
+
+  it("returns to the expanded chat after closing an idea opened from chat", async () => {
+    chatPanel.expand();
+    vi.mocked(getChatHistory).mockResolvedValue({
+      messages: [{
+        id: "chat-idea-return",
+        gateStage: 5,
+        role: "assistant",
+        content: "Open ProMatchDesk for the full evaluation.",
+        patchJson: null,
+        suggestionsJson: null,
+        truncated: false,
+        createdAt: "1",
+      }],
+      weakPool: false,
+    } as never);
+    const proMatchDesk = solution("ProMatchDesk (CS2+Dota 2)");
+    const { findByLabelText, findByRole } = render(SelectionWorkbench, {
+      props: { ...baseProps, solutions: [proMatchDesk] },
+    });
+
+    await findByRole("dialog", { name: "Analyst conversation" });
+    await fireEvent.click(await findByRole(
+      "button", { name: "Open idea details for ProMatchDesk (CS2+Dota 2)" },
+    ));
+    await findByRole("dialog", { name: "Solution details: ProMatchDesk (CS2+Dota 2)" });
+    expect(chatPanel.state).toBe("launcher");
+
+    await fireEvent.click(await findByLabelText("Close details"));
+    await waitFor(() => expect(chatPanel.state).toBe("expanded"));
+    await findByRole("dialog", { name: "Analyst conversation" });
   });
 
   it("uses the same modal shell for idea detail and expanded chat", async () => {

@@ -101,6 +101,28 @@ describe("+page.svelte — workbench stays mounted through a seed's QUEUED/RUNNI
     cleanup();
   });
 
+  it("uses the research subject as the selection title and keeps guidance separate", async () => {
+    const job = baseJob({ niche: "Competitive Dota 2 And Cs2 Fans." });
+    const { findByRole, findByText, queryByRole } = render(PageComponent, {
+      props: { data: baseData(job) as never },
+    });
+
+    await findByRole("heading", { level: 1, name: "Competitive Dota 2 And Cs2 Fans." });
+    await findByText("Discovery is complete. Review the strongest opportunities before moving to Deep Research.");
+    expect(queryByRole("heading", { name: "Select candidates for Deep Research" })).toBeNull();
+  });
+
+  it("preserves long research subjects while applying the compact title treatment", async () => {
+    const topic =
+      "Employees trying to figure out which AI skills to learn and where to expand their professional knowledge to stay employable, overwhelmed by scattered courses and conflicting advice about what their role will actually require";
+    const job = baseJob({ niche: topic });
+    const { findByRole } = render(PageComponent, { props: { data: baseData(job) as never } });
+
+    const heading = await findByRole("heading", { level: 1, name: topic });
+    expect(heading).toHaveAttribute("title", topic);
+    expect(heading).toHaveClass("page-header-title--research-topic", "page-header-title--long");
+  });
+
   it("renders SelectionWorkbench (not the progress screen) when a seed dispatch flips status to RUNNING", async () => {
     vi.mocked(getChatHistory).mockResolvedValue(PENDING_SEED_HISTORY as never);
     const job = baseJob({ status: "RUNNING" });

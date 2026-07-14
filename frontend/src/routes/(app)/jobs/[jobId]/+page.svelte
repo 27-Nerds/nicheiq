@@ -34,6 +34,7 @@
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
   import SelectedSolutionsSummary from "$lib/components/SelectedSolutionsSummary.svelte";
   import DeliverableRow from "$lib/components/job/DeliverableRow.svelte";
+  import CompletedAnalyst from "$lib/components/chat/CompletedAnalyst.svelte";
   import JobHeroAside from "$lib/components/job/JobHeroAside.svelte";
 
   // Preview / Dashboard components
@@ -574,21 +575,19 @@
   // Preview report derived values
   const nicheName = $derived(
     previewReport?.niche_context?.niche_input ??
-    previewReport?.niche?.slice(0, 60) ??
-    job?.niche?.slice(0, 60) ??
+    previewReport?.niche ??
+    job?.niche ??
     ''
   );
   const pageTitle = $derived(
     isSelectionPhase
-      ? 'Select candidates for Deep Research'
+      ? sentenceHeading(nicheName)
       : isGatePhase
         ? (job?.gateStage === 1 ? 'Niche checkpoint' : 'Audience checkpoint')
         : titleCase(nicheName) || 'Research Progress',
   );
 
-  const selectionSubtitle = $derived(
-    `${sentenceHeading(nicheName)}. Discovery found ${displaySolutions.length} ranked ${displaySolutions.length === 1 ? 'candidate' : 'candidates'}. Choose up to 3 for validation.`,
-  );
+  const selectionSubtitle = 'Discovery is complete. Review the strongest opportunities before moving to Deep Research.';
 
   const gateSubtitle = $derived(
     job?.gateStage === 1
@@ -823,6 +822,7 @@
             breadcrumbItems={[{ label: 'Dashboard', href: '/dashboard' }]}
             breadcrumbCurrent={isSelectionPhase ? 'Selection' : isGatePhase ? 'Checkpoint' : titleCase(nicheName) || 'Research'}
             title={pageTitle}
+            titleVariant={isSelectionPhase ? 'research-topic' : 'default'}
             subtitle={isSelectionPhase ? selectionSubtitle : isGatePhase ? gateSubtitle : undefined}
           >
             {#snippet metadata()}
@@ -1346,6 +1346,10 @@
         {/if}
       {/if}
 
+      {#if isCompleted}
+        <CompletedAnalyst jobId={job.id} compact />
+      {/if}
+
       <!-- ═══ RUN PROVENANCE ═══ -->
       <div class="mt-6 p-4 rounded-lg bg-bg-surface border border-border">
         <div class="run-meta">
@@ -1527,19 +1531,6 @@
     padding-top: 0;
   }
 
-  :global(.job-selection-header h1) {
-    max-width: 34ch;
-    font-size: clamp(1.25rem, 1.72vw, 1.5rem);
-    line-height: 1.13;
-    letter-spacing: -0.01em;
-  }
-
-  :global(.job-selection-header p) {
-    max-width: 44rem;
-    margin-top: 0.38rem;
-    font-size: 0.9375rem;
-  }
-
   :global(.job-selection-header .page-header-title-row > div:first-child) {
     padding: 0.42rem;
     border-radius: 0.75rem;
@@ -1548,6 +1539,16 @@
   :global(.job-selection-header .page-header-title-row svg) {
     width: 1.25rem;
     height: 1.25rem;
+  }
+
+  @media (max-width: 639px) {
+    :global(.job-selection-header .page-header-body) {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    :global(.job-selection-header .page-header-actions) {
+      justify-self: start;
+    }
   }
 
   @media (max-width: 1279px) {

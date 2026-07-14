@@ -2,6 +2,7 @@
   import { Loader2, CheckCircle, MessageCircle, BarChart3 } from "lucide-svelte";
 
   import SelectionWorkbench from "$lib/components/selection/SelectionWorkbench.svelte";
+  import PageHeader from "$lib/components/ui/PageHeader.svelte";
   import VoteButton from "$lib/components/ui/VoteButton.svelte";
   import ExpandableSection from "$lib/components/ui/ExpandableSection.svelte";
   import SharedViewBanner from "$lib/components/share/SharedViewBanner.svelte";
@@ -169,14 +170,12 @@
 <SharedViewBanner variant="discovery" shareToken={shareToken} />
 
 <div class="shared-discovery-root">
-  <!-- Niche header (visitor stand-in for the owner's PageHeader) -->
-  <header class="niche-header">
-    <h1 class="niche-title">{data.niche}</h1>
-    <p class="niche-sub">
-      Discovery found {data.solutions.length} ranked candidate{data.solutions.length === 1 ? "" : "s"}.
-      Vote for the idea you like most — it helps the owner prioritize.
-    </p>
-  </header>
+  <!-- Research topic header -->
+  <PageHeader
+    title={data.niche}
+    titleVariant="research-topic"
+    subtitle="Review the opportunities uncovered during Discovery."
+  />
 
   <!-- Ranked candidates — the same workbench the owner sees, in visitor (vote) mode. -->
   <SelectionWorkbench
@@ -419,30 +418,6 @@
     gap: 1.25rem;
   }
 
-  .niche-header {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  .niche-title {
-    font-family: var(--font-display);
-    font-size: 2rem;
-    font-weight: 800;
-    line-height: 1.1;
-    color: var(--color-text-primary);
-    margin: 0;
-  }
-
-  .niche-sub {
-    margin: 0;
-    max-width: 70ch;
-    font-size: 0.875rem;
-    line-height: 1.5;
-    color: var(--color-text-secondary);
-    text-wrap: pretty;
-  }
-
   .section-intro {
     font-size: 0.875rem;
     color: var(--color-text-secondary);
@@ -614,9 +589,6 @@
   }
 
   @media (max-width: 640px) {
-    .niche-title {
-      font-size: 1.5rem;
-    }
     .shared-discovery-root {
       padding: 1rem 0.75rem;
     }

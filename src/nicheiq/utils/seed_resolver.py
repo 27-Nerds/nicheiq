@@ -1,13 +1,13 @@
 """Pain/segment resolver for the user-composed idea seed (chat "propose your own idea").
 
-Tolerantly matches the user's OPTIONAL pain/tool references — and, failing that, the free seed
-text itself — against THIS RUN's validated pain titles, then picks an audience segment with real
-affinity to whatever pain(s) matched. A genuine match anchors the seed exactly like any other
-Multi-Frame focus (reuses `frames.anchor_pains_for_frame_focus`'s >=2-shared-stemmed-token gate,
-so a seed is never anchored more loosely than a gap/data-asset/workflow focus is). No genuine
-match is a SAFE, HONEST outcome — `anchor_pain_titles=[]`, `segment=None` — never a forced or
-fabricated link; the caller grounds on "the niche audience" and evaluates the seed as an
-unanchored hypothesis (see `idea_improvement_loop_v4._frame_directive`'s `user_seed` rule).
+Matches the user's OPTIONAL pain/tool references — and, failing that, the free seed text itself —
+against THIS RUN's validated pain titles and descriptions, then picks an audience segment with
+real affinity to the ONE best-matched pain. Seed matching is intentionally stricter than general
+frame linkage: an advisory pain title is never trusted without product-text corroboration, at
+least three distinctive stemmed terms must overlap, and representative quotes are excluded from
+matching because broad story context ("game", "player", "fan") creates false product/pain links.
+No genuine match is a SAFE, HONEST outcome — `anchor_pain_titles=[]`, `segment=None` — never a
+forced or fabricated link; the caller evaluates the seed as an unanchored hypothesis.
 
 Pure module: deterministic token overlap only, no I/O, no LLM calls.
 """
@@ -19,17 +19,21 @@ from typing import Optional
 
 @dataclass(frozen=True)
 class SeedAnchorResult:
-    """Resolver outcome. `segment` is the matched `AudienceSegment` object, or None."""
+    """Resolver outcome. Match metadata is diagnostic; anchors remain the public contract."""
 
     anchor_pain_titles: list[str]
     segment: object | None
+    match_kind: str = "unanchored"
+    rejected_pain_ref: str | None = None
+    shared_terms: tuple[str, ...] = ()
 
 
 def _exact_title_match(ref: str, pain_points: list) -> Optional[object]:
-    """Case/whitespace-insensitive EXACT title match for an explicit `pain_ref` — the
-    highest-confidence path (the user picked or typed a specific validated pain by name, not
-    just prose). This is the only path that can anchor on ONE pain alone with no corroborating
-    token overlap, since the user's own reference IS the evidence."""
+    """Return the canonical pain named by an advisory `pain_ref`, if it exists.
+
+    Exact spelling proves identity, not product compatibility. `resolve_seed_anchors` still
+    requires the submitted product text to corroborate this candidate before anchoring it.
+    """
     ref_norm = (ref or "").strip().lower()
     if not ref_norm:
         return None
@@ -37,6 +41,33 @@ def _exact_title_match(ref: str, pain_points: list) -> Optional[object]:
         if (getattr(p, "title", "") or "").strip().lower() == ref_norm:
             return p
     return None
+
+
+_SEED_MIN_SHARED_TOKENS = 3
+
+
+def _compatible_pains(seed_text: str, tool_ref: str, pain_points: list) -> list[tuple[object, tuple[str, ...]]]:
+    """Rank product-compatible pains using identity text only (title + description).
+
+    Quotes are deliberately evidence-only. Returning at most one primary pain prevents a single
+    submitted product from being force-stamped with several loosely related research problems.
+    """
+    from .frames import _content_tokens
+
+    seed_tokens = _content_tokens(f"{seed_text or ''} {tool_ref or ''}")
+    if not seed_tokens:
+        return []
+    scored: list[tuple[int, str, object, tuple[str, ...]]] = []
+    for pain in pain_points or []:
+        title = (getattr(pain, "title", "") or "").strip()
+        if not title:
+            continue
+        description = getattr(pain, "description", "") or ""
+        shared = tuple(sorted(seed_tokens & _content_tokens(f"{title} {description}")))
+        if len(shared) >= _SEED_MIN_SHARED_TOKENS:
+            scored.append((len(shared), title.lower(), pain, shared))
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    return [(pain, shared) for _, _, pain, shared in scored[:1]]
 
 
 def _pick_segment(anchor_pains: list, segments: list):
@@ -69,40 +100,49 @@ def resolve_seed_anchors(
 ) -> SeedAnchorResult:
     """Resolve a user idea seed to exact validated pain title(s) + an audience segment.
 
-    Match order (first genuine hit wins — never both):
-      1. `pain_ref` EXACT title match (case/whitespace-insensitive). The user named a specific
-         validated pain directly (e.g. picked one from a suggestion list); trust it outright.
-      2. Token-overlap match of `seed_text` (+ `tool_ref`, if given) against each pain's
-         title/description/representative_quotes, via `frames.anchor_pains_for_frame_focus` —
-         the SAME `>=2 shared distinctive stemmed tokens` gate every other Multi-Frame focus
-         (gap/data_asset/workflow) is held to. Ranked by shared-token strength, may return
-         multiple titles.
+    Match order:
+      1. If `pain_ref` names a canonical pain, test that pain first — but still require product
+         compatibility from `seed_text`/`tool_ref`.
+      2. Otherwise select the strongest compatible pain using title + description identity text.
+
+    Compatibility requires >=3 shared distinctive stemmed tokens. Quotes do not participate.
 
     No genuine match at either step -> `([], None)`. This is deliberately NOT an error path: an
     honestly unanchored seed is a normal, expected outcome (the user proposed something this
     run's research doesn't happen to have evidenced) — the caller (`_run_seed_cell`) evaluates it
     as an explicit unanchored hypothesis rather than forcing a link or fabricating one.
     """
-    from .frames import FrameFocus, anchor_pains_for_frame_focus
-
     pain_points = list(pain_points or [])
     segments = list(segments or [])
 
     exact = _exact_title_match(pain_ref or "", pain_points)
+    rejected_ref = None
     if exact is not None:
-        titles = [getattr(exact, "title", "")]
-    else:
-        focus = FrameFocus(
-            frame="user_seed", key="seed:resolve",
-            payload={"seed_text": seed_text or "", "tool_ref": tool_ref or ""},
-            anchor_pain_titles=[],
+        exact_match = _compatible_pains(seed_text, tool_ref or "", [exact])
+        if exact_match:
+            pain, shared = exact_match[0]
+            title = getattr(pain, "title", "") or ""
+            return SeedAnchorResult(
+                anchor_pain_titles=[title],
+                segment=_pick_segment([pain], segments),
+                match_kind="explicit",
+                shared_terms=shared,
+            )
+        rejected_ref = getattr(exact, "title", "") or (pain_ref or "")
+
+    inferred = _compatible_pains(seed_text, tool_ref or "", pain_points)
+    if not inferred:
+        return SeedAnchorResult(
+            anchor_pain_titles=[], segment=None,
+            rejected_pain_ref=rejected_ref,
         )
-        titles = anchor_pains_for_frame_focus(focus, pain_points)
 
-    if not titles:
-        return SeedAnchorResult(anchor_pain_titles=[], segment=None)
-
-    pains_by_title = {(getattr(p, "title", "") or ""): p for p in pain_points}
-    anchor_objs = [pains_by_title[t] for t in titles if t in pains_by_title]
-    segment = _pick_segment(anchor_objs, segments)
-    return SeedAnchorResult(anchor_pain_titles=titles, segment=segment)
+    pain, shared = inferred[0]
+    title = getattr(pain, "title", "") or ""
+    return SeedAnchorResult(
+        anchor_pain_titles=[title],
+        segment=_pick_segment([pain], segments),
+        match_kind="inferred",
+        rejected_pain_ref=rejected_ref,
+        shared_terms=shared,
+    )

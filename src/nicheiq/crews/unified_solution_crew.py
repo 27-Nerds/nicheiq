@@ -247,6 +247,7 @@ def _build_partitioned_block(
     data_menu: str = "", dissatisfaction: str = "",
     wallet: str = "", market_reality: str = "",
     focus_header: str = "THE ONE PAIN TO SOLVE:", anchor_block: str = "",
+    user_seed_variants: bool = False,
 ) -> str:
     """The per-agent override prefix injected at the TOP of the divergent task as
     {partitioned_mode_block}. Empty string => byte-identical legacy prompt. When present it
@@ -258,7 +259,11 @@ def _build_partitioned_block(
     Portfolio) reuse this SAME builder: `pain_focus` becomes the frame's own
     `FrameSpec.brief_formatter(focus)` text and `focus_header` becomes the frame's
     `FrameSpec.focus_header`. Both default to the ORIGINAL pain-frame values, so a pain-frame
-    call site is byte-identical to before."""
+    call site is byte-identical to before.
+
+    `user_seed_variants` switches only the submitted-idea cell from pain divergence to
+    same-product variation. Normal pain/frame generation keeps its existing prompt.
+    """
     archetype = _archetype_directive(allowed_types, preferred_type=preferred_type)
     zero_clause = (
         "If — and ONLY if — there is genuinely no strong product fit for this pain, you may "
@@ -266,17 +271,38 @@ def _build_partitioned_block(
         if allow_zero else
         "Return at least 1 concept."
     )
+    if user_seed_variants:
+        mode_directive = (
+            "**USER-SEED VARIANT MODE — evaluate the submitted product, not the pain space.**\n"
+            f"HARD LIMIT: output EXACTLY {concepts_target} VARIANTS OF THE SAME PRODUCT described "
+            f"below — never more than {concepts_target}. Once you have produced {concepts_target}, "
+            "STOP.\n"
+            "Every concept must visibly retain the submitted product category, core artifact/game "
+            "loop or mechanism, interaction model, and target audience in its concept_name and "
+            "one_liner. A tool that merely addresses an anchor pain is NOT a variant.\n"
+            "Vary execution, not identity. Cover distinct choices such as: (1) core loop and "
+            "progression, (2) content/data and trust, (3) monetization/distribution, and "
+            "(4) MVP scope/build strategy. Do not propose adjacent or substitute products.\n"
+            "The pool-level pain, technique, and project-type diversity quotas below do not apply. "
+            "The evaluation anchor may shape a feature or lower market fit; it must never become "
+            "the product.\n"
+            f"{zero_clause}\n"
+        )
+    else:
+        mode_directive = (
+            "**PARTITIONED MODE — you are ONE of several parallel generators.**\n"
+            f"HARD LIMIT: output EXACTLY {concepts_target} concepts for the SINGLE pain below — never "
+            f"more than {concepts_target}. Once you have produced {concepts_target} concepts, STOP — do "
+            "not add more.\n"
+            "The pool-level diversity quotas below — 'cover >=4 distinct pains', '>=4 techniques', "
+            "'>=3 project types' — are handled ACROSS the pool, NOT by you: IGNORE them and make your "
+            f"{concepts_target} concepts each take a DISTINCT angle on this ONE pain (depth, not volume).\n"
+            f"Reason from this viewpoint: {persona}. Think step by step about their day before each concept.\n"
+            f"{archetype}\n"
+            f"{zero_clause}\n"
+        )
     return (
-        "**PARTITIONED MODE — you are ONE of several parallel generators.**\n"
-        f"HARD LIMIT: output EXACTLY {concepts_target} concepts for the SINGLE pain below — never "
-        f"more than {concepts_target}. Once you have produced {concepts_target} concepts, STOP — do "
-        "not add more.\n"
-        "The pool-level diversity quotas below — 'cover >=4 distinct pains', '>=4 techniques', "
-        "'>=3 project types' — are handled ACROSS the pool, NOT by you: IGNORE them and make your "
-        f"{concepts_target} concepts each take a DISTINCT angle on this ONE pain (depth, not volume).\n"
-        f"Reason from this viewpoint: {persona}. Think step by step about their day before each concept.\n"
-        f"{archetype}\n"
-        f"{zero_clause}\n"
+        mode_directive
         + (f"\nVERIFIED DATA ROUTES for this niche — anchor every concept's mechanism on these "
            f"(NO smart-device/vendor APIs you can't confirm, NO scraping fragile private sites, NO "
            f"cold-start user-generated data as the core value):\n{data_menu}\n" if data_menu else "")
@@ -6149,6 +6175,8 @@ class UnifiedSolutionCrew:
         'data_asset' | 'workflow' | 'user_seed') and, when this crew is mid-seed-request
         (`execute_seed_pipeline`), the dispatch id that submitted it — so a demoted seed can be
         badged "Your idea" in the ruled-out panel (eager-meandering-feather.md Phase 5/6).
+        A user seed additionally carries its full preview-compatible idea payload so the verdict
+        remains inspectable even though it is not selectable.
         `dispatch_id` is None for every non-seed ruled-out finding (demoted_winner/no_buyer/
         backfill_rejected from the normal pool never run inside a seed request)."""
         if reason_override is not None:
@@ -6158,9 +6186,16 @@ class UnifiedSolutionCrew:
             band = "very-low" if _mf < 0.25 else "low"
         else:
             reason, band = self._compose_ruled_out_reason(idea)
-        sp = (getattr(idea, "source_pain", None)
-              or (getattr(idea, "pain_points_addressed", None) or [None])[0]
-              or getattr(idea, "solution_name", "?"))
+        source_frame = getattr(idea, "source_frame", None) or "pain"
+        is_unanchored_seed = (
+            source_frame == "user_seed"
+            and bool(getattr(idea, "unanchored_hypothesis", False))
+        )
+        sp = ("No validated pain match" if is_unanchored_seed else (
+            getattr(idea, "source_pain", None)
+            or (getattr(idea, "pain_points_addressed", None) or [None])[0]
+            or getattr(idea, "solution_name", "?")
+        ))
         evidence = ""
         try:
             for p in getattr(self.pain_point_analysis, "pain_points", []) or []:
@@ -6171,7 +6206,7 @@ class UnifiedSolutionCrew:
         except Exception:
             evidence = ""
         mf = getattr(idea, "market_fit_score", None)
-        self.ruled_out_pains.append({
+        finding = {
             "idea_name": getattr(idea, "solution_name", "?"),
             "pain_title": str(sp),
             "reason": reason,
@@ -6180,9 +6215,17 @@ class UnifiedSolutionCrew:
             "prior_tier": getattr(idea, "idea_tier", "single") or "single",
             "source": source,
             "evidence": evidence,
-            "source_frame": getattr(idea, "source_frame", None) or "pain",
+            "source_frame": source_frame,
             "dispatch_id": getattr(self, "_current_seed_dispatch_id", None),
-        })
+        }
+        if source_frame == "user_seed" and hasattr(idea, "model_dump"):
+            try:
+                finding["idea"] = idea.model_dump(mode="json")
+            except Exception as e:
+                logger.warning(
+                    f"[Seed] Could not serialize ruled-out idea details for "
+                    f"'{getattr(idea, 'solution_name', '?')}': {str(e)[:120]}")
+        self.ruled_out_pains.append(finding)
 
     def _sweep_demote(self, ideas: list) -> int:
         """Demote every ACTIVE idea (any tier — salvage's 0.55 floor is pre-parity) whose FINAL
@@ -6442,11 +6485,10 @@ class UnifiedSolutionCrew:
                        search=None, usages: list):
         """User-seed pipeline entry point (eager-meandering-feather.md Phase 4, sections B/D):
         resolve the user's free-text idea to an exact validated pain (+ segment) if one genuinely
-        matches (`resolve_seed_anchors`), build the 'user_seed' FrameFocus/cell, and run the SAME
-        per-cell birth path every other frame uses — fresh generation -> per-cell tournament ->
-        in-cell scoring (`_one_sample` -> `_tournament_cell` -> `_score_cell_winner`: refinement,
-        route-verify, provenance, blank-repair, payability, cell-scoring). NEVER a hand-built
-        BaseSolutionIdea + bare `_score_wave` — that path skips all of the above.
+        matches (`resolve_seed_anchors`), build the 'user_seed' FrameFocus/cell, generate
+        SAME-PRODUCT execution variants, then run the standard per-cell tournament and scoring
+        path. Generation uses a dedicated seed lens rather than the default pain-divergence lens;
+        the downstream evaluation remains identical.
 
         `usages` is the caller's shared LLM-usage sink (mutated in place, mirroring every other
         cell-birth call site — `_run_backfill_cell`, `_tournament_cell`). Returns the fully-scored
@@ -6461,6 +6503,18 @@ class UnifiedSolutionCrew:
         try:
             resolved = resolve_seed_anchors(seed_text, pain_ref, tool_ref, pains, segments)
             anchor_titles, segment = list(resolved.anchor_pain_titles), resolved.segment
+            if resolved.rejected_pain_ref:
+                logger.info(
+                    f"[Seed] advisory pain rejected as product mismatch: "
+                    f"'{resolved.rejected_pain_ref}'")
+            if anchor_titles:
+                logger.info(
+                    f"[Seed] matched primary pain ({resolved.match_kind}; "
+                    f"shared={','.join(resolved.shared_terms)}): '{anchor_titles[0]}'")
+            else:
+                logger.info(
+                    "[Seed] no validated pain matched the submitted product — "
+                    "evaluating as an unanchored hypothesis")
         except Exception as e:
             logger.warning(f"[Seed] anchor resolution failed (non-fatal, treated as unanchored): {str(e)[:120]}")
             anchor_titles, segment = [], None
@@ -6485,25 +6539,33 @@ class UnifiedSolutionCrew:
                 concepts_target=4, allow_zero=spec.always_allow_zero,
                 allowed_types=getattr(self, "allowed_project_types", None),
                 data_menu=self._build_data_menu(),
-                dissatisfaction=self._build_dissatisfaction_block(),
-                wallet=self._wallet_prompt_line(),
-                market_reality=self._build_market_reality_block(),
                 focus_header=spec.focus_header, anchor_block=anchor_block,
+                user_seed_variants=True,
             )
             concepts, gen_usages = self._one_sample(
                 self._build_seed_crew_inputs(), idx=97,
-                lens=_LENS_PARTITIONED_PREFIX + _DIVERGENT_LENSES[0],
+                lens=(
+                    "## USER-SEED LENS: SAME PRODUCT, DIFFERENT EXECUTION\n"
+                    "Generate concrete variants of the submitted product only. Preserve its category, "
+                    "core loop/mechanism, interaction model, and audience verbatim enough that each "
+                    "variant is immediately recognizable as the user's idea. Explore product-design "
+                    "choices inside that boundary; do not search the surrounding pain space."
+                ),
                 model=model, effort=effort, partitioned_block=block, min_concepts=1,
                 allow_zero=spec.always_allow_zero, timeout=90,
                 source_frame="user_seed", source_focus_key=focus.key,
                 source_segment=getattr(segment, "segment_name", None) if segment is not None else None,
-                score_inline=True)
+                concept_count="4", score_inline=False)
             if gen_usages:
                 usages.extend(gen_usages if isinstance(gen_usages, list) else [gen_usages])
+
+            # Filter BEFORE the independent critic call. Off-seed concepts should consume neither
+            # critic tokens nor tournament attention.
             from ..utils.seed_fidelity import is_seed_faithful
             faithful = [c for c in concepts if is_seed_faithful(seed_text, c)]
             if faithful:
                 concepts = faithful
+                usages.extend(self._score_concepts(concepts, idx=97))
             else:
                 # The generator ignored the product brief. Never reward that drift by
                 # selecting the most novel replacement; refine the submitted brief itself.

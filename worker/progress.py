@@ -418,6 +418,7 @@ def notify_regeneration_complete(
             "worker_id": _get_worker_id(),
             "job_id": job_id,
             "solutions": new_solutions,
+            **_dispatch_payload(job_id),
         }
         if cost_summary:
             payload["cost_summary"] = cost_summary

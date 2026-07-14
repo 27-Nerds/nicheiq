@@ -15,6 +15,7 @@
   import { tick } from "svelte";
   import { ArrowRight, ArrowDown, Check, Coins, Loader2, Maximize2, Minimize2, Search, Wand2, X } from "lucide-svelte";
   import Composer from "./Composer.svelte";
+  import IdeaReferenceText from "$lib/components/IdeaReferenceText.svelte";
   import {
     streamChat,
     ApiError,
@@ -29,7 +30,7 @@
     type GateArtifact,
   } from "$lib/api";
   import type { IdeaFocus } from "$lib/api";
-  import { renderMarkdown } from "$lib/utils/format";
+  import type { IdeaReference } from "$lib/utils/ideaReferences";
   import { GATE_FIELD_LABEL, formatGateFieldValue } from "$lib/components/gate/gateFields";
   import { chatLedger, type LedgerMessage } from "$lib/stores/chatLedger.svelte";
 
@@ -108,6 +109,10 @@
      *  SelectionWorkbench can render the "Should I even proceed with this niche?"
      *  starter chip without a second history fetch. */
     weakPool?: boolean;
+    /** Current report ideas that assistant prose may mention. Optional because
+     *  archived and gate-level threads do not own an idea-details surface. */
+    ideaReferences?: readonly IdeaReference[];
+    onOpenIdeaReference?: (reference: IdeaReference) => void;
   }
 
   let {
@@ -130,6 +135,8 @@
     starterPrompt = null,
     onStarterConsumed,
     weakPool = $bindable(false),
+    ideaReferences = [],
+    onOpenIdeaReference,
     readOnly = false,
     showHistoryRetry = true,
     onCollapse,
@@ -244,6 +251,7 @@
   // appeared AFTER you wrote a message and sent it into a 429 — and the client couldn't even tell
   // that 429 apart from a rate limit, so it showed "try again" for a limit no retry can clear.
   const atTurnCap = $derived(userTurnCount >= maxTurns);
+  const operationBlocked = $derived(blocked || chatLedger.operationActive);
 
   $effect(() => {
     void loadHistory();
@@ -251,7 +259,7 @@
 
   $effect(() => {
     const prompt = starterPrompt;
-    if (!prompt || !historyLoaded || sending || locked || readOnly || atTurnCap || blocked || loadFailed) return;
+    if (!prompt || !historyLoaded || sending || locked || readOnly || atTurnCap || operationBlocked || loadFailed) return;
     input = prompt;
     onStarterConsumed?.();
     void send();
@@ -336,7 +344,7 @@
 
   async function send() {
     const text = input.trim();
-    if (!text || sending || locked || atTurnCap || blocked || loadFailed) return;
+    if (!text || sending || locked || atTurnCap || operationBlocked || loadFailed) return;
     // Snapshot the job this turn belongs to. `jobId` is a reactive prop — reading it
     // later, inside the async onEvent callbacks below, would pick up whatever job the
     // component has SINCE navigated to (SvelteKit can update this component's props in
@@ -471,7 +479,7 @@
 
   /** A suggested question is just a message the user didn't have to type. */
   function sendStarter(chip: string) {
-    if (sending || locked || atTurnCap || blocked || loadFailed) return;
+    if (sending || locked || atTurnCap || operationBlocked || loadFailed) return;
     input = chip;
     void send();
   }
@@ -564,11 +572,11 @@
       {#if historyLoaded && !locked && !loadFailed}
         <span
           class="chat-head-count"
-          title="Questions this run — {userTurnCount} of 30 used"
-          aria-label="Questions this run — {userTurnCount} of 30 used"
+          title="Questions this run — {userTurnCount} of {maxTurns} used"
+          aria-label="Questions this run — {userTurnCount} of {maxTurns} used"
         >
           <span class="chat-head-count-value">{userTurnCount}</span>
-          <span class="chat-head-count-copy">of 30 <span class="chat-head-count-noun">questions</span></span>
+          <span class="chat-head-count-copy">of {maxTurns} <span class="chat-head-count-noun">questions</span></span>
         </span>
       {/if}
       {#if onToggleFocus || onCollapse}
@@ -687,7 +695,14 @@
               </ul>
             {/if}
             {#if msg.role === "assistant"}
-              <div class="entry-prose">{@html renderMarkdown(msg.content, { allowLinks: true })}</div>
+              <div class="entry-prose">
+                <IdeaReferenceText
+                  content={msg.content}
+                  references={ideaReferences}
+                  onOpen={onOpenIdeaReference}
+                  markdown
+                />
+              </div>
             {:else}
               <p class="entry-plain">{msg.content}</p>
             {/if}
@@ -780,7 +795,7 @@
                     <button
                       type="button"
                       class="ledger-btn ledger-btn--primary seed-card-evaluate"
-                      disabled={applying || seedCost == null}
+                      disabled={applying || operationBlocked || seedCost == null}
                       onclick={() => applyPatch(msg)}
                     >
                       <span>Evaluate my idea</span>
@@ -851,7 +866,7 @@
                       type="button"
                       class="ledger-btn ledger-btn--primary proposal-apply"
                       class:is-busy={applying}
-                      disabled={applying || (gate && applyCapReached)}
+                      disabled={applying || operationBlocked || (gate && applyCapReached)}
                       onclick={() => applyPatch(msg)}
                     >
                       {#if applying}
@@ -894,7 +909,12 @@
             {#if hasStreamStarted}
               <p class="entry-plain">{streamingContent}<span class="ledger-caret" aria-hidden="true"></span></p>
             {:else}
-              <p class="entry-pending-line">Reading the dossier<span class="ledger-caret" aria-hidden="true"></span></p>
+              <p class="entry-pending-line">
+                {pendingToolLabels.length ? "Reviewing retrieved evidence" : "Reading the dossier"}<span
+                  class="ledger-caret"
+                  aria-hidden="true"
+                ></span>
+              </p>
             {/if}
           </div>
         </div>
@@ -902,7 +922,7 @@
 
       <!-- Suggestions belong to the answer they follow. Keeping them in the transcript
            lets them scroll away instead of permanently reducing the composer viewport. -->
-      {#if activeStarters.length > 0 && !locked && !sending && historyLoaded && !atTurnCap && !blocked && !loadFailed}
+      {#if activeStarters.length > 0 && !locked && !sending && historyLoaded && !atTurnCap && !operationBlocked && !loadFailed}
         <div class="followups" role="group" aria-label="Suggested questions">
           <h3 class="followups-title">Continue exploring</h3>
           {#each activeStarters as chip (chip)}
@@ -929,6 +949,8 @@
 
   {#if locked}
     <p class="chat-status chat-status--locked" role="status">Guided chat is a subscriber feature — upgrade to ask the analyst about these ideas.</p>
+  {:else if operationBlocked}
+    <p class="chat-status chat-status--locked" role="status">The analyst is paused while the current research update finishes. Its result and follow-up will appear here automatically.</p>
   {:else if sendError}
     <p class="chat-error" role="alert">
       {sendError}
@@ -954,7 +976,7 @@
       bind:value={input}
       placeholder="Ask a follow-up or request a change…"
       label="Message the analyst"
-      disabled={locked || !historyLoaded || atTurnCap || blocked || loadFailed}
+      disabled={locked || !historyLoaded || atTurnCap || operationBlocked || loadFailed}
       busy={sending}
       size={focused ? "roomy" : "compact"}
       onSubmit={() => void send()}

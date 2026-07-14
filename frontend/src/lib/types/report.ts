@@ -1,6 +1,6 @@
 // NicheIQ Report TypeScript Interfaces
 
-import type { IdeaTags } from './job';
+import type { IdeaTags, SolutionPreview } from './job';
 
 export interface Report {
 	niche: string;
@@ -736,6 +736,9 @@ export interface RuledOutFinding {
 	 *  vocabulary) — 'user_seed' marks a chat-composed idea seed that was tested
 	 *  and demoted, rendered with a "Your idea" badge. */
 	source_frame?: string | null;
+	/** Full evaluated payload for a submitted idea. It remains read-only because the
+	 *  market-fit verdict ruled it out, but users can still inspect the analysis. */
+	idea?: SolutionPreview | null;
 }
 
 // A set of surviving ideas identified as variants of the same underlying product. A merge

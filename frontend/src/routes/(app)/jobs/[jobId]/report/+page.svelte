@@ -5,6 +5,7 @@
   import ReportContent from "$lib/components/ReportContent.svelte";
   import ShareReportModal from "$lib/components/ShareReportModal.svelte";
   import EmptyState from "$lib/components/ui/EmptyState.svelte";
+  import CompletedAnalyst from "$lib/components/chat/CompletedAnalyst.svelte";
 
   interface Props {
     data: {
@@ -52,6 +53,7 @@
     {/snippet}
   </ReportContent>
 
+  <CompletedAnalyst {jobId} />
   <ShareReportModal bind:open={shareModalOpen} {jobId} />
 {/if}
 

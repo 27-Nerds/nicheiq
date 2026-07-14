@@ -296,6 +296,46 @@ class TestRunSeedCell:
         assert fallback.one_liner == seed
         assert is_seed_faithful(seed, fallback)
 
+    def test_seed_variant_prompt_filters_before_critic_scoring(self, monkeypatch):
+        crew = _crew()
+        winner = SimpleNamespace(idea_tier=None)
+        captured = self._stub_birth(monkeypatch, winner)
+        seed = "A fantasy cards collection game for esports fans."
+        off_seed = SimpleNamespace(
+            concept_name="PatchZero",
+            one_liner="A Wayback Machine reporting tool for esports journalists",
+        )
+        faithful = SimpleNamespace(
+            concept_name="Esports Fantasy Cards",
+            one_liner="A fantasy card collection game for esports fans who open packs",
+        )
+
+        def fake_one_sample(self, inputs, idx, lens, model, effort, **kw):
+            captured["lens"] = lens
+            captured["one_sample_kwargs"] = kw
+            return [off_seed, faithful], ["generator-usage"]
+
+        scored = []
+
+        def fake_score(self, concepts, idx=None):
+            scored.extend(concepts)
+            return ["critic-usage"]
+
+        monkeypatch.setattr(UnifiedSolutionCrew, "_one_sample", fake_one_sample)
+        monkeypatch.setattr(UnifiedSolutionCrew, "_score_concepts", fake_score)
+        usages = []
+
+        result = crew._run_seed_cell(seed_text=seed, usages=usages)
+
+        assert result is winner
+        assert captured["candidates"] == [faithful]
+        assert scored == [faithful]
+        assert usages == ["generator-usage", "critic-usage"]
+        assert captured["one_sample_kwargs"]["score_inline"] is False
+        assert captured["one_sample_kwargs"]["concept_count"] == "4"
+        assert "SAME PRODUCT, DIFFERENT EXECUTION" in captured["lens"]
+        assert "VARIANTS OF THE SAME PRODUCT" in captured["one_sample_kwargs"]["partitioned_block"]
+
     def test_zero_concepts_also_falls_back_to_the_submitted_product(self, monkeypatch):
         crew = _crew()
         winner = SimpleNamespace(idea_tier=None)
@@ -457,7 +497,12 @@ class TestRuledOutSeedProvenance:
         idea = SimpleNamespace(
             solution_name="Seed Idea", source_frame="user_seed",
             market_fit_score=0.2, source_pain=None, pain_points_addressed=[],
-            idea_tier="single",
+            idea_tier="single", unanchored_hypothesis=True,
+            model_dump=lambda *, mode: {
+                "solution_name": "Seed Idea",
+                "description": "Evaluated submitted product",
+                "value_proposition": "Tests the user's thesis",
+            },
         )
 
         crew._record_ruled_out(idea, source="demoted_winner")
@@ -465,6 +510,8 @@ class TestRuledOutSeedProvenance:
         finding = crew.ruled_out_pains[0]
         assert finding["source_frame"] == "user_seed"
         assert finding["dispatch_id"] == "dispatch-42"
+        assert finding["pain_title"] == "No validated pain match"
+        assert finding["idea"]["solution_name"] == "Seed Idea"
 
     def test_non_seed_ruled_out_finding_has_no_dispatch_id(self):
         # A demoted POOL idea (never inside a seed request) must never inherit a stale seed

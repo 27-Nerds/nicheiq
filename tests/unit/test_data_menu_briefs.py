@@ -11,8 +11,20 @@ class TestPartitionedBlockRendering:
     def test_empty_menu_is_byte_identical_legacy(self):
         base = _build_partitioned_block("PAIN", "persona", 3, False)
         with_kw = _build_partitioned_block("PAIN", "persona", 3, False, data_menu="")
+        explicit_default = _build_partitioned_block(
+            "PAIN", "persona", 3, False, user_seed_variants=False)
         assert base == with_kw
+        assert base == explicit_default
         assert "VERIFIED DATA ROUTES" not in base
+
+    def test_user_seed_mode_varies_the_same_product_without_changing_default_copy(self):
+        block = _build_partitioned_block(
+            "ORIGINAL PRODUCT", "persona", 4, False, user_seed_variants=True)
+
+        assert "VARIANTS OF THE SAME PRODUCT" in block
+        assert "Vary execution, not identity" in block
+        assert "ORIGINAL PRODUCT" in block
+        assert "concepts for the SINGLE pain" not in block
 
     def test_menu_section_rendered_before_pain(self):
         b = _build_partitioned_block("THE-PAIN", "persona", 3, False,

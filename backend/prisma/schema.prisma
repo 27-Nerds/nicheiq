@@ -124,11 +124,15 @@ model User {
   // an active subscription (see isEntitledUser); otherwise only the featured item per sub-niche.
   fullCatalogAccess Boolean @default(false)
 
+  // Chat with Analyst access grant — MANUAL admin override, disabled by default.
+  // Entitled = role=ADMIN || chatAnalystAccess; toggleable per-user in the admin panel.
+  chatAnalystAccess Boolean @default(false)
+
   // Stripe billing linkage. `stripeCustomerId` is created lazily at first subscription
   // checkout. `hasActiveSubscription` is a denormalized, webhook-/cron-maintained flag for
   // cheap reads — NOT authoritative (isEntitledUser does the definitive period check).
-  stripeCustomerId      String?  @unique @db.VarChar(255)
-  hasActiveSubscription Boolean  @default(false)
+  stripeCustomerId      String? @unique @db.VarChar(255)
+  hasActiveSubscription Boolean @default(false)
 
   // Timestamps
   createdAt DateTime @default(now())
@@ -301,15 +305,15 @@ model Job {
   // for G1, the composite _build_g2_gate_artifact for G2) — also the gate-action patch
   // cross-check reference. gateReachedAt is cleared on every gate-action apply/continue so a
   // stale value can't be read as "still at this gate" (Codex 11 guard).
-  gateStage     Int?
-  gateArtifact  Json?
-  gateReachedAt DateTime?
+  gateStage      Int?
+  gateArtifact   Json?
+  gateReachedAt  DateTime?
   // apply_stay cap (Decisions: "apply_stay is capped per gate — 5 applies", SC3 — the
   // 30-turn chat cap does not cover applies, this is a separate counter). Counts accepted
   // apply_stay gate-actions for the CURRENT gateStage; reset to 0 whenever a gate-reached
   // notification arrives for a DIFFERENT gateStage than the job's current one (a genuinely
   // new gate, not a same-gate apply_stay round-trip).
-  gateApplyCount Int @default(0)
+  gateApplyCount Int       @default(0)
 
   // Billing contract for this run. Immutable after creation — see BillingModel.
   billingModel BillingModel @default(DISCOVERY_PREPAID_V1)
@@ -319,7 +323,7 @@ model Job {
   // `updateMany({ where: { id, activeDispatchId, status: {in: [...]} } })`, and Prisma's
   // updateMany cannot join — the CAS predicate has to be satisfiable from this row alone.
   // Null = no dispatch outstanding (and the narrow legacy path for pre-migration workers).
-  activeDispatchId String?      @db.VarChar(36)
+  activeDispatchId String?       @db.VarChar(36)
   dispatches       JobDispatch[]
 
   // Timestamps
@@ -377,13 +381,13 @@ model JobDispatch {
   // number the numbered `seed_idea_N` charge/refund uses — so a later settlement or a card on
   // the (not-yet-built) chat ledger can resolve straight from the dispatch row without a second
   // lookup against the credit ledger.
-  seedOrdinal      Int?
+  seedOrdinal     Int?
   // The chat message id (durable, server-side) that proposed this seed — this is what gives the
   // (not-yet-built) seed card a stable identity across a ledger reload, mirroring how apply_stay
   // receipts already key off sourceMessageId (see GateActionSchema). Nullable: chat isn't wired
   // to dispatch yet (Phase 7 of plans/eager-meandering-feather.md), but the column exists now so
   // that work doesn't need another migration.
-  sourceMessageId  String? @db.VarChar(64)
+  sourceMessageId String? @db.VarChar(64)
 
   state    DispatchState @default(AUTHORIZED)
   workerId String?       @db.VarChar(100)
@@ -481,20 +485,27 @@ model ChatMessage {
   jobId String
   job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
-  gateStage Int // 1 | 4 | 5 (5 = G3/AWAITING_SELECTION)
-  role      String  @db.VarChar(16) // 'user' | 'assistant'
-  content   String  @db.Text
-  patchJson Json? // Proposed patch (propose_modification tool args), assistant turns only
+  gateStage        Int // 1 | 4 | 5 | 6 (6 = completed report)
+  role             String  @db.VarChar(16) // 'user' | 'assistant'
+  content          String  @db.Text
+  patchJson        Json? // Proposed patch (propose_modification tool args), assistant turns only
   // Read-only tool invocations made while resolving this turn (chat agent tools v1.1):
   // array of {name, args, label} — assistant turns only; the label is the same string
   // emitted as the SSE `tool` event, so a reload renders identical ledger receipts.
-  toolCallsJson Json?
+  toolCallsJson    Json?
   // Follow-up questions the analyst itself proposed for this turn (string[]) — the
   // chips shown under the composer. Assistant turns only; null when generation failed
   // (the client falls back to deterministic, state-derived suggestions).
-  suggestionsJson Json?
-  costUsd   Float? // LLM cost for this turn (assistant turns only)
-  truncated Boolean @default(false) // Client aborted mid-stream; content is partial
+  suggestionsJson  Json?
+  costUsd          Float? // LLM cost for this turn (assistant turns only)
+  model            String? @db.VarChar(100)
+  origin           String? @db.VarChar(40) // user_chat | opening | mutation_followup
+  operationId      String? @unique @db.VarChar(64) // idempotency key for mutation follow-ups
+  inputTokens      Int?
+  outputTokens     Int?
+  cacheWriteTokens Int?
+  cacheReadTokens  Int?
+  truncated        Boolean @default(false) // Client aborted mid-stream; content is partial
 
   createdAt DateTime @default(now())
 
@@ -523,7 +534,7 @@ model UserCredits {
   totalUsed      Int @default(0) // Lifetime used
 
   // Subscription monthly allowance (reset each billing cycle by invoice.paid).
-  monthlyAllowance           Int       @default(0) // Remaining this cycle
+  monthlyAllowance            Int       @default(0) // Remaining this cycle
   monthlyAllowancePeriodStart DateTime? // Reset idempotency key (= invoice line period start)
   monthlyAllowancePeriodEnd   DateTime? // Expiry + "resets on <date>" the UI shows
 
@@ -556,7 +567,7 @@ model CreditTransaction {
   // Bucket split for a deduction: how much came from the monthly allowance (rest = purchased),
   // and which monthly cycle it was drawn from — so refunds restore to the right bucket and never
   // resurrect expired monthly credits into a new cycle.
-  fromMonthly      Int       @default(0)
+  fromMonthly        Int       @default(0)
   monthlyPeriodStart DateTime?
 
   // Durable money-idempotency keys for Stripe-driven grants (insert-and-catch-P2002), replacing
@@ -656,16 +667,16 @@ model TokenPackage {
 // the landing /#pricing table and /billing plans section render the same way. v1: monthly
 // Stripe prices only (interval stays "month"; validated at plan-create).
 model SubscriptionPlan {
-  id             String  @id @default(uuid())
-  name           String  @db.VarChar(100)
-  description    String? @db.VarChar(500)
-  monthlyCredits Int     @default(0) // 0 = catalog-access-only plan
-  priceInCents   Int
-  interval       String  @default("month") @db.VarChar(20)
-  trialDays      Int? // optional free-trial length
-  stripePriceId  String  @unique @db.VarChar(255) // recurring Stripe Price ID
+  id              String  @id @default(uuid())
+  name            String  @db.VarChar(100)
+  description     String? @db.VarChar(500)
+  monthlyCredits  Int     @default(0) // 0 = catalog-access-only plan
+  priceInCents    Int
+  interval        String  @default("month") @db.VarChar(20)
+  trialDays       Int? // optional free-trial length
+  stripePriceId   String  @unique @db.VarChar(255) // recurring Stripe Price ID
   stripeProductId String? @db.VarChar(255)
-  stripeCouponId String? @db.VarChar(255) // auto-applied at checkout (admin-attached)
+  stripeCouponId  String? @db.VarChar(255) // auto-applied at checkout (admin-attached)
 
   isActive  Boolean @default(true)
   isPopular Boolean @default(false)
@@ -711,7 +722,7 @@ model UserSubscription {
   status             SubscriptionStatus
   currentPeriodStart DateTime?
   currentPeriodEnd   DateTime?
-  cancelAtPeriodEnd  Boolean   @default(false)
+  cancelAtPeriodEnd  Boolean            @default(false)
   canceledAt         DateTime?
   stripeCreatedAt    DateTime? // Stripe sub.created — for the staleness guard
 

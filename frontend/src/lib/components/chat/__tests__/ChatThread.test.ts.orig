@@ -39,6 +39,89 @@ describe("ChatThread — tool receipts (chat agent tools v1.1)", () => {
     cleanup();
   });
 
+  it("scrolls a loaded conversation to its latest message", async () => {
+    const originalScrollTo = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollTo");
+    const scrollTo = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      configurable: true,
+      value: scrollTo,
+    });
+
+    try {
+      vi.mocked(getChatHistory).mockResolvedValue({
+        messages: [
+          {
+            id: "m1",
+            gateStage: 5,
+            role: "assistant",
+            content: "Latest answer.",
+            patchJson: null,
+            suggestionsJson: null,
+            truncated: false,
+            createdAt: "1",
+          },
+        ],
+        weakPool: false,
+      } as never);
+
+      const { findByText } = render(ChatThread, { props: { jobId: "job-1", dock: "rail" } });
+      await findByText("Latest answer.");
+      await waitFor(() => expect(scrollTo).toHaveBeenCalled());
+    } finally {
+      if (originalScrollTo) {
+        Object.defineProperty(HTMLElement.prototype, "scrollTo", originalScrollTo);
+      } else {
+        delete (HTMLElement.prototype as Partial<HTMLElement>).scrollTo;
+      }
+    }
+  });
+
+  it("scrolls to the latest message when the thread expands", async () => {
+    const originalScrollTo = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollTo");
+    const scrollTo = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      configurable: true,
+      value: scrollTo,
+    });
+
+    try {
+      vi.mocked(getChatHistory).mockResolvedValue({
+        messages: [
+          {
+            id: "m1",
+            gateStage: 5,
+            role: "assistant",
+            content: "Latest answer.",
+            patchJson: null,
+            suggestionsJson: null,
+            truncated: false,
+            createdAt: "1",
+          },
+        ],
+        weakPool: false,
+      } as never);
+
+      const { findByText, rerender } = render(ChatThread, {
+        props: { jobId: "job-1", dock: "rail", focused: false },
+      });
+      await findByText("Latest answer.");
+      await waitFor(() => expect(scrollTo).toHaveBeenCalled());
+      scrollTo.mockClear();
+
+      await rerender({ jobId: "job-1", dock: "rail", focused: true });
+
+      await waitFor(() =>
+        expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ behavior: "auto" })),
+      );
+    } finally {
+      if (originalScrollTo) {
+        Object.defineProperty(HTMLElement.prototype, "scrollTo", originalScrollTo);
+      } else {
+        delete (HTMLElement.prototype as Partial<HTMLElement>).scrollTo;
+      }
+    }
+  });
+
   it("renders a live tool receipt while streaming — before the final answer arrives", async () => {
     let onEvent: ((evt: ChatStreamEvent) => void) | undefined;
     let resolveStream: () => void = () => {};
@@ -108,6 +191,37 @@ describe("ChatThread — tool receipts (chat agent tools v1.1)", () => {
 
     await findByText('Checked evidence for "Chasing late invoices"');
     await findByText("Here's what the evidence shows.");
+  });
+
+  it("keeps ordered and unordered Markdown list markers visible inside the transcript", async () => {
+    vi.mocked(getChatHistory).mockResolvedValue({
+      messages: [
+        {
+          id: "m1",
+          gateStage: 5,
+          role: "assistant",
+          content: "Sources:\n\n- Liquipedia\n- HLTV\n\nSteps:\n\n1. Mirror events\n2. Normalize teams",
+          patchJson: null,
+          truncated: false,
+          createdAt: "1",
+        },
+      ],
+      weakPool: false,
+    } as never);
+
+    const { findByText, container } = render(ChatThread, {
+      props: { jobId: "job-1", dock: "rail", focused: true },
+    });
+
+    await findByText("Liquipedia");
+    const unordered = container.querySelector(".entry-prose ul");
+    const ordered = container.querySelector(".entry-prose ol");
+    expect(unordered).toBeInstanceOf(HTMLUListElement);
+    expect(ordered).toBeInstanceOf(HTMLOListElement);
+    expect(getComputedStyle(unordered!).listStyleType).toBe("disc");
+    expect(getComputedStyle(ordered!).listStyleType).toBe("decimal");
+    expect(getComputedStyle(unordered!).paddingInlineStart).not.toBe("0px");
+    expect(getComputedStyle(ordered!).paddingInlineStart).not.toBe("0px");
   });
 
   it("hands the draft back when the message never reaches the server", async () => {
@@ -186,9 +300,18 @@ describe("ChatThread — tool receipts (chat agent tools v1.1)", () => {
     expect(queryByText("Which is easiest to build?")).toBeNull();
   });
 
-  it("falls back to the caller's chips when the analyst authored none", async () => {
+  it("uses contextual fallbacks for legacy answers without stored follow-ups", async () => {
     vi.mocked(getChatHistory).mockResolvedValue({
       messages: [
+        {
+          id: "u1",
+          gateStage: 5,
+          role: "user",
+          content: "Can you analyze my fantasy card game idea?",
+          patchJson: null,
+          truncated: false,
+          createdAt: "0",
+        },
         {
           id: "m1",
           gateStage: 5,
@@ -203,6 +326,16 @@ describe("ChatThread — tool receipts (chat agent tools v1.1)", () => {
       weakPool: false,
     } as never);
 
+    const { findByText, queryByText } = render(ChatThread, {
+      props: { jobId: "job-1", dock: "rail", starters: ["Which is easiest to build?"] },
+    });
+
+    await findByText("Here's the pool.");
+    await findByText("Go deeper on this answer");
+    expect(queryByText("Which is easiest to build?")).toBeNull();
+  });
+
+  it("uses caller starters only before the conversation begins", async () => {
     const { findByText } = render(ChatThread, {
       props: { jobId: "job-1", dock: "rail", starters: ["Which is easiest to build?"] },
     });
@@ -356,17 +489,47 @@ describe("ChatThread — priced idea-seed card", () => {
     cleanup();
   });
 
-  it("renders the idea, pain reference, rationale, and price for an undecided seed", async () => {
+  it("renders the idea, evaluation anchor, rationale, and price for an undecided seed", async () => {
     vi.mocked(getChatHistory).mockResolvedValue({ messages: [SEED_MESSAGE], weakPool: false } as never);
 
     const { findByText } = render(ChatThread, { props: { jobId: "job-1", dock: "rail", seedCost: 3 } });
 
+    await findByText("Review your idea");
     await findByText("A tool that auto-reconciles freelance invoices");
+    await findByText("Evaluation anchor");
     await findByText("Chasing late invoices");
     await findByText("Matches a validated pain with no direct incumbent");
     await findByText("Evaluate my idea");
     await findByText("3");
     await findByText("Dismiss");
+  });
+
+  it("hides follow-ups while the idea awaits a decision, then restores them after dismissal", async () => {
+    vi.mocked(getChatHistory).mockResolvedValue({
+      messages: [
+        {
+          id: "user-seed-review",
+          gateStage: 5,
+          role: "user" as const,
+          content: "Analyze my idea.",
+          patchJson: null,
+          truncated: false,
+          createdAt: "2026-07-13T00:00:00.000Z",
+        },
+        seedMessage("asst-seed-review"),
+      ],
+      weakPool: false,
+    } as never);
+
+    const { findByText, queryByText } = render(ChatThread, {
+      props: { jobId: "job-1", dock: "rail", seedCost: 3 },
+    });
+
+    await findByText("Evaluate my idea");
+    expect(queryByText("Continue exploring")).toBeNull();
+
+    await fireEvent.click(await findByText("Dismiss"));
+    await findByText("Continue exploring");
   });
 
   it("disables Evaluate and explains when the price hasn't loaded", async () => {
@@ -448,14 +611,19 @@ describe("ChatThread — priced idea-seed card", () => {
       weakPool: false,
     } as never);
 
-    const { findByText, queryByText } = render(ChatThread, { props: { jobId: "job-1", dock: "rail", seedCost: 3 } });
+    const { container, findByText, queryByText } = render(ChatThread, {
+      props: { jobId: "job-1", dock: "rail", seedCost: 3 },
+    });
 
     await findByText("Evaluating your idea…");
+    const pendingCard = container.querySelector(".seed-card--pending");
+    expect(pendingCard).toHaveAttribute("aria-busy", "true");
+    expect(pendingCard?.querySelector(".seed-card-head")).toHaveAttribute("aria-live", "polite");
     expect(queryByText("Evaluate my idea")).toBeNull();
     expect(queryByText("Dismiss")).toBeNull();
   });
 
-  it("renders a durable 'accepted' outcome with the cleared-evaluation copy", async () => {
+  it("renders an accepted seed with its evaluated result and candidate link", async () => {
     vi.mocked(getChatHistory).mockResolvedValue({
       messages: [
         seedMessage("asst-seed-accepted"),
@@ -472,6 +640,11 @@ describe("ChatThread — priced idea-seed card", () => {
             patch: {},
             rows: [],
             sourceMessageId: "asst-seed-accepted",
+            idea: {
+              solution_name: "PatchZero",
+              short_description: "Finds missed esports reporting leads.",
+              market_fit_score: 0.45,
+            },
           },
           truncated: false,
           createdAt: "2026-07-13T00:00:01.000Z",
@@ -480,9 +653,12 @@ describe("ChatThread — priced idea-seed card", () => {
       weakPool: false,
     } as never);
 
-    const { findByText, queryByText } = render(ChatThread, { props: { jobId: "job-1", dock: "rail", seedCost: 3 } });
+    const { findByText, queryByText, getByRole } = render(ChatThread, { props: { jobId: "job-1", dock: "rail", seedCost: 3 } });
 
-    await findByText("Your idea cleared evaluation");
+    await findByText("Evaluation complete — added to ranked candidates");
+    expect(queryByText("PatchZero")).not.toBeNull();
+    expect(queryByText("Market fit 45%")).not.toBeNull();
+    expect(getByRole("link", { name: /view full candidate details/i })).toHaveAttribute("href", "#solution-selector");
     expect(queryByText("Evaluate my idea")).toBeNull();
   });
 

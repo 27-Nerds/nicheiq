@@ -13,6 +13,7 @@
   });
   let updatingRole = $state<string | null>(null);
   let updatingAccess = $state<string | null>(null);
+  let updatingChatAccess = $state<string | null>(null);
 
   // Credit modal state
   let creditModal = $state<{ userId: string; email: string } | null>(null);
@@ -143,6 +144,29 @@
       updatingAccess = null;
     }
   }
+
+  async function toggleChatAnalystAccess(userId: string, current: boolean) {
+    if (
+      !confirm(
+        current
+          ? "Revoke this user's chat with Analyst access?"
+          : "Grant this user chat with Analyst access?",
+      )
+    ) {
+      return;
+    }
+    updatingChatAccess = userId;
+    try {
+      await fetch(`/api/admin/users/${userId}/access-chat`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chatAnalystAccess: !current }),
+      });
+      await invalidateAll();
+    } finally {
+      updatingChatAccess = null;
+    }
+  }
 </script>
 
 <svelte:head>
@@ -187,6 +211,9 @@
               <th class="text-left py-3 px-4 text-text-muted font-medium"
                 >Access</th
               >
+              <th class="text-left py-3 px-4 text-text-muted font-medium"
+                >Analyst</th
+              >
               <th class="text-right py-3 px-4 text-text-muted font-medium"
                 >Credits</th
               >
@@ -228,6 +255,15 @@
                     <span class="text-text-muted">—</span>
                   {/if}
                 </td>
+                <td class="py-3 px-4">
+                  {#if user.role === "ADMIN"}
+                    <Badge variant="accent" size="sm">ADMIN</Badge>
+                  {:else if user.chatAnalystAccess}
+                    <Badge variant="muted" size="sm">Chat grant</Badge>
+                  {:else}
+                    <span class="text-text-muted">—</span>
+                  {/if}
+                </td>
                 <td class="py-3 px-4 text-right text-text-primary"
                   >{user.creditBalance}</td
                 >
@@ -238,38 +274,42 @@
                   >{formatDate(user.createdAt)}</td
                 >
                 <td class="py-3 px-4 text-right">
-                  <div class="flex items-center justify-end gap-1.5">
+                  <div class="grid grid-cols-2 gap-1">
                     <button
-                      class="text-xs px-2 py-1 rounded border border-accent/40 hover:bg-accent/10 transition-colors text-accent disabled:opacity-50"
+                      class="text-xs px-2 py-0.5 rounded border border-accent/40 hover:bg-accent/10 transition-colors text-accent disabled:opacity-50 whitespace-nowrap w-full"
                       onclick={() => openCreditModal(user.id, user.email)}
                     >
                       + Credits
                     </button>
-                    {#if user.role !== "ADMIN"}
-                      <button
-                        class="text-xs px-2 py-1 rounded border border-border hover:bg-bg-elevated transition-colors text-text-secondary disabled:opacity-50"
-                        onclick={() => toggleCatalogAccess(user.id, user.fullCatalogAccess)}
-                        disabled={updatingAccess === user.id}
-                        title="Manual full-catalog access grant"
-                      >
-                        {updatingAccess === user.id
-                          ? "..."
-                          : user.fullCatalogAccess
-                            ? "Revoke access"
-                            : "Grant access"}
-                      </button>
-                    {/if}
                     <button
-                      class="text-xs px-2 py-1 rounded border border-border hover:bg-bg-elevated transition-colors text-text-secondary disabled:opacity-50"
+                      class="text-xs px-2 py-0.5 rounded border border-border text-text-secondary hover:bg-bg-elevated transition-colors disabled:opacity-50 whitespace-nowrap w-full"
                       onclick={() => toggleRole(user.id, user.role)}
                       disabled={updatingRole === user.id}
                     >
-                      {updatingRole === user.id
-                        ? "..."
-                        : user.role === "ADMIN"
-                          ? "Demote"
-                          : "Promote"}
+                      {updatingRole === user.id ? "..." : user.role === "ADMIN" ? "Demote" : "Promote"}
                     </button>
+                    {#if user.role !== "ADMIN"}
+                      <button
+                        class="text-xs px-2 py-0.5 rounded border transition-colors disabled:opacity-50 whitespace-nowrap w-full {user.fullCatalogAccess
+                          ? 'border-accent/40 text-accent bg-accent/5 hover:bg-accent/10'
+                          : 'border-border text-text-secondary hover:bg-bg-elevated'}"
+                        onclick={() => toggleCatalogAccess(user.id, user.fullCatalogAccess)}
+                        disabled={updatingAccess === user.id}
+                        title={user.fullCatalogAccess ? "Revoke full-catalog access" : "Grant full-catalog access"}
+                      >
+                        {updatingAccess === user.id ? "..." : "Catalog"}
+                      </button>
+                      <button
+                        class="text-xs px-2 py-0.5 rounded border transition-colors disabled:opacity-50 whitespace-nowrap w-full {user.chatAnalystAccess
+                          ? 'border-accent/40 text-accent bg-accent/5 hover:bg-accent/10'
+                          : 'border-border text-text-secondary hover:bg-bg-elevated'}"
+                        onclick={() => toggleChatAnalystAccess(user.id, user.chatAnalystAccess)}
+                        disabled={updatingChatAccess === user.id}
+                        title={user.chatAnalystAccess ? "Revoke chat with Analyst access" : "Grant chat with Analyst access"}
+                      >
+                        {updatingChatAccess === user.id ? "..." : "Chat"}
+                      </button>
+                    {/if}
                   </div>
                 </td>
               </tr>

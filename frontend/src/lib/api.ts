@@ -353,9 +353,9 @@ export type ChatStreamEvent =
  * false otherwise) flags a free-culture-wallet pool where no idea cleared a strong
  * market-fit bar — drives the "Should I even proceed with this niche?" starter chip.
  */
-export async function getChatHistory(jobId: string): Promise<{ messages: ChatMessageDTO[]; weakPool?: boolean }> {
+export async function getChatHistory(jobId: string): Promise<{ messages: ChatMessageDTO[]; weakPool?: boolean; usedTurns?: number; maxTurns?: number; stage?: number; capabilities?: string[]; activeOperation?: unknown }> {
   const response = await fetch(`${API_BASE}/jobs/${jobId}/chat/history`);
-  return handleResponse<{ messages: ChatMessageDTO[]; weakPool?: boolean }>(response);
+  return handleResponse<{ messages: ChatMessageDTO[]; weakPool?: boolean; usedTurns?: number; maxTurns?: number; stage?: number; capabilities?: string[]; activeOperation?: unknown }>(response);
 }
 
 /**
@@ -388,6 +388,25 @@ export async function streamChat(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+  let terminalSeen = false;
+
+  const emitChunk = (chunk: string) => {
+    const payload = chunk
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.slice(5).trim())
+      .join('\n');
+    if (!payload) return;
+    try {
+      const event = JSON.parse(payload) as ChatStreamEvent;
+      opts.onEvent(event);
+      if (event.type === 'done' || event.type === 'error') terminalSeen = true;
+    } catch {
+      // A complete but malformed event is ignored. If it was terminal, the
+      // history-recovery path below restores the persisted answer.
+    }
+  };
 
   while (true) {
     const { done, value } = await reader.read();
@@ -396,17 +415,58 @@ export async function streamChat(
 
     const chunks = buffer.split('\n\n');
     buffer = chunks.pop() ?? '';
-    for (const chunk of chunks) {
-      const line = chunk.trim();
-      if (!line.startsWith('data:')) continue;
-      const payload = line.slice(5).trim();
-      try {
-        opts.onEvent(JSON.parse(payload) as ChatStreamEvent);
-      } catch {
-        // Ignore malformed/partial lines rather than aborting the whole stream.
+    for (const chunk of chunks) emitChunk(chunk);
+  }
+
+  // TextDecoder and the SSE frame can both retain a final tail when the proxy closes
+  // immediately after the terminal event. The old parser discarded this tail, so the
+  // UI removed its pending row even though the backend had persisted the answer.
+  buffer += decoder.decode();
+  for (const chunk of buffer.split('\n\n')) emitChunk(chunk);
+  if (terminalSeen) return;
+
+  // A proxy/network edge can still lose the terminal frame after the backend commits.
+  // Recover the exact latest user turn and its following assistant row from durable
+  // history instead of leaving a blank-looking response until the next page refresh.
+  try {
+    const history = await getChatHistory(jobId);
+    let userIndex = -1;
+    for (let index = history.messages.length - 1; index >= 0; index -= 1) {
+      const row = history.messages[index];
+      if (row.role === 'user' && row.content === message) {
+        userIndex = index;
+        break;
       }
     }
+    if (userIndex >= 0) {
+      const userRow = history.messages[userIndex];
+      const assistant = history.messages
+        .slice(userIndex + 1)
+        .find((row) => row.role === 'assistant');
+      if (assistant) {
+        opts.onEvent({
+          type: 'done',
+          message: {
+            id: assistant.id,
+            role: 'assistant',
+            content: assistant.content,
+            patchJson: assistant.patchJson ?? null,
+            toolCallsJson: assistant.toolCallsJson ?? null,
+            suggestionsJson: assistant.suggestionsJson ?? null,
+            createdAt: assistant.createdAt,
+          },
+          userMessageId: userRow.id,
+          usedTurns: history.usedTurns,
+          maxTurns: history.maxTurns,
+        });
+        return;
+      }
+    }
+  } catch {
+    // Preserve the transport error below; callers already provide retry UX.
   }
+
+  throw new Error('Chat stream ended before the final response arrived');
 }
 
 // ============================================

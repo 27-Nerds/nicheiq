@@ -4,6 +4,7 @@
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
   import SettingsNumberRow from "$lib/components/ui/SettingsNumberRow.svelte";
   import SettingsCtaRow from "$lib/components/ui/SettingsCtaRow.svelte";
+  import AnalystModelSettings from "$lib/components/admin/AnalystModelSettings.svelte";
 
   let { data } = $props();
 
@@ -206,6 +207,8 @@
       </div>
     </form>
   </div>
+
+  <AnalystModelSettings setting={data.analystModel} />
 
   <!-- Token Pricing -->
   <div class="bg-bg-surface border border-border rounded-xl p-5">

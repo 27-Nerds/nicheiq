@@ -39,6 +39,65 @@ describe("ChatThread — tool receipts (chat agent tools v1.1)", () => {
     cleanup();
   });
 
+  it("opens matched idea names in Markdown without rewriting links or code", async () => {
+    vi.mocked(getChatHistory).mockResolvedValue({
+      messages: [{
+        id: "idea-links",
+        gateStage: 5,
+        role: "assistant",
+        content: "**ProMatchDesk** competes with [Alpha Idea](https://example.com) and `Beta Idea`.",
+        patchJson: null,
+        suggestionsJson: null,
+        truncated: false,
+        createdAt: "1",
+      }],
+      weakPool: false,
+    } as never);
+    const onOpenIdeaReference = vi.fn();
+    const ideaReferences = [
+      {
+        id: "ranked:pro",
+        label: "ProMatchDesk (CS2+Dota 2)",
+        kind: "ranked" as const,
+        solutionName: "ProMatchDesk (CS2+Dota 2)",
+        aliases: ["ProMatchDesk"],
+      },
+      {
+        id: "ranked:alpha",
+        label: "Alpha Idea",
+        kind: "ranked" as const,
+        solutionName: "Alpha Idea",
+        aliases: ["Alpha Idea"],
+      },
+      {
+        id: "ranked:beta",
+        label: "Beta Idea",
+        kind: "ranked" as const,
+        solutionName: "Beta Idea",
+        aliases: ["Beta Idea"],
+      },
+    ];
+
+    const { findByRole, findByText, queryByRole } = render(ChatThread, {
+      props: {
+        jobId: "job-idea-links",
+        dock: "rail",
+        ideaReferences,
+        onOpenIdeaReference,
+      },
+    });
+
+    const ideaButton = await findByRole(
+      "button", { name: "Open idea details for ProMatchDesk (CS2+Dota 2)" },
+    );
+    await fireEvent.click(ideaButton);
+    expect(onOpenIdeaReference).toHaveBeenCalledWith(ideaReferences[0]);
+    expect(await findByRole("link", { name: "Alpha Idea" })).toHaveAttribute("href", "https://example.com");
+    expect((await findByText("Beta Idea")).tagName).toBe("CODE");
+    expect(queryByRole("button", { name: "Open idea details for Alpha Idea" })).toBeNull();
+    expect(queryByRole("button", { name: "Open idea details for Beta Idea" })).toBeNull();
+  });
+
   it("scrolls a loaded conversation to its latest message", async () => {
     const originalScrollTo = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollTo");
     const scrollTo = vi.fn();

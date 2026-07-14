@@ -2187,7 +2187,26 @@ RULES:
                     # them next to the ideas the user is choosing among.
                     "quality_caveats": list(getattr(state, "idea_coverage_caveats", None) or []),
                 }
-                report["examined_ruled_out"] = list(getattr(state, "idea_ruled_out", None) or [])
+                ruled_out = [
+                    dict(finding)
+                    for finding in (getattr(state, "idea_ruled_out", None) or [])
+                ]
+                # Older seed findings stored only the verdict summary even though the full
+                # demoted idea remains in the checkpoint pool. Backfill the read-only detail
+                # payload during projection; non-seed findings and new records are unchanged.
+                ideas_by_name = {
+                    (getattr(idea, "solution_name", "") or ""): idea
+                    for idea in (
+                        getattr(getattr(state, "idea_generation", None),
+                                "solution_ideas", None) or [])
+                }
+                for finding in ruled_out:
+                    if finding.get("source_frame") != "user_seed" or finding.get("idea"):
+                        continue
+                    idea = ideas_by_name.get(finding.get("idea_name") or "")
+                    if idea is not None and hasattr(idea, "model_dump"):
+                        finding["idea"] = idea.model_dump(mode="json")
+                report["examined_ruled_out"] = ruled_out
                 report["overlap_groups"] = list(getattr(state, "idea_overlap_groups", None) or [])
                 # Market-data handoff: same web-verified facts the final report's market_reality
                 # carries — shown once here so Phase-2 deep research (utils/market_brief.py)

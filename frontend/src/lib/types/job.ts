@@ -187,6 +187,8 @@ export interface SolutionPreview {
   // Multi-Frame Idea Generation Portfolio: which generation frame minted this idea's cell.
   // CODE-FILLED, never LLM-set. pain | gap | data_asset | spend_adjacent | workflow
   source_frame?: string | null;
+  /** Submitted idea with no validated pain match in this run's evidence. */
+  unanchored_hypothesis?: boolean | null;
   // Distilled bear case — the calibration critic's market_fit reason, distilled
   // (via extract_criterion_reason) to one user-facing note. NOT the raw
   // calibration_notes. Emitted in the same preview payload as the parity fields.
