@@ -382,6 +382,29 @@ describe("SelectionWorkbench — ruled-out panel: idea name primary + 'Your idea
     expect(queryByText("InvoiceChaser")).toBeNull();
   });
 
+  it("explains the section and opens full analysis for a generated idea", async () => {
+    const generatedFinding: RuledOutFinding = {
+      ...RULED_OUT[1],
+      idea_name: "ReconcileFlow",
+      idea: solution("ReconcileFlow", {
+        short_description: "Matches transactions and flags reconciliation gaps",
+        value_proposition: "Cuts the time spent checking mismatched records",
+      }),
+    };
+    const { findByLabelText, findByText } = render(SelectionWorkbench, {
+      props: { ...baseProps, examinedRuledOut: [generatedFinding] },
+    });
+
+    await findByText(
+      "Concepts tied to researched pains that did not clear the final market-fit checks. Review why they were excluded.",
+    );
+    await fireEvent.click(await findByLabelText(
+      "Review analysis for ReconcileFlow. This idea was ruled out.",
+    ));
+    await findByText("Matches transactions and flags reconciliation gaps");
+    await findByText("Cuts the time spent checking mismatched records");
+  });
+
   it("opens a ranked idea from its shortened analyst-summary name", async () => {
     chatPanel.close();
     const proMatchDesk = solution("ProMatchDesk (CS2+Dota 2)");
@@ -435,6 +458,25 @@ describe("SelectionWorkbench — ruled-out panel: idea name primary + 'Your idea
     expect(disclosure).toHaveAttribute("open");
     await findByText("Hide full analysis");
     expect(queryByText("Read full analysis")).toBeNull();
+  });
+
+  it("badges only the explicit recommendation when one paragraph discusses every idea", async () => {
+    render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        ideaPortfolioSummary: [
+          "Alpha Idea has the clearer buyer signal.",
+          "Beta Idea is more novel but carries more execution risk.",
+          "Alpha Idea most deserves deeper validation because it has the clearest buyer.",
+        ].join(" "),
+      },
+    });
+
+    const alphaRow = document.querySelector('[data-solution-name="Alpha Idea"]');
+    const betaRow = document.querySelector('[data-solution-name="Beta Idea"]');
+    expect(alphaRow).toHaveTextContent("Recommended");
+    expect(betaRow).not.toHaveTextContent("Recommended");
+    expect(document.querySelectorAll(".analyst-pick")).toHaveLength(1);
   });
 
   it("opens a ruled-out idea directly from the analyst summary", async () => {

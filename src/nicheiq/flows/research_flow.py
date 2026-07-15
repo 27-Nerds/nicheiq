@@ -2191,9 +2191,9 @@ RULES:
                     dict(finding)
                     for finding in (getattr(state, "idea_ruled_out", None) or [])
                 ]
-                # Older seed findings stored only the verdict summary even though the full
-                # demoted idea remains in the checkpoint pool. Backfill the read-only detail
-                # payload during projection; non-seed findings and new records are unchanged.
+                # Older findings stored only the verdict summary even though a demoted idea may
+                # remain in the checkpoint pool. Backfill its read-only detail payload during
+                # projection; rejected backfill ideas cannot be recovered from old checkpoints.
                 ideas_by_name = {
                     (getattr(idea, "solution_name", "") or ""): idea
                     for idea in (
@@ -2201,7 +2201,7 @@ RULES:
                                 "solution_ideas", None) or [])
                 }
                 for finding in ruled_out:
-                    if finding.get("source_frame") != "user_seed" or finding.get("idea"):
+                    if finding.get("idea"):
                         continue
                     idea = ideas_by_name.get(finding.get("idea_name") or "")
                     if idea is not None and hasattr(idea, "model_dump"):

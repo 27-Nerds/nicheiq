@@ -189,7 +189,22 @@ function makePreviewReport(overrides: Record<string, any> = {}) {
         market_fit_band: 'low',
         prior_tier: 'single',
         source: 'no_buyer',
-        evidence: '',
+        evidence: 'Fans repeatedly describe failed ticket purchases.',
+        idea: {
+          solution_name: 'AdvocacyBot',
+          description: 'Collects and organizes ticket-drop complaints for advocacy groups.',
+          value_proposition: 'Turns scattered complaints into a documented case for policy change.',
+          technical_approach: 'Imports public posts and groups them by platform and incident.',
+          core_features: ['Incident collection', 'Evidence timeline'],
+          estimated_development_time: '4-6 weeks',
+          market_fit_score: 0.4,
+          technical_feasibility_score: 0.76,
+          novelty_score: 0.42,
+          seo_scalability_score: 0.28,
+          incumbent_parity: 'partial by free petition and spreadsheet workflows',
+          red_team_verdict: 'killed',
+          red_team_caveats: ['The beneficiary is not clearly the buyer.'],
+        },
       },
     ],
     research_metadata: {
@@ -198,6 +213,68 @@ function makePreviewReport(overrides: Record<string, any> = {}) {
     ...overrides,
   };
 }
+
+describe('analyst context for ruled-out ideas', () => {
+  it('includes the full ruled-out brief in selection-stage chat', async () => {
+    mockJobFindFirst.mockResolvedValue(makeJob());
+    mockGetPreviewReportForJob.mockResolvedValue(makePreviewReport());
+
+    await request(app)
+      .post(`/api/jobs/${jobId}/chat`)
+      .set(authHeaders)
+      .send({ message: 'Why was AdvocacyBot ruled out?' });
+
+    const systemPrompt = mockChatCompleteStream.mock.calls[0][0].messages[0].content as string;
+    expect(systemPrompt).toContain('Why it was ruled out: Real pain');
+    expect(systemPrompt).toContain('Market fit at decision: 40% (weak)');
+    expect(systemPrompt).toContain('What it is: Collects and organizes ticket-drop complaints');
+    expect(systemPrompt).toContain(
+      'Value proposition: Turns scattered complaints into a documented case'
+    );
+    expect(systemPrompt).toContain('Core features: Incident collection; Evidence timeline');
+    expect(systemPrompt).toContain('Build estimate: 4-6 weeks');
+    expect(systemPrompt).toContain(
+      'Evidence considered: Fans repeatedly describe failed ticket purchases.'
+    );
+    assertNoInternalKeys(systemPrompt);
+  });
+
+  it('includes the full ruled-out brief when generating the opening analysis', async () => {
+    mockJobFindFirst.mockResolvedValue({
+      id: jobId,
+      status: 'AWAITING_SELECTION',
+      niche: 'test niche',
+      solutionIdeas: [],
+    });
+    mockGetPreviewReportForJob.mockResolvedValue(makePreviewReport());
+    mockChatMessageFindManyTop
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: 'opening-ruled-out',
+          gateStage: 5,
+          role: 'assistant',
+          content: 'Opening analysis.',
+          patchJson: null,
+          truncated: false,
+          createdAt: new Date(),
+        },
+      ]);
+    mockChatComplete.mockResolvedValue({
+      choices: [{ message: { content: 'Opening analysis.' } }],
+      usage: { prompt_tokens: 40, completion_tokens: 60 },
+    });
+
+    await request(app).get(`/api/jobs/${jobId}/chat/history`).set(authHeaders);
+
+    const openingPrompt = mockChatComplete.mock.calls[0][0].messages[1].content as string;
+    expect(openingPrompt).toContain(
+      'What it is: Collects and organizes ticket-drop complaints'
+    );
+    expect(openingPrompt).toContain('Why it was ruled out: Real pain');
+    expect(openingPrompt).toContain('Market fit at decision: 40% (weak)');
+  });
+});
 
 // Field names that must NEVER leak into a dossier/prompt as literal snake_case tokens —
 // every one of them must be rendered through a human label instead (2026-07-12 "keys

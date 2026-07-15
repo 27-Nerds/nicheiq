@@ -370,6 +370,70 @@ function buildIdeaSection(idea: Record<string, unknown>, index: number, bodyBudg
   return `### ${name}\n${truncateText(bodyLines, bodyBudget)}`;
 }
 
+function buildRuledOutSection(
+  finding: Record<string, unknown>,
+  index: number,
+  bodyBudget: number
+): string {
+  const idea =
+    finding.idea && typeof finding.idea === 'object' && !Array.isArray(finding.idea)
+      ? finding.idea as Record<string, unknown>
+      : {};
+  const name =
+    (finding.idea_name as string) ||
+    (idea.solution_name as string) ||
+    (finding.pain_title as string) ||
+    `Ruled-out idea ${index + 1}`;
+  const marketFit =
+    typeof finding.market_fit === 'number'
+      ? finding.market_fit
+      : idea.market_fit_score;
+  const marketFitLabel =
+    typeof marketFit === 'number'
+      ? `${Math.round(marketFit * 100)}% (${scoreBand(marketFit)})`
+      : 'not scored';
+  const coreFeatures = Array.isArray(idea.core_features)
+    ? (idea.core_features as string[]).slice(0, 5)
+    : [];
+  const caveats = Array.isArray(idea.red_team_caveats)
+    ? (idea.red_team_caveats as string[]).slice(0, 5)
+    : [];
+  const seoScore = idea.seo_growth_potential_score ?? idea.seo_scalability_score;
+
+  const bodyLines = [
+    finding.pain_title ? `Pain evaluated: ${finding.pain_title}` : '',
+    finding.reason ? `Why it was ruled out: ${finding.reason}` : '',
+    `Market fit at decision: ${marketFitLabel}`,
+    finding.source ? `Decision path: ${humanizeKey(String(finding.source))}` : '',
+    finding.prior_tier ? `Previous candidate tier: ${humanizeKey(String(finding.prior_tier))}` : '',
+    finding.evidence ? `Evidence considered: ${finding.evidence}` : '',
+    idea.description || idea.short_description
+      ? `What it is: ${(idea.description as string) || (idea.short_description as string)}`
+      : '',
+    idea.value_proposition ? `Value proposition: ${idea.value_proposition}` : '',
+    idea.technical_approach ? `How it works: ${idea.technical_approach}` : '',
+    coreFeatures.length ? `Core features: ${coreFeatures.join('; ')}` : '',
+    idea.estimated_development_time
+      ? `Build estimate: ${idea.estimated_development_time}`
+      : '',
+    typeof idea.technical_feasibility_score === 'number'
+      ? `Technical feasibility: ${scoreBand(idea.technical_feasibility_score)}`
+      : '',
+    typeof idea.novelty_score === 'number'
+      ? `Originality: ${scoreBand(idea.novelty_score)}`
+      : '',
+    typeof seoScore === 'number' ? `SEO potential: ${scoreBand(seoScore)}` : '',
+    idea.incumbent_parity ? `Competitor findings: ${idea.incumbent_parity}` : '',
+    idea.red_team_verdict
+      ? `Adversarial review: ${idea.red_team_verdict}${caveats.length ? ` — ${caveats.join('; ')}` : ''}`
+      : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  return `### ${name}\n${truncateText(bodyLines, bodyBudget)}`;
+}
+
 /** Run-level blocks: portfolio summary, wallet/market reality, niche difficulty, the
  * examined-and-ruled-out findings (WITH reasons), and funnel counts. Sections with no
  * data are omitted rather than rendered empty. Every label is plain English. */
@@ -418,10 +482,10 @@ function buildRunLevelBlock(bundle: DossierBundle): string {
     );
   }
   if (bundle.examinedRuledOut.length) {
-    const ruledLines = bundle.examinedRuledOut
+    const ruledBlocks = bundle.examinedRuledOut
       .slice(0, 10)
-      .map((r) => `- ${(r.idea_name as string) || (r.pain_title as string) || '?'}: ${r.reason}`);
-    lines.push(`Ideas we examined and ruled out (with reasons):\n${ruledLines.join('\n')}`);
+      .map((finding, index) => buildRuledOutSection(finding, index, 1_200));
+    lines.push(`Ideas we examined and ruled out (full decision context):\n${ruledBlocks.join('\n\n')}`);
   }
   const funnelEntries = Object.entries(bundle.funnelCounts || {});
   if (funnelEntries.length) {
@@ -519,11 +583,11 @@ const OPENING_MESSAGE_SYSTEM_PROMPT =
   'only.';
 
 function buildOpeningMessageUserPrompt(niche: string, bundle: DossierBundle, health: PoolHealthResult): string {
-  const ruledLines =
+  const ruledBlocks =
     bundle.examinedRuledOut
       .slice(0, 6)
-      .map((r) => `- ${(r.idea_name as string) || (r.pain_title as string) || '?'}: ${r.reason}`)
-      .join('\n') || '(none)';
+      .map((finding, index) => buildRuledOutSection(finding, index, 700))
+      .join('\n\n') || '(none)';
   const incumbentLines =
     bundle.incumbents
       .slice(0, 6)
@@ -539,7 +603,7 @@ function buildOpeningMessageUserPrompt(niche: string, bundle: DossierBundle, hea
     bundle.walletClass ? `Who pays here: ${WALLET_CLASS_PHRASE[bundle.walletClass] || bundle.walletClass}${bundle.walletEvidence ? ` — ${bundle.walletEvidence}` : ''}` : '',
     bundle.difficultyHeadline ? `Niche difficulty: ${bundle.difficultyHeadline}` : '',
     `Top ideas:\n${topLines}`,
-    `Ideas we examined and ruled out:\n${ruledLines}`,
+    `Ideas we examined and ruled out:\n${ruledBlocks}`,
     `Known competitors:\n${incumbentLines}`,
   ]
     .filter(Boolean)

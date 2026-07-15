@@ -1742,8 +1742,8 @@ class ResearchState(BaseModel):
     idea_ruled_out: list[dict] = Field(
         default_factory=list,
         description=(
-            "Structured 'examined & ruled out' findings from Stage 5: {pain_title, reason, "
-            "market_fit, market_fit_band, prior_tier, source, evidence}."
+            "Structured 'examined & ruled out' findings from Stage 5: {idea_name, pain_title, "
+            "reason, market_fit, market_fit_band, prior_tier, source, evidence, idea}."
         ),
     )
     idea_funnel_counts: dict = Field(

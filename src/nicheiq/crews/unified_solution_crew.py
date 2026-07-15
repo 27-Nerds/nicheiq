@@ -6175,8 +6175,8 @@ class UnifiedSolutionCrew:
         'data_asset' | 'workflow' | 'user_seed') and, when this crew is mid-seed-request
         (`execute_seed_pipeline`), the dispatch id that submitted it — so a demoted seed can be
         badged "Your idea" in the ruled-out panel (eager-meandering-feather.md Phase 5/6).
-        A user seed additionally carries its full preview-compatible idea payload so the verdict
-        remains inspectable even though it is not selectable.
+        Every finding carries its full preview-compatible idea payload when serialization is
+        available, so the concept remains inspectable even though it is not selectable.
         `dispatch_id` is None for every non-seed ruled-out finding (demoted_winner/no_buyer/
         backfill_rejected from the normal pool never run inside a seed request)."""
         if reason_override is not None:
@@ -6218,12 +6218,12 @@ class UnifiedSolutionCrew:
             "source_frame": source_frame,
             "dispatch_id": getattr(self, "_current_seed_dispatch_id", None),
         }
-        if source_frame == "user_seed" and hasattr(idea, "model_dump"):
+        if hasattr(idea, "model_dump"):
             try:
                 finding["idea"] = idea.model_dump(mode="json")
             except Exception as e:
                 logger.warning(
-                    f"[Seed] Could not serialize ruled-out idea details for "
+                    f"Could not serialize ruled-out idea details for "
                     f"'{getattr(idea, 'solution_name', '?')}': {str(e)[:120]}")
         self.ruled_out_pains.append(finding)
 

@@ -115,28 +115,50 @@
     actionSlot,
   }: Props = $props();
 
-  // Analyst summary — split into paragraphs on blank lines (the LLM writes plain text,
-  // no markdown); blank/whitespace-only paragraphs are dropped defensively.
-  const summaryParagraphs = $derived(
-    (ideaPortfolioSummary ?? "")
+  // The generator contract puts the recommendation in the final sentence. Keep that
+  // decision separate even when the model returns one long paragraph containing every
+  // idea; paragraph-level matching would incorrectly badge every mentioned candidate.
+  const summarySections = $derived.by(() => {
+    const paragraphs = (ideaPortfolioSummary ?? "")
       .split(/\n\s*\n/)
-      .map((p) => p.trim())
-      .filter(Boolean),
+      .map((paragraph) => paragraph.trim())
+      .filter(Boolean);
+    if (!paragraphs.length) return { recommendation: "", supportingNotes: [] as string[] };
+
+    const lastParagraph = paragraphs.at(-1) ?? "";
+    const sentences = lastParagraph
+      .split(/(?<=[.!?])\s+(?=[A-Z0-9])/)
+      .map((sentence) => sentence.trim())
+      .filter(Boolean);
+    const recommendation = sentences.at(-1) ?? lastParagraph;
+    const precedingLastParagraph = sentences.slice(0, -1).join(" ");
+    const supportingNotes = [
+      ...paragraphs.slice(0, -1),
+      ...(precedingLastParagraph ? [precedingLastParagraph] : []),
+    ];
+    return { recommendation, supportingNotes };
+  });
+  const summaryRecommendation = $derived(summarySections.recommendation);
+  const summarySupportingNotes = $derived(summarySections.supportingNotes);
+  const summaryParagraphs = $derived(
+    summaryRecommendation ? [...summarySupportingNotes, summaryRecommendation] : [],
   );
-  // The generator contract puts the validation recommendation last. Surface that
-  // decision first, while keeping the preceding analysis available on demand.
-  const summaryRecommendation = $derived(summaryParagraphs.at(-1) ?? "");
-  const summarySupportingNotes = $derived(summaryParagraphs.slice(0, -1));
   const ideaReferences = $derived(
     buildIdeaReferences(solutions, examinedRuledOut ?? []),
   );
+  const hasExplicitRecommendation = $derived(
+    /\b(?:recommend(?:ed|s|ing)?|most deserves?|strongest|best (?:idea|option|candidate|pick)|top (?:idea|option|candidate|pick)|prioriti[sz]e|validate(?:d|s|ing)? first|first choice)\b/i
+      .test(summaryRecommendation),
+  );
   const analystPickNames = $derived(new Set(
-    matchIdeaReferences(summaryRecommendation, ideaReferences)
-      .flatMap((segment) => (
-        segment.reference?.kind === "ranked" && segment.reference.solutionName
-          ? [segment.reference.solutionName]
-          : []
-      )),
+    hasExplicitRecommendation
+      ? matchIdeaReferences(summaryRecommendation, ideaReferences)
+          .flatMap((segment) => (
+            segment.reference?.kind === "ranked" && segment.reference.solutionName
+              ? [segment.reference.solutionName]
+              : []
+          ))
+      : [],
   ));
 
   // ── Selection state ──
@@ -1143,7 +1165,12 @@
         aria-label={`Examined and ruled out, ${examinedRuledOut.length} ideas`}
         onclick={() => (ruledOutExpanded = !ruledOutExpanded)}
       >
-        <span>Examined &amp; ruled out</span>
+        <span class="ruled-out-head-copy">
+          <span>Examined &amp; ruled out</span>
+          <span class="ruled-out-head-description">
+            Concepts tied to researched pains that did not clear the final market-fit checks. Review why they were excluded.
+          </span>
+        </span>
         <strong>{examinedRuledOut.length}</strong>
         <ChevronDown
           class={`ruled-out-chevron ${ruledOutExpanded ? "ruled-out-chevron--open" : ""}`}
@@ -2540,6 +2567,21 @@
     appearance: none;
     text-align: left;
     cursor: pointer;
+  }
+  .ruled-out-head-copy {
+    display: grid;
+    gap: 0.16rem;
+  }
+  .ruled-out-head-description {
+    max-width: 68ch;
+    font-family: var(--font-body);
+    font-size: 0.6875rem;
+    font-weight: 400;
+    line-height: 1.35;
+    text-transform: none;
+    letter-spacing: normal;
+    color: var(--color-text-secondary);
+    text-wrap: pretty;
   }
   .ruled-out-head strong {
     display: grid;
