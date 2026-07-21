@@ -63,7 +63,9 @@
 	   Font Sizes
 	   ======================================== */
 	--text-xs: 0.625rem;    /* 10px */
+	--text-11: 0.6875rem;   /* 11px — pixel-named half-step (record-line values, char counts) */
 	--text-sm: 0.75rem;     /* 12px */
+	--text-13: 0.8125rem;   /* 13px — pixel-named half-step (v3 control/label size) */
 	--text-base: 0.875rem;  /* 14px */
 	--text-md: 1rem;        /* 16px */
 	--text-lg: 1.0625rem;   /* 17px - body default */
@@ -108,8 +110,11 @@
 	   ======================================== */
 	--z-dropdown: 10;
 	--z-overlay: 30;
+	--z-annotation-page: 35;
 	--z-modal: 40;
-	--z-popover: 50;
-	--z-tooltip: 60;
+	--z-form-modal: 50;
+	--z-popover: 60;
+	--z-tooltip: 70;
+	--z-annotation-toolbar: 90;
 
 }

@@ -87,14 +87,14 @@ async function classifyParents(
 
   const systemPrompt = `You are a categorization assistant. Assign each item to ONE parent category by number.
 
-PARENT CATEGORIES:
+PARENT CATEGORIES (use ONLY these numbers — never invent a number outside 1-${categories.length}):
 ${parentList}
 
 ${DISAMBIGUATION_NOTES}
 
 RULES:
 1. ${typeHeuristic}
-2. Pick the single best-fit parent by number (1-${categories.length}).
+2. Pick the single best-fit parent by number (1-${categories.length}). Never use a number higher than ${categories.length}.
 3. If uncertain, provide a secondParentIndex as fallback.
 4. Confidence: "high" if clear fit, "medium" if debatable, "low" if very uncertain.
 5. Do NOT include reasoning — just assign.
@@ -283,11 +283,11 @@ async function classifySubcategories(
 
   const systemPrompt = `You categorize ${typeLabel}s into subcategories of "${parentCat.name}".
 
-SUBCATEGORIES:
+SUBCATEGORIES (use ONLY these numbers — never invent a number outside 1-${parentCat.children.length}):
 ${subList}
 
 RULES:
-1. Pick the best subcategory by number (1-${parentCat.children.length}).
+1. Pick the best subcategory by number (1-${parentCat.children.length}). Never use a number higher than ${parentCat.children.length}.
 2. If NO subcategory fits at all, set subcategoryIndex to null and confidence to "low".
 3. If none fit but you can suggest a new one, include it in proposedNewCategories (max ${maxNewCats} new).
 4. Reasoning: max 10 words.

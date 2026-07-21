@@ -7,7 +7,7 @@
   import {
     Pencil,
     Loader2,
-    Sparkles,
+    Tags,
     X,
     Check,
     HelpCircle,
@@ -623,13 +623,13 @@
 </script>
 
 {#if errorMsg}
-  <div class="mb-4 px-4 py-2 bg-error/10 border border-error/30 rounded-lg text-sm text-error">
+  <div class="mb-4 px-4 py-2 bg-error/10 border border-error/30 rounded-lg text-sm text-[color:var(--color-error-text)]">
     {errorMsg}
     <button class="ml-2 underline" onclick={() => (errorMsg = "")}>dismiss</button>
   </div>
 {/if}
 {#if successMsg}
-  <div class="mb-4 px-4 py-2 bg-success/10 border border-success/30 rounded-lg text-sm text-success">
+  <div class="mb-4 px-4 py-2 bg-success/10 border border-success/30 rounded-lg text-sm text-[color:var(--color-success-text)]">
     {successMsg}
     <button class="ml-2 underline" onclick={() => (successMsg = "")}>dismiss</button>
   </div>
@@ -638,19 +638,21 @@
 <!-- Filters -->
 <div class="flex flex-wrap gap-3 mb-4">
   <!-- Type toggle -->
-  <div class="flex rounded-lg border border-border overflow-hidden">
+  <div class="type-tabs" role="tablist" aria-label="Item type">
     <button
-      class="px-4 py-2 text-sm font-medium transition-colors {currentType === 'ideas'
-        ? 'bg-accent text-white'
-        : 'bg-bg-surface text-text-secondary hover:bg-bg-elevated'}"
+      type="button"
+      role="tab"
+      aria-selected={currentType === "ideas"}
+      class="type-tab"
       onclick={() => updateFilter("type", "ideas")}
     >
       Ideas
     </button>
     <button
-      class="px-4 py-2 text-sm font-medium transition-colors {currentType === 'painPoints'
-        ? 'bg-accent text-white'
-        : 'bg-bg-surface text-text-secondary hover:bg-bg-elevated'}"
+      type="button"
+      role="tab"
+      aria-selected={currentType === "painPoints"}
+      class="type-tab"
       onclick={() => updateFilter("type", "painPoints")}
     >
       Pain Points
@@ -659,7 +661,7 @@
 
   <!-- User filter -->
   <select
-    class="px-3 py-2 bg-bg-surface border border-border rounded-lg text-sm text-text-primary"
+    class="input"
     value={data.filters?.userId || ""}
     onchange={(e) => updateFilter("userId", (e.target as HTMLSelectElement).value)}
   >
@@ -671,7 +673,7 @@
 
   <!-- Published filter -->
   <select
-    class="px-3 py-2 bg-bg-surface border border-border rounded-lg text-sm text-text-primary"
+    class="input"
     value={data.filters?.isPublished || ""}
     onchange={(e) => updateFilter("isPublished", (e.target as HTMLSelectElement).value)}
   >
@@ -685,7 +687,7 @@
     <div class="flex items-center gap-3 ml-auto">
       <!-- Bulk manual publish -->
       <select
-        class="px-3 py-2 bg-bg-surface border border-border rounded-lg text-sm text-text-primary"
+        class="input"
         bind:value={bulkCategoryId}
       >
         <option value="">Category...</option>
@@ -708,7 +710,7 @@
 
       {#if publishedSelectedCount > 0}
         <button
-          class="flex items-center gap-2 text-sm px-3 py-1.5 rounded font-medium border border-error/30 text-error hover:bg-error/10 transition-colors"
+          class="flex items-center gap-2 text-sm px-3 py-1.5 rounded font-medium border border-error/30 text-[color:var(--color-error-text)] hover:bg-error/10 transition-colors"
           onclick={depublishSelected}
           disabled={publishing}
         >
@@ -727,7 +729,7 @@
         {#if categorizing}
           <Loader2 class="w-4 h-4 animate-spin" />
         {:else}
-          <Sparkles class="w-4 h-4" />
+          <Tags class="w-4 h-4" />
         {/if}
         AI Categorize ({selectedIds.size})
       </button>
@@ -740,7 +742,7 @@
           Categorizing batch {categorizeProgress.current} of {categorizeProgress.total}...
         </span>
         <button
-          class="text-sm px-3 py-1.5 rounded border border-error/30 text-error hover:bg-error/10 transition-colors"
+          class="text-sm px-3 py-1.5 rounded border border-error/30 text-[color:var(--color-error-text)] hover:bg-error/10 transition-colors"
           onclick={cancelCategorizeAll}
         >
           Cancel
@@ -751,7 +753,7 @@
           onclick={categorizeAllUncategorized}
           disabled={categorizing}
         >
-          <Sparkles class="w-4 h-4" />
+          <Tags class="w-4 h-4" />
           Categorize All Uncategorized
         </button>
       {/if}
@@ -763,10 +765,10 @@
 {#if data.itemsData}
   <div class="bg-bg-surface border border-border rounded-xl overflow-hidden">
     <div class="overflow-x-auto">
-      <table class="w-full text-sm">
+      <table class="data-table">
         <thead>
-          <tr class="border-b border-border bg-bg-elevated/50">
-            <th class="py-3 px-3 w-10">
+          <tr>
+            <th class="w-10">
               <input
                 type="checkbox"
                 checked={selectedIds.size === items.length && items.length > 0}
@@ -774,24 +776,24 @@
                 class="rounded"
               />
             </th>
-            <th class="text-left py-3 px-4 text-text-muted font-medium">Name</th>
-            <th class="text-left py-3 px-4 text-text-muted font-medium">Niche</th>
-            <th class="text-center py-3 px-4 text-text-muted font-medium">
+            <th>Name</th>
+            <th>Niche</th>
+            <th class="num">
               {currentType === "ideas" ? "Scores" : "Severity/CI"}
             </th>
-            <th class="text-center py-3 px-4 text-text-muted font-medium">
+            <th style="text-align: center">
               {currentType === "ideas" ? "Verdict" : "Opportunity"}
             </th>
-            <th class="text-center py-3 px-4 text-text-muted font-medium">Status</th>
-            <th class="text-left py-3 px-4 text-text-muted font-medium">Category</th>
-            <th class="text-center py-3 px-4 text-text-muted font-medium">Action</th>
-            <th class="text-left py-3 px-4 text-text-muted font-medium">Date</th>
+            <th style="text-align: center">Status</th>
+            <th>Category</th>
+            <th style="text-align: center">Action</th>
+            <th>Date</th>
           </tr>
         </thead>
         <tbody>
           {#each items as item}
-            <tr class="border-b border-border/50 hover:bg-bg-elevated/30">
-              <td class="py-3 px-3">
+            <tr>
+              <td>
                 <input
                   type="checkbox"
                   checked={selectedIds.has(item.id)}
@@ -799,20 +801,20 @@
                   class="rounded"
                 />
               </td>
-              <td class="py-3 px-4">
+              <td>
                 <div class="font-medium text-text-primary max-w-[220px] truncate" title={item.itemName}>
                   {item.itemName}
                 </div>
                 {#if item.itemIndex === -1}
-                  <span class="text-xs text-accent">Selected solution</span>
+                  <span class="text-xs text-[color:var(--color-accent-dark)]">Selected solution</span>
                 {:else if currentType === "ideas"}
                   <span class="text-xs text-text-muted">Alternative #{item.itemIndex + 1}</span>
                 {/if}
               </td>
-              <td class="py-3 px-4 text-text-secondary max-w-[160px] truncate" title={item.nicheQuery ? `${item.nicheQuery}\n\n${item.niche}` : item.niche}>
+              <td class="text-text-secondary max-w-[160px] truncate" title={item.nicheQuery ? `${item.nicheQuery}\n\n${item.niche}` : item.niche}>
                 {item.nicheQuery || item.niche}
               </td>
-              <td class="py-3 px-4 text-center text-text-secondary">
+              <td class="num text-text-secondary">
                 {#if currentType === "ideas" && item.itemScores}
                   {@const orig = originalityMetric({ obviousness_score: item.itemScores.obviousness, novelty_score: item.itemScores.novelty })}
                   <span title="Market Fit">{formatScore(item.itemScores.market_fit)}</span>
@@ -826,7 +828,7 @@
                   —
                 {/if}
               </td>
-              <td class="py-3 px-4 text-center">
+              <td class="text-center">
                 {#if item.verdict}
                   <Badge
                     variant={item.verdict === "GO" || item.verdict === "high"
@@ -842,18 +844,18 @@
                   —
                 {/if}
               </td>
-              <td class="py-3 px-4 text-center">
+              <td class="text-center">
                 <Badge variant={item.isPublished ? "success" : "default"} size="sm">
                   {item.isPublished ? "Published" : "Draft"}
                 </Badge>
               </td>
-              <td class="py-3 px-4">
+              <td>
                 {#if item.isPublished && item.categoryId}
                   {#if changingCategory[item.id]}
                     <!-- Inline category edit -->
                     <div class="flex items-center gap-1">
                       <select
-                        class="w-full px-2 py-1 bg-bg-base border border-border rounded text-xs text-text-primary min-w-[140px]"
+                        class="w-full px-2 py-1 bg-bg-base border border-[color:var(--color-input-border)] rounded text-xs text-text-primary min-w-[140px]"
                         value={changingCategoryValue[item.id] || ""}
                         onchange={(e) => {
                           changingCategoryValue = {
@@ -904,7 +906,7 @@
                   {/if}
                 {:else if !item.isPublished}
                   <select
-                    class="w-full px-2 py-1 bg-bg-base border border-border rounded text-xs text-text-primary min-w-[140px]"
+                    class="w-full px-2 py-1 bg-bg-base border border-[color:var(--color-input-border)] rounded text-xs text-text-primary min-w-[140px]"
                     value={rowCategories[item.id] || ""}
                     onchange={(e) => {
                       rowCategories = {
@@ -924,13 +926,10 @@
                   <span class="text-xs text-text-muted">—</span>
                 {/if}
               </td>
-              <td class="py-3 px-4 text-center">
+              <td class="text-center">
                 {#if !item.isPublished}
                   <button
-                    class="text-xs px-3 py-1.5 rounded font-medium transition-colors
-                      {rowCategories[item.id]
-                        ? 'bg-accent text-white hover:bg-accent/90'
-                        : 'bg-bg-elevated text-text-muted cursor-not-allowed'}"
+                    class="btn-primary text-xs"
                     onclick={() => publishSingle(item)}
                     disabled={!rowCategories[item.id] || rowPublishing[item.id]}
                   >
@@ -950,14 +949,14 @@
                       href={currentType === "ideas"
                         ? `/admin/catalog/ideas/${item.publishedRecordId}/faq`
                         : `/admin/catalog/pain-points/${item.publishedRecordId}/faq`}
-                      class="inline-flex items-center gap-1 text-xs px-2 py-1.5 rounded font-medium transition-colors border border-border text-text-muted hover:text-accent hover:border-accent"
+                      class="inline-flex items-center gap-1 text-xs px-2 py-1.5 rounded font-medium transition-colors border border-border text-text-muted hover:text-[color:var(--color-accent-dark)] hover:border-accent"
                       title="Edit FAQ for this item"
                     >
                       <HelpCircle class="w-3 h-3" />
                       FAQ
                     </a>
                     <button
-                      class="text-xs px-3 py-1.5 rounded font-medium transition-colors border border-error/30 text-error hover:bg-error/10"
+                      class="text-xs px-3 py-1.5 rounded font-medium transition-colors border border-error/30 text-[color:var(--color-error-text)] hover:bg-error/10"
                       onclick={() => (confirmDepublish = { id: item.id, name: item.itemName, type: currentType })}
                       disabled={depublishing[item.id]}
                     >
@@ -972,7 +971,7 @@
                   <span class="text-xs text-text-muted">—</span>
                 {/if}
               </td>
-              <td class="py-3 px-4 text-text-muted text-xs">
+              <td class="cell-muted text-xs">
                 {item.reportGeneratedAt ? formatDate(item.reportGeneratedAt) : "\u2014"}
               </td>
             </tr>
@@ -1086,16 +1085,16 @@
         <!-- Summary line -->
         <div class="px-3 py-2 bg-bg-elevated rounded text-sm text-text-secondary">
           {(categorizeResult.suggestions || []).length} items:
-          <span class="text-success font-medium">{(categorizeResult.suggestions || []).filter((s: any) => s.confidence === "high").length} high</span>,
-          <span class="text-warning font-medium">{(categorizeResult.suggestions || []).filter((s: any) => s.confidence === "medium").length} medium</span>,
-          <span class="text-orange-400 font-medium">{(categorizeResult.suggestions || []).filter((s: any) => s.confidence === "low").length} low</span>
+          <span class="text-[color:var(--color-success-text)] font-medium">{(categorizeResult.suggestions || []).filter((s: any) => s.confidence === "high").length} high</span>,
+          <span class="text-[color:var(--color-warning-text)] font-medium">{(categorizeResult.suggestions || []).filter((s: any) => s.confidence === "medium").length} medium</span>,
+          <span class="text-text-secondary font-medium">{(categorizeResult.suggestions || []).filter((s: any) => s.confidence === "low").length} low</span>
           {#if (categorizeResult.suggestions || []).filter((s: any) => s.confidence === "failed").length > 0},
-            <span class="text-error font-medium">{(categorizeResult.suggestions || []).filter((s: any) => s.confidence === "failed").length} failed</span>
+            <span class="text-[color:var(--color-error-text)] font-medium">{(categorizeResult.suggestions || []).filter((s: any) => s.confidence === "failed").length} failed</span>
           {/if}
         </div>
 
         {#if categorizeResult.warning}
-          <div class="px-3 py-2 bg-warning/10 border border-warning/30 rounded text-sm text-warning">
+          <div class="px-3 py-2 bg-warning/10 border border-warning/30 rounded text-sm text-[color:var(--color-warning-text)]">
             {categorizeResult.warning}
           </div>
         {/if}
@@ -1133,25 +1132,25 @@
         <!-- Item assignments table -->
         <div>
           <h4 class="text-sm font-semibold text-text-primary mb-2">Item Assignments</h4>
-          <table class="w-full text-sm">
+          <table class="data-table">
             <thead>
-              <tr class="border-b border-border">
-                <th class="text-left py-2 text-text-muted font-medium">Item</th>
-                <th class="text-left py-2 text-text-muted font-medium">Category</th>
-                <th class="text-center py-2 text-text-muted font-medium">Confidence</th>
-                <th class="text-left py-2 text-text-muted font-medium">Reasoning</th>
+              <tr>
+                <th>Item</th>
+                <th>Category</th>
+                <th style="text-align: center">Confidence</th>
+                <th>Reasoning</th>
               </tr>
             </thead>
             <tbody>
               {#each categorizeResult.suggestions || [] as sug}
                 {@const item = allFetchedItems.find((i: any) => i.id === sug.itemId) || items.find((i: any) => i.id === sug.itemId)}
-                <tr class="border-b border-border/50">
-                  <td class="py-2 pr-3 max-w-[180px] truncate text-text-primary" title={item?.itemName}>
+                <tr>
+                  <td class="max-w-[180px] truncate cell-primary" title={item?.itemName}>
                     {item?.itemName || sug.itemId}
                   </td>
-                  <td class="py-2 pr-3">
+                  <td>
                     <select
-                      class="w-full px-2 py-1 bg-bg-base border border-border rounded text-sm"
+                      class="w-full px-2 py-1 bg-bg-base border border-[color:var(--color-input-border)] rounded text-sm"
                       value={categoryAssignments[sug.itemId] || ""}
                       onchange={(e) => {
                         categoryAssignments = {
@@ -1168,7 +1167,7 @@
                       {/each}
                     </select>
                   </td>
-                  <td class="py-2 text-center">
+                  <td class="text-center">
                     <Badge
                       variant={sug.confidence === "high"
                         ? "success"
@@ -1180,7 +1179,7 @@
                       {sug.confidence}
                     </Badge>
                   </td>
-                  <td class="py-2 text-text-muted text-xs max-w-[200px] truncate" title={sug.reasoning}>
+                  <td class="cell-muted text-xs max-w-[200px] truncate" title={sug.reasoning}>
                     {sug.reasoning}
                   </td>
                 </tr>
@@ -1211,3 +1210,15 @@
     </div>
   </div>
 {/if}
+
+<style>
+  /* .data-table td's color is unlayered global CSS, so a Tailwind text-color
+     utility can't win against it (cascade layers rank utilities below
+     unlayered rules) — these scoped classes out-specificity it instead. */
+  .cell-primary {
+    color: var(--color-text-primary);
+  }
+  .cell-muted {
+    color: var(--color-text-muted);
+  }
+</style>

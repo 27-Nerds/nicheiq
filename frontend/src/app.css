@@ -239,7 +239,7 @@
 		width: 80px;
 		height: 2px;
 		margin-top: 0.5rem;
-		background-color: var(--color-accent);
+		background-color: var(--color-border-emphasis);
 	}
 }
 
@@ -349,7 +349,7 @@
 
 .markdown-content h3 {
 	font-size: 1.1rem;
-	color: var(--color-accent);
+	color: var(--color-text-primary);
 }
 
 .markdown-content p {
@@ -424,7 +424,7 @@
 }
 
 .markdown-content blockquote {
-	border-left: 3px solid var(--color-accent);
+	border-left: 3px solid var(--color-border-emphasis);
 	padding-left: var(--space-4);
 	margin: var(--space-4) 0;
 	font-style: italic;
@@ -494,12 +494,10 @@
 .markdown-content.narrative strong {
 	color: var(--color-text-primary);
 	font-weight: 600;
-	background: linear-gradient(transparent 60%, rgba(234, 88, 12, 0.12) 60%);
-	padding: 0 2px;
 }
 
 .markdown-content.narrative em {
-	color: var(--color-accent-light);
+	color: var(--color-text-secondary);
 	font-style: italic;
 }
 
@@ -850,7 +848,7 @@
 	position: absolute;
 	left: 50%;
 	width: 2px;
-	background: linear-gradient(180deg, var(--color-border) 0%, var(--color-accent) 50%, var(--color-border) 100%);
+	background: var(--color-accent-hover);
 	transform: translateX(-50%);
 }
 
@@ -858,7 +856,7 @@
 	position: absolute;
 	top: 50%;
 	height: 2px;
-	background: linear-gradient(90deg, var(--color-border) 0%, var(--color-accent) 50%, var(--color-border) 100%);
+	background: var(--color-accent-hover);
 	transform: translateY(-50%);
 }
 
@@ -868,17 +866,16 @@
 	height: 0;
 	border-left: 6px solid transparent;
 	border-right: 6px solid transparent;
-	border-top: 8px solid var(--color-accent);
+	border-top: 8px solid var(--color-accent-hover);
 }
 
 .flow-dot {
 	position: absolute;
 	width: 12px;
 	height: 12px;
-	background: var(--color-accent);
+	background: var(--color-accent-hover);
 	border-radius: 50%;
 	border: 2px solid var(--color-bg-base);
-	box-shadow: 0 0 10px var(--color-accent);
 }
 
 /* Pain Card Styling */
@@ -928,10 +925,9 @@
 	top: 0.25rem;
 	width: 10px;
 	height: 10px;
-	background: var(--color-accent);
+	background: var(--color-accent-hover);
 	border-radius: 50%;
 	border: 2px solid var(--color-bg-base);
-	box-shadow: 0 0 8px var(--color-accent);
 }
 
 .timeline-item:last-child {
@@ -988,17 +984,14 @@
 	height: 8px;
 	border-radius: 50%;
 	background: var(--color-success);
-	box-shadow: 0 0 6px var(--color-success);
 }
 
 .data-indicator-dot.required {
 	background: var(--color-error);
-	box-shadow: 0 0 6px var(--color-error);
 }
 
 .data-indicator-dot.optional {
 	background: var(--color-warning);
-	box-shadow: 0 0 6px var(--color-warning);
 }
 
 /* ========================================
@@ -1069,6 +1062,13 @@
 		animation-iteration-count: 1 !important;
 		transition-duration: 0.01ms !important;
 		scroll-behavior: auto !important;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	:where(.spin, .spinner, .animate-spin) {
+		animation-duration: 1.5s !important;
+		animation-iteration-count: infinite !important;
 	}
 }
 

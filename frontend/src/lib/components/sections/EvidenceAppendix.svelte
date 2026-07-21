@@ -469,7 +469,7 @@
   :global(.subreddits-icon) {
     width: 1rem;
     height: 1rem;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .subreddits-label {
@@ -500,7 +500,7 @@
   .subreddit-name {
     font-size: 0.8125rem;
     font-weight: 500;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .subreddit-count {
@@ -605,7 +605,7 @@
   }
 
   :global(.expandable-icon.accent) {
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .expandable-title span {
@@ -675,7 +675,7 @@
   .thread-rank.top-3 {
     background: var(--color-accent-subtle);
     border-color: var(--color-border-accent);
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .thread-content {
@@ -706,7 +706,7 @@
     background: var(--color-bg-elevated);
     border: 1px solid var(--color-border);
     border-radius: 0.375rem;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
     transition: background-color 0.15s ease, border-color 0.15s ease;
   }
 
@@ -843,7 +843,7 @@
   }
 
   .quote-source {
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
     font-weight: 500;
   }
 
@@ -883,7 +883,7 @@
     font-family: var(--font-display);
     font-size: 0.9375rem;
     font-weight: 600;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .subreddit-threads-grid {
@@ -921,7 +921,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
     flex-shrink: 0;
   }
 

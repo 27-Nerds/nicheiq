@@ -159,6 +159,22 @@ const mockChatMessageCreate = vi.fn(async ({ data }: any) => {
   receipts.push(row);
   return { id: row.id };
 });
+const mockChatMessageFindFirst = vi.fn(async ({ where }: any) => receipts.find((receipt) =>
+  (where.id === undefined || receipt.id === where.id)
+  && (where.jobId === undefined || receipt.jobId === where.jobId)
+  && (where.gateStage === undefined || receipt.gateStage === where.gateStage)
+  && (where.role === undefined || receipt.role === where.role)
+) ?? null);
+const mockChatMessageFindMany = vi.fn(async ({ where, take }: any) => receipts
+  .filter((receipt) =>
+    (where.jobId === undefined || receipt.jobId === where.jobId)
+    && (where.gateStage === undefined || receipt.gateStage === where.gateStage)
+    && (where.role === undefined || receipt.role === where.role)
+  )
+  .slice()
+  .reverse()
+  .slice(0, take)
+  .map((receipt) => ({ patchJson: receipt.patchJson })));
 const mockChatMessageDelete = vi.fn(async ({ where }: any) => {
   receipts = receipts.filter((r) => r.id !== where.id);
   return {};
@@ -172,7 +188,12 @@ const mockTransaction = vi.fn(async (cb: any) => {
       findUnique: mockDispatchFindUnique,
       updateMany: mockDispatchUpdateMany,
     },
-    chatMessage: { create: mockChatMessageCreate, delete: mockChatMessageDelete },
+    chatMessage: {
+      create: mockChatMessageCreate,
+      findFirst: mockChatMessageFindFirst,
+      findMany: mockChatMessageFindMany,
+      delete: mockChatMessageDelete,
+    },
   };
   return cb(tx);
 });
@@ -193,6 +214,8 @@ vi.mock('../../services/db.js', () => ({
     jobProgress: { updateMany: (args: any) => mockJobProgressUpdateMany(args) },
     chatMessage: {
       create: (args: any) => mockChatMessageCreate(args),
+      findFirst: (args: any) => mockChatMessageFindFirst(args),
+      findMany: (args: any) => mockChatMessageFindMany(args),
       delete: (args: any) => mockChatMessageDelete(args),
     },
     $transaction: (cb: any) => mockTransaction(cb),
@@ -429,8 +452,17 @@ describe('Seed idea E2E: full lifecycle', () => {
     expect(res.status).toBe(200);
     // The seed IS in the pool — merged alongside what was already there.
     expect(jobRow.solutionIdeas).toEqual([
-      { solution_name: 'Existing Pool Idea', market_fit_score: 0.65 },
-      seedIdea,
+      expect.objectContaining({
+        solution_name: 'Existing Pool Idea',
+        market_fit_score: 0.65,
+        idea_id: expect.stringMatching(/^idea_[a-f0-9]{32}$/),
+        idea_revision: 1,
+      }),
+      expect.objectContaining({
+        ...seedIdea,
+        idea_id: expect.stringMatching(/^idea_[a-f0-9]{32}$/),
+        idea_revision: 1,
+      }),
     ]);
     expect(jobRow.costUsd).toBeCloseTo(0.42);
     expect(jobRow.status).toBe('AWAITING_SELECTION');
@@ -468,8 +500,15 @@ describe('Seed idea E2E: full lifecycle', () => {
     expect(res.status).toBe(200);
     // A demoted seed does NOT enter Job.solutionIdeas (the selectable pool) — only an
     // ACCEPTED outcome is appended there (workers.ts:1211's `outcome === 'accepted'` branch).
-    // The pool is untouched either way; the settlement is still honest and still terminal.
-    expect(jobRow.solutionIdeas).toEqual(poolBefore);
+    // Existing content stays intact; the identity migration may stamp stable fields while
+    // normalizing the pool. The demoted candidate itself must not be appended.
+    expect(jobRow.solutionIdeas).toEqual([
+      expect.objectContaining({
+        ...poolBefore[0],
+        idea_id: expect.stringMatching(/^idea_[a-f0-9]{32}$/),
+        idea_revision: 1,
+      }),
+    ]);
     expect(jobRow.status).toBe('AWAITING_SELECTION');
     expect(dispatchRow!.state).toBe('COMPLETED');
     const settled = seedSettledReceipts();

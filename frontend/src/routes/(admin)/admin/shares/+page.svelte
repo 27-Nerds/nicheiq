@@ -46,24 +46,24 @@
   {#if data.sharesData}
     <div class="bg-bg-surface border border-border rounded-xl overflow-hidden">
       <div class="overflow-x-auto">
-        <table class="w-full text-sm">
+        <table class="data-table">
           <thead>
-            <tr class="border-b border-border bg-bg-elevated/50">
-              <th class="text-left py-3 px-4 text-text-muted font-medium">Type</th>
-              <th class="text-left py-3 px-4 text-text-muted font-medium">Niche</th>
-              <th class="text-left py-3 px-4 text-text-muted font-medium">User</th>
-              <th class="text-left py-3 px-4 text-text-muted font-medium">Token</th>
-              <th class="text-center py-3 px-4 text-text-muted font-medium">Active</th>
-              <th class="text-center py-3 px-4 text-text-muted font-medium">Indexing</th>
-              <th class="text-right py-3 px-4 text-text-muted font-medium">Views</th>
-              <th class="text-right py-3 px-4 text-text-muted font-medium">Votes</th>
-              <th class="text-left py-3 px-4 text-text-muted font-medium">Created</th>
+            <tr>
+              <th>Type</th>
+              <th>Niche</th>
+              <th>User</th>
+              <th>Token</th>
+              <th style="text-align: center">Active</th>
+              <th style="text-align: center">Indexing</th>
+              <th class="num">Views</th>
+              <th class="num">Votes</th>
+              <th>Created</th>
             </tr>
           </thead>
           <tbody>
             {#each data.sharesData.shares as share}
-              <tr class="border-b border-border/50">
-                <td class="py-3 px-4">
+              <tr>
+                <td>
                   <Badge
                     variant={share.type === "report" ? "accent" : "info"}
                     size="sm"
@@ -71,26 +71,26 @@
                     {share.type}
                   </Badge>
                 </td>
-                <td class="py-3 px-4 text-text-primary max-w-[200px] truncate" title={share.niche}>
+                <td class="cell-primary max-w-[200px] truncate" title={share.niche}>
                   {share.niche}
                 </td>
-                <td class="py-3 px-4 text-text-secondary">
+                <td>
                   {share.userEmail || "\u2014"}
                 </td>
-                <td class="py-3 px-4">
+                <td>
                   <a
                     href={shareUrl(share.type, share.shareToken)}
                     target="_blank"
                     rel="noopener noreferrer"
-                    class="text-accent hover:underline text-xs font-mono"
+                    class="text-[color:var(--color-accent-dark)] hover:underline text-xs font-mono"
                   >
                     {share.shareToken.slice(0, 12)}...
                   </a>
                 </td>
-                <td class="py-3 px-4 text-center">
+                <td class="text-center">
                   <button
                     class="text-xs px-2.5 py-1 rounded border transition-colors disabled:opacity-50 {share.isActive
-                      ? 'border-success/40 text-success hover:bg-success/10'
+                      ? 'border-success/40 text-[color:var(--color-success-text)] hover:bg-success/10'
                       : 'border-border text-text-muted hover:bg-bg-elevated'}"
                     onclick={() => toggleField(share.id, "isActive", share.isActive)}
                     disabled={updatingId === share.id}
@@ -98,10 +98,10 @@
                     {share.isActive ? "On" : "Off"}
                   </button>
                 </td>
-                <td class="py-3 px-4 text-center">
+                <td class="text-center">
                   <button
                     class="text-xs px-2.5 py-1 rounded border transition-colors disabled:opacity-50 {share.allowIndexing
-                      ? 'border-accent/40 text-accent hover:bg-accent/10'
+                      ? 'border-accent/40 text-[color:var(--color-accent-dark)] hover:bg-accent/10'
                       : 'border-border text-text-muted hover:bg-bg-elevated'}"
                     onclick={() => toggleField(share.id, "allowIndexing", share.allowIndexing)}
                     disabled={updatingId === share.id || !share.isActive}
@@ -110,13 +110,13 @@
                     {share.allowIndexing ? "On" : "Off"}
                   </button>
                 </td>
-                <td class="py-3 px-4 text-right text-text-secondary">
+                <td class="num">
                   {share.viewCount}
                 </td>
-                <td class="py-3 px-4 text-right text-text-secondary">
+                <td class="num">
                   {share.type === "discovery" ? share.voteCount : "\u2014"}
                 </td>
-                <td class="py-3 px-4 text-text-muted">
+                <td class="cell-muted">
                   {formatDate(share.createdAt)}
                 </td>
               </tr>
@@ -135,18 +135,12 @@
           </span>
           <div class="flex gap-2">
             {#if data.sharesData.page > 1}
-              <a
-                href="?page={data.sharesData.page - 1}"
-                class="text-sm px-3 py-1 rounded border border-border hover:bg-bg-elevated transition-colors text-text-secondary"
-              >
+              <a href="?page={data.sharesData.page - 1}" class="btn-ghost">
                 Previous
               </a>
             {/if}
             {#if data.sharesData.page < data.sharesData.totalPages}
-              <a
-                href="?page={data.sharesData.page + 1}"
-                class="text-sm px-3 py-1 rounded border border-border hover:bg-bg-elevated transition-colors text-text-secondary"
-              >
+              <a href="?page={data.sharesData.page + 1}" class="btn-ghost">
                 Next
               </a>
             {/if}
@@ -160,3 +154,15 @@
     </div>
   {/if}
 </div>
+
+<style>
+  /* .data-table td's color is unlayered global CSS, so a Tailwind text-color
+     utility can't win against it (cascade layers rank utilities below
+     unlayered rules) — these scoped classes out-specificity it instead. */
+  .cell-primary {
+    color: var(--color-text-primary);
+  }
+  .cell-muted {
+    color: var(--color-text-muted);
+  }
+</style>

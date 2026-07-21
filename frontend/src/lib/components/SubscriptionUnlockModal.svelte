@@ -1,10 +1,10 @@
 <script lang="ts">
   import { page } from "$app/state";
   import { invalidateAll, goto } from "$app/navigation";
-  import { portal } from "$lib/actions/portal";
   import { subscribeUnlock } from "$lib/stores/subscribeUnlock.svelte";
   import type { SubscriptionPlan } from "$lib/types/billing";
-  import { X, AlertCircle, Check, ArrowRight } from "lucide-svelte";
+  import FormOverlay from "$lib/components/ui/FormOverlay.svelte";
+  import EmptyState from "$lib/components/ui/EmptyState.svelte";
   import PricingCard from "$lib/components/ui/PricingCard.svelte";
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
 
@@ -23,20 +23,11 @@
   let stripeReturnHandled = $state(false);
   let unlockParamHandled = $state(false);
 
-  let modalEl: HTMLDivElement | undefined = $state();
-  let triggerEl: HTMLElement | null = null;
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
   // ── Derived ──────────────────────────────────────────────
   const busy = $derived(subscribeLoading !== null || portalLoading);
-  // Center the grid when there are fewer than 3 plans (mirrors billing page).
-  const planGridClass = $derived(
-    plans.length === 1
-      ? "sm:grid-cols-1 max-w-sm mx-auto"
-      : plans.length === 2
-        ? "sm:grid-cols-2 max-w-2xl mx-auto"
-        : "sm:grid-cols-3",
-  );
+  const planCols = $derived(Math.min(plans.length, 3) || 3);
 
   // ── Fetch plans on open ──────────────────────────────────
   $effect(() => {
@@ -88,24 +79,6 @@
       unlockParamHandled = true;
       if (page.data.session?.user) subscribeUnlock.open = true;
       stripParams("unlock");
-    }
-  });
-
-  // ── Lock background scroll while open (matches CategoryItemsModal) ──
-  $effect(() => {
-    if (!subscribeUnlock.open) return;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = "";
-    };
-  });
-
-  // ── Focus management ─────────────────────────────────────
-  $effect(() => {
-    if (subscribeUnlock.open && modalEl) {
-      triggerEl = document.activeElement as HTMLElement;
-      const focusable = getFocusableElements();
-      if (focusable.length > 0) focusable[0].focus();
     }
   });
 
@@ -234,190 +207,173 @@
       clearTimeout(retryTimer);
       retryTimer = null;
     }
-    triggerEl?.focus();
-  }
-
-  function handleBackdropClick(e: MouseEvent) {
-    if (e.target === e.currentTarget && !busy) handleClose();
-  }
-
-  function getFocusableElements(): HTMLElement[] {
-    if (!modalEl) return [];
-    return Array.from(
-      modalEl.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      ),
-    );
-  }
-
-  function handleKeydown(e: KeyboardEvent) {
-    if (e.key === "Escape" && subscribeUnlock.open && !busy) {
-      handleClose();
-      return;
-    }
-    if (e.key === "Tab" && subscribeUnlock.open) {
-      const focusable = getFocusableElements();
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (e.shiftKey) {
-        if (document.activeElement === first) {
-          e.preventDefault();
-          last.focus();
-        }
-      } else if (document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    }
   }
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
+<FormOverlay
+  open={subscribeUnlock.open}
+  eyebrow="Subscription"
+  title={showSuccess ? "Subscription completed" : "Unlock the full catalog"}
+  description={showSuccess
+    ? undefined
+    : "Subscribe for monthly research credits and full access to every validated idea, pain point, and competitive landscape."}
+  onRequestClose={handleClose}
+>
+  {#if showSuccess}
+    <p class="unlock-note" role="status">
+      Unlocking shortly. If the catalog is still locked, give it a moment and refresh.
+    </p>
+  {:else}
+    {#if canceledNotice}
+      <p class="unlock-note">Checkout canceled: no charges were made. Pick a plan to try again.</p>
+    {/if}
 
-{#if subscribeUnlock.open}
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <div
-    use:portal
-    class="fixed inset-0 z-[60] flex items-center justify-center p-4"
-    onclick={handleBackdropClick}
-    role="dialog"
-    aria-modal="true"
-    aria-label="Unlock the full catalog"
-    tabindex="-1"
-  >
-    <!-- Backdrop -->
-    <div
-      class="absolute inset-0 bg-black/50 backdrop-blur-sm animate-fade-in"
-      style="animation-duration: 150ms"
-    ></div>
+    {#if plansLoading}
+      <div class="plan-grid" data-cols="3">
+        {#each [0, 1, 2] as i}
+          <div class="skeleton skeleton-rectangular plan-skeleton" style="animation-delay: {i * 40}ms"></div>
+        {/each}
+      </div>
+    {:else if plansError}
+      <p class="unlock-error" role="alert">
+        {plansError}
+        <a href="/billing#plans" class="unlock-link">Go to billing</a>
+      </p>
+    {:else if plans.length === 0}
+      <EmptyState title="No plans available right now.">
+        <a href="/billing#plans" class="unlock-link">Go to the billing page</a>
+      </EmptyState>
+    {:else}
+      <div class="plan-grid" data-cols={planCols}>
+        {#each plans as plan (plan.id)}
+          <PricingCard {plan} variant="compact">
+            {#snippet actions()}
+              <SubmitButton
+                type="button"
+                onclick={() => startSubscribe(plan.id)}
+                loading={subscribeLoading === plan.id}
+                loadingText="Redirecting…"
+                label={plan.ctaText || "Subscribe"}
+                disabled={busy}
+                class="{plan.isPopular ? 'btn-primary' : 'btn-secondary'} w-full"
+              />
+            {/snippet}
+          </PricingCard>
+        {/each}
+      </div>
+    {/if}
 
-    <!-- Panel -->
-    <div
-      bind:this={modalEl}
-      class="relative bg-bg-elevated border border-border rounded-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto animate-fade-slide-in shadow-[0_1px_3px_rgba(24,24,27,0.04),0_8px_24px_-4px_rgba(24,24,27,0.08),0_20px_48px_-8px_rgba(24,24,27,0.06)]"
-      style="animation-duration: 200ms"
-    >
-      {#if showSuccess}
-        <div class="p-8 text-center">
-          <div
-            class="mx-auto w-14 h-14 rounded-full bg-success/10 flex items-center justify-center mb-4 animate-scale-in visible"
-          >
-            <Check class="w-7 h-7 text-success" />
-          </div>
-          <h2 class="font-display font-bold text-xl text-text-primary mb-1">
-            Subscription completed
-          </h2>
-          <p class="text-sm text-text-secondary">
-            Unlocking shortly… if the catalog is still locked, give it a moment and refresh.
-          </p>
-          <div class="flex items-center justify-center gap-2 mt-5">
-            <SubmitButton
-              type="button"
-              onclick={refresh}
-              loadingText=""
-              label="Refresh"
-              class="btn-primary !px-4 !py-1.5 !text-sm"
-            />
-            <button onclick={handleClose} class="btn-secondary !px-4 !py-1.5 !text-sm">
-              Close
-            </button>
-          </div>
-        </div>
-      {:else}
-        <!-- Close -->
-        <button
-          onclick={handleClose}
-          disabled={busy}
-          aria-label="Close"
-          class="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-bg-hover text-text-muted/60 hover:text-text-primary transition-colors disabled:opacity-50 z-10"
-        >
-          <X class="w-4 h-4" />
-        </button>
+    {#if actionError}
+      <p class="unlock-error" role="alert">{actionError}</p>
+    {/if}
 
-        <!-- Header -->
-        <div class="px-6 pt-6 pb-2">
-          <h2 class="font-display font-bold text-lg text-text-primary tracking-tight">
-            Unlock the full catalog
-          </h2>
-          <p class="text-sm text-text-muted mt-1">
-            Subscribe for monthly research credits and full access to every validated idea,
-            pain point, and competitive landscape.
-          </p>
-        </div>
+    {#if portalFallback}
+      <p class="unlock-note">
+        You already have a subscription.
+        <a href="/billing" class="unlock-link">Manage it on the billing page</a>.
+      </p>
+    {/if}
 
-        {#if canceledNotice}
-          <p class="text-sm text-text-muted px-6 mt-2">
-            Checkout canceled — no charges were made. Pick a plan to try again.
-          </p>
-        {/if}
+    <a href="/billing#plans" class="unlock-compare">Compare all plans →</a>
+  {/if}
 
-        <!-- Plans -->
-        <div class="px-6 py-4">
-          {#if plansLoading}
-            <div class="grid gap-4 sm:grid-cols-3">
-              {#each [0, 1, 2] as i}
-                <div class="skeleton skeleton-rectangular h-56 rounded-xl" style="animation-delay: {i * 40}ms"></div>
-              {/each}
-            </div>
-          {:else if plansError}
-            <div class="flex items-center gap-2 text-sm text-error">
-              <AlertCircle class="w-4 h-4 shrink-0" />
-              <span>{plansError}</span>
-              <a href="/billing#plans" class="ml-auto text-accent hover:underline text-xs shrink-0">Go to billing</a>
-            </div>
-          {:else if plans.length === 0}
-            <div class="text-center py-6 text-sm text-text-muted">
-              <p>No plans available right now.</p>
-              <a href="/billing#plans" class="text-accent hover:underline mt-1 inline-block">Go to the billing page</a>
-            </div>
-          {:else}
-            <div class="grid gap-4 {planGridClass}">
-              {#each plans as plan (plan.id)}
-                <PricingCard {plan} variant="compact">
-                  {#snippet actions()}
-                    <SubmitButton
-                      type="button"
-                      onclick={() => startSubscribe(plan.id)}
-                      loading={subscribeLoading === plan.id}
-                      loadingText="Redirecting..."
-                      label={plan.ctaText || "Subscribe"}
-                      disabled={busy}
-                      class="{plan.isPopular ? 'btn-primary' : 'btn-secondary'} w-full"
-                    />
-                  {/snippet}
-                </PricingCard>
-              {/each}
-            </div>
-          {/if}
+  {#snippet footerCancel()}
+    <button type="button" class="cancel-btn" onclick={handleClose} disabled={busy}>
+      Close
+    </button>
+  {/snippet}
+  {#snippet footer()}
+    {#if showSuccess}
+      <SubmitButton
+        type="button"
+        onclick={refresh}
+        loadingText=""
+        label="Refresh"
+        minWidth="9.5rem"
+        class=""
+      />
+    {/if}
+  {/snippet}
+</FormOverlay>
 
-          {#if actionError}
-            <p class="text-sm text-error mt-3">
-              <span class="inline-block w-1.5 h-1.5 rounded-full bg-error mr-1.5 relative top-[-1px]"></span>
-              {actionError}
-            </p>
-          {/if}
+<style>
+  .unlock-note {
+    margin: 0;
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    line-height: 1.5;
+  }
 
-          {#if portalFallback}
-            <p class="text-sm text-text-muted mt-3">
-              You already have a subscription. <a href="/billing" class="text-accent hover:underline">Manage it on the billing page</a>.
-            </p>
-          {/if}
-        </div>
+  .unlock-link {
+    color: var(--color-accent-dark);
+    text-decoration: none;
+  }
 
-        <!-- Footer -->
-        <div class="px-6 pb-5">
-          <div class="border-t border-border pt-3">
-            <a
-              href="/billing#plans"
-              class="inline-flex items-center gap-1 text-sm text-text-muted hover:text-accent transition-colors"
-            >
-              Compare all plans
-              <ArrowRight class="w-3.5 h-3.5" />
-            </a>
-          </div>
-        </div>
-      {/if}
-    </div>
-  </div>
-{/if}
+  .unlock-link:hover {
+    text-decoration: underline;
+  }
+
+  .unlock-error {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin: 0;
+    color: var(--color-error-text);
+    font-size: var(--text-13);
+    line-height: 1.45;
+  }
+
+  .unlock-error .unlock-link {
+    margin-left: auto;
+    flex: 0 0 auto;
+    font-size: var(--text-sm);
+  }
+
+  .plan-grid {
+    display: grid;
+    gap: 1rem;
+  }
+
+  .plan-grid[data-cols="1"] {
+    max-width: 24rem;
+    margin-inline: auto;
+    width: 100%;
+  }
+
+  @media (min-width: 640px) {
+    .plan-grid[data-cols="2"] {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      max-width: 42rem;
+      margin-inline: auto;
+      width: 100%;
+    }
+
+    .plan-grid[data-cols="3"] {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
+  .plan-skeleton {
+    height: 14rem;
+    border-radius: var(--radius-lg);
+  }
+
+  .unlock-compare {
+    justify-self: start;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--color-text-muted);
+    text-decoration: none;
+    transition: color var(--duration-fast) var(--ease-default);
+  }
+
+  .unlock-compare:hover {
+    color: var(--color-text-secondary);
+  }
+
+  .unlock-compare:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+</style>

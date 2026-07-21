@@ -365,20 +365,31 @@ def process_job(job_data: dict) -> None:
         # seed op never made, and would mark the WHOLE research job FAILED over a small paid
         # follow-up request. Two distinct outcomes, neither of which is a generic job failure:
         #
-        #   1. seed_delivery_only: the merge already landed and was SAVED (run_seed_idea's own
-        #      notify_seed_complete exhausted its retries) — the money is owed. Nothing to
-        #      revert; log loudly for a manual retry against the dispatch id and stop.
+        #   1. seed_delivery_only: evaluation finished, but notify_seed_complete exhausted its
+        #      retries. run_seed_idea has already reverted the checkpoint/preview, so deliver
+        #      seed-failed now to settle/refund the dispatch instead of leaving it RUNNING until
+        #      stale recovery.
         #   2. genuine pipeline failure (birth produced nothing, or raised before any merge):
         #      notify_seed_failed reverts QUEUED/RUNNING -> AWAITING_SELECTION and refunds
         #      seed_idea_N. Its own delivery failure is ALSO not escalated to notify_job_failed
         #      — same reasoning as case 1, just the opposite charge.
         if task_type == TASK_TYPE_SEED_IDEA:
             if getattr(e, "seed_delivery_only", False):
-                logger.error(
-                    f"Seed idea for job {job_id} completed and was saved, but delivery to the "
-                    "backend failed — leaving the job as-is (never refund/discard a saved "
-                    "outcome); needs a manual retry against the dispatch id."
-                )
+                try:
+                    from .progress import notify_seed_failed
+                    delivered = notify_seed_failed(
+                        job_id,
+                        f"Evaluation completed but its result could not be delivered: {error_msg}",
+                    )
+                    if not delivered:
+                        logger.error(
+                            f"Seed delivery failure could not be settled for {job_id}; "
+                            "the reverted result may remain QUEUED/RUNNING until stale recovery"
+                        )
+                except Exception as revert_err:
+                    logger.error(
+                        f"Failed to settle reverted seed delivery for {job_id}: {revert_err}"
+                    )
                 return
             try:
                 from .progress import notify_seed_failed

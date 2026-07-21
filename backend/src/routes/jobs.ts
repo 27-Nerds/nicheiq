@@ -18,9 +18,9 @@ import {
   refundForSeedIdeaStage,
 } from '../services/creditService.js';
 import { prisma } from '../services/db.js';
-import { CreateJobSchema, SelectSolutionSchema, GateActionSchema, GateG1PatchSchema, GateG2PatchSchema, SeedIdeaSchema } from '../types/job.js';
+import { CreateJobSchema, SelectSolutionSchema, SelectionDecisionProfileSchema, SelectionDraftUpdateSchema, GateActionSchema, GateG1PatchSchema, GateG2PatchSchema, SeedIdeaSchema } from '../types/job.js';
 import { buildPatchEnvelope, buildReceiptContent, buildSeedEnvelope, buildSeedReceiptContent } from '../utils/ledgerEvents.js';
-import { JobStatus, AssetType, StageStatus, DispatchKind, BillingModel, DispatchState } from '@prisma/client';
+import { JobStatus, AssetType, StageStatus, DispatchKind, BillingModel, DispatchState, Prisma } from '@prisma/client';
 import { openDispatch, settleDispatch } from '../services/dispatchService.js';
 import { CONFIG } from '../config.js';
 import { existsSync, createReadStream, statSync } from 'fs';
@@ -29,10 +29,47 @@ import { requireInternalAuth, requireInternalService, verifyOwnership, Authentic
 import { jobCreationLimiter } from '../middleware/rateLimit.js';
 import { validateJobId } from '../middleware/validation.js';
 import { formatJobResponse } from '../utils/jobFormatter.js';
+import { candidateSnapshotSha256, ensureIdeaIdentities, ideaName } from '../utils/ideaIdentity.js';
+import { currentSelectionDraft, selectionDraftDocument } from '../utils/selectionDraft.js';
+import { IdeaSynthesisPatchSchema } from '../types/ideaSynthesis.js';
 import { resolveAssetPath } from '../utils/assetPath.js';
 import { isEntitledUser } from '../services/catalogService.js';
+import { parseCurrentFounderFitArtifact } from '../services/founderFitService.js';
+import {
+  findIdeaForExport,
+  ideaExportFilename,
+  renderIdeaMarkdown,
+  serializeIdeaJson,
+} from '../services/ideaExportService.js';
 
 export const jobsRouter = Router();
+
+function asJsonRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+async function settledSeedOutcome(jobId: string, sourceMessageId: string): Promise<string | null> {
+  const receipts = await prisma.chatMessage.findMany({
+    where: { jobId, gateStage: 5, role: 'receipt' },
+    orderBy: { createdAt: 'desc' },
+    take: 100,
+    select: { patchJson: true },
+  });
+  for (const receipt of receipts) {
+    const envelope = asJsonRecord(receipt.patchJson);
+    if (
+      envelope?.kind === 'ledger_event'
+      && envelope.event === 'seed_settled'
+      && envelope.sourceMessageId === sourceMessageId
+      && typeof envelope.outcome === 'string'
+    ) {
+      return envelope.outcome;
+    }
+  }
+  return null;
+}
 
 /**
  * POST /api/jobs
@@ -826,13 +863,51 @@ jobsRouter.post('/:jobId/select-solution', requireInternalAuth, validateJobId, a
       return;
     }
 
-    // Validate ALL selected solutions exist in solutionIdeas
-    const solutions = (job.solutionIdeas as any[]) || [];
-    const missingNames = input.solutionNames.filter(
-      name => !solutions.some((s: any) => s.name === name || s.solution_name === name)
+    const solutions = ensureIdeaIdentities(jobId, job.solutionIdeas);
+    const selectedById = input.solutionIds?.map(
+      id => solutions.find(solution => solution.idea_id === id),
     );
-    if (missingNames.length > 0) {
+    if (input.solutionIds && selectedById?.some(solution => !solution)) {
+      const missing = input.solutionIds.filter(
+        id => !solutions.some(solution => solution.idea_id === id),
+      );
+      res.status(400).json({ error: 'Selected solution(s) not found in available ideas', missing });
+      return;
+    }
+
+    const resolvedNames = selectedById
+      ? selectedById.map(solution => ideaName(solution!)).filter((name): name is string => !!name)
+      : input.solutionNames ?? [];
+    const resolvedIds = selectedById
+      ? selectedById.map(solution => solution!.idea_id!)
+      : resolvedNames.map(name => solutions.find(solution => ideaName(solution) === name)?.idea_id)
+          .filter((id): id is string => !!id);
+
+    const missingNames = resolvedNames.filter(
+      name => !solutions.some(solution => ideaName(solution) === name),
+    );
+    if (missingNames.length > 0 || resolvedNames.length === 0) {
       res.status(400).json({ error: 'Selected solution(s) not found in available ideas', missing: missingNames });
+      return;
+    }
+    if (input.solutionNames && input.solutionIds && (
+      input.solutionNames.length !== resolvedNames.length
+      || input.solutionNames.some((name, index) => name !== resolvedNames[index])
+    )) {
+      res.status(400).json({ error: 'solutionIds and solutionNames refer to different ideas' });
+      return;
+    }
+
+    // Phase 2 still joins candidates by solution name. Two distinct identities with
+    // the same normalized name would collapse in Python and make the winning identity
+    // impossible to recover. Reject before charging rather than silently producing an
+    // unresolved final recommendation.
+    const normalizedNames = resolvedNames.map(name => name.trim().replace(/\s+/g, ' ').toLowerCase());
+    if (new Set(normalizedNames).size !== normalizedNames.length) {
+      res.status(409).json({
+        error: 'Deep Research cannot compare two candidates with the same name yet. Choose one of them.',
+        code: 'AMBIGUOUS_PHASE2_SELECTION',
+      });
       return;
     }
 
@@ -863,7 +938,8 @@ jobsRouter.post('/:jobId/select-solution', requireInternalAuth, validateJobId, a
         },
         data: {
           status: JobStatus.QUEUED,
-          selectedSolutions: input.solutionNames,
+          selectedSolutions: resolvedNames,
+          selectedSolutionIds: resolvedIds,
           selectionRationale: input.rationale || null,
           queuedAt: new Date(),
         },
@@ -881,7 +957,7 @@ jobsRouter.post('/:jobId/select-solution', requireInternalAuth, validateJobId, a
       await enqueuePhase2Job(
         jobId,
         job.phase1CheckpointPath,
-        input.solutionNames,
+        resolvedNames,
         input.rationale,
         phase2Dispatch,
       );
@@ -899,6 +975,7 @@ jobsRouter.post('/:jobId/select-solution', requireInternalAuth, validateJobId, a
         data: {
           status: JobStatus.AWAITING_SELECTION,
           selectedSolutions: [],
+          selectedSolutionIds: [],
           selectionRationale: null,
           activeDispatchId: null,
         },
@@ -925,6 +1002,7 @@ jobsRouter.post('/:jobId/select-solution', requireInternalAuth, validateJobId, a
     res.json({
       status: 'phase2_queued',
       message: 'Solution selected. Deep investigation is now queued.',
+      selectedSolutionIds: resolvedIds,
     });
   } catch (error) {
     if (error instanceof InsufficientCreditsError) {
@@ -1118,6 +1196,9 @@ jobsRouter.post('/:jobId/seed-idea', requireInternalAuth, validateJobId, async (
         seedIdeaCount: true,
         phase1CheckpointPath: true,
         niche: true,
+        solutionIdeas: true,
+        selectionDecisionProfile: true,
+        selectionFounderFit: true,
       },
     });
 
@@ -1137,6 +1218,98 @@ jobsRouter.post('/:jobId/seed-idea', requireInternalAuth, validateJobId, async (
     if (!job.phase1CheckpointPath) {
       res.status(500).json({ error: 'Missing checkpoint path for seed idea' });
       return;
+    }
+
+    const priorOutcome = await settledSeedOutcome(jobId, input.sourceMessageId);
+    if (priorOutcome) {
+      res.json({
+        status: 'settled',
+        outcome: priorOutcome,
+        message: 'This proposal has already been evaluated.',
+      });
+      return;
+    }
+
+    let seedText: string;
+    let painRef: string | undefined;
+    let toolRef: string | undefined;
+    if (input.kind === 'idea_synthesis') {
+      const sourceMessage = await prisma.chatMessage.findFirst({
+        where: {
+          id: input.sourceMessageId,
+          jobId,
+          gateStage: 5,
+          role: 'assistant',
+        },
+        select: { patchJson: true },
+      });
+      const parsedProposal = IdeaSynthesisPatchSchema.safeParse(sourceMessage?.patchJson);
+      if (!parsedProposal.success) {
+        res.status(400).json({
+          error: 'This synthesis proposal is missing or invalid. Ask the analyst to propose it again.',
+          code: 'INVALID_SYNTHESIS_PROPOSAL',
+        });
+        return;
+      }
+
+      const currentIdeas = ensureIdeaIdentities(jobId, job.solutionIdeas);
+      const fitRef = parsedProposal.data.evidence.founderFitRef;
+      if (fitRef) {
+        const currentFit = parseCurrentFounderFitArtifact(
+          job.selectionFounderFit,
+          job.selectionDecisionProfile,
+          currentIdeas,
+        );
+        const currentResult = currentFit?.results.find((result) =>
+          result.ideaId === fitRef.ideaId
+          && result.ideaRevision === fitRef.ideaRevision
+          && result.verdict === 'needs_reshape'
+        );
+        if (!currentFit || currentFit.inputFingerprint !== fitRef.inputFingerprint || !currentResult) {
+          res.status(409).json({
+            error: 'The founder profile or fit analysis changed after this proposal was created. Prepare a new reshape proposal.',
+            code: 'STALE_FOUNDER_FIT_RESHAPE',
+          });
+          return;
+        }
+      }
+      const staleParent = parsedProposal.data.parents.some((parent) => {
+        const current = currentIdeas.find((idea) =>
+          idea.idea_id === parent.ideaId
+          && idea.idea_revision === parent.ideaRevision
+        );
+        const anchor = parsedProposal.data.evidence.sourceAnchors.find((candidate) =>
+          candidate.ideaId === parent.ideaId
+          && candidate.ideaRevision === parent.ideaRevision
+        );
+        return (
+          !current ||
+          !anchor ||
+          ideaName(current) !== parent.solutionName ||
+          candidateSnapshotSha256(current) !== anchor.candidateSnapshotSha256
+        );
+      });
+      if (staleParent) {
+        res.status(409).json({
+          error: 'A source candidate changed after this proposal was created. Ask the analyst to rebuild it from the current candidates.',
+          code: 'STALE_SYNTHESIS_SOURCE',
+        });
+        return;
+      }
+
+      const proposal = parsedProposal.data;
+      seedText = [
+        proposal.proposedTitle,
+        proposal.proposedBrief,
+        `Transformation: ${proposal.operation}. ${proposal.changeSummary}`,
+        `Retain from sources: ${proposal.parents.map((parent) => `${parent.solutionName}: ${parent.contribution}`).join('; ')}`,
+      ].join('\n\n');
+      painRef = proposal.evidence.sourceAnchors.map((anchor) => anchor.pain).find(Boolean);
+      toolRef = undefined;
+    } else {
+      seedText = input.free_text;
+      painRef = input.pain_ref;
+      toolRef = input.tool_ref;
     }
 
     const nextSeedOrdinal = (job.seedIdeaCount ?? 0) + 1;
@@ -1200,7 +1373,7 @@ jobsRouter.post('/:jobId/seed-idea', requireInternalAuth, validateJobId, async (
     try {
       await enqueueSeedIdeaJob(
         jobId, job.phase1CheckpointPath, job.niche,
-        input.free_text, input.pain_ref, input.tool_ref, seedDispatch,
+        seedText, painRef, toolRef, seedDispatch,
       );
     } catch (enqueueError) {
       console.error(`[Jobs] Failed to enqueue seed idea for job ${jobId}, compensating:`, enqueueError);
@@ -1232,7 +1405,9 @@ jobsRouter.post('/:jobId/seed-idea', requireInternalAuth, validateJobId, async (
 
     res.json({
       status: 'queued',
-      message: 'Generating an idea from your own idea.',
+      message: input.kind === 'idea_synthesis'
+        ? 'Evaluating the proposed candidate variant.'
+        : 'Generating an idea from your own idea.',
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -1600,6 +1775,160 @@ jobsRouter.post('/:jobId/gate-action', requireInternalAuth, validateJobId, async
 });
 
 /**
+ * PUT /api/jobs/:jobId/decision-profile
+ * Persist the owner's selection constraints without changing research scores.
+ */
+jobsRouter.put('/:jobId/decision-profile', requireInternalAuth, validateJobId, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { jobId } = req.params;
+    const userId = req.user!.id;
+    const profile = SelectionDecisionProfileSchema.parse(req.body);
+
+    const job = await prisma.job.findFirst({
+      where: { id: jobId, userId },
+      select: { status: true },
+    });
+
+    if (!job) {
+      res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+
+    if (
+      job.status !== JobStatus.AWAITING_SELECTION
+      && job.status !== JobStatus.REGENERATING
+    ) {
+      res.status(409).json({ error: 'Decision profile is only editable during idea selection' });
+      return;
+    }
+
+    const result = await prisma.job.updateMany({
+      where: { id: jobId, userId, status: job.status },
+      data: {
+        selectionDecisionProfile: profile,
+        selectionFounderFit: Prisma.JsonNull,
+      },
+    });
+
+    if (result.count !== 1) {
+      res.status(409).json({ error: 'The job changed while saving the decision profile' });
+      return;
+    }
+
+    res.json({ selectionDecisionProfile: profile });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation error', details: error.errors });
+      return;
+    }
+    console.error('Failed to save selection decision profile:', error);
+    res.status(500).json({ error: 'Failed to save selection decision profile' });
+  }
+});
+
+/**
+ * PUT /api/jobs/:jobId/selection-draft
+ * Persist the owner's editable, exact-revision shortlist without finalizing it.
+ */
+jobsRouter.put('/:jobId/selection-draft', requireInternalAuth, validateJobId, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { jobId } = req.params;
+    const userId = req.user!.id;
+    const input = SelectionDraftUpdateSchema.parse(req.body);
+
+    const job = await prisma.job.findFirst({
+      where: { id: jobId, userId },
+      select: {
+        status: true,
+        solutionIdeas: true,
+        selectionDraft: true,
+        selectionDraftVersion: true,
+      },
+    });
+
+    if (!job) {
+      res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+
+    if (job.status !== JobStatus.AWAITING_SELECTION) {
+      res.status(409).json({
+        error: 'The shortlist is only editable during idea selection',
+        code: 'SELECTION_DRAFT_LOCKED',
+      });
+      return;
+    }
+
+    const ideas = ensureIdeaIdentities(jobId, job.solutionIdeas);
+    const currentKeys = new Set(
+      ideas.map(idea => `${idea.idea_id}:${idea.idea_revision}`),
+    );
+    const staleItems = input.items.filter(
+      item => !currentKeys.has(`${item.ideaId}:${item.ideaRevision}`),
+    );
+    if (staleItems.length) {
+      res.status(409).json({
+        error: 'The candidate list changed. Refresh before editing the shortlist.',
+        code: 'SELECTION_DRAFT_STALE_IDEA',
+        selectionDraft: currentSelectionDraft(
+          job.selectionDraft,
+          job.selectionDraftVersion,
+          ideas,
+        ),
+      });
+      return;
+    }
+
+    const result = await prisma.job.updateMany({
+      where: {
+        id: jobId,
+        userId,
+        status: JobStatus.AWAITING_SELECTION,
+        selectionDraftVersion: input.expectedVersion,
+      },
+      data: {
+        selectionDraft: selectionDraftDocument(input.items) as Prisma.InputJsonValue,
+        selectionDraftVersion: { increment: 1 },
+      },
+    });
+
+    if (result.count !== 1) {
+      const latest = await prisma.job.findFirst({
+        where: { id: jobId, userId },
+        select: {
+          solutionIdeas: true,
+          selectionDraft: true,
+          selectionDraftVersion: true,
+        },
+      });
+      const latestIdeas = latest ? ensureIdeaIdentities(jobId, latest.solutionIdeas) : [];
+      res.status(409).json({
+        error: 'The shortlist changed in another session. Refresh to reconcile it.',
+        code: 'SELECTION_DRAFT_CONFLICT',
+        selectionDraft: latest
+          ? currentSelectionDraft(latest.selectionDraft, latest.selectionDraftVersion, latestIdeas)
+          : currentSelectionDraft(job.selectionDraft, job.selectionDraftVersion, ideas),
+      });
+      return;
+    }
+
+    res.json({
+      selectionDraft: {
+        version: input.expectedVersion + 1,
+        items: input.items,
+      },
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation error', details: error.errors });
+      return;
+    }
+    console.error('Failed to save selection draft:', error);
+    res.status(500).json({ error: 'Failed to save shortlist' });
+  }
+});
+
+/**
  * GET /api/jobs/:jobId/solutions
  * Get solution ideas for an interactive job (requires authentication and ownership)
  */
@@ -1613,7 +1942,11 @@ jobsRouter.get('/:jobId/solutions', requireInternalAuth, validateJobId, async (r
         solutionIdeas: true,
         selectedSolution: true,
         selectedSolutions: true,
+        selectedSolutionIds: true,
         selectionRationale: true,
+        selectionDecisionProfile: true,
+        selectionDraft: true,
+        selectionDraftVersion: true,
         ideasRegeneratedAt: true,
         status: true,
       },
@@ -1624,17 +1957,88 @@ jobsRouter.get('/:jobId/solutions', requireInternalAuth, validateJobId, async (r
       return;
     }
 
+    const solutionIdeas = ensureIdeaIdentities(jobId, job.solutionIdeas);
+    const selectedSolutions = job.selectedSolutions?.length ? job.selectedSolutions : null;
+    const selectedSolutionIds = job.selectedSolutionIds?.length
+      ? job.selectedSolutionIds
+      : selectedSolutions?.map(
+          name => solutionIdeas.find(solution => ideaName(solution) === name)?.idea_id,
+        ).filter((id): id is string => !!id) ?? null;
+
     res.json({
-      solutionIdeas: job.solutionIdeas || [],
+      solutionIdeas,
       selectedSolution: job.selectedSolution,
-      selectedSolutions: job.selectedSolutions?.length ? job.selectedSolutions : null,
+      selectedSolutions,
+      selectedSolutionIds,
       selectionRationale: job.selectionRationale,
+      selectionDecisionProfile: job.selectionDecisionProfile,
+      selectionDraft: currentSelectionDraft(
+        job.selectionDraft,
+        job.selectionDraftVersion,
+        solutionIdeas,
+      ),
       canRegenerate: true,
       status: job.status,
     });
   } catch (error) {
     console.error('Failed to get solutions:', error);
     res.status(500).json({ error: 'Failed to get solutions' });
+  }
+});
+
+const IdeaExportParamsSchema = z.object({
+  jobId: z.string().uuid(),
+  ideaId: z.string().min(1),
+  format: z.enum(['md', 'json']),
+});
+
+/**
+ * GET /api/jobs/:jobId/solutions/:ideaId/export/:format?revision=N
+ * Private download of one exact stored candidate (md or json). An explicit
+ * revision must match exactly; without one the current revision is exported.
+ */
+jobsRouter.get('/:jobId/solutions/:ideaId/export/:format', requireInternalAuth, validateJobId, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { jobId, ideaId, format } = IdeaExportParamsSchema.parse(req.params);
+    let revision: number | undefined;
+    if (req.query.revision !== undefined) {
+      const parsed = z.coerce.number().int().positive().safeParse(req.query.revision);
+      if (!parsed.success) {
+        res.status(400).json({ error: 'Invalid candidate revision' });
+        return;
+      }
+      revision = parsed.data;
+    }
+
+    const job = await prisma.job.findFirst({
+      where: { id: jobId, userId: req.user!.id },
+      select: { solutionIdeas: true },
+    });
+    if (!job) {
+      res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+
+    const idea = findIdeaForExport(ensureIdeaIdentities(jobId, job.solutionIdeas), ideaId, revision);
+    if (!idea) {
+      res.status(404).json({ error: 'Candidate not found' });
+      return;
+    }
+
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Content-Disposition', `attachment; filename="${ideaExportFilename(idea, format)}"`);
+    if (format === 'md') {
+      res.type('text/markdown').send(renderIdeaMarkdown(idea));
+      return;
+    }
+    res.type('application/json').send(serializeIdeaJson(idea));
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({ error: 'Invalid export reference' });
+      return;
+    }
+    console.error('Failed to export idea:', error);
+    res.status(500).json({ error: 'Failed to export idea' });
   }
 });
 

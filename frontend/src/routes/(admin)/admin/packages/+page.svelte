@@ -241,7 +241,7 @@
     return list.filter((_, i) => i !== index);
   }
 
-  const inputClass = "w-full px-3 py-2 bg-bg-elevated border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-accent";
+  const inputClass = "input";
   const labelClass = "block text-sm font-medium text-text-secondary mb-1";
 </script>
 
@@ -274,7 +274,7 @@
               updated[i] = { ...updated[i], icon: (e.target as HTMLSelectElement).value as 'check' | 'plus' | 'star' };
               onUpdate(updated);
             }}
-            class="px-2 py-2 bg-bg-elevated border border-border rounded-lg text-text-primary text-sm"
+            class="input"
           >
             <option value="check">check</option>
             <option value="plus">plus</option>
@@ -304,7 +304,7 @@
     </div>
     <button
       type="button"
-      class="mt-2 text-xs text-accent hover:underline flex items-center gap-1"
+      class="mt-2 text-xs text-[color:var(--color-accent-dark)] hover:underline flex items-center gap-1"
       onclick={() => onUpdate(addFeature(features))}
     >
       <Plus class="w-3 h-3" /> Add Feature
@@ -327,8 +327,8 @@
   features: FeatureItem[], onFeatures: (v: FeatureItem[]) => void
 )}
   <!-- Card Customization -->
-  <div class="sm:col-span-2 border-t border-accent/30 pt-4 mt-4">
-    <h4 class="text-sm font-semibold text-accent mb-1">Card Customization</h4>
+  <div class="sm:col-span-2 border-t border-border pt-4 mt-4">
+    <h4 class="text-sm font-semibold text-[color:var(--color-accent-dark)] mb-1">Card Customization</h4>
     <p class="text-xs text-text-muted mb-4">
       Controls how this package appears on the
       <span class="font-mono text-text-secondary">/billing</span> and
@@ -362,7 +362,7 @@
       onPromoPriceInCents(val ? parseInt(val) : null);
     }} class={inputClass} placeholder="1200" min="1" />
     {#if promoPriceInCents}
-      <p class="text-xs text-success mt-1">{formatPrice(promoPriceInCents)} <span class="text-text-muted line-through ml-1">{formatPrice(priceInCents)}</span></p>
+      <p class="text-xs text-[color:var(--color-success-text)] mt-1">{formatPrice(promoPriceInCents)} <span class="text-text-muted line-through ml-1">{formatPrice(priceInCents)}</span></p>
     {:else}
       <p class="text-xs text-text-muted mt-1">Shown as green price with original crossed out. Leave empty for no promo.</p>
     {/if}
@@ -421,7 +421,7 @@
     <div class="bg-bg-surface border border-border rounded-xl p-5 mb-6">
       <h3 class="text-lg font-semibold text-text-primary mb-4">New Package</h3>
       {#if formError}
-        <div class="text-sm text-error mb-3 p-2 bg-error/10 rounded-lg">
+        <div class="text-sm text-[color:var(--color-error-text)] mb-3 p-2 bg-error/10 rounded-lg">
           {formError}
         </div>
       {/if}
@@ -486,27 +486,27 @@
   {#if data.packagesData}
     <div class="bg-bg-surface border border-border rounded-xl overflow-hidden">
       <div class="overflow-x-auto">
-        <table class="w-full text-sm">
+        <table class="data-table">
           <thead>
-            <tr class="border-b border-border bg-bg-elevated/50">
-              <th class="text-left py-3 px-4 text-text-muted font-medium">Name</th>
-              <th class="text-right py-3 px-4 text-text-muted font-medium">Credits</th>
-              <th class="text-right py-3 px-4 text-text-muted font-medium">Price</th>
-              <th class="text-left py-3 px-4 text-text-muted font-medium">Stripe ID</th>
-              <th class="text-center py-3 px-4 text-text-muted font-medium">Active</th>
-              <th class="text-center py-3 px-4 text-text-muted font-medium">Popular</th>
-              <th class="text-right py-3 px-4 text-text-muted font-medium">Sort</th>
-              <th class="text-right py-3 px-4 text-text-muted font-medium">Actions</th>
+            <tr>
+              <th>Name</th>
+              <th class="num">Credits</th>
+              <th class="num">Price</th>
+              <th>Stripe ID</th>
+              <th style="text-align: center">Active</th>
+              <th style="text-align: center">Popular</th>
+              <th class="num">Sort</th>
+              <th style="text-align: right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {#each data.packagesData.packages as pkg}
-              <tr class="border-b border-border/50 {editingId === pkg.id ? 'bg-bg-elevated/30' : ''}">
-                <td class="py-3 px-4">
+              <tr class={editingId === pkg.id ? 'bg-bg-elevated/30' : ''}>
+                <td>
                   <div>
                     <span class="font-medium text-text-primary">{pkg.name}</span>
                     {#if pkg.tagline}
-                      <span class="text-xs text-accent ml-1">— {pkg.tagline}</span>
+                      <span class="text-xs text-[color:var(--color-accent-dark)] ml-1">· {pkg.tagline}</span>
                     {/if}
                   </div>
                   {#if pkg.creditsInfo || pkg.includesLabel || pkg.ctaText || pkg.promoLine || pkg.badgeLabel || (Array.isArray(pkg.features) && pkg.features.length > 0)}
@@ -520,31 +520,31 @@
                     </div>
                   {/if}
                 </td>
-                <td class="py-3 px-4 text-right text-text-primary">{pkg.credits}</td>
-                <td class="py-3 px-4 text-right text-text-primary">
+                <td class="num cell-primary">{pkg.credits}</td>
+                <td class="num cell-primary">
                   {formatPrice(pkg.priceInCents)}
                   {#if pkg.promoPriceInCents}
-                    <span class="text-xs text-success ml-1">→ {formatPrice(pkg.promoPriceInCents)}</span>
+                    <span class="text-xs text-[color:var(--color-success-text)] ml-1">→ {formatPrice(pkg.promoPriceInCents)}</span>
                   {/if}
                 </td>
-                <td class="py-3 px-4 font-mono text-xs text-text-muted max-w-32 truncate">{pkg.stripePriceId}</td>
-                <td class="py-3 px-4 text-center">
+                <td class="font-mono text-xs cell-muted max-w-32 truncate">{pkg.stripePriceId}</td>
+                <td class="text-center">
                   <Badge variant={pkg.isActive ? "success" : "muted"} size="sm">
                     {pkg.isActive ? "Yes" : "No"}
                   </Badge>
                 </td>
-                <td class="py-3 px-4 text-center">
+                <td class="text-center">
                   {#if pkg.isPopular}
                     <Badge variant="accent" size="sm">Popular</Badge>
                   {:else}
                     <span class="text-text-muted">-</span>
                   {/if}
                 </td>
-                <td class="py-3 px-4 text-right text-text-secondary">{pkg.sortOrder}</td>
-                <td class="py-3 px-4 text-right">
+                <td class="num text-text-secondary">{pkg.sortOrder}</td>
+                <td class="text-right">
                   <div class="flex gap-1 justify-end">
                     <button
-                      class="text-xs px-2 py-1 rounded border transition-colors {editingId === pkg.id ? 'border-accent bg-accent/10 text-accent' : 'border-border hover:bg-bg-elevated text-text-secondary'}"
+                      class="text-xs px-2 py-1 rounded border transition-colors {editingId === pkg.id ? 'border-accent bg-accent/10 text-[color:var(--color-accent-dark)]' : 'border-border hover:bg-bg-elevated text-text-secondary'}"
                       onclick={() => startEdit(pkg.id)}
                     >
                       {editingId === pkg.id ? "Close" : "Edit"}
@@ -565,12 +565,12 @@
                 </td>
               </tr>
               {#if editingId === pkg.id}
-                <tr class="border-b border-border/50">
+                <tr>
                   <td colspan="8" class="p-0">
-                    <div class="bg-bg-surface border-t border-accent/20 p-5">
+                    <div class="bg-bg-surface border-t border-border p-5">
                       <h4 class="text-sm font-semibold text-text-primary mb-3">Edit Package</h4>
                       {#if editError}
-                        <div class="text-sm text-error mb-3 p-2 bg-error/10 rounded-lg">
+                        <div class="text-sm text-[color:var(--color-error-text)] mb-3 p-2 bg-error/10 rounded-lg">
                           {editError}
                         </div>
                       {/if}
@@ -605,8 +605,8 @@
                         </div>
                         <div>
                           <label for="edit-stripe-price" class={labelClass}>Stripe Price ID</label>
-                          <input id="edit-stripe-price" type="text" bind:value={editStripePriceId} required class={inputClass + " font-mono"} />
-                          <p class="text-xs text-warning mt-1">Changing this will redirect future purchases to a different Stripe price. Does not affect existing subscriptions.</p>
+                          <input id="edit-stripe-price" type="text" bind:value={editStripePriceId} required class={inputClass + " mono-field"} />
+                          <p class="text-xs text-[color:var(--color-warning-text)] mt-1">Changing this will redirect future purchases to a different Stripe price. Does not affect existing subscriptions.</p>
                         </div>
 
                         {@render richFields(
@@ -647,3 +647,22 @@
     </div>
   {/if}
 </div>
+
+<style>
+  /* .input's font-family is unlayered global CSS, so a Tailwind font-mono
+     utility can't win against it (cascade layers rank utilities below
+     unlayered rules) — this scoped class out-specificities it instead. */
+  .mono-field {
+    font-family: var(--font-mono);
+  }
+
+  /* .data-table td's color is unlayered global CSS, so a Tailwind text-color
+     utility can't win against it (cascade layers rank utilities below
+     unlayered rules) — these scoped classes out-specificity it instead. */
+  .cell-primary {
+    color: var(--color-text-primary);
+  }
+  .cell-muted {
+    color: var(--color-text-muted);
+  }
+</style>

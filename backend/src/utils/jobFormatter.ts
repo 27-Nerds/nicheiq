@@ -1,4 +1,6 @@
 import { Job, JobProgress, JobAsset } from '@prisma/client';
+import { ensureIdeaIdentities } from './ideaIdentity.js';
+import { currentSelectionDraft } from './selectionDraft.js';
 
 type JobWithRelations = Job & {
   progress: JobProgress[];
@@ -44,6 +46,7 @@ export function formatJobResponse(job: JobWithRelations, options: FormatOptions 
     entryMode: job.entryMode || null,
     selectedSolution: job.selectedSolution || null,
     selectedSolutions: job.selectedSolutions?.length ? job.selectedSolutions : null,
+    selectedSolutionIds: job.selectedSolutionIds?.length ? job.selectedSolutionIds : null,
     awaitingSelectionAt: job.awaitingSelectionAt?.toISOString() || null,
     ideasShownAt: job.ideasShownAt?.toISOString() || null,
     // Lean count so list payloads can show "N candidates ready" without the full array
@@ -80,9 +83,18 @@ export function formatJobResponse(job: JobWithRelations, options: FormatOptions 
   }
 
   if (options.includeSolutionIdeas) {
-    result.solutionIdeas = job.solutionIdeas || null;
+    const solutionIdeas = job.solutionIdeas
+      ? ensureIdeaIdentities(job.id, job.solutionIdeas)
+      : [];
+    result.solutionIdeas = job.solutionIdeas ? solutionIdeas : null;
     result.canRegenerate = true;
     result.selectionRationale = job.selectionRationale || null;
+    result.selectionDecisionProfile = job.selectionDecisionProfile || null;
+    result.selectionDraft = currentSelectionDraft(
+      job.selectionDraft,
+      job.selectionDraftVersion,
+      solutionIdeas,
+    );
   }
 
   if (options.includeProgress) {

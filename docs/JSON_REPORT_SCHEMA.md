@@ -415,7 +415,7 @@ scale (recalibrated from the legacy pad-to-12 scale of 8/5/3).
 | `source` | `"demoted_winner" \| "backfill_rejected" \| "no_buyer"` | Rule that removed the idea from the selectable pool |
 | `evidence` | `string` | First representative quote (or description) for `pain_title`, truncated to 220 chars |
 | `source_frame` | `string \| null` | Generation frame; `user_seed` identifies a submitted idea |
-| `idea` | `SolutionPreview \| null` | Full read-only evaluated payload for a submitted idea, allowing its details to remain inspectable after demotion; absent on older and non-seed findings |
+| `idea` | `SolutionPreview \| null` | Full read-only evaluated payload when available, allowing a generated or submitted concept to remain inspectable after demotion; absent on older findings that cannot be recovered from the checkpoint |
 
 Populated by the post-parity demotion/backfill block in `unified_solution_crew.py`. In the
 **final** report it lives at `data_quality_summary.examined_ruled_out`. The **preview** report

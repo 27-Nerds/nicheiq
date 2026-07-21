@@ -11,12 +11,12 @@
       <div class="flex items-center gap-4">
         <a
           href="mailto:hello@nicheiq.dev"
-          class="hover:text-accent transition-colors">Support</a
+          class="hover:text-accent-dark transition-colors">Support</a
         >
         <span class="text-border-emphasis">·</span>
         <button
           type="button"
-          class="hover:text-accent transition-colors"
+          class="hover:text-accent-dark transition-colors"
           onclick={openCookiePreferences}>Cookies</button
         >
         <span class="text-border-emphasis">·</span>

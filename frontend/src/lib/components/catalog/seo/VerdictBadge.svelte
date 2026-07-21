@@ -37,7 +37,7 @@
     font-weight: 600;
     letter-spacing: 0.04em;
     border: 1px solid var(--color-border);
-    background: var(--color-surface, #fff);
+    background: var(--color-surface);
   }
   .dot {
     width: 5px;
@@ -46,17 +46,17 @@
     background: currentColor;
   }
   .tone-success {
-    color: var(--color-success);
+    color: var(--color-success-text);
     border-color: rgba(34, 197, 94, 0.25);
     background: rgba(34, 197, 94, 0.04);
   }
   .tone-warn {
-    color: var(--color-warning, #ca8a04);
+    color: var(--color-warning-text);
     border-color: rgba(202, 138, 4, 0.25);
     background: rgba(202, 138, 4, 0.04);
   }
   .tone-error {
-    color: var(--color-error, #dc2626);
+    color: var(--color-error-text);
     border-color: rgba(220, 38, 38, 0.25);
     background: rgba(220, 38, 38, 0.04);
   }

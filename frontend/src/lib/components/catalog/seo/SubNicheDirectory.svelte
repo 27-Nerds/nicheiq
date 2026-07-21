@@ -190,7 +190,7 @@
     column-gap: 10px;
     row-gap: 8px;
     align-items: center;
-    background: var(--color-surface, #fff);
+    background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: 8px;
     padding: 14px 16px;

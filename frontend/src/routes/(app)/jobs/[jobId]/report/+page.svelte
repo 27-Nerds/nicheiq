@@ -1,11 +1,12 @@
 <script lang="ts">
   import type { Report } from "$lib/types/report";
-  import { AlertTriangle, Share2 } from "lucide-svelte";
+  import { AlertTriangle, CheckSquare2, Share2 } from "lucide-svelte";
 
   import ReportContent from "$lib/components/ReportContent.svelte";
   import ShareReportModal from "$lib/components/ShareReportModal.svelte";
   import EmptyState from "$lib/components/ui/EmptyState.svelte";
   import CompletedAnalyst from "$lib/components/chat/CompletedAnalyst.svelte";
+  import FinalDecisionWorkspace from "$lib/components/decision/FinalDecisionWorkspace.svelte";
 
   interface Props {
     data: {
@@ -19,6 +20,7 @@
   const jobId = $derived(data.jobId);
 
   let shareModalOpen = $state(false);
+  let decisionLabOpen = $state(false);
 </script>
 
 <svelte:head>
@@ -46,10 +48,25 @@
 {:else}
   <ReportContent {report} showBackLink={true} {jobId}>
     {#snippet headerSlot()}
-      <button onclick={() => (shareModalOpen = true)} class="share-btn">
-        <Share2 class="w-4 h-4" />
-        <span>Share</span>
-      </button>
+      <div class="header-actions">
+        <button
+          type="button"
+          class="share-btn"
+          aria-haspopup="dialog"
+          aria-expanded={decisionLabOpen}
+          onclick={() => (decisionLabOpen = true)}
+        >
+          <CheckSquare2 class="w-4 h-4" />
+          <span>Decision Lab</span>
+        </button>
+        <button onclick={() => (shareModalOpen = true)} class="share-btn">
+          <Share2 class="w-4 h-4" />
+          <span>Share</span>
+        </button>
+      </div>
+    {/snippet}
+    {#snippet decisionSlot()}
+      <FinalDecisionWorkspace {jobId} bind:open={decisionLabOpen} />
     {/snippet}
   </ReportContent>
 
@@ -58,6 +75,12 @@
 {/if}
 
 <style>
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
   .share-btn {
     display: inline-flex;
     align-items: center;
@@ -77,5 +100,19 @@
     color: var(--color-text-primary);
     border-color: var(--color-accent);
     background: var(--color-accent-subtle);
+  }
+
+  @media (max-width: 640px) {
+    .header-actions {
+      min-width: 0;
+      justify-content: flex-end;
+    }
+
+    .share-btn {
+      min-height: 44px;
+      flex: 0 1 auto;
+      justify-content: center;
+      padding-inline: 0.7rem;
+    }
   }
 </style>

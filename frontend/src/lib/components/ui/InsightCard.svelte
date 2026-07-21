@@ -170,7 +170,7 @@
   }
 
   .insight-card--accent.insight-card--border-left {
-    border-left-color: var(--color-accent);
+    border-left-color: var(--color-border-emphasis);
   }
 
   .insight-card--accent.insight-card--border-top {

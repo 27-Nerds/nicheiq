@@ -290,6 +290,8 @@ EXAMPLES:
 
 THE KEY TEST: Would someone post about this specific pain on Reddit, AND could a solo developer actually build a tool for it (software-addressable, with gettable data)? If either fails, pick a sharper angle.
 
+GROUNDING: Use only the user's partial input and your own reasoning. Do not invent specific competitor names, prices, or quoted statistics — describe the opportunity at a structural level only.
+
 Respond with JSON:
 {
   "suggestions": [

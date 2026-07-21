@@ -115,7 +115,7 @@
       border-color 120ms ease;
   }
   .undo-btn:hover {
-    background: rgba(234, 88, 12, 0.04);
+    background: color-mix(in srgb, var(--color-accent) 4%, transparent);
     border-color: var(--color-border-accent);
   }
   .countdown {

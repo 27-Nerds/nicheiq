@@ -29,15 +29,15 @@
     display: inline-block;
   }
   .tone-easy {
-    color: var(--color-success);
+    color: var(--color-success-text);
     border-color: rgba(34, 197, 94, 0.25);
   }
   .tone-medium {
-    color: var(--color-warning, #ca8a04);
+    color: var(--color-warning-text);
     border-color: rgba(202, 138, 4, 0.25);
   }
   .tone-hard {
-    color: var(--color-error, #dc2626);
+    color: var(--color-error-text);
     border-color: rgba(220, 38, 38, 0.25);
   }
 </style>

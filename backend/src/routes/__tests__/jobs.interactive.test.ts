@@ -110,6 +110,129 @@ vi.mock('../../utils/assetPath.js', () => ({
 let app: Express;
 const authHeaders = { 'x-user-id': 'user-123' };
 const jobId = '00000000-0000-0000-0000-000000000001';
+const decisionProfile = {
+  preset: 'solo_bootstrap',
+  weeklyTime: '10_20',
+  budget: 'under_1k',
+  team: 'solo',
+  revenueHorizon: '90_days',
+  distributionAdvantages: ['community', 'existing_audience'],
+  strengths: 'Domain expertise and direct customer access',
+  hardConstraints: 'No regulated data or 24/7 operations',
+};
+describe('PUT /api/jobs/:jobId/selection-draft', () => {
+  const ideas = [
+    { solution_name: 'Alpha', idea_id: 'idea-alpha', idea_revision: 2 },
+    { solution_name: 'Beta', idea_id: 'idea-beta', idea_revision: 1 },
+  ];
+
+  function selectionJob(overrides: Record<string, unknown> = {}) {
+    return {
+      status: 'AWAITING_SELECTION',
+      solutionIdeas: ideas,
+      selectionDraft: { schemaVersion: 1, items: [] },
+      selectionDraftVersion: 3,
+      ...overrides,
+    };
+  }
+
+  it('persists exact idea revisions without finalizing or dispatching', async () => {
+    mockJobFindFirst.mockResolvedValue(selectionJob());
+
+    const response = await request(app)
+      .put(`/api/jobs/${jobId}/selection-draft`)
+      .set(authHeaders)
+      .send({
+        expectedVersion: 3,
+        items: [{ ideaId: 'idea-alpha', ideaRevision: 2 }],
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.selectionDraft).toEqual({
+      version: 4,
+      items: [{ ideaId: 'idea-alpha', ideaRevision: 2 }],
+    });
+    expect(mockJobUpdateMany).toHaveBeenCalledWith({
+      where: {
+        id: jobId,
+        userId: 'user-123',
+        status: 'AWAITING_SELECTION',
+        selectionDraftVersion: 3,
+      },
+      data: {
+        selectionDraft: {
+          schemaVersion: 1,
+          items: [{ ideaId: 'idea-alpha', ideaRevision: 2 }],
+        },
+        selectionDraftVersion: { increment: 1 },
+      },
+    });
+    const updateData = mockJobUpdateMany.mock.calls[0][0].data;
+    expect(updateData).not.toHaveProperty('selectedSolutions');
+    expect(updateData).not.toHaveProperty('selectedSolutionIds');
+    expect(updateData).not.toHaveProperty('status');
+    expect(mockEnqueuePhase2Job).not.toHaveBeenCalled();
+  });
+
+  it('rejects stale revisions before writing the draft', async () => {
+    mockJobFindFirst.mockResolvedValue(selectionJob());
+
+    const response = await request(app)
+      .put(`/api/jobs/${jobId}/selection-draft`)
+      .set(authHeaders)
+      .send({
+        expectedVersion: 3,
+        items: [{ ideaId: 'idea-alpha', ideaRevision: 1 }],
+      });
+
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe('SELECTION_DRAFT_STALE_IDEA');
+    expect(mockJobUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it('returns the latest exact draft after an optimistic concurrency conflict', async () => {
+    mockJobFindFirst
+      .mockResolvedValueOnce(selectionJob())
+      .mockResolvedValueOnce(selectionJob({
+        selectionDraftVersion: 4,
+        selectionDraft: {
+          schemaVersion: 1,
+          items: [{ ideaId: 'idea-beta', ideaRevision: 1 }],
+        },
+      }));
+    mockJobUpdateMany.mockResolvedValueOnce({ count: 0 });
+
+    const response = await request(app)
+      .put(`/api/jobs/${jobId}/selection-draft`)
+      .set(authHeaders)
+      .send({
+        expectedVersion: 3,
+        items: [{ ideaId: 'idea-alpha', ideaRevision: 2 }],
+      });
+
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe('SELECTION_DRAFT_CONFLICT');
+    expect(response.body.selectionDraft).toEqual({
+      version: 4,
+      items: [{ ideaId: 'idea-beta', ideaRevision: 1 }],
+    });
+  });
+
+  it('does not edit a draft after idea selection has ended', async () => {
+    mockJobFindFirst.mockResolvedValue(selectionJob({ status: 'QUEUED' }));
+
+    const response = await request(app)
+      .put(`/api/jobs/${jobId}/selection-draft`)
+      .set(authHeaders)
+      .send({ expectedVersion: 3, items: [] });
+
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe('SELECTION_DRAFT_LOCKED');
+    expect(mockJobUpdateMany).not.toHaveBeenCalled();
+  });
+});
+
+
 
 beforeEach(async () => {
   vi.clearAllMocks();
@@ -136,6 +259,7 @@ describe('POST /api/jobs/:jobId/select-solution', () => {
   const makeJob = (overrides: Record<string, any> = {}) => ({
     status: 'AWAITING_SELECTION',
     selectedSolutions: [],
+    selectedSolutionIds: [],
     phase1CheckpointPath: '/cp/path',
     solutionIdeas: [{ name: 'Sol1' }, { name: 'Sol2' }],
     niche: 'test niche',
@@ -159,6 +283,88 @@ describe('POST /api/jobs/:jobId/select-solution', () => {
       undefined,
       'dispatch-test',
     );
+  });
+
+  it('accepts stable IDs and resolves the canonical names for the worker', async () => {
+    mockJobFindFirst.mockResolvedValue(makeJob({
+      solutionIdeas: [
+        { name: 'Sol1', idea_id: 'idea_one', idea_revision: 1 },
+        { name: 'Sol2', idea_id: 'idea_two', idea_revision: 1 },
+      ],
+    }));
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/select-solution`)
+      .set(authHeaders)
+      .send({ solutionIds: ['idea_two'] });
+
+    expect(response.status).toBe(200);
+    expect(response.body.selectedSolutionIds).toEqual(['idea_two']);
+    expect(mockJobUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        selectedSolutions: ['Sol2'],
+        selectedSolutionIds: ['idea_two'],
+      }),
+    }));
+    expect(mockEnqueuePhase2Job).toHaveBeenCalledWith(
+      jobId,
+      '/cp/path',
+      ['Sol2'],
+      undefined,
+      'dispatch-test',
+    );
+  });
+
+  it('rejects an unknown stable ID', async () => {
+    mockJobFindFirst.mockResolvedValue(makeJob({
+      solutionIdeas: [{ name: 'Sol1', idea_id: 'idea_one', idea_revision: 1 }],
+    }));
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/select-solution`)
+      .set(authHeaders)
+      .send({ solutionIds: ['idea_missing'] });
+
+    expect(response.status).toBe(400);
+    expect(response.body.missing).toEqual(['idea_missing']);
+    expect(mockEnqueuePhase2Job).not.toHaveBeenCalled();
+  });
+
+  it('rejects ID and name selections that refer to different ideas', async () => {
+    mockJobFindFirst.mockResolvedValue(makeJob({
+      solutionIdeas: [
+        { name: 'Sol1', idea_id: 'idea_one', idea_revision: 1 },
+        { name: 'Sol2', idea_id: 'idea_two', idea_revision: 1 },
+      ],
+    }));
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/select-solution`)
+      .set(authHeaders)
+      .send({ solutionIds: ['idea_one'], solutionNames: ['Sol2'] });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain('refer to different ideas');
+    expect(mockEnqueuePhase2Job).not.toHaveBeenCalled();
+  });
+
+  it('rejects duplicate-name identities before charging or enqueueing Phase 2', async () => {
+    mockJobFindFirst.mockResolvedValue(makeJob({
+      solutionIdeas: [
+        { name: 'Signal Desk', idea_id: 'idea_one', idea_revision: 1 },
+        { name: '  signal   desk ', idea_id: 'idea_two', idea_revision: 2 },
+      ],
+    }));
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/select-solution`)
+      .set(authHeaders)
+      .send({ solutionIds: ['idea_one', 'idea_two'] });
+
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe('AMBIGUOUS_PHASE2_SELECTION');
+    expect(mockJobUpdateMany).not.toHaveBeenCalled();
+    expect(mockEnqueuePhase2Job).not.toHaveBeenCalled();
   });
 
   it('guards against double-selection in transaction', async () => {
@@ -481,10 +687,14 @@ describe('POST /api/jobs/:jobId/regenerate-ideas', () => {
 describe('GET /api/jobs/:jobId/solutions', () => {
   it('returns solution data', async () => {
     mockJobFindFirst.mockResolvedValue({
-      solutionIdeas: [{ name: 'Sol1' }],
+      solutionIdeas: [{ name: 'Sol1', idea_id: 'idea_persisted', idea_revision: 1 }],
       selectedSolution: 'Sol1',
       selectedSolutions: ['Sol1'],
+      selectedSolutionIds: ['idea_persisted'],
       selectionRationale: 'best fit',
+      selectionDecisionProfile: decisionProfile,
+      selectionDraft: null,
+      selectionDraftVersion: 0,
       ideasRegeneratedAt: null,
       status: 'AWAITING_SELECTION',
     });
@@ -495,10 +705,17 @@ describe('GET /api/jobs/:jobId/solutions', () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({
-      solutionIdeas: [{ name: 'Sol1' }],
+      solutionIdeas: [{
+        name: 'Sol1',
+        idea_id: 'idea_persisted',
+        idea_revision: 1,
+      }],
       selectedSolution: 'Sol1',
       selectedSolutions: ['Sol1'],
+      selectedSolutionIds: ['idea_persisted'],
       selectionRationale: 'best fit',
+      selectionDecisionProfile: decisionProfile,
+      selectionDraft: { version: 0, items: [] },
       canRegenerate: true,
       status: 'AWAITING_SELECTION',
     });
@@ -546,6 +763,51 @@ describe('GET /api/jobs/:jobId/solutions', () => {
       .set(authHeaders);
 
     expect(response.status).toBe(404);
+  });
+});
+
+describe('PUT /api/jobs/:jobId/decision-profile', () => {
+  it('persists owner constraints without touching research scores', async () => {
+    mockJobFindFirst.mockResolvedValue({ status: 'AWAITING_SELECTION' });
+    mockJobUpdateMany.mockResolvedValue({ count: 1 });
+
+    const response = await request(app)
+      .put(`/api/jobs/${jobId}/decision-profile`)
+      .set(authHeaders)
+      .send(decisionProfile);
+
+    expect(response.status).toBe(200);
+    expect(response.body.selectionDecisionProfile).toEqual(decisionProfile);
+    expect(mockJobUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: jobId, userId: 'user-123', status: 'AWAITING_SELECTION' },
+        data: expect.objectContaining({
+          selectionDecisionProfile: decisionProfile,
+          selectionFounderFit: expect.anything(),
+        }),
+      }),
+    );
+  });
+
+  it('rejects malformed or unknown constraints before reading the job', async () => {
+    const response = await request(app)
+      .put(`/api/jobs/${jobId}/decision-profile`)
+      .set(authHeaders)
+      .send({ ...decisionProfile, team: 'army' });
+
+    expect(response.status).toBe(400);
+    expect(mockJobFindFirst).not.toHaveBeenCalled();
+  });
+
+  it('is not editable after the selection stage', async () => {
+    mockJobFindFirst.mockResolvedValue({ status: 'COMPLETED' });
+    const response = await request(app)
+      .put(`/api/jobs/${jobId}/decision-profile`)
+      .set(authHeaders)
+      .send(decisionProfile);
+
+    expect(response.status).toBe(409);
+    expect(mockJobUpdateMany).not.toHaveBeenCalled();
   });
 });
 

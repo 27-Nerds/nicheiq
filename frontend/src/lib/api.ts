@@ -36,9 +36,70 @@ export type {
   GateG2Artifact,
   GateG1PatchFields,
   GateG2PatchFields,
+  SelectionDecisionProfile,
+  SelectionDraft,
+  SelectionDraftItem,
 } from '$lib/types/job';
-import type { Job, SolutionPreview, ReportSummary, GateG1PatchFields, GateG2PatchFields } from '$lib/types/job';
+import type { Job, SolutionPreview, SelectionDecisionProfile, SelectionDraft, SelectionDraftItem, ReportSummary, GateG1PatchFields, GateG2PatchFields } from '$lib/types/job';
 import type { RuledOutFinding, OverlapGroup, MarketReality, NicheDifficultyVerdict, DataQualitySummary } from '$lib/types/report';
+import type { DiscoveryAnnotationDocument, DiscoveryAnnotationResponse } from '$lib/types/discoveryAnnotations';
+import type { SelectionCopilotGrounding } from '$lib/types/selectionCopilot';
+import type {
+  PublicExperimentEventType,
+  SelectionExperiment,
+  SelectionExperimentConclusion,
+  SelectionExperimentConclusionInput,
+  SelectionExperimentDraft,
+  SelectionExperimentLaunch,
+  SelectionExperimentResults,
+  SelectionExperimentRun,
+} from '$lib/types/selectionExperiment';
+import type {
+  FounderFitDimension,
+  FounderFitLoadResponse,
+  FounderFitReference,
+  FounderFitRunResponse,
+} from '$lib/types/founderFit';
+import type {
+  SelectionChallengeLens,
+  SelectionChallengeListResponse,
+  SelectionChallengeRunResponse,
+} from '$lib/types/selectionChallenge';
+import type {
+  SelectionAssumptionCreateInput,
+  SelectionAssumptionCreateResponse,
+  SelectionAssumptionListResponse,
+  SelectionAssumptionMutationResponse,
+  SelectionAssumptionPatchInput,
+} from '$lib/types/selectionAssumption';
+import type {
+  SelectionOwnerEvidenceInput,
+  SelectionOwnerEvidenceListResponse,
+  SelectionOwnerEvidenceMutationResponse,
+} from '$lib/types/selectionOwnerEvidence';
+import type {
+  FinalDecisionInput,
+  FinalDecisionLoadResponse,
+  SelectionFinalDecision,
+} from '$lib/types/finalDecision';
+import type {
+  DecisionHandoffLoadResponse,
+  SelectionDecisionHandoff,
+} from '$lib/types/decisionHandoff';
+import type {
+  GithubConnectionsResponse,
+  GithubHandoffDispatch,
+  GithubIssuePreview,
+  GithubReconciliation,
+  GithubRepository,
+} from '$lib/types/githubIntegration';
+import type {
+  PreparedSelectionConceptOption,
+  SelectionConceptSet,
+  SelectionConceptSetRequest,
+} from '$lib/types/selectionConceptSet';
+import type { SelectionDecisionState } from '$lib/types/selectionDecisionState';
+import type { SelectionMetricExplanationsResponse } from '$lib/types/selectionMetricExplanation';
 
 export class ApiError extends Error {
   constructor(
@@ -52,11 +113,21 @@ export class ApiError extends Error {
 }
 
 async function handleResponse<T>(response: Response): Promise<T> {
-  const data = await response.json();
+  let data: Record<string, unknown>;
+  try {
+    data = await response.json() as Record<string, unknown>;
+  } catch {
+    throw new ApiError(
+      response.ok
+        ? 'The server returned an invalid response. Please try again.'
+        : 'The request could not be completed. Please try again.',
+      response.status || 500,
+    );
+  }
 
   if (!response.ok) {
     throw new ApiError(
-      data.error || 'An error occurred',
+      typeof data.error === 'string' ? data.error : 'An error occurred',
       response.status,
       // Fall back to the whole body when there's no `details` envelope. Several errors carry
       // their payload at the top level — a 402 reports `balance`/`required` there, and the gate
@@ -105,15 +176,19 @@ export async function cancelJob(jobId: string): Promise<{ message: string }> {
 // ============================================
 
 export interface SelectSolutionRequest {
-  solutionNames: string[];
+  solutionNames?: string[];
+  solutionIds?: string[];
   rationale?: string;
 }
 
 export interface SolutionsResponse {
   solutionIdeas: SolutionPreview[] | null;
   selectedSolution: string | null;
+  selectedSolutionIds: string[] | null;
   selectedSolutions: string[] | null;
   selectionRationale: string | null;
+  selectionDecisionProfile: SelectionDecisionProfile | null;
+  selectionDraft: SelectionDraft;
   canRegenerate: boolean;
 }
 
@@ -170,7 +245,8 @@ export async function getStageCosts(): Promise<import('$lib/types/job').StageCos
  * on a mid-flight reprice instead of silently charging a different number, and 402
  * returns `{balance, required}`.
  */
-export interface SeedIdeaRequest {
+export interface UserSeedIdeaRequest {
+  kind?: 'user_seed';
   free_text: string;
   pain_ref?: string;
   tool_ref?: string;
@@ -182,6 +258,14 @@ export interface SeedIdeaRequest {
    *  so the number the user agreed to must be the number they're charged. */
   expectedCost: number;
 }
+
+export interface SynthesisSeedIdeaRequest {
+  kind: 'idea_synthesis';
+  sourceMessageId: string;
+  expectedCost: number;
+}
+
+export type SeedIdeaRequest = UserSeedIdeaRequest | SynthesisSeedIdeaRequest;
 
 export async function seedIdea(jobId: string, request: SeedIdeaRequest): Promise<{ message: string }> {
   const response = await fetch(`${API_BASE}/jobs/${jobId}/seed-idea`, {
@@ -229,6 +313,16 @@ export interface SeedResultSummary {
   solution_name: string;
   short_description?: string;
   market_fit_score?: number;
+  idea_id?: string;
+  idea_revision?: number;
+  synthesis_operation?: SynthesisOperation;
+  synthesized_from?: {
+    idea_id: string;
+    idea_revision: number;
+    solution_name?: string;
+    contribution?: string;
+  }[];
+  synthesis_source_message_id?: string;
 }
 
 export interface LedgerEventEnvelope {
@@ -257,7 +351,137 @@ export interface NewIdeaSeedPatch {
   rationale: string;
 }
 
-export type ChatPatch = IdeaFocusPatch | GatePatchProposal | LedgerEventEnvelope | NewIdeaSeedPatch;
+export type SynthesisOperation = 'narrow' | 'reposition' | 'combine' | 'adjacent';
+
+export interface SynthesisIntent {
+  operation: SynthesisOperation;
+  parents: { ideaId: string; ideaRevision: number }[];
+}
+
+export interface SelectionWorkspaceContext {
+  workspace: 'candidates' | 'compare' | 'risks' | 'tests' | 'alternatives';
+  ideas: { ideaId: string; ideaRevision: number }[];
+  lens?: 'demand' | 'competition' | 'distribution' | 'dependencies';
+  record?: {
+    kind: 'challenge' | 'assumption' | 'experiment';
+    id: string;
+    version?: number;
+  };
+}
+
+export interface IdeaSynthesisPatch {
+  kind: 'idea_synthesis';
+  operation: SynthesisOperation;
+  proposedTitle: string;
+  proposedBrief: string;
+  changeSummary: string;
+  rationale: string;
+  parents: {
+    ideaId: string;
+    ideaRevision: number;
+    solutionName: string;
+    contribution: string;
+  }[];
+  evidence: {
+    sourceAnchors: {
+      ideaId: string;
+      ideaRevision: number;
+      candidateSnapshotSha256: string;
+      pain?: string;
+      audience?: string;
+    }[];
+    requiresValidation: string[];
+    experimentConclusionRefs?: {
+      conclusionId: string;
+      experimentId: string;
+      outcome: 'FAIL' | 'AMBIGUOUS';
+      evidenceSource: 'HOSTED_RUN' | 'MANUAL';
+      snapshotSha256: string;
+      evidenceRefs: { adapterKey: string; reference: string }[];
+    }[];
+    founderFitRef?: {
+      inputFingerprint: string;
+      ideaId: string;
+      ideaRevision: number;
+      verdict: 'needs_reshape';
+      conflicts: {
+        dimension: FounderFitDimension;
+        summary: string;
+        profileFields: string[];
+        ideaFields: string[];
+      }[];
+    };
+  };
+  newAssumptions: string[];
+}
+
+export type SelectionCopilotTarget =
+  | 'candidate'
+  | 'compare'
+  | 'decision_profile'
+  | 'risk_queue'
+  | 'assumptions'
+  | 'challenge'
+  | 'founder_fit'
+  | 'owner_evidence'
+  | 'experiments'
+  | 'assumption'
+  | 'experiment'
+  | 'concept_forge'
+  | 'shortlist';
+
+export interface SelectionCopilotIdea {
+  ideaId: string;
+  ideaRevision: number;
+  solutionName: string;
+}
+
+export interface SelectionCopilotAction {
+  kind: 'selection_copilot_action';
+  action: 'open' | 'prefill' | 'shortlist_review';
+  target: SelectionCopilotTarget;
+  ideas: SelectionCopilotIdea[];
+  lens?: 'demand' | 'competition' | 'distribution' | 'dependencies';
+  record?: { id: string; version?: number; status?: string };
+  origin?: { challengeId: string; questionId: string };
+  expectedVersion?: number;
+  values?: Record<string, unknown>;
+  grounding?: SelectionCopilotGrounding;
+  rationale: string;
+  caveats: string[];
+}
+
+export type ExperimentNarrowingSettlementState =
+  | 'ready'
+  | 'pending'
+  | 'accepted'
+  | 'demoted'
+  | 'failed'
+  | 'refunded';
+
+export interface ExperimentNarrowingProposalResponse {
+  proposalMessage: {
+    id: string;
+    content: string;
+    patchJson: IdeaSynthesisPatch;
+    createdAt: string;
+  } | null;
+  settlement: {
+    state: ExperimentNarrowingSettlementState;
+    idea: SeedResultSummary | null;
+  } | null;
+  cached?: boolean;
+}
+
+export type FounderFitReshapeProposalResponse = ExperimentNarrowingProposalResponse;
+
+export type ChatPatch =
+  | IdeaFocusPatch
+  | GatePatchProposal
+  | LedgerEventEnvelope
+  | NewIdeaSeedPatch
+  | IdeaSynthesisPatch
+  | SelectionCopilotAction;
 
 /** Narrowing helper — G1/G2 patches carry `gateStage`; the G3 idea-focus patch doesn't. */
 export function isGatePatch(patch: ChatPatch): patch is GatePatchProposal {
@@ -273,6 +497,14 @@ export function isLedgerEvent(patch: ChatPatch): patch is LedgerEventEnvelope {
  *  The discriminator the existing G3 idea-focus patch never had. */
 export function isNewIdeaSeedPatch(patch: ChatPatch): patch is NewIdeaSeedPatch {
   return (patch as NewIdeaSeedPatch).kind === 'new_idea_seed';
+}
+
+export function isIdeaSynthesisPatch(patch: ChatPatch): patch is IdeaSynthesisPatch {
+  return (patch as IdeaSynthesisPatch).kind === 'idea_synthesis';
+}
+
+export function isSelectionCopilotAction(patch: ChatPatch): patch is SelectionCopilotAction {
+  return (patch as SelectionCopilotAction).kind === 'selection_copilot_action';
 }
 
 /** Narrowing helper — the G3 idea-focus (regenerate-steer) patch is the only shape left
@@ -368,12 +600,21 @@ export async function getChatHistory(jobId: string): Promise<{ messages: ChatMes
 export async function streamChat(
   jobId: string,
   message: string,
-  opts: { signal?: AbortSignal; onEvent: (event: ChatStreamEvent) => void }
+  opts: {
+    signal?: AbortSignal;
+    synthesisIntent?: SynthesisIntent;
+    selectionContext?: SelectionWorkspaceContext;
+    onEvent: (event: ChatStreamEvent) => void;
+  }
 ): Promise<void> {
   const response = await fetch(`${API_BASE}/jobs/${jobId}/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({
+      message,
+      ...(opts.synthesisIntent ? { synthesisIntent: opts.synthesisIntent } : {}),
+      ...(opts.selectionContext ? { selectionContext: opts.selectionContext } : {}),
+    }),
     signal: opts.signal,
   });
 
@@ -724,18 +965,27 @@ export async function regenerateShareToken(jobId: string): Promise<ShareInfo> {
 // Discovery Sharing
 // ============================================
 
+export interface DiscoveryVoteRationale {
+  solutionId?: string;
+  solutionName: string;
+  comment: string;
+}
+
 export interface DiscoveryShareInfo {
   isShared: boolean;
   shareToken?: string;
   viewCount?: number;
   voteCount?: number;
+  solutionVotesById?: Record<string, number>;
   solutionVotes?: Record<string, number>;
+  voteRationales?: DiscoveryVoteRationale[];
 }
 
 export interface VoteSummary {
   totalVotes: number;
   solutionVotes: Record<string, number>;
-  viewerVote?: { solutionName: string; comment: string | null } | null;
+  solutionVotesById?: Record<string, number>;
+  viewerVote?: { solutionId?: string; solutionName: string; comment: string | null } | null;
 }
 
 /**
@@ -911,16 +1161,46 @@ export async function fetchSharedDiscovery(shareToken: string): Promise<Discover
   return handleResponse<DiscoveryShareData>(response);
 }
 
+export async function getDiscoveryAnnotations(jobId: string): Promise<DiscoveryAnnotationResponse> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/discovery-annotations`);
+  return handleResponse<DiscoveryAnnotationResponse>(response);
+}
+
+export async function saveDiscoveryAnnotations(
+  jobId: string,
+  document: DiscoveryAnnotationDocument,
+): Promise<DiscoveryAnnotationResponse> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/discovery-annotations`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ document }),
+  });
+  return handleResponse<DiscoveryAnnotationResponse>(response);
+}
+
+export async function fetchSharedDiscoveryAnnotations(
+  shareToken: string,
+  sinceRevision?: number,
+): Promise<DiscoveryAnnotationResponse | null> {
+  const query = sinceRevision == null ? '' : `?sinceRevision=${sinceRevision}`;
+  const response = await fetch(
+    `${API_BASE}/shared/discovery/${shareToken}/annotations${query}`,
+  );
+  if (response.status === 204) return null;
+  return handleResponse<DiscoveryAnnotationResponse>(response);
+}
+
 export async function submitDiscoveryVote(
   shareToken: string,
   solutionName: string,
   viewerToken: string,
   comment?: string,
+  solutionId?: string,
 ): Promise<VoteSummary> {
   const response = await fetch(`${API_BASE}/shared/discovery/${shareToken}/vote`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ solutionName, viewerToken, comment }),
+    body: JSON.stringify({ solutionId, solutionName, viewerToken, comment }),
   });
   return handleResponse<VoteSummary>(response);
 }
@@ -996,4 +1276,441 @@ export async function changePassword(
     body: JSON.stringify(request),
   });
   return handleResponse<ChangePasswordResponse>(response);
+}
+
+export async function saveSelectionDecisionProfile(
+  jobId: string,
+  profile: SelectionDecisionProfile,
+): Promise<{ selectionDecisionProfile: SelectionDecisionProfile }> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/decision-profile`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(profile),
+  });
+  return handleResponse<{ selectionDecisionProfile: SelectionDecisionProfile }>(response);
+}
+export async function saveSelectionDraft(
+  jobId: string,
+  expectedVersion: number,
+  items: SelectionDraftItem[],
+): Promise<SelectionDraft> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/selection-draft`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ expectedVersion, items }),
+  });
+  const result = await handleResponse<{ selectionDraft: SelectionDraft }>(response);
+  return result.selectionDraft;
+}
+
+
+export async function getFounderFit(jobId: string): Promise<FounderFitLoadResponse> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/founder-fit`);
+  return handleResponse<FounderFitLoadResponse>(response);
+}
+
+export async function runFounderFit(
+  jobId: string,
+  ideas: FounderFitReference[],
+): Promise<FounderFitRunResponse> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/founder-fit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ideas }),
+  });
+  return handleResponse<FounderFitRunResponse>(response);
+}
+
+export async function getFounderFitReshapeProposal(
+  jobId: string,
+  ideaId: string,
+  ideaRevision: number,
+): Promise<FounderFitReshapeProposalResponse> {
+  const response = await fetch(
+    `${API_BASE}/jobs/${jobId}/founder-fit/${encodeURIComponent(ideaId)}/${ideaRevision}/reshape-proposal`,
+  );
+  return handleResponse<FounderFitReshapeProposalResponse>(response);
+}
+
+export async function createFounderFitReshapeProposal(
+  jobId: string,
+  ideaId: string,
+  ideaRevision: number,
+): Promise<FounderFitReshapeProposalResponse> {
+  const response = await fetch(
+    `${API_BASE}/jobs/${jobId}/founder-fit/${encodeURIComponent(ideaId)}/${ideaRevision}/reshape-proposal`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    },
+  );
+  return handleResponse<FounderFitReshapeProposalResponse>(response);
+}
+
+export async function getSelectionConceptSets(jobId: string): Promise<SelectionConceptSet[]> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/selection-concept-sets`);
+  const result = await handleResponse<{ sets: SelectionConceptSet[] }>(response);
+  return result.sets;
+}
+
+export async function createSelectionConceptSet(
+  jobId: string,
+  request: SelectionConceptSetRequest,
+): Promise<{ set: SelectionConceptSet; cached: boolean }> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/selection-concept-sets`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+  return handleResponse<{ set: SelectionConceptSet; cached: boolean }>(response);
+}
+
+export async function prepareSelectionConceptOption(
+  jobId: string,
+  setId: string,
+  optionId: string,
+  expectedInputFingerprint: string,
+): Promise<PreparedSelectionConceptOption> {
+  const response = await fetch(
+    `${API_BASE}/jobs/${jobId}/selection-concept-sets/${encodeURIComponent(setId)}/options/${encodeURIComponent(optionId)}/proposal`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expectedInputFingerprint }),
+    },
+  );
+  return handleResponse<PreparedSelectionConceptOption>(response);
+}
+
+export async function getSelectionChallenges(jobId: string): Promise<SelectionChallengeListResponse> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/selection-challenges`);
+  return handleResponse<SelectionChallengeListResponse>(response);
+}
+
+export async function getSelectionDecisionState(jobId: string): Promise<SelectionDecisionState> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/selection-decision-state`);
+  return handleResponse<SelectionDecisionState>(response);
+}
+
+export async function getSelectionMetricExplanations(): Promise<SelectionMetricExplanationsResponse> {
+  const response = await fetch(`${API_BASE}/selection/metric-explanations`);
+  return handleResponse<SelectionMetricExplanationsResponse>(response);
+}
+
+export async function getSelectionAssumptions(jobId: string): Promise<SelectionAssumptionListResponse> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/selection-assumptions`);
+  return handleResponse<SelectionAssumptionListResponse>(response);
+}
+
+export async function createSelectionAssumption(
+  jobId: string,
+  input: SelectionAssumptionCreateInput,
+): Promise<SelectionAssumptionCreateResponse> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/selection-assumptions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  return handleResponse<SelectionAssumptionCreateResponse>(response);
+}
+
+export async function updateSelectionAssumption(
+  jobId: string,
+  assumptionId: string,
+  input: SelectionAssumptionPatchInput,
+): Promise<SelectionAssumptionMutationResponse> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/selection-assumptions/${assumptionId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  return handleResponse<SelectionAssumptionMutationResponse>(response);
+}
+
+export async function runSelectionChallenge(
+  jobId: string,
+  input: { ideaId: string; ideaRevision: number; lens: SelectionChallengeLens },
+): Promise<SelectionChallengeRunResponse> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/selection-challenges`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  return handleResponse<SelectionChallengeRunResponse>(response);
+}
+
+export async function getSelectionOwnerEvidence(jobId: string): Promise<SelectionOwnerEvidenceListResponse> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/selection-evidence`);
+  return handleResponse<SelectionOwnerEvidenceListResponse>(response);
+}
+
+export async function createSelectionOwnerEvidence(
+  jobId: string,
+  input: SelectionOwnerEvidenceInput,
+): Promise<SelectionOwnerEvidenceMutationResponse> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/selection-evidence`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  return handleResponse<SelectionOwnerEvidenceMutationResponse>(response);
+}
+
+export async function retractSelectionOwnerEvidence(
+  jobId: string,
+  evidenceId: string,
+  reason: string,
+): Promise<SelectionOwnerEvidenceMutationResponse> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/selection-evidence/${evidenceId}/retract`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason }),
+  });
+  return handleResponse<SelectionOwnerEvidenceMutationResponse>(response);
+}
+
+export async function getSelectionExperiments(jobId: string): Promise<SelectionExperiment[]> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/selection-experiments`);
+  const result = await handleResponse<{ experiments: SelectionExperiment[] }>(response);
+  return result.experiments;
+}
+
+export async function getFinalDecision(jobId: string): Promise<FinalDecisionLoadResponse> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/final-decision`);
+  return handleResponse<FinalDecisionLoadResponse>(response);
+}
+
+export async function recordFinalDecision(
+  jobId: string,
+  input: FinalDecisionInput,
+): Promise<SelectionFinalDecision> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/final-decision`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const result = await handleResponse<{ decision: SelectionFinalDecision }>(response);
+  return result.decision;
+}
+
+export async function getDecisionHandoff(jobId: string): Promise<DecisionHandoffLoadResponse> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/decision-handoff`);
+  return handleResponse<DecisionHandoffLoadResponse>(response);
+}
+
+export async function materializeDecisionHandoff(
+  jobId: string,
+  finalDecisionId: string,
+): Promise<SelectionDecisionHandoff> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/decision-handoff`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ finalDecisionId }),
+  });
+  const result = await handleResponse<{ handoff: SelectionDecisionHandoff }>(response);
+  return result.handoff;
+}
+
+export async function getGithubConnections(): Promise<GithubConnectionsResponse> {
+  const response = await fetch(`${API_BASE}/integrations/github/connections`);
+  return handleResponse<GithubConnectionsResponse>(response);
+}
+
+export async function getGithubRepositories(
+  connectionId: string,
+): Promise<GithubRepository[]> {
+  const response = await fetch(
+    `${API_BASE}/integrations/github/connections/${encodeURIComponent(connectionId)}/repositories`,
+  );
+  const result = await handleResponse<{ repositories: GithubRepository[] }>(response);
+  return result.repositories;
+}
+
+export async function getGithubHandoffDispatch(
+  jobId: string,
+): Promise<GithubHandoffDispatch | null> {
+  const response = await fetch(
+    `${API_BASE}/jobs/${jobId}/decision-handoff/github/dispatch`,
+  );
+  const result = await handleResponse<{ dispatch: GithubHandoffDispatch | null }>(response);
+  return result.dispatch;
+}
+
+export async function previewGithubHandoffIssue(
+  jobId: string,
+  input: { connectionId: string; repositoryId: string },
+): Promise<GithubIssuePreview> {
+  const response = await fetch(
+    `${API_BASE}/jobs/${jobId}/decision-handoff/github/preview`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    },
+  );
+  const result = await handleResponse<{ preview: GithubIssuePreview }>(response);
+  return result.preview;
+}
+
+export async function dispatchGithubHandoffIssue(
+  jobId: string,
+  input: {
+    connectionId: string;
+    repositoryId: string;
+    payloadFingerprint: string;
+  },
+): Promise<GithubHandoffDispatch> {
+  const response = await fetch(
+    `${API_BASE}/jobs/${jobId}/decision-handoff/github/dispatch`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    },
+  );
+  const result = await handleResponse<{ dispatch: GithubHandoffDispatch }>(response);
+  return result.dispatch;
+}
+
+export async function reconcileGithubHandoffDispatch(
+  jobId: string,
+  dispatchId: string,
+): Promise<{ dispatch: GithubHandoffDispatch; reconciliation: GithubReconciliation }> {
+  const response = await fetch(
+    `${API_BASE}/jobs/${jobId}/decision-handoff/github/dispatch/${encodeURIComponent(dispatchId)}/reconcile`,
+    { method: 'POST' },
+  );
+  return handleResponse<{
+    dispatch: GithubHandoffDispatch;
+    reconciliation: GithubReconciliation;
+  }>(response);
+}
+
+export async function createSelectionExperiment(
+  jobId: string,
+  draft: SelectionExperimentDraft,
+): Promise<SelectionExperiment> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/selection-experiments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(draft),
+  });
+  const result = await handleResponse<{ experiment: SelectionExperiment }>(response);
+  return result.experiment;
+}
+
+export async function updateSelectionExperiment(
+  jobId: string,
+  experimentId: string,
+  draft: SelectionExperimentDraft,
+): Promise<SelectionExperiment> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/selection-experiments/${experimentId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(draft),
+  });
+  const result = await handleResponse<{ experiment: SelectionExperiment }>(response);
+  return result.experiment;
+}
+
+export async function lockSelectionExperiment(
+  jobId: string,
+  experimentId: string,
+): Promise<SelectionExperiment> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/selection-experiments/${experimentId}/lock`, {
+    method: 'POST',
+  });
+  const result = await handleResponse<{ experiment: SelectionExperiment }>(response);
+  return result.experiment;
+}
+
+export async function launchSelectionExperiment(
+  jobId: string,
+  experimentId: string,
+  launch: SelectionExperimentLaunch,
+): Promise<SelectionExperimentRun> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/selection-experiments/${experimentId}/run`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(launch),
+  });
+  const result = await handleResponse<{ run: SelectionExperimentRun }>(response);
+  return result.run;
+}
+
+export async function closeSelectionExperimentRun(
+  jobId: string,
+  experimentId: string,
+): Promise<SelectionExperimentRun> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/selection-experiments/${experimentId}/run/close`, {
+    method: 'POST',
+  });
+  const result = await handleResponse<{ run: SelectionExperimentRun }>(response);
+  return result.run;
+}
+
+export async function getSelectionExperimentResults(
+  jobId: string,
+  experimentId: string,
+): Promise<SelectionExperimentResults> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/selection-experiments/${experimentId}/results`);
+  const result = await handleResponse<{ results: SelectionExperimentResults }>(response);
+  return result.results;
+}
+
+export async function concludeSelectionExperiment(
+  jobId: string,
+  experimentId: string,
+  input: SelectionExperimentConclusionInput,
+): Promise<SelectionExperimentConclusion> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/selection-experiments/${experimentId}/conclusion`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const result = await handleResponse<{ conclusion: SelectionExperimentConclusion }>(response);
+  return result.conclusion;
+}
+
+export async function getSelectionIdeaNarrowingProposal(
+  jobId: string,
+  experimentId: string,
+): Promise<ExperimentNarrowingProposalResponse> {
+  const response = await fetch(
+    `${API_BASE}/jobs/${jobId}/selection-experiments/${experimentId}/narrowing-proposal`,
+  );
+  return handleResponse<ExperimentNarrowingProposalResponse>(response);
+}
+
+export async function createSelectionIdeaNarrowingProposal(
+  jobId: string,
+  experimentId: string,
+): Promise<ExperimentNarrowingProposalResponse> {
+  const response = await fetch(
+    `${API_BASE}/jobs/${jobId}/selection-experiments/${experimentId}/narrowing-proposal`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    },
+  );
+  return handleResponse<ExperimentNarrowingProposalResponse>(response);
+}
+
+export async function recordPublicExperimentEvent(
+  publicToken: string,
+  input: {
+    eventId: string;
+    viewToken: string;
+    type: PublicExperimentEventType;
+    occurredAt: string;
+  },
+): Promise<void> {
+  const response = await fetch(`${API_BASE}/public/experiments/${publicToken}/events`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  await handleResponse<{ accepted: true }>(response);
 }

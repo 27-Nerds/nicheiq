@@ -42,7 +42,7 @@
     display: grid;
     border: 1px solid var(--color-border);
     border-radius: 8px;
-    background: var(--color-bg-elevated, #fff);
+    background: var(--color-bg-elevated);
     overflow: hidden;
   }
   .stat-strip[data-cols="2"] {
@@ -75,7 +75,7 @@
      `--color-bg-elevated` resolves to white — identical to the container —
      so no tint was visible. */
   .stat-strip.emphasis .stat:first-child {
-    background: var(--color-bg-base, #fafafa);
+    background: var(--color-bg-base);
   }
   .stat-strip.emphasis .stat:first-child .n {
     font-size: 28px;

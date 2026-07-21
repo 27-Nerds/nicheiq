@@ -87,15 +87,17 @@ describe("ChatThread — tool receipts (chat agent tools v1.1)", () => {
       },
     });
 
+    // The visible idea name IS the accessible name (plus an sr-only affordance
+    // hint), so the sentence keeps the name when read by assistive tech.
     const ideaButton = await findByRole(
-      "button", { name: "Open idea details for ProMatchDesk (CS2+Dota 2)" },
+      "button", { name: /^ProMatchDesk ?, open details$/ },
     );
     await fireEvent.click(ideaButton);
     expect(onOpenIdeaReference).toHaveBeenCalledWith(ideaReferences[0]);
     expect(await findByRole("link", { name: "Alpha Idea" })).toHaveAttribute("href", "https://example.com");
     expect((await findByText("Beta Idea")).tagName).toBe("CODE");
-    expect(queryByRole("button", { name: "Open idea details for Alpha Idea" })).toBeNull();
-    expect(queryByRole("button", { name: "Open idea details for Beta Idea" })).toBeNull();
+    expect(queryByRole("button", { name: /^Alpha Idea ?, open details$/ })).toBeNull();
+    expect(queryByRole("button", { name: /^Beta Idea ?, open details$/ })).toBeNull();
   });
 
   it("scrolls a loaded conversation to its latest message", async () => {
@@ -292,7 +294,7 @@ describe("ChatThread — tool receipts (chat agent tools v1.1)", () => {
 
     await submitMessage(getByLabelText, "what about pricing?");
 
-    await findByText("The analyst couldn't respond — try again.");
+    await findByText("The analyst couldn't respond. Try again.");
     // The typed text is restored (it was cleared optimistically) and the phantom
     // turn is retracted — a failed send must not eat the user's words.
     const textarea = getByLabelText("Message the analyst") as HTMLTextAreaElement;
@@ -309,7 +311,7 @@ describe("ChatThread — tool receipts (chat agent tools v1.1)", () => {
 
     await submitMessage(getByLabelText, "exclude the betting pain");
 
-    await findByText("This checkpoint moved on — your message wasn't sent.");
+    await findByText("This checkpoint moved on. Your message wasn't sent.");
     expect((getByLabelText("Message the analyst") as HTMLTextAreaElement).value).toBe(
       "exclude the betting pain",
     );
@@ -329,7 +331,7 @@ describe("ChatThread — tool receipts (chat agent tools v1.1)", () => {
 
     // This thread only shows the G3 segment, but the counter reports the enforced
     // global budget (3 turns spent), not the 1 turn visible here.
-    await findByLabelText("Questions this run — 3 of 30 used");
+    await findByLabelText("Questions this run · 3 of 30 used");
   });
 
   it("shows the analyst's own follow-ups over the caller's state-derived fallbacks", async () => {
@@ -598,7 +600,7 @@ describe("ChatThread — priced idea-seed card", () => {
 
     const evaluateBtn = (await findByText("Evaluate my idea")).closest("button") as HTMLButtonElement;
     expect(evaluateBtn.disabled).toBe(true);
-    await findByText("Price hasn't loaded yet — try again in a moment.");
+    await findByText("Price hasn't loaded yet. Try again in a moment.");
   });
 
   it("calls onSeedSubmit with the patch and the proposing message id on Evaluate", async () => {
@@ -714,7 +716,7 @@ describe("ChatThread — priced idea-seed card", () => {
 
     const { findByText, queryByText, getByRole } = render(ChatThread, { props: { jobId: "job-1", dock: "rail", seedCost: 3 } });
 
-    await findByText("Evaluation complete — added to ranked candidates");
+    await findByText("Evaluation complete. Added to ranked candidates.");
     expect(queryByText("PatchZero")).not.toBeNull();
     expect(queryByText("Market fit 45%")).not.toBeNull();
     expect(getByRole("link", { name: /view full candidate details/i })).toHaveAttribute("href", "#solution-selector");
@@ -748,6 +750,244 @@ describe("ChatThread — priced idea-seed card", () => {
 
     const { findByText } = render(ChatThread, { props: { jobId: "job-1", dock: "rail", seedCost: 3 } });
 
-    await findByText("We tested your idea — it didn't clear the market-fit bar");
+    await findByText("We tested your idea. It didn't clear the market-fit bar.");
+  });
+
+  it("renders a synthesis proposal as an unevaluated variant requiring explicit approval", async () => {
+    const proposal = {
+      kind: "idea_synthesis" as const,
+      operation: "combine" as const,
+      proposedTitle: "Agency signal desk",
+      proposedBrief: "Combines change alerts with a client-ready briefing.",
+      changeSummary: "Joins two workflows for the same agency buyer.",
+      rationale: "The sources solve adjacent parts of one recurring job.",
+      parents: [
+        {
+          ideaId: "idea-1",
+          ideaRevision: 1,
+          solutionName: "Change monitor",
+          contribution: "Keep the alerting mechanism.",
+        },
+        {
+          ideaId: "idea-2",
+          ideaRevision: 1,
+          solutionName: "Briefing desk",
+          contribution: "Keep the client-ready summary.",
+        },
+      ],
+      evidence: {
+        sourceAnchors: [
+          { ideaId: "idea-1", ideaRevision: 1, candidateSnapshotSha256: "a".repeat(64) },
+          { ideaId: "idea-2", ideaRevision: 1, candidateSnapshotSha256: "b".repeat(64) },
+        ],
+        requiresValidation: ["Validate that one buyer needs both capabilities."],
+      },
+      newAssumptions: ["Agencies own both workflows."],
+    };
+    vi.mocked(getChatHistory).mockResolvedValue({
+      messages: [{
+        id: "asst-synthesis",
+        gateStage: 5,
+        role: "assistant",
+        content: "Here is one variant to consider.",
+        patchJson: proposal,
+        suggestionsJson: null,
+        truncated: false,
+        createdAt: "2026-07-16T00:00:00.000Z",
+      }],
+      weakPool: false,
+    } as never);
+    const onSeedSubmit = vi.fn();
+
+    const { findByText, getByRole } = render(ChatThread, {
+      props: {
+        jobId: "job-synthesis",
+        dock: "rail",
+        seedCost: 3,
+        onSeedSubmit,
+      },
+    });
+
+    await findByText("Combine candidate");
+    await findByText("Agency signal desk");
+    await findByText("The source candidates stay unchanged. Their scores do not carry over to this variant.");
+    const evaluate = getByRole("button", { name: /evaluate variant/i });
+    await fireEvent.click(evaluate);
+    expect(onSeedSubmit).toHaveBeenCalledWith(proposal, "asst-synthesis");
+    expect(getByRole("button", { name: "Dismiss" })).toBeTruthy();
+  });
+
+  it("routes a selection copilot card through its review callback without applying a patch", async () => {
+    const action = {
+      kind: "selection_copilot_action" as const,
+      action: "prefill" as const,
+      target: "decision_profile" as const,
+      ideas: [],
+      values: { weeklyTime: "HOURS_10_20" },
+      rationale: "Your stated availability should be reviewed in the decision context.",
+      caveats: ["Confirm this still reflects your schedule."],
+    };
+    vi.mocked(getChatHistory).mockResolvedValue({
+      messages: [{
+        id: "copilot-profile",
+        gateStage: 5,
+        role: "assistant",
+        content: "I prepared a draft for review.",
+        patchJson: action,
+        suggestionsJson: null,
+        truncated: false,
+        createdAt: "2026-07-16T00:00:00.000Z",
+      }],
+      weakPool: false,
+    } as never);
+    const onCopilotAction = vi.fn().mockReturnValue({ ok: true, message: "Draft opened." });
+    const onApplyPatch = vi.fn();
+
+    const view = render(ChatThread, {
+      props: { jobId: "job-copilot", dock: "rail", onCopilotAction, onApplyPatch },
+    });
+
+    expect(await view.findByText("Review only")).toBeInTheDocument();
+    expect(view.getByText("Nothing has been changed. The existing form or shortlist confirmation is the only place that can save this.")).toBeInTheDocument();
+    await fireEvent.click(view.getByRole("button", { name: "Review draft" }));
+    expect(onCopilotAction).toHaveBeenCalledWith(action, "copilot-profile");
+    expect(onApplyPatch).not.toHaveBeenCalled();
+  });
+
+  it("does not render live selection copilot actions in a read-only transcript", async () => {
+    vi.mocked(getChatHistory).mockResolvedValue({
+      messages: [{
+        id: "copilot-readonly",
+        gateStage: 5,
+        role: "assistant",
+        content: "Review this candidate.",
+        patchJson: {
+          kind: "selection_copilot_action",
+          action: "open",
+          target: "candidate",
+          ideas: [{ ideaId: "idea-1", ideaRevision: 2, solutionName: "Signal desk" }],
+          rationale: "It has the strongest current evidence.",
+          caveats: [],
+        },
+        suggestionsJson: null,
+        truncated: false,
+        createdAt: "2026-07-16T00:00:00.000Z",
+      }],
+      weakPool: false,
+    } as never);
+
+    const view = render(ChatThread, {
+      props: { jobId: "job-copilot-readonly", dock: "rail", readOnly: true },
+    });
+
+    expect(await view.findByText("This action is available only in the owner workspace.")).toBeInTheDocument();
+    expect(view.queryByRole("button", { name: "Open candidate" })).not.toBeInTheDocument();
+  });
+
+  it("exposes exact source comparison and adoption for an accepted combined variant", async () => {
+    const proposal = {
+      kind: "idea_synthesis" as const,
+      operation: "combine" as const,
+      proposedTitle: "Agency signal desk",
+      proposedBrief: "Combines change alerts with a client-ready briefing.",
+      changeSummary: "Joins two workflows for the same agency buyer.",
+      rationale: "The sources solve adjacent parts of one recurring job.",
+      parents: [
+        {
+          ideaId: "idea-1",
+          ideaRevision: 2,
+          solutionName: "Change monitor",
+          contribution: "Keep the alerting mechanism.",
+        },
+        {
+          ideaId: "idea-2",
+          ideaRevision: 4,
+          solutionName: "Briefing desk",
+          contribution: "Keep the client-ready summary.",
+        },
+      ],
+      evidence: {
+        sourceAnchors: [
+          { ideaId: "idea-1", ideaRevision: 2, candidateSnapshotSha256: "a".repeat(64) },
+          { ideaId: "idea-2", ideaRevision: 4, candidateSnapshotSha256: "b".repeat(64) },
+        ],
+        requiresValidation: ["Validate that one buyer needs both capabilities."],
+      },
+      newAssumptions: ["Agencies own both workflows."],
+    };
+    const receipt = {
+      solution_name: "Agency signal desk",
+      short_description: "One evaluated agency workflow.",
+      market_fit_score: 0.62,
+      idea_id: "idea-child",
+      idea_revision: 1,
+      synthesis_operation: "combine" as const,
+      synthesized_from: [
+        { idea_id: "idea-1", idea_revision: 2 },
+        { idea_id: "idea-2", idea_revision: 4 },
+      ],
+      synthesis_source_message_id: "asst-combine-accepted",
+    };
+    vi.mocked(getChatHistory).mockResolvedValue({
+      messages: [
+        {
+          id: "asst-combine-accepted",
+          gateStage: 5,
+          role: "assistant" as const,
+          content: "Here is the evaluated combination.",
+          patchJson: proposal,
+          suggestionsJson: null,
+          truncated: false,
+          createdAt: "2026-07-16T00:00:00.000Z",
+        },
+        {
+          id: "receipt-combine-accepted",
+          gateStage: 5,
+          role: "receipt" as const,
+          content: "",
+          patchJson: {
+            kind: "ledger_event" as const,
+            version: 1,
+            event: "seed_settled" as const,
+            outcome: "accepted" as const,
+            patch: {},
+            rows: [],
+            sourceMessageId: "asst-combine-accepted",
+            idea: receipt,
+          },
+          truncated: false,
+          createdAt: "2026-07-16T00:05:00.000Z",
+        },
+      ],
+      weakPool: false,
+    } as never);
+    const onReviewVariant = vi.fn().mockReturnValue({ ok: true });
+    const onUseVariant = vi.fn().mockReturnValue({
+      ok: true,
+      message: "Replaced 2 source candidates with the combined variant.",
+    });
+    const onCollapse = vi.fn();
+
+    const view = render(ChatThread, {
+      props: {
+        jobId: "job-combine-accepted",
+        dock: "rail",
+        onReviewVariant,
+        onUseVariant,
+        onCollapse,
+      },
+    });
+
+    await fireEvent.click(await view.findByRole("button", { name: "Compare with sources" }));
+    expect(onReviewVariant).toHaveBeenCalledWith(
+      proposal,
+      receipt,
+      "asst-combine-accepted",
+    );
+    expect(onCollapse).toHaveBeenCalledOnce();
+
+    await fireEvent.click(view.getByRole("button", { name: "Use variant in shortlist" }));
+    expect(onUseVariant).toHaveBeenCalledWith(proposal, receipt, "asst-combine-accepted");
+    expect(await view.findByText("Replaced 2 source candidates with the combined variant.")).toBeInTheDocument();
   });
 });

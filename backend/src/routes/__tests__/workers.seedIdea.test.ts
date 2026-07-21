@@ -14,6 +14,7 @@ const mockJobUpdateMany = vi.fn();
 const mockDispatchFindUnique = vi.fn();
 const mockDispatchUpdateMany = vi.fn();
 const mockChatMessageCreate = vi.fn();
+const mockChatMessageFindFirst = vi.fn();
 
 vi.mock('../../services/db.js', () => {
   const client: any = {
@@ -28,6 +29,7 @@ vi.mock('../../services/db.js', () => {
     },
     chatMessage: {
       create: (...a: any[]) => mockChatMessageCreate(...a),
+      findFirst: (...a: any[]) => mockChatMessageFindFirst(...a),
     },
   };
   client.$transaction = (arg: any) => (typeof arg === 'function' ? arg(client) : Promise.all(arg));
@@ -135,19 +137,84 @@ describe('POST /api/workers/seed-complete', () => {
     const response = await request(app).post('/api/workers/seed-complete').send(validPayload);
 
     expect(response.status).toBe(200);
-    expect(mockJobUpdateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ id: jobId, activeDispatchId: dispatchId }),
-        data: expect.objectContaining({
-          status: 'AWAITING_SELECTION',
-          solutionIdeas: [{ solution_name: 'Existing' }, { solution_name: 'Seed Idea' }],
-        }),
-      }),
-    );
+    const update = mockJobUpdateMany.mock.calls[0][0];
+    expect(update.where).toMatchObject({ id: jobId, activeDispatchId: dispatchId });
+    expect(update.data.status).toBe('AWAITING_SELECTION');
+    expect(update.data.solutionIdeas).toMatchObject([
+      { solution_name: 'Existing', idea_revision: 1 },
+      { solution_name: 'Seed Idea', idea_revision: 1 },
+    ]);
+    expect(update.data.solutionIdeas.every((idea: any) => /^idea_[a-f0-9]{32}$/.test(idea.idea_id))).toBe(true);
     // The dispatch settlement — same CAS predicate settleDispatch always uses.
     expect(mockDispatchUpdateMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: dispatchId }, data: expect.objectContaining({ state: 'COMPLETED' }) }),
     );
+  });
+
+  it('stamps a synthesis result with fresh identity and immutable parent lineage', async () => {
+    mockJobFindFirst.mockResolvedValue({
+      solutionIdeas: [{
+        idea_id: 'idea-parent',
+        idea_revision: 2,
+        solution_name: 'Broad monitor',
+      }],
+      costUsd: 0,
+      niche: 'test niche',
+      seedIdeaCount: 1,
+    });
+    mockJobUpdateMany.mockResolvedValue({ count: 1 });
+    mockDispatchUpdateMany.mockResolvedValue({ count: 1 });
+    mockDispatchFindUnique.mockResolvedValue({ sourceMessageId: 'msg-synthesis' });
+    mockChatMessageFindFirst.mockResolvedValue({
+      patchJson: {
+        kind: 'idea_synthesis',
+        operation: 'narrow',
+        proposedTitle: 'Focused monitor',
+        proposedBrief: 'Monitor one workflow.',
+        changeSummary: 'Narrows scope.',
+        rationale: 'The source is broad.',
+        parents: [{
+          ideaId: 'idea-parent',
+          ideaRevision: 2,
+          solutionName: 'Broad monitor',
+          contribution: 'Keep alerts.',
+        }],
+        evidence: {
+          sourceAnchors: [{ ideaId: 'idea-parent', ideaRevision: 2, candidateSnapshotSha256: 'a'.repeat(64), pain: 'Missed changes' }],
+          requiresValidation: ['Validate demand.'],
+        },
+        newAssumptions: [],
+      },
+    });
+
+    const response = await request(app).post('/api/workers/seed-complete').send({
+      ...validPayload,
+      idea: {
+        solution_name: 'Focused monitor',
+        idea_id: 'model-controlled',
+        idea_revision: 99,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    const variant = mockJobUpdateMany.mock.calls[0][0].data.solutionIdeas[1];
+    expect(variant.idea_id).toMatch(/^idea_[a-f0-9]{32}$/);
+    expect(variant.idea_id).not.toBe('model-controlled');
+    expect(variant).toMatchObject({
+      idea_revision: 1,
+      synthesis_operation: 'narrow',
+      synthesis_source_message_id: 'msg-synthesis',
+      source_frame: 'owner_synthesis',
+      synthesized_from: [{
+        idea_id: 'idea-parent',
+        idea_revision: 2,
+        solution_name: 'Broad monitor',
+      }],
+    });
+    expect(mockJobUpdateMany.mock.calls[0][0].data.solutionIdeas[0]).toMatchObject({
+      idea_id: 'idea-parent',
+      idea_revision: 2,
+    });
   });
 
   it('writes a seed_settled receipt keyed on the dispatch sourceMessageId, carrying the outcome', async () => {
@@ -167,7 +234,19 @@ describe('POST /api/workers/seed-complete', () => {
         data: expect.objectContaining({
           jobId, gateStage: 5, role: 'receipt',
           patchJson: expect.objectContaining({
-            idea: { solution_name: 'Seed Idea' },
+            idea: expect.objectContaining({
+              solution_name: 'Seed Idea',
+              idea_id: expect.any(String),
+              idea_revision: 1,
+              synthesis_operation: 'narrow',
+              synthesis_source_message_id: 'msg-abc',
+              synthesized_from: [{
+                idea_id: 'idea-parent',
+                idea_revision: 2,
+                solution_name: 'Broad monitor',
+                contribution: 'Keep alerts.',
+              }],
+            }),
             kind: 'ledger_event', event: 'seed_settled', sourceMessageId: 'msg-abc', outcome: 'demoted',
           }),
         }),
@@ -236,14 +315,10 @@ describe('POST /api/workers/seed-complete', () => {
       .send({ ...validPayload, outcome: 'demoted' });
 
     expect(response.status).toBe(200);
-    expect(mockJobUpdateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          status: 'AWAITING_SELECTION',
-          solutionIdeas: [{ solution_name: 'Existing' }],
-        }),
-      }),
-    );
+    const update = mockJobUpdateMany.mock.calls[0][0];
+    expect(update.data.status).toBe('AWAITING_SELECTION');
+    expect(update.data.solutionIdeas).toMatchObject([{ solution_name: 'Existing', idea_revision: 1 }]);
+    expect(update.data.solutionIdeas[0].idea_id).toMatch(/^idea_[a-f0-9]{32}$/);
   });
 
   it('invalidates the cached preview report so the re-materialized ruled-out record is served next read', async () => {
@@ -337,18 +412,23 @@ describe('POST /api/workers/seed-failed', () => {
     expect(mockRefundForSeedIdeaStage).not.toHaveBeenCalled();
   });
 
-  it('a lost-response retry after the dispatch already settled never refunds twice', async () => {
+  it('never refunds when seed-complete landed but every response was lost', async () => {
     // settleDispatch nulls activeDispatchId on success, so a retry naming the NOW-settled
     // dispatch id reads back as a mismatch (same "stale" classification gate-failed's
     // identical pre-existing check produces for this exact scenario) — harmless either way,
     // since BOTH branches return 200 without touching credits again.
-    mockDispatchFindUnique.mockResolvedValue({ seedOrdinal: 1, sourceMessageId: 'msg-xyz' });
+    mockDispatchFindUnique.mockResolvedValue({
+      seedOrdinal: 1,
+      sourceMessageId: 'msg-xyz',
+      state: 'COMPLETED',
+    });
     mockJobFindUnique.mockResolvedValue({ status: 'AWAITING_SELECTION', activeDispatchId: null });
     mockJobUpdateMany.mockResolvedValue({ count: 0 });
 
     const response = await request(app).post('/api/workers/seed-failed').send(validPayload);
 
     expect(response.status).toBe(200);
+    expect(response.body.stale).toBe(true);
     expect(mockRefundForSeedIdeaStage).not.toHaveBeenCalled();
   });
 });

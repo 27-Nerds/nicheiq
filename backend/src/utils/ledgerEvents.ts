@@ -30,6 +30,16 @@ export interface SeedResultSummary {
   solution_name: string;
   short_description?: string;
   market_fit_score?: number;
+  idea_id?: string;
+  idea_revision?: number;
+  synthesis_operation?: 'narrow' | 'reposition' | 'combine' | 'adjacent';
+  synthesized_from?: {
+    idea_id: string;
+    idea_revision: number;
+    solution_name?: string;
+    contribution?: string;
+  }[];
+  synthesis_source_message_id?: string;
 }
 
 export type LedgerEventName =
@@ -139,17 +149,59 @@ export function buildSeedEnvelope(
   outcome?: LedgerEventEnvelope['outcome'],
   idea?: Record<string, unknown>,
 ): LedgerEventEnvelope {
-  const result = idea && typeof idea.solution_name === 'string'
-    ? {
-        solution_name: idea.solution_name,
-        ...(typeof idea.short_description === 'string'
-          ? { short_description: idea.short_description }
-          : {}),
-        ...(typeof idea.market_fit_score === 'number'
-          ? { market_fit_score: idea.market_fit_score }
-          : {}),
-      }
+  const synthesisOperation = (
+    typeof idea?.synthesis_operation === 'string'
+    && ['narrow', 'reposition', 'combine', 'adjacent'].includes(idea.synthesis_operation)
+  )
+    ? idea.synthesis_operation as SeedResultSummary['synthesis_operation']
     : undefined;
+  const synthesizedFrom: NonNullable<SeedResultSummary['synthesized_from']> =
+    Array.isArray(idea?.synthesized_from)
+      ? idea.synthesized_from.flatMap((value) => {
+          if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+          const parent = value as Record<string, unknown>;
+          if (
+            typeof parent.idea_id !== 'string'
+            || !parent.idea_id.trim()
+            || !Number.isInteger(parent.idea_revision)
+            || Number(parent.idea_revision) < 1
+          ) return [];
+          return [{
+            idea_id: parent.idea_id,
+            idea_revision: Number(parent.idea_revision),
+            ...(typeof parent.solution_name === 'string'
+              ? { solution_name: parent.solution_name }
+              : {}),
+            ...(typeof parent.contribution === 'string'
+              ? { contribution: parent.contribution }
+              : {}),
+          }];
+        })
+      : [];
+
+  const result: SeedResultSummary | undefined =
+    idea && typeof idea.solution_name === 'string'
+      ? {
+          solution_name: idea.solution_name,
+          ...(typeof idea.short_description === 'string'
+            ? { short_description: idea.short_description }
+            : {}),
+          ...(typeof idea.market_fit_score === 'number'
+            ? { market_fit_score: idea.market_fit_score }
+            : {}),
+          ...(typeof idea.idea_id === 'string'
+            && idea.idea_id.trim()
+            && Number.isInteger(idea.idea_revision)
+            && Number(idea.idea_revision) > 0
+            ? { idea_id: idea.idea_id, idea_revision: Number(idea.idea_revision) }
+            : {}),
+          ...(synthesisOperation ? { synthesis_operation: synthesisOperation } : {}),
+          ...(synthesizedFrom.length ? { synthesized_from: synthesizedFrom } : {}),
+          ...(idea.synthesis_source_message_id === sourceMessageId
+            ? { synthesis_source_message_id: sourceMessageId }
+            : {}),
+        }
+      : undefined;
 
   return {
     kind: 'ledger_event',

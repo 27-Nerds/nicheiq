@@ -42,7 +42,7 @@
       return { color: "var(--color-success)", variant: "success" as const, label: "STRONG" };
     if (v === "moderate")
       return {
-        color: "#EAB308",
+        color: "var(--color-warning)",
         variant: "warning" as const,
         label: "MODERATE",
       };
@@ -434,7 +434,7 @@
   }
 
   .metric-value.accent {
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .segment-method {

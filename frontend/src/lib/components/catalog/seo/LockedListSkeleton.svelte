@@ -57,7 +57,7 @@
     display: block;
     height: 12px;
     border-radius: 4px;
-    background: var(--color-border, #e4e4e7);
+    background: var(--color-border);
   }
 
   /* idea — mirrors IdeaCardV2's box */
@@ -68,7 +68,7 @@
     padding: 16px;
     border: 1px solid var(--color-border);
     border-radius: 8px;
-    background: var(--color-surface, #fff);
+    background: var(--color-surface);
   }
   .sk-meta {
     width: 38%;
@@ -96,7 +96,7 @@
     width: 56px;
     height: 18px;
     border-radius: 999px;
-    background: var(--color-border, #e4e4e7);
+    background: var(--color-border);
   }
 
   /* pain — mirrors a PainPointRankTable row (CatalogTable padding: 18px 20px) */

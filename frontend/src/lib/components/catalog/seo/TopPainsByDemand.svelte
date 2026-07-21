@@ -60,7 +60,7 @@
         })}
         {@const sev = scaleSeverity(pp.severityScore, "pain")}
         <div class="ct-row" role="row" data-tier={severityRailTier(sev)}>
-          <span class="cell-rank" role="cell">{String(i + 1).padStart(2, "0")}</span>
+          <span class="cell-rank tabular-nums" role="cell">{String(i + 1).padStart(2, "0")}</span>
           <span class="cell-title" role="cell">{pp.title}</span>
           <span class="cell-niche" role="cell">
             <a

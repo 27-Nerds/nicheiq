@@ -112,6 +112,40 @@ describe("+page.svelte — workbench stays mounted through a seed's QUEUED/RUNNI
     expect(queryByRole("heading", { name: "Select candidates for Deep Research" })).toBeNull();
   });
 
+  it("hydrates the authoritative shortlist draft instead of legacy selected solution IDs", async () => {
+    const job = baseJob({
+      solutionIdeas: [
+        {
+          idea_id: "idea-alpha",
+          idea_revision: 1,
+          solution_name: "Alpha Idea",
+          description: "d",
+          value_proposition: "v",
+        } as never,
+        {
+          idea_id: "idea-beta",
+          idea_revision: 1,
+          solution_name: "Beta Idea",
+          description: "d",
+          value_proposition: "v",
+        } as never,
+      ],
+      selectedSolutionIds: ["idea-alpha"],
+      selectionDraft: {
+        version: 4,
+        items: [{ ideaId: "idea-beta", ideaRevision: 1 }],
+      },
+    });
+
+    render(PageComponent, { props: { data: baseData(job) as never } });
+
+    await waitFor(() => {
+      expect(document.querySelector<HTMLInputElement>('input[aria-label="Select Alpha Idea"]')).not.toBeNull();
+      expect(document.querySelector<HTMLInputElement>('input[aria-label="Deselect Beta Idea"]')).not.toBeNull();
+    });
+    expect(document.body).not.toHaveTextContent("selectionDraft=");
+  });
+
   it("preserves long research subjects while applying the compact title treatment", async () => {
     const topic =
       "Employees trying to figure out which AI skills to learn and where to expand their professional knowledge to stay employable, overwhelmed by scattered courses and conflicting advice about what their role will actually require";

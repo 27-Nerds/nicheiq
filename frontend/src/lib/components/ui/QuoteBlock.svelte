@@ -64,7 +64,7 @@
       var(--color-accent-subtle) 0%,
       transparent 60%
     );
-    border-left-color: var(--color-accent);
+    border-left-color: var(--color-border-emphasis);
     animation: fadeInUp 0.3s ease forwards;
   }
 

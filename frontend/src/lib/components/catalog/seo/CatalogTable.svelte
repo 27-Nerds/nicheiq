@@ -29,7 +29,7 @@
   .catalog-table {
     border: 1px solid var(--color-border);
     border-radius: 8px;
-    background: var(--color-bg-elevated, #fff);
+    background: var(--color-bg-elevated);
     overflow: hidden;
   }
   /* Header bar — consumer renders <div class="ct-head">…</div> directly. */
@@ -37,7 +37,7 @@
     display: grid;
     align-items: center;
     padding: 13px 20px;
-    background: var(--color-bg-base, #fafafa);
+    background: var(--color-bg-base);
     border-bottom: 1px solid var(--color-border);
     font-size: 10px;
     color: var(--color-text-muted);
@@ -61,13 +61,13 @@
   }
   .catalog-table :global(a.ct-row:hover),
   .catalog-table :global(div.ct-row:hover) {
-    background: var(--color-bg-base, #fafafa);
+    background: var(--color-bg-base);
   }
   .catalog-table :global(a.ct-row:focus-visible),
   .catalog-table :global(.ct-row:focus-within) {
     outline: 2px solid var(--color-accent);
     outline-offset: -2px;
-    background: var(--color-bg-base, #fafafa);
+    background: var(--color-bg-base);
   }
   /* Tier rail via absolute pseudo-element — only renders when [data-tier]
      is present so untiered tables (IdeasListTable) have no reserved space.

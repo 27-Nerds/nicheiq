@@ -6,6 +6,7 @@
   import VoteButton from "$lib/components/ui/VoteButton.svelte";
   import ExpandableSection from "$lib/components/ui/ExpandableSection.svelte";
   import SharedViewBanner from "$lib/components/share/SharedViewBanner.svelte";
+  import AnnotationProvider from "$lib/components/annotations/AnnotationProvider.svelte";
   import SharedViewEndCTA from "$lib/components/share/SharedViewEndCTA.svelte";
 
   import PreviewOverview from "$lib/components/preview/PreviewOverview.svelte";
@@ -15,7 +16,7 @@
   import AudienceSnapshot from "$lib/components/preview/AudienceSnapshot.svelte";
   import NicheRealityCheck from "$lib/components/sections/NicheRealityCheck.svelte";
 
-  import { submitDiscoveryVote } from "$lib/api";
+  import { getDiscoveryVotes, submitDiscoveryVote } from "$lib/api";
   import type { DiscoveryShareData, VoteSummary } from "$lib/api";
   import {
     LOCKED_INFLUENCERS,
@@ -37,10 +38,11 @@
   let voteSummaryOverride = $state<VoteSummary | null>(null);
   const voteSummary = $derived(voteSummaryOverride ?? initialVoteSummary);
   let viewerToken = $state("");
-  let viewerVotedSolution = $state<string | null>(null);
+  let viewerVotedSolutionId = $state<string | null>(null);
   let voting = $state(false);
   let comment = $state("");
   let commentSubmitted = $state(false);
+  let voteError = $state("");
 
   $effect(() => {
     if (typeof window !== "undefined") {
@@ -57,16 +59,17 @@
 
   async function fetchViewerVote(token: string) {
     try {
-      const res = await fetch(`/api/shared/discovery/${shareToken}/votes?viewerToken=${token}`);
-      if (res.ok) {
-        const voteData = await res.json();
-        voteSummaryOverride = voteData;
-        if (voteData.viewerVote) {
-          viewerVotedSolution = voteData.viewerVote.solutionName;
-          if (voteData.viewerVote.comment) {
-            comment = voteData.viewerVote.comment;
-            commentSubmitted = true;
-          }
+      const voteData = await getDiscoveryVotes(shareToken, token);
+      voteSummaryOverride = voteData;
+      if (voteData.viewerVote) {
+        const legacyMatches = data.solutions.filter(
+          (solution) => solution.solution_name === voteData.viewerVote?.solutionName,
+        );
+        viewerVotedSolutionId = voteData.viewerVote.solutionId
+          ?? (legacyMatches.length === 1 ? legacyMatches[0].idea_id ?? null : null);
+        if (voteData.viewerVote.comment) {
+          comment = voteData.viewerVote.comment;
+          commentSubmitted = true;
         }
       }
     } catch {
@@ -74,39 +77,56 @@
     }
   }
 
-  async function handleVote(solutionName: string) {
+  async function handleVote(solution: SolutionPreview) {
+    const solutionName = solution.solution_name;
+    const solutionId = solution.idea_id;
     if (!viewerToken || voting) return;
+    if (!solutionId) {
+      voteError = "This idea cannot be voted on yet. Refresh the page and try again.";
+      return;
+    }
+    voteError = "";
     voting = true;
     try {
       const result = await submitDiscoveryVote(
         shareToken,
         solutionName,
         viewerToken,
-        commentSubmitted ? undefined : comment || undefined,
+        comment.trim() || undefined,
+        solutionId,
       );
       voteSummaryOverride = result;
-      viewerVotedSolution = solutionName;
-    } catch (err) {
-      console.error("Failed to vote:", err);
+      viewerVotedSolutionId = solutionId;
+    } catch {
+      voteError = "We couldn't record your vote. Please try again.";
     } finally {
       voting = false;
     }
   }
 
   async function handleCommentSubmit() {
-    if (!viewerVotedSolution || !viewerToken || !comment.trim()) return;
+    if (!viewerVotedSolutionId || !viewerToken || !comment.trim()) return;
+    const selectedSolution = data.solutions.find(
+      (solution) => solution.idea_id === viewerVotedSolutionId,
+    );
+    if (!selectedSolution) {
+      voteError = "The selected idea is no longer available. Refresh the page and try again.";
+      return;
+    }
+    voteError = "";
     voting = true;
     try {
       const result = await submitDiscoveryVote(
         shareToken,
-        viewerVotedSolution,
+        selectedSolution.solution_name,
         viewerToken,
-        comment,
+        comment.trim(),
+        viewerVotedSolutionId,
       );
       voteSummaryOverride = result;
       commentSubmitted = true;
-    } catch (err) {
-      console.error("Failed to submit comment:", err);
+    } catch {
+      voteError = "We couldn't record your comment. Please try again.";
     } finally {
       voting = false;
     }
@@ -168,14 +188,17 @@
 </script>
 
 <SharedViewBanner variant="discovery" shareToken={shareToken} />
-
 <div class="shared-discovery-root">
+<AnnotationProvider mode="viewer" {shareToken}>
+<div class="shared-discovery-content">
   <!-- Research topic header -->
+  <div data-annotation-anchor="research-header">
   <PageHeader
     title={data.niche}
     titleVariant="research-topic"
-    subtitle="Review the opportunities uncovered during Discovery."
+    subtitle="Discovery is complete. Review the strongest opportunities before moving to Deep Research."
   />
+  </div>
 
   <!-- Ranked candidates — the same workbench the owner sees, in visitor (vote) mode. -->
   <SelectionWorkbench
@@ -194,19 +217,70 @@
   >
     {#snippet actionSlot({ solution }: { solution: SolutionPreview; index: number })}
       <VoteButton
-        count={voteSummary.solutionVotes[solution.solution_name] ?? 0}
+        count={solution.idea_id && voteSummary.solutionVotesById
+          ? voteSummary.solutionVotesById[solution.idea_id] ?? 0
+          : voteSummary.solutionVotes[solution.solution_name] ?? 0}
         total={voteSummary.totalVotes}
-        voted={viewerVotedSolution === solution.solution_name}
-        onVote={() => handleVote(solution.solution_name)}
+        voted={viewerVotedSolutionId === solution.idea_id}
+        onVote={() => handleVote(solution)}
         {voting}
         compact
       />
     {/snippet}
   </SelectionWorkbench>
+  {#if voteError}
+    <p class="vote-error" role="alert">{voteError}</p>
+  {/if}
+
+  {#if viewerVotedSolutionId}
+    <section class="comment-card" aria-label="Vote rationale">
+      {#if commentSubmitted}
+        <div class="comment-success">
+          <div class="comment-success-copy">
+            <CheckCircle class="w-4 h-4" aria-hidden="true" />
+            <span>Your rationale is saved for the report owner.</span>
+          </div>
+          <button type="button" class="comment-edit" onclick={() => (commentSubmitted = false)}>
+            Edit rationale
+          </button>
+        </div>
+      {:else}
+        <div class="comment-form">
+          <div class="comment-form-header">
+            <MessageCircle class="w-4 h-4" aria-hidden="true" />
+            <div>
+              <h3>Why this idea?</h3>
+              <p>Optional. Only the report owner sees this note.</p>
+            </div>
+          </div>
+          <textarea
+            bind:value={comment}
+            maxlength={500}
+            aria-label="Why you prefer this idea"
+            placeholder="What makes this useful, risky, or worth changing?"
+            class="comment-textarea"
+            rows={3}
+          ></textarea>
+          <div class="comment-form-footer">
+            <span class="comment-char-count">{comment.length}/500</span>
+            <button
+              type="button"
+              onclick={handleCommentSubmit}
+              disabled={!comment.trim() || voting}
+              class="comment-submit"
+            >
+              {#if voting}<Loader2 class="w-3 h-3 animate-spin" aria-hidden="true" />{/if}
+              Save rationale
+            </button>
+          </div>
+        </div>
+      {/if}
+    </section>
+  {/if}
 
   <!-- Discovery dossier — same structure as the owner's selection phase. -->
   {#if previewReport || discoveryData}
-    <div class="discovery-sections discovery-dossier">
+    <div class="discovery-sections discovery-dossier" data-annotation-anchor="research-dossier">
       <div class="dossier-header">
         <div>
           <p class="dossier-eyebrow">Discovery dossier</p>
@@ -302,7 +376,7 @@
           defaultOpen={false}
           id="audience"
         >
-          <AudienceSnapshot data={audienceMapping} />
+            <AudienceSnapshot data={audienceMapping} />
           <div class="locked-subsection">
             <h4 class="locked-subsection-title">Key Influencers</h4>
             <div class="locked-header">
@@ -369,50 +443,18 @@
 
   <!-- Visitor CTA (replaces owner's DeepResearchCTABlock) -->
   <SharedViewEndCTA variant="discovery" shareToken={shareToken} />
-
-  <!-- Comment section (after voting) -->
-  {#if viewerVotedSolution}
-    <div class="comment-card">
-      {#if commentSubmitted}
-        <div class="comment-success">
-          <CheckCircle class="w-4 h-4" />
-          <span>Your vote and comment have been recorded. Thank you!</span>
-        </div>
-      {:else}
-        <div class="comment-form">
-          <div class="comment-form-header">
-            <MessageCircle class="w-4 h-4" />
-            <h3>Add a comment (optional)</h3>
-          </div>
-          <textarea
-            bind:value={comment}
-            maxlength={500}
-            placeholder="Why do you prefer this solution? Any suggestions?"
-            class="comment-textarea"
-            rows={3}
-          ></textarea>
-          <div class="comment-form-footer">
-            <span class="comment-char-count">{comment.length}/500</span>
-            <button
-              onclick={handleCommentSubmit}
-              disabled={!comment.trim() || voting}
-              class="comment-submit"
-            >
-              {#if voting}<Loader2 class="w-3 h-3 animate-spin" />{/if}
-              Submit comment
-            </button>
-          </div>
-        </div>
-      {/if}
-    </div>
-  {/if}
+</div>
+</AnnotationProvider>
 </div>
 
 <style>
   .shared-discovery-root {
     width: min(76rem, 100%);
     margin: 0 auto;
-    padding: 1.5rem 1rem;
+    padding: 2rem 2.5rem 5rem;
+  }
+
+  .shared-discovery-content {
     display: flex;
     flex-direction: column;
     gap: 1.25rem;
@@ -503,19 +545,51 @@
     .locked-post-age { grid-column: 2; }
   }
 
+  .vote-error {
+    margin: -0.25rem 0 0;
+    padding: 0.75rem 1rem;
+    border-left: 2px solid var(--color-error, #dc2626);
+    color: var(--color-error-dark, #b91c1c);
+    font-size: 0.875rem;
+  }
+
   .comment-card {
-    padding: 1rem;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg, 0.75rem);
-    background: var(--color-bg-elevated);
+    margin-top: -0.35rem;
+    padding: 1rem 0.9rem 1.1rem;
+    border-block: 1px solid var(--color-border);
+    border-left: 2px solid var(--color-border-emphasis);
+    background: var(--color-bg-surface);
   }
 
   .comment-success {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 0.5rem;
     font-size: 0.875rem;
     color: var(--color-success-dark, #047857);
+  }
+
+  .comment-success-copy {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .comment-edit {
+    padding: 0.35rem 0.55rem;
+    border: 0;
+    border-radius: 0.4rem;
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-size: 0.75rem;
+    font-weight: 650;
+    cursor: pointer;
+    transition: background-color 160ms ease, color 160ms ease, transform 120ms ease;
+  }
+  .comment-edit:hover {
+    background: var(--color-bg-surface);
+    color: var(--color-text-primary);
   }
 
   .comment-form {
@@ -526,15 +600,21 @@
 
   .comment-form-header {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 0.5rem;
     color: var(--color-text-muted);
   }
+  .comment-form-header :global(svg) { margin-top: 0.12rem; }
   .comment-form-header h3 {
     font-size: 0.875rem;
-    font-weight: 500;
+    font-weight: 650;
     color: var(--color-text-primary);
     margin: 0;
+  }
+  .comment-form-header p {
+    margin: 0.18rem 0 0;
+    font-size: 0.75rem;
+    line-height: 1.4;
   }
 
   .comment-textarea {
@@ -550,7 +630,7 @@
   .comment-textarea::placeholder {
     color: color-mix(in srgb, var(--color-text-muted) 50%, transparent);
   }
-  .comment-textarea:focus {
+  .comment-textarea:focus-visible {
     outline: none;
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 50%, transparent);
   }
@@ -580,6 +660,13 @@
     cursor: pointer;
     transition: background-color 150ms ease;
   }
+  .comment-submit:active,
+  .comment-edit:active { transform: scale(0.98); }
+  .comment-submit:focus-visible,
+  .comment-edit:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
   .comment-submit:hover:not(:disabled) {
     background: var(--color-accent-dark);
   }
@@ -588,9 +675,9 @@
     cursor: not-allowed;
   }
 
-  @media (max-width: 640px) {
+  @media (max-width: 1279px) {
     .shared-discovery-root {
-      padding: 1rem 0.75rem;
+      padding: 1rem;
     }
   }
 </style>

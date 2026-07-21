@@ -77,6 +77,19 @@ export const CONFIG = {
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
   },
 
+  // GitHub App used only for explicit decision-handoff dispatch. These
+  // credentials are separate from Auth.js GitHub login OAuth.
+  githubApp: {
+    enabled: process.env.GITHUB_APP_ENABLED === 'true',
+    appId: process.env.GITHUB_APP_ID || '',
+    slug: process.env.GITHUB_APP_SLUG || '',
+    clientId: process.env.GITHUB_APP_CLIENT_ID || '',
+    clientSecret: process.env.GITHUB_APP_CLIENT_SECRET || '',
+    privateKeyBase64: process.env.GITHUB_APP_PRIVATE_KEY_BASE64 || '',
+    callbackUrl: process.env.GITHUB_APP_CALLBACK_URL
+      || `${process.env.BASE_URL || 'http://localhost:3000'}/api/integrations/github/callback`,
+  },
+
   // Catalog categorization
   categorizeModel: process.env.CATEGORIZE_LLM_MODEL || 'gpt-5-nano',
   categorizeItemRateHourly: parseInt(process.env.CATEGORIZE_ITEM_RATE_HOURLY || '500', 10),
@@ -91,6 +104,7 @@ export const CONFIG = {
 
   // Discovery sharing
   ipHashSalt: process.env.IP_HASH_SALT || 'nicheiq-vote-salt',
+  experimentSigningSecret: process.env.EXPERIMENT_SIGNING_SECRET || process.env.AUTH_SECRET || 'nicheiq-dev-experiment-signing-secret',
 } as const;
 
 // Validate required config in production
@@ -100,7 +114,19 @@ export function validateConfig(): void {
       ['DATABASE_URL', CONFIG.databaseUrl],
       ['REDIS_URL', CONFIG.redisUrl],
       ['AUTH_SECRET', process.env.AUTH_SECRET], // Critical for JWT verification
+      ['EXPERIMENT_SIGNING_SECRET', process.env.EXPERIMENT_SIGNING_SECRET],
     ];
+
+    if (CONFIG.githubApp.enabled) {
+      required.push(
+        ['GITHUB_APP_ID', CONFIG.githubApp.appId],
+        ['GITHUB_APP_SLUG', CONFIG.githubApp.slug],
+        ['GITHUB_APP_CLIENT_ID', CONFIG.githubApp.clientId],
+        ['GITHUB_APP_CLIENT_SECRET', CONFIG.githubApp.clientSecret],
+        ['GITHUB_APP_PRIVATE_KEY_BASE64', CONFIG.githubApp.privateKeyBase64],
+        ['GITHUB_APP_CALLBACK_URL', CONFIG.githubApp.callbackUrl],
+      );
+    }
 
     const missing = required.filter(([, value]) => !value);
     if (missing.length > 0) {

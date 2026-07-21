@@ -263,7 +263,7 @@
     font-size: 15px;
     font-weight: 600;
     background: var(--color-accent);
-    color: var(--color-surface, #fff);
+    color: var(--color-surface);
     text-decoration: none;
     border: 1px solid transparent;
     transition: background-color 140ms ease, box-shadow 140ms ease,

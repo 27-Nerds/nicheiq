@@ -142,7 +142,7 @@
       border-color 140ms ease,
       background 140ms ease;
     border: 1px solid var(--color-border-emphasis);
-    background: var(--color-bg-elevated, #fff);
+    background: var(--color-bg-elevated);
     color: var(--color-text-secondary, var(--color-text-primary));
   }
   .save-btn:disabled {
@@ -164,7 +164,7 @@
   .save-btn:hover:not(:disabled) {
     color: var(--color-text-primary);
     border-color: var(--color-text-muted);
-    background: var(--color-bg-base, #fafafa);
+    background: var(--color-bg-base);
   }
   .save-btn:focus-visible {
     outline: 2px solid var(--color-accent);

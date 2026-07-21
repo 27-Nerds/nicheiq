@@ -98,7 +98,7 @@
         class:with-chip={showChip}
         data-tier={tier}
       >
-        {#if showRank}<span class="cell-rank">{String(i + 1).padStart(2, "0")}</span>{/if}
+        {#if showRank}<span class="cell-rank tabular-nums">{String(i + 1).padStart(2, "0")}</span>{/if}
         {#if hrefs && pp.slug}
           <a class="title-link" href={painPointPath(pp.slug)}>{pp.title}</a>
         {:else}
@@ -124,7 +124,7 @@
             {pp.category.name}
           </a>
         {/if}
-        <span class="mentions">{pp.mentionCount.toLocaleString()}</span>
+        <span class="mentions tabular-nums">{pp.mentionCount.toLocaleString()}</span>
         <span class="severity">
           <SeverityBar value={sev} showTier={false} />
         </span>
@@ -230,11 +230,11 @@
   }
   .theme-link {
     color: var(--color-text-secondary);
-    background: var(--color-bg-surface, #f5f5f5);
+    background: var(--color-bg-surface);
   }
   .theme-link:hover {
     color: var(--color-text-primary);
-    background: var(--color-bg-elevated, #fff);
+    background: var(--color-bg-elevated);
   }
   .theme-link:focus-visible {
     outline: 2px solid var(--color-accent);
@@ -242,7 +242,7 @@
   }
   .theme-static {
     color: var(--color-text-muted);
-    background: var(--color-bg-surface, #f5f5f5);
+    background: var(--color-bg-surface);
     cursor: default;
   }
   .theme-empty {

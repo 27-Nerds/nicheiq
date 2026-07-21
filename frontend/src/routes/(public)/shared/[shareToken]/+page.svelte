@@ -37,9 +37,9 @@
   <div class="min-h-[60vh] flex items-center justify-center px-4">
     <div class="text-center max-w-md">
       <div
-        class="mx-auto w-16 h-16 rounded-full bg-zinc-100 flex items-center justify-center mb-6"
+        class="mx-auto w-16 h-16 rounded-full bg-bg-surface flex items-center justify-center mb-6"
       >
-        <Link2Off class="w-8 h-8 text-zinc-400" />
+        <Link2Off class="w-8 h-8 text-[color:var(--color-text-muted)]" />
       </div>
       <h1 class="text-2xl font-bold text-text-primary mb-2">
         This report is no longer available

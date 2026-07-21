@@ -184,7 +184,7 @@
   .nss {
     margin: 56px 0 32px;
     padding: 28px 32px 24px;
-    background: var(--color-bg-base, #fafafa);
+    background: var(--color-bg-base);
     border: 1px solid var(--color-border);
     border-radius: 10px;
     position: relative;

@@ -161,7 +161,7 @@
     padding: 10px 14px;
     border: 1px solid var(--color-border);
     border-radius: 8px;
-    background: var(--color-surface, #fff);
+    background: var(--color-surface);
     transition: all 0.12s ease;
     flex: 1;
     min-width: 280px;
@@ -202,7 +202,7 @@
     font-size: 13.5px;
     font-weight: 600;
     background: var(--color-accent);
-    color: var(--color-surface, #fff);
+    color: var(--color-surface);
     text-decoration: none;
     border: 1px solid transparent;
     flex-shrink: 0;
@@ -239,7 +239,7 @@
     padding: 10px 14px;
     border: 1px solid var(--color-border);
     border-radius: 8px;
-    background: var(--color-surface, #fff);
+    background: var(--color-surface);
     font-size: 13px;
     font-weight: 500;
     color: var(--color-text-secondary, var(--color-text-primary));
@@ -254,7 +254,7 @@
   .saved-link:hover {
     color: var(--color-text-primary);
     border-color: var(--color-border-emphasis);
-    background: var(--color-bg-base, #fafafa);
+    background: var(--color-bg-base);
   }
   .saved-link:focus-visible {
     outline: 2px solid var(--color-accent);

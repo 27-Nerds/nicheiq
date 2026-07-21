@@ -35,10 +35,12 @@
     class: className = "",
   }: Props = $props();
 
-  const colorMap: Record<IconColor, { bg: string; border: string; text: string }> = {
-    accent: { bg: "bg-accent/10", border: "border-accent/20", text: "text-accent" },
-    secondary: { bg: "bg-secondary/10", border: "border-secondary/20", text: "text-secondary" },
-    warning: { bg: "bg-warning/10", border: "border-warning/20", text: "text-warning" },
+  // Icon renders bare (no tinted box) — the icon-in-tinted-box pattern is
+  // banned (DESIGN_SYSTEM.md §9.3).
+  const colorMap: Record<IconColor, { text: string }> = {
+    accent: { text: "text-accent" },
+    secondary: { text: "text-secondary" },
+    warning: { text: "text-warning" },
   };
 
   const colors = $derived(Icon ? colorMap[iconColor] : null);
@@ -56,27 +58,29 @@
   {/if}
 
   <div class={actionsInTitleRow ? 'page-header-body flex items-center justify-between flex-wrap gap-4' : 'page-header-body'}>
-    <div class="page-header-title-row flex items-start gap-3">
+    <div class="page-header-title-row flex items-start gap-3" data-annotation-anchor="research-header-copy">
       {#if Icon && colors}
-        <div class="p-2 rounded-xl {colors.bg} border {colors.border} shrink-0">
-          <Icon class="w-6 h-6 {colors.text}" />
-        </div>
+        <Icon class="w-6 h-6 {colors.text} shrink-0" />
       {/if}
       <div>
         <h1
-          class="page-header-title text-2xl font-bold text-text-primary flex items-center gap-3 text-balance"
+          class="page-header-title text-text-primary flex items-center gap-3 text-balance"
           class:page-header-title--research-topic={isResearchTopic}
           class:page-header-title--long={isLongResearchTopic}
           title={isLongResearchTopic ? title : undefined}
+          data-annotation-anchor={isResearchTopic ? "research-header-title" : undefined}
         >
           {title}
           {#if badge}{@render badge()}{/if}
         </h1>
         {#if subtitle}
-          <p class="page-header-subtitle text-text-muted mt-1 text-pretty">{subtitle}</p>
+          <p
+            class="page-header-subtitle text-text-muted mt-1 text-pretty"
+            data-annotation-anchor={isResearchTopic ? "research-header-subtitle" : undefined}
+          >{subtitle}</p>
         {/if}
         {#if metadata}
-          <div class="mt-2">
+          <div class="page-header-meta">
             {@render metadata()}
           </div>
         {/if}
@@ -97,8 +101,37 @@
 </div>
 
 <style>
+  /* Page title — snapped to the doc's command-header scale (.cmd h2, §5.1). */
+  .page-header-title {
+    font-family: var(--font-display);
+    font-size: 1.375rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+  }
+
+  /* record-line recipe (§2) — canonical mono meta treatment for label/value
+     metadata content passed via the `metadata` snippet. */
+  .page-header-meta {
+    margin-top: var(--space-2);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "zero" 0;
+  }
+
   .page-header--research-topic {
     margin-bottom: 0;
+  }
+
+  .page-header--research-topic .page-header-title-row {
+    /* Keep the semantic annotation anchor independent from optional actions
+       (for example, the owner's Share button) and responsive navigation. */
+    width: min(52rem, 100%);
   }
 
   .page-header-title--research-topic {

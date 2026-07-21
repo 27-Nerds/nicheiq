@@ -113,7 +113,7 @@
   .cat-section {
     border: 1px solid var(--color-border);
     border-radius: 8px;
-    background: var(--color-surface, #fff);
+    background: var(--color-surface);
     overflow: hidden;
   }
   /* Header row — slightly tighter than the page-level hero strip and
@@ -125,7 +125,7 @@
     gap: 14px;
     align-items: center;
     padding: 12px 18px;
-    background: var(--color-surface-elevated, #fafafa);
+    background: var(--color-surface-elevated);
     cursor: pointer;
     transition: background 0.12s;
     width: 100%;
@@ -140,7 +140,7 @@
     flex-shrink: 0;
   }
   .cat-head:hover {
-    background: var(--color-surface, #fff);
+    background: var(--color-surface);
   }
   /* Hairline separator between header and the open body. */
   .cat-section:has(.cat-body) .cat-head {

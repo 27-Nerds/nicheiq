@@ -161,8 +161,8 @@
       <div
         class="flex items-center gap-2 text-sm mb-4 p-2.5 rounded-lg {feedback.type ===
         'success'
-          ? 'bg-success/10 text-success'
-          : 'bg-error/10 text-error'}"
+          ? 'bg-success/10 text-[color:var(--color-success-text)]'
+          : 'bg-error/10 text-[color:var(--color-error-text)]'}"
       >
         {#if feedback.type === "success"}
           <Check class="w-4 h-4 shrink-0" />
@@ -193,7 +193,7 @@
           userUrl = (e.target as HTMLInputElement).value;
         }}
         placeholder="/shared/AbCdEf123..."
-        class="w-full px-3 py-2 bg-bg-elevated border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-accent"
+        class="input"
       />
       <p class="text-xs text-text-muted mt-1.5">
         Paste the share URL path from a completed report (e.g. <code

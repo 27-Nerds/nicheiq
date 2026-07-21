@@ -26,7 +26,7 @@
      from the band edges in BOTH directions, which the previous version
      missed. */
   .catalog-band {
-    background: var(--color-bg-surface, #f5f5f5);
+    background: var(--color-bg-surface);
     border-top: 1px solid var(--color-border);
     border-bottom: 1px solid var(--color-border);
     margin: 8px 0 24px;

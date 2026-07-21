@@ -22,9 +22,9 @@
   </div>
   {#each painPoints as p, i}
     <a class="row body" href={painPointPath(p.slug ?? "")}>
-      <span class="num">{String(i + 1).padStart(2, "0")}</span>
+      <span class="num tabular-nums">{String(i + 1).padStart(2, "0")}</span>
       <span class="title">{p.title}</span>
-      <span class="mentions">{(p.mentionCount ?? 0).toLocaleString()}</span>
+      <span class="mentions tabular-nums">{(p.mentionCount ?? 0).toLocaleString()}</span>
       <span class="sev-cell">
         <SeverityBar value={scaleSeverity(p.severityScore, "pain")} />
       </span>
@@ -41,7 +41,7 @@
     width: 100%;
     border: 1px solid var(--color-border);
     border-radius: 8px;
-    background: var(--color-surface, #fff);
+    background: var(--color-surface);
     overflow: hidden;
   }
   .row {
@@ -60,7 +60,7 @@
     border-bottom: none;
   }
   .head {
-    background: var(--color-surface-elevated, #fafafa);
+    background: var(--color-surface-elevated);
     font-size: 10px;
     color: var(--color-text-muted);
     letter-spacing: 0.06em;
@@ -81,12 +81,12 @@
     transition: background 0.12s;
   }
   .body:hover {
-    background: var(--color-surface-elevated, #fafafa);
+    background: var(--color-surface-elevated);
   }
   .body:focus-visible {
     outline: 2px solid var(--color-accent);
     outline-offset: -2px;
-    background: var(--color-surface-elevated, #fafafa);
+    background: var(--color-surface-elevated);
   }
   .num {
     font-family: var(--font-mono);

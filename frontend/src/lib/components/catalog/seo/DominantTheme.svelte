@@ -4,8 +4,8 @@
   import PainPointMiniRow from "./PainPointMiniRow.svelte";
 
   // Featured callout for the highest-mention theme on a sub-niche page.
-  // Dominant signal block: accent left rail, ranked kicker, mention stat, and
-  // primary user segments rendered as a quiet inline list under a mono kicker.
+  // Dominant signal block: ranked kicker, mention stat, and primary user
+  // segments rendered as a quiet inline list under a mono kicker.
   // Sits above the broader theme list.
 
   interface Props {
@@ -69,10 +69,9 @@
 
 <style>
   .dt {
-    background: var(--color-surface, #fff);
+    background: var(--color-surface);
     border: 1px solid var(--color-border);
-    border-left: 3px solid var(--color-accent);
-    border-radius: 0 8px 8px 0;
+    border-radius: 8px;
     padding: 24px 28px;
     margin: 8px 0 24px;
     position: relative;
@@ -226,8 +225,7 @@
      moved to that shared component. */
 
   /* :target — chip in the ranked-pain table anchors to this card.
-     The card already wears a 3px accent left rail, so a quiet bg pulse reads
-     cleaner than stacking another accent border. */
+     A quiet bg pulse signals the jump without stacking an accent border. */
   .dt:target {
     animation: dt-flash 1.2s var(--ease-out) forwards;
   }
@@ -237,7 +235,7 @@
       background-color: rgba(234, 88, 12, 0.08);
     }
     100% {
-      background-color: var(--color-surface, #fff);
+      background-color: var(--color-surface);
     }
   }
   @media (prefers-reduced-motion: reduce) {

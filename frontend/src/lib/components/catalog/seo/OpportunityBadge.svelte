@@ -56,16 +56,16 @@
     letter-spacing: 0.04em;
     text-transform: uppercase;
     border: 1px solid var(--color-border);
-    background: var(--color-surface, #fff);
+    background: var(--color-surface);
     white-space: nowrap;
   }
   .tone-success {
-    color: var(--color-success);
+    color: var(--color-opportunity);
     border-color: rgba(34, 197, 94, 0.25);
     background: rgba(34, 197, 94, 0.06);
   }
   .tone-warn {
-    color: var(--color-warning, #ca8a04);
+    color: var(--color-warning-text);
     border-color: rgba(202, 138, 4, 0.25);
     background: rgba(202, 138, 4, 0.06);
   }
@@ -76,12 +76,12 @@
      darker readable tokens (#22C55E at 11px on white fails AA). */
   .opp-badge.muted {
     border-color: var(--color-border);
-    background: var(--color-surface, #fff);
+    background: var(--color-surface);
   }
   .opp-badge.muted.tone-success {
-    color: var(--color-opportunity, #1a7f5a);
+    color: var(--color-opportunity);
   }
   .opp-badge.muted.tone-warn {
-    color: var(--color-warning, #ca8a04);
+    color: var(--color-warning-text);
   }
 </style>

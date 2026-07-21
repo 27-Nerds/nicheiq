@@ -48,7 +48,7 @@
 
 <style>
   .seg {
-    background: var(--color-surface, #fff);
+    background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: 6px;
     padding: 16px;

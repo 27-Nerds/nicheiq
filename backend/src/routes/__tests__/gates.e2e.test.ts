@@ -460,7 +460,13 @@ describe('Guided research E2E: full gate chain to AWAITING_SELECTION', () => {
     });
     expect(res.status).toBe(200);
     expect(jobRow.status).toBe('AWAITING_SELECTION');
-    expect(jobRow.solutionIdeas).toEqual([{ solution_name: 'Consultant Invoice Hub' }]);
+    expect(jobRow.solutionIdeas).toEqual([
+      expect.objectContaining({
+        solution_name: 'Consultant Invoice Hub',
+        idea_id: expect.stringMatching(/^idea_[a-f0-9]{32}$/),
+        idea_revision: 1,
+      }),
+    ]);
     expect(jobRow.costUsd).toBe(1.23);
     expect(jobRow.ideasShownAt).not.toBeNull();
 

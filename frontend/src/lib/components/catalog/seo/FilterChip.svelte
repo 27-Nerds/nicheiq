@@ -30,7 +30,7 @@
     color: var(--color-text-secondary, var(--color-text-primary));
     font-weight: 500;
     border: 1px solid var(--color-border);
-    background: var(--color-surface, #fff);
+    background: var(--color-surface);
     cursor: pointer;
     transition: all 0.12s ease;
     font-family: inherit;
@@ -41,7 +41,7 @@
   }
   .chip.active {
     background: var(--color-text-primary);
-    color: var(--color-surface, #fff);
+    color: var(--color-surface);
     border-color: var(--color-text-primary);
   }
   .count {

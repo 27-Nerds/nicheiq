@@ -10,7 +10,7 @@
 <div class="flex flex-wrap items-center justify-center gap-x-1.5 gap-y-1 text-xs">
   <!-- Step 1: Discover -->
   <div class="flex items-center gap-1">
-    <span class="w-2 h-2 rounded-full bg-accent shrink-0"></span>
+    <span class="w-2 h-2 rounded-full bg-accent-hover shrink-0"></span>
     <span class="text-text-secondary font-medium">Discover 5–10 scored ideas</span>
     <span class="font-mono tabular-nums text-text-muted">{stageCosts.discovery} credits · ~15 min</span>
   </div>

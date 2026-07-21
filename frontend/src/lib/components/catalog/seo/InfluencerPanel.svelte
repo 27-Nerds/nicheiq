@@ -95,7 +95,7 @@
   .card {
     border: 1px solid var(--color-border);
     border-radius: 6px;
-    background: var(--color-surface, #fff);
+    background: var(--color-surface);
     padding: 14px 16px;
     display: flex;
     flex-direction: column;

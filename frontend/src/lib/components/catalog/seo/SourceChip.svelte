@@ -38,7 +38,7 @@
     gap: 7px;
     padding: 7px 11px;
     border-radius: 6px;
-    background: var(--color-surface, #fff);
+    background: var(--color-surface);
     border: 1px solid var(--color-border);
     font-size: 11.5px;
     color: var(--color-text-secondary, var(--color-text-primary));

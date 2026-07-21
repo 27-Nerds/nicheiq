@@ -10,6 +10,7 @@
     regenerateIdeas,
     ApiError,
   } from "$lib/api";
+  import type { DiscoveryVoteRationale } from "$lib/api";
   import Badge from "$lib/components/ui/Badge.svelte";
   import PageHeader from "$lib/components/ui/PageHeader.svelte";
   import {
@@ -46,10 +47,10 @@
   import AudienceSnapshot from "$lib/components/preview/AudienceSnapshot.svelte";
   import CommunitySourcesSection from "$lib/components/preview/CommunitySourcesSection.svelte";
   import SelectionWorkbench from "$lib/components/selection/SelectionWorkbench.svelte";
+  import type { SelectionJourneyTask } from "$lib/selection/decisionJourney";
   import GateWorkbench from "$lib/components/gate/GateWorkbench.svelte";
   import ResearchProgressScreen from "$lib/components/preview/ResearchProgressScreen.svelte";
 
-  import DeepResearchCTABlock from "$lib/components/preview/DeepResearchCTABlock.svelte";
   import SEOKeywordsPreview from "$lib/components/preview/SEOKeywordsPreview.svelte";
   import MarketSnapshot from "$lib/components/preview/MarketSnapshot.svelte";
   import DiscoveryEvidence from "$lib/components/discovery/DiscoveryEvidence.svelte";
@@ -65,6 +66,7 @@
   import { stripLeadingArticle, titleCase } from "$lib/utils/format";
   import { STAGE_MAP, REPORT_ICON } from "$lib/config/billable-stages";
   import { getSolutions } from "$lib/api";
+  import AnnotationProvider from "$lib/components/annotations/AnnotationProvider.svelte";
   import ShareDiscoveryModal from "$lib/components/ShareDiscoveryModal.svelte";
   import type { DiscoveryData } from "$lib/types/discovery";
   import type { PreviewReport } from "$lib/types/previewReport";
@@ -78,15 +80,22 @@
   const serverReportSummary = $derived((data.reportSummary ?? null) as ReportSummary | null);
   const serverDiscoveryData = $derived((data.discoveryData ?? null) as DiscoveryData | null);
   const serverSolutionVotes = $derived((data.solutionVotes ?? {}) as Record<string, number>);
+  const serverSolutionVotesById = $derived((data.solutionVotesById ?? {}) as Record<string, number>);
+  const serverVoteRationales = $derived((data.voteRationales ?? []) as DiscoveryVoteRationale[]);
   const serverPreviewReport = $derived((data.previewReport ?? null) as PreviewReport | null);
 
   // ── Client overrides (SSE updates, async fetches) ──
   let clientJob = $state<Job | null>(null);
+  // Emitted up from SelectionWorkbench so the sidebar renders the same two
+  // primary decision tools + status the launchpad shows (one status source).
+  let selectionToolTasks = $state<SelectionJourneyTask[] | undefined>(undefined);
   let clientSolutions = $state<SolutionPreview[] | null>(null);
   let clientReportSummary = $state<ReportSummary | null>(null);
   let clientDiscoveryData = $state<DiscoveryData | null>(null);
   let clientSolutionVotes = $state<Record<string, number> | null>(null);
   let clientPreviewReport = $state<PreviewReport | null>(null);
+  let clientSolutionVotesById = $state<Record<string, number> | null>(null);
+  let clientVoteRationales = $state<DiscoveryVoteRationale[] | null>(null);
 
   // ── Merged: client overrides take precedence over server data ──
   const job = $derived(clientJob ?? serverJob);
@@ -126,6 +135,8 @@
   const solutionVotes = $derived(clientSolutionVotes ?? serverSolutionVotes);
   const previewReport = $derived(clientPreviewReport ?? serverPreviewReport);
 
+  const solutionVotesById = $derived(clientSolutionVotesById ?? serverSolutionVotesById);
+  const voteRationales = $derived(clientVoteRationales ?? serverVoteRationales);
   // ── Pure local state (UI-only) ──
   let loading = $state(false);
   let error = $state("");
@@ -207,12 +218,7 @@
         if (sseData && sseData.id) {
           clientJob = sseData as Job;
           if (sseData.solutionIdeas) {
-            const incoming = sseData.solutionIdeas as SolutionPreview[];
-            const incomingNames = incoming.map((s) => s.solution_name).sort().join('|');
-            const currentNames = (localSolutions ?? []).map((s) => s.solution_name).sort().join('|');
-            if (incomingNames !== currentNames) {
-              clientSolutions = incoming;
-            }
+            clientSolutions = sseData.solutionIdeas as SolutionPreview[];
           }
         }
       },
@@ -224,7 +230,9 @@
   async function pollVotes(id: string) {
     try {
       const info = await getDiscoveryShareStatus(id);
-      clientSolutionVotes = info.isShared && info.solutionVotes ? info.solutionVotes : {};
+      clientSolutionVotes = info.isShared ? info.solutionVotes ?? {} : {};
+      clientSolutionVotesById = info.isShared ? info.solutionVotesById ?? {} : {};
+      clientVoteRationales = info.isShared ? info.voteRationales ?? [] : [];
     } catch {}
   }
 
@@ -255,6 +263,9 @@
     try {
       const d = await getSolutions(jobId);
       clientSolutions = d.solutionIdeas ?? [];
+      if (job) {
+        clientJob = { ...job, selectionDraft: d.selectionDraft };
+      }
     } catch {
       solutionsFetchFailed = true;
       // Fall back to whatever the job object already carries (e.g. from SSE)
@@ -389,6 +400,8 @@
     clientSolutionVotes = null;
     clientPreviewReport = null;
 
+    clientSolutionVotesById = null;
+    clientVoteRationales = null;
     // Reset UI state
     loading = false;
     error = "";
@@ -770,6 +783,8 @@
       jobStatus={job.status}
       entryMode={job.entryMode}
       mode={isSelectionPhase ? 'selection' : isGatePhase ? 'gate' : 'default'}
+      jobId={jobId ?? undefined}
+      toolTasks={selectionToolTasks}
       selectionCount={displaySolutions.length}
       selectedCount={job.selectedSolutions?.length ?? 0}
       chatMode={job.chatMode ?? false}
@@ -777,6 +792,7 @@
     />
   {/if}
   <main class="job-page-content" class:job-page-content--selection={isWorkbenchPhase}>
+    <AnnotationProvider mode="owner" enabled={['AWAITING_SELECTION', 'REGENERATING'].includes(job?.status ?? '')} jobId={jobId ?? undefined}>
     {#if loading}
       <div class="text-center py-12">
         <Loader2 class="w-10 h-10 text-accent mx-auto animate-spin" />
@@ -816,7 +832,7 @@
       {:else}
       <!-- ═══ EDITORIAL HERO (1fr | 320px grid) ═══ -->
       <div class="job-hero-grid" class:job-hero-grid--selection={isWorkbenchPhase}>
-        <div class="job-hero-main">
+        <div class="job-hero-main" data-annotation-anchor="research-header">
           <PageHeader
             class={isWorkbenchPhase ? 'job-selection-header' : ''}
             icon={isWorkbenchPhase ? undefined : Telescope}
@@ -844,7 +860,7 @@
                 {#if isSelectionPhase && displaySolutions.length > 0}
                   <button
                     onclick={() => (discoveryShareOpen = true)}
-                    class="share-discovery-btn"
+                    class="btn-ghost share-discovery-btn"
                     aria-label="Share discovery"
                   >
                     <Share2 class="w-3.5 h-3.5" />
@@ -965,11 +981,11 @@
 
       <!-- ═══ DASHBOARD SECTIONS ═══ -->
       {#if !isGeneratingP1}
-
         {#if isSelectionPhase && (displaySolutions.length > 0 || examinedRuledOut.length > 0 || seedPending)}
           <SelectionWorkbench
             jobId={jobId ?? ''}
             solutions={displaySolutions}
+            selectionDraft={job.selectionDraft ?? null}
             coverageNotes={previewReport?.data_quality_summary?.quality_caveats ?? []}
             {examinedRuledOut}
             {overlapGroups}
@@ -984,10 +1000,15 @@
             canRegenerate={job.canRegenerate ?? false}
             isRegenerating={job.status === 'REGENERATING' || isRegenQueued}
             selectedSolutions={job.selectedSolutions ?? undefined}
+            selectedSolutionIds={job.selectedSolutionIds ?? undefined}
+            decisionProfile={job.selectionDecisionProfile ?? null}
             {solutionVotes}
             onComplete={handleSelectionComplete}
             onRegenerateStart={() => { clientJob = { ...job!, status: 'QUEUED' }; }}
+            onJourneyTasks={(tasks) => selectionToolTasks = tasks}
             onSeedSettled={handleSeedSettled}
+            {solutionVotesById}
+            {voteRationales}
           />
         {:else if isSelectionPhase}
           <!-- ═══ ZERO-CANDIDATE STATES ═══ Selection reached but nothing to show:
@@ -998,8 +1019,8 @@
               <Loader2 class="w-8 h-8 text-accent mx-auto animate-spin" />
               <p class="mt-4 text-text-secondary">Loading candidates&hellip;</p>
             {:else if solutionsFetchFailed}
-              <div class="p-3 rounded-xl bg-error/10 border border-error/20 w-fit mx-auto">
-                <AlertTriangle class="w-8 h-8 text-error" />
+              <div class="err-icon-box p-3 rounded-xl w-fit mx-auto">
+                <AlertTriangle class="w-8 h-8" />
               </div>
               <h2 class="mt-4 text-xl font-semibold text-text-primary">Couldn't load candidates</h2>
               <p class="mt-2 text-text-secondary">Something went wrong fetching the shortlist for this run.</p>
@@ -1063,7 +1084,7 @@
         {/if}
 
         {#if previewReport || discoveryData}
-          <div class="discovery-sections" class:discovery-dossier={isSelectionPhase}>
+          <div class="discovery-sections" class:discovery-dossier={isSelectionPhase} data-annotation-anchor="research-dossier">
             {#if isSelectionPhase}
               <div class="dossier-header">
                 <div>
@@ -1189,7 +1210,7 @@
                   resetKey={sectionResetKey}
                   id="audience"
                 >
-                  <AudienceSnapshot data={previewReport.audience_mapping} />
+                    <AudienceSnapshot data={previewReport.audience_mapping} />
                 </ExpandableSection>
               {:else}
                 <AudienceSection data={previewReport.audience_mapping} />
@@ -1267,14 +1288,6 @@
               <span class="preview-capped-badge">Unlocks with Deep Research</span>
             </div>
           </div>
-
-          <!-- Deep Research CTA with pricing -->
-          {#if isSelectionPhase}
-            <DeepResearchCTABlock
-              creditCost={page.data.stageCosts?.deep_research ?? 15}
-              onUnlock={scrollToSolutions}
-            />
-          {/if}
         {:else if reportSummary}
           <!-- ═══ COMPLETED: Report summary cards ═══ -->
           {@const verdictNorm = mapVerdict(reportSummary.verdict)}
@@ -1373,6 +1386,7 @@
       </div>
       {/if}
     {/if}
+    </AnnotationProvider>
   </main>
 </div>
 
@@ -1381,6 +1395,14 @@
 {/if}
 
 <style>
+  /* Error-state icon box (zero-candidate fetch failure) — status tokens
+     instead of Tailwind opacity slicing on the raw `error` color. */
+  .err-icon-box {
+    background: color-mix(in srgb, var(--color-error-text) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-error-text) 25%, transparent);
+    color: var(--color-error-text);
+  }
+
   /* Run provenance strip — reads as intentional metadata, not debug output. */
   .run-meta {
     display: flex;
@@ -1395,7 +1417,7 @@
     gap: 0.5rem;
     font-size: 0.75rem;
     line-height: 1.4;
-    color: var(--color-text-muted);
+    color: var(--color-text-secondary);
   }
   .run-meta__dot {
     flex-shrink: 0;
@@ -1449,31 +1471,8 @@
     color: var(--color-success);
   }
 
-  /* Share discovery button (header actions) */
-  .share-discovery-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-    padding: 0.375rem 0.75rem;
-    font-family: var(--font-body);
-    font-size: 0.8125rem;
-    font-weight: 500;
-    color: var(--color-text-secondary);
-    background: transparent;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md, 0.5rem);
-    cursor: pointer;
-    transition:
-      transform 220ms cubic-bezier(0.32, 0.72, 0, 1),
-      color 220ms cubic-bezier(0.32, 0.72, 0, 1),
-      border-color 220ms cubic-bezier(0.32, 0.72, 0, 1),
-      background-color 220ms cubic-bezier(0.32, 0.72, 0, 1);
-  }
-  .share-discovery-btn:hover {
-    color: var(--color-text-primary);
-    border-color: var(--color-border-emphasis);
-    background: var(--color-bg-surface);
-  }
+  /* Share discovery button (header actions) — uses the global .btn-ghost
+     recipe (components.css); this only adds the states it doesn't define. */
   .share-discovery-btn:active {
     transform: scale(0.98);
   }

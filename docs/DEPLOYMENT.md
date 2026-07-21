@@ -21,6 +21,7 @@ This guide covers deploying NicheIQ to a production server using Docker Compose.
   - [SendGrid Configuration](#sendgrid-configuration)
   - [Google OAuth Configuration](#google-oauth-configuration)
   - [GitHub OAuth Configuration](#github-oauth-configuration)
+  - [GitHub App Decision Handoff](#github-app-decision-handoff)
   - [OpenAI Configuration](#openai-configuration)
   - [Serper.dev Configuration](#serperdev-configuration)
   - [Reddit API Configuration](#reddit-api-configuration)
@@ -1151,6 +1152,57 @@ docker exec -it nicheiq-api printenv | grep GITHUB
 
 - **OAuth Apps**: https://github.com/settings/developers
 - **Documentation**: https://docs.github.com/en/apps/oauth-apps
+
+---
+
+### GitHub App Decision Handoff
+
+The decision-handoff GitHub App creates one issue from a frozen owner decision.
+It is independent from the GitHub OAuth App used for sign-in.
+
+#### Register the App
+
+1. Create a GitHub App for the production account or organization.
+2. Set the setup URL to
+   `https://yourdomain.com/api/integrations/github/setup`.
+3. Set the OAuth callback URL to
+   `https://yourdomain.com/api/integrations/github/callback`.
+4. Grant repository `Metadata: read` and `Issues: write`.
+5. Leave automatic “Request user authorization during installation” disabled;
+   NicheIQ performs a separate PKCE authorization to bind the exact installation.
+6. Generate a private key and encode it as one line:
+
+```bash
+base64 < private-key.pem | tr -d '\n'
+```
+
+Set the seven `GITHUB_APP_*` variables documented in
+`docs/ENV_REFERENCE.md`, then rebuild and restart the API and frontend. The
+private key and client secret belong only in the API environment.
+
+#### Release and verify
+
+```bash
+# Apply the durable connection and dispatch receipt migration
+docker compose -f docker/docker-compose.yml run --rm api npx prisma migrate deploy
+
+# Confirm the API container received the App configuration
+docker exec nicheiq-api printenv | grep '^GITHUB_APP_'
+```
+
+The required migration is
+`20260716063000_add_github_handoff_dispatch`.
+
+Smoke test with an owner account:
+
+1. Connect GitHub and select an installation.
+2. Verify only repositories authorized during connection appear.
+3. Preview an issue and confirm that no GitHub issue exists yet.
+4. Confirm once and open the stored GitHub receipt URL.
+5. Repeat the confirmation request and verify it returns the same receipt
+   without creating a second issue.
+6. Simulate or inspect an `UNKNOWN` receipt and use reconciliation; never
+   manually repeat the create request while its outcome is uncertain.
 
 ---
 

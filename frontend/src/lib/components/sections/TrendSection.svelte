@@ -284,7 +284,7 @@
   .seasonality-header :global(.seasonality-icon) {
     width: 1rem;
     height: 1rem;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .seasonality-title {

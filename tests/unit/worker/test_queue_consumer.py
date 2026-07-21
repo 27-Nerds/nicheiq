@@ -548,8 +548,8 @@ class TestSeedIdeaFailureHandling:
     """Seed-idea failures (eager-meandering-feather.md Phase 5) must NEVER fall through to
     notify_job_failed — that path would refund the wrong charge ('discovery'/segment) and fail
     the whole parent job over a small paid follow-up request. Two distinct outcomes: a genuine
-    pipeline failure (notify_seed_failed, refund-eligible) vs a delivery-only failure (the merge
-    already landed and was saved — nothing to revert, never refunded)."""
+    pipeline failure (notify_seed_failed, refund-eligible) vs a delivery-only failure whose
+    checkpoint has already been reverted and must now be settled/refunded immediately."""
 
     @patch('worker.heartbeat.notify_job_failed')
     @patch('worker.heartbeat.notify_job_completed')
@@ -622,17 +622,16 @@ class TestSeedIdeaFailureHandling:
     @patch('worker.heartbeat.notify_job_completed')
     @patch('worker.heartbeat.set_current_job')
     @patch('worker.heartbeat.notify_job_started', return_value=True)
-    def test_delivery_only_failure_never_calls_seed_failed_or_job_failed(
+    def test_delivery_only_failure_settles_seed_failed_but_never_fails_parent_job(
         self, mock_started, mock_set_job, mock_completed, mock_job_failed
     ):
-        """The seed was born, merged, and SAVED — only notify_seed_complete's delivery failed
-        (run_seed_idea tags the exception `seed_delivery_only`). This must NEVER be treated as a
-        pipeline failure: no refund (notify_seed_failed), no whole-job failure."""
+        """The result was evaluated but could not be delivered. run_seed_idea reverted it, so
+        settle/refund the seed dispatch now; never fail the whole parent job."""
         with patch('worker.tasks.run_seed_idea') as mock_task:
             err = RuntimeError("backend unreachable after retries")
             err.seed_delivery_only = True
             mock_task.side_effect = err
-            with patch('worker.progress.notify_seed_failed') as mock_seed_failed:
+            with patch('worker.progress.notify_seed_failed', return_value=True) as mock_seed_failed:
                 from worker.queue_consumer import process_job
                 process_job({
                     "job_id": "job-1",
@@ -641,7 +640,10 @@ class TestSeedIdeaFailureHandling:
                     "niche": "test",
                     "seed_text": "an idea",
                 })
-                mock_seed_failed.assert_not_called()
+                mock_seed_failed.assert_called_once_with(
+                    "job-1",
+                    "Evaluation completed but its result could not be delivered: backend unreachable after retries",
+                )
                 mock_job_failed.assert_not_called()
 
 

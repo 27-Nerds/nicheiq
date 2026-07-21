@@ -7,6 +7,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import express, { Express } from 'express';
 import request from 'supertest';
+import { candidateSnapshotSha256 } from '../../utils/ideaIdentity.js';
 
 const mockJobFindFirst = vi.fn();
 // tx-scoped job.updateMany — used by the seedIdeaCount+status flip AND (on the compensation
@@ -17,14 +18,25 @@ const mockDispatchCreate = vi.fn();
 const mockDispatchUpdateMany = vi.fn();
 const mockChatMessageCreate = vi.fn();
 const mockChatMessageDelete = vi.fn();
+const mockChatMessageFindFirst = vi.fn();
+const mockChatMessageFindMany = vi.fn();
 const mockTransaction = vi.fn();
+const mockParseCurrentFounderFit = vi.fn();
 
 vi.mock('../../services/db.js', () => ({
   prisma: {
     job: { findFirst: (...a: any[]) => mockJobFindFirst(...a) },
-    chatMessage: { delete: (...a: any[]) => mockChatMessageDelete(...a) },
+    chatMessage: {
+      delete: (...a: any[]) => mockChatMessageDelete(...a),
+      findFirst: (...a: any[]) => mockChatMessageFindFirst(...a),
+      findMany: (...a: any[]) => mockChatMessageFindMany(...a),
+    },
     $transaction: (...a: any[]) => mockTransaction(...a),
   },
+}));
+
+vi.mock('../../services/founderFitService.js', () => ({
+  parseCurrentFounderFitArtifact: (...a: any[]) => mockParseCurrentFounderFit(...a),
 }));
 
 const mockEnqueueSeedIdeaJob = vi.fn();
@@ -131,6 +143,7 @@ const makeJob = (overrides: Record<string, any> = {}) => ({
   seedIdeaCount: 0,
   phase1CheckpointPath: '/cp/path',
   niche: 'test niche',
+  solutionIdeas: [],
   ...overrides,
 });
 
@@ -146,6 +159,8 @@ beforeEach(async () => {
   mockDispatchUpdateMany.mockResolvedValue({ count: 1 });
   mockChatMessageCreate.mockResolvedValue({ id: 'receipt-1' });
   mockChatMessageDelete.mockResolvedValue({});
+  mockChatMessageFindMany.mockResolvedValue([]);
+  mockParseCurrentFounderFit.mockReturnValue(null);
 
   const tx = {
     job: { updateMany: (...a: any[]) => mockJobUpdateMany(...a), update: (...a: any[]) => mockJobUpdate(...a) },
@@ -243,6 +258,216 @@ describe('POST /api/jobs/:jobId/seed-idea', () => {
       .send(validBody);
 
     expect(response.status).toBe(500);
+  });
+
+  it('reloads a stored synthesis proposal and enqueues a server-derived seed brief', async () => {
+    const parent = {
+      idea_id: 'idea-parent',
+      idea_revision: 2,
+      solution_name: 'Broad monitor',
+    };
+    mockJobFindFirst.mockResolvedValue(makeJob({ solutionIdeas: [parent] }));
+    mockChatMessageFindFirst.mockResolvedValue({
+      patchJson: {
+        kind: 'idea_synthesis',
+        operation: 'narrow',
+        proposedTitle: 'Focused monitor',
+        proposedBrief: 'Monitor one workflow for agencies.',
+        changeSummary: 'Narrows the buyer and use case.',
+        rationale: 'The source is broad.',
+        parents: [{
+          ideaId: 'idea-parent',
+          ideaRevision: 2,
+          solutionName: 'Broad monitor',
+          contribution: 'Keep the alerting mechanism.',
+        }],
+        evidence: {
+          sourceAnchors: [{
+            ideaId: 'idea-parent',
+            ideaRevision: 2,
+            candidateSnapshotSha256: candidateSnapshotSha256(parent),
+            pain: 'Missed workflow changes',
+          }],
+          requiresValidation: ['Validate agency demand.'],
+        },
+        newAssumptions: [],
+      },
+    });
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/seed-idea`)
+      .set(authHeaders)
+      .send({
+        kind: 'idea_synthesis',
+        sourceMessageId: 'msg-synthesis',
+        expectedCost: 2,
+      });
+
+    expect(response.status).toBe(200);
+    expect(mockEnqueueSeedIdeaJob).toHaveBeenCalledWith(
+      jobId,
+      '/cp/path',
+      'test niche',
+      expect.stringContaining('Focused monitor'),
+      'Missed workflow changes',
+      undefined,
+      'dispatch-seed-1',
+    );
+  });
+
+  it('rejects a combined synthesis before charging when either source revision is stale', async () => {
+    const alerts = {
+      idea_id: 'idea-alerts',
+      idea_revision: 2,
+      solution_name: 'Change monitor',
+    };
+    const briefing = {
+      idea_id: 'idea-briefing',
+      idea_revision: 5,
+      solution_name: 'Briefing desk',
+    };
+    mockJobFindFirst.mockResolvedValue(makeJob({ solutionIdeas: [alerts, briefing] }));
+    mockChatMessageFindFirst.mockResolvedValue({
+      patchJson: {
+        kind: 'idea_synthesis',
+        operation: 'combine',
+        proposedTitle: 'Agency signal desk',
+        proposedBrief: 'Combines alerts with client briefings.',
+        changeSummary: 'Joins two adjacent workflows.',
+        rationale: 'The same buyer may own both jobs.',
+        parents: [
+          {
+            ideaId: 'idea-alerts',
+            ideaRevision: 2,
+            solutionName: 'Change monitor',
+            contribution: 'Keep alerts.',
+          },
+          {
+            ideaId: 'idea-briefing',
+            ideaRevision: 4,
+            solutionName: 'Briefing desk',
+            contribution: 'Keep summaries.',
+          },
+        ],
+        evidence: {
+          sourceAnchors: [
+            {
+              ideaId: 'idea-alerts',
+              ideaRevision: 2,
+              candidateSnapshotSha256: candidateSnapshotSha256(alerts),
+            },
+            {
+              ideaId: 'idea-briefing',
+              ideaRevision: 4,
+              candidateSnapshotSha256: candidateSnapshotSha256(briefing),
+            },
+          ],
+          requiresValidation: ['Validate that one buyer owns both workflows.'],
+        },
+        newAssumptions: ['One buyer needs both capabilities.'],
+      },
+    });
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/seed-idea`)
+      .set(authHeaders)
+      .send({
+        kind: 'idea_synthesis',
+        sourceMessageId: 'msg-synthesis',
+        expectedCost: 2,
+      });
+
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe('STALE_SYNTHESIS_SOURCE');
+    expect(mockChargeForSeedIdeaInTx).not.toHaveBeenCalled();
+  });
+
+  it('rejects a founder-fit reshape before charging when its profile fingerprint is stale', async () => {
+    const parent = {
+      idea_id: 'idea-parent',
+      idea_revision: 2,
+      solution_name: 'Signal Desk',
+    };
+    mockJobFindFirst.mockResolvedValue(makeJob({
+      solutionIdeas: [parent],
+      selectionDecisionProfile: { weeklyTime: 'under_10' },
+      selectionFounderFit: { inputFingerprint: 'f'.repeat(64) },
+    }));
+    mockChatMessageFindFirst.mockResolvedValue({
+      patchJson: {
+        kind: 'idea_synthesis',
+        operation: 'narrow',
+        proposedTitle: 'Weekly Signal Brief',
+        proposedBrief: 'One weekly review for a single workflow.',
+        changeSummary: 'Removes continuous monitoring.',
+        rationale: 'Designed around the time conflict.',
+        parents: [{
+          ideaId: 'idea-parent',
+          ideaRevision: 2,
+          solutionName: 'Signal Desk',
+          contribution: 'Keep signal interpretation.',
+        }],
+        evidence: {
+          sourceAnchors: [{
+            ideaId: 'idea-parent',
+            ideaRevision: 2,
+            candidateSnapshotSha256: candidateSnapshotSha256(parent),
+          }],
+          requiresValidation: ['Recheck demand for weekly review.'],
+          founderFitRef: {
+            inputFingerprint: 'f'.repeat(64),
+            ideaId: 'idea-parent',
+            ideaRevision: 2,
+            verdict: 'needs_reshape',
+            conflicts: [{
+              dimension: 'time',
+              summary: 'The build exceeds available time.',
+              profileFields: ['weeklyTime'],
+              ideaFields: ['estimated_development_time'],
+            }],
+          },
+        },
+        newAssumptions: ['A weekly cadence is useful.'],
+      },
+    });
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/seed-idea`)
+      .set(authHeaders)
+      .send({
+        kind: 'idea_synthesis',
+        sourceMessageId: 'msg-fit-reshape',
+        expectedCost: 2,
+      });
+
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe('STALE_FOUNDER_FIT_RESHAPE');
+    expect(mockChargeForSeedIdeaInTx).not.toHaveBeenCalled();
+  });
+
+  it('returns the prior settlement for one proposal without a second charge', async () => {
+    mockJobFindFirst.mockResolvedValue(makeJob());
+    mockChatMessageFindMany.mockResolvedValue([{
+      patchJson: {
+        kind: 'ledger_event',
+        event: 'seed_settled',
+        sourceMessageId: 'msg-already-evaluated',
+        outcome: 'accepted',
+      },
+    }]);
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/seed-idea`)
+      .set(authHeaders)
+      .send({
+        ...validBody,
+        sourceMessageId: 'msg-already-evaluated',
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ status: 'settled', outcome: 'accepted' });
+    expect(mockChargeForSeedIdeaInTx).not.toHaveBeenCalled();
+    expect(mockEnqueueSeedIdeaJob).not.toHaveBeenCalled();
   });
 
   it('returns 402 with balance/required on insufficient credits, no dispatch opened', async () => {
@@ -343,6 +568,20 @@ describe('POST /api/jobs/:jobId/seed-idea', () => {
       .send(validBody);
 
     expect(response.status).toBe(409);
+  });
+
+  it('returns 409 when concurrent admission hits the unique charge constraint', async () => {
+    mockJobFindFirst.mockResolvedValue(makeJob());
+    mockTransaction.mockRejectedValue({ code: 'P2002' });
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/seed-idea`)
+      .set(authHeaders)
+      .send(validBody);
+
+    expect(response.status).toBe(409);
+    expect(response.body.error).toBe('Seed idea already in progress (duplicate charge)');
+    expect(mockEnqueueSeedIdeaJob).not.toHaveBeenCalled();
   });
 
   it('on enqueue failure: reverts to AWAITING_SELECTION, settles the dispatch FAILED, refunds seed_idea_1, and retracts the seed_submitted receipt', async () => {

@@ -72,7 +72,7 @@
     padding: 20px 22px;
     border: 1px solid var(--color-border);
     border-radius: 8px;
-    background: var(--color-surface-elevated, #fafafa);
+    background: var(--color-surface-elevated);
   }
   .top-pain {
     display: flex;

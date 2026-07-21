@@ -159,7 +159,8 @@ describe('POST /api/workers/ideas-ready', () => {
       .send(validPayload);
 
     const callArgs = mockJobUpdateMany.mock.calls[0][0];
-    expect(callArgs.data.solutionIdeas).toEqual([{ solution_name: 'Sol1' }]);
+    expect(callArgs.data.solutionIdeas).toMatchObject([{ solution_name: 'Sol1', idea_revision: 1 }]);
+    expect(callArgs.data.solutionIdeas[0].idea_id).toMatch(/^idea_[a-f0-9]{32}$/);
     expect(callArgs.data.phase1CheckpointPath).toBe('/tmp/cp');
   });
 
@@ -320,7 +321,9 @@ describe('POST /api/workers/ideas-ready', () => {
       .send({ ...validPayload, solutions });
 
     const callArgs = mockJobUpdateMany.mock.calls[0][0];
-    expect(callArgs.data.solutionIdeas).toEqual(solutions);
+    expect(callArgs.data.solutionIdeas).toMatchObject(solutions);
+    expect(callArgs.data.solutionIdeas.every((idea: any) => idea.idea_revision === 1)).toBe(true);
+    expect(new Set(callArgs.data.solutionIdeas.map((idea: any) => idea.idea_id)).size).toBe(2);
   });
 
   it('returns 400 for an empty solutions array', async () => {
@@ -349,7 +352,9 @@ describe('POST /api/workers/regeneration-complete', () => {
   };
 
   it('merges new solutions with existing', async () => {
-    mockJobFindFirst.mockResolvedValue({ solutionIdeas: [{ name: 'Old1' }] });
+    mockJobFindFirst.mockResolvedValue({
+      solutionIdeas: [{ name: 'Old1', idea_id: 'idea_existing', idea_revision: 3 }],
+    });
     mockJobUpdateMany.mockResolvedValue({ count: 1 });
 
     const response = await request(app)
@@ -358,7 +363,11 @@ describe('POST /api/workers/regeneration-complete', () => {
 
     expect(response.status).toBe(200);
     const callArgs = mockJobUpdateMany.mock.calls[0][0];
-    expect(callArgs.data.solutionIdeas).toEqual([{ name: 'Old1' }, { name: 'New1' }]);
+    expect(callArgs.data.solutionIdeas).toMatchObject([
+      { name: 'Old1', idea_id: 'idea_existing', idea_revision: 3 },
+      { name: 'New1', idea_revision: 1 },
+    ]);
+    expect(callArgs.data.solutionIdeas[1].idea_id).toMatch(/^idea_[a-f0-9]{32}$/);
   });
 
   it('handles null existing solutionIdeas', async () => {
@@ -371,7 +380,8 @@ describe('POST /api/workers/regeneration-complete', () => {
 
     expect(response.status).toBe(200);
     const callArgs = mockJobUpdateMany.mock.calls[0][0];
-    expect(callArgs.data.solutionIdeas).toEqual([{ name: 'New1' }]);
+    expect(callArgs.data.solutionIdeas).toMatchObject([{ name: 'New1', idea_revision: 1 }]);
+    expect(callArgs.data.solutionIdeas[0].idea_id).toMatch(/^idea_[a-f0-9]{32}$/);
   });
 
   it('transitions REGENERATING/QUEUED → AWAITING_SELECTION', async () => {
@@ -449,10 +459,11 @@ describe('POST /api/workers/regeneration-complete', () => {
       .send({ ...validPayload, solutions: newSolutions });
 
     const callArgs = mockJobUpdateMany.mock.calls[0][0];
-    expect(callArgs.data.solutionIdeas).toEqual([
+    expect(callArgs.data.solutionIdeas).toMatchObject([
       { name: 'Old1', candidate_status: 'active' },
       { name: 'New1', candidate_status: 'active', merged_from: ['Old2'] },
     ]);
+    expect(callArgs.data.solutionIdeas.every((idea: any) => idea.idea_id)).toBe(true);
   });
 
   // Zero-visible regenerate case: every regenerated idea got demoted/absorbed
@@ -468,7 +479,8 @@ describe('POST /api/workers/regeneration-complete', () => {
 
     expect(response.status).toBe(200);
     const callArgs = mockJobUpdateMany.mock.calls[0][0];
-    expect(callArgs.data.solutionIdeas).toEqual([{ name: 'Old1' }]);
+    expect(callArgs.data.solutionIdeas).toMatchObject([{ name: 'Old1', idea_revision: 1 }]);
+    expect(callArgs.data.solutionIdeas[0].idea_id).toMatch(/^idea_[a-f0-9]{32}$/);
   });
 
   // Cost tracking (regeneration gap fix): unlike report-ready (which OVERWRITES costUsd with

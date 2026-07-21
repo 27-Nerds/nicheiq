@@ -55,18 +55,18 @@
     border-left-color: var(--color-error);
   }
   .ppmr[data-tier="med"] {
-    border-left-color: var(--color-accent);
+    border-left-color: var(--color-warning);
   }
   .ppmr[data-tier="low"] {
     border-left-color: var(--color-info);
   }
   .ppmr:hover {
-    background: var(--color-bg-base, #fafafa);
+    background: var(--color-bg-base);
   }
   .ppmr:focus-visible {
     outline: 2px solid var(--color-accent);
     outline-offset: -2px;
-    background: var(--color-bg-base, #fafafa);
+    background: var(--color-bg-base);
   }
   .ppmr-title {
     font-size: 12.5px;

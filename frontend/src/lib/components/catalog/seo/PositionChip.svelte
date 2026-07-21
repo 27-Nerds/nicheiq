@@ -25,7 +25,7 @@
     border: 1px solid var(--color-border);
     border-radius: 4px;
     white-space: nowrap;
-    background: var(--color-surface, #fff);
+    background: var(--color-surface);
     display: inline-block;
   }
   .tone-leader {

@@ -37,6 +37,12 @@ import {
   settleDispatch,
 } from '../services/dispatchService.js';
 import { buildSeedEnvelope, buildSeedReceiptContent } from '../utils/ledgerEvents.js';
+import {
+  ensureIdeaIdentities,
+  stampNewIdeaIdentities,
+  stampSynthesizedIdeaIdentity,
+} from '../utils/ideaIdentity.js';
+import { IdeaSynthesisPatchSchema } from '../types/ideaSynthesis.js';
 import { AssetType, Prisma, DispatchState, DispatchKind } from '@prisma/client';
 import type { JobStatus as JobStatusType } from '@prisma/client';
 import { bigramSimilarity, canonicalizeAddressedTitles, normalizeTitle } from '../services/titleMatching.js';
@@ -424,6 +430,61 @@ workersRouter.post('/report-ready', async (req: Request, res: Response) => {
   try {
     const data = ReportReadySchema.parse(req.body);
 
+    const { prisma } = await import('../services/db.js');
+    const job = await prisma.job.findUnique({
+      where: { id: data.job_id },
+      select: {
+        userId: true,
+        niche: true,
+        selectedSolutions: true,
+        selectedSolutionIds: true,
+        solutionIdeas: true,
+      },
+    });
+
+    if (!job) {
+      res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+
+    // Resolve the worker's name back to exactly one persisted candidate before registering
+    // the report. A successful response without this identity would leave the immutable
+    // decision artifact unable to reference the Deep Research recommendation.
+    const normalizeName = (s: string) => s.trim().replace(/\s+/g, ' ').toLowerCase();
+    let winnerUpdate: Prisma.JobUpdateInput = {};
+    if (data.winner_name) {
+      const winnerNorm = normalizeName(data.winner_name);
+      const matchingIndexes = job.selectedSolutions.flatMap((solutionName, index) =>
+        normalizeName(solutionName) === winnerNorm ? [index] : [],
+      );
+      if (matchingIndexes.length !== 1) {
+        res.status(409).json({
+          error: 'Deep Research winner does not resolve to exactly one selected candidate',
+          code: 'WINNER_IDENTITY_UNRESOLVED',
+        });
+        return;
+      }
+
+      const matchedIndex = matchingIndexes[0];
+      const matchedId = job.selectedSolutionIds[matchedIndex];
+      const matchedIdea = matchedId
+        ? ensureIdeaIdentities(data.job_id, job.solutionIdeas).find(idea => idea.idea_id === matchedId)
+        : null;
+      if (!matchedId || !matchedIdea?.idea_revision) {
+        res.status(409).json({
+          error: 'Deep Research winner is missing its persisted candidate identity',
+          code: 'WINNER_IDENTITY_UNRESOLVED',
+        });
+        return;
+      }
+
+      winnerUpdate = {
+        selectedSolution: job.selectedSolutions[matchedIndex],
+        deepResearchRecommendedIdeaId: matchedId,
+        deepResearchRecommendedIdeaRevision: matchedIdea.idea_revision,
+      };
+    }
+
     // Phase 5.4 — pre-check asset existence so the user-facing notification
     // fires exactly once even if the worker re-delivers (publish_report_ready
     // now re-raises on POST failure). Asset upsert is naturally idempotent;
@@ -441,15 +502,8 @@ workersRouter.post('/report-ready', async (req: Request, res: Response) => {
     const { extractOrCreateResearchContext } = await import('../services/researchContextService.js');
     await extractOrCreateResearchContext(data.job_id, { forceRefreshAll: true });
 
-    // Send "report ready" notification
-    const { prisma } = await import('../services/db.js');
-    const job = await prisma.job.findUnique({
-      where: { id: data.job_id },
-      select: { userId: true, niche: true, selectedSolutions: true },
-    });
-
     // Single Job update: LLM cost breakdown (for the admin pricing view) + Phase-2 winner.
-    const jobUpdate: Prisma.JobUpdateInput = {};
+    const jobUpdate: Prisma.JobUpdateInput = winnerUpdate;
 
     // Cost: persist only when the summary reports real spend. Writing NULL for empty /
     // $0 / partial-retry summaries keeps them out of the admin average and count.
@@ -458,19 +512,6 @@ workersRouter.post('/report-ready', async (req: Request, res: Response) => {
     if (cost && totalCost && totalCost > 0) {
       jobUpdate.costUsd = totalCost;
       jobUpdate.costSummary = cost as Prisma.InputJsonValue;
-    }
-
-    // Persist Phase 2 winner if provided. Normalized comparison (trim + collapse
-    // whitespace + casefold): the Python side may sanitize/echo the name with
-    // trivial drift, which must not silently drop winner persistence.
-    const normalizeName = (s: string) => s.trim().replace(/\s+/g, ' ').toLowerCase();
-    if (data.winner_name && job?.selectedSolutions?.length) {
-      const winnerNorm = normalizeName(data.winner_name);
-      const matched = job.selectedSolutions.find((s) => normalizeName(s) === winnerNorm);
-      if (matched) {
-        // Persist the user-selected spelling, not the worker echo.
-        jobUpdate.selectedSolution = matched;
-      }
     }
 
     if (Object.keys(jobUpdate).length > 0) {
@@ -920,6 +961,12 @@ workersRouter.post('/progress', async (req: Request, res: Response) => {
 workersRouter.post('/ideas-ready', async (req: Request, res: Response) => {
   try {
     const data = IdeasReadySchema.parse(req.body);
+    const stampedSolutions = stampNewIdeaIdentities(
+      data.job_id,
+      data.solutions,
+      'phase1',
+      data.dispatch_id ?? 'initial',
+    );
     const { prisma } = await import('../services/db.js');
     const { JobStatus } = await import('@prisma/client');
 
@@ -947,7 +994,7 @@ workersRouter.post('/ideas-ready', async (req: Request, res: Response) => {
       },
       data: {
         status: JobStatus.AWAITING_SELECTION,
-        solutionIdeas: data.solutions as any,
+        solutionIdeas: stampedSolutions as any,
         phase1CheckpointPath: data.checkpoint_path,
         ideasShownAt: new Date(),
         awaitingSelectionAt: new Date(),
@@ -1079,8 +1126,14 @@ workersRouter.post('/regeneration-complete', async (req: Request, res: Response)
       return;
     }
 
-    const existingSolutions = (job.solutionIdeas as any[]) || [];
-    const mergedSolutions = [...existingSolutions, ...data.solutions];
+    const existingSolutions = ensureIdeaIdentities(data.job_id, job.solutionIdeas);
+    const stampedSolutions = stampNewIdeaIdentities(
+      data.job_id,
+      data.solutions,
+      'regeneration',
+      data.dispatch_id ?? `regeneration-${job.regenerationCount}`,
+    );
+    const mergedSolutions = [...existingSolutions, ...stampedSolutions];
 
     // Regeneration LLM cost (for the admin pricing view). Unlike report-ready (which OVERWRITES
     // costUsd with the run's cumulative total), regeneration ADDS spend to an already-settled
@@ -1122,7 +1175,7 @@ workersRouter.post('/regeneration-complete', async (req: Request, res: Response)
       jobId: data.job_id,
       dispatchId: data.dispatch_id ?? `legacy-${data.job_id}-${job.regenerationCount}`,
       niche: job.niche,
-      ideas: data.solutions,
+      ideas: stampedSolutions,
     });
 
     // Broadcast progress update
@@ -1248,16 +1301,49 @@ workersRouter.post('/seed-complete', async (req: Request, res: Response) => {
           status: { in: [JobStatus.QUEUED, JobStatus.RUNNING] },
           ...dispatchGuard(data.dispatch_id),
         },
-        select: { solutionIdeas: true, costUsd: true, niche: true },
+        select: { solutionIdeas: true, costUsd: true, niche: true, seedIdeaCount: true },
       });
       if (!current) return { count: 0 };
+      const dispatch = data.dispatch_id
+        ? await tx.jobDispatch.findUnique({
+            where: { id: data.dispatch_id },
+            select: { sourceMessageId: true },
+          })
+        : null;
+      const sourceMessage = dispatch?.sourceMessageId
+        ? await tx.chatMessage.findFirst({
+            where: {
+              id: dispatch.sourceMessageId,
+              jobId: data.job_id,
+              gateStage: 5,
+              role: 'assistant',
+            },
+            select: { patchJson: true },
+          })
+        : null;
+      const synthesisProposal = IdeaSynthesisPatchSchema.safeParse(sourceMessage?.patchJson);
+      const stampedIdea = synthesisProposal.success && dispatch?.sourceMessageId
+          ? stampSynthesizedIdeaIdentity(
+            data.job_id,
+            data.idea,
+            dispatch.sourceMessageId,
+            synthesisProposal.data,
+            dispatch.sourceMessageId,
+          )
+        : stampNewIdeaIdentities(
+            data.job_id,
+            [data.idea],
+            'seed',
+            data.dispatch_id ?? `seed-${current.seedIdeaCount}`,
+          )[0];
+      const existingSolutions = ensureIdeaIdentities(data.job_id, current.solutionIdeas);
 
       // A demoted seed must NOT enter the selectable pool — it belongs only in the
       // preview report's `examined_ruled_out` ledger (worker re-materializes that asset
       // separately; see the cache invalidation below). Only an accepted seed is appended.
       const mergedSolutions = data.outcome === 'accepted'
-        ? [...(((current.solutionIdeas as any[]) || [])), data.idea]
-        : ((current.solutionIdeas as any[]) || []);
+        ? [...existingSolutions, stampedIdea]
+        : existingSolutions;
       const costData: Prisma.JobUpdateManyMutationInput =
         cost && batchCost && batchCost > 0
           ? { costUsd: (current.costUsd ?? 0) + batchCost, costSummary: cost as Prisma.InputJsonValue }
@@ -1284,10 +1370,6 @@ workersRouter.post('/seed-complete', async (req: Request, res: Response) => {
         // from the 'seed_submitted' one written at admission, keyed on the SAME
         // sourceMessageId the dispatch itself carries, so the seed card resolves its
         // terminal state across a reload without the worker having to resend it.
-        const dispatch = await tx.jobDispatch.findUnique({
-          where: { id: data.dispatch_id },
-          select: { sourceMessageId: true },
-        });
         if (dispatch?.sourceMessageId) {
           await tx.chatMessage.create({
             data: {
@@ -1296,13 +1378,13 @@ workersRouter.post('/seed-complete', async (req: Request, res: Response) => {
               role: 'receipt',
               content: buildSeedReceiptContent('seed_settled', data.outcome),
               patchJson: buildSeedEnvelope(
-                'seed_settled', dispatch.sourceMessageId, data.outcome, data.idea,
+                'seed_settled', dispatch.sourceMessageId, data.outcome, stampedIdea,
               ) as unknown as object,
             },
           });
         }
       }
-      return { count: flipped.count, niche: current.niche };
+      return { count: flipped.count, niche: current.niche, idea: stampedIdea };
     });
 
     if (result.count === 0) {
@@ -1360,7 +1442,7 @@ workersRouter.post('/seed-complete', async (req: Request, res: Response) => {
         dispatchId: data.dispatch_id,
         niche: result.niche!,
         outcome: data.outcome,
-        idea: data.idea,
+        idea: result.idea!,
       });
     }
 
@@ -2600,4 +2682,3 @@ workersRouter.post('/reddit-threads', expressJson({ limit: '10mb' }), async (req
     res.status(500).json({ error: 'Internal server error' });
   }
 });
-

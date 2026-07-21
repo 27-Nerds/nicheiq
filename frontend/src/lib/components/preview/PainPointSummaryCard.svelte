@@ -180,7 +180,7 @@
   }
 
   .pp-rank--lead {
-    background: var(--color-accent);
+    background: var(--color-accent-dark);
     color: white;
     border-color: transparent;
     box-shadow: 0 8px 18px rgba(234, 88, 12, 0.12);
@@ -210,7 +210,7 @@
   }
 
   .pp-card--lead .pp-kicker {
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .pp-title {
@@ -243,7 +243,7 @@
   .pp-sev--critical,
   .pp-sev--high {
     background: color-mix(in srgb, var(--color-severity-critical-bg) 72%, var(--color-bg-elevated));
-    color: var(--color-severity-critical);
+    color: var(--color-error-text);
     border-color: color-mix(in srgb, var(--color-severity-critical) 16%, transparent);
   }
 
@@ -269,9 +269,9 @@
   .pp-pullquote {
     margin: 0.64rem 0 0;
     padding: 0.52rem 0.66rem;
-    border-left: 2px solid color-mix(in srgb, var(--color-accent) 34%, transparent);
+    border-left: 2px solid var(--color-border-emphasis);
     border-radius: 0 0.46rem 0.46rem 0;
-    background: color-mix(in srgb, var(--color-accent) 3%, white);
+    background: var(--color-bg-surface);
     color: var(--color-text-secondary);
     font-size: 0.72rem;
     line-height: 1.48;
@@ -400,7 +400,7 @@
     gap: 0.42rem;
     font-size: 0.7rem;
     font-weight: 720;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
     background: color-mix(in srgb, var(--color-bg-elevated) 88%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-accent) 22%, transparent);
     padding: 0.28rem 0.34rem 0.28rem 0.58rem;

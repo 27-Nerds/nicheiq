@@ -38,9 +38,23 @@ const mockTxJobFindUnique = vi.fn(async (..._a: any[]) => {
   const j = await mockJobFindFirst();
   return j ? { status: j.status, gateStage: j.gateStage ?? null } : null;
 });
-const mockJobFindUniqueTop = vi.fn(async (..._a: any[]) => {
+let mockPostStreamJobFindUniqueError: Error | null = null;
+const mockJobFindUniqueTop = vi.fn(async (...args: any[]) => {
   const j = await mockJobFindFirst();
-  return j ? { status: j.status, gateStage: j.gateStage ?? null } : null;
+  if (!j) return null;
+  if (args[0]?.select?.selectionChallenges) {
+    return {
+      discoveryShare: j.discoveryShare ?? null,
+      selectionChallenges: j.selectionChallenges ?? [],
+      selectionExperiments: j.selectionExperiments ?? [],
+    };
+  }
+  if (mockPostStreamJobFindUniqueError) {
+    const error = mockPostStreamJobFindUniqueError;
+    mockPostStreamJobFindUniqueError = null;
+    throw error;
+  }
+  return { status: j.status, gateStage: j.gateStage ?? null };
 });
 const mockTransaction = vi.fn(async (cb: any) => {
   const tx = {
@@ -120,6 +134,10 @@ vi.mock('../../services/assetService.js', () => ({
   getDiscoveryDataForJob: (...a: any[]) => mockGetDiscoveryDataForJob(...a),
 }));
 
+vi.mock('../../services/selectionDecisionStateLoader.js', () => ({
+  loadOwnedSelectionDecisionState: vi.fn().mockResolvedValue(null),
+}));
+
 let app: Express;
 const authHeaders = { 'x-user-id': 'user-123' };
 const jobId = '00000000-0000-0000-0000-000000000001';
@@ -135,6 +153,7 @@ function makeJob(overrides: Record<string, any> = {}) {
 
 beforeEach(async () => {
   vi.clearAllMocks();
+  mockPostStreamJobFindUniqueError = null;
   mockJobFindFirst.mockResolvedValue(makeJob());
   mockIsEntitledUser.mockResolvedValue(true);
   mockCheckChatRateLimit.mockResolvedValue({ allowed: true, remaining: { hourly: 19, daily: 79 } });
@@ -212,7 +231,7 @@ describe('POST /api/jobs/:jobId/chat — BLOCKER: every path terminates the resp
       },
       { choices: [], usage: { prompt_tokens: 10, completion_tokens: 6 } },
     ]);
-    mockJobFindUniqueTop.mockRejectedValueOnce(new Error('db blip on re-check'));
+    mockPostStreamJobFindUniqueError = new Error('db blip on re-check');
 
     const response = await request(app)
       .post(`/api/jobs/${jobId}/chat`)

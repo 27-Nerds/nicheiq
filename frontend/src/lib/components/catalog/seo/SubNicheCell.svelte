@@ -32,7 +32,7 @@
      is monospaced and right-aligned. Two-line mode (secondary text) kept
      for callers that need it but isn't the catalog-rebuild default. */
   .cell {
-    background: var(--color-surface, #fff);
+    background: var(--color-surface);
     padding: 10px 16px;
     display: flex;
     align-items: center;
@@ -52,7 +52,7 @@
     gap: 2px;
   }
   .cell:hover {
-    background: var(--color-surface-elevated, #fafafa);
+    background: var(--color-surface-elevated);
   }
   .cell:hover .name {
     color: var(--color-accent);

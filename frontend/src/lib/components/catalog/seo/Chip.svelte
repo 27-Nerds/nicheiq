@@ -26,17 +26,17 @@
     font-weight: 500;
     border: 1px solid var(--color-border);
     color: var(--color-text-secondary, var(--color-text-primary));
-    background: var(--color-surface, #fff);
+    background: var(--color-surface);
     transition: background-color 120ms ease;
   }
   /* Color-only hover, per project memory feedback_no_ai_slop_hover. */
   .chip:hover {
-    background: var(--color-surface-elevated, #fafafa);
+    background: var(--color-surface-elevated);
   }
   .tone-accent {
-    color: var(--color-accent, #b45309);
-    border-color: var(--color-accent, #b45309);
-    background: var(--color-surface, #fff);
+    color: var(--color-accent-dark);
+    border-color: var(--color-accent);
+    background: var(--color-surface);
   }
   .tone-info {
     color: var(--color-info);

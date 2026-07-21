@@ -38,12 +38,12 @@
   .kw-cluster {
     border: 1px solid var(--color-border);
     border-radius: 6px;
-    background: var(--color-surface, #fff);
+    background: var(--color-surface);
     overflow: hidden;
   }
   header {
     padding: 10px 14px;
-    background: var(--color-surface-elevated, #fafafa);
+    background: var(--color-surface-elevated);
     border-bottom: 1px solid var(--color-border);
     display: flex;
     align-items: center;
@@ -67,7 +67,7 @@
     gap: 10px;
     align-items: baseline;
     border-bottom: 1px solid var(--color-border);
-    background: var(--color-surface, #fff);
+    background: var(--color-surface);
   }
   .primary-label {
     font-family: var(--font-mono);
@@ -88,7 +88,7 @@
     font-size: 12px;
     color: var(--color-text-secondary, var(--color-text-primary));
     line-height: 1.5;
-    background: var(--color-surface-elevated, #fafafa);
+    background: var(--color-surface-elevated);
     border-top: 1px solid var(--color-border);
     margin: 0;
   }

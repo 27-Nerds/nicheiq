@@ -131,7 +131,27 @@ export interface IdeaTags {
   rationale?: string | null;
 }
 
+export type DecisionProfilePreset = 'balanced' | 'fast_revenue' | 'solo_bootstrap' | 'audience_first';
+export type WeeklyTime = 'under_10' | '10_20' | '20_40' | 'full_time';
+export type ValidationBudget = 'under_1k' | '1k_5k' | '5k_20k' | '20k_plus';
+export type TeamShape = 'solo' | 'small_team' | 'funded_team';
+export type RevenueHorizon = '30_days' | '90_days' | '6_months' | 'patient';
+export type DistributionAdvantage = 'seo' | 'community' | 'existing_audience' | 'outbound' | 'paid' | 'partnerships';
+
+export interface SelectionDecisionProfile {
+  preset: DecisionProfilePreset;
+  weeklyTime: WeeklyTime;
+  budget: ValidationBudget;
+  team: TeamShape;
+  revenueHorizon: RevenueHorizon;
+  distributionAdvantages: DistributionAdvantage[];
+  strengths: string;
+  hardConstraints: string;
+}
+
 export interface SolutionPreview {
+  idea_id?: string;
+  idea_revision?: number;
   solution_name: string;
   headline?: string | null;
   short_description?: string | null;
@@ -209,6 +229,18 @@ export interface SolutionPreview {
   candidate_status?: string | null;
   // Names of the variant ideas synthesized into this one (only set when idea_tier === 'merged').
   merged_from?: string[] | null;
+  synthesis_operation?: 'narrow' | 'reposition' | 'combine' | 'adjacent' | null;
+  synthesized_from?: {
+    idea_id: string;
+    idea_revision: number;
+    solution_name: string;
+    contribution: string;
+  }[] | null;
+  synthesis_evidence?: {
+    sourceAnchors?: { ideaId: string; pain?: string; audience?: string }[];
+    requiresValidation?: string[];
+  } | null;
+  synthesis_source_message_id?: string | null;
 }
 
 export interface ReportSummary {
@@ -300,6 +332,16 @@ export function computeFullResearchCost(costs: StageCosts): number {
   return costs.discovery + costs.deep_research;
 }
 
+export interface SelectionDraftItem {
+  ideaId: string;
+  ideaRevision: number;
+}
+
+export interface SelectionDraft {
+  version: number;
+  items: SelectionDraftItem[];
+}
+
 export interface Job {
   id: string;
   email?: string;
@@ -340,7 +382,10 @@ export interface Job {
   entryMode?: 'idea' | 'audience' | 'discovery' | 'pain_research' | 'pain_remix' | 'deep_idea' | null;
   selectedSolution?: string | null;
   selectedSolutions?: string[] | null;
+  selectedSolutionIds?: string[] | null;
   selectionRationale?: string | null;
+  selectionDecisionProfile?: SelectionDecisionProfile | null;
+  selectionDraft?: SelectionDraft | null;
   awaitingSelectionAt?: string | null;
   ideasShownAt?: string | null;
   solutionIdeas?: SolutionPreview[] | null;

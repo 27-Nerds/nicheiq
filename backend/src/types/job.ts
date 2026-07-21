@@ -91,9 +91,57 @@ export const DISCOVERY_PHASE_MAX_STAGE = Math.max(
 ); // = 5
 
 // Interactive job flow schemas
+export const SelectionDecisionProfileSchema = z.object({
+  preset: z.enum(['balanced', 'fast_revenue', 'solo_bootstrap', 'audience_first']),
+  weeklyTime: z.enum(['under_10', '10_20', '20_40', 'full_time']),
+  budget: z.enum(['under_1k', '1k_5k', '5k_20k', '20k_plus']),
+  team: z.enum(['solo', 'small_team', 'funded_team']),
+  revenueHorizon: z.enum(['30_days', '90_days', '6_months', 'patient']),
+  distributionAdvantages: z.array(
+    z.enum(['seo', 'community', 'existing_audience', 'outbound', 'paid', 'partnerships']),
+  ).max(4).default([]),
+  strengths: z.string().trim().max(500).default(''),
+  hardConstraints: z.string().trim().max(1000).default(''),
+}).strict();
+
+export type SelectionDecisionProfile = z.infer<typeof SelectionDecisionProfileSchema>;
+
+export const SelectionDraftItemSchema = z.object({
+  ideaId: z.string().trim().min(1).max(128),
+  ideaRevision: z.number().int().min(1),
+}).strict();
+
+export const SelectionDraftUpdateSchema = z.object({
+  expectedVersion: z.number().int().min(0),
+  items: z.array(SelectionDraftItemSchema).max(3),
+}).strict().superRefine((value, ctx) => {
+  const keys = new Set<string>();
+  value.items.forEach((item, index) => {
+    const key = `${item.ideaId}:${item.ideaRevision}`;
+    if (keys.has(key)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['items', index],
+        message: 'Selection draft items must be unique',
+      });
+    }
+    keys.add(key);
+  });
+});
+
+export type SelectionDraftUpdateInput = z.infer<typeof SelectionDraftUpdateSchema>;
+
 export const SelectSolutionSchema = z.object({
-  solutionNames: z.array(z.string().trim().min(1).max(255)).min(1).max(3),
+  solutionNames: z.array(z.string().trim().min(1).max(255)).min(1).max(3).optional(),
+  solutionIds: z.array(z.string().trim().min(1).max(128)).min(1).max(3).optional(),
   rationale: z.string().max(2000).optional(),
+}).superRefine((value, ctx) => {
+  if (!value.solutionNames?.length && !value.solutionIds?.length) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'solutionNames or solutionIds is required',
+    });
+  }
 });
 
 export type SelectSolutionInput = z.infer<typeof SelectSolutionSchema>;
@@ -154,7 +202,8 @@ export type RegenerationFailedInput = z.infer<typeof RegenerationFailedSchema>;
 // ============================================
 
 // POST /:jobId/seed-idea body
-export const SeedIdeaSchema = z.object({
+const UserSeedIdeaSchema = z.object({
+  kind: z.literal('user_seed').optional(),
   free_text: z.string().trim().min(1).max(2000),
   pain_ref: z.string().max(500).optional(),
   tool_ref: z.string().max(300).optional(),
@@ -171,6 +220,14 @@ export const SeedIdeaSchema = z.object({
    *  seed's price is always confirmed up front, never inferred from a free discovery run. */
   expectedCost: z.number().int().min(0).max(1000),
 });
+
+const SynthesisSeedIdeaSchema = z.object({
+  kind: z.literal('idea_synthesis'),
+  sourceMessageId: z.string().min(1).max(64),
+  expectedCost: z.number().int().min(0).max(1000),
+});
+
+export const SeedIdeaSchema = z.union([UserSeedIdeaSchema, SynthesisSeedIdeaSchema]);
 
 export type SeedIdeaInput = z.infer<typeof SeedIdeaSchema>;
 

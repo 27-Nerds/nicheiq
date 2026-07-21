@@ -25,7 +25,7 @@ def test_preview_emits_build_feasibility():
     assert '"data_feasibility_score"' in src
 
 
-def test_preview_backfills_legacy_demoted_seed_details(tmp_path):
+def test_preview_backfills_legacy_demoted_idea_details(tmp_path):
     idea = SimpleNamespace(
         solution_name="MetaDossier",
         candidate_status="demoted",
@@ -34,7 +34,7 @@ def test_preview_backfills_legacy_demoted_seed_details(tmp_path):
             "description": "A fantasy esports card collection game",
             "value_proposition": "Open packs and build esports rosters",
             "candidate_status": "demoted",
-            "source_frame": "user_seed",
+            "source_frame": "pain",
         },
     )
     flow = ResearchFlow.__new__(ResearchFlow)
@@ -52,7 +52,7 @@ def test_preview_backfills_legacy_demoted_seed_details(tmp_path):
             "prior_tier": "single",
             "source": "demoted_winner",
             "evidence": "",
-            "source_frame": "user_seed",
+            "source_frame": "pain",
         }],
         idea_overlap_groups=[],
     )

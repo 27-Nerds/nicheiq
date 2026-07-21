@@ -550,7 +550,7 @@
   .key-competitors-strip :global(.strip-icon) {
     width: 1rem;
     height: 1rem;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .strip-label {
@@ -559,7 +559,7 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .strip-badges {
@@ -738,7 +738,7 @@
   }
 
   .competitor-link:hover {
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
     background: var(--color-accent-subtle);
   }
 
@@ -863,7 +863,7 @@
   :global(.feature-icon) {
     width: 0.875rem;
     height: 0.875rem;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
     flex-shrink: 0;
     margin-top: 0.0625rem;
   }

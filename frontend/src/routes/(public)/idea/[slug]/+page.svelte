@@ -499,7 +499,7 @@
     padding: 14px 18px;
     border: 1px solid var(--color-border);
     border-radius: 6px;
-    background: var(--color-bg-elevated, #fff);
+    background: var(--color-bg-elevated);
   }
   .discovery-label {
     font-family: var(--font-mono);

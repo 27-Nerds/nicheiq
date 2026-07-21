@@ -122,7 +122,7 @@
     border: 1px solid transparent;
     cursor: pointer;
     background: var(--color-accent);
-    color: var(--color-surface, #fff);
+    color: var(--color-surface);
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.18),
       0 1px 2px rgba(154, 52, 18, 0.18),

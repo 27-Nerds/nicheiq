@@ -21,10 +21,17 @@
     ApiError,
     isGatePatch,
     isLedgerEvent,
+    isIdeaSynthesisPatch,
     isNewIdeaSeedPatch,
+    isSelectionCopilotAction,
     isIdeaFocusPatch,
     type ChatPatch,
+    type IdeaSynthesisPatch,
+    type SynthesisIntent,
+    type SelectionWorkspaceContext,
     type NewIdeaSeedPatch,
+    type SeedResultSummary,
+    type SelectionCopilotAction,
     type GateG1PatchFields,
     type GateG2PatchFields,
     type GateArtifact,
@@ -71,7 +78,17 @@
      *  handling, optimistic pending mark via chatLedger.markSeedPending), exactly
      *  like onApplyPatch owns regenerate; this just hands back the approved seed
      *  and the id of the proposing message (the card's durable identity). */
-    onSeedSubmit?: (patch: NewIdeaSeedPatch, messageId: string) => void | Promise<void>;
+    onSeedSubmit?: (patch: NewIdeaSeedPatch | IdeaSynthesisPatch, messageId: string) => void | Promise<void>;
+    /** Accepted synthesis only. The parent revalidates operation, source message,
+     *  child revision, and every source revision before allowing either action. */
+    onReviewVariant?: (patch: IdeaSynthesisPatch, receipt: SeedResultSummary, messageId: string) => { ok: boolean; message?: string };
+    onUseVariant?: (patch: IdeaSynthesisPatch, receipt: SeedResultSummary, messageId: string) => { ok: boolean; message?: string };
+    /** Selection-stage copilot cards only prepare navigation or owner-reviewed drafts.
+     *  The parent validates canonical identity/version and owns every destination. */
+    onCopilotAction?: (
+      action: SelectionCopilotAction,
+      messageId: string,
+    ) => { ok: boolean; message?: string } | Promise<{ ok: boolean; message?: string }>;
     /** True while the parent is mid-mutation (regenerate/apply_stay/continue) —
      *  locks every way to submit a turn (composer, Enter, starter/follow-up chips)
      *  so a chat turn can't race a checkpoint transition into a 409. */
@@ -87,9 +104,16 @@
      *  unrelated screen-level topic. Clicking one sends it. */
     starters?: string[];
     /** Starter-chip plumbing for callers that trigger a prompt from OUTSIDE the panel
-     *  — when set to a non-null string it's sent automatically; `onStarterConsumed`
-     *  fires once consumed so the caller can reset it (re-arms repeat clicks). */
+     *  — when set to a non-null string it PREFILLS the composer and moves focus there
+     *  (never auto-sends: each send spends one of the run's limited questions, so the
+     *  user reviews/edits and presses Enter themselves); `onStarterConsumed` fires
+     *  once consumed so the caller can reset it (re-arms repeat clicks). */
     starterPrompt?: string | null;
+    /** Exact owner-selected synthesis sources paired with `starterPrompt`. */
+    starterSynthesisIntent?: SynthesisIntent | null;
+    /** Current selection workspace and exact revisions. The backend resolves
+     *  these against the owner job before adding them to the analyst prompt. */
+    selectionContext?: SelectionWorkspaceContext | null;
     onStarterConsumed?: () => void;
     /** Archived-segment rendering (SegmentedLedger past checkpoints / completed
      *  transcript): no head, no composer, patch cards terminal-only, receipts
@@ -128,11 +152,16 @@
     appliedPatchIds = new Set<string>(),
     seedCost = null,
     onSeedSubmit,
+    onReviewVariant,
+    onUseVariant,
+    onCopilotAction,
     blocked = false,
     blockedTitle = "Research is active",
     blockedDetail = "The analyst will unlock at the next checkpoint.",
     starters = [],
     starterPrompt = null,
+    starterSynthesisIntent = null,
+    selectionContext = null,
     onStarterConsumed,
     weakPool = $bindable(false),
     ideaReferences = [],
@@ -154,6 +183,13 @@
     auto: "Balanced",
     novelty: "Novelty",
     distribution: "Distribution",
+  };
+
+  const SYNTHESIS_LABEL: Record<IdeaSynthesisPatch["operation"], string> = {
+    narrow: "Narrow",
+    reposition: "Reposition",
+    combine: "Combine",
+    adjacent: "Explore adjacent",
   };
 
   /** "Before" value for a G1/G2 patch field, read from the gate's current artifact. */
@@ -201,8 +237,8 @@
       }));
     }
     if (isLedgerEvent(patch)) return [];
-    // Rendered by the dedicated seed card (below), never the generic diff table.
-    if (isNewIdeaSeedPatch(patch)) return [];
+    // Rendered by dedicated cards below, never the generic diff table.
+    if (isNewIdeaSeedPatch(patch) || isIdeaSynthesisPatch(patch) || isSelectionCopilotAction(patch)) return [];
     if (isIdeaFocusPatch(patch)) {
       return [
         {
@@ -235,10 +271,15 @@
   let sendError = $state("");
   /** Text of a turn that failed — offered back via a Retry control. */
   let failedDraft = $state("");
+  let failedSynthesisIntent = $state<SynthesisIntent | null>(null);
+  let pendingSynthesisIntent = $state<SynthesisIntent | null>(null);
   // Backend 'note' SSE event — a neutral mid-stream explanation (e.g. the gate
   // changed while generating, so a proposed patch was dropped). Not an error.
   let sendNote = $state("");
+  let variantActionFeedback = $state<Record<string, { failed: boolean; message: string }>>({});
+  let copilotActionFeedback = $state<Record<string, { failed: boolean; message: string }>>({});
   let listEl: HTMLDivElement | undefined = $state();
+  let composerRef: Composer | undefined = $state();
   let composerFocused = $state(false);
   let abortController: AbortController | null = null;
 
@@ -260,9 +301,12 @@
   $effect(() => {
     const prompt = starterPrompt;
     if (!prompt || !historyLoaded || sending || locked || readOnly || atTurnCap || operationBlocked || loadFailed) return;
+    // Prefill only — sending spends one of the run's limited questions, so the
+    // user reviews/edits the seeded prompt and presses Enter themselves.
     input = prompt;
+    pendingSynthesisIntent = starterSynthesisIntent;
     onStarterConsumed?.();
-    void send();
+    void tick().then(() => composerRef?.focus());
   });
 
   async function loadHistory() {
@@ -352,6 +396,8 @@
     // a page-scoped singleton, so a late callback that used the live `jobId` instead of
     // this snapshot would happily append job A's reply into job B's ledger.
     const requestJobId = jobId;
+    const synthesisIntent = pendingSynthesisIntent;
+    pendingSynthesisIntent = null;
     // Optimistic: clear the composer and show the turn — but remember both, because either kind
     // of failure has to be undone.
     //   - TRANSPORT failure (never reached the server): restore the draft, retract the phantom.
@@ -364,6 +410,7 @@
     sendError = "";
     sendNote = "";
     failedDraft = "";
+    failedSynthesisIntent = null;
     chatLedger.appendLocal(requestJobId, { id: optimisticId, gateStage, role: "user", content: text });
     sending = true;
     hasStreamStarted = false;
@@ -376,6 +423,8 @@
     try {
       await streamChat(requestJobId, text, {
         signal: abortController.signal,
+        synthesisIntent: synthesisIntent ?? undefined,
+        selectionContext: selectionContext ?? undefined,
         onEvent: (evt) => {
           if (evt.type === "token") {
             hasStreamStarted = true;
@@ -406,7 +455,7 @@
           } else if (evt.type === "note") {
             sendNote = evt.note;
           } else if (evt.type === "error") {
-            sendError = evt.error || "The analyst couldn't respond — try again.";
+            sendError = evt.error || "The analyst couldn't respond. Try again.";
             // The server rolled the turn back (its generation produced nothing, so it must not
             // cost the user a turn). Retract our copy to match, or the question is stranded in
             // the thread with no answer under it — and the turn counter disagrees with the server.
@@ -417,6 +466,7 @@
             // The turn failed on the server. The user's words are the one thing we
             // must not lose: hand them back so a retry is one keystroke, not a retype.
             failedDraft = text;
+            failedSynthesisIntent = synthesisIntent;
           }
         },
       });
@@ -430,12 +480,13 @@
         // optimistic turn and hand the draft back so nothing is lost.
         chatLedger.retractLocal(requestJobId, optimisticId);
         if (!input.trim()) input = text;
+        failedSynthesisIntent = synthesisIntent;
         if (e instanceof ApiError && e.status === 402) {
           locked = true;
         } else if (e instanceof ApiError && e.status === 409) {
-          sendError = "This checkpoint moved on — your message wasn't sent.";
+          sendError = "This checkpoint moved on. Your message wasn't sent.";
         } else {
-          sendError = e instanceof ApiError ? e.message : "The analyst couldn't respond — try again.";
+          sendError = e instanceof ApiError ? e.message : "The analyst couldn't respond. Try again.";
         }
       }
     } finally {
@@ -491,9 +542,13 @@
     if (isGatePatch(patch)) {
       if (applyCapReached || !onApplyGatePatch) return;
       await onApplyGatePatch(patch.patch, msg.id);
-    } else if (isNewIdeaSeedPatch(patch)) {
+    } else if (isNewIdeaSeedPatch(patch) || isIdeaSynthesisPatch(patch)) {
       if (!onSeedSubmit) return;
       await onSeedSubmit(patch, msg.id);
+    } else if (isSelectionCopilotAction(patch)) {
+      // Copilot actions are review/navigation receipts. Their dedicated card may
+      // only call onCopilotAction; the generic mutation dispatcher never executes them.
+      return;
     } else if (isIdeaFocusPatch(patch)) {
       if (!onApplyPatch) return;
       await onApplyPatch(patch.idea_focus);
@@ -504,6 +559,70 @@
 
   function dismissPatch(target: ThreadMessage) {
     chatLedger.dismissPatch(target.id);
+  }
+
+  function copilotButtonLabel(action: SelectionCopilotAction): string {
+    if (action.action === "shortlist_review") return "Review shortlist";
+    if (action.action === "prefill" && action.target === "concept_forge") return "Review directions brief";
+    if (action.action === "prefill") return "Review draft";
+    if (action.target === "candidate") return "Open candidate";
+    return "Open workspace";
+  }
+
+  function copilotPrefillSupported(action: SelectionCopilotAction): boolean {
+    return action.action !== "prefill"
+      || action.target === "decision_profile"
+      || action.target === "experiment"
+      || action.target === "concept_forge"
+      || action.target === "assumption"
+      || action.target === "owner_evidence";
+  }
+
+  async function handleCopilotAction(action: SelectionCopilotAction, messageId: string) {
+    if (!onCopilotAction || applying || operationBlocked || !copilotPrefillSupported(action)) return;
+    try {
+      const result = await onCopilotAction(action, messageId);
+      copilotActionFeedback = {
+        ...copilotActionFeedback,
+        [messageId]: {
+          failed: !result.ok,
+          message: result.message ?? (result.ok ? "Opened for your review." : "This suggestion is no longer current."),
+        },
+      };
+      if (result.ok) onCollapse?.();
+    } catch (cause) {
+      copilotActionFeedback = {
+        ...copilotActionFeedback,
+        [messageId]: {
+          failed: true,
+          message: cause instanceof Error ? cause.message : "This suggestion could not be opened.",
+        },
+      };
+    }
+  }
+
+  function handleVariantAction(
+    action: "review" | "use",
+    patch: IdeaSynthesisPatch,
+    receipt: SeedResultSummary,
+    messageId: string,
+  ) {
+    const result = action === "review"
+      ? onReviewVariant?.(patch, receipt, messageId)
+      : onUseVariant?.(patch, receipt, messageId);
+    if (!result) return;
+    if (action === "review" && result.ok) {
+      onCollapse?.();
+      return;
+    }
+    variantActionFeedback = {
+      ...variantActionFeedback,
+      [messageId]: {
+        failed: !result.ok,
+        message: result.message
+          ?? (result.ok ? "Variant is now in your shortlist." : "Could not update the shortlist."),
+      },
+    };
   }
 
   /** Exposed to GateWorkbench: append an applied-change receipt as the newest
@@ -531,7 +650,7 @@
     if (readOnly || !message?.patchJson || message.dismissed || isLedgerEvent(message.patchJson)) {
       return false;
     }
-    if (isNewIdeaSeedPatch(message.patchJson)) {
+    if (isNewIdeaSeedPatch(message.patchJson) || isIdeaSynthesisPatch(message.patchJson)) {
       return chatLedger.seedOutcome(message.id) == null;
     }
     return !appliedPatchIds.has(message.id);
@@ -568,8 +687,8 @@
       {#if historyLoaded && !locked && !loadFailed}
         <span
           class="chat-head-count"
-          title="Questions this run — {userTurnCount} of {maxTurns} used"
-          aria-label="Questions this run — {userTurnCount} of {maxTurns} used"
+          title="Questions this run · {userTurnCount} of {maxTurns} used"
+          aria-label="Questions this run · {userTurnCount} of {maxTurns} used"
         >
           <span class="chat-head-count-value">{userTurnCount}</span>
           <span class="chat-head-count-copy">of {maxTurns} <span class="chat-head-count-noun">questions</span></span>
@@ -643,7 +762,7 @@
         <p class="chat-status">
           {operationBlocked
             ? "The conversation will unlock when research reaches the next checkpoint."
-            : "No questions yet — ask about scores, gaps, or what to try next."}
+            : "No questions yet. Ask about scores, gaps, or what to try next."}
         </p>
       {/if}
       {#each messages as msg (msg.id)}
@@ -698,11 +817,205 @@
             {#if msg.truncated}
               <p class="entry-note">Reply was interrupted.</p>
             {/if}
+            {#if msg.patchJson && !msg.dismissed && !isLedgerEvent(msg.patchJson) && isSelectionCopilotAction(msg.patchJson)}
+              {@const copilotAction = msg.patchJson}
+              {@const copilotSupported = copilotPrefillSupported(copilotAction)}
+              <div class="proposal copilot-card">
+                <div class="proposal-head">
+                  <Wand2 class="proposal-icon" aria-hidden="true" />
+                  <span class="proposal-title">
+                    {copilotAction.action === "prefill" ? "Draft prepared for review" : copilotAction.action === "shortlist_review" ? "Shortlist prepared for review" : "Workspace suggestion"}
+                  </span>
+                  <span class="proposal-scope">Review only</span>
+                </div>
+
+                {#if copilotAction.ideas.length}
+                  <ul class="copilot-ideas" aria-label="Ideas referenced by this suggestion">
+                    {#each copilotAction.ideas as idea (`${idea.ideaId}:${idea.ideaRevision}`)}
+                      <li><strong>{idea.solutionName}</strong><span>Revision {idea.ideaRevision}</span></li>
+                    {/each}
+                  </ul>
+                {/if}
+
+                <p class="proposal-why">{copilotAction.rationale}</p>
+                {#if copilotAction.caveats.length}
+                  <div class="copilot-caveats">
+                    <strong>Check before saving</strong>
+                    <ul>{#each copilotAction.caveats as caveat}<li>{caveat}</li>{/each}</ul>
+                  </div>
+                {/if}
+                <p class="proposal-note">Nothing has been changed. The existing form or shortlist confirmation is the only place that can save this.</p>
+
+                {#if readOnly}
+                  <p class="proposal-note">This action is available only in the owner workspace.</p>
+                {:else}
+                  <div class="proposal-actions">
+                    <button
+                      type="button"
+                      class="ledger-btn ledger-btn--primary"
+                      disabled={applying || operationBlocked || !onCopilotAction || !copilotSupported}
+                      onclick={() => void handleCopilotAction(copilotAction, msg.id)}
+                    >
+                      {copilotButtonLabel(copilotAction)}
+                    </button>
+                  </div>
+                  {#if !copilotSupported}
+                    <p class="proposal-note proposal-note--warn">This draft type is not connected to a safe prefill yet. Open the workspace manually; no values were applied.</p>
+                  {:else if copilotActionFeedback[msg.id]}
+                    <p
+                      class="proposal-note"
+                      class:entry-error={copilotActionFeedback[msg.id].failed}
+                      role={copilotActionFeedback[msg.id].failed ? "alert" : "status"}
+                    >{copilotActionFeedback[msg.id].message}</p>
+                  {/if}
+                {/if}
+              </div>
+            {:else if msg.patchJson && !msg.dismissed && !isLedgerEvent(msg.patchJson) && isIdeaSynthesisPatch(msg.patchJson)}
+              {@const synthesis = msg.patchJson}
+              {@const synthesisResult = chatLedger.seedResult(msg.id)}
+              {@const synthesisOutcome = chatLedger.seedOutcome(msg.id)}
+              <div
+                class="seed-card synthesis-card"
+                class:seed-card--pending={synthesisOutcome === "pending"}
+                class:seed-card--accepted={synthesisOutcome === "accepted"}
+                class:seed-card--demoted={synthesisOutcome === "demoted"}
+                class:seed-card--failed={synthesisOutcome === "failed" || synthesisOutcome === "refunded"}
+                aria-busy={synthesisOutcome === "pending"}
+              >
+                <div class="seed-card-head" aria-live="polite" aria-atomic="true">
+                  {#if synthesisOutcome === "accepted"}
+                    <Check class="seed-card-icon seed-card-icon--accepted" aria-hidden="true" />
+                    <span class="seed-card-title">Variant evaluated. Added to ranked candidates.</span>
+                  {:else if synthesisOutcome === "demoted"}
+                    <span class="seed-card-title">Variant evaluated. It didn't clear the market-fit bar.</span>
+                  {:else if synthesisOutcome === "failed" || synthesisOutcome === "refunded"}
+                    <span class="seed-card-title">Evaluation failed. Your credits were refunded.</span>
+                  {:else if synthesisOutcome === "pending"}
+                    <Loader2 class="seed-card-icon animate-spin" aria-hidden="true" />
+                    <span class="seed-card-title">Evaluating the variant&hellip;</span>
+                  {:else}
+                    <Wand2 class="seed-card-icon" aria-hidden="true" />
+                    <span class="seed-card-title">{SYNTHESIS_LABEL[synthesis.operation]} candidate</span>
+                  {/if}
+                </div>
+
+                <dl class="seed-card-fields">
+                  <div class="ledger-field">
+                    <dt>Proposed candidate</dt>
+                    <dd><strong>{synthesis.proposedTitle}</strong><br />{synthesis.proposedBrief}</dd>
+                  </div>
+                  <div class="ledger-field">
+                    <dt>What changes</dt>
+                    <dd>{synthesis.changeSummary}</dd>
+                  </div>
+                  {#each synthesis.parents as parent}
+                    <div class="ledger-field">
+                      <dt>Retain from {parent.solutionName}</dt>
+                      <dd>{parent.contribution}</dd>
+                    </div>
+                  {/each}
+                </dl>
+                <p class="seed-card-why">{synthesis.rationale}</p>
+
+                <details class="synthesis-evidence">
+                  <summary>Evidence and assumptions to re-check</summary>
+                  <ul>
+                    {#each synthesis.evidence.requiresValidation as item}
+                      <li>{item}</li>
+                    {/each}
+                  </ul>
+                </details>
+                <p class="proposal-note">The source candidates stay unchanged. Their scores do not carry over to this variant.</p>
+
+                {#if synthesisOutcome === "accepted" || synthesisOutcome === "demoted"}
+                  <div class="seed-card-result">
+                    <span class="seed-card-result-label">Evaluated result</span>
+                    {#if synthesisResult}
+                      <strong>{synthesisResult.solution_name}</strong>
+                      {#if synthesisResult.short_description}
+                        <p>{synthesisResult.short_description}</p>
+                      {/if}
+                      {#if synthesisResult.market_fit_score != null}
+                        <span class="seed-card-result-score">Market fit {Math.round(synthesisResult.market_fit_score * 100)}%</span>
+                      {/if}
+                    {:else}
+                      <p>{synthesisOutcome === "accepted" ? "The evaluated variant is in your ranked candidates." : "The evaluated variant is in Examined & ruled out."}</p>
+                    {/if}
+                    {#if !readOnly}
+                      <a
+                        class="seed-card-result-link"
+                        href={synthesisOutcome === "accepted" ? "#solution-selector" : "#examined-ruled-out"}
+                        onclick={() => onCollapse?.()}
+                      >
+                        {synthesisOutcome === "accepted" ? "View evaluated candidate" : "View why it was ruled out"}
+                        <ArrowRight aria-hidden="true" />
+                      </a>
+                    {/if}
+                  </div>
+                  {#if !readOnly && synthesisOutcome === "accepted" && synthesisResult && (onReviewVariant || onUseVariant)}
+                    <div class="proposal-actions">
+                      {#if onReviewVariant}
+                        <button
+                          type="button"
+                          class="ledger-btn ledger-btn--ghost"
+                          disabled={applying || operationBlocked}
+                          onclick={() => handleVariantAction("review", synthesis, synthesisResult, msg.id)}
+                        >
+                          {synthesis.parents.length === 2 ? "Compare with sources" : "Compare with source"}
+                        </button>
+                      {/if}
+                      {#if onUseVariant}
+                        <button
+                          type="button"
+                          class="ledger-btn ledger-btn--primary"
+                          disabled={applying || operationBlocked}
+                          onclick={() => handleVariantAction("use", synthesis, synthesisResult, msg.id)}
+                        >
+                          Use variant in shortlist
+                        </button>
+                      {/if}
+                    </div>
+                    {#if variantActionFeedback[msg.id]}
+                      <p
+                        class="proposal-note"
+                        class:entry-error={variantActionFeedback[msg.id].failed}
+                        role={variantActionFeedback[msg.id].failed ? "alert" : "status"}
+                      >{variantActionFeedback[msg.id].message}</p>
+                    {/if}
+                  {/if}
+                {/if}
+
+                {#if readOnly}
+                  <p class="proposal-note">Proposed here, never evaluated.</p>
+                {:else if !synthesisOutcome}
+                  <div class="proposal-actions">
+                    <button
+                      type="button"
+                      class="ledger-btn ledger-btn--primary seed-card-evaluate"
+                      disabled={applying || operationBlocked || seedCost == null}
+                      onclick={() => applyPatch(msg)}
+                    >
+                      <span>Evaluate variant</span>
+                      {#if seedCost != null}
+                        <span class="seed-card-cost"><Coins class="w-3 h-3" aria-hidden="true" />{seedCost}</span>
+                      {/if}
+                    </button>
+                    <button type="button" class="ledger-btn ledger-btn--ghost" disabled={applying} onclick={() => dismissPatch(msg)}>
+                      Dismiss
+                    </button>
+                  </div>
+                  {#if seedCost == null}
+                    <p class="proposal-note">Price hasn't loaded yet. Try again in a moment.</p>
+                  {/if}
+                {:else if synthesisOutcome === "pending"}
+                  <p class="proposal-note">The variant is being scored independently; this can take a few minutes.</p>
+                {/if}
+              </div>
             <!-- The user-composed idea seed gets its OWN card — not the generic
                  before→after diff table (a free-text idea has nothing to diff), and
                  its terminal state is durable (chatLedger.seedOutcome), never a
                  parallel client store, so a submitted card can never re-arm. -->
-            {#if msg.patchJson && !msg.dismissed && !isLedgerEvent(msg.patchJson) && isNewIdeaSeedPatch(msg.patchJson)}
+            {:else if msg.patchJson && !msg.dismissed && !isLedgerEvent(msg.patchJson) && isNewIdeaSeedPatch(msg.patchJson)}
               {@const seedPatch = msg.patchJson}
               {@const seedResult = chatLedger.seedResult(msg.id)}
               {@const seedOutcome = chatLedger.seedOutcome(msg.id)}
@@ -717,11 +1030,11 @@
                 <div class="seed-card-head" aria-live="polite" aria-atomic="true">
                   {#if seedOutcome === "accepted"}
                     <Check class="seed-card-icon seed-card-icon--accepted" aria-hidden="true" />
-                    <span class="seed-card-title">Evaluation complete — added to ranked candidates</span>
+                    <span class="seed-card-title">Evaluation complete. Added to ranked candidates.</span>
                   {:else if seedOutcome === "demoted"}
-                    <span class="seed-card-title">We tested your idea — it didn't clear the market-fit bar</span>
+                    <span class="seed-card-title">We tested your idea. It didn't clear the market-fit bar.</span>
                   {:else if seedOutcome === "failed" || seedOutcome === "refunded"}
-                    <span class="seed-card-title">Evaluation failed — your credits were refunded</span>
+                    <span class="seed-card-title">Evaluation failed. Your credits were refunded.</span>
                   {:else if seedOutcome === "pending"}
                     <Loader2 class="seed-card-icon animate-spin" aria-hidden="true" />
                     <span class="seed-card-title">Evaluating your idea&hellip;</span>
@@ -778,7 +1091,7 @@
                 {/if}
 
                 {#if readOnly}
-                  <p class="proposal-note">Proposed here — never evaluated.</p>
+                  <p class="proposal-note">Proposed here, never evaluated.</p>
                 {:else if !seedOutcome}
                   <div class="proposal-actions">
                     <button
@@ -797,10 +1110,10 @@
                     </button>
                   </div>
                   {#if seedCost == null}
-                    <p class="proposal-note">Price hasn't loaded yet — try again in a moment.</p>
+                    <p class="proposal-note">Price hasn't loaded yet. Try again in a moment.</p>
                   {/if}
                 {:else if seedOutcome === "pending"}
-                  <p class="proposal-note">This runs the same evaluation as a pool idea — it can take a few minutes.</p>
+                  <p class="proposal-note">This runs the same evaluation as a pool idea. It can take a few minutes.</p>
                 {/if}
               </div>
             <!-- Ledger-event payloads ride on 'receipt' rows (rendered above), never
@@ -848,7 +1161,7 @@
                     The framing above now reflects this change.
                   </p>
                 {:else if readOnly}
-                  <p class="proposal-note">Proposed here — never applied.</p>
+                  <p class="proposal-note">Proposed here. Never applied.</p>
                 {:else}
                   <div class="proposal-actions">
                     <button
@@ -871,7 +1184,7 @@
                   </div>
                   {#if gate && applyCapReached}
                     <p class="proposal-note proposal-note--warn">
-                      Change limit reached for this checkpoint (5 max) — continue research to move forward.
+                      Change limit reached for this checkpoint (5 max). Continue research to move forward.
                     </p>
                   {/if}
                 {/if}
@@ -937,7 +1250,7 @@
   {/if}
 
   {#if locked}
-    <p class="chat-status chat-status--locked" role="status">Guided chat is a subscriber feature — upgrade to ask the analyst about these ideas.</p>
+    <p class="chat-status chat-status--locked" role="status">Guided chat is a subscriber feature. Upgrade to ask the analyst about these ideas.</p>
   {:else if operationBlocked}
     <div class="chat-operation" role="status" aria-live="polite">
       <span class="chat-operation-pulse" aria-hidden="true"></span>
@@ -950,7 +1263,7 @@
     <p class="chat-error" role="alert">
       {sendError}
       {#if failedDraft}
-        <button type="button" class="chat-retry" onclick={() => { input = failedDraft; sendError = ""; failedDraft = ""; void send(); }}>
+        <button type="button" class="chat-retry" onclick={() => { input = failedDraft; pendingSynthesisIntent = failedSynthesisIntent; sendError = ""; failedDraft = ""; failedSynthesisIntent = null; void send(); }}>
           Retry
         </button>
       {/if}
@@ -961,7 +1274,7 @@
 
   {#if atTurnCap && !readOnly}
     <p class="chat-cap" role="status">
-      You've used all {maxTurns} questions for this run. The analyst is done here — you can still
+      You've used all {maxTurns} questions for this run. The analyst is done here. You can still
       continue the research or pick an idea.
     </p>
   {/if}
@@ -969,6 +1282,7 @@
   {#if !operationBlocked}
     <div class="chat-input">
       <Composer
+        bind:this={composerRef}
         bind:value={input}
         placeholder="Ask a follow-up or request a change…"
         label="Message the analyst"
@@ -986,6 +1300,8 @@
 <style>
   .chat-thread {
     --chat-motion: cubic-bezier(0.32, 0.72, 0, 1);
+    /* Warm parchment tint — the ledger's own identity, no token equivalent
+       exists for it; mixed off the real bg tokens rather than a flat hex. */
     --chat-paper: color-mix(in srgb, var(--color-bg-elevated) 96%, #eee6da);
     --chat-wash: color-mix(in srgb, var(--color-bg-surface) 92%, #efe5d7);
     display: flex;
@@ -1268,7 +1584,7 @@
     max-height: none;
     /* Scrolled text shouldn't be guillotined mid-letter at the composer seam: the
        last line fades out, which also reads as "there is more above/below". */
-    mask-image: linear-gradient(to bottom, transparent 0, #000 0.75rem, #000 calc(100% - 1rem), transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0, black 0.75rem, black calc(100% - 1rem), transparent 100%);
   }
   .chat-status {
     margin: 0;
@@ -1725,6 +2041,53 @@
     line-height: 1.5;
     color: var(--color-text-secondary);
   }
+  .copilot-ideas,
+  .copilot-caveats ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .copilot-ideas {
+    display: grid;
+    gap: 0.35rem;
+  }
+  .copilot-ideas li {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.45rem 0.55rem;
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    background: var(--color-bg-elevated);
+  }
+  .copilot-ideas strong {
+    color: var(--color-text-primary);
+    font-size: 0.75rem;
+    line-height: 1.35;
+  }
+  .copilot-ideas span {
+    flex: none;
+    color: var(--color-text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+  }
+  .copilot-caveats {
+    display: grid;
+    gap: 0.35rem;
+    padding: 0.55rem 0.65rem;
+    border-left: 2px solid var(--color-warning);
+    background: color-mix(in srgb, var(--color-warning) 7%, transparent);
+    color: var(--color-text-secondary);
+    font-size: 0.72rem;
+    line-height: 1.45;
+  }
+  .copilot-caveats > strong {
+    color: var(--color-text-primary);
+    font-size: 0.6875rem;
+  }
+  .copilot-caveats li + li { margin-top: 0.2rem; }
+  .copilot-caveats li::before { content: "- "; }
   .proposal-note {
     margin: 0;
     font-size: 0.75rem;
@@ -1924,6 +2287,25 @@
     width: 0.7rem;
     height: 0.7rem;
   }
+  .synthesis-evidence {
+    padding-top: var(--space-1);
+    border-top: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
+    font-size: 0.75rem;
+    color: var(--color-text-secondary);
+  }
+  .synthesis-evidence summary {
+    width: fit-content;
+    cursor: pointer;
+    font-weight: 700;
+    color: var(--color-text-primary);
+  }
+  .synthesis-evidence ul {
+    display: grid;
+    gap: var(--space-1);
+    margin: var(--space-2) 0 0;
+    padding-left: 1.1rem;
+    line-height: 1.45;
+  }
 
   /* Evidence the analyst actually opened before answering — provenance receipts,
      not a "thinking" performance. Quiet: they are not the content. */
@@ -2020,6 +2402,8 @@
     padding: var(--space-3);
     border-top: 1px solid var(--color-border);
     background: color-mix(in srgb, var(--chat-wash) 82%, transparent);
+    /* Warm brown shadow tint to match the parchment identity above — no
+       token equivalent for this exact hue, kept as a documented color-mix. */
     box-shadow: 0 -1rem 2.5rem color-mix(in srgb, #6f5539 6%, transparent);
   }
 

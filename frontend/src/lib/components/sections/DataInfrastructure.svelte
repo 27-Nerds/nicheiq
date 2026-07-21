@@ -136,9 +136,9 @@
       };
     if (name === "scale")
       return {
-        bg: "rgba(168, 85, 247, 0.15)",
-        border: "#a855f7",
-        text: "#a855f7",
+        bg: "color-mix(in srgb, var(--viz-cat-4) 15%, transparent)",
+        border: "var(--viz-cat-4)",
+        text: "var(--viz-cat-4)",
       };
     return {
       bg: "var(--color-bg-surface)",
@@ -690,7 +690,7 @@
   :global(.cost-tiers-icon) {
     width: 1.25rem;
     height: 1.25rem;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .cost-tiers-title {
@@ -856,7 +856,7 @@
   :global(.cost-fallback-icon) {
     width: 1.5rem;
     height: 1.5rem;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
     flex-shrink: 0;
   }
 
@@ -900,7 +900,7 @@
   :global(.timeline-header-icon) {
     width: 1.25rem;
     height: 1.25rem;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .timeline-title {
@@ -1169,7 +1169,7 @@
     align-items: center;
     gap: var(--space-1);
     font-size: var(--text-sm);
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
     text-decoration: none;
   }
 

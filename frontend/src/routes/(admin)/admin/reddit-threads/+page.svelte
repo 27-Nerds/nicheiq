@@ -135,7 +135,7 @@
     <button
       onclick={handleCleanup}
       disabled={isCleaningUp}
-      class="flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-border text-text-secondary hover:text-error hover:border-error/50 transition-colors disabled:opacity-50"
+      class="btn-ghost cleanup-btn disabled:opacity-50"
     >
       <Trash2 class="w-4 h-4" />
       Cleanup Old
@@ -204,7 +204,7 @@
               onclick={() => filterBySubreddit(sub.name)}
               class="px-3 py-1 text-sm rounded-full border transition-colors
                 {filters.subreddit === sub.name
-                  ? 'bg-accent/20 border-accent/50 text-accent'
+                  ? 'bg-[color:var(--color-accent-subtle)] border-[color:var(--color-border-accent)] text-[color:var(--color-accent-dark)] font-medium'
                   : 'border-border text-text-secondary hover:border-accent/30 hover:text-text-primary'}"
             >
               r/{sub.name}
@@ -235,7 +235,7 @@
           type="text"
           bind:value={searchInput}
           placeholder="Search title..."
-          class="w-full pl-10 pr-4 py-2 bg-bg-surface border border-border rounded-lg text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent/50"
+          class="w-full pl-10 pr-4 py-2 bg-bg-surface border border-border rounded-lg text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-glow)]"
         />
       </div>
     </form>
@@ -250,7 +250,7 @@
         <p class="text-text-secondary">No threads match your filters.</p>
         <button
           onclick={() => updateFilters({ q: "", subreddit: "" })}
-          class="mt-2 text-sm text-accent hover:underline"
+          class="mt-2 text-sm text-[color:var(--color-accent-dark)] hover:underline"
         >
           Clear filters
         </button>
@@ -261,54 +261,51 @@
     </div>
   {:else}
     <div class="bg-bg-surface border border-border rounded-xl overflow-hidden">
-      <table class="w-full text-sm">
+      <table class="data-table">
         <thead>
-          <tr class="border-b border-border text-left">
-            <th class="px-4 py-3 text-text-muted font-medium w-8"></th>
-            <th class="px-4 py-3 text-text-muted font-medium">Title</th>
-            <th class="px-4 py-3 text-text-muted font-medium">Subreddit</th>
-            <th class="px-4 py-3 text-text-muted font-medium">
-              <button onclick={() => toggleSort("score")} class="flex items-center gap-1 hover:text-text-primary transition-colors">
+          <tr>
+            <th class="w-8"></th>
+            <th>Title</th>
+            <th>Subreddit</th>
+            <th class="num">
+              <button onclick={() => toggleSort("score")} class="inline-flex items-center gap-1 hover:text-text-primary transition-colors">
                 Score{sortIndicator("score")}
                 <ArrowUpDown class="w-3 h-3" />
               </button>
             </th>
-            <th class="px-4 py-3 text-text-muted font-medium">
-              <button onclick={() => toggleSort("numComments")} class="flex items-center gap-1 hover:text-text-primary transition-colors">
+            <th class="num">
+              <button onclick={() => toggleSort("numComments")} class="inline-flex items-center gap-1 hover:text-text-primary transition-colors">
                 Comments{sortIndicator("numComments")}
                 <ArrowUpDown class="w-3 h-3" />
               </button>
             </th>
-            <th class="px-4 py-3 text-text-muted font-medium">
+            <th>
               <button onclick={() => toggleSort("redditCreatedAt")} class="flex items-center gap-1 hover:text-text-primary transition-colors">
                 Date{sortIndicator("redditCreatedAt")}
                 <ArrowUpDown class="w-3 h-3" />
               </button>
             </th>
-            <th class="px-4 py-3 text-text-muted font-medium w-8"></th>
+            <th class="w-8"></th>
           </tr>
         </thead>
         <tbody>
           {#each threads as thread (thread.id)}
-            <tr
-              class="border-b border-border/50 hover:bg-bg-elevated/50 cursor-pointer transition-colors"
-              onclick={() => toggleRow(thread.id)}
-            >
-              <td class="px-4 py-3 text-text-muted">
+            <tr class="cursor-pointer" onclick={() => toggleRow(thread.id)}>
+              <td class="cell-muted">
                 {#if expandedRows.has(thread.id)}
                   <ChevronDown class="w-4 h-4" />
                 {:else}
                   <ChevronRight class="w-4 h-4" />
                 {/if}
               </td>
-              <td class="px-4 py-3 text-text-primary max-w-xs truncate" title={thread.title}>
+              <td class="cell-primary max-w-xs truncate" title={thread.title}>
                 {thread.title}
               </td>
-              <td class="px-4 py-3 text-text-secondary">r/{thread.subreddit}</td>
-              <td class="px-4 py-3 text-text-secondary">{thread.score.toLocaleString()}</td>
-              <td class="px-4 py-3 text-text-secondary">{thread.numComments.toLocaleString()}</td>
-              <td class="px-4 py-3 text-text-muted text-xs">{formatDate(thread.redditCreatedAt)}</td>
-              <td class="px-4 py-3">
+              <td>r/{thread.subreddit}</td>
+              <td class="num">{thread.score.toLocaleString()}</td>
+              <td class="num">{thread.numComments.toLocaleString()}</td>
+              <td class="cell-muted text-xs">{formatDate(thread.redditCreatedAt)}</td>
+              <td>
                 <a
                   href={thread.url}
                   target="_blank"
@@ -351,7 +348,7 @@
           {#if filters.page > 1}
             <a
               href="?{new URLSearchParams({ ...Object.fromEntries(Object.entries(filters).map(([k, v]) => [k, String(v)])), page: String(filters.page - 1) }).toString()}"
-              class="px-3 py-1.5 text-sm rounded-lg border border-border text-text-secondary hover:text-text-primary hover:border-accent/30 transition-colors"
+              class="btn-ghost"
             >
               Previous
             </a>
@@ -359,7 +356,7 @@
           {#if filters.page < totalPages}
             <a
               href="?{new URLSearchParams({ ...Object.fromEntries(Object.entries(filters).map(([k, v]) => [k, String(v)])), page: String(filters.page + 1) }).toString()}"
-              class="px-3 py-1.5 text-sm rounded-lg border border-border text-text-secondary hover:text-text-primary hover:border-accent/30 transition-colors"
+              class="btn-ghost"
             >
               Next
             </a>
@@ -369,3 +366,25 @@
     {/if}
   {/if}
 </div>
+
+<style>
+  /* .btn-ghost's :hover is unlayered global CSS (border-color/bg/color), so a plain
+     Tailwind hover: utility can't win against it (cascade layers rank utilities
+     below unlayered rules regardless of source order) — this destructive-hover
+     override needs its own scoped rule to out-specificity it. */
+  .cleanup-btn:hover:not(:disabled) {
+    border-color: var(--color-error-text);
+    background: var(--color-error-subtle);
+    color: var(--color-error-text);
+  }
+
+  /* .data-table td's color is unlayered global CSS, so a Tailwind text-color
+     utility can't win against it (cascade layers rank utilities below
+     unlayered rules) — these scoped classes out-specificity it instead. */
+  .cell-primary {
+    color: var(--color-text-primary);
+  }
+  .cell-muted {
+    color: var(--color-text-muted);
+  }
+</style>

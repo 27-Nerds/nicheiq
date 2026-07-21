@@ -174,6 +174,9 @@ class TestRunSeedIdeaDeliveryFailureRevert:
             assert flow.state.idea_ruled_out == []
             # Saved at least twice: once with the merge, once with the revert.
             assert flow.checkpoint_mgr.save_stage.call_count >= 2
+            # Materialized once with the evaluated result and again after reverting,
+            # so an asset-cache refresh cannot resurrect a ghost candidate.
+            assert flow._materialize_preview_report.call_count == 2
 
     @patch("worker.tasks._solution_to_preview_dict", return_value={"solution_name": "Seed Idea"})
     @patch("worker.tasks.notify_seed_complete", side_effect=RuntimeError("could not be delivered"))

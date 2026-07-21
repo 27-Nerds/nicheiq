@@ -495,18 +495,14 @@
     padding: 0.5rem 0.75rem 0.5rem 0.625rem;
     border: 1px solid var(--color-border);
     border-radius: 6px;
-    background: var(--color-surface, #fff);
+    background: var(--color-surface);
   }
   .filter-chip--collection {
     border: 1px solid var(--color-border-accent);
-    border-left: 3px solid var(--color-accent);
-    background: rgba(234, 88, 12, 0.04);
+    background: var(--color-accent-subtle);
   }
   .filter-chip--collection .chip-label {
-    color: var(--color-accent);
-  }
-  .filter-chip--results {
-    border-left: 3px solid var(--color-text-muted);
+    color: var(--color-accent-dark);
   }
   .filter-chip--results .chip-label {
     color: var(--color-text-muted);

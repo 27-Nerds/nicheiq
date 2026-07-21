@@ -3,6 +3,8 @@ import {
   getNotificationPreferences,
   updateNotificationPreferences,
   changePassword,
+  getSelectionConceptSets,
+  getSelectionMetricExplanations,
   ApiError,
 } from '../api';
 
@@ -118,6 +120,34 @@ describe('Notification Preferences API', () => {
   });
 });
 
+describe('Selection metric explanations API', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('loads the authenticated proxy contract', async () => {
+    const payload = {
+      schemaVersion: 1 as const,
+      metrics: [{
+        key: 'research_score',
+        label: 'Research score',
+        kind: 'derived_score' as const,
+        range: '0-100' as const,
+        summary: 'Ranking score',
+        method: 'Weighted from research dimensions',
+        sourceFields: ['adjusted_composite_score'],
+      }],
+    };
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => payload,
+    });
+
+    await expect(getSelectionMetricExplanations()).resolves.toEqual(payload);
+    expect(mockFetch).toHaveBeenCalledWith('/api/selection/metric-explanations');
+  });
+});
+
 describe('Password API', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -222,5 +252,19 @@ describe('ApiError', () => {
     expect(error.status).toBe(404);
     expect(error.details).toEqual({ detail: 'Not found' });
     expect(error.name).toBe('ApiError');
+  });
+
+  it('converts a non-JSON API response into a readable transport error', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      json: async () => { throw new SyntaxError('Unexpected token <'); },
+    });
+
+    await expect(getSelectionConceptSets('job-1')).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 404,
+      message: 'The request could not be completed. Please try again.',
+    });
   });
 });

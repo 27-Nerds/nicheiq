@@ -108,7 +108,7 @@
   .op-panel {
     border: 1px solid var(--color-border);
     border-radius: 10px;
-    background: var(--color-surface, #fff);
+    background: var(--color-surface);
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -167,7 +167,7 @@
     transition: background 0.12s;
   }
   .op-idea:hover {
-    background: var(--color-bg-elevated, #fafafa);
+    background: var(--color-bg-elevated);
   }
   .op-idea-label {
     display: block;
@@ -195,7 +195,7 @@
 
   .op-go-row {
     padding: 11px 20px;
-    background: var(--color-bg-elevated, #fafafa);
+    background: var(--color-bg-elevated);
     display: flex;
     align-items: center;
     justify-content: space-between;

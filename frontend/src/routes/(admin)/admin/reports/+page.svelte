@@ -103,7 +103,7 @@
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
       <div class="bg-bg-surface border border-border rounded-xl p-5">
         <p class="text-sm text-text-muted mb-1">Success Rate</p>
-        <p class="text-3xl font-bold text-success">{stats.successRate}%</p>
+        <p class="text-3xl font-bold text-[color:var(--color-success-text)]">{stats.successRate}%</p>
         <div class="mt-2 h-2 bg-bg-elevated rounded-full overflow-hidden">
           <div
             class="h-full bg-success rounded-full"
@@ -113,7 +113,7 @@
       </div>
       <div class="bg-bg-surface border border-border rounded-xl p-5">
         <p class="text-sm text-text-muted mb-1">Failure Rate</p>
-        <p class="text-3xl font-bold text-error">{stats.failureRate}%</p>
+        <p class="text-3xl font-bold text-[color:var(--color-error-text)]">{stats.failureRate}%</p>
         <div class="mt-2 h-2 bg-bg-elevated rounded-full overflow-hidden">
           <div
             class="h-full bg-error rounded-full"
@@ -151,22 +151,18 @@
           Failures by Stage
         </h3>
         <div class="overflow-x-auto">
-          <table class="w-full text-sm">
+          <table class="data-table">
             <thead>
-              <tr class="border-b border-border">
-                <th class="text-left py-2 pr-4 text-text-muted font-medium"
-                  >Stage</th
-                >
-                <th class="text-right py-2 text-text-muted font-medium"
-                  >Failures</th
-                >
+              <tr>
+                <th>Stage</th>
+                <th class="num">Failures</th>
               </tr>
             </thead>
             <tbody>
               {#each stats.failuresByStage as item}
-                <tr class="border-b border-border/50">
-                  <td class="py-2 pr-4 text-text-primary">{item.stage}</td>
-                  <td class="py-2 text-right text-error font-medium"
+                <tr>
+                  <td class="cell-primary">{item.stage}</td>
+                  <td class="num font-medium cell-error"
                     >{item.count}</td
                   >
                 </tr>
@@ -181,59 +177,40 @@
     <div class="bg-bg-surface border border-border rounded-xl p-5">
       <h3 class="text-lg font-semibold text-text-primary mb-4">Recent Jobs</h3>
       <div class="overflow-x-auto">
-        <table class="w-full text-sm">
+        <table class="data-table">
           <thead>
-            <tr class="border-b border-border">
-              <th class="w-8 py-2"></th>
-              <th class="text-left py-2 pr-4 text-text-muted font-medium"
-                >Niche</th
-              >
-              <th class="text-left py-2 pr-4 text-text-muted font-medium"
-                >User</th
-              >
-              <th class="text-left py-2 pr-4 text-text-muted font-medium"
-                >Status</th
-              >
-              <th class="text-left py-2 pr-4 text-text-muted font-medium"
-                >Stage</th
-              >
-              <th class="text-left py-2 pr-4 text-text-muted font-medium">Created</th
-              >
-              <th class="text-right py-2 text-text-muted font-medium">Cost</th>
+            <tr>
+              <th class="w-8"></th>
+              <th>Niche</th>
+              <th>User</th>
+              <th>Status</th>
+              <th>Stage</th>
+              <th>Created</th>
+              <th class="num">Cost</th>
             </tr>
           </thead>
           <tbody>
             {#each stats.recentJobs as job}
               {@const isFailed = job.status === "FAILED"}
               {@const isExpanded = expandedJobId === job.id}
-              <tr
-                class="border-b border-border/50 cursor-pointer hover:bg-bg-elevated/50"
-                onclick={() => toggleExpand(job.id)}
-              >
-                <td class="py-2 pl-2 w-8">
+              <tr class="cursor-pointer" onclick={() => toggleExpand(job.id)}>
+                <td class="w-8">
                   {#if isExpanded}
                     <ChevronDown size={16} class="text-text-muted" />
                   {:else}
                     <ChevronRight size={16} class="text-text-muted" />
                   {/if}
                 </td>
-                <td class="py-2 pr-4 text-text-primary max-w-48 truncate"
-                  >{job.niche}</td
-                >
-                <td class="py-2 pr-4 text-text-secondary"
-                  >{job.user?.email || "N/A"}</td
-                >
-                <td class="py-2 pr-4">
+                <td class="cell-primary max-w-48 truncate">{job.niche}</td>
+                <td>{job.user?.email || "N/A"}</td>
+                <td>
                   <Badge variant={statusVariant(job.status)} size="sm"
                     >{job.status}</Badge
                   >
                 </td>
-                <td class="py-2 pr-4 text-text-secondary"
-                  >{job.currentStageName || "-"}</td
-                >
-                <td class="py-2 pr-4 text-text-muted">{formatDate(job.createdAt)}</td
-                >
-                <td class="py-2 text-right text-text-secondary">
+                <td>{job.currentStageName || "-"}</td>
+                <td class="cell-muted">{formatDate(job.createdAt)}</td>
+                <td class="num">
                   {formatCost(job.costUsd)}
                   {#if job.chatCostUsd}
                     <span class="block text-xs text-text-muted"
@@ -245,7 +222,7 @@
 
               {#if isExpanded}
                 {@const details = parseErrorDetails(job.errorDetails)}
-                <tr class="border-b border-border/50 bg-bg-elevated/30">
+                <tr class="bg-bg-elevated/30">
                   <td colspan="7" class="px-4 py-4">
                     <div class="space-y-3 text-sm">
                       {#if isFailed}
@@ -347,54 +324,32 @@
                           </div>
                           {#if job.costSummary.stage_breakdown?.length}
                             <div class="overflow-x-auto">
-                              <table class="w-full text-xs">
+                              <table class="data-table">
                                 <thead>
-                                  <tr class="border-b border-border">
-                                    <th
-                                      class="text-left py-1.5 pr-4 text-text-muted font-medium"
-                                      >Stage</th
-                                    >
-                                    <th
-                                      class="text-left py-1.5 pr-4 text-text-muted font-medium"
-                                      >Model</th
-                                    >
-                                    <th
-                                      class="text-right py-1.5 pr-4 text-text-muted font-medium"
-                                      >Tokens (in/out)</th
-                                    >
-                                    <th
-                                      class="text-right py-1.5 pr-4 text-text-muted font-medium"
-                                      >Cost</th
-                                    >
-                                    <th
-                                      class="text-left py-1.5 text-text-muted font-medium"
-                                      >Source</th
-                                    >
+                                  <tr>
+                                    <th>Stage</th>
+                                    <th>Model</th>
+                                    <th class="num">Tokens (in/out)</th>
+                                    <th class="num">Cost</th>
+                                    <th>Source</th>
                                   </tr>
                                 </thead>
                                 <tbody>
                                   {#each job.costSummary.stage_breakdown as row}
-                                    <tr class="border-b border-border/50">
-                                      <td class="py-1.5 pr-4 text-text-primary"
-                                        >{row.stage}</td
-                                      >
-                                      <td
-                                        class="py-1.5 pr-4 text-text-secondary font-mono"
+                                    <tr>
+                                      <td class="cell-primary">{row.stage}</td>
+                                      <td class="text-text-secondary font-mono"
                                         >{row.model}</td
                                       >
-                                      <td
-                                        class="py-1.5 pr-4 text-right text-text-secondary"
+                                      <td class="num text-text-secondary"
                                         >{formatTokens(row.prompt_tokens)} / {formatTokens(
                                           row.completion_tokens,
                                         )}</td
                                       >
-                                      <td
-                                        class="py-1.5 pr-4 text-right text-text-primary"
+                                      <td class="num cell-primary"
                                         >{formatCost(row.total_cost)}</td
                                       >
-                                      <td class="py-1.5 text-text-muted"
-                                        >{row.cost_source}</td
-                                      >
+                                      <td class="cell-muted">{row.cost_source}</td>
                                     </tr>
                                   {/each}
                                 </tbody>
@@ -409,7 +364,7 @@
                         <a
                           href="/api/admin/jobs/{job.id}/checkpoint"
                           download
-                          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-border text-text-secondary hover:bg-bg-elevated transition-colors"
+                          class="btn-ghost"
                           onclick={(e) => e.stopPropagation()}
                         >
                           <Download size={14} />
@@ -418,7 +373,7 @@
                         <a
                           href="/api/admin/jobs/{job.id}/logs"
                           download
-                          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-border text-text-secondary hover:bg-bg-elevated transition-colors"
+                          class="btn-ghost"
                           onclick={(e) => e.stopPropagation()}
                         >
                           <FileText size={14} />
@@ -440,3 +395,18 @@
     </div>
   {/if}
 </div>
+
+<style>
+  /* .data-table td's color is unlayered global CSS, so a Tailwind text-color
+     utility can't win against it (cascade layers rank utilities below
+     unlayered rules) — these scoped classes out-specificity it instead. */
+  .cell-primary {
+    color: var(--color-text-primary);
+  }
+  .cell-muted {
+    color: var(--color-text-muted);
+  }
+  .cell-error {
+    color: var(--color-error-text);
+  }
+</style>

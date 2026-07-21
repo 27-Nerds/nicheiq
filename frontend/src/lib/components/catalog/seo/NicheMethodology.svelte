@@ -120,7 +120,7 @@
 
 <style>
   .nm {
-    background: var(--color-bg-base, #fafafa);
+    background: var(--color-bg-base);
     border: 1px solid var(--color-border);
     border-radius: 8px;
     padding: 22px 24px;

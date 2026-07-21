@@ -12,6 +12,8 @@
     position?: "top" | "bottom" | "left" | "right";
     /** Accessible name for the trigger button. */
     label?: string;
+    /** Optional visible title and accessible name for the panel. */
+    title?: string;
     /** The clickable trigger content (e.g. a score badge). */
     trigger: Snippet;
     /** The panel content. */
@@ -23,6 +25,7 @@
   let {
     position = "bottom",
     label = "More information",
+    title,
     trigger,
     children,
     class: className = "",
@@ -32,6 +35,11 @@
   let triggerEl: HTMLButtonElement | null = $state(null);
   let panelEl: HTMLDivElement | null = $state(null);
   let style = $state("opacity:0;");
+  const componentId = $props.id();
+  const panelId = `${componentId}-panel`;
+  const titleId = `${componentId}-title`;
+  const FOCUSABLE =
+    'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [contenteditable="true"], [tabindex]:not([tabindex="-1"])';
 
   function place() {
     if (!triggerEl || !panelEl) return;
@@ -67,9 +75,49 @@
     style = "opacity:0;";
   }
 
+  function panelFocusables() {
+    if (!panelEl) return [];
+    return Array.from(panelEl.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((element) => {
+      if (element.closest('[hidden], [inert], [aria-hidden="true"]')) return false;
+      const styles = window.getComputedStyle(element);
+      return styles.display !== "none" && styles.visibility !== "hidden";
+    });
+  }
+
+  function trapTab(event: KeyboardEvent) {
+    if (!panelEl || !triggerEl) return;
+
+    const contentFocusables = panelFocusables();
+    const active = document.activeElement;
+    event.preventDefault();
+    // The panel is portaled outside a parent WorkspaceOverlay, so its Tab event
+    // must not reach the workspace's separate focus trap.
+    event.stopPropagation();
+
+    if (contentFocusables.length === 0) {
+      (active === triggerEl ? panelEl : triggerEl).focus();
+      return;
+    }
+
+    if (active === panelEl) {
+      (event.shiftKey ? triggerEl : contentFocusables[0]).focus();
+      return;
+    }
+
+    const focusRing = [triggerEl, ...contentFocusables];
+    const activeIndex = focusRing.indexOf(active as HTMLElement);
+    const nextIndex = event.shiftKey
+      ? (activeIndex <= 0 ? focusRing.length : activeIndex) - 1
+      : (activeIndex + 1) % focusRing.length;
+    focusRing[nextIndex].focus();
+  }
+
   $effect(() => {
     if (!open || !panelEl) return;
-    requestAnimationFrame(place);
+    requestAnimationFrame(() => {
+      place();
+      panelEl?.focus();
+    });
 
     const onPointer = (e: MouseEvent) => {
       const t = e.target as Node;
@@ -78,10 +126,14 @@
     const onKey = (e: KeyboardEvent) => {
       // Scope Esc to the popover so it doesn't also close a parent modal.
       if (e.key === "Escape") {
+        e.preventDefault();
         e.stopPropagation();
         close();
         triggerEl?.focus();
+        return;
       }
+
+      if (e.key === "Tab") trapTab(e);
     };
     const reposition = () => place();
 
@@ -104,6 +156,7 @@
   class="popover-trigger {className}"
   aria-haspopup="dialog"
   aria-expanded={open}
+  aria-controls={open ? panelId : undefined}
   aria-label={label}
   onclick={() => (open ? close() : (open = true))}
 >
@@ -111,7 +164,18 @@
 </button>
 
 {#if open}
-  <div bind:this={panelEl} use:portal class="popover-panel" role="dialog" {style}>
+  <div
+    id={panelId}
+    bind:this={panelEl}
+    use:portal
+    class="popover-panel"
+    role="dialog"
+    aria-labelledby={title ? titleId : undefined}
+    aria-label={title ? undefined : label}
+    tabindex="-1"
+    {style}
+  >
+    {#if title}<h2 id={titleId} class="popover-panel__title">{title}</h2>{/if}
     {@render children()}
   </div>
 {/if}
@@ -142,7 +206,7 @@
 
   :global(.popover-panel) {
     position: fixed;
-    z-index: 10001;
+    z-index: var(--z-popover, 60);
     width: clamp(300px, 90vw, 380px);
     max-height: min(60vh, 440px);
     overflow-y: auto;
@@ -156,5 +220,15 @@
     line-height: 1.5;
     color: var(--color-text-secondary);
     transition: opacity 0.12s ease-out;
+    outline: none;
+  }
+
+  :global(.popover-panel__title) {
+    margin: 0 0 0.5rem;
+    color: var(--color-text-primary);
+    font-family: var(--font-body);
+    font-size: 0.875rem;
+    font-weight: 700;
+    line-height: 1.35;
   }
 </style>

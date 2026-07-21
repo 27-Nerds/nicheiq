@@ -1,5 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from "svelte";
+	import { portal } from "$lib/actions/portal";
+	import { isolateModalBackground } from "$lib/utils/modalIsolation";
 	import { lockScroll } from "$lib/utils/scrollLock";
 
 	interface Props {
@@ -23,22 +25,29 @@
 	}: Props = $props();
 
 	let frameEl = $state<HTMLElement>();
+	let layerEl = $state<HTMLDivElement>();
 
 	const FOCUSABLE =
 		'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 	$effect(() => {
-		if (!open || !modal || !frameEl) return;
+		if (!open || !modal || !frameEl || !layerEl) return;
 
 		const previousFocus =
 			document.activeElement instanceof HTMLElement ? document.activeElement : null;
 		const unlock = lockScroll();
+		const restoreBackground = isolateModalBackground(layerEl);
 
 		requestAnimationFrame(() => frameEl?.focus());
 
 		return () => {
+			restoreBackground();
 			unlock();
-			requestAnimationFrame(() => previousFocus?.focus());
+			requestAnimationFrame(() => {
+				if (previousFocus?.isConnected && !previousFocus.closest('[inert], [aria-hidden="true"]')) {
+					previousFocus.focus();
+				}
+			});
 		};
 	});
 
@@ -87,6 +96,8 @@
 
 {#if open}
 	<div
+		bind:this={layerEl}
+		use:portal
 		class="workspace-overlay"
 		class:workspace-overlay--modal={modal}
 		class:workspace-overlay--docked={!modal}
@@ -123,15 +134,14 @@
 	}
 
 	.workspace-overlay--modal {
-		z-index: var(--z-modal, 60);
+		z-index: var(--z-modal, 40);
 	}
 
 	.workspace-overlay__scrim {
 		position: absolute;
 		inset: 0;
 		pointer-events: auto;
-		background: color-mix(in srgb, #28231f 54%, transparent);
-		backdrop-filter: blur(6px) saturate(0.82);
+		background: color-mix(in srgb, var(--color-text-primary) 55%, transparent);
 		animation: workspace-scrim-in 180ms ease-out both;
 	}
 
@@ -145,10 +155,14 @@
 		outline: none;
 	}
 
+	/* Height contract: the frame is viewport-bounded (inset-positioned for the
+	   modal, sized for the dock), and the single child fills it exactly. The
+	   child owns its internal scrolling; it must never exceed the frame. */
 	.workspace-overlay__frame > :global(*) {
 		flex: 1;
 		min-width: 0;
 		min-height: 0;
+		max-height: 100%;
 	}
 
 	.workspace-overlay--docked .workspace-overlay__frame {

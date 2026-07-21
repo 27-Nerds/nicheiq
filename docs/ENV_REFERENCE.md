@@ -163,6 +163,10 @@ AUTH_SECRET=your-auth-secret-32-chars-minimum
 # Used for: Session encryption in Auth.js
 # Generate: openssl rand -base64 32
 
+# Experiment public-view token signing
+EXPERIMENT_SIGNING_SECRET=your-independent-32-char-secret
+# Required in production. Generate: openssl rand -base64 32
+
 # Public catalog launch gate (Phase 4.5)
 SEO_LAUNCH_GATE=true
 # When 'true' (default): every /ideas/*, /idea/[slug], /pain-point/[slug] page
@@ -191,6 +195,51 @@ SEO_LAUNCH_GATE=true
    - Create new OAuth App
    - Set callback URL: `https://yourdomain.com/api/auth/callback/github`
    - Copy Client ID and Client Secret
+
+---
+
+### GitHub App (Decision Handoff Dispatch)
+
+This GitHub App is separate from the GitHub OAuth App used for login. Its
+credentials are API-only and must never be exposed to the frontend container.
+
+```bash
+GITHUB_APP_ENABLED=false
+GITHUB_APP_ID=123456
+GITHUB_APP_SLUG=nicheiq-handoff
+GITHUB_APP_CLIENT_ID=Iv23li...
+GITHUB_APP_CLIENT_SECRET=...
+GITHUB_APP_PRIVATE_KEY_BASE64=...
+GITHUB_APP_CALLBACK_URL=https://yourdomain.com/api/integrations/github/callback
+```
+
+| Variable | Purpose |
+| --- | --- |
+| `GITHUB_APP_ENABLED` | Enables owner-only GitHub issue dispatch. When `true`, every field below is required in production. |
+| `GITHUB_APP_ID` | Numeric App ID used to verify that the selected installation belongs to this App. |
+| `GITHUB_APP_SLUG` | Public App slug used for the installation URL. |
+| `GITHUB_APP_CLIENT_ID` | GitHub App OAuth client ID; distinct from the login OAuth client ID. |
+| `GITHUB_APP_CLIENT_SECRET` | GitHub App OAuth client secret. |
+| `GITHUB_APP_PRIVATE_KEY_BASE64` | One-line base64 encoding of the App's PEM private key. |
+| `GITHUB_APP_CALLBACK_URL` | Exact OAuth callback URL registered on the GitHub App. |
+
+Generate the private-key value without line breaks:
+
+```bash
+base64 < private-key.pem | tr -d '\n'
+```
+
+Configure the GitHub App with:
+
+- Setup URL: `https://yourdomain.com/api/integrations/github/setup`
+- Callback URL: `https://yourdomain.com/api/integrations/github/callback`
+- Repository permissions: Metadata read and Issues write
+- Repository selection: all repositories or selected repositories
+- “Request user authorization during installation”: disabled. NicheIQ starts a
+  separate PKCE authorization after consuming the installation setup state.
+
+NicheIQ persists the installation ID and authorized repository IDs only. GitHub
+user tokens and installation tokens are short-lived and are never stored.
 
 ---
 

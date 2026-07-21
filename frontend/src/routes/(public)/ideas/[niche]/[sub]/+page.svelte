@@ -306,7 +306,7 @@
     margin: 16px 0 24px;
     border: 1px solid var(--color-border);
     border-radius: 8px;
-    background: var(--color-surface-elevated, #fafafa);
+    background: var(--color-surface-elevated);
     font-size: 13px;
     color: var(--color-text-secondary, var(--color-text-primary));
     line-height: 1.4;

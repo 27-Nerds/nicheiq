@@ -76,20 +76,20 @@
     text-transform: uppercase;
     font-weight: 600;
     border: 1px solid var(--color-border);
-    background: var(--color-surface, #fff);
+    background: var(--color-surface);
     color: var(--color-text-secondary, var(--color-text-primary));
   }
   .quality-pill[data-tone="gold"] {
-    color: #b8860b; /* dark gold — readable on light backgrounds */
+    color: var(--color-tier-gold);
     border-color: rgba(184, 134, 11, 0.3);
     background: rgba(184, 134, 11, 0.04);
   }
   .quality-pill[data-tone="silver"] {
-    color: #6b7280;
+    color: var(--color-tier-silver);
     border-color: rgba(107, 114, 128, 0.3);
   }
   .quality-pill[data-tone="bronze"] {
-    color: #92400e;
+    color: var(--color-tier-bronze);
     border-color: rgba(146, 64, 14, 0.3);
   }
   /* Visible "QUALITY" prefix names the metric; stays muted so the tier word

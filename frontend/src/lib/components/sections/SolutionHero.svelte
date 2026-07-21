@@ -627,7 +627,7 @@
   :global(.hero-icon-svg) {
     width: 1.25rem;
     height: 1.25rem;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .hero-title {
@@ -743,11 +743,11 @@
     --param-bg: rgba(59, 130, 246, 0.08);
   }
   .param-cost {
-    --param-color: #22c55e;
+    --param-color: var(--color-success);
     --param-bg: rgba(34, 197, 94, 0.08);
   }
   .param-budget {
-    --param-color: #8b5cf6;
+    --param-color: var(--viz-cat-4);
     --param-bg: rgba(139, 92, 246, 0.08);
   }
 
@@ -782,7 +782,7 @@
   }
 
   .param-card:hover :global(.param-icon) {
-    color: #ffffff;
+    color: var(--color-text-on-accent);
   }
 
   .param-data {
@@ -897,7 +897,7 @@
   }
 
   .persona-num.primary {
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
     background: var(--color-accent-glow);
   }
 
@@ -917,7 +917,7 @@
   :global(.how-it-works-icon) {
     width: 1rem;
     height: 1rem;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .how-it-works-title {
@@ -925,7 +925,7 @@
     font-size: 0.5625rem;
     font-weight: 700;
     letter-spacing: 0.15em;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
     text-transform: uppercase;
   }
 
@@ -983,7 +983,7 @@
   :global(.rationale-metrics-icon) {
     width: 1rem;
     height: 1rem;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .rationale-metric-label {

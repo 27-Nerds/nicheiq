@@ -41,7 +41,7 @@
   <div class="pt-head" role="row">
     <span role="columnheader">#</span>
     <span role="columnheader">Pain point</span>
-    <span role="columnheader">Mentions</span>
+    <span role="columnheader" class="ar">Mentions</span>
     <span role="columnheader" class="ar">Severity</span>
     <span role="columnheader" class="ar">Saved</span>
     <span role="columnheader">Note</span>
@@ -226,7 +226,7 @@
     background: var(--color-accent);
   }
   .pt-row.t-low::before {
-    background: var(--color-secondary, #2563eb);
+    background: var(--color-info-dark);
   }
   .pt-row:hover {
     background: var(--color-bg-base, #fafafa);
@@ -294,6 +294,9 @@
     font-family: var(--font-mono);
     font-size: 12px;
     color: var(--color-text-secondary);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    justify-self: end;
   }
   .sev {
     display: flex;
@@ -391,7 +394,7 @@
     font-style: italic;
     font-size: 12px;
     color: var(--color-text-secondary, var(--color-text-primary));
-    border-left: 2px solid var(--color-accent);
+    border-left: 2px solid var(--color-border-emphasis);
     padding: 2px 6px 2px 8px;
     cursor: pointer;
     line-height: 1.4;
@@ -457,7 +460,7 @@
   .note-empty:hover {
     color: var(--color-accent);
     border-color: var(--color-border-accent);
-    background: rgba(234, 88, 12, 0.04);
+    background: color-mix(in srgb, var(--color-accent) 4%, transparent);
     border-style: solid;
   }
 

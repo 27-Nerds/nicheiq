@@ -84,6 +84,6 @@
     padding: 3px 7px;
     border-radius: 3px;
     background: var(--color-success);
-    color: var(--color-surface, #fff);
+    color: var(--color-surface);
   }
 </style>

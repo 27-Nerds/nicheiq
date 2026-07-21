@@ -1,3 +1,9 @@
+> **DEPRECATED (2026-07).** This document predates the v3 design system and conflicts
+> with it in places (variant accent coloring, icon usage, count badges). The canonical
+> reference is now **[`DESIGN_SYSTEM.md`](./DESIGN_SYSTEM.md)** — where the two disagree,
+> DESIGN_SYSTEM.md wins. The expandable-vs-static decision framework below is still a
+> useful heuristic; the visual recipes are not.
+
 # UI Guidelines: Expandable vs. Static Sections
 
 This document establishes a consistent system for when to use expandable sections (collapsed by default) vs. static sections (always visible) across the NicheIQ frontend.

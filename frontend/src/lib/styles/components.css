@@ -100,7 +100,7 @@
 }
 
 .card-accent-left {
-	border-left: 3px solid var(--color-accent);
+	border: 1px solid var(--color-border);
 }
 
 .card-success-left {
@@ -238,6 +238,69 @@
 	cursor: default;
 }
 
+/* .btn-ghost — v3 compact ghost button (DESIGN_SYSTEM.md §6) */
+.btn-ghost {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.5rem;
+	min-height: 2rem;
+	padding: 0 0.75rem;
+	border-radius: var(--radius-md);
+	font-family: var(--font-body);
+	font-size: var(--text-13);
+	font-weight: 600;
+	border: 1px solid var(--color-input-border);
+	background: transparent;
+	color: var(--color-text-secondary);
+	cursor: pointer;
+	transition: background var(--duration-fast) var(--ease-default),
+		border-color var(--duration-fast) var(--ease-default),
+		color var(--duration-fast) var(--ease-default);
+}
+
+.btn-ghost:hover {
+	border-color: var(--color-text-secondary);
+	background: var(--color-bg-surface);
+	color: var(--color-text-primary);
+}
+
+/* .cancel-btn — footer/gate ghost companion (DESIGN_SYSTEM.md §6):
+   min-width reserved so two-press relabels never shift layout. */
+.cancel-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 2.1rem;
+	min-width: 9.5rem;
+	padding: 0.35rem 0.75rem;
+	border: 1px solid var(--color-input-border);
+	border-radius: var(--radius-md);
+	background: transparent;
+	color: var(--color-text-secondary);
+	font-family: var(--font-body);
+	font-size: var(--text-sm);
+	font-weight: 700;
+	cursor: pointer;
+	transition: border-color var(--duration-fast) var(--ease-default),
+		color var(--duration-fast) var(--ease-default);
+}
+
+.cancel-btn:hover:not(:disabled) {
+	border-color: var(--color-text-secondary);
+	color: var(--color-text-primary);
+}
+
+.cancel-btn:focus-visible {
+	outline: 2px solid var(--color-accent);
+	outline-offset: 2px;
+}
+
+.cancel-btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
 /* ========================================
    Form Input Component
    ======================================== */
@@ -312,9 +375,9 @@
 }
 
 .nav-item.active {
-	background-color: var(--color-accent-subtle);
-	color: var(--color-accent-dark);
-	border-left: 2px solid var(--color-accent);
+	background-color: var(--color-bg-surface);
+	color: var(--color-text-primary);
+	font-weight: var(--font-semibold);
 }
 
 /* ========================================
@@ -365,6 +428,14 @@
 .dark-table tbody tr:hover,
 .data-table tbody tr:hover {
 	background-color: var(--color-bg-hover);
+}
+
+/* Numeric columns right-align, mono tabular plain-zero (DESIGN_SYSTEM.md §5.3/§9.14) */
+.data-table .num {
+	text-align: right;
+	font-family: var(--font-mono);
+	font-variant-numeric: tabular-nums;
+	font-feature-settings: "zero" 0;
 }
 
 /* ========================================
@@ -499,7 +570,7 @@
    ======================================== */
 
 .quote-block {
-	border-left: 3px solid var(--color-accent);
+	border-left: 3px solid var(--color-border-emphasis);
 	padding-left: var(--space-4);
 	font-style: italic;
 	color: var(--color-text-secondary);
@@ -507,7 +578,7 @@
 
 .quote-enhanced {
 	background: linear-gradient(135deg, var(--color-accent-subtle) 0%, transparent 60%);
-	border-left: 3px solid var(--color-accent);
+	border-left: 3px solid var(--color-border-emphasis);
 	padding: var(--space-4) var(--space-5);
 	border-radius: 0 var(--radius-md) var(--radius-md) 0;
 	font-style: italic;
@@ -735,6 +806,7 @@
    Section Title
    ======================================== */
 
+/* DEPRECATED (v3): use .sec-head — see DESIGN_SYSTEM.md §5 */
 .section-title {
 	font-family: var(--font-display);
 	font-size: var(--text-2xl);
@@ -744,16 +816,6 @@
 	display: flex;
 	align-items: center;
 	gap: var(--space-3);
-}
-
-.section-title::before {
-	content: '';
-	display: block;
-	width: 4px;
-	height: 1.2em;
-	background: var(--color-accent);
-	border-radius: 2px;
-	flex-shrink: 0;
 }
 
 /* ========================================
@@ -779,8 +841,8 @@
 }
 
 .pricing-tier-recommended {
-	background: rgba(234, 88, 12, 0.06);
-	border: 2px solid rgba(234, 88, 12, 0.3);
+	background: var(--color-accent-subtle);
+	border: 2px solid var(--color-border-accent);
 	box-shadow: var(--shadow-md);
 	position: relative;
 }
@@ -791,8 +853,9 @@
 	top: -12px;
 	left: 50%;
 	transform: translateX(-50%);
-	background: var(--color-accent);
-	color: white;
+	background: var(--color-bg-elevated);
+	border: 1px solid var(--color-border-accent);
+	color: var(--color-accent-dark);
 	font-size: var(--text-sm);
 	font-weight: var(--font-semibold);
 	padding: var(--space-1) var(--space-3);
@@ -800,8 +863,8 @@
 }
 
 .pricing-tier-pro {
-	background: rgba(234, 88, 12, 0.04);
-	border-color: rgba(234, 88, 12, 0.3);
+	background: var(--color-accent-subtle);
+	border-color: var(--color-border-accent);
 }
 
 /* ========================================
@@ -1001,7 +1064,7 @@
 }
 
 .feature-yes {
-	color: var(--color-success);
+	color: var(--color-success-text);
 }
 
 .feature-partial {
@@ -1013,15 +1076,10 @@
 	opacity: 0.4;
 }
 
-/* Animated checkmark */
-@keyframes checkPop {
-	0% { transform: scale(0); opacity: 0; }
-	50% { transform: scale(1.2); }
-	100% { transform: scale(1); opacity: 1; }
-}
-
+/* v3: pop animation removed — no checkmark-pop, tool/artifact state reads as
+   a record line, not a to-do list (DESIGN_SYSTEM.md §9.2) */
 .check-animate {
-	animation: checkPop var(--duration-slower) var(--ease-spring) forwards;
+	animation: none;
 }
 
 /* ========================================

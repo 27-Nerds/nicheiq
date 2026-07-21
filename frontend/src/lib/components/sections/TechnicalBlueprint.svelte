@@ -595,8 +595,7 @@
 
   .tech-approach-card {
     background: var(--color-bg-surface);
-    border: 1px solid var(--color-border);
-    border-left: 3px solid var(--color-accent);
+    border: 1px solid var(--color-border-emphasis);
     border-radius: var(--radius-lg);
     padding: var(--space-6);
     margin-bottom: var(--space-8);
@@ -701,7 +700,7 @@
     font-family: var(--font-mono);
     font-size: var(--text-sm);
     font-weight: 700;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
     background: var(--color-accent-subtle);
     padding: var(--space-1) var(--space-2);
     border-radius: var(--radius-sm);
@@ -765,7 +764,7 @@
     font-family: var(--font-mono);
     font-size: var(--text-2xl);
     font-weight: 700;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .site-stat-label {
@@ -890,7 +889,7 @@
     display: block;
     font-family: var(--font-mono);
     font-size: var(--text-sm);
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
     margin-bottom: 0.375rem;
   }
 
@@ -912,7 +911,7 @@
     font-family: var(--font-mono);
     font-size: var(--text-xl);
     font-weight: 700;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .site-page-count .count-label {
@@ -1049,7 +1048,7 @@
     gap: 0.375rem;
     font-family: var(--font-mono);
     font-size: var(--text-sm);
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
     margin-bottom: var(--space-1);
   }
 

@@ -75,7 +75,7 @@
 
   const rows = $derived.by<ScoreRow[]>(() => {
     const out: ScoreRow[] = [
-      { kind: "bar", label: "Severity", value: severity, tone: "var(--color-error, #dc2626)" },
+      { kind: "bar", label: "Severity", value: severity, tone: "var(--color-error)" },
       { kind: "bar", label: "Commercial intent", value: commercialIntent, tone: "var(--color-accent)" },
     ];
     if (opportunity) {
@@ -106,7 +106,7 @@
   composite={computedComposite}
   tier={tierLabel}
   {formulaNote}
-  accent="var(--color-error, #dc2626)"
+  accent="var(--color-error)"
   headerExtra={qualitySignals ? qualityBadge : undefined}
   {rows}
   {footerStats}

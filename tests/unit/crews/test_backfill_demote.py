@@ -126,6 +126,21 @@ class TestSweepDemote:
         assert ideas[0].candidate_status == "demoted"  # unchanged
         assert crew.ruled_out_pains == []
 
+    def test_preserves_evaluated_payload_for_generated_idea(self):
+        crew = _crew()
+        idea = _idea("GeneratedConcept", mf=0.2, source_frame="pain")
+        idea.model_dump = lambda mode="python": {
+            "solution_name": "GeneratedConcept",
+            "description": "Automates a researched workflow",
+            "value_proposition": "Removes repetitive manual work",
+        }
+
+        crew._record_ruled_out(idea, source="demoted_winner")
+
+        assert crew.ruled_out_pains[0]["idea"]["description"] == (
+            "Automates a researched workflow"
+        )
+
     def test_bar_zero_is_noop(self, monkeypatch):
         monkeypatch.setattr(settings, "demotion_market_fit_max", 0.0)
         crew = _crew()

@@ -168,7 +168,7 @@
     }
   }
   .row {
-    background: var(--color-surface, #fff);
+    background: var(--color-surface);
     padding: 16px 20px;
     display: flex;
     flex-direction: column;
@@ -240,7 +240,7 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0;
     padding: 0 24px;
-    background: var(--color-surface, #fff);
+    background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: 8px;
     overflow: hidden;

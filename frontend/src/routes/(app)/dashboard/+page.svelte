@@ -621,7 +621,7 @@
                     <span class="row-meta">
                       <span class="row-fail">Failed</span>{#if job.creditRefunded}<span class="row-dim"> · refunded</span>{/if}
                     </span>
-                    <button class="btn-outline btn-xs" type="button" onclick={() => resumeJob(job)} disabled={resumingJobs.has(job.id)}>
+                    <button class="btn-ghost btn-xs" type="button" onclick={() => resumeJob(job)} disabled={resumingJobs.has(job.id)}>
                       {#if resumingJobs.has(job.id)}
                         <Loader2 size={13} class="spinner" aria-hidden="true" /> Resuming…
                       {:else}
@@ -995,44 +995,14 @@
   .link-cancel:disabled { opacity: 0.6; cursor: default; }
   .link-cancel:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; border-radius: 3px; }
 
-  .btn-outline {
-    display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem;
-    padding: 0.4rem 0.75rem; border: 1px solid var(--color-border); border-radius: var(--radius-md);
-    background: var(--color-bg-elevated); color: var(--color-text-primary);
-    font-family: var(--font-body); font-size: 0.8125rem; font-weight: 600; cursor: pointer; white-space: nowrap;
-    transition: border-color 0.15s ease, background 0.15s ease, transform 0.1s ease;
-  }
-  .btn-outline:hover:not(:disabled) { border-color: var(--color-border-emphasis); background: var(--color-bg-surface); }
-  .btn-outline:active:not(:disabled) { transform: scale(0.98); }
-  .btn-outline:disabled { opacity: 0.6; cursor: default; }
-  .btn-outline:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+  /* .btn-ghost is the global v3 ghost recipe (components.css); this page only
+     adds the states/sizing it doesn't define yet. */
+  .btn-ghost:active:not(:disabled) { transform: scale(0.98); }
+  .btn-ghost:disabled { opacity: 0.6; cursor: default; }
+  .btn-ghost:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
   /* min-width holds "Resume"↔"Resuming…" steady (no width jump on click) */
   .btn-xs { padding: 0.3rem 0.6rem; font-size: 0.75rem; min-width: 6rem; }
-  .btn-outline :global(.spinner) { animation: spin 1s linear infinite; }
-
-  .btn-primary {
-    display: inline-flex; align-items: center; gap: 0.4rem;
-    padding: 0.5rem 0.9rem; border: none; border-radius: var(--radius-md);
-    background: var(--color-accent-hover); color: var(--color-white);
-    font-family: var(--font-body); font-size: 0.8125rem; font-weight: 700; white-space: nowrap; cursor: pointer;
-    transition: background 0.15s ease, transform 0.1s ease;
-  }
-  .btn-primary:hover { background: var(--color-accent-dark); }
-  .btn-primary:active { transform: scale(0.98); }
-  .btn-primary:disabled { opacity: 0.7; cursor: default; }
-  .btn-primary:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
-  .btn-lg { padding: 0.7rem 1.15rem; font-size: 0.9375rem; }
-
-  .btn-secondary {
-    display: inline-flex; align-items: center; gap: 0.45rem;
-    padding: 0.55rem 1rem; border: 1px solid var(--color-border); border-radius: var(--radius-md);
-    background: var(--color-bg-elevated); color: var(--color-text-primary);
-    font-family: var(--font-body); font-size: 0.875rem; font-weight: 600; cursor: pointer;
-    transition: border-color 0.15s ease, background 0.15s ease, transform 0.1s ease;
-  }
-  .btn-secondary:hover { border-color: var(--color-border-emphasis); background: var(--color-bg-surface); }
-  .btn-secondary:active { transform: scale(0.98); }
-  .btn-secondary:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+  .btn-ghost :global(.spinner) { animation: spin 1s linear infinite; }
 
   .show-more {
     width: 100%; margin-top: var(--space-3); padding: var(--space-3);
@@ -1140,6 +1110,6 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .row-dot-live, .row-sub :global(.spinner), .btn-outline :global(.spinner), .prog-bar span { animation: none !important; transition: none !important; }
+    .row-dot-live, .row-sub :global(.spinner), .btn-ghost :global(.spinner), .prog-bar span { animation: none !important; transition: none !important; }
   }
 </style>

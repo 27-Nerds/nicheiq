@@ -198,7 +198,7 @@
     margin-bottom: 0.4rem;
   }
   .blog-prose :global(blockquote) {
-    border-left: 3px solid var(--color-accent);
+    border-left: 3px solid var(--color-border-emphasis);
     padding: 0.25rem 0 0.25rem 1rem;
     margin: 0 0 1.15rem;
     color: var(--color-text-secondary);

@@ -40,14 +40,19 @@
 </div>
 
 <style>
+	/* ui/SegmentControl compact density (§6) — AuthModeTabs stays link-based
+	   (real navigation between /register and /login, not a value toggle), so
+	   it reuses the compact recipe's tokens rather than importing the
+	   button/radiogroup component itself. Grid instead of inline-flex so the
+	   two tabs split the full card width. */
 	.auth-tabs {
 		display: grid;
 		grid-template-columns: 1fr 1fr;
-		gap: 4px;
-		padding: 4px;
+		gap: 2px;
+		padding: 3px;
 		background: var(--color-bg-surface);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-full);
+		border: 1px solid var(--color-border-emphasis);
+		border-radius: var(--radius-md);
 		margin-bottom: var(--space-6);
 	}
 
@@ -55,17 +60,19 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		padding: 0.625rem 1rem;
+		padding: 0.3rem 0.7rem;
+		border: 1px solid transparent;
+		border-radius: var(--radius-sm);
 		font-family: var(--font-body);
-		font-weight: var(--font-semibold);
-		font-size: var(--text-md);
-		color: var(--color-text-muted);
+		font-weight: 600;
+		font-size: var(--text-sm);
+		color: var(--color-text-secondary);
 		background: transparent;
-		border-radius: var(--radius-full);
 		text-decoration: none;
 		transition:
-			background var(--duration-normal) var(--ease-default),
-			color var(--duration-normal) var(--ease-default);
+			background var(--duration-fast) var(--ease-default),
+			color var(--duration-fast) var(--ease-default),
+			border-color var(--duration-fast) var(--ease-default);
 	}
 
 	.auth-tab:hover {
@@ -78,9 +85,10 @@
 	}
 
 	.auth-tab.is-active {
+		border-color: var(--color-accent);
 		background: var(--color-bg-elevated);
 		color: var(--color-text-primary);
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+		box-shadow: var(--shadow-sm);
 	}
 
 	.auth-tab.is-active:hover {

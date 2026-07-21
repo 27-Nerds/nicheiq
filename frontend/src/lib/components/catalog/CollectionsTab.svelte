@@ -9,7 +9,7 @@
     Check,
     Eye,
     EyeOff,
-    Sparkles,
+    Star,
     GripVertical,
   } from "lucide-svelte";
 
@@ -377,10 +377,7 @@
         Curate hand-picked groups of ideas or pain-points. Active collections appear on the public catalog index.
       </p>
     </div>
-    <button
-      class="inline-flex items-center gap-2 rounded-md border border-border bg-bg-surface px-3 py-1.5 text-sm font-medium hover:bg-bg-elevated"
-      onclick={openCreate}
-    >
+    <button class="btn-secondary" onclick={openCreate}>
       <Plus size={14} /> New collection
     </button>
   </div>
@@ -406,7 +403,7 @@
           <span class="block text-xs font-medium text-text-muted mb-1">Name</span>
           <input
             type="text"
-            class="w-full rounded-md border border-border bg-bg px-3 py-1.5 text-sm"
+            class="input"
             bind:value={formName}
             onblur={suggestSlug}
             placeholder="e.g., Top SaaS Builder Tools"
@@ -419,7 +416,7 @@
           </span>
           <input
             type="text"
-            class="w-full rounded-md border border-border bg-bg px-3 py-1.5 text-sm font-mono"
+            class="input mono-field"
             bind:value={formSlug}
             placeholder="top-saas-builder-tools"
             disabled={editingId != null}
@@ -430,7 +427,7 @@
           <span class="block text-xs font-medium text-text-muted mb-1">Tagline</span>
           <input
             type="text"
-            class="w-full rounded-md border border-border bg-bg px-3 py-1.5 text-sm"
+            class="input"
             bind:value={formTagline}
             placeholder="e.g., Collection · 24 ideas"
             maxlength="160"
@@ -440,7 +437,7 @@
         <label class="block md:col-span-2">
           <span class="block text-xs font-medium text-text-muted mb-1">Description</span>
           <textarea
-            class="w-full rounded-md border border-border bg-bg px-3 py-1.5 text-sm min-h-[80px]"
+            class="input min-h-[80px]"
             bind:value={formDescription}
             placeholder="Optional. Shown below the title on the collection card."
             maxlength="2000"
@@ -453,7 +450,7 @@
           </span>
           <input
             type="text"
-            class="w-full rounded-md border border-border bg-bg px-3 py-1.5 text-sm font-mono"
+            class="input mono-field"
             bind:value={formColorAccent}
             placeholder="#F06030"
             maxlength="20"
@@ -464,7 +461,7 @@
           <span class="block text-xs font-medium text-text-muted mb-1">Sort order</span>
           <input
             type="number"
-            class="w-full rounded-md border border-border bg-bg px-3 py-1.5 text-sm"
+            class="input"
             bind:value={formSortOrder}
             min="0"
           />
@@ -477,22 +474,19 @@
       </div>
 
       {#if errorMsg}
-        <p class="mt-3 text-sm text-error">{errorMsg}</p>
+        <p class="mt-3 text-sm text-[color:var(--color-error-text)]">{errorMsg}</p>
       {/if}
 
       <div class="mt-4 flex items-center gap-2">
         <button
-          class="inline-flex items-center gap-2 rounded-md bg-accent text-white px-3 py-1.5 text-sm font-medium hover:bg-accent/90 disabled:opacity-50"
+          class="btn-primary"
           onclick={saveCollection}
           disabled={saving || !formName.trim() || !formSlug.trim()}
         >
           {#if saving}<Loader2 size={14} class="animate-spin" />{:else}<Check size={14} />{/if}
           {editingId ? "Save changes" : "Create collection"}
         </button>
-        <button
-          class="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-bg-elevated"
-          onclick={closeForm}
-        >
+        <button class="btn-ghost" onclick={closeForm}>
           Cancel
         </button>
       </div>
@@ -513,9 +507,9 @@
               class="flex-1 min-w-0 text-left flex items-center gap-3"
               onclick={() => selectCollection(c)}
             >
-              <Sparkles
+              <Star
                 size={16}
-                class={c.isActive ? "text-accent flex-shrink-0" : "text-text-muted flex-shrink-0"}
+                class={c.isActive ? "text-[color:var(--color-accent-dark)] flex-shrink-0" : "text-text-muted flex-shrink-0"}
               />
               <div class="min-w-0">
                 <div class="text-sm font-medium text-text-primary truncate">
@@ -559,7 +553,7 @@
 
           <!-- Detail pane (item picker) when selected -->
           {#if selectedId === c.id}
-            <div class="border-t border-border p-4 bg-bg space-y-4">
+            <div class="border-t border-border p-4 bg-bg-base space-y-4">
               {#if loadingDetail}
                 <div class="text-sm text-text-muted flex items-center gap-2">
                   <Loader2 size={14} class="animate-spin" /> Loading items…
@@ -629,7 +623,7 @@
                     <label class="block">
                       <span class="block text-xs font-medium text-text-muted mb-1">Category</span>
                       <select
-                        class="w-full rounded-md border border-border bg-bg px-2 py-1.5 text-sm"
+                        class="input"
                         bind:value={pickerCategoryId}
                       >
                         <option value="">— pick a category —</option>
@@ -641,7 +635,7 @@
                     <label class="block">
                       <span class="block text-xs font-medium text-text-muted mb-1">Type</span>
                       <select
-                        class="w-full rounded-md border border-border bg-bg px-2 py-1.5 text-sm"
+                        class="input"
                         bind:value={pickerType}
                       >
                         <option value="ideas">Ideas</option>
@@ -652,7 +646,7 @@
                       <span class="block text-xs font-medium text-text-muted mb-1">Filter</span>
                       <input
                         type="text"
-                        class="w-full rounded-md border border-border bg-bg px-2 py-1.5 text-sm"
+                        class="input"
                         bind:value={pickerQuery}
                         placeholder="Filter visible options…"
                       />
@@ -677,7 +671,7 @@
                             (pickerType === "ideas" && i.ideaId === opt.id) ||
                             (pickerType === "pain-points" && i.painPointId === opt.id),
                         )}
-                        <li class="flex items-center justify-between gap-2 p-2 bg-bg">
+                        <li class="flex items-center justify-between gap-2 p-2 bg-bg-base">
                           <div class="min-w-0 flex-1">
                             <div class="text-sm truncate">{opt.label}</div>
                             {#if opt.sub}
@@ -685,7 +679,7 @@
                             {/if}
                           </div>
                           <button
-                            class="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent hover:text-white disabled:opacity-50"
+                            class="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent-hover hover:text-white disabled:opacity-50"
                             onclick={() => addItem(opt)}
                             disabled={alreadyAdded || addingItemId === opt.id}
                           >
@@ -714,3 +708,12 @@
     </ul>
   {/if}
 </div>
+
+<style>
+  /* .input's font-family is unlayered global CSS, so a Tailwind font-mono
+     utility can't win against it (cascade layers rank utilities below
+     unlayered rules) — this scoped class out-specificities it instead. */
+  .mono-field {
+    font-family: var(--font-mono);
+  }
+</style>

@@ -71,7 +71,7 @@
         href={ideaPath(idea.slug)}
       >
         {#if showRank}
-          <span class="cell-rank">{String(i + 1).padStart(2, "0")}</span>
+          <span class="cell-rank tabular-nums">{String(i + 1).padStart(2, "0")}</span>
         {/if}
         <div class="cell-idea">
           <h4 class="idea-title">{solutionDisplayTitle(idea)}</h4>

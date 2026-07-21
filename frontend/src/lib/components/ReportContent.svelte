@@ -38,9 +38,10 @@
     showShareButton?: boolean;
     jobId?: string;
     headerSlot?: import("svelte").Snippet;
+    decisionSlot?: import("svelte").Snippet;
   }
 
-  let { report, showBackLink = true, jobId, headerSlot }: Props = $props();
+  let { report, showBackLink = true, jobId, headerSlot, decisionSlot }: Props = $props();
 
   // Get solution details with fallback
   const solutionDetails = $derived(
@@ -184,6 +185,10 @@
           budgetEstimate={report.go_to_market_blueprint?.budget_estimate}
           pricingStrategy={report.pricing_strategy}
         />
+      {/if}
+
+      {#if decisionSlot}
+        {@render decisionSlot()}
       {/if}
     </div>
 

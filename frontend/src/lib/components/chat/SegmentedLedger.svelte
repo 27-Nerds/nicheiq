@@ -195,8 +195,8 @@
       {#if chatLedger.historyLoaded && !chatLedger.loadFailed}
         <span
           class="ledger-count"
-          title="Questions this run — {chatLedger.usedTurns} of {chatLedger.maxTurns} used"
-          aria-label="Questions this run — {chatLedger.usedTurns} of {chatLedger.maxTurns} used"
+          title="Questions this run: {chatLedger.usedTurns} of {chatLedger.maxTurns} used"
+          aria-label="Questions this run: {chatLedger.usedTurns} of {chatLedger.maxTurns} used"
         >{chatLedger.usedTurns}<span class="ledger-count-max">/{chatLedger.maxTurns}</span></span>
       {/if}
     </header>

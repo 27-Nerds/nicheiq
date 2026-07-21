@@ -21,8 +21,8 @@
       case "demand": return "var(--color-accent)";
       case "feasibility": return "var(--color-info)";
       case "opportunity": return "var(--color-success)";
-      case "originality": return "var(--color-secondary, #6366F1)";
-      case "soloDev": return "var(--color-text-secondary, #52525B)";
+      case "originality": return "var(--color-secondary)";
+      case "soloDev": return "var(--color-text-secondary)";
     }
   });
 </script>

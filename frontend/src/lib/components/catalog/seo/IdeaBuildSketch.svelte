@@ -165,7 +165,7 @@
   .sketch {
     border: 1px solid var(--color-border);
     border-radius: 8px;
-    background: var(--color-surface, #fff);
+    background: var(--color-surface);
     padding: 24px;
     margin: 0 0 36px;
   }
@@ -239,8 +239,8 @@
     color: var(--color-text-muted);
     font-size: 12px;
   }
-  /* Innovation breakdown two-box section. Hairline borders only;
-     accent left-stripe on the "what's different" box matches catalog idiom
+  /* Innovation breakdown two-box section. Hairline borders only; the
+     "what's different" box gets a stronger neutral border to stand out
      (no rounded bg-color cards, those belong to /job-app). */
   .innovation {
     margin-top: 24px;
@@ -259,8 +259,7 @@
     border-radius: 4px;
   }
   .innovation-box.angle {
-    border-left: 3px solid var(--color-accent);
-    border-radius: 0 4px 4px 0;
+    border-color: var(--color-border-emphasis);
   }
   .innovation-label {
     display: block;
@@ -313,14 +312,14 @@
     color: var(--color-text-muted);
   }
   /* Why this works — strategic lead block before innovation breakdown.
-     Italic prose with a subtle accent left rail to signal "this is the
-     thesis", visually distinct from the operational kv rows above. */
+     Italic prose in a bordered callout to signal "this is the thesis",
+     visually distinct from the operational kv rows above. */
   .why {
     margin-top: 24px;
     padding: 14px 18px;
-    border-left: 3px solid var(--color-accent);
-    background: var(--color-bg-elevated, #fff);
-    border-radius: 0 4px 4px 0;
+    border: 1px solid var(--color-border-emphasis);
+    background: var(--color-bg-elevated);
+    border-radius: 4px;
   }
   .why-prose {
     margin: 6px 0 0;

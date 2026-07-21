@@ -50,8 +50,14 @@
         button.type = "button";
         button.className = "idea-reference-link";
         button.dataset.ideaReferenceId = segment.reference.id;
-        button.setAttribute("aria-label", `Open idea details for ${segment.reference.label}`);
+        // No aria-label: it would replace the visible idea name in the
+        // accessibility tree and drop it from the sentence. The visible text is
+        // the accessible name; an sr-only suffix discloses the affordance.
         button.textContent = segment.text;
+        const hint = document.createElement("span");
+        hint.className = "sr-only";
+        hint.textContent = ", open details";
+        button.append(hint);
         fragment.append(button);
       }
       textNode.replaceWith(fragment);
@@ -88,9 +94,8 @@
       <button
         type="button"
         class="idea-reference-link"
-        aria-label={`Open idea details for ${segment.reference.label}`}
         onclick={() => onOpen?.(segment.reference)}
-      >{segment.text}</button>
+      >{segment.text}<span class="sr-only">, open details</span></button>
     {:else}{segment.text}{/if}
   {/each}
 {/if}

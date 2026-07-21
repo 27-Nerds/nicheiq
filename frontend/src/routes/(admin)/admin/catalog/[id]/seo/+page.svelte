@@ -346,7 +346,7 @@
     display: inline-flex;
     align-items: center;
     gap: 0.25rem;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
     text-decoration: none;
   }
   .preview-link:hover {
@@ -378,10 +378,10 @@
     letter-spacing: 0.04em;
   }
   .char-count.over {
-    color: var(--color-error);
+    color: var(--color-error-text);
   }
   .char-count.under {
-    color: var(--color-warning);
+    color: var(--color-warning-text);
   }
 
   .input,
@@ -389,16 +389,21 @@
     width: 100%;
     padding: 0.5rem 0.75rem;
     background: var(--color-bg-base);
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--color-input-border);
     border-radius: 0.375rem;
     font-size: 0.875rem;
     color: var(--color-text-primary);
-    transition: border-color 140ms ease;
+    transition: border-color 140ms ease, box-shadow 140ms ease;
+  }
+  .input:hover,
+  .textarea:hover {
+    border-color: var(--color-input-border-hover);
   }
   .input:focus,
   .textarea:focus {
     outline: none;
     border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px var(--color-accent-subtle);
   }
   .textarea {
     resize: vertical;
@@ -445,7 +450,7 @@
   }
   .add-btn:hover:not(:disabled) {
     border-color: var(--color-accent);
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
   .add-btn:disabled {
     opacity: 0.4;
@@ -500,18 +505,18 @@
     transition: color 140ms ease, border-color 140ms ease;
   }
   .remove-btn:hover {
-    color: var(--color-error);
-    border-color: var(--color-error);
+    color: var(--color-error-text);
+    border-color: var(--color-error-text);
   }
 
   .error-banner {
     margin: 1rem 0;
     padding: 0.75rem 1rem;
-    background: rgba(239, 68, 68, 0.06);
-    border: 1px solid rgba(239, 68, 68, 0.3);
+    background: var(--color-error-subtle);
+    border: 1px solid color-mix(in srgb, var(--color-error-text) 30%, transparent);
     border-radius: 0.375rem;
     font-size: 0.875rem;
-    color: var(--color-error);
+    color: var(--color-error-text);
   }
   .error-banner code {
     font-family: var(--font-mono);

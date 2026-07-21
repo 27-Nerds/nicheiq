@@ -74,7 +74,7 @@
 
 <style>
   .idea-card {
-    background: var(--color-surface, #fff);
+    background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: 8px;
     padding: 16px;
@@ -92,7 +92,7 @@
      read as a class. No translateY lift (project anti-slop convention). */
   .idea-card:hover {
     border-color: var(--color-border-emphasis);
-    background: var(--color-surface-elevated, var(--color-surface, #fafafa));
+    background: var(--color-surface-elevated);
     box-shadow:
       0 1px 2px rgba(24, 24, 27, 0.04),
       0 4px 12px rgba(24, 24, 27, 0.06);

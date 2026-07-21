@@ -89,7 +89,7 @@
         New Promo Code
       </h3>
       {#if formError}
-        <div class="text-sm text-error mb-3 p-2 bg-error/10 rounded-lg">
+        <div class="text-sm text-[color:var(--color-error-text)] mb-3 p-2 bg-error/10 rounded-lg">
           {formError}
         </div>
       {/if}
@@ -111,7 +111,7 @@
             type="text"
             bind:value={newCode}
             required
-            class="w-full px-3 py-2 bg-bg-elevated border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-accent"
+            class="input"
             placeholder="WELCOME50"
           />
         </div>
@@ -127,7 +127,7 @@
             bind:value={newCreditAmount}
             required
             min="1"
-            class="w-full px-3 py-2 bg-bg-elevated border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-accent"
+            class="input"
           />
         </div>
         <div>
@@ -142,7 +142,7 @@
             bind:value={newMaxRedemptions}
             required
             min="1"
-            class="w-full px-3 py-2 bg-bg-elevated border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-accent"
+            class="input"
           />
         </div>
         <div>
@@ -155,7 +155,7 @@
             id="expiresAt"
             type="date"
             bind:value={newExpiresAt}
-            class="w-full px-3 py-2 bg-bg-elevated border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-accent"
+            class="input"
           />
         </div>
         <div class="sm:col-span-2">
@@ -168,7 +168,7 @@
             id="description"
             type="text"
             bind:value={newDescription}
-            class="w-full px-3 py-2 bg-bg-elevated border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-accent"
+            class="input"
             placeholder="Internal notes about this code"
           />
         </div>
@@ -184,45 +184,29 @@
   {#if data.promoData}
     <div class="bg-bg-surface border border-border rounded-xl overflow-hidden">
       <div class="overflow-x-auto">
-        <table class="w-full text-sm">
+        <table class="data-table">
           <thead>
-            <tr class="border-b border-border bg-bg-elevated/50">
-              <th class="text-left py-3 px-4 text-text-muted font-medium"
-                >Code</th
-              >
-              <th class="text-right py-3 px-4 text-text-muted font-medium"
-                >Credits</th
-              >
-              <th class="text-right py-3 px-4 text-text-muted font-medium"
-                >Uses</th
-              >
-              <th class="text-left py-3 px-4 text-text-muted font-medium"
-                >Expires</th
-              >
-              <th class="text-left py-3 px-4 text-text-muted font-medium"
-                >Status</th
-              >
-              <th class="text-right py-3 px-4 text-text-muted font-medium"
-                >Actions</th
-              >
+            <tr>
+              <th>Code</th>
+              <th class="num">Credits</th>
+              <th class="num">Uses</th>
+              <th>Expires</th>
+              <th>Status</th>
+              <th style="text-align: right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {#each data.promoData.promoCodes as promo}
-              <tr class="border-b border-border/50">
-                <td class="py-3 px-4 font-mono font-semibold text-text-primary"
+              <tr>
+                <td class="font-mono font-semibold cell-primary"
                   >{promo.code}</td
                 >
-                <td class="py-3 px-4 text-right text-text-primary"
-                  >{promo.creditAmount}</td
-                >
-                <td class="py-3 px-4 text-right text-text-secondary">
+                <td class="num cell-primary">{promo.creditAmount}</td>
+                <td class="num">
                   {promo.currentUses} / {promo.maxRedemptions}
                 </td>
-                <td class="py-3 px-4 text-text-muted"
-                  >{formatDate(promo.expiresAt)}</td
-                >
-                <td class="py-3 px-4">
+                <td class="cell-muted">{formatDate(promo.expiresAt)}</td>
+                <td>
                   <Badge
                     variant={promo.isActive ? "success" : "muted"}
                     size="sm"
@@ -230,9 +214,9 @@
                     {promo.isActive ? "Active" : "Inactive"}
                   </Badge>
                 </td>
-                <td class="py-3 px-4 text-right">
+                <td class="text-right">
                   <button
-                    class="text-xs px-2 py-1 rounded border border-border hover:bg-bg-elevated transition-colors text-text-secondary"
+                    class="btn-ghost"
                     onclick={() => toggleActive(promo.id, promo.isActive)}
                   >
                     {promo.isActive ? "Deactivate" : "Activate"}
@@ -253,3 +237,15 @@
     </div>
   {/if}
 </div>
+
+<style>
+  /* .data-table td's color is unlayered global CSS, so a Tailwind text-color
+     utility can't win against it (cascade layers rank utilities below
+     unlayered rules) — these scoped classes out-specificity it instead. */
+  .cell-primary {
+    color: var(--color-text-primary);
+  }
+  .cell-muted {
+    color: var(--color-text-muted);
+  }
+</style>

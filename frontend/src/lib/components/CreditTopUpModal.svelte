@@ -1,14 +1,11 @@
 <script lang="ts">
   import { page } from "$app/state";
   import { invalidateAll, goto } from "$app/navigation";
-  import { portal } from "$lib/actions/portal";
   import { creditTopUp } from "$lib/stores/creditTopUp.svelte";
   import type { TokenPackage } from "$lib/types/billing";
-  import {
-    X,
-    AlertCircle,
-    Check,
-  } from "lucide-svelte";
+  import { Loader2 } from "lucide-svelte";
+  import EmptyState from "$lib/components/ui/EmptyState.svelte";
+  import FormOverlay from "$lib/components/ui/FormOverlay.svelte";
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
 
   // ── Local state ──────────────────────────────────────────
@@ -30,12 +27,9 @@
   let canceledNotice = $state(false);
 
   let stripeReturnHandled = $state(false);
-  let modalEl: HTMLDivElement | undefined = $state();
-  let triggerEl: HTMLElement | null = null;
 
   // ── Derived ──────────────────────────────────────────────
   const ctx = $derived(creditTopUp.context);
-  const creditBalance = $derived((page.data.creditBalance as number) ?? 0);
   const creditsNeeded = $derived(ctx ? Math.max(0, ctx.required - ctx.balance) : 0);
 
   // Subscription-awareness — read from the (app) layout's page.data so call
@@ -80,6 +74,13 @@
     const largest = displayPackages[displayPackages.length - 1];
     return { pkg: largest, label: "Best value" };
   });
+
+  const overlayTitle = $derived(showSuccess ? "You're all set!" : "Add credits");
+  const overlayDescription = $derived(
+    !showSuccess && ctx
+      ? `You need ${creditsNeeded} more for ${ctx.stageName}`
+      : undefined,
+  );
 
   // ── Fetch packages on open ───────────────────────────────
   $effect(() => {
@@ -130,17 +131,6 @@
       creditTopUp.open = false;
     }, 2000);
     return () => clearTimeout(timer);
-  });
-
-  // ── Focus management ─────────────────────────────────────
-  $effect(() => {
-    if (creditTopUp.open && modalEl) {
-      triggerEl = document.activeElement as HTMLElement;
-      const focusable = getFocusableElements();
-      if (focusable.length > 0) {
-        focusable[0].focus();
-      }
-    }
   });
 
   // ── Handlers ─────────────────────────────────────────────
@@ -242,49 +232,6 @@
     promoError = "";
     promoSuccess = "";
     checkoutError = "";
-    triggerEl?.focus();
-  }
-
-  function handleBackdropClick(e: MouseEvent) {
-    if (e.target === e.currentTarget && !checkoutLoading) {
-      handleClose();
-    }
-  }
-
-  function getFocusableElements(): HTMLElement[] {
-    if (!modalEl) return [];
-    return Array.from(
-      modalEl.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])'
-      )
-    );
-  }
-
-  function handleKeydown(e: KeyboardEvent) {
-    if (e.key === "Escape" && creditTopUp.open && !checkoutLoading) {
-      handleClose();
-      return;
-    }
-
-    if (e.key === "Tab" && creditTopUp.open) {
-      const focusable = getFocusableElements();
-      if (focusable.length === 0) return;
-
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-
-      if (e.shiftKey) {
-        if (document.activeElement === first) {
-          e.preventDefault();
-          last.focus();
-        }
-      } else {
-        if (document.activeElement === last) {
-          e.preventDefault();
-          first.focus();
-        }
-      }
-    }
   }
 
   function formatPrice(cents: number): string {
@@ -293,196 +240,420 @@
   }
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
-
-{#if creditTopUp.open}
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <div
-    use:portal
-    class="fixed inset-0 z-[60] flex items-center justify-center p-4"
-    onclick={handleBackdropClick}
-    role="dialog"
-    aria-modal="true"
-    aria-label="Add credits"
-    tabindex="-1"
-  >
-    <!-- Backdrop -->
-    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm animate-fade-in" style="animation-duration: 150ms"></div>
-
-    <!-- Panel -->
-    <div
-      bind:this={modalEl}
-      class="relative bg-bg-elevated border border-border rounded-xl w-full max-w-md max-h-[90vh] overflow-y-auto animate-fade-slide-in shadow-[0_1px_3px_rgba(24,24,27,0.04),0_8px_24px_-4px_rgba(24,24,27,0.08),0_20px_48px_-8px_rgba(24,24,27,0.06)]"
-      style="animation-duration: 200ms"
-    >
-      {#if showSuccess}
-        <div class="p-8 text-center">
-          <div class="mx-auto w-14 h-14 rounded-full bg-success/10 flex items-center justify-center mb-4 animate-scale-in visible">
-            <Check class="w-7 h-7 text-success" />
-          </div>
-          <h2 class="font-display font-bold text-xl text-text-primary mb-1">You're all set!</h2>
-          <p class="text-sm text-text-secondary">
-            <span class="font-display font-bold tabular-nums text-text-primary">{successBalance}</span> credits added.
-          </p>
-        </div>
-      {:else}
-        <!-- Close -->
-        <button
-          onclick={handleClose}
-          disabled={!!checkoutLoading}
-          aria-label="Close"
-          class="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-bg-hover text-text-muted/60 hover:text-text-primary transition-colors disabled:opacity-50 z-10"
-        >
-          <X class="w-4 h-4" />
-        </button>
-
-        <!-- Header -->
-        <div class="px-5 pt-5 pb-0">
-          <h2 class="font-display font-bold text-md text-text-primary tracking-tight">Add credits</h2>
-          {#if ctx}
-            <p class="text-sm text-text-muted mt-1">
-              You need <span class="font-semibold tabular-nums text-accent">{creditsNeeded}</span> more for {ctx.stageName}
-            </p>
-          {/if}
-          {#if monthlyExhausted}
-            <p class="text-sm text-text-muted mt-2">
-              {#if monthlyResetDate}
-                Your monthly credits reset on <span class="font-medium text-text-secondary">{monthlyResetDate}</span>. Top up below to keep going now.
-              {:else}
-                Your monthly credits are used up. Top up below to keep going now.
-              {/if}
-            </p>
-          {:else if !isSubscriber}
-            <p class="text-sm text-text-muted mt-2">
-              <a href="/billing#plans" class="text-accent hover:underline">Subscribe to save</a> — get monthly credits + full catalog access.
-            </p>
-          {/if}
-        </div>
-
-        {#if canceledNotice}
-          <p class="text-sm text-text-muted px-5 mt-3">
-            Checkout canceled — try again or pick a different package.
-          </p>
+<FormOverlay
+  open={creditTopUp.open}
+  eyebrow="Billing"
+  title={overlayTitle}
+  description={overlayDescription}
+  onRequestClose={handleClose}
+>
+  {#if showSuccess}
+    <p class="topup-success" role="status">
+      <strong>{successBalance}</strong> credits added.
+    </p>
+  {:else}
+    {#if monthlyExhausted}
+      <p class="topup-note">
+        {#if monthlyResetDate}
+          Your monthly credits reset on <strong>{monthlyResetDate}</strong>. Top up below to keep going now.
+        {:else}
+          Your monthly credits are used up. Top up below to keep going now.
         {/if}
+      </p>
+    {:else if !isSubscriber}
+      <p class="topup-note">
+        <a href="/billing#plans" class="topup-link">Subscribe to save</a>: get monthly credits + full catalog access.
+      </p>
+    {/if}
 
-        <!-- Packages -->
-        <div class="px-5 py-4">
-          {#if packagesLoading}
-            {#each [0, 1] as i}
-              <div class="py-3 space-y-2" style="animation-delay: {i * 40}ms">
-                <div class="flex justify-between items-baseline">
-                  <div class="skeleton skeleton-text w-20 h-3.5"></div>
-                  <div class="skeleton skeleton-text w-14 h-4"></div>
-                </div>
-                <div class="flex justify-between items-center">
-                  <div class="skeleton skeleton-text w-16 h-3"></div>
-                  <div class="skeleton skeleton-rectangular w-20 h-8"></div>
-                </div>
-              </div>
-              {#if i === 0}<div class="border-t border-border"></div>{/if}
-            {/each}
-          {:else if packagesError}
-            <div class="flex items-center gap-2 text-sm text-error">
-              <AlertCircle class="w-4 h-4 shrink-0" />
-              <span>{packagesError}</span>
-              <a href="/billing" class="ml-auto text-accent hover:underline text-xs shrink-0">Go to billing</a>
-            </div>
-          {:else if displayPackages.length === 0}
-            <div class="text-center py-6 text-sm text-text-muted">
-              <p>No packages available.</p>
-              <a href="/billing" class="text-accent hover:underline mt-1 inline-block">Go to billing page</a>
-            </div>
-          {:else}
-            {#each displayPackages as pkg, i}
-              {@const isRecommended = recommended?.pkg.id === pkg.id}
+    {#if canceledNotice}
+      <p class="topup-note">
+        Checkout canceled. Try again or pick a different package.
+      </p>
+    {/if}
 
-              {#if i > 0}
-                <div class="border-t border-border my-3"></div>
-              {/if}
-
-              <div
-                class="animate-fade-slide-in {isRecommended ? 'pl-3 border-l-2 border-l-accent' : ''}"
-                style="animation-delay: {i * 40}ms"
-              >
-                <div class="flex items-baseline justify-between">
-                  <span class="text-base font-semibold text-text-primary">{pkg.name}</span>
-                  <span class="font-display font-bold text-lg tabular-nums text-text-primary">
-                    {#if pkg.promoPriceInCents}
-                      <span class="text-sm text-text-muted line-through mr-1">{formatPrice(pkg.priceInCents)}</span>
-                      <span class="text-success">{formatPrice(pkg.promoPriceInCents)}</span>
-                    {:else}
-                      {formatPrice(pkg.priceInCents)}
-                    {/if}
-                  </span>
-                </div>
-
-                <div class="flex items-center justify-between mt-1.5">
-                  <span class="text-sm text-text-muted">
-                    {pkg.credits} credits{#if isRecommended}<span class="text-accent font-medium ml-1.5">· Recommended</span>{/if}
-                  </span>
-                  <SubmitButton
-                    type="button"
-                    onclick={() => startCheckout(pkg.id)}
-                    loading={checkoutLoading === pkg.id}
-                    loadingText="Redirecting..."
-                    label={isRecommended ? 'Continue' : 'Get credits'}
-                    class="{isRecommended ? 'btn-primary' : 'btn-secondary'} !px-3.5 !py-1.5 !text-sm"
-                    disabled={!!checkoutLoading}
-                  />
-                </div>
-              </div>
-            {/each}
-          {/if}
-
-          {#if checkoutError}
-            <p class="text-sm text-error mt-3">
-              <span class="inline-block w-1.5 h-1.5 rounded-full bg-error mr-1.5 relative top-[-1px]"></span>
-              Something went wrong. Please try again.
-            </p>
-          {/if}
+    <!-- Packages -->
+    <div class="topup-packages">
+      {#if packagesLoading}
+        <div class="topup-loading">
+          <Loader2 class="w-5 h-5 animate-spin" aria-hidden="true" />
         </div>
+      {:else if packagesError}
+        <p class="topup-error" role="alert">
+          {packagesError}
+          <a href="/billing" class="topup-link">Go to billing</a>
+        </p>
+      {:else if displayPackages.length === 0}
+        <EmptyState title="No packages available.">
+          <a href="/billing" class="topup-link">Go to the billing page</a>
+        </EmptyState>
+      {:else}
+        {#each displayPackages as pkg, i}
+          {@const isRecommended = recommended?.pkg.id === pkg.id}
 
-        <!-- Promo code -->
-        <div class="px-5 pb-4">
-          <div class="border-t border-border pt-3 mt-1">
-            {#if !promoExpanded}
-              <button
-                onclick={() => (promoExpanded = true)}
-                class="text-sm text-text-muted hover:text-text-secondary transition-colors"
-              >
-                Have a code?
-              </button>
-            {:else}
-              <div class="flex items-center gap-2">
-                <input
-                  type="text"
-                  bind:value={promoCode}
-                  placeholder="Enter code"
-                  disabled={promoLoading}
-                  onkeydown={(e) => e.key === "Enter" && redeemPromo()}
-                  class="flex-1 text-sm px-2.5 py-1.5 rounded-md border border-border bg-bg-surface
-                         focus:outline-none focus:border-accent/40 transition-colors disabled:opacity-50"
-                />
+          {#if i > 0}
+            <hr class="pkg-rule" />
+          {/if}
+
+          <div class="pkg-row">
+            <div class="pkg-line">
+              <span class="pkg-name">{pkg.name}</span>
+              <span class="pkg-price">
+                {#if pkg.promoPriceInCents}
+                  <s class="pkg-price-old">{formatPrice(pkg.priceInCents)}</s>
+                  <span class="pkg-price-promo">{formatPrice(pkg.promoPriceInCents)}</span>
+                {:else}
+                  {formatPrice(pkg.priceInCents)}
+                {/if}
+              </span>
+            </div>
+
+            <div class="pkg-line">
+              <span class="pkg-credits">
+                {pkg.credits} credits{#if isRecommended}<span class="pkg-recommended"> · Recommended</span>{/if}
+              </span>
+              {#if isRecommended}
                 <SubmitButton
                   type="button"
-                  onclick={redeemPromo}
-                  loading={promoLoading}
-                  loadingText=""
-                  label="Apply"
-                  disabled={!promoCode.trim()}
-                  class="btn-secondary !px-2.5 !py-1 !text-sm !border-accent/30 !text-accent"
+                  onclick={() => startCheckout(pkg.id)}
+                  loading={checkoutLoading === pkg.id}
+                  loadingText="Redirecting…"
+                  label="Continue"
+                  disabled={!!checkoutLoading}
+                  minWidth="8.5rem"
+                  class=""
                 />
-              </div>
-              {#if promoError}
-                <p class="text-xs text-error mt-1.5">{promoError}</p>
+              {:else}
+                <button
+                  type="button"
+                  class="pkg-btn"
+                  onclick={() => startCheckout(pkg.id)}
+                  disabled={!!checkoutLoading}
+                  aria-busy={checkoutLoading === pkg.id || undefined}
+                >
+                  {#if checkoutLoading === pkg.id}
+                    <Loader2 class="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+                    Redirecting…
+                  {:else}
+                    Get credits
+                  {/if}
+                </button>
               {/if}
-              {#if promoSuccess}
-                <p class="text-xs text-success mt-1.5">{promoSuccess}</p>
-              {/if}
-            {/if}
+            </div>
           </div>
-        </div>
+        {/each}
+      {/if}
+
+      {#if checkoutError}
+        <p class="topup-error" role="alert">Something went wrong. Please try again.</p>
       {/if}
     </div>
-  </div>
-{/if}
+
+    <!-- Promo code -->
+    <div class="topup-promo">
+      {#if !promoExpanded}
+        <button type="button" class="promo-toggle" onclick={() => (promoExpanded = true)}>
+          Have a code?
+        </button>
+      {:else}
+        <div class="promo-row">
+          <label class="sr-only" for="topup-promo-code">Promo code</label>
+          <input
+            id="topup-promo-code"
+            type="text"
+            bind:value={promoCode}
+            placeholder="Enter code"
+            disabled={promoLoading}
+            onkeydown={(e) => e.key === "Enter" && redeemPromo()}
+            class="promo-input"
+          />
+          <button
+            type="button"
+            class="promo-apply"
+            onclick={redeemPromo}
+            disabled={!promoCode.trim() || promoLoading}
+            aria-busy={promoLoading || undefined}
+          >
+            {#if promoLoading}
+              <Loader2 class="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+            {:else}
+              Apply
+            {/if}
+          </button>
+        </div>
+        {#if promoError}
+          <p class="promo-error" role="alert">{promoError}</p>
+        {/if}
+        {#if promoSuccess}
+          <p class="promo-success" role="status">{promoSuccess}</p>
+        {/if}
+      {/if}
+    </div>
+  {/if}
+</FormOverlay>
+
+<style>
+  .topup-success {
+    margin: 0;
+    color: var(--color-text-secondary);
+    font-size: var(--text-13);
+    line-height: 1.5;
+  }
+
+  .topup-success strong {
+    color: var(--color-text-primary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .topup-note {
+    margin: 0;
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    line-height: 1.5;
+  }
+
+  .topup-note strong {
+    font-weight: 600;
+    color: var(--color-text-secondary);
+  }
+
+  .topup-link {
+    color: var(--color-accent-dark);
+    text-decoration: none;
+  }
+
+  .topup-link:hover {
+    text-decoration: underline;
+  }
+
+  .topup-packages {
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  .topup-loading {
+    display: flex;
+    justify-content: center;
+    padding: 1.5rem 0;
+    color: var(--color-text-muted);
+  }
+
+  .pkg-rule {
+    margin: 0;
+    border: 0;
+    border-top: 1px solid var(--color-border);
+  }
+
+  .pkg-row {
+    display: grid;
+    gap: 0.5rem;
+  }
+
+  .pkg-line {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .pkg-name {
+    font-size: var(--text-base);
+    font-weight: 600;
+    color: var(--color-text-primary);
+  }
+
+  .pkg-price {
+    font-family: var(--font-mono);
+    font-size: var(--text-13);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "zero" 0;
+    color: var(--color-text-primary);
+  }
+
+  .pkg-price-old {
+    margin-right: 0.35rem;
+    font-weight: 500;
+    color: var(--color-text-muted);
+  }
+
+  .pkg-price-promo {
+    color: var(--color-success-text);
+  }
+
+  .pkg-credits {
+    font-size: var(--text-sm);
+    color: var(--color-text-muted);
+  }
+
+  .pkg-recommended {
+    font-weight: 600;
+    color: var(--color-accent-dark);
+  }
+
+  .pkg-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    min-height: 2.1rem;
+    min-width: 8.5rem;
+    padding: 0.35rem 0.75rem;
+    border: 1px solid var(--color-input-border);
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+    font-weight: 700;
+    cursor: pointer;
+    transition:
+      border-color var(--duration-fast) var(--ease-default),
+      color var(--duration-fast) var(--ease-default);
+  }
+
+  .pkg-btn:hover:not(:disabled) {
+    border-color: var(--color-text-secondary);
+    color: var(--color-text-primary);
+  }
+
+  .pkg-btn:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  .pkg-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .topup-error {
+    margin: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    color: var(--color-error-text);
+    font-size: var(--text-13);
+    line-height: 1.45;
+  }
+
+  .topup-error .topup-link {
+    margin-left: auto;
+    flex: 0 0 auto;
+    font-size: var(--text-sm);
+  }
+
+  .topup-promo {
+    padding-top: 0.9rem;
+    border-top: 1px solid var(--color-border);
+  }
+
+  .promo-toggle {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    cursor: pointer;
+    transition: color var(--duration-fast) var(--ease-default);
+  }
+
+  .promo-toggle:hover {
+    color: var(--color-text-secondary);
+  }
+
+  .promo-toggle:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  .promo-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .promo-input {
+    flex: 1;
+    min-width: 0;
+    min-height: 2.35rem;
+    padding: 0 0.65rem;
+    border: 1px solid var(--color-input-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
+    font: inherit;
+    font-size: var(--text-13);
+    line-height: 1.45;
+    transition:
+      border-color var(--duration-fast) var(--ease-default),
+      box-shadow var(--duration-fast) var(--ease-default);
+  }
+
+  .promo-input::placeholder {
+    color: var(--color-text-muted);
+  }
+
+  .promo-input:hover:not(:disabled) {
+    border-color: var(--color-input-border-hover);
+  }
+
+  .promo-input:focus {
+    outline: none;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px var(--color-accent-subtle);
+  }
+
+  .promo-input:disabled {
+    border-color: var(--color-border-emphasis);
+    background: var(--color-bg-surface);
+    color: var(--color-text-muted);
+    cursor: not-allowed;
+  }
+
+  .promo-apply {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    min-height: 2.35rem;
+    min-width: 4.5rem;
+    padding: 0 0.75rem;
+    border: 1px solid var(--color-input-border);
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-size: var(--text-13);
+    font-weight: 600;
+    cursor: pointer;
+    transition:
+      border-color var(--duration-fast) var(--ease-default),
+      color var(--duration-fast) var(--ease-default);
+  }
+
+  .promo-apply:hover:not(:disabled) {
+    border-color: var(--color-text-secondary);
+    color: var(--color-text-primary);
+  }
+
+  .promo-apply:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  .promo-apply:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .promo-error {
+    margin: 0.5rem 0 0;
+    color: var(--color-error-text);
+    font-size: var(--text-sm);
+  }
+
+  .promo-success {
+    margin: 0.5rem 0 0;
+    color: var(--color-success-text);
+    font-size: var(--text-sm);
+  }
+</style>

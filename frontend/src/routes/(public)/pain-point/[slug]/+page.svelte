@@ -398,12 +398,11 @@
     margin-bottom: 10px;
   }
 
-  /* Solution approach card — accent-rail prose block. */
+  /* Solution approach card — bordered prose block. */
   .approach-card {
-    border: 1px solid var(--color-border);
-    border-left: 3px solid var(--color-accent);
-    background: var(--color-surface-elevated, #fafafa);
-    border-radius: 0 6px 6px 0;
+    border: 1px solid var(--color-border-emphasis);
+    background: var(--color-surface-elevated);
+    border-radius: 6px;
     padding: 18px 22px;
     margin: 0 0 36px;
   }

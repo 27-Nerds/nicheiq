@@ -43,25 +43,18 @@
     align-items: center;
     padding: 14px 16px;
     border: 1px solid var(--color-border);
-    border-left: 3px solid var(--color-error, #dc2626);
     border-radius: 6px;
-    background: var(--color-surface, #fff);
+    background: var(--color-surface);
     color: inherit;
     text-decoration: none;
     transition: background-color 140ms ease, box-shadow 160ms ease,
       border-color 140ms ease;
   }
-  .tier-med {
-    border-left-color: var(--color-accent);
-  }
-  .tier-lo {
-    border-left-color: var(--color-info);
-  }
   /* Two-layer neutral shadow on hover only — flat at rest preserves the
      refined-minimal voice; subtle elevation on hover telegraphs clickability
      without the generic "card lift" translateY tell. */
   .card:hover {
-    background: var(--color-surface-elevated, #fafafa);
+    background: var(--color-surface-elevated);
     box-shadow:
       0 1px 2px rgba(24, 24, 27, 0.04),
       0 4px 12px rgba(24, 24, 27, 0.06);
@@ -72,7 +65,7 @@
     align-items: center;
     gap: 1px;
     padding: 6px 8px;
-    background: var(--color-surface-elevated, #fafafa);
+    background: var(--color-surface-elevated);
     border: 1px solid var(--color-border);
     border-radius: 5px;
   }
@@ -80,7 +73,7 @@
     font-family: var(--font-mono);
     font-size: 16px;
     font-weight: 700;
-    color: var(--color-error, #dc2626);
+    color: var(--color-error);
     line-height: 1;
   }
   .tier-med .severity .num {

@@ -167,7 +167,7 @@
   /* Portal tooltip styles (global because they're appended to body) */
   :global(.tooltip-portal) {
     position: fixed;
-    z-index: 10000;
+    z-index: var(--z-tooltip, 70);
     pointer-events: none;
     opacity: 0;
     transition: opacity 0.15s ease-out;

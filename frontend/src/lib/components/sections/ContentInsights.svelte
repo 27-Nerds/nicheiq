@@ -293,7 +293,7 @@
   :global(.icon-lg) {
     width: 1.25rem;
     height: 1.25rem;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .insight-content {
@@ -304,7 +304,7 @@
     font-family: var(--font-mono);
     font-size: 0.5625rem;
     font-weight: 600;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
     letter-spacing: 0.1em;
     margin-bottom: 0.375rem;
     display: block;
@@ -405,7 +405,7 @@
   :global(.stat-icon) {
     width: 1rem;
     height: 1rem;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .stat-num {
@@ -506,7 +506,7 @@
     font-family: var(--font-mono);
     font-size: var(--text-xs);
     font-weight: 600;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
     flex-shrink: 0;
   }
 
@@ -523,7 +523,7 @@
   }
 
   .theme-card[open] .theme-name {
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .theme-def {
@@ -667,7 +667,7 @@
     content: "•";
     position: absolute;
     left: 0;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   /* Assessment Grid */
@@ -698,7 +698,7 @@
   :global(.assessment-icon) {
     width: 0.875rem;
     height: 0.875rem;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .assessment-text {

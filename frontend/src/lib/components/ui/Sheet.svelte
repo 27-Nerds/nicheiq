@@ -98,7 +98,7 @@
   .sheet-backdrop {
     position: fixed;
     inset: 0;
-    z-index: var(--z-modal, 60);
+    z-index: var(--z-modal, 40);
     background: color-mix(in srgb, var(--color-text-primary) 32%, transparent);
     animation: sheet-fade-in 150ms ease-out both;
   }
@@ -109,7 +109,7 @@
 
   .sheet-panel {
     position: fixed;
-    z-index: calc(var(--z-modal, 60) + 1);
+    z-index: calc(var(--z-modal, 40) + 1);
     display: flex;
     flex-direction: column;
     background: var(--color-bg-elevated);

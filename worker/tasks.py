@@ -1370,9 +1370,9 @@ def run_seed_idea(
     inside `execute_seed_pipeline` via `resolve_seed_anchors`, not here).
 
     Delivery of the outcome (`notify_seed_complete`) raises on exhausted retries rather than
-    swallowing — by the time it's called the merge is already saved, so a delivery failure must
-    never be mistaken for a pipeline failure (which would wrongly refund a completed request).
-    The exception is tagged `seed_delivery_only` so queue_consumer can tell the two apart.
+    swallowing. The exception is tagged `seed_delivery_only` so this task can revert the
+    saved checkpoint/preview and queue_consumer can settle/refund the seed dispatch without
+    treating the whole research job as failed.
     """
     logger.info(f"[Worker] Seed idea for job {job_id}: {(seed.get('seed_text') or '')[:80]!r}")
 
@@ -1488,8 +1488,9 @@ def run_seed_idea(
         outcome = "accepted" if getattr(idea, "candidate_status", "active") == "active" else "demoted"
         preview = _solution_to_preview_dict(idea)
 
-        # The merge is DONE and SAVED at this point — the money is owed no matter what happens
-        # next. A delivery failure here must never be read as a pipeline failure by the caller.
+        # Save first so a successful callback can expose an internally consistent checkpoint.
+        # If callback delivery exhausts its retries, the tagged handler below rolls both assets
+        # back before queue_consumer settles/refunds this seed-only operation.
         try:
             notify_seed_complete(job_id, preview, outcome, cost_summary=_resolve_cost_summary(flow))
         except Exception as delivery_err:
@@ -1507,16 +1508,12 @@ def run_seed_idea(
         if getattr(e, "seed_delivery_only", False):
             logger.error(
                 f"[Worker] Seed idea for job {job_id} completed and was saved, but delivery to "
-                f"the backend failed: {e}. This is a DELIVERY failure, not a pipeline failure — "
-                "must not be refunded or discarded."
+                f"the backend failed: {e}. Reverting the undelivered result before the seed "
+                "dispatch is settled and refunded."
             )
-            # ...except queue_consumer's seed_delivery_only handler can't actually deliver on
-            # that promise: it just logs and returns, leaving the job RUNNING — which the
-            # heartbeat's stale-dispatch sweep will eventually cancel and REFUND anyway. Once
-            # that refund fires it must be honest: revert the merge (and its ruled-out record)
-            # from the checkpoint here so the unpaid seed doesn't survive as a ghost idea in
-            # the eventual report. Save-before-notify above is otherwise correct — Phase 2
-            # resolves selections off the checkpoint, not off this notification.
+            # Revert the merge and ruled-out record before queue_consumer reports seed-failed.
+            # Phase 2 resolves selections from this checkpoint, so an undelivered/unpaid result
+            # must not survive there or in the separately materialized preview asset.
             try:
                 if flow.checkpoint_mgr and state.idea_generation:
                     state.idea_generation.solution_ideas = old_solutions
@@ -1525,6 +1522,10 @@ def run_seed_idea(
                         if r.get("dispatch_id") != dispatch_id
                     ]
                     flow.checkpoint_mgr.save_stage("stage_5_3_refinement", state.idea_generation)
+                    # The preview asset was materialized with the now-reverted idea before
+                    # delivery was attempted. Rewrite it from the reverted state too, or the
+                    # backend can invalidate its cache and still reload a ghost candidate.
+                    flow._materialize_preview_report(str(settings.checkpoint_dir))
                     logger.info(
                         f"[Worker] Reverted unpaid seed merge for job {job_id} pending refund "
                         "(delivery never landed)"

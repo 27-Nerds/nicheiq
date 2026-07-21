@@ -112,8 +112,8 @@
   <IdeaCardV2 idea={preview} subLabel={nichePath} flush />
 
   <!-- Notes block — sits below the card in its own row so it doesn't
-       compete with the IdeaCardV2 internals. Italic with --accent left rail
-       reads as marginalia (per design appendix). -->
+       compete with the IdeaCardV2 internals. Italic with a neutral left
+       rail reads as marginalia (per design appendix; no accent stripes). -->
   {#if editingNotes}
     <div class="saved-note-edit">
       <NoteEditor
@@ -216,7 +216,7 @@
     background: var(--color-success-dark, #16a34a);
   }
   .saved-card.v-cond::before {
-    background: var(--color-warning, #ca8a04);
+    background: var(--color-warning-dark);
   }
   .saved-card.v-no::before {
     background: var(--color-error-dark, #dc2626);
@@ -225,7 +225,7 @@
     background: transparent;
   }
 
-  /* Notes marginalia — italic, --accent rail, two-line clamp. Click opens
+  /* Notes marginalia — italic, neutral rail, two-line clamp. Click opens
      the inline editor. */
   .saved-note {
     display: block;
@@ -240,7 +240,7 @@
     font-size: 12px;
     line-height: 1.5;
     color: var(--color-text-secondary, var(--color-text-primary));
-    border-left: 2px solid var(--color-accent);
+    border-left: 2px solid var(--color-border-emphasis);
     cursor: pointer;
     position: relative;
   }
@@ -302,7 +302,7 @@
   .saved-note-add:hover {
     color: var(--color-accent);
     border-color: var(--color-border-accent);
-    background: rgba(234, 88, 12, 0.04);
+    background: color-mix(in srgb, var(--color-accent) 4%, transparent);
     border-style: solid;
   }
 

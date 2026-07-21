@@ -25,6 +25,16 @@ describe('buildSeedEnvelope', () => {
       solution_name: 'PatchZero',
       short_description: 'Finds missed esports reporting leads.',
       market_fit_score: 0.45,
+      idea_id: 'idea-child',
+      idea_revision: 1,
+      synthesis_operation: 'narrow',
+      synthesized_from: [{
+        idea_id: 'idea-parent',
+        idea_revision: 3,
+        solution_name: 'Signal Desk',
+        contribution: 'Keep the recurring signal workflow.',
+      }],
+      synthesis_source_message_id: 'msg-abc',
       summary: 'Large field that should not be copied into chat history.',
     });
 
@@ -39,8 +49,51 @@ describe('buildSeedEnvelope', () => {
         solution_name: 'PatchZero',
         short_description: 'Finds missed esports reporting leads.',
         market_fit_score: 0.45,
+        idea_id: 'idea-child',
+        idea_revision: 1,
+        synthesis_operation: 'narrow',
+        synthesized_from: [{
+          idea_id: 'idea-parent',
+          idea_revision: 3,
+          solution_name: 'Signal Desk',
+          contribution: 'Keep the recurring signal workflow.',
+        }],
+        synthesis_source_message_id: 'msg-abc',
       },
       outcome: 'accepted',
+    });
+  });
+
+  it('preserves both exact source revisions for a combined variant', () => {
+    const envelope = buildSeedEnvelope('seed_settled', 'msg-combine', 'accepted', {
+      solution_name: 'Agency Signal Desk',
+      idea_id: 'idea-combined-child',
+      idea_revision: 1,
+      synthesis_operation: 'combine',
+      synthesized_from: [
+        {
+          idea_id: 'idea-alerts',
+          idea_revision: 2,
+          solution_name: 'Change Monitor',
+          contribution: 'Keep the alerting mechanism.',
+        },
+        {
+          idea_id: 'idea-briefing',
+          idea_revision: 4,
+          solution_name: 'Briefing Desk',
+          contribution: 'Keep the client-ready summary.',
+        },
+      ],
+      synthesis_source_message_id: 'msg-combine',
+    });
+
+    expect(envelope.idea).toMatchObject({
+      synthesis_operation: 'combine',
+      synthesized_from: [
+        { idea_id: 'idea-alerts', idea_revision: 2 },
+        { idea_id: 'idea-briefing', idea_revision: 4 },
+      ],
+      synthesis_source_message_id: 'msg-combine',
     });
   });
 

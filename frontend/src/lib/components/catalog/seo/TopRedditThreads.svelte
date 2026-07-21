@@ -1,8 +1,7 @@
 <script lang="ts">
   // Niche-wide top Reddit threads. Renders evidence_appendix.top_reddit_threads
-  // (projected on CatalogResearchContext) as hairline-bordered cards with
-  // a 3px accent left-stripe — matches the catalog's existing .approach-card
-  // / .callout idiom. Each card links to the actual Reddit thread.
+  // (projected on CatalogResearchContext) as hairline-bordered cards.
+  // Each card links to the actual Reddit thread.
 
   import type { TopRedditThread } from "$lib/types/catalog-landing.js";
 
@@ -51,16 +50,15 @@
   .thread {
     display: block;
     border: 1px solid var(--color-border);
-    border-left: 3px solid var(--color-accent);
-    border-radius: 0 6px 6px 0;
+    border-radius: 6px;
     padding: 14px 18px;
-    background: var(--color-surface, #fff);
+    background: var(--color-surface);
     color: inherit;
     text-decoration: none;
     transition: background-color 120ms ease;
   }
   .thread:hover {
-    background: var(--color-surface-elevated, #fafafa);
+    background: var(--color-surface-elevated);
   }
   .thread header {
     display: flex;

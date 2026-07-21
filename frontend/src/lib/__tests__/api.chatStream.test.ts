@@ -43,6 +43,44 @@ describe('streamChat terminal delivery', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('sends exact selection workspace context with the chat turn', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(streamResponse([
+      `data: ${JSON.stringify({
+        type: 'done',
+        message: {
+          id: 'assistant-1',
+          role: 'assistant',
+          content: 'Focused answer.',
+          patchJson: null,
+          createdAt: '2026-07-20T00:00:00.000Z',
+        },
+      })}\n\n`,
+    ]));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await streamChat('job-1', 'what should I do next?', {
+      selectionContext: {
+        workspace: 'risks',
+        ideas: [{ ideaId: 'idea-1', ideaRevision: 2 }],
+        lens: 'demand',
+        record: { kind: 'assumption', id: 'assumption-1', version: 3 },
+      },
+      onEvent: () => {},
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/jobs/job-1/chat', expect.objectContaining({
+      body: JSON.stringify({
+        message: 'what should I do next?',
+        selectionContext: {
+          workspace: 'risks',
+          ideas: [{ ideaId: 'idea-1', ideaRevision: 2 }],
+          lens: 'demand',
+          record: { kind: 'assumption', id: 'assumption-1', version: 3 },
+        },
+      }),
+    }));
+  });
+
   it('recovers the persisted answer from history when the terminal SSE event is lost', async () => {
     const tool: ChatStreamEvent = { type: 'tool', label: 'Checked evidence for "Storage risk"' };
     const history = {

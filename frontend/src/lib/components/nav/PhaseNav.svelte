@@ -11,10 +11,26 @@
   import SidebarGroup from "$lib/components/nav/SidebarGroup.svelte";
   import SidebarDivider from "$lib/components/nav/SidebarDivider.svelte";
   import SidebarNavItem from "$lib/components/nav/SidebarNavItem.svelte";
+  import DecisionStatusBadge from "$lib/components/selection/DecisionStatusBadge.svelte";
+  import { WORKSPACE_ROUTES, PRIMARY_TOOL_SLUGS } from "$lib/selection/labels";
+  import type { SelectionJourneyTask } from "$lib/selection/decisionJourney";
 
   interface Props {
     jobStatus: string;
     activeSection?: string;
+    /** Job id — required to build Decision-tools links and, on nested workspace
+     *  routes, the back-to-section links. */
+    jobId?: string;
+    /** Selection flows only: the decision tools become one persistent sidebar
+     *  group present on BOTH the job page and every /selection route, so the
+     *  navigation map never reshuffles as the user drills in. */
+    toolTasks?: SelectionJourneyTask[];
+    /** Slug of the active /selection tool (compare|risks|tests|alternatives),
+     *  or null on the job page itself. */
+    activeTool?: string | null;
+    /** True on a /selection route: content sections are not on this page, so
+     *  they link back to the job page instead of scroll-jumping. */
+    nested?: boolean;
     /** Seeded-flow mode. 'deep_idea' skips discovery (stages 1-5) and runs deep-research
      *  immediately, so its discovery phase shows as seeded/done while deep-research is active. */
     entryMode?: string | null;
@@ -37,6 +53,10 @@
   let {
     jobStatus,
     activeSection = "",
+    jobId,
+    toolTasks,
+    activeTool = null,
+    nested = false,
     entryMode = null,
     mode = "default",
     selectionCount = 0,
@@ -44,6 +64,22 @@
     chatMode = false,
     gateStage = null,
   }: Props = $props();
+
+  // Decision tools: one shared nav group of the TWO primary tools (Compare,
+  // Check the evidence). Plan-a-test and Explore-variants are reached
+  // contextually, not as co-equal nav. Same status source as the launchpad.
+  const toolItems = $derived(
+    WORKSPACE_ROUTES
+      .filter((route) => PRIMARY_TOOL_SLUGS.includes(route.slug))
+      .map((route) => ({
+        slug: route.slug,
+        label: route.label,
+        href: jobId ? `/jobs/${jobId}/selection/${route.slug}` : undefined,
+        task: toolTasks?.find((task) => task.key === route.slug),
+      })),
+  );
+  const hubSectionHref = (sectionId: string): string | undefined =>
+    nested && jobId ? `/jobs/${jobId}#${sectionId}` : undefined;
 
   // Gate-rail step states, derived purely from which gate the job is CURRENTLY
   // sitting at (gateStage is only non-null while AWAITING_GATE) — Niche precedes
@@ -279,11 +315,12 @@
   {:else if isSelectionMode}
     <SidebarGroup label="Candidates">
       {#if opportunitySection}
-        {@const isActive = currentSection === opportunitySection.id}
+        {@const isActive = !nested && currentSection === opportunitySection.id}
         {@const Icon = opportunitySection.icon}
         <SidebarNavItem
           active={isActive}
-          onclick={() => handleSectionClick(discoveryPhase, opportunitySection)}
+          href={hubSectionHref(opportunitySection.id)}
+          onclick={nested ? undefined : () => handleSectionClick(discoveryPhase, opportunitySection)}
         >
           {#snippet leading()}{#if Icon}<Icon class="sidebar-nav-ic" />{/if}{/snippet}
           Shortlist
@@ -295,17 +332,41 @@
     <SidebarDivider />
     <SidebarGroup label="Market context">
       {#each contextSections as section}
-        {@const isActive = currentSection === section.id}
+        {@const isActive = !nested && currentSection === section.id}
         {@const Icon = section.icon}
         <SidebarNavItem
           active={isActive}
-          onclick={() => handleSectionClick(discoveryPhase, section)}
+          href={hubSectionHref(section.id)}
+          onclick={nested ? undefined : () => handleSectionClick(discoveryPhase, section)}
         >
           {#snippet leading()}{#if Icon}<Icon class="sidebar-nav-ic" />{/if}{/snippet}
           {section.label}
         </SidebarNavItem>
       {/each}
     </SidebarGroup>
+
+    {#if toolItems.some((item) => item.href)}
+      <SidebarDivider />
+      <SidebarGroup label="Decision tools">
+        {#each toolItems as item (item.slug)}
+          {@const locked = item.task?.status === "not_ready"}
+          <SidebarNavItem
+            active={activeTool === item.slug}
+            href={locked ? undefined : item.href}
+            aria-current={activeTool === item.slug ? "page" : undefined}
+            class={locked ? "tool-locked" : ""}
+            title={locked ? item.task?.statusLabel : undefined}
+          >
+            {item.label}
+            {#snippet trailing()}
+              {#if item.task}
+                <DecisionStatusBadge status={item.task.status} label={item.task.statusLabel} compact />
+              {/if}
+            {/snippet}
+          </SidebarNavItem>
+        {/each}
+      </SidebarGroup>
+    {/if}
 
     <SidebarDivider />
     <SidebarGroup label="Deep Research">
@@ -431,34 +492,43 @@
 {#if isSelectionMode}
 <nav class="selection-mobile-nav" aria-label="Selection sections">
   {#if opportunitySection}
-    <button
-      class="selection-mobile-item"
-      class:active={currentSection === opportunitySection.id}
-      type="button"
-      onclick={() => handleSectionClick(discoveryPhase, opportunitySection)}
-    >
-      Shortlist
-    </button>
+    {#if nested}
+      <a class="selection-mobile-item" href={hubSectionHref(opportunitySection.id)}>Shortlist</a>
+    {:else}
+      <button
+        class="selection-mobile-item"
+        class:active={currentSection === opportunitySection.id}
+        type="button"
+        onclick={() => handleSectionClick(discoveryPhase, opportunitySection)}
+      >
+        Shortlist
+      </button>
+    {/if}
   {/if}
   {#each contextSections as section}
-    <button
-      class="selection-mobile-item"
-      class:active={currentSection === section.id}
-      type="button"
-      onclick={() => handleSectionClick(discoveryPhase, section)}
-    >
-      {section.label}
-    </button>
+    {#if nested}
+      <a class="selection-mobile-item" href={hubSectionHref(section.id)}>{section.label}</a>
+    {:else}
+      <button
+        class="selection-mobile-item"
+        class:active={currentSection === section.id}
+        type="button"
+        onclick={() => handleSectionClick(discoveryPhase, section)}
+      >
+        {section.label}
+      </button>
+    {/if}
   {/each}
-  {#each blurredPreviewSections as section}
-    <button
-      class="selection-mobile-item selection-mobile-item--muted"
-      class:active={currentSection === section.id}
-      type="button"
-      onclick={() => handleSectionClick(deepResearchPhase, section)}
-    >
-      {section.label}
-    </button>
+  {#each toolItems as item (item.slug)}
+    {#if item.href}
+      <a
+        class="selection-mobile-item"
+        class:active={activeTool === item.slug}
+        class:tool={true}
+        href={item.task?.status === "not_ready" ? undefined : item.href}
+        aria-current={activeTool === item.slug ? "page" : undefined}
+      >{item.label}</a>
+    {/if}
   {/each}
 </nav>
 {/if}
@@ -551,6 +621,12 @@
     background: transparent;
     border-color: var(--color-border);
   }
+
+  /* A locked decision tool: readable, clearly not-yet-available. */
+  :global(.phase-side .sidebar-nav-item.tool-locked) {
+    cursor: default;
+    opacity: 0.5;
+  }
   :global(.phase-side--selection .nav-preview-tag) {
     color: var(--color-text-muted);
   }
@@ -602,7 +678,8 @@
     margin-left: auto;
     width: 16px;
     height: 16px;
-    background: var(--color-success);
+    /* -dark for 3:1 non-text contrast of the white glyph (1.4.11). */
+    background: var(--color-success-dark);
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -616,7 +693,7 @@
     margin-left: auto;
     font-size: 0.625rem;
     font-weight: 600;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
     letter-spacing: 0.02em;
   }
 
@@ -698,6 +775,7 @@
   }
 
   .next-card-text {
+    color: var(--color-text-secondary);
     font-size: 0.72rem;
     line-height: 1.35;
   }
@@ -776,8 +854,9 @@
     padding: 0.35rem 1.5rem;
     font-family: var(--font-mono);
     font-size: 0.6875rem;
+    /* Was opacity:0.4 (~1.9:1) — the "+N more" count is information, not
+       decoration, so it must be legible. Full-strength muted = 4.4:1. */
     color: var(--color-text-muted);
-    opacity: 0.4;
     letter-spacing: 0.03em;
   }
 
@@ -800,10 +879,7 @@
     font-size: 0.8125rem;
     font-weight: 600;
     white-space: nowrap;
-  }
-
-  .selection-mobile-item--muted {
-    color: var(--color-text-muted);
+    text-decoration: none;
   }
 
   .selection-mobile-item.active {
@@ -944,7 +1020,8 @@
   }
 
   .mobile-item.active {
-    color: var(--color-accent);
+    /* -dark so orange-on-accent-subtle clears AA (4.5:1), not 3.4:1. */
+    color: var(--color-accent-dark);
     background: var(--color-accent-subtle, rgba(234, 88, 12, 0.06));
   }
 
@@ -960,5 +1037,10 @@
   .mobile-item.previewable {
     color: var(--color-text-secondary);
     opacity: 0.75;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .mobile-menu { animation: none; }
+    .mobile-progress-fill { transition: none; }
   }
 </style>

@@ -452,7 +452,7 @@
     content: "•";
     position: absolute;
     left: 0;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   /* =========================
@@ -475,7 +475,7 @@
   :global(.communities-icon) {
     width: 0.875rem;
     height: 0.875rem;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .communities-label span {
@@ -573,7 +573,7 @@
 
   .influencer-platform {
     font-size: 0.6875rem;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
     font-weight: 500;
   }
 
@@ -621,7 +621,7 @@
   }
 
   .influencer-posts-toggle:hover {
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   :global(.toggle-chevron) {
@@ -651,7 +651,7 @@
 
   .influencer-post-item::before {
     content: "\00B7";
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
     font-weight: 700;
     flex-shrink: 0;
   }
@@ -677,7 +677,7 @@
   }
 
   .influencer-post-link:hover {
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   :global(.post-link-icon) {
@@ -707,7 +707,7 @@
   :global(.box-title-icon) {
     width: 0.875rem;
     height: 0.875rem;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .messaging-list {
@@ -723,7 +723,7 @@
   }
 
   .quote-mark {
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
     font-size: var(--text-md);
     line-height: 1;
     font-weight: 500;
@@ -747,7 +747,7 @@
     background: var(--color-accent-subtle);
     border: 1px solid var(--color-border-accent);
     border-radius: var(--radius-full);
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   /* Tactics */

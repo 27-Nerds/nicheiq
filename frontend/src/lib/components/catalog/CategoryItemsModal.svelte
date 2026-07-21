@@ -1,15 +1,11 @@
 <script lang="ts">
-  import { fade, fly } from "svelte/transition";
-  import { portal } from "$lib/actions/portal";
   import { SvelteSet } from "svelte/reactivity";
+  import FormOverlay from "$lib/components/ui/FormOverlay.svelte";
+  import ConfirmGate from "$lib/components/ui/ConfirmGate.svelte";
+  import EmptyState from "$lib/components/ui/EmptyState.svelte";
   import Badge from "$lib/components/ui/Badge.svelte";
   import { originalityMetric } from "$lib/utils/solution-utils";
-  import {
-    X,
-    Trash2,
-    ChevronDown,
-    Star,
-  } from "lucide-svelte";
+  import { Trash2, Star } from "lucide-svelte";
 
   interface PainPointItem {
     id: string;
@@ -54,20 +50,14 @@
   let selectedPainPoints = $state(new SvelteSet<string>());
   let selectedIdeas = $state(new SvelteSet<string>());
   let bulkInProgress = $state(false);
-  let moveDropdownOpen = $state(false);
 
   const selectedCount = $derived(selectedPainPoints.size + selectedIdeas.size);
   const moveTargets = $derived(allCategories.filter((c) => c.id !== categoryId));
-
-  // Lock body scroll when open
-  $effect(() => {
-    if (open) {
-      document.body.style.overflow = "hidden";
-      return () => {
-        document.body.style.overflow = "";
-      };
-    }
-  });
+  const footerMessage = $derived(
+    selectedCount > 0
+      ? `${selectedCount} selected`
+      : `${painPoints.length} pain points · ${ideas.length} ideas`,
+  );
 
   // Fetch data when opened
   $effect(() => {
@@ -76,24 +66,12 @@
     }
   });
 
-  function handleKeydown(e: KeyboardEvent) {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      if (moveDropdownOpen) {
-        moveDropdownOpen = false;
-      } else {
-        close();
-      }
-    }
-  }
-
   function close() {
     open = false;
     selectedPainPoints = new SvelteSet();
     selectedIdeas = new SvelteSet();
     painPoints = [];
     ideas = [];
-    moveDropdownOpen = false;
   }
 
   async function fetchItems() {
@@ -187,7 +165,6 @@
 
   async function bulkMove(targetCategoryId: string) {
     bulkInProgress = true;
-    moveDropdownOpen = false;
     const ops: Promise<Response>[] = [];
 
     for (const id of selectedPainPoints) {
@@ -225,6 +202,13 @@
     onMutated();
   }
 
+  function handleMoveChange(event: Event) {
+    const select = event.currentTarget as HTMLSelectElement;
+    const target = select.value;
+    select.value = "";
+    if (target) bulkMove(target);
+  }
+
   function toggleAllPainPoints() {
     if (selectedPainPoints.size === painPoints.length) {
       selectedPainPoints = new SvelteSet();
@@ -247,208 +231,205 @@
   }
 </script>
 
-<svelte:window onkeydown={open ? handleKeydown : undefined} />
-
-{#if open}
-  <div use:portal>
-    <!-- Backdrop -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-      transition:fade={{ duration: 150 }}
-      onclick={close}
-      onkeydown={(e) => e.stopPropagation()}
-    >
-      <!-- Modal -->
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Manage category items"
-        tabindex="-1"
-        class="bg-bg-surface border border-border rounded-xl w-full max-w-3xl max-h-[80vh] flex flex-col"
-        transition:fly={{ y: 20, duration: 200 }}
-        onclick={(e) => e.stopPropagation()}
-        onkeydown={(e) => e.stopPropagation()}
-      >
-        <!-- Header -->
-        <div class="flex items-center justify-between px-6 py-4 border-b border-border flex-shrink-0">
-          <div>
-            <h2 class="text-lg font-semibold text-text-primary">Manage Items</h2>
-            <p class="text-sm text-text-muted">{categoryName}</p>
-          </div>
-          <button onclick={close} class="p-1.5 rounded-lg hover:bg-bg-elevated text-text-muted hover:text-text-primary">
-            <X class="w-5 h-5" />
-          </button>
+<FormOverlay
+  {open}
+  eyebrow="Catalog admin"
+  title={categoryName}
+  description="Depublish items, move them between categories, or pin the free preview."
+  {footerMessage}
+  onRequestClose={close}
+>
+  {#if loading}
+    <div class="flex items-center justify-center py-12 text-text-muted text-sm">Loading…</div>
+  {:else if painPoints.length === 0 && ideas.length === 0}
+    <EmptyState
+      title="No items in this category yet."
+      description="Published pain points and ideas will show up here."
+    />
+  {:else}
+    <!-- Pain Points section -->
+    {#if painPoints.length > 0}
+      <div>
+        <div class="flex items-center gap-2 mb-3">
+          <input
+            type="checkbox"
+            checked={selectedPainPoints.size === painPoints.length}
+            onchange={toggleAllPainPoints}
+            class="rounded border-border"
+            aria-label="Select all pain points"
+          />
+          <h3 class="text-sm font-semibold text-text-secondary">Pain Points ({painPoints.length})</h3>
         </div>
-
-        <!-- Toolbar (visible when items selected) -->
-        {#if selectedCount > 0}
-          <div class="flex items-center gap-3 px-6 py-2.5 bg-accent/5 border-b border-accent/20 flex-shrink-0">
-            <span class="text-sm font-medium text-accent">{selectedCount} selected</span>
-            <div class="flex items-center gap-2 ml-auto">
-              <!-- Move dropdown -->
-              <div class="relative">
-                <button
-                  class="btn-secondary text-xs flex items-center gap-1"
-                  disabled={bulkInProgress || moveTargets.length === 0}
-                  onclick={() => (moveDropdownOpen = !moveDropdownOpen)}
-                >
-                  Move to...
-                  <ChevronDown class="w-3 h-3" />
-                </button>
-                {#if moveDropdownOpen}
-                  <div class="absolute right-0 top-full mt-1 z-10 bg-bg-surface border border-border rounded-lg max-h-48 overflow-y-auto min-w-48">
-                    {#each moveTargets as target}
-                      <button
-                        class="w-full text-left px-3 py-2 text-sm text-text-secondary hover:bg-bg-elevated hover:text-text-primary"
-                        onclick={() => bulkMove(target.id)}
-                      >
-                        {target.name}
-                      </button>
-                    {/each}
-                  </div>
-                {/if}
-              </div>
+        <div class="space-y-1">
+          {#each painPoints as pp}
+            <div class="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-bg-elevated group">
+              <input
+                type="checkbox"
+                checked={selectedPainPoints.has(pp.id)}
+                onchange={() => {
+                  if (selectedPainPoints.has(pp.id)) selectedPainPoints.delete(pp.id);
+                  else selectedPainPoints.add(pp.id);
+                }}
+                class="rounded border-border flex-shrink-0"
+                aria-label={`Select ${pp.title}`}
+              />
+              <span class="text-sm text-text-primary flex-1 truncate">{pp.title}</span>
+              {#if pp.id === effectiveFreePreviewPainPointId}
+                <Badge variant="success" size="sm">Free preview</Badge>
+              {/if}
+              <Badge variant="default" size="sm">Sev {formatScore(pp.severityScore)}</Badge>
+              <Badge variant="warning" size="sm">CI {formatScore(pp.commercialIntentScore)}</Badge>
               <button
-                class="btn-secondary text-xs text-error hover:bg-error/10"
-                disabled={bulkInProgress}
-                onclick={bulkDepublish}
+                class="p-1 rounded hover:bg-accent/10 transition-opacity flex-shrink-0 {pp.id === effectiveFreePreviewPainPointId ? 'text-accent' : 'text-text-muted opacity-0 group-hover:opacity-100'}"
+                title={pp.id === effectiveFreePreviewPainPointId
+                  ? "Free preview: click to clear (sub-niche becomes fully gated)"
+                  : "Set as the free preview"}
+                onclick={() => setFreePreview("pain-point", pp.id, !pp.isFreePreview)}
               >
-                <Trash2 class="w-3 h-3 mr-1 inline" />
-                Depublish
+                <Star class="w-3.5 h-3.5" fill={pp.id === effectiveFreePreviewPainPointId ? "currentColor" : "none"} />
+              </button>
+              <button
+                class="p-1 rounded hover:bg-error/10 text-text-muted hover:text-error opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                title="Depublish"
+                onclick={() => depublishSinglePainPoint(pp.id)}
+              >
+                <Trash2 class="w-3.5 h-3.5" />
               </button>
             </div>
-          </div>
-        {/if}
-
-        <!-- Content -->
-        <div class="flex-1 overflow-y-auto px-6 py-4">
-          {#if loading}
-            <div class="flex items-center justify-center py-12 text-text-muted text-sm">Loading...</div>
-          {:else if painPoints.length === 0 && ideas.length === 0}
-            <div class="flex items-center justify-center py-12 text-text-muted text-sm italic">No items in this category yet.</div>
-          {:else}
-            <!-- Pain Points section -->
-            {#if painPoints.length > 0}
-              <div class="mb-6">
-                <div class="flex items-center gap-2 mb-3">
-                  <input
-                    type="checkbox"
-                    checked={selectedPainPoints.size === painPoints.length}
-                    onchange={toggleAllPainPoints}
-                    class="rounded border-border"
-                  />
-                  <h3 class="text-sm font-semibold text-text-secondary">Pain Points ({painPoints.length})</h3>
-                </div>
-                <div class="space-y-1">
-                  {#each painPoints as pp}
-                    <div class="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-bg-elevated group">
-                      <input
-                        type="checkbox"
-                        checked={selectedPainPoints.has(pp.id)}
-                        onchange={() => {
-                          if (selectedPainPoints.has(pp.id)) selectedPainPoints.delete(pp.id);
-                          else selectedPainPoints.add(pp.id);
-                        }}
-                        class="rounded border-border flex-shrink-0"
-                      />
-                      <span class="text-sm text-text-primary flex-1 truncate">{pp.title}</span>
-                      {#if pp.id === effectiveFreePreviewPainPointId}
-                        <Badge variant="success" size="sm">Free preview</Badge>
-                      {/if}
-                      <Badge variant="default" size="sm">Sev {formatScore(pp.severityScore)}</Badge>
-                      <Badge variant="warning" size="sm">CI {formatScore(pp.commercialIntentScore)}</Badge>
-                      <button
-                        class="p-1 rounded hover:bg-accent/10 transition-opacity flex-shrink-0 {pp.id === effectiveFreePreviewPainPointId ? 'text-accent' : 'text-text-muted opacity-0 group-hover:opacity-100'}"
-                        title={pp.id === effectiveFreePreviewPainPointId
-                          ? "Free preview — click to clear (sub-niche becomes fully gated)"
-                          : "Set as the free preview"}
-                        onclick={() => setFreePreview("pain-point", pp.id, !pp.isFreePreview)}
-                      >
-                        <Star class="w-3.5 h-3.5" fill={pp.id === effectiveFreePreviewPainPointId ? "currentColor" : "none"} />
-                      </button>
-                      <button
-                        class="p-1 rounded hover:bg-error/10 text-text-muted hover:text-error opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-                        title="Depublish"
-                        onclick={() => depublishSinglePainPoint(pp.id)}
-                      >
-                        <Trash2 class="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  {/each}
-                </div>
-              </div>
-            {/if}
-
-            <!-- Divider -->
-            {#if painPoints.length > 0 && ideas.length > 0}
-              <hr class="border-border mb-6" />
-            {/if}
-
-            <!-- Ideas section -->
-            {#if ideas.length > 0}
-              <div>
-                <div class="flex items-center gap-2 mb-3">
-                  <input
-                    type="checkbox"
-                    checked={selectedIdeas.size === ideas.length}
-                    onchange={toggleAllIdeas}
-                    class="rounded border-border"
-                  />
-                  <h3 class="text-sm font-semibold text-text-secondary">Ideas ({ideas.length})</h3>
-                </div>
-                <div class="space-y-1">
-                  {#each ideas as idea}
-                    {@const orig = originalityMetric({ obviousness_score: idea.obviousnessScore, novelty_score: idea.noveltyScore })}
-                    <div class="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-bg-elevated group">
-                      <input
-                        type="checkbox"
-                        checked={selectedIdeas.has(idea.id)}
-                        onchange={() => {
-                          if (selectedIdeas.has(idea.id)) selectedIdeas.delete(idea.id);
-                          else selectedIdeas.add(idea.id);
-                        }}
-                        class="rounded border-border flex-shrink-0"
-                      />
-                      <span class="text-sm text-text-primary flex-1 truncate">{idea.solutionName}</span>
-                      {#if idea.id === effectiveFreePreviewIdeaId}
-                        <Badge variant="success" size="sm">Free preview</Badge>
-                      {/if}
-                      <Badge variant="success" size="sm">Fit {formatScore(idea.marketFitScore)}</Badge>
-                      <Badge variant="info" size="sm">{orig.short ?? "Orig"} {formatScore(orig.value)}</Badge>
-                      <button
-                        class="p-1 rounded hover:bg-accent/10 transition-opacity flex-shrink-0 {idea.id === effectiveFreePreviewIdeaId ? 'text-accent' : 'text-text-muted opacity-0 group-hover:opacity-100'}"
-                        title={idea.id === effectiveFreePreviewIdeaId
-                          ? "Free preview — click to clear (sub-niche becomes fully gated)"
-                          : "Set as the free preview"}
-                        onclick={() => setFreePreview("idea", idea.id, !idea.isFreePreview)}
-                      >
-                        <Star class="w-3.5 h-3.5" fill={idea.id === effectiveFreePreviewIdeaId ? "currentColor" : "none"} />
-                      </button>
-                      <button
-                        class="p-1 rounded hover:bg-error/10 text-text-muted hover:text-error opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-                        title="Depublish"
-                        onclick={() => depublishSingleIdea(idea.id)}
-                      >
-                        <Trash2 class="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  {/each}
-                </div>
-              </div>
-            {/if}
-          {/if}
-        </div>
-
-        <!-- Footer -->
-        <div class="flex items-center justify-between px-6 py-3 border-t border-border flex-shrink-0">
-          <button class="text-sm text-text-secondary hover:text-text-primary" onclick={close}>Close</button>
-          <span class="text-xs text-text-muted">
-            {painPoints.length} pain points, {ideas.length} ideas
-          </span>
+          {/each}
         </div>
       </div>
-    </div>
-  </div>
-{/if}
+    {/if}
+
+    <!-- Divider -->
+    {#if painPoints.length > 0 && ideas.length > 0}
+      <hr class="border-border" />
+    {/if}
+
+    <!-- Ideas section -->
+    {#if ideas.length > 0}
+      <div>
+        <div class="flex items-center gap-2 mb-3">
+          <input
+            type="checkbox"
+            checked={selectedIdeas.size === ideas.length}
+            onchange={toggleAllIdeas}
+            class="rounded border-border"
+            aria-label="Select all ideas"
+          />
+          <h3 class="text-sm font-semibold text-text-secondary">Ideas ({ideas.length})</h3>
+        </div>
+        <div class="space-y-1">
+          {#each ideas as idea}
+            {@const orig = originalityMetric({ obviousness_score: idea.obviousnessScore, novelty_score: idea.noveltyScore })}
+            <div class="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-bg-elevated group">
+              <input
+                type="checkbox"
+                checked={selectedIdeas.has(idea.id)}
+                onchange={() => {
+                  if (selectedIdeas.has(idea.id)) selectedIdeas.delete(idea.id);
+                  else selectedIdeas.add(idea.id);
+                }}
+                class="rounded border-border flex-shrink-0"
+                aria-label={`Select ${idea.solutionName}`}
+              />
+              <span class="text-sm text-text-primary flex-1 truncate">{idea.solutionName}</span>
+              {#if idea.id === effectiveFreePreviewIdeaId}
+                <Badge variant="success" size="sm">Free preview</Badge>
+              {/if}
+              <Badge variant="success" size="sm">Fit {formatScore(idea.marketFitScore)}</Badge>
+              <Badge variant="info" size="sm">{orig.short ?? "Orig"} {formatScore(orig.value)}</Badge>
+              <button
+                class="p-1 rounded hover:bg-accent/10 transition-opacity flex-shrink-0 {idea.id === effectiveFreePreviewIdeaId ? 'text-accent' : 'text-text-muted opacity-0 group-hover:opacity-100'}"
+                title={idea.id === effectiveFreePreviewIdeaId
+                  ? "Free preview: click to clear (sub-niche becomes fully gated)"
+                  : "Set as the free preview"}
+                onclick={() => setFreePreview("idea", idea.id, !idea.isFreePreview)}
+              >
+                <Star class="w-3.5 h-3.5" fill={idea.id === effectiveFreePreviewIdeaId ? "currentColor" : "none"} />
+              </button>
+              <button
+                class="p-1 rounded hover:bg-error/10 text-text-muted hover:text-error opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                title="Depublish"
+                onclick={() => depublishSingleIdea(idea.id)}
+              >
+                <Trash2 class="w-3.5 h-3.5" />
+              </button>
+            </div>
+          {/each}
+        </div>
+      </div>
+    {/if}
+  {/if}
+
+  {#snippet footerCancel()}
+    <button type="button" class="cancel-btn" onclick={close}>Close</button>
+  {/snippet}
+  {#snippet footer()}
+    {#if selectedCount > 0}
+      <div class="bulk-actions">
+        <label class="sr-only" for="category-items-move">Move selected items to category</label>
+        <select
+          id="category-items-move"
+          class="bulk-move"
+          disabled={bulkInProgress || moveTargets.length === 0}
+          onchange={handleMoveChange}
+        >
+          <option value="" selected>Move to…</option>
+          {#each moveTargets as target}
+            <option value={target.id}>{target.name}</option>
+          {/each}
+        </select>
+        <ConfirmGate
+          label="Depublish"
+          confirmLabel={`Depublish ${selectedCount}`}
+          variant="free"
+          consequence="REMOVED FROM PUBLIC CATALOG"
+          busy={bulkInProgress}
+          onConfirm={bulkDepublish}
+        />
+      </div>
+    {/if}
+  {/snippet}
+</FormOverlay>
+
+<style>
+  .bulk-actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .bulk-move {
+    min-height: 2.1rem;
+    padding: 0 0.65rem;
+    border: 1px solid var(--color-input-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-secondary);
+    font: inherit;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .bulk-move:hover:not(:disabled) {
+    border-color: var(--color-input-border-hover);
+    color: var(--color-text-primary);
+  }
+
+  .bulk-move:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  .bulk-move:disabled {
+    border-color: var(--color-border-emphasis);
+    background: var(--color-bg-surface);
+    color: var(--color-text-muted);
+    cursor: not-allowed;
+  }
+</style>

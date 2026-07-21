@@ -7,12 +7,16 @@ import request from 'supertest';
 // ============================================
 const mockUpdateMany = vi.fn();
 const mockJobFindUnique = vi.fn();
+const mockJobUpdate = vi.fn();
 const mockUserFindUnique = vi.fn();
 
 vi.mock('../../services/db.js', () => ({
   prisma: {
     jobProgress: { updateMany: (...args: any[]) => mockUpdateMany(...args) },
-    job: { findUnique: (...args: any[]) => mockJobFindUnique(...args) },
+    job: {
+      findUnique: (...args: any[]) => mockJobFindUnique(...args),
+      update: (...args: any[]) => mockJobUpdate(...args),
+    },
     user: { findUnique: (...args: any[]) => mockUserFindUnique(...args) },
   },
 }));
@@ -105,6 +109,7 @@ beforeEach(async () => {
   // to simulate re-delivery override mockGetJobAsset.
   mockGetJobAsset.mockResolvedValue(null);
   mockExtractOrCreate.mockResolvedValue({});
+  mockJobUpdate.mockResolvedValue({});
 
   app = express();
   app.use(express.json());
@@ -163,6 +168,74 @@ describe('POST /api/workers/report-ready', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('Validation error');
+  });
+
+  it('persists the exact idea identity for the Deep Research recommendation', async () => {
+    mockJobFindUnique.mockResolvedValue({
+      userId: 'user-1',
+      niche: 'test niche',
+      selectedSolutions: ['Signal Desk', 'Risk Radar'],
+      selectedSolutionIds: ['idea-signal', 'idea-risk'],
+      solutionIdeas: [
+        { idea_id: 'idea-signal', idea_revision: 3, solution_name: 'Signal Desk' },
+        { idea_id: 'idea-risk', idea_revision: 2, solution_name: 'Risk Radar' },
+      ],
+    });
+    mockUserFindUnique.mockResolvedValue({ email: 'user@example.com' });
+
+    const response = await request(app)
+      .post('/api/workers/report-ready')
+      .send({ ...validPayload, winner_name: '  SIGNAL   desk ' });
+
+    expect(response.status).toBe(200);
+    expect(mockJobUpdate).toHaveBeenCalledWith({
+      where: { id: JOB_ID },
+      data: {
+        selectedSolution: 'Signal Desk',
+        deepResearchRecommendedIdeaId: 'idea-signal',
+        deepResearchRecommendedIdeaRevision: 3,
+      },
+    });
+  });
+
+  it('rejects a winner name that does not resolve to a selected candidate', async () => {
+    mockJobFindUnique.mockResolvedValue({
+      userId: 'user-1',
+      niche: 'test niche',
+      selectedSolutions: ['Signal Desk'],
+      selectedSolutionIds: ['idea-signal'],
+      solutionIdeas: [
+        { idea_id: 'idea-signal', idea_revision: 3, solution_name: 'Signal Desk' },
+      ],
+    });
+
+    const response = await request(app)
+      .post('/api/workers/report-ready')
+      .send({ ...validPayload, winner_name: 'Different candidate' });
+
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe('WINNER_IDENTITY_UNRESOLVED');
+    expect(mockAddJobAsset).not.toHaveBeenCalled();
+    expect(mockJobUpdate).not.toHaveBeenCalled();
+  });
+
+  it('rejects a matched winner whose stable idea identity is missing', async () => {
+    mockJobFindUnique.mockResolvedValue({
+      userId: 'user-1',
+      niche: 'test niche',
+      selectedSolutions: ['Signal Desk'],
+      selectedSolutionIds: [],
+      solutionIdeas: [{ solution_name: 'Signal Desk' }],
+    });
+
+    const response = await request(app)
+      .post('/api/workers/report-ready')
+      .send({ ...validPayload, winner_name: 'Signal Desk' });
+
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe('WINNER_IDENTITY_UNRESOLVED');
+    expect(mockAddJobAsset).not.toHaveBeenCalled();
+    expect(mockJobUpdate).not.toHaveBeenCalled();
   });
 
   it('calls notifyJobComplete() with correct user email', async () => {

@@ -105,6 +105,19 @@
   const isExpandable = $derived(mode === "expandable");
   const showBody = $derived(!isExpandable || expanded);
 
+  // "left"/"top" accent stripes are deprecated (anti-slop §9.1 — no accent stripes on
+  // any card edge). Both now render the standard all-around border; the prop keeps
+  // accepting the old values so existing call sites don't break, with a console warning.
+  const resolvedBorder = $derived.by(() => {
+    if (border === "left" || border === "top") {
+      console.warn(
+        `Section: border="${border}" is deprecated (accent stripe removed) — rendering the standard border instead.`,
+      );
+      return "all";
+    }
+    return border;
+  });
+
   // Reveal-on-navigate: the sidebar (PhaseNav) dispatches this when a link targets a
   // collapsed section, so the jump lands on open content instead of a closed row.
   $effect(() => {
@@ -133,10 +146,11 @@
 </script>
 
 <section
-  class="section-container section-{variant} border-{border} padding-{padding} mb-{marginBottom} header-{headerSize} {className}"
+  class="section-container section-{variant} border-{resolvedBorder} padding-{padding} mb-{marginBottom} header-{headerSize} {className}"
   class:elevated
   class:expandable={isExpandable}
   {id}
+  data-annotation-anchor={id ? "section:" + id : undefined}
 >
   {#if isExpandable}
     <!-- Expandable header: button wrapped in a heading so the section title is in the
@@ -170,6 +184,7 @@
     <!-- Always-mounted body with CSS grid transition for smooth expand/collapse -->
     <div
       class="section-body"
+      data-annotation-anchor={id ? "section-body:" + id : undefined}
       class:section-body--open={showBody}
       aria-hidden={!showBody}
       inert={!showBody ? true : undefined}
@@ -240,7 +255,7 @@
 	   Base Section Container
 	   ============================================ */
   .section-container {
-    border-radius: 0.5rem;
+    border-radius: var(--radius-lg);
     overflow: hidden;
   }
 
@@ -259,12 +274,12 @@
   }
 
   .section-success {
-    --section-border-color: rgba(34, 197, 94, 0.3);
+    --section-border-color: var(--color-border-success);
     --section-icon-color: var(--color-success);
   }
 
   .section-warning {
-    --section-border-color: rgba(239, 68, 68, 0.3);
+    --section-border-color: var(--color-border-error);
     --section-icon-color: var(--color-error);
   }
 
@@ -278,16 +293,6 @@
 	   ============================================ */
   .border-all {
     border: 1px solid var(--section-border-color);
-  }
-
-  .border-left {
-    border: 1px solid var(--section-border-color);
-    border-left: 3px solid var(--section-border-color);
-  }
-
-  .border-top {
-    border: 1px solid var(--section-border-color);
-    border-top: 3px solid var(--section-border-color);
   }
 
   .border-none {
@@ -458,8 +463,7 @@
 
   .section-header-title {
     margin: 0;
-    font-family: var(--font-display);
-    font-size: 0.9375rem;
+    font-size: var(--text-13);
     font-weight: 600;
     color: var(--color-text-primary);
   }
@@ -528,7 +532,11 @@
     display: inline-flex;
     align-items: center;
     gap: 0.25rem;
-    font-size: 0.75rem;
+    font-family: var(--font-mono);
+    font-size: var(--text-11);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "zero" 0;
     color: var(--color-text-muted);
     opacity: 0.7;
   }

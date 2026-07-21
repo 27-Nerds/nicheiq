@@ -37,7 +37,7 @@
 
 <style>
   .teaser {
-    background: var(--color-bg-elevated, #fafafa);
+    background: var(--color-bg-elevated);
     border: 1px solid var(--color-border);
     border-radius: 8px;
     padding: 20px 24px;
@@ -53,7 +53,7 @@
   }
   .teaser:hover {
     border-color: var(--color-border-emphasis);
-    background: var(--color-surface, #fff);
+    background: var(--color-surface);
   }
   .teaser:focus-visible {
     outline: 2px solid var(--coll-accent, var(--color-accent));
@@ -96,7 +96,7 @@
     font-size: 13px;
     color: var(--color-text-secondary, var(--color-text-primary));
     border: 1px solid var(--color-border-emphasis);
-    background: var(--color-surface, #fff);
+    background: var(--color-surface);
     padding: 7px 12px;
     border-radius: 6px;
     transition: color 0.12s, border-color 0.12s;

@@ -98,7 +98,7 @@
   label="Idea score"
   composite={computedComposite}
   tier={tierLabel}
-  accent="var(--color-accent)"
+  accent="var(--color-accent-dark)"
   {verdict}
   {rows}
   {footerStats}

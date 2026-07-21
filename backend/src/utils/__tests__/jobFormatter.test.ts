@@ -75,17 +75,29 @@ describe('formatJobResponse solutionIdeasCount', () => {
 });
 
 describe('formatJobResponse includeSolutionIdeas', () => {
-  it('serves the stored solutionIdeas array verbatim, without filtering by candidate_status', () => {
+  it('serves the stored visible ideas with stable identities', () => {
     const solutions = [
       { solution_name: 'Sol1', candidate_status: 'active' },
-      { solution_name: 'Sol2', candidate_status: 'active', merged_from: ['OldSol'] },
+      {
+        solution_name: 'Sol2',
+        candidate_status: 'active',
+        merged_from: ['OldSol'],
+        idea_id: 'idea_existing',
+        idea_revision: 2,
+      },
     ];
     const job = makeJob({ solutionIdeas: solutions });
 
     const result = formatJobResponse(job, { includeSolutionIdeas: true });
 
-    // Backend performs no filter of its own — it trusts the worker's payload as-is.
-    expect(result.solutionIdeas).toEqual(solutions);
+    expect(result.solutionIdeas).toEqual([
+      {
+        ...solutions[0],
+        idea_id: expect.stringMatching(/^idea_[a-f0-9]{32}$/),
+        idea_revision: 1,
+      },
+      solutions[1],
+    ]);
   });
 
   it('is null when solutionIdeas is not stored', () => {

@@ -228,7 +228,7 @@
     font-family: var(--font-mono);
     font-weight: 600;
     font-size: 0.78rem;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
     font-variant-numeric: tabular-nums;
     text-align: right;
     padding-top: 0.125rem;

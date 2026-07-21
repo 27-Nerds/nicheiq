@@ -252,17 +252,21 @@
     color: var(--color-text-muted);
     white-space: nowrap;
   }
-  /* Segmented scope toggle — mirrors `.view-toggle` (grid/list switch) below
-     so the page reads as one consistent system. */
+  /* Segmented scope toggle — SegmentControl "compact" recipe (DESIGN_SYSTEM.md
+     §6: small toggles/tabs). Scoped copy shared with `.view-toggle` below
+     since the app doesn't have a ui/SegmentControl.svelte yet (§7: CREATE). */
   .scope-toggle {
     display: inline-flex;
-    border: 1px solid var(--color-border);
-    border-radius: 6px;
-    overflow: hidden;
+    padding: 3px;
+    gap: 2px;
+    border: 1px solid var(--color-border-emphasis);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-surface);
   }
   .scope-toggle button {
-    padding: 5px 11px;
-    border: none;
+    padding: 0.3rem 0.7rem;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
     background: transparent;
     color: var(--color-text-secondary, var(--color-text-primary));
     cursor: pointer;
@@ -270,19 +274,19 @@
     align-items: center;
     gap: 8px;
     font-family: inherit;
-    font-size: 12px;
+    font-size: var(--text-sm);
+    font-weight: 600;
     line-height: 1;
-    transition: background-color 0.12s, color 0.12s;
-  }
-  .scope-toggle button + button {
-    border-left: 1px solid var(--color-border);
+    transition: background-color 0.12s, border-color 0.12s, color 0.12s;
   }
   .scope-toggle button:hover:not(.active) {
     color: var(--color-text-primary);
   }
   .scope-toggle button.active {
-    background: var(--color-text-primary);
-    color: var(--color-bg-elevated, #fff);
+    border-color: var(--color-accent);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
+    box-shadow: var(--shadow-sm);
   }
   .scope-toggle button:focus-visible {
     outline: 2px solid var(--color-accent);
@@ -352,33 +356,44 @@
     border: 1px solid var(--color-border);
     border-radius: 6px;
     padding: 5px 11px;
-    background: var(--color-bg-elevated, #fff);
+    background: var(--color-bg-elevated);
     color: var(--color-text-primary);
     font-family: inherit;
     font-size: 12px;
     cursor: pointer;
   }
+  /* SegmentControl "compact" recipe — see `.scope-toggle` above. */
   .view-toggle {
-    display: flex;
-    border: 1px solid var(--color-border);
-    border-radius: 6px;
-    overflow: hidden;
+    display: inline-flex;
+    padding: 3px;
+    gap: 2px;
+    border: 1px solid var(--color-border-emphasis);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-surface);
   }
   .view-toggle button {
-    padding: 5px 10px;
-    border: none;
-    background: var(--color-bg-elevated, #fff);
+    padding: 0.3rem 0.7rem;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: transparent;
     color: var(--color-text-secondary, var(--color-text-primary));
     cursor: pointer;
     display: inline-flex;
     align-items: center;
+    transition: background-color 0.12s, border-color 0.12s, color 0.12s;
   }
-  .view-toggle button + button {
-    border-left: 1px solid var(--color-border);
+  .view-toggle button:hover:not(.active) {
+    color: var(--color-text-primary);
   }
   .view-toggle button.active {
-    background: var(--color-text-primary);
-    color: var(--color-bg-elevated, #fff);
+    border-color: var(--color-accent);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
+    box-shadow: var(--shadow-sm);
+  }
+  .view-toggle button:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
   }
   .ideas-grid {
     display: grid;

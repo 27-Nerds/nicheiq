@@ -172,7 +172,7 @@
     top: -0.5em;
     font-family: var(--font-mono);
     font-size: 0.5625rem;
-    color: var(--color-text-muted);
+    color: var(--color-text-secondary);
     font-variant-numeric: tabular-nums;
   }
 

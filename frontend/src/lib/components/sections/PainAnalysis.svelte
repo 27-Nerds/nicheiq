@@ -619,14 +619,16 @@
 </Section>
 
 <style>
-  /* Tab Navigation */
+  /* Tab Navigation — SegmentControl "compact" recipe (DESIGN_SYSTEM.md §6),
+     hand-copied since the tab markup (icon + label buttons, role="tab") isn't
+     a drop-in match for the shared SegmentControl component. */
   .tab-navigation {
-    display: flex;
-    gap: var(--space-2);
-    padding: var(--space-1);
+    display: inline-flex;
+    gap: 2px;
+    padding: 3px;
     background: var(--color-bg-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
+    border: 1px solid var(--color-border-emphasis);
+    border-radius: var(--radius-md);
     width: fit-content;
   }
 
@@ -634,25 +636,26 @@
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    padding: 0.625rem 1rem;
+    padding: 0.3rem 0.7rem;
     background: transparent;
-    border: none;
-    border-radius: var(--radius-md);
-    color: var(--color-text-muted);
-    font-size: var(--text-base);
-    font-weight: 500;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+    font-weight: 600;
     cursor: pointer;
     transition: color 0.2s ease, background-color 0.2s ease;
   }
 
   .tab-button:hover {
     color: var(--color-text-primary);
-    background: var(--color-bg-hover);
   }
 
   .tab-button.tab-active {
-    color: var(--color-accent);
-    background: var(--color-accent-subtle);
+    border-color: var(--color-accent);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
+    box-shadow: var(--shadow-sm);
   }
 
   /* Journey Tab Styles */
@@ -683,7 +686,7 @@
   }
 
   .journey-intro-text strong {
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .pain-solution-flow {
@@ -915,7 +918,7 @@
     font-size: var(--text-xs);
     font-weight: 600;
     letter-spacing: 0.02em;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
     background: none;
     border: none;
     cursor: pointer;
@@ -1005,7 +1008,7 @@
     font-family: var(--font-display);
     font-size: var(--text-2xl);
     font-weight: 700;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
     font-variant-numeric: tabular-nums;
   }
 
@@ -1206,7 +1209,7 @@
   }
 
   .quotes-toggle:hover {
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .quotes-list {

@@ -138,7 +138,7 @@
   .theme-table {
     border: 1px solid var(--color-border);
     border-radius: 8px;
-    background: var(--color-bg-elevated, #fff);
+    background: var(--color-bg-elevated);
     overflow: hidden;
   }
   .theme-table > :global(.theme-lead:last-child),
@@ -173,7 +173,7 @@
 
   /* Legacy id-less themes — preserved from prior implementation, unchanged. */
   .empty-themes {
-    background: var(--color-bg-elevated, #fff);
+    background: var(--color-bg-elevated);
     border: 1px solid var(--color-border);
     border-radius: 8px;
     padding: 14px 20px;

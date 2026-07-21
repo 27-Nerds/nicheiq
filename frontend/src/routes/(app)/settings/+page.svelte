@@ -208,9 +208,9 @@
 
   <!-- Security -->
   <section id="security" class="settings-section">
-    <header class="settings-head">
-      <h2 class="settings-title">Sign-in &amp; security</h2>
-      <p class="sec-desc">
+    <header class="sec-head">
+      <h2 class="sec-title">Sign-in &amp; security</h2>
+      <p class="sec-meta">
         {hasPassword
           ? "Update your account password."
           : "Manage how you sign in."}
@@ -337,9 +337,9 @@
 
   <!-- Notifications -->
   <section id="notifications" class="settings-section settings-section--narrow">
-    <header class="settings-head">
-      <h2 class="settings-title">Email notifications</h2>
-      <p class="sec-desc">Choose which emails you receive.</p>
+    <header class="sec-head">
+      <h2 class="sec-title">Email notifications</h2>
+      <p class="sec-meta">Choose which emails you receive.</p>
     </header>
 
     <div class="list">
@@ -513,21 +513,24 @@
   .settings-section--narrow {
     max-width: 36rem;
   }
-  .settings-head {
+  /* .sec-head/.sec-title/.sec-meta — canonical zone-header recipe
+     (DESIGN_SYSTEM.md §6), stacked since this header pairs a title with a
+     full description sentence rather than an inline meta value. */
+  .sec-head {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
     margin-bottom: var(--space-5);
   }
-  .settings-title {
-    font-family: var(--font-display);
-    font-size: 1rem;
-    font-weight: 700;
-    letter-spacing: -0.02em;
-    line-height: 1.2;
+  .sec-title {
+    font-size: var(--text-13);
+    font-weight: 600;
     color: var(--color-text-primary);
   }
-  .sec-desc {
-    margin-top: var(--space-1);
+  .sec-meta {
     font-size: var(--text-sm);
-    color: var(--color-text-secondary);
+    line-height: 1.4;
+    color: var(--color-text-muted);
   }
 
   /* Security fields (panel supplies the chrome) */

@@ -1299,11 +1299,13 @@
 	   HERO ZONE (Dark Gradient)
 	   ========================= */
   .hero-zone {
+    /* No dark navy/slate tokens exist in this palette; approximated via color-mix
+       from the nearest neutral/accent tokens to avoid raw hex in a dark hero gradient. */
     background: linear-gradient(
       135deg,
-      #0f172a 0%,
-      #1e293b 40%,
-      #431407 80%,
+      var(--color-text-primary) 0%,
+      color-mix(in srgb, var(--color-text-primary) 85%, white) 40%,
+      color-mix(in srgb, var(--color-accent-dark) 60%, black) 80%,
       var(--color-accent) 100%
     );
     padding: var(--space-8) var(--space-5);
@@ -1332,7 +1334,7 @@
     color: var(--color-text-primary);
   }
   .hero-zone--preview .expand-btn {
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
   .hero-zone--preview .expand-btn:hover {
     color: var(--color-accent-dark);
@@ -1708,7 +1710,7 @@
   }
 
   .pipeline-stage.highlight .pipeline-num {
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   /* HelpCircle icons on dark background (hero zone) */
@@ -1759,11 +1761,11 @@
   }
 
   :global(.card-icon.pain) {
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   :global(.card-icon.solution) {
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .card-badge {
@@ -1771,7 +1773,7 @@
     font-size: var(--text-xs);
     font-weight: var(--font-bold);
     letter-spacing: 0.1em;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   /* Unified Hero Card Base */
@@ -1829,7 +1831,7 @@
     font-family: var(--font-display);
     font-size: 0.9375rem;
     font-weight: var(--font-bold);
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .pain-stat-label {
@@ -1862,7 +1864,7 @@
     top: 0;
     width: var(--space-4);
     height: var(--space-4);
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
     opacity: 0.4;
   }
 
@@ -1880,7 +1882,7 @@
   :global(.callout-icon) {
     width: 0.875rem;
     height: 0.875rem;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
     flex-shrink: 0;
     margin-top: 0.125rem;
   }
@@ -1961,7 +1963,7 @@
     font-family: var(--font-display);
     font-size: var(--text-sm);
     font-weight: var(--font-semibold);
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
     text-decoration: none;
     padding: var(--space-2) var(--space-3);
     background: var(--color-accent-subtle);
@@ -2019,7 +2021,7 @@
     font-family: var(--font-display);
     font-size: 1.125rem;
     font-weight: var(--font-bold);
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
     margin-bottom: var(--space-1);
     line-height: var(--leading-snug);
   }
@@ -2039,7 +2041,7 @@
     font-family: var(--font-display);
     font-size: var(--text-sm);
     font-weight: var(--font-semibold);
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
     text-decoration: none;
     padding: var(--space-2) var(--space-3);
     background: var(--color-accent-subtle);
@@ -2462,7 +2464,7 @@
     border-radius: var(--radius-full);
     font-size: var(--text-xs);
     font-weight: var(--font-bold);
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
     flex-shrink: 0;
   }
 
@@ -2489,7 +2491,7 @@
   }
 
   :global(.priority-icon.feature) {
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .priority-label {
@@ -2567,7 +2569,7 @@
   :global(.seo-calc-icon) {
     width: 0.875rem;
     height: 0.875rem;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .seo-title {
@@ -2602,7 +2604,7 @@
   }
 
   .seo-score.refined .seo-value {
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .seo-score.change.positive .seo-value {
@@ -2686,7 +2688,7 @@
   :global(.signal-card-icon) {
     width: var(--space-4);
     height: var(--space-4);
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .signal-card-title {

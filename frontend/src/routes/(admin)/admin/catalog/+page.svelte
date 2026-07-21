@@ -34,27 +34,30 @@
   </div>
 
   <!-- Tab Bar -->
-  <div class="flex rounded-lg border border-border overflow-hidden mb-6">
+  <div class="catalog-tabs" role="tablist" aria-label="Catalog view">
     <button
-      class="px-5 py-2.5 text-sm font-medium transition-colors {tab === 'curate'
-        ? 'bg-accent text-white'
-        : 'bg-bg-surface text-text-secondary hover:bg-bg-elevated'}"
+      type="button"
+      role="tab"
+      aria-selected={tab === "curate"}
+      class="catalog-tab"
       onclick={() => switchTab("curate")}
     >
       Curate Items
     </button>
     <button
-      class="px-5 py-2.5 text-sm font-medium transition-colors {tab === 'categories'
-        ? 'bg-accent text-white'
-        : 'bg-bg-surface text-text-secondary hover:bg-bg-elevated'}"
+      type="button"
+      role="tab"
+      aria-selected={tab === "categories"}
+      class="catalog-tab"
       onclick={() => switchTab("categories")}
     >
       Categories
     </button>
     <button
-      class="px-5 py-2.5 text-sm font-medium transition-colors {tab === 'collections'
-        ? 'bg-accent text-white'
-        : 'bg-bg-surface text-text-secondary hover:bg-bg-elevated'}"
+      type="button"
+      role="tab"
+      aria-selected={tab === "collections"}
+      class="catalog-tab"
       onclick={() => switchTab("collections")}
     >
       Collections
@@ -72,3 +75,56 @@
     />
   {/if}
 </div>
+
+<style>
+  /* Tablist recipe: scoped copy of SegmentControl's compact density
+     (src/lib/components/ui/SegmentControl.svelte, DESIGN_SYSTEM.md §6) —
+     a plain component instance doesn't fit a goto()-driven URL tab bar. */
+  .catalog-tabs {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    padding: 3px;
+    margin-bottom: var(--space-6);
+    border: 1px solid var(--color-border-emphasis);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-surface);
+  }
+
+  .catalog-tab {
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    padding: 0.3rem 0.7rem;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition:
+      color var(--duration-fast) var(--ease-default),
+      background var(--duration-fast) var(--ease-default),
+      border-color var(--duration-fast) var(--ease-default);
+  }
+
+  .catalog-tab:hover {
+    color: var(--color-text-primary);
+  }
+
+  .catalog-tab[aria-selected="true"] {
+    border-color: var(--color-accent);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .catalog-tab:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .catalog-tab {
+      transition: none;
+    }
+  }
+</style>

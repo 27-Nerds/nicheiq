@@ -34,9 +34,8 @@
 
 <style>
   .solution-card {
-    background: var(--color-surface, #fff);
+    background: var(--color-surface);
     border: 1px solid var(--color-border);
-    border-left: 3px solid var(--color-success);
     border-radius: 6px;
     padding: 16px 18px;
     display: flex;
@@ -46,7 +45,7 @@
   .lbl {
     font-family: var(--font-mono);
     font-size: 10px;
-    color: var(--color-success);
+    color: var(--color-success-text);
     letter-spacing: 0.08em;
     text-transform: uppercase;
     font-weight: 600;
@@ -91,7 +90,7 @@
   }
   li::before {
     content: "+";
-    color: var(--color-success);
+    color: var(--color-success-text);
     flex-shrink: 0;
     font-weight: 700;
   }

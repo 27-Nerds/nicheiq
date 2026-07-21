@@ -191,7 +191,7 @@
               />
             {:else}
               <div
-                class="w-8 h-8 rounded-full bg-gradient-to-br from-accent to-orange-600 flex items-center justify-center text-white text-xs font-semibold ring-2 ring-bg-elevated"
+                class="w-8 h-8 rounded-full bg-accent-hover flex items-center justify-center text-white text-xs font-semibold ring-2 ring-bg-elevated"
               >
                 {getInitials(session?.user?.name)}
               </div>
@@ -272,26 +272,24 @@
     gap: 0.42rem;
     min-height: 2rem;
     margin-left: 0.25rem;
-    padding: 0.38rem 0.68rem;
-    border: 1px solid var(--color-border);
-    border-radius: 0.5rem;
+    padding: 0 0.75rem;
+    border: 1px solid var(--color-input-border);
+    border-radius: var(--radius-md);
     background: var(--color-bg-elevated);
     color: var(--color-text-secondary);
-    font-size: 0.82rem;
-    font-weight: 700;
+    font-size: var(--text-13);
+    font-weight: 600;
     transition:
-      transform 180ms cubic-bezier(0.32, 0.72, 0, 1),
-      border-color 180ms cubic-bezier(0.32, 0.72, 0, 1),
-      color 180ms cubic-bezier(0.32, 0.72, 0, 1),
-      background 180ms cubic-bezier(0.32, 0.72, 0, 1);
+      border-color var(--duration-fast) var(--ease-default),
+      color var(--duration-fast) var(--ease-default),
+      background var(--duration-fast) var(--ease-default);
   }
 
   .new-research-action:hover,
   .new-research-action.active {
-    transform: translateY(-1px);
     border-color: var(--color-border-emphasis);
     color: var(--color-text-primary);
-    background: var(--color-bg-surface);
+    background: var(--color-bg-hover);
   }
 
   .credit-action.active {

@@ -220,7 +220,7 @@
     font-size: 13px;
     color: var(--color-text-secondary, var(--color-text-primary));
     line-height: 1.5;
-    background: var(--color-surface-elevated, #fafafa);
+    background: var(--color-surface-elevated);
     border-radius: 0 4px 4px 0;
   }
   /* Linked compact variant uses the same shell as .quote. */
@@ -231,7 +231,7 @@
     transition: background-color 120ms ease;
   }
   .quote-link:hover {
-    background: var(--color-bg-hover, #ebebeb);
+    background: var(--color-bg-hover);
   }
   .quote-link .src-line {
     color: var(--color-accent);
@@ -263,7 +263,7 @@
     font-family: var(--font-mono);
     font-size: 11px;
     color: var(--color-text-secondary, var(--color-text-primary));
-    background: var(--color-surface, #fff);
+    background: var(--color-surface);
     transition: background-color 120ms ease, color 120ms ease;
     user-select: none;
   }
@@ -276,7 +276,7 @@
   }
   .show-all[open] > summary::after { content: '−'; }
   .show-all > summary:hover {
-    background: var(--color-bg-hover, #ebebeb);
+    background: var(--color-bg-hover);
     color: var(--color-text-primary);
   }
   .show-all > .panel-extra {
@@ -285,7 +285,7 @@
   .bubble {
     border-left: 3px solid var(--color-border-emphasis);
     padding: 14px 18px;
-    background: var(--color-surface-elevated, #fafafa);
+    background: var(--color-surface-elevated);
     border-radius: 0 6px 6px 0;
   }
   /* Linked panel bubble. Color-only hover per feedback_no_ai_slop_hover. */
@@ -299,7 +299,7 @@
     transition: background-color 120ms ease;
   }
   .bubble-link:hover {
-    background: var(--color-bg-hover, #ebebeb);
+    background: var(--color-bg-hover);
   }
   .bubble-link .src-line {
     color: var(--color-accent);

@@ -99,8 +99,8 @@
   // Channel priority color
   const getChannelColor = (priority: string) => {
     if (priority === "High") return "var(--color-success)";
-    if (priority === "Medium") return "#EAB308";
-    return "#71717A";
+    if (priority === "Medium") return "var(--color-warning)";
+    return "var(--color-text-muted)";
   };
 
   // Calculate hero metrics
@@ -630,7 +630,7 @@
   :global(.message-icon) {
     width: 1.25rem;
     height: 1.25rem;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .message-label {
@@ -639,7 +639,7 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .message-text {
@@ -656,7 +656,7 @@
     color: var(--color-text-secondary);
     line-height: 1.6;
     padding-top: var(--space-4);
-    border-top: 1px solid var(--color-border-accent);
+    border-top: 1px solid var(--color-border-emphasis);
   }
 
   .budget-badge {
@@ -673,7 +673,7 @@
   :global(.budget-icon) {
     width: 1rem;
     height: 1rem;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .budget-label {
@@ -685,7 +685,7 @@
     font-family: var(--font-display);
     font-size: var(--text-md);
     font-weight: 700;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   /* ICP Summary (Always Visible) */
@@ -709,7 +709,7 @@
   :global(.icp-summary-icon) {
     width: 1.25rem;
     height: 1.25rem;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .icp-summary-content {
@@ -730,7 +730,7 @@
     font-family: var(--font-display);
     font-size: 1.125rem;
     font-weight: 700;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .icp-summary-grid {
@@ -779,7 +779,7 @@
   :global(.playbook-icon) {
     width: 1.25rem;
     height: 1.25rem;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .playbook-title {
@@ -866,7 +866,7 @@
   :global(.action-icon) {
     width: 0.875rem;
     height: 0.875rem;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
     flex-shrink: 0;
     margin-top: 0.125rem;
   }
@@ -1071,7 +1071,7 @@
   .angle-hook {
     font-size: 0.9375rem;
     font-weight: 500;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
     margin: 0 0 var(--space-3);
     font-style: italic;
   }
@@ -1166,7 +1166,7 @@
     border-radius: 50%;
     font-size: var(--text-base);
     font-weight: 700;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
     flex-shrink: 0;
   }
 
@@ -1281,8 +1281,8 @@
 
   .budget-rationale {
     background: var(--color-bg-surface);
-    border-left: 3px solid var(--color-accent);
-    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
     padding: 1rem 1.25rem;
   }
 
@@ -1292,7 +1292,7 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
     margin: 0 0 var(--space-2);
   }
 

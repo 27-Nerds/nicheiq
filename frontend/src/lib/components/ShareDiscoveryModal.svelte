@@ -1,14 +1,7 @@
 <script lang="ts">
-  import {
-    X,
-    Copy,
-    Check,
-    Loader2,
-    AlertCircle,
-    RefreshCw,
-    Link,
-    Vote,
-  } from "lucide-svelte";
+  import { Copy, Check, Loader2 } from "lucide-svelte";
+  import FormOverlay from "$lib/components/ui/FormOverlay.svelte";
+  import ConfirmGate from "$lib/components/ui/ConfirmGate.svelte";
   import {
     getDiscoveryShareStatus,
     enableDiscoverySharing,
@@ -30,7 +23,6 @@
   let regenerating = $state(false);
   let copied = $state(false);
   let errorMessage = $state("");
-  let showRegenerateConfirm = $state(false);
 
   const shareUrl = $derived(
     shareInfo?.shareToken && typeof window !== "undefined"
@@ -44,7 +36,6 @@
       fetchShareStatus();
     } else {
       errorMessage = "";
-      showRegenerateConfirm = false;
       copied = false;
     }
   });
@@ -82,7 +73,6 @@
   async function handleRegenerate() {
     regenerating = true;
     errorMessage = "";
-    showRegenerateConfirm = false;
     try {
       shareInfo = await regenerateDiscoveryShareToken(jobId);
     } catch (err) {
@@ -114,187 +104,241 @@
       }, 2000);
     }
   }
-
-  function handleBackdropClick(e: MouseEvent) {
-    if (e.target === e.currentTarget) {
-      open = false;
-    }
-  }
-
-  function handleKeydown(e: KeyboardEvent) {
-    if (e.key === "Escape" && open) {
-      open = false;
-    }
-  }
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
+<FormOverlay
+  {open}
+  eyebrow="Sharing"
+  title="Share discovery"
+  description="Share findings and let collaborators vote on solutions."
+  onRequestClose={() => (open = false)}
+>
+  {#if loading}
+    <div class="share-loading">
+      <Loader2 class="w-6 h-6 animate-spin" aria-hidden="true" />
+    </div>
+  {:else}
+    <!-- Toggle -->
+    <div class="share-toggle-row">
+      <span class="share-toggle-label">Enable sharing</span>
+      <button
+        type="button"
+        onclick={handleToggle}
+        disabled={toggling}
+        aria-label="Toggle sharing"
+        class="share-switch"
+        class:is-on={shareInfo?.isShared}
+        role="switch"
+        aria-checked={shareInfo?.isShared ?? false}
+      >
+        <span class="share-switch-thumb"></span>
+      </button>
+    </div>
 
-{#if open}
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <div
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
-    onclick={handleBackdropClick}
-    role="dialog"
-    aria-modal="true"
-    tabindex="-1"
-  >
-    <div
-      class="bg-bg-surface border border-border rounded-xl shadow-2xl w-full max-w-md"
-    >
-      <!-- Header -->
-      <div class="flex items-center justify-between p-4 border-b border-border">
-        <div class="flex items-center gap-2">
-          <Link class="w-4 h-4 text-accent" />
-          <h2 class="text-lg font-semibold text-text-primary">Share Discovery</h2>
+    {#if shareInfo?.isShared}
+      <div class="share-url-block">
+        <div class="share-url-row">
+          <input type="text" readonly value={shareUrl} class="share-url-input" aria-label="Share link" />
+          <button type="button" onclick={handleCopy} class="share-copy" class:is-copied={copied}>
+            {#if copied}
+              <Check class="w-4 h-4" aria-hidden="true" />
+              Copied
+            {:else}
+              <Copy class="w-4 h-4" aria-hidden="true" />
+              Copy
+            {/if}
+          </button>
         </div>
-        <button
-          onclick={() => (open = false)}
-          aria-label="Close modal"
-          class="p-1 rounded-lg hover:bg-bg-hover text-text-muted hover:text-text-primary transition-colors"
-        >
-          <X class="w-5 h-5" />
-        </button>
-      </div>
 
-      <!-- Body -->
-      <div class="p-4 space-y-4">
-        {#if loading}
-          <div class="flex items-center justify-center py-8">
-            <Loader2 class="w-6 h-6 animate-spin text-text-muted" />
-          </div>
-        {:else}
-          <!-- Description -->
-          <p class="text-sm text-text-secondary">
-            Share findings and let collaborators vote on solutions
+        {#if (shareInfo.viewCount && shareInfo.viewCount > 0) || (shareInfo.voteCount && shareInfo.voteCount > 0)}
+          <p class="record-line share-stats">
+            {#if shareInfo.viewCount && shareInfo.viewCount > 0}
+              {shareInfo.viewCount}
+              {shareInfo.viewCount === 1 ? "view" : "views"}{#if shareInfo.voteCount && shareInfo.voteCount > 0}&nbsp;·&nbsp;{/if}
+            {/if}
+            {#if shareInfo.voteCount && shareInfo.voteCount > 0}
+              {shareInfo.voteCount}
+              {shareInfo.voteCount === 1 ? "vote" : "votes"}
+            {/if}
           </p>
-
-          <!-- Toggle -->
-          <div class="flex items-center justify-between">
-            <span class="text-sm font-medium text-text-primary"
-              >Enable sharing</span
-            >
-            <button
-              onclick={handleToggle}
-              disabled={toggling}
-              aria-label="Toggle sharing"
-              class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed {shareInfo?.isShared
-                ? 'bg-accent'
-                : 'bg-zinc-300'}"
-              role="switch"
-              aria-checked={shareInfo?.isShared ?? false}
-            >
-              <span
-                class="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out {shareInfo?.isShared
-                  ? 'translate-x-5'
-                  : 'translate-x-0'}"
-              ></span>
-            </button>
-          </div>
-
-          {#if shareInfo?.isShared}
-            <!-- Share URL -->
-            <div class="space-y-3">
-              <div class="flex items-center gap-2">
-                <input
-                  type="text"
-                  readonly
-                  value={shareUrl}
-                  class="input flex-1 text-sm bg-bg-base text-text-secondary"
-                />
-                <button
-                  onclick={handleCopy}
-                  class="shrink-0 px-3 py-2 rounded-lg border border-border text-sm font-medium transition-colors {copied
-                    ? 'bg-success/10 border-success/30 text-success'
-                    : 'bg-bg-surface hover:bg-bg-hover text-text-primary'}"
-                >
-                  {#if copied}
-                    <span class="flex items-center gap-1.5">
-                      <Check class="w-4 h-4" />
-                      Copied!
-                    </span>
-                  {:else}
-                    <span class="flex items-center gap-1.5">
-                      <Copy class="w-4 h-4" />
-                      Copy
-                    </span>
-                  {/if}
-                </button>
-              </div>
-
-              <!-- Stats -->
-              <div class="flex items-center gap-4 text-xs text-text-muted">
-                {#if shareInfo.viewCount && shareInfo.viewCount > 0}
-                  <span>
-                    {shareInfo.viewCount}
-                    {shareInfo.viewCount === 1 ? "view" : "views"}
-                  </span>
-                {/if}
-                {#if shareInfo.voteCount && shareInfo.voteCount > 0}
-                  <span class="flex items-center gap-1">
-                    <Vote class="w-3 h-3" />
-                    {shareInfo.voteCount}
-                    {shareInfo.voteCount === 1 ? "vote" : "votes"}
-                  </span>
-                {/if}
-              </div>
-
-              <!-- Regenerate link -->
-              <div class="pt-2 border-t border-border">
-                {#if showRegenerateConfirm}
-                  <div class="space-y-2">
-                    <p class="text-xs text-text-secondary">
-                      This will invalidate the current link and delete all
-                      existing votes. Anyone with the old link will no longer
-                      have access.
-                    </p>
-                    <div class="flex items-center gap-2">
-                      <button
-                        onclick={handleRegenerate}
-                        disabled={regenerating}
-                        class="text-xs px-3 py-1.5 rounded-md bg-warning/10 border border-warning/30 text-warning font-medium hover:bg-warning/20 transition-colors disabled:opacity-50"
-                      >
-                        {#if regenerating}
-                          <span class="flex items-center gap-1">
-                            <Loader2 class="w-3 h-3 animate-spin" />
-                            Regenerating...
-                          </span>
-                        {:else}
-                          Confirm
-                        {/if}
-                      </button>
-                      <button
-                        onclick={() => (showRegenerateConfirm = false)}
-                        class="text-xs px-3 py-1.5 rounded-md border border-border text-text-secondary hover:bg-bg-hover transition-colors"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                {:else}
-                  <button
-                    onclick={() => (showRegenerateConfirm = true)}
-                    class="text-xs text-text-muted hover:text-text-secondary transition-colors flex items-center gap-1.5"
-                  >
-                    <RefreshCw class="w-3 h-3" />
-                    Generate new link
-                  </button>
-                {/if}
-              </div>
-            </div>
-          {/if}
-
-          <!-- Error -->
-          {#if errorMessage}
-            <div
-              class="flex items-center gap-2 p-3 bg-error/10 border border-error/20 rounded-lg text-error text-sm"
-            >
-              <AlertCircle class="w-4 h-4 shrink-0" />
-              <span>{errorMessage}</span>
-            </div>
-          {/if}
         {/if}
       </div>
-    </div>
-  </div>
-{/if}
+
+      <!-- Regenerate: destructive, so it takes two presses -->
+      <div class="share-regenerate">
+        <p class="share-regenerate-note">
+          Generating a new link invalidates the current one and deletes all
+          existing votes. Anyone with the old link will no longer have access.
+        </p>
+        <ConfirmGate
+          label="Generate new link"
+          confirmLabel="Invalidate old link"
+          variant="free"
+          consequence="OLD LINK STOPS WORKING · VOTES DELETED"
+          busy={regenerating}
+          onConfirm={handleRegenerate}
+        />
+      </div>
+    {/if}
+
+    {#if errorMessage}
+      <p class="share-error" role="alert">{errorMessage}</p>
+    {/if}
+  {/if}
+</FormOverlay>
+
+<style>
+  .share-loading {
+    display: flex;
+    justify-content: center;
+    padding: 2rem 0;
+    color: var(--color-text-muted);
+  }
+
+  .share-toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .share-toggle-label {
+    font-size: var(--text-13);
+    font-weight: 600;
+    color: var(--color-text-primary);
+  }
+
+  .share-switch {
+    position: relative;
+    display: inline-flex;
+    flex: 0 0 auto;
+    width: 2.75rem;
+    height: 1.5rem;
+    padding: 2px;
+    border: 0;
+    border-radius: var(--radius-full);
+    background: var(--color-border-emphasis);
+    cursor: pointer;
+    transition: background var(--duration-fast) var(--ease-default);
+  }
+
+  .share-switch.is-on {
+    background: var(--color-accent-hover);
+  }
+
+  .share-switch:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .share-switch:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  .share-switch-thumb {
+    display: inline-block;
+    width: 1.25rem;
+    height: 1.25rem;
+    border-radius: 50%;
+    background: var(--color-bg-elevated);
+    box-shadow: var(--shadow-sm);
+    transition: transform var(--duration-fast) var(--ease-default);
+  }
+
+  .share-switch.is-on .share-switch-thumb {
+    transform: translateX(1.25rem);
+  }
+
+  .share-url-block {
+    display: grid;
+    gap: 0.6rem;
+  }
+
+  .share-url-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .share-url-input {
+    flex: 1;
+    min-width: 0;
+    min-height: 2.35rem;
+    padding: 0 0.65rem;
+    border: 1px solid var(--color-input-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-surface);
+    color: var(--color-text-secondary);
+    font: inherit;
+    font-size: var(--text-13);
+    line-height: 1.45;
+  }
+
+  .share-url-input:focus {
+    outline: none;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px var(--color-accent-subtle);
+  }
+
+  .share-copy {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    flex: 0 0 auto;
+    min-height: 2.35rem;
+    min-width: 6rem;
+    padding: 0 0.75rem;
+    border: 1px solid var(--color-input-border);
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-size: var(--text-13);
+    font-weight: 600;
+    cursor: pointer;
+    transition:
+      border-color var(--duration-fast) var(--ease-default),
+      color var(--duration-fast) var(--ease-default);
+  }
+
+  .share-copy:hover {
+    border-color: var(--color-text-secondary);
+    color: var(--color-text-primary);
+  }
+
+  .share-copy:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  .share-copy.is-copied {
+    color: var(--color-success-text);
+    border-color: color-mix(in srgb, var(--color-success-text) 40%, transparent);
+  }
+
+  .share-stats {
+    margin: 0;
+  }
+
+  .share-regenerate {
+    display: grid;
+    gap: 0.6rem;
+    padding-top: 0.9rem;
+    border-top: 1px solid var(--color-border);
+  }
+
+  .share-regenerate-note {
+    margin: 0;
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    line-height: 1.45;
+  }
+
+  .share-error {
+    margin: 0;
+    color: var(--color-error-text);
+    font-size: var(--text-13);
+    line-height: 1.45;
+  }
+</style>

@@ -5,6 +5,7 @@ import type { ReportSummary, SolutionPreview } from '$lib/types/job';
 import type { DiscoveryData } from '$lib/types/discovery';
 import type { PreviewReport } from '$lib/types/previewReport';
 import type { CatalogTopPainPoint } from '$lib/types/publicCatalog';
+import type { DiscoveryVoteRationale } from '$lib/api';
 
 export const load: PageServerLoad = async ({ params, locals }) => {
   const session = await locals.auth();
@@ -29,6 +30,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   let reportSummary: ReportSummary | null = null;
   let solutions: SolutionPreview[] | null = null;
   let solutionVotes: Record<string, number> = {};
+  let solutionVotesById: Record<string, number> = {};
+  let voteRationales: DiscoveryVoteRationale[] = [];
   let discoveryData: DiscoveryData | null = null;
   let previewReport: PreviewReport | null = null;
   // Free-preview pain points for the "explore while you wait" list, shown only
@@ -84,9 +87,10 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       fetchBackend(`/api/jobs/${params.jobId}/discovery-share`, { headers })
         .then(r => r.ok ? r.json() : null)
         .then(d => {
-          if (d?.isShared && d.solutionVotes) {
-            solutionVotes = d.solutionVotes;
-          }
+          if (!d?.isShared) return;
+          solutionVotes = d.solutionVotes ?? {};
+          solutionVotesById = d.solutionVotesById ?? {};
+          voteRationales = d.voteRationales ?? [];
         })
         .catch(() => {})
     );
@@ -147,6 +151,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     solutions,
     solutionVotes,
     discoveryData,
+    solutionVotesById,
+    voteRationales,
     previewReport,
     userEmail: session.user.email ?? null,
     catalogPainPoints,

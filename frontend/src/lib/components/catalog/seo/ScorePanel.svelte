@@ -48,7 +48,7 @@
     composite,
     tier = null,
     formulaNote = null,
-    accent = "var(--color-accent)",
+    accent = "var(--color-accent-dark)",
     verdict = null,
     headerExtra,
     rows,
@@ -157,7 +157,7 @@
     flex-direction: column;
     border: 1px solid var(--color-border);
     border-radius: 10px;
-    background: var(--color-bg-elevated, #fff);
+    background: var(--color-bg-elevated);
     overflow: hidden;
   }
 
@@ -169,8 +169,8 @@
     border-bottom: 1px solid var(--color-border);
     background: linear-gradient(
       180deg,
-      var(--color-bg-base, #fafafa) 0%,
-      var(--color-bg-elevated, #fff) 100%
+      var(--color-bg-base) 0%,
+      var(--color-bg-elevated) 100%
     );
   }
   .sp-label {
@@ -225,7 +225,7 @@
     padding: 4px 10px;
     border: 1px solid var(--color-border);
     border-radius: 999px;
-    background: var(--color-bg-elevated, #fff);
+    background: var(--color-bg-elevated);
     font-family: var(--font-mono);
     font-size: 10px;
     text-transform: uppercase;
@@ -234,11 +234,11 @@
     color: var(--color-text-muted);
   }
   .sp-verdict[data-verdict="go"] {
-    color: var(--color-success-dark, #16a34a);
-    border-color: var(--color-success, #16a34a);
+    color: var(--color-success-text);
+    border-color: var(--color-success);
   }
   .sp-verdict[data-verdict="conditional"] {
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
     border-color: var(--color-accent-muted, var(--color-accent));
   }
   .sp-verdict[data-verdict="no-go"] {
@@ -314,11 +314,11 @@
     text-transform: uppercase;
     letter-spacing: 0.08em;
     border: 1px solid var(--color-border);
-    background: var(--color-surface-elevated, #fafafa);
+    background: var(--color-surface-elevated);
     color: var(--color-text-muted);
   }
   .opp-pill[data-tier="high"] {
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
     border-color: var(--color-accent);
   }
   .opp-pill[data-tier="medium"] {
@@ -329,7 +329,7 @@
   .sp-foot {
     display: grid;
     border-top: 1px solid var(--color-border);
-    background: var(--color-bg-base, #fafafa);
+    background: var(--color-bg-base);
   }
   .sp-foot .fi {
     padding: 14px 20px;
@@ -376,6 +376,6 @@
     border: 1px solid var(--color-border);
     border-radius: 3px;
     color: var(--color-text-secondary, var(--color-text-primary));
-    background: var(--color-surface, #fff);
+    background: var(--color-surface);
   }
 </style>

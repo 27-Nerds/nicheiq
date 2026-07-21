@@ -4,15 +4,18 @@
   import {
     ChevronLeft,
     ChevronRight,
+    Download,
     X,
   } from "lucide-svelte";
   import Badge from "$lib/components/ui/Badge.svelte";
   import WorkspaceOverlay from "$lib/components/ui/WorkspaceOverlay.svelte";
   import SolutionDetailContent from "$lib/components/SolutionDetailContent.svelte";
+  import AnnotationSurface from "$lib/components/annotations/AnnotationSurface.svelte";
   import Popover from "$lib/components/ui/Popover.svelte";
   import { scoreRationale } from "$lib/utils/scoreRationale";
   import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
   import type { SolutionPreview } from "$lib/types/job";
+  import type { OverlapGroup } from "$lib/types/report";
   import { computeCompositeScore, solutionStrengthBadge, solutionDisplayTitle, originalityMetric } from "$lib/utils/solution-utils";
 
   interface Props {
@@ -20,6 +23,7 @@
     solution: SolutionPreview;
     solutions: SolutionPreview[];
     currentIndex: number;
+    jobId?: string;
     isSelected?: boolean;
     disabled?: boolean;
     maxReached?: boolean;
@@ -29,6 +33,10 @@
     canStart?: boolean;
     canAffordStart?: boolean;
     startCost?: number | null;
+    /** Surviving ideas identified as variants of the same underlying product (a merge was
+     *  proposed but rejected). Used to flag, on the Overview tab, when the current candidate
+     *  belongs to one of these groups. */
+    overlapGroups?: OverlapGroup[];
     onSelect?: (name: string) => void;
     onStartValidation?: () => void;
     onNavigate: (index: number) => void;
@@ -42,6 +50,7 @@
     solution,
     solutions,
     currentIndex,
+    jobId,
     isSelected = false,
     disabled = false,
     maxReached = false,
@@ -51,6 +60,7 @@
     canStart = false,
     canAffordStart = true,
     startCost = null,
+    overlapGroups = [],
     onSelect,
     onStartValidation,
     onNavigate,
@@ -63,14 +73,12 @@
 
   // Overview = shortlist-decision snapshot; detail = the 7-card deep reference.
   let activeTab = $state<"overview" | "detail">("overview");
-  let starting = $state(false); // guards double-submit + shows a pending Start CTA
 
   // Reset to Overview and scroll to top whenever the pager moves to another idea.
   $effect(() => {
     solution.solution_name;
     untrack(() => {
       activeTab = "overview";
-      starting = false;
       if (bodyEl) bodyEl.scrollTop = 0;
     });
   });
@@ -116,25 +124,26 @@
   const displayTitle = $derived(solutionDisplayTitle(solution));
   const hasHeadline = $derived(!!solution.headline?.trim());
 
-  const isToggleable = $derived(!!onSelect && !disabled && (isSelected || !maxReached));
-  const shortlistStatus = $derived(`${selectedCount}/${maxSelections} shortlisted`);
-  const startLabel = $derived(
-    !canStart
-      ? "Shortlist to start"
-      : !canAffordStart
-        ? "Add credits to start"
-        : "Start Deep Research",
+  // Overlap group this candidate belongs to, if the run's synthesis found one (a merge was
+  // proposed but rejected, so the variants stay as separate shortlist entries).
+  const overlapGroup = $derived(
+    overlapGroups.find((g) => g.idea_names.includes(solution.solution_name)) ?? null,
   );
+
+  const isToggleable = $derived(!!onSelect && !disabled && (isSelected || !maxReached));
+
+  // Private export of the exact stored revision being viewed (full candidate record).
+  const exportBase = $derived(
+    jobId && solution.idea_id
+      ? `/api/jobs/${jobId}/solutions/${solution.idea_id}/export`
+      : null,
+  );
+  const exportRevision = $derived(solution.idea_revision ?? 1);
+  const shortlistStatus = $derived(`${selectedCount}/${maxSelections} shortlisted`);
 
   function handleSelect() {
     if (!isToggleable || !onSelect) return;
     onSelect(solution.solution_name);
-  }
-
-  function handleStartValidation() {
-    if (!onStartValidation || !canStart || disabled || starting) return;
-    starting = true; // pending state; reset if the pager moves to another idea
-    onStartValidation();
   }
 
   function navigatePrev() {
@@ -181,11 +190,16 @@
 >
     <!-- Modal card -->
     <div class="modal-card">
+      <AnnotationSurface
+        surfaceKey={`solution-detail:${solution.solution_name}:${activeTab}`}
+        anchorKey="solution-detail"
+        class="modal-annotation-surface"
+      >
       <!-- Header -->
-      <div class="modal-header">
-        <div class="modal-title-group">
+      <div class="modal-header" data-annotation-anchor="solution-header">
+        <div class="modal-title-group" data-annotation-anchor="solution-header-copy">
           <span class="modal-kicker">Candidate {currentIndex + 1} of {total}</span>
-          <h2 class="modal-title">{displayTitle}</h2>
+          <h2 class="modal-title" data-annotation-anchor="solution-header-title">{displayTitle}</h2>
           {#if hasHeadline}
             <p class="modal-subtitle">{solution.solution_name}</p>
           {/if}
@@ -229,6 +243,28 @@
           {#if !onSelect && actionSlot}
             {@render actionSlot()}
           {/if}
+          {#if exportBase}
+            <div class="modal-export" role="group" aria-label="Export this candidate">
+              <a
+                class="modal-export-link"
+                href="{exportBase}/md?revision={exportRevision}"
+                download
+                title="Download the full stored candidate record as Markdown"
+              >
+                <Download class="w-4 h-4" aria-hidden="true" />
+                <span>.md</span>
+              </a>
+              <a
+                class="modal-export-link"
+                href="{exportBase}/json?revision={exportRevision}"
+                download
+                title="Download the full stored candidate record as JSON"
+              >
+                <Download class="w-4 h-4" aria-hidden="true" />
+                <span>.json</span>
+              </a>
+            </div>
+          {/if}
           <!-- Close button -->
           <button
             type="button"
@@ -242,7 +278,7 @@
       </div>
 
       <!-- Tab bar: decision snapshot vs deep reference -->
-      <div class="modal-tabs" role="tablist" aria-label="Idea detail views">
+      <div class="modal-tabs" role="tablist" aria-label="Idea detail views" data-annotation-anchor="solution-tabs">
         <button
           type="button"
           role="tab"
@@ -273,9 +309,14 @@
         tabindex="0"
         bind:this={bodyEl}
         aria-labelledby={activeTab === "overview" ? "idea-tab-overview" : "idea-tab-detail"}
+        data-annotation-anchor={`solution-body:${activeTab}`}
       >
         {#if activeTab === "overview"}
-        <section class="modal-score-panel" aria-label="Ranking rationale">
+        <section
+          class="modal-score-panel"
+          aria-label="Ranking rationale"
+          data-annotation-anchor="solution-body:overview:score"
+        >
           <div class="score-panel-summary">
             <span class="score-panel-label">Decision rationale</span>
             <p>{compositeWhy || 'No idea-specific score rationale available yet.'}</p>
@@ -300,6 +341,7 @@
         <SolutionDetailContent
           {solution}
           view="overview"
+          {overlapGroup}
           onViewFull={() => { setTab("detail"); document.getElementById("idea-tab-detail")?.focus(); }}
         />
         {:else}
@@ -309,12 +351,9 @@
 
       <!-- Sticky footer select CTA -->
       {#if onSelect}
-        <div class="modal-footer">
+        <div class="modal-footer" data-annotation-anchor="solution-footer">
           <div class="modal-footer-status">
             <strong>{shortlistStatus}</strong>
-            {#if startCost != null}
-              <span>{startCost} credits / one-time</span>
-            {/if}
             {#if maxReached && !isSelected}
               <span class="modal-footer-note">Remove one to add this candidate.</span>
             {/if}
@@ -339,20 +378,10 @@
                 Shortlist
               {/if}
             </button>
-            {#if onStartValidation}
-              <button
-                type="button"
-                class="modal-start-primary"
-                onclick={handleStartValidation}
-                disabled={!canStart || disabled || starting}
-                aria-busy={starting}
-              >
-                {starting ? "Starting…" : startLabel}
-              </button>
-            {/if}
           </div>
         </div>
       {/if}
+      </AnnotationSurface>
     </div>
 </WorkspaceOverlay>
 
@@ -365,6 +394,14 @@
     height: 100%;
     overflow: hidden;
     background: var(--color-bg-elevated);
+  }
+
+  :global(.modal-annotation-surface) {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    height: 100%;
   }
 
   .modal-header {
@@ -491,6 +528,38 @@
     white-space: nowrap;
   }
 
+  .modal-export {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem;
+    background: color-mix(in srgb, var(--color-bg-surface) 78%, var(--color-bg-elevated));
+    border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 72%, transparent);
+    border-radius: 0.625rem;
+  }
+
+  .modal-export-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    min-height: 1.72rem;
+    padding: 0 0.4rem;
+    border-radius: 0.5rem;
+    background: transparent;
+    color: var(--color-text-muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition:
+      background 220ms cubic-bezier(0.32, 0.72, 0, 1),
+      color 220ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  .modal-export-link:hover {
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
+  }
+
   .modal-select-primary {
     display: inline-flex;
     align-items: center;
@@ -570,9 +639,9 @@
   }
 
   .modal-select-primary:focus-visible,
-  .modal-start-primary:focus-visible,
   .modal-close:focus-visible,
-  .modal-nav-btn:focus-visible {
+  .modal-nav-btn:focus-visible,
+  .modal-export-link:focus-visible {
     outline: 2px solid var(--color-accent);
     outline-offset: 2px;
   }
@@ -778,36 +847,6 @@
     flex-shrink: 0;
   }
 
-  .modal-start-primary {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 2.36rem;
-    padding: 0.5rem 1rem;
-    border: 1px solid var(--color-accent-hover);
-    border-radius: 0.625rem;
-    background: var(--color-accent-hover);
-    color: white;
-    font-size: 0.8125rem;
-    font-weight: 800;
-    cursor: pointer;
-    transition:      border-color 220ms cubic-bezier(0.32, 0.72, 0, 1),
-      background 220ms cubic-bezier(0.32, 0.72, 0, 1),
-      color 220ms cubic-bezier(0.32, 0.72, 0, 1);
-  }
-
-  .modal-start-primary:hover:not(:disabled) {
-    border-color: var(--color-accent-dark);
-    background: var(--color-accent-dark);
-  }
-
-  .modal-start-primary:disabled {
-    border-color: var(--color-border);
-    background: color-mix(in srgb, var(--color-bg-surface) 82%, var(--color-bg-elevated));
-    color: var(--color-text-muted);
-    cursor: not-allowed;
-  }
-
   /* On smaller screens, position arrows at edge */
   @media (max-width: 900px) {
     .modal-header {
@@ -842,8 +881,7 @@
     .modal-footer-actions {
       width: 100%;
     }
-    .modal-select-primary,
-    .modal-start-primary {
+    .modal-select-primary {
       flex: 1;
     }
   }
@@ -858,9 +896,6 @@
     }
     .modal-footer-actions {
       flex-direction: column;
-    }
-    .modal-start-primary {
-      width: 100%;
     }
   }
 </style>

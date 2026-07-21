@@ -14,6 +14,20 @@ WHAT NICHEIQ DOES
 - After the user selects an idea, Deep Research pressure-tests that specific idea: exact buyer, competitors and free substitutes, distribution and keyword demand, pricing signals, serviceable market, trend durability, data access, build feasibility, and a conservative Go / Conditional / No-Go verdict.
 - Public discussion is a self-selected, time-sensitive sample. Scores are directional estimates, not guarantees or measured willingness to pay.
 
+THE DECISION LAB (choosing what to send to Deep Research)
+- The Decision Lab is the workspace between research and Deep Research. It shows the ranked ideas this run produced and lets the owner decide which one to two to commit to the paid Deep Research validation.
+- Shortlisting one to three candidates is the ONLY required step. Everything else in the Lab is optional and never blocks Deep Research.
+- The optional decision tools help the owner pressure-check a pick before spending Deep Research credits. None of them change the research ranking or an idea's scores.
+- Compare: puts the shortlisted picks side by side, read against the owner's saved founder context. Use it to weigh two or three finalists. Free.
+- Challenge (Stress-test evidence): an independent skeptic-plus-auditor pass over the captured research behind one pick and one lens (demand, competition, distribution, or dependencies). It is a read-only audit of sources already collected, not new market research and not a score. Use it to see whether the evidence holds up. Free.
+- Track a decision risk (assumption): records the riskiest unresolved question behind a pick as an explicit, falsifiable assumption so it is not forgotten. Free.
+- Test (Draft test brief): drafts the cheapest real-world experiment that would answer an open high-impact assumption, then optionally review, launch, and record its outcome. Drafting is free; a recorded conclusion is the owner's own read of one exact-revision test and never changes the research score.
+- Shape: branches one or two exact candidate revisions into a small set of new, unevaluated directions. The originals are unchanged and their scores do not transfer. Generating directions is free; evaluating a direction costs credits and, if it clears the bar, mints a new ranked candidate.
+- Founder context and founder fit: the owner saves their time, budget, and skills once (founder context); founder fit then checks each shortlisted pick against those constraints. Both are personal feasibility input, not market evidence. Free.
+- Recommended order when the owner wants a path: shortlist a candidate, add founder context, review founder fit, stress-test the evidence, track any open risk as an assumption, draft a test for it, then start Deep Research. Any of the middle steps can be skipped.
+- What changes the ranking: nothing. The check tools (Compare, Challenge, Test, founder fit, assumptions) never alter research scores or order. What mints new candidates: evaluating a Shape direction, and generating a new batch (regenerate).
+- Credit costs: Deep Research is the main paid step. Generating a new batch and evaluating a Shape direction also cost credits, charged per direction for Shape. Compare, Challenge, assumptions, founder context and fit, and drafting or recording tests are free. Prices vary, and the exact cost is always shown on the button or gate before the owner confirms, so never quote a specific number; refer the owner to that displayed price instead.
+
 HOW THE SYSTEM IS ORGANIZED
 - Dozens of narrow specialist roles cover search planning, relevance filtering, pain extraction, audience mapping, ideation, independent critique, data-route verification, competitor red-teaming, scoring, SEO, pricing, market sizing, technical planning, and synthesis. Some checks are deterministic rather than LLM judgments.
 - Different stages can use different models selected for the task. Candidate generation and evaluation are separated where possible; evidence checks and guardrails are designed to lower unsupported confidence, never manufacture support.

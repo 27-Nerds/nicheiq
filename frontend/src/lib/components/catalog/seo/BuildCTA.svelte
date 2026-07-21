@@ -69,7 +69,7 @@
 
 <style>
   .build-cta {
-    background: var(--color-surface-elevated, #fafafa);
+    background: var(--color-surface-elevated);
     border: 1px solid var(--color-border);
     border-radius: 8px;
     padding: 28px 32px;
@@ -122,7 +122,7 @@
      Active-state press compresses the stack and applies a 0.98 scale. */
   .btn-accent {
     background: var(--color-accent);
-    color: var(--color-surface, #fff);
+    color: var(--color-surface);
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.18),
       0 1px 2px rgba(154, 52, 18, 0.18),
@@ -148,7 +148,7 @@
   .btn-ghost {
     color: var(--color-text-secondary, var(--color-text-primary));
     border-color: var(--color-border-emphasis);
-    background: var(--color-surface, #fff);
+    background: var(--color-surface);
   }
   .btn-ghost:hover {
     color: var(--color-text-primary);

@@ -9,6 +9,7 @@ import { JobStatus } from '@prisma/client';
 import { requireInternalAuth, verifyOwnership, AuthenticatedRequest } from '../middleware/auth.js';
 import rateLimit from 'express-rate-limit';
 import { CONFIG } from '../config.js';
+import { ensureIdeaIdentities, ideaName, type IdeaRecord } from '../utils/ideaIdentity.js';
 
 // Zod schemas
 const JobIdParamSchema = z.object({
@@ -20,9 +21,14 @@ const ShareTokenParamSchema = z.object({
 });
 
 const VoteBodySchema = z.object({
-  solutionName: z.string().min(1).max(255),
+  solutionId: z.string().min(1).max(255).optional(),
+  solutionName: z.string().min(1).max(255).optional(),
   viewerToken: z.string().uuid(),
-  comment: z.string().max(500).regex(/^[^<>&"'`]*$/).optional(),
+  comment: z.string().trim().max(500).optional(),
+}).superRefine((value, ctx) => {
+  if (!value.solutionId && !value.solutionName) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'solutionId or solutionName is required' });
+  }
 });
 
 const ViewerTokenQuerySchema = z.object({
@@ -60,21 +66,59 @@ function hashIp(ip: string): string {
 }
 
 // Helper: build vote summary for a share
-async function buildVoteSummary(shareId: string) {
+async function buildVoteSummary(shareId: string, solutions: IdeaRecord[] = []) {
   const votes = await prisma.discoveryVote.groupBy({
-    by: ['solutionName'],
+    by: ['solutionId', 'solutionName'],
     where: { shareId },
     _count: { id: true },
   });
 
   const solutionVotes: Record<string, number> = {};
+  const solutionVotesById: Record<string, number> = {};
   let totalVotes = 0;
   for (const v of votes) {
-    solutionVotes[v.solutionName] = v._count.id;
+    solutionVotes[v.solutionName] = (solutionVotes[v.solutionName] ?? 0) + v._count.id;
+
+    const storedSolution = v.solutionId
+      ? solutions.find(solution => solution.idea_id === v.solutionId)
+      : undefined;
+    const legacyMatches = v.solutionId
+      ? []
+      : solutions.filter(solution => ideaName(solution) === v.solutionName);
+    const solutionId = storedSolution?.idea_id
+      ?? (legacyMatches.length === 1 ? legacyMatches[0].idea_id : undefined);
+    if (solutionId) {
+      solutionVotesById[solutionId] = (solutionVotesById[solutionId] ?? 0) + v._count.id;
+    }
     totalVotes += v._count.id;
   }
 
-  return { totalVotes, solutionVotes };
+  return { totalVotes, solutionVotes, solutionVotesById };
+}
+
+async function buildVoteRationales(shareId: string, solutions: IdeaRecord[] = []) {
+  const votes = await prisma.discoveryVote.findMany({
+    where: { shareId, comment: { not: null } },
+    select: { solutionId: true, solutionName: true, comment: true },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  return votes.flatMap((vote) => {
+    const comment = vote.comment?.trim();
+    if (!comment) return [];
+
+    const storedSolution = vote.solutionId
+      ? solutions.find(solution => solution.idea_id === vote.solutionId)
+      : undefined;
+    const legacyMatches = vote.solutionId
+      ? []
+      : solutions.filter(solution => ideaName(solution) === vote.solutionName);
+    const solutionId = storedSolution?.idea_id
+      ?? vote.solutionId
+      ?? (legacyMatches.length === 1 ? legacyMatches[0].idea_id : undefined);
+
+    return [{ solutionId, solutionName: vote.solutionName, comment }];
+  });
 }
 
 /**
@@ -162,7 +206,11 @@ discoverySharesRouter.get('/:jobId/discovery-share', requireInternalAuth, async 
       return;
     }
 
-    const summary = await buildVoteSummary(share.id);
+    const solutions = ensureIdeaIdentities(parsed.data.jobId, job.solutionIdeas);
+    const [summary, voteRationales] = await Promise.all([
+      buildVoteSummary(share.id, solutions),
+      buildVoteRationales(share.id, solutions),
+    ]);
 
     res.json({
       isShared: true,
@@ -170,6 +218,8 @@ discoverySharesRouter.get('/:jobId/discovery-share', requireInternalAuth, async 
       viewCount: share.viewCount,
       voteCount: summary.totalVotes,
       solutionVotes: summary.solutionVotes,
+      solutionVotesById: summary.solutionVotesById,
+      voteRationales,
     });
   } catch (error) {
     console.error('Failed to get discovery share status:', error);
@@ -373,12 +423,12 @@ publicDiscoveryShareRouter.get('/:shareToken', publicDiscoveryLimiter, async (re
       return;
     }
 
-    const solutions = (share.job.solutionIdeas as any[]) || [];
+    const solutions = ensureIdeaIdentities(share.job.id, share.job.solutionIdeas);
     const [discoveryFindings, rawDiscoveryData, rawPreviewReport, voteSummary] = await Promise.all([
       buildDiscoveryFindings(share.jobId), // @deprecated — remove next release
       getDiscoveryDataForJob(share.jobId),
       getPreviewReportForJob(share.jobId),
-      buildVoteSummary(share.id),
+      buildVoteSummary(share.id, solutions),
     ]);
 
     const discoveryData = sanitizeDiscoveryData(rawDiscoveryData);
@@ -435,7 +485,7 @@ publicDiscoveryShareRouter.post('/:shareToken/vote', voteLimiter, async (req: Re
       return;
     }
 
-    const { solutionName, viewerToken, comment } = bodyParsed.data;
+    const { solutionId, solutionName, viewerToken, comment } = bodyParsed.data;
 
     const share = await prisma.discoveryShare.findUnique({
       where: { shareToken: paramsParsed.data.shareToken },
@@ -451,10 +501,36 @@ publicDiscoveryShareRouter.post('/:shareToken/vote', voteLimiter, async (req: Re
       return;
     }
 
-    // Validate solution name against actual solutions
-    const solutions = (share.job.solutionIdeas as any[]) || [];
-    if (!solutions.some((s: any) => s.solution_name === solutionName || s.name === solutionName)) {
-      res.status(400).json({ error: 'Invalid solution name' });
+    const solutions = ensureIdeaIdentities(share.jobId, share.job.solutionIdeas);
+    const selectedById = solutionId
+      ? solutions.find(solution => solution.idea_id === solutionId)
+      : undefined;
+    const matchingNames = solutionName
+      ? solutions.filter(solution => ideaName(solution) === solutionName)
+      : [];
+
+    if (solutionId && !selectedById) {
+      res.status(400).json({ error: 'Invalid solution identity' });
+      return;
+    }
+    if (selectedById && solutionName && ideaName(selectedById) !== solutionName) {
+      res.status(400).json({ error: 'solutionId and solutionName refer to different ideas' });
+      return;
+    }
+    if (!solutionId && matchingNames.length !== 1) {
+      res.status(400).json({
+        error: matchingNames.length > 1
+          ? 'solutionName is ambiguous; solutionId is required'
+          : 'Invalid solution identity',
+      });
+      return;
+    }
+
+    const selectedSolution = selectedById ?? matchingNames[0];
+    const resolvedSolutionId = selectedSolution?.idea_id;
+    const resolvedSolutionName = selectedSolution ? ideaName(selectedSolution) : undefined;
+    if (!resolvedSolutionId || !resolvedSolutionName) {
+      res.status(400).json({ error: 'Invalid solution identity' });
       return;
     }
 
@@ -479,11 +555,22 @@ publicDiscoveryShareRouter.post('/:shareToken/vote', voteLimiter, async (req: Re
     // Upsert vote
     await prisma.discoveryVote.upsert({
       where: { shareId_viewerToken: { shareId: share.id, viewerToken } },
-      create: { shareId: share.id, solutionName, viewerToken, ipHash, comment: comment || null },
-      update: { solutionName, comment: comment || null },
+      create: {
+        shareId: share.id,
+        solutionId: resolvedSolutionId,
+        solutionName: resolvedSolutionName,
+        viewerToken,
+        ipHash,
+        comment: comment || null,
+      },
+      update: {
+        solutionId: resolvedSolutionId,
+        solutionName: resolvedSolutionName,
+        ...(comment === undefined ? {} : { comment: comment || null }),
+      },
     });
 
-    const voteSummary = await buildVoteSummary(share.id);
+    const voteSummary = await buildVoteSummary(share.id, solutions);
 
     res.json(voteSummary);
   } catch (error) {
@@ -508,6 +595,11 @@ publicDiscoveryShareRouter.get('/:shareToken/votes', publicDiscoveryLimiter, asy
 
     const share = await prisma.discoveryShare.findUnique({
       where: { shareToken: paramsParsed.data.shareToken },
+      include: {
+        job: {
+          select: { solutionIdeas: true },
+        },
+      },
     });
 
     if (!share || !share.isActive) {
@@ -515,15 +607,26 @@ publicDiscoveryShareRouter.get('/:shareToken/votes', publicDiscoveryLimiter, asy
       return;
     }
 
-    const voteSummary = await buildVoteSummary(share.id);
+    const solutions = ensureIdeaIdentities(share.jobId, share.job.solutionIdeas);
+    const voteSummary = await buildVoteSummary(share.id, solutions);
 
-    let viewerVote: { solutionName: string; comment: string | null } | null = null;
+    let viewerVote: {
+      solutionId?: string;
+      solutionName: string;
+      comment: string | null;
+    } | null = null;
     if (viewerToken) {
       const vote = await prisma.discoveryVote.findUnique({
         where: { shareId_viewerToken: { shareId: share.id, viewerToken } },
       });
       if (vote) {
-        viewerVote = { solutionName: vote.solutionName, comment: vote.comment };
+        const storedSolution = vote.solutionId
+          ? solutions.find(solution => solution.idea_id === vote.solutionId)
+          : undefined;
+        const legacyMatches = solutions.filter(solution => ideaName(solution) === vote.solutionName);
+        const solutionId = storedSolution?.idea_id
+          ?? (legacyMatches.length === 1 ? legacyMatches[0].idea_id : undefined);
+        viewerVote = { solutionId, solutionName: vote.solutionName, comment: vote.comment };
       }
     }
 

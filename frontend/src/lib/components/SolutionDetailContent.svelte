@@ -2,6 +2,7 @@
   import { Telescope, TriangleAlert } from "lucide-svelte";
   import { renderTechnicalContent } from "$lib/utils/format";
   import type { SolutionPreview } from "$lib/types/job";
+  import type { OverlapGroup } from "$lib/types/report";
   import FacetChips from "$lib/components/FacetChips.svelte";
   import Tooltip from "$lib/components/ui/Tooltip.svelte";
   import { humanizeTag, tagDescription } from "$lib/utils/ideaTagLabels";
@@ -17,9 +18,15 @@
     view?: "overview" | "detail";
     /** Overview only: jump to the Full detail tab (from the "Read full detail" link). */
     onViewFull?: () => void;
+    /** Overview only: the overlap group this candidate belongs to, if any. */
+    overlapGroup?: OverlapGroup | null;
   }
 
-  let { solution, view = "overview", onViewFull }: Props = $props();
+  let { solution, view = "overview", onViewFull, overlapGroup = null }: Props = $props();
+
+  const overlapOtherNames = $derived(
+    overlapGroup ? overlapGroup.idea_names.filter((n) => n !== solution.solution_name) : [],
+  );
 
   // Deterministic weak-signal note: a 'restored' candidate was demoted for thin market signal,
   // then brought back so its pain stays represented on the shortlist. Framed as a property of
@@ -185,6 +192,12 @@
     {#if solution.idea_tier === "merged" && solution.merged_from?.length}
       <p class="merged-note">
         Synthesized from {solution.merged_from.length} variant{solution.merged_from.length === 1 ? "" : "s"}: {solution.merged_from.join(", ")}
+      </p>
+    {/if}
+
+    {#if overlapGroup}
+      <p class="merged-note">
+        Overlaps with {overlapOtherNames.length} other candidate{overlapOtherNames.length === 1 ? "" : "s"} as one product direction{overlapOtherNames.length ? `: ${overlapOtherNames.join(", ")}` : ""}
       </p>
     {/if}
 

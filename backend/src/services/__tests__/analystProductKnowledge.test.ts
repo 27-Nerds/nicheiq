@@ -11,6 +11,20 @@ describe('ANALYST_PRODUCT_KNOWLEDGE', () => {
     expect(ANALYST_PRODUCT_KNOWLEDGE).toContain('Never say NicheIQ is objectively better overall');
   });
 
+  it('documents the Decision Lab, its tools, and their costs', () => {
+    expect(ANALYST_PRODUCT_KNOWLEDGE).toContain('THE DECISION LAB');
+    expect(ANALYST_PRODUCT_KNOWLEDGE).toContain('Shortlisting one to three candidates is the ONLY required step');
+    expect(ANALYST_PRODUCT_KNOWLEDGE).toContain('Stress-test evidence');
+    expect(ANALYST_PRODUCT_KNOWLEDGE).toContain('Shape:');
+    expect(ANALYST_PRODUCT_KNOWLEDGE).toContain('never alter research scores');
+    // "Concept Forge" was retired from user-facing copy; it must not resurface here.
+    expect(ANALYST_PRODUCT_KNOWLEDGE).not.toContain('Concept Forge');
+  });
+
+  it('keeps the Decision Lab copy free of em and en dashes', () => {
+    expect(ANALYST_PRODUCT_KNOWLEDGE).not.toMatch(/[–—]/);
+  });
+
   it('preserves stage-scoped mutation boundaries', () => {
     expect(ANALYST_PRODUCT_KNOWLEDGE).toContain('only propose changes supported by the current checkpoint');
     expect(ANALYST_PRODUCT_KNOWLEDGE).toContain('completed reports are read-only');

@@ -75,19 +75,19 @@
     width: 32px;
     height: 32px;
     border-radius: 50%;
-    color: #fff;
+    color: var(--color-white);
     display: grid;
     place-items: center;
     flex-shrink: 0;
   }
   .tone-success .v-mark {
-    background: var(--color-success-dark, #16a34a);
+    background: var(--color-success-dark);
   }
   .tone-warn .v-mark {
-    background: var(--color-warning-dark, #b45309);
+    background: var(--color-warning-dark);
   }
   .tone-error .v-mark {
-    background: var(--color-error-dark, #dc2626);
+    background: var(--color-error-dark);
   }
   .v-text {
     display: flex;
@@ -104,13 +104,13 @@
     font-family: var(--font-mono);
   }
   .tone-success .v-name {
-    color: var(--color-success-dark, #16a34a);
+    color: var(--color-success-text);
   }
   .tone-warn .v-name {
-    color: var(--color-warning-dark, #b45309);
+    color: var(--color-warning-text);
   }
   .tone-error .v-name {
-    color: var(--color-error-dark, #dc2626);
+    color: var(--color-error-text);
   }
   .v-note {
     font-size: 13px;

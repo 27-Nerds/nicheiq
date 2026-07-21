@@ -697,18 +697,34 @@
       </div>
     {:else}
       <div class="tx-list">
-        {#each billing.recentTransactions as tx (tx.id)}
-          <div class="tx-row">
-            <span class="tx-dot" style:background={txDotColor(tx)}></span>
-            <span class="tx-type">{formatTransactionType(tx.type)}</span>
-            <span class="tx-desc" title={tx.description || ""}>{tx.description || "—"}</span>
-            <span
-              class="tx-amount"
-              class:tx-amount-pos={tx.amount > 0}
-            >{tx.amount > 0 ? "+" : ""}{tx.amount}</span>
-            <span class="tx-date" title={formatDate(tx.createdAt)}>{formatRelativeDate(tx.createdAt)}</span>
-          </div>
-        {/each}
+        <div class="tx-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th class="tx-desc-col">Description</th>
+                <th class="num">Amount</th>
+                <th style="text-align: right">Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each billing.recentTransactions as tx (tx.id)}
+                <tr>
+                  <td class="cell-primary tx-type-cell">
+                    <span class="tx-dot" style:background={txDotColor(tx)}></span>
+                    {formatTransactionType(tx.type)}
+                  </td>
+                  <td class="cell-muted tx-desc-col" title={tx.description || ""}>{tx.description || "—"}</td>
+                  <td
+                    class="num tx-amount-cell"
+                    class:tx-amount-pos={tx.amount > 0}
+                  >{tx.amount > 0 ? "+" : ""}{tx.amount}</td>
+                  <td class="cell-muted text-right tx-date-cell" title={formatDate(tx.createdAt)}>{formatRelativeDate(tx.createdAt)}</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
       </div>
     {/if}
   </section>
@@ -947,7 +963,10 @@
   .costs-toggle-meta :global(.chev-open) { transform: rotate(180deg); }
   .costs-toggle-meta :global(svg) { transition: transform 0.15s ease; }
 
-  /* ── Billing-history list panel (dashboard .list / .row recipe) ── */
+  /* ── Billing-history table (.data-table recipe, DESIGN_SYSTEM.md §5.3) ──
+     .data-table td's color is unlayered global CSS, so a Tailwind text-color
+     utility can't win against it (cascade layers rank utilities below
+     unlayered rules) — these scoped classes out-specificity it instead. */
   .tx-list {
     border: 1px solid var(--color-border);
     border-radius: var(--radius-xl);
@@ -955,59 +974,35 @@
     overflow: hidden;
     box-shadow: var(--shadow-sm);
   }
-  .tx-row {
+  .tx-scroll { overflow-x: auto; }
+  .cell-primary { color: var(--color-text-primary); }
+  .cell-muted { color: var(--color-text-muted); }
+  .tx-type-cell {
     display: flex;
     align-items: center;
-    gap: var(--space-3);
-    padding: 0.875rem var(--space-5);
-    border-bottom: 1px solid var(--color-border);
+    gap: var(--space-2);
+    font-weight: 600;
+    white-space: nowrap;
   }
-  .tx-row:last-child { border-bottom: none; }
   .tx-dot {
     width: 8px;
     height: 8px;
     border-radius: 50%;
     flex-shrink: 0;
   }
-  .tx-type {
-    flex: 0 0 11rem;
-    min-width: 0;
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: var(--color-text-primary);
+  .tx-desc-col {
+    max-width: 22rem;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .tx-desc {
-    flex: 1 1 auto;
-    min-width: 0;
-    font-size: 0.8125rem;
-    color: var(--color-text-muted);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    text-align: left;
-  }
-  .tx-amount {
-    flex-shrink: 0;
-    font-family: var(--font-mono);
-    font-variant-numeric: tabular-nums;
-    font-size: 0.875rem;
+  .tx-amount-cell {
     font-weight: 700;
     /* A deduction is not a warning — negative uses text-secondary, not orange. */
     color: var(--color-text-secondary);
   }
   .tx-amount-pos { color: var(--color-success-text); }
-  .tx-date {
-    flex-shrink: 0;
-    width: 4.5rem;
-    text-align: right;
-    font-family: var(--font-mono);
-    font-variant-numeric: tabular-nums;
-    font-size: 0.75rem;
-    color: var(--color-text-muted);
-  }
+  .tx-date-cell { white-space: nowrap; }
 
   :global(.redeem-button) {
     flex-shrink: 0;
@@ -1021,8 +1016,7 @@
   }
 
   @media (max-width: 560px) {
-    .tx-desc { display: none; }
-    .tx-type { flex-basis: auto; }
+    .tx-desc-col { display: none; }
   }
 
   /* Reduced-motion: kill the refresh spinner + chevron rotation transition. */

@@ -131,6 +131,8 @@ export interface SelectionSuggestionContext {
   canRegenerate: boolean;
   /** The user has already shortlisted at least one candidate. */
   hasSelection: boolean;
+  /** Private rationales left by shared-report voters. */
+  collaboratorRationaleCount?: number;
   /** A paid pool-mutation op (regenerate, or a chat-composed idea seed being
    *  evaluated) is in flight — the backend only allows one at a time. Suppresses
    *  prompts that would invite a second one, or ask about a shortlist/pool that's
@@ -140,7 +142,7 @@ export interface SelectionSuggestionContext {
 
 /** G3 (candidate selection) suggestions. */
 export function selectionSuggestions(ctx: SelectionSuggestionContext): string[] {
-  const { solutions, messages, weakPool, canRegenerate, hasSelection, poolMutationBusy } = ctx;
+  const { solutions, messages, weakPool, canRegenerate, hasSelection, collaboratorRationaleCount = 0, poolMutationBusy } = ctx;
   const top = solutions[0]?.solution_name;
   const runnerUp = solutions[1]?.solution_name;
 
@@ -148,10 +150,12 @@ export function selectionSuggestions(ctx: SelectionSuggestionContext): string[] 
     [
       // The honest question first when the pool itself is the problem.
       ...(weakPool ? ["Should I even proceed with this niche?"] : []),
+      ...(collaboratorRationaleCount > 0 ? ["What do collaborators agree or disagree on?"] : []),
       ...(hasSelection && !poolMutationBusy ? ["Is my shortlist the right bet?"] : []),
       ...(top ? [`Why is "${short(top)}" ranked first?`] : []),
       ...(top && runnerUp ? [`Compare "${short(top, 20)}" and "${short(runnerUp, 20)}"`] : []),
       ...(canRegenerate && !poolMutationBusy ? ["What's missing from these ideas?"] : []),
+      ...(top && !poolMutationBusy ? [`How would you narrow "${short(top)}"?`] : []),
       "Which of these is easiest to build?",
     ],
     messages,

@@ -56,7 +56,7 @@
           </div>
           <span class="text-sm text-text-muted">Completed</span>
         </div>
-        <p class="text-3xl font-bold text-success">
+        <p class="text-3xl font-bold text-[color:var(--color-success-text)]">
           {stats.completedJobs.toLocaleString()}
         </p>
       </div>
@@ -68,7 +68,7 @@
           </div>
           <span class="text-sm text-text-muted">Failed</span>
         </div>
-        <p class="text-3xl font-bold text-error">
+        <p class="text-3xl font-bold text-[color:var(--color-error-text)]">
           {stats.failedJobs.toLocaleString()}
         </p>
       </div>

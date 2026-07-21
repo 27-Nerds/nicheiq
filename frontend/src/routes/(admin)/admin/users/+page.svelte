@@ -188,7 +188,7 @@
         type="text"
         bind:value={searchInput}
         placeholder="Search by email or name..."
-        class="w-full pl-10 pr-4 py-2 bg-bg-surface border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-accent"
+        class="w-full pl-10 pr-4 py-2 bg-bg-surface border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-glow)]"
       />
     </div>
   </form>
@@ -196,45 +196,26 @@
   {#if data.usersData}
     <div class="bg-bg-surface border border-border rounded-xl overflow-hidden">
       <div class="overflow-x-auto">
-        <table class="w-full text-sm">
+        <table class="data-table">
           <thead>
-            <tr class="border-b border-border bg-bg-elevated/50">
-              <th class="text-left py-3 px-4 text-text-muted font-medium"
-                >Email</th
-              >
-              <th class="text-left py-3 px-4 text-text-muted font-medium"
-                >Name</th
-              >
-              <th class="text-left py-3 px-4 text-text-muted font-medium"
-                >Role</th
-              >
-              <th class="text-left py-3 px-4 text-text-muted font-medium"
-                >Access</th
-              >
-              <th class="text-left py-3 px-4 text-text-muted font-medium"
-                >Analyst</th
-              >
-              <th class="text-right py-3 px-4 text-text-muted font-medium"
-                >Credits</th
-              >
-              <th class="text-right py-3 px-4 text-text-muted font-medium"
-                >Jobs</th
-              >
-              <th class="text-left py-3 px-4 text-text-muted font-medium"
-                >Joined</th
-              >
-              <th class="text-right py-3 px-4 text-text-muted font-medium"
-                >Actions</th
-              >
+            <tr>
+              <th>Email</th>
+              <th>Name</th>
+              <th>Role</th>
+              <th>Access</th>
+              <th>Analyst</th>
+              <th class="num">Credits</th>
+              <th class="num">Jobs</th>
+              <th>Joined</th>
+              <th style="text-align: right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {#each data.usersData.users as user}
-              <tr class="border-b border-border/50">
-                <td class="py-3 px-4 text-text-primary">{user.email}</td>
-                <td class="py-3 px-4 text-text-secondary">{user.name || "-"}</td
-                >
-                <td class="py-3 px-4">
+              <tr>
+                <td class="cell-primary">{user.email}</td>
+                <td>{user.name || "-"}</td>
+                <td>
                   <Badge
                     variant={user.role === "ADMIN" ? "accent" : "muted"}
                     size="sm"
@@ -242,7 +223,7 @@
                     {user.role}
                   </Badge>
                 </td>
-                <td class="py-3 px-4">
+                <td>
                   {#if user.role === "ADMIN"}
                     <Badge variant="accent" size="sm">ADMIN</Badge>
                   {:else if user.subscriptionStatus}
@@ -255,7 +236,7 @@
                     <span class="text-text-muted">—</span>
                   {/if}
                 </td>
-                <td class="py-3 px-4">
+                <td>
                   {#if user.role === "ADMIN"}
                     <Badge variant="accent" size="sm">ADMIN</Badge>
                   {:else if user.chatAnalystAccess}
@@ -264,19 +245,13 @@
                     <span class="text-text-muted">—</span>
                   {/if}
                 </td>
-                <td class="py-3 px-4 text-right text-text-primary"
-                  >{user.creditBalance}</td
-                >
-                <td class="py-3 px-4 text-right text-text-secondary"
-                  >{user.jobCount}</td
-                >
-                <td class="py-3 px-4 text-text-muted"
-                  >{formatDate(user.createdAt)}</td
-                >
-                <td class="py-3 px-4 text-right">
+                <td class="num cell-primary">{user.creditBalance}</td>
+                <td class="num">{user.jobCount}</td>
+                <td class="cell-muted">{formatDate(user.createdAt)}</td>
+                <td class="text-right">
                   <div class="grid grid-cols-2 gap-1">
                     <button
-                      class="text-xs px-2 py-0.5 rounded border border-accent/40 hover:bg-accent/10 transition-colors text-accent disabled:opacity-50 whitespace-nowrap w-full"
+                      class="text-xs px-2 py-0.5 rounded border border-accent/40 hover:bg-accent/10 transition-colors text-[color:var(--color-accent-dark)] disabled:opacity-50 whitespace-nowrap w-full"
                       onclick={() => openCreditModal(user.id, user.email)}
                     >
                       + Credits
@@ -291,7 +266,7 @@
                     {#if user.role !== "ADMIN"}
                       <button
                         class="text-xs px-2 py-0.5 rounded border transition-colors disabled:opacity-50 whitespace-nowrap w-full {user.fullCatalogAccess
-                          ? 'border-accent/40 text-accent bg-accent/5 hover:bg-accent/10'
+                          ? 'border-accent/40 text-[color:var(--color-accent-dark)] bg-accent/5 hover:bg-accent/10'
                           : 'border-border text-text-secondary hover:bg-bg-elevated'}"
                         onclick={() => toggleCatalogAccess(user.id, user.fullCatalogAccess)}
                         disabled={updatingAccess === user.id}
@@ -301,7 +276,7 @@
                       </button>
                       <button
                         class="text-xs px-2 py-0.5 rounded border transition-colors disabled:opacity-50 whitespace-nowrap w-full {user.chatAnalystAccess
-                          ? 'border-accent/40 text-accent bg-accent/5 hover:bg-accent/10'
+                          ? 'border-accent/40 text-[color:var(--color-accent-dark)] bg-accent/5 hover:bg-accent/10'
                           : 'border-border text-text-secondary hover:bg-bg-elevated'}"
                         onclick={() => toggleChatAnalystAccess(user.id, user.chatAnalystAccess)}
                         disabled={updatingChatAccess === user.id}
@@ -335,7 +310,7 @@
                 href="?page={data.usersData.page - 1}{data.search
                   ? `&search=${data.search}`
                   : ''}"
-                class="text-sm px-3 py-1 rounded border border-border hover:bg-bg-elevated transition-colors text-text-secondary"
+                class="btn-ghost"
               >
                 Previous
               </a>
@@ -345,7 +320,7 @@
                 href="?page={data.usersData.page + 1}{data.search
                   ? `&search=${data.search}`
                   : ''}"
-                class="text-sm px-3 py-1 rounded border border-border hover:bg-bg-elevated transition-colors text-text-secondary"
+                class="btn-ghost"
               >
                 Next
               </a>
@@ -376,7 +351,7 @@
       <p class="text-sm text-text-muted mb-4">Grant credits to {creditModal.email}</p>
 
       {#if creditFeedback}
-        <div class="flex items-center gap-2 text-sm mb-4 p-2.5 rounded-lg {creditFeedback.type === 'success' ? 'bg-success/10 text-success' : 'bg-error/10 text-error'}">
+        <div class="flex items-center gap-2 text-sm mb-4 p-2.5 rounded-lg {creditFeedback.type === 'success' ? 'bg-success/10 text-[color:var(--color-success-text)]' : 'bg-error/10 text-[color:var(--color-error-text)]'}">
           {#if creditFeedback.type === "success"}
             <Check class="w-4 h-4 shrink-0" />
           {:else}
@@ -395,7 +370,7 @@
           max="10000"
           bind:value={creditAmount}
           placeholder="e.g. 50"
-          class="w-full px-3 py-2 bg-bg-elevated border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-accent mb-3"
+          class="input mb-3"
         />
 
         <label for="credit-description" class="block text-sm font-medium text-text-secondary mb-1">Description</label>
@@ -405,7 +380,7 @@
           maxlength="500"
           bind:value={creditDescription}
           placeholder="e.g. Beta tester bonus"
-          class="w-full px-3 py-2 bg-bg-elevated border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-accent mb-3"
+          class="input mb-3"
         />
 
         <label class="flex items-center gap-2 cursor-pointer mb-4">
@@ -416,17 +391,13 @@
         <div class="flex justify-end gap-2">
           <button
             type="button"
-            class="px-4 py-2 text-sm rounded-lg border border-border hover:bg-bg-elevated transition-colors text-text-secondary"
+            class="btn-secondary"
             onclick={closeCreditModal}
             disabled={addingCredits}
           >
             Cancel
           </button>
-          <button
-            type="submit"
-            class="px-4 py-2 text-sm rounded-lg bg-accent text-white hover:bg-accent/90 transition-colors disabled:opacity-50"
-            disabled={addingCredits}
-          >
+          <button type="submit" class="btn-primary" disabled={addingCredits}>
             {addingCredits ? "Adding..." : "Add Credits"}
           </button>
         </div>
@@ -434,3 +405,15 @@
     </div>
   </div>
 {/if}
+
+<style>
+  /* .data-table td's color is unlayered global CSS, so a Tailwind text-color
+     utility can't win against it (cascade layers rank utilities below
+     unlayered rules) — these scoped classes out-specificity it instead. */
+  .cell-primary {
+    color: var(--color-text-primary);
+  }
+  .cell-muted {
+    color: var(--color-text-muted);
+  }
+</style>

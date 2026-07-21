@@ -132,6 +132,18 @@ describe("selectionSuggestions — grounded in the actual ranking and open actio
     expect(out).toContain("Is my shortlist the right bet?");
   });
 
+  it("asks about collaborator disagreement only when private rationales exist", () => {
+    const without = selectionSuggestions({ ...baseSel, solutions });
+    const withFeedback = selectionSuggestions({
+      ...baseSel,
+      solutions,
+      collaboratorRationaleCount: 2,
+    });
+
+    expect(without).not.toContain("What do collaborators agree or disagree on?");
+    expect(withFeedback).toContain("What do collaborators agree or disagree on?");
+  });
+
   it("works with an empty candidate list", () => {
     const out = selectionSuggestions({ ...baseSel, solutions: [] });
     expect(out).toEqual(["Which of these is easiest to build?"]);

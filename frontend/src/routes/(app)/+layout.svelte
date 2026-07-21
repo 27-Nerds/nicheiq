@@ -11,7 +11,7 @@
   <AppHeader />
 
   <main class="flex-1">
-    {#if page.route.id?.endsWith('/report') || page.route.id?.endsWith('/new') || page.route.id?.endsWith('/preview') || page.route.id?.endsWith('/dashboard') || page.route.id?.endsWith('/billing') || page.route.id?.endsWith('/settings') || page.route.id?.match(/\/jobs\/[^/]+$/)}
+    {#if page.route.id?.endsWith('/report') || page.route.id?.endsWith('/new') || page.route.id?.endsWith('/preview') || page.route.id?.endsWith('/dashboard') || page.route.id?.endsWith('/billing') || page.route.id?.endsWith('/settings') || page.route.id?.match(/\/jobs\/[^/]+$/) || page.route.id?.match(/\/jobs\/[^/]+\/selection\//)}
       {@render children()}
     {:else}
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

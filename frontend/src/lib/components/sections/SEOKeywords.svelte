@@ -802,7 +802,7 @@
   .findings-header :global(.findings-icon) {
     width: 1rem;
     height: 1rem;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .findings-title {
@@ -811,7 +811,7 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .findings-text {
@@ -915,7 +915,7 @@
   .tab-button.active {
     background: var(--color-accent-subtle);
     border-color: var(--color-border-accent);
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .tab-label {
@@ -937,7 +937,7 @@
 
   .tab-count.accent {
     background: var(--color-accent-glow);
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .tab-count.info {
@@ -1132,7 +1132,7 @@
 
   .view-toggle-btn.active {
     background: var(--color-bg-elevated);
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .view-toggle-btn :global(.toggle-icon) {
@@ -1364,7 +1364,7 @@
     border-radius: var(--radius-xl);
     font-size: var(--text-sm);
     font-weight: 500;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
     cursor: pointer;
     transition: background-color 0.15s ease, border-color 0.15s ease;
   }
@@ -1400,7 +1400,7 @@
   }
 
   .tier-label.accent {
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .tier-label.muted {
@@ -1440,7 +1440,7 @@
   .keyword-pill.accent {
     background: var(--color-accent-subtle);
     border-color: var(--color-border-accent);
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
   }
 
   .keyword-pill.muted {
@@ -1567,7 +1567,7 @@
     border-radius: 0.375rem;
     font-size: 0.8125rem;
     font-weight: 500;
-    color: var(--color-accent);
+    color: var(--color-accent-dark);
     cursor: pointer;
     transition: background-color 0.15s ease, border-color 0.15s ease;
   }

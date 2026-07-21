@@ -34,7 +34,9 @@
 
 	/* Error - Red */
 	--color-error-light: #F87171;
-	--color-error-subtle: rgba(239, 68, 68, 0.08);
+	/* Subtle tint derived from --color-error-text (#B91C1C) so error halos/washes
+	   stay in the same family as the AA text red, not the fill red. */
+	--color-error-subtle: rgba(185, 28, 28, 0.08);
 
 	/* Info - Blue */
 	--color-info: #3B82F6;
@@ -70,6 +72,15 @@
 	--color-opportunity-bg: #E6F5EE;
 
 	/* ========================================
+	   Quality tier — GOLD/SILVER/BRONZE data-quality grade.
+	   Used only by QualityTierBadge.svelte; no equivalent in the
+	   success/warning/error ramp so these get dedicated tokens.
+	   ======================================== */
+	--color-tier-gold: #B8860B;
+	--color-tier-silver: #6B7280;
+	--color-tier-bronze: #92400E;
+
+	/* ========================================
 	   Idea-preview card identities (job page)
 	   ======================================== */
 	--color-lavender: #E9E6F7;
@@ -90,6 +101,8 @@
 	   target and needs 3:1. The decorative hairlines above are 1.1-1.3:1 — fine as
 	   dividers, not as the only edge of a control. This is 3.1:1 on white. */
 	--color-input-border: rgba(0, 0, 0, 0.42);
+	/* Hover state for inputs and ghost-button boundaries (v3 form system). */
+	--color-input-border-hover: rgba(0, 0, 0, 0.62);
 
 	/* Text sitting ON an accent fill. Toned to the palette rather than pure #FFFFFF —
 	   the whites and blacks in this system are all off-true (#FAFAFA / #18181B), and a

@@ -13,7 +13,7 @@
     Trash2,
     FolderOpen,
     Loader2,
-    Sparkles,
+    Wand2,
     X,
     Lightbulb,
     Check,
@@ -752,7 +752,7 @@
   </div>
 
   {#if catErrorMsg}
-    <div class="mb-4 px-4 py-2 bg-error/10 border border-error/30 rounded-lg text-sm text-error">
+    <div class="mb-4 px-4 py-2 bg-error/10 border border-error/30 rounded-lg text-sm text-[color:var(--color-error-text)]">
       {catErrorMsg}
     </div>
   {/if}
@@ -768,7 +768,7 @@
             id="new-name"
             type="text"
             bind:value={newName}
-            class="w-full px-3 py-2 bg-bg-base border border-border rounded-lg text-sm text-text-primary"
+            class="input"
             placeholder="e.g. Marketing"
           />
         </div>
@@ -777,7 +777,7 @@
           <select
             id="new-parent"
             bind:value={newParentId}
-            class="w-full px-3 py-2 bg-bg-base border border-border rounded-lg text-sm text-text-primary"
+            class="input"
           >
             <option value="">None (top-level)</option>
             {#each topLevelCategories as cat}
@@ -791,7 +791,7 @@
             id="new-desc"
             type="text"
             bind:value={newDescription}
-            class="w-full px-3 py-2 bg-bg-base border border-border rounded-lg text-sm text-text-primary"
+            class="input"
             placeholder="Optional"
           />
         </div>
@@ -801,7 +801,7 @@
             id="new-sort"
             type="number"
             bind:value={newSortOrder}
-            class="w-full px-3 py-2 bg-bg-base border border-border rounded-lg text-sm text-text-primary"
+            class="input"
             min="0"
             max="1000"
           />
@@ -811,10 +811,7 @@
         <button class="btn-primary text-sm" onclick={createCategory} disabled={saving || !newName}>
           {saving ? "Creating..." : "Create"}
         </button>
-        <button
-          class="text-sm px-3 py-1.5 text-text-secondary hover:text-text-primary"
-          onclick={() => (showCreateForm = false)}
-        >
+        <button class="btn-ghost text-sm" onclick={() => (showCreateForm = false)}>
           Cancel
         </button>
       </div>
@@ -831,7 +828,7 @@
           type="text"
           bind:value={searchQuery}
           placeholder="Search categories..."
-          class="w-full pl-8 pr-8 py-1.5 bg-bg-base border border-border rounded-lg text-sm text-text-primary placeholder:text-text-muted"
+          class="w-full pl-8 pr-8 py-1.5 bg-bg-base border border-border rounded-lg text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-glow)]"
         />
         {#if searchQuery}
           <button
@@ -899,7 +896,7 @@
         <Search class="w-6 h-6 mx-auto mb-2 opacity-50" />
         <p class="text-sm">No categories match your filters.</p>
         <button
-          class="mt-2 text-xs text-accent hover:underline"
+          class="mt-2 text-xs text-[color:var(--color-accent-dark)] hover:underline"
           onclick={() => { searchQuery = ""; statusFilter = "all"; }}
         >
           Clear filters
@@ -949,18 +946,18 @@
                       <input
                         type="text"
                         bind:value={editName}
-                        class="px-2 py-1.5 bg-bg-base border border-border rounded text-sm"
+                        class="input"
                       />
                       <input
                         type="text"
                         bind:value={editDescription}
-                        class="px-2 py-1.5 bg-bg-base border border-border rounded text-sm"
+                        class="input"
                         placeholder="Description"
                       />
                       <input
                         type="number"
                         bind:value={editSortOrder}
-                        class="px-2 py-1.5 bg-bg-base border border-border rounded text-sm"
+                        class="input"
                         min="0"
                         max="1000"
                       />
@@ -1000,7 +997,7 @@
                                   <span class="bg-warning h-full" style="width: {(stats.inProgress / stats.total) * 100}%"></span>
                                 {/if}
                               </span>
-                              <span class="text-xs {stats.done === stats.total ? 'text-success' : stats.done > 0 ? 'text-text-secondary' : 'text-text-muted'}">
+                              <span class="text-xs {stats.done === stats.total ? 'text-[color:var(--color-success-text)]' : stats.done > 0 ? 'text-text-secondary' : 'text-text-muted'}">
                                 {stats.done}/{stats.total} done
                               </span>
                             </span>
@@ -1012,7 +1009,7 @@
                       </button>
                       <div class="flex items-center gap-1 flex-shrink-0">
                         <a
-                          class="p-1.5 rounded hover:bg-bg-elevated transition-colors {parent.longDescription ? 'text-success' : 'text-text-muted hover:text-accent'}"
+                          class="p-1.5 rounded hover:bg-bg-elevated transition-colors {parent.longDescription ? 'text-[color:var(--color-success-text)]' : 'text-text-muted hover:text-[color:var(--color-accent-dark)]'}"
                           href="/admin/catalog/{parent.id}/seo"
                           title={parent.longDescription ? 'SEO copy curated' : 'Edit SEO copy'}
                         >
@@ -1047,18 +1044,18 @@
                             <input
                               type="text"
                               bind:value={editName}
-                              class="px-2 py-1.5 bg-bg-base border border-border rounded text-sm"
+                              class="input"
                             />
                             <input
                               type="text"
                               bind:value={editDescription}
-                              class="px-2 py-1.5 bg-bg-base border border-border rounded text-sm"
+                              class="input"
                               placeholder="Description"
                             />
                             <input
                               type="number"
                               bind:value={editSortOrder}
-                              class="px-2 py-1.5 bg-bg-base border border-border rounded text-sm"
+                              class="input"
                               min="0"
                               max="1000"
                             />
@@ -1109,7 +1106,7 @@
                             </div>
                             <div class="flex items-center gap-1">
                               {#if generatingPainPointsFor.has(child.id)}
-                                <span class="text-xs text-accent flex items-center gap-1">
+                                <span class="text-xs text-[color:var(--color-accent-dark)] flex items-center gap-1">
                                   <Loader2 class="w-3 h-3 animate-spin" />
                                   {ppProgressMsgs.get(child.id) ?? ""}
                                   <button
@@ -1122,15 +1119,15 @@
                                 </span>
                               {:else}
                                 <button
-                                  class="p-1 rounded hover:bg-accent/10 text-text-muted hover:text-accent"
+                                  class="p-1 rounded hover:bg-accent/10 text-text-muted hover:text-[color:var(--color-accent-dark)]"
                                   onclick={() => generatePainPoints(child.id)}
                                   title="Generate Pain Points"
                                 >
-                                  <Sparkles class="w-3 h-3" />
+                                  <Wand2 class="w-3 h-3" />
                                 </button>
                               {/if}
                               {#if generatingIdeasFor.has(child.id)}
-                                <span class="text-xs text-accent flex items-center gap-1">
+                                <span class="text-xs text-[color:var(--color-accent-dark)] flex items-center gap-1">
                                   <Loader2 class="w-3 h-3 animate-spin" />
                                   {ideasProgressMsgs.get(child.id) ?? ""}
                                   <button
@@ -1145,8 +1142,8 @@
                                 <button
                                   class="p-1 rounded text-text-muted
                                     {(child._count?.painPoints ?? 0) === 0
-                                      ? 'opacity-60 hover:opacity-100 hover:bg-accent/10 hover:text-accent'
-                                      : 'hover:bg-accent/10 hover:text-accent'}"
+                                      ? 'opacity-60 hover:opacity-100 hover:bg-accent/10 hover:text-[color:var(--color-accent-dark)]'
+                                      : 'hover:bg-accent/10 hover:text-[color:var(--color-accent-dark)]'}"
                                   onclick={() => {
                                     if ((child._count?.painPoints ?? 0) === 0) {
                                       pendingIdeaChain.add(child.id);
@@ -1164,7 +1161,7 @@
                                 </button>
                               {/if}
                               <a
-                                class="p-1 rounded hover:bg-bg-elevated transition-colors {child.longDescription ? 'text-success' : 'text-text-muted hover:text-accent'}"
+                                class="p-1 rounded hover:bg-bg-elevated transition-colors {child.longDescription ? 'text-[color:var(--color-success-text)]' : 'text-text-muted hover:text-[color:var(--color-accent-dark)]'}"
                                 href="/admin/catalog/{child.id}/seo"
                                 title={child.longDescription ? 'SEO copy curated' : 'Edit SEO copy'}
                               >
@@ -1240,7 +1237,7 @@
               Select pain points to generate ideas from ({ideaModalSelected.size}/{eligibleIdeaModalPainPoints.length}{ideaModalPainPoints.length > eligibleIdeaModalPainPoints.length ? ` · ${ideaModalPainPoints.length - eligibleIdeaModalPainPoints.length} legacy` : ""})
             </span>
             <button
-              class="text-xs text-accent hover:underline"
+              class="text-xs text-[color:var(--color-accent-dark)] hover:underline"
               onclick={toggleAllIdeaPp}
               disabled={eligibleIdeaModalPainPoints.length === 0}
             >
@@ -1286,7 +1283,7 @@
 
       <!-- Footer -->
       <div class="flex items-center justify-between px-6 py-4 border-t border-border">
-        <button class="text-sm text-text-secondary hover:text-text-primary" onclick={() => (showIdeaModal = false)}>
+        <button class="btn-ghost" onclick={() => (showIdeaModal = false)}>
           Cancel
         </button>
         <button
@@ -1329,7 +1326,7 @@
         </p>
       </div>
       <div class="flex items-center justify-end gap-2 px-6 py-4 border-t border-border">
-        <button class="text-sm text-text-secondary hover:text-text-primary" onclick={() => (showRerunPrompt = false)}>
+        <button class="btn-ghost" onclick={() => (showRerunPrompt = false)}>
           Cancel
         </button>
         <button
@@ -1340,7 +1337,7 @@
             generatePainPoints(catId);
           }}
         >
-          <Sparkles class="w-4 h-4" />
+          <Wand2 class="w-4 h-4" />
           Re-run research
         </button>
       </div>
