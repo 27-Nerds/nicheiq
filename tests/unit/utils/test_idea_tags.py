@@ -15,7 +15,7 @@ from nicheiq.models.solution_idea import (
     TargetMarketTag,
     UsageCadenceTag,
 )
-from nicheiq.utils.idea_tags import STRENGTH_CUTOFFS, derive_tag_facets
+from nicheiq.utils.idea_tags import STRENGTH_CUTOFFS, derive_tag_facets, refresh_tag_facets
 
 
 def _idea(**scores):
@@ -187,6 +187,59 @@ def test_failsoft_without_llm_facets():
     assert tags.novelty_level == "novel"
     assert tags.build_complexity == "low"
     assert tags.target_market is None and tags.monetization is None
+
+
+def test_refresh_removes_stale_strengths_and_preserves_semantic_facets():
+    idea = _idea(
+        market_fit_score=0.55,
+        technical_feasibility_score=0.90,
+        solo_dev_feasibility=0.85,
+        project_type="saas",
+        data_access_model="public",
+        tags=IdeaTags(
+            target_market="b2b",
+            monetization="subscription",
+            growth_channels=["content"],
+            risk_flags=["regulatory"],
+            usage_cadence="continuous",
+            build_complexity="medium",
+            novelty_level="novel",
+            strengths=["market-fit"],
+            primary_strength="market-fit",
+            rationale="Teams buy this through an ongoing workflow.",
+        ),
+    )
+
+    tags = refresh_tag_facets(idea)
+
+    assert tags.strengths == ["quick-build", "solo-friendly"]
+    assert tags.primary_strength == "solo-friendly"
+    assert tags.build_complexity == "low"
+    assert tags.novelty_level is None
+    assert tags.target_market == "b2b"
+    assert tags.monetization == "subscription"
+    assert tags.growth_channels == ["content"]
+    assert tags.risk_flags == ["regulatory"]
+    assert tags.usage_cadence == "continuous"
+    assert tags.rationale == "Teams buy this through an ongoing workflow."
+
+
+def test_refresh_adds_derived_facets_when_legacy_idea_has_no_tags():
+    idea = _idea(
+        market_fit_score=0.55,
+        technical_feasibility_score=0.90,
+        novelty_score=0.75,
+        solo_dev_feasibility=0.85,
+        tags=None,
+    )
+
+    tags = refresh_tag_facets(idea)
+
+    assert tags.strengths == ["innovator", "quick-build", "solo-friendly"]
+    assert tags.primary_strength == "solo-friendly"
+    assert tags.build_complexity == "low"
+    assert tags.novelty_level == "novel"
+    assert tags.target_market is None
 
 
 # --- mutual-exclusivity invariant -----------------------------------------------

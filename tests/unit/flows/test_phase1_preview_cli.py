@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from nicheiq.flows.research_flow import ResearchFlow
+from nicheiq.models.solution_idea import BaseSolutionIdea, IdeaTags
 
 
 def test_stop_branch_materializes_and_returns_path():
@@ -23,6 +24,47 @@ def test_preview_emits_build_feasibility():
     src = inspect.getsource(ResearchFlow._materialize_preview_report)
     assert '"build_feasibility_score"' in src
     assert '"data_feasibility_score"' in src
+
+
+def test_preview_refreshes_score_derived_tags(tmp_path):
+    idea = BaseSolutionIdea(
+        solution_name="Preview report idea",
+        description="A concrete solution.",
+        value_proposition="A useful outcome.",
+        pain_points_addressed=["A validated pain"],
+        core_features=["Core feature"],
+        target_personas=["Buyer"],
+        market_fit_score=0.55,
+        technical_feasibility_score=0.90,
+        novelty_score=0.45,
+        solo_dev_feasibility=0.85,
+        tags=IdeaTags(
+            target_market="b2b",
+            monetization="subscription",
+            strengths=["market-fit"],
+            primary_strength="market-fit",
+        ),
+    )
+    flow = ResearchFlow.__new__(ResearchFlow)
+    flow.niche_description = "A test market"
+    flow.job_id = "job-tag-refresh"
+    flow._state = SimpleNamespace(
+        job_id=flow.job_id,
+        idea_generation=SimpleNamespace(solution_ideas=[idea]),
+        idea_ruled_out=[],
+        idea_overlap_groups=[],
+    )
+
+    path = flow._materialize_preview_report(str(tmp_path))
+
+    assert path is not None
+    report = json.loads(Path(path).read_text())
+    tags = report["alternative_solutions"][0]["tags"]
+    assert "market-fit" not in tags["strengths"]
+    assert tags["strengths"] == ["quick-build", "solo-friendly"]
+    assert tags["primary_strength"] == "solo-friendly"
+    assert tags["target_market"] == "b2b"
+    assert tags["monetization"] == "subscription"
 
 
 def test_preview_backfills_legacy_demoted_idea_details(tmp_path):

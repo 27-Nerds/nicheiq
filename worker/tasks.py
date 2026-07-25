@@ -248,6 +248,10 @@ def _solution_to_preview_dict(solution) -> dict:
     """Convert a BaseSolutionIdea or dict to a preview dict for the frontend."""
     if hasattr(solution, "model_dump"):
         d = solution.model_dump()
+        from nicheiq.models.solution_idea import BaseSolutionIdea
+        if isinstance(solution, BaseSolutionIdea):
+            from nicheiq.utils.idea_tags import refresh_tag_facets
+            d["tags"] = refresh_tag_facets(solution).model_dump()
     elif isinstance(solution, dict):
         d = dict(solution)
     else:
@@ -1300,6 +1304,18 @@ def run_regenerate_ideas(
             state.idea_generation.solution_ideas = merged_solutions
         if flow.checkpoint_mgr and state.idea_generation:
             flow.checkpoint_mgr.save_stage("stage_5_3_refinement", state.idea_generation)
+
+        # Regeneration updates the same preview-report asset used by the selection UI,
+        # analyst chat, and decision tools. Rewrite it from the merged state before
+        # notifying the backend; otherwise those readers keep the pre-regeneration
+        # candidate pool even though Job.solutionIdeas already contains the new batch.
+        try:
+            flow._materialize_preview_report(str(settings.checkpoint_dir))
+        except Exception as e:
+            logger.warning(
+                f"[Worker] Failed to re-materialize preview report after regeneration "
+                f"for job {job_id}: {e}"
+            )
 
         # Send only NEW previews — backend appends to existing list. Filter through the
         # visibility projection (regenerated ideas default candidate_status='active' so this

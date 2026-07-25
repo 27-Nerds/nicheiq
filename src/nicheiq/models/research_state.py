@@ -412,7 +412,10 @@ class AlternativeSolution(BaseModel):
     # Angle-aware evaluation (mirrors BaseSolutionIdea; set when angle eval is on, None otherwise)
     winning_angle: Optional[str] = Field(default=None, description="distribution_seo | novel_differentiation | vertical_workflow")
     angle_rationale: Optional[str] = Field(default=None, description="User-facing comment: the angle + where differentiation lives")
-    novelty_rationale: Optional[str] = Field(default=None, description="User-facing: why this novelty score fits the project_type")
+    novelty_rationale: Optional[str] = Field(
+        default=None,
+        description="Stable field name for the user-facing explanation of distinctiveness for this project type",
+    )
     differentiation_locus: Optional[str] = Field(default=None, description="WHERE this idea's differentiation lives (or honest 'thin me-too')")
 
     # Data feasibility (from the ideation feasibility critic; annotate-only, surfaced in UI)

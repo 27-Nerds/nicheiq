@@ -71,11 +71,11 @@ _TOS_RISK_ACCESS = frozenset({"unofficial"})
 
 
 def _build_complexity(idea: "BaseSolutionIdea") -> Optional[str]:
-    """Bucket build effort from solo_dev_feasibility — the SAME field shown as the "Solo" chip and
-    used by the "solo-friendly" strength — so "Hard to build" can never contradict a high Solo score
+    """Bucket solo operating load from solo_dev_feasibility — the SAME field shown as the "Solo" chip and
+    used by the "solo-friendly" strength — so "Hard to run solo" cannot contradict a high Solo score
     (they read the same number). Falls back to build_feasibility/technical only when solo is absent.
-    The "low" cut is locked to the solo-friendly cutoff so Easy-to-build and Solo-friendly stay
-    mutually consistent with "Hard to build" (<0.65)."""
+    The "low" cut is locked to the solo-friendly cutoff so the positive and warning labels stay
+    mutually consistent."""
     s = idea.solo_dev_feasibility
     if s is None:
         s = idea.build_feasibility_score
@@ -91,9 +91,9 @@ def _build_complexity(idea: "BaseSolutionIdea") -> Optional[str]:
 
 
 def _novelty_level(idea: "BaseSolutionIdea") -> Optional[str]:
-    """Bucket originality, matching the "Originality" header (= 1 - obviousness_score).
-    obviousness is the primary signal: LOWER = MORE original. novelty_score (higher = more
-    original) is the fallback when obviousness is absent."""
+    """Bucket distinctiveness, matching the UI's inverse-obviousness presentation.
+    Obviousness is the primary signal: LOWER = MORE distinct. novelty_score (higher = more
+    distinct) is the fallback when obviousness is absent."""
     o = idea.obviousness_score
     n = idea.novelty_score
     if o is not None:
@@ -201,3 +201,21 @@ def derive_tag_facets(
         primary_strength=primary,
         rationale=rationale,
     )
+
+
+def refresh_tag_facets(idea: "BaseSolutionIdea") -> IdeaTags:
+    """Refresh an idea's tags from its current fields and scores.
+
+    Semantic facets already attached by the tagging step are preserved. Reused and
+    code-derived facets are rebuilt by :func:`derive_tag_facets`, so stale strength,
+    complexity, and novelty buckets cannot outlive a later score adjustment. Ideas
+    from legacy checkpoints without tags still receive every derivable facet.
+    """
+    existing = getattr(idea, "tags", None)
+    if isinstance(existing, IdeaTags):
+        semantic_facets = existing.model_dump()
+    elif isinstance(existing, dict):
+        semantic_facets = dict(existing)
+    else:
+        semantic_facets = None
+    return derive_tag_facets(idea, semantic_facets)

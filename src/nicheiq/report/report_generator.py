@@ -71,6 +71,7 @@ from ..utils.crew_helpers.traffic_pre_compute import (
     match_niche_to_cpm,
 )
 from ..utils.helpers import find_solution_by_name
+from ..utils.idea_tags import refresh_tag_facets
 from ..utils.prompts import safe_format
 from .templates import ReportTemplates
 from ..utils.llm_service import LLMService
@@ -1031,6 +1032,11 @@ class ReportGenerator:
         solution.technical_feasibility_score = self.score_accessor.get_technical_feasibility(solution)
         solution.seo_scalability_score = self.score_accessor.get_seo_score_canonical(solution)
 
+        # ScoreAccessor can replace the values used when tags were first derived.
+        # Rebuild only the code-owned facets from those authoritative scores while
+        # preserving the semantic facets already attached by the tagging step.
+        solution.tags = refresh_tag_facets(solution)
+
         # Sync refined CAC to baseline (so frontend only needs one field)
         cac_refined = getattr(solution, 'estimated_cac_organic_refined', None)
         if cac_refined:
@@ -1885,6 +1891,12 @@ It differentiates through {diff_text}.
                 technical_feasibility = self.score_accessor.get_technical_feasibility(solution)
                 competitive_advantage = self.score_accessor.get_competitive_advantage(solution)
                 seo_growth = self.score_accessor.get_seo_growth(solution)
+                tag_source = solution.model_copy(update={
+                    "market_fit_score": market_fit,
+                    "technical_feasibility_score": technical_feasibility,
+                    "seo_scalability_score": seo_growth,
+                })
+                alternative_tags = refresh_tag_facets(tag_source)
 
                 # Get competitive landscape for this solution
                 landscape = competitive_landscapes.get(runner_up_name)
@@ -2005,7 +2017,7 @@ It differentiates through {diff_text}.
                     source_frame=getattr(solution, 'source_frame', None),
 
                     # Closed-vocabulary filter facets (chips + future filtering).
-                    tags=getattr(solution, 'tags', None),
+                    tags=alternative_tags,
                 ))
 
             return alternative_solutions if alternative_solutions else None
@@ -4421,4 +4433,3 @@ Return valid JSON with this structure:
         except Exception as e:
             logger.warning(f"[Stage 10.5] Technical Blueprint generation failed: {e}")
             return None, None
-

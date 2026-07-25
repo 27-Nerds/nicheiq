@@ -634,15 +634,89 @@ class TestRunRegenerateIdeas:
                 MockCrew.return_value.execute_pipeline.return_value = [idea_gen]
 
                 from worker.tasks import run_regenerate_ideas
-                result = run_regenerate_ideas(
-                    job_id='job-1',
-                    checkpoint_path='/tmp/cp',
-                    existing_solution_names=['OldSol'],
-                    niche='test niche',
-                )
+                with patch(
+                    'worker.tasks._solution_to_preview_dict',
+                    return_value={"solution_name": "NewSol"},
+                ):
+                    result = run_regenerate_ideas(
+                        job_id='job-1',
+                        checkpoint_path='/tmp/cp',
+                        existing_solution_names=['OldSol'],
+                        niche='test niche',
+                    )
 
                 assert result["status"] == "regenerated"
                 mock_notify_regen.assert_called_once()
+
+    @patch('worker.tasks.notify_regeneration_complete')
+    @patch('worker.tasks.create_progress_callback')
+    def test_rematerializes_preview_with_merged_solutions_before_delivery(
+        self, mock_progress, mock_notify_regen
+    ):
+        """The preview-backed UI/chat context must include the regenerated batch."""
+        with patch('nicheiq.flows.research_flow.ResearchFlow') as MockFlow:
+            with patch('nicheiq.crews.unified_solution_crew.UnifiedSolutionCrew') as MockCrew:
+                flow = MockFlow.return_value
+                flow.resume_from_checkpoint.return_value = True
+                flow.cleanup_collections = MagicMock()
+                flow.allowed_project_types = None
+
+                old_sol = MagicMock(
+                    solution_name="OldSol",
+                    name="OldSol",
+                    candidate_status="active",
+                )
+                new_sol = MagicMock(
+                    solution_name="NewSol",
+                    name="NewSol",
+                    candidate_status="active",
+                )
+                new_sol.model_dump.return_value = {
+                    "solution_name": "NewSol",
+                    "name": "NewSol",
+                }
+                state = MagicMock()
+                state.idea_generation = MagicMock(solution_ideas=[old_sol])
+                flow.state = state
+                flow.checkpoint_mgr = MagicMock()
+                mock_progress.return_value = MagicMock()
+                MockCrew.return_value.execute_pipeline.return_value = [
+                    MagicMock(solution_ideas=[new_sol])
+                ]
+
+                events = []
+                materialized_names = []
+
+                def capture_preview(_output_dir):
+                    events.append("preview")
+                    materialized_names.extend(
+                        idea.solution_name
+                        for idea in state.idea_generation.solution_ideas
+                    )
+                    return "/tmp/preview_report_job-1.json"
+
+                flow._materialize_preview_report.side_effect = capture_preview
+                mock_notify_regen.side_effect = lambda *_args, **_kwargs: events.append("notify")
+
+                from nicheiq.config.settings import settings
+                from worker.tasks import run_regenerate_ideas
+
+                with patch(
+                    'worker.tasks._solution_to_preview_dict',
+                    return_value={"solution_name": "NewSol"},
+                ):
+                    run_regenerate_ideas(
+                        job_id='job-1',
+                        checkpoint_path='/tmp/cp',
+                        existing_solution_names=['OldSol'],
+                        niche='test niche',
+                    )
+
+                assert materialized_names == ["OldSol", "NewSol"]
+                flow._materialize_preview_report.assert_called_once_with(
+                    str(settings.checkpoint_dir)
+                )
+                assert events == ["preview", "notify"]
 
     @patch('worker.tasks.notify_regeneration_complete')
     @patch('worker.tasks.create_progress_callback')

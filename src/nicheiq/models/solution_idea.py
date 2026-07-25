@@ -621,7 +621,7 @@ class BaseSolutionIdea(BaseModel):
             "also propose essentially this concept. Carried from the source RawConcept "
             "during refinement (same name-match pattern as the M/D/J tags). Bands: "
             "0.0-0.2 highly novel (<5% would), 0.3-0.5 somewhat novel, 0.6-0.8 mildly "
-            "obvious, 0.8-1.0 cached first-thought. Surfaced in the UI as 'Originality' "
+            "obvious, 0.8-1.0 cached first-thought. Surfaced in the UI as 'Distinctiveness' "
             "(= 1 - obviousness_score)."
         )
     )
@@ -737,15 +737,15 @@ class BaseSolutionIdea(BaseModel):
         default=None,
         description=(
             "User-facing comment (1-3 sentences): names the winning angle, why it fits this pain, and "
-            "WHERE this idea's differentiation lives — so a low off-axis score (e.g. low mechanism-novelty "
+            "WHERE this idea's differentiation lives — so a familiar off-axis mechanism "
             "for a catalog) is explained, not read as a flaw."
         ),
     )
     novelty_rationale: Optional[str] = Field(
         default=None,
         description=(
-            "User-facing one-liner tying the novelty score to the project_type (why it's expected/low/high "
-            "for this type), for the novelty score tooltip."
+            "Stable field name for the user-facing one-liner explaining the idea's distinctiveness "
+            "for its project_type."
         ),
     )
     differentiation_locus: Optional[str] = Field(

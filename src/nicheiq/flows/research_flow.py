@@ -1978,6 +1978,7 @@ RULES:
                     # Honest brief: pain-title → community quotes (same helper as Phase 2)
                     from ..utils.calibration_notes import extract_criterion_reason
                     from ..utils.honest_brief import build_quotes_by_pain, demand_quotes_for
+                    from ..utils.idea_tags import refresh_tag_facets
                     from ..models.solution_idea import visible_ideas
                     quotes_by_pain = build_quotes_by_pain(
                         getattr(getattr(state, "pain_point_analysis", None), "pain_points", None))
@@ -2093,10 +2094,7 @@ RULES:
                             # Multi-Frame Idea Generation Portfolio: which frame minted this idea's cell
                             "source_frame": getattr(solution, "source_frame", None),
                             # Closed-vocabulary filter facets (chips + future filtering).
-                            "tags": (
-                                solution.tags.model_dump()
-                                if getattr(solution, "tags", None) else None
-                            ),
+                            "tags": refresh_tag_facets(solution).model_dump(),
                             "candidate_status": getattr(solution, "candidate_status", None),
                             "merged_from": getattr(solution, "merged_from", None),
                         }
@@ -7817,6 +7815,8 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                     idea.seo_scalability_score = refined_seo_score
                     idea.estimated_cac_organic = refined_cac['cac_range']
                     idea.programmatic_seo_opportunity = refined_programmatic
+                    from ..utils.idea_tags import refresh_tag_facets
+                    idea.tags = refresh_tag_facets(idea)
 
                     logger.info(f"[Stage 12] Merged SEO refinements into solution '{selected_solution_name}'")
                     break
