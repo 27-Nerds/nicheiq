@@ -3,6 +3,7 @@
   import AnnotationSurface from "$lib/components/annotations/AnnotationSurface.svelte";
   import WorkspaceOverlay from "$lib/components/ui/WorkspaceOverlay.svelte";
   import type { RuledOutFinding } from "$lib/types/report";
+  import { finiteUnitScore } from "$lib/utils/displayGuards";
 
   interface Props {
     finding: RuledOutFinding;
@@ -13,6 +14,7 @@
 
   const idea = $derived(finding.idea);
   const title = $derived(finding.idea_name || finding.pain_title);
+  const marketFit = $derived(finiteUnitScore(finding.market_fit));
   const bandLabel = $derived(finding.market_fit_band === "very-low" ? "Very thin market" : "Thin market");
 </script>
 
@@ -51,7 +53,7 @@
           <div><dt>Pain evaluated</dt><dd>{finding.pain_title}</dd></div>
           <div>
             <dt>Market fit</dt>
-            <dd>{finding.market_fit != null ? `${Math.round(finding.market_fit * 100)}%` : "Not scored"}</dd>
+            <dd>{marketFit !== null ? `${Math.round(marketFit * 100)}%` : "Not scored"}</dd>
           </div>
           {#if idea?.estimated_development_time}
             <div><dt>Build estimate</dt><dd>{idea.estimated_development_time}</dd></div>
@@ -154,6 +156,7 @@
     color: var(--color-text-secondary);
     font-size: 0.875rem;
     line-height: 1.55;
+    overflow-wrap: anywhere;
   }
   .verdict {
     padding: 0.85rem 0.95rem;

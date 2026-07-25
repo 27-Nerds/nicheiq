@@ -198,11 +198,11 @@ def task_2_competitive(self) -> Task:
 
 **Guardrails**: Validation functions prevent field loss during refinement
 
-#### Originality pipeline (Stage 7 ideation internals)
+#### Novelty and obviousness pipeline (Stage 7 ideation internals)
 
 Ideation does **not** run a single brainstorm task. To fight mode collapse on reasoning
 models (where temperature is inert and prompt technique is the only diversity lever), the
-crew generates concepts through an originality pipeline before the convergent
+crew generates concepts through a novelty/obviousness pipeline before the convergent
 filter/refine/select tasks above:
 
 1. **N independent divergent samples** (`num_divergent_samples`, default 2) — each runs the
@@ -214,7 +214,7 @@ filter/refine/select tasks above:
    `obviousness_score` (0-1, **lower = more original** = the fraction of competent builders
    who'd also propose it) and **drops ideas that already exist** as shipping products. This
    critic's score *overwrites* the ideator's own obviousness estimate — it is the system's
-   trustworthy originality signal. This SAME pass also
+   independent obviousness signal. This SAME pass also
    scores **build feasibility** + **data feasibility** (`data_access_model`: public/freemium/
    paywalled/unofficial/restricted), keeping ToS-gray-but-obtainable (`unofficial`) ideas and
    dropping only genuine no-route ones. The data fields are surfaced and, post-selection,
@@ -314,10 +314,11 @@ filter/refine/select tasks above:
    workflow upweights feasibility). A post-union **angle pass** re-classifies the FULL set after
    the parity re-score (the probe clears every idea's classifier outputs), so all shipped angles +
    rationales are derived against final scores; the in-cell labels only route the novelty enhance.
-   The per-run **`idea_focus`** steer (auto | novelty |
-   distribution, default auto) pulls three levers at once: it skews generation toward the chosen
-   angle, biases winner-pick, and tilts the ranking emphasis — auto leaves the classifier unbiased
-   and every winning_angle label stays truthful regardless of the steer.
+   The per-run **`idea_focus`** steer (`auto | novelty | distribution`, default `auto`) pulls
+   three levers at once: it skews generation toward the chosen angle, biases winner-pick, and
+   tilts the ranking emphasis. The UI labels the stable `novelty` value **Differentiation**;
+   `auto` leaves the classifier unbiased and every `winning_angle` label stays truthful regardless
+   of the steer.
    Optionally (after calibrate+caps, before SEO/tags) a **targeted
    novelty pass** (`_novelty_enhance`) fires on VALIDATED-but-OBVIOUS winners (market_fit ≥ gate AND
    obviousness ≥ gate): the refiner (`novelty_enhance_llm`, default deepseek-v4-pro) proposes a more
@@ -351,9 +352,11 @@ filter/refine/select tasks above:
    LLM doesn't reliably hold: `novelty ≤ 1 − obviousness`, and `market_fit ≤ 0.4` when the data
    route is unverified/unbuildable. Never inflates.
 
-`obviousness_score` is surfaced in the UI as **Originality** (= 1 − obviousness_score,
-falling back to `novelty_score`). `novelty_score` stays the refiner's separate signal and
-continues to drive the composite score and the "Innovator" superpower.
+`obviousness_score` is surfaced in the UI as **Distinctiveness**
+(= `1 − obviousness_score`, falling back to `novelty_score` for legacy records).
+`novelty_score` remains the separate calibrated ranking signal and drives both the composite
+score and the stored `innovator` strength key, displayed as **Distinct mechanism**. The visible
+Distinctiveness value does not directly determine either one when `obviousness_score` exists.
 
 **Research Reality Check** (end of Phase 1, `utils/niche_difficulty.py`). Right after idea
 generation + audience-fit tagging, a deterministic classifier scores how well software can

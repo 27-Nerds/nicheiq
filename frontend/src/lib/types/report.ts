@@ -807,7 +807,7 @@ export interface SolutionDetails {
 	seo_scalability_score_refined?: number;
 	estimated_indexable_pages?: number;
 	novelty_score?: number;
-	obviousness_score?: number | null; // 0-1, lower = more original; shown as "Originality" (1 - this)
+	obviousness_score?: number | null; // 0-1, lower = less obvious; displayed as "Distinctiveness" (1 - this)
 	conventional_approach?: string;
 	innovation_angle?: string;
 	why_it_works?: string;
@@ -824,7 +824,7 @@ export interface SolutionDetails {
 	// Angle-aware evaluation (set when angle eval is on; absent otherwise)
 	winning_angle?: string | null; // distribution_seo | novel_differentiation | vertical_workflow
 	angle_rationale?: string | null; // user-facing comment: the angle + where differentiation lives
-	novelty_rationale?: string | null; // user-facing: why this novelty score fits the project_type
+	novelty_rationale?: string | null; // stable field name; user-facing explanation of distinctiveness for this project type
 	differentiation_locus?: string | null; // WHERE the edge lives (or honest "thin me-too")
 	// Multi-Frame Idea Generation Portfolio: which generation frame minted this idea's cell.
 	// CODE-FILLED, never LLM-set. pain | gap | data_asset | spend_adjacent | workflow
@@ -935,7 +935,7 @@ export interface AlternativeSolution {
 
 	// Additional scores and feasibility
 	novelty_score?: number;
-	obviousness_score?: number | null; // 0-1, lower = more original; shown as "Originality" (1 - this)
+	obviousness_score?: number | null; // 0-1, lower = less obvious; displayed as "Distinctiveness" (1 - this)
 	solo_dev_feasibility?: number; // 0-1 scale matching Python float
 	// Portfolio-funnel provenance tier (see selected_solution_details.idea_tier)
 	idea_tier?: string;

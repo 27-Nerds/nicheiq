@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tourState } from "$lib/tour/tourState.svelte";
   import { X } from "lucide-svelte";
   import type { Snippet } from "svelte";
   import { portal } from "$lib/actions/portal";
@@ -23,8 +24,10 @@
     children: Snippet;
     /** Bare footer content (legacy contract). In structured mode it renders on the right (submit side). */
     footer?: Snippet;
-    /** Structured footer: cancel action, rendered on the left. */
-    footerCancel?: Snippet;
+    /** Structured footer: cancel action, rendered on the left. The snippet
+     *  receives the shell's `requestClose` so a footer Cancel goes through the
+     *  same two-press dirty gate as Esc, X, and the backdrop. */
+    footerCancel?: Snippet<[() => void]>;
     /** Structured footer: persistent message between cancel and submit. */
     footerMessage?: string;
     /** Shell-owned close gate: when true with closeWarning, closing takes two attempts. */
@@ -130,7 +133,8 @@
       return;
     }
 
-    if (event.key === "Tab") trapTab(event);
+    // See WorkspaceOverlay: stand down while a tour owns focus.
+    if (event.key === "Tab" && !tourState.active) trapTab(event);
   }
 
   $effect(() => {
@@ -181,7 +185,7 @@
           Discard changes
         </button>
       {:else if footerCancel}
-        {@render footerCancel()}
+        {@render footerCancel(requestClose)}
       {/if}
       <p
         class="form-overlay__foot-msg"
@@ -263,14 +267,14 @@
     z-index: var(--z-form-modal, 50);
     display: grid;
     place-items: center;
-    padding: max(1.5rem, 3vh) max(1.5rem, 3vw);
+    padding: max(var(--space-6), 3vh) max(var(--space-6), 3vw);
   }
 
   .form-overlay__backdrop {
     position: absolute;
     inset: 0;
     background: color-mix(in srgb, var(--color-text-primary) 55%, transparent);
-    animation: form-overlay-backdrop-in 160ms ease-out both;
+    animation: form-overlay-backdrop-in var(--duration-fast) var(--ease-out) both;
   }
 
   .form-overlay__frame {
@@ -286,7 +290,12 @@
     border: 1px solid var(--color-border-emphasis);
     border-radius: var(--radius-xl);
     box-shadow: var(--shadow-lg);
-    animation: form-overlay-frame-in 190ms ease-out both;
+    animation: form-overlay-frame-in var(--duration-normal) var(--ease-out) both;
+  }
+
+  .form-overlay__frame:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
   }
 
   .form-overlay__frame--wide {
@@ -319,15 +328,15 @@
     display: flex;
     flex: 0 0 auto;
     align-items: flex-start;
-    gap: 1rem;
-    padding: 1.2rem 1.4rem 1rem;
+    gap: var(--space-4);
+    padding: var(--space-5) var(--space-6) var(--space-4);
     border-bottom: 1px solid var(--color-border);
   }
 
   .form-overlay__heading {
     display: grid;
     flex: 1;
-    gap: 0.3rem;
+    gap: var(--space-1);
     min-width: 0;
   }
 
@@ -346,25 +355,25 @@
     margin: 0;
     color: var(--color-text-primary);
     font-family: var(--font-display);
-    font-size: 1.2rem;
+    font-size: var(--text-2xl);
     font-weight: 700;
     letter-spacing: -0.02em;
-    line-height: 1.15;
+    line-height: var(--leading-tight);
   }
 
   .form-overlay__description {
     max-width: 58ch;
     margin: 0;
     color: var(--color-text-secondary);
-    font-size: var(--text-13);
-    line-height: 1.5;
+    font-size: var(--text-base);
+    line-height: var(--leading-normal);
   }
 
   .form-overlay__close {
     display: inline-grid;
-    flex: 0 0 2rem;
-    width: 2rem;
-    height: 2rem;
+    flex: 0 0 var(--space-8);
+    width: var(--space-8);
+    height: var(--space-8);
     place-items: center;
     padding: 0;
     color: var(--color-text-muted);
@@ -395,12 +404,12 @@
   .form-overlay__body {
     display: grid;
     flex: 1 1 auto;
-    gap: 1.3rem;
+    gap: var(--space-5);
     align-content: start;
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding: 1.2rem 1.4rem 1.4rem;
+    padding: var(--space-5) var(--space-6) var(--space-6);
     scrollbar-gutter: stable;
   }
 
@@ -408,23 +417,23 @@
     position: relative;
     z-index: 1;
     flex: 0 0 auto;
-    padding: 0.9rem 1.4rem;
+    padding: var(--space-3) var(--space-6);
     background: var(--color-bg-elevated);
     border-top: 1px solid var(--color-border);
-    padding-bottom: max(0.9rem, env(safe-area-inset-bottom));
+    padding-bottom: max(var(--space-3), env(safe-area-inset-bottom));
   }
 
   .form-overlay__footer--structured {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: var(--space-3);
   }
 
   .form-overlay__foot-msg {
     flex: 1;
     margin: 0;
     font-size: var(--text-sm);
-    line-height: 1.45;
+    line-height: var(--leading-normal);
     color: var(--color-text-muted);
   }
 
@@ -436,8 +445,8 @@
     display: flex;
     flex: 0 0 auto;
     align-items: center;
-    gap: 0.75rem;
-    padding: 0.9rem 1.4rem;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-6);
     background: var(--color-bg-elevated);
     border-top: 1px solid var(--color-border);
   }
@@ -447,9 +456,9 @@
     align-items: center;
     justify-content: center;
     flex: 0 0 auto;
-    min-height: 2.1rem;
+    min-height: var(--space-10);
     min-width: 9.5rem;
-    padding: 0.35rem 0.75rem;
+    padding: var(--space-1-5) var(--space-3);
     border: 1px solid var(--color-input-border);
     border-radius: var(--radius-md);
     background: transparent;
@@ -494,7 +503,7 @@
   }
 
   @keyframes form-overlay-frame-in {
-    from { opacity: 0; transform: translateY(0.5rem) scale(0.992); }
+    from { opacity: 0; transform: translateY(var(--space-2)) scale(0.992); }
     to { opacity: 1; transform: translateY(0) scale(1); }
   }
 
@@ -510,20 +519,20 @@
       height: 100dvh;
       max-height: none;
       border: 0;
-      border-radius: 0;
+      border-radius: var(--radius-none);
     }
 
     .form-overlay__header {
-      padding: max(1.25rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) 1rem max(1rem, env(safe-area-inset-left));
+      padding: max(var(--space-5), env(safe-area-inset-top)) max(var(--space-4), env(safe-area-inset-right)) var(--space-4) max(var(--space-4), env(safe-area-inset-left));
     }
 
     .form-overlay__body {
-      padding: 1.25rem max(1rem, env(safe-area-inset-right)) 1.5rem max(1rem, env(safe-area-inset-left));
+      padding: var(--space-5) max(var(--space-4), env(safe-area-inset-right)) var(--space-6) max(var(--space-4), env(safe-area-inset-left));
     }
 
     .form-overlay__footer {
-      padding-right: max(1rem, env(safe-area-inset-right));
-      padding-left: max(1rem, env(safe-area-inset-left));
+      padding-right: max(var(--space-4), env(safe-area-inset-right));
+      padding-left: max(var(--space-4), env(safe-area-inset-left));
     }
   }
 

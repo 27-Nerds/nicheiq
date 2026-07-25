@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import {
     PHASES,
     DEEP_RESEARCH_BLURRED_PREVIEW_IDS,
@@ -11,8 +12,12 @@
   import SidebarGroup from "$lib/components/nav/SidebarGroup.svelte";
   import SidebarDivider from "$lib/components/nav/SidebarDivider.svelte";
   import SidebarNavItem from "$lib/components/nav/SidebarNavItem.svelte";
-  import DecisionStatusBadge from "$lib/components/selection/DecisionStatusBadge.svelte";
-  import { WORKSPACE_ROUTES, PRIMARY_TOOL_SLUGS } from "$lib/selection/labels";
+  import {
+    WORKSPACE_ROUTES,
+    PRIMARY_TOOL_SLUGS,
+    CHOOSE_IDEAS_LABEL,
+    REVIEW_AND_START_LABEL,
+  } from "$lib/selection/labels";
   import type { SelectionJourneyTask } from "$lib/selection/decisionJourney";
 
   interface Props {
@@ -25,7 +30,7 @@
      *  group present on BOTH the job page and every /selection route, so the
      *  navigation map never reshuffles as the user drills in. */
     toolTasks?: SelectionJourneyTask[];
-    /** Slug of the active /selection tool (compare|risks|tests|alternatives),
+    /** Stable journey destination (choose|compare|risks|review),
      *  or null on the job page itself. */
     activeTool?: string | null;
     /** True on a /selection route: content sections are not on this page, so
@@ -38,8 +43,12 @@
      *  checkpoint ledger with no scrollable sections, so the sidebar orients
      *  (gate rail + what-runs-next) instead of navigating. */
     mode?: "default" | "selection" | "gate";
-    selectionCount?: number;
     selectedCount?: number;
+    /** Exact candidate-revision query carried between selection routes. */
+    selectionQuery?: string;
+    /** Discovery sections actually present on the current job page. When supplied,
+     * unavailable legacy/partial sections are omitted instead of linking to nowhere. */
+    availableSectionIds?: string[];
     /** Guided mode (Phase B) — chatMode opts a job into the G1/G2 stage gates.
      *  gateStage (1|4) is only set while jobStatus=AWAITING_GATE. When both are
      *  present, the Discovery group shows a compact gate rail (diamond markers =
@@ -48,6 +57,10 @@
      *  markers in this existing nav — no new nav component, SC2). */
     chatMode?: boolean;
     gateStage?: 1 | 4 | null;
+    /** Admin-granted optional decision tools. Fails CLOSED: without it the sidebar
+     *  shows Choose ideas → Compare trade-offs → Review and start, and the
+     *  "Check the evidence" row is omitted rather than linking into a 403. */
+    decisionTools?: boolean;
   }
 
   let {
@@ -59,24 +72,31 @@
     nested = false,
     entryMode = null,
     mode = "default",
-    selectionCount = 0,
     selectedCount = 0,
+    selectionQuery = "",
+    availableSectionIds,
     chatMode = false,
     gateStage = null,
+    decisionTools = false,
   }: Props = $props();
 
-  // Decision tools: one shared nav group of the TWO primary tools (Compare,
-  // Check the evidence). Plan-a-test and Explore-variants are reached
+  // Research shortlist: one shared nav group of the TWO primary tools (Compare,
+  // Check the evidence). Plan-a-test and Branch-a-direction are reached
   // contextually, not as co-equal nav. Same status source as the launchpad.
   const toolItems = $derived(
     WORKSPACE_ROUTES
       .filter((route) => PRIMARY_TOOL_SLUGS.includes(route.slug))
+      // "Check the evidence" (/selection/risks) is a decision tool; compare is not.
+      .filter((route) => decisionTools || route.slug === "compare")
       .map((route) => ({
         slug: route.slug,
         label: route.label,
-        href: jobId ? `/jobs/${jobId}/selection/${route.slug}` : undefined,
+        href: jobId ? `/jobs/${jobId}/selection/${route.slug}${selectionQuery}` : undefined,
         task: toolTasks?.find((task) => task.key === route.slug),
       })),
+  );
+  const reviewHref = $derived(
+    jobId ? `/jobs/${jobId}/selection/review${selectionQuery}` : undefined,
   );
   const hubSectionHref = (sectionId: string): string | undefined =>
     nested && jobId ? `/jobs/${jobId}#${sectionId}` : undefined;
@@ -175,9 +195,13 @@
   const moreItemsTooltip = $derived(rolledUpLocked.map(s => s.label).join(' · '));
   const discoveryPhase = PHASES.find(p => p.id === 'discovery')!;
   const opportunitySection = discoveryPhase.sections.find(s => s.id === 'opportunities');
+  const availableSectionSet = $derived(
+    availableSectionIds ? new Set(availableSectionIds) : null,
+  );
   const contextSections = $derived(
     discoveryPhase.sections.filter(
       s => s.id !== 'opportunities'
+        && (!availableSectionSet || availableSectionSet.has(s.id))
     )
   );
   const selectionTrackedSections = $derived.by(() => [
@@ -257,6 +281,27 @@
   }
 
   $effect(() => { handleScroll(); });
+
+  onMount(() => {
+    if (nested || !window.location.hash) return;
+    const sectionId = decodeURIComponent(window.location.hash.slice(1));
+    if (!sectionId || (availableSectionSet && !availableSectionSet.has(sectionId))) return;
+    const section = discoveryPhase.sections.find((candidate) => candidate.id === sectionId);
+    if (!section) return;
+
+    window.dispatchEvent(
+      new CustomEvent("nicheiq:reveal-section", { detail: { id: sectionId } }),
+    );
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const element = document.getElementById(sectionId);
+        if (element) {
+          trackedSection = sectionId;
+          scrollToElement(element);
+        }
+      });
+    });
+  });
 </script>
 
 <svelte:window onscroll={handleScroll} />
@@ -313,9 +358,9 @@
       </div>
     </SidebarGroup>
   {:else if isSelectionMode}
-    <SidebarGroup label="Candidates">
+    <SidebarGroup label="Ideas for Deep Research">
       {#if opportunitySection}
-        {@const isActive = !nested && currentSection === opportunitySection.id}
+        {@const isActive = activeTool === "choose" || (!nested && currentSection === opportunitySection.id)}
         {@const Icon = opportunitySection.icon}
         <SidebarNavItem
           active={isActive}
@@ -323,14 +368,35 @@
           onclick={nested ? undefined : () => handleSectionClick(discoveryPhase, opportunitySection)}
         >
           {#snippet leading()}{#if Icon}<Icon class="sidebar-nav-ic" />{/if}{/snippet}
-          Shortlist
-          {#snippet trailing()}<span class="nav-preview-tag">{selectedCount > 0 ? `${selectedCount}/3` : `${selectionCount} candidates`}</span>{/snippet}
+          {CHOOSE_IDEAS_LABEL}
         </SidebarNavItem>
       {/if}
+      {#if toolItems.some((item) => item.href)}
+        {#each toolItems as item (item.slug)}
+          {@const locked = item.task?.status === "not_ready"}
+          <SidebarNavItem
+            active={activeTool === item.slug}
+            href={locked ? undefined : item.href}
+            aria-current={activeTool === item.slug ? "page" : undefined}
+            disabled={locked}
+            class={locked ? "tool-locked" : ""}
+            title={locked ? item.task?.statusLabel : undefined}
+          >
+            {item.label}
+          </SidebarNavItem>
+        {/each}
+      {/if}
+      <SidebarNavItem
+        active={activeTool === "review"}
+        href={reviewHref}
+        aria-current={activeTool === "review" ? "page" : undefined}
+      >
+        {REVIEW_AND_START_LABEL}
+      </SidebarNavItem>
     </SidebarGroup>
 
     <SidebarDivider />
-    <SidebarGroup label="Market context">
+    <SidebarGroup label="Discovery context">
       {#each contextSections as section}
         {@const isActive = !nested && currentSection === section.id}
         {@const Icon = section.icon}
@@ -343,37 +409,6 @@
           {section.label}
         </SidebarNavItem>
       {/each}
-    </SidebarGroup>
-
-    {#if toolItems.some((item) => item.href)}
-      <SidebarDivider />
-      <SidebarGroup label="Decision tools">
-        {#each toolItems as item (item.slug)}
-          {@const locked = item.task?.status === "not_ready"}
-          <SidebarNavItem
-            active={activeTool === item.slug}
-            href={locked ? undefined : item.href}
-            aria-current={activeTool === item.slug ? "page" : undefined}
-            class={locked ? "tool-locked" : ""}
-            title={locked ? item.task?.statusLabel : undefined}
-          >
-            {item.label}
-            {#snippet trailing()}
-              {#if item.task}
-                <DecisionStatusBadge status={item.task.status} label={item.task.statusLabel} compact />
-              {/if}
-            {/snippet}
-          </SidebarNavItem>
-        {/each}
-      </SidebarGroup>
-    {/if}
-
-    <SidebarDivider />
-    <SidebarGroup label="Deep Research">
-      <div class="next-card" aria-label="Deep Research unlocks after selection">
-        <span class="next-card-title">Validation</span>
-        <span class="next-card-text">Validates the ideas you shortlist.</span>
-      </div>
     </SidebarGroup>
   {:else}
     {#each PHASES as phase, phaseIndex}
@@ -490,21 +525,56 @@
 </SidebarNav>
 
 {#if isSelectionMode}
-<nav class="selection-mobile-nav" aria-label="Selection sections">
+<div class="selection-mobile-navigation">
+<nav class="selection-mobile-nav" aria-label="Research shortlist journey">
   {#if opportunitySection}
     {#if nested}
-      <a class="selection-mobile-item" href={hubSectionHref(opportunitySection.id)}>Shortlist</a>
+      <a
+        class="selection-mobile-item"
+        class:active={activeTool === "choose"}
+        aria-current={activeTool === "choose" ? "page" : undefined}
+        href={hubSectionHref(opportunitySection.id)}
+      >{CHOOSE_IDEAS_LABEL}</a>
     {:else}
       <button
         class="selection-mobile-item"
         class:active={currentSection === opportunitySection.id}
         type="button"
+        aria-current={currentSection === opportunitySection.id ? "location" : undefined}
         onclick={() => handleSectionClick(discoveryPhase, opportunitySection)}
       >
-        Shortlist
+        {CHOOSE_IDEAS_LABEL}
       </button>
     {/if}
   {/if}
+  {#each toolItems as item (item.slug)}
+    {#if item.href}
+      {@const locked = item.task?.status === "not_ready"}
+      {#if locked}
+        <span class="selection-mobile-item tool locked" aria-disabled="true">
+          <span>{item.label}</span>
+          <small>{item.task?.statusLabel}</small>
+        </span>
+      {:else}
+        <a
+          class="selection-mobile-item tool"
+          class:active={activeTool === item.slug}
+          href={item.href}
+          aria-current={activeTool === item.slug ? "page" : undefined}
+        >{item.label}</a>
+      {/if}
+    {/if}
+  {/each}
+  {#if reviewHref}
+    <a
+      class="selection-mobile-item tool"
+      class:active={activeTool === "review"}
+      href={reviewHref}
+      aria-current={activeTool === "review" ? "page" : undefined}
+    >{REVIEW_AND_START_LABEL}</a>
+  {/if}
+</nav>
+<nav class="selection-mobile-nav selection-mobile-nav--context" aria-label="Discovery context">
   {#each contextSections as section}
     {#if nested}
       <a class="selection-mobile-item" href={hubSectionHref(section.id)}>{section.label}</a>
@@ -513,24 +583,15 @@
         class="selection-mobile-item"
         class:active={currentSection === section.id}
         type="button"
+        aria-current={currentSection === section.id ? "location" : undefined}
         onclick={() => handleSectionClick(discoveryPhase, section)}
       >
         {section.label}
       </button>
     {/if}
   {/each}
-  {#each toolItems as item (item.slug)}
-    {#if item.href}
-      <a
-        class="selection-mobile-item"
-        class:active={activeTool === item.slug}
-        class:tool={true}
-        href={item.task?.status === "not_ready" ? undefined : item.href}
-        aria-current={activeTool === item.slug ? "page" : undefined}
-      >{item.label}</a>
-    {/if}
-  {/each}
 </nav>
+</div>
 {/if}
 
 <!-- ═══ MOBILE BOTTOM BAR ═══ -->
@@ -625,7 +686,6 @@
   /* A locked decision tool: readable, clearly not-yet-available. */
   :global(.phase-side .sidebar-nav-item.tool-locked) {
     cursor: default;
-    opacity: 0.5;
   }
   :global(.phase-side--selection .nav-preview-tag) {
     color: var(--color-text-muted);
@@ -646,31 +706,31 @@
   /* ── Phase badge (SidebarGroup trailing) ── */
   .phase-badge {
     font-family: var(--font-mono);
-    font-size: 0.5625rem;
+    font-size: var(--text-xs);
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    padding: 2px 7px;
-    border-radius: 9999px;
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-full);
     white-space: nowrap;
   }
 
   .phase-badge.badge-success {
-    color: var(--color-success-dark);
-    background: rgba(34, 197, 94, 0.1);
-    border: 0.5px solid rgba(34, 197, 94, 0.3);
+    color: var(--color-success-text);
+    background: var(--color-success-subtle);
+    border: 1px solid var(--color-border-success);
   }
 
   .phase-badge.badge-secondary {
-    color: var(--color-secondary-dark, #4f46e5);
-    background: var(--color-secondary-subtle, rgba(99, 102, 241, 0.08));
-    border: 0.5px solid rgba(99, 102, 241, 0.2);
+    color: var(--color-info-dark);
+    background: var(--color-info-subtle);
+    border: 1px solid var(--color-border-info);
   }
 
   .phase-badge.badge-muted {
     color: var(--color-text-muted);
     background: var(--color-bg-surface);
-    border: 0.5px solid var(--color-border);
+    border: 1px solid var(--color-border);
   }
 
   /* ── "Done" check (SidebarNavItem trailing) ── */
@@ -680,18 +740,18 @@
     height: 16px;
     /* -dark for 3:1 non-text contrast of the white glyph (1.4.11). */
     background: var(--color-success-dark);
-    border-radius: 50%;
+    border-radius: var(--radius-full);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: white;
+    color: var(--color-bg-elevated);
     flex-shrink: 0;
   }
 
   /* ── Preview tag (SidebarNavItem trailing) ── */
   .nav-preview-tag {
     margin-left: auto;
-    font-size: 0.625rem;
+    font-size: var(--text-xs);
     font-weight: 600;
     color: var(--color-accent-dark);
     letter-spacing: 0.02em;
@@ -710,14 +770,14 @@
     padding: 0.5rem 0.65rem;
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
-    border-radius: 0.55rem;
+    border-radius: var(--radius-md);
   }
   .gate-rail-step {
     display: inline-flex;
     align-items: center;
     gap: 0.3rem;
     font-family: var(--font-mono);
-    font-size: 0.625rem;
+    font-size: var(--text-xs);
     font-weight: 700;
     letter-spacing: 0.02em;
     color: var(--color-text-muted);
@@ -731,7 +791,7 @@
   .gate-rail-arrow {
     color: var(--color-text-muted);
     opacity: 0.5;
-    font-size: 0.625rem;
+    font-size: var(--text-xs);
   }
   .gate-rail-marker {
     flex-shrink: 0;
@@ -742,10 +802,10 @@
   }
   .gate-rail-marker--diamond {
     transform: rotate(45deg);
-    border-radius: 1px;
+    border-radius: var(--radius-sm);
   }
   .gate-rail-marker--circle {
-    border-radius: 50%;
+    border-radius: var(--radius-full);
   }
   .gate-rail-step.is-done .gate-rail-marker {
     background: var(--color-text-secondary);
@@ -759,24 +819,24 @@
   /* ── Deep-research "next" card (selection sidebar) ── */
   .next-card {
     display: grid;
-    gap: 0.18rem;
-    margin: 0.2rem 1.5rem 0;
-    padding: 0.68rem 0.72rem;
+    gap: var(--space-1);
+    margin: var(--space-1) var(--space-6) 0;
+    padding: var(--space-3);
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
-    border-radius: 0.65rem;
+    border-radius: var(--radius-lg);
     color: var(--color-text-muted);
   }
 
   .next-card-title {
     color: var(--color-text-secondary);
-    font-size: 0.82rem;
-    font-weight: 750;
+    font-size: var(--text-13);
+    font-weight: 700;
   }
 
   .next-card-text {
     color: var(--color-text-secondary);
-    font-size: 0.72rem;
+    font-size: var(--text-sm);
     line-height: 1.35;
   }
 
@@ -812,12 +872,12 @@
     line-height: 1.4;
     color: var(--color-text-primary);
     font-family: var(--font-body);
-    font-size: 0.8125rem;
+    font-size: var(--text-13);
     font-weight: 500;
   }
   .nav-item-tagline {
     font-family: var(--font-mono);
-    font-size: 0.625rem;
+    font-size: var(--text-xs);
     font-weight: 500;
     letter-spacing: 0.04em;
     color: var(--color-text-muted);
@@ -853,34 +913,57 @@
     gap: 0.375rem;
     padding: 0.35rem 1.5rem;
     font-family: var(--font-mono);
-    font-size: 0.6875rem;
+    font-size: var(--text-11);
     /* Was opacity:0.4 (~1.9:1) — the "+N more" count is information, not
        decoration, so it must be legible. Full-strength muted = 4.4:1. */
     color: var(--color-text-muted);
     letter-spacing: 0.03em;
   }
 
+  /* Width clamp: this wrapper is a direct flex item of .job-page-shell. Without
+     min-width:0 its min-content (the sum of the nowrap chips, ~700px) propagates
+     into the shell and inflates the page at narrow viewports, pushing the commit
+     CTA off-screen. The inner navs stay the scrollers (overflow-x:auto). */
+  .selection-mobile-navigation {
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: clip;
+  }
+
   .selection-mobile-nav {
     display: flex;
-    gap: 0.5rem;
-    padding: 0.85rem 1rem;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
     overflow-x: auto;
     border-bottom: 1px solid var(--color-border);
     background: var(--color-bg-base);
   }
 
+  .selection-mobile-nav--context {
+    padding-top: 0;
+    border-bottom: 0;
+    background: var(--color-bg-surface);
+  }
+
   .selection-mobile-item {
     flex: 0 0 auto;
-    padding: 0.42rem 0.78rem;
+    min-height: var(--space-10);
+    padding: var(--space-2) var(--space-3);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
     background: var(--color-bg-elevated);
     color: var(--color-text-secondary);
-    font-size: 0.8125rem;
+    font-size: var(--text-13);
     font-weight: 600;
     white-space: nowrap;
     text-decoration: none;
+    transition: background var(--duration-fast) var(--ease-default), border-color var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default), transform var(--duration-fast) var(--ease-default);
   }
+
+  .selection-mobile-item:hover:not(.locked):not(.active) { border-color: var(--color-border-emphasis); color: var(--color-text-primary); }
+  .selection-mobile-item:active:not(.locked) { transform: scale(0.98); }
+  .selection-mobile-item.locked { display: grid; gap: var(--space-1); color: var(--color-text-muted); background: var(--color-bg-surface); }
+  .selection-mobile-item.locked small { font-size: var(--text-xs); line-height: 1.2; }
 
   .selection-mobile-item.active {
     border-color: var(--color-border-accent);
@@ -894,7 +977,7 @@
   }
 
   @media (min-width: 1280px) {
-    .selection-mobile-nav { display: none; }
+    .selection-mobile-navigation { display: none; }
   }
 
   /* ═══════════════════════════════════
@@ -929,9 +1012,9 @@
     padding: 0.75rem 1.5rem;
     background: var(--color-bg-elevated);
     border: 1px solid var(--color-border);
-    border-radius: 2rem;
+    border-radius: var(--radius-full);
     color: var(--color-text-primary);
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     font-weight: 600;
     cursor: pointer;
   }
@@ -940,20 +1023,20 @@
     width: 60px;
     height: 3px;
     background: var(--color-bg-surface);
-    border-radius: 2px;
+    border-radius: var(--radius-full);
     overflow: hidden;
   }
 
   .mobile-progress-fill {
     height: 100%;
     background: var(--color-accent);
-    border-radius: 2px;
-    transition: width 100ms linear;
+    border-radius: var(--radius-full);
+    transition: width var(--duration-fast) linear;
   }
 
   .mobile-current {
     font-family: var(--font-mono);
-    font-size: 0.6875rem;
+    font-size: var(--text-11);
     text-transform: uppercase;
     letter-spacing: 0.05em;
   }
@@ -974,7 +1057,7 @@
     min-width: 200px;
     max-height: 60vh;
     overflow-y: auto;
-    animation: slideUp 200ms ease-out;
+    animation: slideUp var(--duration-normal) var(--ease-out);
   }
 
   @keyframes slideUp {
@@ -1005,13 +1088,13 @@
     border: none;
     border-radius: var(--radius-md, 0.375rem);
     color: var(--color-text-muted);
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     font-weight: 500;
     cursor: pointer;
     text-align: left;
     width: 100%;
     white-space: nowrap;
-    transition: color 150ms ease, background-color 150ms ease;
+    transition: color var(--duration-fast) var(--ease-default), background-color var(--duration-fast) var(--ease-default);
   }
 
   .mobile-item:hover:not(.locked) {
@@ -1022,11 +1105,11 @@
   .mobile-item.active {
     /* -dark so orange-on-accent-subtle clears AA (4.5:1), not 3.4:1. */
     color: var(--color-accent-dark);
-    background: var(--color-accent-subtle, rgba(234, 88, 12, 0.06));
+    background: var(--color-accent-subtle);
   }
 
   .mobile-item.done {
-    color: var(--color-success-dark);
+    color: var(--color-success-text);
   }
 
   .mobile-item.locked {
@@ -1042,5 +1125,7 @@
   @media (prefers-reduced-motion: reduce) {
     .mobile-menu { animation: none; }
     .mobile-progress-fill { transition: none; }
+    .selection-mobile-item { transition: none; }
+    .selection-mobile-item:active { transform: none; }
   }
 </style>

@@ -298,6 +298,35 @@ adminRouter.patch('/users/:userId/access-chat', async (req: AuthenticatedRequest
 });
 
 // ============================================
+// Grant / revoke decision tools access (optional selection checks + Decision Lab)
+// ============================================
+
+const UpdateDecisionToolsAccessSchema = z.object({ decisionToolsAccess: z.boolean() });
+
+adminRouter.patch('/users/:userId/access-decision-tools', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const input = UpdateDecisionToolsAccessSchema.parse(req.body);
+    const user = await prisma.user.update({
+      where: { id: req.params.userId },
+      data: { decisionToolsAccess: input.decisionToolsAccess },
+      select: { id: true, email: true, decisionToolsAccess: true },
+    });
+    res.json(user);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation error', details: error.errors });
+      return;
+    }
+    if ((error as { code?: string })?.code === 'P2025') {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+    console.error('Failed to update user decision tools access:', error);
+    res.status(500).json({ error: 'Failed to update user decision tools access' });
+  }
+});
+
+// ============================================
 // Add Credits to User
 // ============================================
 

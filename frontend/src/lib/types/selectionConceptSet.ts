@@ -88,6 +88,8 @@ export interface SelectionConceptSet {
   artifact: SelectionConceptSetArtifact;
   stale: boolean;
   createdAt: string;
+  /** Options that already minted a proposal (server-derived, survives reloads). */
+  evaluatedOptionIds: string[];
 }
 
 export interface PreparedSelectionConceptOption {

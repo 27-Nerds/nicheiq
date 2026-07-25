@@ -62,6 +62,13 @@ function ideaRefLabel(
 export function buildSelectionDecisionStateBlock(
   state: SelectionDecisionState | null,
   ideas: Record<string, unknown>[],
+  /**
+   * Whether the owner has the optional decision tools grant. When false the record
+   * counts and the "optional decision work" phrasing are dropped: they enumerate the
+   * gated toolset to the model on every turn (as a row of zeroes), which is exactly the
+   * vocabulary the analyst must not have.
+   */
+  decisionTools = false,
 ): string {
   if (!state) return '';
   const ideaLabels = state.nextAction.ideas.flatMap((reference) => {
@@ -79,7 +86,9 @@ export function buildSelectionDecisionStateBlock(
     `${state.conclusions.length} conclusions`,
   ].join(', ');
   const deepResearch = state.deepResearch.eligible
-    ? 'available now; optional decision work does not block it'
+    ? decisionTools
+      ? 'available now; optional decision work does not block it'
+      : 'available now'
     : `blocked only by ${state.deepResearch.blockers.map(humanizeContextKey).join(', ')}`;
   const actionLabel = state.nextAction.required ? 'Required next step' : 'Recommended optional next step';
   return [
@@ -87,8 +96,12 @@ export function buildSelectionDecisionStateBlock(
     `- Deep Research: ${deepResearch}.`,
     `- ${actionLabel}: ${humanizeContextKey(state.nextAction.kind)} — ${state.nextAction.reason}`,
     `- Exact target: ${ideaLabels.join(', ') || 'selection workspace'}${state.nextAction.lens ? `; ${state.nextAction.lens} lens` : ''}.`,
-    `- Current exact-revision records: ${currentCounts}.`,
-    `- Historical/stale artifacts excluded from current state: ${state.staleCounts.total}.`,
+    ...(decisionTools
+      ? [
+        `- Current exact-revision records: ${currentCounts}.`,
+        `- Historical/stale artifacts excluded from current state: ${state.staleCounts.total}.`,
+      ]
+      : []),
   ].join('\n');
 }
 
@@ -611,9 +624,9 @@ export function buildExperimentBriefBlock(
 }
 
 // ============================================================================
-// Shape concept directions (G3 dossier gap G1): Concept Forge generates up to
-// three intentionally different, UNEVALUATED draft directions branched off one
-// or two candidates. They carry no score and change no ranking or shortlist.
+// Branch-direction sets (G3 dossier gap G1): Concept Forge generates up to
+// three intentionally different, UNEVALUATED draft directions from one or two
+// candidates. They carry no score and change no ranking or shortlist.
 // ============================================================================
 
 export function currentSelectionConceptSets(
@@ -681,10 +694,10 @@ export function buildConceptSetBlock(
       ideaRevision: parent.ideaRevision,
       title: parent.solutionName,
     }))),
-    'these Shape directions',
+    'these branch directions',
   );
   return [
-    'Shape concept directions (unevaluated draft branches off a candidate; exploration only, they carry no score and change no ranking, shortlist, or research finding until the owner chooses to evaluate one):',
+    'Branch directions (unevaluated drafts from current candidates; exploration only, they carry no score and change no ranking, shortlist, or research finding until the owner chooses to evaluate one):',
     scope,
     ...blocks,
   ].filter(Boolean).join('\n');

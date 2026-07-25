@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, fireEvent, cleanup, waitFor, within } from "@testing-library/svelte";
 import { page } from "$app/state";
+import { goto, pushState, replaceState } from "$app/navigation";
 import SelectionWorkbench from "../SelectionWorkbench.svelte";
 import { seedIdea, getStageCosts, ApiError, createSelectionIdeaNarrowingProposal, getChatHistory, getSelectionChallenges, getSelectionConceptSets, getSelectionDecisionState, getSelectionExperiments, saveSelectionDecisionProfile, saveSelectionDraft, streamChat } from "$lib/api";
 import { chatLedger } from "$lib/stores/chatLedger.svelte";
@@ -75,6 +76,9 @@ const baseProps = {
   creditBalance: 100,
   stageCosts: STAGE_COSTS,
   canRegenerate: true,
+  // The prop fails closed in the component; these suites describe a fully granted
+  // owner. The ungated behaviour has its own describe block at the bottom of the file.
+  decisionTools: true,
 };
 
 const OLD_DECISION_PROFILE: SelectionDecisionProfile = {
@@ -127,14 +131,17 @@ async function openAppendix(view: {
 // reuses jobId "job-1", so a manual toggle in one test would otherwise leak
 // into every later test's initial render.
 const originalPageUrl = page.url;
+const originalPageState = page.state;
 
 beforeEach(() => {
   localStorage.clear();
   page.url = new URL("http://localhost/jobs/job-1") as typeof page.url;
+  page.state = {} as typeof page.state;
 });
 
 afterEach(() => {
   page.url = originalPageUrl;
+  page.state = originalPageState;
 });
 
 describe("SelectionWorkbench — idea seed submit (402/409 CAS)", () => {
@@ -327,7 +334,7 @@ describe("SelectionWorkbench — poolMutationBusy gates pool-mutating controls",
     // chatLedger.hasPendingSeed only becomes true once the mocked history resolves.
     await waitFor(() => expect(chatLedger.hasPendingSeed).toBe(true));
 
-    const regenBtn = await findByRole("button", { name: /Explore variants/ }) as HTMLButtonElement;
+    const regenBtn = await findByRole("button", { name: /Branch a new direction/ }) as HTMLButtonElement;
     expect(regenBtn.disabled).toBe(true);
 
     const shortlistCheckbox = getByLabelText("Select Alpha Idea") as HTMLInputElement;
@@ -337,7 +344,7 @@ describe("SelectionWorkbench — poolMutationBusy gates pool-mutating controls",
   it("with no pending seed and affordable credits, regenerate and shortlist stay enabled", async () => {
     const { findByRole, getByLabelText } = render(SelectionWorkbench, { props: baseProps });
 
-    const regenBtn = await findByRole("button", { name: /Explore variants/ }) as HTMLButtonElement;
+    const regenBtn = await findByRole("button", { name: /Branch a new direction/ }) as HTMLButtonElement;
     expect(regenBtn.disabled).toBe(false);
 
     const shortlistCheckbox = getByLabelText("Select Alpha Idea") as HTMLInputElement;
@@ -491,7 +498,7 @@ describe("SelectionWorkbench — ruled-out panel: idea name primary + 'Your idea
     });
 
     await fireEvent.click(await findByRole(
-      "button", { name: /^ProMatchDesk ?, open details$/ },
+      "button", { name: /^ProMatchDesk \(CS2\+Dota 2\) ?, open details$/ },
     ));
     await findByRole(
       "dialog", { name: "Solution details: ProMatchDesk (CS2+Dota 2)" },
@@ -510,9 +517,9 @@ describe("SelectionWorkbench — ruled-out panel: idea name primary + 'Your idea
       },
     });
 
-    // The verdict line stays on-screen as the ANALYST VERDICT pull-quote.
+    // The discovery take stays on-screen above the ranked candidates.
     // (The idea-name chip appends an sr-only ", open details" hint to its text.)
-    const verdict = await view.findByLabelText("Analyst verdict");
+    const verdict = await view.findByLabelText("Discovery take");
     expect(verdict).toHaveTextContent(
       /Alpha Idea.*most deserves deeper validation because it has the clearest buyer\./,
     );
@@ -536,6 +543,26 @@ describe("SelectionWorkbench — ruled-out panel: idea name primary + 'Your idea
     const notes = await view.findByLabelText("Analyst notes");
     expect(notes).toHaveTextContent("The pool has moderate market fit overall.");
     expect(notes).toHaveTextContent("Free incumbents make willingness to pay the central risk.");
+  });
+
+  it("renders discovery-take idea links with the display title, not the internal codename", async () => {
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: [
+          solution("AlphaIdeaCodename", { headline: "Alpha invoice chaser" }),
+          solution("Beta Idea"),
+        ],
+        ideaPortfolioSummary: "AlphaIdeaCodename most deserves deeper validation.",
+      },
+    });
+
+    const verdict = await view.findByLabelText("Discovery take");
+    // (The link chip appends an sr-only ", open details" hint mid-sentence.)
+    expect(verdict).toHaveTextContent(
+      /Alpha invoice chaser.*most deserves deeper validation\./,
+    );
+    expect(verdict).not.toHaveTextContent("AlphaIdeaCodename");
   });
 
   it("badges only the explicit recommendation when one paragraph discusses every idea", async () => {
@@ -639,15 +666,16 @@ describe("SelectionWorkbench — stable selection identity", () => {
 
     expect(audience.checked).toBe(true);
     expect(workflow.checked).toBe(true);
-    expect(view.getByRole("complementary", { name: "Your decision" })).toHaveTextContent("2 / 3");
+    expect(view.getByRole("complementary", { name: "Ideas for Deep Research" })).toHaveAccessibleName("Ideas for Deep Research");
+    expect(view.getByLabelText("2 of 3 ideas selected")).toBeInTheDocument();
 
     await fireEvent.click(audience);
     expect(audience.checked).toBe(false);
     expect(workflow.checked).toBe(true);
-    expect(view.getByRole("button", { name: /Check the evidence/ })).toBeInTheDocument();
+    expect(view.getByText("Check the evidence")).toBeInTheDocument();
   });
 
-  it("opens Concept Forge for one exact selected candidate", async () => {
+  it("routes legacy alternatives links to one exact selected candidate", async () => {
     const identified = [
       solution("Alpha Idea", { idea_id: "idea-alpha" }),
       solution("Beta Idea", { idea_id: "idea-beta" }),
@@ -657,12 +685,15 @@ describe("SelectionWorkbench — stable selection identity", () => {
       props: { ...baseProps, solutions: identified, selectedSolutionIds: ["idea-alpha"] },
     });
 
-    expect(await view.findByRole("heading", { name: "Explore variants" })).toBeInTheDocument();
-    expect(getSelectionConceptSets).toHaveBeenCalledWith("job-1");
+    await waitFor(() => expect(goto).toHaveBeenCalledWith(
+      "/jobs/job-1/selection/compare?idea=idea-alpha%3A1&tool=variants",
+      { replaceState: true },
+    ));
+    expect(view.queryByRole("heading", { name: "Branch a new direction" })).not.toBeInTheDocument();
     expect(seedIdea).not.toHaveBeenCalled();
   });
 
-  it("opens an analyst-prepared Concept Forge brief for exact current revisions without generating", async () => {
+  it("routes an analyst-prepared directions brief with exact current revisions without generating", async () => {
     const identified = [
       solution("Alpha Idea", { idea_id: "idea-alpha", idea_revision: 2 }),
       solution("Beta Idea", { idea_id: "idea-beta", idea_revision: 4 }),
@@ -700,18 +731,29 @@ describe("SelectionWorkbench — stable selection identity", () => {
 
     await fireEvent.click(await view.findByRole("button", { name: "Review directions brief" }));
 
-    expect(await view.findByRole("heading", { name: "Explore variants" })).toBeInTheDocument();
-    expect(view.getByText("Beta Idea · rev 4")).toBeInTheDocument();
-    expect(view.getByText("Alpha Idea · rev 2")).toBeInTheDocument();
-    expect(view.getByRole("radio", { name: /Resolve the trade-off/ })).toHaveAttribute("aria-checked", "true");
-    expect(view.getByDisplayValue("Faster launch versus a stronger evidence moat")).toBeInTheDocument();
-    expect(view.getByText("Compare the two viable shapes before evaluating either one.")).toBeInTheDocument();
-    expect(view.getByText("The generated branches still need fresh evaluation.")).toBeInTheDocument();
+    await waitFor(() => expect(goto).toHaveBeenCalledWith(
+      "/jobs/job-1/selection/compare?idea=idea-beta%3A4&idea=idea-alpha%3A2&tool=variants&mode=resolve_tradeoff",
+      expect.objectContaining({
+        state: expect.objectContaining({
+          selectionConceptPrefill: expect.objectContaining({
+            requestId: "asst-concept-brief",
+            purpose: "resolve_tradeoff",
+            targetTradeoff: "Faster launch versus a stronger evidence moat",
+          }),
+          selectionToolOrigin: {
+            tool: "variants",
+            jobId: "job-1",
+            returnHref: "/jobs/job-1",
+            historyOwned: true,
+          },
+        }),
+      }),
+    ));
     expect(getSelectionConceptSets).not.toHaveBeenCalled();
     expect(seedIdea).not.toHaveBeenCalled();
   });
 
-  it("opens one shaping workspace without sending or changing the selected idea", async () => {
+  it("routes one selected idea to the canonical shaping workspace without sending or changing it", async () => {
     chatPanel.close();
     const identified = [
       solution("Alpha Idea", { idea_id: "idea-alpha" }),
@@ -724,14 +766,16 @@ describe("SelectionWorkbench — stable selection identity", () => {
 
     const alpha = view.getByLabelText("Deselect Alpha Idea") as HTMLInputElement;
 
-    expect(await view.findByRole("heading", { name: "Explore variants" })).toBeInTheDocument();
-    expect(view.getByText(/Alpha Idea · rev 1/)).toBeInTheDocument();
+    await waitFor(() => expect(goto).toHaveBeenCalledWith(
+      "/jobs/job-1/selection/compare?idea=idea-alpha%3A1&tool=variants",
+      { replaceState: true },
+    ));
     expect(alpha.checked).toBe(true);
     expect(streamChat).not.toHaveBeenCalled();
     expect(seedIdea).not.toHaveBeenCalled();
   });
 
-  it("opens two exact parents in the shared shaping workspace without changing the shortlist", async () => {
+  it("routes two exact candidates to the shared shaping workspace without changing the shortlist", async () => {
     chatPanel.close();
     const identified = [
       solution("Alpha Idea", { idea_id: "idea-alpha" }),
@@ -745,8 +789,10 @@ describe("SelectionWorkbench — stable selection identity", () => {
     const alpha = view.getByLabelText("Deselect Alpha Idea") as HTMLInputElement;
     const beta = view.getByLabelText("Deselect Beta Idea") as HTMLInputElement;
 
-    expect(await view.findByText(/Alpha Idea · rev 1/)).toBeInTheDocument();
-    expect(view.getByText(/Beta Idea · rev 1/)).toBeInTheDocument();
+    await waitFor(() => expect(goto).toHaveBeenCalledWith(
+      "/jobs/job-1/selection/compare?idea=idea-alpha%3A1&idea=idea-beta%3A1&tool=variants",
+      { replaceState: true },
+    ));
     expect(alpha.checked).toBe(true);
     expect(beta.checked).toBe(true);
     expect(streamChat).not.toHaveBeenCalled();
@@ -771,6 +817,179 @@ describe("SelectionWorkbench — stable selection identity", () => {
     const beta = view.getByLabelText("Deselect Beta Idea") as HTMLInputElement;
     await waitFor(() => expect(beta.checked).toBe(true));
     expect(alpha.checked).toBe(false);
+  });
+
+  it("opens an exact candidate revision in a shareable detail tab", async () => {
+    page.url = new URL(
+      "http://localhost/jobs/job-1?keep=1&detailTab=detail&ideaId=idea-b&ideaRevision=4#opportunities",
+    ) as typeof page.url;
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: [
+          solution("Same name", {
+            idea_id: "idea-a",
+            idea_revision: 2,
+            headline: "Earlier candidate",
+            description: "Earlier-revision description",
+          }),
+          solution("Same name", {
+            idea_id: "idea-b",
+            idea_revision: 4,
+            headline: "Exact shared candidate",
+            description: "Exact-revision description",
+          }),
+        ],
+      },
+    });
+
+    const detail = await view.findByRole("dialog", {
+      name: "Solution details: Exact shared candidate",
+    });
+    expect(detail).toBeInTheDocument();
+    expect(view.getByRole("tab", { name: "Full detail" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(within(detail).getByText("Exact-revision description")).toBeInTheDocument();
+    expect(within(detail).queryByText("Earlier-revision description")).not.toBeInTheDocument();
+  });
+
+  it("preserves unrelated query state while opening and closing exact details", async () => {
+    page.url = new URL("http://localhost/jobs/job-1?keep=1#opportunities") as typeof page.url;
+    const back = vi.spyOn(window.history, "back").mockImplementation(() => undefined);
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: [
+          solution("Alpha Idea", {
+            idea_id: "idea-alpha",
+            idea_revision: 3,
+          }),
+        ],
+      },
+    });
+
+    await fireEvent.click(
+      view.getByRole("button", { name: "Review details for Alpha Idea" }),
+    );
+    const openedUrl = new URL(
+      vi.mocked(pushState).mock.calls.at(-1)?.[0] as string,
+      "http://localhost",
+    );
+    expect(openedUrl.searchParams.get("keep")).toBe("1");
+    expect(openedUrl.searchParams.get("ideaId")).toBe("idea-alpha");
+    expect(openedUrl.searchParams.get("ideaRevision")).toBe("3");
+    expect(openedUrl.searchParams.get("detailTab")).toBe("overview");
+    expect(openedUrl.hash).toBe("#opportunities");
+
+    await fireEvent.click(view.getByRole("tab", { name: "Full detail" }));
+    const tabUrl = new URL(
+      vi.mocked(replaceState).mock.calls.at(-1)?.[0] as string,
+      "http://localhost",
+    );
+    expect(tabUrl.searchParams.get("keep")).toBe("1");
+    expect(tabUrl.searchParams.get("ideaId")).toBe("idea-alpha");
+    expect(tabUrl.searchParams.get("ideaRevision")).toBe("3");
+    expect(tabUrl.searchParams.get("detailTab")).toBe("detail");
+
+    await fireEvent.click(view.getByRole("button", { name: "Close details" }));
+    expect(back).toHaveBeenCalledOnce();
+    back.mockRestore();
+  });
+
+  it("closes idea details, expands the requested Discovery evidence, and preserves unrelated URL state", async () => {
+    page.url = new URL("http://localhost/jobs/job-1?keep=1") as typeof page.url;
+    const back = vi.spyOn(window.history, "back").mockImplementation(() => undefined);
+    const scrollIntoView = vi.fn();
+    const evidenceSection = document.createElement("section");
+    evidenceSection.id = "pain-points";
+    Object.defineProperty(evidenceSection, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    const evidenceTrigger = document.createElement("button");
+    evidenceTrigger.textContent = "Pain Points";
+    evidenceTrigger.setAttribute("aria-expanded", "false");
+    evidenceTrigger.setAttribute("aria-controls", "pain-points-content");
+    evidenceTrigger.addEventListener("click", () => {
+      evidenceTrigger.setAttribute("aria-expanded", "true");
+    });
+    evidenceSection.append(evidenceTrigger);
+    document.body.append(evidenceSection);
+
+    try {
+      const view = render(SelectionWorkbench, {
+        props: {
+          ...baseProps,
+          painPointCount: 2,
+          solutions: [
+            solution("Alpha Idea", {
+              idea_id: "idea-alpha",
+              idea_revision: 3,
+            }),
+          ],
+        },
+      });
+
+      await fireEvent.click(
+        view.getByRole("button", { name: "Review details for Alpha Idea" }),
+      );
+      await fireEvent.click(view.getByRole("link", { name: "Pain evidence" }));
+
+      await waitFor(() => expect(view.queryByRole("dialog")).not.toBeInTheDocument());
+      expect(back).not.toHaveBeenCalled();
+      expect(evidenceTrigger).toHaveAttribute("aria-expanded", "true");
+      expect(scrollIntoView).toHaveBeenCalledWith({
+        behavior: expect.any(String),
+        block: "start",
+      });
+      expect(evidenceTrigger).toHaveFocus();
+
+      const evidenceUrl = new URL(
+        vi.mocked(replaceState).mock.calls.at(-1)?.[0] as string,
+        "http://localhost",
+      );
+      expect(evidenceUrl.searchParams.get("keep")).toBe("1");
+      expect(evidenceUrl.searchParams.has("detailTab")).toBe(false);
+      expect(evidenceUrl.searchParams.has("ideaId")).toBe(false);
+      expect(evidenceUrl.hash).toBe("#pain-points");
+    } finally {
+      evidenceSection.remove();
+      back.mockRestore();
+    }
+  });
+
+  it("shows a recoverable error for a stale exact-revision link", async () => {
+    page.url = new URL(
+      "http://localhost/jobs/job-1?keep=1&detailTab=overview&ideaId=idea-a&ideaRevision=9",
+    ) as typeof page.url;
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: [
+          solution("Alpha Idea", {
+            idea_id: "idea-a",
+            idea_revision: 2,
+          }),
+        ],
+      },
+    });
+
+    expect(
+      await view.findByRole("alert"),
+    ).toHaveTextContent("That exact idea revision is no longer available");
+    expect(view.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await fireEvent.click(view.getByRole("button", { name: "Return to ranked ideas" }));
+    const cleanedUrl = new URL(
+      vi.mocked(replaceState).mock.calls.at(-1)?.[0] as string,
+      "http://localhost",
+    );
+    expect(cleanedUrl.searchParams.get("keep")).toBe("1");
+    expect(cleanedUrl.searchParams.has("detailTab")).toBe(false);
+    expect(cleanedUrl.searchParams.has("ideaId")).toBe(false);
+    expect(cleanedUrl.searchParams.has("ideaRevision")).toBe(false);
   });
 });
 
@@ -836,7 +1055,7 @@ describe("SelectionWorkbench — durable shortlist draft", () => {
 
     const alpha = view.getByLabelText("Select Alpha Idea") as HTMLInputElement;
     await fireEvent.click(alpha);
-    await view.findByText("Shortlist not saved");
+    await view.findByText("Connection failed");
     expect(alpha.checked).toBe(true);
 
     await fireEvent.click(view.getByRole("button", { name: "Retry" }));
@@ -857,7 +1076,7 @@ describe("SelectionWorkbench — durable shortlist draft", () => {
 
     await fireEvent.click(view.getByLabelText("Select Alpha Idea"));
 
-    expect(await view.findByText("Shortlist not saved")).toBeInTheDocument();
+    expect(await view.findByText("The shortlist changed in another session")).toBeInTheDocument();
     expect(view.getByRole("button", { name: "Reload" })).toBeInTheDocument();
   });
 });
@@ -872,7 +1091,7 @@ describe("SelectionWorkbench — similar candidate families", () => {
 
   afterEach(cleanup);
 
-  it("compares an exact overlap family without changing the shortlist", async () => {
+  it("routes an exact overlap family to the canonical comparison without changing the shortlist", async () => {
     const identified = [
       solution("Alpha Idea", { idea_id: "idea-alpha", headline: "Audience-led monitor" }),
       solution("Beta Idea", { idea_id: "idea-beta", headline: "Workflow-led monitor" }),
@@ -894,42 +1113,19 @@ describe("SelectionWorkbench — similar candidate families", () => {
     const beta = view.getByLabelText("Select Workflow-led monitor") as HTMLInputElement;
     expect(alpha.checked).toBe(false);
     expect(beta.checked).toBe(false);
-    expect(view.getByText("Similar candidate family · 2")).toBeInTheDocument();
+    expect(view.getByText("Similar idea family · 2")).toBeInTheDocument();
     expect(view.getByText("Market signal monitor")).toBeInTheDocument();
 
     await fireEvent.click(view.getByRole("button", { name: "Compare variants" }));
 
-    const dialog = await view.findByRole("dialog", { name: "Compare similar candidates" });
-    expect(dialog).toHaveTextContent("Resolve Market signal monitor variants");
-    expect(dialog).toHaveTextContent("Audience-led monitor");
-    expect(dialog).toHaveTextContent("Workflow-led monitor");
-    expect(dialog).toHaveTextContent(
-      "Research grouped these as one buyer-visible product.",
+    expect(goto).toHaveBeenCalledWith(
+      "/jobs/job-1/selection/compare?idea=idea-alpha%3A1&idea=idea-beta%3A1&view=market",
     );
-    expect(view.getByRole(
-      "region", { name: "Similar candidate comparison" },
-    )).toBeInTheDocument();
-    const shortlistAlpha = view.getByRole("button", { name: "Shortlist Audience-led monitor" });
-    expect(alpha.checked).toBe(false);
-    expect(beta.checked).toBe(false);
-
-    await fireEvent.click(shortlistAlpha);
-    expect(alpha.checked).toBe(true);
-    expect(beta.checked).toBe(false);
-    expect(view.getByRole(
-      "button", { name: "Remove Audience-led monitor" },
-    )).toHaveAttribute("aria-pressed", "true");
-
-    await fireEvent.click(view.getByRole("button", { name: "Remove Audience-led monitor" }));
-    expect(alpha.checked).toBe(false);
-
-    await fireEvent.click(view.getByRole("button", { name: "Close comparison" }));
-    expect(view.queryByRole("dialog", { name: "Compare similar candidates" })).not.toBeInTheDocument();
     expect(alpha.checked).toBe(false);
     expect(beta.checked).toBe(false);
   });
 
-  it("disables new family picks when the shortlist is full", async () => {
+  it("keeps comparison available when the shortlist is full without mutating it", async () => {
     const ideas = [
       solution("Alpha Idea", { idea_id: "idea-alpha", headline: "Audience-led monitor" }),
       solution("Beta Idea", { idea_id: "idea-beta", headline: "Workflow-led monitor" }),
@@ -955,15 +1151,12 @@ describe("SelectionWorkbench — similar candidate families", () => {
 
     await fireEvent.click(view.getByRole("button", { name: "Compare variants" }));
 
-    const alphaAction = await view.findByRole(
-      "button", { name: "Shortlist Audience-led monitor" },
+    expect(goto).toHaveBeenCalledWith(
+      "/jobs/job-1/selection/compare?idea=idea-alpha%3A1&idea=idea-beta%3A1&view=market",
     );
-    const betaAction = view.getByRole(
-      "button", { name: "Shortlist Workflow-led monitor" },
-    );
-    expect(alphaAction).toBeDisabled();
-    expect(betaAction).toBeDisabled();
-    expect(view.getAllByText("Shortlist full")).toHaveLength(2);
+    expect((view.getByLabelText("Deselect Gamma Idea") as HTMLInputElement).checked).toBe(true);
+    expect((view.getByLabelText("Deselect Delta Idea") as HTMLInputElement).checked).toBe(true);
+    expect((view.getByLabelText("Deselect Epsilon Idea") as HTMLInputElement).checked).toBe(true);
   });
 
   it("does not guess when legacy overlap names map to multiple exact ideas", async () => {
@@ -1034,7 +1227,7 @@ describe("SelectionWorkbench — shared workspace overlay", () => {
 
     await findByRole("dialog", { name: "Analyst conversation" });
     await fireEvent.click(await findByRole(
-      "button", { name: /^ProMatchDesk ?, open details$/ },
+      "button", { name: /^ProMatchDesk \(CS2\+Dota 2\) ?, open details$/ },
     ));
     await findByRole("dialog", { name: "Solution details: ProMatchDesk (CS2+Dota 2)" });
     expect(chatPanel.state).toBe("launcher");
@@ -1072,7 +1265,7 @@ describe("SelectionWorkbench — accepted narrowed variant", () => {
 
   afterEach(cleanup);
 
-  it("compares exact parent/child revisions and replaces a selected parent", async () => {
+  it("routes an exact parent revision into the canonical test workspace", async () => {
     chatPanel.close();
     const parent = solution("Signal Desk", {
       idea_id: "idea-parent",
@@ -1195,21 +1388,11 @@ describe("SelectionWorkbench — accepted narrowed variant", () => {
     const view = render(SelectionWorkbench, {
       props: { ...baseProps, solutions: [parent, child], selectedSolutionIds: ["idea-parent"] },
     });
-    const parentChoice = await view.findByLabelText("Deselect Signal Desk") as HTMLInputElement;
-    const childChoice = await view.findByLabelText("Select Agency Renewal Signal Desk") as HTMLInputElement;
-    await waitFor(() => expect(parentChoice.checked).toBe(true));
-
-    await fireEvent.click(await view.findByRole("button", { name: "Narrow this idea" }));
-    await fireEvent.click(await view.findByRole("button", { name: "Compare with parent" }));
-    expect(await view.findByRole("dialog", { name: "Compare parent and variant" })).toBeInTheDocument();
-    await fireEvent.click(view.getByRole("button", { name: "Keep current shortlist" }));
-    expect(parentChoice.checked).toBe(true);
-    expect(childChoice.checked).toBe(false);
-
-    await fireEvent.click(view.getByRole("button", { name: "Narrow this idea" }));
-    await fireEvent.click(view.getByRole("button", { name: "Use variant in shortlist" }));
-    await waitFor(() => expect(childChoice.checked).toBe(true));
-    expect(parentChoice.checked).toBe(false);
+    await waitFor(() => expect(goto).toHaveBeenCalledWith(
+      "/jobs/job-1/selection/risks?idea=idea-parent%3A3&tool=tests",
+      { replaceState: true },
+    ));
+    expect(view.queryByRole("dialog", { name: "Test decision assumptions" })).not.toBeInTheDocument();
   });
 });
 
@@ -1321,7 +1504,7 @@ describe("SelectionWorkbench — accepted combined variant", () => {
     };
   }
 
-  it("opens a three-way exact comparison and replaces selected sources without touching other picks", async () => {
+  it("routes a three-way exact variant review to the canonical comparison without changing the shortlist", async () => {
     const fixture = combinedFixture();
     vi.mocked(getChatHistory).mockResolvedValue({
       messages: fixture.messages,
@@ -1341,18 +1524,12 @@ describe("SelectionWorkbench — accepted combined variant", () => {
     const childChoice = await view.findByLabelText("Select Agency Signal Desk") as HTMLInputElement;
 
     await fireEvent.click(await view.findByRole("button", { name: "Compare with sources" }));
-    const dialog = await view.findByRole("dialog", { name: "Compare sources and combined variant" });
-    expect(dialog).toHaveTextContent("Source 1 · rev 2");
-    expect(dialog).toHaveTextContent("Source 2 · rev 4");
-    expect(dialog).toHaveTextContent("Combined variant · rev 1");
+    expect(goto).toHaveBeenCalledWith(
+      "/jobs/job-1/selection/compare?idea=source-1%3A2&idea=source-2%3A4&idea=combined-child%3A1&view=market",
+    );
     expect(firstChoice.checked).toBe(true);
     expect(secondChoice.checked).toBe(true);
     expect(childChoice.checked).toBe(false);
-
-    await fireEvent.click(view.getByRole("button", { name: "Use variant in shortlist" }));
-    await waitFor(() => expect(childChoice.checked).toBe(true));
-    expect(firstChoice.checked).toBe(false);
-    expect(secondChoice.checked).toBe(false);
     expect(unrelatedChoice.checked).toBe(true);
   });
 
@@ -1426,11 +1603,11 @@ describe("SelectionWorkbench — decision profile synchronization", () => {
 
     // Phase 1b: the persistent card is a display-only summary row; its own
     // edit button is THE edit entry (label follows the saved profile: a
-    // profile is already saved here, so it reads "Edit build constraints").
-    expect(view.getByLabelText("Build constraints summary")).toHaveTextContent("Build constraints saved");
-    await fireEvent.click(view.getByRole("button", { name: "Edit build constraints" }));
+    // profile is already saved here, so it reads "Edit build limits").
+    expect(view.getByLabelText("Build limits summary")).toHaveTextContent("Build limits saved");
+    await fireEvent.click(view.getByRole("button", { name: "Edit build limits" }));
     await fireEvent.click(view.getByRole("radio", { name: "Full time" }));
-    await fireEvent.click(view.getByRole("button", { name: "Save build constraints" }));
+    await fireEvent.click(view.getByRole("button", { name: "Save build limits" }));
 
     await waitFor(() => expect(saveSelectionDecisionProfile).toHaveBeenCalledWith(
       "job-1",
@@ -1441,8 +1618,8 @@ describe("SelectionWorkbench — decision profile synchronization", () => {
 
     // The saved (newer) profile survives the stale refetch: reopening the
     // editor still shows the saved value, not the stale prop.
-    expect(view.getByLabelText("Build constraints summary")).toHaveTextContent("Build constraints saved");
-    await fireEvent.click(view.getByRole("button", { name: "Edit build constraints" }));
+    expect(view.getByLabelText("Build limits summary")).toHaveTextContent("Build limits saved");
+    await fireEvent.click(view.getByRole("button", { name: "Edit build limits" }));
     expect(view.getByRole("radio", { name: "Full time" })).toHaveAttribute("aria-checked", "true");
   });
 });
@@ -1490,7 +1667,7 @@ describe("SelectionWorkbench — collaborator feedback", () => {
     expect(view.getByText("Best for finance teams.")).toBeInTheDocument();
     expect(view.getByText("Fits a weekly review.")).toBeInTheDocument();
     expect(view.getByText("Legacy note with no stable identity.")).toBeInTheDocument();
-    expect(view.getByText("Previous or ambiguous candidate")).toBeInTheDocument();
+    expect(view.getByText("Previous or ambiguous idea")).toBeInTheDocument();
   });
 });
 
@@ -1536,7 +1713,7 @@ describe("SelectionWorkbench — contextual analyst guidance", () => {
       props: { ...baseProps, solutions: [alpha], selectedSolutionIds: ["idea-alpha"] },
     });
 
-    expect(await view.findByRole("heading", { name: "Track the key assumption" })).toBeInTheDocument();
+    expect(await view.findByRole("heading", { name: "Save a question to resolve" })).toBeInTheDocument();
     await fireEvent.click(view.getByRole("button", { name: "Ask analyst" }));
 
     const composer = await view.findByLabelText("Message the analyst") as HTMLTextAreaElement;
@@ -1570,25 +1747,58 @@ describe("SelectionWorkbench — below-table IA (Phase 1b)", () => {
       props: { ...baseProps, segmentCount: 4 },
     });
 
-    const stats = view.getByLabelText("Candidate summary");
+    const stats = view.getByLabelText("Idea summary");
     expect(stats).toHaveClass("record-line");
-    expect(stats.textContent).toMatch(/^2 candidates · Top score \d+ · 4 segments$/);
+    expect(stats.textContent).toMatch(/^2 ideas · Top score \d+ · 4 segments$/);
     expect(view.container.querySelector(".cmd-proof")).toBeNull();
   });
 
   it("omits null metrics from the header record line instead of rendering placeholders", () => {
     const view = render(SelectionWorkbench, { props: baseProps });
 
-    const stats = view.getByLabelText("Candidate summary");
-    expect(stats.textContent).toMatch(/^2 candidates · Top score \d+$/);
+    const stats = view.getByLabelText("Idea summary");
+    expect(stats.textContent).toMatch(/^2 ideas · Top score \d+$/);
     expect(stats).not.toHaveTextContent("--");
   });
 
-  it("removes the below-table regenerate strip and keeps alternatives in the decision rail", async () => {
+  it("removes the regenerate strip and keeps one quiet alternative escape after the table", async () => {
     const view = render(SelectionWorkbench, { props: baseProps });
 
     expect(view.queryByText("Need another angle?")).toBeNull();
-    expect(await view.findByRole("button", { name: /Explore variants/ })).toBeInTheDocument();
+    expect(await view.findByRole("button", { name: /Branch a new direction/ })).toBeInTheDocument();
+  });
+
+  it("marks job-page direction launches so closing returns to the exact originating page", async () => {
+    page.url = new URL("http://localhost/jobs/job-1?source=shortlist#ideas") as typeof page.url;
+    page.state = { openId: "context-note" } as typeof page.state;
+    const identified = [
+      solution("Alpha Idea", { idea_id: "idea-alpha", idea_revision: 2 }),
+      solution("Beta Idea", { idea_id: "idea-beta", idea_revision: 4 }),
+    ];
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: identified,
+        selectedSolutionIds: ["idea-alpha", "idea-beta"],
+      },
+    });
+
+    await fireEvent.click(await view.findByRole("button", { name: /Branch a new direction/ }));
+
+    expect(goto).toHaveBeenCalledWith(
+      "/jobs/job-1/selection/compare?idea=idea-alpha%3A2&idea=idea-beta%3A4&tool=variants",
+      {
+        state: {
+          openId: "context-note",
+          selectionToolOrigin: {
+            tool: "variants",
+            jobId: "job-1",
+            returnHref: "/jobs/job-1?source=shortlist#ideas",
+            historyOwned: true,
+          },
+        },
+      },
+    );
   });
 
   it("keeps the opportunity-shape line visible while coverage disclosures file in the appendix", async () => {
@@ -1639,12 +1849,12 @@ describe("SelectionWorkbench — below-table IA (Phase 1b)", () => {
       props: { ...baseProps, decisionProfile: OLD_DECISION_PROFILE },
     });
 
-    const row = view.getByLabelText("Build constraints summary");
-    expect(row).toHaveTextContent("Build constraints saved");
+    const row = view.getByLabelText("Build limits summary");
+    expect(row).toHaveTextContent("Build limits saved");
     // The row owns exactly one edit button; nothing else on the page duplicates it
     // (DecisionGuide no longer renders a founder-context entry of its own).
     expect(row.querySelectorAll("button")).toHaveLength(1);
-    expect(view.getAllByRole("button", { name: "Edit build constraints" })).toHaveLength(1);
+    expect(view.getAllByRole("button", { name: "Edit build limits" })).toHaveLength(1);
   });
 
   it("visitor view keeps the original inline analysis rendering (no appendix regrouping)", async () => {
@@ -1662,8 +1872,8 @@ describe("SelectionWorkbench — below-table IA (Phase 1b)", () => {
 
     // No appendix, no founder row, no verdict pull-quote — the shared view is untouched.
     expect(view.queryByRole("button", { name: /Appendix · Analysis & context/i })).toBeNull();
-    expect(view.queryByLabelText("Build constraints summary")).toBeNull();
-    expect(view.queryByLabelText("Analyst verdict")).toBeNull();
+    expect(view.queryByLabelText("Build limits summary")).toBeNull();
+    expect(view.queryByLabelText("Discovery take")).toBeNull();
 
     // Analysis content stays inline and immediately accessible. (The idea-name
     // chip appends an sr-only ", open details" hint to its text.)
@@ -1733,28 +1943,20 @@ describe("SelectionWorkbench — dead-end escapes (Phase 2)", () => {
     };
   }
 
-  it("routes the empty test workspace to the evidence challenge, one overlay at a time", async () => {
+  it("routes a legacy test link to the evidence workspace with the planner open", async () => {
     page.url = new URL("http://localhost/jobs/job-1?selectionTool=tests") as typeof page.url;
     const view = render(SelectionWorkbench, {
       props: { ...baseProps, solutions: alphaSolutions, selectedSolutionIds: ["idea-alpha"] },
     });
 
-    const testDialog = await view.findByRole("dialog", { name: "Test decision assumptions" });
-    expect(await within(testDialog).findByText("No test briefs yet")).toBeInTheDocument();
-
-    await fireEvent.click(within(testDialog).getByRole("button", { name: "Challenge the evidence" }));
-
-    await waitFor(() => {
-      expect(view.queryByRole("dialog", { name: "Test decision assumptions" })).not.toBeInTheDocument();
-    });
-    const cockpit = await view.findByRole("dialog", { name: "Review evidence for shortlisted ideas" });
-    expect(within(cockpit).getByRole("tab", { name: "Evidence review" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    await waitFor(() => expect(goto).toHaveBeenCalledWith(
+      "/jobs/job-1/selection/risks?idea=idea-alpha%3A1&tool=tests",
+      { replaceState: true },
+    ));
+    expect(view.queryByRole("dialog", { name: "Test decision assumptions" })).not.toBeInTheDocument();
   });
 
-  it("opens the concept forge from an open demand-gap challenge finding", async () => {
+  it("routes a legacy risk link to the canonical evidence workspace", async () => {
     vi.mocked(getSelectionChallenges).mockResolvedValue({
       challenges: [alphaDemandChallenge()],
       stale: [],
@@ -1764,15 +1966,11 @@ describe("SelectionWorkbench — dead-end escapes (Phase 2)", () => {
       props: { ...baseProps, solutions: alphaSolutions, selectedSolutionIds: ["idea-alpha"] },
     });
 
-    const cockpit = await view.findByRole("dialog", { name: "Review evidence for shortlisted ideas" });
-    await fireEvent.click(
-      await within(cockpit).findByRole("button", { name: /Shape an adjacent direction/ }),
-    );
-
-    await waitFor(() => {
-      expect(view.queryByRole("dialog", { name: "Review evidence for shortlisted ideas" })).not.toBeInTheDocument();
-    });
-    expect(await view.findByRole("dialog", { name: "Explore variants" })).toBeInTheDocument();
+    await waitFor(() => expect(goto).toHaveBeenCalledWith(
+      "/jobs/job-1/selection/risks?idea=idea-alpha%3A1&tool=challenge",
+      { replaceState: true },
+    ));
+    expect(view.queryByRole("dialog", { name: "Check risks for shortlisted ideas" })).not.toBeInTheDocument();
   });
 });
 
@@ -1783,11 +1981,11 @@ describe("SelectionWorkbench — dead-end escapes (Phase 2)", () => {
 describe("SelectionWorkbench — ranked candidates table semantics", () => {
   it("exposes the ranked list as a table with the expected column headers", () => {
     const view = render(SelectionWorkbench, { props: baseProps });
-    const table = view.getByRole("table", { name: "Ranked candidates" });
+    const table = view.getByRole("table", { name: "Ranked ideas" });
 
     expect(within(table).getAllByRole("columnheader")).toHaveLength(7);
 
-    for (const label of ["#", "Pick", "Opportunity", "Score", "Market fit", "Feasibility", "Build time"]) {
+    for (const label of ["#", "Select", "Idea", "Score", "Market fit", "Feasibility", "Build time"]) {
       expect(
         within(table).getByRole("columnheader", { name: label }),
       ).toBeInTheDocument();
@@ -1796,7 +1994,7 @@ describe("SelectionWorkbench — ranked candidates table semantics", () => {
 
   it("gives each candidate a row whose cells line up with the columns", () => {
     const view = render(SelectionWorkbench, { props: baseProps });
-    const table = view.getByRole("table", { name: "Ranked candidates" });
+    const table = view.getByRole("table", { name: "Ranked ideas" });
 
     // header row + one row per solution
     const rows = within(table).getAllByRole("row");
@@ -1822,7 +2020,7 @@ describe("SelectionWorkbench — ranked candidates table semantics", () => {
 
   it("does not re-state column names as aria-labels on non-interactive cells", () => {
     const view = render(SelectionWorkbench, { props: baseProps });
-    const table = view.getByRole("table", { name: "Ranked candidates" });
+    const table = view.getByRole("table", { name: "Ranked ideas" });
 
     for (const cell of within(table).getAllByRole("cell")) {
       expect(cell).not.toHaveAttribute("aria-label");
@@ -1831,7 +2029,7 @@ describe("SelectionWorkbench — ranked candidates table semantics", () => {
 
   it("reports aria-sort on the active column and 'none' on the others", () => {
     const view = render(SelectionWorkbench, { props: baseProps });
-    const table = view.getByRole("table", { name: "Ranked candidates" });
+    const table = view.getByRole("table", { name: "Ranked ideas" });
 
     // Default sort is Score, descending.
     expect(
@@ -1847,7 +2045,7 @@ describe("SelectionWorkbench — ranked candidates table semantics", () => {
 
   it("flips aria-sort between descending and ascending when a column is re-activated", async () => {
     const view = render(SelectionWorkbench, { props: baseProps });
-    const table = view.getByRole("table", { name: "Ranked candidates" });
+    const table = view.getByRole("table", { name: "Ranked ideas" });
     const header = () => within(table).getByRole("columnheader", { name: "Market fit" });
 
     // Activating an inactive column sorts it descending...
@@ -1875,7 +2073,7 @@ describe("SelectionWorkbench — ranked candidates table semantics", () => {
 
   it("keeps the pick control and the row details button reachable by name", async () => {
     const view = render(SelectionWorkbench, { props: baseProps });
-    const table = view.getByRole("table", { name: "Ranked candidates" });
+    const table = view.getByRole("table", { name: "Ranked ideas" });
 
     const details = within(table).getByRole("button", { name: "Review details for Alpha Idea" });
     expect(details).toBeInTheDocument();
@@ -1889,5 +2087,36 @@ describe("SelectionWorkbench — ranked candidates table semantics", () => {
         within(table).getByRole("checkbox", { name: "Deselect Alpha Idea" }),
       ).toBeInTheDocument(),
     );
+  });
+});
+
+describe("SelectionWorkbench without the decision tools grant", () => {
+  it("hides the optional-checks guide and the branch escape hatch", async () => {
+    const granted = render(SelectionWorkbench, { props: baseProps });
+    await waitFor(() =>
+      expect(granted.getByText("Optional next check")).toBeInTheDocument(),
+    );
+    expect(granted.getByText("None of these fit?")).toBeInTheDocument();
+    cleanup();
+
+    const view = render(SelectionWorkbench, {
+      props: { ...baseProps, decisionTools: false },
+    });
+    await waitFor(() =>
+      expect(view.getAllByText("Alpha Idea").length).toBeGreaterThan(0),
+    );
+
+    expect(view.queryByText("Optional next check")).toBeNull();
+    expect(view.queryByLabelText("Optional checks progress")).toBeNull();
+    expect(view.queryByText("None of these fit?")).toBeNull();
+  });
+
+  it("fails closed when the prop is omitted", async () => {
+    const { decisionTools: _omitted, ...withoutProp } = baseProps;
+    const view = render(SelectionWorkbench, { props: withoutProp });
+    await waitFor(() =>
+      expect(view.getAllByText("Alpha Idea").length).toBeGreaterThan(0),
+    );
+    expect(view.queryByText("Optional next check")).toBeNull();
   });
 });

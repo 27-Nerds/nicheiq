@@ -88,7 +88,7 @@
   /* Point/marker hover effects */
   .chart-wrapper :global(circle),
   .chart-wrapper :global(rect) {
-    transition: all 0.2s ease-out;
+    transition: filter 0.2s ease-out;
   }
 
   .chart-wrapper :global(circle:hover),

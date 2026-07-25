@@ -104,6 +104,7 @@
 
   const isExpandable = $derived(mode === "expandable");
   const showBody = $derived(!isExpandable || expanded);
+  const bodyId = $derived(id ? `${id}-content` : undefined);
 
   // "left"/"top" accent stripes are deprecated (anti-slop §9.1 — no accent stripes on
   // any card edge). Both now render the standard all-around border; the prop keeps
@@ -160,6 +161,7 @@
         class="section-header-row expandable-trigger"
         onclick={handleToggle}
         aria-expanded={expanded}
+        aria-controls={bodyId}
       >
         <div class="header-content">
           {#if Icon}
@@ -183,6 +185,7 @@
 
     <!-- Always-mounted body with CSS grid transition for smooth expand/collapse -->
     <div
+      id={bodyId}
       class="section-body"
       data-annotation-anchor={id ? "section-body:" + id : undefined}
       class:section-body--open={showBody}

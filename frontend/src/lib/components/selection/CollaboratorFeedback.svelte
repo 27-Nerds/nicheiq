@@ -55,7 +55,7 @@
               </button></h4>
             {:else}
               <h4>{group.solutionName}</h4>
-              <span>Previous or ambiguous candidate</span>
+              <span>Previous or ambiguous idea</span>
             {/if}
           </header>
           <ul>

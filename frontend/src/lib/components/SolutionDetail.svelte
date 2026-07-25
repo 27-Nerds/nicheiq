@@ -16,7 +16,10 @@
   import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
   import type { SolutionPreview } from "$lib/types/job";
   import type { OverlapGroup } from "$lib/types/report";
-  import { computeCompositeScore, solutionStrengthBadge, solutionDisplayTitle, originalityMetric } from "$lib/utils/solution-utils";
+  import { displayCompositeScore, solutionStrengthBadge, solutionDisplayTitle, originalityMetric } from "$lib/utils/solution-utils";
+
+  type DetailTab = "overview" | "detail";
+  type DetailLifecycle = "selection" | "reference" | "running" | "completed";
 
   interface Props {
     open: boolean;
@@ -30,15 +33,16 @@
     selectionIndex?: number;
     selectedCount?: number;
     maxSelections?: number;
-    canStart?: boolean;
-    canAffordStart?: boolean;
-    startCost?: number | null;
+    lifecycle?: DetailLifecycle;
+    activeTab?: DetailTab;
+    evidenceLinks?: { href: string; label: string }[];
     /** Surviving ideas identified as variants of the same underlying product (a merge was
      *  proposed but rejected). Used to flag, on the Overview tab, when the current candidate
      *  belongs to one of these groups. */
     overlapGroups?: OverlapGroup[];
-    onSelect?: (name: string) => void;
-    onStartValidation?: () => void;
+    onSelect?: (solution: SolutionPreview) => void;
+    onOpenEvidence?: (href: string) => void;
+    onTabChange?: (tab: DetailTab) => void;
     onNavigate: (index: number) => void;
     onClose: () => void;
     actionSlot?: Snippet;
@@ -57,12 +61,13 @@
     selectionIndex = 0,
     selectedCount = 0,
     maxSelections = 3,
-    canStart = false,
-    canAffordStart = true,
-    startCost = null,
+    lifecycle = "reference",
+    activeTab: controlledTab,
+    evidenceLinks = [],
     overlapGroups = [],
     onSelect,
-    onStartValidation,
+    onOpenEvidence,
+    onTabChange,
     onNavigate,
     onClose,
     actionSlot,
@@ -70,31 +75,58 @@
   }: Props = $props();
 
   let bodyEl: HTMLDivElement | undefined = $state();
+  let overviewTabEl: HTMLButtonElement | undefined = $state();
+  let detailTabEl: HTMLButtonElement | undefined = $state();
 
   // Overview = shortlist-decision snapshot; detail = the 7-card deep reference.
-  let activeTab = $state<"overview" | "detail">("overview");
+  let localTab = $state<DetailTab>("overview");
+  const activeTab = $derived(controlledTab ?? localTab);
+  const exactIdentity = $derived(
+    solution.idea_id
+      ? `${solution.idea_id}:${solution.idea_revision ?? 1}`
+      : `legacy:${solution.solution_name}`,
+  );
 
-  // Reset to Overview and scroll to top whenever the pager moves to another idea.
+  // Scroll to top whenever the pager moves to another idea. The active tab is kept
+  // across paging so a user comparing Full details isn't bounced back to Overview;
+  // the sr-only live region above the header still announces the candidate change.
   $effect(() => {
-    solution.solution_name;
+    exactIdentity;
     untrack(() => {
-      activeTab = "overview";
       if (bodyEl) bodyEl.scrollTop = 0;
     });
   });
 
-  function setTab(tab: "overview" | "detail") {
-    activeTab = tab;
+  function setTab(tab: DetailTab) {
+    if (controlledTab === undefined) localTab = tab;
+    onTabChange?.(tab);
     if (bodyEl) bodyEl.scrollTop = 0; // don't land mid-content when the view swaps
+  }
+
+  function handleTabKeydown(event: KeyboardEvent, current: DetailTab) {
+    let next: DetailTab | null = null;
+    if (event.key === "Home") next = "overview";
+    if (event.key === "End") next = "detail";
+    if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      next = current === "overview" ? "detail" : "overview";
+    }
+    if (!next) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setTab(next);
+    (next === "overview" ? overviewTabEl : detailTabEl)?.focus();
   }
 
   const total = $derived(solutions.length);
 
-  const compositeScore = $derived(computeCompositeScore(solution));
+  const compositeScore = $derived(displayCompositeScore(solution));
   const compositeWhy = $derived(scoreRationale(solution, "composite"));
+  // Unclamped variant for the Decision rationale panel — a full-width surface, not a popover.
+  const compositeWhyFull = $derived(scoreRationale(solution, "composite", { full: true }));
 
   // Score color (matches ProgressRing auto logic)
   const scoreColor = $derived.by(() => {
+    if (compositeScore === null) return 'var(--color-text-muted)';
     if (compositeScore >= 0.7) return 'var(--color-success-dark)';
     if (compositeScore < 0.35) return 'var(--color-text-muted)';
     return 'var(--color-text-primary)';
@@ -114,7 +146,7 @@
     { label: "Market", value: solution.market_fit_score, def: SCORE_DEFINITIONS.market_fit, why: scoreRationale(solution, "market_fit") },
     { label: "Feasible", value: solution.technical_feasibility_score, def: SCORE_DEFINITIONS.technical_feasibility, why: scoreRationale(solution, "technical_feasibility") },
     { label: "SEO", value: solution.seo_scalability_score, def: SCORE_DEFINITIONS.seo, why: scoreRationale(solution, "seo") },
-    { label: origMetric.short === "Orig" ? "Original" : (origMetric.short ?? "Original"), value: origMetric.value, def: SCORE_DEFINITIONS.originality, why: scoreRationale(solution, "novelty") },
+    { label: origMetric.short ?? "Distinct", value: origMetric.value, def: SCORE_DEFINITIONS.originality, why: scoreRationale(solution, "novelty") },
     { label: "Solo", value: solution.solo_dev_feasibility, def: SCORE_DEFINITIONS.solo_dev, why: scoreRationale(solution, "solo_dev") },
   ]);
 
@@ -122,15 +154,42 @@
   const superpower = $derived(solutionStrengthBadge(solution, true));
 
   const displayTitle = $derived(solutionDisplayTitle(solution));
-  const hasHeadline = $derived(!!solution.headline?.trim());
+  // The raw internal solution_name is a working name — only worth a subtitle when a
+  // headline is shown as the title AND the working name isn't just the headline again.
+  const showWorkingName = $derived(
+    !!solution.headline?.trim() && solution.headline.trim() !== solution.solution_name,
+  );
 
   // Overlap group this candidate belongs to, if the run's synthesis found one (a merge was
   // proposed but rejected, so the variants stay as separate shortlist entries).
+  // Overlap reports predate stable idea references and contain names only. Apply one only
+  // when the current name is unique; duplicate-name candidates must never inherit each
+  // other's grouping by accident.
   const overlapGroup = $derived(
-    overlapGroups.find((g) => g.idea_names.includes(solution.solution_name)) ?? null,
+    solutions.filter((candidate) => candidate.solution_name === solution.solution_name).length === 1
+      ? overlapGroups.find((group) => group.idea_names.includes(solution.solution_name)) ?? null
+      : null,
   );
 
-  const isToggleable = $derived(!!onSelect && !disabled && (isSelected || !maxReached));
+  // Overlap peers resolved against the current pool: overlap reports carry internal
+  // solution_names, so map each to its candidate's display title and pool index (for
+  // paging the overlay straight to it); names not in the pool keep index null.
+  const overlapPeers = $derived.by(() => {
+    if (!overlapGroup) return [];
+    return overlapGroup.idea_names
+      .filter((name) => name !== solution.solution_name)
+      .map((name) => {
+        const index = solutions.findIndex((candidate) => candidate.solution_name === name);
+        return {
+          title: index >= 0 ? solutionDisplayTitle(solutions[index]) : name,
+          index: index >= 0 ? index : null,
+        };
+      });
+  });
+
+  const isToggleable = $derived(
+    lifecycle === "selection" && !!onSelect && !disabled && (isSelected || !maxReached),
+  );
 
   // Private export of the exact stored revision being viewed (full candidate record).
   const exportBase = $derived(
@@ -143,7 +202,7 @@
 
   function handleSelect() {
     if (!isToggleable || !onSelect) return;
-    onSelect(solution.solution_name);
+    onSelect(solution);
   }
 
   function navigatePrev() {
@@ -160,7 +219,18 @@
     // Arrow paging only when focus isn't in a control that uses arrows itself
     // (form fields, or the tablist — where arrows belong to tab switching, not paging).
     const t = e.target as HTMLElement | null;
-    if (t && t.closest('input, textarea, select, [contenteditable="true"], [role="tablist"]')) return;
+    if (
+      e.defaultPrevented
+      || e.altKey
+      || e.ctrlKey
+      || e.metaKey
+      || e.shiftKey
+      || (t && t.closest(
+        'a, button, input, textarea, select, summary, [contenteditable="true"], '
+        + '[role="button"], [role="link"], [role="menu"], [role="listbox"], '
+        + '[role="option"], [role="tablist"], [data-no-idea-paging]',
+      ))
+    ) return;
     if (e.key === 'ArrowLeft') { e.preventDefault(); navigatePrev(); }
     if (e.key === 'ArrowRight') { e.preventDefault(); navigateNext(); }
   }
@@ -191,24 +261,34 @@
     <!-- Modal card -->
     <div class="modal-card">
       <AnnotationSurface
-        surfaceKey={`solution-detail:${solution.solution_name}:${activeTab}`}
+        surfaceKey={`solution-detail:${exactIdentity}:${activeTab}`}
         anchorKey="solution-detail"
         class="modal-annotation-surface"
       >
       <!-- Header -->
       <div class="modal-header" data-annotation-anchor="solution-header">
+        <p class="sr-only" aria-live="polite" aria-atomic="true">
+          Viewing candidate {currentIndex + 1} of {total}: {displayTitle}, revision {exportRevision}.
+        </p>
         <div class="modal-title-group" data-annotation-anchor="solution-header-copy">
           <span class="modal-kicker">Candidate {currentIndex + 1} of {total}</span>
           <h2 class="modal-title" data-annotation-anchor="solution-header-title">{displayTitle}</h2>
-          {#if hasHeadline}
-            <p class="modal-subtitle">{solution.solution_name}</p>
+          {#if showWorkingName}
+            <p class="modal-subtitle" title="The internal working name for this candidate">
+              <span class="modal-subtitle-kicker">Working name</span>
+              {solution.solution_name}
+            </p>
           {/if}
           <div class="modal-meta">
             <Popover position="bottom" label="Overall score details">
               {#snippet trigger()}
                 <div class="score-token">
-                  <span class="score-dot" style:background={scoreColor} aria-hidden="true"></span>
-                  <span style:color={scoreColor}>{Math.round(compositeScore * 100)}</span>
+                  {#if compositeScore !== null}
+                    <span class="score-dot" style:background={scoreColor} aria-hidden="true"></span>
+                  {/if}
+                  <span style:color={scoreColor}>
+                    {compositeScore === null ? "Not scored" : Math.round(compositeScore * 100)}
+                  </span>
                 </div>
               {/snippet}
               {@render scoreDetail(SCORE_DEFINITIONS.composite, compositeWhy, compositeScore)}
@@ -280,24 +360,30 @@
       <!-- Tab bar: decision snapshot vs deep reference -->
       <div class="modal-tabs" role="tablist" aria-label="Idea detail views" data-annotation-anchor="solution-tabs">
         <button
+          bind:this={overviewTabEl}
           type="button"
           role="tab"
           id="idea-tab-overview"
           aria-selected={activeTab === "overview"}
           aria-controls="idea-tabpanel"
+          tabindex={activeTab === "overview" ? 0 : -1}
           class="modal-tab"
           class:is-active={activeTab === "overview"}
           onclick={() => setTab("overview")}
+          onkeydown={(event) => handleTabKeydown(event, "overview")}
         >Overview</button>
         <button
+          bind:this={detailTabEl}
           type="button"
           role="tab"
           id="idea-tab-detail"
           aria-selected={activeTab === "detail"}
           aria-controls="idea-tabpanel"
+          tabindex={activeTab === "detail" ? 0 : -1}
           class="modal-tab"
           class:is-active={activeTab === "detail"}
           onclick={() => setTab("detail")}
+          onkeydown={(event) => handleTabKeydown(event, "detail")}
         >Full detail</button>
       </div>
 
@@ -319,7 +405,7 @@
         >
           <div class="score-panel-summary">
             <span class="score-panel-label">Decision rationale</span>
-            <p>{compositeWhy || 'No idea-specific score rationale available yet.'}</p>
+            <p>{compositeWhyFull || 'No idea-specific score rationale available yet.'}</p>
             {#if voteCount > 0}
               <span class="score-votes">{voteCount} community vote{voteCount === 1 ? '' : 's'}</span>
             {/if}
@@ -342,20 +428,25 @@
           {solution}
           view="overview"
           {overlapGroup}
+          {overlapPeers}
+          onOpenPeer={onNavigate}
+          {lifecycle}
+          {evidenceLinks}
+          {onOpenEvidence}
           onViewFull={() => { setTab("detail"); document.getElementById("idea-tab-detail")?.focus(); }}
         />
         {:else}
-        <SolutionDetailContent {solution} view="detail" />
+        <SolutionDetailContent {solution} view="detail" {lifecycle} {evidenceLinks} {onOpenEvidence} />
         {/if}
       </div>
 
       <!-- Sticky footer select CTA -->
-      {#if onSelect}
+      {#if lifecycle === "selection" && onSelect}
         <div class="modal-footer" data-annotation-anchor="solution-footer">
           <div class="modal-footer-status">
             <strong>{shortlistStatus}</strong>
             {#if maxReached && !isSelected}
-              <span class="modal-footer-note">Remove one to add this candidate.</span>
+              <span class="modal-footer-note" id="shortlist-limit-note">Remove one to add this candidate.</span>
             {/if}
           </div>
           <div class="modal-footer-actions">
@@ -363,6 +454,7 @@
               type="button"
               onclick={handleSelect}
               disabled={!isToggleable}
+              aria-describedby={maxReached && !isSelected ? 'shortlist-limit-note' : undefined}
               title={maxReached && !isSelected ? 'Maximum 3 candidates shortlisted' : undefined}
               class="modal-select-primary"
               class:is-selected={isSelected}
@@ -430,6 +522,7 @@
     letter-spacing: 0;
     color: var(--color-text-primary);
     text-wrap: balance;
+    overflow-wrap: anywhere;
   }
 
   .modal-kicker {
@@ -445,6 +538,14 @@
     font-family: var(--font-mono);
     font-size: 0.625rem;
     color: var(--color-text-muted);
+    overflow-wrap: anywhere;
+  }
+
+  .modal-subtitle-kicker {
+    margin-right: 0.25rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
   }
 
   .modal-meta {
@@ -740,6 +841,7 @@
     font-size: 0.75rem;
     line-height: 1.42;
     text-wrap: pretty;
+    overflow-wrap: anywhere;
   }
 
   .score-votes {
@@ -838,6 +940,7 @@
 
   .modal-footer-note {
     color: var(--color-warning-dark);
+    overflow-wrap: anywhere;
   }
 
   .modal-footer-actions {
@@ -858,8 +961,6 @@
       justify-content: flex-start;
       flex-wrap: wrap;
     }
-    /* pager stays left; the vote action (when present) docks with the close
-       button on the right instead of floating mid-air */
     .modal-nav {
       margin-right: auto;
     }

@@ -62,6 +62,12 @@ vi.mock('../../services/heartbeatService.js', () => ({
   markWorkerShutdown: vi.fn(),
 }));
 
+const mockInvalidatePreviewReportCache = vi.fn();
+
+vi.mock('../../services/assetService.js', () => ({
+  invalidatePreviewReportCache: (...args: any[]) => mockInvalidatePreviewReportCache(...args),
+}));
+
 vi.mock('../../utils/errorTranslator.js', () => ({
   buildErrorDetails: vi.fn().mockReturnValue(null),
 }));
@@ -368,6 +374,21 @@ describe('POST /api/workers/regeneration-complete', () => {
       { name: 'New1', idea_revision: 1 },
     ]);
     expect(callArgs.data.solutionIdeas[1].idea_id).toMatch(/^idea_[a-f0-9]{32}$/);
+  });
+
+  it('invalidates the preview-report cache after storing regenerated solutions', async () => {
+    mockJobFindFirst.mockResolvedValue({ solutionIdeas: [{ name: 'Old1' }] });
+    mockJobUpdateMany.mockResolvedValue({ count: 1 });
+
+    const response = await request(app)
+      .post('/api/workers/regeneration-complete')
+      .send(validPayload);
+
+    expect(response.status).toBe(200);
+    expect(mockInvalidatePreviewReportCache).toHaveBeenCalledOnce();
+    expect(mockInvalidatePreviewReportCache).toHaveBeenCalledWith(jobId);
+    expect(mockInvalidatePreviewReportCache.mock.invocationCallOrder[0])
+      .toBeGreaterThan(mockJobUpdateMany.mock.invocationCallOrder[0]);
   });
 
   it('handles null existing solutionIdeas', async () => {

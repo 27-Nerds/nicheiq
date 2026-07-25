@@ -1,3 +1,10 @@
+<script module lang="ts">
+  // ONE popover open at a time, app-wide. Outside-close is mousedown-based, so
+  // keyboard activation of a second trigger used to stack panels, each with its
+  // own Tab ring. Opening any popover closes the previously open one.
+  let closeOpenPopover: (() => void) | null = null;
+</script>
+
 <script lang="ts">
   import type { Snippet } from "svelte";
   import { portal } from "$lib/actions/portal";
@@ -70,7 +77,15 @@
     style = `top:${top}px;left:${left}px;opacity:1;`;
   }
 
+  function openPanel() {
+    // Module-level latch: displace whichever popover is currently open first.
+    closeOpenPopover?.();
+    closeOpenPopover = close;
+    open = true;
+  }
+
   function close() {
+    if (closeOpenPopover === close) closeOpenPopover = null;
     open = false;
     style = "opacity:0;";
   }
@@ -142,6 +157,9 @@
     window.addEventListener("scroll", reposition, true);
     window.addEventListener("resize", reposition);
     return () => {
+      // Unmounting while open must release the latch too, or a later popover
+      // would call into a destroyed instance.
+      if (closeOpenPopover === close) closeOpenPopover = null;
       document.removeEventListener("mousedown", onPointer);
       document.removeEventListener("keydown", onKey, true);
       window.removeEventListener("scroll", reposition, true);
@@ -158,7 +176,7 @@
   aria-expanded={open}
   aria-controls={open ? panelId : undefined}
   aria-label={label}
-  onclick={() => (open ? close() : (open = true))}
+  onclick={() => (open ? close() : openPanel())}
 >
   {@render trigger()}
 </button>

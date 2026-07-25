@@ -5,6 +5,7 @@
     description?: string;
     /** Disables this one option (e.g. an outcome a data-quality warning rules out). */
     disabled?: boolean;
+		disabledReason?: string;
   }
 
   interface Props {
@@ -16,7 +17,10 @@
     /** Associates the radiogroup with an existing visible label instead of the
      *  invisible `label` string (avoids an orphaned duplicate label). */
     labelledBy?: string;
+		describedBy?: string;
+		invalid?: boolean;
     disabled?: boolean;
+		disabledReason?: string;
     onChange?: (value: string) => void;
   }
 
@@ -26,23 +30,45 @@
     density = "compact",
     label,
     labelledBy,
+		describedBy,
+		invalid = false,
     disabled = false,
+		disabledReason,
     onChange,
   }: Props = $props();
 
   let groupEl = $state<HTMLDivElement>();
 
   const selectedIndex = $derived(options.findIndex((o) => o.value === value));
+	const componentId = $props.id();
+	const disabledReasonId = `${componentId}-disabled-reason`;
+	const groupDescribedBy = $derived(
+		[describedBy, disabled && disabledReason ? disabledReasonId : undefined]
+			.filter(Boolean)
+			.join(" ") || undefined,
+	);
+
+	function isDisabled(option: SegmentOption): boolean {
+		return disabled || !!option.disabled;
+	}
+
+	function enabledIndices(): number[] {
+		return options.flatMap((option, index) => (isDisabled(option) ? [] : [index]));
+	}
 
   // Roving tabindex: the checked radio (or the first, when none is checked)
   // is the group's single tab stop.
   function tabIndexFor(index: number): number {
-    if (selectedIndex === -1) return index === 0 ? 0 : -1;
-    return index === selectedIndex ? 0 : -1;
+		if (isDisabled(options[index])) return -1;
+		const enabled = enabledIndices();
+		if (selectedIndex === -1 || isDisabled(options[selectedIndex])) {
+			return index === enabled[0] ? 0 : -1;
+		}
+		return index === selectedIndex ? 0 : -1;
   }
 
   function select(option: SegmentOption) {
-    if (disabled || option.disabled) return;
+		if (isDisabled(option)) return;
     if (option.value !== value) {
       value = option.value;
       onChange?.(option.value);
@@ -50,18 +76,22 @@
   }
 
   function handleKeydown(event: KeyboardEvent, index: number) {
-    let next: number | null = null;
+		const enabled = enabledIndices();
+		if (enabled.length === 0) return;
+		const current = enabled.indexOf(index);
+		let nextPosition: number | null = null;
     if (event.key === "ArrowRight" || event.key === "ArrowDown") {
-      next = (index + 1) % options.length;
+			nextPosition = (current + 1) % enabled.length;
     } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
-      next = (index - 1 + options.length) % options.length;
+			nextPosition = (current - 1 + enabled.length) % enabled.length;
     } else if (event.key === "Home") {
-      next = 0;
+			nextPosition = 0;
     } else if (event.key === "End") {
-      next = options.length - 1;
+			nextPosition = enabled.length - 1;
     }
-    if (next === null) return;
+		if (nextPosition === null) return;
     event.preventDefault();
+		const next = enabled[nextPosition];
     select(options[next]);
     const radios = groupEl?.querySelectorAll<HTMLButtonElement>('[role="radio"]');
     radios?.[next]?.focus();
@@ -74,6 +104,8 @@
   role="radiogroup"
   aria-label={labelledBy ? undefined : label}
   aria-labelledby={labelledBy}
+	aria-describedby={groupDescribedBy}
+	aria-invalid={invalid || undefined}
 >
   {#each options as option, index (option.value)}
     <button
@@ -83,6 +115,8 @@
       tabindex={tabIndexFor(index)}
       class={density === "card" ? "segment-card" : "segment"}
       disabled={disabled || option.disabled}
+			aria-label={option.disabledReason ? `${option.label}. Unavailable: ${option.disabledReason}` : undefined}
+			title={option.disabledReason}
       onclick={() => select(option)}
       onkeydown={(event) => handleKeydown(event, index)}
     >
@@ -95,20 +129,23 @@
     </button>
   {/each}
 </div>
+{#if disabled && disabledReason}
+	<p id={disabledReasonId} class="segment-disabled-reason">{disabledReason}</p>
+{/if}
 
 <style>
   /* ── Card density ── */
   .segment-cards {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.6rem;
+    gap: var(--space-2);
   }
 
   .segment-card {
     display: grid;
-    gap: 0.25rem;
+    gap: var(--space-1);
     align-content: start;
-    padding: 0.75rem 0.85rem;
+    padding: var(--space-3);
     border: 1px solid var(--color-input-border);
     border-radius: var(--radius-lg);
     background: var(--color-bg-elevated);
@@ -141,15 +178,15 @@
   .segment-card span {
     color: var(--color-text-secondary);
     font-size: var(--text-sm);
-    line-height: 1.4;
+    line-height: var(--leading-normal);
   }
 
   /* ── Compact density ── */
   .segment-track {
     display: inline-flex;
     flex-wrap: wrap;
-    gap: 2px;
-    padding: 3px;
+    gap: var(--space-1);
+    padding: var(--space-1);
     border: 1px solid var(--color-border-emphasis);
     border-radius: var(--radius-md);
     background: var(--color-bg-surface);
@@ -159,7 +196,8 @@
     border: 1px solid transparent;
     border-radius: var(--radius-sm);
     background: transparent;
-    padding: 0.3rem 0.7rem;
+    min-height: var(--space-8);
+    padding: var(--space-1) var(--space-3);
     font-size: var(--text-sm);
     font-weight: 600;
     color: var(--color-text-secondary);
@@ -180,8 +218,8 @@
 
   .segment[aria-checked="true"] {
     border-color: var(--color-accent);
-    background: var(--color-bg-elevated);
-    color: var(--color-text-primary);
+    background: var(--color-accent-subtle);
+    color: var(--color-accent-dark);
     box-shadow: var(--shadow-sm);
   }
 
@@ -194,9 +232,18 @@
 
   .segment-card:disabled,
   .segment:disabled {
-    opacity: 0.45;
+		border-color: var(--color-border-emphasis);
+		background: var(--color-bg-surface);
+		color: var(--color-text-muted);
     cursor: not-allowed;
   }
+
+	.segment-disabled-reason {
+		margin: var(--space-1) 0 0;
+		color: var(--color-text-muted);
+		font-size: var(--text-sm);
+		line-height: var(--leading-normal);
+	}
 
   @media (max-width: 720px) {
     .segment-cards {

@@ -1,7 +1,7 @@
 <script lang="ts">
+  import { tick } from "svelte";
   import {
     AlertTriangle,
-    ArrowRight,
     FlaskConical,
     Loader2,
     Pencil,
@@ -16,7 +16,6 @@
     updateSelectionAssumption,
   } from "$lib/api";
   import DecisionHelp from "$lib/components/ui/DecisionHelp.svelte";
-  import EmptyState from "$lib/components/ui/EmptyState.svelte";
   import FormField from "$lib/components/ui/FormField.svelte";
   import FormOverlay from "$lib/components/ui/FormOverlay.svelte";
   import SegmentControl from "$lib/components/ui/SegmentControl.svelte";
@@ -31,16 +30,12 @@
   import type {
     SelectionChallenge,
     SelectionChallengeLens,
-    SelectionChallengeQuestion,
   } from "$lib/types/selectionChallenge";
   import type { SelectionExperimentDraftSeed } from "$lib/types/selectionExperiment";
   import type { SelectionAssumptionPrefill } from "$lib/types/selectionCopilot";
   import {
-    SELECTION_CHALLENGE_ASSUMPTIONS,
     SELECTION_CHALLENGE_LENSES,
     SELECTION_CHALLENGE_QUESTION_LABELS,
-    SELECTION_RISK_PRIORITY,
-    actionableSelectionQuestion,
   } from "$lib/utils/selectionRisk";
   import { solutionDisplayTitle } from "$lib/utils/solution-utils";
 
@@ -49,6 +44,9 @@
     ideas: SolutionPreview[];
     onTestUnknown?: (draft: SelectionExperimentDraftSeed) => void;
     prefill?: SelectionAssumptionPrefill | null;
+    onChanged?: () => void;
+    /** When set, "Linked test" renders as a button that reveals the saved plan. */
+    onOpenLinkedTest?: () => void;
   }
 
   type Editor = {
@@ -68,14 +66,14 @@
     originQuestionId: string | null;
   };
 
-  type GapSuggestion = {
-    idea: SolutionPreview;
-    challenge: SelectionChallenge;
-    question: SelectionChallengeQuestion;
-    statement: string;
-  };
-
-  let { jobId, ideas, onTestUnknown, prefill = null }: Props = $props();
+  let {
+    jobId,
+    ideas,
+    onTestUnknown,
+    prefill = null,
+    onChanged,
+    onOpenLinkedTest,
+  }: Props = $props();
   let assumptions = $state<SelectionAssumption[]>([]);
   let challenges = $state<SelectionChallenge[]>([]);
   let loading = $state(false);
@@ -83,10 +81,10 @@
   let saveError = $state("");
   let saveConflict = $state(false);
   let saving = $state(false);
-  let loadedKey = $state("");
+  let loadedKey = "";
   let editor = $state<Editor | null>(null);
   let editorBaseline = $state("");
-  let appliedPrefillId = $state("");
+  let appliedPrefillId = "";
   let prefillFeedback = $state<{ failed: boolean; message: string } | null>(null);
   let activeCopilotDraft = $state<SelectionAssumptionPrefill | null>(null);
   /** Persistent, always-mounted status text for the assumption/challenge load
@@ -109,7 +107,7 @@
   const GROUNDING_FIELDS = [
     { key: "statement", label: "What must be true" },
     { key: "impactIfFalse", label: "What changes if false" },
-    { key: "falsificationQuestion", label: "Falsification question" },
+    { key: "falsificationQuestion", label: "What would prove it wrong" },
   ] as const;
 
   const editorDirty = $derived(Boolean(editor) && JSON.stringify(editor) !== editorBaseline);
@@ -132,16 +130,23 @@
     touchedEditorFields = new Set(touchedEditorFields);
   }
 
-  function requiredTextError(value: string): string {
-    if (value.trim().length === 0) return "Required.";
-    return value.trim().length < 3 ? "Enter at least 3 characters." : "";
+  /** Per-field actionable copy plus the rendered control's DOM id, so a
+   *  failed save can both explain and focus the first missing answer. */
+  const EDITOR_FIELD_COPY: Record<Exclude<RequiredEditorField, "impact">, { id: string; message: string }> = {
+    statement: { id: "assumption-statement", message: "Describe what must be true in at least 3 characters." },
+    impactIfFalse: { id: "assumption-impact-if-false", message: "Say what you would change, stop, or investigate if this is false." },
+    falsificationQuestion: { id: "assumption-falsification", message: "Write the observable result that would prove this wrong." },
+  };
+
+  function requiredEditorError(field: RequiredEditorField): string {
+    if (!editor) return "";
+    if (field === "impact") return editor.impact ? "" : "Choose how much this would change your decision.";
+    return editor[field].trim().length < 3 ? EDITOR_FIELD_COPY[field].message : "";
   }
 
   function editorFieldError(field: RequiredEditorField): string {
     if (!editorSaveAttempted && !touchedEditorFields.has(field)) return "";
-    if (!editor) return "";
-    if (field === "impact") return editor.impact ? "" : "Choose an impact.";
-    return requiredTextError(editor[field]);
+    return requiredEditorError(field);
   }
 
   function resetEditorValidation() {
@@ -169,7 +174,12 @@
   }
 
   function lensLabel(lens: SelectionChallengeLens): string {
-    return SELECTION_CHALLENGE_LENSES.find((item) => item.value === lens)?.label ?? lens;
+    return {
+      demand: "Do people want it?",
+      distribution: "Can you reach buyers?",
+      competition: "Can it stand out?",
+      dependencies: "Can you build it?",
+    }[lens];
   }
 
   function impactLabel(impact: SelectionAssumptionImpact): string {
@@ -207,29 +217,10 @@
         || right.updatedAt.localeCompare(left.updatedAt));
   }
 
-  function suggestionsFor(idea: SolutionPreview): GapSuggestion[] {
-    const current = identity(idea);
-    if (!current) return [];
-    return challenges
-      .filter((challenge) => (
-        challenge.ideaId === current.id
-        && challenge.ideaRevision === current.revision
-      ))
-      .flatMap((challenge): GapSuggestion[] => {
-        const question = actionableSelectionQuestion(challenge);
-        if (!question) return [];
-        if (assumptions.some((assumption) => (
-          assumption.originChallengeId === challenge.id
-          && assumption.originQuestionId === question.questionId
-        ))) return [];
-        const statement = SELECTION_CHALLENGE_ASSUMPTIONS[question.questionId];
-        return statement ? [{ idea, challenge, question, statement }] : [];
-      })
-      .sort((left, right) => (
-        SELECTION_RISK_PRIORITY[left.question.consensus]
-        - SELECTION_RISK_PRIORITY[right.question.consensus]
-      ));
-  }
+  const displayedAssumptions = $derived.by(() => ideas.flatMap((idea) => assumptionsFor(idea)));
+  const unresolvedCount = $derived(
+    displayedAssumptions.filter((item) => !item.stale && item.ownerState === "OPEN").length,
+  );
 
   function linkedTestLabel(assumption: SelectionAssumption): string {
     if (!assumption.experiments.length) return "No linked test";
@@ -263,14 +254,14 @@
 
   function originLabel(assumption: SelectionAssumption): string {
     if (!assumption.originChallengeId || !assumption.originQuestionId) return "Added manually";
-    return `Evidence review · ${lensLabel(assumption.lens)} · ${SELECTION_CHALLENGE_QUESTION_LABELS[assumption.originQuestionId] ?? assumption.originQuestionId}`;
+    return `Risk check · ${lensLabel(assumption.lens)} · ${SELECTION_CHALLENGE_QUESTION_LABELS[assumption.originQuestionId] ?? assumption.originQuestionId}`;
   }
 
   async function load() {
     if (!jobId) return;
     loading = true;
     loadError = "";
-    loadAnnouncement = "Loading assumptions and evidence gaps…";
+    loadAnnouncement = "Loading questions to resolve…";
     try {
       const [assumptionResponse, challengeResponse] = await Promise.all([
         getSelectionAssumptions(jobId),
@@ -278,9 +269,9 @@
       ]);
       assumptions = assumptionResponse.assumptions;
       challenges = challengeResponse.challenges;
-      loadAnnouncement = "Assumptions and evidence gaps loaded.";
+      loadAnnouncement = "Questions to resolve loaded.";
     } catch (cause) {
-      loadError = cause instanceof Error ? cause.message : "Could not load the assumption map.";
+      loadError = cause instanceof Error ? cause.message : "Could not load questions to resolve.";
       loadAnnouncement = loadError;
     } finally {
       loading = false;
@@ -298,13 +289,13 @@
   function reviewCopilotPrefill(request: SelectionAssumptionPrefill): void {
     if (request.requestId === appliedPrefillId) return;
     if (saving) {
-      prefillFeedback = { failed: true, message: "Wait for the current assumption save to finish." };
+      prefillFeedback = { failed: true, message: "Wait for the current save to finish." };
       return;
     }
     if (editor && editorDirty) {
       prefillFeedback = {
         failed: true,
-        message: "Your assumption has unsaved changes. Save or close it before reviewing another analyst draft.",
+        message: "This item has unsaved changes. Save or close it before reviewing another suggested draft.",
       };
       return;
     }
@@ -313,7 +304,7 @@
       && Number(candidate.idea_revision) === request.ideaRevision
     ));
     if (!idea) {
-      prefillFeedback = { failed: true, message: "This assumption draft references an older candidate revision." };
+      prefillFeedback = { failed: true, message: "This draft references an older idea revision." };
       return;
     }
     const draftedFields = GROUNDING_FIELDS.filter(({ key }) => request.values[key] !== undefined);
@@ -342,7 +333,7 @@
       ) {
         prefillFeedback = {
           failed: true,
-          message: "This assumption changed after the analyst prepared the draft. Refresh and ask again.",
+          message: "This item changed after the draft was prepared. Refresh and ask again.",
         };
         return;
       }
@@ -374,7 +365,7 @@
         if (!source) {
           prefillFeedback = {
             failed: true,
-            message: "The evidence-check question behind this draft is missing or no longer current.",
+            message: "The risk-check question behind this draft is missing or no longer current.",
           };
           return;
         }
@@ -418,7 +409,7 @@
     resetEditorValidation();
     appliedPrefillId = request.requestId;
     activeCopilotDraft = request;
-    prefillFeedback = { failed: false, message: "Analyst draft opened. Review the owner fields before saving." };
+    prefillFeedback = { failed: false, message: "Suggested draft opened. Review it before saving." };
   }
 
   $effect(() => {
@@ -445,32 +436,6 @@
       ownerState: "OPEN",
       originChallengeId: null,
       originQuestionId: null,
-    };
-    editorBaseline = JSON.stringify(editor);
-    saveError = "";
-    saveConflict = false;
-    resetEditorValidation();
-  }
-
-  function trackSuggestion(suggestion: GapSuggestion) {
-    const current = identity(suggestion.idea);
-    if (!current) return;
-    activeCopilotDraft = null;
-    editor = {
-      mode: "create",
-      assumptionId: null,
-      expectedVersion: null,
-      ideaId: current.id,
-      ideaRevision: current.revision,
-      ideaTitle: solutionDisplayTitle(suggestion.idea),
-      lens: suggestion.challenge.lens,
-      statement: suggestion.statement,
-      impactIfFalse: "",
-      falsificationQuestion: "",
-      impact: "",
-      ownerState: "OPEN",
-      originChallengeId: suggestion.challenge.id,
-      originQuestionId: suggestion.question.questionId,
     };
     editorBaseline = JSON.stringify(editor);
     saveError = "";
@@ -515,10 +480,18 @@
   }
 
   /** Submit-attempt entry point: reveals every missing required field instead
-   *  of relying on a silently disabled button. */
-  function attemptSaveEditor() {
+   *  of relying on a silently disabled button, then focuses the first one. */
+  async function attemptSaveEditor() {
     if (!canSave) {
       editorSaveAttempted = true;
+      await tick();
+      const order: RequiredEditorField[] = ["statement", "impactIfFalse", "falsificationQuestion", "impact"];
+      const first = order.find((field) => requiredEditorError(field));
+      if (first === "impact") {
+        impactFieldEl?.querySelector<HTMLElement>('[role="radio"]')?.focus();
+      } else if (first) {
+        document.getElementById(EDITOR_FIELD_COPY[first].id)?.focus();
+      }
       return;
     }
     void saveEditor();
@@ -563,15 +536,16 @@
       editor = null;
       activeCopilotDraft = null;
       editorBaseline = "";
-      saveAnnouncement = "Assumption saved.";
+      saveAnnouncement = "Question to resolve saved.";
+      onChanged?.();
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 409) {
         saveConflict = true;
         saveError = editorMode === "create"
-          ? "This evidence-check gap is already tracked or its idea revision changed. Reload the map before continuing."
-          : "This assumption changed or its idea revision is no longer current. Reload the map before editing it again.";
+          ? "This question is already saved or its idea revision changed. Reload before continuing."
+          : "This item changed or its idea revision is no longer current. Reload before editing it again.";
       } else {
-        saveError = cause instanceof Error ? cause.message : "Could not save the assumption.";
+        saveError = cause instanceof Error ? cause.message : "Could not save this item.";
       }
     } finally {
       saving = false;
@@ -600,17 +574,31 @@
 <section class="assumption-map" aria-labelledby="assumption-map-title">
   <header class="map-head">
     <div>
-      <p class="kicker">Tracked assumptions</p>
       <div class="title-row">
-        <h3 id="assumption-map-title">Make the decision hinge visible</h3>
-        <DecisionHelp title="Set impact, read the signals" position="bottom">
-          <p>Rate each assumption’s impact yourself; evidence direction and class fill in from the linked evidence-check question and concluded experiment outcomes. Test high-impact claims that still read Inference first. Each readout traces one claim’s evidence, not a confidence score. The whole-idea call stays yours.</p>
+        <h3 id="assumption-map-title">Questions to resolve</h3>
+        <DecisionHelp title="How to use this list" position="bottom">
+          <p>You choose how much each belief matters. Evidence signals update from linked risk checks and completed tests, but they never become a confidence score. Start with decision-changing beliefs that still rely on inference.</p>
         </DecisionHelp>
       </div>
-      <p>Write what must be true, what failure would change, and the question that could falsify it. No composite score is created.</p>
+      <p>Keep only questions whose answer would change what you research or build.</p>
     </div>
     {#if !loading && !loadError}
-      <span class="map-count">{assumptions.filter((item) => !item.stale && item.ownerState === "OPEN").length} open</span>
+      <div class="map-actions">
+        {#if unresolvedCount > 0}
+          <span class="map-count">{unresolvedCount} unresolved</span>
+        {/if}
+        {#if ideas.length === 1}
+          <button
+            type="button"
+            class="add-action"
+            aria-label={`Add a question to resolve for ${solutionDisplayTitle(ideas[0])}`}
+            disabled={!identity(ideas[0]) || !jobId}
+            onclick={() => openManualCreate(ideas[0])}
+          >
+            <Plus aria-hidden="true" /> Add question
+          </button>
+        {/if}
+      </div>
     {/if}
   </header>
 
@@ -624,51 +612,39 @@
   {/if}
 
   {#if loading}
-    <div class="map-state"><Loader2 class="spin map-spin" aria-hidden="true" /> Loading assumptions and evidence gaps…</div>
+    <div class="map-state"><Loader2 class="spin map-spin" aria-hidden="true" /> Loading questions to resolve…</div>
   {:else if loadError}
     <div class="map-state map-error" role="alert">
       <span>{loadError}</span>
       <button type="button" onclick={() => void load()}><RefreshCw aria-hidden="true" /> Retry</button>
     </div>
   {:else}
-    <div class="idea-groups">
+    <div class="idea-groups" class:is-single={ideas.length === 1}>
       {#each ideas as idea, ideaIndex (idea.idea_id ?? `${idea.solution_name}:${ideaIndex}`)}
         {@const current = identity(idea)}
         {@const tracked = assumptionsFor(idea)}
-        {@const suggestions = suggestionsFor(idea)}
-        <section class="idea-group" aria-labelledby={`assumption-idea-${ideaIndex}`}>
-          <header class="idea-head">
-            <div>
-              <span>Candidate {ideaIndex + 1}{current ? ` · rev ${current.revision}` : ""}</span>
-              <h4 id={`assumption-idea-${ideaIndex}`}>{solutionDisplayTitle(idea)}</h4>
-            </div>
-            <button type="button" class="add-action" disabled={!current || !jobId} onclick={() => openManualCreate(idea)}>
-              <Plus aria-hidden="true" /> Track an assumption
-            </button>
-          </header>
-
-          {#if suggestions.length}
-            <aside class="gap-suggestions" aria-label={`Untracked evidence gaps for ${solutionDisplayTitle(idea)}`}>
-              <div class="suggestion-heading">
-                <strong>Untracked gaps from evidence checks</strong>
-                <span>Review before adding; agents do not set owner impact.</span>
+        <section
+          class="idea-group"
+          class:is-single={ideas.length === 1}
+          aria-labelledby={ideas.length === 1 ? "assumption-map-title" : `assumption-idea-${ideaIndex}`}
+        >
+          {#if ideas.length > 1}
+            <header class="idea-head">
+              <div>
+                <span>Idea {ideaIndex + 1}{current ? ` · rev ${current.revision}` : ""}</span>
+                <h4 id={`assumption-idea-${ideaIndex}`}>{solutionDisplayTitle(idea)}</h4>
               </div>
-              {#each suggestions as suggestion (`${suggestion.challenge.id}:${suggestion.question.questionId}`)}
-                <article class="suggestion">
-                  <div>
-                    <span>{lensLabel(suggestion.challenge.lens)} · {SELECTION_CHALLENGE_QUESTION_LABELS[suggestion.question.questionId] ?? suggestion.question.questionId}</span>
-                    <p>{suggestion.statement}</p>
-                  </div>
-                  <button type="button" onclick={() => trackSuggestion(suggestion)}>Track this assumption <ArrowRight aria-hidden="true" /></button>
-                </article>
-              {/each}
-            </aside>
+              <button type="button" class="add-action" aria-label={`Add a question to resolve for ${solutionDisplayTitle(idea)}`} disabled={!current || !jobId} onclick={() => openManualCreate(idea)}>
+                <Plus aria-hidden="true" /> Add question
+              </button>
+            </header>
           {/if}
 
           {#if tracked.length}
             <div class="assumption-list">
               {#each tracked as assumption (assumption.id)}
                 <article class="assumption" class:is-stale={assumption.stale} data-annotation-anchor={`selection:assumption:${assumption.id}`}>
+                  <h5>{assumption.statement}</h5>
                   <div class="assumption-top">
                     <div class="assumption-origin">
                       <span>{originLabel(assumption)}</span>
@@ -679,24 +655,29 @@
                       <span>Status: {ownerStateLabel(assumption.ownerState)}</span>
                     </div>
                   </div>
-                  <h5>{assumption.statement}</h5>
                   <dl class="assumption-detail">
-                    <div><dt>Impact if false</dt><dd>{assumption.impactIfFalse}</dd></div>
-                    <div><dt>Falsification question</dt><dd>{assumption.falsificationQuestion}</dd></div>
+                    <div><dt>If this is false</dt><dd>{assumption.impactIfFalse}</dd></div>
+                    <div><dt>What would prove it wrong?</dt><dd>{assumption.falsificationQuestion}</dd></div>
                     {#if assumption.direction !== "UNKNOWN"}
-                      <div><dt>Evidence direction</dt><dd>{directionLabel(assumption)}</dd></div>
+                      <div><dt>What the evidence suggests</dt><dd>{directionLabel(assumption)}</dd></div>
                     {/if}
                     {#if assumption.evidenceClass !== "NONE"}
-                      <div><dt>Evidence class</dt><dd>{evidenceClassLabel(assumption)}</dd></div>
+                      <div><dt>Best evidence available</dt><dd>{evidenceClassLabel(assumption)}</dd></div>
                     {/if}
                     {#if assumption.experiments.length}
-                      <div><dt>Linked test</dt><dd>{linkedTestLabel(assumption)}</dd></div>
+                      <div><dt>Linked test</dt><dd>
+                        {#if onOpenLinkedTest && assumption.experiments.length}
+                          <button type="button" class="linked-test-action" onclick={onOpenLinkedTest}>{linkedTestLabel(assumption)}</button>
+                        {:else}
+                          {linkedTestLabel(assumption)}
+                        {/if}
+                      </dd></div>
                     {/if}
                     <div><dt>Next action</dt><dd>{nextAction(assumption)}</dd></div>
                   </dl>
                   <footer class="assumption-actions">
                     {#if !assumption.stale}
-                      <button type="button" class="text-action" onclick={() => openEdit(assumption, idea)}><Pencil aria-hidden="true" /> Edit owner fields</button>
+                      <button type="button" class="text-action" onclick={() => openEdit(assumption, idea)}><Pencil aria-hidden="true" /> Edit</button>
                       {#if onTestUnknown && !assumption.experiments.length && assumption.ownerState === "OPEN"}
                         <button type="button" class="test-action" onclick={() => draftTest(assumption)}><FlaskConical aria-hidden="true" /> Draft test</button>
                       {/if}
@@ -707,28 +688,30 @@
                 </article>
               {/each}
             </div>
-          {:else if !suggestions.length}
-            <EmptyState inline title="No assumptions are tracked for this exact candidate yet." />
+          {:else}
+            <p class="idea-empty">No questions saved yet.</p>
           {/if}
         </section>
       {/each}
     </div>
   {/if}
 
-  <footer class="map-note">Derived evidence direction can change as immutable evidence is added. It is not an owner-entered confidence rating.</footer>
+  {#if displayedAssumptions.length > 0}
+    <footer class="map-note">Evidence signals can change when saved evidence or completed test results change. They summarize linked evidence; they are not confidence ratings.</footer>
+  {/if}
 </section>
 
 <FormOverlay
   open={Boolean(editor)}
   size="form"
-  eyebrow={editor?.mode === "edit" ? "Owner judgment" : "Decision hinge"}
-  title={editor?.mode === "edit" ? "Edit key assumption" : "Track a key assumption"}
+  eyebrow="Questions to resolve"
+  title={editor?.mode === "edit" ? "Edit question to resolve" : "Save a question to resolve"}
   description={editor ? `${editor.ideaTitle} · rev ${editor.ideaRevision}` : ""}
   annotationAnchor={editor ? `selection:assumption-form:${editor.mode}:${editor.assumptionId ?? `${editor.ideaId}:${editor.ideaRevision}:${editor.originChallengeId ?? "manual"}`}` : undefined}
   onRequestClose={closeEditor}
   dirty={editorDirty}
   closeWarning="You have unsaved changes. Close again to discard them."
-  footerMessage="Only your owner fields are saved. Evidence direction stays derived."
+  footerMessage="Your wording and impact are saved. Evidence signals still come from linked sources and tests."
 >
   {#snippet children()}
     {#if editor}
@@ -739,8 +722,8 @@
         {#if activeCopilotDraft}
           <aside class="analyst-draft-note" aria-label="Analyst draft grounding">
             <div class="analyst-draft-heading">
-              <strong>Analyst draft · not saved</strong>
-              <span>Review and edit before owner confirmation.</span>
+              <strong>Suggested draft · not saved</strong>
+              <span>Review and edit before saving.</span>
             </div>
             <p>{activeCopilotDraft.rationale}</p>
             <dl>
@@ -760,25 +743,25 @@
             {#if activeCopilotDraft.caveats.length}
               <p><strong>Caveat:</strong> {activeCopilotDraft.caveats.join(" ")}</p>
             {/if}
-            <p class="owner-boundary">The analyst did not choose impact or owner state. Those remain your judgment.</p>
+            <p class="owner-boundary">You still choose how much this matters and whether it remains open.</p>
           </aside>
         {:else if editor.originChallengeId && editor.originQuestionId}
           <div class="provenance-note">
-            <strong>Suggested by the {lensLabel(editor.lens)} evidence review</strong>
+            <strong>Suggested by the “{lensLabel(editor.lens)}” risk check</strong>
             <span>{SELECTION_CHALLENGE_QUESTION_LABELS[editor.originQuestionId] ?? editor.originQuestionId}</span>
-            <p>The source reference is preserved. You still decide the impact and falsification question.</p>
+            <p>The source reference stays attached. You still decide the impact and what would prove this wrong.</p>
           </div>
         {/if}
 
         <FormField
           id="assumption-lens"
           kind="select"
-          label="Area of uncertainty"
+          label="Question area"
           value={editor.lens}
           disabled={editor.mode === "edit" || Boolean(editor.originChallengeId)}
           onchange={(event) => (editor!.lens = (event.currentTarget as HTMLSelectElement).value as SelectionChallengeLens)}
         >
-          {#each SELECTION_CHALLENGE_LENSES as lens}<option value={lens.value}>{lens.label}</option>{/each}
+          {#each SELECTION_CHALLENGE_LENSES as lens}<option value={lens.value}>{lensLabel(lens.value)}</option>{/each}
         </FormField>
 
         <FormField
@@ -821,10 +804,10 @@
         />
 
         <div class="field" bind:this={impactFieldEl}>
-          <span class="field-label" id="assumption-impact-label">Owner impact <span class="req">Required</span></span>
+          <span class="field-label" id="assumption-impact-label">How much would this change your decision? <span class="req">Required</span></span>
           <SegmentControl
             density="card"
-            label="Owner impact"
+            label="How much would this change your decision?"
             labelledBy="assumption-impact-label"
             options={IMPACTS}
             value={editor.impact}
@@ -842,8 +825,8 @@
           <FormField
             id="assumption-owner-state"
             kind="select"
-            label="Owner state"
-            hint="State records your decision handling. It does not change derived evidence direction."
+            label="Status"
+            hint="Status records how you plan to handle this item. It does not change what the evidence suggests."
             value={editor.ownerState}
             onchange={(event) => (editor!.ownerState = (event.currentTarget as HTMLSelectElement).value as SelectionAssumptionOwnerState)}
           >
@@ -860,13 +843,13 @@
       </form>
     {/if}
   {/snippet}
-  {#snippet footerCancel()}
-    <button type="button" class="cancel-btn" disabled={saving} onclick={closeEditor}>Cancel</button>
+  {#snippet footerCancel(requestClose)}
+    <button type="button" class="cancel-btn" disabled={saving} onclick={requestClose}>Cancel</button>
   {/snippet}
   {#snippet footer()}
     <SubmitButton
       type="button"
-      label={editor?.mode === "edit" ? "Save changes" : "Track key assumption"}
+      label={editor?.mode === "edit" ? "Save changes" : "Save question"}
       loadingText="Saving…"
       loading={saving}
       onclick={attemptSaveEditor}
@@ -876,118 +859,135 @@
 </FormOverlay>
 
 <style>
-  .assumption-map { padding: 1.15rem 1.5rem 1rem; background: var(--color-bg-surface); }
-  .map-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid var(--color-border-emphasis); }
-  .kicker { margin: 0 0 0.28rem; color: var(--color-text-secondary); font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
-  .title-row { display: flex; align-items: center; gap: 0.55rem; }
+  .assumption-map { padding: 0; background: transparent; }
+  .map-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-8); padding-bottom: var(--space-4); border-bottom: 1px solid var(--color-border-emphasis); }
+  .title-row { display: flex; align-items: flex-start; gap: var(--space-2); }
   h3, h4, h5, p { margin: 0; }
-  .map-head h3 { font-size: 1rem; line-height: 1.3; }
-  .map-head > div > p:last-child { max-width: 52rem; margin-top: 0.32rem; color: var(--color-text-secondary); font-size: var(--text-sm); line-height: 1.5; }
+  .map-head h3 { max-width: 38ch; font-size: var(--text-xl); line-height: var(--leading-tight); letter-spacing: var(--tracking-tight); text-wrap: balance; }
+  .map-head > div > p:last-child { max-width: 65ch; margin-top: var(--space-2); color: var(--color-text-secondary); font-size: var(--text-base); line-height: var(--leading-normal); text-wrap: pretty; }
+  .map-actions { display: flex; flex: 0 0 auto; align-items: center; justify-content: flex-end; gap: var(--space-3); }
   .map-count { flex: 0 0 auto; color: var(--color-text-secondary); font-family: var(--font-mono); font-size: var(--text-11); font-weight: 700; }
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
-  .prefill-feedback { margin: 0.75rem 0 0; color: var(--color-text-secondary); font-size: var(--text-sm); line-height: 1.45; }
+  .prefill-feedback { margin: var(--space-3) 0 0; color: var(--color-text-secondary); font-size: var(--text-sm); line-height: var(--leading-normal); }
   .prefill-feedback.is-error { color: var(--color-error-text); }
-  .map-state { display: flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 16rem; color: var(--color-text-secondary); font-size: var(--text-13); }
-  .map-state :global(svg) { width: 0.95rem; height: 0.95rem; }
+  .map-state { display: flex; align-items: center; justify-content: center; gap: var(--space-2); min-height: calc(var(--space-16) * 4); color: var(--color-text-secondary); font-size: var(--text-13); }
+  .map-state :global(svg) { width: var(--space-4); height: var(--space-4); }
   .map-error { flex-direction: column; color: var(--color-error-text); }
-  .map-error button { display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem; min-height: 2.4rem; padding: 0.45rem 0.75rem; border: 1px solid var(--color-input-border); border-radius: var(--radius-md); background: var(--color-bg-elevated); color: var(--color-text-primary); font: inherit; font-size: var(--text-sm); font-weight: 700; cursor: pointer; transition: border-color var(--duration-fast) var(--ease-default); }
+  .map-error button { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-1-5); min-height: var(--space-10); padding: var(--space-2) var(--space-3); border: 1px solid var(--color-input-border); border-radius: var(--radius-md); background: var(--color-bg-elevated); color: var(--color-text-primary); font: inherit; font-size: var(--text-sm); font-weight: 700; cursor: pointer; transition: border-color var(--duration-fast) var(--ease-default); }
   .map-error button:hover { border-color: var(--color-text-secondary); }
   .map-error button:active { transform: scale(0.98); }
-  .idea-groups { display: grid; gap: 1.4rem; padding-top: 1rem; }
-  .idea-group { min-width: 0; }
-  .idea-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; padding-bottom: 0.7rem; }
-  .idea-head span { color: var(--color-text-secondary); font-family: var(--font-mono); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.06em; }
-  .idea-head h4 { margin-top: 0.22rem; font-size: 0.95rem; line-height: 1.35; }
-  .add-action, .suggestion button, .test-action, .text-action { display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem; min-height: 2.4rem; border: 0; background: transparent; color: var(--color-accent-dark); font: inherit; font-size: var(--text-sm); font-weight: 700; cursor: pointer; transition: color var(--duration-fast) var(--ease-default); }
-  .add-action:hover:not(:disabled), .suggestion button:hover, .test-action:hover, .text-action:hover:not(:disabled) { color: var(--color-accent-hover); }
-  .add-action:active:not(:disabled), .suggestion button:active, .test-action:active, .text-action:active:not(:disabled) { transform: scale(0.98); }
-  .add-action :global(svg), .suggestion button :global(svg), .test-action :global(svg), .text-action :global(svg) { width: 0.85rem; height: 0.85rem; }
+  .idea-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: var(--space-5) var(--space-8); padding-top: var(--space-4); }
+  .idea-groups.is-single { grid-template-columns: minmax(0, 1fr); }
+  .idea-group { min-width: 0; padding-top: var(--space-4); border-top: 1px solid var(--color-border-emphasis); }
+  .idea-group.is-single { padding-top: 0; border-top: 0; }
+  .idea-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: var(--space-4); padding-bottom: var(--space-3); }
+  .idea-head span { color: var(--color-text-secondary); font-family: var(--font-mono); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: var(--tracking-wide); }
+  .idea-head h4 { max-width: 34ch; margin-top: var(--space-1); font-size: var(--text-md); line-height: var(--leading-snug); letter-spacing: var(--tracking-tight); text-wrap: pretty; }
+  .add-action, .test-action, .text-action { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-1-5); min-height: var(--space-10); border: 0; background: transparent; color: var(--color-accent-dark); font: inherit; font-size: var(--text-13); font-weight: 700; white-space: nowrap; cursor: pointer; transition: transform var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default); }
+  .add-action:hover:not(:disabled), .test-action:hover, .text-action:hover:not(:disabled) { color: var(--color-accent-hover); }
+  .linked-test-action { border: 0; background: transparent; padding: 0; font: inherit; color: var(--color-accent-dark); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+  .linked-test-action:hover { color: var(--color-accent-hover); }
+  .linked-test-action:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; border-radius: var(--radius-sm); }
+  .add-action:active:not(:disabled), .test-action:active, .text-action:active:not(:disabled) { transform: scale(0.98); }
+  .add-action :global(svg), .test-action :global(svg), .text-action :global(svg) { width: var(--text-base); height: var(--text-base); }
   .add-action:disabled { background: var(--color-bg-hover); color: var(--color-text-muted); cursor: not-allowed; }
-  .gap-suggestions { margin-bottom: 0.8rem; padding: 0.75rem 0.85rem 0.2rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-elevated); }
-  .suggestion-heading { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.35rem 1rem; padding-bottom: 0.45rem; }
-  .suggestion-heading strong { font-size: var(--text-sm); }
-  .suggestion-heading span { color: var(--color-text-secondary); font-size: var(--text-xs); }
-  .suggestion { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1rem; align-items: center; padding: 0.55rem 0; border-top: 1px solid var(--color-border); }
-  .suggestion > div > span { color: var(--color-text-secondary); font-family: var(--font-mono); font-size: var(--text-xs); }
-  .suggestion p { margin-top: 0.18rem; font-size: var(--text-sm); line-height: 1.45; }
-  .assumption-list { display: grid; gap: 0.7rem; }
-  .assumption { padding: 0.9rem 1rem; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-bg-elevated); box-shadow: var(--shadow-sm); }
+  .add-action { min-height: var(--space-8); padding: var(--space-1-5) var(--space-3); border: 1px solid var(--color-border-accent); border-radius: var(--radius-md); background: var(--color-bg-surface); }
+  .add-action:hover:not(:disabled) { border-color: var(--color-accent); background: var(--color-accent-subtle); }
+  .idea-empty { max-width: 65ch; padding: var(--space-4) 0 var(--space-2); color: var(--color-text-secondary); font-size: var(--text-base); line-height: var(--leading-normal); text-wrap: pretty; }
+  .assumption-list { display: grid; gap: var(--space-3); }
+  .assumption { padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-bg-elevated); }
   /* Staleness reads from the "Older revision" label plus a muted (but AA)
    *  body color — never opacity, which would wash out the whole card. */
   .assumption.is-stale h5, .assumption.is-stale .assumption-detail dd { color: var(--color-text-secondary); }
-  .assumption-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
-  .assumption-origin { display: grid; gap: 0.2rem; min-width: 0; }
-  .assumption-origin span, .assumption-origin strong { color: var(--color-text-secondary); font-family: var(--font-mono); font-size: var(--text-xs); line-height: 1.4; }
+  .assumption-top { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); margin-top: var(--space-2); }
+  .assumption-origin { display: grid; gap: var(--space-1); min-width: 0; }
+  .assumption-origin span, .assumption-origin strong { color: var(--color-text-secondary); font-family: var(--font-mono); font-size: var(--text-xs); line-height: var(--leading-snug); }
   .assumption-origin strong { color: var(--color-error-text); }
-  .assumption-badges { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.35rem; }
-  .assumption-badges span { padding: 0.22rem 0.4rem; border: 1px solid var(--color-border); border-radius: var(--radius-sm); color: var(--color-text-secondary); font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 700; text-transform: uppercase; }
+  .assumption-badges { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-1-5); }
+  .assumption-badges span { padding: var(--space-1) var(--space-1-5); border: 1px solid var(--color-border); border-radius: var(--radius-sm); color: var(--color-text-secondary); font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 700; text-transform: uppercase; }
   .assumption-badges .impact--decisive { border-color: color-mix(in srgb, var(--color-error-text) 45%, var(--color-border)); color: var(--color-error-text); }
-  .assumption h5 { margin-top: 0.55rem; max-width: 72ch; font-size: var(--text-base); line-height: 1.4; text-wrap: pretty; }
-  .assumption-detail { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0.75rem 0 0; border-top: 1px solid var(--color-border); }
-  .assumption-detail div { min-width: 0; padding: 0.6rem 0.75rem 0.15rem 0; }
-  .assumption-detail dt { color: var(--color-text-secondary); font-size: var(--text-xs); font-weight: 600; }
-  .assumption-detail dd { margin: 0.2rem 0 0; font-size: var(--text-11); line-height: 1.45; overflow-wrap: anywhere; }
-  .assumption-actions { display: flex; align-items: center; gap: 1rem; margin-top: 0.7rem; padding-top: 0.55rem; border-top: 1px solid var(--color-border); }
-  .assumption-actions span { display: inline-flex; align-items: center; gap: 0.35rem; color: var(--color-text-secondary); font-size: var(--text-xs); }
-  .assumption-actions span :global(svg) { width: 0.8rem; height: 0.8rem; }
-  .map-note { padding-top: 0.9rem; color: var(--color-text-secondary); font-size: var(--text-xs); }
+  .assumption h5 { max-width: 60ch; font-size: var(--text-lg); line-height: var(--leading-snug); letter-spacing: var(--tracking-tight); text-wrap: pretty; }
+  .assumption-detail { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: var(--space-3) 0 0; border-top: 1px solid var(--color-border); }
+  .assumption-detail div { min-width: 0; padding: var(--space-2) var(--space-3) var(--space-1) 0; }
+  .assumption-detail dt { color: var(--color-text-secondary); font-size: var(--text-sm); font-weight: 700; }
+  .assumption-detail dd { max-width: 65ch; margin: var(--space-1) 0 0; font-size: var(--text-13); line-height: var(--leading-normal); overflow-wrap: anywhere; text-wrap: pretty; }
+  .assumption-actions { display: flex; align-items: center; gap: var(--space-4); margin-top: var(--space-3); padding-top: var(--space-2); border-top: 1px solid var(--color-border); }
+  .assumption-actions span { display: inline-flex; align-items: center; gap: var(--space-1-5); color: var(--color-text-secondary); font-size: var(--text-sm); }
+  .assumption-actions span :global(svg) { width: var(--text-13); height: var(--text-13); }
+  .map-note { max-width: 65ch; padding-top: var(--space-4); color: var(--color-text-secondary); font-size: var(--text-sm); line-height: var(--leading-normal); }
 
   /* ── Overlay form ── */
-  .editor { display: grid; gap: 1.3rem; padding: 0.1rem; }
-  .field { display: grid; gap: 0.4rem; }
-  .field-label { display: flex; align-items: baseline; gap: 0.45rem; font-size: var(--text-13); font-weight: 600; color: var(--color-text-primary); }
+  /* 16px field rhythm, matching the test-plan wizard's fieldset gap. */
+  .editor { display: grid; gap: var(--space-4); max-width: 65ch; }
+  .field { display: grid; gap: var(--space-1-5); }
+  .field-label { display: flex; align-items: baseline; gap: var(--space-2); font-size: var(--text-base); font-weight: 700; color: var(--color-text-primary); }
   .field-label .req { font-size: var(--text-11); font-weight: 500; color: var(--color-text-secondary); }
-  .field-error { margin: 0; color: var(--color-error-text); font-size: var(--text-sm); line-height: 1.4; }
-  .provenance-note { display: grid; gap: 0.22rem; padding: 0.75rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-surface); }
+  .field-error { margin: 0; color: var(--color-error-text); font-size: var(--text-sm); line-height: var(--leading-normal); }
+  .provenance-note { display: grid; gap: var(--space-1); padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-surface); }
   .provenance-note strong { font-size: var(--text-sm); }
-  .provenance-note span { color: var(--color-text-secondary); font-size: var(--text-sm); }
-  .provenance-note p { margin-top: 0.2rem; color: var(--color-text-secondary); font-size: var(--text-sm); }
-  .analyst-draft-note { display: grid; gap: 0.65rem; padding: 0.8rem; border: 1px solid var(--color-border-emphasis); border-radius: var(--radius-md); background: var(--color-bg-surface); }
-  .analyst-draft-heading { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.25rem 1rem; }
+  .provenance-note span { color: var(--color-text-secondary); font-size: var(--text-13); line-height: var(--leading-normal); }
+  .provenance-note p { max-width: 65ch; margin-top: var(--space-1); color: var(--color-text-secondary); font-size: var(--text-13); line-height: var(--leading-normal); text-wrap: pretty; }
+  .analyst-draft-note { display: grid; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--color-border-emphasis); border-radius: var(--radius-md); background: var(--color-bg-surface); }
+  .analyst-draft-heading { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-1) var(--space-4); }
   .analyst-draft-heading strong { font-size: var(--text-sm); }
-  .analyst-draft-heading span, .analyst-draft-note > p { color: var(--color-text-secondary); font-size: var(--text-sm); line-height: 1.45; }
-  .analyst-draft-note dl { display: grid; gap: 0.45rem; margin: 0; }
-  .analyst-draft-note dl div { display: grid; grid-template-columns: minmax(8rem, 0.35fr) minmax(0, 1fr); gap: 0.5rem; }
+  .analyst-draft-heading span, .analyst-draft-note > p { max-width: 65ch; color: var(--color-text-secondary); font-size: var(--text-13); line-height: var(--leading-normal); text-wrap: pretty; }
+  .analyst-draft-note dl { display: grid; gap: var(--space-2); margin: 0; }
+  .analyst-draft-note dl div { display: grid; grid-template-columns: minmax(8rem, 0.35fr) minmax(0, 1fr); gap: var(--space-2); }
   .analyst-draft-note dt { color: var(--color-text-secondary); font-size: var(--text-xs); font-weight: 600; }
-  .analyst-draft-note dd { display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 0; }
-  .analyst-draft-note dd span { padding: 0.18rem 0.35rem; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-bg-elevated); color: var(--color-text-secondary); font-size: var(--text-xs); }
+  .analyst-draft-note dd { display: flex; flex-wrap: wrap; gap: var(--space-1); margin: 0; }
+  .analyst-draft-note dd span { padding: var(--space-1) var(--space-1-5); border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-bg-elevated); color: var(--color-text-secondary); font-size: var(--text-xs); }
   .analyst-draft-note .owner-boundary { color: var(--color-text-primary); font-weight: 700; }
-  .editor-error { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin: 0; padding: 0.7rem; border: 1px solid var(--color-border-emphasis); border-radius: var(--radius-md); background: var(--color-error-subtle); color: var(--color-error-text); font-size: var(--text-sm); }
-  .reload-action { display: inline-flex; align-items: center; flex: 0 0 auto; min-height: 2.1rem; border: 0; background: transparent; color: inherit; font: inherit; font-weight: 700; cursor: pointer; text-decoration: underline; text-underline-offset: 0.2em; transition: opacity var(--duration-fast) var(--ease-default); }
+  .editor-error { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); margin: 0; padding: var(--space-3); border: 1px solid var(--color-border-emphasis); border-radius: var(--radius-md); background: var(--color-error-subtle); color: var(--color-error-text); font-size: var(--text-sm); }
+  .reload-action { display: inline-flex; align-items: center; flex: 0 0 auto; min-height: var(--space-8); border: 0; background: transparent; color: inherit; font: inherit; font-weight: 700; cursor: pointer; text-decoration: underline; text-underline-offset: var(--space-1); transition: opacity var(--duration-fast) var(--ease-default); }
   .reload-action:hover { opacity: 0.75; }
   .reload-action:active { transform: scale(0.98); }
-  .cancel-btn { display: inline-flex; align-items: center; justify-content: center; min-height: 2.4rem; padding: 0.5rem 0.9rem; border: 1px solid var(--color-input-border); border-radius: var(--radius-md); background: transparent; color: var(--color-text-secondary); font-size: var(--text-13); font-weight: 600; cursor: pointer; transition: border-color var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default); }
-  .cancel-btn:hover:not(:disabled) { border-color: var(--color-text-secondary); color: var(--color-text-primary); }
+  .cancel-btn { display: inline-flex; align-items: center; justify-content: center; min-height: var(--space-10); padding: var(--space-2) var(--space-4); border: 1px solid var(--color-input-border); border-radius: var(--radius-md); background: transparent; color: var(--color-text-secondary); font-size: var(--text-13); font-weight: 700; white-space: nowrap; cursor: pointer; transition: transform var(--duration-fast) var(--ease-default), border-color var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default); }
+  .cancel-btn:hover:not(:disabled) { transform: translateY(-1px); border-color: var(--color-text-secondary); color: var(--color-text-primary); }
   .cancel-btn:active:not(:disabled) { transform: scale(0.98); }
   .cancel-btn:disabled { background: var(--color-bg-hover); color: var(--color-text-muted); border-color: var(--color-border); cursor: wait; }
   .cancel-btn:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
   button:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
-  :global(.map-spin) { animation: assumption-spin 800ms linear infinite; }
+  :global(.map-spin) { animation: assumption-spin var(--duration-slowest) linear infinite; }
   @keyframes assumption-spin { to { transform: rotate(360deg); } }
 
   @media (prefers-reduced-motion: reduce) {
+    .assumption-map *,
+    .assumption-map *::before,
+    .assumption-map *::after,
+    .editor *,
+    .editor *::before,
+    .editor *::after {
+      transition: none !important;
+      animation: none !important;
+    }
     .map-error button:active,
+    .add-action:hover:not(:disabled),
+    .test-action:hover,
+    .text-action:hover:not(:disabled),
     .add-action:active:not(:disabled),
-    .suggestion button:active,
     .test-action:active,
     .text-action:active:not(:disabled),
     .reload-action:active,
+    .cancel-btn:hover:not(:disabled),
     .cancel-btn:active:not(:disabled) {
       transform: none;
     }
   }
 
+  @media (max-width: 860px) {
+    .idea-groups { grid-template-columns: 1fr; }
+  }
+
   @media (max-width: 720px) {
-    .assumption-map { padding: 1rem; }
+    .assumption-map { padding: 0; }
     .map-head { display: block; }
-    .map-count { display: block; margin-top: 0.55rem; }
-    .idea-head { align-items: flex-start; }
-    .suggestion { grid-template-columns: 1fr; gap: 0.35rem; }
-    .suggestion button { justify-content: flex-start; }
+    .map-actions { justify-content: flex-start; margin-top: var(--space-3); }
+    .idea-head { grid-template-columns: 1fr; }
+    .add-action { width: fit-content; }
     .assumption-top { display: grid; }
     .assumption-badges { justify-content: flex-start; }
     .assumption-detail { grid-template-columns: 1fr; }
-    .assumption-detail div { padding-right: 0; padding-bottom: 0.55rem; border-bottom: 1px solid var(--color-border); }
+    .assumption-detail div { padding-right: 0; padding-bottom: var(--space-2); border-bottom: 1px solid var(--color-border); }
     .assumption-actions { flex-wrap: wrap; }
     .analyst-draft-note dl div { grid-template-columns: 1fr; }
   }

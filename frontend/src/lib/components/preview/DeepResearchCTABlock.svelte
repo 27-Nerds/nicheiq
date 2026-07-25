@@ -31,9 +31,9 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 1.25rem;
-    margin: 1rem 0;
-    padding: 1rem;
+    gap: var(--space-5);
+    margin: var(--space-4) 0;
+    padding: var(--space-4);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
     background: var(--color-bg-elevated);
@@ -43,13 +43,13 @@
   .cta-copy {
     display: flex;
     flex-direction: column;
-    gap: 0.375rem;
+    gap: var(--space-1-5);
     min-width: 0;
   }
 
   .cta-eyebrow {
     font-family: var(--font-mono);
-    font-size: 0.6875rem;
+    font-size: var(--text-11);
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -58,7 +58,7 @@
 
   .cta-title {
     font-family: var(--font-display);
-    font-size: 1.125rem;
+    font-size: var(--text-xl);
     font-weight: 700;
     line-height: 1.25;
     color: var(--color-text-primary);
@@ -66,7 +66,7 @@
   }
 
   .cta-desc {
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     line-height: 1.5;
     color: var(--color-text-secondary);
     max-width: 36rem;
@@ -77,21 +77,21 @@
     display: flex;
     flex-direction: column;
     align-items: flex-end;
-    gap: 0.5rem;
+    gap: var(--space-2);
     flex-shrink: 0;
   }
 
   .cta-primary {
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.875rem 1.5rem;
-    background: var(--color-accent);
-    color: white;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-6);
+    background: var(--color-accent-hover);
+    color: var(--color-text-on-accent);
     border: none;
     border-radius: var(--radius-md);
     font-family: var(--font-body);
-    font-size: 0.9375rem;
+    font-size: var(--text-base);
     font-weight: 600;
     cursor: pointer;
     transition: background-color 150ms ease;
@@ -113,7 +113,7 @@
 
   .cta-price {
     font-family: var(--font-mono);
-    font-size: 0.6875rem;
+    font-size: var(--text-11);
     color: var(--color-text-muted);
     letter-spacing: 0.03em;
     margin: 0;

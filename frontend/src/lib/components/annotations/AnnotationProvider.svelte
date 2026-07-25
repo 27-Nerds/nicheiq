@@ -27,10 +27,13 @@
     type AnnotationTool,
   } from './context';
   import AnnotationSurface from './AnnotationSurface.svelte';
+  import { portal } from '$lib/actions/portal';
 
   interface Props {
     mode: 'owner' | 'viewer';
     enabled?: boolean;
+    /** Keeps annotation support available without forcing the floating entry point onto every workspace. */
+    showLauncher?: boolean;
     jobId?: string;
     shareToken?: string;
     surfaceKey?: string;
@@ -40,6 +43,7 @@
   let {
     mode,
     enabled = true,
+    showLauncher = true,
     jobId,
     shareToken,
     surfaceKey = 'research:page',
@@ -186,8 +190,18 @@
   {@render children()}
 </AnnotationSurface>
 
-{#if editable}
-  <div class="annotation-toolbar" aria-label="Page annotation controls">
+{#if editable && (showLauncher || active)}
+  <!-- Portaled to <body> and marked data-modal-exempt: the toolbar is designed to
+       work ABOVE modals (see the z-index comment below), but isolateModalBackground
+       inertifies every body child while a FormOverlay/WorkspaceOverlay is open —
+       rendered in the app root it was a dead strip of buttons under every modal. -->
+  <div
+    use:portal
+    data-modal-exempt
+    class="annotation-toolbar"
+    role="toolbar"
+    aria-label="Page annotation controls"
+  >
     {#if !active}
       <button
         type="button"

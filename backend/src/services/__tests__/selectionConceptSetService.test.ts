@@ -16,6 +16,7 @@ vi.mock('../analystModelService.js', () => ({
 }));
 
 import {
+  ConceptSetGenerationError,
   generateSelectionConceptSet,
   prepareSelectionConceptSetInput,
 } from '../selectionConceptSetService.js';
@@ -159,6 +160,7 @@ describe('selectionConceptSetService', () => {
   });
 
   it('stops after one repair attempt when both artifacts are invalid', async () => {
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     mocks.chatComplete.mockResolvedValue({
       choices: [{ message: { content: 'not json' } }],
       usage: { prompt_tokens: 100, completion_tokens: 20 },
@@ -167,6 +169,76 @@ describe('selectionConceptSetService', () => {
     await expect(generateSelectionConceptSet(baseInput)).rejects
       .toThrow('INVALID_CONCEPT_SET_OUTPUT');
     expect(mocks.chatComplete).toHaveBeenCalledTimes(2);
+    expect(consoleWarn).toHaveBeenCalledTimes(2);
+    consoleWarn.mockRestore();
+  });
+
+  it('describes the response schema in the system prompt so the model uses exact field names', async () => {
+    await generateSelectionConceptSet(baseInput);
+    const system = mocks.chatComplete.mock.calls[0][0].messages[0].content as string;
+    for (const field of ['"sourceIndexes"', '"changedAxes"', '"evidenceToRecheck"', '"suggestedTest"', '"assumptionIndex"']) {
+      expect(system).toContain(field);
+    }
+    expect(system).toContain('"narrow" | "reposition" | "combine" | "adjacent"');
+  });
+
+  it('instructs the model to name parents in prose and to describe the test method, not echo the assumption', async () => {
+    await generateSelectionConceptSet(baseInput);
+    const system = mocks.chatComplete.mock.calls[0][0].messages[0].content as string;
+    expect(system).toContain('never use index references like "parent 0" or "parent 1" in prose');
+    expect(system).toContain('Refer to parent products by their product name');
+    expect(system).toContain('must not restate the targeted assumption\'s statement');
+    expect(system).toContain('what you will do, with whom, and within what window');
+    // Parent payload labels each parent by product name for the model to reference.
+    const user = mocks.chatComplete.mock.calls[0][0].messages[1].content as string;
+    expect(user).toContain('"productName":"Signal Desk"');
+  });
+
+  it('feeds specific schema problems into the repair round', async () => {
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const missingField = { options: [option('narrow', 1), option('reposition', 2), option('adjacent', 3)] };
+    delete (missingField.options[0] as Record<string, unknown>).changedAxes;
+    mocks.chatComplete
+      .mockResolvedValueOnce({
+        choices: [{ message: { content: JSON.stringify(missingField) } }],
+        usage: { prompt_tokens: 100, completion_tokens: 20 },
+      })
+      .mockResolvedValueOnce({
+        choices: [{ message: { content: JSON.stringify({
+          options: [option('narrow', 1), option('reposition', 2), option('adjacent', 3)],
+        }) } }],
+        usage: { prompt_tokens: 300, completion_tokens: 900 },
+      });
+
+    await generateSelectionConceptSet(baseInput);
+
+    const feedback = mocks.chatComplete.mock.calls[1][0].messages.at(-1)?.content as string;
+    expect(feedback).toContain('INVALID_CONCEPT_SET_OUTPUT');
+    expect(feedback).toContain('options.0.changedAxes');
+    consoleWarn.mockRestore();
+  });
+
+  it('carries the token spend of both rejected attempts on final guardrail failure', async () => {
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    mocks.chatComplete.mockResolvedValue({
+      choices: [{ message: { content: JSON.stringify({
+        options: [option('narrow', 1), option('narrow', 2), option('narrow', 3)],
+      }) } }],
+      usage: { prompt_tokens: 100, completion_tokens: 200 },
+    });
+
+    const failure = await generateSelectionConceptSet(baseInput).catch((error) => error);
+
+    expect(failure).toBeInstanceOf(ConceptSetGenerationError);
+    expect(failure.code).toBe('CONCEPT_OPTIONS_NOT_DISTINCT');
+    expect(failure.costUsd).toBe(0.01);
+    expect(failure.usage).toEqual({
+      inputTokens: 200,
+      outputTokens: 400,
+      cacheWriteTokens: 0,
+      cacheReadTokens: 0,
+    });
+    consoleWarn.mockRestore();
   });
 
   it('changes the input fingerprint when owner context changes', () => {

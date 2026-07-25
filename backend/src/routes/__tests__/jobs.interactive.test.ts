@@ -2,6 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import express, { Express } from 'express';
 import request from 'supertest';
 
+// These suites exercise route logic, not the decision-tools grant. The grant itself is
+// covered in middleware/__tests__/featureAccess.test.ts.
+vi.mock('../../middleware/featureAccess.js', () => ({
+  requireDecisionToolsAccess: (_req: any, _res: any, next: any) => next(),
+}));
+
 // ============================================
 // Mock dependencies
 // ============================================
@@ -100,6 +106,12 @@ vi.mock('../../utils/jobFormatter.js', () => ({
   formatJobResponse: vi.fn(),
 }));
 
+const mockBroadcastProgress = vi.fn();
+
+vi.mock('../../services/progressBroadcastService.js', () => ({
+  broadcastProgress: (...args: any[]) => mockBroadcastProgress(...args),
+}));
+
 vi.mock('../../utils/assetPath.js', () => ({
   resolveAssetPath: vi.fn(),
 }));
@@ -174,6 +186,44 @@ describe('PUT /api/jobs/:jobId/selection-draft', () => {
     expect(mockEnqueuePhase2Job).not.toHaveBeenCalled();
   });
 
+  it('broadcasts an SSE progress event after a successful save so other tabs refresh', async () => {
+    mockJobFindFirst.mockResolvedValue(selectionJob());
+
+    const response = await request(app)
+      .put(`/api/jobs/${jobId}/selection-draft`)
+      .set(authHeaders)
+      .send({
+        expectedVersion: 3,
+        items: [{ ideaId: 'idea-alpha', ideaRevision: 2 }],
+      });
+
+    expect(response.status).toBe(200);
+    expect(mockBroadcastProgress).toHaveBeenCalledTimes(1);
+    expect(mockBroadcastProgress).toHaveBeenCalledWith(jobId, {
+      stage: 0,
+      name: 'Selection Draft',
+      status: 'completed',
+    });
+  });
+
+  it('does not broadcast when the save is rejected', async () => {
+    mockJobFindFirst
+      .mockResolvedValueOnce(selectionJob())
+      .mockResolvedValueOnce(selectionJob({ selectionDraftVersion: 4 }));
+    mockJobUpdateMany.mockResolvedValueOnce({ count: 0 });
+
+    const response = await request(app)
+      .put(`/api/jobs/${jobId}/selection-draft`)
+      .set(authHeaders)
+      .send({
+        expectedVersion: 3,
+        items: [{ ideaId: 'idea-alpha', ideaRevision: 2 }],
+      });
+
+    expect(response.status).toBe(409);
+    expect(mockBroadcastProgress).not.toHaveBeenCalled();
+  });
+
   it('rejects stale revisions before writing the draft', async () => {
     mockJobFindFirst.mockResolvedValue(selectionJob());
 
@@ -228,6 +278,7 @@ describe('PUT /api/jobs/:jobId/selection-draft', () => {
 
     expect(response.status).toBe(409);
     expect(response.body.code).toBe('SELECTION_DRAFT_LOCKED');
+    expect(response.body.status).toBe('QUEUED');
     expect(mockJobUpdateMany).not.toHaveBeenCalled();
   });
 });
@@ -392,16 +443,22 @@ describe('POST /api/jobs/:jobId/select-solution', () => {
     expect(response.status).toBe(404);
   });
 
-  it('returns 400 when solution already selected', async () => {
-    mockJobFindFirst.mockResolvedValue(makeJob({ selectedSolutions: ['AlreadyPicked'] }));
+  it('returns a stable conflict when Deep Research was already started', async () => {
+    mockJobFindFirst.mockResolvedValue(makeJob({
+      status: 'RUNNING_PHASE2',
+      selectedSolutions: ['AlreadyPicked'],
+    }));
 
     const response = await request(app)
       .post(`/api/jobs/${jobId}/select-solution`)
       .set(authHeaders)
       .send({ solutionNames: ['Sol1'] });
 
-    expect(response.status).toBe(400);
-    expect(response.body.error).toBe('Solution already selected');
+    expect(response.status).toBe(409);
+    expect(response.body).toMatchObject({
+      code: 'DEEP_RESEARCH_ALREADY_STARTED',
+      status: 'RUNNING_PHASE2',
+    });
   });
 
   it('returns 400 when solution name not in solutionIdeas', async () => {
@@ -454,7 +511,7 @@ describe('POST /api/jobs/:jobId/select-solution', () => {
     expect(response.body.missing).toEqual(['DemotedIdea']);
   });
 
-  it('returns 400 when job in wrong status', async () => {
+  it('returns a stable conflict when the job left selection', async () => {
     mockJobFindFirst.mockResolvedValue(makeJob({ status: 'COMPLETED' }));
 
     const response = await request(app)
@@ -462,8 +519,11 @@ describe('POST /api/jobs/:jobId/select-solution', () => {
       .set(authHeaders)
       .send({ solutionNames: ['Sol1'] });
 
-    expect(response.status).toBe(400);
-    expect(response.body.error).toContain('not in a state');
+    expect(response.status).toBe(409);
+    expect(response.body).toMatchObject({
+      code: 'DEEP_RESEARCH_NOT_AWAITING_SELECTION',
+      status: 'COMPLETED',
+    });
   });
 
   it('returns 500 when phase1CheckpointPath is null in AWAITING_SELECTION', async () => {
@@ -488,6 +548,7 @@ describe('POST /api/jobs/:jobId/select-solution', () => {
       .send({ solutionNames: ['Sol1'] });
 
     expect(response.status).toBe(409);
+    expect(response.body.code).toBe('DEEP_RESEARCH_START_CONFLICT');
   });
 
   it('returns 400 for invalid Zod input (missing solutionNames)', async () => {

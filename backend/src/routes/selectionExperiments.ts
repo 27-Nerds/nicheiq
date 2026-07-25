@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { JobStatus, Prisma, SelectionExperimentStatus } from '@prisma/client';
 import { z } from 'zod';
 import { requireInternalAuth, AuthenticatedRequest } from '../middleware/auth.js';
+import { requireDecisionToolsAccess } from '../middleware/featureAccess.js';
 import { getDiscoveryDataForJob, getPreviewReportForJob } from '../services/assetService.js';
 import { prisma } from '../services/db.js';
 import { prepareSelectionChallengeInput } from '../services/selectionChallengeService.js';
@@ -75,6 +76,7 @@ async function validLinkedAssumption(
 selectionExperimentsRouter.get(
   '/:jobId/selection-experiments/:experimentId/export/:format',
   requireInternalAuth,
+  requireDecisionToolsAccess,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const params = ExperimentExportParamsSchema.parse(req.params);
@@ -112,7 +114,7 @@ selectionExperimentsRouter.get(
   },
 );
 
-selectionExperimentsRouter.get('/:jobId/selection-experiments', requireInternalAuth, async (req: AuthenticatedRequest, res: Response) => {
+selectionExperimentsRouter.get('/:jobId/selection-experiments', requireInternalAuth, requireDecisionToolsAccess, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const params = JobParamsSchema.parse(req.params);
     const job = await prisma.job.findFirst({
@@ -141,7 +143,7 @@ selectionExperimentsRouter.get('/:jobId/selection-experiments', requireInternalA
   }
 });
 
-selectionExperimentsRouter.post('/:jobId/selection-experiments', requireInternalAuth, async (req: AuthenticatedRequest, res: Response) => {
+selectionExperimentsRouter.post('/:jobId/selection-experiments', requireInternalAuth, requireDecisionToolsAccess, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const params = JobParamsSchema.parse(req.params);
     const input = SelectionExperimentDraftSchema.parse(req.body);
@@ -266,7 +268,7 @@ selectionExperimentsRouter.post('/:jobId/selection-experiments', requireInternal
   }
 });
 
-selectionExperimentsRouter.put('/:jobId/selection-experiments/:experimentId', requireInternalAuth, async (req: AuthenticatedRequest, res: Response) => {
+selectionExperimentsRouter.put('/:jobId/selection-experiments/:experimentId', requireInternalAuth, requireDecisionToolsAccess, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const params = ExperimentParamsSchema.parse(req.params);
     const input = SelectionExperimentDraftSchema.parse(req.body);
@@ -327,7 +329,45 @@ selectionExperimentsRouter.put('/:jobId/selection-experiments/:experimentId', re
   }
 });
 
-selectionExperimentsRouter.post('/:jobId/selection-experiments/:experimentId/lock', requireInternalAuth, async (req: AuthenticatedRequest, res: Response) => {
+selectionExperimentsRouter.delete('/:jobId/selection-experiments/:experimentId', requireInternalAuth, requireDecisionToolsAccess, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const params = ExperimentParamsSchema.parse(req.params);
+    const existing = await prisma.selectionExperiment.findFirst({
+      where: { id: params.experimentId, jobId: params.jobId, job: { userId: req.user!.id } },
+      include: { job: { select: { status: true } } },
+    });
+    if (!existing) {
+      res.status(404).json({ error: 'Experiment not found' });
+      return;
+    }
+    if (existing.status !== SelectionExperimentStatus.DRAFT) {
+      res.status(409).json({ error: 'Only draft test plans can be deleted; a locked brief is a permanent record' });
+      return;
+    }
+    if (!EDITABLE_JOB_STATUSES.has(existing.job.status)) {
+      res.status(409).json({ error: 'Experiments can only be deleted during idea selection' });
+      return;
+    }
+
+    const result = await prisma.selectionExperiment.deleteMany({
+      where: { id: existing.id, status: SelectionExperimentStatus.DRAFT },
+    });
+    if (result.count !== 1) {
+      res.status(409).json({ error: 'Experiment changed while it was being deleted' });
+      return;
+    }
+    res.status(204).send();
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({ error: 'Invalid experiment reference' });
+      return;
+    }
+    console.error('Failed to delete selection experiment:', error);
+    res.status(500).json({ error: 'Failed to delete draft test plan' });
+  }
+});
+
+selectionExperimentsRouter.post('/:jobId/selection-experiments/:experimentId/lock', requireInternalAuth, requireDecisionToolsAccess, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const params = ExperimentParamsSchema.parse(req.params);
     const existing = await prisma.selectionExperiment.findFirst({

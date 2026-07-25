@@ -22,6 +22,7 @@
 @import "./lib/styles/preview-capped.css";
 @import "./lib/styles/discovery-dossier.css";
 @import "./lib/styles/ledger.css";
+@import "./lib/styles/tour.css";
 
 /* ========================================
    Tailwind Theme Extensions
@@ -86,12 +87,10 @@
 	--shadow-glow-lg: 0 0 0 transparent;
 	--shadow-inner-glow: 0 0 0 transparent;
 
-	/* Typography */
-	/* Space Grotesk (display) gives headings/big numbers a distinct technical character
-	   that pairs with JetBrains Mono; Plus Jakarta Sans stays the body face for contrast. */
-	--font-display: "Space Grotesk", "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
-	--font-body: "Plus Jakarta Sans", -apple-system, "Segoe UI", Roboto, sans-serif;
-	--font-mono: "JetBrains Mono", ui-monospace, monospace;
+	/* Typography — one legible product family keeps dense decision screens coherent. */
+	--font-display: "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
+	--font-body: "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
+	--font-mono: "Geist Mono", ui-monospace, monospace;
 
 	/* Animation */
 	--ease-out: cubic-bezier(0.33, 1, 0.68, 1);
@@ -136,6 +135,7 @@
 
 	body {
 		font-family: var(--font-body);
+		font-optical-sizing: auto;
 		/* Flat paper canvas — the dot-grid texture was removed (June 2026):
 		   public catalog pages covered it with surfaces while app pages showed
 		   it, so the two halves read as different products. */
@@ -155,6 +155,7 @@
 
 	h1, h2, h3, h4, h5, h6 {
 		font-family: var(--font-display);
+		font-optical-sizing: auto;
 		font-weight: 700;
 		line-height: 1.1;
 		letter-spacing: -0.03em;
@@ -1101,6 +1102,13 @@
 @keyframes catalogFadeUp {
 	from { opacity: 0; transform: translateY(4px); }
 	to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Shared loading rotation. Components set their own ring dimensions and colors. */
+@keyframes spin {
+	to {
+		transform: rotate(360deg);
+	}
 }
 .catalog-fade-in {
 	animation: catalogFadeUp 0.3s ease-out backwards;

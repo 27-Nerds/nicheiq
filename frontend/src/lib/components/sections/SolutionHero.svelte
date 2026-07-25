@@ -32,7 +32,7 @@
   import {
     renderMarkdown,
     parseRationaleMetrics,
-    formatScoreOn10,
+    formatScorePercent,
   } from "$lib/utils/format";
   import { formatPricingSummary } from "$lib/utils/pricing";
   import Badge from "$lib/components/ui/Badge.svelte";
@@ -347,7 +347,7 @@
     </InsightCard>
   {/if}
 
-  <!-- Originality / Novelty Score Card -->
+  <!-- Distinctiveness score card -->
   {#if origMetric.value != null}
     <InsightCard
       variant="warning"
@@ -362,10 +362,7 @@
             <span>{origMetric.label?.toUpperCase()}</span>
           </div>
           <div class="innovation-score">
-            <span class="score-value"
-              >{formatScoreOn10(origMetric.value)}</span
-            >
-            <span class="score-max">/10</span>
+            <span class="score-value">{formatScorePercent(origMetric.value)}</span>
           </div>
         </div>
       {/snippet}
@@ -1156,12 +1153,6 @@
     font-weight: 800;
     color: var(--color-warning);
     line-height: 1;
-  }
-
-  .innovation-score .score-max {
-    font-size: 0.8125rem;
-    font-weight: 500;
-    color: var(--color-text-muted);
   }
 
   .innovation-breakdown {

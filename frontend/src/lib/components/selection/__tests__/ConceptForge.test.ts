@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, waitFor, within } from "@testing-library/svelte";
 import ConceptForge from "../ConceptForge.svelte";
 import {
+  ApiError,
+  archiveSelectionConceptSet,
   createSelectionConceptSet,
   getSelectionConceptSets,
   prepareSelectionConceptOption,
@@ -9,7 +11,7 @@ import {
 import type { IdeaSynthesisPatch } from "$lib/api";
 import type { SolutionPreview } from "$lib/types/job";
 import type { SelectionConceptSet } from "$lib/types/selectionConceptSet";
-import { PRICE_CHANGED_RETRY } from "$lib/selection/labels";
+import { FORGE_RETRY_NOTE, PRICE_CHANGED_RETRY } from "$lib/selection/labels";
 
 vi.mock("$lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("$lib/api")>();
@@ -18,6 +20,7 @@ vi.mock("$lib/api", async (importOriginal) => {
     getSelectionConceptSets: vi.fn(),
     createSelectionConceptSet: vi.fn(),
     prepareSelectionConceptOption: vi.fn(),
+    archiveSelectionConceptSet: vi.fn(),
   };
 });
 
@@ -66,12 +69,13 @@ const patch: IdeaSynthesisPatch = {
   newAssumptions: ["A weekly review is timely enough."],
 };
 
-function set(): SelectionConceptSet {
+function set(evaluatedOptionIds: string[] = []): SelectionConceptSet {
   const operations = ["narrow", "reposition", "adjacent"] as const;
   return {
     id: "660e8400-e29b-41d4-a716-446655440000",
     stale: false,
     createdAt: "2026-07-16T12:00:00.000Z",
+    evaluatedOptionIds,
     artifact: {
       inputFingerprint: "f".repeat(64),
       purpose: "diverge",
@@ -150,6 +154,7 @@ describe("ConceptForge", () => {
       patch,
       cached: false,
     });
+    vi.mocked(archiveSelectionConceptSet).mockResolvedValue(undefined);
   });
 
   afterEach(cleanup);
@@ -167,7 +172,7 @@ describe("ConceptForge", () => {
     });
 
     await view.findByRole("heading", { name: "What should these options help you resolve?" });
-    expect(view.getByRole("dialog", { name: "Explore variants" })).toBeInTheDocument();
+    expect(view.getByRole("dialog", { name: "Branch a new direction" })).toBeInTheDocument();
     expect(view.getByText(/Signal Desk · rev 3/)).toBeInTheDocument();
     expect(view.getByRole("heading", {
       name: "What should these options help you resolve?",
@@ -510,7 +515,7 @@ describe("ConceptForge", () => {
       "Speed to launch versus a stronger wedge",
     );
 
-    await fireEvent.keyDown(view.getByRole("dialog", { name: "Explore variants" }), {
+    await fireEvent.keyDown(view.getByRole("dialog", { name: "Branch a new direction" }), {
       key: "Escape",
     });
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -541,13 +546,295 @@ describe("ConceptForge", () => {
       target: { value: "A different tension the owner actually typed" },
     });
 
-    const dialog = view.getByRole("dialog", { name: "Explore variants" });
+    const dialog = view.getByRole("dialog", { name: "Branch a new direction" });
     await fireEvent.keyDown(dialog, { key: "Escape" });
     expect(onClose).not.toHaveBeenCalled();
     expect(view.getByText(/unsent tension note/)).toBeInTheDocument();
 
     await fireEvent.keyDown(dialog, { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("restores the persisted set on an owner open even though a prefill is passed", async () => {
+    vi.mocked(getSelectionConceptSets).mockResolvedValue([set()]);
+    const view = render(ConceptForge, {
+      props: {
+        open: true,
+        jobId: "job-1",
+        parents: [parent],
+        prefill: {
+          requestId: "owner-open-1",
+          purpose: "diverge",
+          targetTradeoff: "",
+          rationale: "",
+          caveats: [],
+        },
+        seedCost: 3,
+        onEvaluate: vi.fn(),
+        onClose: vi.fn(),
+      },
+    });
+
+    expect(await view.findByRole("heading", { name: "narrow direction" })).toBeInTheDocument();
+    expect(getSelectionConceptSets).toHaveBeenCalledWith("job-1");
+    expect(view.queryByText("Analyst brief")).not.toBeInTheDocument();
+  });
+
+  it("uses Compare-route prefetched directions without starting another request", async () => {
+    const view = render(ConceptForge, {
+      props: {
+        open: true,
+        jobId: "job-1",
+        parents: [parent],
+        initialSets: [set()],
+        seedCost: 3,
+        onEvaluate: vi.fn(),
+        onClose: vi.fn(),
+      },
+    });
+
+    expect(await view.findByRole("heading", { name: "narrow direction" })).toBeInTheDocument();
+    expect(view.queryByText("Loading saved directions…")).not.toBeInTheDocument();
+    expect(getSelectionConceptSets).not.toHaveBeenCalled();
+  });
+
+  it("uses a prefetched empty result without repeating the request", async () => {
+    const view = render(ConceptForge, {
+      props: {
+        open: true,
+        jobId: "job-1",
+        parents: [parent],
+        initialSets: [],
+        seedCost: 3,
+        onEvaluate: vi.fn(),
+        onClose: vi.fn(),
+      },
+    });
+
+    await view.findByRole("heading", { name: "What should these options help you resolve?" });
+    expect(view.queryByText("Loading saved directions…")).not.toBeInTheDocument();
+    expect(getSelectionConceptSets).not.toHaveBeenCalled();
+  });
+
+  it("shows no analyst aside on an owner open without a saved set", async () => {
+    const view = render(ConceptForge, {
+      props: {
+        open: true,
+        jobId: "job-1",
+        parents: [parent],
+        prefill: {
+          requestId: "owner-open-2",
+          purpose: "diverge",
+          targetTradeoff: "",
+          rationale: "",
+          caveats: [],
+        },
+        seedCost: 3,
+        onEvaluate: vi.fn(),
+        onClose: vi.fn(),
+      },
+    });
+
+    await view.findByRole("heading", { name: "What should these options help you resolve?" });
+    expect(getSelectionConceptSets).toHaveBeenCalled();
+    expect(view.queryByText("Analyst brief")).not.toBeInTheDocument();
+    expect(view.queryByText("Not generated")).not.toBeInTheDocument();
+  });
+
+  it("shows the analyst brief aside and skips the saved-set restore for analyst prefills", async () => {
+    vi.mocked(getSelectionConceptSets).mockResolvedValue([set()]);
+    const view = render(ConceptForge, {
+      props: {
+        open: true,
+        jobId: "job-1",
+        parents: [parent],
+        prefill: {
+          requestId: "copilot-aside-1",
+          purpose: "diverge",
+          targetTradeoff: "",
+          rationale: "The shortlist shares one unresolved tension.",
+          caveats: ["Scores never transfer."],
+        },
+        seedCost: 3,
+        onEvaluate: vi.fn(),
+        onClose: vi.fn(),
+      },
+    });
+
+    await view.findByRole("heading", { name: "What should these options help you resolve?" });
+    expect(view.getByText("Analyst brief")).toBeInTheDocument();
+    expect(view.getByText("The shortlist shares one unresolved tension.")).toBeInTheDocument();
+    expect(view.getByText("Scores never transfer.")).toBeInTheDocument();
+    expect(getSelectionConceptSets).not.toHaveBeenCalled();
+  });
+
+  it("marks an option evaluated, relabels its gate, and recounts the section label", async () => {
+    vi.mocked(getSelectionConceptSets).mockResolvedValue([set()]);
+    const onEvaluate = vi.fn().mockResolvedValue(true);
+    const view = render(ConceptForge, {
+      props: {
+        open: true,
+        jobId: "job-1",
+        parents: [parent],
+        seedCost: 3,
+        onEvaluate,
+        onClose: vi.fn(),
+      },
+    });
+
+    const first = (await view.findAllByRole("button", { name: /Evaluate this option/i }))[0];
+    const firstCard = first.closest("article") as HTMLElement;
+    await fireEvent.click(first);
+    await fireEvent.click(view.getByRole("button", { name: /Confirm evaluation/i }));
+
+    await waitFor(() => expect(within(firstCard).getByText("Evaluated")).toBeInTheDocument());
+    expect(within(firstCard).getByRole("button", { name: "Evaluated · run again" })).toBeEnabled();
+    expect(view.getByText("two unevaluated options")).toBeInTheDocument();
+    expect(view.getAllByRole("button", { name: "Evaluate this option" })).toHaveLength(2);
+  });
+
+  it("marks server-evaluated options across sessions from the set payload", async () => {
+    const saved = set([set().artifact.options[0].optionId]);
+    vi.mocked(getSelectionConceptSets).mockResolvedValue([saved]);
+    const view = render(ConceptForge, {
+      props: {
+        open: true,
+        jobId: "job-1",
+        parents: [parent],
+        seedCost: 3,
+        onEvaluate: vi.fn(),
+        onClose: vi.fn(),
+      },
+    });
+
+    const firstCard = (await view.findByRole("heading", { name: "narrow direction" }))
+      .closest("article") as HTMLElement;
+    expect(within(firstCard).getByText("Evaluated")).toBeInTheDocument();
+    expect(within(firstCard).getByRole("button", { name: "Evaluated · run again" })).toBeEnabled();
+    expect(view.getByText("two unevaluated options")).toBeInTheDocument();
+  });
+
+  it("discards a saved set behind the gate and returns to the brief", async () => {
+    vi.mocked(getSelectionConceptSets).mockResolvedValue([set()]);
+    const view = render(ConceptForge, {
+      props: {
+        open: true,
+        jobId: "job-1",
+        parents: [parent],
+        seedCost: 3,
+        onEvaluate: vi.fn(),
+        onClose: vi.fn(),
+      },
+    });
+
+    await view.findByRole("heading", { name: "narrow direction" });
+    await fireEvent.click(view.getByRole("button", { name: "Discard this set" }));
+    // First click only arms the gate; nothing is archived yet.
+    expect(archiveSelectionConceptSet).not.toHaveBeenCalled();
+    expect(view.getByText("SET IS ARCHIVED · EVALUATED IDEAS KEEP THEIR PROVENANCE")).toBeInTheDocument();
+
+    await fireEvent.click(view.getByRole("button", { name: "Discard this set" }));
+    await waitFor(() => expect(archiveSelectionConceptSet).toHaveBeenCalledWith("job-1", set().id));
+
+    await view.findByRole("heading", { name: "What should these options help you resolve?" });
+    const statuses = view.getAllByRole("status");
+    expect(statuses.some((el) => el.textContent?.includes("keep their provenance"))).toBe(true);
+  });
+
+  it("keeps the set and surfaces the failure when discarding fails", async () => {
+    vi.mocked(getSelectionConceptSets).mockResolvedValue([set()]);
+    vi.mocked(archiveSelectionConceptSet).mockRejectedValue(new Error("boom"));
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const view = render(ConceptForge, {
+      props: {
+        open: true,
+        jobId: "job-1",
+        parents: [parent],
+        seedCost: 3,
+        onEvaluate: vi.fn(),
+        onClose: vi.fn(),
+      },
+    });
+
+    await view.findByRole("heading", { name: "narrow direction" });
+    await fireEvent.click(view.getByRole("button", { name: "Discard this set" }));
+    await fireEvent.click(view.getByRole("button", { name: "Discard this set" }));
+
+    expect(await view.findByRole("alert")).toHaveTextContent("Could not discard this set. Nothing changed.");
+    expect(view.getByRole("heading", { name: "narrow direction" })).toBeInTheDocument();
+    consoleError.mockRestore();
+  });
+
+  it("surfaces a structured guardrail message verbatim and swaps the footer to a retry line", async () => {
+    vi.mocked(createSelectionConceptSet).mockRejectedValue(new ApiError(
+      "With two candidates, one option must combine them, and the reply skipped it. Try again, or branch from a single candidate instead.",
+      502,
+      { error: "With two candidates, one option must combine them, and the reply skipped it. Try again, or branch from a single candidate instead.", code: "COMBINED_CONCEPT_OPTION_REQUIRED" },
+    ));
+    const view = render(ConceptForge, {
+      props: {
+        open: true,
+        jobId: "job-1",
+        parents: [parent, secondParent],
+        seedCost: 3,
+        onEvaluate: vi.fn(),
+        onClose: vi.fn(),
+      },
+    });
+
+    await view.findByRole("heading", { name: "What should these options help you resolve?" });
+    await fireEvent.click(view.getByRole("button", { name: /Generate directions/i }));
+
+    expect(await view.findByRole("alert")).toHaveTextContent(
+      "With two candidates, one option must combine them, and the reply skipped it.",
+    );
+    expect(view.getByText(FORGE_RETRY_NOTE)).toBeInTheDocument();
+    expect(view.queryByText(/Generating directions is free/)).not.toBeInTheDocument();
+  });
+
+  it("routes the footer Close through the dirty gate when a tension note is unsent", async () => {
+    const onClose = vi.fn();
+    const view = render(ConceptForge, {
+      props: {
+        open: true,
+        jobId: "job-1",
+        parents: [parent],
+        seedCost: 3,
+        onEvaluate: vi.fn(),
+        onClose,
+      },
+    });
+
+    await view.findByRole("heading", { name: "What should these options help you resolve?" });
+    await fireEvent.input(view.getByLabelText(/Specific tension to explore/), {
+      target: { value: "A tension note that has not been sent" },
+    });
+
+    await fireEvent.click(view.getByRole("button", { name: "Close" }));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(view.getByText(/unsent tension note/)).toBeInTheDocument();
+
+    await fireEvent.click(view.getByRole("button", { name: "Discard changes" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes from the footer Close on the first click when nothing is at risk", async () => {
+    const onClose = vi.fn();
+    const view = render(ConceptForge, {
+      props: {
+        open: true,
+        jobId: "job-1",
+        parents: [parent],
+        seedCost: 3,
+        onEvaluate: vi.fn(),
+        onClose,
+      },
+    });
+
+    await view.findByRole("heading", { name: "What should these options help you resolve?" });
+    await fireEvent.click(view.getByRole("button", { name: "Close" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(view.queryByText(/unsent tension note/)).not.toBeInTheDocument();
   });
 
   it("states the shape cost contract on the first screen", async () => {
@@ -604,8 +891,25 @@ describe("ConceptForge", () => {
     });
 
     expect(await view.findByText(/evaluation price is not available yet/i)).toBeInTheDocument();
+    expect(view.queryByText(/Evaluating a direction costs/)).not.toBeInTheDocument();
     for (const button of view.getAllByRole("button", { name: /Evaluate this option/i })) {
       expect(button).toBeDisabled();
     }
+  });
+
+  it("states the evaluation cost in the options header before any gate is armed", async () => {
+    vi.mocked(getSelectionConceptSets).mockResolvedValue([set()]);
+    const view = render(ConceptForge, {
+      props: {
+        open: true,
+        jobId: "job-1",
+        parents: [parent],
+        seedCost: 2,
+        onEvaluate: vi.fn(),
+        onClose: vi.fn(),
+      },
+    });
+
+    expect(await view.findByText("Evaluating a direction costs 2 credits.")).toBeInTheDocument();
   });
 });

@@ -1,6 +1,7 @@
-import { cleanup, fireEvent, render, waitFor } from "@testing-library/svelte";
+import { cleanup, fireEvent, render, waitFor, within } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import EvidenceChallenge from "../EvidenceChallenge.svelte";
+import { discardOwnerEvidenceDraft } from "../OwnerEvidenceLedger.svelte";
 import type { SelectionChallenge } from "$lib/types/selectionChallenge";
 import type { SolutionPreview } from "$lib/types/job";
 
@@ -187,6 +188,7 @@ describe("EvidenceChallenge", () => {
   afterEach(cleanup);
 
   beforeEach(() => {
+    discardOwnerEvidenceDraft();
     apiMocks.getSelectionChallenges.mockReset().mockResolvedValue({ challenges: [], stale: [] });
     apiMocks.runSelectionChallenge.mockReset().mockResolvedValue({ challenge, cached: false });
     apiMocks.getSelectionOwnerEvidence.mockReset().mockResolvedValue({ evidence: [], editable: true });
@@ -195,52 +197,94 @@ describe("EvidenceChallenge", () => {
   });
 
   it("runs against the exact idea revision and preserves disagreement with provenance", async () => {
-    const onTestGap = vi.fn();
     const view = render(EvidenceChallenge, {
-      props: { jobId: "job-123", ideas: [idea], onTestGap },
+      props: { jobId: "job-123", ideas: [idea] },
     });
 
     await waitFor(() => expect(apiMocks.getSelectionChallenges).toHaveBeenCalledWith("job-123"));
-    await fireEvent.click(view.getByRole("button", { name: "Stress-test customer demand evidence" }));
+    expect(view.getByText(/Two review perspectives reread the evidence saved for this idea/)).toBeInTheDocument();
+    expect(view.getByText(/They do not search for new sources/)).toBeInTheDocument();
+    await fireEvent.click(await view.findByRole("button", { name: "Check demand" }));
 
     await waitFor(() => expect(apiMocks.runSelectionChallenge).toHaveBeenCalledWith("job-123", {
       ideaId: "idea-signal-desk",
       ideaRevision: 3,
       lens: "demand",
     }));
-    expect(view.getByText("Assessments disagree")).toBeInTheDocument();
-    expect(view.getByText("Conflict in the record:", { exact: false })).toBeInTheDocument();
+    expect(view.getByText("Review perspectives disagree")).toBeInTheDocument();
+    expect(view.getByText(/read the same evidence differently/)).toBeInTheDocument();
+    for (const heading of ["Supports", "Raises concern", "Still unknown", "Impact", "Next action"]) {
+      expect(view.getAllByRole("heading", { name: heading }).length).toBeGreaterThan(0);
+    }
+    expect(view.getAllByText("Challenge perspective").length).toBeGreaterThan(0);
+    expect(view.getAllByText("Evidence perspective").length).toBeGreaterThan(0);
     await fireEvent.click(view.getByText("1 cited source"));
     expect(view.getByText("Observed")).toBeInTheDocument();
     expect(view.getByRole("link", { name: "Open source for Customer interview (opens in new tab)" })).toHaveAttribute(
       "href",
       "https://example.com/interview",
     );
-    expect(view.getByText(/Reviews and owner evidence never change scores/)).toBeInTheDocument();
-    await fireEvent.click(view.getByRole("button", { name: "Plan a test" }));
-    expect(onTestGap).toHaveBeenCalledWith(expect.objectContaining({
-      ideaId: "idea-signal-desk",
-      ideaRevision: 3,
-      originChallengeId: "challenge-1",
-      originQuestionId: "pain_is_observed",
-      assumptionType: "DESIRABILITY",
-      assumption: "The target customer repeatedly experiences this pain in the stated workflow.",
-      method: "CUSTOMER_INTERVIEWS",
-      evidenceSignal: "LANGUAGE",
-      currentEvidence: expect.stringContaining("Customer interview"),
-    }));
+    expect(view.getByText(/Uses saved evidence only/)).toBeInTheDocument();
   });
 
-  it("captures the gap question as a grounded assumption draft next to the test brief", async () => {
+  it("renders structured legacy excerpts as readable cited facts", async () => {
+    const legacyChallenge: SelectionChallenge = {
+      ...challenge,
+      evidenceSnapshot: [{
+        ...challenge.evidenceSnapshot[0],
+        kind: "competitor_fact",
+        title: "Liquipedia",
+        excerpt: '{"focus":"esports match tracking","pricing":"free","gap":"tournament data only"}',
+        url: null,
+      }],
+    };
+    apiMocks.getSelectionChallenges.mockResolvedValue({ challenges: [legacyChallenge], stale: [] });
+    const view = render(EvidenceChallenge, {
+      props: { jobId: "job-123", ideas: [idea] },
+    });
+
+    await waitFor(() => expect(view.getByText("Review perspectives disagree")).toBeInTheDocument());
+    await fireEvent.click(view.getByText("1 cited source"));
+    expect(view.getByText("Focus: esports match tracking · Pricing: free · Gap: tournament data only")).toBeInTheDocument();
+    expect(view.queryByText(legacyChallenge.evidenceSnapshot[0].excerpt)).not.toBeInTheDocument();
+  });
+
+  it("keeps malformed structured excerpts escaped behind a disclosure", async () => {
+    const malformedExcerpt = '{"focus":"esports match tracking",broken}';
+    const malformedChallenge: SelectionChallenge = {
+      ...challenge,
+      evidenceSnapshot: [{
+        ...challenge.evidenceSnapshot[0],
+        kind: "competitor_fact",
+        title: "Malformed legacy source",
+        excerpt: malformedExcerpt,
+        url: null,
+      }],
+    };
+    apiMocks.getSelectionChallenges.mockResolvedValue({ challenges: [malformedChallenge], stale: [] });
+
+    const view = render(EvidenceChallenge, {
+      props: { jobId: "job-123", ideas: [idea] },
+    });
+
+    await waitFor(() => expect(view.getByText("Review perspectives disagree")).toBeInTheDocument());
+    await fireEvent.click(view.getByText("1 cited source"));
+    expect(view.getByText("This captured source excerpt could not be formatted.")).toBeInTheDocument();
+
+    await fireEvent.click(view.getByText("View captured text"));
+    expect(view.getByText(malformedExcerpt)).toBeInTheDocument();
+  });
+
+  it("captures the gap question as a grounded assumption draft", async () => {
     apiMocks.getSelectionChallenges.mockResolvedValue({ challenges: [challenge], stale: [] });
     const onTrackRisk = vi.fn();
     const view = render(EvidenceChallenge, {
-      props: { jobId: "job-123", ideas: [idea], onTestGap: vi.fn(), onTrackRisk },
+      props: { jobId: "job-123", ideas: [idea], onTrackRisk },
     });
 
-    await fireEvent.click(await view.findByRole("button", { name: "Track as risk" }));
+    await fireEvent.click(await view.findByRole("button", { name: "Save as a question to resolve" }));
 
-    expect(view.getByRole("button", { name: "Plan a test" })).toBeInTheDocument();
+    expect(view.queryByRole("button", { name: "Plan a test" })).not.toBeInTheDocument();
     expect(onTrackRisk).toHaveBeenCalledWith(expect.objectContaining({
       ideaId: "idea-signal-desk",
       ideaRevision: 3,
@@ -259,18 +303,18 @@ describe("EvidenceChallenge", () => {
     }));
   });
 
-  it("offers a quiet Shape entry for an open demand gap", async () => {
+  it("offers a quiet branch entry for an open demand gap", async () => {
     apiMocks.getSelectionChallenges.mockResolvedValue({ challenges: [challenge], stale: [] });
-    const onShapeAdjacent = vi.fn();
+    const onBranchDirection = vi.fn();
     const view = render(EvidenceChallenge, {
-      props: { jobId: "job-123", ideas: [idea], onShapeAdjacent },
+      props: { jobId: "job-123", ideas: [idea], onBranchDirection },
     });
 
-    await fireEvent.click(await view.findByRole("button", { name: /Shape an adjacent direction/ }));
-    expect(onShapeAdjacent).toHaveBeenCalledOnce();
+    await fireEvent.click(await view.findByRole("button", { name: /Branch a new direction/ }));
+    expect(onBranchDirection).toHaveBeenCalledOnce();
   });
 
-  it("hides the Shape entry when the case holds or the lens is not demand or competition", async () => {
+  it("hides the branch entry when the case holds or the lens is not demand or competition", async () => {
     const supportedDemand: SelectionChallenge = {
       ...challenge,
       overall: "withstands",
@@ -282,18 +326,18 @@ describe("EvidenceChallenge", () => {
       stale: [],
     });
     const view = render(EvidenceChallenge, {
-      props: { jobId: "job-123", ideas: [idea], onShapeAdjacent: vi.fn() },
+      props: { jobId: "job-123", ideas: [idea], onBranchDirection: vi.fn() },
     });
 
-    await view.findByText("Evidence holds");
-    expect(view.queryByRole("button", { name: /Shape an adjacent direction/ })).not.toBeInTheDocument();
+    await view.findByText("Saved evidence supports this");
+    expect(view.queryByRole("button", { name: /Branch a new direction/ })).not.toBeInTheDocument();
 
-    await fireEvent.click(view.getByRole("tab", { name: /Dependencies/ }));
-    await view.findByText("Assessments disagree");
-    expect(view.queryByRole("button", { name: /Shape an adjacent direction/ })).not.toBeInTheDocument();
+    await fireEvent.click(view.getByRole("tab", { name: /Can you build it\?/ }));
+    await view.findByText("Review perspectives disagree");
+    expect(view.queryByRole("button", { name: /Branch a new direction/ })).not.toBeInTheDocument();
   });
 
-  it("follows the cockpit-picked candidate and exposes no local candidate dropdown", async () => {
+  it("follows the page-scoped candidate and exposes no local candidate dropdown", async () => {
     const secondIdea: SolutionPreview = {
       ...idea,
       idea_id: "idea-evidence-map",
@@ -319,7 +363,7 @@ describe("EvidenceChallenge", () => {
     // The candidate switcher lives in the cockpit scope strip now.
     expect(view.queryByRole("combobox")).not.toBeInTheDocument();
 
-    await fireEvent.click(view.getByRole("button", { name: "Stress-test customer demand evidence" }));
+    await fireEvent.click(await view.findByRole("button", { name: "Check demand" }));
     await waitFor(() => expect(apiMocks.runSelectionChallenge).toHaveBeenCalledWith("job-123", {
       ideaId: "idea-evidence-map",
       ideaRevision: 2,
@@ -327,7 +371,7 @@ describe("EvidenceChallenge", () => {
     }));
 
     await view.rerender({ jobId: "job-123", ideas: [idea, secondIdea], candidateId: idea.idea_id });
-    await fireEvent.click(view.getByRole("button", { name: "Stress-test customer demand evidence" }));
+    await fireEvent.click(await view.findByRole("button", { name: "Check demand" }));
     await waitFor(() => expect(apiMocks.runSelectionChallenge).toHaveBeenCalledWith("job-123", {
       ideaId: "idea-signal-desk",
       ideaRevision: 3,
@@ -344,8 +388,9 @@ describe("EvidenceChallenge", () => {
       props: { jobId: "job-123", ideas: [idea] },
     });
 
-    await waitFor(() => expect(view.getByText("Previous result is stale")).toBeInTheDocument());
-    expect(view.getByRole("button", { name: "Stress-test customer demand evidence" })).toBeEnabled();
+    await waitFor(() => expect(view.getByText("Needs recheck")).toBeInTheDocument());
+    expect(view.getByText("The evidence changed since this review")).toBeInTheDocument();
+    expect(view.getByRole("button", { name: "Recheck demand" })).toBeEnabled();
   });
 
   it("labels cited experiment evidence by how the result was observed", async () => {
@@ -366,8 +411,7 @@ describe("EvidenceChallenge", () => {
       props: { jobId: "job-123", ideas: [idea] },
     });
 
-    await waitFor(() => expect(view.getByText("The research packet changed.", { exact: false })).toBeInTheDocument());
-    expect(view.getByRole("button", { name: "Recheck" })).toBeEnabled();
+    expect(await view.findByRole("button", { name: "Check again" })).toBeEnabled();
     await fireEvent.click(view.getByText("2 cited sources"));
     expect(view.getByText("Observed hosted test")).toBeInTheDocument();
     expect(view.getByText("Owner-recorded external result")).toBeInTheDocument();
@@ -431,7 +475,7 @@ describe("EvidenceChallenge", () => {
     });
 
     expect(await view.findByRole("alert")).toHaveTextContent("question behind this draft is missing");
-    expect(view.queryByRole("dialog", { name: "Add owner evidence" })).not.toBeInTheDocument();
+    expect(view.queryByRole("heading", { name: "Record what you learned" })).not.toBeInTheDocument();
 
     await view.rerender({
       jobId: "job-123",
@@ -443,7 +487,76 @@ describe("EvidenceChallenge", () => {
       },
     });
 
-    expect(await view.findByRole("dialog", { name: "Add owner evidence" })).toBeInTheDocument();
+    expect(await view.findByRole("heading", { name: "Record what you learned" })).toBeInTheDocument();
+    expect(view.getByDisplayValue("The buyer described a recurring weekly workflow.")).toBeInTheDocument();
     expect(apiMocks.createSelectionOwnerEvidence).not.toHaveBeenCalled();
+  });
+
+  it("loads owner evidence once in the canonical ledger without a second tab count", async () => {
+    apiMocks.getSelectionOwnerEvidence.mockResolvedValue({
+      evidence: [{
+        id: "evidence-1",
+        jobId: "job-123",
+        ideaId: idea.idea_id,
+        ideaRevision: 3,
+        lens: "demand",
+        kind: "NOTE",
+        position: "CONTEXT",
+        title: "A note",
+        content: "Something already known.",
+        sourceUrl: null,
+        observedAt: null,
+        createdAt: "2026-07-16T00:00:00.000Z",
+        retractedAt: null,
+        retractionReason: null,
+      }],
+      editable: true,
+    });
+    const view = render(EvidenceChallenge, {
+      props: { jobId: "job-123", ideas: [idea] },
+    });
+
+    await waitFor(() => expect(view.getByText(/1 saved/)).toBeInTheDocument());
+    expect(apiMocks.getSelectionOwnerEvidence).toHaveBeenCalledTimes(1);
+    const demandTab = view.getByRole("tab", { name: /Do people want it\?/ });
+    expect(within(demandTab).queryByText(/note/)).not.toBeInTheDocument();
+  });
+
+  it("offers one lens-aware evidence action after the primary check action", async () => {
+    const view = render(EvidenceChallenge, {
+      props: { jobId: "job-123", ideas: [idea] },
+    });
+
+    expect(await view.findByText("See what your saved evidence says about demand")).toBeInTheDocument();
+    expect(view.getByText("Free · reviews saved evidence only")).toBeInTheDocument();
+
+    await waitFor(() => expect(apiMocks.getSelectionOwnerEvidence).toHaveBeenCalledTimes(1));
+    expect(view.queryByText("Your evidence", { selector: "strong" })).not.toBeInTheDocument();
+    const addActions = view.getAllByRole("button", { name: "Add your evidence" });
+    expect(addActions).toHaveLength(1);
+    await fireEvent.click(addActions[0]);
+    expect(await view.findByRole("region", { name: "Record what you learned" })).toBeInTheDocument();
+    expect(view.getByText("Your evidence", { selector: "strong" })).toBeInTheDocument();
+  });
+
+  it("labels the stale lens chip as outdated with a warning explanation", async () => {
+    apiMocks.getSelectionChallenges.mockResolvedValue({
+      challenges: [],
+      stale: [{ ideaId: idea.idea_id, ideaRevision: 3, lens: "demand" }],
+    });
+    const view = render(EvidenceChallenge, {
+      props: { jobId: "job-123", ideas: [idea] },
+    });
+
+    const chip = await view.findByText("Recheck");
+    expect(chip.closest(".issue-badge")).toHaveAttribute(
+      "title",
+      "Needs recheck — the evidence used by this review changed.",
+    );
+    const demandTab = view.getByRole("tab", { name: /evidence used by this review changed/ });
+    expect(demandTab).toBeInTheDocument();
+    // The dead in-result stale note is gone; the server never serializes
+    // stale artifacts.
+    expect(view.queryByText(/This result remains visible for context/)).not.toBeInTheDocument();
   });
 });

@@ -166,7 +166,7 @@ export interface SolutionPreview {
   technical_feasibility_score?: number | null;
   seo_scalability_score?: number | null;
   novelty_score?: number | null;
-  obviousness_score?: number | null; // 0-1, lower = more original; shown as "Originality" (1 - this)
+  obviousness_score?: number | null; // 0-1, lower = less obvious/more distinct; UI displays 1 - this
   programmatic_seo_opportunity?: string | null;
   estimated_cac_organic?: string | null;
   estimated_cac_paid?: string | null;
@@ -184,7 +184,7 @@ export interface SolutionPreview {
   // Angle-aware evaluation (set when angle eval is on; absent/null otherwise)
   winning_angle?: string | null; // distribution_seo | novel_differentiation | vertical_workflow
   angle_rationale?: string | null; // user-facing comment about the angle
-  novelty_rationale?: string | null; // user-facing: why this novelty score fits the project_type
+  novelty_rationale?: string | null; // stable field name; user-facing explanation of distinctiveness for this project type
   differentiation_locus?: string | null; // WHERE the edge lives (or honest "thin me-too")
   // Feasibility rationale — already emitted in the preview dict (BaseSolutionIdea.model_dump),
   // declared here so the per-score "why" tooltips can read them type-safely.

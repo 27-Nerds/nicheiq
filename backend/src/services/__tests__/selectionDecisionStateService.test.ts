@@ -48,6 +48,8 @@ function input(overrides: Partial<SelectionDecisionStateInput> = {}): SelectionD
     experiments: [],
     previewReport: null,
     discoveryData: null,
+    // Granted by default here; the ungated behaviour has its own describe block.
+    decisionTools: true,
     ...overrides,
   };
 }
@@ -420,6 +422,56 @@ describe('selection decision state projection', () => {
     expect(state.nextAction).toMatchObject({
       kind: 'add_decision_context',
       required: false,
+    });
+  });
+
+  describe('without the decision tools grant', () => {
+    const gated = (overrides = {}) =>
+      buildSelectionDecisionState(input({ decisionTools: false, ...overrides }));
+
+    it('still asks for a shortlist when there is none', () => {
+      expect(gated().nextAction.kind).toBe('select_candidate');
+    });
+
+    it('goes straight from shortlist to Deep Research, skipping the optional ladder', () => {
+      const state = gated({ selectionDraft: currentDraft() });
+      expect(state.nextAction.kind).toBe('start_deep_research');
+      expect(state.nextAction.required).toBe(false);
+      expect(state.deepResearch.eligible).toBe(true);
+    });
+
+    it('never suggests build limits or an evidence check, whatever is saved', () => {
+      mocks.parseFounderFit.mockReturnValue(fitArtifact());
+      const state = gated({
+        selectionDraft: currentDraft(),
+        selectionDecisionProfile: profile,
+        selectionFounderFit: fitArtifact(),
+      });
+      expect(state.nextAction.kind).toBe('start_deep_research');
+    });
+
+    it('empties historical decision-tool rows so a revoked grant leaks nothing', () => {
+      mocks.parseFounderFit.mockReturnValue(fitArtifact());
+      const state = gated({
+        selectionDraft: currentDraft(),
+        selectionDecisionProfile: profile,
+        selectionFounderFit: fitArtifact(),
+      });
+      expect(state.profile).toBeNull();
+      expect(state.founderFit).toBeNull();
+      expect(state.challenges).toEqual([]);
+      expect(state.ownerEvidence).toEqual([]);
+      expect(state.assumptions).toEqual([]);
+      expect(state.experiments).toEqual([]);
+      expect(state.conclusions).toEqual([]);
+      expect(state.staleCounts.total).toBe(state.staleCounts.shortlist);
+    });
+
+    it('keeps the shortlist intact — it is not a decision tool', () => {
+      const state = gated({ selectionDraft: currentDraft() });
+      expect(state.shortlist.items).toEqual([
+        expect.objectContaining({ ideaId: idea.idea_id, ideaRevision: 2 }),
+      ]);
     });
   });
 });

@@ -7,6 +7,13 @@ const mocks = vi.hoisted(() => ({
   getPreview: vi.fn(),
   getDiscovery: vi.fn(),
   buildState: vi.fn(),
+  hasDecisionToolsAccess: vi.fn().mockResolvedValue(true),
+}));
+
+// This route is deliberately NOT blocked by the grant — it resolves it and passes it
+// through, so the projection collapses instead of the request failing.
+vi.mock('../../services/featureAccess.js', () => ({
+  hasDecisionToolsAccess: (...a: unknown[]) => mocks.hasDecisionToolsAccess(...a),
 }));
 
 vi.mock('../../services/db.js', () => ({

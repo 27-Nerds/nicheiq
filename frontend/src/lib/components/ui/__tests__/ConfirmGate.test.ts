@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render } from "@testing-library/svelte";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/svelte";
 import ConfirmGate from "../ConfirmGate.svelte";
 
 const baseProps = {
@@ -85,6 +85,35 @@ describe("ConfirmGate", () => {
     expect(confirm).toBeDisabled();
     await fireEvent.click(confirm);
     expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it("disarms on Escape and returns focus to the trigger", async () => {
+    const onConfirm = vi.fn();
+    const view = render(ConfirmGate, { props: { ...baseProps, onConfirm } });
+
+    await fireEvent.click(view.getByRole("button", { name: "Evaluate direction" }));
+    const confirm = view.getByRole("button", { name: "Confirm evaluation" });
+    confirm.focus();
+    await fireEvent.keyDown(confirm, { key: "Escape" });
+
+    const trigger = await view.findByRole("button", { name: "Evaluate direction" });
+    expect(view.queryByRole("button", { name: "Confirm evaluation" })).not.toBeInTheDocument();
+    expect(onConfirm).not.toHaveBeenCalled();
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+  });
+
+  it("stops Escape from bubbling past the armed gate", async () => {
+    const outerKeydown = vi.fn();
+    document.body.addEventListener("keydown", outerKeydown);
+    const view = render(ConfirmGate, { props: { ...baseProps, onConfirm: vi.fn() } });
+
+    await fireEvent.click(view.getByRole("button", { name: "Evaluate direction" }));
+    const cancel = view.getByRole("button", { name: "Cancel" });
+    await fireEvent.keyDown(cancel, { key: "Escape" });
+
+    expect(outerKeydown).not.toHaveBeenCalled();
+    expect(view.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+    document.body.removeEventListener("keydown", outerKeydown);
   });
 
   it("blocks arming while disabled or busy", async () => {

@@ -9,6 +9,7 @@ import {
 } from '@prisma/client';
 import { z } from 'zod';
 import { requireInternalAuth, type AuthenticatedRequest } from '../middleware/auth.js';
+import { requireDecisionToolsAccess } from '../middleware/featureAccess.js';
 import { prisma } from '../services/db.js';
 import {
   SelectionOwnerEvidenceInputSchema,
@@ -105,6 +106,7 @@ export const selectionOwnerEvidenceRouter = Router();
 selectionOwnerEvidenceRouter.get(
   '/:jobId/selection-evidence',
   requireInternalAuth,
+  requireDecisionToolsAccess,
   async (req: AuthenticatedRequest, res: Response) => {
     const params = JobParamsSchema.safeParse(req.params);
     if (!params.success) {
@@ -133,6 +135,7 @@ selectionOwnerEvidenceRouter.get(
 selectionOwnerEvidenceRouter.post(
   '/:jobId/selection-evidence',
   requireInternalAuth,
+  requireDecisionToolsAccess,
   async (req: AuthenticatedRequest, res: Response) => {
     const params = JobParamsSchema.safeParse(req.params);
     const input = SelectionOwnerEvidenceInputSchema.safeParse(req.body);
@@ -249,6 +252,7 @@ selectionOwnerEvidenceRouter.post(
 selectionOwnerEvidenceRouter.post(
   '/:jobId/selection-evidence/:evidenceId/retract',
   requireInternalAuth,
+  requireDecisionToolsAccess,
   async (req: AuthenticatedRequest, res: Response) => {
     const params = EvidenceParamsSchema.safeParse(req.params);
     const input = SelectionOwnerEvidenceRetractionSchema.safeParse(req.body);

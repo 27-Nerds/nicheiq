@@ -252,8 +252,23 @@ model User {
   fullCatalogAccess Boolean @default(false)
 
   // Chat with Analyst access grant — MANUAL admin override, disabled by default.
-  // Entitled = role=ADMIN || chatAnalystAccess; toggleable per-user in the admin panel.
+  // Entitled = isEntitledUser (role=ADMIN || fullCatalogAccess || active subscription)
+  // || chatAnalystAccess; additive, so the grant only ever widens access.
   chatAnalystAccess Boolean @default(false)
+
+  // Decision tools access grant — the OPTIONAL selection checks (build limits, evidence
+  // check + risk areas, questions to resolve, test plans, fit-for-you, branch a direction)
+  // and the post-research Decision Lab. MANUAL admin override, disabled by default.
+  // Entitled = role=ADMIN || decisionToolsAccess; toggleable per-user in the admin panel.
+  // The required path (ranked ideas → shortlist → compare → review) is NEVER gated.
+  decisionToolsAccess Boolean @default(false)
+
+  // First-run tutorial progress, keyed by chapter id:
+  //   { "version": 1, "chapters": { "job-shortlist": { "status": "completed", "at": "..." } } }
+  // Per-user rather than localStorage so it follows the user across devices and survives
+  // a cache clear. Only ever written through PATCH /api/users/:id/tutorial-progress, which
+  // merges one chapter at a time so two open tabs cannot clobber each other.
+  tutorialProgress Json?
 
   // Stripe billing linkage. `stripeCustomerId` is created lazily at first subscription
   // checkout. `hasActiveSubscription` is a denormalized, webhook-/cron-maintained flag for
@@ -575,6 +590,9 @@ model SelectionConceptSet {
   model            String   @db.VarChar(255)
   promptId         String   @db.VarChar(100)
   createdAt        DateTime @default(now())
+  // Soft-archive: discarded sets keep their rows (evaluated options minted
+  // proposals whose provenance points here) but leave the cap and lists.
+  archivedAt       DateTime?
 
   @@unique([jobId, inputFingerprint])
   @@index([jobId, createdAt])

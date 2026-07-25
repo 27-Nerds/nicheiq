@@ -1,6 +1,7 @@
-import { describe, it, expect } from "vitest";
-import { scoreRationale } from "./scoreRationale";
+import { describe, it, expect, afterEach } from "vitest";
+import { scoreRationale, setServedCapThresholds, DEFAULT_CAP_THRESHOLDS } from "./scoreRationale";
 import type { SolutionPreview } from "$lib/types/job";
+import type { SelectionCapThresholds } from "$lib/types/selectionMetricExplanation";
 
 const base = (over: Partial<SolutionPreview>): SolutionPreview =>
   ({ solution_name: "X", description: "d", value_proposition: "vp", ...over }) as SolutionPreview;
@@ -20,13 +21,13 @@ describe("scoreRationale", () => {
   it("data_feasibility prefixes the access model and surfaces the data note", () => {
     expect(
       scoreRationale(base({ data_acquisition_notes: "FDA registry bulk-downloadable", data_access_model: "public" }), "data_feasibility"),
-    ).toBe("Data (public): FDA registry bulk-downloadable");
+    ).toBe("Data access: Public. FDA registry bulk-downloadable");
     expect(scoreRationale(base({ data_acquisition_notes: "notes only" }), "data_feasibility")).toBe("notes only");
   });
 
   it("seo uses programmatic_seo_opportunity with a preliminary-estimate caveat", () => {
     expect(scoreRationale(base({ programmatic_seo_opportunity: "~2500 pages" }), "seo")).toBe(
-      "~2500 pages (preliminary estimate, refined after keyword research)",
+      "~2500 pages Keyword demand has not been checked in depth yet.",
     );
   });
 
@@ -48,43 +49,43 @@ describe("scoreRationale", () => {
     ).toBe("Est. build: 6 weeks");
   });
 
-  it("market_fit appends the unverified-data-route cap clause", () => {
+  it("market_fit appends the unverified-data-route cap clause when the cap bound", () => {
     expect(
-      scoreRationale(base({ why_it_works_short: "strong pain", data_access_model: "restricted" }), "market_fit"),
+      scoreRationale(base({ why_it_works_short: "strong pain", data_access_model: "restricted", market_fit_score: 0.4 }), "market_fit"),
     ).toBe(
-      "strong pain — capped at 0.40 — the data route is unverified (thin early signal; Deep Research validates)",
+      "strong pain — the fit signal was reduced because the required data route is not verified. Deep Research can verify this early signal",
     );
   });
 
-  it("market_fit appends the thin-wallet-segment cap clause", () => {
+  it("market_fit appends the thin-wallet-segment cap clause when the cap bound", () => {
     expect(
-      scoreRationale(base({ why_it_works_short: "strong pain", source_segment_payability: 0.2 }), "market_fit"),
+      scoreRationale(base({ why_it_works_short: "strong pain", source_segment_payability: 0.2, market_fit_score: 0.55 }), "market_fit"),
     ).toBe(
-      "strong pain — capped — this buyer segment rarely pays for tooling (thin early signal; Deep Research validates)",
+      "strong pain — the fit signal was reduced because this buyer segment shows weak evidence of paying for tools. Deep Research can verify this early signal",
     );
   });
 
-  it("market_fit appends the shipped-incumbent-parity cap clause", () => {
+  it("market_fit appends the shipped-incumbent-parity cap clause when the cap bound", () => {
     expect(
-      scoreRationale(base({ why_it_works_short: "strong pain", incumbent_parity: "shipped" }), "market_fit"),
+      scoreRationale(base({ why_it_works_short: "strong pain", incumbent_parity: "shipped", market_fit_score: 0.45 }), "market_fit"),
     ).toBe(
-      "strong pain — held at/below 0.45 — a verified incumbent ships this mechanism (thin early signal; Deep Research validates)",
+      "strong pain — the fit signal was reduced because a verified incumbent already provides the core mechanism. Deep Research can verify this early signal",
     );
   });
 
-  it("market_fit appends the partial-incumbent-parity cap clause", () => {
+  it("market_fit appends the partial-incumbent-parity cap clause when the cap bound", () => {
     expect(
-      scoreRationale(base({ why_it_works_short: "strong pain", incumbent_parity: "partial" }), "market_fit"),
+      scoreRationale(base({ why_it_works_short: "strong pain", incumbent_parity: "partial", market_fit_score: 0.55 }), "market_fit"),
     ).toBe(
-      "strong pain — capped — an incumbent partially covers this position (thin early signal; Deep Research validates)",
+      "strong pain — the fit signal was reduced because an incumbent already covers part of this position. Deep Research can verify this early signal",
     );
   });
 
-  it("market_fit appends the free/DIY-substitute cap clause", () => {
+  it("market_fit appends the free/DIY-substitute cap clause when the cap bound", () => {
     expect(
-      scoreRationale(base({ why_it_works_short: "strong pain", incumbent_parity: "substitute" }), "market_fit"),
+      scoreRationale(base({ why_it_works_short: "strong pain", incumbent_parity: "substitute", market_fit_score: 0.5 }), "market_fit"),
     ).toBe(
-      "strong pain — capped — a free/DIY route covers the core outcome (thin early signal; Deep Research validates)",
+      "strong pain — the fit signal was reduced because a free or do-it-yourself route already covers the core outcome. Deep Research can verify this early signal",
     );
   });
 
@@ -92,27 +93,52 @@ describe("scoreRationale", () => {
     // unverified data route (0.40) is tighter than shipped-parity (0.45)
     expect(
       scoreRationale(
-        base({ why_it_works_short: "strong pain", data_access_model: "unofficial", incumbent_parity: "shipped" }),
+        base({ why_it_works_short: "strong pain", data_access_model: "unofficial", incumbent_parity: "shipped", market_fit_score: 0.4 }),
         "market_fit",
       ),
     ).toBe(
-      "strong pain — capped at 0.40 — the data route is unverified (thin early signal; Deep Research validates)",
+      "strong pain — the fit signal was reduced because the required data route is not verified. Deep Research can verify this early signal",
     );
     // substitute + thin wallet composes to 0.35 (tighter than the plain 0.55 payability cap alone)
     expect(
       scoreRationale(
-        base({ why_it_works_short: "strong pain", incumbent_parity: "substitute", source_segment_payability: 0.1 }),
+        base({ why_it_works_short: "strong pain", incumbent_parity: "substitute", source_segment_payability: 0.1, market_fit_score: 0.35 }),
         "market_fit",
       ),
     ).toBe(
-      "strong pain — capped — a free/DIY route covers the core outcome (thin early signal; Deep Research validates)",
+      "strong pain — the fit signal was reduced because a free or do-it-yourself route already covers the core outcome. Deep Research can verify this early signal",
     );
   });
 
   it("market_fit uses the cap clause alone (capitalized) when no grounded rationale exists", () => {
     expect(
-      scoreRationale(base({ value_proposition: "", data_access_model: "blocked" }), "market_fit"),
-    ).toBe("Capped at 0.40 — the data route is unverified (thin early signal; Deep Research validates)");
+      scoreRationale(base({ value_proposition: "", data_access_model: "blocked", market_fit_score: 0.4 }), "market_fit"),
+    ).toBe("The fit signal was reduced because the required data route is not verified. Deep Research can verify this early signal");
+  });
+
+  it("market_fit omits the cap clause when the score sits well below the cap (cap never bound)", () => {
+    // 0.30 with an unverified data route: the 0.40 ceiling never bit, so no "capped at" assertion.
+    expect(
+      scoreRationale(base({ why_it_works_short: "strong pain", data_access_model: "restricted", market_fit_score: 0.3 }), "market_fit"),
+    ).toBe("strong pain");
+    expect(
+      scoreRationale(base({ why_it_works_short: "strong pain", incumbent_parity: "shipped", market_fit_score: 0.2 }), "market_fit"),
+    ).toBe("strong pain");
+  });
+
+  it("market_fit omits the cap clause when the score is missing (assertion can't be verified)", () => {
+    expect(
+      scoreRationale(base({ why_it_works_short: "strong pain", data_access_model: "restricted" }), "market_fit"),
+    ).toBe("strong pain");
+  });
+
+  it("market_fit keeps the cap clause within the rounding epsilon below the cap", () => {
+    // 0.396 >= 0.40 - 0.005 → the cap plausibly bound.
+    expect(
+      scoreRationale(base({ why_it_works_short: "strong pain", data_access_model: "restricted", market_fit_score: 0.396 }), "market_fit"),
+    ).toBe(
+      "strong pain — the fit signal was reduced because the required data route is not verified. Deep Research can verify this early signal",
+    );
   });
 
   it("market_fit has no cap clause when no cap condition is detected", () => {
@@ -121,10 +147,8 @@ describe("scoreRationale", () => {
     );
   });
 
-  it("composite prefixes the blend note", () => {
-    expect(scoreRationale(base({ why_it_works_short: "strong pain" }), "composite")).toBe(
-      "Overall: blends fit, feasibility, novelty & SEO. strong pain",
-    );
+  it("composite uses the grounded idea rationale without exposing its formula", () => {
+    expect(scoreRationale(base({ why_it_works_short: "strong pain" }), "composite")).toBe("strong pain");
   });
 
   it("returns null when no grounded text exists (never fabricates)", () => {
@@ -139,5 +163,90 @@ describe("scoreRationale", () => {
     const out = scoreRationale(base({ programmatic_seo_opportunity: long }), "seo")!;
     expect(out.length).toBeLessThanOrEqual(240);
     expect(scoreRationale(base({ why_it_works_short: "  spaced   out  \n text " }), "market_fit")).toBe("spaced out text");
+  });
+
+  it("clamps at a word boundary — never mid-word", () => {
+    const long = Array.from({ length: 40 }, (_, i) => `investigation${i}`).join(" ");
+    const out = scoreRationale(base({ why_it_works_short: long }), "market_fit")!;
+    expect(out.length).toBeLessThanOrEqual(240);
+    expect(out.endsWith("…")).toBe(true);
+    // The kept prefix must be followed by a space in the source, i.e. it ends on a whole word.
+    expect(long.startsWith(out.slice(0, -1) + " ")).toBe(true);
+  });
+
+  it("returns the unclamped rationale with { full: true }", () => {
+    const long = "a ".repeat(300).trim();
+    expect(scoreRationale(base({ why_it_works_short: long }), "market_fit", { full: true })).toBe(long);
+  });
+});
+
+describe("scoreRationale cap-threshold injection", () => {
+  afterEach(() => setServedCapThresholds(null));
+
+  const raised: SelectionCapThresholds = {
+    ...DEFAULT_CAP_THRESHOLDS,
+    parityShippedMarketFitCap: 0.6,
+    payabilityLowThreshold: 0.25,
+    payabilityMarketFitCap: 0.7,
+  };
+
+  it("uses served thresholds for the epsilon gate without exposing the number", () => {
+    setServedCapThresholds(raised);
+    // 0.5 is >= default 0.45 but BELOW the served 0.60 cap → hint omitted (never bit).
+    expect(
+      scoreRationale(base({ why_it_works_short: "strong pain", incumbent_parity: "shipped", market_fit_score: 0.5 }), "market_fit"),
+    ).toBe("strong pain");
+    // At the served ceiling the qualitative explanation appears.
+    expect(
+      scoreRationale(base({ why_it_works_short: "strong pain", incumbent_parity: "shipped", market_fit_score: 0.6 }), "market_fit"),
+    ).toBe(
+      "strong pain — the fit signal was reduced because a verified incumbent already provides the core mechanism. Deep Research can verify this early signal",
+    );
+  });
+
+  it("uses the served payability_low_threshold to decide LOW payability", () => {
+    setServedCapThresholds(raised);
+    // 0.3 is below default 0.35 but NOT below the served 0.25 → no payability cap.
+    expect(
+      scoreRationale(base({ why_it_works_short: "strong pain", source_segment_payability: 0.3, market_fit_score: 0.7 }), "market_fit"),
+    ).toBe("strong pain");
+    // 0.2 < served 0.25 → capped at served payability cap 0.70.
+    expect(
+      scoreRationale(base({ why_it_works_short: "strong pain", source_segment_payability: 0.2, market_fit_score: 0.7 }), "market_fit"),
+    ).toBe(
+      "strong pain — the fit signal was reduced because this buyer segment shows weak evidence of paying for tools. Deep Research can verify this early signal",
+    );
+  });
+
+  it("per-call opts.capThresholds wins over served values", () => {
+    setServedCapThresholds(raised);
+    expect(
+      scoreRationale(
+        base({ why_it_works_short: "strong pain", incumbent_parity: "shipped", market_fit_score: 0.45 }),
+        "market_fit",
+        { capThresholds: DEFAULT_CAP_THRESHOLDS },
+      ),
+    ).toBe(
+      "strong pain — the fit signal was reduced because a verified incumbent already provides the core mechanism. Deep Research can verify this early signal",
+    );
+  });
+
+  it("falls back to the Python defaults after the served values are cleared", () => {
+    setServedCapThresholds(raised);
+    setServedCapThresholds(null);
+    expect(
+      scoreRationale(base({ why_it_works_short: "strong pain", incumbent_parity: "shipped", market_fit_score: 0.45 }), "market_fit"),
+    ).toBe(
+      "strong pain — the fit signal was reduced because a verified incumbent already provides the core mechanism. Deep Research can verify this early signal",
+    );
+  });
+
+  it("hardcoded data-route 0.40 cap is unaffected by injected thresholds", () => {
+    setServedCapThresholds({ ...DEFAULT_CAP_THRESHOLDS, paritySubstituteMarketFitCap: 0.9 });
+    expect(
+      scoreRationale(base({ why_it_works_short: "strong pain", data_access_model: "restricted", market_fit_score: 0.4 }), "market_fit"),
+    ).toBe(
+      "strong pain — the fit signal was reduced because the required data route is not verified. Deep Research can verify this early signal",
+    );
   });
 });

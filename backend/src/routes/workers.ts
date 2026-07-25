@@ -1166,6 +1166,12 @@ workersRouter.post('/regeneration-complete', async (req: Request, res: Response)
       return;
     }
 
+    // The worker rewrites PREVIEW_REPORT in place from the merged candidate pool. Evict
+    // this process's 10-minute parse cache before any analyst/UI reader can observe the
+    // updated Job.solutionIdeas alongside the old preview-backed dossier.
+    const { invalidatePreviewReportCache } = await import('../services/assetService.js');
+    invalidatePreviewReportCache(data.job_id);
+
     if (data.dispatch_id) {
       await prisma.$transaction((tx) => settleDispatch(tx, data.dispatch_id!, DispatchState.COMPLETED));
     }

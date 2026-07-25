@@ -1,35 +1,31 @@
 /**
  * Canonical plain-English definitions of each displayed idea score, for hover tooltips.
  *
- * Copy is grounded in the ACTUAL backend lifecycle (generator self-score → independent realism
- * critic re-scores & replaces it → deterministic downgrade-only caps), verified against
- * src/nicheiq/crews/unified_solution_crew.py and src/nicheiq/utils/seo_helpers.py. Keep these
- * accurate when editing: market-fit really is hard-capped at 40% on an unverified data route (and
- * separately capped for a thin-wallet buyer segment or a web-verified incumbent/substitute — see
- * `_validate_idea_caps` rules (b)/(d)/(e)), and solo-dev is re-scored by the same critic (weighing
- * ongoing ops burden) then held at or below the build-feasibility estimate.
+ * These definitions explain what each measure helps the user decide. Calculation details remain
+ * available in the methodology/analyst data, rather than crowding hover help with internal fields
+ * and decimal thresholds.
  */
 export const SCORE_DEFINITIONS = {
   market_fit:
-    "Market Fit — how well the idea fits real, validated demand, weighted by how severe the pains it addresses are. An independent critic re-scores it against the pain evidence and web-verified market findings, then it's hard-capped (never raised) when the data route is unverified, the buyer segment's wallet is thin, or a verified incumbent or free substitute already occupies the position.",
+    "Market fit — how strongly this exact product addresses an important, evidence-backed problem for buyers likely to pay. It is lower when required data is uncertain, existing tools already cover the need, or the proposed value is not well supported.",
   technical_feasibility:
-    "Feasibility — whether the idea can be built at all with today's tech and obtainable data (capability, not effort). Held at or below an independent build-feasibility estimate.",
+    "Feasibility — whether a working version is technically possible with available tools and obtainable data. It does not estimate how long the product will take or how manageable it is for one person.",
   competitive_advantage:
-    "Competitive Edge — how defensible the idea is versus existing tools. Higher means a more original, harder-to-copy angle.",
+    "Competitive edge — whether the product has a meaningful advantage that alternatives would struggle to match.",
   solo_dev:
-    "Solo-Dev — how realistic it is for one person to build AND keep running. The main driver is ongoing burden (support, uptime, moderation, marketing), not just build time. An independent critic re-scores it conservatively, and it can't exceed the build-feasibility estimate — you can't solo-run what you can't build.",
+    "Solo manageability — how realistic it is for one person to build and keep the product running, including support, uptime, moderation, maintenance, and marketing.",
   seo:
-    "SEO — how easily the idea can scale organic traffic through indexable content. Based on page count and indexability only (not how the data is sourced); capped for login-gated or thin-content models.",
+    "Organic discovery — how readily the product can attract search traffic through useful, public, indexable content. It is lower when useful pages are limited, gated, or already dominated by an incumbent.",
   originality:
-    "Originality — how non-obvious the idea is: the share of builders who would NOT also land on it. Higher means more original. (Shown as 1 − obviousness.)",
+    "Distinctiveness — how meaningfully the idea differs from obvious approaches and existing alternatives. A higher rating means the product has a clearer, less interchangeable angle.",
   composite:
-    "Overall score — a blend of market fit, feasibility, originality and SEO, reduced when the idea is hard to build. Used for ranking.",
+    "Research score — a relative ranking of the ideas in this Discovery run, combining demand fit, buildability, differentiation, and organic-discovery potential. It helps compare ideas; it is not a prediction of success.",
 
   // Catalog idea-hero axes — re-labelled idea scores on the public idea page.
   demand:
-    "Demand — how well the idea fits real, validated demand (its Market Fit score), weighted by pain severity.",
+    "Demand — how strongly this product addresses an important, evidence-backed problem for buyers likely to pay.",
   opportunity:
-    "Opportunity — how easily the idea can scale organic traffic through indexable content (its SEO scalability).",
+    "Organic discovery — how readily the product can attract search traffic through useful, public, indexable content.",
 } as const;
 
 export type ScoreDefKey = keyof typeof SCORE_DEFINITIONS;

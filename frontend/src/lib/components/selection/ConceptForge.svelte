@@ -2,6 +2,8 @@
   import { tick } from "svelte";
   import { ArrowRight, Loader2, RefreshCw } from "lucide-svelte";
   import {
+    ApiError,
+    archiveSelectionConceptSet,
     createSelectionConceptSet,
     getSelectionConceptSets,
     prepareSelectionConceptOption,
@@ -22,15 +24,16 @@
     SelectionConceptSet,
   } from "$lib/types/selectionConceptSet";
   import {
+    BRANCH_PANEL_EYEBROW,
+    BRANCH_PANEL_INTRO,
+    BRANCH_PANEL_TITLE,
+    BRANCH_PURPOSE_LABEL,
+    FORGE_RETRY_NOTE,
     GENERATE_DIRECTIONS_LABEL,
     GENERATING_DIRECTIONS_LABEL,
-    SHAPE_PANEL_EYEBROW,
-    SHAPE_PANEL_INTRO,
-    SHAPE_PANEL_TITLE,
-    SHAPE_PURPOSE_LABEL,
     STILL_GENERATING_NOTE,
+    branchCostNote,
     costLine,
-    shapeCostNote,
   } from "$lib/selection/labels";
   import { solutionDisplayTitle } from "$lib/utils/solution-utils";
 
@@ -39,6 +42,8 @@
     jobId: string;
     parents: SolutionPreview[];
     prefill?: SelectionConceptForgePrefill | null;
+    /** Compare-route preload: avoids a second serial request after opening. */
+    initialSets?: SelectionConceptSet[] | null;
     seedCost?: number | null;
     disabled?: boolean;
     /** Owner-page error from the last onEvaluate attempt (e.g. the 409
@@ -54,6 +59,7 @@
     jobId,
     parents,
     prefill = null,
+    initialSets = null,
     seedCost = null,
     disabled = false,
     evaluateError = "",
@@ -73,6 +79,16 @@
   let loadFailed = $state(false);
   let loadedKey = $state("");
   let evaluatingOptionId = $state<string | null>(null);
+  /** Options that entered paid evaluation this session — an optimistic
+   *  overlay for the just-evaluated case. The durable record is the set
+   *  payload's server-derived `evaluatedOptionIds`. */
+  let evaluatedOptionIds = $state<Set<string>>(new Set());
+  let archiving = $state(false);
+  /** Server-persisted evaluated flags, merged with the session overlay. */
+  const persistedEvaluatedIds = $derived(new Set(conceptSet?.evaluatedOptionIds ?? []));
+  function isEvaluated(optionId: string): boolean {
+    return persistedEvaluatedIds.has(optionId) || evaluatedOptionIds.has(optionId);
+  }
   let actionMessage = $state("");
   /** Announces generation completion to assistive tech (persistent region;
    *  only the text changes). */
@@ -161,8 +177,20 @@
   const footerMessage = $derived(
     conceptSet
       ? "Only the option you explicitly confirm enters paid evaluation."
-      : shapeCostNote(seedCost),
+      : error && !loadFailed
+        ? FORGE_RETRY_NOTE
+        : branchCostNote(seedCost),
   );
+
+  // Every entry path passes a prefill, so `source` (or its heuristic fallback)
+  // decides between an analyst-prepared brief and a plain owner open.
+  const prefillIsAnalyst = $derived(Boolean(
+    prefill && (
+      prefill.source === "analyst"
+      || (prefill.source === undefined
+        && (prefill.rationale.trim() !== "" || prefill.caveats.length > 0))
+    ),
+  ));
 
   $effect(() => {
     if (!open || purposeTouched) return;
@@ -174,6 +202,7 @@
     if (!key || key === loadedKey) return;
     loadedKey = key;
     conceptSet = null;
+    evaluatedOptionIds = new Set();
     actionMessage = "";
     error = "";
     loadFailed = false;
@@ -182,9 +211,16 @@
       purposeTouched = true;
       targetTradeoff = prefill.targetTradeoff;
       tradeoffBaseline = prefill.targetTradeoff;
+      // Only an analyst-prepared brief stays on the blank brief screen; an
+      // owner open still restores any persisted set for these parents.
+      if (prefillIsAnalyst) return;
+    } else {
+      purposeTouched = false;
+    }
+    if (initialSets !== null) {
+      restoreSavedSet(initialSets);
       return;
     }
-    purposeTouched = false;
     void loadSavedSet();
   });
 
@@ -203,9 +239,34 @@
     return !set.stale && refs === parentKey;
   }
 
+  function restoreSavedSet(sets: SelectionConceptSet[]): void {
+    conceptSet = sets.find(setMatchesParents) ?? null;
+    if (!conceptSet) return;
+    purpose = conceptSet.artifact.purpose;
+    purposeTouched = true;
+    targetTradeoff = conceptSet.artifact.targetTradeoff ?? "";
+    tradeoffBaseline = targetTradeoff;
+  }
+
+  /** Structured guardrail code from the error envelope (`{ error, code }`),
+   *  when present. api.ts stores the whole body as ApiError.details. */
+  function forgeErrorCode(cause: unknown): string | null {
+    if (!(cause instanceof ApiError)) return null;
+    const details = cause.details;
+    if (details && typeof details === "object" && "code" in details) {
+      const code = (details as { code?: unknown }).code;
+      if (typeof code === "string" && code) return code;
+    }
+    return null;
+  }
+
   function forgeError(cause: unknown, fallback: string): string {
     const message = cause instanceof Error ? cause.message.trim() : "";
-    if (/candidate|shortlist|temporarily unavailable|evidence changed|could not be verified|price is not available/i.test(message)) {
+    // Structured guardrail failure: the server message is user-facing and
+    // actionable (e.g. COMBINED_CONCEPT_OPTION_REQUIRED), so show it verbatim.
+    if (forgeErrorCode(cause) && message) return message;
+    // Legacy envelope: only pass through messages we know are safe to show.
+    if (/candidate|shortlist|temporarily unavailable|evidence changed|could not be verified|price is not available|Concept Forge limit/i.test(message)) {
       return message;
     }
     console.error("Shape request failed:", cause);
@@ -219,13 +280,7 @@
     error = "";
     try {
       const sets = await getSelectionConceptSets(jobId);
-      conceptSet = sets.find(setMatchesParents) ?? null;
-      if (conceptSet) {
-        purpose = conceptSet.artifact.purpose;
-        purposeTouched = true;
-        targetTradeoff = conceptSet.artifact.targetTradeoff ?? "";
-        tradeoffBaseline = targetTradeoff;
-      }
+      restoreSavedSet(sets);
     } catch (cause) {
       loadFailed = true;
       error = forgeError(cause, "Could not load saved concept directions. Please try again.");
@@ -246,6 +301,7 @@
         ...(targetTradeoff.trim() ? { targetTradeoff: targetTradeoff.trim() } : {}),
       });
       conceptSet = response.set;
+      evaluatedOptionIds = new Set();
       // The note is now part of the persisted set: no longer at risk on close.
       tradeoffBaseline = targetTradeoff;
       const optionCount = response.set.artifact.options.length;
@@ -263,10 +319,28 @@
 
   async function resetQuestion() {
     conceptSet = null;
+    evaluatedOptionIds = new Set();
     actionMessage = "";
     error = "";
     await tick();
     briefHeadingEl?.focus();
+  }
+
+  /** Soft-archives the saved set server-side and returns to the brief.
+   *  Evaluated options keep their proposals; the set only leaves the cap. */
+  async function discardSet() {
+    if (!conceptSet || archiving || evaluatingOptionId || disabled) return;
+    archiving = true;
+    error = "";
+    try {
+      await archiveSelectionConceptSet(jobId, conceptSet.id);
+      await resetQuestion();
+      actionMessage = "Set discarded. Ideas you already evaluated keep their provenance.";
+    } catch (cause) {
+      error = forgeError(cause, "Could not discard this set. Nothing changed.");
+    } finally {
+      archiving = false;
+    }
   }
 
   async function evaluate(option: SelectionConceptOption) {
@@ -283,6 +357,7 @@
       );
       const started = await onEvaluate(prepared.patch, prepared.sourceMessageId);
       if (started) {
+        evaluatedOptionIds = new Set([...evaluatedOptionIds, option.optionId]);
         actionMessage = `Evaluation started for “${option.title}”. The source candidates and other directions remain unchanged.`;
       } else if (evaluateError) {
         // The owner page already handled the failure (409 PRICE_CHANGED
@@ -328,9 +403,9 @@
 
 <FormOverlay
   {open}
-  size="wizard"
-  eyebrow={SHAPE_PANEL_EYEBROW}
-  title={SHAPE_PANEL_TITLE}
+  size={conceptSet ? "wizard" : "form"}
+  eyebrow={BRANCH_PANEL_EYEBROW}
+  title={BRANCH_PANEL_TITLE}
   description="Deliberately different options branched from exact candidate revisions. Scores and conclusions never transfer."
   annotationAnchor={conceptForgeSurfaceKey}
   onRequestClose={onClose}
@@ -374,7 +449,7 @@
           <h3 id="forge-brief-title" tabindex="-1" bind:this={briefHeadingEl}>What should these options help you resolve?</h3>
         </div>
         <DecisionHelp title="How concept directions work" label="How directions work" position="bottom">
-          {SHAPE_PANEL_INTRO}
+          {BRANCH_PANEL_INTRO}
         </DecisionHelp>
       </div>
 
@@ -391,10 +466,10 @@
         </div>
       {/if}
 
-      {#if prefill}
+      {#if prefill && prefillIsAnalyst && (prefill.rationale.trim() || prefill.caveats.length)}
         <aside class="analyst-brief" aria-label="Analyst-prepared directions brief">
           <div><strong>Analyst brief</strong><span>Not generated</span></div>
-          <p>{prefill.rationale}</p>
+          {#if prefill.rationale.trim()}<p>{prefill.rationale}</p>{/if}
           {#if prefill.caveats.length}
             <ul>{#each prefill.caveats as caveat}<li>{caveat}</li>{/each}</ul>
           {/if}
@@ -405,7 +480,7 @@
         <span class="field-label" id="forge-purpose-label">Purpose of the branch</span>
         <SegmentControl
           density="card"
-          label={SHAPE_PURPOSE_LABEL}
+          label={BRANCH_PURPOSE_LABEL}
           labelledBy="forge-purpose-label"
           options={purposeOptions}
           value={purpose}
@@ -432,7 +507,8 @@
       <p class="slow-note" role="status">{generateSlow ? STILL_GENERATING_NOTE : ""}</p>
     </section>
   {:else}
-    {@const optionCount = conceptSet.artifact.options.length}
+    {@const unevaluatedCount = conceptSet.artifact.options
+      .filter((option) => !isEvaluated(option.optionId)).length}
     <section
       class="option-section"
       aria-labelledby="forge-options-title"
@@ -440,12 +516,28 @@
     >
       <div class="option-head">
         <div>
-          <p class="section-label">{countWord(optionCount)} unevaluated {optionCount === 1 ? "option" : "options"}</p>
+          <p class="section-label">{countWord(unevaluatedCount)} unevaluated {unevaluatedCount === 1 ? "option" : "options"}</p>
           <h3 id="forge-options-title" tabindex="-1" bind:this={optionsHeadingEl}>Compare what changes and what becomes newly uncertain</h3>
+          {#if seedCost != null}
+            <p class="cost-hint">Evaluating a direction costs {costLine(seedCost)}.</p>
+          {/if}
         </div>
-        <button type="button" class="change-brief" disabled={evaluatingOptionId != null} onclick={() => void resetQuestion()}>
-          <RefreshCw aria-hidden="true" /> Change the question
-        </button>
+        <div class="head-actions">
+          <div class="discard-gate">
+            <ConfirmGate
+              variant="free"
+              label="Discard this set"
+              confirmLabel="Discard this set"
+              consequence="SET IS ARCHIVED · EVALUATED IDEAS KEEP THEIR PROVENANCE"
+              busy={archiving}
+              disabled={disabled || evaluatingOptionId != null}
+              onConfirm={() => void discardSet()}
+            />
+          </div>
+          <button type="button" class="change-brief" disabled={evaluatingOptionId != null || archiving} onclick={() => void resetQuestion()}>
+            <RefreshCw aria-hidden="true" /> Change the question
+          </button>
+        </div>
       </div>
 
       {#if seedCost == null}
@@ -457,9 +549,11 @@
       <div class="option-grid">
         {#each conceptSet.artifact.options as option (option.optionId)}
           {@const testedAssumption = option.assumptions.find((assumption) => assumption.assumptionId === option.suggestedTest.assumptionId)}
+          {@const optionEvaluated = isEvaluated(option.optionId)}
           <article class="option-card">
             <div class="option-kicker">
               <strong>{operationLabel[option.operation]}</strong>
+              {#if optionEvaluated}<span class="evaluated-tag">Evaluated</span>{/if}
             </div>
             <h4>{option.title}</h4>
             <p class="option-brief">{option.brief}</p>
@@ -517,7 +611,7 @@
             <div class="evaluate-gate">
               <ConfirmGate
                 variant="paid"
-                label="Evaluate this option"
+                label={optionEvaluated ? "Evaluated · run again" : "Evaluate this option"}
                 confirmLabel="Confirm evaluation"
                 costLine={costLine(seedCost)}
                 busy={evaluatingOptionId === option.optionId}
@@ -534,8 +628,18 @@
   {#if error && !loadFailed}<p class="feedback feedback--error" role="alert">{error}</p>{/if}
   <p class="feedback" class:is-empty={!actionMessage} role="status">{actionMessage}</p>
 
-  {#snippet footerCancel()}
-    <button type="button" class="cancel-btn" disabled={generating || evaluatingOptionId != null} onclick={onClose}>Close</button>
+  {#snippet footerCancel(requestClose)}
+    <button
+      type="button"
+      class="cancel-btn"
+      disabled={generating || evaluatingOptionId != null}
+      title={generating
+        ? "Wait for the directions to finish generating."
+        : evaluatingOptionId != null
+          ? "Wait for the evaluation request to finish."
+          : undefined}
+      onclick={requestClose}
+    >Close</button>
   {/snippet}
   {#snippet footer()}
     {#if showBrief}
@@ -601,6 +705,10 @@
   .forge-brief { display: grid; gap: 1.3rem; max-width: 52rem; }
   .brief-head-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
   .forge-brief h3, .option-head h3 { font-size: var(--text-md); line-height: 1.3; }
+  /* Single upstream price mention for the options state: the brief-phase
+     footer cost line is gone once a set exists, and the per-card gate only
+     shows the price after arming. Muted, informational only. */
+  .cost-hint { margin-top: var(--space-1-5); color: var(--color-text-muted); font-size: var(--text-sm); line-height: 1.4; }
 
   .field { display: grid; gap: 0.4rem; }
   .field-label {
@@ -680,15 +788,32 @@
       border-color var(--duration-fast) var(--ease-default),
       color var(--duration-fast) var(--ease-default);
   }
-  .cancel-btn:hover { border-color: var(--color-text-secondary); color: var(--color-text-primary); }
+  .cancel-btn:hover:not(:disabled) { border-color: var(--color-text-secondary); color: var(--color-text-primary); }
   .cancel-btn:active:not(:disabled) { transform: scale(0.98); }
+  .cancel-btn:disabled { border-color: var(--color-border-emphasis); background: var(--color-bg-hover); color: var(--color-text-muted); cursor: not-allowed; }
 
   /* ── Options view ── */
-  .option-head { display: flex; align-items: end; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
+  .option-head { display: flex; align-items: end; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-4); }
+  .head-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-4); }
+  /* Quiet text-action trigger for the shared gate: the discard is deliberate
+     but secondary, so it reads like "Change the question", not like a button. */
+  .discard-gate :global(.gate-trigger) {
+    min-width: 0;
+    min-height: 2.1rem;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--color-text-secondary);
+    font: inherit;
+    font-size: var(--text-sm);
+    font-weight: 700;
+  }
+  .discard-gate :global(.gate-trigger:hover:not(:disabled)) { color: var(--color-text-primary); }
+  .discard-gate :global(.gate-trigger:disabled) { background: transparent; border: 0; color: var(--color-text-muted); }
   .change-brief {
     display: inline-flex;
     align-items: center;
-    gap: 0.35rem;
+    gap: var(--space-1-5);
     min-height: 2.1rem;
     border: 0;
     background: transparent;
@@ -706,8 +831,8 @@
 
   /* Price note: plain bordered card (no warning stripe, no phantom token). */
   .price-note {
-    margin: -0.35rem 0 1rem;
-    padding: 0.7rem 0.8rem;
+    margin: 0 0 var(--space-4);
+    padding: var(--space-3);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
     background: var(--color-bg-surface);
@@ -717,50 +842,71 @@
   }
 
   .option-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--color-border-emphasis); border-radius: var(--radius-lg); overflow: hidden; }
-  .option-card { display: flex; flex-direction: column; min-width: 0; padding: 1rem; border-right: 1px solid var(--color-border); background: var(--color-bg-surface); }
+  .option-card { display: flex; flex-direction: column; min-width: 0; padding: var(--space-4); border-right: 1px solid var(--color-border); background: var(--color-bg-surface); }
   .option-card:last-child { border-right: 0; }
-  .option-kicker { color: var(--color-accent-dark); font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
-  .option-card h4 { margin-top: 0.65rem; font-size: var(--text-md); line-height: 1.25; }
-  .option-brief { min-height: 4.5rem; margin-top: 0.4rem; color: var(--color-text-secondary); font-size: var(--text-sm); line-height: 1.5; }
-  .axis-list { margin: 0.8rem 0 0; padding: 0.7rem 0; border-top: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); }
-  .axis-list > div + div { margin-top: 0.5rem; }
+  .option-kicker { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); color: var(--color-text-muted); font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 700; letter-spacing: var(--tracking-wide); text-transform: uppercase; }
+  /* Session status tag: success family (never orange) for a completed action. */
+  .evaluated-tag { color: var(--color-success-text); font-family: var(--font-mono); font-size: var(--text-11); font-weight: 700; letter-spacing: var(--tracking-wide); text-transform: uppercase; }
+  .option-card h4 { margin-top: var(--space-3); font-size: var(--text-md); line-height: var(--leading-snug); }
+  .option-brief { min-height: 4.5rem; margin-top: var(--space-2); color: var(--color-text-secondary); font-size: var(--text-sm); line-height: var(--leading-normal); }
+  .axis-list { margin: var(--space-3) 0 0; padding: var(--space-3) 0; border-top: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); }
+  .axis-list > div + div { margin-top: var(--space-2); }
   .axis-list dt, .test-block dt { color: var(--color-text-secondary); font-family: var(--font-mono); font-size: var(--text-xs); text-transform: uppercase; }
-  .axis-list dd { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 0.3rem; margin: 0.2rem 0 0; font-size: var(--text-xs); line-height: 1.35; }
+  .axis-list dd { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: var(--space-1); margin: var(--space-1) 0 0; font-size: var(--text-xs); line-height: var(--leading-snug); }
   .axis-list dd span { color: var(--color-text-secondary); text-decoration: line-through; }
   .axis-list dd :global(svg) { width: 0.7rem; height: 0.7rem; color: var(--color-text-muted); }
-  .option-block, .test-block { margin-top: 0.8rem; }
-  .block-label { display: block; margin-bottom: 0.35rem; color: var(--color-text-secondary); font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
-  ul { margin: 0; padding-left: 1rem; }
-  li { color: var(--color-text-secondary); font-size: var(--text-xs); line-height: 1.45; }
-  .option-block li { margin-bottom: 0.4rem; }
+  .option-block, .test-block { margin-top: var(--space-3); }
+  .block-label { display: block; margin-bottom: var(--space-1-5); color: var(--color-text-secondary); font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 700; letter-spacing: var(--tracking-wide); text-transform: uppercase; }
+  ul { margin: 0; padding-left: var(--space-4); }
+  li { color: var(--color-text-secondary); font-size: var(--text-xs); line-height: var(--leading-normal); }
+  .option-block li { margin-bottom: var(--space-2); }
   .option-block li strong { display: block; color: var(--color-text-secondary); font-family: var(--font-mono); font-size: var(--text-xs); text-transform: uppercase; }
-  details { margin-top: 0.75rem; border-top: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); }
-  summary { padding: 0.65rem 0; color: var(--color-text-secondary); font-size: var(--text-xs); font-weight: 700; cursor: pointer; }
+  details { margin-top: var(--space-3); border-top: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); }
+  summary { padding: var(--space-3) 0; color: var(--color-text-secondary); font-size: var(--text-xs); font-weight: 700; cursor: pointer; }
   summary:active { transform: scale(0.98); }
-  .evidence-columns { display: grid; gap: 0.65rem; padding: 0 0 0.75rem; }
-  .evidence-columns strong { display: block; margin-bottom: 0.2rem; font-size: var(--text-xs); }
-  .test-block { padding: 0.75rem; border-radius: var(--radius-md); background: var(--color-bg-subtle); }
+  .evidence-columns { display: grid; gap: var(--space-3); padding: 0 0 var(--space-3); }
+  .evidence-columns strong { display: block; margin-bottom: var(--space-1); font-size: var(--text-xs); }
+  .test-block { padding: var(--space-3); border-radius: var(--radius-md); background: var(--color-bg-subtle); }
   .test-block > strong { font-size: var(--text-sm); }
-  .test-block > p { margin-top: 0.25rem; font-size: var(--text-xs); line-height: 1.45; }
-  .test-block > small { display: block; margin-top: 0.3rem; color: var(--color-text-secondary); font-size: var(--text-xs); line-height: 1.4; }
-  .test-block dl { display: grid; gap: 0.35rem; margin: 0.6rem 0 0; }
-  .test-block dl > div { display: grid; grid-template-columns: 2.5rem 1fr; gap: 0.3rem; }
-  .test-block dd { margin: 0; color: var(--color-text-secondary); font-size: var(--text-xs); line-height: 1.35; }
+  .test-block > p { margin-top: var(--space-1); font-size: var(--text-xs); line-height: var(--leading-normal); }
+  .test-block > small { display: block; margin-top: var(--space-1); color: var(--color-text-secondary); font-size: var(--text-xs); line-height: var(--leading-normal); }
+  .test-block dl { display: grid; gap: var(--space-1-5); margin: var(--space-2) 0 0; }
+  .test-block dl > div { display: grid; grid-template-columns: 2.5rem 1fr; gap: var(--space-1); }
+  .test-block dd { margin: 0; color: var(--color-text-secondary); font-size: var(--text-xs); line-height: var(--leading-snug); }
 
   /* Evaluate: shared paid ConfirmGate, stretched to the card's full width. */
-  .evaluate-gate { margin-top: 0.9rem; }
+  .evaluate-gate { margin-top: auto; padding-top: var(--space-4); }
   .evaluate-gate :global(.gate-trigger) { width: 100%; min-width: 0; }
-  .evaluate-gate :global(.confirm-gate) { width: 100%; }
+  .evaluate-gate :global(.confirm-gate) {
+    width: 100%;
+    flex-wrap: nowrap;
+    padding: var(--space-3) 0 0;
+    border: 0;
+    border-top: 1px solid var(--color-border);
+    border-radius: 0;
+    background: transparent;
+  }
+  .evaluate-gate :global(.gate-line) {
+    flex: 1;
+    white-space: nowrap;
+  }
+  .evaluate-gate :global(.gate-actions) {
+    flex: 0 0 auto;
+    align-items: center;
+  }
   .evaluate-gate :global(.gate-cancel),
-  .evaluate-gate :global(.gate-confirm) { flex: 1; min-width: 0; }
+  .evaluate-gate :global(.gate-confirm) {
+    flex: 0 0 auto;
+    min-width: 0;
+    white-space: nowrap;
+  }
 
   .feedback { margin: 0.85rem 0 0; padding: 0.65rem 0.75rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-subtle); color: var(--color-text-secondary); font-size: var(--text-sm); }
   .feedback.is-empty { margin: 0; padding: 0; border: 0; background: none; }
 
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
 
-  :global(.forge-spin) { animation: forge-spin 800ms linear infinite; }
-  @keyframes forge-spin { to { transform: rotate(360deg); } }
+  :global(.forge-spin) { animation: spin var(--duration-slowest) linear infinite; }
   button:focus-visible, summary:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
   #forge-brief-title:focus, #forge-options-title:focus { outline: 2px solid var(--color-accent); outline-offset: 3px; border-radius: var(--radius-sm); }
 
@@ -773,6 +919,13 @@
   @media (max-width: 640px) {
     .brief-head-row { flex-direction: column; }
     .option-head { align-items: stretch; flex-direction: column; }
+    .evaluate-gate :global(.confirm-gate) {
+      align-items: stretch;
+      flex-direction: column;
+    }
+    .evaluate-gate :global(.gate-actions) { width: 100%; }
+    .evaluate-gate :global(.gate-cancel) { flex: 1; }
+    .evaluate-gate :global(.gate-confirm) { flex: 2; }
   }
 
   @media (prefers-reduced-motion: reduce) {

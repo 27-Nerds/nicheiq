@@ -9,6 +9,7 @@ import {
 import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { requireInternalAuth, type AuthenticatedRequest } from '../middleware/auth.js';
+import { requireDecisionToolsAccess } from '../middleware/featureAccess.js';
 import { canonicalJsonSha256 } from '../utils/canonicalFingerprint.js';
 import { prisma } from '../services/db.js';
 import { calculateSelectionExperimentResults } from '../services/selectionExperimentResultService.js';
@@ -104,6 +105,7 @@ async function findOwnedExperiment(jobId: string, experimentId: string, userId: 
 selectionExperimentConclusionsRouter.get(
   '/:jobId/selection-experiments/:experimentId/conclusion',
   requireInternalAuth,
+  requireDecisionToolsAccess,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const params = ParamsSchema.parse(req.params);
@@ -133,6 +135,7 @@ selectionExperimentConclusionsRouter.get(
 selectionExperimentConclusionsRouter.post(
   '/:jobId/selection-experiments/:experimentId/conclusion',
   requireInternalAuth,
+  requireDecisionToolsAccess,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const params = ParamsSchema.parse(req.params);

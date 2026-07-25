@@ -819,7 +819,7 @@
                   {@const orig = originalityMetric({ obviousness_score: item.itemScores.obviousness, novelty_score: item.itemScores.novelty })}
                   <span title="Market Fit">{formatScore(item.itemScores.market_fit)}</span>
                   <span class="text-text-muted mx-0.5">/</span>
-                  <span title={orig.label ?? "Originality"}>{formatScore(orig.value)}</span>
+                  <span title={orig.label ?? "Distinctiveness"}>{formatScore(orig.value)}</span>
                 {:else if item.itemScores}
                   <span title="Severity">{formatScore(item.itemScores.severity)}</span>
                   <span class="text-text-muted mx-0.5">/</span>

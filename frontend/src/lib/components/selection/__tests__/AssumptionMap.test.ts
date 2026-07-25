@@ -153,46 +153,16 @@ describe("AssumptionMap", () => {
     expect(view.getByText("Older revision · rev 2")).toBeInTheDocument();
     expect(view.getByText("Observed evidence")).toBeInTheDocument();
     expect(view.container).not.toHaveTextContent(/\d+\s*\/\s*100|assumption score/i);
-    expect(view.getAllByRole("button", { name: "Edit owner fields" })).toHaveLength(1);
+    expect(view.getAllByRole("button", { name: "Edit" })).toHaveLength(1);
   });
 
-  it("turns a challenge gap into an owner-completed assumption with exact provenance", async () => {
+  it("does not duplicate a risk-check question in the saved-question list", async () => {
     apiMocks.getSelectionChallenges.mockResolvedValue({ challenges: [challenge()], stale: [] });
-    apiMocks.createSelectionAssumption.mockImplementation(async (_jobId, input) => ({
-      assumption: assumption({
-        statement: input.statement,
-        impactIfFalse: input.impactIfFalse,
-        falsificationQuestion: input.falsificationQuestion,
-        impact: input.impact,
-      }),
-      cached: false,
-    }));
     const view = render(AssumptionMap, { props: { jobId: "job-1", ideas: [signal] } });
 
-    await waitFor(() => expect(view.getByRole("button", { name: /Track this assumption/ })).toBeInTheDocument());
-    await fireEvent.click(view.getByRole("button", { name: /Track this assumption/ }));
-    const dialog = view.getByRole("dialog", { name: "Track a key assumption" });
-    expect(within(dialog).getByDisplayValue("Qualified buyers will make a concrete payment commitment for this outcome.")).toBeInTheDocument();
-    await fireEvent.input(within(dialog).getByLabelText(/What changes if this is false\?/), {
-      target: { value: "We would stop before paid validation." },
-    });
-    await fireEvent.input(within(dialog).getByLabelText(/What result would prove it wrong\?/), {
-      target: { value: "Will fewer than three of ten qualified buyers make a deposit?" },
-    });
-    await fireEvent.click(within(dialog).getByRole("radio", { name: /Decision-changing/ }));
-    await fireEvent.click(within(dialog).getByRole("button", { name: "Track key assumption" }));
-
-    await waitFor(() => expect(apiMocks.createSelectionAssumption).toHaveBeenCalledWith("job-1", {
-      ideaId: "idea-signal",
-      ideaRevision: 3,
-      lens: "demand",
-      statement: "Qualified buyers will make a concrete payment commitment for this outcome.",
-      impactIfFalse: "We would stop before paid validation.",
-      falsificationQuestion: "Will fewer than three of ten qualified buyers make a deposit?",
-      impact: "DECISIVE",
-      originChallengeId: "challenge-1",
-      originQuestionId: "buyer_will_pay",
-    }));
+    await waitFor(() => expect(view.getByText("No questions saved yet.")).toBeInTheDocument());
+    expect(view.queryByRole("button", { name: /Add to things to prove/ })).not.toBeInTheDocument();
+    expect(view.getByRole("button", { name: /Add a question to resolve/ })).toBeInTheDocument();
   });
 
   it("opens an analyst assumption draft without saving and refuses to replace dirty owner input", async () => {
@@ -202,14 +172,14 @@ describe("AssumptionMap", () => {
       props: { jobId: "job-1", ideas: [signal], prefill: firstPrefill },
     });
 
-    const dialog = await view.findByRole("dialog", { name: "Track a key assumption" });
+    const dialog = await view.findByRole("dialog", { name: "Save a question to resolve" });
     expect(within(dialog).getByDisplayValue(firstPrefill.values.statement!)).toBeInTheDocument();
-    expect(within(dialog).getByText("Analyst draft · not saved")).toBeInTheDocument();
+    expect(within(dialog).getByText("Suggested draft · not saved")).toBeInTheDocument();
     expect(within(dialog).getByText("Candidate · Signal Desk")).toBeInTheDocument();
     expect(within(dialog).getByText("Owner evidence · Interview note")).toBeInTheDocument();
-    expect(within(dialog).getByText(/analyst did not choose impact or owner state/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/You still choose how much this matters/)).toBeInTheDocument();
     expect(within(dialog).getByText(/Payment behavior has not been observed yet/)).toBeInTheDocument();
-    expect(within(dialog).getByRole("button", { name: "Track key assumption" })).not.toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Save question" })).not.toBeDisabled();
     expect(within(dialog).getAllByRole("radio").every((radio) => !(radio as HTMLInputElement).checked)).toBe(true);
     expect(apiMocks.createSelectionAssumption).not.toHaveBeenCalled();
 
@@ -238,7 +208,7 @@ describe("AssumptionMap", () => {
       props: { jobId: "job-1", ideas: [signal], prefill: firstPrefill },
     });
 
-    const dialog = await view.findByRole("dialog", { name: "Track a key assumption" });
+    const dialog = await view.findByRole("dialog", { name: "Save a question to resolve" });
     expect(within(dialog).getByDisplayValue(firstPrefill.values.statement!)).toBeInTheDocument();
 
     await view.rerender({
@@ -265,19 +235,19 @@ describe("AssumptionMap", () => {
       props: { jobId: "job-1", ideas: [signal], prefill: draft },
     });
 
-    const dialog = await view.findByRole("dialog", { name: "Track a key assumption" });
+    const dialog = await view.findByRole("dialog", { name: "Save a question to resolve" });
     expect(apiMocks.createSelectionAssumption).not.toHaveBeenCalled();
 
     // The button stays enabled even without a chosen impact: clicking it
     // while invalid reveals the field error instead of silently saving.
-    const trackButton = within(dialog).getByRole("button", { name: "Track key assumption" });
+    const trackButton = within(dialog).getByRole("button", { name: "Save question" });
     expect(trackButton).not.toBeDisabled();
     await fireEvent.click(trackButton);
     expect(apiMocks.createSelectionAssumption).not.toHaveBeenCalled();
-    expect(within(dialog).getByText("Choose an impact.")).toBeInTheDocument();
+    expect(within(dialog).getByText("Choose how much this would change your decision.")).toBeInTheDocument();
 
     await fireEvent.click(within(dialog).getByRole("radio", { name: /Decision-changing/ }));
-    await fireEvent.click(within(dialog).getByRole("button", { name: "Track key assumption" }));
+    await fireEvent.click(within(dialog).getByRole("button", { name: "Save question" }));
 
     await waitFor(() => expect(apiMocks.createSelectionAssumption).toHaveBeenCalledWith("job-1", {
       ideaId: "idea-signal",
@@ -309,8 +279,8 @@ describe("AssumptionMap", () => {
       },
     });
 
-    expect(await view.findByRole("alert")).toHaveTextContent("changed after the analyst prepared");
-    expect(view.queryByRole("dialog", { name: "Edit assumption" })).not.toBeInTheDocument();
+    expect(await view.findByRole("alert")).toHaveTextContent("changed after the draft was prepared");
+    expect(view.queryByRole("dialog", { name: "Edit question to resolve" })).not.toBeInTheDocument();
     expect(apiMocks.updateSelectionAssumption).not.toHaveBeenCalled();
   });
 
@@ -322,10 +292,10 @@ describe("AssumptionMap", () => {
     });
     const view = render(AssumptionMap, { props: { jobId: "job-1", ideas: [signal] } });
 
-    await waitFor(() => expect(view.getByRole("button", { name: "Edit owner fields" })).toBeInTheDocument());
-    await fireEvent.click(view.getByRole("button", { name: "Edit owner fields" }));
-    const dialog = view.getByRole("dialog", { name: "Edit key assumption" });
-    await fireEvent.change(within(dialog).getByLabelText(/Owner state/), { target: { value: "ACCEPTED_RISK" } });
+    await waitFor(() => expect(view.getByRole("button", { name: "Edit" })).toBeInTheDocument());
+    await fireEvent.click(view.getByRole("button", { name: "Edit" }));
+    const dialog = view.getByRole("dialog", { name: "Edit question to resolve" });
+    await fireEvent.change(within(dialog).getByLabelText(/Status/), { target: { value: "ACCEPTED_RISK" } });
     await fireEvent.click(within(dialog).getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => expect(apiMocks.updateSelectionAssumption).toHaveBeenCalledWith(
@@ -364,22 +334,72 @@ describe("AssumptionMap", () => {
     }));
   });
 
+  it("routes the editor footer Cancel through the dirty gate", async () => {
+    const view = render(AssumptionMap, { props: { jobId: "job-1", ideas: [signal] } });
+
+    await waitFor(() => expect(view.getByRole("button", { name: /Add a question to resolve/ })).toBeEnabled());
+    await fireEvent.click(view.getByRole("button", { name: /Add a question to resolve/ }));
+    const dialog = view.getByRole("dialog", { name: "Save a question to resolve" });
+    await fireEvent.input(within(dialog).getByLabelText(/What must be true\?/), {
+      target: { value: "A hand-typed unsaved belief." },
+    });
+
+    await fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(view.getByRole("dialog", { name: "Save a question to resolve" })).toBeInTheDocument();
+    expect(view.getByText("You have unsaved changes. Close again to discard them.")).toBeInTheDocument();
+
+    await fireEvent.click(view.getByRole("button", { name: "Discard changes" }));
+    await waitFor(() =>
+      expect(view.queryByRole("dialog", { name: "Save a question to resolve" })).not.toBeInTheDocument(),
+    );
+  });
+
+  it("closes a clean editor from the footer Cancel on the first click", async () => {
+    const view = render(AssumptionMap, { props: { jobId: "job-1", ideas: [signal] } });
+
+    await waitFor(() => expect(view.getByRole("button", { name: /Add a question to resolve/ })).toBeEnabled());
+    await fireEvent.click(view.getByRole("button", { name: /Add a question to resolve/ }));
+    await fireEvent.click(view.getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() =>
+      expect(view.queryByRole("dialog", { name: "Save a question to resolve" })).not.toBeInTheDocument(),
+    );
+    expect(
+      view.queryByText("You have unsaved changes. Close again to discard them."),
+    ).not.toBeInTheDocument();
+  });
+
+  it("explains and focuses the first missing field on a failed save", async () => {
+    const view = render(AssumptionMap, { props: { jobId: "job-1", ideas: [signal] } });
+
+    await waitFor(() => expect(view.getByRole("button", { name: /Add a question to resolve/ })).toBeEnabled());
+    await fireEvent.click(view.getByRole("button", { name: /Add a question to resolve/ }));
+    const dialog = view.getByRole("dialog", { name: "Save a question to resolve" });
+    await fireEvent.click(within(dialog).getByRole("button", { name: "Save question" }));
+
+    expect(within(dialog).getByText("Describe what must be true in at least 3 characters.")).toBeInTheDocument();
+    expect(within(dialog).getByText("Say what you would change, stop, or investigate if this is false.")).toBeInTheDocument();
+    expect(within(dialog).getByText("Write the observable result that would prove this wrong.")).toBeInTheDocument();
+    await waitFor(() => expect(document.activeElement?.id).toBe("assumption-statement"));
+    expect(apiMocks.createSelectionAssumption).not.toHaveBeenCalled();
+  });
+
   it("stops on a stale write and reloads instead of overwriting a newer version", async () => {
     const current = assumption({ experiments: [] });
     apiMocks.getSelectionAssumptions.mockResolvedValue({ assumptions: [current] });
     apiMocks.updateSelectionAssumption.mockRejectedValue(new apiMocks.ApiError("Version conflict", 409));
     const view = render(AssumptionMap, { props: { jobId: "job-1", ideas: [signal] } });
 
-    await waitFor(() => expect(view.getByRole("button", { name: "Edit owner fields" })).toBeInTheDocument());
-    await fireEvent.click(view.getByRole("button", { name: "Edit owner fields" }));
-    const dialog = view.getByRole("dialog", { name: "Edit key assumption" });
-    await fireEvent.change(within(dialog).getByLabelText(/Owner state/), { target: { value: "ACCEPTED_RISK" } });
+    await waitFor(() => expect(view.getByRole("button", { name: "Edit" })).toBeInTheDocument());
+    await fireEvent.click(view.getByRole("button", { name: "Edit" }));
+    const dialog = view.getByRole("dialog", { name: "Edit question to resolve" });
+    await fireEvent.change(within(dialog).getByLabelText(/Status/), { target: { value: "ACCEPTED_RISK" } });
     await fireEvent.click(within(dialog).getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => expect(within(dialog).getByRole("button", { name: "Reload map" })).toBeInTheDocument());
     expect(within(dialog).getByRole("alert")).toHaveTextContent("changed or its idea revision is no longer current");
     await fireEvent.click(within(dialog).getByRole("button", { name: "Reload map" }));
     await waitFor(() => expect(apiMocks.getSelectionAssumptions).toHaveBeenCalledTimes(2));
-    expect(view.queryByRole("dialog", { name: "Edit assumption" })).not.toBeInTheDocument();
+    expect(view.queryByRole("dialog", { name: "Edit question to resolve" })).not.toBeInTheDocument();
   });
 });

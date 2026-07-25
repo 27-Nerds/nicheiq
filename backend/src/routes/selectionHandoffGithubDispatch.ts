@@ -10,6 +10,7 @@ import {
 import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { requireInternalAuth, type AuthenticatedRequest } from '../middleware/auth.js';
+import { requireDecisionToolsAccess } from '../middleware/featureAccess.js';
 import {
   createGithubIssueWithToken,
   findMatchingGithubIssues,
@@ -207,6 +208,7 @@ async function dispatchContext(
 selectionHandoffGithubDispatchRouter.post(
   '/:jobId/decision-handoff/github/preview',
   requireInternalAuth,
+  requireDecisionToolsAccess,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { jobId } = ParamsSchema.parse(req.params);
@@ -238,6 +240,7 @@ selectionHandoffGithubDispatchRouter.post(
 selectionHandoffGithubDispatchRouter.get(
   '/:jobId/decision-handoff/github/dispatch',
   requireInternalAuth,
+  requireDecisionToolsAccess,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { jobId } = ParamsSchema.parse(req.params);
@@ -272,6 +275,7 @@ selectionHandoffGithubDispatchRouter.get(
 selectionHandoffGithubDispatchRouter.post(
   '/:jobId/decision-handoff/github/dispatch',
   requireInternalAuth,
+  requireDecisionToolsAccess,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { jobId } = ParamsSchema.parse(req.params);
@@ -435,6 +439,7 @@ selectionHandoffGithubDispatchRouter.post(
 selectionHandoffGithubDispatchRouter.post(
   '/:jobId/decision-handoff/github/dispatch/:dispatchId/reconcile',
   requireInternalAuth,
+  requireDecisionToolsAccess,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { jobId, dispatchId } = DispatchParamsSchema.parse(req.params);

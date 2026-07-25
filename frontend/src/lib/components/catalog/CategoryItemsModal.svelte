@@ -338,7 +338,7 @@
                 <Badge variant="success" size="sm">Free preview</Badge>
               {/if}
               <Badge variant="success" size="sm">Fit {formatScore(idea.marketFitScore)}</Badge>
-              <Badge variant="info" size="sm">{orig.short ?? "Orig"} {formatScore(orig.value)}</Badge>
+              <Badge variant="info" size="sm">{orig.short ?? "Distinct"} {formatScore(orig.value)}</Badge>
               <button
                 class="p-1 rounded hover:bg-accent/10 transition-opacity flex-shrink-0 {idea.id === effectiveFreePreviewIdeaId ? 'text-accent' : 'text-text-muted opacity-0 group-hover:opacity-100'}"
                 title={idea.id === effectiveFreePreviewIdeaId

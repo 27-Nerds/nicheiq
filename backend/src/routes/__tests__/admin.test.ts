@@ -59,7 +59,7 @@ vi.mock('../../services/creditService.js', () => ({
 
 // Mock prisma (used by internal grant-registration-credits endpoint)
 const mockPrisma = {
-  user: { findUnique: vi.fn() },
+  user: { findUnique: vi.fn(), update: vi.fn() },
   creditTransaction: { findFirst: vi.fn() },
 };
 vi.mock('../../services/db.js', () => ({
@@ -606,4 +606,72 @@ describe('Subscription plan CRUD', () => {
     expect(res.status).toBe(200);
     expect(res.body.plans).toHaveLength(1);
   });
+});
+
+// ============================================
+// Per-user feature grants
+// ============================================
+describe('Admin feature-grant endpoints', () => {
+  const ADMIN = { 'X-Internal-Service': 'test-secret', 'X-User-Id': 'admin', 'X-User-Role': 'ADMIN' };
+
+  const grants = [
+    {
+      name: 'decision tools',
+      path: '/api/admin/users/u1/access-decision-tools',
+      field: 'decisionToolsAccess',
+    },
+    {
+      name: 'chat with Analyst',
+      path: '/api/admin/users/u1/access-chat',
+      field: 'chatAnalystAccess',
+    },
+  ] as const;
+
+  for (const { name, path, field } of grants) {
+    describe(`${name} grant`, () => {
+      it('persists the new value and echoes it back', async () => {
+        mockPrisma.user.update.mockResolvedValue({ id: 'u1', email: 'a@b.c', [field]: true });
+        const res = await request(app).patch(path).set(ADMIN).send({ [field]: true });
+
+        expect(res.status).toBe(200);
+        expect(res.body[field]).toBe(true);
+        expect(mockPrisma.user.update).toHaveBeenCalledWith(
+          expect.objectContaining({ where: { id: 'u1' }, data: { [field]: true } }),
+        );
+      });
+
+      it('revokes just as directly', async () => {
+        mockPrisma.user.update.mockResolvedValue({ id: 'u1', email: 'a@b.c', [field]: false });
+        const res = await request(app).patch(path).set(ADMIN).send({ [field]: false });
+
+        expect(res.status).toBe(200);
+        expect(mockPrisma.user.update).toHaveBeenCalledWith(
+          expect.objectContaining({ data: { [field]: false } }),
+        );
+      });
+
+      it('400s on a non-boolean, without touching the row', async () => {
+        const res = await request(app).patch(path).set(ADMIN).send({ [field]: 'yes' });
+        expect(res.status).toBe(400);
+        expect(mockPrisma.user.update).not.toHaveBeenCalled();
+      });
+
+      it('404s for an unknown user', async () => {
+        mockPrisma.user.update.mockRejectedValue({ code: 'P2025' });
+        const res = await request(app).patch(path).set(ADMIN).send({ [field]: true });
+        expect(res.status).toBe(404);
+      });
+
+      it('403s a non-admin caller', async () => {
+        const res = await request(app).patch(path).set(userHeaders).send({ [field]: true });
+        expect(res.status).toBe(403);
+        expect(mockPrisma.user.update).not.toHaveBeenCalled();
+      });
+
+      it('401s without the internal service secret', async () => {
+        const res = await request(app).patch(path).send({ [field]: true });
+        expect(res.status).toBe(401);
+      });
+    });
+  }
 });

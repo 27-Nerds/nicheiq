@@ -74,6 +74,12 @@ three lenses draw from what's left.
 
 Higher is better for every score except **obviousness**, where lower means more original.
 
+The product presents one user-facing **Distinctiveness** rating. For current reports it is
+`1 − obviousness_score`, using the independent obviousness review; legacy reports without that
+field fall back to `novelty_score`. Research ranking separately uses the calibrated
+`novelty_score`. The two signals are related, but the displayed Distinctiveness rating does not
+directly determine the Research score.
+
 ## How a score is produced
 
 Ideas move through three steps, and different steps own different scores:
@@ -88,7 +94,7 @@ Ideas move through three steps, and different steps own different scores:
    need a large content library hand-built before launch (the "cold-start" trap).
 
 2. **Independent review.** A separate reviewer model re-scores each concept's
-   originality and feasibility — crucially, it writes its reasoning *before* its
+   obviousness and feasibility — crucially, it writes its reasoning *before* its
    numbers. The data route gets its own web-search check that rules three ways: a real
    public source is **supported** (no penalty); data that's removed, gated, or doesn't
    exist is **refuted** (scored down); and a route the search can neither confirm nor
@@ -130,7 +136,7 @@ scores. Every one can only lower a score:
 - **Legal exposure lowers the score (it doesn't hide the idea).** Concepts built on
   publishing claims about named third parties are scored down for feasibility, while
   still being shown to you with the concern visible.
-- **Originality must be earned.** The novelty score is held back unless the idea cites
+- **Distinctiveness must be earned.** The internal novelty score is held back unless the idea cites
   specific, real evidence for why it's different, and the generator is required to
   include genuinely non-obvious ideas in every batch rather than a wall of safe bets.
 - **SEO potential must rest on a real content corpus.** The SEO-scalability score is
@@ -202,16 +208,16 @@ angle that gives it its best real chance — and then judges it on executing *th
 
 - **distribution_seo** — wins by being **found**: programmatic / SEO pages plus owned
   distribution. Its differentiation lives in the **data representation** (format,
-  coverage, freshness), not a clever mechanism. Low *mechanism*-novelty is **expected**
+  coverage, freshness), not a clever mechanism. A familiar mechanism is **expected**
   here and isn't a flaw; the real weakness is a me-too directory with no unique data slice.
-- **novel_differentiation** — wins on a **novel mechanism** rivals can't easily copy.
+- **novel_differentiation** — wins on a **distinct mechanism** rivals can't easily copy.
 - **vertical_workflow** — wins by **owning a deep workflow** for one specific user: a
   workflow step rivals miss, plus switching cost.
 
-Every idea should be differentiated — but in the dimension its angle rewards. That means
-"novelty" means a different thing per angle: a new mechanism, a better data representation,
-or a deeper workflow step. So a low off-axis score (a low mechanism-novelty for a catalog
-whose edge is its data) is **explained**, not held against the idea. Each idea carries a
+Every idea should be differentiated — but in the dimension its angle rewards. The internal
+novelty signal therefore reflects a different kind of edge per angle: a distinct mechanism, a
+better data representation, or a deeper workflow step. A familiar off-axis mechanism for a
+catalog whose edge is its data is **explained**, not held against the idea. Each idea carries a
 short `angle_rationale` (naming the angle, the nearest competitor, and where its
 differentiation lives) and a `novelty_rationale` (one line tying the novelty score to the
 idea's project type — why it reads as expected, low, or high there).
@@ -224,9 +230,11 @@ dimension its angle never relied on.
 
 **You can steer the emphasis.** An **Idea focus** control (per run, also available when you
 ask for more ideas) sets the tilt: **Auto** lets the classifier decide each idea's angle
-unbiased; **Novelty** or **Distribution** tilts *both* what gets generated *and* the ranking
-emphasis toward that angle. It steers emphasis, not honesty — each idea's winning-angle label
-stays truthful regardless of the setting.
+unbiased; **Differentiation** or **Distribution** tilts *both* what gets generated *and* the
+ranking emphasis toward that angle. The stable internal value for the Differentiation option
+remains `novelty`; it is an API/persistence contract, not the user-facing label. The control
+steers emphasis, not honesty — each idea's winning-angle label stays truthful regardless of the
+setting.
 
 ## How ideas are ranked
 
@@ -340,7 +348,7 @@ into a Go. It is designed to be a conservative gate, not a cheerleader.
 
 The verdict is read through the idea's **winning angle**. Averaging is *lift-only*: an
 idea is scored on the better of its equal-weight and angle-weighted average, so a strong
-distribution-first idea isn't punished for low mechanism-novelty — but a misread angle can
+distribution-first idea isn't punished for using a familiar mechanism — but a misread angle can
 never demote a deserving idea. One angle-specific gate matters for distribution-first ideas:
 if the search opportunity looks great on paper but there's no realistic set of pages you
 could rank for (the "SEO kill-question"), the verdict is tempered toward Conditional. That

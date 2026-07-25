@@ -53,15 +53,15 @@
 <style>
   .empty-state {
     display: grid;
-    gap: 0.4rem;
+		gap: var(--space-1-5);
     justify-items: center;
-    padding: 3rem 1.5rem;
+		padding: var(--space-12) var(--space-6);
     text-align: center;
   }
 
   .empty-state h4 {
     margin: 0;
-    font-size: 0.9375rem;
+		font-size: var(--text-base);
     font-weight: 600;
     color: var(--color-text-primary);
   }
@@ -71,20 +71,20 @@
     max-width: 38ch;
     color: var(--color-text-secondary);
     font-size: var(--text-13);
-    line-height: 1.5;
+    line-height: var(--leading-normal);
   }
 
   .empty-state .actions {
     display: flex;
-    gap: 0.5rem;
-    margin-top: 0.6rem;
+		gap: var(--space-2);
+		margin-top: var(--space-2);
     flex-wrap: wrap;
     justify-content: center;
   }
 
   .empty-inline {
     margin: 0;
-    padding: 0.75rem 0.15rem;
+		padding: var(--space-3) var(--space-1);
     color: var(--color-text-muted);
     font-size: var(--text-13);
   }

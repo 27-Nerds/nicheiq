@@ -4,11 +4,19 @@ const MAX_SCOPE_IDEAS = 3;
 
 const LENSES = ["demand", "distribution", "competition", "dependencies"] as const;
 const COMPARE_VIEWS = ["market", "founder"] as const;
-const ALTERNATIVE_MODES = ["recommended", "novelty", "distribution"] as const;
+const ALTERNATIVE_MODES = ["diverge", "resolve_tradeoff", "reshape"] as const;
 
 export type SelectionWorkspaceLens = (typeof LENSES)[number];
 export type SelectionCompareView = (typeof COMPARE_VIEWS)[number];
 export type SelectionAlternativeMode = (typeof ALTERNATIVE_MODES)[number];
+export type SelectionWorkspaceScopeSource = "url" | "draft" | "preview";
+
+export const SELECTION_LIFECYCLE_CONTEXT = Symbol("selection-workspace-lifecycle");
+
+export interface SelectionWorkspaceLifecycle {
+  status: Job["status"] | "";
+  canMutate: boolean;
+}
 
 export interface SelectionWorkspaceRef {
   ideaId: string;
@@ -22,6 +30,7 @@ export interface SelectionWorkspaceState {
   lens: SelectionWorkspaceLens;
   compareView: SelectionCompareView;
   alternativeMode: SelectionAlternativeMode;
+  scopeSource: SelectionWorkspaceScopeSource;
   canonicalQuery: string;
 }
 
@@ -82,6 +91,37 @@ function pickEnum<const T extends readonly string[]>(
   return fallback;
 }
 
+function resolveAlternativeMode(
+  value: string | null,
+  ideaCount: number,
+  notices: string[],
+): SelectionAlternativeMode {
+  const fallback: SelectionAlternativeMode = ideaCount === 2 ? "resolve_tradeoff" : "diverge";
+  if (!value) return fallback;
+  if ((ALTERNATIVE_MODES as readonly string[]).includes(value)) {
+    if (value === "resolve_tradeoff" && ideaCount < 2) {
+      notices.push("Resolving a trade-off needs at least two current candidates. Showing distinct directions instead.");
+      return "diverge";
+    }
+    return value as SelectionAlternativeMode;
+  }
+
+  // Compatibility for links created before the route matched the generator's
+  // actual purpose model. These aliases deliberately resolve to a real input;
+  // the old "recommended" and channel promises were not implemented filters.
+  if (value === "recommended") {
+    notices.push("This older variants link now opens the closest supported direction type.");
+    return fallback;
+  }
+  if (value === "novelty" || value === "distribution") {
+    notices.push("This older variants link now opens distinct directions; no candidate or score changed.");
+    return "diverge";
+  }
+
+  notices.push("The requested alternative mode is not available. Showing the default instead.");
+  return fallback;
+}
+
 export function resolveSelectionWorkspace(
   url: URL,
   job: Job,
@@ -106,29 +146,23 @@ export function resolveSelectionWorkspace(
     }
   }
 
-  const matchedIdeas = parsedRefs
+  const scopedRefs = parsedRefs.slice(0, MAX_SCOPE_IDEAS);
+  const matchedIdeas = scopedRefs
     .map((ref) => findExactIdea(solutions, ref))
-    .filter((idea): idea is SolutionPreview => Boolean(idea))
-    .slice(0, MAX_SCOPE_IDEAS);
-  const staleCount = parsedRefs.length - matchedIdeas.length;
+    .filter((idea): idea is SolutionPreview => Boolean(idea));
+  const staleCount = scopedRefs.length - matchedIdeas.length;
   const ignoredCount = Math.max(0, parsedRefs.length - MAX_SCOPE_IDEAS);
 
   let ideas = matchedIdeas;
+  let scopeSource: SelectionWorkspaceScopeSource = "url";
   if (requestedTokens.length > 0 && (malformedCount > 0 || staleCount > 0 || ignoredCount > 0)) {
     notices.push("Some candidate references in this link are invalid, unavailable, or out of date.");
   }
 
-  if (requestedTokens.length > 0 && ideas.length === 0) {
+  if (requestedTokens.length === 0) {
     const fallback = resolveFallback(job, solutions);
     ideas = fallback.ideas;
-    notices.push(
-      fallback.usedTopCandidates
-        ? "No valid linked candidates remain. Showing the current leading candidates as a safe preview."
-        : "No valid linked candidates remain. Showing your current saved shortlist instead.",
-    );
-  } else if (requestedTokens.length === 0) {
-    const fallback = resolveFallback(job, solutions);
-    ideas = fallback.ideas;
+    scopeSource = fallback.usedTopCandidates ? "preview" : "draft";
     if (fallback.usedTopCandidates) {
       notices.push("No shortlist is saved yet. Showing the current leading candidates as a preview.");
     }
@@ -137,16 +171,14 @@ export function resolveSelectionWorkspace(
   const refs = ideas.map(currentRef).filter((ref): ref is SelectionWorkspaceRef => Boolean(ref));
   const lens = pickEnum(url.searchParams.get("lens"), LENSES, "demand", "evidence area", notices);
   const compareView = pickEnum(url.searchParams.get("view"), COMPARE_VIEWS, "market", "comparison view", notices);
-  const alternativeMode = pickEnum(
-    url.searchParams.get("mode"),
-    ALTERNATIVE_MODES,
-    "recommended",
-    "alternative mode",
-    notices,
-  );
+  const alternativeMode = resolveAlternativeMode(url.searchParams.get("mode"), ideas.length, notices);
 
   const canonicalParams = new URLSearchParams();
-  for (const ref of refs) canonicalParams.append("idea", `${ref.ideaId}:${ref.ideaRevision}`);
+  // Canonicalize from MATCHED refs only. Emitting raw `scopedRefs` would keep a
+  // stale/unresolvable ref in the URL and make the "out of date" notice sticky
+  // for the whole session; `refs` drops the unresolvable ref cleanly.
+  const canonicalRefs = refs;
+  for (const ref of canonicalRefs) canonicalParams.append("idea", `${ref.ideaId}:${ref.ideaRevision}`);
   canonicalParams.set("lens", lens);
   canonicalParams.set("view", compareView);
   canonicalParams.set("mode", alternativeMode);
@@ -158,6 +190,7 @@ export function resolveSelectionWorkspace(
     lens,
     compareView,
     alternativeMode,
+    scopeSource,
     canonicalQuery: `?${canonicalParams.toString()}`,
   };
 }

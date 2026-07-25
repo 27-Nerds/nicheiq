@@ -5,6 +5,8 @@ import { DEFAULT_STAGE_COSTS } from '$lib/types/job';
 import type { StageCosts } from '$lib/types/job';
 import type { SavedCounts } from '$lib/types/saved';
 import type { UserSubscription } from '$lib/types/billing';
+import type { FeatureAccess } from '$lib/types/featureAccess';
+import { nonNegativeInteger } from '$lib/utils/displayGuards';
 
 export const load: LayoutServerLoad = async (event) => {
   const session = await event.locals.auth?.();
@@ -29,35 +31,54 @@ export const load: LayoutServerLoad = async (event) => {
   let subscription: UserSubscription | null = null;
   let stageCosts: StageCosts = { ...DEFAULT_STAGE_COSTS };
   let savedCounts: SavedCounts = { ideas: 0, painPoints: 0 };
+  let balanceUnavailable = true;
+  let costsUnavailable = true;
+  // Admin-granted per-user features. Read fresh each navigation rather than carried in
+  // the session JWT, so a grant or revocation lands without a re-login. Fails CLOSED:
+  // the backend re-checks on every gated route, this only drives what we render.
+  let featureAccess: FeatureAccess = { analyst: false, decisionTools: false };
 
   const headers = { 'X-User-ID': session.user.id };
 
   try {
-    const [balanceRes, costsRes, savedRes, subRes] = await Promise.all([
-      fetchBackend('/api/billing/balance', { headers }),
-      fetchBackend('/api/billing/stage-costs', { headers }),
-      fetchBackend('/api/saves/counts', { headers }),
+    const [balanceRes, costsRes, savedRes, subRes, accessRes] = await Promise.all([
+      fetchBackend('/api/billing/balance', { headers }).catch(() => null),
+      fetchBackend('/api/billing/stage-costs', { headers }).catch(() => null),
+      fetchBackend('/api/saves/counts', { headers }).catch(() => null),
       fetchBackend('/api/billing/subscription', { headers }).catch(() => null),
+      fetchBackend(`/api/users/${session.user.id}/feature-access`, { headers }).catch(() => null),
     ]);
 
-    if (balanceRes.ok) {
+    if (balanceRes?.ok) {
       const data = await balanceRes.json();
+      const available = nonNegativeInteger(data.available ?? data.balance);
       // `balance` stays = available for back-compat.
-      creditBalance = data.available ?? data.balance ?? 0;
+      if (available !== null) {
+        creditBalance = available;
+        balanceUnavailable = false;
+      }
       monthlyAllowance = data.monthlyAllowance ?? 0;
       purchasedBalance = data.purchasedBalance ?? data.balance ?? 0;
       monthlyAllowancePeriodEnd = data.monthlyAllowancePeriodEnd ?? null;
     }
-    if (costsRes.ok) {
+    if (costsRes?.ok) {
       const data = await costsRes.json();
       stageCosts = { ...stageCosts, ...data };
+      costsUnavailable = nonNegativeInteger(data.deep_research) === null;
     }
-    if (savedRes.ok) {
+    if (savedRes?.ok) {
       savedCounts = (await savedRes.json()) as SavedCounts;
     }
     if (subRes?.ok) {
       const data = await subRes.json();
       subscription = data.subscription ?? null;
+    }
+    if (accessRes?.ok) {
+      const data = await accessRes.json();
+      featureAccess = {
+        analyst: data.analyst === true,
+        decisionTools: data.decisionTools === true,
+      };
     }
   } catch (error) {
     console.error('Failed to fetch layout data:', error);
@@ -70,7 +91,12 @@ export const load: LayoutServerLoad = async (event) => {
     purchasedBalance,
     monthlyAllowancePeriodEnd,
     subscription,
+    featureAccess,
     stageCosts,
+    billingLoadState: {
+      balanceUnavailable,
+      costsUnavailable,
+    },
     savedCounts,
   };
 };

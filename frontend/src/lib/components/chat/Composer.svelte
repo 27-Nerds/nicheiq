@@ -19,9 +19,9 @@
     /** Larger type + roomier field, for a full-width surface. */
     size?: "compact" | "roomy";
     hint?: string;
-    /** When set, the send control is a LABELED button instead of the circular chat
-     *  glyph. A circular arrow-up is the ChatGPT/Claude signature — correct for a
-     *  message, wrong for an irreversible, priced action, which deserves to say what
+    /** When set, the send control is a LABELED button instead of the compact
+     *  icon-only send square. An anonymous arrow-up is correct for a message,
+     *  wrong for an irreversible, priced action, which deserves to say what
      *  it does ("Start the run · 5 credits") before you click it. */
     submitLabel?: string;
     busyLabel?: string;
@@ -128,7 +128,8 @@
     /* 1.4.11: an input's boundary is a non-text contrast target — the hairline
        border-emphasis token is 1.32:1 and cannot be the field's only edge. */
     border: 1px solid var(--color-input-border);
-    border-radius: var(--radius-xl);
+    /* House input geometry (radius-md) — the pill/circle chat-app look is off-system. */
+    border-radius: var(--radius-md);
     box-shadow: var(--shadow-sm);
     transition: border-color 150ms var(--ease-default, ease), box-shadow 150ms var(--ease-default, ease);
   }
@@ -186,7 +187,7 @@
     height: 2rem;
     background: var(--color-accent-hover);
     border: 1px solid var(--color-accent-hover);
-    border-radius: 50%;
+    border-radius: var(--radius-md);
     color: var(--color-text-on-accent);
     cursor: pointer;
     transition: background 180ms var(--ease-default, ease), transform 180ms var(--ease-default, ease);

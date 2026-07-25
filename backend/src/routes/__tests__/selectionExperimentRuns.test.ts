@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import express, { type Express } from 'express';
 import request from 'supertest';
+
+// These suites exercise route logic, not the decision-tools grant. The grant itself is
+// covered in middleware/__tests__/featureAccess.test.ts.
+vi.mock('../../middleware/featureAccess.js', () => ({
+  requireDecisionToolsAccess: (_req: any, _res: any, next: any) => next(),
+}));
 import { Prisma } from '@prisma/client';
 
 const mockExperimentFindFirst = vi.fn();

@@ -4,8 +4,75 @@ import bcrypt from 'bcryptjs';
 import { prisma } from '../services/db.js';
 import { requireInternalAuth, AuthenticatedRequest } from '../middleware/auth.js';
 import { formatJobResponse } from '../utils/jobFormatter.js';
+import { getFeatureAccess } from '../services/featureAccess.js';
+import {
+  TutorialChapterPatchSchema,
+  getTutorialProgress,
+  recordTutorialChapter,
+} from '../services/tutorialProgressService.js';
 
 export const usersRouter = Router();
+
+/**
+ * GET /api/users/:userId/feature-access
+ * The caller's own admin-granted feature flags, for conditional rendering. Read fresh
+ * (not carried in the session JWT) so a grant or revocation lands on the next navigation
+ * instead of waiting for a re-login. Authoritative enforcement still lives on each route.
+ */
+usersRouter.get('/:userId/feature-access', requireInternalAuth, async (req: AuthenticatedRequest, res: Response) => {
+  const { userId } = req.params;
+  if (req.user!.id !== userId) {
+    res.status(403).json({ error: 'Not authorized to view this access' });
+    return;
+  }
+  try {
+    res.json(await getFeatureAccess(userId));
+  } catch (error) {
+    console.error('Failed to resolve feature access:', error);
+    res.status(500).json({ error: 'Failed to resolve feature access' });
+  }
+});
+
+/**
+ * GET /api/users/:userId/tutorial-progress
+ * PATCH /api/users/:userId/tutorial-progress
+ * First-run tutorial state. PATCH merges ONE chapter so concurrent tabs don't clobber
+ * each other; see tutorialProgressService.
+ */
+usersRouter.get('/:userId/tutorial-progress', requireInternalAuth, async (req: AuthenticatedRequest, res: Response) => {
+  if (req.user!.id !== req.params.userId) {
+    res.status(403).json({ error: 'Not authorized to view this progress' });
+    return;
+  }
+  try {
+    res.json(await getTutorialProgress(req.params.userId));
+  } catch (error) {
+    console.error('Failed to load tutorial progress:', error);
+    res.status(500).json({ error: 'Failed to load tutorial progress' });
+  }
+});
+
+usersRouter.patch('/:userId/tutorial-progress', requireInternalAuth, async (req: AuthenticatedRequest, res: Response) => {
+  if (req.user!.id !== req.params.userId) {
+    res.status(403).json({ error: 'Not authorized to update this progress' });
+    return;
+  }
+  try {
+    const patch = TutorialChapterPatchSchema.parse(req.body);
+    res.json(await recordTutorialChapter(req.params.userId, patch));
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation error', details: error.errors });
+      return;
+    }
+    if ((error as { code?: string })?.code === 'P2025') {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+    console.error('Failed to record tutorial progress:', error);
+    res.status(500).json({ error: 'Failed to record tutorial progress' });
+  }
+});
 
 /**
  * GET /api/users/:userId/jobs
@@ -30,19 +97,38 @@ usersRouter.get('/:userId/jobs', requireInternalAuth, async (req: AuthenticatedR
 
     // Get user's jobs (excluding admin catalog-fill jobs, which have no
     // REPORT_JSON asset and surface a broken "View Report" CTA otherwise)
-    const jobs = await prisma.job.findMany({
-      where: { userId, catalogCategoryId: null },
-      orderBy: { createdAt: 'desc' },
-      take: 50, // Limit for performance
-      include: {
-        progress: true,
-        assets: true,
-        creditTransactions: {
-          where: { type: 'REFUND' },
-          select: { id: true, amount: true },
-        },
+    const jobInclude = {
+      progress: true,
+      assets: true,
+      creditTransactions: {
+        where: { type: 'REFUND' as const },
+        select: { id: true, amount: true },
       },
-    });
+    };
+    const [recentJobs, awaitingJobs] = await Promise.all([
+      prisma.job.findMany({
+        where: { userId, catalogCategoryId: null },
+        orderBy: { createdAt: 'desc' },
+        take: 50, // Limit for performance
+        include: jobInclude,
+      }),
+      // Jobs awaiting a user decision must never fall out of the recency
+      // window — a paid run pending action would become invisible.
+      prisma.job.findMany({
+        where: {
+          userId,
+          catalogCategoryId: null,
+          status: { in: ['AWAITING_SELECTION', 'AWAITING_GATE'] },
+        },
+        orderBy: { createdAt: 'desc' },
+        include: jobInclude,
+      }),
+    ]);
+    const seenJobIds = new Set(recentJobs.map((job) => job.id));
+    const jobs = [
+      ...recentJobs,
+      ...awaitingJobs.filter((job) => !seenJobIds.has(job.id)),
+    ];
 
     // Format response using shared helper
     const formattedJobs = jobs.map((job) => formatJobResponse(job, {

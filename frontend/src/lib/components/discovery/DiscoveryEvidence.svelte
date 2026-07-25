@@ -19,27 +19,26 @@
   const totalSources = $derived(data?.social_posts_sample?.length ?? 0);
 
   // Source distribution: use real post counts when available, fall back to sample
-  const subredditDistribution = $derived.by(() => {
-    let entries: [string, number][];
+  const sourceDistribution = $derived.by(() => {
+    let allEntries: [string, number][];
 
     if (data?.subreddit_post_counts && Object.keys(data.subreddit_post_counts).length > 0) {
-      // Real counts from full dataset (150+ posts)
-      entries = Object.entries(data.subreddit_post_counts)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5);
+      // Full captured source distribution.
+      allEntries = Object.entries(data.subreddit_post_counts)
+        .sort((a, b) => b[1] - a[1]);
     } else {
-      // Fallback: compute from 10-item sample (legacy jobs)
+      // Fallback: compute from the stored sample for legacy jobs.
       const counts: Record<string, number> = {};
       for (const post of data?.social_posts_sample ?? []) {
         counts[post.subreddit] = (counts[post.subreddit] ?? 0) + 1;
       }
-      entries = Object.entries(counts)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5);
+      allEntries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
     }
 
-    const total = entries.reduce((sum, [, count]) => sum + count, 0) || 1;
-    return entries.map(([name, count], i) => ({
+    // Percentages use every captured source as the denominator even though the
+    // visual only shows the five largest. Otherwise the visible bars overstate share.
+    const total = allEntries.reduce((sum, [, count]) => sum + count, 0) || 1;
+    return allEntries.slice(0, 5).map(([name, count], i) => ({
       name,
       count,
       percent: Math.round(count / total * 100),
@@ -49,28 +48,28 @@
 
   // Hide distribution bars when distribution is flat (all bars ~equal = no insight)
   const isDistributionFlat = $derived(
-    subredditDistribution.length > 0 &&
-    subredditDistribution[0].percent <= (subredditDistribution[subredditDistribution.length - 1].percent * 2)
+    sourceDistribution.length > 0 &&
+    sourceDistribution[0].percent <= (sourceDistribution[sourceDistribution.length - 1].percent * 2)
   );
 </script>
 
 {#if data}
   <div class="evidence">
     <!-- Source Distribution Bars (hidden when flat/uniform) -->
-    {#if subredditDistribution.length > 0 && !isDistributionFlat}
+    {#if sourceDistribution.length > 0 && !isDistributionFlat}
       <div class="evidence-section">
-        <span class="evidence-label">Source Distribution</span>
+        <span class="evidence-label">Captured discussion share</span>
         <div class="dist-bars">
-          {#each subredditDistribution as sub (sub.name)}
+          {#each sourceDistribution as source (source.name)}
             <div class="tier-bar" use:scrollVisible>
-              <span class="tier-bar-label">{sub.name}</span>
+              <span class="tier-bar-label" title={source.name}>{source.name}</span>
               <div class="tier-bar-track">
                 <div
                   class="tier-bar-fill"
-                  style="--fill-pct: {sub.percent / 100}; background: var(--color-accent); opacity: {sub.opacity}"
+                  style="--fill-pct: {source.percent / 100}; background: var(--color-accent); opacity: {source.opacity}"
                 ></div>
               </div>
-              <span class="tier-bar-count">{sub.percent}%</span>
+              <span class="tier-bar-count">{source.percent}%</span>
             </div>
           {/each}
         </div>
@@ -80,15 +79,17 @@
     <!-- Source Feed (HackerNews style) -->
     {#if displayedSources.length > 0}
       <div class="evidence-section">
-        <span class="evidence-label">Real Conversations</span>
-        <div class="source-feed">
+        <span class="evidence-label">Captured conversations</span>
+        <div class="source-feed" id="discovery-source-feed">
           {#each displayedSources as post (post.url)}
             <a href={post.url} target="_blank" rel="noopener noreferrer" class="source-row">
-              <span class="source-score">{post.score.toLocaleString()}</span>
+              <span class="source-score" aria-label={`${post.score.toLocaleString()} engagement`}>
+                {post.score.toLocaleString()}
+              </span>
               <span class="source-title">{post.title}</span>
               <span class="source-meta">
                 {post.subreddit}
-                <span class="source-comments">{post.num_comments} comments</span>
+                <span class="source-comments">{post.num_comments} responses</span>
               </span>
             </a>
           {/each}
@@ -98,8 +99,10 @@
             type="button"
             class="expand-btn"
             onclick={() => { showAllSources = !showAllSources; }}
+            aria-expanded={showAllSources}
+            aria-controls="discovery-source-feed"
           >
-            {showAllSources ? "Show fewer" : `Show all ${totalSources} sources \u2192`}
+            {showAllSources ? "Show fewer" : `Show all ${totalSources} conversations \u2192`}
           </button>
         {/if}
       </div>
@@ -123,7 +126,7 @@
 
   .evidence-label {
     font-family: var(--font-mono);
-    font-size: 0.62rem;
+    font-size: var(--text-xs);
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.06em;
@@ -150,7 +153,7 @@
   .tier-bar-label {
     min-width: 0;
     color: var(--color-text-secondary);
-    font-size: 0.78rem;
+    font-size: var(--text-sm);
     line-height: 1.2;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -176,8 +179,8 @@
   .tier-bar-count {
     color: var(--color-text-primary);
     font-family: var(--font-mono);
-    font-size: 0.74rem;
-    font-weight: 780;
+    font-size: var(--text-sm);
+    font-weight: 800;
     text-align: right;
     font-variant-numeric: tabular-nums;
   }
@@ -227,7 +230,7 @@
     grid-row: 1 / -1;
     font-family: var(--font-mono);
     font-weight: 600;
-    font-size: 0.78rem;
+    font-size: var(--text-sm);
     color: var(--color-accent-dark);
     font-variant-numeric: tabular-nums;
     text-align: right;
@@ -235,11 +238,12 @@
   }
 
   .source-title {
-    font-size: 0.78rem;
-    font-weight: 620;
+    font-size: var(--text-sm);
+    font-weight: 600;
     color: var(--color-text-primary);
     line-height: 1.4;
     text-wrap: pretty;
+    overflow-wrap: anywhere;
     transition: color 220ms cubic-bezier(0.32, 0.72, 0, 1);
   }
 
@@ -249,10 +253,12 @@
 
   .source-meta {
     font-family: var(--font-mono);
-    font-size: 0.66rem;
+    font-size: var(--text-xs);
     color: var(--color-text-muted);
     display: flex;
     gap: 0.5rem;
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   .source-comments {
@@ -262,8 +268,8 @@
   /* ===== Shared ===== */
   .expand-btn {
     font-family: var(--font-mono);
-    font-size: 0.68rem;
-    font-weight: 650;
+    font-size: var(--text-11);
+    font-weight: 600;
     color: var(--color-text-muted);
     background: color-mix(in srgb, var(--color-bg-elevated) 88%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 40%, transparent);
@@ -294,6 +300,21 @@
 
     .source-row {
       grid-template-columns: 2.8rem 1fr;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .tier-bar-fill {
+      transition: none;
+    }
+
+    .source-row,
+    .source-row:hover,
+    .source-row:active,
+    .expand-btn,
+    .expand-btn:active {
+      transform: none;
+      transition: none;
     }
   }
 </style>

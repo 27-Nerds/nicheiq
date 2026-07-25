@@ -9,6 +9,7 @@ import {
 import { z } from 'zod';
 import { CONFIG } from '../config.js';
 import { requireInternalAuth, type AuthenticatedRequest } from '../middleware/auth.js';
+import { requireDecisionToolsAccess } from '../middleware/featureAccess.js';
 import { prisma } from '../services/db.js';
 import { generateSelectionIdeaNarrowing } from '../services/selectionIdeaNarrowingService.js';
 import { ensureIdeaIdentities, ideaName } from '../utils/ideaIdentity.js';
@@ -130,6 +131,7 @@ function eligibilityError(experiment: NarrowingExperiment): string | null {
 selectionIdeaNarrowingRouter.get(
   '/:jobId/selection-experiments/:experimentId/narrowing-proposal',
   requireInternalAuth,
+  requireDecisionToolsAccess,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const params = ParamsSchema.parse(req.params);
@@ -158,6 +160,7 @@ selectionIdeaNarrowingRouter.get(
 selectionIdeaNarrowingRouter.post(
   '/:jobId/selection-experiments/:experimentId/narrowing-proposal',
   requireInternalAuth,
+  requireDecisionToolsAccess,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const params = ParamsSchema.parse(req.params);

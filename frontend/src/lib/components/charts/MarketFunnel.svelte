@@ -88,7 +88,7 @@
     gap: 1rem;
     padding: 1rem 1.25rem;
     border-radius: 8px;
-    transition: all 0.3s var(--ease-out);
+    transition: transform 0.3s var(--ease-out);
     margin-left: auto;
   }
 

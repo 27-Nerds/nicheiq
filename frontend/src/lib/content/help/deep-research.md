@@ -1,23 +1,35 @@
-Discovery ends with a shortlist of things you could build. Deep Research is what happens after you pick one. Instead of spreading attention across every idea, it takes the single one you selected and tries hard to find the reasons it might not work. The point isn't to cheerlead. It's to surface the objections a careful investor or a skeptical co-founder would raise, while they're still cheap to act on.
+Discovery ends with a ranked set of candidate ideas. From that set, you can choose one to three exact candidates for a single Deep Research run. The run investigates the saved scope in more depth, compares the selected ideas, and produces a final recommendation. A run started directly from the Idea Catalog begins with one seeded idea.
+
+### Before you start
+
+Only the shortlist is required. The selection workspace keeps the path short:
+
+1. **Choose ideas.** Save one to three candidates.
+2. **Compare trade-offs.** Optional. Read the Discovery evidence side by side. You can also add private build limits and check fit without changing the research scores.
+3. **Check the evidence.** Optional. Re-read the sources already captured for one decision-changing risk. This does not search for new evidence.
+4. **Review and start.** Check the exact candidates, current cost, balance, and balance after starting.
+
+Nothing is charged while you choose, compare, or review. The confirmation screen shows the current price before you start; one confirmation covers the selected scope.
+
+Build limits, questions to resolve, and test plans are optional supporting work. Planning a test is a contextual follow-up to an unresolved question, not another required step. If none of the ranked ideas fit, branching a different direction is an escape hatch: the branch starts unevaluated, and the original candidate and its scores stay unchanged.
 
 ### Why it's a separate phase
 
-Discovery is broad and shallow by design: it looks across a whole niche to find problems worth solving. (See [How the research works](/help/discovery).) That breadth is the wrong tool for judging one specific product. A real go/no-go call needs depth on a narrow target — the exact buyer, the real competitors, the channel you'd actually use to reach people. So Deep Research re-runs the research, but pointed at your chosen idea rather than the niche as a whole.
+Discovery is broad by design: it looks across a niche to find recurring problems, audiences, and plausible products. (See [How the research works](/help/discovery).) Deep Research narrows that breadth to the candidates you chose and spends more effort on the questions that can reverse the decision.
 
 ### What it checks
 
-It works through the questions that decide whether an idea is worth your next few months:
+- **Who the buyer is.** The report narrows the audience and the job the product would serve.
+- **Competition and substitutes.** It looks for direct products, adjacent products, free alternatives, and do-it-yourself routes.
+- **Distribution and search demand.** It checks whether the proposed acquisition surface is plausible, not just whether broad keywords have volume.
+- **Pricing signals.** It uses captured commercial-intent evidence and competitor pricing where available. It does not treat those signals as measured willingness to pay.
+- **Market size and timing.** It separates the initial serviceable slice from a broader market ceiling and labels estimates as estimates.
+- **Data access and build feasibility.** It checks whether required inputs appear obtainable and whether the implementation assumptions hold up.
 
-- **Who, exactly.** It pins down the specific buyer the idea serves — the tools they already use and what frustrates them about those tools — and feeds that into every later check, so competitors and keywords are judged against your real audience, not a generic version of the niche.
-- **The competition.** It looks for the products already solving this problem, what they do well, and where the gap is that your idea would live in.
-- **Whether you can get found.** For ideas that lean on search to grow, good keyword scores aren't enough. It also asks the harder question: is there a set of pages you could realistically rank for, or is the front page already owned by entrenched sites? An idea can have strong demand and still have nowhere to win — and the verdict reflects that.
-- **What people will pay.** It reads commercial-intent signals from real discussion and any competitor pricing, rather than guessing a number.
-- **How big the slice is.** A focused tool wins a small *beachhead* first — the slice of the niche it actually serves — before it can grow into the wider category, so it shouldn't be credited with the whole market on day one. The serviceable market (SAM) is anchored on your idea's *own* validated demand — the slice it addresses — not on the whole-niche number. The niche-wide search volume is shown separately as a reach *ceiling* (the total addressable market): the size of the whole category the idea could eventually expand into, not what it serves now. Outsized top-down figures ("1% of a huge market") are the most over-trusted number in any pitch, so the headline is the beachhead and the big number is kept as the ceiling above it.
+### The recommendation
 
-### The verdict
-
-All of that rolls up into a Go, Conditional, or No-Go call, with a short explanation of why it landed where it did. The explanation uses plain terms — strong demand, weak distribution, crowded field — rather than raw internal numbers, because the reasoning matters more than the score. A verdict can only be lowered by a problem the checks surface, never inflated; a clean Go has to earn it on every axis.
+The selected candidates continue through the validation stages as one saved scope. The final report records a recommended winner, runner-up context where applicable, and a Go, Conditional, or No-Go verdict with its supporting reasons. That recommendation is research output, not a promise that the business will succeed.
 
 ### What it can't do
 
-It's still working from public discussion and snapshot data, so it reads the present, not the future. Growth rates and market sizes are estimates with wide ranges, not measured figures, and it says so when confidence is low. And it judges the idea you selected — if a different idea from the shortlist would have fared better, Deep Research won't tell you that. Picking the idea is still your call; this phase tells you how hard the one you picked will be.
+Deep Research still works from public discussion, search data, and point-in-time web evidence. It cannot observe private buyer behavior or predict the future. Growth, demand, and market-size figures are directional estimates with uncertainty. It also does not evaluate candidates you left outside the confirmed scope; changing the scope requires a new run.

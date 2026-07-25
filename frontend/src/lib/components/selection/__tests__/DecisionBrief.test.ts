@@ -38,10 +38,12 @@ describe("DecisionBrief", () => {
     });
 
     expect(view.getByText(/They will not change the research score\./)).toBeInTheDocument();
-    await fireEvent.click(view.getByRole("button", { name: "Add build constraints" }));
-    expect(view.getByRole("dialog", { name: "Your build constraints" })).toBeInTheDocument();
+    await fireEvent.click(view.getByRole("button", { name: "Add build limits" }));
+    expect(view.getByRole("dialog", { name: "Your build limits" })).toBeInTheDocument();
+    expect(view.queryByLabelText(/Advantages you already have/)).not.toBeInTheDocument();
     await fireEvent.click(view.getByRole("radio", { name: /Solo bootstrap/ }));
     await fireEvent.click(view.getByRole("radio", { name: "Under 10" }));
+    await fireEvent.click(view.getByRole("button", { name: /Add launch context/ }));
     await fireEvent.click(view.getByRole("button", { name: "Existing audience" }));
     await fireEvent.input(view.getByLabelText(/Advantages you already have/), {
       target: { value: "Trusted niche community" },
@@ -49,7 +51,7 @@ describe("DecisionBrief", () => {
     await fireEvent.input(view.getByLabelText(/Hard constraints/), {
       target: { value: "No 24/7 operations" },
     });
-    await fireEvent.click(view.getByRole("button", { name: "Save build constraints" }));
+    await fireEvent.click(view.getByRole("button", { name: "Save build limits" }));
 
     await waitFor(() => expect(mocks.saveSelectionDecisionProfile).toHaveBeenCalledOnce());
     expect(mocks.saveSelectionDecisionProfile).toHaveBeenCalledWith("job-1", SAVED_PROFILE);
@@ -61,11 +63,11 @@ describe("DecisionBrief", () => {
       props: { jobId: "job-1", profile: SAVED_PROFILE, onSaved: vi.fn() },
     });
 
-    const summary = view.getByLabelText("Saved build constraints");
+    const summary = view.getByLabelText("Saved build limits");
     expect(summary).toHaveTextContent("Under 10 hrs / week");
     expect(summary).toHaveTextContent("Under $1k");
     expect(summary).toHaveTextContent("Revenue within 90 days");
-    expect(view.getByRole("button", { name: "Edit build constraints" })).toBeInTheDocument();
+    expect(view.getByRole("button", { name: "Edit build limits" })).toBeInTheDocument();
   });
 
   it("keeps the worksheet open and reports a save failure", async () => {
@@ -74,11 +76,42 @@ describe("DecisionBrief", () => {
       props: { jobId: "job-1", profile: null, onSaved: vi.fn() },
     });
 
-    await fireEvent.click(view.getByRole("button", { name: "Add build constraints" }));
-    await fireEvent.click(view.getByRole("button", { name: "Save build constraints" }));
+    await fireEvent.click(view.getByRole("button", { name: "Add build limits" }));
+    await fireEvent.click(view.getByRole("button", { name: "Save build limits" }));
 
     expect(await view.findByRole("alert")).toHaveTextContent("Founder context could not be saved");
-    expect(view.getByRole("button", { name: "Save build constraints" })).toBeInTheDocument();
+    expect(view.getByRole("button", { name: "Save build limits" })).toBeInTheDocument();
+  });
+
+  it("routes the footer Cancel through the dirty gate", async () => {
+    const view = render(DecisionBrief, {
+      props: { jobId: "job-1", profile: null, onSaved: vi.fn() },
+    });
+
+    await fireEvent.click(view.getByRole("button", { name: "Add build limits" }));
+    await fireEvent.click(view.getByRole("button", { name: /Add launch context/ }));
+    await fireEvent.input(view.getByLabelText(/Hard constraints/), {
+      target: { value: "No weekend operations" },
+    });
+
+    await fireEvent.click(view.getByRole("button", { name: "Cancel" }));
+    expect(view.getByRole("dialog", { name: "Your build limits" })).toBeInTheDocument();
+    expect(view.getByText(/unsaved changes/i)).toBeInTheDocument();
+
+    await fireEvent.click(view.getByRole("button", { name: "Discard changes" }));
+    expect(view.queryByRole("dialog", { name: "Your build limits" })).not.toBeInTheDocument();
+  });
+
+  it("closes a clean editor from the footer Cancel on the first click", async () => {
+    const view = render(DecisionBrief, {
+      props: { jobId: "job-1", profile: null, onSaved: vi.fn() },
+    });
+
+    await fireEvent.click(view.getByRole("button", { name: "Add build limits" }));
+    await fireEvent.click(view.getByRole("button", { name: "Cancel" }));
+
+    expect(view.queryByRole("dialog", { name: "Your build limits" })).not.toBeInTheDocument();
+    expect(view.queryByText(/unsaved changes/i)).not.toBeInTheDocument();
   });
 
   it("keeps dirty context in the popup until the owner explicitly discards it", async () => {
@@ -86,15 +119,16 @@ describe("DecisionBrief", () => {
       props: { jobId: "job-1", profile: null, onSaved: vi.fn() },
     });
 
-    await fireEvent.click(view.getByRole("button", { name: "Add build constraints" }));
+    await fireEvent.click(view.getByRole("button", { name: "Add build limits" }));
+    await fireEvent.click(view.getByRole("button", { name: /Add launch context/ }));
     await fireEvent.input(view.getByLabelText(/Hard constraints/), {
       target: { value: "No weekend operations" },
     });
-    await fireEvent.click(view.getByRole("button", { name: "Close Your build constraints" }));
+    await fireEvent.click(view.getByRole("button", { name: "Close Your build limits" }));
 
-    expect(view.getByRole("dialog", { name: "Your build constraints" })).toBeInTheDocument();
+    expect(view.getByRole("dialog", { name: "Your build limits" })).toBeInTheDocument();
     expect(view.getByText(/unsaved changes/i)).toBeInTheDocument();
     await fireEvent.click(view.getByRole("button", { name: "Discard changes" }));
-    expect(view.queryByRole("dialog", { name: "Your build constraints" })).not.toBeInTheDocument();
+    expect(view.queryByRole("dialog", { name: "Your build limits" })).not.toBeInTheDocument();
   });
 });

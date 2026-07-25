@@ -1,10 +1,7 @@
 <script lang="ts">
-  import type { RedditThread } from "$lib/types/report";
-
   interface Props {
     subredditNames?: string[];
     communityHubs?: string[];
-    topThreads?: RedditThread[];
     postsAnalyzed?: number;
     sourcesSearched?: Record<string, { enabled: boolean; posts_found: number }>;
   }
@@ -12,7 +9,6 @@
   let {
     subredditNames = [],
     communityHubs = [],
-    topThreads = [],
     postsAnalyzed = 0,
     sourcesSearched,
   }: Props = $props();
@@ -32,14 +28,24 @@
       : []
   );
 
+  const activePlatforms = $derived(
+    sourcesSearched
+      ? Object.entries(sourcesSearched)
+          .filter(([_, info]) => info.enabled && info.posts_found > 0)
+          .map(([platform, info]) => ({
+            label: PLATFORM_LABELS[platform] ?? platform,
+            count: info.posts_found,
+          }))
+      : [],
+  );
+
   const displaySources = $derived(
     subredditNames.length > 0
       ? subredditNames
       : communityHubs
   );
-
-  // Subreddit chip grid moved to AudienceSection (community_hubs per segment).
-  // This section now owns the methodology summary + platform gap indicators only.
+  const visibleSources = $derived(displaySources.slice(0, 8));
+  const hiddenSourceCount = $derived(Math.max(0, displaySources.length - visibleSources.length));
 </script>
 
 <div class="community">
@@ -51,10 +57,26 @@
     </span>
   {/if}
 
-  {#if gapPlatforms.length > 0}
+  {#if visibleSources.length > 0}
+    <div class="source-grid" aria-label="Captured communities">
+      {#each visibleSources as source}
+        <span class="source-pill" title={source}>{source}</span>
+      {/each}
+      {#if hiddenSourceCount > 0}
+        <span class="source-pill">+{hiddenSourceCount} more</span>
+      {/if}
+    </div>
+  {:else if postsAnalyzed === 0}
+    <p class="community-empty">No discussion sources were captured for this report.</p>
+  {/if}
+
+  {#if activePlatforms.length > 0 || gapPlatforms.length > 0}
     <div class="source-grid">
+      {#each activePlatforms as platform}
+        <span class="source-pill">{platform.label} · {platform.count} captured</span>
+      {/each}
       {#each gapPlatforms as platform}
-        <span class="source-pill source-gap">{platform} · 0 posts</span>
+        <span class="source-pill source-gap">{platform} · none captured</span>
       {/each}
     </div>
   {/if}
@@ -64,14 +86,14 @@
   .community {
     display: flex;
     flex-direction: column;
-    gap: 0.68rem;
+    gap: var(--space-3);
   }
 
   .community-stat {
     font-family: var(--font-mono);
-    font-size: 0.6rem;
-    font-weight: 760;
-    letter-spacing: 0.055em;
+    font-size: var(--text-xs);
+    font-weight: 700;
+    letter-spacing: 0.07em;
     text-transform: uppercase;
     color: var(--color-text-muted);
   }
@@ -79,24 +101,32 @@
   .source-grid {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.32rem;
+    gap: var(--space-2);
   }
 
   .source-pill {
-    padding: 0.24rem 0.58rem;
+    max-width: 100%;
+    padding: var(--space-1) var(--space-2);
     background: color-mix(in srgb, var(--color-bg-elevated) 78%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 36%, transparent);
     border-radius: var(--radius-full);
     font-family: var(--font-mono);
-    font-size: 0.65rem;
+    font-size: var(--text-xs);
     font-weight: 500;
     color: var(--color-text-secondary);
-    white-space: nowrap;
+    overflow-wrap: anywhere;
   }
 
   .source-gap {
     border-style: dashed;
     color: var(--color-text-muted);
     opacity: 0.78;
+  }
+
+  .community-empty {
+    margin: 0;
+    color: var(--color-text-secondary);
+    font-size: var(--text-13);
+    line-height: var(--leading-normal);
   }
 </style>

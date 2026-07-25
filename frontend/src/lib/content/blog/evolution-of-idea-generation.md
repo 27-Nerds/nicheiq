@@ -36,9 +36,9 @@ One finding from the mentor-model sweep still bothers us. The recipe works with 
 
 ## Step four: scoring ideas on the axis they win on
 
-An honest score also has to be honest about what it measures. A directory of every allergen-certified bakery in the country is not a novel mechanism, and a genuinely new analysis trick may have no search traffic to ride. Grade both on one rubric and you punish each for not being the other.
+An honest score also has to be honest about what it measures. A directory of every allergen-certified bakery in the country may use a familiar mechanism, while a genuinely distinct analysis method may have no search traffic to ride. Grade both on one rubric and you punish each for not being the other.
 
-So a classifier now assigns every idea the angle it actually wins by: found through search, novel mechanism, or workflow depth. The ranking weights shift with that angle, and the report names it, so a low novelty score on a directory reads as "not the point" rather than "weak idea." The classifier went through the same discipline as the critic, tuned against a neutral judge until agreement reached 94%. The tuning notes read like case law. A formula is not a novel mechanism. "Community data" is a distribution tell. Never call an idea distribution-led when it has no search surface to distribute on.
+So a classifier now assigns every idea the angle it actually wins by: found through search, a distinct mechanism, or workflow depth. The ranking weights shift with that angle, and the report names it, so a familiar mechanism on a directory reads as "not the point" rather than "weak idea." The classifier went through the same discipline as the critic, tuned against a neutral judge until agreement reached 94%. The tuning notes read like case law. A formula is not automatically a distinct mechanism. "Community data" is a distribution tell. Never call an idea distribution-led when it has no search surface to distribute on.
 
 ## Step five: the run that exposed everything
 

@@ -75,11 +75,27 @@ function array(input: unknown): unknown[] {
 function text(input: unknown, max = 1_500): string {
   if (typeof input === 'string') return input.trim().slice(0, max);
   if (input == null) return '';
-  try {
-    return JSON.stringify(input).slice(0, max);
-  } catch {
-    return '';
+  if (typeof input === 'number' || typeof input === 'boolean') return String(input).slice(0, max);
+  if (Array.isArray(input)) {
+    return input
+      .map(item => text(item, max))
+      .filter(Boolean)
+      .join(', ')
+      .slice(0, max);
   }
+  if (typeof input !== 'object') return '';
+
+  return Object.entries(input)
+    .flatMap(([key, value]) => {
+      const readableValue = text(value, max);
+      if (!readableValue) return [];
+      const label = key
+        .replace(/[_-]+/g, ' ')
+        .replace(/^\w/, character => character.toUpperCase());
+      return [`${label}: ${readableValue}`];
+    })
+    .join(' · ')
+    .slice(0, max);
 }
 
 function httpUrl(input: unknown): string | null {

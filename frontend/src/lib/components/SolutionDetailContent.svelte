@@ -10,7 +10,13 @@
   import { sourceFrameLabel } from "$lib/utils/sourceFrameLabels";
   import { strengthEntry, SUPERPOWERS_DETAILED } from "$lib/utils/superpower";
   import { scoreRationale } from "$lib/utils/scoreRationale";
-  import { originalityMetric } from "$lib/utils/solution-utils";
+  import {
+    originalityMetric,
+    validatedBuildComplexity,
+    validatedNoveltyLevel,
+    validatedStrengthKeys,
+  } from "$lib/utils/solution-utils";
+  import { normalizePainSignal } from "$lib/utils/painSignal";
 
   interface Props {
     solution: SolutionPreview;
@@ -20,22 +26,88 @@
     onViewFull?: () => void;
     /** Overview only: the overlap group this candidate belongs to, if any. */
     overlapGroup?: OverlapGroup | null;
+    /** Overview only: the overlap group's OTHER candidates resolved against the pool —
+     *  display title plus the pool index (null when the name isn't in the current pool). */
+    overlapPeers?: { title: string; index: number | null }[] | null;
+    /** Overview only: pages the host overlay to another pool candidate. */
+    onOpenPeer?: (index: number) => void;
+    lifecycle?: "selection" | "reference" | "running" | "completed";
+    evidenceLinks?: { href: string; label: string }[];
+    onOpenEvidence?: (href: string) => void;
   }
 
-  let { solution, view = "overview", onViewFull, overlapGroup = null }: Props = $props();
+  let {
+    solution,
+    view = "overview",
+    onViewFull,
+    overlapGroup = null,
+    overlapPeers = null,
+    onOpenPeer,
+    lifecycle = "reference",
+    evidenceLinks = [],
+    onOpenEvidence,
+  }: Props = $props();
 
-  const overlapOtherNames = $derived(
-    overlapGroup ? overlapGroup.idea_names.filter((n) => n !== solution.solution_name) : [],
+  function handleEvidenceClick(event: MouseEvent, href: string) {
+    if (!onOpenEvidence) return;
+    event.preventDefault();
+    onOpenEvidence(href);
+  }
+
+  // Prefer host-resolved peers (display titles + pool indices for paging); fall back to
+  // the group's raw internal names for callers that don't resolve against a pool.
+  const overlapDisplay = $derived(
+    overlapPeers
+      ?? (overlapGroup
+        ? overlapGroup.idea_names
+            .filter((n) => n !== solution.solution_name)
+            .map((name) => ({ title: name, index: null as number | null }))
+        : []),
   );
 
   // Deterministic weak-signal note: a 'restored' candidate was demoted for thin market signal,
   // then brought back so its pain stays represented on the shortlist. Framed as a property of
   // the opportunity, not a flaw in the concept or a limit of the analysis.
   const isWeakSignal = $derived(solution.candidate_status === "restored");
+  const deepResearchCopy = $derived.by(() => {
+    if (lifecycle === "running") {
+      return {
+        title: "Deep Research is checking this idea",
+        incumbent: "Deep Research is validating this signal.",
+        estimate: "Discovery estimate · Deep Research in progress",
+        parity: "Deep Research is mapping the direct incumbents and adjacent players.",
+      };
+    }
+    if (lifecycle === "completed") {
+      return {
+        title: "Deep Research checked this idea",
+        incumbent: "Deep Research evaluated this signal.",
+        estimate: "Discovery estimate · compare with completed research",
+        parity: "See the completed research for the final incumbent and adjacent-player map.",
+      };
+    }
+    if (lifecycle === "selection") {
+      return {
+        title: "Deep Research would check this idea",
+        incumbent: "Deep Research would validate this signal.",
+        estimate: "Discovery estimate · refined by Deep Research",
+        parity: "Deep Research would map the direct incumbents and adjacent players.",
+      };
+    }
+    return {
+      title: "What deeper research should check",
+      incumbent: "This signal still needs deeper validation.",
+      estimate: "Discovery estimate · requires deeper research",
+      parity: "Deeper research should map the direct incumbents and adjacent players.",
+    };
+  });
 
   // Grounded generation provenance: the (pain × segment) cell that produced this idea.
+  // The legacy fallback carries the raw ranked-list entry ("1. … (Severity 8.0/10, …): …"),
+  // so it's normalized down to the pain title for the fact display.
   const provenance = $derived.by(() => {
-    const pain = solution.source_pain?.trim() || solution.pain_points_addressed?.[0]?.trim();
+    const raw = solution.pain_points_addressed?.[0];
+    const pain = solution.source_pain?.trim() || (raw ? normalizePainSignal(raw) : "");
     if (!pain) return null;
     return { pain, seg: solution.source_segment?.trim() || null };
   });
@@ -43,7 +115,7 @@
   // Closed-vocabulary tag facets, grouped for display (docs/IDEA_TAGS.md). Each chip carries a
   // one-line hover explanation (tagDescription).
   const strengthChips = $derived(
-    (solution.tags?.strengths ?? [])
+    validatedStrengthKeys(solution)
       .map((k) => {
         const entry = strengthEntry(k, SUPERPOWERS_DETAILED);
         return entry ? { ...entry, description: tagDescription(k) } : null;
@@ -84,8 +156,8 @@
     const t = solution.tags;
     if (!t) return [];
     const items: { label: string; description?: string }[] = [];
-    if (t.build_complexity === "high") items.push(chip("high"));
-    if (t.novelty_level === "conventional") items.push(chip("conventional"));
+    if (validatedBuildComplexity(solution) === "high") items.push(chip("high"));
+    if (validatedNoveltyLevel(solution) === "conventional") items.push(chip("conventional"));
     if (t.data_access && FRICTION_DATA.has(t.data_access))
       // Prefer the verifier's per-idea, evidence-grounded note over the static definition.
       items.push({
@@ -147,7 +219,7 @@
       { label: "Market fit", value: solution.market_fit_score, why: scoreRationale(solution, "market_fit") },
       { label: "Feasibility", value: solution.technical_feasibility_score, why: scoreRationale(solution, "technical_feasibility") },
       { label: "SEO", value: solution.seo_scalability_score, why: scoreRationale(solution, "seo") },
-      { label: om.short === "Orig" ? "Originality" : (om.short ?? "Originality"), value: om.value, why: scoreRationale(solution, "novelty") },
+      { label: om.short ?? "Distinct", value: om.value, why: scoreRationale(solution, "novelty") },
       { label: "Solo-dev", value: solution.solo_dev_feasibility, why: scoreRationale(solution, "solo_dev") },
     ].filter((c) => c.value != null);
   });
@@ -195,10 +267,44 @@
       </p>
     {/if}
 
-    {#if overlapGroup}
+    {#if solution.idea_tier === "bundle" && solution.pain_points_addressed?.length}
+      <div class="bundle-note">
+        <span class="mono-label">
+          Bundle · {solution.pain_points_addressed.length} Discovery pain
+          signal{solution.pain_points_addressed.length === 1 ? "" : "s"}
+        </span>
+        <ul class="bundle-signals">
+          {#each solution.pain_points_addressed as signal}
+            <li>{normalizePainSignal(signal)}</li>
+          {/each}
+        </ul>
+      </div>
+    {/if}
+
+    {#if overlapGroup && overlapDisplay.length}
       <p class="merged-note">
-        Overlaps with {overlapOtherNames.length} other candidate{overlapOtherNames.length === 1 ? "" : "s"} as one product direction{overlapOtherNames.length ? `: ${overlapOtherNames.join(", ")}` : ""}
+        Overlaps with {overlapDisplay.length} other
+        candidate{overlapDisplay.length === 1 ? "" : "s"}
+        {overlapGroup.shared_product?.trim() ? `on "${overlapGroup.shared_product.trim()}"` : "as one product direction"}:
+        {#each overlapDisplay as peer, i}{#if i > 0}{", "}{/if}{#if peer.index !== null && onOpenPeer}{@const idx = peer.index}<button
+            type="button"
+            class="overlap-peer"
+            onclick={() => onOpenPeer(idx)}
+          >{peer.title}</button>{:else}{peer.title}{/if}{/each}
       </p>
+    {/if}
+
+    {#if evidenceLinks.length > 0}
+      <nav class="evidence-links" aria-label="Related Discovery evidence">
+        <span class="mono-label">Open the underlying evidence</span>
+        <div>
+          {#each evidenceLinks as link}
+            <a href={link.href} onclick={(event) => handleEvidenceClick(event, link.href)}>
+              {link.label}
+            </a>
+          {/each}
+        </div>
+      </nav>
     {/if}
 
     {#if strengthChips.length > 0 || modelItems.length > 0 || watchOutItems.length > 0}
@@ -252,7 +358,7 @@
         {#if overviewIncumbentNote}
           <p class="subnote">
             <span class="font-medium text-text-secondary">Web-verified incumbent:</span>
-            {overviewIncumbentNote} — thin early signal; Deep Research validates.
+            {overviewIncumbentNote} — thin early signal. {deepResearchCopy.incumbent}
           </p>
         {/if}
       </div>
@@ -276,7 +382,7 @@
     <div class="validation-strip">
       <div class="validation-head">
         <Telescope class="validation-icon" aria-hidden="true" />
-        <span class="validation-title">Deep Research validates this idea</span>
+        <span class="validation-title">{deepResearchCopy.title}</span>
       </div>
       <ul>
         <li>Demand evidence and search behavior</li>
@@ -348,7 +454,7 @@
           </ul>
         {/if}
         {#if solution.novelty_rationale}
-          <p class="fd-note"><span class="mini-label">On novelty</span>{solution.novelty_rationale}</p>
+          <p class="fd-note"><span class="mini-label">Why it differs</span>{solution.novelty_rationale}</p>
         {/if}
       </section>
     {/if}
@@ -358,7 +464,7 @@
       <section class="fd-card">
         <div class="fd-card-head">
           <h3 class="fd-card-title">Distribution &amp; economics</h3>
-          <span class="fd-est-tag">Estimated · refined by Deep Research</span>
+          <span class="fd-est-tag">{deepResearchCopy.estimate}</span>
         </div>
         <div class="fd-grid">
           {#if solution.pricing_strategy}
@@ -464,7 +570,7 @@
     {:else}
       <section class="fd-card fd-card--locked">
         <h3 class="fd-card-title">Competitive parity</h3>
-        <p class="fd-locked-note">Deep Research maps the direct incumbents and adjacent players this idea would compete with.</p>
+        <p class="fd-locked-note">{deepResearchCopy.parity}</p>
       </section>
     {/if}
 
@@ -503,7 +609,9 @@
   .solution-detail-content {
     display: grid;
     gap: 0.875rem;
+    min-width: 0;
     color: var(--color-text-secondary);
+    overflow-wrap: anywhere;
   }
 
   /* ── Overview ── */
@@ -549,11 +657,7 @@
     font-size: 0.75rem;
     font-weight: 700;
     line-height: 1.24;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
+    overflow-wrap: anywhere;
   }
 
   .facet-panel {
@@ -575,6 +679,106 @@
     font-weight: 700;
     color: var(--color-text-muted);
     text-wrap: pretty;
+    overflow-wrap: anywhere;
+  }
+
+  /* Inline candidate reference inside the overlap note — pages the overlay to the peer. */
+  .overlap-peer {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--color-accent-dark);
+    font: inherit;
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+    cursor: pointer;
+  }
+
+  .overlap-peer:hover {
+    color: var(--color-accent-hover);
+  }
+
+  .overlap-peer:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 0.25rem;
+  }
+
+  /* Bundle provenance — mono kicker + one line per composed pain signal. */
+  .bundle-note {
+    display: grid;
+    gap: 0.375rem;
+    padding: 0.5rem 0.625rem;
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    background: var(--color-bg-surface);
+  }
+
+  .bundle-signals {
+    display: grid;
+    gap: 0.25rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .bundle-signals li {
+    position: relative;
+    padding-left: 0.75rem;
+    color: var(--color-text-secondary);
+    font-size: 0.8125rem;
+    line-height: 1.4;
+    text-wrap: pretty;
+    overflow-wrap: anywhere;
+  }
+
+  .bundle-signals li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.55em;
+    width: 0.22rem;
+    height: 0.22rem;
+    border-radius: 50%;
+    background: var(--color-text-muted);
+  }
+
+  .evidence-links {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+    padding: 0.5rem 0;
+    border-top: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .evidence-links > div {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.75rem;
+  }
+
+  .evidence-links a {
+    min-height: 1.5rem;
+    color: var(--color-accent-dark);
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 1.5rem;
+    text-decoration: none;
+  }
+
+  .evidence-links a:hover {
+    color: var(--color-accent-hover);
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+  }
+
+  .evidence-links a:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 0.25rem;
   }
 
   .body-copy {
@@ -584,6 +788,7 @@
     font-size: 0.875rem;
     line-height: 1.52;
     text-wrap: pretty;
+    overflow-wrap: anywhere;
   }
 
   /* Accent-tinted value panel — the one framed, action-colored element in the flat Overview,
@@ -663,6 +868,7 @@
     font-size: 0.8125rem;
     line-height: 1.5;
     text-wrap: pretty;
+    overflow-wrap: anywhere;
   }
 
   /* "What it does" shows a condensed description; the reader can expand it inline. */
@@ -924,6 +1130,7 @@
     font-size: 0.875rem;
     line-height: 1.45;
     text-wrap: pretty;
+    overflow-wrap: anywhere;
   }
 
   .fd-subnote {

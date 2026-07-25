@@ -2,6 +2,7 @@ import { Prisma, type SelectionDecisionHandoff } from '@prisma/client';
 import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { requireInternalAuth, type AuthenticatedRequest } from '../middleware/auth.js';
+import { requireDecisionToolsAccess } from '../middleware/featureAccess.js';
 import { prisma } from '../services/db.js';
 import {
   artifactAsPrismaJson,
@@ -60,6 +61,7 @@ function knownError(error: unknown): { status: number; message: string } | null 
 selectionDecisionHandoffsRouter.get(
   '/:jobId/decision-handoff/export/:format',
   requireInternalAuth,
+  requireDecisionToolsAccess,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { jobId, format } = ExportParamsSchema.parse(req.params);
@@ -100,6 +102,7 @@ selectionDecisionHandoffsRouter.get(
 selectionDecisionHandoffsRouter.get(
   '/:jobId/decision-handoff',
   requireInternalAuth,
+  requireDecisionToolsAccess,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { jobId } = ParamsSchema.parse(req.params);
@@ -128,6 +131,7 @@ selectionDecisionHandoffsRouter.get(
 selectionDecisionHandoffsRouter.post(
   '/:jobId/decision-handoff',
   requireInternalAuth,
+  requireDecisionToolsAccess,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { jobId } = ParamsSchema.parse(req.params);

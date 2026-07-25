@@ -21,6 +21,8 @@
     title?: string;
     /** Width contract so state relabels never shift layout (DESIGN_SYSTEM.md §6). */
     minWidth?: string;
+    /** id of an element that explains the button's state (e.g. an sr-only disabled reason). */
+    describedBy?: string;
     class?: string;
   }
 
@@ -40,6 +42,7 @@
     form,
     title,
     minWidth = "12.5rem",
+    describedBy,
     class: className = "btn-primary w-full",
   }: Props = $props();
 
@@ -62,6 +65,7 @@
   class:is-loading={loading}
   class:is-success={success && !loading}
   aria-busy={loading || undefined}
+  aria-describedby={describedBy}
   style:min-width={minWidth}
   {title}
 >
@@ -97,9 +101,9 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 0.5rem;
-    min-height: 2.4rem;
-    padding: 0.5rem 1rem;
+    gap: var(--space-2);
+    min-height: var(--space-10);
+    padding: var(--space-2) var(--space-4);
     border: 0;
     border-radius: var(--radius-md);
     background: var(--color-accent-hover);
@@ -146,18 +150,12 @@
   }
 
   .spinner {
-    width: 0.875rem;
-    height: 0.875rem;
+    width: var(--space-3);
+    height: var(--space-3);
     border: 2px solid color-mix(in srgb, var(--color-text-on-accent) 35%, transparent);
     border-top-color: var(--color-text-on-accent);
-    border-radius: 50%;
-    animation: spin 600ms linear infinite;
-  }
-
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
+    border-radius: var(--radius-full);
+    animation: spin var(--duration-slowest) linear infinite;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -170,7 +168,7 @@
     }
 
     .spinner {
-      animation-duration: 1.5s;
+      animation-duration: var(--duration-slowest);
     }
   }
 </style>

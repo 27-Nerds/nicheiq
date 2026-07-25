@@ -91,6 +91,16 @@ vi.mock('../../services/catalogService.js', () => ({
   isEntitledUser: (...a: any[]) => mockIsEntitledUser(...a),
 }));
 
+// The analyst gate is now hasAnalystAccess = isEntitledUser || the chatAnalystAccess
+// grant. These suites drive the entitlement half, so the existing mock stands in for
+// the whole gate. Decision tools default ON here so the pre-existing prompt/tool
+// assertions keep describing the full-feature owner; the off case has its own tests.
+const mockHasDecisionToolsAccess = vi.fn().mockResolvedValue(true);
+vi.mock('../../services/featureAccess.js', () => ({
+  hasAnalystAccess: (...a: any[]) => mockIsEntitledUser(...a),
+  hasDecisionToolsAccess: (...a: any[]) => mockHasDecisionToolsAccess(...a),
+}));
+
 const mockCheckChatRateLimit = vi.fn().mockResolvedValue({ allowed: true, remaining: { hourly: 19, daily: 79 } });
 vi.mock('../../middleware/rateLimit.js', () => ({
   checkChatRateLimit: (...a: any[]) => mockCheckChatRateLimit(...a),

@@ -25,5 +25,14 @@
         <a href="/details">Last panel action</a>
       {/if}
     </Popover>
+
+    <!-- Second instance for the module-level one-open latch tests. -->
+    <Popover title="Second details" label="Open second details">
+      {#snippet trigger()}
+        <span>More</span>
+      {/snippet}
+
+      <p>Another portaled panel.</p>
+    </Popover>
   </div>
 </WorkspaceOverlay>

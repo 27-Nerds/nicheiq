@@ -11,7 +11,10 @@
     max?: number;
     /** Accessible name for the group. */
     label: string;
+		labelledBy?: string;
+		describedBy?: string;
     disabled?: boolean;
+		disabledReason?: string;
     onChange?: (values: string[]) => void;
   }
 
@@ -20,11 +23,24 @@
     values = $bindable([]),
     max,
     label,
+		labelledBy,
+		describedBy,
     disabled = false,
+		disabledReason,
     onChange,
   }: Props = $props();
 
   const atCap = $derived(max !== undefined && values.length >= max);
+	const componentId = $props.id();
+	const capStatusId = `${componentId}-cap-status`;
+	const disabledReasonId = `${componentId}-disabled-reason`;
+	const groupDescribedBy = $derived(
+		[
+			describedBy,
+			atCap ? capStatusId : undefined,
+			disabled && disabledReason ? disabledReasonId : undefined,
+		].filter(Boolean).join(" ") || undefined,
+	);
 
   function toggle(option: ChipOption) {
     if (disabled) return;
@@ -41,25 +57,40 @@
   {#if max !== undefined}
     <span class="chip-count" class:is-full={atCap}>{values.length} / {max}</span>
   {/if}
-  <div class="chip-row" role="group" aria-label={label}>
+  <div
+		class="chip-row"
+		role="group"
+		aria-label={labelledBy ? undefined : label}
+		aria-labelledby={labelledBy}
+		aria-describedby={groupDescribedBy}
+	>
     {#each options as option (option.value)}
       <button
         type="button"
         class="chip"
         aria-pressed={values.includes(option.value)}
         disabled={disabled || (atCap && !values.includes(option.value))}
+			title={atCap && !values.includes(option.value) ? `Maximum ${max} selected` : undefined}
         onclick={() => toggle(option)}
       >
         {option.label}
       </button>
     {/each}
   </div>
+	{#if atCap}
+		<p id={capStatusId} class="chip-status" role="status" aria-live="polite">
+			Maximum {max} selected. Remove one to choose another.
+		</p>
+	{/if}
+	{#if disabled && disabledReason}
+		<p id={disabledReasonId} class="chip-status">{disabledReason}</p>
+	{/if}
 </div>
 
 <style>
   .chip-group {
     display: grid;
-    gap: 0.4rem;
+    gap: var(--space-1-5);
   }
 
   .chip-count {
@@ -80,11 +111,11 @@
   .chip-row {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.45rem;
+    gap: var(--space-2);
   }
 
   .chip {
-    padding: 0.32rem 0.75rem;
+    padding: var(--space-1) var(--space-3);
     border: 1px solid var(--color-input-border);
     border-radius: var(--radius-full);
     background: var(--color-bg-elevated);
@@ -120,9 +151,18 @@
   }
 
   .chip:disabled {
-    opacity: 0.45;
+		border-color: var(--color-border-emphasis);
+		background: var(--color-bg-surface);
+		color: var(--color-text-muted);
     cursor: not-allowed;
   }
+
+	.chip-status {
+		margin: 0;
+		color: var(--color-text-muted);
+		font-size: var(--text-sm);
+		line-height: var(--leading-snug);
+	}
 
   @media (prefers-reduced-motion: reduce) {
     .chip {

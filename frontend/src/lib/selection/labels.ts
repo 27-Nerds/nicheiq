@@ -17,22 +17,38 @@ import type {
   SelectionDecisionNextActionKind,
 } from "$lib/types/selectionDecisionState";
 
+// ── Core noun: the pool of ideas being assembled ──
+//
+// ONE word for the saved collection ("shortlist"). "Choose ideas" is the verb
+// for adding to it, never a name for the collection itself. The synonyms
+// "Selection", "Ranked candidates", and "candidates" (as the primary noun) are
+// retired; a ranked LIST heading may still read "Ranked ideas".
+
+/** Inline lowercase noun for the saved collection, e.g. "your shortlist". */
+export const SHORTLIST_NOUN = "shortlist";
+/** Breadcrumb / page title for the collection. */
+export const SHORTLIST_TITLE = "Research shortlist";
+/** Verb/action for adding an idea to the shortlist (never the collection noun). */
+export const CHOOSE_IDEAS_LABEL = "Choose ideas";
+/** Heading for the ranked pool of ideas (replaces "Ranked candidates"). */
+export const RANKED_LIST_HEADING = "Ranked ideas";
+
 // ── Next-step panel ──
 
 export const GUIDE_EYEBROW = "Analyst · Suggested next";
 
 export const ACTION_TITLES: Record<SelectionDecisionNextActionKind, string> = {
-  select_candidate: "Review the top candidate",
-  add_decision_context: "Add your decision context",
+  select_candidate: "Review the top idea",
+  add_decision_context: "Add build limits",
   analyze_founder_fit: "Review fit for you",
-  stress_test_evidence: "Challenge the evidence",
-  capture_assumption: "Track the biggest unknown",
+  stress_test_evidence: "Check the evidence",
+  capture_assumption: "Save a question to resolve",
   draft_test: "Plan a test",
   review_test_brief: "Review the test brief",
   launch_test: "Launch the test",
   monitor_test: "Review the active test",
   record_conclusion: "Record the test conclusion",
-  start_deep_research: "Start Deep Research",
+  start_deep_research: "Review and start",
 };
 
 /** Per-kind card prose. Overrides the server `reason`; the server string is
@@ -41,13 +57,13 @@ const ACTION_BODIES: Record<SelectionDecisionNextActionKind, string> = {
   select_candidate:
     "Open the top candidate, check its pain evidence against your own read, and shortlist it if it holds up.",
   add_decision_context:
-    "Save your build constraints once: time, budget, skills, and reach. Comparisons use them without changing the research score.",
+    "Save your build limits once: time, budget, team, and reach. Comparisons use them without changing the research score.",
   analyze_founder_fit:
     "Check each shortlisted pick against the time, budget, and reach you actually have.",
   stress_test_evidence:
-    "Check whether the evidence behind this pick is strong enough and see what is still missing.",
+    "Review one question that could change what you research. This uses sources already saved with this project.",
   capture_assumption:
-    "Write down the riskiest assumption behind this pick so it is tracked, not forgotten.",
+    "Save an unanswered question so you can revisit it or turn it into a small test.",
   draft_test:
     "Draft the cheapest test that would answer the open question on this pick.",
   review_test_brief:
@@ -59,7 +75,7 @@ const ACTION_BODIES: Record<SelectionDecisionNextActionKind, string> = {
   record_conclusion:
     "The test window is complete. Record the outcome so your docket reflects it.",
   start_deep_research:
-    "When you are ready, start Deep Research from the bar below.",
+    "Confirm the selected ideas and total cost before Deep Research starts.",
 };
 
 /** Re-do suggestions for already-completed steps (backend `variant` field;
@@ -79,7 +95,7 @@ export function actionBody(action: SelectionDecisionNextAction): string {
 export function actionCta(action: SelectionDecisionNextAction): string {
   const title = action.ideas[0]?.title?.trim();
   if (title && action.kind === "select_candidate") return `Review ${title}`;
-  if (title && action.kind === "stress_test_evidence") return `Stress-test ${title}`;
+  if (title && action.kind === "stress_test_evidence") return `Check the evidence for ${title}`;
   return ACTION_TITLES[action.kind] ?? action.reason;
 }
 
@@ -99,26 +115,25 @@ export const GUIDE_RETRY_ACTION = "Retry suggestion";
 // ── Canonical action-label family ──
 
 export const ASK_ANALYST_LABEL = "Ask analyst";
-export const STRESS_TEST_EVIDENCE_LABEL = "Challenge the evidence";
+export const STRESS_TEST_EVIDENCE_LABEL = "Check the evidence";
 export const DRAFT_TEST_BRIEF_LABEL = "Plan a test";
-export const SHAPE_LABEL = "Explore variants";
 
 export function founderContextLabel(hasProfile: boolean): string {
-  return hasProfile ? "Edit build constraints" : "Add build constraints";
+  return hasProfile ? "Edit build limits" : "Add build limits";
 }
 
-export const SAVE_FOUNDER_CONTEXT_LABEL = "Save build constraints";
-export const FOUNDER_CONTEXT_OVERLAY_TITLE = "Your build constraints";
+export const SAVE_FOUNDER_CONTEXT_LABEL = "Save build limits";
+export const FOUNDER_CONTEXT_OVERLAY_TITLE = "Your build limits";
 
 /** Named-lens stress-test CTA: "Stress-test {lens} evidence" once a lens is
  *  known; falls back to the generic label otherwise. */
 export function stressTestLabel(lensLabel?: string | null): string {
-  return lensLabel ? `Stress-test ${lensLabel.toLowerCase()} evidence` : STRESS_TEST_EVIDENCE_LABEL;
+  return lensLabel ? `Review: ${lensLabel}` : STRESS_TEST_EVIDENCE_LABEL;
 }
 
 /** Shared receipt copy for the constraint-led variant twins
  *  (FounderFitReshapePanel / ExperimentNarrowingPanel). */
-export const EVALUATED_ACCEPTED_LABEL = "Evaluated. Added to ranked candidates.";
+export const EVALUATED_ACCEPTED_LABEL = "Evaluated. Added to ranked ideas.";
 export const EVALUATED_DEMOTED_LABEL = "Evaluated. This variant did not clear the market-fit bar.";
 
 // ── Canonical tool names ──
@@ -129,112 +144,89 @@ export const EVALUATED_DEMOTED_LABEL = "Evaluated. This variant did not clear th
 // the same tool), so a novice had to re-recognize each tool three times.
 
 export const TOOL_NAMES = {
-  compare: "Compare finalists",
+  compare: "Compare trade-offs",
   challenge: "Check the evidence",
   test: "Plan a test",
-  shape: SHAPE_LABEL,
-  newBatch: "More ideas",
+  /** Divergence op (a): branch new directions from the CURRENT ideas. */
+  branch: "Branch a new direction",
+  /** Divergence op (b): generate a fresh batch of ideas from scratch. */
+  newBatch: "Generate more ideas",
 } as const;
+
+// ── Divergence ops: two DISTINCT operations, kept apart on purpose ──
+//
+// (a) BRANCH: take one or two selected ideas and branch a new direction from
+//     them (the ConceptForge branch form). This is distinct from generating a
+//     new batch from scratch.
+// (b) NEW BATCH: generate a fresh batch of ideas unrelated to the shortlist
+//     (the regenerate overlay). Previously "More ideas".
+export const BRANCH_DIRECTION_LABEL = TOOL_NAMES.branch;
+export const GENERATE_BATCH_LABEL = TOOL_NAMES.newBatch;
+
+/** Optional eyebrow for the evidence tool's page. Purges "confidence". */
+export const EVIDENCE_CHECK_EYEBROW = "Optional evidence check";
+
+// ── Compare sub-views ──
+// Two views of the same comparison; the label is identical everywhere it
+// appears (page tab, action title). "Fit for you", never "Fit for me".
+export const COMPARE_VIEW_MARKET_LABEL = "Research evidence";
+export const COMPARE_VIEW_FOUNDER_LABEL = "Fit for you";
+
+// ── Commit CTA ──
+// "Review and start" everywhere BEFORE the review page; the priced
+// "Start Deep Research · N credits" only on the review page itself.
+export const REVIEW_AND_START_LABEL = "Review and start";
+/** Priced commit CTA, review page only. */
+export function startDeepResearchLabel(credits: number): string {
+  return `Start Deep Research · ${costLine(credits)}`;
+}
 
 /** Sub-nav of the selection workspace. Labels match TOOL_NAMES exactly; only
  *  the supporting line differs per surface. */
 export const WORKSPACE_ROUTES = [
-  { slug: "compare", label: TOOL_NAMES.compare, detail: "See the trade-offs" },
-  { slug: "risks", label: TOOL_NAMES.challenge, detail: "Find the biggest unknown" },
-  { slug: "tests", label: TOOL_NAMES.test, detail: "Define decision evidence" },
-  { slug: "alternatives", label: TOOL_NAMES.shape, detail: "Branch into new directions" },
+  { slug: "compare", label: TOOL_NAMES.compare, detail: "See the important trade-offs" },
+  { slug: "risks", label: TOOL_NAMES.challenge, detail: "Review a question that could change your scope" },
 ] as const;
 
 /**
  * The two decision-critical tools for picking what to pay to research: compare
  * the finalists, and check whether the evidence holds up. These are foregrounded
- * as navigation. "Plan a test" and "Explore variants" are real, but they are a
- * post-selection activity and a divergence escape-hatch respectively — reached
- * contextually (from an evidence gap / a "none of these fit?" action), never as
- * co-equal nav. Presenting all four equally was the felt complexity.
+ * as navigation. "Plan a test" and "Branch a new direction" are real, but they
+ * are a post-selection activity and a divergence escape-hatch respectively —
+ * reached contextually (from an evidence gap / a "none of these fit?" action),
+ * never as co-equal nav. Presenting all four equally was the felt complexity.
  */
 export const PRIMARY_TOOL_SLUGS: readonly string[] = ["compare", "risks"];
-export const SECONDARY_TOOL_SLUGS: readonly string[] = ["tests", "alternatives"];
 
-// ── Shape (ConceptForge) panel copy ──
+// ── Branch-a-direction (ConceptForge) panel copy — divergence op (a) ──
 
-export const SHAPE_PANEL_EYEBROW = SHAPE_LABEL;
-export const SHAPE_PANEL_TITLE = "Explore variants";
-export const SHAPE_PANEL_INTRO =
+/** Cluster eyebrow, deliberately NOT the tool name: the overlay title already
+ *  reads "Branch a new direction", so repeating it verbatim above itself said
+ *  nothing. */
+export const BRANCH_PANEL_EYEBROW = "Decision tools";
+export const BRANCH_PANEL_TITLE = "Branch a new direction";
+export const BRANCH_PANEL_INTRO =
   "This branches one or two exact candidate revisions into a small set of unevaluated directions. Your originals stay unchanged, their scores do not transfer, and only a direction you explicitly confirm enters paid evaluation.";
-export const SHAPE_PURPOSE_LABEL = "Shape purpose";
-export const CLOSE_SHAPE_LABEL = "Close Shape";
+export const BRANCH_PURPOSE_LABEL = "Direction purpose";
+export const CLOSE_BRANCH_LABEL = "Close direction brief";
 export const GENERATE_DIRECTIONS_LABEL = "Generate directions";
 export const GENERATING_DIRECTIONS_LABEL = "Generating directions…";
 
-// ── Cockpit tab groups (Wave 3 split: compare vs. pressure-test) ──
-
-export type CockpitMode = "risk" | "assumptions" | "market" | "fit" | "challenge";
-export type CockpitTabGroup = "compare" | "pressure";
-
-export const COCKPIT_GROUP_MODES: Record<CockpitTabGroup, CockpitMode[]> = {
-  compare: ["market", "fit"],
-  pressure: ["challenge", "risk", "assumptions"],
-};
-
-export function groupForMode(mode: CockpitMode): CockpitTabGroup {
-  return COCKPIT_GROUP_MODES.pressure.includes(mode) ? "pressure" : "compare";
-}
-
-interface CockpitGroupCopy {
-  eyebrow: string;
-  heading: string;
-  intro: string;
-  dialogLabel: string;
-  closeLabel: string;
-}
-
-export const COCKPIT_GROUP_COPY: Record<CockpitTabGroup, CockpitGroupCopy> = {
-  compare: {
-    eyebrow: "Compare",
-    heading: "Compare shortlist",
-    intro:
-      "Research findings stay separate from your preference. Compare the evidence and trade-offs; this view does not recalculate or override the research ranking.",
-    dialogLabel: "Compare shortlisted ideas",
-    closeLabel: "Close comparison",
-  },
-  pressure: {
-    eyebrow: "Evidence review",
-    heading: "Challenge the shortlist",
-    intro:
-      "Stress-check the evidence behind each pick, surface the decision risks, and turn the ones that matter into tracked assumptions. Nothing here changes your ranking or shortlist; that moves only when you choose an action.",
-    dialogLabel: "Review evidence for shortlisted ideas",
-    closeLabel: "Close evidence review",
-  },
-};
-
-/** Leading label of the cockpit scope strip (uppercase comes from CSS). */
-export const COCKPIT_SCOPE_LABEL = "Scope";
-
-/** Scope record line for all-candidate cockpit views: `Scope · All 3 shortlisted`.
- *  A single candidate is named instead: `Scope · {name}`. Mono/uppercase comes
- *  from CSS. */
-export function cockpitScopeLine(count: number, soloName?: string | null): string {
-  const name = soloName?.trim();
-  if (count === 1 && name) return `Scope · ${name}`;
-  return `Scope · All ${count} shortlisted`;
-}
-
-/** Regenerate overlay CTA: price stays at the gate. */
+/** Regenerate overlay CTA — divergence op (b). Price stays at the gate. */
 export function generateNewBatchLabel(seedCost: number | null | undefined): string {
   const cost = seedCost ?? null;
   return cost != null && cost > 0
-    ? `Generate ${TOOL_NAMES.newBatch.toLowerCase()} · ${costLine(cost)}`
-    : `Generate ${TOOL_NAMES.newBatch.toLowerCase()}`;
+    ? `${TOOL_NAMES.newBatch} · ${costLine(cost)}`
+    : TOOL_NAMES.newBatch;
 }
 
 /** Lock hints for steps that need a shortlist first. These name the action that
  *  unlocks the step, not the fact that it is locked. */
 export const STEP_LOCK_HINTS = {
   compare: "Shortlist two ideas to compare them",
-  challenge: "Shortlist an idea to check its evidence",
+  challenge: "Shortlist an idea to check the evidence",
   test: "Shortlist an idea to plan a test",
-  shape: "Shortlist an idea to branch it",
+  branch: "Shortlist an idea to branch it",
 } as const;
 
 export const FIT_SAVED_RECORD = "FIT · SAVED";
@@ -277,10 +269,10 @@ export function costLine(seedCost: number | null | undefined): string {
   return `${seedCost} credit${seedCost === 1 ? "" : "s"}`;
 }
 
-/** Shape's single upstream price mention (guardrail 14): the tile tooltip and
- *  the forge's first screen state the same sentence; the gate itself is the
- *  per-option Evaluate button. Null-safe via costLine. */
-export function shapeCostNote(seedCost: number | null | undefined): string {
+/** The branch panel's single upstream price mention (guardrail 14): the tile
+ *  tooltip and the forge's first screen state the same sentence; the gate itself
+ *  is the per-option Evaluate button. Null-safe via costLine. */
+export function branchCostNote(seedCost: number | null | undefined): string {
   return `Generating directions is free. Evaluating a direction costs ${costLine(seedCost)}.`;
 }
 
@@ -296,20 +288,24 @@ export const PRICE_CHANGED_RELOAD =
 /** Shown after ~20s of an in-flight generation. */
 export const STILL_GENERATING_NOTE = "Still generating. Long runs are normal.";
 
+/** Footer line after a failed generation run. Replaces the "free" pitch,
+ *  which read as a re-advertisement right under an error. */
+export const FORGE_RETRY_NOTE = "Generation failed. You can try again at no cost.";
+
 // ── Below-table IA (Phase 1b) ──
 
 export const VERDICT_EYEBROW = "Analyst verdict";
 export const APPENDIX_EYEBROW = "Appendix · Analysis & context";
-export const FOUNDER_CONTEXT_SAVED = "Build constraints saved";
+export const FOUNDER_CONTEXT_SAVED = "Build limits saved";
 
-/** Header stats as ONE record line: `12 candidates · Top score 82 · 4 segments`.
+/** Header stats as ONE record line: `12 ideas · Top score 82 · 4 segments`.
  *  Mono/uppercase comes from CSS; null metrics are omitted, never "--". */
 export function candidateStatsLine(input: {
   candidates: number;
   topScore: number | null;
   segments: number | null;
 }): string {
-  const parts = [`${input.candidates} candidate${input.candidates === 1 ? "" : "s"}`];
+  const parts = [`${input.candidates} idea${input.candidates === 1 ? "" : "s"}`];
   if (input.topScore != null) parts.push(`Top score ${input.topScore}`);
   if (input.segments != null) parts.push(`${input.segments} segment${input.segments === 1 ? "" : "s"}`);
   return parts.join(" · ");
@@ -328,18 +324,3 @@ export function appendixMetaLine(input: {
   if (input.ruledOut > 0) parts.push(`Ruled out ${input.ruledOut}`);
   return parts.join(" · ");
 }
-
-// ── Commit bar ──
-
-export const COMMIT_BAR_EMPTY = "Shortlist an idea to begin.";
-export const START_DEEP_RESEARCH_LABEL = "Start Deep Research";
-
-/** The single priced line page-wide: `15 CREDITS · BALANCE 42`. */
-export function commitCostLine(cost: number, balance: number): string {
-  return `${cost} CREDITS · BALANCE ${balance}`;
-}
-
-/** Memo panel: shown under the actions for any optional (non-required) next
- *  action other than the two the panel already renders its own CTA for. */
-export const MEMO_OPTIONAL_ESCAPE =
-  "Optional. You can start Deep Research whenever you are ready.";

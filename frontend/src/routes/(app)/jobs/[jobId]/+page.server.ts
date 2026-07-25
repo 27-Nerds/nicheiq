@@ -5,7 +5,9 @@ import type { ReportSummary, SolutionPreview } from '$lib/types/job';
 import type { DiscoveryData } from '$lib/types/discovery';
 import type { PreviewReport } from '$lib/types/previewReport';
 import type { CatalogTopPainPoint } from '$lib/types/publicCatalog';
+import type { SelectionMetricExplanationsResponse } from '$lib/types/selectionMetricExplanation';
 import type { DiscoveryVoteRationale } from '$lib/api';
+import { normalizeSolutionPreviews } from '$lib/utils/displayGuards';
 
 export const load: PageServerLoad = async ({ params, locals }) => {
   const session = await locals.auth();
@@ -24,7 +26,12 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     throw error(jobRes.status, data.error || 'Failed to load job');
   }
 
-  const job = await jobRes.json();
+  const rawJob = await jobRes.json();
+  const normalizedJobSolutions = normalizeSolutionPreviews(rawJob.solutionIdeas);
+  const job = {
+    ...rawJob,
+    solutionIdeas: normalizedJobSolutions.solutions,
+  };
 
   // Phase 2: Conditional parallel fetches based on job status
   let reportSummary: ReportSummary | null = null;
@@ -34,6 +41,11 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   let voteRationales: DiscoveryVoteRationale[] = [];
   let discoveryData: DiscoveryData | null = null;
   let previewReport: PreviewReport | null = null;
+  let invalidSolutionCount = normalizedJobSolutions.invalidCount;
+  let solutionsFetchFailed = false;
+  let discoveryDataFetchFailed = false;
+  let previewReportFetchFailed = false;
+  let metricExplanations: SelectionMetricExplanationsResponse | null = null;
   // Free-preview pain points for the "explore while you wait" list, shown only
   // while Phase 1 (discovery) is generating. Public endpoint; empty array hides
   // the list. Mirrors the parsing in (public)/+page.server.ts.
@@ -62,16 +74,15 @@ export const load: PageServerLoad = async ({ params, locals }) => {
           .catch(() => {})
       );
     }
+  }
+
+  // Statuses where SelectionWorkbench (and its score-hint overlays) can render — the
+  // served capThresholds keep the "capped at X" copy aligned with the deployed env.
+  if (['AWAITING_SELECTION', 'REGENERATING', 'RUNNING_PHASE2'].includes(job.status)) {
     conditionalFetches.push(
-      fetchBackend(`/api/jobs/${params.jobId}/discovery-data`, { headers })
+      fetchBackend('/api/selection/metric-explanations', { headers })
         .then(r => r.ok ? r.json() : null)
-        .then(d => { discoveryData = d; })
-        .catch(() => {})
-    );
-    conditionalFetches.push(
-      fetchBackend(`/api/jobs/${params.jobId}/preview-report`, { headers })
-        .then(r => r.ok ? r.json() : null)
-        .then(d => { previewReport = d; })
+        .then(d => { metricExplanations = d; })
         .catch(() => {})
     );
   }
@@ -79,9 +90,25 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   if (['AWAITING_SELECTION', 'REGENERATING'].includes(job.status)) {
     conditionalFetches.push(
       fetchBackend(`/api/jobs/${params.jobId}/solutions`, { headers })
-        .then(r => r.ok ? r.json() : null)
-        .then(d => { solutions = d?.solutionIdeas ?? null; })
-        .catch(() => {})
+        .then(async (response) => {
+          if (!response.ok) {
+            if (job.solutionIdeas.length === 0) solutionsFetchFailed = true;
+            return null;
+          }
+          return response.json();
+        })
+        .then(d => {
+          if (!d || !('solutionIdeas' in d)) {
+            if (job.solutionIdeas.length === 0) solutionsFetchFailed = true;
+            return;
+          }
+          const normalized = normalizeSolutionPreviews(d.solutionIdeas);
+          solutions = normalized.solutions;
+          invalidSolutionCount = normalized.invalidCount;
+        })
+        .catch(() => {
+          if (job.solutionIdeas.length === 0) solutionsFetchFailed = true;
+        })
     );
     conditionalFetches.push(
       fetchBackend(`/api/jobs/${params.jobId}/discovery-share`, { headers })
@@ -94,52 +121,34 @@ export const load: PageServerLoad = async ({ params, locals }) => {
         })
         .catch(() => {})
     );
-    conditionalFetches.push(
-      fetchBackend(`/api/jobs/${params.jobId}/discovery-data`, { headers })
-        .then(r => r.ok ? r.json() : null)
-        .then(d => { discoveryData = d; })
-        .catch(() => {})
-    );
-    conditionalFetches.push(
-      fetchBackend(`/api/jobs/${params.jobId}/preview-report`, { headers })
-        .then(r => r.ok ? r.json() : null)
-        .then(d => { previewReport = d; })
-        .catch(() => {})
-    );
   }
 
-  // Guided-mode (Phase B) G1/G2 stage gates — gateStage/gateArtifact/gateApplyCount
-  // already ride on `job` itself (jobFormatter), so GateWorkbench can render
-  // immediately without waiting on these; discoveryData/previewReport are fetched
-  // here to keep parity with the sibling AWAITING_SELECTION/REGENERATING statuses
-  // for any supporting context surfaced alongside the gate card.
-  if (job.status === 'AWAITING_GATE') {
+  // Every status that can display Discovery context requests each artifact once.
+  // A 404/204 is a legitimate legacy absence; transport/5xx failures are surfaced
+  // separately so the page can offer Retry instead of pretending the dossier is empty.
+  if ([
+    'COMPLETED',
+    'AWAITING_SELECTION',
+    'REGENERATING',
+    'AWAITING_GATE',
+    'FAILED',
+    'RUNNING_PHASE2',
+  ].includes(job.status)) {
     conditionalFetches.push(
       fetchBackend(`/api/jobs/${params.jobId}/discovery-data`, { headers })
-        .then(r => r.ok ? r.json() : null)
-        .then(d => { discoveryData = d; })
-        .catch(() => {})
+        .then(async (response) => {
+          if (response.ok) discoveryData = await response.json();
+          else if (![204, 404].includes(response.status)) discoveryDataFetchFailed = true;
+        })
+        .catch(() => { discoveryDataFetchFailed = true; })
     );
     conditionalFetches.push(
       fetchBackend(`/api/jobs/${params.jobId}/preview-report`, { headers })
-        .then(r => r.ok ? r.json() : null)
-        .then(d => { previewReport = d; })
-        .catch(() => {})
-    );
-  }
-
-  if (['FAILED', 'RUNNING_PHASE2'].includes(job.status)) {
-    conditionalFetches.push(
-      fetchBackend(`/api/jobs/${params.jobId}/discovery-data`, { headers })
-        .then(r => r.ok ? r.json() : null)
-        .then(d => { discoveryData = d; })
-        .catch(() => {})
-    );
-    conditionalFetches.push(
-      fetchBackend(`/api/jobs/${params.jobId}/preview-report`, { headers })
-        .then(r => r.ok ? r.json() : null)
-        .then(d => { previewReport = d; })
-        .catch(() => {})
+        .then(async (response) => {
+          if (response.ok) previewReport = await response.json();
+          else if (![204, 404].includes(response.status)) previewReportFetchFailed = true;
+        })
+        .catch(() => { previewReportFetchFailed = true; })
     );
   }
 
@@ -154,7 +163,13 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     solutionVotesById,
     voteRationales,
     previewReport,
+    discoveryDataFetchFailed,
+    previewReportFetchFailed,
+    solutionsFetchFailed,
+    invalidSolutionCount,
     userEmail: session.user.email ?? null,
     catalogPainPoints,
+    // Cast: TS control-flow ignores the closure assignment above and narrows to null.
+    metricExplanations: metricExplanations as SelectionMetricExplanationsResponse | null,
   };
 };

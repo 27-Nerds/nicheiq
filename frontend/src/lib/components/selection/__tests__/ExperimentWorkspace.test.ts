@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, waitFor, within } from "@testing-library/svelte";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import ExperimentWorkspace from "../ExperimentWorkspace.svelte";
 import type { SelectionExperiment, SelectionExperimentDraft } from "$lib/types/selectionExperiment";
@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   createSelectionExperiment: vi.fn(),
   updateSelectionExperiment: vi.fn(),
   lockSelectionExperiment: vi.fn(),
+  deleteSelectionExperiment: vi.fn(),
   launchSelectionExperiment: vi.fn(),
   closeSelectionExperimentRun: vi.fn(),
   getSelectionExperimentResults: vi.fn(),
@@ -108,28 +109,123 @@ describe("ExperimentWorkspace", () => {
     await waitFor(() => expect(view.queryByText("Tests are temporarily unavailable.")).not.toBeInTheDocument());
   });
 
-  it("anchors an empty workspace to the challenge flow with a draft fallback", async () => {
+  it("anchors an empty workspace without an assumption to the evidence flow", async () => {
     mocks.getSelectionExperiments.mockResolvedValue([]);
     const onOpenChallenge = vi.fn();
     const view = render(ExperimentWorkspace, {
-      props: { jobId: "job-1", ideas: [idea], onOpenChallenge },
+      props: { jobId: "job-1", ideas: [idea], onOpenChallenge, hasTrackedAssumption: false },
     });
 
-    expect(await view.findByText("No test briefs yet")).toBeInTheDocument();
-    await fireEvent.click(view.getByRole("button", { name: "Challenge the evidence" }));
+    expect(await view.findByText("Start with one open assumption")).toBeInTheDocument();
+    await fireEvent.click(view.getByRole("button", { name: "Check the evidence" }));
     expect(onOpenChallenge).toHaveBeenCalledOnce();
-
-    const emptyState = view.getByText("No test briefs yet").closest(".empty-state") as HTMLElement;
-    await fireEvent.click(within(emptyState).getByRole("button", { name: "Plan a test" }));
-    expect(view.getByRole("dialog", { name: "Plan a test" })).toBeInTheDocument();
+    expect(view.queryByRole("button", { name: "Plan a test" })).not.toBeInTheDocument();
   });
 
   it("omits the challenge entry from the empty state when no challenge path is wired", async () => {
     mocks.getSelectionExperiments.mockResolvedValue([]);
     const view = render(ExperimentWorkspace, { props: { jobId: "job-1", ideas: [idea] } });
 
-    expect(await view.findByText("No test briefs yet")).toBeInTheDocument();
+    expect(await view.findByText("Plan a test for the open assumption")).toBeInTheDocument();
     expect(view.queryByRole("button", { name: "Challenge the evidence" })).not.toBeInTheDocument();
+  });
+
+  it("renders the routed workspace inline and opens exactly one modal for the form", async () => {
+    mocks.getSelectionExperiments.mockResolvedValue([]);
+    const view = render(ExperimentWorkspace, {
+      props: { jobId: "job-1", ideas: [idea], surface: "page" },
+    });
+
+    expect(await view.findByText("Plan a test for the open assumption")).toBeInTheDocument();
+    expect(view.queryByRole("dialog", { name: "Test decision assumptions" })).not.toBeInTheDocument();
+
+    await fireEvent.click(view.getByRole("button", { name: "Plan a test" }));
+
+    expect(view.getAllByRole("dialog")).toHaveLength(1);
+    expect(view.getByRole("dialog", { name: "Plan a test" })).toBeInTheDocument();
+  });
+
+  it("renders the direct form surface without the workspace shell and closes through its host", async () => {
+    mocks.getSelectionExperiments.mockResolvedValue([]);
+    const onClose = vi.fn();
+    const view = render(ExperimentWorkspace, {
+      props: { jobId: "job-1", ideas: [idea], surface: "form", open: true, onClose },
+    });
+
+    expect(await view.findByRole("dialog", { name: "Plan a test" })).toBeInTheDocument();
+    expect(view.queryByRole("heading", { name: "Test what could change the decision" })).not.toBeInTheDocument();
+
+    await fireEvent.click(view.getByRole("button", { name: "Close Plan a test" }));
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("returns control to the direct form host after a successful save", async () => {
+    mocks.getSelectionExperiments.mockResolvedValue([]);
+    mocks.createSelectionExperiment.mockResolvedValue(experiment());
+    const onClose = vi.fn();
+    const view = render(ExperimentWorkspace, {
+      props: {
+        jobId: "job-1",
+        ideas: [idea],
+        surface: "form",
+        open: true,
+        onClose,
+        prefill: { requestId: "direct-form-prefill", draft: completedDraft },
+      },
+    });
+
+    await view.findByRole("dialog", { name: "Plan a test" });
+    await fireEvent.click(view.getByRole("button", { name: "Continue" }));
+    await fireEvent.click(view.getByRole("button", { name: "Continue" }));
+    await fireEvent.click(view.getByRole("button", { name: "Save draft" }));
+
+    await waitFor(() => expect(mocks.createSelectionExperiment).toHaveBeenCalledWith("job-1", completedDraft));
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("reopens the saved draft for the same evidence question instead of creating a duplicate", async () => {
+    const anchoredDraft = {
+      ...completedDraft,
+      originChallengeId: "challenge-1",
+      originQuestionId: "pain_is_observed",
+    };
+    mocks.getSelectionExperiments.mockResolvedValue([
+      experiment(anchoredDraft),
+    ]);
+    const view = render(ExperimentWorkspace, {
+      props: {
+        jobId: "job-1",
+        ideas: [idea],
+        surface: "form",
+        open: true,
+        prefill: { requestId: "resume-anchored-draft", draft: anchoredDraft },
+      },
+    });
+
+    expect(await view.findByRole("dialog", { name: "Edit test plan" })).toBeInTheDocument();
+    await fireEvent.click(view.getByRole("button", { name: "Continue" }));
+    await fireEvent.click(view.getByRole("button", { name: "Continue" }));
+    expect(view.getByRole("button", { name: "Save changes" })).toBeInTheDocument();
+    expect(mocks.createSelectionExperiment).not.toHaveBeenCalled();
+  });
+
+  it("reopens the saved draft for the same fit recommendation instead of creating a duplicate", async () => {
+    mocks.getSelectionExperiments.mockResolvedValue([experiment(completedDraft)]);
+    const view = render(ExperimentWorkspace, {
+      props: {
+        jobId: "job-1",
+        ideas: [idea],
+        surface: "form",
+        open: true,
+        prefill: { requestId: "resume-fit-recommendation", draft: completedDraft },
+      },
+    });
+
+    expect(await view.findByRole("dialog", { name: "Edit test plan" })).toBeInTheDocument();
+    await fireEvent.click(view.getByRole("button", { name: "Continue" }));
+    await fireEvent.click(view.getByRole("button", { name: "Continue" }));
+    expect(view.getByRole("button", { name: "Save changes" })).toBeInTheDocument();
+    expect(mocks.createSelectionExperiment).not.toHaveBeenCalled();
   });
 
   it("creates a precommitted draft against the exact idea revision", async () => {
@@ -139,6 +235,15 @@ describe("ExperimentWorkspace", () => {
 
     await fireEvent.click(await view.findByRole("button", { name: "Plan a test" }));
     expect(view.getByRole("dialog", { name: "Plan a test" })).toBeInTheDocument();
+    expect(view.getByRole("complementary", { name: "Current research context" })).toHaveTextContent(
+      idea.source_pain ?? "",
+    );
+    expect(view.queryByLabelText("Current evidence note", { exact: false })).not.toBeInTheDocument();
+
+    expect(view.getByRole("group", { name: "Name the decision risk" })).toBeInTheDocument();
+    await fireEvent.click(view.getByRole("button", { name: "Continue" }));
+    expect(view.getByText("Decision risk", { exact: false })).toHaveTextContent("Decision risk completed");
+    expect(view.getByRole("group", { name: "Design the smallest credible test" })).toBeInTheDocument();
     expect(view.getByText("Shows interest in the message or entry point.")).toBeInTheDocument();
 
     const fill = async (label: string, value: string) => {
@@ -149,6 +254,10 @@ describe("ExperimentWorkspace", () => {
     await fill("Pass at", completedDraft.passThreshold);
     await fill("Fail below", completedDraft.failThreshold);
     await fill("Measurement window and stopping rule", completedDraft.measurementWindow);
+
+    await fireEvent.click(view.getByRole("button", { name: "Continue" }));
+    expect(view.getByRole("group", { name: "Decide before results" })).toBeInTheDocument();
+
     await fill("If it passes", completedDraft.passAction);
     await fill("If it fails", completedDraft.failAction);
     await fill("If it is flat", completedDraft.flatAction);
@@ -177,6 +286,8 @@ describe("ExperimentWorkspace", () => {
     expect(assumption).toHaveValue(completedDraft.assumption);
     expect(mocks.createSelectionExperiment).not.toHaveBeenCalled();
 
+    await fireEvent.click(view.getByRole("button", { name: "Continue" }));
+    await fireEvent.click(view.getByRole("button", { name: "Continue" }));
     await fireEvent.click(view.getByRole("button", { name: "Save draft" }));
     await waitFor(() => expect(mocks.createSelectionExperiment).toHaveBeenCalledWith("job-1", completedDraft));
   });
@@ -229,15 +340,85 @@ describe("ExperimentWorkspace", () => {
     expect(await view.findByLabelText("One atomic assumption that must be true", { exact: false })).toHaveValue(
       "Qualified buyers repeatedly experience this pain.",
     );
-    expect(view.getByText("Evidence gap")).toBeInTheDocument();
+    expect(view.getByText("From evidence")).toBeInTheDocument();
+    await fireEvent.click(view.getByRole("button", { name: "Continue" }));
     expect(view.getByLabelText("Qualified audience", { exact: false })).toHaveValue("Operations leads at service businesses");
     expect(view.getByLabelText("Exact stimulus, offer, prototype, or task", { exact: false })).toHaveValue(
       "A focused test of Signal Desk for operators with one observable next step.",
     );
-    const saveButton = view.getByRole("button", { name: "Save draft" });
-    expect(saveButton).not.toBeDisabled();
-    await fireEvent.click(saveButton);
+    await fireEvent.click(view.getByRole("button", { name: "Continue" }));
+    expect(view.getByText("Name the recruitment or traffic channel.")).toBeInTheDocument();
+    expect(view.getByText("Define the primary metric, including numerator and denominator.")).toBeInTheDocument();
+    // The first missing control receives focus instead of a silent no-op.
+    await waitFor(() => expect(document.activeElement?.id).toBe("experiment-channel"));
+    expect(view.queryByRole("button", { name: "Save draft" })).not.toBeInTheDocument();
     expect(mocks.createSelectionExperiment).not.toHaveBeenCalled();
+  });
+
+  it("resumes a persisted draft with the SAVED values winning over a differing seed", async () => {
+    const saved = experiment({ stimulus: "The saved stimulus wording the owner already edited." });
+    mocks.getSelectionExperiments.mockResolvedValue([saved]);
+    const view = render(ExperimentWorkspace, {
+      props: {
+        jobId: "job-1",
+        ideas: [idea],
+        surface: "form",
+        open: true,
+        prefill: {
+          requestId: "resume-with-stale-seed",
+          draft: { ...completedDraft, stimulus: "A stale seed stimulus that must lose." },
+        },
+      },
+    });
+
+    const dialog = await view.findByRole("dialog", { name: "Edit test plan" });
+    await fireEvent.click(view.getByRole("button", { name: "Continue" }));
+    expect(view.getByLabelText("Exact stimulus, offer, prototype, or task", { exact: false })).toHaveValue(
+      "The saved stimulus wording the owner already edited.",
+    );
+
+    // Not dirty relative to the SAVED record: the first Escape closes cleanly.
+    await fireEvent.keyDown(dialog, { key: "Escape" });
+    await waitFor(() =>
+      expect(view.queryByRole("dialog", { name: "Edit test plan" })).not.toBeInTheDocument(),
+    );
+    expect(
+      view.queryByText("You have unsaved changes. Close again to discard them."),
+    ).not.toBeInTheDocument();
+  });
+
+  it("routes the editor footer Cancel through the dirty gate", async () => {
+    mocks.getSelectionExperiments.mockResolvedValue([]);
+    const view = render(ExperimentWorkspace, { props: { jobId: "job-1", ideas: [idea] } });
+
+    await fireEvent.click(await view.findByRole("button", { name: "Plan a test" }));
+    await fireEvent.input(view.getByLabelText("One atomic assumption that must be true", { exact: false }), {
+      target: { value: "A hand-typed unsaved assumption." },
+    });
+
+    await fireEvent.click(view.getByRole("button", { name: "Cancel" }));
+    expect(view.getByRole("dialog", { name: "Plan a test" })).toBeInTheDocument();
+    expect(view.getByText("You have unsaved changes. Close again to discard them.")).toBeInTheDocument();
+
+    await fireEvent.click(view.getByRole("button", { name: "Discard changes" }));
+    await waitFor(() =>
+      expect(view.queryByRole("dialog", { name: "Plan a test" })).not.toBeInTheDocument(),
+    );
+  });
+
+  it("closes a clean editor from the footer Cancel on the first click", async () => {
+    mocks.getSelectionExperiments.mockResolvedValue([]);
+    const view = render(ExperimentWorkspace, { props: { jobId: "job-1", ideas: [idea] } });
+
+    await fireEvent.click(await view.findByRole("button", { name: "Plan a test" }));
+    await fireEvent.click(view.getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() =>
+      expect(view.queryByRole("dialog", { name: "Plan a test" })).not.toBeInTheDocument(),
+    );
+    expect(
+      view.queryByText("You have unsaved changes. Close again to discard them."),
+    ).not.toBeInTheDocument();
   });
 
   it("rejects a challenge seed for an older idea revision", async () => {
@@ -272,6 +453,52 @@ describe("ExperimentWorkspace", () => {
 
     await waitFor(() => expect(mocks.lockSelectionExperiment).toHaveBeenCalledWith("job-1", "experiment-1"));
     expect(await view.findByText("Test brief locked")).toBeInTheDocument();
+  });
+
+  it("deletes a draft behind the gate, drops the row, and parks focus on the heading", async () => {
+    mocks.getSelectionExperiments.mockResolvedValue([experiment()]);
+    mocks.deleteSelectionExperiment.mockResolvedValue(undefined);
+    const onChanged = vi.fn();
+    const view = render(ExperimentWorkspace, { props: { jobId: "job-1", ideas: [idea], onChanged } });
+
+    const deleteButton = await view.findByRole("button", { name: "Delete draft" });
+    await fireEvent.click(deleteButton);
+    // First click only arms the gate; the draft still exists.
+    expect(mocks.deleteSelectionExperiment).not.toHaveBeenCalled();
+    expect(view.getByText("DRAFT IS REMOVED · NOTHING WAS COLLECTING")).toBeInTheDocument();
+
+    await fireEvent.click(view.getByRole("button", { name: "Delete draft" }));
+
+    await waitFor(() => expect(mocks.deleteSelectionExperiment).toHaveBeenCalledWith("job-1", "experiment-1"));
+    await waitFor(() => expect(view.queryByText("Draft · not collecting")).not.toBeInTheDocument());
+    expect(onChanged).toHaveBeenCalled();
+    const heading = view.getByRole("heading", { name: "Test what could change the decision" });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+  });
+
+  it("keeps the draft row and reports the failure when deletion is refused", async () => {
+    mocks.getSelectionExperiments.mockResolvedValue([experiment()]);
+    mocks.deleteSelectionExperiment.mockRejectedValue(
+      new Error("Only draft test plans can be deleted; a locked brief is a permanent record"),
+    );
+    const view = render(ExperimentWorkspace, { props: { jobId: "job-1", ideas: [idea] } });
+
+    await fireEvent.click(await view.findByRole("button", { name: "Delete draft" }));
+    await fireEvent.click(view.getByRole("button", { name: "Delete draft" }));
+
+    expect(await view.findByRole("alert")).toHaveTextContent("Only draft test plans can be deleted");
+    expect(view.getByText("Draft · not collecting")).toBeInTheDocument();
+  });
+
+  it("never offers deletion on a locked brief", async () => {
+    mocks.getSelectionExperiments.mockResolvedValue([experiment({
+      status: "LOCKED",
+      lockedAt: "2026-07-15T12:00:00.000Z",
+    })]);
+    const view = render(ExperimentWorkspace, { props: { jobId: "job-1", ideas: [idea] } });
+
+    expect(await view.findByText("Test brief locked")).toBeInTheDocument();
+    expect(view.queryByRole("button", { name: "Delete draft" })).not.toBeInTheDocument();
   });
 
   it("exposes portable Markdown and JSON only for a locked provenance-preserving brief", async () => {

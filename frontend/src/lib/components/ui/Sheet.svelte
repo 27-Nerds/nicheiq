@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tourState } from "$lib/tour/tourState.svelte";
   // Responsive overlay panel — the app's first reusable sheet primitive
   // (continuous-analyst-ledger plan): a bottom sheet on small screens, a
   // right-side panel from 768px up. Built for the ledger's narrow contexts
@@ -46,7 +47,8 @@
       onClose();
       return;
     }
-    if (e.key !== "Tab" || !panelEl) return;
+    // See WorkspaceOverlay: stand down while a tour owns focus.
+    if (e.key !== "Tab" || !panelEl || tourState.active) return;
     // `offsetParent` would be the obvious visibility test, but it is null for
     // fixed-position subtrees (which this panel is) — filter on what actually
     // makes an element untabbable instead.

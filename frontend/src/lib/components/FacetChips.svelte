@@ -47,6 +47,10 @@
     gap: 0.375rem;
   }
   .facet-chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 1.5rem;
+    max-width: 100%;
     font-size: 0.6875rem;
     line-height: 1.2;
     padding: 0.1875rem 0.5rem;
@@ -54,7 +58,8 @@
     border: 1px solid var(--color-border);
     background: var(--color-bg-elevated);
     color: var(--color-text-secondary);
-    white-space: nowrap;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
   .facet-chip-info {
     color: var(--color-secondary-dark);

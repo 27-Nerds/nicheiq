@@ -21,20 +21,20 @@ type CanonicalKey = 'marketFit' | 'seoScalability' | 'novelty' | 'techFeasibilit
 // never for a positive trait.
 /** Short labels for card context */
 export const SUPERPOWERS: Record<CanonicalKey, SuperpowerEntry> = {
-  marketFit: { label: 'Market Fit', variant: 'success' },
-  seoScalability: { label: 'SEO Power', variant: 'success' },
-  novelty: { label: 'Innovator', variant: 'success' },
-  techFeasibility: { label: 'Quick Build', variant: 'success' },
-  soloDev: { label: 'Solo-Friendly', variant: 'success' },
+  marketFit: { label: 'Demand fit', variant: 'success' },
+  seoScalability: { label: 'Organic discovery', variant: 'success' },
+  novelty: { label: 'Distinct mechanism', variant: 'success' },
+  techFeasibility: { label: 'Technically straightforward', variant: 'success' },
+  soloDev: { label: 'Solo-manageable', variant: 'success' },
 };
 
 /** Longer labels for modal/detail context */
 export const SUPERPOWERS_DETAILED: Record<CanonicalKey, SuperpowerEntry> = {
-  marketFit: { label: 'Strong Market Fit', variant: 'success' },
-  seoScalability: { label: 'SEO Powerhouse', variant: 'success' },
-  novelty: { label: 'Innovator', variant: 'success' },
-  techFeasibility: { label: 'Quick to Build', variant: 'success' },
-  soloDev: { label: 'Solo-Friendly', variant: 'success' },
+  marketFit: { label: 'Strong demand fit', variant: 'success' },
+  seoScalability: { label: 'Strong organic discovery', variant: 'success' },
+  novelty: { label: 'Distinct mechanism', variant: 'success' },
+  techFeasibility: { label: 'Technically straightforward', variant: 'success' },
+  soloDev: { label: 'Solo-manageable', variant: 'success' },
 };
 
 /**

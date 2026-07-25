@@ -38,6 +38,7 @@
     "@auth/sveltekit": "^1.11.1",
     "@prisma/client": "^5.22.0",
     "d3-scale": "^4.0.2",
+    "driver.js": "^1.8.0",
     "isomorphic-dompurify": "^3.12.0",
     "konva": "^10.3.0",
     "marked": "^17.0.1",

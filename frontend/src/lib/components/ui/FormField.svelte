@@ -23,6 +23,7 @@
     rows?: number;
     disabled?: boolean;
     onkeydown?: (e: KeyboardEvent) => void;
+    oninput?: (e: Event) => void;
     onchange?: (e: Event) => void;
     onblur?: (e: FocusEvent) => void;
     /** @deprecated v2 icon-led API. Ignored: the v3 field recipe has no leading icon. */
@@ -48,6 +49,7 @@
     rows,
     disabled = false,
     onkeydown,
+    oninput,
     onchange,
     onblur,
     icon,
@@ -90,6 +92,7 @@
       {rows}
       {disabled}
       {onkeydown}
+      {oninput}
       {onblur}
       class="field-control field-textarea"
       class:is-error={!!error}
@@ -97,21 +100,26 @@
       aria-describedby={describedBy}
     ></textarea>
   {:else if kind === "select"}
-    <select
-      {id}
-      bind:value
-      {required}
-      {disabled}
-      {onkeydown}
-      {onchange}
-      {onblur}
-      class="field-control field-select"
-      class:is-error={!!error}
-      aria-invalid={error ? "true" : undefined}
-      aria-describedby={describedBy}
-    >
-      {@render children?.()}
-    </select>
+    <div class="field-select-wrap">
+      <select
+        {id}
+        bind:value
+        {required}
+        {disabled}
+        {onkeydown}
+        {onchange}
+        {onblur}
+        class="field-control field-select"
+        class:is-error={!!error}
+        aria-invalid={error ? "true" : undefined}
+        aria-describedby={describedBy}
+      >
+        {@render children?.()}
+      </select>
+      <svg class="field-select-chevron" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+        <path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+    </div>
   {:else}
     <input
       {type}
@@ -123,6 +131,7 @@
       {maxlength}
       {disabled}
       {onkeydown}
+      {oninput}
       {onblur}
       class="field-control"
       class:is-error={!!error}
@@ -144,7 +153,11 @@
         </p>
       {/if}
       {#if maxlength !== undefined}
-        <span class="char-count" class:is-full={value.length >= maxlength}>
+        <span
+          class="char-count"
+          class:is-near={value.length >= maxlength * 0.8}
+          class:is-full={value.length >= maxlength}
+        >
           {value.length} / {maxlength}
         </span>
       {/if}
@@ -155,13 +168,13 @@
 <style>
   .field {
     display: grid;
-    gap: 0.4rem;
+    gap: var(--space-1-5);
   }
 
   .field-label {
     display: flex;
     align-items: baseline;
-    gap: 0.45rem;
+    gap: var(--space-2);
     font-size: var(--text-13);
     font-weight: 600;
     color: var(--color-text-primary);
@@ -175,23 +188,23 @@
   }
 
   .field-hint {
-    margin: -0.1rem 0 0;
+    margin: 0;
     font-size: var(--text-sm);
-    line-height: 1.45;
+    line-height: var(--leading-normal);
     color: var(--color-text-muted);
   }
 
   .field-control {
     width: 100%;
-    min-height: 2.35rem;
-    padding: 0 0.65rem;
+    min-height: var(--space-10);
+    padding: 0 var(--space-3);
     border: 1px solid var(--color-input-border);
     border-radius: var(--radius-md);
     background: var(--color-bg-elevated);
     color: var(--color-text-primary);
     font: inherit;
     font-size: var(--text-13);
-    line-height: 1.45;
+    line-height: var(--leading-normal);
     transition:
       border-color var(--duration-fast) var(--ease-default),
       box-shadow var(--duration-fast) var(--ease-default);
@@ -202,17 +215,31 @@
   }
 
   .field-textarea {
-    min-height: 4.6rem;
-    padding: 0.55rem 0.65rem;
+    min-height: var(--space-20);
+    padding: var(--space-2) var(--space-3);
     resize: vertical;
   }
 
   .field-select {
     appearance: none;
-    padding-right: 2rem;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%2352525B' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 0.65rem center;
+    padding-right: var(--space-8);
+  }
+
+  .field-select-wrap {
+    position: relative;
+    color: var(--color-text-secondary);
+  }
+
+  .field-select-chevron {
+    position: absolute;
+    top: 50%;
+    right: var(--space-3);
+    pointer-events: none;
+    transform: translateY(-50%);
+  }
+
+  .field-select-wrap:has(.field-select:disabled) {
+    color: var(--color-text-muted);
   }
 
   .field-control:hover:not(:disabled):not(.is-error) {
@@ -220,9 +247,12 @@
   }
 
   .field-control:focus {
-    outline: none;
     border-color: var(--color-accent);
     box-shadow: 0 0 0 3px var(--color-accent-subtle);
+  }
+
+  .field-control:focus:not(:focus-visible) {
+    outline: none;
   }
 
   .field-control.is-error {
@@ -243,23 +273,23 @@
   .field-meta {
     display: flex;
     align-items: flex-start;
-    gap: 0.75rem;
+    gap: var(--space-3);
   }
 
   .field-error {
     display: flex;
     align-items: flex-start;
-    gap: 0.35rem;
+    gap: var(--space-1-5);
     flex: 1;
     margin: 0;
     font-size: var(--text-sm);
-    line-height: 1.4;
+    line-height: var(--leading-normal);
     color: var(--color-error-text);
   }
 
   .field-error svg {
     flex: 0 0 auto;
-    margin-top: 0.14rem;
+    margin-top: var(--space-1);
   }
 
   .char-count {
@@ -271,14 +301,28 @@
     font-feature-settings: "zero" 0;
     color: var(--color-text-muted);
     white-space: nowrap;
+    opacity: 0;
+    transition: opacity var(--duration-fast) var(--ease-default);
+  }
+
+  .field:focus-within .char-count,
+  .field:has(.field-error) .char-count,
+  .char-count.is-near {
+    opacity: 1;
   }
 
   .char-count.is-full {
+    opacity: 1;
     color: var(--color-error-text);
   }
 
+  .field:focus-within .char-count:not(.is-full):not(.is-near) {
+    color: var(--color-text-muted);
+  }
+
   @media (prefers-reduced-motion: reduce) {
-    .field-control {
+    .field-control,
+    .char-count {
       transition: none;
     }
   }

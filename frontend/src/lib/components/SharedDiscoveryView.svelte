@@ -23,7 +23,8 @@
     LOCKED_SOURCE_POSTS,
   } from "$lib/data/lockedSharedPlaceholders";
   import type { SolutionPreview } from "$lib/types/job";
-  import type { DetailedPainPoint, AudienceMapping } from "$lib/types/report";
+  import type { AudienceMapping } from "$lib/types/report";
+  import { createDiscoveryDisplayModel } from "$lib/discovery/discoveryDisplay";
 
   interface Props {
     data: DiscoveryShareData;
@@ -140,16 +141,8 @@
   const nicheDescription = $derived(
     previewReport?.niche_context?.niche_description ?? `Analysis of the ${data.niche} market`,
   );
-
-  const detailedPainPoints = $derived(
-    (previewReport?.detailed_pain_points ?? []) as DetailedPainPoint[],
-  );
-
-  const topPainPoints = $derived(
-    detailedPainPoints
-      .slice()
-      .sort((a, b) => (b.severity_score ?? 0) - (a.severity_score ?? 0)),
-  );
+  const dossier = $derived(createDiscoveryDisplayModel(previewReport, discoveryData));
+  const topPainPoints = $derived(dossier.painPoints);
 
   // Mirror of the owner's selection-phase cap: highest-signal clusters only.
   const visiblePainPoints = $derived(topPainPoints.slice(0, 8));
@@ -158,21 +151,9 @@
     (previewReport?.audience_mapping ?? null) as AudienceMapping | null,
   );
 
-  const segmentCount = $derived(audienceMapping?.audience_segments?.length ?? 0);
-
-  const painPointCount = $derived(
-    previewReport?.pain_point_analytics?.total_pain_points ?? detailedPainPoints.length,
-  );
-
-  // Discussion count mirrors the owner page's fallback chain; filtering_stats is
-  // stripped from the public payload, so posts-analyzed is the primary source here.
-  const postsAnalyzedCount = $derived(
-    (previewReport?.research_metadata?.reddit_posts_analyzed ?? 0) +
-      (previewReport?.research_metadata?.generic_posts_analyzed ?? 0),
-  );
-  const relevantCount = $derived(discoveryData?.methodology?.urls_relevant ?? 0);
-  const analyzedCount = $derived(postsAnalyzedCount || relevantCount);
-  const totalEngagement = $derived(discoveryData?.methodology?.total_engagement ?? 0);
+  const segmentCount = $derived(dossier.segmentCount);
+  const painPointCount = $derived(dossier.painPointCount);
+  const analyzedCount = $derived(dossier.discussionCount);
 
   // Workbench mirrors (same fields the owner's SelectionWorkbench receives).
   const examinedRuledOut = $derived(previewReport?.examined_ruled_out ?? []);
@@ -297,8 +278,8 @@
             <dd>{painPointCount}</dd>
           </div>
           <div>
-            <dt>Sources</dt>
-            <dd>{discoveryData?.subreddit_names?.length ?? 0}</dd>
+            <dt>Communities</dt>
+            <dd>{dossier.communityNames.length}</dd>
           </div>
         </dl>
       </div>
@@ -312,7 +293,6 @@
           id="overview"
         >
           <PreviewOverview
-            nicheName={data.niche}
             nicheDescription={nicheDescription}
             discussionCount={analyzedCount}
             painPointCount={painPointCount}
@@ -335,9 +315,9 @@
           id="market-snapshot"
         >
           <MarketSnapshot
-            postsAnalyzed={analyzedCount}
-            subredditCount={discoveryData?.subreddit_names?.length ?? 0}
-            totalEngagement={totalEngagement}
+            discussionsAnalyzed={analyzedCount}
+            communityCount={dossier.communityNames.length}
+            totalEngagement={dossier.totalEngagement}
             trend={discoveryData.discussion_trend}
             growthPct={discoveryData.discussion_growth_pct ?? null}
           />
@@ -354,7 +334,7 @@
           defaultOpen={false}
           id="pain-points"
         >
-          <p class="section-intro">The highest-signal pain clusters from discovery, ranked by severity and commercial intent.</p>
+          <p class="section-intro">Pain clusters from discovery, ordered by reported severity.</p>
           {#each visiblePainPoints as pp, i (pp.title ?? i)}
             <PainPointSummaryCard painPoint={pp} rank={i + 1} isTop={i === 0} />
           {/each}
@@ -399,8 +379,8 @@
       {#if discoveryData || previewReport?.evidence_appendix}
         <ExpandableSection
           title="Community & Sources"
-          count={discoveryData?.subreddit_names?.length ?? 0}
-          countSuffix="sources"
+          count={dossier.communityNames.length}
+          countSuffix="communities"
           variant="default"
           defaultOpen={false}
           id="community"
@@ -408,7 +388,7 @@
           <CommunitySourcesSection
             subredditNames={discoveryData?.subreddit_names}
             communityHubs={audienceMapping?.community_hubs}
-            postsAnalyzed={postsAnalyzedCount || undefined}
+            postsAnalyzed={analyzedCount || undefined}
             sourcesSearched={discoveryData?.sources_searched}
           />
           {#if discoveryData?.methodology}
@@ -461,14 +441,14 @@
   }
 
   .section-intro {
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     color: var(--color-text-secondary);
     margin: 0 0 1rem;
   }
 
   .section-footnote {
     margin: 0.85rem 0 0;
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     line-height: 1.42;
     color: var(--color-text-muted);
     text-wrap: pretty;
@@ -476,7 +456,7 @@
 
   .methodology-note {
     font-family: var(--font-mono);
-    font-size: 0.6875rem;
+    font-size: var(--text-11);
     color: var(--color-text-muted);
     margin: 0.75rem 0 0;
     letter-spacing: 0.02em;
@@ -492,7 +472,7 @@
 
   .locked-subsection-title {
     font-family: var(--font-mono);
-    font-size: 0.6875rem;
+    font-size: var(--text-11);
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -513,16 +493,16 @@
     align-items: baseline;
     padding: 0.625rem 0.875rem;
     border: 1px solid var(--color-border);
-    border-radius: var(--radius-md, 0.5rem);
+    border-radius: var(--radius-md);
     background: var(--color-bg-elevated);
     font-family: var(--font-mono);
-    font-size: 0.8125rem;
+    font-size: var(--text-13);
   }
 
   .locked-post-title {
     color: var(--color-text-primary);
     font-family: var(--font-body);
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -548,16 +528,16 @@
   .vote-error {
     margin: -0.25rem 0 0;
     padding: 0.75rem 1rem;
-    border-left: 2px solid var(--color-error, #dc2626);
-    color: var(--color-error-dark, #b91c1c);
-    font-size: 0.875rem;
+    border-left: 2px solid var(--color-error);
+    color: var(--color-error-text);
+    font-size: var(--text-base);
   }
 
   .comment-card {
     margin-top: -0.35rem;
     padding: 1rem 0.9rem 1.1rem;
-    border-block: 1px solid var(--color-border);
-    border-left: 2px solid var(--color-border-emphasis);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
     background: var(--color-bg-surface);
   }
 
@@ -566,8 +546,8 @@
     align-items: center;
     justify-content: space-between;
     gap: 0.5rem;
-    font-size: 0.875rem;
-    color: var(--color-success-dark, #047857);
+    font-size: var(--text-base);
+    color: var(--color-success-text);
   }
 
   .comment-success-copy {
@@ -582,10 +562,13 @@
     border-radius: 0.4rem;
     background: transparent;
     color: var(--color-text-secondary);
-    font-size: 0.75rem;
-    font-weight: 650;
+    font-size: var(--text-sm);
+    font-weight: 600;
     cursor: pointer;
-    transition: background-color 160ms ease, color 160ms ease, transform 120ms ease;
+    transition:
+      background-color var(--duration-fast) var(--ease-default),
+      color var(--duration-fast) var(--ease-default),
+      transform var(--duration-fast) var(--ease-default);
   }
   .comment-edit:hover {
     background: var(--color-bg-surface);
@@ -606,21 +589,21 @@
   }
   .comment-form-header :global(svg) { margin-top: 0.12rem; }
   .comment-form-header h3 {
-    font-size: 0.875rem;
-    font-weight: 650;
+    font-size: var(--text-base);
+    font-weight: 600;
     color: var(--color-text-primary);
     margin: 0;
   }
   .comment-form-header p {
     margin: 0.18rem 0 0;
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     line-height: 1.4;
   }
 
   .comment-textarea {
     width: 100%;
     padding: 0.5rem 0.75rem;
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     background: var(--color-bg-base);
     border: 1px solid var(--color-border);
     border-radius: 0.5rem;
@@ -631,8 +614,8 @@
     color: color-mix(in srgb, var(--color-text-muted) 50%, transparent);
   }
   .comment-textarea:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 50%, transparent);
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
   }
 
   .comment-form-footer {
@@ -642,7 +625,7 @@
   }
 
   .comment-char-count {
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     color: var(--color-text-muted);
   }
 
@@ -651,14 +634,16 @@
     align-items: center;
     gap: 0.375rem;
     padding: 0.375rem 0.75rem;
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     font-weight: 500;
     border: none;
     border-radius: 0.5rem;
-    background: var(--color-accent);
-    color: white;
+    background: var(--color-accent-hover);
+    color: var(--color-text-on-accent);
     cursor: pointer;
-    transition: background-color 150ms ease;
+    transition:
+      background-color var(--duration-fast) var(--ease-default),
+      transform var(--duration-fast) var(--ease-default);
   }
   .comment-submit:active,
   .comment-edit:active { transform: scale(0.98); }

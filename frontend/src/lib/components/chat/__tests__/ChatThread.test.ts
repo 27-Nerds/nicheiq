@@ -88,9 +88,10 @@ describe("ChatThread — tool receipts (chat agent tools v1.1)", () => {
     });
 
     // The visible idea name IS the accessible name (plus an sr-only affordance
-    // hint), so the sentence keeps the name when read by assistive tech.
+    // hint). Matched aliases render the reference's canonical label, so the
+    // sentence carries the full idea name when read by assistive tech.
     const ideaButton = await findByRole(
-      "button", { name: /^ProMatchDesk ?, open details$/ },
+      "button", { name: /^ProMatchDesk \(CS2\+Dota 2\) ?, open details$/ },
     );
     await fireEvent.click(ideaButton);
     expect(onOpenIdeaReference).toHaveBeenCalledWith(ideaReferences[0]);
@@ -716,7 +717,7 @@ describe("ChatThread — priced idea-seed card", () => {
 
     const { findByText, queryByText, getByRole } = render(ChatThread, { props: { jobId: "job-1", dock: "rail", seedCost: 3 } });
 
-    await findByText("Evaluation complete. Added to ranked candidates.");
+    await findByText("Evaluation complete. Added to ranked ideas.");
     expect(queryByText("PatchZero")).not.toBeNull();
     expect(queryByText("Market fit 45%")).not.toBeNull();
     expect(getByRole("link", { name: /view full candidate details/i })).toHaveAttribute("href", "#solution-selector");
@@ -989,5 +990,84 @@ describe("ChatThread — priced idea-seed card", () => {
     await fireEvent.click(view.getByRole("button", { name: "Use variant in shortlist" }));
     expect(onUseVariant).toHaveBeenCalledWith(proposal, receipt, "asst-combine-accepted");
     expect(await view.findByText("Replaced 2 source candidates with the combined variant.")).toBeInTheDocument();
+  });
+});
+
+describe("ChatThread — chips prefill the composer, drafts persist (never auto-send)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    chatLedger.reset();
+    vi.mocked(getChatHistory).mockResolvedValue({ messages: [], weakPool: false });
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("starter chip fills and focuses the composer without spending a turn", async () => {
+    const { findByText, getByLabelText } = render(ChatThread, {
+      props: { jobId: "job-1", dock: "rail", starters: ["Which is easiest to build?"] },
+    });
+
+    const chip = await findByText("Which is easiest to build?");
+    await fireEvent.click(chip.closest("button")!);
+
+    const textarea = getByLabelText("Message the analyst") as HTMLTextAreaElement;
+    await waitFor(() => expect(textarea.value).toBe("Which is easiest to build?"));
+    await waitFor(() => expect(document.activeElement).toBe(textarea));
+    // Prefill, not send: a send would spend one of the run's limited turns.
+    expect(streamChat).not.toHaveBeenCalled();
+  });
+
+  it("analyst follow-up chips prefill too", async () => {
+    vi.mocked(getChatHistory).mockResolvedValue({
+      messages: [
+        {
+          id: "m1",
+          gateStage: 5,
+          role: "assistant",
+          content: "Rankings are close between the top two.",
+          patchJson: null,
+          suggestionsJson: ["What separates the top two?"],
+          truncated: false,
+          createdAt: "1",
+        },
+      ],
+      weakPool: false,
+    } as never);
+
+    const { findByText, getByLabelText } = render(ChatThread, {
+      props: { jobId: "job-1", dock: "rail" },
+    });
+
+    const chip = await findByText("What separates the top two?");
+    await fireEvent.click(chip.closest("button")!);
+
+    const textarea = getByLabelText("Message the analyst") as HTMLTextAreaElement;
+    await waitFor(() => expect(textarea.value).toBe("What separates the top two?"));
+    expect(streamChat).not.toHaveBeenCalled();
+  });
+
+  it("seeds the composer from initialDraft and mirrors edits to onDraftChange", async () => {
+    const onDraftChange = vi.fn();
+    const { getByLabelText } = render(ChatThread, {
+      props: {
+        jobId: "job-1",
+        dock: "rail",
+        initialDraft: "half a thought",
+        onDraftChange,
+      },
+    });
+
+    const textarea = getByLabelText("Message the analyst") as HTMLTextAreaElement;
+    expect(textarea.value).toBe("half a thought");
+    // The mount itself reports the restored draft…
+    await waitFor(() => expect(onDraftChange).toHaveBeenCalledWith("half a thought"));
+
+    // …and every edit after it, so close → reopen restores the exact text.
+    await fireEvent.input(textarea, { target: { value: "half a thought, finished" } });
+    await waitFor(() =>
+      expect(onDraftChange).toHaveBeenLastCalledWith("half a thought, finished"),
+    );
   });
 });

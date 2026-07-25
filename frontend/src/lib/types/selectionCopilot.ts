@@ -66,4 +66,10 @@ export interface SelectionConceptForgePrefill {
   targetTradeoff: string;
   rationale: string;
   caveats: string[];
+  /** Who prepared this prefill. Every entry path passes a prefill, so the
+   *  forge must distinguish an analyst-prepared brief (skip the saved-set
+   *  restore, show the brief aside) from a plain owner open (restore saved
+   *  sets, no aside). When absent, a prefill with an empty rationale and no
+   *  caveats is treated as an owner open. */
+  source?: "analyst" | "owner";
 }

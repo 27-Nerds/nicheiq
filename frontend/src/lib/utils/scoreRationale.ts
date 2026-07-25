@@ -7,6 +7,7 @@
  * tooltip rather than fabricating one.
  */
 import type { SolutionPreview } from "$lib/types/job";
+import type { SelectionCapThresholds } from "$lib/types/selectionMetricExplanation";
 
 export type ScoreKey =
   | "composite"
@@ -25,7 +26,12 @@ function clean(s?: string | null): string {
 }
 
 function clamp(s: string): string {
-  return s.length <= MAX_LEN ? s : s.slice(0, MAX_LEN - 1).trimEnd() + "…";
+  if (s.length <= MAX_LEN) return s;
+  // Never cut inside a word: back up to the last complete word before the limit.
+  // clean() has already collapsed all whitespace to single spaces.
+  const cut = s.slice(0, MAX_LEN - 1);
+  const lastSpace = cut.lastIndexOf(" ");
+  return (lastSpace > 0 ? cut.slice(0, lastSpace) : cut).trimEnd() + "…";
 }
 
 function firstNonEmpty(...vals: (string | null | undefined)[]): string {
@@ -36,9 +42,37 @@ function firstNonEmpty(...vals: (string | null | undefined)[]): string {
   return "";
 }
 
-// Mirrors settings.payability_low_threshold (src/nicheiq/config/settings.py) — segment
-// payability below this counts as LOW, same bar the backend cap uses.
-const PAYABILITY_LOW_THRESHOLD = 0.35;
+// Fallback cap thresholds mirroring the DEFAULTS in src/nicheiq/config/settings.py
+// (payability_low_threshold=0.35, payability_market_fit_cap=0.55, parity_shipped=0.45,
+// parity_partial=0.55, parity_substitute=0.50, parity_substitute_weak_wallet=0.35,
+// parity_bundled_free=0.40). The backend serves the LIVE (env-resolved) values on
+// /api/selection/metric-explanations as `capThresholds`; pages inject them via
+// setServedCapThresholds (or per-call via opts.capThresholds) so a prod env override
+// can't silently falsify this copy. These constants are only the no-payload fallback.
+export const DEFAULT_CAP_THRESHOLDS: SelectionCapThresholds = {
+  payabilityLowThreshold: 0.35,
+  payabilityMarketFitCap: 0.55,
+  parityShippedMarketFitCap: 0.45,
+  parityPartialMarketFitCap: 0.55,
+  paritySubstituteMarketFitCap: 0.5,
+  paritySubstituteWeakWalletCap: 0.35,
+  parityBundledFreeCap: 0.4,
+};
+
+// Backend-served thresholds, injected once per page init from the metric-explanations
+// payload. Module-level (not reactive): the values are static per deployment, and pages
+// call the setter during component init — before any cap-hint derivation runs.
+let servedCapThresholds: SelectionCapThresholds | null = null;
+
+/** Inject the backend-served cap thresholds; pass null/undefined to keep defaults. */
+export function setServedCapThresholds(caps: SelectionCapThresholds | null | undefined): void {
+  servedCapThresholds = caps ?? null;
+}
+
+// A cap "plausibly bound" when the displayed score sits at/above (cap − epsilon);
+// the backend only clamps when the raw score exceeded the cap, so a score well
+// below the cap means the ceiling never bit.
+const CAP_EPSILON = 0.005;
 
 /**
  * Names the single most-restrictive market_fit ceiling that likely applied to this idea,
@@ -47,41 +81,70 @@ const PAYABILITY_LOW_THRESHOLD = 0.35;
  * the clause for the SMALLEST cap wins (e.g. a 'substitute' parity finding against a thin-wallet
  * segment mirrors the backend's 0.35 substitute+weak-wallet cap, tighter than either alone).
  * Returns null when no cap condition is detected on the idea.
+ *
+ * `caps` defaults to the backend-served thresholds when injected, else the Python
+ * defaults — so a prod env override of a cap setting flows into this copy.
  */
-function marketFitCapHint(idea: SolutionPreview): string | null {
+function marketFitCapHint(
+  idea: SolutionPreview,
+  caps: SelectionCapThresholds = servedCapThresholds ?? DEFAULT_CAP_THRESHOLDS,
+): string | null {
   const dam = clean(idea.data_access_model).toLowerCase();
   const parity = clean(idea.incumbent_parity).toLowerCase();
   const pay = idea.source_segment_payability;
-  const payLow = typeof pay === "number" && pay < PAYABILITY_LOW_THRESHOLD;
+  const payLow = typeof pay === "number" && pay < caps.payabilityLowThreshold;
 
   const candidates: { cap: number; clause: string }[] = [];
 
   if (dam === "unofficial" || dam === "restricted" || dam === "blocked") {
-    candidates.push({ cap: 0.4, clause: "capped at 0.40 — the data route is unverified" });
+    // 0.40 is HARDCODED in the Python cap rule (unified_solution_crew rule (b)),
+    // not env-overridable — the only literal cap that stays a constant here.
+    candidates.push({ cap: 0.4, clause: "the fit signal was reduced because the required data route is not verified" });
   }
   if (payLow) {
-    candidates.push({ cap: 0.55, clause: "capped — this buyer segment rarely pays for tooling" });
+    candidates.push({ cap: caps.payabilityMarketFitCap, clause: "the fit signal was reduced because this buyer segment shows weak evidence of paying for tools" });
   }
   if (parity.startsWith("shipped")) {
-    candidates.push({ cap: 0.45, clause: "held at/below 0.45 — a verified incumbent ships this mechanism" });
+    candidates.push({
+      cap: caps.parityShippedMarketFitCap,
+      clause: "the fit signal was reduced because a verified incumbent already provides the core mechanism",
+    });
   } else if (parity.startsWith("partial")) {
-    candidates.push({ cap: 0.55, clause: "capped — an incumbent partially covers this position" });
+    candidates.push({ cap: caps.parityPartialMarketFitCap, clause: "the fit signal was reduced because an incumbent already covers part of this position" });
   } else if (parity.startsWith("substitute")) {
-    candidates.push({ cap: payLow ? 0.35 : 0.5, clause: "capped — a free/DIY route covers the core outcome" });
+    candidates.push({
+      cap: payLow ? caps.paritySubstituteWeakWalletCap : caps.paritySubstituteMarketFitCap,
+      clause: "the fit signal was reduced because a free or do-it-yourself route already covers the core outcome",
+    });
   }
 
   if (!candidates.length) return null;
   const tightest = candidates.reduce((a, b) => (b.cap < a.cap ? b : a));
-  return `${tightest.clause} (thin early signal; Deep Research validates)`;
+  // Behavior choice: a cap CONDITION alone doesn't prove the cap bound. Assert
+  // "capped" only when the displayed market_fit_score is at/above (cap − epsilon);
+  // otherwise OMIT the clause entirely (no conditional rewording), so this popover
+  // never claims a cap that didn't bite. A missing score also omits — we can't
+  // verify the assertion.
+  const mf = idea.market_fit_score;
+  if (typeof mf !== "number" || !Number.isFinite(mf) || mf < tightest.cap - CAP_EPSILON) return null;
+  return `${tightest.clause}. Deep Research can verify this early signal`;
 }
 
 /**
  * Returns a short "why we gave this score" string for `key`, or null when the idea
  * carries no grounded rationale for it.
+ *
+ * Pass `{ full: true }` to skip the popover-sized 240-char clamp — for surfaces with
+ * room for the whole rationale (e.g. the overlay's "Decision rationale" panel).
+ *
+ * Pass `{ capThresholds }` to override the cap thresholds for this call; otherwise the
+ * backend-served values (setServedCapThresholds) apply, falling back to the Python
+ * defaults — existing consumers keep working unchanged.
  */
 export function scoreRationale(
   idea: SolutionPreview | null | undefined,
   key: ScoreKey,
+  opts: { full?: boolean; capThresholds?: SelectionCapThresholds } = {},
 ): string | null {
   if (!idea) return null;
 
@@ -89,7 +152,10 @@ export function scoreRationale(
   switch (key) {
     case "market_fit": {
       why = firstNonEmpty(idea.why_it_works_short, idea.why_it_works, idea.value_proposition);
-      const capHint = marketFitCapHint(idea);
+      const capHint = marketFitCapHint(
+        idea,
+        opts.capThresholds ?? servedCapThresholds ?? DEFAULT_CAP_THRESHOLDS,
+      );
       if (capHint) {
         why = why ? `${why} — ${capHint}` : capHint.charAt(0).toUpperCase() + capHint.slice(1);
       }
@@ -103,7 +169,10 @@ export function scoreRationale(
     case "data_feasibility": {
       const note = firstNonEmpty(idea.data_acquisition_notes);
       const access = clean(idea.data_access_model);
-      why = note ? (access ? `Data (${access}): ${note}` : note) : "";
+      const accessLabel = access
+        ? access.charAt(0).toUpperCase() + access.slice(1).replaceAll("_", " ")
+        : "";
+      why = note ? (accessLabel ? `Data access: ${accessLabel}. ${note}` : note) : "";
       break;
     }
 
@@ -111,12 +180,13 @@ export function scoreRationale(
       // SEO now reflects the realistic indexable-page count; it's a preliminary estimate
       // refined by keyword research for the idea you pursue.
       why = firstNonEmpty(idea.programmatic_seo_opportunity);
-      if (why) why = `${why} (preliminary estimate, refined after keyword research)`;
+      if (why) why = `${why} Keyword demand has not been checked in depth yet.`;
       break;
 
     case "novelty": {
       // Prefer the angle-aware, project-type-grounded rationale when present and non-empty
-      // (angle eval on) — it explains why a low mechanism-novelty isn't a flaw for, e.g., a catalog.
+      // (angle eval on) — it explains why a familiar mechanism is not necessarily a flaw
+      // for a distribution-led product such as a catalog.
       const angleNov = clean(idea.novelty_rationale);
       if (angleNov) {
         why = angleNov;
@@ -141,10 +211,10 @@ export function scoreRationale(
 
     case "composite":
       why = firstNonEmpty(idea.why_it_works_short, idea.why_it_works);
-      if (why) why = `Overall: blends fit, feasibility, novelty & SEO. ${why}`;
       break;
   }
 
-  why = clamp(clean(why));
+  why = clean(why);
+  if (!opts.full) why = clamp(why);
   return why || null;
 }

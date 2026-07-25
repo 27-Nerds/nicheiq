@@ -1,23 +1,27 @@
-Every report gets built in two phases. Discovery comes first: it reads real public discussion to find what people are struggling with, who they are, and what you could build for them. Deep Research comes second, where we pressure-test the most promising idea on demand, pricing, market size, and timing. (See [How one idea gets pressure-tested](/help/deep-research).) This page is about Discovery.
+NicheIQ research has two phases. Discovery reads public discussion to find recurring problems, the audiences behind them, and a ranked set of candidate products. You then choose one to three exact candidates for one Deep Research run, which investigates that saved scope in more depth. (See [How selected ideas get pressure-tested](/help/deep-research).) This page is about Discovery.
 
 ### The five Discovery steps
 
-It runs in order, and each step feeds the next:
+The work runs in order, and each step feeds the next:
 
-1. We work out what your niche actually is, and the language that identifies it. (More on this below.)
-2. We scan public discussion, searching the places your audience actually hangs out.
-3. We pull the recurring problems out of those conversations and back them with evidence. (See [How pain points are gathered](/help/pain-points).)
-4. We map who has those problems: the buyer segments, communities, and voices behind them.
-5. We sketch a varied, vetted shortlist of things you could build, with a plain-language analyst summary sitting above it that reads the whole set honestly before you do. (See [How ideas are generated](/help/idea-generation).)
+1. It frames the niche and the language that distinguishes it.
+2. It searches public discussion, including Reddit and Hacker News when relevant and available.
+3. It extracts recurring problems and keeps source-linked evidence for them. (See [How pain points are gathered](/help/pain-points).)
+4. It maps the audience segments and communities represented in the captured sample.
+5. It generates, checks, and ranks a varied set of candidate products, with an analyst summary of the pool. (See [How ideas are generated](/help/idea-generation).)
 
 ### Understanding your niche
 
-The first step does more than repeat your input back to you. It works out what kind of input you gave in the first place. Did you hand us a market ("home espresso gear") or an audience ("freelance designers")? Those need to be handled differently. If you named an audience, we still map the broader market they sit in and its main buyer segments, so the research doesn't tunnel down onto one slice and miss the demand sitting right next to it.
+The first step interprets the input rather than simply repeating it. A market such as "home espresso gear" and an audience such as "freelance designers" need different search plans. When the input names an audience, the research can still map the wider market around it so the search does not collapse onto one narrow phrasing.
 
-It also picks out the signature terms, products, and communities that mark your niche out, the names insiders use that the look-alike topics don't. Those act as anchors. They help the next step keep your niche apart from the neighbouring ones that happen to share generic words, so the search stays on target instead of drifting. If your niche is too broad to produce clear anchors, we just skip that check rather than force it.
+The framing also identifies signature terms, products, communities, and exclusions that separate the niche from look-alike topics. These anchors help later searches stay relevant. If the input is too broad to support a reliable distinction, the workflow can ask for a clearer scope or proceed with explicit caveats rather than inventing specificity.
 
-One more thing: if you came in through the "idea," "audience," or "discovery" entry points, we treat that as a hint, not an instruction. The system still reads your input on its own merits and decides for itself.
+The "idea," "audience," and "discovery" entry points are starting hints. The system still evaluates the text itself and stores the resulting framing in the run.
+
+### Reading the evidence
+
+Discussion counts, source counts, and charts describe the captured sample, not the whole market. Reddit votes and Hacker News points are platform-specific engagement signals; they are not interchangeable proof of demand. Pain evidence should remain linked to its captured source, while missing or failed-to-load data should be shown as unavailable rather than as a finding of "none."
 
 ### What it can't do
 
-We work from public discussion, so if there's very little of it for your niche, a run can stop early rather than make up signal that isn't there. And the niche framing is an interpretation. If we read your input differently than you meant it (a market when you meant an audience, or the other way round), the quickest fix is to rephrase it so it's obvious which one you mean.
+Public discussion is self-selected and time-sensitive. Quiet buyers, private communities, and offline workflows may be underrepresented. If the run cannot collect enough relevant material, it may stop or return a thinner result with caveats instead of filling gaps with invented evidence. The niche framing is also an interpretation: if it differs from what you meant, rephrase the niche before starting another run.

@@ -1,0 +1,109 @@
+import { cleanup, render } from "@testing-library/svelte";
+import { afterEach, describe, expect, it } from "vitest";
+import PhaseNav from "../PhaseNav.svelte";
+
+afterEach(cleanup);
+
+describe("PhaseNav selection journey", () => {
+  it("keeps the same four decision destinations on every selection route", () => {
+    const view = render(PhaseNav, {
+      props: {
+        jobStatus: "AWAITING_SELECTION",
+        jobId: "job-1",
+        mode: "selection",
+        nested: true,
+        activeTool: "risks",
+        selectedCount: 2,
+        selectionQuery: "?idea=idea-a%3A3&idea=idea-b%3A1",
+        decisionTools: true,
+      },
+    });
+
+    expect(view.getAllByText("Choose ideas").length).toBeGreaterThan(0);
+    expect(view.getAllByText("Compare trade-offs").length).toBeGreaterThan(0);
+    expect(view.getAllByText("Check the evidence").length).toBeGreaterThan(0);
+    expect(view.getAllByText("Review and start").length).toBeGreaterThan(0);
+    for (const link of view.getAllByRole("link", { name: "Compare trade-offs" })) {
+      expect(link).toHaveAttribute(
+        "href",
+        "/jobs/job-1/selection/compare?idea=idea-a%3A3&idea=idea-b%3A1",
+      );
+    }
+    for (const link of view.getAllByRole("link", { name: "Check the evidence" })) {
+      expect(link).toHaveAttribute(
+        "href",
+        "/jobs/job-1/selection/risks?idea=idea-a%3A3&idea=idea-b%3A1",
+      );
+    }
+    for (const link of view.getAllByRole("link", { name: "Review and start" })) {
+      expect(link).toHaveAttribute(
+        "href",
+        "/jobs/job-1/selection/review?idea=idea-a%3A3&idea=idea-b%3A1",
+      );
+    }
+    expect(view.queryByText("Plan a test")).not.toBeInTheDocument();
+    expect(view.queryByText("Explore variants")).not.toBeInTheDocument();
+  });
+
+  it("marks Review and start as the current destination on desktop and mobile", () => {
+    const view = render(PhaseNav, {
+      props: {
+        jobStatus: "AWAITING_SELECTION",
+        jobId: "job-1",
+        mode: "selection",
+        nested: true,
+        activeTool: "review",
+        selectedCount: 2,
+      },
+    });
+
+    const reviewLinks = view.getAllByRole("link", { name: "Review and start" });
+    expect(reviewLinks).toHaveLength(2);
+    for (const link of reviewLinks) {
+      expect(link).toHaveAttribute("aria-current", "page");
+      expect(link).toHaveClass("active");
+    }
+  });
+
+  it("only links to Discovery sections present in a partial report on desktop and mobile", () => {
+    const view = render(PhaseNav, {
+      props: {
+        jobStatus: "AWAITING_SELECTION",
+        jobId: "job-1",
+        mode: "selection",
+        nested: true,
+        activeTool: "compare",
+        selectedCount: 2,
+        availableSectionIds: ["overview", "pain-points"],
+      },
+    });
+
+    expect(view.getAllByRole("link", { name: "Overview" })).toHaveLength(2);
+    expect(view.getAllByRole("link", { name: "Pain Points" })).toHaveLength(2);
+    expect(view.queryByRole("link", { name: "Market Snapshot" })).not.toBeInTheDocument();
+    expect(view.queryByRole("link", { name: "Audience" })).not.toBeInTheDocument();
+    expect(view.queryByRole("link", { name: "Community" })).not.toBeInTheDocument();
+  });
+});
+
+describe("PhaseNav without the decision tools grant", () => {
+  it("drops Check the evidence but keeps the required path", () => {
+    const view = render(PhaseNav, {
+      props: {
+        jobStatus: "AWAITING_SELECTION",
+        jobId: "job-1",
+        mode: "selection",
+        nested: true,
+        selectedCount: 2,
+        selectionQuery: "?idea=idea-a%3A3",
+        decisionTools: false,
+      },
+    });
+
+    expect(view.getAllByText("Choose ideas").length).toBeGreaterThan(0);
+    expect(view.getAllByText("Compare trade-offs").length).toBeGreaterThan(0);
+    expect(view.getAllByText("Review and start").length).toBeGreaterThan(0);
+    expect(view.queryByText("Check the evidence")).toBeNull();
+    expect(view.queryByRole("link", { name: "Check the evidence" })).toBeNull();
+  });
+});

@@ -38,6 +38,7 @@
   import Tooltip from "$lib/components/ui/Tooltip.svelte";
   import ExpandableSection from "$lib/components/ui/ExpandableSection.svelte";
   import { getTermTooltip } from "$lib/stores/glossary";
+  import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
   import ProgressRing from "$lib/components/ui/ProgressRing.svelte";
   import InsightCard from "$lib/components/ui/InsightCard.svelte";
   import CardGrid from "$lib/components/ui/CardGrid.svelte";
@@ -287,45 +288,11 @@
     return tooltips.verdict.nogo;
   };
 
-  // Context-aware score tooltips
-  const GO_THRESHOLD = 0.6;
-
-  const marketFitTooltip = $derived.by(() => {
-    const score = metrics?.market_fit_score;
-    if (score == null) return "Market demand alignment — no data available";
-    const pct = Math.round(score * 100);
-    const passes = score >= GO_THRESHOLD;
-    return `Market Fit: ${pct}%\nHow well the idea fits validated demand, weighted by pain severity. Capped at 40% when the data it needs can't be obtained through a verified route.\n${passes ? `Meets Go threshold (\u2265${GO_THRESHOLD * 100}%)` : `Below Go threshold (\u2265${GO_THRESHOLD * 100}%) \u2014 limits verdict to Conditional`}`;
-  });
-
-  const techFeasibilityTooltip = $derived.by(() => {
-    const score = metrics?.technical_feasibility_score;
-    if (score == null) return "Technical feasibility — no data available";
-    const pct = Math.round(score * 100);
-    const passes = score >= GO_THRESHOLD;
-    return `Feasibility: ${pct}%\nTechnical complexity and resource requirements for implementation.\n${passes ? `Meets Go threshold (\u2265${GO_THRESHOLD * 100}%)` : `Below Go threshold (\u2265${GO_THRESHOLD * 100}%) \u2014 limits verdict to Conditional`}`;
-  });
-
-  const seoTooltip = $derived.by(() => {
-    const score = metrics?.seo_potential_score;
-    if (score == null) return "SEO potential — no data available";
-    const pct = Math.round(score * 100);
-    return `SEO Score: ${pct}%\nOrganic search growth potential based on keyword landscape.`;
-  });
-
-  const soloDevTooltip = $derived.by(() => {
-    const score = metrics?.solo_dev_feasibility;
-    if (score == null) return "Solo dev feasibility — no data available";
-    const pct = Math.round(score * 100);
-    return `Solo Dev: ${pct}%\nHow realistic for one person to build AND keep running. The main driver is ongoing burden (support, uptime, moderation, marketing), not just build time. Independently re-scored, and held at or below the build-feasibility estimate.`;
-  });
-
-  const compEdgeTooltip = $derived.by(() => {
-    const score = metrics?.competitive_advantage_score;
-    if (score == null) return "Competitive edge — no data available";
-    const pct = Math.round(score * 100);
-    return `Comp. Edge: ${pct}%\nCompetitive positioning and differentiation strength.`;
-  });
+  const marketFitTooltip = SCORE_DEFINITIONS.market_fit;
+  const techFeasibilityTooltip = SCORE_DEFINITIONS.technical_feasibility;
+  const seoTooltip = SCORE_DEFINITIONS.seo;
+  const soloDevTooltip = SCORE_DEFINITIONS.solo_dev;
+  const compEdgeTooltip = SCORE_DEFINITIONS.competitive_advantage;
 
   // Context-aware hero tooltips
   const opportunityScoreTooltip = $derived.by(() => {

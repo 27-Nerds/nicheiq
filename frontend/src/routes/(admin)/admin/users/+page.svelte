@@ -14,6 +14,7 @@
   let updatingRole = $state<string | null>(null);
   let updatingAccess = $state<string | null>(null);
   let updatingChatAccess = $state<string | null>(null);
+  let updatingDecisionToolsAccess = $state<string | null>(null);
 
   // Credit modal state
   let creditModal = $state<{ userId: string; email: string } | null>(null);
@@ -167,6 +168,29 @@
       updatingChatAccess = null;
     }
   }
+
+  async function toggleDecisionToolsAccess(userId: string, current: boolean) {
+    if (
+      !confirm(
+        current
+          ? "Revoke this user's decision tools access?"
+          : "Grant this user decision tools access?",
+      )
+    ) {
+      return;
+    }
+    updatingDecisionToolsAccess = userId;
+    try {
+      await fetch(`/api/admin/users/${userId}/access-decision-tools`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decisionToolsAccess: !current }),
+      });
+      await invalidateAll();
+    } finally {
+      updatingDecisionToolsAccess = null;
+    }
+  }
 </script>
 
 <svelte:head>
@@ -204,6 +228,7 @@
               <th>Role</th>
               <th>Access</th>
               <th>Analyst</th>
+              <th>Tools</th>
               <th class="num">Credits</th>
               <th class="num">Jobs</th>
               <th>Joined</th>
@@ -241,6 +266,15 @@
                     <Badge variant="accent" size="sm">ADMIN</Badge>
                   {:else if user.chatAnalystAccess}
                     <Badge variant="muted" size="sm">Chat grant</Badge>
+                  {:else}
+                    <span class="text-text-muted">—</span>
+                  {/if}
+                </td>
+                <td>
+                  {#if user.role === "ADMIN"}
+                    <Badge variant="accent" size="sm">ADMIN</Badge>
+                  {:else if user.decisionToolsAccess}
+                    <Badge variant="muted" size="sm">Tools grant</Badge>
                   {:else}
                     <span class="text-text-muted">—</span>
                   {/if}
@@ -283,6 +317,16 @@
                         title={user.chatAnalystAccess ? "Revoke chat with Analyst access" : "Grant chat with Analyst access"}
                       >
                         {updatingChatAccess === user.id ? "..." : "Chat"}
+                      </button>
+                      <button
+                        class="col-span-2 text-xs px-2 py-0.5 rounded border transition-colors disabled:opacity-50 whitespace-nowrap w-full {user.decisionToolsAccess
+                          ? 'border-accent/40 text-[color:var(--color-accent-dark)] bg-accent/5 hover:bg-accent/10'
+                          : 'border-border text-text-secondary hover:bg-bg-elevated'}"
+                        onclick={() => toggleDecisionToolsAccess(user.id, user.decisionToolsAccess)}
+                        disabled={updatingDecisionToolsAccess === user.id}
+                        title={user.decisionToolsAccess ? "Revoke decision tools access" : "Grant decision tools access"}
+                      >
+                        {updatingDecisionToolsAccess === user.id ? "..." : "Decision tools"}
                       </button>
                     {/if}
                   </div>

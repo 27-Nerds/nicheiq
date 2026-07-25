@@ -26,12 +26,27 @@ export type SelectionJourneyTaskStatus =
   | "needs_refresh"
   | "optional";
 
+/**
+ * Semantic class for a task's status, so consumers can style it without
+ * re-deriving intent from the status string. Crucially, `needs_refresh` maps to
+ * "warning" — NOT the "success" class `complete` uses — so a stale step never
+ * reads as done.
+ */
+export type SelectionJourneyStatusKind =
+  | "locked"
+  | "neutral"
+  | "recommended"
+  | "active"
+  | "success"
+  | "warning";
+
 export interface SelectionJourneyTask {
   key: SelectionJourneyTaskKey;
   title: string;
   description: string;
   status: SelectionJourneyTaskStatus;
   statusLabel: string;
+  statusKind: SelectionJourneyStatusKind;
 }
 
 export interface SelectionJourneyRecommendation {
@@ -57,12 +72,25 @@ const STATUS_LABELS: Record<SelectionJourneyTaskStatus, string> = {
   /** Generic fallback. Per-step rows override this with STEP_LOCK_HINTS, which
    *  name the action that unlocks the step instead of only stating the lock. */
   not_ready: "Choose ideas first",
-  available: "Ready",
+  available: "Not reviewed",
   recommended: "Recommended",
   in_progress: "In progress",
-  complete: "Complete",
-  needs_refresh: "Needs refresh",
+  complete: "Reviewed",
+  // Distinct from `complete`: a stale step is a to-do, not a done step.
+  needs_refresh: "Re-check needed",
   optional: "Optional",
+};
+
+/** Semantic class per status. `needs_refresh` is "warning", never "success",
+ *  so consumers cannot render a stale step with the completed treatment. */
+const STATUS_KINDS: Record<SelectionJourneyTaskStatus, SelectionJourneyStatusKind> = {
+  not_ready: "locked",
+  available: "neutral",
+  recommended: "recommended",
+  in_progress: "active",
+  complete: "success",
+  needs_refresh: "warning",
+  optional: "neutral",
 };
 
 function task(
@@ -71,13 +99,15 @@ function task(
   description: string,
   status: SelectionJourneyTaskStatus,
   lockHint?: string,
+  statusLabel?: string,
 ): SelectionJourneyTask {
   return {
     key,
     title,
     description,
     status,
-    statusLabel: status === "not_ready" && lockHint ? lockHint : STATUS_LABELS[status],
+    statusLabel: statusLabel ?? (status === "not_ready" && lockHint ? lockHint : STATUS_LABELS[status]),
+    statusKind: STATUS_KINDS[status],
   };
 }
 
@@ -92,12 +122,16 @@ function targetForAction(action: SelectionDecisionNextAction): SelectionJourneyT
     case "stress_test_evidence":
     case "capture_assumption":
       return "risks";
+    // Test work is never a standalone top-level target: `tests` redirects to
+    // `risks`, and the test planner opens contextually from the evidence page.
+    // Surfacing "tests" as its own next-step would point the recommendation at a
+    // destination the sidebar does not render, so it collapses onto "risks".
     case "draft_test":
     case "review_test_brief":
     case "launch_test":
     case "monitor_test":
     case "record_conclusion":
-      return "tests";
+      return "risks";
     case "start_deep_research":
       return "deep_research";
   }
@@ -105,6 +139,7 @@ function targetForAction(action: SelectionDecisionNextAction): SelectionJourneyT
 
 function recommendationForAction(
   action: SelectionDecisionNextAction,
+  decisionTools = false,
 ): SelectionJourneyRecommendation {
   const firstIdea = action.ideas[0]?.title?.trim();
 
@@ -120,42 +155,42 @@ function recommendationForAction(
     case "add_decision_context":
       return {
         target: "constraints",
-        title: "Add your build constraints",
+        title: "Add your build limits",
         description: "Save your time, budget, team, and advantages so fit is judged for your situation.",
-        actionLabel: "Add constraints",
+        actionLabel: "Add build limits",
         ideas: action.ideas.map((idea) => ({ ...idea })),
       };
     case "analyze_founder_fit":
       return {
         target: "compare",
-        title: action.variant === "refresh" ? "Refresh the fit comparison" : "Compare fit for you",
+        title: action.variant === "refresh" ? "Update the comparison" : "Compare your ideas",
         description: action.variant === "refresh"
-          ? "Your shortlist changed. Refresh the comparison before relying on its fit conclusions."
-          : "See how each finalist fits your saved time, budget, team, and advantages.",
-        actionLabel: action.variant === "refresh" ? "Refresh comparison" : "Compare finalists",
+          ? "The shortlist or your goals changed since this comparison. Update it before relying on the result."
+          : "See the important market trade-offs and how each idea fits your time, budget, and launch goal.",
+        actionLabel: action.variant === "refresh" ? "Update comparison" : "Compare trade-offs",
         ideas: action.ideas.map((idea) => ({ ...idea })),
       };
     case "stress_test_evidence":
       return {
         target: "risks",
-        title: action.variant === "rerun" ? "Refresh the evidence review" : "Check the biggest uncertainty",
+        title: action.variant === "rerun" ? "Update an evidence check" : "Check the evidence",
         description: action.variant === "rerun"
-          ? "The underlying evidence changed. Refresh the review before using its open questions."
-          : "Stress-test the evidence and surface the question most likely to change your choice.",
-        actionLabel: action.variant === "rerun" ? "Refresh evidence review" : "Review the evidence",
+          ? "The idea or its saved evidence changed since this review. Update it before relying on the result."
+          : "Review one question that could change what you research. This rechecks saved sources and does not search for new evidence.",
+        actionLabel: action.variant === "rerun" ? "Update evidence check" : "Check the evidence",
         ideas: action.ideas.map((idea) => ({ ...idea })),
       };
     case "capture_assumption":
       return {
         target: "risks",
-        title: "Track the key assumption",
-        description: "Turn the open evidence gap into a specific question you can revisit or test.",
-        actionLabel: "Track key assumption",
+        title: "Save a question to resolve",
+        description: "Turn an unanswered question into something you can revisit or test.",
+        actionLabel: "Save a question to resolve",
         ideas: action.ideas.map((idea) => ({ ...idea })),
       };
     case "draft_test":
       return {
-        target: "tests",
+        target: "risks",
         title: "Plan the next useful test",
         description: "Draft a small real-world test for the open assumption before results can influence the choice.",
         actionLabel: "Draft test",
@@ -163,7 +198,7 @@ function recommendationForAction(
       };
     case "review_test_brief":
       return {
-        target: "tests",
+        target: "risks",
         title: "Review the test draft",
         description: "Check the signal, outcome rules, cost, and next actions before you launch anything.",
         actionLabel: "Review test draft",
@@ -171,7 +206,7 @@ function recommendationForAction(
       };
     case "launch_test":
       return {
-        target: "tests",
+        target: "risks",
         title: "Launch the prepared test",
         description: "The plan is locked and ready. Review it once more before collecting evidence.",
         actionLabel: "Review and launch",
@@ -179,7 +214,7 @@ function recommendationForAction(
       };
     case "monitor_test":
       return {
-        target: "tests",
+        target: "risks",
         title: "Review the active test",
         description: "Check the evidence collected so far without changing the precommitted outcome rules.",
         actionLabel: "Review active test",
@@ -187,7 +222,7 @@ function recommendationForAction(
       };
     case "record_conclusion":
       return {
-        target: "tests",
+        target: "risks",
         title: "Record the test outcome",
         description: "The test window is complete. Record what happened and what it changes about the choice.",
         actionLabel: "Record outcome",
@@ -196,9 +231,9 @@ function recommendationForAction(
     case "start_deep_research":
       return {
         target: "deep_research",
-        title: "Ready for Deep Research",
-        description: "Your shortlist is saved. Optional decision work remains available if you want it.",
-        actionLabel: "Start Deep Research",
+        title: "Review and start",
+        description: `Deep Research will cover ${action.ideas.length} selected ${action.ideas.length === 1 ? "idea" : "ideas"}.${decisionTools ? " Comparing and checking risks are optional." : " Comparing is optional."}`,
+        actionLabel: "Review and start",
         ideas: action.ideas.map((idea) => ({ ...idea })),
       };
   }
@@ -210,7 +245,7 @@ function withRecommendation(
 ): SelectionJourneyTask[] {
   return tasks.map((item) =>
     item.key === recommendation.target && (item.status === "available" || item.status === "optional")
-      ? { ...item, status: "recommended", statusLabel: STATUS_LABELS.recommended }
+      ? { ...item, status: "recommended", statusLabel: STATUS_LABELS.recommended, statusKind: STATUS_KINDS.recommended }
       : item,
   );
 }
@@ -220,11 +255,48 @@ function withRecommendation(
  * journey. It never infers identity from titles: every idea reference is copied
  * with its backend-authored id and revision intact.
  */
-export function buildSelectionJourney(state: SelectionDecisionState): SelectionJourney {
+export function buildSelectionJourney(
+  state: SelectionDecisionState,
+  /**
+   * Whether the owner has the optional decision tools grant. When false only the
+   * always-available "Compare trade-offs" task is emitted, which empties the optional
+   * checks list on the hub AND the tool rows in PhaseNav — both read `tasks`.
+   * `shortlist` and `deepResearch` are unaffected, so the shortlist rail keeps working.
+   * Defaults to FALSE: a caller that forgets to pass it gets the required path, not a
+   * silently ungated journey.
+   */
+  decisionTools = false,
+): SelectionJourney {
   const shortlistCount = state.shortlist.items.length;
   const hasShortlist = shortlistCount > 0;
   const canCompare = shortlistCount >= 2;
-  const recommendation = recommendationForAction(state.nextAction);
+  const rawRecommendation = recommendationForAction(state.nextAction, decisionTools);
+  // Defence in depth: the server already collapses the ladder without the grant, but a
+  // cached or in-flight state could still carry a gated next action. Never surface a
+  // recommendation pointing at a tool this owner cannot open.
+  const recommendation: SelectionJourneyRecommendation =
+    decisionTools
+    || rawRecommendation.target === "shortlist"
+    || rawRecommendation.target === "deep_research"
+      ? rawRecommendation
+      : recommendationForAction(
+        {
+          kind: "start_deep_research",
+          target: "deep_research",
+          reason: "",
+          required: false,
+          ideas: state.shortlist.items.map((idea) => ({ ...idea })),
+          lens: null,
+          records: [],
+        } as SelectionDecisionNextAction,
+        false,
+      );
+  const currentShortlistRefs = new Set(
+    state.shortlist.items.map((idea) => `${idea.ideaId}:${idea.ideaRevision}`),
+  );
+  const currentChallenges = state.challenges.filter((challenge) =>
+    currentShortlistRefs.has(`${challenge.idea.ideaId}:${challenge.idea.ideaRevision}`),
+  );
 
   const constraintsStatus: SelectionJourneyTaskStatus = state.staleCounts.profile > 0
     ? "needs_refresh"
@@ -244,11 +316,11 @@ export function buildSelectionJourney(state: SelectionDecisionState): SelectionJ
 
   const risksStatus: SelectionJourneyTaskStatus = !hasShortlist
     ? "not_ready"
-    : state.staleCounts.challenges > 0
-      ? "needs_refresh"
-      : state.challenges.length > 0
-        ? "complete"
-        : "available";
+    : currentChallenges.length > 0
+      ? state.staleCounts.challenges > 0
+        ? "needs_refresh"
+        : "complete"
+      : "available";
 
   const allTestsConcluded = state.experiments.length > 0
     && state.experiments.every((experiment) => experiment.conclusionId !== null);
@@ -264,14 +336,27 @@ export function buildSelectionJourney(state: SelectionDecisionState): SelectionJ
             ? "available"
             : "optional";
 
-  const tasks = withRecommendation([
+  const compareOnlyTask = task(
+    "compare",
+    TOOL_NAMES.compare,
+    canCompare
+      ? "See how the shortlisted ideas differ on the research evidence."
+      : "Shortlist at least two ideas to compare them side by side.",
+    compareStatus,
+    STEP_LOCK_HINTS.compare,
+    compareStatus === "complete" ? "Reviewed" : undefined,
+  );
+
+  const tasks = !decisionTools ? [compareOnlyTask] : withRecommendation([
     task(
       "constraints",
-      "Your build constraints",
+      "Your build limits",
       state.profile
         ? "Time, budget, team, and advantages are saved."
         : "Add your situation so fit can be judged for you.",
       constraintsStatus,
+      undefined,
+      constraintsStatus === "complete" ? "Saved" : constraintsStatus === "available" ? "Not added" : undefined,
     ),
     task(
       "compare",
@@ -281,13 +366,19 @@ export function buildSelectionJourney(state: SelectionDecisionState): SelectionJ
         : "Shortlist at least two ideas to compare them side by side.",
       compareStatus,
       STEP_LOCK_HINTS.compare,
+      compareStatus === "complete" ? "Reviewed" : undefined,
     ),
     task(
       "risks",
       TOOL_NAMES.challenge,
-      "Review the evidence, open questions, and assumptions that could change your choice.",
+      "Review a question that could change which ideas you research. Optional.",
       risksStatus,
       STEP_LOCK_HINTS.challenge,
+      risksStatus === "complete"
+        ? `${currentChallenges.length} ${currentChallenges.length === 1 ? "risk" : "risks"} reviewed`
+        : risksStatus === "available"
+          ? "Optional"
+          : undefined,
     ),
     task(
       "tests",
@@ -300,13 +391,13 @@ export function buildSelectionJourney(state: SelectionDecisionState): SelectionJ
     ),
     task(
       "alternatives",
-      TOOL_NAMES.shape,
-      "Create variants from selected ideas or generate a small additional batch.",
+      TOOL_NAMES.branch,
+      "Branch a new direction from selected ideas, or generate a fresh batch of ideas.",
       // Always available: besides branching from shortlisted parents, this can
       // generate a fresh batch, which needs no shortlist. So it never locks, and
-      // with no authoritative variant artifact it never reads complete/refresh.
+      // with no authoritative branch artifact it never reads complete/refresh.
       "optional",
-      STEP_LOCK_HINTS.shape,
+      STEP_LOCK_HINTS.branch,
     ),
   ], recommendation);
 

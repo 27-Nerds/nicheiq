@@ -11,6 +11,8 @@
     target?: string;
     rel?: string;
     title?: string;
+    /** id of an element that explains the button's state. */
+    describedBy?: string;
     class?: string;
   }
 
@@ -24,18 +26,19 @@
     target,
     rel,
     title,
+    describedBy,
     class: className = "btn-primary",
   }: Props = $props();
 </script>
 
 {#if href}
-  <a {href} class={className} {target} {rel} {title} {onclick}>
+  <a {href} class={className} {target} {rel} {title} aria-describedby={describedBy} {onclick}>
     {#if Icon && iconPosition === "start"}<Icon class="w-4 h-4" />{/if}
     {label}
     {#if Icon && iconPosition === "end"}<Icon class="w-4 h-4" />{/if}
   </a>
 {:else}
-  <button {onclick} {disabled} class={className} {title}>
+  <button {onclick} {disabled} class={className} {title} aria-describedby={describedBy}>
     {#if Icon && iconPosition === "start"}<Icon class="w-4 h-4" />{/if}
     {label}
     {#if Icon && iconPosition === "end"}<Icon class="w-4 h-4" />{/if}

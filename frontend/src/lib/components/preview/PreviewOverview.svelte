@@ -1,6 +1,5 @@
 <script lang="ts">
   interface Props {
-    nicheName: string;
     nicheDescription?: string;
     discussionCount: number;
     painPointCount: number;
@@ -54,7 +53,7 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(13rem, 0.32fr);
     align-items: start;
-    gap: 1.18rem;
+    gap: var(--space-5);
   }
 
   .overview-copy {
@@ -63,18 +62,18 @@
 
   .overview-kicker {
     display: block;
-    margin-bottom: 0.36rem;
+    margin-bottom: var(--space-1-5);
     color: var(--color-text-muted);
     font-family: var(--font-mono);
-    font-size: 0.58rem;
-    font-weight: 780;
-    letter-spacing: 0.055em;
+    font-size: var(--text-xs);
+    font-weight: 700;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
   }
 
   .overview-summary {
     margin: 0;
-    font-size: 0.84rem;
+    font-size: var(--text-13);
     color: var(--color-text-secondary);
     line-height: 1.62;
     text-wrap: pretty;
@@ -83,11 +82,11 @@
   .overview-facts {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.34rem;
+    gap: var(--space-1-5);
     margin: 0;
-    padding: 0.36rem;
+    padding: var(--space-1-5);
     border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 48%, transparent);
-    border-radius: 0.72rem;
+    border-radius: var(--radius-lg);
     background:
       color-mix(in srgb, var(--color-bg-surface) 68%, transparent);
   }
@@ -96,15 +95,15 @@
     display: grid;
     gap: 0.08rem;
     min-width: 0;
-    padding: 0.48rem 0.52rem;
-    border-radius: 0.52rem;
+    padding: var(--space-2);
+    border-radius: var(--radius-md);
     background: color-mix(in srgb, var(--color-bg-elevated) 82%, transparent);
   }
 
   .overview-facts dt {
-    color: var(--color-text-muted);
-    font-size: 0.58rem;
-    font-weight: 720;
+    color: var(--color-text-secondary);
+    font-size: var(--text-xs);
+    font-weight: 700;
     line-height: 1.2;
   }
 
@@ -112,7 +111,7 @@
     margin: 0;
     color: var(--color-text-primary);
     font-family: var(--font-mono);
-    font-size: 0.9rem;
+    font-size: var(--text-base);
     font-weight: 800;
     font-variant-numeric: tabular-nums;
     line-height: 1.08;

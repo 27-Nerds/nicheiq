@@ -15,8 +15,7 @@
       /** Optional 4th axis: how non-obvious the idea is (1 − obviousness_score,
        *  falling back to novelty_score). */
       originality?: number | null;
-      /** Adaptive label for the 4th axis: "Originality" (obviousness-derived) or
-       *  "Novelty" (legacy fallback). Defaults to "Originality" when omitted. */
+      /** Label for the 4th axis. Defaults to "Distinctiveness" when omitted. */
       originalityLabel?: string | null;
       /** Optional 5th axis: can a solo dev ship it (solo_dev_feasibility). */
       soloDev?: number | null;
@@ -84,7 +83,7 @@
     if (hasFitRow) {
       out.push({ kind: "subhead", label: "Founder fit" });
       if (scores.originality != null && Number.isFinite(scores.originality)) {
-        out.push({ kind: "bar", label: scores.originalityLabel || "Originality", value: scores.originality, tone: "var(--color-text-muted)", description: SCORE_DEFINITIONS.originality });
+        out.push({ kind: "bar", label: scores.originalityLabel || "Distinctiveness", value: scores.originality, tone: "var(--color-text-muted)", description: SCORE_DEFINITIONS.originality });
       }
       if (scores.soloDev != null && Number.isFinite(scores.soloDev)) {
         out.push({ kind: "bar", label: "Solo-dev", value: scores.soloDev, tone: "var(--color-text-muted)", description: SCORE_DEFINITIONS.solo_dev });

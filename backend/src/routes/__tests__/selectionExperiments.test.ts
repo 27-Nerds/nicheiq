@@ -2,12 +2,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import express, { type Express } from 'express';
 import request from 'supertest';
 
+// These suites exercise route logic, not the decision-tools grant. The grant itself is
+// covered in middleware/__tests__/featureAccess.test.ts.
+vi.mock('../../middleware/featureAccess.js', () => ({
+  requireDecisionToolsAccess: (_req: any, _res: any, next: any) => next(),
+}));
+
 const mockJobFindFirst = vi.fn();
 const mockExperimentFindMany = vi.fn();
 const mockExperimentCreate = vi.fn();
 const mockExperimentFindFirst = vi.fn();
 const mockExperimentUpdate = vi.fn();
 const mockExperimentUpdateMany = vi.fn();
+const mockExperimentDeleteMany = vi.fn();
 const mockExperimentFindUnique = vi.fn();
 const mockChallengeFindFirst = vi.fn();
 const mockOwnerEvidenceFindMany = vi.fn();
@@ -25,6 +32,7 @@ vi.mock('../../services/db.js', () => ({
       findFirst: (...args: unknown[]) => mockExperimentFindFirst(...args),
       update: (...args: unknown[]) => mockExperimentUpdate(...args),
       updateMany: (...args: unknown[]) => mockExperimentUpdateMany(...args),
+      deleteMany: (...args: unknown[]) => mockExperimentDeleteMany(...args),
       findUnique: (...args: unknown[]) => mockExperimentFindUnique(...args),
     },
     selectionChallenge: { findFirst: (...args: unknown[]) => mockChallengeFindFirst(...args) },
@@ -123,6 +131,7 @@ let app: Express;
 beforeEach(async () => {
   vi.clearAllMocks();
   mockExperimentUpdateMany.mockResolvedValue({ count: 1 });
+  mockExperimentDeleteMany.mockResolvedValue({ count: 1 });
   mockOwnerEvidenceFindMany.mockResolvedValue([]);
   mockPreviewReport.mockResolvedValue(null);
   mockDiscoveryData.mockResolvedValue(null);
@@ -404,6 +413,84 @@ describe('selection experiment API', () => {
       where: { id: EXPERIMENT_ID, status: 'DRAFT' },
       data: { status: 'LOCKED', lockedAt: expect.any(Date) },
     });
+  });
+
+  it('deletes a draft with a compare-and-set guard', async () => {
+    mockExperimentFindFirst.mockResolvedValue({
+      ...draft,
+      id: EXPERIMENT_ID,
+      status: 'DRAFT',
+      job: { status: 'AWAITING_SELECTION' },
+    });
+
+    const response = await request(app)
+      .delete(`/api/jobs/${JOB_ID}/selection-experiments/${EXPERIMENT_ID}`)
+      .set(headers);
+
+    expect(response.status).toBe(204);
+    expect(mockExperimentDeleteMany).toHaveBeenCalledWith({
+      where: { id: EXPERIMENT_ID, status: 'DRAFT' },
+    });
+  });
+
+  it('never deletes a locked precommitment', async () => {
+    mockExperimentFindFirst.mockResolvedValue({
+      ...draft,
+      id: EXPERIMENT_ID,
+      status: 'LOCKED',
+      job: { status: 'AWAITING_SELECTION' },
+    });
+
+    const response = await request(app)
+      .delete(`/api/jobs/${JOB_ID}/selection-experiments/${EXPERIMENT_ID}`)
+      .set(headers);
+
+    expect(response.status).toBe(409);
+    expect(response.body.error).toContain('locked brief');
+    expect(mockExperimentDeleteMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects deleting a draft while the job is not in idea selection', async () => {
+    mockExperimentFindFirst.mockResolvedValue({
+      ...draft,
+      id: EXPERIMENT_ID,
+      status: 'DRAFT',
+      job: { status: 'REGENERATING' },
+    });
+
+    const response = await request(app)
+      .delete(`/api/jobs/${JOB_ID}/selection-experiments/${EXPERIMENT_ID}`)
+      .set(headers);
+
+    expect(response.status).toBe(409);
+    expect(mockExperimentDeleteMany).not.toHaveBeenCalled();
+  });
+
+  it('does not reveal another owner\'s experiment on delete', async () => {
+    mockExperimentFindFirst.mockResolvedValue(null);
+
+    const response = await request(app)
+      .delete(`/api/jobs/${JOB_ID}/selection-experiments/${EXPERIMENT_ID}`)
+      .set(headers);
+
+    expect(response.status).toBe(404);
+    expect(mockExperimentDeleteMany).not.toHaveBeenCalled();
+  });
+
+  it('reports a lost delete race instead of claiming success', async () => {
+    mockExperimentFindFirst.mockResolvedValue({
+      ...draft,
+      id: EXPERIMENT_ID,
+      status: 'DRAFT',
+      job: { status: 'AWAITING_SELECTION' },
+    });
+    mockExperimentDeleteMany.mockResolvedValue({ count: 0 });
+
+    const response = await request(app)
+      .delete(`/api/jobs/${JOB_ID}/selection-experiments/${EXPERIMENT_ID}`)
+      .set(headers);
+
+    expect(response.status).toBe(409);
   });
 
   it('does not reveal another owner\'s experiment', async () => {

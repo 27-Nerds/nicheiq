@@ -14,9 +14,9 @@ const ANGLE_LABELS: Record<string, string> = {
 
 const ANGLE_DESCRIPTIONS: Record<string, string> = {
   distribution_seo:
-    "Wins by being found — its edge is how it represents, slices, or keeps data fresh, not a novel mechanism. Low mechanism-novelty isn't a flaw here.",
+    "Wins by being found — its edge is how it represents, slices, or keeps data fresh, not an unusual mechanism. A familiar mechanism is not a flaw here.",
   novel_differentiation:
-    "Wins on a novel mechanism or insight that rivals can't easily copy — the mechanism is the moat.",
+    "Wins on a distinct mechanism or insight that rivals can't easily copy — the mechanism is the moat.",
   vertical_workflow:
     "Wins by owning a deep workflow for a specific user — the edge is a workflow step rivals miss, plus the switching cost it creates.",
 };

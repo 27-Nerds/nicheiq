@@ -3,6 +3,7 @@ import { JobStatus, Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { CONFIG } from '../config.js';
 import { requireInternalAuth, type AuthenticatedRequest } from '../middleware/auth.js';
+import { requireDecisionToolsAccess } from '../middleware/featureAccess.js';
 import { prisma } from '../services/db.js';
 import {
   founderFitFingerprint,
@@ -28,7 +29,7 @@ const jobSelect = {
   updatedAt: true,
 } as const;
 
-founderFitRouter.get('/:jobId/founder-fit', requireInternalAuth, async (req: AuthenticatedRequest, res: Response) => {
+founderFitRouter.get('/:jobId/founder-fit', requireInternalAuth, requireDecisionToolsAccess, async (req: AuthenticatedRequest, res: Response) => {
   const params = JobParamsSchema.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: 'Invalid job ID format' });
@@ -59,7 +60,7 @@ founderFitRouter.get('/:jobId/founder-fit', requireInternalAuth, async (req: Aut
   }
 });
 
-founderFitRouter.post('/:jobId/founder-fit', requireInternalAuth, async (req: AuthenticatedRequest, res: Response) => {
+founderFitRouter.post('/:jobId/founder-fit', requireInternalAuth, requireDecisionToolsAccess, async (req: AuthenticatedRequest, res: Response) => {
   const params = JobParamsSchema.safeParse(req.params);
   const input = FounderFitRequestSchema.safeParse(req.body);
   if (!params.success || !input.success) {

@@ -21,7 +21,7 @@
       label: 'Discovery',
       state: (currentStep === 'discovery' ? 'active'
         : 'done') as StepState,
-      stat: discussionCount > 0 ? `${discussionCount.toLocaleString()} posts` : undefined,
+      stat: discussionCount > 0 ? `${discussionCount.toLocaleString()} discussions` : undefined,
     },
     {
       id: 'selection',
@@ -106,7 +106,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     font-weight: 600;
     font-variant-numeric: tabular-nums;
     transition: background-color 300ms ease, border-color 300ms ease, color 300ms ease;
@@ -114,7 +114,7 @@
 
   .step-dot--done {
     background: var(--color-accent);
-    color: white;
+    color: var(--color-text-on-accent);
   }
 
   .step-dot--active {
@@ -130,7 +130,7 @@
   }
 
   .step-num {
-    font-size: 0.6875rem;
+    font-size: var(--text-11);
   }
 
   .step-line {
@@ -147,7 +147,7 @@
 
   .step-label {
     font-family: var(--font-display);
-    font-size: 0.6875rem;
+    font-size: var(--text-11);
     font-weight: 600;
     letter-spacing: 0.02em;
   }
@@ -177,7 +177,7 @@
     display: flex;
     align-items: center;
     gap: 0.375rem;
-    font-size: 0.8125rem;
+    font-size: var(--text-13);
     color: var(--color-text-muted);
     font-variant-numeric: tabular-nums;
   }

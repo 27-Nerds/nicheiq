@@ -95,7 +95,7 @@
         annotationAnchor: `selection:founder-fit-reshape:${source.result.ideaId}:${source.result.ideaRevision}`,
         helpTitle: "Before you evaluate",
         helpBody:
-          "Turn the recorded conflict into one smaller variant, scored from scratch as its own idea. Review the recheck list first: those items are the child’s fresh burden of proof; parent evidence stays with the parent. Clear the market-fit bar and the variant joins your ranked candidates.",
+          "Turn the recorded conflict into one smaller variant, scored from scratch as its own idea. Review the recheck list first: those items are the child’s fresh burden of proof; parent evidence stays with the parent. Clear the market-fit bar and the variant joins your ranked ideas.",
         loadingText: "Preparing one smaller variant…",
         createError: "Could not prepare a constraint-led variant.",
         beforeLabel: "Before · parent",

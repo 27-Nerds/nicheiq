@@ -8,13 +8,14 @@
   // shadows/animation/decoration) matches DocketEmpty / JobHeroAside.
   import Button from "$lib/components/ui/Button.svelte";
   import Breadcrumb from "$lib/components/ui/Breadcrumb.svelte";
+  import ConfirmGate from "$lib/components/ui/ConfirmGate.svelte";
   import SelectedSolutionsSummary from "$lib/components/SelectedSolutionsSummary.svelte";
   import { LayoutDashboard, Library, ArrowRight } from "lucide-svelte";
   import { IDEAS_HUB_PATH, painPointPath } from "$lib/utils/urls";
   import { scaleSeverity, type CatalogTopPainPoint } from "$lib/types/publicCatalog";
   import { IDEA_ICON, PAIN_ICON } from "$lib/config/entity-icons";
   import { getAdjustedStageCounts } from "$lib/utils/stages";
-  import type { SolutionPreview } from "$lib/types/job";
+  import type { SelectionDraftItem, SolutionPreview } from "$lib/types/job";
 
   interface Props {
     phase: "discovery" | "deep_research";
@@ -32,8 +33,10 @@
     queuePosition?: number;
     catalogPainPoints?: CatalogTopPainPoint[];
     selectedNames?: string[];
+    selectedItems?: SelectionDraftItem[];
     solutionIdeas?: SolutionPreview[];
     primaryWinner?: string | null;
+    jobId?: string;
     onCancel?: () => void;
     cancelling?: boolean;
   }
@@ -53,8 +56,10 @@
     queuePosition,
     catalogPainPoints = [],
     selectedNames = [],
+    selectedItems = [],
     solutionIdeas = [],
     primaryWinner = null,
+    jobId,
     onCancel,
     cancelling = false,
   }: Props = $props();
@@ -198,16 +203,35 @@
         />
       </div>
       {#if onCancel}
-        <button type="button" class="rp-cancel" onclick={onCancel} disabled={cancelling}>
-          {cancelling ? "Cancelling…" : "Cancel research"}
-        </button>
+        <!-- Cancel is destructive (run stops; refund settles per billing contract) — armed
+             two-step ConfirmGate, never an immediate POST. Consequence line verified against
+             backend/src/services/jobService.ts cancelJob(): prepaid runs refund the discovery
+             charge; segment-billed runs refund every segment no worker has started. -->
+        <div class="rp-cancel-gate">
+          <ConfirmGate
+            label="Cancel research"
+            confirmLabel="Stop this run"
+            variant="free"
+            consequence="RUN STOPS · UNUSED CREDITS REFUNDED"
+            busy={cancelling}
+            loadingText="Cancelling…"
+            onConfirm={onCancel}
+          />
+        </div>
       {/if}
     </div>
   </section>
 
   {#if !isDiscovery && selectedNames.length > 0}
     <section class="rp-selections">
-      <SelectedSolutionsSummary {selectedNames} {solutionIdeas} {primaryWinner} status={jobStatus} />
+      <SelectedSolutionsSummary
+        {selectedNames}
+        {selectedItems}
+        {solutionIdeas}
+        {primaryWinner}
+        {jobId}
+        status={jobStatus}
+      />
     </section>
   {/if}
 
@@ -275,7 +299,7 @@
 
   .rp-kicker {
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: var(--text-xs);
     text-transform: uppercase;
     letter-spacing: 0.08em;
     font-weight: 600;
@@ -285,7 +309,7 @@
 
   .rp-niche {
     font-family: var(--font-display);
-    font-size: clamp(1.75rem, 4vw, 2.5rem);
+    font-size: var(--text-4xl);
     font-weight: 700;
     line-height: 1.12;
     letter-spacing: -0.02em;
@@ -299,10 +323,10 @@
   .rp-provenance {
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: var(--space-1-5);
     margin: 0 0 1.25rem;
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: var(--text-11);
     letter-spacing: 0.02em;
     color: var(--color-text-muted);
   }
@@ -320,7 +344,7 @@
     width: 100%;
     max-width: 480px;
     margin: 0 0 1.5rem;
-    padding: 0.75rem 0.875rem;
+    padding: var(--space-3) var(--space-3);
     background: color-mix(in srgb, var(--color-bg-surface) 76%, transparent);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
@@ -362,19 +386,19 @@
   .rp-live-copy strong {
     overflow: hidden;
     font-family: var(--font-display);
-    font-size: 0.875rem;
-    font-weight: 650;
+    font-size: var(--text-base);
+    font-weight: 600;
     color: var(--color-text-primary);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
   .rp-live-copy span {
-    font-size: 0.6875rem;
-    color: var(--color-text-muted);
+    font-size: var(--text-11);
+    color: var(--color-text-secondary);
   }
   .rp-live-value {
     font-family: var(--font-mono);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     font-weight: 700;
     font-variant-numeric: tabular-nums;
     color: var(--color-accent-dark);
@@ -403,20 +427,20 @@
   .rp-seg-meta {
     display: flex;
     align-items: baseline;
-    gap: 0.35rem;
+    gap: var(--space-1-5);
     font-family: var(--font-mono);
     text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.07em;
     white-space: nowrap;
   }
   .rp-seg-idx {
-    font-size: 9px;
+    font-size: var(--text-xs);
     font-weight: 600;
     color: var(--color-text-muted);
     opacity: 0.6;
   }
   .rp-seg-label {
-    font-size: 10px;
+    font-size: var(--text-xs);
     font-weight: 600;
     color: var(--color-text-muted);
     overflow: hidden;
@@ -488,11 +512,11 @@
 
   .rp-stage {
     font-family: var(--font-mono);
-    font-size: 0.8125rem;
+    font-size: var(--text-13);
     font-variant-numeric: tabular-nums;
     letter-spacing: 0.02em;
     color: var(--color-text-secondary);
-    margin: 0 0 1.75rem;
+    margin: 0 0 var(--space-6);
   }
 
   /* ── Orchestrated load reveal (one staggered cascade) ── */
@@ -550,7 +574,7 @@
 
   /* ── Reassurance ── */
   .rp-body {
-    font-size: 0.9375rem;
+    font-size: var(--text-base);
     line-height: 1.65;
     color: var(--color-text-secondary);
     max-width: 52ch;
@@ -584,29 +608,18 @@
   /* Lighter than the default btn-secondary for this calm waiting screen, and no
      hover lift (keep the accent border/colour hover). */
   .rp-nav :global(.btn-secondary) {
-    padding: 0.625rem 1.125rem;
-    font-size: var(--text-sm, 0.875rem);
+    padding: var(--space-2) var(--space-4);
+    font-size: var(--text-sm);
   }
   .rp-nav :global(.btn-secondary:hover) {
     transform: none;
   }
-  .rp-cancel {
-    font-family: var(--font-body);
-    font-size: 0.8125rem;
-    font-weight: 500;
-    color: var(--color-text-muted);
-    background: transparent;
-    border: 0;
-    cursor: pointer;
-    padding: 6px 10px;
-    transition: color var(--duration-fast, 150ms) ease;
+  .rp-cancel-gate {
+    display: flex;
+    justify-content: center;
   }
-  .rp-cancel:hover:not(:disabled) {
-    color: var(--color-error, #ef4444);
-  }
-  .rp-cancel:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+  .research-progress--embedded .rp-cancel-gate {
+    justify-content: flex-start;
   }
 
   /* ── Phase-2 selected solutions ── */
@@ -622,7 +635,7 @@
   .rp-explore-title {
     margin: 0 0 1rem;
     font-family: var(--font-display);
-    font-size: 1.125rem;
+    font-size: var(--text-xl);
     font-weight: 600;
     letter-spacing: -0.01em;
     color: var(--color-text-primary);
@@ -639,7 +652,7 @@
     align-items: baseline;
     justify-content: space-between;
     gap: 1rem;
-    padding: 0.875rem 0.5rem;
+    padding: var(--space-3) var(--space-2);
     border-bottom: 1px solid var(--color-border);
     text-decoration: none;
     transition: background-color var(--duration-fast, 150ms) ease;
@@ -649,7 +662,7 @@
   }
   .rp-row-title {
     font-family: var(--font-display);
-    font-size: 0.9375rem;
+    font-size: var(--text-base);
     font-weight: 500;
     line-height: 1.4;
     color: var(--color-text-primary);
@@ -663,7 +676,7 @@
     align-items: center;
     gap: 0.5rem;
     font-family: var(--font-mono);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     font-variant-numeric: tabular-nums;
     color: var(--color-text-muted);
     white-space: nowrap;
@@ -679,7 +692,7 @@
 
   @media (max-width: 480px) {
     .research-progress--embedded .rp-hero {
-      padding: 1.125rem 1rem 1.25rem;
+      padding: var(--space-4) var(--space-4) var(--space-5);
       border-radius: var(--radius-lg);
       box-shadow: none;
     }

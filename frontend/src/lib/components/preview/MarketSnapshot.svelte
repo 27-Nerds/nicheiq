@@ -1,15 +1,15 @@
 <script lang="ts">
   interface Props {
-    postsAnalyzed: number;
-    subredditCount: number;
+    discussionsAnalyzed: number;
+    communityCount: number;
     totalEngagement: number;
     trend: { month: string; count: number }[];
     growthPct: number | null;
   }
 
   let {
-    postsAnalyzed,
-    subredditCount,
+    discussionsAnalyzed,
+    communityCount,
     totalEngagement,
     trend,
     growthPct,
@@ -22,7 +22,8 @@
   function formatMonth(month: string): string {
     const [year, m] = month.split('-');
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return `${monthNames[parseInt(m, 10) - 1]} '${year.slice(2)}`;
+    const name = monthNames[parseInt(m, 10) - 1];
+    return name && year ? `${name} '${year.slice(2)}` : month;
   }
 
   function formatEngagement(n: number): string {
@@ -42,17 +43,25 @@
         <span class="ms-growth-value" class:is-negative={growthPct < 0}>
           {growthPct >= 0 ? '\u2191' : '\u2193'} {Math.abs(growthPct)}%
         </span>
-        <span class="ms-growth-label">discussion growth</span>
+        <span class="ms-growth-label">discussion volume</span>
+        <span class="ms-growth-period">Recent 6 months vs previous 6</span>
       </div>
     {/if}
 
     <p class="ms-metrics">
-      {postsAnalyzed} posts &middot; {subredditCount} subreddits{#if totalEngagement > 0} &middot; {formatEngagement(totalEngagement)} upvotes{/if}
+      {discussionsAnalyzed.toLocaleString()} discussions &middot;
+      {communityCount.toLocaleString()} communities{#if totalEngagement > 0}
+        &middot; {formatEngagement(totalEngagement)} engagement signals
+      {/if}
     </p>
   </div>
 
   {#if showChart}
-    <div class="ms-chart" role="img" aria-label="Monthly discussion trend">
+    <div
+      class="ms-chart"
+      role="img"
+      aria-label={`Monthly captured discussion counts from ${firstMonth} to ${lastMonth}. Highest month: ${maxCount} discussions.`}
+    >
       <div class="ms-plot">
         <div class="ms-gridlines" aria-hidden="true">
           <span class="ms-gridline ms-gridline--top">
@@ -71,7 +80,7 @@
               class="ms-bar"
               class:ms-bar--zero={point.count === 0}
               style="height: {point.count > 0 ? `${Math.max(pct, 3)}%` : '2px'}; --bar-mix: {Math.round(30 + intensity * 70)}%; animation-delay: {i * 25}ms"
-              title="{formatMonth(point.month)}: {point.count} posts"
+              title="{formatMonth(point.month)}: {point.count} discussions"
             ></div>
           {/each}
         </div>
@@ -81,6 +90,24 @@
         <span>{lastMonth}</span>
       </div>
     </div>
+    <details class="ms-data">
+      <summary>View monthly discussion counts</summary>
+      <div class="ms-data-scroll">
+        <table>
+          <caption class="sr-only">Captured discussion counts by month</caption>
+          <thead>
+            <tr><th scope="col">Month</th><th scope="col">Discussions</th></tr>
+          </thead>
+          <tbody>
+            {#each trend as point}
+              <tr><th scope="row">{formatMonth(point.month)}</th><td>{point.count}</td></tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  {:else if trend.length > 0}
+    <p class="ms-empty">Not enough dated discussions to show a reliable monthly trend.</p>
   {/if}
 </div>
 
@@ -88,26 +115,26 @@
   .ms {
     display: flex;
     flex-direction: column;
-    gap: 0.76rem;
+    gap: var(--space-3);
   }
 
   .ms-header {
     display: flex;
     align-items: flex-end;
     justify-content: space-between;
-    gap: 1rem;
+    gap: var(--space-4);
   }
 
   .ms-growth {
     display: grid;
-    gap: 0.04rem;
+    gap: var(--space-1);
   }
 
   /* Color encodes the sign — rising discussion volume is a positive signal (green),
      falling is a caution (amber). Orange stays reserved for brand/interactive. */
   .ms-growth-value {
     font-family: var(--font-display);
-    font-size: 1.5rem;
+    font-size: var(--text-2xl);
     font-weight: 800;
     color: var(--color-success-dark);
     font-variant-numeric: tabular-nums;
@@ -119,14 +146,20 @@
 
   .ms-growth-label {
     font-family: var(--font-body);
-    font-size: 0.6875rem;
+    font-size: var(--text-11);
     font-weight: 600;
     color: var(--color-text-muted);
   }
 
+  .ms-growth-period {
+    color: var(--color-text-muted);
+    font-size: var(--text-11);
+    line-height: var(--leading-snug);
+  }
+
   .ms-metrics {
     font-family: var(--font-body);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     color: var(--color-text-secondary);
     margin: 0;
     font-variant-numeric: tabular-nums;
@@ -134,9 +167,9 @@
   }
 
   .ms-chart {
-    padding: 0.62rem 0.68rem 0.48rem;
+    padding: var(--space-3) var(--space-3) var(--space-2);
     border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 44%, transparent);
-    border-radius: 0.75rem;
+    border-radius: var(--radius-lg);
     background:
       color-mix(in srgb, var(--color-bg-surface) 72%, transparent);
   }
@@ -171,7 +204,7 @@
     margin-left: 0.25rem;
     top: -0.5em;
     font-family: var(--font-mono);
-    font-size: 0.5625rem;
+    font-size: var(--text-xs);
     color: var(--color-text-secondary);
     font-variant-numeric: tabular-nums;
   }
@@ -179,7 +212,7 @@
   .ms-bars {
     display: flex;
     align-items: flex-end;
-    gap: 3px;
+    gap: var(--space-1);
     height: 100%;
     position: relative;
   }
@@ -206,15 +239,58 @@
   .ms-axis {
     display: flex;
     justify-content: space-between;
-    margin-top: 0.42rem;
+    margin-top: var(--space-1-5);
   }
 
   .ms-axis span {
     font-family: var(--font-mono);
-    font-size: 0.5625rem;
+    font-size: var(--text-xs);
     font-weight: 500;
     color: var(--color-text-muted);
     letter-spacing: 0.02em;
+  }
+
+  .ms-data {
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+  }
+
+  .ms-data summary {
+    width: fit-content;
+    cursor: pointer;
+    font-weight: 600;
+  }
+
+  .ms-data-scroll {
+    max-width: 28rem;
+    margin-top: var(--space-2);
+    overflow-x: auto;
+  }
+
+  .ms-data table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .ms-data th,
+  .ms-data td {
+    padding: var(--space-2);
+    border-bottom: 1px solid var(--color-border);
+    text-align: left;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .ms-data td {
+    text-align: right;
+  }
+
+  .ms-empty {
+    margin: 0;
+    padding: var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    color: var(--color-text-secondary);
+    font-size: var(--text-13);
   }
 
   @media (max-width: 640px) {
@@ -225,6 +301,12 @@
 
     .ms-metrics {
       text-align: left;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ms-bar {
+      animation: none;
     }
   }
 </style>

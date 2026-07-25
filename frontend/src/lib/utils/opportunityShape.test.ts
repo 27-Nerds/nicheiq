@@ -37,7 +37,7 @@ describe('opportunityShape', () => {
       idea(null), idea(null),
     ])!;
     expect(r.counts).toEqual({ novel_differentiation: 3 });
-    expect(r.line).toContain('Novelty-leaning');
+    expect(r.line).toContain('Differentiation-leaning');
     expect(r.line).toContain('3 of 3');
   });
 });

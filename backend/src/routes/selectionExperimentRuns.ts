@@ -12,6 +12,7 @@ import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { CONFIG } from '../config.js';
 import { requireInternalAuth, type AuthenticatedRequest } from '../middleware/auth.js';
+import { requireDecisionToolsAccess } from '../middleware/featureAccess.js';
 import { prisma } from '../services/db.js';
 import { calculateSelectionExperimentResults } from '../services/selectionExperimentResultService.js';
 import {
@@ -134,6 +135,7 @@ function serializeRun(run: {
 selectionExperimentRunsRouter.post(
   '/:jobId/selection-experiments/:experimentId/run',
   requireInternalAuth,
+  requireDecisionToolsAccess,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const params = OwnerParamsSchema.parse(req.params);
@@ -207,6 +209,7 @@ selectionExperimentRunsRouter.post(
 selectionExperimentRunsRouter.post(
   '/:jobId/selection-experiments/:experimentId/run/close',
   requireInternalAuth,
+  requireDecisionToolsAccess,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const params = OwnerParamsSchema.parse(req.params);
@@ -257,6 +260,7 @@ selectionExperimentRunsRouter.post(
 selectionExperimentRunsRouter.get(
   '/:jobId/selection-experiments/:experimentId/results',
   requireInternalAuth,
+  requireDecisionToolsAccess,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const params = OwnerParamsSchema.parse(req.params);

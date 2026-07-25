@@ -26,6 +26,12 @@ function load(): ChatWindowState {
 
 let _state = $state<ChatWindowState>(load());
 
+// Unsent composer text, per job. The overlay unmounts its ChatThread on close
+// ({#if open}), which used to destroy the draft with it — Esc or a scrim click
+// silently ate whatever the user was writing. Session-scoped on purpose: a
+// draft should survive close/reopen, not a full page reload.
+const _drafts = $state<Record<string, string>>({});
+
 function persist() {
   if (typeof localStorage === "undefined") return;
   // Never persist `expanded` — see `load()`.
@@ -61,5 +67,16 @@ export const chatPanel = {
   toggleExpanded() {
     _state = _state === "expanded" ? "docked" : "expanded";
     persist();
+  },
+
+  /** The unsent composer draft for a job — "" when none. */
+  draft(jobId: string): string {
+    return _drafts[jobId] ?? "";
+  },
+  /** Mirror of the composer's text. Empty text clears the entry (a sent or
+   *  deliberately erased draft must not resurrect on reopen). */
+  setDraft(jobId: string, text: string) {
+    if (text) _drafts[jobId] = text;
+    else delete _drafts[jobId];
   },
 };

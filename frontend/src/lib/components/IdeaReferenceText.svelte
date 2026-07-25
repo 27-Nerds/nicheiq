@@ -53,7 +53,9 @@
         // No aria-label: it would replace the visible idea name in the
         // accessibility tree and drop it from the sentence. The visible text is
         // the accessible name; an sr-only suffix discloses the affordance.
-        button.textContent = segment.text;
+        // Render the reference's resolved label (display title), not the raw
+        // matched substring — LLM prose may cite internal codenames.
+        button.textContent = segment.reference.label || segment.text;
         const hint = document.createElement("span");
         hint.className = "sr-only";
         hint.textContent = ", open details";
@@ -95,7 +97,7 @@
         type="button"
         class="idea-reference-link"
         onclick={() => onOpen?.(segment.reference)}
-      >{segment.text}<span class="sr-only">, open details</span></button>
+      >{segment.reference.label || segment.text}<span class="sr-only">, open details</span></button>
     {:else}{segment.text}{/if}
   {/each}
 {/if}

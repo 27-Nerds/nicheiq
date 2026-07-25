@@ -101,7 +101,10 @@
     /** Starter questions derived from state by the caller. Used only before the user
      *  starts this conversation; once a turn exists, only analyst-authored follow-ups
      *  can render. This prevents a failed suggestion call from snapping back to an
-     *  unrelated screen-level topic. Clicking one sends it. */
+     *  unrelated screen-level topic. Clicking one PREFILLS the composer and focuses
+     *  it — never auto-sends, because each send spends one of the run's limited
+     *  turns; the user reviews/edits and presses Enter themselves. Follow-up chips
+     *  behave the same way. */
     starters?: string[];
     /** Starter-chip plumbing for callers that trigger a prompt from OUTSIDE the panel
      *  — when set to a non-null string it PREFILLS the composer and moves focus there
@@ -137,6 +140,12 @@
      *  archived and gate-level threads do not own an idea-details surface. */
     ideaReferences?: readonly IdeaReference[];
     onOpenIdeaReference?: (reference: IdeaReference) => void;
+    /** Draft persistence for hosts that unmount this thread on close (the
+     *  selection overlay): `initialDraft` seeds the composer on mount, and
+     *  `onDraftChange` mirrors every edit back so an Esc/scrim-click close
+     *  never destroys what the user was writing. */
+    initialDraft?: string;
+    onDraftChange?: (text: string) => void;
   }
 
   let {
@@ -166,6 +175,8 @@
     weakPool = $bindable(false),
     ideaReferences = [],
     onOpenIdeaReference,
+    initialDraft = "",
+    onDraftChange,
     readOnly = false,
     showHistoryRetry = true,
     onCollapse,
@@ -181,7 +192,7 @@
 
   const FOCUS_LABEL: Record<IdeaFocus, string> = {
     auto: "Balanced",
-    novelty: "Novelty",
+    novelty: "Differentiation",
     distribution: "Distribution",
   };
 
@@ -259,7 +270,10 @@
   const historyLoaded = $derived(chatLedger.historyLoaded);
   const loadFailed = $derived(chatLedger.loadFailed);
   let locked = $state(false); // 402 on send — not entitled
-  let input = $state("");
+  // Seeded from the host-persisted draft ONCE at mount (the host remounts this
+  // component per open, so a live two-way sync would be circular for no gain).
+  // svelte-ignore state_referenced_locally
+  let input = $state(initialDraft);
   let sending = $state(false);
   let hasStreamStarted = $state(false);
   let streamingContent = $state("");
@@ -296,6 +310,12 @@
 
   $effect(() => {
     void loadHistory();
+  });
+
+  // Every edit is mirrored to the host, so a close that unmounts this thread
+  // (Esc, scrim click) can hand the exact draft back to the next mount.
+  $effect(() => {
+    onDraftChange?.(input);
   });
 
   $effect(() => {
@@ -528,11 +548,14 @@
     }
   }
 
-  /** A suggested question is just a message the user didn't have to type. */
-  function sendStarter(chip: string) {
+  /** A suggested question is a DRAFT the user didn't have to type — it fills the
+   *  composer and moves focus there. Sending still costs one of the run's limited
+   *  turns, so the user reviews/edits and presses Enter themselves (same contract
+   *  as the external `starterPrompt` plumbing above). */
+  function prefillStarter(chip: string) {
     if (sending || locked || atTurnCap || operationBlocked || loadFailed) return;
     input = chip;
-    void send();
+    void tick().then(() => composerRef?.focus());
   }
 
   async function applyPatch(msg: ThreadMessage) {
@@ -885,7 +908,7 @@
                 <div class="seed-card-head" aria-live="polite" aria-atomic="true">
                   {#if synthesisOutcome === "accepted"}
                     <Check class="seed-card-icon seed-card-icon--accepted" aria-hidden="true" />
-                    <span class="seed-card-title">Variant evaluated. Added to ranked candidates.</span>
+                    <span class="seed-card-title">Variant evaluated. Added to ranked ideas.</span>
                   {:else if synthesisOutcome === "demoted"}
                     <span class="seed-card-title">Variant evaluated. It didn't clear the market-fit bar.</span>
                   {:else if synthesisOutcome === "failed" || synthesisOutcome === "refunded"}
@@ -939,7 +962,7 @@
                         <span class="seed-card-result-score">Market fit {Math.round(synthesisResult.market_fit_score * 100)}%</span>
                       {/if}
                     {:else}
-                      <p>{synthesisOutcome === "accepted" ? "The evaluated variant is in your ranked candidates." : "The evaluated variant is in Examined & ruled out."}</p>
+                      <p>{synthesisOutcome === "accepted" ? "The evaluated variant is in your ranked ideas." : "The evaluated variant is in Examined & ruled out."}</p>
                     {/if}
                     {#if !readOnly}
                       <a
@@ -1030,7 +1053,7 @@
                 <div class="seed-card-head" aria-live="polite" aria-atomic="true">
                   {#if seedOutcome === "accepted"}
                     <Check class="seed-card-icon seed-card-icon--accepted" aria-hidden="true" />
-                    <span class="seed-card-title">Evaluation complete. Added to ranked candidates.</span>
+                    <span class="seed-card-title">Evaluation complete. Added to ranked ideas.</span>
                   {:else if seedOutcome === "demoted"}
                     <span class="seed-card-title">We tested your idea. It didn't clear the market-fit bar.</span>
                   {:else if seedOutcome === "failed" || seedOutcome === "refunded"}
@@ -1075,7 +1098,7 @@
                         <span class="seed-card-result-score">Market fit {Math.round(seedResult.market_fit_score * 100)}%</span>
                       {/if}
                     {:else}
-                      <p>{seedOutcome === "accepted" ? "The evaluated result is in your ranked candidates." : "The evaluated result is in Examined & ruled out."}</p>
+                      <p>{seedOutcome === "accepted" ? "The evaluated result is in your ranked ideas." : "The evaluated result is in Examined & ruled out."}</p>
                     {/if}
                     {#if !readOnly}
                       <a
@@ -1228,7 +1251,7 @@
         <div class="followups" role="group" aria-label="Suggested questions">
           <h3 class="followups-title">Continue exploring</h3>
           {#each activeStarters as chip (chip)}
-            <button type="button" class="followup" onclick={() => sendStarter(chip)}>
+            <button type="button" class="followup" onclick={() => prefillStarter(chip)}>
               <span>{chip}</span>
               <ArrowRight class="followup-icon" aria-hidden="true" />
             </button>
@@ -1300,10 +1323,13 @@
 <style>
   .chat-thread {
     --chat-motion: cubic-bezier(0.32, 0.72, 0, 1);
-    /* Warm parchment tint — the ledger's own identity, no token equivalent
-       exists for it; mixed off the real bg tokens rather than a flat hex. */
-    --chat-paper: color-mix(in srgb, var(--color-bg-elevated) 96%, #eee6da);
-    --chat-wash: color-mix(in srgb, var(--color-bg-surface) 92%, #efe5d7);
+    /* Warm parchment tint — the ledger's own identity. No dedicated token exists
+       for it, and no raw hex is allowed: the warmth is the amber warning token
+       (the palette's closest warm hue) folded into the real bg tokens at low
+       strength, so it tracks any future palette change instead of drifting. */
+    --chat-warm-tint: color-mix(in srgb, var(--color-warning) 26%, var(--color-bg-elevated));
+    --chat-paper: color-mix(in srgb, var(--color-bg-elevated) 96%, var(--chat-warm-tint));
+    --chat-wash: color-mix(in srgb, var(--color-bg-surface) 92%, var(--chat-warm-tint));
     display: flex;
     flex-direction: column;
     gap: 0;
@@ -1425,7 +1451,7 @@
   }
   .chat-head-count-value {
     font-size: 0.75rem;
-    font-weight: 750;
+    font-weight: 700;
     color: var(--color-text-secondary);
   }
   .chat-head-count-copy {
@@ -1456,24 +1482,26 @@
   .chat-title {
     font-family: var(--font-display);
     font-size: 0.9375rem;
-    font-weight: 750;
+    font-weight: 700;
     line-height: 1.15;
     letter-spacing: -0.02em;
     color: var(--color-text-primary);
   }
+  /* House .tag recipe (DESIGN_SYSTEM.md §tags): 10px mono outline chip, never a
+     filled pill. Was a bespoke 9px accent-tinted badge — off the type scale. */
   .chat-grounding {
     display: inline-flex;
     align-items: center;
     gap: var(--space-1);
-    padding: 0.2rem 0.35rem;
-    background: color-mix(in srgb, var(--color-accent) 5%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-accent) 14%, transparent);
+    padding: 0.125rem 0.5rem;
+    border: 1px solid color-mix(in srgb, currentColor 40%, transparent);
     border-radius: var(--radius-md);
     color: var(--color-accent-dark);
     font-family: var(--font-mono);
-    font-size: 0.5625rem;
-    font-weight: 650;
-    letter-spacing: 0.025em;
+    font-size: var(--text-xs);
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
     white-space: nowrap;
   }
   .chat-grounding :global(.chat-grounding-icon) {
@@ -1728,7 +1756,7 @@
     padding-top: 0;
     font-family: var(--font-body);
     font-size: 0.6875rem;
-    font-weight: 650;
+    font-weight: 600;
     letter-spacing: 0.015em;
     color: var(--color-text-secondary);
   }
@@ -1814,7 +1842,7 @@
     margin: 1.15em 0 0.45em;
     color: var(--color-text-primary);
     font-family: var(--font-display);
-    font-weight: 650;
+    font-weight: 600;
     line-height: 1.3;
     letter-spacing: -0.015em;
   }
@@ -1843,7 +1871,7 @@
   }
   .entry-prose :global(li::marker) {
     color: var(--color-text-muted);
-    font-weight: 650;
+    font-weight: 600;
   }
   .entry-prose :global(li > p) {
     margin-bottom: 0.35em;
@@ -1857,7 +1885,7 @@
   }
   .entry-prose :global(strong) {
     color: var(--color-text-primary);
-    font-weight: 650;
+    font-weight: 600;
   }
   .chat-thread--focus .chat-list {
     padding-bottom: var(--space-2);
@@ -1873,10 +1901,6 @@
   }
   .chat-thread--focus .chat-title {
     font-size: 1.0625rem;
-  }
-  .chat-thread--focus .chat-grounding {
-    padding: 0.25rem 0.45rem;
-    font-size: 0.625rem;
   }
   .chat-thread--focus .chat-subtitle {
     font-size: 0.6875rem;
@@ -1898,7 +1922,7 @@
     padding-top: var(--space-1);
     font-family: var(--font-body);
     font-size: 0.625rem;
-    font-weight: 650;
+    font-weight: 600;
     letter-spacing: 0.015em;
     color: var(--color-text-muted);
   }
@@ -2258,7 +2282,7 @@
     border-radius: 999px;
     background: var(--color-bg-surface);
     font-size: 0.6875rem;
-    font-weight: 650;
+    font-weight: 600;
     color: var(--color-text-secondary);
   }
   .seed-card-result-link {
@@ -2402,9 +2426,11 @@
     padding: var(--space-3);
     border-top: 1px solid var(--color-border);
     background: color-mix(in srgb, var(--chat-wash) 82%, transparent);
-    /* Warm brown shadow tint to match the parchment identity above — no
-       token equivalent for this exact hue, kept as a documented color-mix. */
-    box-shadow: 0 -1rem 2.5rem color-mix(in srgb, #6f5539 6%, transparent);
+    /* Warm brown shadow tint to match the parchment identity above — derived
+       from the same amber token as --chat-warm-tint (darkened, then 6% alpha)
+       instead of a raw hex. */
+    box-shadow: 0 -1rem 2.5rem
+      color-mix(in srgb, color-mix(in srgb, var(--color-warning) 45%, black) 6%, transparent);
   }
 
   /* ═══ Follow-ups ═══
@@ -2417,7 +2443,7 @@
     padding: var(--space-3) var(--space-1) 0;
     background: transparent;
     border: 0;
-    border-top: 1px solid color-mix(in srgb, var(--color-border-emphasis) 46%, transparent);
+    border-top: 1px solid var(--color-border-emphasis);
     border-radius: 0;
   }
   .followups-title {
@@ -2425,10 +2451,14 @@
     padding: 0 0 var(--space-1-5);
     font-family: var(--font-body);
     font-size: 0.625rem;
-    font-weight: 650;
+    font-weight: 600;
     letter-spacing: 0.015em;
     color: var(--color-text-muted);
   }
+  /* List-row treatment at full strength: these chips are the main way into the
+     next question, so they get real hairlines and full-opacity secondary text —
+     the old 86%-alpha text on a 4%-alpha border was the least visible
+     affordance on the page. */
   .followup {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
@@ -2438,12 +2468,12 @@
     padding: 0.55rem 0;
     background: transparent;
     border: 0;
-    border-top: 1px solid color-mix(in srgb, var(--color-border-emphasis) 30%, transparent);
+    border-top: 1px solid var(--color-border);
     border-radius: 0;
-    color: color-mix(in srgb, var(--color-text-secondary) 86%, transparent);
+    color: var(--color-text-secondary);
     font-family: var(--font-body);
     font-size: 0.75rem;
-    font-weight: 450;
+    font-weight: 500;
     line-height: 1.35;
     text-align: left;
     cursor: pointer;
@@ -2478,9 +2508,6 @@
   /* Compact window: the whole panel steps down a notch — follow-ups, composer,
      proposal cards. A companion window is read at arm's length beside the table,
      not leaned into. */
-  .chat-thread--rail .followup {
-    font-size: 0.6875rem;
-  }
   .chat-thread--rail .proposal,
   .chat-thread--rail .receipt {
     padding: var(--space-3) var(--space-3);
@@ -2498,12 +2525,9 @@
   .chat-thread--rail .receipt-field dd {
     font-size: 0.6875rem;
   }
-  .chat-thread--rail .proposal-apply,
-  .chat-thread--rail .proposal-dismiss {
-    min-height: 2rem;
-    padding: var(--space-1-5) var(--space-3);
-    font-size: 0.6875rem;
-  }
+  /* Apply mutates workspace state — it keeps the full .ledger-btn footer scale
+     (12px/700, 2.25rem, min-width above) even in the compact rail, where the old
+     11px shrink left it SMALLER than the free-form cancels around it. */
   .chat-thread--rail :global(.composer textarea) {
     font-size: 0.75rem;
   }

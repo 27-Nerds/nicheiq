@@ -156,18 +156,23 @@ export const glossary: Record<string, GlossaryTerm> = {
 		definition: 'Strategy and plan for launching a product and acquiring customers',
 		category: 'technical'
 	},
+	DISTINCTIVENESS: {
+		term: 'Distinctiveness',
+		fullName: 'Idea Distinctiveness',
+		definition: 'How meaningfully the idea differs from obvious approaches and existing alternatives',
+		category: 'market'
+	},
+	// Compatibility aliases for older report/help references. New UI copy uses Distinctiveness.
 	ORIGINALITY: {
-		term: 'Originality',
-		fullName: 'Idea Originality',
-		definition: 'How non-obvious this idea is versus what most competent builders would propose for the same niche — higher means fewer people would independently arrive at it',
-		calculation: '1 − obviousness_score, where an independent novelty critic estimates the fraction of builders who would also propose the idea (falls back to the novelty score when obviousness is unavailable)',
+		term: 'Distinctiveness',
+		fullName: 'Idea Distinctiveness',
+		definition: 'How meaningfully the idea differs from obvious approaches and existing alternatives',
 		category: 'market'
 	},
 	NOVELTY: {
-		term: 'Novelty',
-		fullName: 'Idea Novelty',
-		definition: 'How fresh or differentiated this idea is. Shown on older reports that predate the Originality signal; newer ideas display Originality instead',
-		calculation: "The refiner's novelty_score (0-1, higher = more novel)",
+		term: 'Differentiation',
+		fullName: 'Differentiation Focus',
+		definition: 'A generation steer that favors distinct, defensible product mechanisms; it does not guarantee a high Distinctiveness rating',
 		category: 'market'
 	}
 };

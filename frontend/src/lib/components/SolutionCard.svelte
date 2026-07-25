@@ -9,8 +9,9 @@
   import { scoreRationale } from "$lib/utils/scoreRationale";
   import type { SolutionPreview } from "$lib/types/job";
   import {
-    computeCompositeScore,
+    displayCompositeScore,
     solutionStrengthBadge,
+    solutionPrimaryStrengthKey,
     solutionDisplayTitle,
     solutionCardDescription,
     fitLabel,
@@ -70,10 +71,10 @@
     }
   });
 
-  const compositeScore = $derived(computeCompositeScore(solution));
+  const compositeScore = $derived(displayCompositeScore(solution));
   const compositeWhy = $derived(scoreRationale(solution, "composite"));
   const superpower = $derived(solutionStrengthBadge(solution));
-  const strengthWhy = $derived(tagDescription(solution.tags?.primary_strength));
+  const strengthWhy = $derived(tagDescription(solutionPrimaryStrengthKey(solution)));
   const displayTitle = $derived(solutionDisplayTitle(solution));
   const cardDesc = $derived(solutionCardDescription(solution));
   const fit = $derived(fitLabel(solution.market_fit_score));
@@ -91,6 +92,7 @@
   });
 
   const scoreColor = $derived.by(() => {
+    if (compositeScore === null) return "var(--color-text-muted)";
     if (compositeScore >= 0.7) return "var(--color-success)";
     if (compositeScore >= 0.4) return "var(--color-warning)";
     return "var(--color-error)";
@@ -136,14 +138,20 @@
       {#snippet children()}
         <span class="score-metric">
           <span>Score</span>
-          <strong style:color={scoreColor}>{Math.round(compositeScore * 100)}</strong>
+          <strong
+            style:color={scoreColor}
+            aria-label={compositeScore === null ? "Not scored" : undefined}
+          >{compositeScore === null ? "--" : Math.round(compositeScore * 100)}</strong>
         </span>
       {/snippet}
     </Tooltip>
   {:else}
     <span class="score-metric">
       <span>Score</span>
-      <strong style:color={scoreColor}>{Math.round(compositeScore * 100)}</strong>
+      <strong
+        style:color={scoreColor}
+        aria-label={compositeScore === null ? "Not scored" : undefined}
+      >{compositeScore === null ? "--" : Math.round(compositeScore * 100)}</strong>
     </span>
   {/if}
 {/snippet}

@@ -7,8 +7,14 @@ group, so every facet is a fixed enum.
 - **Model:** `IdeaTags` in `src/nicheiq/models/solution_idea.py` (the `Literal` aliases there are
   the single source of truth for the vocabulary).
 - **Assembly:** `src/nicheiq/utils/idea_tags.py` — `derive_tag_facets(idea, llm_facets)`.
-- **Pipeline step:** `UnifiedSolutionCrew._apply_tags()` runs last in `execute_pipeline()` (after
-  feasibility + SEO-realism finalization, which mutate the scores tags are derived from).
+- **Generation finalization:** `UnifiedSolutionCrew.execute_pipeline()` clears every incoming
+  `tags` object and runs `_apply_tags()` after feasibility, parity, and SEO-realism work. This
+  prevents birth-path or pre-calibration tags from surviving after their source scores change.
+- **Report finalization:** `ReportGenerator._sync_solution_scores()` first replaces the report's
+  score fields with `ScoreAccessor`'s authoritative values, then calls `refresh_tag_facets()`
+  (which delegates to `derive_tag_facets()`).
+  Code-owned facets (`build_complexity`, `novelty_level`, `strengths`, and `primary_strength`) are
+  rebuilt from those values while the semantic LLM facets are preserved.
 - **Frontend:** `IdeaTags` in `frontend/src/lib/types/job.ts`; display labels in
   `frontend/src/lib/utils/ideaTagLabels.ts`; strength badge in `superpower.ts` /
   `solution-utils.ts`.
@@ -63,11 +69,12 @@ revisit if score distributions shift. Source: `derive_tag_facets`.
   score change; rendered as a "Pricing-shape mismatch" watch-out chip.
 - `build_complexity` ← `solo_dev_feasibility` (fallback `build_feasibility_score` → `technical_feasibility_score`):
   `≥0.78 low · 0.65–0.78 medium · <0.65 high`. Driven by the SAME field shown as the "Solo" score (and
-  used by the `solo-friendly` strength) so "Hard to build" can never contradict a high Solo number; the
+  used by the `solo-friendly` strength) so "Hard to run solo" can never contradict a high Solo number; the
   `low` cut is locked to the `solo-friendly` cutoff in `STRENGTH_CUTOFFS`, so the two stay consistent.
-- `novelty_level`: from `obviousness_score` (LOWER = more original, matching the "Originality"
-  header = 1 − obviousness): `≤0.30 → novel` (Orig ≥ 70), `≥0.60 → conventional` (Orig ≤ 40), else
-  `moderate`. Fallback to `novelty_score` (higher = more original): `≥0.70 → novel`,
+- `novelty_level`: from `obviousness_score` (LOWER = less obvious, matching the displayed
+  **Distinctiveness** value = 1 − obviousness): `≤0.30 → novel` (Distinctiveness ≥ 70),
+  `≥0.60 → conventional` (Distinctiveness ≤ 40), else `moderate`. Legacy data falls back to
+  `novelty_score` (higher = more novel): `≥0.70 → novel`,
   `≤0.40 → conventional`, else `moderate`.
 - pSEO: add `programmatic-seo` to `growth_channels` if `estimated_indexable_pages ≥ 500` or
   `seo_scalability_score ≥ 0.7`.
@@ -84,23 +91,24 @@ revisit if score distributions shift. Source: `derive_tag_facets`.
 An idea earns **each** strength whose score clears a fixed per-dimension cutoff (calibrated to
 ~top-third so a badge stays meaningful):
 
-| Strength | Score field | Cutoff |
-|---|---|---|
-| `market-fit` | `market_fit_score` | ≥ 0.82 |
-| `seo-power` | `seo_scalability_score` | ≥ 0.85 |
-| `innovator` | `novelty_score` | ≥ 0.70 |
-| `quick-build` | `technical_feasibility_score` | ≥ 0.85 |
-| `solo-friendly` | `solo_dev_feasibility` | ≥ 0.78 |
+| Stored key | UI label | Score field | Cutoff |
+|---|---|---|---|
+| `market-fit` | Strong demand fit | `market_fit_score` | ≥ 0.82 |
+| `seo-power` | Strong organic discovery | `seo_scalability_score` | ≥ 0.85 |
+| `innovator` | Distinct mechanism | `novelty_score` | ≥ 0.70 |
+| `quick-build` | Technically straightforward | `technical_feasibility_score` | ≥ 0.85 |
+| `solo-friendly` | Solo-manageable | `solo_dev_feasibility` | ≥ 0.78 |
 
 - `tags.strengths` = all earned (modal + future filtering).
 - `tags.primary_strength` = the single most exceptional = **largest margin above its cutoff**, or
   `null` if none clear (~30% of ideas). **The card shows `primary_strength`.**
 
 **Why margin, not raw score.** The previous `getSuperpower()` picked the raw max, which is biased
-toward higher-mean dimensions: on 60 ideas it gave Market Fit 35% / SEO 30% / Quick Build 30% /
-**Innovator 1% / Solo-Friendly 3%** — two strengths were structurally invisible. Margin-above-
-cutoff rebalances to Market Fit 23% / Solo 21% / SEO 11% / Innovator 11% / Quick Build 1%, with
-30% showing none. The frontend reads the backend value; `superpower.ts` keeps only the display
+toward higher-mean dimensions: in the historical 60-idea calibration sample it gave stored keys
+`market-fit` 35% / `seo-power` 30% / `quick-build` 30% / `innovator` 1% / `solo-friendly` 3% —
+two strengths were structurally invisible. Margin-above-cutoff rebalanced the same sample to
+23% / 11% / 1% / 11% / 21%, with 30% showing none. The frontend reads the backend value;
+`superpower.ts` keeps only the display
 labels/variants (`SUPERPOWERS` / `SUPERPOWERS_DETAILED`), mapped from the hyphenated strength keys
 via `strengthEntry()`.
 
@@ -133,22 +141,23 @@ back by `solution_name`.
   - **Always:** `project_type`, `target_market`, `monetization` (identity) in **Model**;
     all `growth_channels` (incl. `programmatic-seo`, a real positive) in **Growth**.
   - **Positives** (in **Strengths**): the score-cutoff strengths.
-  - **Negatives** (in **Watch-outs**, warning tone): `build_complexity == high` ("Hard to build"),
-    `novelty_level == conventional` ("Unoriginal"), friction `data_access`
+  - **Negatives** (in **Watch-outs**, warning tone): `build_complexity == high` ("Hard to run solo"),
+    `novelty_level == conventional` ("Familiar approach"), friction `data_access`
     (paywalled/unofficial/restricted/blocked/**unverified**), and all `risk_flags`.
     `unverified` = the data-route verifier could neither confirm nor refute a public source — the
     idea is *not* score-penalized for it, just flagged so you can check before building.
   - **Hidden** (neutral middle, no signal): `build_complexity == medium`,
     `novelty_level == moderate/novel`*, `data_access == public/freemium`.
-  - *`novel` novelty isn't shown as its own chip — the positive is already carried by the
-    `innovator` strength. Suppression is **display-only**; all facets remain in the data.
+  - *`novel` is not shown as a separate "Distinct approach" chip when the positive is already
+    carried by the `innovator` / "Distinct mechanism" strength. Suppression is **display-only**;
+    all facets remain in the data.
 - **Hover explanations:** every chip + the card badge show a one-line tooltip on hover. The
   `data_access` chip prefers the verifier's **per-idea, evidence-grounded note**
   (`data_acquisition_notes`, LLM-written and citing the search) over the static definition — so it
   explains why *this* idea's route is gated or unverified, not just what the label means.
-  `tagDescription()` (in `ideaTagLabels.ts`) gives the static meaning of each value — derived
-  facets state their rule/cutoff ("why"), LLM/reused facets give the definition ("what"). The
-  per-idea "why" for the semantic facets comes from the LLM `rationale` line.
+  `tagDescription()` (in `ideaTagLabels.ts`) gives a qualitative, user-facing meaning for each
+  value without exposing internal thresholds. The per-idea "why" for semantic facets comes from
+  the LLM `rationale` line.
 
 ## Serialization
 

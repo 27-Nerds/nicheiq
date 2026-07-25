@@ -185,6 +185,7 @@
       <div class="run-shell">
         <div class="run-shell-main">
           <ResearchProgressScreen
+            {jobId}
             phase={workingPhase}
             jobStatus={job.status}
             embedded
@@ -198,6 +199,7 @@
             currentStageName={job.currentStageName}
             queuePosition={job.queuePosition ?? undefined}
             selectedNames={job.selectedSolutions ?? []}
+            selectedItems={job.selectionDraft?.items ?? []}
             solutionIdeas={job.solutionIdeas ?? []}
             primaryWinner={job.selectedSolution}
           />

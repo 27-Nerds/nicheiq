@@ -238,6 +238,7 @@ export async function listUsers(page: number, limit: number, search?: string) {
         createdAt: true,
         fullCatalogAccess: true,
         chatAnalystAccess: true,
+        decisionToolsAccess: true,
         hasActiveSubscription: true,
         credits: { select: { balance: true, monthlyAllowance: true } },
         subscription: { select: { status: true, plan: { select: { name: true } } } },
@@ -259,6 +260,7 @@ export async function listUsers(page: number, limit: number, search?: string) {
       monthlyAllowance: u.credits?.monthlyAllowance ?? 0,
       fullCatalogAccess: u.fullCatalogAccess,
       chatAnalystAccess: u.chatAnalystAccess,
+      decisionToolsAccess: u.decisionToolsAccess,
       subscriptionStatus: u.subscription?.status ?? null,
       subscriptionPlanName: u.subscription?.plan?.name ?? null,
       jobCount: u._count.jobs,
@@ -285,6 +287,7 @@ export async function getUserDetail(userId: string) {
       createdAt: true,
       fullCatalogAccess: true,
       chatAnalystAccess: true,
+      decisionToolsAccess: true,
       hasActiveSubscription: true,
       credits: { select: { balance: true, totalPurchased: true, totalUsed: true, monthlyAllowance: true } },
       subscription: { select: { status: true, currentPeriodEnd: true, cancelAtPeriodEnd: true, plan: { select: { name: true } } } },
@@ -318,6 +321,7 @@ export async function getUserDetail(userId: string) {
     totalUsed: user.credits?.totalUsed ?? 0,
     fullCatalogAccess: user.fullCatalogAccess,
     chatAnalystAccess: user.chatAnalystAccess,
+    decisionToolsAccess: user.decisionToolsAccess,
     hasActiveSubscription: user.hasActiveSubscription,
     subscription: user.subscription
       ? {

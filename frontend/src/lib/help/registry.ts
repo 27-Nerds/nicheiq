@@ -18,7 +18,7 @@ export const HELP_TOPICS: HelpTopic[] = [
   {
     slug: "discovery",
     title: "How the research works",
-    subtitle: "The steps behind every report, and what the Discovery phase does",
+    subtitle: "How public discussion becomes a ranked set of candidate ideas",
   },
   {
     slug: "search",
@@ -37,8 +37,8 @@ export const HELP_TOPICS: HelpTopic[] = [
   },
   {
     slug: "deep-research",
-    title: "How one idea gets pressure-tested",
-    subtitle: "After you pick an idea, what Deep Research checks before it gives a verdict",
+    title: "How selected ideas get pressure-tested",
+    subtitle: "What happens after you confirm one to three exact candidates for Deep Research",
   },
   {
     slug: "methodology",
@@ -48,7 +48,7 @@ export const HELP_TOPICS: HelpTopic[] = [
   {
     slug: "how-its-built",
     title: "How it's built and tuned",
-    subtitle: "The agents, tools, model choices, and safeguards behind the research",
+    subtitle: "The staged pipeline, evidence boundaries, model roles, and safeguards behind the research",
   },
 ];
 

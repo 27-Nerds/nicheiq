@@ -8,6 +8,7 @@ import {
 import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { requireInternalAuth, type AuthenticatedRequest } from '../middleware/auth.js';
+import { requireDecisionToolsAccess } from '../middleware/featureAccess.js';
 import { canonicalJsonSha256 } from '../utils/canonicalFingerprint.js';
 import {
   getDiscoveryDataForJob,
@@ -490,7 +491,7 @@ function statusFor(error: unknown): { status: number; message: string } | null {
   return messages[error.message] ? { status: 409, message: messages[error.message] } : null;
 }
 
-selectionFinalDecisionsRouter.get('/:jobId/final-decision', requireInternalAuth, async (req: AuthenticatedRequest, res: Response) => {
+selectionFinalDecisionsRouter.get('/:jobId/final-decision', requireInternalAuth, requireDecisionToolsAccess, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { jobId } = ParamsSchema.parse(req.params);
     const sources = await loadSources(jobId, req.user!.id);
@@ -515,7 +516,7 @@ selectionFinalDecisionsRouter.get('/:jobId/final-decision', requireInternalAuth,
   }
 });
 
-selectionFinalDecisionsRouter.post('/:jobId/final-decision', requireInternalAuth, async (req: AuthenticatedRequest, res: Response) => {
+selectionFinalDecisionsRouter.post('/:jobId/final-decision', requireInternalAuth, requireDecisionToolsAccess, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { jobId } = ParamsSchema.parse(req.params);
     const input = SelectionFinalDecisionInputSchema.parse(req.body);

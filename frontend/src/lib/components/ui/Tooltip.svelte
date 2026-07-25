@@ -114,8 +114,12 @@
   });
 </script>
 
-<!-- Tooltip trigger (WAI-ARIA button role); the description is exposed via aria-describedby
-     regardless, and Escape dismisses it (WCAG 1.4.13). -->
+<!-- Tooltip trigger: focusable so keyboard users can summon the tip (tabindex),
+     but deliberately NOT role="button" — it performs no action, and announcing a
+     button that does nothing reads as a dead control. The description is exposed
+     via aria-describedby regardless, and Escape dismisses it (WCAG 1.4.13). -->
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
 <span
   class="tooltip-wrapper {className}"
   bind:this={triggerRef}
@@ -124,7 +128,6 @@
   onfocus={show}
   onblur={hide}
   onkeydown={onKeydown}
-  role="button"
   tabindex="0"
   aria-describedby={descId}
 >
@@ -143,6 +146,11 @@
     position: relative;
     display: inline-flex;
     align-items: center;
+    justify-content: center;
+    min-width: 1.5rem;
+    min-height: 1.5rem;
+    max-width: 100%;
+    cursor: help;
   }
 
   .tooltip-trigger {

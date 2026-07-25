@@ -1383,6 +1383,15 @@ export async function prepareSelectionConceptOption(
   return handleResponse<PreparedSelectionConceptOption>(response);
 }
 
+export async function archiveSelectionConceptSet(jobId: string, setId: string): Promise<void> {
+  const response = await fetch(
+    `${API_BASE}/jobs/${jobId}/selection-concept-sets/${encodeURIComponent(setId)}/archive`,
+    { method: 'POST' },
+  );
+  if (response.status === 204) return;
+  await handleResponse<never>(response);
+}
+
 export async function getSelectionChallenges(jobId: string): Promise<SelectionChallengeListResponse> {
   const response = await fetch(`${API_BASE}/jobs/${jobId}/selection-challenges`);
   return handleResponse<SelectionChallengeListResponse>(response);
@@ -1612,6 +1621,17 @@ export async function updateSelectionExperiment(
   });
   const result = await handleResponse<{ experiment: SelectionExperiment }>(response);
   return result.experiment;
+}
+
+export async function deleteSelectionExperiment(
+  jobId: string,
+  experimentId: string,
+): Promise<void> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/selection-experiments/${experimentId}`, {
+    method: 'DELETE',
+  });
+  if (response.status === 204) return;
+  await handleResponse<never>(response);
 }
 
 export async function lockSelectionExperiment(

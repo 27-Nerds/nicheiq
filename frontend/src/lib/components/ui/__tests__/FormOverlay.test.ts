@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/svelte";
 import FormOverlayAnnotationHarness from "./FormOverlayAnnotationHarness.test.svelte";
+import FormOverlayCancelHarness from "./FormOverlayCancelHarness.test.svelte";
 import FormOverlayHarness from "./FormOverlayHarness.test.svelte";
 
 describe("FormOverlay", () => {
@@ -181,6 +182,43 @@ describe("FormOverlay", () => {
     });
 
     await fireEvent.click(view.getByRole("button", { name: "Close Decision profile" }));
+    expect(onRequestClose).toHaveBeenCalledTimes(1);
+    expect(view.queryByText("Unsaved changes.")).not.toBeInTheDocument();
+  });
+
+  it("routes the footer Cancel through the same two-press dirty gate", async () => {
+    const onRequestClose = vi.fn();
+    const view = render(FormOverlayCancelHarness, {
+      props: {
+        open: true,
+        onRequestClose,
+        dirty: true,
+        closeWarning: "You have unsaved changes. Close again to discard them.",
+      },
+    });
+
+    await fireEvent.click(view.getByRole("button", { name: "Cancel" }));
+    expect(onRequestClose).not.toHaveBeenCalled();
+    expect(
+      view.getByText("You have unsaved changes. Close again to discard them."),
+    ).toBeInTheDocument();
+
+    await fireEvent.click(view.getByRole("button", { name: "Discard changes" }));
+    expect(onRequestClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes a clean overlay from the footer Cancel on the first click", async () => {
+    const onRequestClose = vi.fn();
+    const view = render(FormOverlayCancelHarness, {
+      props: {
+        open: true,
+        onRequestClose,
+        dirty: false,
+        closeWarning: "Unsaved changes.",
+      },
+    });
+
+    await fireEvent.click(view.getByRole("button", { name: "Cancel" }));
     expect(onRequestClose).toHaveBeenCalledTimes(1);
     expect(view.queryByText("Unsaved changes.")).not.toBeInTheDocument();
   });

@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Report } from "$lib/types/report";
   import { AlertTriangle, CheckSquare2, Share2 } from "lucide-svelte";
+  import { page } from "$app/state";
 
   import ReportContent from "$lib/components/ReportContent.svelte";
   import ShareReportModal from "$lib/components/ShareReportModal.svelte";
@@ -21,6 +22,10 @@
 
   let shareModalOpen = $state(false);
   let decisionLabOpen = $state(false);
+  // The post-research Decision Lab rides the same admin grant as the optional
+  // selection checks. Its endpoints (final-decision, decision-handoff, GitHub
+  // dispatch) all 403 without it, so the entry point is hidden too.
+  const decisionTools = $derived(page.data.featureAccess?.decisionTools === true);
 </script>
 
 <svelte:head>
@@ -49,16 +54,18 @@
   <ReportContent {report} showBackLink={true} {jobId}>
     {#snippet headerSlot()}
       <div class="header-actions">
-        <button
-          type="button"
-          class="share-btn"
-          aria-haspopup="dialog"
-          aria-expanded={decisionLabOpen}
-          onclick={() => (decisionLabOpen = true)}
-        >
-          <CheckSquare2 class="w-4 h-4" />
-          <span>Decision Lab</span>
-        </button>
+        {#if decisionTools}
+          <button
+            type="button"
+            class="share-btn"
+            aria-haspopup="dialog"
+            aria-expanded={decisionLabOpen}
+            onclick={() => (decisionLabOpen = true)}
+          >
+            <CheckSquare2 class="w-4 h-4" />
+            <span>Decision Lab</span>
+          </button>
+        {/if}
         <button onclick={() => (shareModalOpen = true)} class="share-btn">
           <Share2 class="w-4 h-4" />
           <span>Share</span>
@@ -66,7 +73,9 @@
       </div>
     {/snippet}
     {#snippet decisionSlot()}
-      <FinalDecisionWorkspace {jobId} bind:open={decisionLabOpen} />
+      {#if decisionTools}
+        <FinalDecisionWorkspace {jobId} bind:open={decisionLabOpen} />
+      {/if}
     {/snippet}
   </ReportContent>
 

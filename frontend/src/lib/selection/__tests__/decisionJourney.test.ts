@@ -85,7 +85,7 @@ function state(
 
 describe("buildSelectionJourney", () => {
   it("guides an empty shortlist toward candidate review without inventing readiness", () => {
-    const journey = buildSelectionJourney(state("select_candidate"));
+    const journey = buildSelectionJourney(state("select_candidate"), true);
 
     expect(journey.shortlist.items).toEqual([]);
     expect(journey.recommendation).toMatchObject({
@@ -100,7 +100,7 @@ describe("buildSelectionJourney", () => {
 
   it("preserves exact ids and revisions even when shortlist titles collide", () => {
     const sameTitle = { ...IDEA_B, title: IDEA_A.title };
-    const journey = buildSelectionJourney(state("add_decision_context", [IDEA_A, sameTitle]));
+    const journey = buildSelectionJourney(state("add_decision_context", [IDEA_A, sameTitle]), true);
 
     expect(journey.shortlist.items).toEqual([IDEA_A, sameTitle]);
     expect(journey.shortlist.items.map((idea) => `${idea.ideaId}:${idea.ideaRevision}`)).toEqual([
@@ -141,18 +141,18 @@ describe("buildSelectionJourney", () => {
       experimentIds: [],
     }];
 
-    const journey = buildSelectionJourney(current);
+    const journey = buildSelectionJourney(current, true);
     const statuses = Object.fromEntries(journey.tasks.map((task) => [task.key, task.status]));
 
     expect(statuses).toMatchObject({
       constraints: "complete",
       compare: "complete",
       risks: "complete",
-      tests: "recommended",
+      tests: "available",
       alternatives: "optional",
     });
     expect(journey.recommendation).toMatchObject({
-      target: "tests",
+      target: "risks",
       title: "Plan the next useful test",
     });
   });
@@ -161,19 +161,26 @@ describe("buildSelectionJourney", () => {
     const stale = state("stress_test_evidence", [IDEA_A, IDEA_B]);
     stale.nextAction.variant = "rerun";
     stale.staleCounts.founderFit = 1;
-    stale.staleCounts.challenges = 2;
+    stale.staleCounts.challenges = 1;
+    stale.challenges = [{
+      id: "challenge-stale",
+      idea: IDEA_A,
+      lens: "demand",
+      overall: "weakened",
+      gapQuestionIds: ["gap-stale"],
+    }];
 
-    const journey = buildSelectionJourney(stale);
+    const journey = buildSelectionJourney(stale, true);
 
     expect(journey.tasks.find((task) => task.key === "compare")).toMatchObject({
       status: "needs_refresh",
-      statusLabel: "Needs refresh",
+      statusLabel: "Re-check needed",
     });
     expect(journey.tasks.find((task) => task.key === "risks")).toMatchObject({
       status: "needs_refresh",
-      statusLabel: "Needs refresh",
+      statusLabel: "Re-check needed",
     });
-    expect(journey.recommendation.title).toBe("Refresh the evidence review");
+    expect(journey.recommendation.title).toBe("Update an evidence check");
   });
 
   it("shows test work in progress until every experiment has a conclusion", () => {
@@ -187,7 +194,7 @@ describe("buildSelectionJourney", () => {
       conclusionId: null,
     }];
 
-    expect(buildSelectionJourney(active).tasks.find((task) => task.key === "tests")?.status)
+    expect(buildSelectionJourney(active, true).tasks.find((task) => task.key === "tests")?.status)
       .toBe("in_progress");
 
     active.nextAction = {
@@ -196,13 +203,13 @@ describe("buildSelectionJourney", () => {
       target: "deep_research",
     };
     active.experiments[0].conclusionId = "conclusion-1";
-    expect(buildSelectionJourney(active).tasks.find((task) => task.key === "tests")?.status)
+    expect(buildSelectionJourney(active, true).tasks.find((task) => task.key === "tests")?.status)
       .toBe("complete");
   });
 
   it("names the unlocking action on locked steps instead of a bare lock label", () => {
     const empty = state("select_candidate");
-    const tasks = buildSelectionJourney(empty).tasks;
+    const tasks = buildSelectionJourney(empty, true).tasks;
 
     const compare = tasks.find((task) => task.key === "compare");
     const risks = tasks.find((task) => task.key === "risks");
@@ -210,18 +217,63 @@ describe("buildSelectionJourney", () => {
 
     expect(compare?.status).toBe("not_ready");
     expect(compare?.statusLabel).toBe("Shortlist two ideas to compare them");
-    expect(risks?.statusLabel).toBe("Shortlist an idea to check its evidence");
+    expect(risks?.statusLabel).toBe("Shortlist an idea to check the evidence");
     expect(tests?.statusLabel).toBe("Shortlist an idea to plan a test");
   });
 
   it("uses one canonical name per tool across the rail", () => {
-    const tasks = buildSelectionJourney(state("select_candidate")).tasks;
+    const tasks = buildSelectionJourney(state("select_candidate"), true).tasks;
     expect(tasks.map((task) => task.title)).toEqual([
-      "Your build constraints",
-      "Compare finalists",
+      "Your build limits",
+      "Compare trade-offs",
       "Check the evidence",
       "Plan a test",
-      "Explore variants",
+      "Branch a new direction",
     ]);
+  });
+});
+
+describe("buildSelectionJourney without the decision tools grant", () => {
+  const ideas = [{ ideaId: "idea-a", ideaRevision: 2, title: "Candidate A" }];
+
+  it("emits only the compare task, so the hub list and the nav rows both empty out", () => {
+    const journey = buildSelectionJourney(state("start_deep_research", ideas), false);
+    expect(journey.tasks.map((task) => task.key)).toEqual(["compare"]);
+  });
+
+  it("keeps the shortlist and Deep Research eligibility untouched", () => {
+    const journey = buildSelectionJourney(state("start_deep_research", ideas), false);
+    expect(journey.shortlist.items).toEqual(ideas);
+    expect(journey.deepResearch.eligible).toBe(true);
+    expect(journey.deepResearch.blockers).toEqual([]);
+  });
+
+  it("never recommends a gated tool, even from a stale gated next action", () => {
+    for (const kind of [
+      "add_decision_context",
+      "analyze_founder_fit",
+      "stress_test_evidence",
+      "capture_assumption",
+      "draft_test",
+    ] as const) {
+      const journey = buildSelectionJourney(state(kind, ideas), false);
+      expect(["shortlist", "deep_research"]).toContain(journey.recommendation.target);
+    }
+  });
+
+  it("still asks for a shortlist when there is none", () => {
+    const journey = buildSelectionJourney(state("select_candidate", []), false);
+    expect(journey.recommendation.target).toBe("shortlist");
+  });
+
+  it("drops the optional-checks mention from the Deep Research description", () => {
+    const journey = buildSelectionJourney(state("start_deep_research", ideas), false);
+    expect(journey.recommendation.description).not.toContain("checking risks");
+  });
+
+  it("keeps every task when the grant is present", () => {
+    const journey = buildSelectionJourney(state("start_deep_research", ideas), true);
+    expect(journey.tasks.length).toBeGreaterThan(1);
+    expect(journey.tasks.map((task) => task.key)).toContain("risks");
   });
 });

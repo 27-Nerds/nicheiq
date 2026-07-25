@@ -1,6 +1,13 @@
 // See https://kit.svelte.dev/docs/types#app
 // for information about these interfaces
 import type { Session } from '@auth/core/types';
+import type { SelectionExperimentDraftSeed } from '$lib/types/selectionExperiment';
+import type {
+  SelectionAssumptionPrefill,
+  SelectionConceptForgePrefill,
+  SelectionOwnerEvidencePrefill,
+} from '$lib/types/selectionCopilot';
+import type { SelectionToolOrigin } from '$lib/selection/toolOrigin';
 
 declare global {
   // GA4 gtag types
@@ -21,6 +28,16 @@ declare global {
     interface PageState {
       openId?: string;
       selectedId?: string;
+      /** One-shot unsaved handoff; the URL still carries exact candidate refs. */
+      selectionTestDraft?: SelectionExperimentDraftSeed;
+      /** One-shot analyst-authored variant brief for the routed form. */
+      selectionConceptPrefill?: SelectionConceptForgePrefill;
+      /** One-shot grounded assumption draft for the direct evidence workspace. */
+      selectionAssumptionPrefill?: SelectionAssumptionPrefill;
+      /** One-shot owner-evidence draft for the direct evidence workspace. */
+      selectionOwnerEvidencePrefill?: SelectionOwnerEvidencePrefill;
+      /** One-shot return contract for a routed tool launched from the job page. */
+      selectionToolOrigin?: SelectionToolOrigin;
     }
     // interface Platform {}
   }

@@ -8,6 +8,7 @@ import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { CONFIG } from '../config.js';
 import { requireInternalAuth, type AuthenticatedRequest } from '../middleware/auth.js';
+import { requireDecisionToolsAccess } from '../middleware/featureAccess.js';
 import { prisma } from '../services/db.js';
 import { parseCurrentFounderFitArtifact } from '../services/founderFitService.js';
 import { generateSelectionFounderFitReshape } from '../services/selectionFounderFitReshapeService.js';
@@ -117,6 +118,7 @@ function reshapeContext(job: ReshapeJob, ideaId: string, ideaRevision: number) {
 selectionFounderFitReshapeRouter.get(
   '/:jobId/founder-fit/:ideaId/:ideaRevision/reshape-proposal',
   requireInternalAuth,
+  requireDecisionToolsAccess,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const params = ParamsSchema.parse(req.params);
@@ -149,6 +151,7 @@ selectionFounderFitReshapeRouter.get(
 selectionFounderFitReshapeRouter.post(
   '/:jobId/founder-fit/:ideaId/:ideaRevision/reshape-proposal',
   requireInternalAuth,
+  requireDecisionToolsAccess,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const params = ParamsSchema.parse(req.params);

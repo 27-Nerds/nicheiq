@@ -1,11 +1,12 @@
 <script lang="ts">
-  import { onMount, untrack } from "svelte";
-  import { X } from "lucide-svelte";
+  import { onMount, tick, untrack } from "svelte";
+  import { Check } from "lucide-svelte";
   import {
     closeSelectionExperimentRun,
     concludeSelectionExperiment,
     createSelectionExperiment,
     createSelectionIdeaNarrowingProposal,
+    deleteSelectionExperiment,
     getSelectionExperimentResults,
     getSelectionExperiments,
     getSelectionIdeaNarrowingProposal,
@@ -36,7 +37,6 @@
   import FormOverlay from "$lib/components/ui/FormOverlay.svelte";
   import SegmentControl from "$lib/components/ui/SegmentControl.svelte";
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
-  import WorkspaceOverlay from "$lib/components/ui/WorkspaceOverlay.svelte";
   import {
     DRAFT_TEST_BRIEF_LABEL,
     STRESS_TEST_EVIDENCE_LABEL,
@@ -51,11 +51,18 @@
 
   interface Props {
     open?: boolean;
+    surface?: "page" | "form";
     jobId: string;
     ideas: SolutionPreview[];
     prefill?: SelectionExperimentPrefill | null;
+    newDraftSeed?: SelectionExperimentDraftSeed | null;
+    hasTrackedAssumption?: boolean;
     seedCost?: number | null;
     narrowingDisabled?: boolean;
+    /** Blocks every mutating submit while the host workspace is not
+     *  interactive (e.g. the job is REGENERATING). Open editors stay mounted
+     *  so a dirty draft is preserved. */
+    disabled?: boolean;
     onEvaluateNarrowing?: (patch: IdeaSynthesisPatch, sourceMessageId: string) => Promise<boolean>;
     onReviewNarrowing?: (
       patch: IdeaSynthesisPatch,
@@ -76,11 +83,15 @@
 
   let {
     open = true,
+    surface = "page",
     jobId,
     ideas,
     prefill = null,
+    newDraftSeed = null,
+    hasTrackedAssumption = true,
     seedCost = null,
     narrowingDisabled = false,
+    disabled = false,
     onEvaluateNarrowing,
     onReviewNarrowing,
     onUseNarrowing,
@@ -88,6 +99,8 @@
     onClose = () => {},
     onOpenChallenge,
   }: Props = $props();
+
+  const isForm = $derived(surface === "form");
 
   const ASSUMPTION_TYPES: Array<{ value: ExperimentAssumptionType; label: string }> = [
     { value: "DESIRABILITY", label: "Desirability" },
@@ -159,6 +172,8 @@
   let loading = $state(true);
   let saving = $state(false);
   let lockingId = $state<string | null>(null);
+  let deletingId = $state<string | null>(null);
+  let listHeadingEl = $state<HTMLHeadingElement>();
   let error = $state("");
   let loadError = $state("");
   let launchId = $state<string | null>(null);
@@ -173,7 +188,7 @@
   let copiedId = $state<string | null>(null);
   let copiedBriefId = $state<string | null>(null);
   let resultsById = $state<Record<string, SelectionExperimentResults>>({});
-  let appliedPrefillId = $state<string | null>(null);
+  let appliedPrefillId: string | null = null;
   let conclusionId = $state<string | null>(null);
   let conclusionOutcome = $state<ExperimentConclusionOutcome | null>(null);
   let conclusionRationale = $state("");
@@ -188,6 +203,8 @@
   let editorBaseline = $state("");
   let launchBaseline = $state("");
   let resultsAnnouncement = $state("");
+  let loadedOnce = false;
+  let loadPromise: Promise<void> | null = null;
   // Candidate held while the switch-away-from-a-dirty-draft confirmation is
   // showing. Cleared by confirming, cancelling, editing the draft further,
   // or saving (see the $effect below and save()).
@@ -238,32 +255,110 @@
     | "passAction" | "failAction" | "flatAction" | "invalidAction";
   let touchedDraftFields = $state<Set<RequiredDraftField>>(new Set());
   let editorSubmitAttempted = $state(false);
+  let editorStep = $state<1 | 2 | 3>(1);
+  let editorStageEl = $state<HTMLFieldSetElement>();
+
+  const EDITOR_STEP_FIELDS: Record<1 | 2 | 3, RequiredDraftField[]> = {
+    1: ["assumption", "whyCritical"],
+    2: [
+      "stimulus",
+      "audience",
+      "channel",
+      "primaryMetric",
+      "passThreshold",
+      "failThreshold",
+      "measurementWindow",
+    ],
+    3: ["passAction", "failAction", "flatAction", "invalidAction"],
+  };
+
+  /** Per-field actionable copy plus the rendered control's DOM id, so a
+   *  failed submit can both explain and focus the first missing answer. */
+  const DRAFT_FIELD_COPY: Record<RequiredDraftField, { id: string; message: string }> = {
+    assumption: { id: "experiment-assumption", message: "Name the assumption you are testing." },
+    whyCritical: { id: "experiment-why-critical", message: "Explain why failure would change the decision." },
+    stimulus: { id: "experiment-stimulus", message: "Describe the exact stimulus, offer, prototype, or task in at least 3 characters." },
+    audience: { id: "experiment-audience", message: "Describe the qualified audience in at least 3 characters." },
+    channel: { id: "experiment-channel", message: "Name the recruitment or traffic channel." },
+    primaryMetric: { id: "experiment-primary-metric", message: "Define the primary metric, including numerator and denominator." },
+    passThreshold: { id: "experiment-pass-threshold", message: "Write the pass rule this test must meet." },
+    failThreshold: { id: "experiment-fail-threshold", message: "Write the fail rule that would stop this test." },
+    measurementWindow: { id: "experiment-measurement-window", message: "Set the measurement window and stopping rule." },
+    passAction: { id: "experiment-pass-action", message: "Commit the next action if the test passes." },
+    failAction: { id: "experiment-fail-action", message: "Commit the next action if the test fails." },
+    flatAction: { id: "experiment-flat-action", message: "Commit the next action if the result is flat." },
+    invalidAction: { id: "experiment-invalid-action", message: "Commit the next action if the test is invalid." },
+  };
+
+  const editorFooterMessage = $derived(
+    editorStep === 3
+      ? "Step 3 of 3 · Saving keeps this editable. Nothing is published or collecting responses yet."
+      : `Step ${editorStep} of 3 · Changes stay in this draft.`,
+  );
 
   function touchDraftField(field: RequiredDraftField) {
     touchedDraftFields.add(field);
     touchedDraftFields = new Set(touchedDraftFields);
   }
 
-  function requiredTextError(value: string): string {
-    if (value.trim().length === 0) return "Required.";
-    return value.trim().length < 3 ? "Enter at least 3 characters." : "";
+  function requiredDraftError(field: RequiredDraftField): string {
+    return draft[field].trim().length < 3 ? DRAFT_FIELD_COPY[field].message : "";
   }
 
   function draftFieldError(field: RequiredDraftField): string {
     if (!editorSubmitAttempted && !touchedDraftFields.has(field)) return "";
-    return requiredTextError(draft[field]);
+    return requiredDraftError(field);
   }
 
   function resetEditorValidation() {
     touchedDraftFields = new Set();
     editorSubmitAttempted = false;
+    editorStep = 1;
+  }
+
+  async function focusDraftField(field: RequiredDraftField) {
+    await tick();
+    document.getElementById(DRAFT_FIELD_COPY[field].id)?.focus();
+  }
+
+  async function continueEditor() {
+    const fields = EDITOR_STEP_FIELDS[editorStep];
+    for (const field of fields) touchedDraftFields.add(field);
+    touchedDraftFields = new Set(touchedDraftFields);
+    const firstInvalid = fields.find((field) => requiredDraftError(field));
+    if (firstInvalid) {
+      await focusDraftField(firstInvalid);
+      return;
+    }
+    if (editorStep < 3) {
+      editorStep = (editorStep + 1) as 2 | 3;
+      await tick();
+      editorStageEl?.focus();
+    }
+  }
+
+  async function previousEditorStep() {
+    if (editorStep > 1) {
+      editorStep = (editorStep - 1) as 1 | 2;
+      await tick();
+      editorStageEl?.focus();
+    }
   }
 
   /** Submit-attempt entry point: reveals every missing required field instead
-   *  of relying on a silently disabled button. */
-  function attemptSave() {
+   *  of relying on a silently disabled button, then focuses the first one. */
+  async function attemptSave() {
     if (!canSave) {
       editorSubmitAttempted = true;
+      const firstInvalidStep = ([1, 2, 3] as const).find((step) => (
+        EDITOR_STEP_FIELDS[step].some((field) => requiredDraftError(field))
+      ));
+      if (firstInvalidStep) {
+        editorStep = firstInvalidStep;
+        const firstInvalid = EDITOR_STEP_FIELDS[firstInvalidStep]
+          .find((field) => requiredDraftError(field));
+        if (firstInvalid) await focusDraftField(firstInvalid);
+      }
       return;
     }
     void save();
@@ -281,9 +376,19 @@
     touchedLaunchFields = new Set(touchedLaunchFields);
   }
 
+  const LAUNCH_FIELD_COPY: Record<RequiredLaunchField, { id: string; message: string }> = {
+    headline: { id: "experiment-launch-headline", message: "Write the public headline in at least 3 characters." },
+    promise: { id: "experiment-launch-promise", message: "Write the support sentence participants will read, in at least 3 characters." },
+  };
+
+  function requiredLaunchError(field: RequiredLaunchField): string {
+    const value = field === "headline" ? launchDraft.headline : launchDraft.promise;
+    return value.trim().length < 3 ? LAUNCH_FIELD_COPY[field].message : "";
+  }
+
   function launchFieldError(field: RequiredLaunchField): string {
     if (!launchSubmitAttempted && !touchedLaunchFields.has(field)) return "";
-    return requiredTextError(field === "headline" ? launchDraft.headline : launchDraft.promise);
+    return requiredLaunchError(field);
   }
 
   function resetLaunchValidation() {
@@ -293,34 +398,103 @@
 
   /** Submit-attempt entry point: reveals per-field errors instead of a
    *  silently disabled Publish button (same reveal-on-attempt pattern as
-   *  attemptSave). */
-  function attemptPublish() {
+   *  attemptSave), then focuses the first missing field. */
+  async function attemptPublish() {
     if (!launchExperiment) return;
     if (!canPublish) {
       launchSubmitAttempted = true;
+      const firstInvalid = (["headline", "promise"] as const).find((field) => requiredLaunchError(field));
+      if (firstInvalid) {
+        await tick();
+        document.getElementById(LAUNCH_FIELD_COPY[firstInvalid].id)?.focus();
+      }
       return;
     }
     void publishRun(launchExperiment);
   }
 
+  type RequiredConclusionField = "observationSummary" | "observedAt" | "outcome" | "rationale";
+  let touchedConclusionFields = $state<Set<RequiredConclusionField>>(new Set());
+  let conclusionSubmitAttempted = $state(false);
+
+  function touchConclusionField(field: RequiredConclusionField) {
+    touchedConclusionFields.add(field);
+    touchedConclusionFields = new Set(touchedConclusionFields);
+  }
+
+  function requiredConclusionError(field: RequiredConclusionField): string {
+    if (field === "observedAt") return observedAt ? "" : "Choose the date when you observed this result.";
+    if (field === "outcome") return conclusionOutcome ? "" : "Choose which written rule fits the result.";
+    if (field === "observationSummary") {
+      return observationSummary.trim().length < 3
+        ? "Describe the observed result in at least 3 characters."
+        : "";
+    }
+    return conclusionRationale.trim().length < 3
+      ? "Explain why this outcome fits the written rule, in at least 3 characters."
+      : "";
+  }
+
+  function conclusionFieldError(field: RequiredConclusionField): string {
+    if (!conclusionSubmitAttempted && !touchedConclusionFields.has(field)) return "";
+    return requiredConclusionError(field);
+  }
+
+  function resetConclusionValidation() {
+    touchedConclusionFields = new Set();
+    conclusionSubmitAttempted = false;
+  }
+
+  async function attemptSaveConclusion(experiment: SelectionExperiment) {
+    if (!canSaveConclusion(experiment)) {
+      conclusionSubmitAttempted = true;
+      // Focus the first invalid control in visual order: manual evidence
+      // fields (when there is no hosted run), then outcome, then rationale.
+      await tick();
+      if (!experiment.run && requiredConclusionError("observationSummary")) {
+        document.getElementById("experiment-observation-summary")?.focus();
+      } else if (!experiment.run && requiredConclusionError("observedAt")) {
+        document.getElementById("experiment-observed-at")?.focus();
+      } else if (requiredConclusionError("outcome")) {
+        document.querySelector<HTMLElement>('#experiment-conclusion-form [role="radio"]')?.focus();
+      } else if (requiredConclusionError("rationale")) {
+        document.getElementById("experiment-conclusion-rationale")?.focus();
+      }
+      return;
+    }
+    void saveConclusion(experiment);
+  }
+
   onMount(() => {
-    void load();
+    if (!isForm || open) void load();
+    else loading = false;
   });
 
   $effect(() => {
-    if (!prefill || prefill.requestId === appliedPrefillId) return;
+    // The direct form waits for saved drafts before applying a prefill so it
+    // can resume the exact editable test instead of creating a duplicate.
+    if (isForm || !prefill || prefill.requestId === appliedPrefillId) return;
     reviewCopilotDraft(prefill.requestId, prefill.draft);
   });
 
-  async function load() {
-    loading = true;
-    loadError = "";
+  async function load(): Promise<void> {
+    if (loadPromise) return loadPromise;
+    loadPromise = (async () => {
+      loading = true;
+      loadError = "";
+      try {
+        experiments = await getSelectionExperiments(jobId);
+      } catch (cause) {
+        loadError = cause instanceof Error ? cause.message : "Could not load experiment briefs.";
+      } finally {
+        loadedOnce = true;
+        loading = false;
+      }
+    })();
     try {
-      experiments = await getSelectionExperiments(jobId);
-    } catch (cause) {
-      loadError = cause instanceof Error ? cause.message : "Could not load experiment briefs.";
+      await loadPromise;
     } finally {
-      loading = false;
+      loadPromise = null;
     }
   }
 
@@ -391,17 +565,29 @@
     }
 
     const baseline = existing ? draftForExperiment(existing) : draftForIdea(candidate);
-    draft = {
-      ...baseline,
-      ...values,
-      ideaId: values.ideaId,
-      ideaRevision: values.ideaRevision,
-    };
+    // Resuming a persisted record: the SAVED fields win over the seed values,
+    // otherwise a stale copilot seed silently overwrites the owner's saved
+    // brief and one Save persists the rewrite. Only a brand-new draft lets
+    // the seed win over the idea-derived starting values.
+    draft = existing
+      ? {
+          ...values,
+          ...baseline,
+          ideaId: values.ideaId,
+          ideaRevision: values.ideaRevision,
+        }
+      : {
+          ...baseline,
+          ...values,
+          ideaId: values.ideaId,
+          ideaRevision: values.ideaRevision,
+        };
     editingId = existing?.id ?? null;
     error = "";
     editing = true;
-    // Baseline the merged prefilled draft, not the pre-merge base: a copilot
-    // prefill the owner has not touched must open clean (no discard warning).
+    // Baseline the opened draft: on resume that is the persisted record's own
+    // values (seed differences never stage silently), and an untouched
+    // prefill still opens clean (no discard warning).
     editorBaseline = JSON.stringify(draft);
     launchId = null;
     conclusionId = null;
@@ -411,9 +597,23 @@
   }
 
   function beginNew() {
-    const firstIdea = ideas[0];
+    const seedIdea = newDraftSeed
+      ? ideas.find((idea) => (
+          idea.idea_id === newDraftSeed.ideaId
+          && (idea.idea_revision ?? 1) === newDraftSeed.ideaRevision
+        ))
+      : undefined;
+    const firstIdea = seedIdea ?? ideas[0];
     if (!firstIdea) return;
-    draft = draftForIdea(firstIdea);
+    const baseline = draftForIdea(firstIdea);
+    draft = newDraftSeed
+      ? {
+          ...baseline,
+          ...newDraftSeed,
+          ideaId: firstIdea.idea_id ?? firstIdea.solution_name,
+          ideaRevision: firstIdea.idea_revision ?? 1,
+        }
+      : baseline;
     editingId = null;
     error = "";
     editing = true;
@@ -422,6 +622,65 @@
     conclusionId = null;
     resetEditorValidation();
   }
+
+  function matchingEditableExperiment(
+    values: SelectionExperimentDraftSeed,
+  ): SelectionExperiment | undefined {
+    const exactDrafts = experiments.filter((experiment) => (
+      experiment.status === "DRAFT"
+      && experiment.ideaId === values.ideaId
+      && experiment.ideaRevision === values.ideaRevision
+    ));
+    if (values.assumptionId) {
+      return exactDrafts.find((experiment) => experiment.assumptionId === values.assumptionId);
+    }
+    if (values.originChallengeId && values.originQuestionId) {
+      return exactDrafts.find((experiment) => (
+        experiment.originChallengeId === values.originChallengeId
+        && experiment.originQuestionId === values.originQuestionId
+      ));
+    }
+    const assumption = values.assumption?.trim();
+    if (!assumption) return undefined;
+    return exactDrafts.find((experiment) => (
+      experiment.assumption.trim() === assumption
+      && (!values.assumptionType || experiment.assumptionType === values.assumptionType)
+    ));
+  }
+
+  async function openDirectForm(): Promise<void> {
+    if (!loadedOnce || loadError) await load();
+    if (!open) return;
+    if (loadError) {
+      beginNew();
+      error = "Saved test plans could not be checked. Close this form and try again before creating another plan.";
+      return;
+    }
+    if (prefill) {
+      const existing = matchingEditableExperiment(prefill.draft);
+      reviewCopilotDraft(
+        prefill.requestId,
+        prefill.draft,
+        existing ? { id: existing.id, status: existing.status } : undefined,
+      );
+    } else {
+      beginNew();
+    }
+  }
+
+  // Form-only hosts own the surrounding context, so one open cycle maps to
+  // one editor cycle. This dedupe guard is deliberately a plain `let`; reads
+  // and writes inside the effect must not create another reactive dependency.
+  let formOpenConsumed = false;
+  $effect(() => {
+    if (!isForm || !open) {
+      formOpenConsumed = false;
+      return;
+    }
+    if (formOpenConsumed || ideas.length === 0) return;
+    formOpenConsumed = true;
+    void openDirectForm();
+  });
 
   function edit(experiment: SelectionExperiment) {
     draft = draftForExperiment(experiment);
@@ -482,7 +741,7 @@
   });
 
   async function save() {
-    if (!canSave || saving) return;
+    if (!canSave || saving || disabled) return;
     pendingIdea = null;
     saving = true;
     error = "";
@@ -494,6 +753,7 @@
       editing = false;
       editingId = null;
       onChanged();
+      if (isForm) onClose();
     } catch (cause) {
       error = cause instanceof Error ? cause.message : "Could not save the experiment brief.";
     } finally {
@@ -502,6 +762,7 @@
   }
 
   async function lock(experimentId: string) {
+    if (disabled) return;
     lockingId = experimentId;
     error = "";
     try {
@@ -512,6 +773,25 @@
       error = cause instanceof Error ? cause.message : "Could not lock the experiment brief.";
     } finally {
       lockingId = null;
+    }
+  }
+
+  /** Hard-deletes a DRAFT plan (locked briefs stay immutable server-side).
+   *  Focus lands on the workspace heading because the row it sat in is gone. */
+  async function removeDraft(experimentId: string) {
+    if (disabled) return;
+    deletingId = experimentId;
+    error = "";
+    try {
+      await deleteSelectionExperiment(jobId, experimentId);
+      experiments = experiments.filter((item) => item.id !== experimentId);
+      onChanged();
+      await tick();
+      listHeadingEl?.focus();
+    } catch (cause) {
+      error = cause instanceof Error ? cause.message : "Could not delete the draft test plan.";
+    } finally {
+      deletingId = null;
     }
   }
 
@@ -537,6 +817,7 @@
   }
 
   async function publishRun(experiment: SelectionExperiment) {
+    if (disabled) return;
     launchingId = experiment.id;
     error = "";
     try {
@@ -578,6 +859,7 @@
     observedMetric = "";
     sourceReferences = "";
     conclusionLimitations = "";
+    resetConclusionValidation();
   }
 
   async function beginConclusion(experiment: SelectionExperiment) {
@@ -627,7 +909,7 @@
   }
 
   async function saveConclusion(experiment: SelectionExperiment) {
-    if (!canSaveConclusion(experiment) || concludingId) return;
+    if (!canSaveConclusion(experiment) || concludingId || disabled) return;
     concludingId = experiment.id;
     conclusionErrors[experiment.id] = "";
     try {
@@ -675,6 +957,7 @@
   }
 
   async function closeRun(experiment: SelectionExperiment) {
+    if (disabled) return;
     closingId = experiment.id;
     error = "";
     try {
@@ -775,6 +1058,7 @@
     editingId = null;
     error = "";
     resetEditorValidation();
+    if (isForm) onClose();
   }
 
   function closeLaunch() {
@@ -789,24 +1073,27 @@
     const wasOpen = conclusionExperiment;
     conclusionId = null;
     if (wasOpen) conclusionErrors[wasOpen.id] = "";
+    resetConclusionValidation();
   }
 </script>
 
-<WorkspaceOverlay {open} size="wide" label="Test decision assumptions" {onClose}>
-<section id="selection-experiments" class="workspace" aria-labelledby="experiments-title" data-annotation-anchor="selection:experiments" tabindex="-1">
+{#snippet workspaceContent()}
+<section
+  id="selection-experiments"
+  class="workspace workspace--page"
+  aria-labelledby="experiments-title"
+  data-annotation-anchor="selection:experiments"
+>
   <header class="workspace-head">
     <div>
       <p class="kicker">Next-best test</p>
-      <h3 id="experiments-title">Test what could change the decision</h3>
+      <h2 id="experiments-title" tabindex="-1" bind:this={listHeadingEl}>Test what could change the decision</h2>
       <p>Define one risky assumption, a behavioral signal, and the outcome rules before collecting results.</p>
     </div>
     <div class="workspace-actions">
-      {#if !editing}
+      {#if !editing && !loading && experiments.length > 0}
         <button type="button" class="new-action" onclick={beginNew} disabled={!ideas.length}>{DRAFT_TEST_BRIEF_LABEL}</button>
       {/if}
-      <button type="button" class="close-action" aria-label="Close test workspace" onclick={onClose}>
-        <X aria-hidden="true" />
-      </button>
     </div>
   </header>
 
@@ -828,13 +1115,16 @@
     <p class="empty" role="status">Loading experiment briefs…</p>
   {:else if !loadError && !editing && experiments.length === 0}
     <EmptyState
-      title="No test briefs yet"
-      description="The strongest tests anchor to an assumption a challenge already exposed. Stress-test the evidence first, then draft the brief from the gap it finds."
+      title={hasTrackedAssumption ? "Plan a test for the open assumption" : "Start with one open assumption"}
+      description={hasTrackedAssumption
+        ? "Define the signal and outcome rules before collecting results. This optional test never changes the research score."
+        : "Check the saved evidence first. If an unanswered question could change your choice, turn it into a small test."}
     >
-      {#if onOpenChallenge}
+      {#if hasTrackedAssumption || !onOpenChallenge}
+        <button type="button" class="empty-primary" onclick={beginNew} disabled={!ideas.length}>{DRAFT_TEST_BRIEF_LABEL}</button>
+      {:else}
         <button type="button" class="empty-primary" onclick={onOpenChallenge}>{STRESS_TEST_EVIDENCE_LABEL}</button>
       {/if}
-      <button type="button" class="empty-secondary" onclick={beginNew} disabled={!ideas.length}>{DRAFT_TEST_BRIEF_LABEL}</button>
     </EmptyState>
   {/if}
 
@@ -870,10 +1160,20 @@
               <button type="button" class="text-action" onclick={() => edit(experiment)}>Edit</button>
               <ConfirmGate
                 variant="free"
+                label="Delete draft"
+                confirmLabel="Delete draft"
+                consequence="DRAFT IS REMOVED · NOTHING WAS COLLECTING"
+                busy={deletingId === experiment.id}
+                disabled={disabled || lockingId === experiment.id}
+                onConfirm={() => void removeDraft(experiment.id)}
+              />
+              <ConfirmGate
+                variant="free"
                 label="Lock brief"
                 confirmLabel="Lock brief"
                 consequence="BECOMES IMMUTABLE"
                 busy={lockingId === experiment.id}
+                disabled={disabled || deletingId === experiment.id}
                 onConfirm={() => void lock(experiment.id)}
               />
             {:else if !experiment.run}
@@ -994,7 +1294,11 @@
   {/if}
 
 </section>
-</WorkspaceOverlay>
+{/snippet}
+
+{#if surface === "page" && open}
+  {@render workspaceContent()}
+{/if}
 
 <FormOverlay
   open={editing}
@@ -1006,21 +1310,52 @@
   onRequestClose={closeEditor}
   dirty={editorDirty}
   closeWarning="You have unsaved changes. Close again to discard them."
-  footerMessage="Saving keeps this editable. Nothing is published or collecting responses yet."
+  footerMessage={editorFooterMessage}
 >
-  <form id="experiment-editor-form" class="experiment-form" onsubmit={(event) => { event.preventDefault(); attemptSave(); }}>
-    <DecisionHelp title="Decide the rules before the data" label="Precommitment">
-      Set the audience, metric, thresholds, stopping rule, and next actions while no result can sway them. Lock the brief once every field is final. It becomes the fixed contract your evidence is judged against, and the gate every run, export, and conclusion passes through.
-    </DecisionHelp>
-    {#if draft.originChallengeId && draft.originQuestionId}
-      <aside class="origin-strip">
-        <span>Evidence gap</span>
-        <strong>{SELECTION_CHALLENGE_QUESTION_LABELS[draft.originQuestionId] ?? draft.originQuestionId}</strong>
-        <small>Drafted from a current evidence check for candidate revision {draft.ideaRevision}. This origin cannot be changed.</small>
-      </aside>
-    {/if}
-    <fieldset>
-      <legend>1. Decision risk</legend>
+  <form
+    id="experiment-editor-form"
+    class="experiment-form"
+    onsubmit={(event) => {
+      event.preventDefault();
+      if (editorStep < 3) continueEditor();
+      else attemptSave();
+    }}
+  >
+    <nav class="editor-progress" aria-label="Test plan progress">
+      <ol>
+        {#each [
+          { step: 1, label: "Decision risk" },
+          { step: 2, label: "Test design" },
+          { step: 3, label: "Next actions" },
+        ] as item}
+          <li class:current={editorStep === item.step} class:complete={editorStep > item.step}>
+            <span aria-hidden="true">
+              {#if editorStep > item.step}<Check />{:else}{item.step}{/if}
+            </span>
+            <strong aria-current={editorStep === item.step ? "step" : undefined}>
+              {item.label}
+              {#if editorStep > item.step}<span class="sr-only"> completed</span>{/if}
+            </strong>
+          </li>
+        {/each}
+      </ol>
+    </nav>
+    <div class="form-context">
+      <DecisionHelp title="Why decide this first?" label="Precommitment">
+        Write the signal and next actions before results can bias the decision.
+      </DecisionHelp>
+      {#if draft.originChallengeId && draft.originQuestionId}
+        <aside class="origin-strip">
+          <span>From evidence</span>
+          <strong>{SELECTION_CHALLENGE_QUESTION_LABELS[draft.originQuestionId] ?? draft.originQuestionId}</strong>
+          <small>Candidate revision {draft.ideaRevision}</small>
+        </aside>
+      {/if}
+    </div>
+    {#if editorStep === 1}
+    <fieldset bind:this={editorStageEl} tabindex="-1">
+      <legend>Name the decision risk</legend>
+      <p class="stage-guide">Name the belief that would stop or redirect this idea.</p>
       <div class="field-grid two">
         <FormField
           id="experiment-candidate"
@@ -1062,31 +1397,42 @@
         error={draftFieldError("assumption")}
         onblur={() => touchDraftField("assumption")}
       />
-      <div class="field-grid two">
-        <FormField
-          id="experiment-why-critical"
-          kind="textarea"
-          label="Why failure changes the decision"
-          required
-          bind:value={draft.whyCritical}
-          rows={3}
-          maxlength={1500}
-          error={draftFieldError("whyCritical")}
-          onblur={() => touchDraftField("whyCritical")}
-        />
+      <FormField
+        id="experiment-why-critical"
+        kind="textarea"
+        label="Why failure changes the decision"
+        required
+        bind:value={draft.whyCritical}
+        rows={3}
+        maxlength={1500}
+        error={draftFieldError("whyCritical")}
+        onblur={() => touchDraftField("whyCritical")}
+      />
+      {#if editingId}
         <FormField
           id="experiment-current-evidence"
           kind="textarea"
-          label="What the research currently supports"
+          label="Current evidence note"
           optional
+          hint="This is context for the plan, not a test result."
           bind:value={draft.currentEvidence}
           rows={3}
           maxlength={2000}
         />
-      </div>
+      {:else if draft.currentEvidence.trim()}
+        <aside class="evidence-context" aria-label="Current research context">
+          <span>Current research context</span>
+          <p>{draft.currentEvidence}</p>
+          <small>Carried into this draft as context. It does not count as a test result.</small>
+        </aside>
+      {/if}
     </fieldset>
-    <fieldset>
-      <legend>2. Test and evidence signal</legend>
+    {:else if editorStep === 2}
+    <fieldset bind:this={editorStageEl} tabindex="-1">
+      <legend>Design the smallest credible test</legend>
+      <p class="stage-guide">Define the smallest credible signal and decide what counts before you run it.</p>
+      <section class="form-cluster" aria-labelledby="experiment-design-heading">
+      <h3 class="form-subhead" id="experiment-design-heading">What you will show and measure</h3>
       <div class="field-grid three">
         <FormField id="experiment-method" kind="select" label="Method" bind:value={draft.method}>
           {#each METHODS as option}<option value={option.value}>{option.label}</option>{/each}
@@ -1096,6 +1442,7 @@
         </FormField>
         <FormField
           id="experiment-cost-estimate"
+          class="supporting-cost"
           label="Estimated cost"
           optional
           bind:value={draft.costEstimate}
@@ -1139,9 +1486,9 @@
           onblur={() => touchDraftField("channel")}
         />
       </div>
-    </fieldset>
-    <fieldset>
-      <legend>3. Precommitment</legend>
+      </section>
+      <section class="form-cluster" aria-labelledby="experiment-result-heading">
+      <h3 class="form-subhead" id="experiment-result-heading">What counts as a result</h3>
       <FormField
         id="experiment-primary-metric"
         label="Primary behavioral metric, including numerator and denominator"
@@ -1183,12 +1530,15 @@
           error={draftFieldError("measurementWindow")}
           onblur={() => touchDraftField("measurementWindow")}
         />
-        <label><span>Target sample or exposures <small>optional</small></span><input type="number" min="1" max="1000000" bind:value={draft.sampleTarget} /></label>
+        <label class="sample-target"><span>Target sample or exposures <small>Optional</small></span><input type="number" min="1" max="1000000" bind:value={draft.sampleTarget} /></label>
       </div>
+      </section>
     </fieldset>
-    <fieldset>
-      <legend>4. Decide before results</legend>
-      <div class="field-grid two">
+    {:else}
+    <fieldset bind:this={editorStageEl} tabindex="-1">
+      <legend>Decide before results</legend>
+      <p class="stage-guide">Commit the next action for every credible outcome.</p>
+      <div class="field-grid two action-grid">
         <FormField
           id="experiment-pass-action"
           kind="textarea"
@@ -1213,6 +1563,7 @@
         />
         <FormField
           id="experiment-flat-action"
+          class="contingency-action"
           kind="textarea"
           label="If it is flat"
           required
@@ -1224,6 +1575,7 @@
         />
         <FormField
           id="experiment-invalid-action"
+          class="contingency-action"
           kind="textarea"
           label="If it is invalid"
           required
@@ -1235,21 +1587,39 @@
         />
       </div>
     </fieldset>
+    {/if}
   </form>
-  {#snippet footerCancel()}
-    <button type="button" class="cancel-btn" disabled={saving} onclick={closeEditor}>Cancel</button>
+  {#snippet footerCancel(requestClose)}
+    {#if editorStep === 1}
+      <button type="button" class="cancel-btn" disabled={saving} onclick={requestClose}>Cancel</button>
+    {:else}
+      <button type="button" class="cancel-btn" disabled={saving} onclick={previousEditorStep}>Back</button>
+    {/if}
   {/snippet}
   {#snippet footer()}
     <div class="footer-submit">
       {#if error}<p class="form-error" role="alert">{error}</p>{/if}
-      <SubmitButton
-        type="button"
-        label={editingId ? "Save changes" : "Save draft"}
-        loadingText="Saving…"
-        loading={saving}
-        onclick={attemptSave}
-        class="submit-btn"
-      />
+      {#if editorStep < 3}
+        <SubmitButton
+          type="button"
+          label="Continue"
+          loadingText="Continue"
+          loading={false}
+          disabled={Boolean(loadError)}
+          onclick={continueEditor}
+          class="submit-btn"
+        />
+      {:else}
+        <SubmitButton
+          type="button"
+          label={editingId ? "Save changes" : "Save draft"}
+          loadingText="Saving…"
+          loading={saving}
+          disabled={Boolean(loadError) || disabled}
+          onclick={attemptSave}
+          class="submit-btn"
+        />
+      {/if}
     </div>
   {/snippet}
 </FormOverlay>
@@ -1272,35 +1642,38 @@
         Write the headline and promise as a live offer. Participants judge this page at face value, so the click rate measures exactly the words you publish here. Responses stay anonymous: no account, email, or payment is ever collected, which keeps the interest signal honest.
       </DecisionHelp>
       <p class="overlay-explanation">Participants see only this offer and action, not your hypothesis, scores, thresholds, or founder constraints.</p>
-      <label>
-        <span>Headline <small>required</small></span>
-        <input
-          bind:value={launchDraft.headline}
-          maxlength="140"
-          aria-required="true"
-          aria-invalid={launchFieldError("headline") ? "true" : undefined}
-          onblur={() => touchLaunchField("headline")}
-        />
-        {#if launchFieldError("headline")}<p class="form-error" role="alert">{launchFieldError("headline")}</p>{/if}
-      </label>
-      <label>
-        <span>Support sentence <small>required</small></span>
-        <textarea
-          bind:value={launchDraft.promise}
-          rows="3"
-          maxlength="1000"
-          aria-required="true"
-          aria-invalid={launchFieldError("promise") ? "true" : undefined}
-          onblur={() => touchLaunchField("promise")}
-        ></textarea>
-        {#if launchFieldError("promise")}<p class="form-error" role="alert">{launchFieldError("promise")}</p>{/if}
-      </label>
-      <label><span>Interest action</span><select bind:value={launchDraft.ctaLabel}><option value="IM_INTERESTED">I’m interested</option><option value="SHOW_ME_THE_CONCEPT">Show me the concept</option><option value="ID_TRY_THIS">I’d try this</option></select></label>
+      <FormField
+        id="experiment-launch-headline"
+        label="Headline"
+        required
+        bind:value={launchDraft.headline}
+        minlength={3}
+        maxlength={140}
+        error={launchFieldError("headline")}
+        onblur={() => touchLaunchField("headline")}
+      />
+      <FormField
+        id="experiment-launch-promise"
+        kind="textarea"
+        label="Support sentence"
+        required
+        bind:value={launchDraft.promise}
+        minlength={3}
+        maxlength={1000}
+        rows={3}
+        error={launchFieldError("promise")}
+        onblur={() => touchLaunchField("promise")}
+      />
+      <FormField id="experiment-launch-cta" kind="select" label="Interest action" bind:value={launchDraft.ctaLabel}>
+        <option value="IM_INTERESTED">I’m interested</option>
+        <option value="SHOW_ME_THE_CONCEPT">Show me the concept</option>
+        <option value="ID_TRY_THIS">I’d try this</option>
+      </FormField>
       <p class="signal-note"><strong>After the click:</strong> NicheIQ immediately explains that this is a concept test.</p>
     </form>
   {/if}
-  {#snippet footerCancel()}
-    <button type="button" class="cancel-btn" disabled={Boolean(launchingId)} onclick={closeLaunch}>Cancel</button>
+  {#snippet footerCancel(requestClose)}
+    <button type="button" class="cancel-btn" disabled={Boolean(launchingId)} onclick={requestClose}>Cancel</button>
   {/snippet}
   {#snippet footer()}
     <div class="footer-submit">
@@ -1310,7 +1683,7 @@
         label="Publish test"
         loadingText="Publishing test…"
         loading={Boolean(launchingId)}
-        disabled={!launchExperiment}
+        disabled={!launchExperiment || disabled}
         onclick={attemptPublish}
         class="submit-btn"
       />
@@ -1331,23 +1704,46 @@
   footerMessage="This conclusion becomes read-only and stays attached to this exact idea revision."
 >
   {#if conclusionExperiment}
-    <form id="experiment-conclusion-form" class="conclusion-sheet" onsubmit={(event) => { event.preventDefault(); void saveConclusion(conclusionExperiment); }}>
+    <form id="experiment-conclusion-form" class="conclusion-sheet" onsubmit={(event) => { event.preventDefault(); attemptSaveConclusion(conclusionExperiment); }}>
       <DecisionHelp title="Trigger the plan you already wrote" label="Conclusion scope">
         Record the outcome, and the next action you committed before the test comes with it. Hindsight can’t swap in a friendlier plan. NicheIQ seals the evidence and your rationale into one permanent receipt. The idea’s research score stays untouched: this record is your judgment layer.
       </DecisionHelp>
       {#if !conclusionExperiment.run}
         <fieldset class="manual-evidence">
           <legend>1. Observed evidence</legend>
-          <label><span>Observed result <small>required</small></span><textarea bind:value={observationSummary} rows="3" maxlength="3000" placeholder="Describe the concrete behavior, numerator and denominator, or technical finding." aria-required="true" aria-invalid={observationSummary.trim().length < 3 ? "true" : undefined}></textarea></label>
+          <FormField
+            id="experiment-observation-summary"
+            kind="textarea"
+            label="Observed result"
+            required
+            bind:value={observationSummary}
+            minlength={3}
+            maxlength={3000}
+            rows={3}
+            placeholder="Describe the concrete behavior, numerator and denominator, or technical finding."
+            error={conclusionFieldError("observationSummary")}
+            onblur={() => touchConclusionField("observationSummary")}
+          />
           <div class="field-grid three">
-            <label><span>Observed on <small>required</small></span><input type="date" bind:value={observedAt} aria-required="true" aria-invalid={observedAt ? undefined : "true"} /></label>
-            <label><span>Sample size <small>optional</small></span><input type="number" min="1" max="1000000" bind:value={observedSampleSize} /></label>
-            <label><span>Observed metric <small>optional</small></span><input bind:value={observedMetric} maxlength="500" placeholder="3 of 12 booked a call" /></label>
+            <FormField
+              id="experiment-observed-at"
+              type="date"
+              label="Observed on"
+              required
+              bind:value={observedAt}
+              error={conclusionFieldError("observedAt")}
+              onblur={() => touchConclusionField("observedAt")}
+            />
+            <label for="experiment-observed-sample-size"><span>Sample size <small>optional</small></span><input id="experiment-observed-sample-size" type="number" min="1" max="1000000" bind:value={observedSampleSize} /></label>
+            <FormField id="experiment-observed-metric" label="Observed metric" optional bind:value={observedMetric} maxlength={500} placeholder="3 of 12 booked a call" />
           </div>
-          <label><span>Evidence links or references <small>optional, one per line</small></span><textarea bind:value={sourceReferences} rows="2" maxlength="5000" placeholder="Interview notes / July cohort"></textarea></label>
+          <FormField id="experiment-source-references" kind="textarea" label="Evidence links or references" optional hint="One per line." bind:value={sourceReferences} rows={2} maxlength={5000} placeholder="Interview notes / July cohort" />
         </fieldset>
       {/if}
-      <fieldset class="outcome-fieldset">
+      <fieldset
+        class="outcome-fieldset"
+        aria-describedby={conclusionFieldError("outcome") ? "experiment-outcome-error" : undefined}
+      >
         <legend>{conclusionExperiment.run ? "1" : "2"}. Which written rule fits?</legend>
         <div class="outcome-picker">
           <SegmentControl
@@ -1358,14 +1754,29 @@
               disabled: outcomeUnavailable(conclusionExperiment, option.value),
             }))}
             value={conclusionOutcome ?? ""}
-            onChange={(value) => (conclusionOutcome = value as ExperimentConclusionOutcome)}
+            onChange={(value) => {
+              conclusionOutcome = value as ExperimentConclusionOutcome;
+              touchConclusionField("outcome");
+            }}
           />
+          {#if conclusionFieldError("outcome")}<p id="experiment-outcome-error" class="form-error" role="alert">{conclusionFieldError("outcome")}</p>{/if}
         </div>
       </fieldset>
       <fieldset>
         <legend>{conclusionExperiment.run ? "2" : "3"}. Owner rationale</legend>
-        <label><span>Why this outcome fits the written rule <small>required</small></span><textarea bind:value={conclusionRationale} rows="3" maxlength="2000" aria-required="true" aria-invalid={conclusionRationale.trim().length < 3 ? "true" : undefined}></textarea></label>
-        <label><span>Limitations <small>optional, one per line</small></span><textarea bind:value={conclusionLimitations} rows="2" maxlength="5000" placeholder="Only one acquisition channel was tested."></textarea></label>
+        <FormField
+          id="experiment-conclusion-rationale"
+          kind="textarea"
+          label="Why this outcome fits the written rule"
+          required
+          bind:value={conclusionRationale}
+          minlength={3}
+          maxlength={2000}
+          rows={3}
+          error={conclusionFieldError("rationale")}
+          onblur={() => touchConclusionField("rationale")}
+        />
+        <FormField id="experiment-conclusion-limitations" kind="textarea" label="Limitations" optional hint="One per line." bind:value={conclusionLimitations} rows={2} maxlength={5000} placeholder="Only one acquisition channel was tested." />
       </fieldset>
       <aside class="next-action" aria-live="polite">
         <span>Precommitted next action</span>
@@ -1373,8 +1784,8 @@
       </aside>
     </form>
   {/if}
-  {#snippet footerCancel()}
-    <button type="button" class="cancel-btn" disabled={Boolean(concludingId)} onclick={closeConclusion}>Cancel</button>
+  {#snippet footerCancel(requestClose)}
+    <button type="button" class="cancel-btn" disabled={Boolean(concludingId)} onclick={requestClose}>Cancel</button>
   {/snippet}
   {#snippet footer()}
     <div class="footer-submit">
@@ -1384,8 +1795,8 @@
         label="Save conclusion"
         loadingText="Saving conclusion…"
         loading={Boolean(concludingId)}
-        disabled={!conclusionExperiment || !canSaveConclusion(conclusionExperiment)}
-        onclick={() => { if (conclusionExperiment) void saveConclusion(conclusionExperiment); }}
+        disabled={!conclusionExperiment || disabled}
+        onclick={() => { if (conclusionExperiment) attemptSaveConclusion(conclusionExperiment); }}
         class="submit-btn"
       />
     </div>
@@ -1393,144 +1804,215 @@
 </FormOverlay>
 
 <style>
-  .workspace { height: 100%; margin: 0; padding: 0 1.4rem 1.4rem; overflow: auto; background: var(--color-bg-elevated); }
-  .workspace:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
+  .workspace { height: 100%; margin: 0; padding: 0 var(--space-6) var(--space-6); overflow: auto; background: var(--color-bg-elevated); }
+  .workspace--page { height: auto; min-height: 0; padding: 0; overflow: visible; background: transparent; }
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
-  .workspace-head { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; padding: 1.15rem 0.15rem 1rem; border-bottom: 1px solid var(--color-border); background: var(--color-bg-elevated); }
+  .workspace-head { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: var(--space-6); padding: var(--space-5) 0 var(--space-4); border-bottom: 1px solid var(--color-border); background: var(--color-bg-elevated); }
+  .workspace--page .workspace-head { position: static; padding: 0 0 var(--space-5); background: transparent; }
   .workspace-head > div { max-width: 52rem; }
-  .kicker { margin: 0 0 0.18rem; font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-secondary); }
-  h3, h4, p { margin: 0; }
-  h3 { font-size: 1rem; color: var(--color-text-primary); }
-  .workspace-head div > p:last-child { margin-top: 0.3rem; font-size: 0.8rem; line-height: 1.45; color: var(--color-text-secondary); }
-  button { min-height: 2.35rem; border: 1px solid var(--color-border); border-radius: 0.65rem; background: var(--color-bg-elevated); color: var(--color-text-primary); font-size: 0.76rem; font-weight: 700; cursor: pointer; transition: border-color 140ms ease, background 140ms ease, transform 140ms ease; }
+  .kicker { margin: 0 0 var(--space-1); font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 800; letter-spacing: var(--tracking-wider); text-transform: uppercase; color: var(--color-text-secondary); }
+  h2, h3, h4, p { margin: 0; }
+  h2 { font-family: var(--font-display); font-size: var(--text-3xl); line-height: var(--leading-tight); color: var(--color-text-primary); }
+  h3 { font-size: var(--text-md); color: var(--color-text-primary); }
+  .workspace-head div > p:last-child { margin-top: var(--space-1); font-size: var(--text-13); line-height: var(--leading-normal); color: var(--color-text-secondary); }
+  button { min-height: var(--space-10); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-elevated); color: var(--color-text-primary); font-size: var(--text-sm); font-weight: 700; cursor: pointer; transition: border-color var(--duration-fast) var(--ease-default), background var(--duration-fast) var(--ease-default), transform var(--duration-fast) var(--ease-default); }
   button:hover:not(:disabled) { border-color: var(--color-text-muted); }
-  button:active:not(:disabled) { transform: translateY(1px); }
+  button:active:not(:disabled) { transform: scale(0.98); }
   @media (prefers-reduced-motion: reduce) {
     button:active:not(:disabled) { transform: none; }
   }
-  button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+  button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+  /* Programmatic landing spot after a row is deleted from under the focus. */
+  #experiments-title:focus { outline: 2px solid var(--color-accent); outline-offset: 3px; border-radius: var(--radius-sm); }
   button:disabled { background: var(--color-bg-hover); color: var(--color-text-muted); border-color: var(--color-border); cursor: not-allowed; }
-  .new-action { padding: 0 0.9rem; background: var(--color-text-primary); color: var(--color-bg-primary); border-color: var(--color-text-primary); white-space: nowrap; }
-  .workspace-actions { display: flex; align-items: center; gap: 0.5rem; }
-  .close-action { display: grid; flex: 0 0 2.35rem; width: 2.35rem; padding: 0; place-items: center; }
-  .close-action :global(svg) { width: 1rem; height: 1rem; }
-  .empty, .error { padding: 0.9rem 0.15rem 1rem; font-size: 0.78rem; color: var(--color-text-muted); }
-  .empty-primary,
-  .empty-secondary {
-    min-height: 2.35rem;
-    padding: 0.45rem 0.85rem;
+  .new-action { padding: 0 var(--space-4); background: var(--color-accent-hover); color: var(--color-text-on-accent); border-color: var(--color-accent-hover); white-space: nowrap; }
+  .new-action:hover:not(:disabled) { background: var(--color-accent-dark); border-color: var(--color-accent-dark); }
+  .workspace-actions { display: flex; align-items: center; gap: var(--space-2); }
+  .empty, .error { padding: var(--space-4) 0; font-size: var(--text-sm); color: var(--color-text-muted); }
+  .empty-primary {
+    min-height: var(--space-10);
+    padding: var(--space-2) var(--space-4);
     border: 1px solid var(--color-border-emphasis);
-    border-radius: 0.55rem;
+    border-radius: var(--radius-md);
     font: inherit;
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     font-weight: 700;
     cursor: pointer;
   }
-  .empty-primary {
-    border-color: var(--color-text-primary);
-    background: var(--color-text-primary);
-    color: var(--color-bg-primary);
-  }
-  .empty-secondary {
-    background: var(--color-bg-elevated);
-    color: var(--color-text-primary);
-  }
-  .empty-secondary:disabled { background: var(--color-bg-hover); color: var(--color-text-muted); border-color: var(--color-border); cursor: not-allowed; }
-  .empty-primary:focus-visible,
-  .empty-secondary:focus-visible {
+  .empty-primary { border-color: var(--color-accent-hover); background: var(--color-accent-hover); color: var(--color-text-on-accent); }
+  .empty-primary:focus-visible {
     outline: 2px solid var(--color-accent);
     outline-offset: 2px;
   }
   .error { color: var(--color-error-text); }
-  .load-error { display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:.8rem .9rem; border:1px solid var(--color-border); border-radius:.65rem; background:var(--color-bg-subtle); }
-  .load-error > div { display:grid; gap:.15rem; }
-  .load-error strong { color:var(--color-text-primary); font-size:.76rem; }
-  .load-error span { color:var(--color-text-secondary); font-size:.7rem; }
-  .load-error button { min-height:2rem; padding:.35rem .7rem; border:1px solid var(--color-border-emphasis); border-radius:.45rem; background:var(--color-bg-elevated); color:var(--color-text-primary); font-weight:700; cursor:pointer; }
+  .load-error { display:flex; align-items:center; justify-content:space-between; gap:var(--space-4); padding:var(--space-3) var(--space-4); border:1px solid var(--color-border); border-radius: var(--radius-lg); background:var(--color-bg-subtle); }
+  .load-error > div { display:grid; gap:var(--space-1); }
+  .load-error strong { color:var(--color-text-primary); font-size: var(--text-sm); }
+  .load-error span { color:var(--color-text-secondary); font-size: var(--text-11); }
+  .load-error button { min-height:var(--space-8); padding:var(--space-1) var(--space-3); border:1px solid var(--color-border-emphasis); border-radius: var(--radius-md); background:var(--color-bg-elevated); color:var(--color-text-primary); font-weight:700; cursor:pointer; }
   .experiment-list { border-top: 1px solid var(--color-border); }
-  .experiment-row { display: grid; grid-template-columns: minmax(16rem, 1.5fr) minmax(18rem, 1fr) auto; gap: 1.25rem; align-items: center; padding: 1rem 0.15rem; border-bottom: 1px solid var(--color-border); }
+  .experiment-row { display: grid; grid-template-columns: minmax(16rem, 1.5fr) minmax(18rem, 1fr) auto; gap: var(--space-5); align-items: center; padding: var(--space-4) 0; border-bottom: 1px solid var(--color-border); }
   .experiment-row:last-child { border-bottom: 0; }
-  .row-meta { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-bottom: 0.32rem; font-family: var(--font-mono); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-secondary); }
-  .row-meta span:first-child { color: var(--color-warning-dark); }
-  .row-meta span.locked { color: var(--color-success-dark); }
-  .row-meta span.active { color: var(--color-accent-dark); }
-  h4 { font-size: 0.88rem; color: var(--color-text-primary); }
-  .experiment-main > p { margin-top: 0.28rem; font-size: 0.76rem; line-height: 1.45; color: var(--color-text-secondary); }
-  .experiment-rule { display: grid; gap: 0.25rem; margin: 0; }
-  .experiment-rule div { display: grid; grid-template-columns: 3rem minmax(0, 1fr); gap: 0.5rem; }
+  .row-meta { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-1); font-family: var(--font-mono); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: var(--tracking-wide); color: var(--color-text-secondary); }
+  /* Draft status stays a muted record line: warning orange beside the brand
+     accent misread as an alert. Locked/active states recolor below. */
+  .row-meta span:first-child { color: var(--color-text-muted); }
+  .row-meta span.locked { color: var(--color-success-text); }
+  .row-meta span.active { color: var(--color-info-dark); }
+  h4 { font-size: var(--text-base); color: var(--color-text-primary); }
+  .experiment-main > p { margin-top: var(--space-1); font-size: var(--text-sm); line-height: var(--leading-normal); color: var(--color-text-secondary); }
+  .experiment-rule { display: grid; gap: var(--space-1); margin: 0; }
+  .experiment-rule div { display: grid; grid-template-columns: var(--space-12) minmax(0, 1fr); gap: var(--space-2); }
   .experiment-rule dt { font-size: var(--text-xs); font-weight: 700; text-transform: uppercase; color: var(--color-text-secondary); }
-  .experiment-rule dd { margin: 0; font-size: 0.72rem; color: var(--color-text-secondary); }
-  .row-actions { display: flex; gap: 0.45rem; align-items: center; }
-  .row-actions button { padding: 0 0.72rem; }
-  .row-error { grid-column: 1 / -1; margin: 0; padding: 0.65rem 0.75rem; border-left: 2px solid var(--color-error-text); color: var(--color-error-text); font-size: 0.74rem; }
+  .experiment-rule dd { margin: 0; font-size: var(--text-sm); color: var(--color-text-secondary); }
+  .row-actions { display: flex; gap: var(--space-2); align-items: center; }
+  .row-actions button { padding: 0 var(--space-3); }
+  .row-error { grid-column: 1 / -1; margin: 0; padding: var(--space-3); border: 1px solid var(--color-border-error); border-radius: var(--radius-md); background: var(--color-error-subtle); color: var(--color-error-text); font-size: var(--text-sm); }
   .text-action { border-color: transparent; background: transparent; }
-  .action-link { display: inline-flex; min-height: 2.35rem; align-items: center; padding: 0 0.45rem; border-radius: 0.55rem; color: var(--color-text-primary); font-size: 0.76rem; font-weight: 700; text-decoration: none; }
-  .locked-note { font-family: var(--font-mono); font-size: var(--text-11); color: var(--color-success-dark); }
+  .action-link { display: inline-flex; min-height: var(--space-10); align-items: center; padding: 0 var(--space-2); border-radius: var(--radius-md); color: var(--color-text-primary); font-size: var(--text-sm); font-weight: 700; text-decoration: none; }
+  .locked-note { font-family: var(--font-mono); font-size: var(--text-11); color: var(--color-success-text); }
   .brief-export { grid-column: 1 / -1; border-top: 1px solid var(--color-border); }
-  .brief-export summary { width: fit-content; padding-top: 0.75rem; color: var(--color-text-secondary); font-size: 0.72rem; font-weight: 700; cursor: pointer; }
-  .brief-export-body { display: grid; grid-template-columns: minmax(16rem, 1fr) minmax(18rem, 1.2fr) auto; gap: 1rem; align-items: center; padding: 0.75rem 0 0.15rem; }
-  .brief-export-body > p { display: grid; gap: 0.2rem; font-size: 0.72rem; color: var(--color-text-secondary); }
+  .brief-export summary { width: fit-content; padding-top: var(--space-3); color: var(--color-text-secondary); font-size: var(--text-sm); font-weight: 700; cursor: pointer; }
+  .brief-export-body { display: grid; grid-template-columns: minmax(16rem, 1fr) minmax(18rem, 1.2fr) auto; gap: var(--space-4); align-items: center; padding: var(--space-3) 0 0; }
+  .brief-export-body > p { display: grid; gap: var(--space-1); font-size: var(--text-sm); color: var(--color-text-secondary); }
   .brief-export-body > p strong { color: var(--color-text-primary); }
   .brief-export-body > p span, .brief-export-body .origin-status { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-secondary); }
-  .brief-export-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; justify-content: flex-end; align-items: center; }
-  .brief-export-actions button { padding: 0 0.55rem; }
-  .brief-export-actions a { display: inline-flex; min-height: 2.35rem; align-items: center; padding: 0 0.5rem; color: var(--color-text-secondary); font-size: 0.7rem; font-weight: 700; text-decoration: none; }
-  .results-sheet, .conclusion-summary { grid-column: 1 / -1; width: 100%; padding: 1.1rem 0.15rem 0.2rem; border-top: 1px solid var(--color-border); }
+  .brief-export-actions { display: flex; flex-wrap: wrap; gap: var(--space-1); justify-content: flex-end; align-items: center; }
+  .brief-export-actions button { padding: 0 var(--space-2); }
+  .brief-export-actions a { display: inline-flex; min-height: var(--space-10); align-items: center; padding: 0 var(--space-2); color: var(--color-text-secondary); font-size: var(--text-11); font-weight: 700; text-decoration: none; }
+  .results-sheet, .conclusion-summary { grid-column: 1 / -1; width: 100%; padding: var(--space-5) 0 0; border-top: 1px solid var(--color-border); }
   .launch-sheet, .conclusion-sheet { width: 100%; }
-  .launch-sheet > label { max-width: 52rem; }
   .result-ledger { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; border-block: 1px solid var(--color-border); }
-  .result-ledger div { min-width: 0; padding: 0.85rem 1rem; border-right: 1px solid var(--color-border); }
+  .result-ledger div { min-width: 0; padding: var(--space-3) var(--space-4); border-right: 1px solid var(--color-border); }
   .result-ledger div:first-child { padding-left: 0; }
   .result-ledger div:last-child { border-right: 0; }
   .result-ledger dt { font-size: var(--text-xs); font-weight: 700; color: var(--color-text-secondary); }
-  .result-ledger dd { margin: 0.28rem 0 0; font-family: var(--font-mono); font-size: 0.82rem; color: var(--color-text-primary); font-variant-numeric: tabular-nums; }
-  .result-status { margin-top: 0.85rem; font-size: 0.75rem; line-height: 1.5; color: var(--color-text-secondary); }
-  .conclusion-heading { display: grid; grid-template-columns: minmax(16rem, 0.8fr) minmax(18rem, 1.2fr); gap: 1.5rem; align-items: start; }
-  .conclusion-heading h5 { margin: 0; font-size: 0.9rem; color: var(--color-text-primary); }
-  .conclusion-heading > span { font-size: 0.72rem; line-height: 1.5; color: var(--color-text-secondary); }
+  .result-ledger dd { margin: var(--space-1) 0 0; font-family: var(--font-mono); font-size: var(--text-13); color: var(--color-text-primary); font-variant-numeric: tabular-nums; }
+  .result-status { margin-top: var(--space-4); font-size: var(--text-sm); line-height: var(--leading-normal); color: var(--color-text-secondary); }
+  .conclusion-heading { display: grid; grid-template-columns: minmax(16rem, 0.8fr) minmax(18rem, 1.2fr); gap: var(--space-6); align-items: start; }
+  .conclusion-heading h5 { margin: 0; font-size: var(--text-base); color: var(--color-text-primary); }
+  .conclusion-heading > span { font-size: var(--text-sm); line-height: var(--leading-normal); color: var(--color-text-secondary); }
   .conclusion-heading > span { justify-self: end; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-secondary); }
   .conclusion-sheet fieldset { padding-inline: 0; }
-  .outcome-picker { margin-top: 0.8rem; }
+  .outcome-picker { margin-top: var(--space-3); }
   .outcome-picker :global(.segment-cards) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   label > span small { font-weight: 500; color: var(--color-text-secondary); }
-  .next-action { display: grid; gap: 0.3rem; margin-top: 1rem; padding: 0.85rem 1rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-surface); }
-  .next-action span { font-family: var(--font-mono); font-size: var(--text-11); font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--color-text-secondary); }
-  .next-action strong { font-size: var(--text-13); line-height: 1.45; color: var(--color-text-primary); }
-  .conclusion-summary dl { display: grid; grid-template-columns: minmax(16rem, 0.8fr) minmax(18rem, 1.2fr); gap: 1.5rem; margin: 1rem 0 0; padding-block: 0.9rem; border-block: 1px solid var(--color-border); }
+  .next-action { display: grid; gap: var(--space-1); margin-top: var(--space-4); padding: var(--space-3) var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-surface); }
+  .next-action span { font-family: var(--font-mono); font-size: var(--text-11); font-weight: 700; letter-spacing: var(--tracking-wider); text-transform: uppercase; color: var(--color-text-secondary); }
+  .next-action strong { font-size: var(--text-13); line-height: var(--leading-normal); color: var(--color-text-primary); }
+  .conclusion-summary dl { display: grid; grid-template-columns: minmax(16rem, 0.8fr) minmax(18rem, 1.2fr); gap: var(--space-6); margin: var(--space-4) 0 0; padding-block: var(--space-4); border-block: 1px solid var(--color-border); }
   .conclusion-summary dt { font-size: var(--text-xs); font-weight: 700; color: var(--color-text-secondary); }
-  .conclusion-summary dd { margin: 0.3rem 0 0; font-size: 0.76rem; line-height: 1.5; color: var(--color-text-primary); }
-  .conclusion-scope { margin-top: 0.75rem; font-size: 0.7rem; line-height: 1.45; color: var(--color-text-secondary); }
-  .experiment-form { padding-bottom: 0.25rem; }
-  .origin-strip { display: grid; grid-template-columns: 7rem minmax(12rem, 0.8fr) minmax(18rem, 1.2fr); gap: 0.8rem; align-items: baseline; padding: 0.85rem 0.15rem; border-bottom: 1px solid var(--color-border); }
-  .origin-strip span { font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: var(--color-accent-dark); }
-  .origin-strip strong { font-size: 0.76rem; color: var(--color-text-primary); }
-  .origin-strip small { font-size: 0.7rem; line-height: 1.45; color: var(--color-text-secondary); }
-  .candidate-confirm { display: grid; gap: 0.6rem; margin-top: 0.85rem; padding: 0.75rem 0.85rem; border: 1px solid var(--color-border-emphasis); border-radius: var(--radius-md); background: var(--color-bg-surface); }
-  .candidate-confirm p { margin: 0; font-size: var(--text-13); line-height: 1.5; color: var(--color-text-primary); }
-  .candidate-confirm-actions { display: flex; gap: 0.5rem; }
-  .candidate-confirm-cancel, .candidate-confirm-confirm { display: inline-flex; align-items: center; justify-content: center; min-height: 2.1rem; padding: 0.35rem 0.8rem; border-radius: var(--radius-md); font-size: var(--text-sm); font-weight: 700; cursor: pointer; }
+  .conclusion-summary dd { margin: var(--space-1) 0 0; font-size: var(--text-sm); line-height: var(--leading-normal); color: var(--color-text-primary); }
+  .conclusion-scope { margin-top: var(--space-3); font-size: var(--text-11); line-height: var(--leading-normal); color: var(--color-text-secondary); }
+  .experiment-form {
+    display: grid;
+    gap: var(--space-5);
+    padding-bottom: var(--space-1);
+  }
+  .form-context {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    min-width: 0;
+  }
+  .editor-progress {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-bottom: 1px solid var(--color-border);
+    border-radius: 0;
+    background: transparent;
+  }
+  .editor-progress ol { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; margin: 0 0 -1px; padding: 0; list-style: none; }
+  .editor-progress li {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3) var(--space-3);
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    color: var(--color-text-muted);
+  }
+  .editor-progress li > span { display: grid; flex: 0 0 var(--space-6); width: var(--space-6); height: var(--space-6); place-items: center; border: 1px solid var(--color-border); border-radius: var(--radius-full); background: var(--color-bg-surface); font: 700 var(--text-xs)/var(--leading-none) var(--font-mono); }
+  .editor-progress li > span :global(svg) { width: var(--space-3); height: var(--space-3); stroke-width: 3; }
+  .editor-progress li > strong { overflow: hidden; font-size: var(--text-xs); font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+  .editor-progress li.current {
+    border-bottom-color: var(--color-accent);
+    background: transparent;
+    box-shadow: none;
+    color: var(--color-text-primary);
+  }
+  .editor-progress li.current > span { border-color: var(--color-border-accent); color: var(--color-accent-dark); background: var(--color-accent-subtle); }
+  .editor-progress li.complete { color: var(--color-text-secondary); }
+  .editor-progress li.complete > span { border-color: var(--color-success); color: var(--color-success-text); background: var(--color-success-subtle); }
+  .origin-strip { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: baseline; min-width: 0; padding: 0; border: 0; background: transparent; text-align: right; }
+  .origin-strip span { font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 700; letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--color-text-muted); }
+  .origin-strip strong { font-size: var(--text-sm); color: var(--color-text-primary); }
+  .origin-strip small { font-size: var(--text-11); line-height: var(--leading-normal); color: var(--color-text-secondary); }
+  .evidence-context { display: grid; gap: var(--space-2); margin-top: var(--space-4); padding: var(--space-3) 0; border-block: 1px solid var(--color-border); border-radius: 0; background: transparent; }
+  .evidence-context span { color: var(--color-text-secondary); font: 700 var(--text-11)/var(--leading-snug) var(--font-mono); letter-spacing: var(--tracking-wider); text-transform: uppercase; }
+  .evidence-context p { color: var(--color-text-primary); font-size: var(--text-13); line-height: var(--leading-normal); white-space: pre-wrap; }
+  .evidence-context small { color: var(--color-text-secondary); font-size: var(--text-xs); line-height: var(--leading-normal); }
+  .candidate-confirm { display: grid; gap: var(--space-2); margin-top: var(--space-3); padding: var(--space-3); border: 1px solid var(--color-border-emphasis); border-radius: var(--radius-md); background: var(--color-bg-surface); }
+  .candidate-confirm p { margin: 0; font-size: var(--text-13); line-height: var(--leading-normal); color: var(--color-text-primary); }
+  .candidate-confirm-actions { display: flex; gap: var(--space-2); }
+  .candidate-confirm-cancel, .candidate-confirm-confirm { display: inline-flex; align-items: center; justify-content: center; min-height: var(--space-10); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); font-size: var(--text-sm); font-weight: 700; cursor: pointer; }
   .candidate-confirm-cancel { border: 1px solid var(--color-input-border); background: transparent; color: var(--color-text-secondary); transition: border-color var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default); }
   .candidate-confirm-cancel:hover { border-color: var(--color-text-secondary); color: var(--color-text-primary); }
   .candidate-confirm-confirm { border: 0; background: var(--color-accent-hover); color: var(--color-text-on-accent); transition: background var(--duration-fast) var(--ease-default); }
   .candidate-confirm-confirm:hover { background: var(--color-accent-dark); }
   .candidate-confirm-cancel:focus-visible, .candidate-confirm-confirm:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
-  fieldset { min-width: 0; margin: 0; padding: 1rem 0.15rem; border: 0; border-bottom: 1px solid var(--color-border); }
-  legend { padding: 0; font-size: 0.78rem; font-weight: 800; color: var(--color-text-primary); }
-  label { display: grid; gap: 0.38rem; margin-top: 0.8rem; }
-  label > span { font-size: var(--text-11); font-weight: 700; color: var(--color-text-secondary); }
-  input, textarea, select { width: 100%; border: 1px solid var(--color-input-border); border-radius: 0.55rem; background: var(--color-bg-primary); color: var(--color-text-primary); font: inherit; font-size: 0.78rem; line-height: 1.4; }
-  input, select { min-height: 2.45rem; padding: 0 0.68rem; }
-  textarea { resize: vertical; padding: 0.62rem 0.68rem; }
-  .field-grid { display: grid; gap: 0.85rem; }
+  fieldset {
+    min-width: 0;
+    display: grid;
+    gap: var(--space-4);
+    margin: 0;
+    padding: 0;
+    border: 0;
+    outline: none;
+  }
+  fieldset:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: var(--space-1);
+  }
+  legend { padding: 0; font-size: var(--text-md); font-weight: 700; color: var(--color-text-primary); }
+  .stage-guide {
+    margin-top: calc(var(--space-3) * -1);
+    color: var(--color-text-secondary);
+    font-size: var(--text-13);
+    line-height: var(--leading-normal);
+  }
+  .form-cluster {
+    display: grid;
+    gap: var(--space-4);
+    padding: 0 0 var(--space-5);
+    border: 0;
+    border-bottom: 1px solid var(--color-border);
+    border-radius: 0;
+    background: transparent;
+  }
+  .form-cluster:last-child { padding-bottom: 0; border-bottom: 0; }
+  .action-grid { padding: 0; border: 0; background: transparent; }
+  .form-subhead { margin: 0; color: var(--color-text-primary); font-size: var(--text-base); font-weight: 700; }
+  label { display: grid; gap: var(--space-2); margin: 0; }
+  label > span { font-size: var(--text-13); font-weight: 600; color: var(--color-text-primary); }
+  label > span small { font-size: var(--text-11); font-weight: 500; color: var(--color-text-muted); }
+  input { width: 100%; min-height: var(--space-10); padding: 0 var(--space-3); border: 1px solid var(--color-input-border); border-radius: var(--radius-md); background: var(--color-bg-elevated); color: var(--color-text-primary); font: inherit; font-size: var(--text-13); line-height: var(--leading-normal); }
+  .field-grid { display: grid; gap: var(--space-4); }
   .field-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .field-grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .signal-note { margin-top: 0.7rem; padding-left: 0.7rem; border-left: 2px solid var(--color-border); font-size: 0.72rem; color: var(--color-text-secondary); }
+  .field-grid.three { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .field-grid.three :global(.supporting-cost) { grid-column: 1 / -1; max-width: 24rem; }
+  .action-grid :global(.contingency-action) { margin-top: var(--space-2); padding-top: var(--space-4); border-top: 1px solid var(--color-border); }
+  .signal-note { margin: calc(var(--space-2) * -1) 0 0; font-size: var(--text-xs); line-height: var(--leading-normal); color: var(--color-text-secondary); }
   .signal-note strong { color: var(--color-text-secondary); }
-  .overlay-explanation { margin: 0.35rem 0 0.85rem; color: var(--color-text-secondary); font-size: 0.76rem; line-height: 1.5; }
-  .footer-submit { display: flex; align-items: center; gap: 0.75rem; }
-  .form-error { margin: 0; color: var(--color-error-text); font-size: var(--text-sm); line-height: 1.4; }
-  .cancel-btn { display: inline-flex; align-items: center; justify-content: center; min-height: 2.4rem; padding: 0.5rem 0.9rem; border: 1px solid var(--color-input-border); border-radius: var(--radius-md); background: transparent; color: var(--color-text-secondary); font-size: var(--text-13); font-weight: 600; cursor: pointer; transition: border-color var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default); }
+  .overlay-explanation { margin: var(--space-1) 0 var(--space-4); color: var(--color-text-secondary); font-size: var(--text-sm); line-height: var(--leading-normal); }
+  .footer-submit { display: flex; align-items: center; gap: var(--space-3); }
+  .form-error { margin: 0; color: var(--color-error-text); font-size: var(--text-sm); line-height: var(--leading-normal); }
+  .cancel-btn { display: inline-flex; align-items: center; justify-content: center; min-height: var(--space-10); padding: var(--space-2) var(--space-4); border: 1px solid var(--color-input-border); border-radius: var(--radius-md); background: transparent; color: var(--color-text-secondary); font-size: var(--text-13); font-weight: 600; cursor: pointer; transition: border-color var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default); }
   .cancel-btn:hover:not(:disabled) { border-color: var(--color-text-secondary); color: var(--color-text-primary); }
+  .cancel-btn:active:not(:disabled) { transform: scale(0.98); }
   .cancel-btn:disabled { background: var(--color-bg-hover); color: var(--color-text-muted); border-color: var(--color-border); cursor: wait; }
   .cancel-btn:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 
@@ -1541,23 +2023,25 @@
     .result-ledger { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .result-ledger div:nth-child(2) { border-right: 0; }
     .result-ledger div:nth-child(-n+2) { border-bottom: 1px solid var(--color-border); }
-    .field-grid.three { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .brief-export-body { grid-template-columns: minmax(0, 1fr) auto; }
     .brief-export-body .origin-status { grid-column: 1 / -1; }
   }
   @media (max-width: 600px) {
-    .workspace { padding-inline: 0.9rem; }
-    .workspace-head { align-items: flex-start; gap: 0.75rem; }
+    .workspace { padding-inline: var(--space-4); }
+    .workspace-head { align-items: flex-start; gap: var(--space-3); }
     .workspace-actions { flex-direction: column-reverse; align-items: flex-end; }
     .workspace-head .new-action { width: auto; }
     .experiment-row { grid-template-columns: 1fr; }
     .experiment-rule, .row-actions { grid-column: auto; grid-row: auto; }
     .row-actions { flex-wrap: wrap; }
-    .row-actions button, .row-actions a { min-height: 2.75rem; }
-    .brief-export-body, .origin-strip { grid-template-columns: 1fr; }
+    .row-actions button, .row-actions a { min-height: var(--space-12); }
+    .form-context { align-items: flex-start; flex-direction: column; }
+    .origin-strip { text-align: left; }
+    .editor-progress li { align-items: center; flex-direction: row; padding-inline: var(--space-2); }
+    .editor-progress li > strong { white-space: normal; }
     .brief-export-body .origin-status { grid-column: auto; }
     .brief-export-actions { justify-content: flex-start; }
-    .brief-export-actions button, .brief-export-actions a { min-height: 2.75rem; }
+    .brief-export-actions button, .brief-export-actions a { min-height: var(--space-12); }
     .conclusion-heading, .conclusion-summary dl { grid-template-columns: 1fr; }
     .conclusion-heading > span { justify-self: start; }
     .outcome-picker :global(.segment-cards) { grid-template-columns: 1fr; }
@@ -1565,5 +2049,10 @@
     .result-ledger div { padding-left: 0; border-right: 0; border-bottom: 1px solid var(--color-border); }
     .result-ledger div:last-child { border-bottom: 0; }
     .field-grid.two, .field-grid.three { grid-template-columns: 1fr; }
+    .field-grid.three :global(.supporting-cost) { grid-column: auto; max-width: none; }
+    .action-grid :global(.contingency-action) { margin-top: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .cancel-btn:active:not(:disabled) { transform: none; }
   }
 </style>

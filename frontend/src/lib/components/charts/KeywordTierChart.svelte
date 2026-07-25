@@ -225,7 +225,7 @@
 
   .bar-data {
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: filter 0.2s ease;
   }
 
   .bar-data:hover {

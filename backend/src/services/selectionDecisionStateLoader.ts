@@ -11,7 +11,8 @@ interface SelectionDecisionStateAssets {
 export async function loadOwnedSelectionDecisionState(
   jobId: string,
   userId: string,
-  assets?: SelectionDecisionStateAssets,
+  assets: SelectionDecisionStateAssets | undefined,
+  decisionTools: boolean,
 ): Promise<SelectionDecisionState | null> {
   const job = await prisma.job.findFirst({
     where: { id: jobId, userId },
@@ -128,5 +129,6 @@ export async function loadOwnedSelectionDecisionState(
     experiments: job.selectionExperiments,
     previewReport: resolvedAssets.previewReport,
     discoveryData: resolvedAssets.discoveryData,
+    decisionTools,
   });
 }

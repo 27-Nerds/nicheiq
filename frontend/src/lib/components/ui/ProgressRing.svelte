@@ -67,23 +67,11 @@
     return "var(--color-accent)";
   });
 
-  // Score interpretation for tooltip
-  const scoreInterpretation = $derived.by(() => {
-    const percentage = Math.round(value * 100);
-    if (percentage >= 80) return "Excellent";
-    if (percentage >= 70) return "Strong";
-    if (percentage >= 50) return "Moderate";
-    if (percentage >= 40) return "Needs Work";
-    return "Critical";
-  });
-
-  // Build tooltip content string
+  // Keep the visual score on the same 0–100 scale as the rest of the product.
+  // Domain-specific meaning comes from the caller's grounded description.
   const tooltipContent = $derived.by(() => {
-    const parts: string[] = [];
-    if (description) parts.push(description);
-    parts.push(`${Math.round(value * 100)}% — ${scoreInterpretation}`);
-    if (label) parts.push(label);
-    return parts.join("\n");
+    const scoreLine = `${label || "Score"}: ${Math.round(value * 100)}%`;
+    return description ? `${scoreLine}\n${description}` : scoreLine;
   });
 
   let visible = $state(false);

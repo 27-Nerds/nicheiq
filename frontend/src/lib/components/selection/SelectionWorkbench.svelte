@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { goto, replaceState } from "$app/navigation";
+  import { goto, pushState, replaceState } from "$app/navigation";
   import { page } from "$app/state";
-  import type { Snippet } from "svelte";
+  import { tick, type Snippet } from "svelte";
   import { SvelteSet } from "svelte/reactivity";
   import {
     Check,
@@ -12,18 +12,18 @@
   } from "lucide-svelte";
   import {
     ASK_ANALYST_LABEL,
+    BRANCH_DIRECTION_LABEL,
+    CHOOSE_IDEAS_LABEL,
     PRICE_CHANGED_RELOAD,
     PRICE_CHANGED_RETRY,
-    VERDICT_EYEBROW,
+    RANKED_LIST_HEADING,
+    STRESS_TEST_EVIDENCE_LABEL,
     actionBody,
     appendixMetaLine,
     candidateStatsLine,
     generateNewBatchLabel,
-    groupForMode,
-    type CockpitMode,
   } from "$lib/selection/labels";
   import {
-    selectSolution,
     regenerateIdeas,
     seedIdea,
     getStageCosts,
@@ -52,17 +52,20 @@
     type SolutionPreview,
     type StageCosts,
   } from "$lib/types/job";
-  import type { SelectionExperimentDraftSeed, SelectionExperimentPrefill } from "$lib/types/selectionExperiment";
+  import type { SelectionExperimentDraftSeed } from "$lib/types/selectionExperiment";
   import type {
     SelectionDecisionNextAction,
     SelectionDecisionState,
   } from "$lib/types/selectionDecisionState";
   import type { RuledOutFinding, OverlapGroup, MarketReality } from "$lib/types/report";
   import {
-    computeCompositeScore,
+    displayCompositeScore,
     solutionDisplayTitle,
     solutionCardDescription,
     solutionStrengthBadge,
+    solutionPrimaryStrengthKey,
+    validatedBuildComplexity,
+    validatedNoveltyLevel,
     fitLabel,
     opportunityShape,
   } from "$lib/utils/solution-utils";
@@ -76,12 +79,8 @@
   } from "$lib/utils/ideaReferences";
   import Tooltip from "$lib/components/ui/Tooltip.svelte";
   import WorkspaceOverlay from "$lib/components/ui/WorkspaceOverlay.svelte";
-  import SelectSolutionModal from "$lib/components/SelectSolutionModal.svelte";
   import SolutionDetail from "$lib/components/SolutionDetail.svelte";
   import DecisionBrief from "$lib/components/selection/DecisionBrief.svelte";
-  import ExperimentWorkspace from "$lib/components/selection/ExperimentWorkspace.svelte";
-  import DecisionCockpit from "$lib/components/selection/DecisionCockpit.svelte";
-  import ConceptForge from "$lib/components/selection/ConceptForge.svelte";
   import CollaboratorFeedback from "$lib/components/selection/CollaboratorFeedback.svelte";
   import RuledOutList from "$lib/components/selection/RuledOutList.svelte";
   import ResearchContextNotes from "$lib/components/selection/ResearchContextNotes.svelte";
@@ -97,7 +96,12 @@
     SelectionOwnerEvidencePrefill,
   } from "$lib/types/selectionCopilot";
   import DecisionRail from "$lib/components/selection/DecisionRail.svelte";
-  import { buildSelectionJourney, type SelectionJourneyTask } from "$lib/selection/decisionJourney";
+  import DecisionStatusBadge from "$lib/components/selection/DecisionStatusBadge.svelte";
+  import {
+    buildSelectionJourney,
+    type SelectionJourneyTask,
+  } from "$lib/selection/decisionJourney";
+  import { createSelectionToolOrigin } from "$lib/selection/toolOrigin";
 
   const MAX_SELECTIONS = 3;
 
@@ -130,6 +134,12 @@
      *  render the same two primary decision tools, with the same status, that
      *  the launchpad shows — one status source across the shell. */
     onJourneyTasks?: (tasks: SelectionJourneyTask[] | undefined) => void;
+    /** Keeps selection-mode navigation aligned with the unsent local draft. */
+    onShortlistChange?: (count: number) => void;
+    /** Reports the workbench's current draft VERSION up so the hub page's SSE
+     *  drift guard can exclude own saves (mirrors persistShortlist's version bump
+     *  in the selection workspace) — fired on hydration and after each save. */
+    onShortlistVersionChange?: (version: number) => void;
     /** Fired once a submitted idea seed settles (accepted/demoted/failed/refunded).
      *  SSE's sorted-name diff misses a same-name demotion/score change and can't see
      *  a brand-new ruled-out entry at all — the parent must force BOTH getSolutions()
@@ -138,6 +148,11 @@
     /** Visitor (read-only) mode: shortlist/Deep-Research affordances are replaced by
      *  the per-row actionSlot (vote button on the shared view). */
     interactive?: boolean;
+    /** Admin-granted optional decision tools (build limits, evidence check, questions to
+     *  resolve, tests, fit, branch). Fails CLOSED — a caller that doesn't pass it gets
+     *  the required path only. The shortlist, ranked table, compare and review are
+     *  never affected. */
+    decisionTools?: boolean;
     totalVotes?: number;
     actionSlot?: Snippet<[{ solution: SolutionPreview; index: number }]>;
   }
@@ -165,11 +180,13 @@
     discussionCount = null,
     painPointCount = null,
     segmentCount = null,
-    onComplete,
     onRegenerateStart,
     onJourneyTasks,
+    onShortlistChange,
+    onShortlistVersionChange,
     onSeedSettled,
     interactive = true,
+    decisionTools = false,
     totalVotes = 0,
     actionSlot,
   }: Props = $props();
@@ -202,9 +219,21 @@
   const summaryParagraphs = $derived(
     summaryRecommendation ? [...summarySupportingNotes, summaryRecommendation] : [],
   );
-  const ideaReferences = $derived(
-    buildIdeaReferences(solutions, examinedRuledOut ?? []),
-  );
+  // Reference labels carry the DISPLAY title (headline when present): analyst
+  // prose cites internal codenames, but the rendered link should not.
+  const ideaReferences = $derived.by(() => {
+    const ruledOut = examinedRuledOut ?? [];
+    return buildIdeaReferences(solutions, ruledOut).map((reference) => {
+      if (reference.kind === "ranked") {
+        const match = solutions.find((candidate) => candidate.solution_name === reference.solutionName);
+        return match ? { ...reference, label: solutionDisplayTitle(match) } : reference;
+      }
+      const headline = (reference.ruledOutIndex != null
+        ? ruledOut[reference.ruledOutIndex]?.idea?.headline
+        : null)?.trim();
+      return headline ? { ...reference, label: headline } : reference;
+    });
+  });
   const hasExplicitRecommendation = $derived(
     /\b(?:recommend(?:ed|s|ing)?|most deserves?|strongest|best (?:idea|option|candidate|pick)|top (?:idea|option|candidate|pick)|prioriti[sz]e|validate(?:d|s|ing)? first|first choice)\b/i
       .test(summaryRecommendation),
@@ -222,32 +251,6 @@
 
   // ── Selection state ──
   let selectedIdeaKeys = new SvelteSet<string>();
-  let modalOpen = $state(false);
-  let compareOpen = $state(false);
-  let conceptForgeOpen = $state(false);
-  let conceptForgeParentKeys = $state<string[] | null>(null);
-  let copilotConceptForgePrefill = $state<SelectionConceptForgePrefill | null>(null);
-  let experimentWorkspaceOpen = $state(false);
-  let compareStartMode = $state<"risk" | "assumptions" | "market" | "fit" | "challenge">("market");
-  let variantReview = $state<{
-    patch: IdeaSynthesisPatch;
-    parentRefs: { ideaId: string; ideaRevision: number }[];
-    sourceMessageId: string;
-    childIdeaId: string;
-    childIdeaRevision: number;
-  } | null>(null);
-  let overlapComparison = $state<{ ideaKeys: string[]; sharedProduct: string } | null>(null);
-  let copilotComparisonKeys = $state<string[] | null>(null);
-  let directWorkspaceFocus = $state(false);
-  let copilotChallengeFocus = $state<{
-    requestId: number;
-    ideaId: string;
-    ideaRevision: number;
-    lens: SelectionChallengeLens;
-    challengeId?: string;
-    questionId?: string;
-  } | null>(null);
-  let copilotFocusSequence = 0;
   let copilotShortlistReview = $state<{
     requestId: string;
     expectedVersion: number;
@@ -255,16 +258,17 @@
     rationale: string;
   } | null>(null);
   let copilotShortlistError = $state("");
-  let copilotAssumptionPrefill = $state<SelectionAssumptionPrefill | null>(null);
-  let copilotOwnerEvidencePrefill = $state<SelectionOwnerEvidencePrefill | null>(null);
-  let experimentPrefill = $state<SelectionExperimentPrefill | null>(null);
   let activeDecisionProfile = $state<SelectionDecisionProfile | null>(null);
   let decisionProfileSyncJobId = $state("");
   let pendingDecisionProfileKey = $state<string | null>(null);
   let staleDecisionProfileKey = $state<string | null>(null);
   let selectLoading = $state(false);
   let selectError = $state("");
-  let modalIndex = $state<number | null>(null); // index into original `solutions`
+  let modalIndex = $state<number | null>(null); // index into the current ranked pool
+  let detailTab = $state<"overview" | "detail">("overview");
+  let detailUrlError = $state("");
+  let detailHistoryOwned = false;
+  let handledDetailQuery = "";
   let ruledOutDetail = $state<RuledOutFinding | null>(null);
   let returnToChatState = $state<"docked" | "expanded" | null>(null);
   type ShortlistSaveState = "idle" | "saving" | "saved" | "error";
@@ -280,10 +284,12 @@
   let selectionDecisionStateLoading = $state(false);
   let selectionDecisionStateError = $state("");
   let selectionDecisionStateRequest = 0;
-  let handledSelectionToolQuery = $state("");
+  let handledSelectionToolQuery = "";
 
   function ideaKey(solution: SolutionPreview): string {
-    return solution.idea_id ?? solution.solution_name;
+    return solution.idea_id
+      ? `${solution.idea_id}:${solution.idea_revision ?? 1}`
+      : `legacy:${solution.solution_name}`;
   }
 
   function solutionForKey(key: string): SolutionPreview | undefined {
@@ -330,12 +336,13 @@
         const items = shortlistDraftItems();
         if (!items) {
           shortlistSaveState = "error";
-          shortlistSaveError = "This shortlist contains a candidate without a stable identity. Refresh and try again.";
+          shortlistSaveError = "This shortlist contains an idea without a stable identity. Refresh and try again.";
           break;
         }
         try {
           const saved = await saveSelectionDraft(jobId, shortlistDraftVersion, items);
           shortlistDraftVersion = saved.version;
+          onShortlistVersionChange?.(saved.version);
           shortlistSaveState = shortlistSaveQueued ? "saving" : "saved";
           shortlistSaveError = "";
           shortlistSaveConflict = false;
@@ -448,12 +455,15 @@
       const storedKeys = selectedSolutionIds?.length ? selectedSolutionIds : selectedSolutions;
       for (const storedKey of storedKeys ?? []) {
         const solution = solutions.find(
-          item => ideaKey(item) === storedKey || item.solution_name === storedKey,
+          item => ideaKey(item) === storedKey
+            || item.idea_id === storedKey
+            || item.solution_name === storedKey,
         );
         if (solution) selectedIdeaKeys.add(ideaKey(solution));
       }
     }
     shortlistDraftVersion = selectionDraft?.version ?? 0;
+    onShortlistVersionChange?.(shortlistDraftVersion);
     shortlistSaveState = selectionDraft ? "saved" : "idle";
     shortlistSaveError = "";
     shortlistSaveConflict = false;
@@ -501,7 +511,6 @@
   // `messages` state can't mutate after the parent has already moved on.
   let chatThreadRef: ChatThread | undefined = $state();
   let decisionBriefRef: DecisionBrief | undefined = $state();
-  let experimentWorkspaceRef: ExperimentWorkspace | undefined = $state();
   // Weak-pool starter chip (2026-07-12) — ChatThread learns this from the chat-history
   // response (GET /:jobId/chat/history's `weakPool` flag) and reports it back via
   // bind:weakPool, so this doesn't need its own second history fetch.
@@ -546,31 +555,6 @@
     chatPanel.open();
   }
 
-  function askAnalystAboutCockpit(
-    mode: "risk" | "assumptions" | "market" | "fit" | "challenge",
-    ideas: SolutionPreview[],
-  ) {
-    const viewLabel = {
-      risk: "decision risks",
-      assumptions: "tracked assumptions",
-      market: "market comparison",
-      fit: "founder fit",
-      challenge: "evidence checks",
-    }[mode];
-    const ideaContext = ideas
-      .map((idea) => '"' + solutionDisplayTitle(idea) + '" (revision ' + (idea.idea_revision ?? 1) + ')')
-      .join(" and ");
-    analystStarterPrompt =
-      `Help me review ${viewLabel} for ${ideaContext}. Walk me through the evidence and trade-offs in this view. `
-      + "Answer in plain prose; only prepare a draft form if I explicitly ask you to.";
-    // The cockpit stays open — the analyst dock coexists with it (see the
-    // analyst-dock z-index override below, which lifts the dock above the
-    // cockpit's modal layer so both stay usable).
-    chatPanel.open();
-  }
-
-
-
   // ── Regeneration state ──
   let regenerating = $state(false);
   let regenerateError = $state("");
@@ -580,7 +564,7 @@
   );
   const REGEN_FOCUSES = [
     { value: "auto", label: "Auto" },
-    { value: "novelty", label: "Novelty" },
+    { value: "novelty", label: "Differentiation" },
     { value: "distribution", label: "Distribution" },
   ] as const;
   let regenerateFocus = $state<"auto" | "novelty" | "distribution">("auto");
@@ -656,7 +640,10 @@
   }
 
   function scrollBehavior(): ScrollBehavior {
-    return matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+    return typeof window.matchMedia === "function"
+      && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      ? "auto"
+      : "smooth";
   }
 
   function scrollAndHighlightSolution(name: string) {
@@ -900,7 +887,7 @@
     child: SolutionPreview,
   ): { ok: boolean; message?: string } {
     if (selectLoading || poolMutationBusy) {
-      return { ok: false, message: "Another candidate update is still running." };
+      return { ok: false, message: "Another idea update is still running." };
     }
     const parentKeys = new Set(parents.map(ideaKey));
     const childKey = ideaKey(child);
@@ -925,11 +912,11 @@
         ok: true,
         message: selectedParents.length === 1
           ? `Replaced ${solutionDisplayTitle(selectedParents[0])} with the evaluated variant.`
-          : `Replaced ${selectedParents.length} source candidates with the combined variant.`,
+          : `Replaced ${selectedParents.length} source ideas with the combined variant.`,
       };
     }
     if (selectedIdeaKeys.size >= MAX_SELECTIONS) {
-      return { ok: false, message: "Shortlist is full. Remove one candidate first." };
+      return { ok: false, message: "Shortlist is full. Remove one idea first." };
     }
     selectedIdeaKeys.add(childKey);
     queueShortlistSave();
@@ -944,20 +931,10 @@
     if (!resolved) {
       return { ok: false, message: "The evaluated variant is still syncing. Refresh and try again." };
     }
-    overlapComparison = null;
-    copilotComparisonKeys = null;
-    variantReview = {
-      patch,
-      parentRefs: resolved.parents.map((parent) => ({
-        ideaId: parent.idea_id!,
-        ideaRevision: parent.idea_revision ?? 1,
-      })),
-      sourceMessageId,
-      childIdeaId: resolved.child.idea_id!,
-      childIdeaRevision: resolved.child.idea_revision ?? 1,
-    };
-    compareStartMode = "market";
-    compareOpen = true;
+    void goto(selectionWorkspaceHref("compare", {
+      view: "market",
+      ideas: [...resolved.parents, resolved.child],
+    }));
     return { ok: true };
   }
 
@@ -984,14 +961,22 @@
   const selectionCount = $derived(selectedIdeaKeys.size);
   const canSubmit = $derived(selectionCount > 0);
   const analystLauncherLabel = ASK_ANALYST_LABEL;
-  const bestScore = $derived.by(() =>
-    solutions.length
-      ? Math.round(Math.max(...solutions.map((s) => computeCompositeScore(s))) * 100)
-      : null,
-  );
+  const bestScore = $derived.by(() => {
+    const scores = solutions
+      .map((solution) => displayCompositeScore(solution))
+      .filter((score): score is number => score != null);
+    return scores.length ? Math.round(Math.max(...scores) * 100) : null;
+  });
   const cmdStatsLine = $derived(
     candidateStatsLine({ candidates: solutions.length, topScore: bestScore, segments: segmentCount }),
   );
+  const detailEvidenceLinks = $derived.by(() => {
+    const base = `/jobs/${encodeURIComponent(jobId)}`;
+    const links: { href: string; label: string }[] = [];
+    if ((painPointCount ?? 0) > 0) links.push({ href: `${base}#pain-points`, label: "Pain evidence" });
+    if ((segmentCount ?? 0) > 0) links.push({ href: `${base}#audience`, label: "Audience evidence" });
+    return links;
+  });
 
   // ── Below-table IA (Phase 1b, owner view only) ──
   // The analyst verdict pull-quote and the opportunity-shape line stay visible;
@@ -1048,119 +1033,38 @@
         ...selectionDecisionState.shortlist,
         items: localShortlist,
       },
-    });
+    }, decisionTools);
   });
   $effect(() => {
     onJourneyTasks?.(selectionJourney?.tasks);
   });
-  const railResearchLead = $derived.by(() => {
-    if (selectionJourney?.recommendation.target !== "shortlist") return null;
-    const recommendedIdea = selectionJourney.recommendation.ideas[0];
-    if (!recommendedIdea) return null;
-    return solutions.find((idea) =>
-      idea.idea_id === recommendedIdea.ideaId
-      && (idea.idea_revision ?? 1) === recommendedIdea.ideaRevision
-    ) ?? null;
+  $effect(() => {
+    onShortlistChange?.(selectionCount);
   });
-  const conceptForgeParents = $derived.by(() => conceptForgeParentKeys
-    ? conceptForgeParentKeys.map(solutionForKey).filter((idea): idea is SolutionPreview => Boolean(idea))
-    : selectedIdeas);
-  const selectedIdeaKeyList = $derived(Array.from(selectedIdeaKeys));
-
-  const resolvedVariantReview = $derived.by(() => {
-    const review = variantReview;
-    if (!review) return null;
-    const parents = review.parentRefs.map((parentRef) => solutions.find((idea) =>
-      idea.idea_id === parentRef.ideaId
-      && (idea.idea_revision ?? 1) === parentRef.ideaRevision
-    ));
-    if (parents.some((parent) => !parent)) return null;
-    const expectedKeys = review.parentRefs.map(
-      (parentRef) => `${parentRef.ideaId}:${parentRef.ideaRevision}`,
-    );
-    const child = solutions.find((idea) =>
-      idea.idea_id === review.childIdeaId
-      && (idea.idea_revision ?? 1) === review.childIdeaRevision
-      && idea.synthesis_operation === review.patch.operation
-      && idea.synthesis_source_message_id === review.sourceMessageId
-      && idea.synthesized_from?.length === expectedKeys.length
-      && expectedKeys.every((key) => idea.synthesized_from?.some(
-        (source) => `${source.idea_id}:${source.idea_revision}` === key,
-      ))
-    );
-    return child ? { parents: parents as SolutionPreview[], child } : null;
-  });
-  const resolvedOverlapComparison = $derived.by(() => {
-    if (!overlapComparison) return null;
-    const ideas = overlapComparison.ideaKeys
-      .map(solutionForKey)
-      .filter((idea): idea is SolutionPreview => Boolean(idea));
-    return ideas.length === overlapComparison.ideaKeys.length
-      ? { ...overlapComparison, ideas }
+  // When the build-limits card is the sole surface (briefVariant === "card"),
+  // drop the constraints row here so build limits is not shown twice on the hub.
+  const decisionHomeTasks = $derived.by(() =>
+    (selectionJourney?.tasks ?? []).filter((task) =>
+      (task.key === "constraints" && briefVariant !== "card")
+      || task.key === "compare"
+      || task.key === "risks"
+    ),
+  );
+  const decisionHomeRecommendation = $derived.by(() => {
+    const recommendation = selectionJourney?.recommendation;
+    if (!recommendation) return null;
+    return recommendation.target === "shortlist"
+      || recommendation.target === "constraints"
+      || recommendation.target === "compare"
+      || recommendation.target === "risks"
+      ? recommendation
       : null;
   });
-  const resolvedCopilotComparison = $derived.by(() => {
-    if (!copilotComparisonKeys) return null;
-    const ideas = copilotComparisonKeys
-      .map(solutionForKey)
-      .filter((idea): idea is SolutionPreview => Boolean(idea));
-    return ideas.length === copilotComparisonKeys.length ? ideas : null;
-  });
-  const comparisonIdeas = $derived(
-    resolvedVariantReview
-      ? [...resolvedVariantReview.parents, resolvedVariantReview.child]
-      : resolvedCopilotComparison ?? resolvedOverlapComparison?.ideas ?? selectedIdeas,
+  // The build-limits card owns the add_decision_context recommendation surface,
+  // so the guide defers to it (no duplicate constraints heading/CTA on the hub).
+  const hubRecommendation = $derived(
+    briefVariant === "card" ? null : decisionHomeRecommendation,
   );
-  const comparisonContext = $derived(
-    directWorkspaceFocus && resolvedCopilotComparison
-      ? {
-          dialogLabel: "Candidate evidence review",
-          title: "Review candidate evidence",
-          intro: "Review this exact candidate revision. Nothing changes until you choose an owner action.",
-          regionLabel: "Focused candidate evidence review",
-        }
-      : resolvedCopilotComparison
-      ? {
-          dialogLabel: "Review analyst-selected candidates",
-          title: resolvedCopilotComparison.length > 1 ? "Compare suggested candidates" : "Review suggested candidate",
-          intro: "The analyst prepared this view from current candidate revisions. Nothing changes until you use an existing owner action.",
-          regionLabel: "Analyst-selected candidate review",
-        }
-      : resolvedOverlapComparison
-      ? {
-          dialogLabel: "Compare similar candidates",
-          title: resolvedOverlapComparison.sharedProduct
-            ? `Resolve ${resolvedOverlapComparison.sharedProduct} variants`
-            : "Resolve similar candidates",
-          intro: "Research grouped these as one buyer-visible product. They remain separate candidates, so compare their trade-offs before shortlisting one.",
-          regionLabel: "Similar candidate comparison",
-        }
-      : null,
-  );
-  const variantComparisonContext = $derived.by(() => {
-    const review = variantReview;
-    if (!review || !resolvedVariantReview) return null;
-    return {
-      operation: review.patch.operation,
-      changeSummary: review.patch.changeSummary,
-      sourceContributions: review.parentRefs.map((parentRef) =>
-        review.patch.parents.find((candidate) =>
-          candidate.ideaId === parentRef.ideaId
-          && candidate.ideaRevision === parentRef.ideaRevision
-        )?.contribution ?? "Original research basis retained."
-      ),
-      requiresValidation: review.patch.evidence.requiresValidation,
-      conclusionOutcome:
-        review.patch.evidence.experimentConclusionRefs?.[0]?.outcome ?? null,
-    };
-  });
-
-  function useReviewedVariant(): { ok: boolean; message?: string } {
-    return resolvedVariantReview
-      ? addVariantToShortlist(resolvedVariantReview.parents, resolvedVariantReview.child)
-      : { ok: false, message: "The compared revisions are no longer available." };
-  }
-
   // Overlap groups where every variant is still a separate visible candidate — the merge
   // was proposed but rejected, so surface it as a pick-between-these hint.
   type ResolvedOverlapGroup = {
@@ -1203,15 +1107,10 @@
 
   function openOverlapComparison(group: ResolvedOverlapGroup): void {
     if (group.comparisonIdeas.length < 2) return;
-    variantReview = null;
-    copilotComparisonKeys = null;
-    directWorkspaceFocus = false;
-    overlapComparison = {
-      ideaKeys: group.comparisonIdeas.map(ideaKey),
-      sharedProduct: group.sharedProduct,
-    };
-    compareStartMode = "market";
-    compareOpen = true;
+    void goto(selectionWorkspaceHref("compare", {
+      view: "market",
+      ideas: group.comparisonIdeas,
+    }));
   }
 
   // Parse the incumbent name out of a parity finding string, e.g.
@@ -1263,7 +1162,7 @@
     return n * mult;
   }
   function sortValue(s: SolutionPreview, k: SortKey): number {
-    if (k === "score") return computeCompositeScore(s);
+    if (k === "score") return displayCompositeScore(s) ?? -1;
     if (k === "fit") return s.market_fit_score ?? -1;
     if (k === "feas") return s.technical_feasibility_score ?? -1;
     return buildWeeks(s.estimated_development_time);
@@ -1276,6 +1175,80 @@
       return sortDir === "desc" ? vb - va : va - vb;
     });
     return arr;
+  });
+
+  // Detail links are durable, exact candidate references. Browser Back removes the
+  // shallow detail entry; refresh/share restores the same revision and tab. Names are
+  // accepted only for legacy candidates that have no stable id, and only when unique.
+  $effect(() => {
+    const requestedTab = page.url.searchParams.get("detailTab");
+    const poolIdentity = sortedSolutions
+      .map((solution) => ideaKey(solution))
+      .join("|");
+    const queryKey = `${jobId}:${page.url.pathname}:${page.url.search}:${poolIdentity}`;
+    if (handledDetailQuery === queryKey) return;
+    handledDetailQuery = queryKey;
+
+    if (!requestedTab) {
+      modalIndex = null;
+      detailTab = "overview";
+      detailHistoryOwned = false;
+      return;
+    }
+    if (requestedTab !== "overview" && requestedTab !== "detail") {
+      modalIndex = null;
+      detailUrlError = "This idea-detail link requests a view that no longer exists.";
+      detailHistoryOwned = false;
+      return;
+    }
+
+    const ideaId = page.url.searchParams.get("ideaId");
+    const revisionParam = page.url.searchParams.get("ideaRevision");
+    const legacyName = page.url.searchParams.get("ideaName");
+    let index = -1;
+
+    if (ideaId) {
+      const revision = Number(revisionParam);
+      if (!revisionParam || !Number.isInteger(revision) || revision < 1) {
+        modalIndex = null;
+        detailUrlError = "This idea-detail link is missing a valid idea revision.";
+        detailHistoryOwned = false;
+        return;
+      }
+      index = sortedSolutions.findIndex((candidate) =>
+        candidate.idea_id === ideaId
+        && (candidate.idea_revision ?? 1) === revision
+      );
+    } else if (legacyName) {
+      const matches = sortedSolutions
+        .map((candidate, candidateIndex) => ({ candidate, candidateIndex }))
+        .filter(({ candidate }) =>
+          !candidate.idea_id && candidate.solution_name === legacyName
+        );
+      if (matches.length === 1) index = matches[0].candidateIndex;
+      else if (matches.length > 1) {
+        modalIndex = null;
+        detailUrlError = "This older name-only link is ambiguous. Open the exact idea from the ranked list.";
+        detailHistoryOwned = false;
+        return;
+      }
+    } else {
+      modalIndex = null;
+      detailUrlError = "This idea-detail link does not identify an idea.";
+      detailHistoryOwned = false;
+      return;
+    }
+
+    if (index < 0) {
+      modalIndex = null;
+      detailUrlError = "That exact idea revision is no longer available. Return to the ranked ideas to choose a current one.";
+      detailHistoryOwned = false;
+      return;
+    }
+
+    modalIndex = index;
+    detailTab = requestedTab;
+    detailUrlError = "";
   });
 
   // Suggested questions name the ACTUAL ranked candidates and the actions open right
@@ -1313,8 +1286,13 @@
     }
     return 0;
   }
-  function rankedIndexOf(identifier: string): number {
-    return sortedSolutions.findIndex((solution) => ideaKey(solution) === identifier || solution.solution_name === identifier);
+  function rankedIndexOf(solution: SolutionPreview): number {
+    return sortedSolutions.findIndex((candidate) =>
+      candidate.idea_id && solution.idea_id
+        ? candidate.idea_id === solution.idea_id
+          && (candidate.idea_revision ?? 1) === (solution.idea_revision ?? 1)
+        : candidate === solution,
+    );
   }
   function toggle(key: string) {
     if (selectLoading || poolMutationBusy) return;
@@ -1327,53 +1305,136 @@
     }
     if (changed) queueShortlistSave();
   }
-  function toggleComparedIdea(idea: SolutionPreview): void {
-    if (!resolvedOverlapComparison) return;
-    toggle(ideaKey(idea));
-  }
-  // SolutionDetail still emits its display name; resolve it back to the current exact idea.
-  function handleToggleAdapter(name: string) {
-    const current = modalIndex === null ? undefined : sortedSolutions[modalIndex];
-    const solution = current?.solution_name === name ? current : solutions.find((item) => item.solution_name === name);
-    if (solution) toggle(ideaKey(solution));
+  function handleToggleAdapter(solution: SolutionPreview) {
+    toggle(ideaKey(solution));
   }
   // Overlay exclusivity: exactly one of these surfaces is open at a time.
   // Every opener below resets through here BEFORE assigning its own payload,
   // so a payload set before this call would be wiped out — never touch state
   // owned by this list until after calling it. chatPanel is never touched
   // here; its dock/expand/close state is independent of overlay exclusivity.
-  function closeAllOverlays(): void {
+  function closeAllOverlays(preserveDetailUrl = false): void {
+    const hadDetail = modalIndex !== null || page.url.searchParams.has("detailTab");
     modalIndex = null;
+    detailTab = "overview";
+    if (!preserveDetailUrl && hadDetail) {
+      detailHistoryOwned = false;
+      clearDetailUrl();
+    }
     ruledOutDetail = null;
-    modalOpen = false;
-    compareOpen = false;
-    conceptForgeOpen = false;
-    experimentWorkspaceOpen = false;
     regenerateOverlayOpen = false;
-    overlapComparison = null;
-    variantReview = null;
-    copilotComparisonKeys = null;
-    copilotChallengeFocus = null;
-    copilotAssumptionPrefill = null;
-    copilotOwnerEvidencePrefill = null;
-    copilotConceptForgePrefill = null;
-    conceptForgeParentKeys = null;
-    experimentPrefill = null;
     copilotShortlistReview = null;
     copilotShortlistError = "";
     decisionBriefRef?.closeEditor?.();
   }
 
-  function openDetail(identifier: string) {
-    closeAllOverlays();
-    modalIndex = rankedIndexOf(identifier);
+  function detailUrl(solution: SolutionPreview, tab: "overview" | "detail"): string {
+    const next = new URL(page.url);
+    next.searchParams.set("detailTab", tab);
+    if (solution.idea_id) {
+      next.searchParams.set("ideaId", solution.idea_id);
+      next.searchParams.set("ideaRevision", String(solution.idea_revision ?? 1));
+      next.searchParams.delete("ideaName");
+    } else {
+      next.searchParams.delete("ideaId");
+      next.searchParams.delete("ideaRevision");
+      next.searchParams.set("ideaName", solution.solution_name);
+    }
+    return `${next.pathname}${next.search}${next.hash}`;
   }
-  function handleNavigate(index: number) {
+
+  function clearDetailUrl(hash?: string): void {
+    const next = new URL(page.url);
+    for (const key of ["detailTab", "ideaId", "ideaRevision", "ideaName"]) {
+      next.searchParams.delete(key);
+    }
+    if (hash !== undefined) next.hash = hash;
+    replaceState(`${next.pathname}${next.search}${next.hash}`, page.state);
+  }
+
+  function openDetail(solution: SolutionPreview) {
+    closeAllOverlays(true);
+    const index = rankedIndexOf(solution);
+    if (index < 0) {
+      detailUrlError = "That idea revision is no longer in this research run.";
+      return;
+    }
     modalIndex = index;
+    detailTab = "overview";
+    detailUrlError = "";
+    detailHistoryOwned = true;
+    pushState(detailUrl(sortedSolutions[index], "overview"), page.state);
   }
+
+  function openDetailByKey(key: string) {
+    const solution = solutionForKey(key);
+    if (solution) {
+      openDetail(solution);
+    } else {
+      detailUrlError = "That exact idea revision is no longer in this research run.";
+    }
+  }
+
+  function handleNavigate(index: number) {
+    const next = sortedSolutions[index];
+    if (!next) return;
+    modalIndex = index;
+    detailTab = "overview";
+    replaceState(detailUrl(next, "overview"), page.state);
+  }
+
+  function handleDetailTabChange(tab: "overview" | "detail") {
+    if (modalIndex === null) return;
+    const current = sortedSolutions[modalIndex];
+    if (!current) return;
+    detailTab = tab;
+    replaceState(detailUrl(current, tab), page.state);
+  }
+
   function handleCloseDetail() {
     modalIndex = null;
+    detailTab = "overview";
+    detailUrlError = "";
+    if (detailHistoryOwned) {
+      detailHistoryOwned = false;
+      window.history.back();
+    } else {
+      clearDetailUrl();
+    }
     restoreChatAfterDetail();
+  }
+
+  async function handleOpenDetailEvidence(href: string) {
+    const targetUrl = new URL(href, page.url);
+    const targetId = decodeURIComponent(targetUrl.hash.slice(1));
+    if (!targetId) return;
+
+    modalIndex = null;
+    detailTab = "overview";
+    detailUrlError = "";
+    detailHistoryOwned = false;
+    clearDetailUrl(targetUrl.hash);
+    restoreChatAfterDetail();
+
+    await tick();
+    const target = document.getElementById(targetId);
+    if (!target) return;
+
+    const trigger = target.querySelector<HTMLButtonElement>(
+      "button[aria-expanded][aria-controls]",
+    );
+    if (trigger && trigger.getAttribute("aria-expanded") !== "true") {
+      trigger.click();
+      await tick();
+    }
+
+    target.scrollIntoView?.({ behavior: scrollBehavior(), block: "start" });
+    trigger?.focus({ preventScroll: true });
+  }
+
+  function clearDetailUrlError() {
+    detailUrlError = "";
+    clearDetailUrl();
   }
   function openRuledOutDetail(finding: RuledOutFinding) {
     closeAllOverlays();
@@ -1395,7 +1456,16 @@
 
   function openIdeaReference(reference: IdeaReference) {
     if (reference.kind === "ranked" && reference.solutionName) {
-      openDetail(reference.solutionName);
+      const matches = solutions.filter((solution) =>
+        solution.solution_name === reference.solutionName
+      );
+      if (matches.length === 1) {
+        openDetail(matches[0]);
+      } else {
+        detailUrlError = matches.length === 0
+          ? "That referenced idea is no longer in this research run."
+          : "That legacy reference matches more than one idea. Open the exact idea from the ranked list.";
+      }
       return;
     }
     if (reference.kind === "ruled-out" && reference.ruledOutIndex !== undefined) {
@@ -1412,30 +1482,8 @@
 
   function handleValidate() {
     if (!canSubmit || poolMutationBusy) return;
-    if (!canAffordDeep) {
-      creditTopUp.show({
-        balance: creditBalance,
-        required: deepCost,
-        stageName: "deep research",
-      });
-      return;
-    }
-    selectError = "";
     closeAllOverlays();
-    modalOpen = true;
-  }
-
-  function handleExperimentPrefill(draft: SelectionExperimentDraftSeed) {
-    closeAllOverlays();
-    experimentPrefill = { requestId: crypto.randomUUID(), draft };
-    experimentWorkspaceOpen = true;
-  }
-
-  function openDecisionMode(mode: CockpitMode) {
-    if (selectionCount === 0 || poolMutationBusy) return;
-    closeAllOverlays();
-    compareStartMode = mode;
-    compareOpen = true;
+    void goto(selectionWorkspaceHref("review"));
   }
 
   function openFounderContext() {
@@ -1445,90 +1493,16 @@
 
   function openExperimentWorkspace() {
     closeAllOverlays();
-    experimentWorkspaceOpen = true;
-  }
-
-  async function openFocusedExperimentFromQuery(): Promise<void> {
-    const ideaId = page.url.searchParams.get("ideaId");
-    const ideaRevision = Number(page.url.searchParams.get("ideaRevision") ?? "1");
-    if (!ideaId || !Number.isInteger(ideaRevision) || ideaRevision < 1) {
-      openExperimentWorkspace();
-      return;
-    }
-    const idea = solutions.find((solution) => (
-      solution.idea_id === ideaId && (solution.idea_revision ?? 1) === ideaRevision
-    ));
-    if (!idea) {
-      selectError = "That candidate revision is no longer available. Return to the test workspace and choose a current candidate.";
-      return;
-    }
-
-    const assumptionId = page.url.searchParams.get("assumptionId");
-    if (!assumptionId) {
-      handleExperimentPrefill({ ideaId, ideaRevision });
-      return;
-    }
-
-    try {
-      const state = selectionDecisionState ?? await getSelectionDecisionState(jobId);
-      const assumption = state.assumptions.find((item) => (
-        item.id === assumptionId
-        && item.idea.ideaId === ideaId
-        && item.idea.ideaRevision === ideaRevision
-      ));
-      if (!assumption) {
-        selectError = "That assumption is stale or belongs to another candidate. Return to the test workspace and choose a current assumption.";
-        return;
-      }
-      handleExperimentPrefill({
-        ideaId,
-        ideaRevision,
-        assumptionId: assumption.id,
-        assumption: assumption.statement,
-        whyCritical: assumption.impact,
-        originChallengeId: assumption.originChallengeId,
-        originQuestionId: assumption.originQuestionId,
-      });
-    } catch (error) {
-      selectError = error instanceof Error
-        ? error.message
-        : "We couldn't open that test plan. Try again.";
-    }
-  }
-
-  function openFocusedRiskFromQuery(): void {
-    const ideaId = page.url.searchParams.get("ideaId");
-    const ideaRevision = Number(page.url.searchParams.get("ideaRevision") ?? "1");
-    const requestedLens = page.url.searchParams.get("lens");
-    const lens = requestedLens === "demand"
-      || requestedLens === "distribution"
-      || requestedLens === "competition"
-      || requestedLens === "dependencies"
-      ? requestedLens
-      : "demand";
-    const idea = solutions.find((solution) => (
-      solution.idea_id === ideaId && (solution.idea_revision ?? 1) === ideaRevision
-    ));
-    if (!idea?.idea_id) {
-      selectError = "That candidate revision is no longer available. Return to the evidence workspace and choose a current candidate.";
-      return;
-    }
-    closeAllOverlays();
-    directWorkspaceFocus = true;
-    copilotComparisonKeys = [ideaKey(idea)];
-    copilotChallengeFocus = {
-      requestId: ++copilotFocusSequence,
-      ideaId: idea.idea_id,
-      ideaRevision,
-      lens,
-    };
-    compareStartMode = "challenge";
-    compareOpen = true;
+    const idea = selectedIdeas[0];
+    void goto(selectionWorkspaceHref("risks", {
+      tool: "tests",
+      focus: idea?.idea_id ? { ideaId: idea.idea_id, ideaRevision: idea.idea_revision ?? 1 } : null,
+    }));
   }
 
 
   function selectionWorkspaceHref(
-    workspace: "compare" | "risks" | "tests" | "alternatives",
+    workspace: "compare" | "risks" | "review",
     options?: {
       view?: "market" | "founder";
       /** Opens a tool on arrival. The workspace strips these once handled, so
@@ -1536,10 +1510,31 @@
       tool?: "compare" | "fit" | "challenge" | "assumptions" | "tests" | "variants";
       lens?: SelectionChallengeLens | null;
       focus?: { ideaId: string; ideaRevision: number } | null;
+      assumptionId?: string;
+      challengeId?: string;
+      questionId?: string;
+      mode?: SelectionConceptForgePrefill["purpose"];
+      ideas?: SolutionPreview[];
     },
   ): string {
+    // Single chokepoint for every hub-side deep link. Without the decision tools grant
+    // the gated destinations are rewritten to the always-available compare view rather
+    // than emitted as links the workspace would have to bounce back.
+    if (!decisionTools) {
+      if (workspace === "risks") workspace = "compare";
+      options = {
+        ...options,
+        view: options?.view === "founder" ? "market" : options?.view,
+        tool: options?.tool === "compare" ? "compare" : undefined,
+        lens: null,
+        assumptionId: undefined,
+        challengeId: undefined,
+        questionId: undefined,
+        mode: undefined,
+      };
+    }
     const params = new URLSearchParams();
-    for (const idea of selectedIdeas.slice(0, MAX_SELECTIONS)) {
+    for (const idea of (options?.ideas ?? selectedIdeas).slice(0, MAX_SELECTIONS)) {
       if (idea.idea_id) params.append("idea", `${idea.idea_id}:${idea.idea_revision ?? 1}`);
     }
     if (options?.view) params.set("view", options.view);
@@ -1549,17 +1544,19 @@
       params.set("ideaId", options.focus.ideaId);
       params.set("ideaRevision", String(options.focus.ideaRevision));
     }
+    if (options?.assumptionId) params.set("assumptionId", options.assumptionId);
+    if (options?.challengeId) params.set("challengeId", options.challengeId);
+    if (options?.questionId) params.set("questionId", options.questionId);
+    if (options?.mode) params.set("mode", options.mode);
     const query = params.toString();
     return `/jobs/${encodeURIComponent(jobId)}/selection/${workspace}${query ? `?${query}` : ""}`;
   }
 
-  function openCandidatePool() {
-    const candidatePool = document.querySelector('[data-annotation-anchor="shortlist-candidates"]');
-    if (!(candidatePool instanceof HTMLElement) || typeof candidatePool.scrollIntoView !== "function") return;
-    candidatePool.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
+  function jobPageToolState(): App.PageState {
+    return {
+      ...page.state,
+      selectionToolOrigin: createSelectionToolOrigin(page.url, jobId),
+    };
   }
 
   /**
@@ -1569,11 +1566,8 @@
    * tools and nothing links here that way any more; the handler stays only so
    * existing bookmarks keep working.
    *
-   * The params are stripped once handled. They are a one-shot instruction, not
-   * overlay state: leaving them in the URL meant closing an overlay left a
-   * stale `selectionTool` behind, so a refresh re-opened a tool the user had
-   * already dismissed, and a later overlay ran under a URL naming a different
-   * one.
+   * Durable tools are redirected to their canonical route and query state.
+   * Only bounded job-page actions (constraints and analyst) remain one-shot.
    */
   $effect(() => {
     if (!interactive) return;
@@ -1583,29 +1577,62 @@
     if (handledSelectionToolQuery === key) return;
     handledSelectionToolQuery = key;
 
-    const openTool = () => {
-      if (tool === "constraints") return openFounderContext();
-      if (tool === "analyst") return chatPanel.open();
+    const openTool = (): boolean => {
+      // Stale bookmark into a tool this owner no longer has: drop the param and stay.
+      if (!decisionTools && tool !== "analyst") return false;
+      if (tool === "constraints") {
+        openFounderContext();
+        return false;
+      }
+      if (tool === "analyst") {
+        chatPanel.open();
+        return false;
+      }
+      const ideaId = page.url.searchParams.get("ideaId");
+      const ideaRevision = Number(page.url.searchParams.get("ideaRevision") ?? "1");
+      const focus = ideaId && Number.isInteger(ideaRevision) && ideaRevision >= 1
+        ? { ideaId, ideaRevision }
+        : null;
+      const requestedLens = page.url.searchParams.get("lens");
+      const lens = requestedLens === "demand"
+        || requestedLens === "distribution"
+        || requestedLens === "competition"
+        || requestedLens === "dependencies"
+        ? requestedLens
+        : null;
+
       if (tool === "tests") {
-        void openFocusedExperimentFromQuery();
-        return;
+        void goto(selectionWorkspaceHref("risks", {
+          tool: "tests",
+          focus,
+          assumptionId: page.url.searchParams.get("assumptionId") ?? undefined,
+        }), { replaceState: true });
+        return true;
       }
       if (tool === "alternatives") {
         closeAllOverlays();
-        conceptForgeOpen = true;
-        return;
+        void goto(selectionWorkspaceHref("compare", { tool: "variants" }), { replaceState: true });
+        return true;
       }
-      if (selectionCount === 0) return;
-      if (tool === "fit") return openDecisionMode("fit");
-      if (tool === "assumptions") return openDecisionMode("assumptions");
-      if (tool === "risks" && page.url.searchParams.has("ideaId")) return openFocusedRiskFromQuery();
-      if (tool === "risks") return openDecisionMode("challenge");
-      if (tool === "compare") return openDecisionMode("market");
+      if (selectionCount === 0) return false;
+      if (tool === "fit" || tool === "compare") {
+        void goto(selectionWorkspaceHref("compare", { view: tool === "fit" ? "founder" : "market" }), { replaceState: true });
+        return true;
+      }
+      if (tool === "assumptions" || tool === "risks") {
+        void goto(selectionWorkspaceHref("risks", {
+          tool: tool === "assumptions" ? "assumptions" : "challenge",
+          focus,
+          lens,
+        }), { replaceState: true });
+        return true;
+      }
+      return false;
     };
 
     queueMicrotask(() => {
-      openTool();
-      clearSelectionToolQuery();
+      const navigated = openTool();
+      if (!navigated) clearSelectionToolQuery();
     });
   });
 
@@ -1628,25 +1655,6 @@
     }
   }
 
-  /** Empty test workspace → evidence challenge. openDecisionMode already
-   *  resets through closeAllOverlays, so the cockpit is the only open
-   *  surface once it lands. */
-  function openChallengeFromTests() {
-    if (selectionCount === 0 || poolMutationBusy) return;
-    openDecisionMode("challenge");
-  }
-
-  /** Challenge finding → concept forge. The cockpit closes (with its usual
-   *  cleanup) before the forge opens so only one overlay is up at a time.
-   *  Reuses the same forge open path as the Shape tile (no preselected
-   *  parents, no copilot brief). */
-  function openForgeFromChallenge() {
-    if (poolMutationBusy) return;
-    closeAllOverlays();
-    void loadSelectionDecisionState();
-    conceptForgeOpen = true;
-  }
-
   function resolveDecisionStateIdeas(action: SelectionDecisionNextAction): SolutionPreview[] | null {
     const resolved = action.ideas.map(reference => solutions.find(solution =>
       solution.idea_id === reference.ideaId
@@ -1660,14 +1668,14 @@
     const ideas = resolveDecisionStateIdeas(action);
     if (!ideas) {
       selectionDecisionState = null;
-      selectionDecisionStateError = "The candidate changed while this suggestion was open. Refreshing it now.";
+      selectionDecisionStateError = "The idea changed while this suggestion was open. Refreshing it now.";
       void loadSelectionDecisionState();
       return;
     }
 
     if (action.kind === "select_candidate") {
       const idea = ideas[0];
-      if (idea) openDetail(ideaKey(idea));
+      if (idea) openDetail(idea);
       return;
     }
     if (action.kind === "add_decision_context") {
@@ -1678,14 +1686,13 @@
     // sends you to the same place the matching decision step does, so one tool
     // never has two different surfaces depending on where it was launched from.
     if (action.kind === "analyze_founder_fit") {
-      if (ideas.length) void goto(selectionWorkspaceHref("compare", { view: "founder", tool: "fit" }));
+      if (ideas.length) void goto(selectionWorkspaceHref("compare", { view: "founder" }));
       return;
     }
     if (action.kind === "stress_test_evidence") {
       const idea = ideas[0];
       if (!idea?.idea_id || !action.lens) return;
       void goto(selectionWorkspaceHref("risks", {
-        tool: "challenge",
         lens: action.lens,
         focus: { ideaId: idea.idea_id, ideaRevision: idea.idea_revision ?? 1 },
       }));
@@ -1708,9 +1715,12 @@
       || action.kind === "record_conclusion"
     ) {
       const idea = ideas[0];
-      void goto(selectionWorkspaceHref("tests", {
+      void goto(selectionWorkspaceHref("risks", {
         tool: "tests",
         focus: idea?.idea_id ? { ideaId: idea.idea_id, ideaRevision: idea.idea_revision ?? 1 } : null,
+        assumptionId: "assumptionId" in action && typeof action.assumptionId === "string"
+          ? action.assumptionId
+          : undefined,
       }));
       return;
     }
@@ -1725,23 +1735,21 @@
     return resolved.every((idea): idea is SolutionPreview => Boolean(idea)) ? resolved : null;
   }
 
-  function showCopilotWorkspace(ideas: SolutionPreview[], mode: typeof compareStartMode): void {
-    closeAllOverlays();
-    copilotComparisonKeys = ideas.map(ideaKey);
-    compareStartMode = mode;
-    compareOpen = true;
-    chatPanel.close();
-  }
-
   function handleCopilotAction(
     action: SelectionCopilotAction,
     sourceMessageId: string,
   ): { ok: boolean; message?: string } {
+    // Unreachable in practice — without the grant the analyst never gets the
+    // prepare_selection_action tool. Kept as a hard stop so a replayed or stale message
+    // can't open a decision tool. `shortlist_review` is not a decision tool.
+    if (!decisionTools && action.action !== "shortlist_review") {
+      return { ok: false, message: "This tool is not available on your account." };
+    }
     const resolvedIdeas = resolveCopilotIdeas(action);
     if (action.ideas.length > 0 && !resolvedIdeas) {
       return {
         ok: false,
-        message: "This suggestion references an older candidate revision. Refresh the research and ask the analyst again.",
+        message: "This suggestion references an older idea revision. Refresh the research and ask the analyst again.",
       };
     }
     const ideas = resolvedIdeas ?? [];
@@ -1754,7 +1762,7 @@
         return { ok: false, message: "Your shortlist changed after this suggestion was prepared. Ask the analyst to review the current shortlist." };
       }
       if (ideas.length === 0 || ideas.length > MAX_SELECTIONS) {
-        return { ok: false, message: "The suggested shortlist must contain between one and three current candidates." };
+        return { ok: false, message: "The suggested shortlist must contain between one and three current ideas." };
       }
       copilotShortlistError = "";
       copilotShortlistReview = {
@@ -1778,19 +1786,24 @@
           || (purpose === "resolve_tradeoff" && ideas.length !== 2)
           || (targetTradeoff !== undefined && typeof targetTradeoff !== "string")
         ) {
-          return { ok: false, message: "This directions brief no longer matches one or two current candidates. Ask the analyst to prepare it again." };
+          return { ok: false, message: "This directions brief no longer matches one or two current ideas. Ask the analyst to prepare it again." };
         }
         closeAllOverlays();
-        conceptForgeParentKeys = ideas.map(ideaKey);
-        copilotConceptForgePrefill = {
+        const prefill: SelectionConceptForgePrefill = {
           requestId: sourceMessageId,
           purpose: purpose as SelectionConceptForgePrefill["purpose"],
           targetTradeoff: typeof targetTradeoff === "string" ? targetTradeoff : "",
           rationale: action.rationale,
           caveats: action.caveats,
         };
-        conceptForgeOpen = true;
         chatPanel.close();
+        void goto(selectionWorkspaceHref("compare", {
+          ideas,
+          mode: prefill.purpose,
+          tool: "variants",
+        }), {
+          state: { ...jobPageToolState(), selectionConceptPrefill: prefill },
+        });
         return { ok: true, message: "Directions brief opened for review. Nothing has been generated or evaluated." };
       }
       if (action.target === "decision_profile") {
@@ -1807,26 +1820,28 @@
       if (action.target === "experiment") {
         const idea = ideas[0];
         if (!idea?.idea_id || ideas.length !== 1) {
-          return { ok: false, message: "An experiment draft must reference exactly one current candidate." };
+          return { ok: false, message: "An experiment draft must reference exactly one current idea." };
         }
         closeAllOverlays();
-        experimentWorkspaceOpen = true;
-        const result = experimentWorkspaceRef?.reviewCopilotDraft(
-          sourceMessageId,
-          {
-            ...(action.values ?? {}),
-            ideaId: idea.idea_id,
-            ideaRevision: idea.idea_revision ?? 1,
-          } as SelectionExperimentDraftSeed,
-          action.record,
-        );
-        if (result?.ok) chatPanel.close();
-        return result ?? { ok: false, message: "The experiment editor is not ready yet. Try again." };
+        const draft = {
+          ...(action.values ?? {}),
+          ideaId: idea.idea_id,
+          ideaRevision: idea.idea_revision ?? 1,
+        } as SelectionExperimentDraftSeed;
+        chatPanel.close();
+        void goto(selectionWorkspaceHref("risks", {
+          tool: "tests",
+          focus: { ideaId: draft.ideaId, ideaRevision: draft.ideaRevision },
+          assumptionId: draft.assumptionId ?? undefined,
+        }), {
+          state: { ...page.state, selectionTestDraft: draft },
+        });
+        return { ok: true, message: "Test draft opened for review. Nothing has been published." };
       }
       if (action.target === "assumption" || action.target === "owner_evidence") {
         const idea = ideas[0];
         if (!idea?.idea_id || ideas.length !== 1 || !action.lens) {
-          return { ok: false, message: "This draft must reference one current candidate and one evidence lens." };
+          return { ok: false, message: "This draft must reference one current idea and one evidence lens." };
         }
         const values = action.values ?? {};
         if (
@@ -1836,7 +1851,7 @@
         ) {
           return {
             ok: false,
-            message: "The draft identity does not match its current candidate revision and evidence lens.",
+            message: "The draft identity does not match its current idea revision and evidence lens.",
           };
         }
 
@@ -1869,10 +1884,16 @@
             caveats: action.caveats,
             values: assumptionValues,
           };
-          // showCopilotWorkspace resets these prefills via closeAllOverlays, so
-          // the payload must be assigned AFTER it, not before.
-          showCopilotWorkspace([idea], "assumptions");
-          copilotAssumptionPrefill = assumptionPrefill;
+          closeAllOverlays();
+          chatPanel.close();
+          void goto(selectionWorkspaceHref("risks", {
+            tool: "assumptions",
+            lens: action.lens,
+            focus: { ideaId: idea.idea_id, ideaRevision: idea.idea_revision ?? 1 },
+            ideas: [idea],
+          }), {
+            state: { ...page.state, selectionAssumptionPrefill: assumptionPrefill },
+          });
           return { ok: true, message: "Assumption draft opened for review. Nothing has been saved." };
         }
 
@@ -1884,19 +1905,17 @@
           origin: action.origin,
           values: values as SelectionOwnerEvidencePrefill["values"],
         };
-        const evidenceChallengeFocus = {
-          requestId: ++copilotFocusSequence,
-          ideaId: idea.idea_id,
-          ideaRevision: idea.idea_revision ?? 1,
+        closeAllOverlays();
+        chatPanel.close();
+        void goto(selectionWorkspaceHref("risks", {
           lens: action.lens,
+          focus: { ideaId: idea.idea_id, ideaRevision: idea.idea_revision ?? 1 },
           challengeId: action.origin?.challengeId,
           questionId: action.origin?.questionId,
-        };
-        // showCopilotWorkspace resets these prefills via closeAllOverlays, so
-        // the payload must be assigned AFTER it, not before.
-        showCopilotWorkspace([idea], "challenge");
-        copilotOwnerEvidencePrefill = ownerEvidencePrefill;
-        copilotChallengeFocus = evidenceChallengeFocus;
+          ideas: [idea],
+        }), {
+          state: { ...page.state, selectionOwnerEvidencePrefill: ownerEvidencePrefill },
+        });
         return { ok: true, message: "Owner-evidence draft opened for review. Nothing has been added." };
       }
       return {
@@ -1912,11 +1931,11 @@
     if (action.target === "candidate") {
       const idea = ideas[0];
       if (!idea || ideas.length !== 1) {
-        return { ok: false, message: "A candidate action must reference exactly one current candidate." };
+        return { ok: false, message: "An idea action must reference exactly one current idea." };
       }
       returnToChatState = chatPanel.isExpanded ? "expanded" : "docked";
       chatPanel.close();
-      openDetail(ideaKey(idea));
+      openDetail(idea);
       return { ok: true };
     }
 
@@ -1931,14 +1950,18 @@
     if (action.target === "experiment" || action.target === "experiments") {
       if (ideas.length === 1 && ideas[0]?.idea_id) {
         closeAllOverlays();
-        experimentWorkspaceOpen = true;
-        const result = experimentWorkspaceRef?.reviewCopilotDraft(
-          sourceMessageId,
-          { ideaId: ideas[0].idea_id, ideaRevision: ideas[0].idea_revision ?? 1 },
-          action.record,
-        );
-        if (result?.ok) chatPanel.close();
-        return result ?? { ok: false, message: "The experiment workspace is not ready yet. Try again." };
+        const draft: SelectionExperimentDraftSeed = {
+          ideaId: ideas[0].idea_id,
+          ideaRevision: ideas[0].idea_revision ?? 1,
+        };
+        chatPanel.close();
+        void goto(selectionWorkspaceHref("risks", {
+          tool: "tests",
+          focus: { ideaId: draft.ideaId, ideaRevision: draft.ideaRevision },
+        }), {
+          state: { ...page.state, selectionTestDraft: draft },
+        });
+        return { ok: true };
       }
       chatPanel.close();
       openExperimentWorkspace();
@@ -1946,36 +1969,40 @@
     }
 
     if (ideas.length === 0) {
-      return { ok: false, message: "This action needs at least one current candidate reference." };
+      return { ok: false, message: "This action needs at least one current idea reference." };
     }
 
-    const mode = action.target === "risk_queue"
-      ? "risk"
-      : action.target === "assumptions" || action.target === "assumption"
-        ? "assumptions"
-        : action.target === "founder_fit"
-          ? "fit"
-          : action.target === "challenge" || action.target === "owner_evidence"
-            ? "challenge"
-            : "market";
-
-    if (mode === "challenge" && (!action.lens || ideas.length !== 1 || !ideas[0].idea_id)) {
-      return { ok: false, message: "An evidence action must include one current candidate and an evidence lens." };
+    const opensEvidence = action.target === "risk_queue"
+      || action.target === "assumptions"
+      || action.target === "assumption"
+      || action.target === "challenge"
+      || action.target === "owner_evidence";
+    const opensFocusedEvidence = action.target === "challenge" || action.target === "owner_evidence";
+    if (opensFocusedEvidence && (!action.lens || ideas.length !== 1 || !ideas[0].idea_id)) {
+      return { ok: false, message: "An evidence action must include one current idea and an evidence lens." };
     }
-    const challengeFocus = mode === "challenge" && action.lens
-      ? {
-          requestId: ++copilotFocusSequence,
-          ideaId: ideas[0].idea_id as string,
-          ideaRevision: ideas[0].idea_revision ?? 1,
-          lens: action.lens,
-          challengeId: action.origin?.challengeId,
-          questionId: action.origin?.questionId,
-        }
-      : null;
-    // showCopilotWorkspace resets copilotChallengeFocus via closeAllOverlays,
-    // so the focus payload must be assigned AFTER it, not before.
-    showCopilotWorkspace(ideas, mode);
-    if (challengeFocus) copilotChallengeFocus = challengeFocus;
+    closeAllOverlays();
+    chatPanel.close();
+    if (opensEvidence) {
+      const idea = ideas.length === 1 ? ideas[0] : null;
+      void goto(selectionWorkspaceHref("risks", {
+        tool: action.target === "assumptions" || action.target === "assumption"
+          ? "assumptions"
+          : undefined,
+        lens: action.lens,
+        focus: idea?.idea_id
+          ? { ideaId: idea.idea_id, ideaRevision: idea.idea_revision ?? 1 }
+          : null,
+        challengeId: action.origin?.challengeId,
+        questionId: action.origin?.questionId,
+        ideas,
+      }));
+      return { ok: true };
+    }
+    void goto(selectionWorkspaceHref("compare", {
+      view: action.target === "founder_fit" ? "founder" : "market",
+      ideas,
+    }));
     return { ok: true };
   }
 
@@ -1993,45 +2020,8 @@
     queueShortlistSave();
   }
 
-  async function handleConfirmSelection(rationale: string) {
-    if (poolMutationBusy) return;
-    selectLoading = true;
-    selectError = "";
-    chatThreadRef?.stopStreaming();
-    try {
-      const solutionNames = selectedIdeas.map((solution) => solution.solution_name);
-      const solutionIds = selectedIdeas.map((solution) => solution.idea_id).filter((id): id is string => Boolean(id));
-      await selectSolution(jobId, {
-        solutionNames,
-        solutionIds,
-        rationale: rationale || undefined,
-      });
-      modalOpen = false;
-      onComplete?.();
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 402) {
-        modalOpen = false;
-        creditTopUp.show({
-          balance: creditBalance,
-          required: deepCost,
-          stageName: "deep research",
-        });
-      } else {
-        selectError =
-          e instanceof Error ? e.message : "Failed to select solution";
-      }
-    } finally {
-      selectLoading = false;
-    }
-  }
-  function handleCancelModal() {
-    if (!selectLoading) {
-      modalOpen = false;
-      selectError = "";
-    }
-  }
-
-  function scoreColor(v: number): string {
+  function scoreColor(v: number | null): string {
+    if (v == null) return "var(--color-text-muted)";
     if (v >= 0.7) return "var(--color-success-dark)";
     if (v < 0.35) return "var(--color-text-muted)";
     return "var(--color-text-primary)";
@@ -2045,14 +2035,13 @@
     const sourcePain = s.source_pain?.trim()
       || s.pain_points_addressed?.[0]?.trim()
       || (s.unanchored_hypothesis ? "No validated pain match" : null);
-    const risk =
+    const riskKey =
       s.tags?.risk_flags?.[0]
-        ? humanizeTag(s.tags.risk_flags[0])
-        : s.tags?.build_complexity === "high"
-          ? "Hard to build"
-          : s.tags?.novelty_level === "conventional"
-            ? "Conventional"
-            : null;
+        ?? (validatedBuildComplexity(s) === "high"
+          ? "high"
+          : validatedNoveltyLevel(s) === "conventional"
+            ? "conventional"
+            : null);
     const mergedFrom = s.idea_tier === "merged" ? (s.merged_from ?? []) : [];
     const parity = s.incumbent_parity?.trim();
     const incumbent =
@@ -2071,20 +2060,22 @@
     return {
       title: solutionDisplayTitle(s),
       summary: solutionCardDescription(s),
-      score: computeCompositeScore(s),
+      score: displayCompositeScore(s),
       fit: fitLabel(s.market_fit_score),
       feasPct: pct(s.technical_feasibility_score),
       build: s.estimated_development_time ?? "--",
       strength: solutionStrengthBadge(s),
       angle: s.winning_angle && angleLabel(s.winning_angle),
-      strengthWhy: s.tags?.primary_strength
-        ? tagDescription(s.tags.primary_strength)
+      strengthWhy: solutionPrimaryStrengthKey(s)
+        ? tagDescription(solutionPrimaryStrengthKey(s))
         : null,
       angleWhy:
         s.angle_rationale ||
         (s.winning_angle ? angleDescription(s.winning_angle) : null),
       provenance: sourcePain,
-      risk,
+      risk: riskKey
+        ? { label: humanizeTag(riskKey), description: tagDescription(riskKey) }
+        : null,
       mergedCount: mergedFrom.length,
       mergedNames: mergedFrom.join(", "),
       synthesisLabel,
@@ -2104,17 +2095,16 @@
            never a boxed stat-cell strip. Evidence counts (discussions, pain
            points, sources) live in the discovery-dossier ledger below. -->
       <div class="cmd-title-row">
-        <h2 class="cmd-title">Ranked candidates</h2>
-        <p class="record-line cmd-stats" aria-label="Candidate summary">{cmdStatsLine}</p>
+        <h2 class="cmd-title">{interactive ? CHOOSE_IDEAS_LABEL : RANKED_LIST_HEADING}</h2>
+        <p class="record-line cmd-stats" aria-label="Idea summary">{cmdStatsLine}</p>
       </div>
       {#if interactive}
         <p class="cmd-sub">
-          Compare, reshape, or shortlist up to 3 candidates. Deep Research checks demand,
-          competition, market size, and go-to-market risk after you choose.
+          Select one to three ideas. One Deep Research run covers the full shortlist; comparison and risk checks are optional.
         </p>
       {:else}
         <p class="cmd-sub">
-          Solution candidates from the discovery run, ranked by composite score.
+          Solution ideas from the discovery run, ranked by composite score.
           Open a row for full detail and vote for the idea you like most.
         </p>
       {/if}
@@ -2132,6 +2122,13 @@
 
   <div class:selection-layout={interactive}>
     <div class="candidate-pool">
+      {#if detailUrlError}
+        <div class="detail-link-error" role="alert">
+          <p>{detailUrlError}</p>
+          <button type="button" onclick={clearDetailUrlError}>Return to ranked ideas</button>
+        </div>
+      {/if}
+
       {#if regenerateError}
         <p class="regen-error" role="alert">{regenerateError}</p>
       {/if}
@@ -2143,7 +2140,7 @@
       {#if seedBanner}
         <p class="seed-banner" role="status" class:seed-banner--accepted={seedBanner.outcome === "accepted"}>
           {#if seedBanner.outcome === "accepted"}
-            Evaluation complete. The result was added to ranked candidates below.
+            Evaluation complete. The result was added to the ranked ideas below.
           {:else if seedBanner.outcome === "demoted"}
             We tested your idea. It didn't clear the market-fit bar. See why below.
           {:else}
@@ -2152,18 +2149,86 @@
         </p>
       {/if}
 
+      <!-- The whole optional-checks guide belongs to the decision tools grant. Without
+           it there is no optional work to report, and the shortlist rail already carries
+           "Review and start" — so the card would be an empty frame. -->
+      {#if interactive && decisionTools}
+        <section class="decision-guide" aria-labelledby="decision-guide-title">
+          <div class="decision-guide__copy">
+            <p class="decision-guide__eyebrow">
+              {hubRecommendation?.target === "shortlist" ? "Suggested next" : "Optional next check"}
+            </p>
+            {#if hubRecommendation}
+              <h3 id="decision-guide-title">{hubRecommendation.title}</h3>
+              <p>{hubRecommendation.description}</p>
+              <!-- Always a launcher for the suggested step (every action kind is
+                   handled by runSelectionDecisionAction), never a dead heading. -->
+              {#if selectionDecisionState}
+                <button
+                  type="button"
+                  class="decision-guide__candidate"
+                  disabled={poolMutationBusy || selectLoading}
+                  onclick={() => {
+                    if (selectionDecisionState) runSelectionDecisionAction(selectionDecisionState.nextAction);
+                  }}
+                >
+                  <!-- The evidence-check journey step reuses its heading as the
+                       actionLabel; render a verb-forward CTA instead of the
+                       identical text twice. Other kinds keep their own label. -->
+                  {hubRecommendation.actionLabel === hubRecommendation.title
+                    && hubRecommendation.actionLabel === STRESS_TEST_EVIDENCE_LABEL
+                    ? "Run the check"
+                    : hubRecommendation.actionLabel}
+                </button>
+              {/if}
+            {:else if selectionDecisionStateLoading}
+              <h3 id="decision-guide-title">Updating your next useful step…</h3>
+            {:else}
+              <h3 id="decision-guide-title">Your shortlist is ready when you are</h3>
+              <p>The checks below are optional. They never change the Discovery ranking.</p>
+            {/if}
+          </div>
+
+          <!-- Progress, not a second tool menu: the sidebar owns Compare / Check
+               navigation; here each optional check reports its status only. -->
+          {#if decisionHomeTasks.length}
+            <ul class="decision-guide__progress" aria-label="Optional checks progress">
+              {#each decisionHomeTasks as task (task.key)}
+                <li class="decision-guide__progress-item">
+                  <span class="decision-guide__progress-name">{task.title}</span>
+                  <DecisionStatusBadge status={task.status} label={task.statusLabel} />
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </section>
+
+        {#if summaryRecommendation}
+          <section class="discovery-take" aria-label="Discovery take">
+            <p class="discovery-take__eyebrow">Discovery take · across all ideas</p>
+            <p class="discovery-take__quote">
+              <IdeaReferenceText
+                content={summaryRecommendation}
+                references={ideaReferences}
+                onOpen={openIdeaReference}
+              />
+            </p>
+          </section>
+        {/if}
+      {/if}
+
       <!-- ── Ranked opportunity list ── -->
       <div
         class="opp-list"
         role="table"
-        aria-label="Ranked candidates"
+        aria-label={RANKED_LIST_HEADING}
         data-annotation-anchor="shortlist-candidates"
       >
     <!-- Column header (desktop) -->
-    <div class="row row-head" role="row">
+    <div class="row row-head" role="row" data-tour="ranked-list">
       <span class="cell-rank" role="columnheader">#</span>
-      <span class="cell-select-label" role="columnheader">{interactive ? "Pick" : "Vote"}</span>
-      <span class="cell-title-label" role="columnheader">Opportunity</span>
+      <span class="cell-select-label" role="columnheader">{interactive ? "Select" : "Vote"}</span>
+      <span class="cell-title-label" role="columnheader">Idea</span>
       {#each SORT_COLS as col}
         <!-- Explicit name: the subtree holds the sort-button label plus an
              sr-only definition, neither of which should become the column name
@@ -2207,7 +2272,7 @@
         class:row-maxed={maxed}
         class:row-seed-highlight={seedHighlightName === s.solution_name}
         data-solution-name={s.solution_name}
-        data-annotation-anchor={`candidate:${s.solution_name}`}
+        data-annotation-anchor={`candidate:${key}`}
       >
         <span class="cell-rank" role="cell">{i + 1}</span>
 
@@ -2215,6 +2280,7 @@
           <span class="cell-shell" role="cell">
           <label
             class="cell-select select-control"
+            data-tour={i === 0 ? "shortlist-checkbox" : undefined}
             class:sel={isSel}
             class:maxed
             aria-disabled={maxed ? "true" : undefined}
@@ -2230,15 +2296,15 @@
               aria-label={isSel ? `Deselect ${m.title}` : `Select ${m.title}`}
             />
             {#if isSel}
-              <span class="select-marker"><Check class="select-check" aria-hidden="true" /></span>
-              <span class="select-copy">Shortlisted</span>
+              <span class="select-marker"><Check class="select-icon" strokeWidth={3} aria-hidden="true" /></span>
+              <span class="select-copy">Selected</span>
             {:else if maxed}
               <span class="select-marker"><span class="select-dash" aria-hidden="true">-</span></span>
-              <span class="select-copy">Full</span>
+              <span class="select-copy">3 selected</span>
               <span id="select-maxed-hint-{i}" class="sr-only">Deselect one to add this</span>
             {:else}
-              <span class="select-marker"><Plus class="select-plus w-3.5 h-3.5" aria-hidden="true" /></span>
-              <span class="select-copy">Shortlist</span>
+              <span class="select-marker"><Plus class="select-icon" strokeWidth={2} aria-hidden="true" /></span>
+              <span class="select-copy">Select</span>
             {/if}
           </label>
           </span>
@@ -2252,16 +2318,16 @@
         <button
           type="button"
           class="cell-title"
-          onclick={() => openDetail(key)}
+          onclick={() => openDetail(s)}
           aria-label={`Review details for ${m.title}`}
         >
           <span
             class="title-block"
-            data-annotation-anchor={`candidate:${s.solution_name}:content`}
+            data-annotation-anchor={`candidate:${key}:content`}
           >
             <span
               class="opp-title-line"
-              data-annotation-anchor={`candidate:${s.solution_name}:title`}
+              data-annotation-anchor={`candidate:${key}:title`}
             >
               <span class="opp-title">{m.title}</span>
               {#if isAnalystPick}
@@ -2313,7 +2379,10 @@
                 </Tooltip>
               {/if}
               {#if m.risk}
-                <span class="tag tag-risk">{m.risk}</span>
+                {@const rowRisk = m.risk}
+                <Tooltip content={rowRisk.description} position="bottom">
+                  {#snippet children()}<span class="tag tag-risk">{rowRisk.label}</span>{/snippet}
+                </Tooltip>
               {/if}
             </span>
           </span>
@@ -2322,11 +2391,15 @@
 
         <!-- Score -->
         <span class="cell-metric metric-score" role="cell">
-          <span class="metric-num" style:color={scoreColor(m.score)}>{Math.round(m.score * 100)}</span>
+          <span class="metric-num" style:color={scoreColor(m.score)}>
+            {m.score == null ? "--" : Math.round(m.score * 100)}
+          </span>
         </span>
 
         <span class="cell-metric metric-fit" role="cell">
-          <span class="metric-num fit-{m.fit.variant}">{pct(s.market_fit_score)}<span class="metric-unit">%</span></span>
+          <span class="metric-num fit-{m.fit.variant}">
+            {pct(s.market_fit_score)}{#if s.market_fit_score != null}<span class="metric-unit">%</span>{/if}
+          </span>
         </span>
 
         <span class="cell-metric" role="cell">
@@ -2340,6 +2413,27 @@
 
         {/each}
       </div>
+
+      <!-- "Branch a new direction" is a decision tool (ConceptForge / selection-concept-sets). -->
+      {#if interactive && decisionTools}
+        <div class="decision-escape">
+          <div>
+            <strong>None of these fit?</strong>
+            <span>Branch from a promising idea without changing your current shortlist.</span>
+          </div>
+          <button
+            type="button"
+            disabled={poolMutationBusy}
+            onclick={() => {
+              void goto(selectionWorkspaceHref("compare", { tool: "variants" }), {
+                state: jobPageToolState(),
+              });
+            }}
+          >
+            {BRANCH_DIRECTION_LABEL}
+          </button>
+        </div>
+      {/if}
     </div>
 
     {#if interactive}
@@ -2352,26 +2446,15 @@
             saveState={shortlistSaveState}
             saveError={shortlistSaveError}
             saveConflict={shortlistSaveConflict}
-            researchLeadTitle={railResearchLead ? solutionDisplayTitle(railResearchLead) : ""}
-            onRunRecommendation={() => {
-              if (selectionDecisionState) runSelectionDecisionAction(selectionDecisionState.nextAction);
-            }}
-            onAddResearchLead={railResearchLead ? () => toggle(ideaKey(railResearchLead)) : undefined}
-            onRemoveShortlistItem={(ideaId) => toggle(ideaId)}
-            onOpenCandidates={openCandidatePool}
+            onRemoveShortlistItem={(ideaId, ideaRevision) => toggle(`${ideaId}:${ideaRevision}`)}
             onRetrySave={retryShortlistSave}
             onReloadSave={reloadShortlist}
-            onEditConstraints={openFounderContext}
-            onOpenCompare={() => { void goto(selectionWorkspaceHref("compare", { view: "market" })); }}
-            onOpenRisks={() => { void goto(selectionWorkspaceHref("risks")); }}
-            onOpenTests={() => { void goto(selectionWorkspaceHref("tests")); }}
-            onOpenAlternatives={() => { void goto(selectionWorkspaceHref("alternatives")); }}
             onStartDeepResearch={handleValidate}
           />
         {:else}
           <aside class="decision-rail-fallback" aria-live="polite">
-            <p class="decision-rail-fallback__eyebrow">Your decision</p>
-            <h3>{selectionCount} of {MAX_SELECTIONS} shortlisted</h3>
+            <p class="decision-rail-fallback__eyebrow">Research shortlist</p>
+            <h3>{selectionCount} of {MAX_SELECTIONS} ideas selected</h3>
             {#if selectionDecisionStateLoading}
               <p>Loading your next step…</p>
             {:else if selectionDecisionStateError}
@@ -2380,7 +2463,7 @@
                 Try again
               </button>
             {:else}
-              <p>Choose an idea to see the next useful decision step.</p>
+              <p>Select one to three ideas to define what Deep Research should cover.</p>
             {/if}
             <button
               type="button"
@@ -2388,7 +2471,7 @@
               disabled={!canSubmit || poolMutationBusy || selectLoading || shortlistSaveState === "saving"}
               onclick={handleValidate}
             >
-              Start Deep Research
+              Review scope
             </button>
           </aside>
         {/if}
@@ -2401,9 +2484,9 @@
       {#each rejectedOverlapGroups as g}
         <article class="variant-note">
           <div class="variant-note-copy">
-            <span class="variant-note-kicker">Similar candidate family · {g.ideaNames.length}</span>
+            <span class="variant-note-kicker">Similar idea family · {g.ideaNames.length}</span>
             <strong>{g.sharedProduct || "Same buyer job"}</strong>
-            <div class="variant-note-names" aria-label="Candidates in this family">
+            <div class="variant-note-names" aria-label="Ideas in this family">
               {#each g.ideaNames as name}<span>{name}</span>{/each}
             </div>
           </div>
@@ -2428,27 +2511,19 @@
   {/snippet}
 
   {#if interactive}
-    <!-- ── Below-table IA (Phase 1b): founder-context row → verdict pull-quote →
-         opportunity shape → collapsed dossier appendix. ── -->
-    <DecisionBrief
-      bind:this={decisionBriefRef}
-      {jobId}
-      profile={activeDecisionProfile}
-      variant={briefVariant}
-      onSaved={handleDecisionProfileSaved}
-    />
-
-    {#if summaryRecommendation}
-      <section class="verdict" aria-label="Analyst verdict">
-        <p class="verdict-eyebrow">{VERDICT_EYEBROW}</p>
-        <p class="verdict-quote">
-          <IdeaReferenceText
-            content={summaryRecommendation}
-            references={ideaReferences}
-            onOpen={openIdeaReference}
-          />
-        </p>
-      </section>
+    <!-- Secondary context stays below the decision surface: saved build limits,
+         portfolio shape, and the collapsed Discovery appendix. -->
+    <!-- Build limits are a decision tool. The profile itself rides the job payload and
+         is never blanked, so a revoked grant would otherwise still show the saved
+         summary and an Edit button whose save 403s. -->
+    {#if decisionTools}
+      <DecisionBrief
+        bind:this={decisionBriefRef}
+        {jobId}
+        profile={activeDecisionProfile}
+        variant={briefVariant}
+        onSaved={handleDecisionProfileSaved}
+      />
     {/if}
 
     {#if shape}
@@ -2470,7 +2545,7 @@
         {#if collaboratorFeedbackGroups.length > 0}
           <CollaboratorFeedback
             groups={collaboratorFeedbackGroups}
-            onOpen={openDetail}
+            onOpen={openDetailByKey}
             onAskAnalyst={askAnalystAboutCollaboratorFeedback}
           />
         {/if}
@@ -2519,27 +2594,6 @@
     {/if}
   {/if}
 
-  {#if interactive}
-    <ExperimentWorkspace
-      bind:this={experimentWorkspaceRef}
-      open={experimentWorkspaceOpen}
-      {jobId}
-      ideas={selectedIdeas.length ? selectedIdeas : solutions}
-      prefill={experimentPrefill}
-      {seedCost}
-      narrowingDisabled={poolMutationBusy}
-      onEvaluateNarrowing={handleSeed}
-      onReviewNarrowing={handleReviewVariant}
-      onUseNarrowing={handleUseVariant}
-      onChanged={loadSelectionDecisionState}
-      onOpenChallenge={selectionCount > 0 ? openChallengeFromTests : undefined}
-      onClose={() => {
-        experimentWorkspaceOpen = false;
-        void loadSelectionDecisionState();
-      }}
-    />
-  {/if}
-
 </div>
 
 </div>
@@ -2585,7 +2639,7 @@
       />
   </WorkspaceOverlay>
 
-  {#if !chatPanel.isOpen && !compareOpen}
+  {#if !chatPanel.isOpen}
     <button
       type="button"
       class="chat-launcher"
@@ -2626,9 +2680,9 @@
   <FormOverlay
     open={regenerateOverlayOpen}
     size="compact"
-    eyebrow="Explore alternatives"
+    eyebrow="Fresh idea batch"
     title="Generate more ideas"
-    description="Add a small set of candidates for review. Your current ranking and shortlist stay unchanged."
+    description="Add a small set of ideas for review. Your current ranking and shortlist stay unchanged."
     onRequestClose={() => {
       if (!regenerating && !isRegenerating) regenerateOverlayOpen = false;
     }}
@@ -2660,7 +2714,7 @@
       </p>
       {#if !canAffordRegenerate}
         <p class="copilot-shortlist-error" role="alert">
-          You need {stageCosts.regenerate_ideas} credits to generate this batch. Your current candidates are unchanged.
+          You need {stageCosts.regenerate_ideas} credits to generate this batch. Your current ideas are unchanged.
         </p>
       {/if}
       {#if regenerateError}
@@ -2704,7 +2758,7 @@
             {/each}
           </ol>
         {:else}
-          <p class="copilot-shortlist-empty">No candidates selected.</p>
+          <p class="copilot-shortlist-empty">No ideas selected.</p>
         {/if}
       </section>
       <section class="copilot-shortlist-proposed">
@@ -2727,78 +2781,6 @@
     </div>
   </FormOverlay>
 
-  <DecisionCockpit
-    open={compareOpen}
-    initialMode={compareStartMode}
-    tabGroup={groupForMode(compareStartMode)}
-    initialChallengeFocus={copilotChallengeFocus}
-    assumptionPrefill={copilotAssumptionPrefill}
-    ownerEvidencePrefill={copilotOwnerEvidencePrefill}
-    {jobId}
-    ideas={comparisonIdeas}
-    profile={activeDecisionProfile}
-    {comparisonContext}
-    shortlistedIdeaKeys={resolvedOverlapComparison ? selectedIdeaKeyList : []}
-    shortlistAtCapacity={selectionCount >= MAX_SELECTIONS}
-    shortlistDisabled={poolMutationBusy}
-    onToggleShortlist={resolvedOverlapComparison ? toggleComparedIdea : undefined}
-    variantReview={variantComparisonContext}
-    onUseVariant={useReviewedVariant}
-    onOpenFounderContext={() => {
-      compareOpen = false;
-      openFounderContext();
-    }}
-    onAskAnalyst={askAnalystAboutCockpit}
-    onTestUnknown={handleExperimentPrefill}
-    onShapeAdjacent={selectionCount >= 1 ? openForgeFromChallenge : undefined}
-    {seedCost}
-    onEvaluateFitReshape={handleSeed}
-    onReviewFitReshape={handleReviewVariant}
-    onUseFitReshape={handleUseVariant}
-    onClose={() => {
-      compareOpen = false;
-      variantReview = null;
-      overlapComparison = null;
-      copilotComparisonKeys = null;
-      directWorkspaceFocus = false;
-      copilotChallengeFocus = null;
-      copilotAssumptionPrefill = null;
-      copilotOwnerEvidencePrefill = null;
-      void loadSelectionDecisionState();
-    }}
-  />
-{/if}
-
-{#if interactive}
-  <ConceptForge
-    open={conceptForgeOpen}
-    {jobId}
-    parents={conceptForgeParents}
-    prefill={copilotConceptForgePrefill}
-    {seedCost}
-    disabled={poolMutationBusy}
-    evaluateError={seedError}
-    onEvaluate={handleSeed}
-    onClose={() => {
-      conceptForgeOpen = false;
-      conceptForgeParentKeys = null;
-      copilotConceptForgePrefill = null;
-    }}
-  />
-{/if}
-
-<!-- Confirmation modal -->
-{#if interactive}
-  <SelectSolutionModal
-    bind:open={modalOpen}
-    solutionNames={selectedIdeas.map((solution) => solution.solution_name)}
-    {solutions}
-    loading={selectLoading}
-    error={selectError}
-    creditCost={deepCost}
-    onConfirm={handleConfirmSelection}
-    onCancel={handleCancelModal}
-  />
 {/if}
 
 <!-- Detail modal -->
@@ -2811,6 +2793,9 @@
       solutions={sortedSolutions}
       currentIndex={modalIndex}
       {jobId}
+      lifecycle="selection"
+      activeTab={detailTab}
+      evidenceLinks={detailEvidenceLinks}
       overlapGroups={overlapGroups ?? []}
       isSelected={selectedIdeaKeys.has(ideaKey(sortedSolutions[modalIndex]))}
       selectionIndex={selectionIndexOf(ideaKey(sortedSolutions[modalIndex]))}
@@ -2818,11 +2803,9 @@
       maxSelections={MAX_SELECTIONS}
       maxReached={selectedIdeaKeys.size >= MAX_SELECTIONS}
       disabled={selectLoading || poolMutationBusy}
-      canStart={canSubmit}
-      canAffordStart={canAffordDeep}
-      startCost={deepCost}
       onSelect={handleToggleAdapter}
-      onStartValidation={handleValidate}
+      onOpenEvidence={handleOpenDetailEvidence}
+      onTabChange={handleDetailTabChange}
       onNavigate={handleNavigate}
       onClose={handleCloseDetail}
       voteCount={voteCountFor(sortedSolutions[detailIndex])}
@@ -2838,7 +2821,12 @@
       solution={sortedSolutions[modalIndex]}
       solutions={sortedSolutions}
       currentIndex={modalIndex}
+      lifecycle="reference"
+      activeTab={detailTab}
+      evidenceLinks={detailEvidenceLinks}
       overlapGroups={overlapGroups ?? []}
+      onOpenEvidence={handleOpenDetailEvidence}
+      onTabChange={handleDetailTabChange}
       onNavigate={handleNavigate}
       onClose={handleCloseDetail}
       actionSlot={detailAction}
@@ -2858,13 +2846,14 @@
      table, then stacked a wall of chat into the page below 1440px.) */
   .workbench-shell {
     display: block;
+    padding-bottom: var(--space-20);
   }
 
   /* ── Launcher: the one way back in, always the same corner ── */
   .chat-launcher {
     position: fixed;
     right: clamp(0.75rem, 2vw, 1.5rem);
-    bottom: clamp(0.75rem, 2vw, 1.5rem);
+    bottom: calc(var(--space-16) + var(--space-4));
     z-index: var(--z-overlay, 30);
     display: inline-flex;
     align-items: center;
@@ -2873,15 +2862,15 @@
     padding: 0.6rem 1rem;
     background: var(--color-bg-elevated);
     border: 1px solid var(--color-border-emphasis);
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     box-shadow: var(--shadow-md);
     color: var(--color-text-primary);
     font-family: var(--font-body);
-    font-size: 0.8125rem;
+    font-size: var(--text-13);
     font-weight: 700;
     cursor: pointer;
-    transition: border-color 150ms var(--selection-motion), box-shadow 150ms var(--selection-motion),
-      transform 150ms var(--selection-motion);
+    transition: border-color var(--duration-fast) var(--ease-default), box-shadow var(--duration-fast) var(--ease-default),
+      transform var(--duration-fast) var(--ease-default);
   }
   .chat-launcher:hover {
     border-color: var(--color-accent);
@@ -2896,10 +2885,10 @@
   }
 
   /* ── Analyst dock above modal overlays ──
-     "Ask analyst" inside the Decision Cockpit opens the docked analyst WITHOUT
-     closing the cockpit — they are designed to coexist. The dock's base layer
-     (--z-overlay, 30) would otherwise sit fully under the cockpit's modal layer
-     and scrim (--z-modal, 40), leaving it invisible and unclickable. Lift only
+     "Ask analyst" inside a selection form opens the docked analyst without
+     closing that form. The dock's base layer (--z-overlay, 30) would otherwise
+     sit fully under the form's modal layer and scrim (--z-modal, 40), leaving
+     it invisible and unclickable. Lift only
      the ANALYST dock (matched by its frame label; portaled to <body>, hence
      :global) one step above the modal layer. The expanded analyst is itself
      modal and mounts after the cockpit, so DOM order already stacks it on top. */
@@ -2915,11 +2904,10 @@
   .workbench {
     --selection-motion: cubic-bezier(0.32, 0.72, 0, 1);
     position: relative;
-    container: selection-workbench / inline-size;
     display: flex;
     flex-direction: column;
-    gap: 0.68rem;
-    padding: 1rem;
+    gap: var(--space-3);
+    padding: var(--space-4);
     background:
       var(--color-bg-elevated);
     /* Card chrome = 1px border + shadow-sm only (Phase-1b bevel fix; slop
@@ -2929,17 +2917,13 @@
     box-shadow: var(--shadow-sm);
   }
   .selection-layout {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 18rem;
-    gap: 1rem;
-    align-items: start;
+    display: block;
   }
   .candidate-pool {
     min-width: 0;
   }
   .decision-rail-wrap {
-    position: sticky;
-    top: 5.25rem;
+    position: static;
     min-width: 0;
   }
   .decision-rail-fallback {
@@ -2953,7 +2937,7 @@
   }
   .decision-rail-fallback__eyebrow {
     margin: 0;
-    color: var(--color-accent-dark);
+    color: var(--color-text-muted);
     font-family: var(--font-mono);
     font-size: var(--text-xs);
     font-weight: 700;
@@ -2987,21 +2971,19 @@
   .decision-rail-start {
     border: 0;
     color: var(--color-text-on-accent);
-    background: var(--color-text-primary);
+    background: var(--color-accent-hover);
   }
+  .decision-rail-retry:hover { border-color: var(--color-input-border-hover); background: var(--color-bg-surface); }
+  .decision-rail-start:hover:not(:disabled) { background: var(--color-accent-dark); }
+  .decision-rail-retry:active, .decision-rail-start:active:not(:disabled) { transform: scale(0.98); }
   .decision-rail-start:disabled {
     color: var(--color-text-muted);
     background: var(--color-bg-hover);
     cursor: not-allowed;
   }
-  @container selection-workbench (max-width: 72rem) {
-    .selection-layout {
-      grid-template-columns: 1fr;
-    }
-    .decision-rail-wrap {
-      position: static;
-      grid-row: 2;
-    }
+  @media (prefers-reduced-motion: reduce) {
+    .decision-rail-retry, .decision-rail-start { transition: none; }
+    .decision-rail-retry:active, .decision-rail-start:active { transform: none; }
   }
   .workbench-anchor {
     position: absolute;
@@ -3022,14 +3004,14 @@
     background: transparent;
     border: 0;
     border-bottom: 1px solid color-mix(in srgb, var(--color-border-emphasis) 42%, transparent);
-    border-radius: 0;
+    border-radius: var(--radius-none);
   }
   .cmd.cmd-owner { grid-template-columns: minmax(0, 1fr); }
   .cmd-title {
     margin: 0;
     max-width: 42ch;
     font-family: var(--font-display);
-    font-size: 1rem;
+    font-size: var(--text-md);
     font-weight: 800;
     line-height: 1.2;
     letter-spacing: 0;
@@ -3039,7 +3021,7 @@
   .cmd-sub {
     margin: 0.14rem 0 0;
     max-width: 68ch;
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     line-height: 1.48;
     color: var(--color-text-secondary);
     text-wrap: pretty;
@@ -3067,7 +3049,7 @@
   }
   .cmd-status p {
     margin: 0;
-    font-size: 0.6875rem;
+    font-size: var(--text-11);
     line-height: 1.32;
     text-align: right;
     color: var(--color-text-muted);
@@ -3085,14 +3067,14 @@
   }
   .vote-tally-num {
     font-family: var(--font-mono);
-    font-size: 1.5rem;
+    font-size: var(--text-2xl);
     font-weight: 800;
     line-height: 1;
     color: var(--color-text-primary);
     font-variant-numeric: tabular-nums;
   }
   .vote-tally-label {
-    font-size: 0.6875rem;
+    font-size: var(--text-11);
     font-weight: 700;
     color: var(--color-text-muted);
   }
@@ -3100,7 +3082,7 @@
     margin: 0;
     max-width: 13rem;
     justify-self: end;
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     line-height: 1.4;
     color: var(--color-text-muted);
     text-align: right;
@@ -3118,16 +3100,16 @@
     padding: 0.18rem;
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
-    border-radius: 0.625rem;
+    border-radius: var(--radius-lg);
   }
   .regen-focus-btn {
     padding: 0.32rem 0.55rem;
     background: transparent;
     border: 1px solid transparent;
-    border-radius: 0.375rem;
+    border-radius: var(--radius-sm);
     color: var(--color-text-secondary);
     font-family: var(--font-body);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     font-weight: 700;
     cursor: pointer;
     transition:
@@ -3154,39 +3136,145 @@
   .regenerate-help {
     margin: 0;
     color: var(--color-text-secondary);
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     line-height: 1.5;
     text-wrap: pretty;
   }
-  /* ── Verdict pull-quote + shape line (DESIGN_SYSTEM §5.7) ── */
-  .verdict {
+  /* ── Decision home: one recommendation, three lightweight checks ── */
+  .decision-guide {
     display: grid;
-    gap: 0.5rem;
-    margin: 0.35rem 0 0;
+    grid-template-columns: minmax(16rem, 0.8fr) minmax(28rem, 1.2fr);
+    gap: var(--space-6);
+    align-items: center;
+    margin-bottom: var(--space-3);
+    padding: var(--space-4);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-bg-surface);
   }
-  /* `.verdict-eyebrow`, NOT `.verdict-label` — the latter is a display-3xl
-     global in components.css (§11 collision note). */
-  .verdict-eyebrow {
+
+  .decision-guide__copy {
+    display: grid;
+    gap: var(--space-1);
+  }
+
+  .decision-guide__eyebrow,
+  .discovery-take__eyebrow {
     margin: 0;
-    color: var(--color-text-muted);
+    /* -secondary, not -muted: 10-11px mono caps on bg-surface needs more than
+       muted's 4.32:1. */
+    color: var(--color-text-secondary);
     font-family: var(--font-mono);
     font-size: var(--text-xs);
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
   }
-  .verdict-quote {
+
+  .decision-guide__copy h3,
+  .decision-guide__copy p {
+    margin: 0;
+  }
+
+  .decision-guide__copy h3 {
+    color: var(--color-text-primary);
+    font-family: var(--font-display);
+    font-size: var(--text-lg);
+    font-weight: 700;
+    line-height: 1.25;
+  }
+
+  .decision-guide__copy > p:last-of-type {
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+    line-height: 1.5;
+  }
+
+  .decision-guide__candidate {
+    justify-self: start;
+    min-height: 2.5rem;
+    margin-top: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-border-emphasis);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
+    font: inherit;
+    font-size: var(--text-sm);
+    font-weight: 700;
+    cursor: pointer;
+    transition: border-color var(--duration-fast) var(--ease-default), background var(--duration-fast) var(--ease-default), transform var(--duration-fast) var(--ease-default);
+  }
+
+  /* Read-only progress list (no navigation): status per optional check. */
+  .decision-guide__progress {
+    display: grid;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .decision-guide__progress-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    min-width: 0;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-elevated);
+  }
+
+  .decision-guide__progress-name {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--color-text-primary);
+    font-size: var(--text-sm);
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .decision-guide__candidate:hover:not(:disabled) {
+    border-color: var(--color-input-border-hover);
+    background: var(--color-bg-hover);
+  }
+
+  .decision-guide__candidate:active:not(:disabled),
+  .decision-escape button:active:not(:disabled) {
+    transform: scale(0.98);
+  }
+
+  .decision-guide__candidate:disabled,
+  .decision-escape button:disabled {
+    color: var(--color-text-muted);
+    background: var(--color-bg-hover);
+    cursor: not-allowed;
+  }
+
+  .discovery-take {
+    display: grid;
+    gap: var(--space-2);
+    margin-bottom: var(--space-4);
+    padding: var(--space-3) var(--space-4);
+    border-top: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .discovery-take__quote {
     max-width: 74ch;
     margin: 0;
     color: var(--color-text-primary);
     font-family: var(--font-display);
-    font-size: 1rem;
+    font-size: var(--text-md);
     font-weight: 600;
     line-height: 1.45;
     letter-spacing: -0.01em;
     text-wrap: pretty;
   }
-  .verdict-quote :global(button.idea-reference-link) {
+  .discovery-take__quote :global(button.idea-reference-link) {
     color: inherit;
     font: inherit;
     text-decoration-color: var(--color-border-emphasis);
@@ -3194,9 +3282,9 @@
     text-decoration-style: dotted;
     text-decoration-thickness: 1px;
     text-underline-offset: 0.18em;
-    transition: color 160ms ease, text-decoration-color 160ms ease;
+    transition: color var(--duration-fast) var(--ease-default), text-decoration-color var(--duration-fast) var(--ease-default);
   }
-  .verdict-quote :global(button.idea-reference-link:hover) {
+  .discovery-take__quote :global(button.idea-reference-link:hover) {
     color: var(--color-accent-dark);
     text-decoration-color: currentColor;
   }
@@ -3204,8 +3292,64 @@
     max-width: 74ch;
     margin: 0;
     color: var(--color-text-secondary);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     line-height: 1.5;
+  }
+
+  .decision-escape {
+    display: flex;
+    gap: var(--space-4);
+    align-items: center;
+    justify-content: space-between;
+    margin-top: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-surface);
+  }
+
+  .decision-escape > div {
+    display: grid;
+    gap: var(--space-1);
+  }
+
+  .decision-escape strong {
+    font-size: var(--text-sm);
+    font-weight: 700;
+  }
+
+  .decision-escape span {
+    color: var(--color-text-muted);
+    font-size: var(--text-xs);
+  }
+
+  .decision-escape button {
+    min-height: 2.5rem;
+    padding: var(--space-2) var(--space-3);
+    border: 0;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--color-accent-dark);
+    font: inherit;
+    font-size: var(--text-sm);
+    font-weight: 700;
+    cursor: pointer;
+    transition: color var(--duration-fast) var(--ease-default), background var(--duration-fast) var(--ease-default), transform var(--duration-fast) var(--ease-default);
+  }
+
+  .decision-escape button:hover:not(:disabled) {
+    background: var(--color-accent-subtle);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .decision-guide__candidate,
+    .decision-escape button {
+      transition: none;
+    }
+    .decision-guide__candidate:active,
+    .decision-escape button:active {
+      transform: none;
+    }
   }
 
   /* ── Appendix: analyst supporting notes ── */
@@ -3217,14 +3361,14 @@
   .appendix-notes-title {
     margin: 0;
     color: var(--color-text-secondary);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     font-weight: 600;
   }
   .appendix-note {
     max-width: 72ch;
     margin: 0;
     color: var(--color-text-secondary);
-    font-size: 0.8125rem;
+    font-size: var(--text-13);
     line-height: 1.58;
     text-wrap: pretty;
   }
@@ -3236,7 +3380,7 @@
     text-decoration-style: dotted;
     text-decoration-thickness: 1px;
     text-underline-offset: 0.18em;
-    transition: color 160ms ease, text-decoration-color 160ms ease;
+    transition: color var(--duration-fast) var(--ease-default), text-decoration-color var(--duration-fast) var(--ease-default);
   }
   .appendix-note :global(button.idea-reference-link:hover) {
     color: var(--color-accent-dark);
@@ -3246,9 +3390,57 @@
   .regen-error {
     margin: 0;
     font-family: var(--font-mono);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     color: var(--color-error-text);
     text-align: right;
+  }
+
+  .detail-link-error {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    border: 1px solid color-mix(in srgb, var(--color-warning) 35%, var(--color-border));
+    border-radius: var(--radius-md);
+    background: var(--color-warning-subtle);
+    color: var(--color-warning-text);
+  }
+
+  .detail-link-error p {
+    margin: 0;
+    min-width: 0;
+    font-size: var(--text-sm);
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+  }
+
+  .detail-link-error button {
+    min-height: 2rem;
+    flex-shrink: 0;
+    padding: 0 var(--space-3);
+    border: 1px solid color-mix(in srgb, var(--color-warning) 35%, var(--color-border));
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
+    font: inherit;
+    font-size: var(--text-sm);
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .detail-link-error button:hover {
+    border-color: var(--color-border-emphasis);
+  }
+
+  .detail-link-error button:active {
+    transform: translateY(1px);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .detail-link-error button:active {
+      transform: none;
+    }
   }
 
   /* Idea-seed settlement banner — points at the row/panel entry the reconcile
@@ -3261,7 +3453,7 @@
     border-radius: var(--radius-md);
     background: var(--color-bg-surface);
     color: var(--color-text-secondary);
-    font-size: 0.8125rem;
+    font-size: var(--text-13);
     line-height: 1.4;
   }
   .seed-banner--accepted {
@@ -3272,7 +3464,7 @@
 
   /* Momentary landing highlight for a settled seed — the row it scrolls to. */
   .row-seed-highlight {
-    animation: seed-row-flash 2.4s ease-out;
+    animation: seed-row-flash var(--duration-slowest) var(--ease-out);
   }
   @keyframes seed-row-flash {
     0%, 15% { background: color-mix(in srgb, var(--color-accent) 14%, transparent); }
@@ -3296,7 +3488,7 @@
     overflow: hidden;
     background: var(--color-bg-surface);
     border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 56%, transparent);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-md);
   }
   .row {
     display: grid;
@@ -3306,7 +3498,7 @@
     padding: 0.56rem 0.68rem;
     border: 0;
     border-top: 1px solid var(--color-border);
-    border-radius: 0;
+    border-radius: var(--radius-none);
     background: var(--color-bg-elevated);
     box-shadow: none;
     transition:
@@ -3318,7 +3510,7 @@
     padding: 0.4rem 0.7rem;
     border: 0;
     border-bottom: 1px solid color-mix(in srgb, var(--color-border-emphasis) 42%, transparent);
-    border-radius: 0;
+    border-radius: var(--radius-none);
     background: color-mix(in srgb, var(--color-bg-surface) 74%, var(--color-bg-elevated));
     box-shadow: none;
   }
@@ -3326,8 +3518,7 @@
     background: color-mix(in srgb, var(--color-bg-surface) 48%, var(--color-bg-elevated));
   }
   .row-sel {
-    background: color-mix(in srgb, var(--color-accent) 3%, var(--color-bg-elevated));
-    box-shadow: inset 2px 0 0 color-mix(in srgb, var(--color-accent) 58%, var(--color-border-emphasis));
+    background: var(--color-accent-subtle);
   }
   .row-maxed { opacity: 1; }
 
@@ -3340,7 +3531,7 @@
 
   .cell-rank {
     font-family: var(--font-mono);
-    font-size: 0.8125rem;
+    font-size: var(--text-13);
     font-weight: 700;
     color: var(--color-text-muted);
     font-variant-numeric: tabular-nums;
@@ -3380,13 +3571,13 @@
     width: 100%;
     min-height: 2rem;
     padding: 0 0.44rem;
-    border-radius: 0.375rem;
+    border-radius: var(--radius-sm);
     border: 1px solid var(--color-input-border);
     background: var(--color-bg-elevated);
     color: var(--color-text-muted);
     cursor: pointer;
     font-family: var(--font-body);
-    font-size: 0.6875rem;
+    font-size: var(--text-11);
     font-weight: 700;
     transition:
       transform 220ms var(--selection-motion),
@@ -3422,10 +3613,10 @@
   .select-marker {
     display: grid;
     place-items: center;
-    width: 0.94rem;
-    height: 0.94rem;
-    border-radius: 0.25rem;
-    border: 1.25px solid currentColor;
+    width: var(--space-4);
+    height: var(--space-4);
+    border-radius: var(--radius-sm);
+    border: 1px solid currentColor;
     flex-shrink: 0;
   }
   .select-copy {
@@ -3436,10 +3627,11 @@
     clip: auto;
     white-space: nowrap;
   }
-  .select-check {
-    width: 0.7rem;
-    height: 0.7rem;
-    stroke-width: 2.5;
+  .select-marker :global(.select-icon) {
+    display: block;
+    width: var(--space-3);
+    height: var(--space-3);
+    flex-shrink: 0;
   }
   .row:has(.cell-select input:focus-visible) .select-control {
     outline: 2px solid var(--color-accent);
@@ -3466,7 +3658,7 @@
   .cell-title:focus-visible {
     outline: 2px solid var(--color-accent);
     outline-offset: 3px;
-    border-radius: 0.5rem;
+    border-radius: var(--radius-md);
   }
   /* The title IS the button that opens the detail view — give it a clear affordance. */
   .cell-title:hover .opp-title {
@@ -3489,7 +3681,7 @@
   }
   .analyst-pick {
     color: var(--color-accent-dark);
-    font-size: 0.625rem;
+    font-size: var(--text-xs);
     font-style: italic;
     font-weight: 600;
     line-height: 1.2;
@@ -3497,16 +3689,16 @@
   }
   .opp-title {
     font-family: var(--font-display);
-    font-size: 0.8125rem;
+    font-size: var(--text-13);
     font-weight: 700;
     line-height: 1.2;
     color: var(--color-text-primary);
-    transition: color 0.15s ease;
+    transition: color var(--duration-fast) var(--ease-default);
     text-wrap: pretty;
   }
   .opp-summary {
     max-width: 72ch;
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     line-height: 1.45;
     color: var(--color-text-secondary);
     display: -webkit-box;
@@ -3520,7 +3712,7 @@
     gap: 0.32rem;
     align-items: baseline;
     max-width: 78ch;
-    font-size: 0.6875rem;
+    font-size: var(--text-11);
     line-height: 1.36;
     color: var(--color-text-muted);
     min-width: 0;
@@ -3542,7 +3734,7 @@
     max-width: 100%;
     overflow: hidden;
     color: var(--color-accent-dark);
-    font-size: 0.6875rem;
+    font-size: var(--text-11);
     font-weight: 700;
     line-height: 1.35;
     text-overflow: ellipsis;
@@ -3563,9 +3755,9 @@
     align-items: center;
     max-width: 22rem;
     padding: 0.09rem 0.34rem;
-    border-radius: 0.375rem;
+    border-radius: var(--radius-sm);
     font-family: var(--font-body);
-    font-size: 0.6875rem;
+    font-size: var(--text-11);
     font-weight: 700;
     letter-spacing: 0;
     line-height: 1.18;
@@ -3576,7 +3768,7 @@
   .tag-strength { border: 1px solid currentColor; }
   .tag-success {
     background: color-mix(in srgb, var(--color-success) 9%, transparent);
-    color: var(--color-success-dark);
+    color: var(--color-success-text);
   }
   .tag-accent {
     background: var(--color-accent-subtle);
@@ -3611,7 +3803,7 @@
     align-items: center;
     width: fit-content;
     font-family: var(--font-mono);
-    font-size: 0.625rem;
+    font-size: var(--text-xs);
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -3632,7 +3824,7 @@
     gap: 0.85rem;
     padding: 0.72rem 0.8rem;
     border-left: 2px solid var(--color-border);
-    border-radius: 0.4rem;
+    border-radius: var(--radius-md);
     background: color-mix(in srgb, var(--color-accent) 4%, var(--color-bg-surface));
   }
   .variant-note-copy {
@@ -3642,13 +3834,13 @@
   }
   .variant-note-copy > strong {
     color: var(--color-text-primary);
-    font-size: 0.8125rem;
+    font-size: var(--text-13);
     line-height: 1.25;
   }
   .variant-note-kicker {
     font-family: var(--font-mono);
     color: var(--color-text-secondary);
-    font-size: 0.625rem;
+    font-size: var(--text-xs);
     font-weight: 700;
     letter-spacing: 0.055em;
     text-transform: uppercase;
@@ -3658,7 +3850,7 @@
     flex-wrap: wrap;
     gap: 0.22rem 0.5rem;
     color: var(--color-text-secondary);
-    font-size: 0.72rem;
+    font-size: var(--text-sm);
     line-height: 1.35;
   }
   .variant-note-names span:not(:last-child)::after {
@@ -3670,14 +3862,14 @@
     min-height: 2.2rem;
     padding: 0.42rem 0.68rem;
     border: 1px solid var(--color-border-emphasis);
-    border-radius: 0.55rem;
+    border-radius: var(--radius-md);
     background: var(--color-bg-elevated);
     color: var(--color-text-primary);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     font-weight: 700;
     white-space: nowrap;
     cursor: pointer;
-    transition: transform 180ms ease, border-color 180ms ease, color 180ms ease;
+    transition: transform var(--duration-fast) var(--ease-default), border-color var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default);
   }
   .variant-note-action:hover {
     border-color: var(--color-accent);
@@ -3690,7 +3882,7 @@
   }
   .variant-note-hint {
     color: var(--color-text-muted);
-    font-size: 0.6875rem;
+    font-size: var(--text-11);
     white-space: nowrap;
   }
 
@@ -3709,18 +3901,20 @@
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    color: var(--color-text-muted);
+    /* -secondary, not -muted: 10-11px mono caps on the surface-tinted header
+       row needs more than muted's 4.32:1. */
+    color: var(--color-text-secondary);
     background: transparent;
     border: none;
     cursor: pointer;
     min-height: 1.5rem;
     padding: 0.16rem 0;
-    border-radius: 0.375rem;
+    border-radius: var(--radius-sm);
     transition:
       color 180ms var(--selection-motion),
       transform 180ms var(--selection-motion);
   }
-  .cell-metric-head:hover {    color: var(--color-text-secondary);
+  .cell-metric-head:hover {    color: var(--color-text-primary);
   }
   .cell-metric-head.active { color: var(--color-accent-dark); }
   @media (prefers-reduced-motion: reduce) {
@@ -3728,25 +3922,25 @@
   }
   .metric-num {
     font-family: var(--font-mono);
-    font-size: 0.8125rem;
+    font-size: var(--text-13);
     font-weight: 800;
     color: var(--color-text-primary);
     line-height: 1;
   }
   .metric-unit {
-    font-size: 0.625rem;
+    font-size: var(--text-xs);
     font-weight: 600;
     color: var(--color-text-muted);
     margin-left: 0.05rem;
   }
-  .fit-success { color: var(--color-success-dark); }
+  .fit-success { color: var(--color-success-text); }
   .fit-warning { color: var(--color-text-primary); }
   .fit-muted { color: var(--color-text-muted); }
   .metric-score { align-items: flex-end; }
-  .metric-score .metric-num { font-size: 0.9375rem; }
+  .metric-score .metric-num { font-size: var(--text-base); }
   .metric-build-num {
     max-width: 5.8rem;
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     font-weight: 700;
     color: var(--color-text-secondary);
     line-height: 1.08;
@@ -3761,7 +3955,7 @@
     min-width: 0;
     padding: 1rem;
     border: 1px solid var(--color-border);
-    border-radius: 0.75rem;
+    border-radius: var(--radius-lg);
     background: var(--color-bg-subtle);
   }
   .copilot-shortlist-proposed {
@@ -3772,7 +3966,7 @@
     margin: 0 0 0.55rem;
     color: var(--color-text-secondary);
     font-family: var(--font-mono);
-    font-size: 0.6875rem;
+    font-size: var(--text-11);
     font-weight: 800;
     letter-spacing: 0.07em;
     text-transform: uppercase;
@@ -3785,7 +3979,7 @@
   }
   .copilot-shortlist-review li {
     color: var(--color-text-primary);
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     font-weight: 600;
     line-height: 1.4;
   }
@@ -3795,7 +3989,7 @@
   .copilot-shortlist-empty,
   .copilot-shortlist-rationale p {
     color: var(--color-text-secondary);
-    font-size: 0.8125rem;
+    font-size: var(--text-13);
     line-height: 1.5;
   }
   .copilot-shortlist-rationale {
@@ -3805,13 +3999,13 @@
   .copilot-shortlist-error {
     grid-column: 1 / -1;
     color: var(--color-error-text);
-    font-size: 0.8125rem;
+    font-size: var(--text-13);
   }
   .copilot-shortlist-cancel,
   .copilot-shortlist-apply {
     min-height: 2.75rem;
     padding: 0.65rem 1rem;
-    border-radius: 0.65rem;
+    border-radius: var(--radius-lg);
     font-weight: 700;
     cursor: pointer;
   }
@@ -3832,7 +4026,23 @@
   }
   /* ── Responsive ── */
   @media (max-width: 859px) {
-    .workbench { padding: 0.88rem 0.88rem 1.25rem; }
+    .workbench { padding: var(--space-3) var(--space-3) var(--space-5); }
+    .workbench-shell { padding-bottom: var(--space-20); }
+    .decision-guide {
+      grid-template-columns: 1fr;
+      gap: var(--space-4);
+    }
+    .decision-escape {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+    .decision-escape button {
+      width: 100%;
+      text-align: left;
+    }
+    .chat-launcher {
+      bottom: calc(var(--space-20) + var(--space-16));
+    }
     .copilot-shortlist-review { grid-template-columns: 1fr; }
     .cmd {
       grid-template-columns: 1fr;
@@ -3875,7 +4085,7 @@
       overflow: visible;
       background: transparent;
       border: 0;
-      border-radius: 0;
+      border-radius: var(--radius-none);
     }
     .row-head { display: none; }
     .cell-metric.metric-fit,
@@ -3910,7 +4120,7 @@
       gap: 0.28rem 0.56rem;
       margin-top: 0.08rem;
       color: var(--color-text-muted);
-      font-size: 0.6875rem;
+      font-size: var(--text-11);
       line-height: 1.2;
     }
     .mobile-metrics strong {
@@ -3923,7 +4133,7 @@
     .select-control {
       width: 100%;
       min-height: 2.25rem;
-      font-size: 0.75rem;
+      font-size: var(--text-sm);
     }
     /* visitor mode: anchor the vote pill as a full-width tap target (same
        affordance as the owner's full-width Shortlist control above) */
@@ -3938,10 +4148,10 @@
   }
 
   @media (max-width: 480px) {
-    .cmd-sub { font-size: 0.8125rem; }
+    .cmd-sub { font-size: var(--text-13); }
     .regen-focus-btn {
       padding: 0.3rem 0.46rem;
-      font-size: 0.6875rem;
+      font-size: var(--text-11);
     }
   }
 

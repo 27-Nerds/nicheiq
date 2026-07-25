@@ -107,6 +107,51 @@ export const CONFIG = {
   experimentSigningSecret: process.env.EXPERIMENT_SIGNING_SECRET || process.env.AUTH_SECRET || 'nicheiq-dev-experiment-signing-secret',
 } as const;
 
+/**
+ * Market-fit cap thresholds mirrored from the Python pipeline settings
+ * (src/nicheiq/config/settings.py). Express reads the SAME env vars pydantic-settings
+ * resolves (env name = UPPER_SNAKE field name, no prefix) with the SAME defaults, so a
+ * prod env override reaches user-facing copy instead of silently falsifying it.
+ * Read lazily per call (not frozen into CONFIG) so tests and late env injection work.
+ */
+export interface SelectionCapThresholds {
+  /** settings.payability_low_threshold — segment payability below this counts as LOW. */
+  payabilityLowThreshold: number;
+  /** settings.payability_market_fit_cap — market_fit ceiling for LOW-payability segments. */
+  payabilityMarketFitCap: number;
+  /** settings.parity_shipped_market_fit_cap — incumbent SHIPS the mechanism. */
+  parityShippedMarketFitCap: number;
+  /** settings.parity_partial_market_fit_cap — incumbent partially covers the idea. */
+  parityPartialMarketFitCap: number;
+  /** settings.parity_substitute_market_fit_cap — free/DIY route covers the outcome. */
+  paritySubstituteMarketFitCap: number;
+  /** settings.parity_substitute_weak_wallet_cap — substitute + LOW payability. */
+  paritySubstituteWeakWalletCap: number;
+  /** settings.parity_bundled_free_cap — capability bundled free in a tool the niche uses. */
+  parityBundledFreeCap: number;
+}
+
+/** Same validation window as the pydantic fields (ge=0.0, le=1.0); invalid → default. */
+function readCapEnv(envName: string, defaultValue: number): number {
+  const raw = process.env[envName];
+  if (raw === undefined || raw.trim() === '') return defaultValue;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) return defaultValue;
+  return parsed;
+}
+
+export function getSelectionCapThresholds(): SelectionCapThresholds {
+  return {
+    payabilityLowThreshold: readCapEnv('PAYABILITY_LOW_THRESHOLD', 0.35),
+    payabilityMarketFitCap: readCapEnv('PAYABILITY_MARKET_FIT_CAP', 0.55),
+    parityShippedMarketFitCap: readCapEnv('PARITY_SHIPPED_MARKET_FIT_CAP', 0.45),
+    parityPartialMarketFitCap: readCapEnv('PARITY_PARTIAL_MARKET_FIT_CAP', 0.55),
+    paritySubstituteMarketFitCap: readCapEnv('PARITY_SUBSTITUTE_MARKET_FIT_CAP', 0.5),
+    paritySubstituteWeakWalletCap: readCapEnv('PARITY_SUBSTITUTE_WEAK_WALLET_CAP', 0.35),
+    parityBundledFreeCap: readCapEnv('PARITY_BUNDLED_FREE_CAP', 0.4),
+  };
+}
+
 // Validate required config in production
 export function validateConfig(): void {
   if (CONFIG.nodeEnv === 'production') {

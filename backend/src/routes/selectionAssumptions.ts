@@ -2,6 +2,7 @@ import { JobStatus, Prisma } from '@prisma/client';
 import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { requireInternalAuth, type AuthenticatedRequest } from '../middleware/auth.js';
+import { requireDecisionToolsAccess } from '../middleware/featureAccess.js';
 import { prisma } from '../services/db.js';
 import {
   PRISMA_ASSUMPTION_LENS,
@@ -82,6 +83,7 @@ const APP_LENS_FOR_RETRY = {
 selectionAssumptionsRouter.get(
   '/:jobId/selection-assumptions',
   requireInternalAuth,
+  requireDecisionToolsAccess,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const params = JobParamsSchema.parse(req.params);
@@ -121,6 +123,7 @@ selectionAssumptionsRouter.get(
 selectionAssumptionsRouter.post(
   '/:jobId/selection-assumptions',
   requireInternalAuth,
+  requireDecisionToolsAccess,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const params = JobParamsSchema.parse(req.params);
@@ -255,6 +258,7 @@ selectionAssumptionsRouter.post(
 selectionAssumptionsRouter.patch(
   '/:jobId/selection-assumptions/:assumptionId',
   requireInternalAuth,
+  requireDecisionToolsAccess,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const params = AssumptionParamsSchema.parse(req.params);

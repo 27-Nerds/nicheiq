@@ -67,6 +67,26 @@ describe("Popover", () => {
     expect(document.activeElement).toBe(trigger);
   });
 
+  it("keeps at most ONE popover open — opening the second closes the first", async () => {
+    // Outside-close is mousedown-based, so pure keyboard activation of a second
+    // trigger used to stack two panels, each with its own Tab ring.
+    const view = render(PopoverHarness);
+    const firstTrigger = view.getByRole("button", { name: "Open keyboard details" });
+    const secondTrigger = view.getByRole("button", { name: "Open second details" });
+
+    await fireEvent.click(firstTrigger);
+    expect(view.getByRole("dialog", { name: "Keyboard details" })).toBeInTheDocument();
+
+    await fireEvent.click(secondTrigger);
+    expect(view.getByRole("dialog", { name: "Second details" })).toBeInTheDocument();
+    expect(view.queryByRole("dialog", { name: "Keyboard details" })).toBeNull();
+
+    // And back: reopening the first displaces the second.
+    await fireEvent.click(firstTrigger);
+    expect(view.getByRole("dialog", { name: "Keyboard details" })).toBeInTheDocument();
+    expect(view.queryByRole("dialog", { name: "Second details" })).toBeNull();
+  });
+
   it("returns focus on Escape and still closes on outside click", async () => {
     const view = render(PopoverHarness);
     const trigger = view.getByRole("button", { name: "Open keyboard details" });

@@ -503,14 +503,15 @@
                   <span>Action</span>
                 </div>
                 {#each fReview as job (job.id)}
+                  {@const atGate = job.status.toUpperCase() === "AWAITING_GATE"}
                   <a class="row row-link" href="/jobs/{job.id}">
                     <span class="row-dot" style:background="var(--color-accent)"></span>
                     <h3 class="row-title">{job.niche}</h3>
                     <span class="row-meta">
-                      {#if job.solutionIdeasCount}<strong>{job.solutionIdeasCount} ideas</strong> ready{:else}Ideas ready{/if}
+                      {#if atGate}Checkpoint reached{:else if job.solutionIdeasCount}<strong>{job.solutionIdeasCount} ideas</strong> ready{:else}Ideas ready{/if}
                       <span class="row-dim">· {ago(job.createdAt)}</span>
                     </span>
-                    <span class="row-cta">Review <ArrowRight size={14} aria-hidden="true" /></span>
+                    <span class="row-cta">{atGate ? "Review checkpoint" : "Choose ideas"} <ArrowRight size={14} aria-hidden="true" /></span>
                   </a>
                 {/each}
               </div>

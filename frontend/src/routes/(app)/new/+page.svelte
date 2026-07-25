@@ -74,7 +74,7 @@
   // --- Idea focus (GTM angle steer) ---
   const IDEA_FOCUSES = [
     { value: "auto", label: "Auto", hint: "Pick the best angle for each idea (recommended)" },
-    { value: "novelty", label: "Novelty", hint: "Favor novel, defensible mechanisms" },
+    { value: "novelty", label: "Differentiation", hint: "Favor distinct, defensible mechanisms" },
     { value: "distribution", label: "Distribution", hint: "Favor SEO/directory plays you can rank fast" },
   ] as const;
   let selectedFocus = $state<"auto" | "novelty" | "distribution">("auto");

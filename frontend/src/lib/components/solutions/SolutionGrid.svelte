@@ -2,7 +2,7 @@
   import type { Snippet } from "svelte";
   import SolutionCard from "$lib/components/SolutionCard.svelte";
   import type { SolutionPreview } from "$lib/types/job";
-  import { computeCompositeScore } from "$lib/utils/solution-utils";
+  import { displayCompositeScore } from "$lib/utils/solution-utils";
 
   interface Props {
     solutions: SolutionPreview[];
@@ -47,8 +47,13 @@
     return pa.length > 0 && (s.source_segment ?? "").trim().toLowerCase() === pa;
   }
 
-  const byComposite = (a: SolutionPreview, b: SolutionPreview) =>
-    computeCompositeScore(b) - computeCompositeScore(a);
+  function byComposite(a: SolutionPreview, b: SolutionPreview): number {
+    const aScore = displayCompositeScore(a);
+    const bScore = displayCompositeScore(b);
+    if (aScore === null) return bScore === null ? 0 : 1;
+    if (bScore === null) return -1;
+    return bScore - aScore;
+  }
 
   const primaryGroup = $derived.by(() =>
     splitOn ? solutions.filter(isPrimary).sort(byComposite) : [],
@@ -66,10 +71,14 @@
   let adjacentOpen = $state(false);
 
   const topPick = $derived.by(() => {
-    if (solutions.length === 0) return null;
-    let best = solutions[0];
+    let best: SolutionPreview | null = null;
+    let bestScore = Number.NEGATIVE_INFINITY;
     for (const s of solutions) {
-      if (computeCompositeScore(s) > computeCompositeScore(best)) best = s;
+      const score = displayCompositeScore(s);
+      if (score !== null && score > bestScore) {
+        best = s;
+        bestScore = score;
+      }
     }
     return best;
   });

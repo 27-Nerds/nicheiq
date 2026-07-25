@@ -3,11 +3,14 @@ import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { CONFIG } from '../config.js';
 import { requireInternalAuth, type AuthenticatedRequest } from '../middleware/auth.js';
+import { requireDecisionToolsAccess } from '../middleware/featureAccess.js';
 import { getPreviewReportForJob } from '../services/assetService.js';
 import { prisma } from '../services/db.js';
 import {
+  ConceptSetGenerationError,
   generateSelectionConceptSet,
   prepareSelectionConceptSetInput,
+  type ConceptSetGuardrailCode,
   type SelectionConceptSetInput,
 } from '../services/selectionConceptSetService.js';
 import {
@@ -27,6 +30,36 @@ import { ensureIdeaIdentities, type IdeaRecord } from '../utils/ideaIdentity.js'
 export const selectionConceptSetsRouter = Router();
 
 const MAX_CONCEPT_SETS_PER_JOB = 12;
+
+/** User-facing message per Concept Forge guardrail: names the cause and a recovery step. */
+const GUARDRAIL_MESSAGES: Record<ConceptSetGuardrailCode, string> = {
+  INVALID_CONCEPT_SET_OUTPUT:
+    'Concept Forge returned a reply that did not match the required structure. This is usually transient — try again.',
+  UNSUPPORTED_CONCEPT_SET_CLAIM:
+    'Concept Forge overstated certainty (words like "proven" or "validated"), so the options were discarded. Try again.',
+  CONCEPT_OPTIONS_NOT_DISTINCT:
+    'The options came back too similar to each other. Try again with a sharper tension, or pick a different pair of candidates.',
+  INVALID_CONCEPT_OPTION_LANES:
+    'The options did not cover the required narrow, reposition, and adjacent directions. Try again.',
+  COMBINED_CONCEPT_OPTION_REQUIRED:
+    'With two candidates, one option must combine them, and the reply skipped it. Try again, or branch from a single candidate instead.',
+  INVALID_CONCEPT_SOURCE:
+    'An option pointed at a candidate outside your selection. Try again.',
+  DUPLICATE_CONCEPT_SOURCE:
+    'An option referenced the same candidate twice. Try again.',
+  INVALID_CONCEPT_SOURCE_COUNT:
+    'An option did not map cleanly onto your selected candidates. Try again.',
+  INVALID_CONCEPT_TEST_ASSUMPTION:
+    'A suggested test did not target one of its own assumptions. Try again.',
+};
+
+async function recordForgeCost(jobId: string, costUsd: number): Promise<void> {
+  if (costUsd <= 0) return;
+  await prisma.job.update({
+    where: { id: jobId },
+    data: { chatCostUsd: { increment: costUsd } },
+  }).catch((error) => console.error('Failed to record Concept Forge cost:', error));
+}
 
 const JobParamsSchema = z.object({ jobId: z.string().uuid() });
 const OptionParamsSchema = JobParamsSchema.extend({
@@ -142,17 +175,43 @@ function parentRevisionStale(job: ConceptJob, artifact: SelectionConceptSetArtif
   });
 }
 
-function publicSet(row: { id: string; artifact: unknown; createdAt: Date }, stale: boolean) {
+function publicSet(
+  row: { id: string; artifact: unknown; createdAt: Date },
+  stale: boolean,
+  evaluatedOptionIds: string[] = [],
+) {
   return {
     id: row.id,
     artifact: SelectionConceptSetArtifactSchema.parse(row.artifact),
     stale,
     createdAt: row.createdAt,
+    evaluatedOptionIds,
   };
 }
 
 function operationIdFor(setId: string, optionId: string): string {
   return `concept:${setId}:${optionId}`;
+}
+
+/** Options that already minted a proposal, derived from the idempotency
+ *  records (`concept:{setId}:{optionId}` chat messages) — no schema change.
+ *  Returns optionIds keyed by setId; sets without proposals are absent. */
+async function evaluatedOptionIdsBySet(
+  sets: Array<{ id: string; artifact: SelectionConceptSetArtifact }>,
+): Promise<Map<string, string[]>> {
+  const operationIds = sets.flatMap((set) =>
+    set.artifact.options.map((option) => operationIdFor(set.id, option.optionId)));
+  const evaluated = new Map<string, string[]>();
+  if (!operationIds.length) return evaluated;
+  const rows = await prisma.chatMessage.findMany({
+    where: { operationId: { in: operationIds } },
+    select: { operationId: true },
+  });
+  for (const row of rows) {
+    const [, setId, optionId] = row.operationId!.split(':');
+    evaluated.set(setId, [...(evaluated.get(setId) ?? []), optionId]);
+  }
+  return evaluated;
 }
 
 function patchForOption(artifact: SelectionConceptSetArtifact, optionId: string) {
@@ -197,6 +256,7 @@ function editable(job: ConceptJob): string | null {
 selectionConceptSetsRouter.get(
   '/:jobId/selection-concept-sets',
   requireInternalAuth,
+  requireDecisionToolsAccess,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { jobId } = JobParamsSchema.parse(req.params);
@@ -206,15 +266,20 @@ selectionConceptSetsRouter.get(
         return;
       }
       const rows = await prisma.selectionConceptSet.findMany({
-        where: { jobId },
+        where: { jobId, archivedAt: null },
         orderBy: { createdAt: 'desc' },
         take: 10,
         select: { id: true, artifact: true, createdAt: true },
       });
-      const sets = rows.flatMap((row) => {
+      const parsedRows = rows.flatMap((row) => {
         const parsed = SelectionConceptSetArtifactSchema.safeParse(row.artifact);
-        return parsed.success ? [publicSet(row, parentRevisionStale(job, parsed.data))] : [];
+        return parsed.success ? [{ row, artifact: parsed.data }] : [];
       });
+      const evaluated = await evaluatedOptionIdsBySet(
+        parsedRows.map(({ row, artifact }) => ({ id: row.id, artifact })),
+      );
+      const sets = parsedRows.map(({ row, artifact }) =>
+        publicSet(row, parentRevisionStale(job, artifact), evaluated.get(row.id) ?? []));
       res.setHeader('Cache-Control', 'private, no-store');
       res.json({ sets });
     } catch (error) {
@@ -231,6 +296,7 @@ selectionConceptSetsRouter.get(
 selectionConceptSetsRouter.post(
   '/:jobId/selection-concept-sets',
   requireInternalAuth,
+  requireDecisionToolsAccess,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { jobId } = JobParamsSchema.parse(req.params);
@@ -253,16 +319,28 @@ selectionConceptSetsRouter.post(
       const prepared = prepareSelectionConceptSetInput(input);
       const cached = await prisma.selectionConceptSet.findUnique({
         where: { jobId_inputFingerprint: { jobId, inputFingerprint: prepared.inputFingerprint } },
-        select: { id: true, artifact: true, createdAt: true },
+        select: { id: true, artifact: true, createdAt: true, archivedAt: true },
       });
       if (cached) {
+        // A discarded set asked for again is revived instead of regenerated:
+        // the unique fingerprint row already holds the identical artifact.
+        if (cached.archivedAt) {
+          await prisma.selectionConceptSet.update({
+            where: { id: cached.id },
+            data: { archivedAt: null },
+          });
+        }
+        const cachedArtifact = SelectionConceptSetArtifactSchema.parse(cached.artifact);
+        const evaluated = await evaluatedOptionIdsBySet([{ id: cached.id, artifact: cachedArtifact }]);
         res.setHeader('Cache-Control', 'private, no-store');
-        res.json({ set: publicSet(cached, false), cached: true });
+        res.json({ set: publicSet(cached, false, evaluated.get(cached.id) ?? []), cached: true });
         return;
       }
-      const existingSetCount = await prisma.selectionConceptSet.count({ where: { jobId } });
+      const existingSetCount = await prisma.selectionConceptSet.count({
+        where: { jobId, archivedAt: null },
+      });
       if (existingSetCount >= MAX_CONCEPT_SETS_PER_JOB) {
-        res.status(409).json({ error: 'This job reached its Concept Forge limit; existing directions cannot be removed or reused to free room, so work with the existing sets' });
+        res.status(409).json({ error: 'This job reached its Concept Forge limit. Work with the existing sets, or discard a saved set you no longer need to free room' });
         return;
       }
       if (!CONFIG.openaiApiKey && !CONFIG.openrouterApiKey) {
@@ -270,7 +348,18 @@ selectionConceptSetsRouter.post(
         return;
       }
 
-      const generated = await generateSelectionConceptSet(input);
+      let generated;
+      try {
+        generated = await generateSelectionConceptSet(input);
+      } catch (error) {
+        if (error instanceof ConceptSetGenerationError) {
+          // The tokens were spent even though the guardrails rejected the output.
+          await recordForgeCost(jobId, error.costUsd);
+          res.status(502).json({ error: GUARDRAIL_MESSAGES[error.code], code: error.code });
+          return;
+        }
+        throw error;
+      }
       const freshJob = await ownedJob(jobId, req.user!.id);
       const freshInput = freshJob && editable(freshJob) === null
         ? await loadContextInput(freshJob, request)
@@ -305,42 +394,23 @@ selectionConceptSetsRouter.post(
             select: { id: true, artifact: true, createdAt: true },
           });
           if (winner) {
-            if (generated.costUsd > 0) {
-              await prisma.job.update({
-                where: { id: jobId },
-                data: { chatCostUsd: { increment: generated.costUsd } },
-              }).catch((updateError) => console.error('Failed to record Concept Forge cost:', updateError));
-            }
+            await recordForgeCost(jobId, generated.costUsd);
             res.json({ set: publicSet(winner, false), cached: true });
             return;
           }
         }
         throw error;
       }
-      if (generated.costUsd > 0) {
-        await prisma.job.update({
-          where: { id: jobId },
-          data: { chatCostUsd: { increment: generated.costUsd } },
-        }).catch((error) => console.error('Failed to record Concept Forge cost:', error));
-      }
+      await recordForgeCost(jobId, generated.costUsd);
       res.status(201).json({ set: publicSet(created, false), cached: false });
     } catch (error) {
       if (error instanceof z.ZodError) {
         res.status(400).json({ error: 'Invalid Concept Forge request', details: error.errors });
         return;
       }
-      if (error instanceof Error && [
-        'INVALID_CONCEPT_SET_OUTPUT',
-        'UNSUPPORTED_CONCEPT_SET_CLAIM',
-        'CONCEPT_OPTIONS_NOT_DISTINCT',
-        'INVALID_CONCEPT_OPTION_LANES',
-        'COMBINED_CONCEPT_OPTION_REQUIRED',
-        'INVALID_CONCEPT_SOURCE',
-        'DUPLICATE_CONCEPT_SOURCE',
-        'INVALID_CONCEPT_SOURCE_COUNT',
-        'INVALID_CONCEPT_TEST_ASSUMPTION',
-      ].includes(error.message)) {
-        res.status(502).json({ error: 'Concept Forge returned options that could not be verified' });
+      if (error instanceof Error && error.message in GUARDRAIL_MESSAGES) {
+        const code = error.message as ConceptSetGuardrailCode;
+        res.status(502).json({ error: GUARDRAIL_MESSAGES[code], code });
         return;
       }
       console.error('Failed to create selection concept set:', error);
@@ -349,9 +419,56 @@ selectionConceptSetsRouter.post(
   },
 );
 
+const SetParamsSchema = JobParamsSchema.extend({ setId: z.string().uuid() });
+
+selectionConceptSetsRouter.post(
+  '/:jobId/selection-concept-sets/:setId/archive',
+  requireInternalAuth,
+  requireDecisionToolsAccess,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const params = SetParamsSchema.parse(req.params);
+      const job = await ownedJob(params.jobId, req.user!.id);
+      if (!job) {
+        res.status(404).json({ error: 'Job not found' });
+        return;
+      }
+      const editError = editable(job);
+      if (editError) {
+        res.status(409).json({ error: editError });
+        return;
+      }
+      const row = await prisma.selectionConceptSet.findFirst({
+        where: { id: params.setId, jobId: params.jobId },
+        select: { id: true, archivedAt: true },
+      });
+      if (!row) {
+        res.status(404).json({ error: 'Concept set not found' });
+        return;
+      }
+      // Idempotent: archiving an already-archived set is a no-op success.
+      if (!row.archivedAt) {
+        await prisma.selectionConceptSet.updateMany({
+          where: { id: row.id, archivedAt: null },
+          data: { archivedAt: new Date() },
+        });
+      }
+      res.status(204).send();
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: 'Invalid concept-set reference' });
+        return;
+      }
+      console.error('Failed to archive selection concept set:', error);
+      res.status(500).json({ error: 'Failed to discard the concept set' });
+    }
+  },
+);
+
 selectionConceptSetsRouter.post(
   '/:jobId/selection-concept-sets/:setId/options/:optionId/proposal',
   requireInternalAuth,
+  requireDecisionToolsAccess,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const params = OptionParamsSchema.parse(req.params);
@@ -367,7 +484,7 @@ selectionConceptSetsRouter.post(
         return;
       }
       const row = await prisma.selectionConceptSet.findFirst({
-        where: { id: params.setId, jobId: params.jobId },
+        where: { id: params.setId, jobId: params.jobId, archivedAt: null },
         select: { id: true, artifact: true },
       });
       if (!row) {

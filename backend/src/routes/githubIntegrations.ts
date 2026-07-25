@@ -3,6 +3,7 @@ import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { CONFIG } from '../config.js';
 import { requireInternalAuth, type AuthenticatedRequest } from '../middleware/auth.js';
+import { requireDecisionToolsAccess } from '../middleware/featureAccess.js';
 import {
   exchangeGithubCode,
   githubAppEnabled,
@@ -90,6 +91,7 @@ function integrationError(error: unknown): { status: number; message: string } {
 githubIntegrationsRouter.get(
   '/connections',
   requireInternalAuth,
+  requireDecisionToolsAccess,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       if (!githubAppEnabled()) {
@@ -116,6 +118,7 @@ githubIntegrationsRouter.get(
 githubIntegrationsRouter.post(
   '/install-session',
   requireInternalAuth,
+  requireDecisionToolsAccess,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       if (!githubAppEnabled()) throw new Error('GITHUB_APP_DISABLED');
@@ -144,6 +147,7 @@ githubIntegrationsRouter.post(
 githubIntegrationsRouter.post(
   '/setup',
   requireInternalAuth,
+  requireDecisionToolsAccess,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { state, installationId } = SetupBodySchema.parse(req.body);
@@ -170,6 +174,7 @@ githubIntegrationsRouter.post(
 githubIntegrationsRouter.post(
   '/callback',
   requireInternalAuth,
+  requireDecisionToolsAccess,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { state, code } = CallbackBodySchema.parse(req.body);
@@ -233,6 +238,7 @@ githubIntegrationsRouter.post(
 githubIntegrationsRouter.get(
   '/connections/:connectionId/repositories',
   requireInternalAuth,
+  requireDecisionToolsAccess,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { connectionId } = ConnectionParamsSchema.parse(req.params);
@@ -270,6 +276,7 @@ githubIntegrationsRouter.get(
 githubIntegrationsRouter.delete(
   '/connections/:connectionId',
   requireInternalAuth,
+  requireDecisionToolsAccess,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { connectionId } = ConnectionParamsSchema.parse(req.params);

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tourState } from "$lib/tour/tourState.svelte";
 	import type { Snippet } from "svelte";
 	import { portal } from "$lib/actions/portal";
 	import { isolateModalBackground } from "$lib/utils/modalIsolation";
@@ -10,6 +11,10 @@
 		size?: "standard" | "wide";
 		label: string;
 		onClose: () => void;
+		/** Overrides Escape ALONE (scrim clicks and host close buttons still call
+		 *  onClose). For hosts with an intermediate state — an expanded chat window
+		 *  should step down to docked on Esc, not vanish. Omit → Esc calls onClose. */
+		onEscape?: () => void;
 		onKeydown?: (event: KeyboardEvent) => void;
 		children: Snippet;
 	}
@@ -20,6 +25,7 @@
 		size = "wide",
 		label,
 		onClose,
+		onEscape,
 		onKeydown,
 		children,
 	}: Props = $props();
@@ -28,7 +34,13 @@
 	let layerEl = $state<HTMLDivElement>();
 
 	const FOCUSABLE =
-		'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+		'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [contenteditable="true"], [tabindex]:not([tabindex="-1"])';
+
+	function canRestoreFocus(element: HTMLElement | null): element is HTMLElement {
+		if (!element?.isConnected) return false;
+		if (element.closest('[inert], [aria-hidden="true"]')) return false;
+		return !element.matches("button:disabled, input:disabled, select:disabled, textarea:disabled");
+	}
 
 	$effect(() => {
 		if (!open || !modal || !frameEl || !layerEl) return;
@@ -38,15 +50,14 @@
 		const unlock = lockScroll();
 		const restoreBackground = isolateModalBackground(layerEl);
 
-		requestAnimationFrame(() => frameEl?.focus());
+		const focusFrame = requestAnimationFrame(() => frameEl?.focus());
 
 		return () => {
+			cancelAnimationFrame(focusFrame);
 			restoreBackground();
 			unlock();
 			requestAnimationFrame(() => {
-				if (previousFocus?.isConnected && !previousFocus.closest('[inert], [aria-hidden="true"]')) {
-					previousFocus.focus();
-				}
+				if (canRestoreFocus(previousFocus)) previousFocus.focus();
 			});
 		};
 	});
@@ -55,7 +66,11 @@
 		if (!frameEl) return;
 
 		const focusable = Array.from(frameEl.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
-			(element) => !element.hasAttribute("disabled") && element.tabIndex !== -1,
+			(element) => {
+				if (element.closest('[hidden], [inert], [aria-hidden="true"]')) return false;
+				const styles = window.getComputedStyle(element);
+				return styles.display !== "none" && styles.visibility !== "hidden";
+			},
 		);
 
 		if (focusable.length === 0) {
@@ -81,11 +96,13 @@
 		if (event.key === "Escape") {
 			event.preventDefault();
 			event.stopPropagation();
-			onClose();
+			(onEscape ?? onClose)();
 			return;
 		}
 
-		if (modal && event.key === "Tab") {
+		// A running tour portals its popover OUTSIDE this frame; our trap would make
+		// its Next button unreachable and deadlock the tour. driver.js runs its own.
+		if (modal && event.key === "Tab" && !tourState.active) {
 			trapTab(event);
 			return;
 		}
@@ -129,12 +146,12 @@
 	.workspace-overlay {
 		position: fixed;
 		inset: 0;
-		z-index: var(--z-overlay, 30);
+		z-index: var(--z-overlay);
 		pointer-events: none;
 	}
 
 	.workspace-overlay--modal {
-		z-index: var(--z-modal, 40);
+		z-index: var(--z-modal);
 	}
 
 	.workspace-overlay__scrim {
@@ -142,7 +159,7 @@
 		inset: 0;
 		pointer-events: auto;
 		background: color-mix(in srgb, var(--color-text-primary) 55%, transparent);
-		animation: workspace-scrim-in 180ms ease-out both;
+		animation: workspace-scrim-in var(--duration-fast) var(--ease-out) both;
 	}
 
 	.workspace-overlay__frame {
@@ -153,6 +170,11 @@
 		min-height: 0;
 		pointer-events: auto;
 		outline: none;
+	}
+
+	.workspace-overlay__frame:focus-visible {
+		outline: 2px solid var(--color-accent);
+		outline-offset: 2px;
 	}
 
 	/* Height contract: the frame is viewport-bounded (inset-positioned for the
@@ -166,48 +188,47 @@
 	}
 
 	.workspace-overlay--docked .workspace-overlay__frame {
-		right: max(1rem, env(safe-area-inset-right));
-		bottom: max(1rem, env(safe-area-inset-bottom));
-		width: min(26rem, calc(100vw - 2rem));
-		height: min(34rem, calc(100dvh - 2rem));
-		animation: workspace-overlay-in 180ms ease-out both;
+		right: max(var(--space-4), env(safe-area-inset-right));
+		bottom: max(var(--space-4), env(safe-area-inset-bottom));
+		width: min(26rem, calc(100vw - var(--space-8)));
+		height: min(34rem, calc(100dvh - var(--space-8)));
+		animation: workspace-overlay-in var(--duration-fast) var(--ease-out) both;
 	}
 
 	.workspace-overlay--docked .workspace-overlay__frame > :global(*) {
-		border-radius: 0.9rem;
-		box-shadow:
-			0 1.25rem 3.5rem color-mix(in srgb, var(--ink, #1f1d1a) 18%, transparent),
-			0 0 0 1px color-mix(in srgb, var(--ink, #1f1d1a) 8%, transparent);
+		border: 1px solid var(--color-border-emphasis);
+		border-radius: var(--radius-xl);
+		box-shadow: var(--shadow-lg);
 	}
 
 	.workspace-overlay--modal .workspace-overlay__frame {
-		top: max(1.5rem, 3vh);
-		right: max(1.5rem, 3vw);
-		bottom: max(1.5rem, 3vh);
-		left: max(1.5rem, 3vw);
+		top: max(var(--space-6), 3vh);
+		right: max(var(--space-6), 3vw);
+		bottom: max(var(--space-6), 3vh);
+		left: max(var(--space-6), 3vw);
 		width: auto;
 		height: auto;
 		max-width: 76rem;
 		margin-inline: auto;
-		animation: workspace-overlay-expand 220ms ease-out both;
+		animation: workspace-overlay-expand var(--duration-normal) var(--ease-out) both;
 	}
 
 	.workspace-overlay--modal.workspace-overlay--standard .workspace-overlay__frame {
 		max-width: 56rem;
+		top: max(var(--space-8), 5vh);
+		bottom: max(var(--space-8), 5vh);
 	}
 
 	.workspace-overlay--modal .workspace-overlay__frame > :global(*) {
-		border: 1px solid color-mix(in srgb, var(--ink, #1f1d1a) 12%, transparent);
-		border-radius: var(--workspace-overlay-radius, 1.25rem);
-		box-shadow:
-			0 2rem 6rem color-mix(in srgb, #181512 30%, transparent),
-			0 0 0 1px color-mix(in srgb, white 18%, transparent);
+		border: 1px solid var(--color-border-emphasis);
+		border-radius: var(--radius-xl);
+		box-shadow: var(--shadow-lg);
 	}
 
 	:global(.job-page-shell.has-sticky-bar)
 		.workspace-overlay--docked
 		.workspace-overlay__frame {
-		bottom: calc(max(1rem, env(safe-area-inset-bottom)) + 5rem);
+		bottom: calc(max(var(--space-4), env(safe-area-inset-bottom)) + var(--space-20));
 	}
 
 	@keyframes workspace-scrim-in {
@@ -222,7 +243,7 @@
 	@keyframes workspace-overlay-in {
 		from {
 			opacity: 0;
-			transform: translateY(0.75rem) scale(0.985);
+			transform: translateY(var(--space-3)) scale(0.985);
 		}
 		to {
 			opacity: 1;
@@ -233,7 +254,7 @@
 	@keyframes workspace-overlay-expand {
 		from {
 			opacity: 0;
-			transform: translateY(0.5rem) scale(0.99);
+			transform: translateY(var(--space-2)) scale(0.99);
 		}
 		to {
 			opacity: 1;
@@ -243,22 +264,27 @@
 
 	@media (max-width: 639px) {
 		.workspace-overlay--docked .workspace-overlay__frame {
-			right: max(0.75rem, env(safe-area-inset-right));
-			bottom: max(0.75rem, env(safe-area-inset-bottom));
-			left: max(0.75rem, env(safe-area-inset-left));
+			right: max(var(--space-3), env(safe-area-inset-right));
+			bottom: max(var(--space-3), env(safe-area-inset-bottom));
+			left: max(var(--space-3), env(safe-area-inset-left));
 			width: auto;
-			height: min(36rem, calc(100dvh - 1.5rem));
+			height: min(36rem, calc(100dvh - var(--space-6)));
 		}
 
 		.workspace-overlay--modal .workspace-overlay__frame {
-			top: max(0.5rem, env(safe-area-inset-top));
-			right: max(0.5rem, env(safe-area-inset-right));
-			bottom: max(0.5rem, env(safe-area-inset-bottom));
-			left: max(0.5rem, env(safe-area-inset-left));
+			top: max(var(--space-2), env(safe-area-inset-top));
+			right: max(var(--space-2), env(safe-area-inset-right));
+			bottom: max(var(--space-2), env(safe-area-inset-bottom));
+			left: max(var(--space-2), env(safe-area-inset-left));
+		}
+
+		.workspace-overlay--modal.workspace-overlay--standard .workspace-overlay__frame {
+			top: max(var(--space-2), env(safe-area-inset-top));
+			bottom: max(var(--space-2), env(safe-area-inset-bottom));
 		}
 
 		.workspace-overlay--modal .workspace-overlay__frame > :global(*) {
-			--workspace-overlay-radius: 0.9rem;
+			border-radius: var(--radius-lg);
 		}
 	}
 

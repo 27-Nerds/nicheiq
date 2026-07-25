@@ -7,6 +7,7 @@ import {
 import { z } from 'zod';
 import { CONFIG } from '../config.js';
 import { requireInternalAuth, type AuthenticatedRequest } from '../middleware/auth.js';
+import { requireDecisionToolsAccess } from '../middleware/featureAccess.js';
 import { getDiscoveryDataForJob, getPreviewReportForJob } from '../services/assetService.js';
 import { prisma } from '../services/db.js';
 import {
@@ -99,6 +100,7 @@ export const selectionChallengesRouter = Router();
 selectionChallengesRouter.get(
   '/:jobId/selection-challenges',
   requireInternalAuth,
+  requireDecisionToolsAccess,
   async (req: AuthenticatedRequest, res: Response) => {
     const params = JobParamsSchema.safeParse(req.params);
     if (!params.success) {
@@ -171,6 +173,7 @@ selectionChallengesRouter.get(
 selectionChallengesRouter.post(
   '/:jobId/selection-challenges',
   requireInternalAuth,
+  requireDecisionToolsAccess,
   async (req: AuthenticatedRequest, res: Response) => {
     const params = JobParamsSchema.safeParse(req.params);
     const input = SelectionChallengeRequestSchema.safeParse(req.body);

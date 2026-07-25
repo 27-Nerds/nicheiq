@@ -74,6 +74,16 @@ vi.mock('../../services/catalogService.js', () => ({
   isEntitledUser: (...a: any[]) => mockIsEntitledUser(...a),
 }));
 
+// The analyst gate is now hasAnalystAccess = isEntitledUser || the chatAnalystAccess
+// grant. These suites drive the entitlement half, so the existing mock stands in for
+// the whole gate. Decision tools default ON here so the pre-existing prompt/tool
+// assertions keep describing the full-feature owner; the off case has its own tests.
+const mockHasDecisionToolsAccess = vi.fn().mockResolvedValue(true);
+vi.mock('../../services/featureAccess.js', () => ({
+  hasAnalystAccess: (...a: any[]) => mockIsEntitledUser(...a),
+  hasDecisionToolsAccess: (...a: any[]) => mockHasDecisionToolsAccess(...a),
+}));
+
 const mockCheckChatRateLimit = vi.fn().mockResolvedValue({ allowed: true, remaining: { hourly: 19, daily: 79 } });
 vi.mock('../../middleware/rateLimit.js', () => ({
   checkChatRateLimit: (...a: any[]) => mockCheckChatRateLimit(...a),
@@ -350,6 +360,9 @@ beforeEach(async () => {
   vi.clearAllMocks();
   mockJobFindFirst.mockResolvedValue(makeJob());
   mockIsEntitledUser.mockResolvedValue(true);
+  // clearAllMocks() wipes the declaration-site implementation, so re-arm the default
+  // (granted) here — the ungated cases opt out explicitly.
+  mockHasDecisionToolsAccess.mockResolvedValue(true);
   mockCheckChatRateLimit.mockResolvedValue({ allowed: true, remaining: { hourly: 19, daily: 79 } });
   mockChatMessageCount.mockResolvedValue(0);
   mockChatMessageFindManyTx.mockResolvedValue([]);
@@ -440,6 +453,7 @@ describe('selection context query gating', () => {
       jobId,
       'user-123',
       { previewReport: null, discoveryData: null },
+      true,
     );
   });
 
@@ -503,6 +517,85 @@ describe('selection context query gating', () => {
     expect(systemPrompt).toContain('Exact target: R1 revision 2');
     expect(systemPrompt).toContain('Never author, infer, or claim a different status');
     expect(systemPrompt).toContain('Historical/stale artifacts excluded from current state: 1');
+  });
+
+  describe('without the decision tools grant', () => {
+    beforeEach(() => {
+      mockHasDecisionToolsAccess.mockResolvedValue(false);
+      mockJobFindFirst.mockResolvedValue(makeJob({
+        solutionIdeas: [{
+          idea_id: 'idea-1',
+          idea_revision: 2,
+          solution_name: 'Signal Desk',
+          market_fit_score: 0.7,
+        }],
+      }));
+    });
+
+    async function promptFor(message = 'What should I do next?') {
+      const response = await request(app)
+        .post(`/api/jobs/${jobId}/chat`)
+        .set(authHeaders)
+        .send({ message });
+      expect(response.status).toBe(200);
+      return mockChatCompleteStream.mock.calls[0][0].messages[0].content as string;
+    }
+
+    it('never names a gated tool outside the single denial instruction', async () => {
+      const systemPrompt = await promptFor();
+      // The denial line has to name the tools so the analyst can refuse correctly when
+      // asked about one. Everything else in the prompt must be free of them.
+      const denial = systemPrompt
+        .split('\n')
+        .find((line) => line.includes('are NOT enabled for this owner'));
+      expect(denial).toBeDefined();
+      const rest = systemPrompt.replace(denial!, '');
+      for (const phrase of [
+        'founder-fit',
+        'founder fit',
+        'evidence stress test',
+        'experiment workspace',
+        'experiment conclusions',
+        'Decision Lab',
+        'Build limits',
+        'Branch a new direction',
+        'prepare_selection_action',
+        'optional decision work does not block it',
+        // The dossier line that enumerates the gated record types.
+        'Current exact-revision records',
+        'owner evidence items',
+      ]) {
+        expect(rest).not.toContain(phrase);
+      }
+      // "evidence checks" survives in HOW THE SYSTEM IS ORGANIZED, where it means the
+      // research pipeline's internal guardrails, not the owner-facing tool.
+      expect(rest).toContain('evidence checks and guardrails');
+    });
+
+    it('tells the analyst the tools are unavailable instead of leaving it guessing', async () => {
+      const systemPrompt = await promptFor();
+      expect(systemPrompt).toContain('are NOT enabled for this owner');
+      expect(systemPrompt).toContain('shortlisting one to three candidates is the only required step');
+    });
+
+    it('withholds the prepare_selection_action tool from the toolset', async () => {
+      await promptFor();
+      const names = mockChatCompleteStream.mock.calls[0][0].tools
+        .map((tool: any) => tool.function.name);
+      expect(names).not.toContain('prepare_selection_action');
+      // Non-gated tools are untouched.
+      expect(names).toContain('propose_new_idea');
+    });
+
+    it('passes the grant through to the decision-state projection', async () => {
+      await promptFor();
+      expect(mockLoadSelectionDecisionState).toHaveBeenCalledWith(
+        jobId,
+        'user-123',
+        { previewReport: null, discoveryData: null },
+        false,
+      );
+    });
   });
 });
 
@@ -2111,6 +2204,145 @@ describe('POST /api/jobs/:jobId/chat — chat agent tools (v1.1)', () => {
     expect(toolMsg.content).not.toContain('/export/json?revision=');
   });
 
+  it('resolves completed-report solution detail from an exact current R reference, not a name', async () => {
+    mockJobFindFirst.mockResolvedValue(makeJob({
+      status: 'COMPLETED',
+      solutionIdeas: [
+        {
+          idea_id: 'idea-a',
+          idea_revision: 1,
+          solution_name: 'Same display name',
+          exact_marker: 'first candidate',
+        },
+        {
+          idea_id: 'idea-b',
+          idea_revision: 4,
+          solution_name: 'Same display name',
+          exact_marker: 'second candidate',
+        },
+      ],
+    }));
+    mockGetReportJsonForJob.mockResolvedValue({
+      candidates: [
+        {
+          idea_id: 'idea-a',
+          idea_revision: 1,
+          solution_name: 'Same display name',
+          report_marker: 'first report record',
+        },
+        {
+          idea_id: 'idea-b',
+          idea_revision: 4,
+          solution_name: 'Same display name',
+          report_marker: 'second report record',
+        },
+        {
+          solution_name: 'Same display name',
+          report_marker: 'ambiguous name-only report record',
+        },
+      ],
+    });
+    mockChatCompleteStream.mockResolvedValueOnce([
+      toolCallChunk(0, 'call_solution_ref', 'get_solution_detail', '{"idea_ref":"R2"}'),
+      { choices: [], usage: { prompt_tokens: 15, completion_tokens: 5 } },
+    ]);
+    mockChatComplete.mockResolvedValueOnce({
+      choices: [{ message: { content: 'R2 is the second exact candidate revision.' } }],
+      usage: { prompt_tokens: 30, completion_tokens: 20 },
+    });
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/chat`)
+      .set(authHeaders)
+      .send({ message: 'Show me the exact second candidate.' });
+
+    expect(response.status).toBe(200);
+    const requestTools = mockChatCompleteStream.mock.calls[0][0].tools;
+    const detailTool = requestTools.find((tool: any) => tool.function.name === 'get_solution_detail');
+    expect(detailTool.function.parameters.required).toEqual(['idea_ref']);
+    expect(detailTool.function.parameters.properties).not.toHaveProperty('name');
+
+    const systemPrompt = mockChatCompleteStream.mock.calls[0][0].messages[0].content as string;
+    expect(systemPrompt).toContain('"reference": "R2"');
+    expect(systemPrompt).toContain('"revision": 4');
+    expect(systemPrompt).toContain('use only current R references');
+
+    const round2Messages = mockChatComplete.mock.calls[0][0].messages;
+    const toolMsg = round2Messages.find((message: any) => message.role === 'tool');
+    expect(toolMsg.content).toContain('"idea_ref": "R2"');
+    expect(toolMsg.content).toContain('"idea_id": "idea-b"');
+    expect(toolMsg.content).toContain('"idea_revision": 4');
+    expect(toolMsg.content).toContain('"exact_marker": "second candidate"');
+    expect(toolMsg.content).not.toContain('"exact_marker": "first candidate"');
+    expect(toolMsg.content).toContain('"report_marker": "second report record"');
+    expect(toolMsg.content).not.toContain('"report_marker": "first report record"');
+    expect(toolMsg.content).not.toContain('"report_marker": "ambiguous name-only report record"');
+    expect(toolMsg.content).toContain('"ambiguous_name_records_omitted": 1');
+  });
+
+  it('compares distinct exact candidate revisions and rejects an unknown completed-report R reference', async () => {
+    mockJobFindFirst.mockResolvedValue(makeJob({
+      status: 'COMPLETED',
+      solutionIdeas: [
+        { idea_id: 'idea-1', idea_revision: 2, solution_name: 'Signal Desk' },
+        { idea_id: 'idea-2', idea_revision: 7, solution_name: 'Briefing Bot' },
+      ],
+    }));
+    mockGetReportJsonForJob.mockResolvedValue({
+      selected_solution_name: 'Signal Desk',
+      runner_up_solutions: ['Briefing Bot'],
+    });
+    mockChatCompleteStream.mockResolvedValueOnce([
+      toolCallChunk(0, 'call_compare_refs', 'compare_solutions', '{"idea_refs":["R1","R2"]}'),
+      { choices: [], usage: { prompt_tokens: 15, completion_tokens: 5 } },
+    ]);
+    mockChatComplete.mockResolvedValueOnce({
+      choices: [{ message: { content: 'Here is the exact comparison.' } }],
+      usage: { prompt_tokens: 30, completion_tokens: 20 },
+    });
+
+    let response = await request(app)
+      .post(`/api/jobs/${jobId}/chat`)
+      .set(authHeaders)
+      .send({ message: 'Compare the two exact candidates.' });
+
+    expect(response.status).toBe(200);
+    let round2Messages = mockChatComplete.mock.calls[0][0].messages;
+    let toolMsg = round2Messages.find((message: any) => message.role === 'tool');
+    expect(toolMsg.content).toContain('"idea_ref": "R1"');
+    expect(toolMsg.content).toContain('"idea_revision": 2');
+    expect(toolMsg.content).toContain('"idea_ref": "R2"');
+    expect(toolMsg.content).toContain('"idea_revision": 7');
+
+    mockChatCompleteStream.mockResolvedValueOnce([
+      toolCallChunk(0, 'call_stale_solution_ref', 'get_solution_detail', '{"idea_ref":"R9"}'),
+      { choices: [], usage: { prompt_tokens: 15, completion_tokens: 5 } },
+    ]);
+    mockChatComplete.mockResolvedValueOnce({
+      choices: [{ message: { content: 'R9 is not in the current report catalog.' } }],
+      usage: { prompt_tokens: 30, completion_tokens: 20 },
+    });
+
+    response = await request(app)
+      .post(`/api/jobs/${jobId}/chat`)
+      .set(authHeaders)
+      .send({ message: 'Open stale R9.' });
+
+    expect(response.status).toBe(200);
+    const staleResolutionCall = mockChatComplete.mock.calls.find(([args]) =>
+      args.messages?.some(
+        (message: any) =>
+          message.role === 'tool'
+          && message.content.includes('unknown or stale candidate reference'),
+      ),
+    );
+    expect(staleResolutionCall).toBeDefined();
+    round2Messages = staleResolutionCall![0].messages;
+    toolMsg = round2Messages.find((message: any) => message.role === 'tool');
+    expect(toolMsg.content).toContain('unknown or stale candidate reference "R9"');
+    expect(toolMsg.content).not.toContain('"candidate_record"');
+  });
+
   it('runs a tool round then an unstreamed resolution round, fencing the result and emitting an SSE tool receipt before done', async () => {
     mockJobFindFirst.mockResolvedValue(makeJob());
     mockGetPreviewReportForJob.mockResolvedValue(makePreviewReport());
@@ -2696,8 +2928,12 @@ describe('POST /api/jobs/:jobId/chat — propose_new_idea (Phase 7)', () => {
     expect(systemPrompt).toContain('CURRENT OWNER WORKSPACE');
     expect(systemPrompt).toContain('"workspace":"risks"');
     expect(systemPrompt).toContain('"candidate_refs":["R1"]');
+    expect(systemPrompt).toContain('"candidate_context":"partial"');
+    expect(systemPrompt).toContain('"requested_candidates":2');
+    expect(systemPrompt).toContain('"resolved_candidates":1');
     expect(systemPrompt).toContain('"lens":"demand"');
     expect(systemPrompt).not.toContain('ideaRevision":99');
+    expect(systemPrompt).toContain('do not silently substitute a different candidate or the saved shortlist');
     expect(systemPrompt).toContain('Never save, launch, spend credits, or decide owner judgment automatically.');
   });
 
@@ -2828,7 +3064,7 @@ describe('new selection dossier block builders', () => {
     expect(block).not.toContain('Already concluded test');
   });
 
-  it('renders Shape concept directions as unevaluated drafts bound to parent [R{n}] refs', async () => {
+  it('renders branch directions as unevaluated drafts bound to parent [R{n}] refs', async () => {
     const { buildConceptSetBlock, currentSelectionConceptSets } = await import('../../services/selectionChatContext.js');
     const artifact = {
       inputFingerprint: 'a'.repeat(64),
@@ -2880,12 +3116,12 @@ describe('new selection dossier block builders', () => {
     const current = currentSelectionConceptSets([{ id: 'cs-1', artifact }], ideas);
     expect(current).toHaveLength(1);
     const block = buildConceptSetBlock(current, ideas);
-    expect(block).toContain('unevaluated draft branches');
+    expect(block).toContain('unevaluated drafts from current candidates');
     expect(block).toContain('they carry no score');
     expect(block).toContain('from [R1] Signal Desk');
     expect(block).toContain('narrow: narrow direction');
     expect(block).toContain('buyer: all agencies to boutique agencies');
-    expect(block).toContain('In-scope candidates for these Shape directions: [R1] Signal Desk');
+    expect(block).toContain('In-scope candidates for these branch directions: [R1] Signal Desk');
   });
 
   it('drops a concept set whose parent left the current pool', async () => {

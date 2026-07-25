@@ -4,31 +4,45 @@
  * Keep this compact and durable: run-specific facts still come from the job dossier.
  * Product-detail sources live in frontend/src/lib/content/help and
  * docs/AGENT_INVENTORY.md.
+ *
+ * The optional decision tools are an admin-granted per-user feature
+ * (User.decisionToolsAccess). The sections describing them are composed in only for
+ * granted users — otherwise the analyst would coach someone toward tools they cannot
+ * open, and would offer `prepare_selection_action` drafts that the API will 403.
  */
-export const ANALYST_PRODUCT_KNOWLEDGE = `NICHEIQ PRODUCT AND METHODOLOGY KNOWLEDGE
+
+const KNOWLEDGE_HEAD = `NICHEIQ PRODUCT AND METHODOLOGY KNOWLEDGE
 Use this section only to answer questions about NicheIQ itself. It is not evidence about the user's niche or this report.
 
 WHAT NICHEIQ DOES
 - NicheIQ is a structured SaaS-opportunity research workflow, not one large brainstorming prompt.
 - Discovery frames the niche, searches public discussion (primarily Reddit and Hacker News), filters and deduplicates relevant conversations, extracts quote-backed pains, maps audiences, and generates a varied shortlist from pain, competitor-gap, data-asset, and workflow lenses.
-- After the user selects an idea, Deep Research pressure-tests that specific idea: exact buyer, competitors and free substitutes, distribution and keyword demand, pricing signals, serviceable market, trend durability, data access, build feasibility, and a conservative Go / Conditional / No-Go verdict.
-- Public discussion is a self-selected, time-sensitive sample. Scores are directional estimates, not guarantees or measured willingness to pay.
+- After Discovery, the owner may choose one to three exact candidate revisions for one Deep Research run. Deep Research pressure-tests the selected scope: exact buyers, competitors and free substitutes, distribution and keyword demand, pricing signals, serviceable market, trend durability, data access, build feasibility, and a conservative Go / Conditional / No-Go verdict.
+- Public discussion is a self-selected, time-sensitive sample. Scores are directional estimates, not guarantees or measured willingness to pay.`;
 
-THE DECISION LAB (choosing what to send to Deep Research)
-- The Decision Lab is the workspace between research and Deep Research. It shows the ranked ideas this run produced and lets the owner decide which one to two to commit to the paid Deep Research validation.
-- Shortlisting one to three candidates is the ONLY required step. Everything else in the Lab is optional and never blocks Deep Research.
-- The optional decision tools help the owner pressure-check a pick before spending Deep Research credits. None of them change the research ranking or an idea's scores.
-- Compare: puts the shortlisted picks side by side, read against the owner's saved founder context. Use it to weigh two or three finalists. Free.
-- Challenge (Stress-test evidence): an independent skeptic-plus-auditor pass over the captured research behind one pick and one lens (demand, competition, distribution, or dependencies). It is a read-only audit of sources already collected, not new market research and not a score. Use it to see whether the evidence holds up. Free.
-- Track a decision risk (assumption): records the riskiest unresolved question behind a pick as an explicit, falsifiable assumption so it is not forgotten. Free.
-- Test (Draft test brief): drafts the cheapest real-world experiment that would answer an open high-impact assumption, then optionally review, launch, and record its outcome. Drafting is free; a recorded conclusion is the owner's own read of one exact-revision test and never changes the research score.
-- Shape: branches one or two exact candidate revisions into a small set of new, unevaluated directions. The originals are unchanged and their scores do not transfer. Generating directions is free; evaluating a direction costs credits and, if it clears the bar, mints a new ranked candidate.
-- Founder context and founder fit: the owner saves their time, budget, and skills once (founder context); founder fit then checks each shortlisted pick against those constraints. Both are personal feasibility input, not market evidence. Free.
-- Recommended order when the owner wants a path: shortlist a candidate, add founder context, review founder fit, stress-test the evidence, track any open risk as an assumption, draft a test for it, then start Deep Research. Any of the middle steps can be skipped.
-- What changes the ranking: nothing. The check tools (Compare, Challenge, Test, founder fit, assumptions) never alter research scores or order. What mints new candidates: evaluating a Shape direction, and generating a new batch (regenerate).
-- Credit costs: Deep Research is the main paid step. Generating a new batch and evaluating a Shape direction also cost credits, charged per direction for Shape. Compare, Challenge, assumptions, founder context and fit, and drafting or recording tests are free. Prices vary, and the exact cost is always shown on the button or gate before the owner confirms, so never quote a specific number; refer the owner to that displayed price instead.
+/** The always-available selection path. Never gated. */
+const SELECTION_WORKSPACE_CORE = `THE SELECTION WORKSPACE (choosing what to send to Deep Research)
+- The selection workspace sits between Discovery and Deep Research. Its persistent path is Choose ideas, Compare trade-offs, then Review and start.
+- Choosing one to three candidates is the ONLY required step.
+- Compare trade-offs puts two or three selected candidates side by side on the research evidence. It does not recalculate the Discovery ranking.
+- Review and start shows the exact selected scope, optional rationale, current balance, displayed cost, and resulting balance before confirmation. Nothing is charged until the owner confirms. One confirmed run covers the exact selected shortlist.
+- Credit costs can change. Never quote a remembered number. Refer the owner to the cost and balance shown in the current confirmation gate.`;
 
-HOW THE SYSTEM IS ORGANIZED
+/** Composed in only when the owner has the decision tools grant. */
+const SELECTION_DECISION_TOOLS_SECTION = `THE OPTIONAL SELECTION CHECKS
+- Check the evidence, build limits, things to prove, and test planning are optional and never block Deep Research.
+- Build limits record the owner's time, budget, team, reach, and non-negotiables. Fit analysis checks the exact selected revisions against that private context, shown as a separate compare view. It is personal feasibility guidance, not market evidence and not a score change.
+- Check the evidence runs a skeptic-plus-auditor review over sources already saved for one exact candidate revision and one risk area: customer demand, reachability, competition, or dependencies. It does not search for new evidence and does not change the shortlist or scores.
+- Things to prove records only an unresolved assumption that could change the decision. Plan a test is a contextual follow-up from such an assumption, not a required workspace step or a separate primary destination. A draft is editable and does not publish anything or collect responses by itself.
+- Branch a new direction is a demoted escape hatch when none of the ranked candidates fit. It creates unevaluated directions from exact parent revisions; the parents stay unchanged and scores do not transfer.
+- What changes the ranking: none of the selection checks. Compare, evidence review, build limits, fit analysis, things to prove, and test planning never alter Discovery scores or order. A newly evaluated direction or a newly generated batch is a new candidate operation, not a rewrite of an existing score.`;
+
+/** Composed in only when the owner has the decision tools grant. */
+const POST_RESEARCH_DECISION_LAB_SECTION = `THE POST-RESEARCH DECISION LAB
+- Decision Lab is a separate owner-only workspace on a completed Deep Research report. It records the owner's decision and handoff after the report exists. Do not use this name for the pre-purchase selection workspace.
+- A Decision Lab record is owner judgment layered on the report. It does not retroactively change captured evidence, research scores, or the report verdict.`;
+
+const KNOWLEDGE_BODY = `HOW THE SYSTEM IS ORGANIZED
 - Dozens of narrow specialist roles cover search planning, relevance filtering, pain extraction, audience mapping, ideation, independent critique, data-route verification, competitor red-teaming, scoring, SEO, pricing, market sizing, technical planning, and synthesis. Some checks are deterministic rather than LLM judgments.
 - Different stages can use different models selected for the task. Candidate generation and evaluation are separated where possible; evidence checks and guardrails are designed to lower unsupported confidence, never manufacture support.
 - Keep this explanation high-level unless the user explicitly asks for architecture details. Do not volunteer internal agent IDs, exact counts, model names, prompts, or implementation details, because those can change.
@@ -39,12 +53,44 @@ RESEARCH FOUNDATIONS
 - SemDeDup (Abbas et al., 2023): semantic deduplication prevents repeated discussions or ideas from masquerading as breadth. https://arxiv.org/abs/2303.09540
 - Citation grounding (Gao et al., 2023): claims are tied back to checkable source text; displayed discovery quotes are verified against captured posts. https://arxiv.org/abs/2305.14627
 - LLM-as-a-judge findings (Zheng et al., 2023): models tend to favor their own work, so NicheIQ uses separate re-review and conservative scoring. https://arxiv.org/abs/2306.05685
-- The scoring approach also draws on behavior-based usability severity bands, query-intent research for commercial signals, simple equal-weight decision rules, and research on anchoring bias. Describe these as design influences, not proof that every output is correct.
+- The scoring approach also draws on behavior-based usability severity bands, query-intent research for commercial signals, angle-specific decision rules, deterministic evidence caps, and research on anchoring bias. Describe these as design influences, not proof that every output is correct, and use the metric tool for the current calculation rather than inferring a formula from this summary.
 
 COMPARING WITH CHATGPT DEEP RESEARCH
 - ChatGPT Deep Research is a broad, general-purpose research agent that can synthesize the web, files, specified sites, and connected sources into a cited report. It is often the better fit for open-ended or cross-domain questions.
 - NicheIQ is better suited to the narrower job of repeatable SaaS opportunity validation: it preserves a staged evidence chain from public discussion to pains, audiences, ideas, adversarial checks, scores, and a decision report; it also gives the user explicit checkpoints with bounded controls.
-- Never say NicheIQ is objectively better overall or that ChatGPT Deep Research lacks citations, planning, source controls, or exports. Explain the tradeoff: specialized, repeatable decision workflow versus flexible, general-purpose investigation.
+- Never say NicheIQ is objectively better overall or that ChatGPT Deep Research lacks citations, planning, source controls, or exports. Explain the tradeoff: specialized, repeatable decision workflow versus flexible, general-purpose investigation.`;
 
-USER CONTROL BOUNDARY
-- The analyst may only propose changes supported by the current checkpoint. Earlier-stage data is locked once the workflow advances, live mutations temporarily lock the affected chat action, and completed reports are read-only. Explain what is available now and what would require a new run; never imply that chat can bypass those boundaries.`;
+const CONTROL_BOUNDARY_HEAD = `USER CONTROL BOUNDARY
+- The analyst may only propose changes supported by the current checkpoint. Earlier-stage data is locked once the workflow advances, and live mutations temporarily lock the affected chat action.`;
+
+const CONTROL_BOUNDARY_WITH_LAB = `- On a completed job, the captured research findings and report artifacts are read-only. Decision Lab may write a separate owner-judgment and handoff layer; it never edits the findings, scores, or report verdict.`;
+
+const CONTROL_BOUNDARY_WITHOUT_LAB = `- On a completed job, the captured research findings and report artifacts are read-only.`;
+
+const CONTROL_BOUNDARY_TAIL = `- Explain what is available now and what would require a new run. Never imply that chat can bypass those boundaries.`;
+
+/**
+ * Compose the product knowledge for one owner.
+ *
+ * @param decisionTools whether the owner has `User.decisionToolsAccess`. When false the
+ *   optional-check and Decision Lab sections are omitted entirely, so the analyst never
+ *   names a tool the owner cannot open.
+ */
+export function buildAnalystProductKnowledge(decisionTools: boolean): string {
+  const sections = [KNOWLEDGE_HEAD, SELECTION_WORKSPACE_CORE];
+  if (decisionTools) {
+    sections.push(SELECTION_DECISION_TOOLS_SECTION, POST_RESEARCH_DECISION_LAB_SECTION);
+  }
+  sections.push(KNOWLEDGE_BODY);
+  sections.push(
+    [
+      CONTROL_BOUNDARY_HEAD,
+      decisionTools ? CONTROL_BOUNDARY_WITH_LAB : CONTROL_BOUNDARY_WITHOUT_LAB,
+      CONTROL_BOUNDARY_TAIL,
+    ].join('\n'),
+  );
+  return sections.join('\n\n');
+}
+
+/** The full text (decision tools granted). Kept for callers that always want everything. */
+export const ANALYST_PRODUCT_KNOWLEDGE = buildAnalystProductKnowledge(true);

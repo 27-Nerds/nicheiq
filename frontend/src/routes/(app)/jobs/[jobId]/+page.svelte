@@ -40,6 +40,8 @@
 
   // Preview / Dashboard components
   import PhaseNav from "$lib/components/nav/PhaseNav.svelte";
+  import TourHost from "$lib/tour/TourHost.svelte";
+  import TourRestartButton from "$lib/tour/TourRestartButton.svelte";
   import ExpandableSection from "$lib/components/ui/ExpandableSection.svelte";
   import PreviewOverview from "$lib/components/preview/PreviewOverview.svelte";
   import ProgressStepper from "$lib/components/preview/ProgressStepper.svelte";
@@ -48,6 +50,7 @@
   import CommunitySourcesSection from "$lib/components/preview/CommunitySourcesSection.svelte";
   import SelectionWorkbench from "$lib/components/selection/SelectionWorkbench.svelte";
   import type { SelectionJourneyTask } from "$lib/selection/decisionJourney";
+  import { SHORTLIST_TITLE } from "$lib/selection/labels";
   import GateWorkbench from "$lib/components/gate/GateWorkbench.svelte";
   import ResearchProgressScreen from "$lib/components/preview/ResearchProgressScreen.svelte";
 
@@ -71,8 +74,22 @@
   import type { DiscoveryData } from "$lib/types/discovery";
   import type { PreviewReport } from "$lib/types/previewReport";
   import { getDiscoveryData, getPreviewReport } from "$lib/api";
+  import { createDiscoveryDisplayModel } from "$lib/discovery/discoveryDisplay";
+  import { normalizeSolutionPreviews } from "$lib/utils/displayGuards";
+  import { setServedCapThresholds } from "$lib/utils/scoreRationale";
+  import { createHubDraftRefreshGuard } from "./hubDraftRefresh";
 
   let { data } = $props();
+
+  // Backend-served market-fit cap thresholds → score-hint copy (drift-proof against
+  // env overrides). One-time init is enough: values are static per deployment, and
+  // page init runs before SelectionWorkbench/SolutionDetail derive any hint.
+  // svelte-ignore state_referenced_locally -- intentional one-time capture
+  setServedCapThresholds(data.metricExplanations?.capThresholds ?? null);
+
+  // Multi-tab draft parity (mirrors selection/+layout.svelte): refresh the hub when a
+  // draft-PUT broadcast from another tab carries a newer selectionDraft version.
+  const draftRefreshGuard = createHubDraftRefreshGuard(() => void invalidateAll());
 
   // ── Server data (reactive via $derived, updates on navigation/invalidateAll) ──
   const serverJob = $derived(data.job as Job | null);
@@ -89,6 +106,7 @@
   // Emitted up from SelectionWorkbench so the sidebar renders the same two
   // primary decision tools + status the launchpad shows (one status source).
   let selectionToolTasks = $state<SelectionJourneyTask[] | undefined>(undefined);
+  let liveShortlist = $state<{ jobId: string; count: number } | null>(null);
   let clientSolutions = $state<SolutionPreview[] | null>(null);
   let clientReportSummary = $state<ReportSummary | null>(null);
   let clientDiscoveryData = $state<DiscoveryData | null>(null);
@@ -96,6 +114,9 @@
   let clientPreviewReport = $state<PreviewReport | null>(null);
   let clientSolutionVotesById = $state<Record<string, number> | null>(null);
   let clientVoteRationales = $state<DiscoveryVoteRationale[] | null>(null);
+  let clientInvalidSolutionCount = $state<number | null>(null);
+  let clientDiscoveryFetchFailed = $state(false);
+  let clientPreviewReportFetchFailed = $state(false);
 
   // ── Merged: client overrides take precedence over server data ──
   const job = $derived(clientJob ?? serverJob);
@@ -134,6 +155,15 @@
   const discoveryData = $derived(clientDiscoveryData ?? serverDiscoveryData);
   const solutionVotes = $derived(clientSolutionVotes ?? serverSolutionVotes);
   const previewReport = $derived(clientPreviewReport ?? serverPreviewReport);
+  const invalidSolutionCount = $derived(
+    clientInvalidSolutionCount ?? Number(data.invalidSolutionCount ?? 0),
+  );
+  const discoveryFetchFailed = $derived(
+    !discoveryData && (clientDiscoveryFetchFailed || Boolean(data.discoveryDataFetchFailed)),
+  );
+  const previewFetchFailed = $derived(
+    !previewReport && (clientPreviewReportFetchFailed || Boolean(data.previewReportFetchFailed)),
+  );
 
   const solutionVotesById = $derived(clientSolutionVotesById ?? serverSolutionVotesById);
   const voteRationales = $derived(clientVoteRationales ?? serverVoteRationales);
@@ -167,6 +197,14 @@
   let regenerateFromEmptyError = $state("");
 
   const jobId = $derived(page.params.jobId);
+  const sidebarSelectedCount = $derived(
+    liveShortlist && liveShortlist.jobId === jobId
+      ? liveShortlist.count
+      : job?.selectionDraft?.items.length
+        ?? job?.selectedSolutionIds?.length
+        ?? job?.selectedSolutions?.length
+        ?? 0,
+  );
 
   const isInteractiveStatus = $derived(
     job
@@ -215,10 +253,16 @@
     unsubscribeSSE = subscribeToProgress(
       jobId,
       (sseData) => {
+        // Another tab saved the shortlist: refresh before an edit here 409s. Own
+        // saves are excluded — SelectionWorkbench reports its bumped version up
+        // (onShortlistVersionChange) before this callback sees the broadcast.
+        draftRefreshGuard.handleSsePayload(sseData as Job | null);
         if (sseData && sseData.id) {
           clientJob = sseData as Job;
           if (sseData.solutionIdeas) {
-            clientSolutions = sseData.solutionIdeas as SolutionPreview[];
+            const normalized = normalizeSolutionPreviews(sseData.solutionIdeas);
+            clientSolutions = normalized.solutions;
+            clientInvalidSolutionCount = normalized.invalidCount;
           }
         }
       },
@@ -239,8 +283,12 @@
   async function loadDiscoveryData(id: string) {
     if (discoveryLoading) return;
     discoveryLoading = true;
-    try { clientDiscoveryData = await getDiscoveryData(id); }
-    catch { /* graceful fallback - old jobs won't have this asset */ }
+    try {
+      clientDiscoveryData = await getDiscoveryData(id);
+      clientDiscoveryFetchFailed = false;
+    } catch {
+      clientDiscoveryFetchFailed = true;
+    }
     finally { discoveryLoading = false; }
   }
 
@@ -248,8 +296,12 @@
   async function loadPreviewReport(id: string) {
     if (previewReportLoading) return;
     previewReportLoading = true;
-    try { clientPreviewReport = await getPreviewReport(id); }
-    catch { /* graceful fallback - old jobs won't have preview report */ }
+    try {
+      clientPreviewReport = await getPreviewReport(id);
+      clientPreviewReportFetchFailed = false;
+    } catch {
+      clientPreviewReportFetchFailed = true;
+    }
     finally { previewReportLoading = false; }
   }
 
@@ -262,7 +314,9 @@
     solutionsFetchFailed = false;
     try {
       const d = await getSolutions(jobId);
-      clientSolutions = d.solutionIdeas ?? [];
+      const normalized = normalizeSolutionPreviews(d.solutionIdeas);
+      clientSolutions = normalized.solutions;
+      clientInvalidSolutionCount = normalized.invalidCount;
       if (job) {
         clientJob = { ...job, selectionDraft: d.selectionDraft };
       }
@@ -270,11 +324,23 @@
       solutionsFetchFailed = true;
       // Fall back to whatever the job object already carries (e.g. from SSE)
       // rather than leaving clientSolutions stuck on a stale null.
-      clientSolutions = job?.solutionIdeas ?? clientSolutions;
+      const normalized = normalizeSolutionPreviews(job?.solutionIdeas);
+      clientSolutions = normalized.solutions.length > 0
+        ? normalized.solutions
+        : clientSolutions;
+      clientInvalidSolutionCount = normalized.invalidCount;
     } finally {
       solutionsLoading = false;
       solutionsFetchAttempted = true;
     }
+  }
+
+  async function retryDiscoveryDossier(): Promise<void> {
+    if (!jobId) return;
+    await Promise.all([
+      discoveryFetchFailed ? loadDiscoveryData(jobId) : Promise.resolve(),
+      previewFetchFailed ? loadPreviewReport(jobId) : Promise.resolve(),
+    ]);
   }
 
   // "Generate more ideas" for the AWAITING_SELECTION zero-candidates case — same
@@ -413,10 +479,13 @@
     lastHandledStatus = d.job?.status ?? '';
     lastGateReachedAt = d.job?.gateReachedAt ?? null;
     solutionsLoading = false;
-    solutionsFetchFailed = false;
-    solutionsFetchAttempted = false;
+    solutionsFetchFailed = Boolean(d.solutionsFetchFailed);
+    solutionsFetchAttempted =
+      d.solutions !== null || Boolean(d.solutionsFetchFailed);
     regeneratingFromEmpty = false;
     regenerateFromEmptyError = "";
+    // Fresh server data is the new draft-version baseline for the SSE drift guard.
+    draftRefreshGuard.seedBaseline(d.job?.selectionDraft?.version);
 
     // Load the chat ledger regardless of whether SelectionWorkbench/ChatThread ever
     // mount this visit — its durable seed-evaluation receipts (chatLedger.hasPendingSeed)
@@ -541,6 +610,10 @@
   // screen unmounting it out from under the in-flight seed.
   const seedRunning = $derived(seedPending && ['QUEUED', 'RUNNING'].includes(job?.status ?? ''));
 
+  // Admin-granted optional decision tools, resolved fresh per navigation by
+  // (app)/+layout.server.ts. Fails closed if the layout fetch didn't land.
+  const decisionTools = $derived(page.data.featureAccess?.decisionTools === true);
+
   // ── Unified dashboard state ──
   const isSelectionPhase = $derived(
     ['AWAITING_SELECTION', 'REGENERATING'].includes(job?.status ?? '') || isRegenQueued || seedRunning
@@ -608,21 +681,10 @@
       : `${sentenceHeading(nicheName)}. Review pain points and audience before ideation runs.`,
   );
 
-  const discussionCount = $derived(
-    (previewReport?.research_metadata?.filtering_stats as Record<string, number>)?.total_urls_relevant ??
-    (((previewReport?.research_metadata?.reddit_posts_analyzed ?? 0) +
-     (previewReport?.research_metadata?.twitter_threads_analyzed ?? 0) +
-     (previewReport?.research_metadata?.generic_posts_analyzed ?? 0)) || 0)
-  );
-
-  const previewPainPointCount = $derived(
-    previewReport?.pain_point_analytics?.total_pain_points ??
-    previewReport?.detailed_pain_points?.length ?? 0
-  );
-
-  const segmentCount = $derived(
-    previewReport?.audience_mapping?.audience_segments?.length ?? 0
-  );
+  const dossier = $derived(createDiscoveryDisplayModel(previewReport, discoveryData));
+  const discussionCount = $derived(dossier.discussionCount);
+  const previewPainPointCount = $derived(dossier.painPointCount);
+  const segmentCount = $derived(dossier.segmentCount);
 
   // Portfolio-funnel: findings examined but not carried forward (demoted winners, rejected
   // backfill candidates) + groups of surviving ideas that are variants of one product.
@@ -646,9 +708,7 @@
 
   // Real top pain point for preview hero (correct 0-1 scale)
   const topRealPain = $derived(
-    (previewReport?.detailed_pain_points ?? [])
-      .slice()
-      .sort((a: any, b: any) => (b.severity_score ?? 0) - (a.severity_score ?? 0))[0] ?? null
+    dossier.painPoints[0] ?? null
   );
 
   // Preview hero: mix real Phase 1 data with fake Phase 2 data
@@ -679,12 +739,8 @@
 
   // Sticky bar state removed - SelectionWorkbench owns its own fixed tray.
 
-  // All pain points sorted by severity
-  const topPainPoints = $derived(
-    (previewReport?.detailed_pain_points ?? [])
-      .slice()
-      .sort((a, b) => b.severity_score - a.severity_score)
-  );
+  // One stable severity order is shared with the public dossier.
+  const topPainPoints = $derived(dossier.painPoints);
   const visiblePainPoints = $derived(
     isSelectionPhase ? topPainPoints.slice(0, 8) : topPainPoints
   );
@@ -785,13 +841,15 @@
       mode={isSelectionPhase ? 'selection' : isGatePhase ? 'gate' : 'default'}
       jobId={jobId ?? undefined}
       toolTasks={selectionToolTasks}
-      selectionCount={displaySolutions.length}
-      selectedCount={job.selectedSolutions?.length ?? 0}
+      selectedCount={sidebarSelectedCount}
+      availableSectionIds={isSelectionPhase ? dossier.availableSectionIds : undefined}
       chatMode={job.chatMode ?? false}
       gateStage={job.gateStage ?? null}
+      {decisionTools}
     />
   {/if}
-  <main class="job-page-content" class:job-page-content--selection={isWorkbenchPhase}>
+  <!-- div, not <main>: the (app) layout already renders the page's single landmark <main>. -->
+  <div class="job-page-content" class:job-page-content--selection={isWorkbenchPhase}>
     <AnnotationProvider mode="owner" enabled={['AWAITING_SELECTION', 'REGENERATING'].includes(job?.status ?? '')} jobId={jobId ?? undefined}>
     {#if loading}
       <div class="text-center py-12">
@@ -811,6 +869,7 @@
       {#if isGenerating}
         <!-- ═══ FOCUSED RESEARCH-IN-PROGRESS SCREEN (chrome hidden) ═══ -->
         <ResearchProgressScreen
+          jobId={jobId ?? undefined}
           phase={isGeneratingP1 ? 'discovery' : 'deep_research'}
           jobStatus={job.status}
           niche={job.niche}
@@ -824,6 +883,7 @@
           queuePosition={job.queuePosition ?? undefined}
           catalogPainPoints={data.catalogPainPoints ?? []}
           selectedNames={job.selectedSolutions ?? []}
+          selectedItems={job.selectionDraft?.items ?? []}
           solutionIdeas={job.solutionIdeas ?? []}
           primaryWinner={job.selectedSolution}
           onCancel={isGeneratingP1 ? cancelJob : undefined}
@@ -837,7 +897,7 @@
             class={isWorkbenchPhase ? 'job-selection-header' : ''}
             icon={isWorkbenchPhase ? undefined : Telescope}
             breadcrumbItems={[{ label: 'Dashboard', href: '/dashboard' }]}
-            breadcrumbCurrent={isSelectionPhase ? 'Selection' : isGatePhase ? 'Checkpoint' : titleCase(nicheName) || 'Research'}
+            breadcrumbCurrent={isSelectionPhase ? SHORTLIST_TITLE : isGatePhase ? 'Checkpoint' : titleCase(nicheName) || 'Research'}
             title={pageTitle}
             titleVariant={isSelectionPhase ? 'research-topic' : 'default'}
             subtitle={isSelectionPhase ? selectionSubtitle : isGatePhase ? gateSubtitle : undefined}
@@ -854,6 +914,7 @@
             {/snippet}
             {#snippet actions()}
               <div class="flex items-center gap-3 w-full sm:w-auto justify-end">
+                <TourRestartButton />
                 {#if isCompleted && reportAsset}
                   <Button href="/jobs/{job.id}/report" icon={REPORT_ICON} label="View Report" class="btn-primary btn-sm" />
                 {/if}
@@ -981,6 +1042,26 @@
 
       <!-- ═══ DASHBOARD SECTIONS ═══ -->
       {#if !isGeneratingP1}
+        {#if isSelectionPhase && invalidSolutionCount > 0}
+          <div class="candidate-data-warning" role="alert">
+            <div>
+              <strong>
+                {invalidSolutionCount} malformed {invalidSolutionCount === 1 ? "candidate was" : "candidates were"} hidden
+              </strong>
+              <p>The valid ideas remain available. Retry to check for a repaired shortlist.</p>
+            </div>
+            <SubmitButton
+              onclick={fetchSolutions}
+              loading={solutionsLoading}
+              loadingText="Retrying..."
+              icon={RotateCw}
+              keepIconOnLoad
+              label="Retry candidates"
+              class="btn-secondary"
+            />
+          </div>
+        {/if}
+
         {#if isSelectionPhase && (displaySolutions.length > 0 || examinedRuledOut.length > 0 || seedPending)}
           <SelectionWorkbench
             jobId={jobId ?? ''}
@@ -1006,9 +1087,12 @@
             onComplete={handleSelectionComplete}
             onRegenerateStart={() => { clientJob = { ...job!, status: 'QUEUED' }; }}
             onJourneyTasks={(tasks) => selectionToolTasks = tasks}
+            onShortlistChange={(count) => liveShortlist = { jobId: jobId ?? '', count }}
+            onShortlistVersionChange={(version) => draftRefreshGuard.reportLocalVersion(version)}
             onSeedSettled={handleSeedSettled}
             {solutionVotesById}
             {voteRationales}
+            {decisionTools}
           />
         {:else if isSelectionPhase}
           <!-- ═══ ZERO-CANDIDATE STATES ═══ Selection reached but nothing to show:
@@ -1083,8 +1167,25 @@
           />
         {/if}
 
-        {#if previewReport || discoveryData}
+        {#if previewReport || discoveryData || discoveryFetchFailed || previewFetchFailed}
           <div class="discovery-sections" class:discovery-dossier={isSelectionPhase} data-annotation-anchor="research-dossier">
+            {#if discoveryFetchFailed || previewFetchFailed}
+              <div class="dossier-load-warning" role="alert">
+                <div>
+                  <strong>Part of the Discovery dossier could not be loaded</strong>
+                  <p>Available findings are shown below. Retry to restore the missing context.</p>
+                </div>
+                <SubmitButton
+                  onclick={retryDiscoveryDossier}
+                  loading={discoveryLoading || previewReportLoading}
+                  loadingText="Retrying..."
+                  icon={RotateCw}
+                  keepIconOnLoad
+                  label="Retry dossier"
+                  class="btn-secondary"
+                />
+              </div>
+            {/if}
             {#if isSelectionPhase}
               <div class="dossier-header">
                 <div>
@@ -1102,8 +1203,8 @@
                     <dd>{previewPainPointCount}</dd>
                   </div>
                   <div>
-                    <dt>Sources</dt>
-                    <dd>{discoveryData?.subreddit_names?.length ?? 0}</dd>
+                    <dt>Communities</dt>
+                    <dd>{dossier.communityNames.length}</dd>
                   </div>
                 </dl>
               </div>
@@ -1119,7 +1220,6 @@
                 id="overview"
               >
                 <PreviewOverview
-                  nicheName={nicheName}
                   nicheDescription={previewReport.niche_context?.niche_description}
                   {discussionCount}
                   painPointCount={previewPainPointCount}
@@ -1147,9 +1247,11 @@
                 {#if showSelectedSummary && !isGeneratingP2}
                   <SelectedSolutionsSummary
                     selectedNames={job.selectedSolutions ?? []}
+                    selectedItems={job.selectionDraft?.items ?? []}
                     solutionIdeas={job.solutionIdeas ?? []}
                     primaryWinner={job.selectedSolution}
                     status={job.status}
+                    jobId={jobId ?? undefined}
                   />
                 {/if}
               </ExpandableSection>
@@ -1165,9 +1267,9 @@
                 id="market-snapshot"
               >
                 <MarketSnapshot
-                  postsAnalyzed={discussionCount}
-                  subredditCount={discoveryData.subreddit_names?.length ?? 0}
-                  totalEngagement={discoveryData.methodology?.total_engagement ?? 0}
+                  discussionsAnalyzed={discussionCount}
+                  communityCount={dossier.communityNames.length}
+                  totalEngagement={dossier.totalEngagement}
                   trend={discoveryData.discussion_trend}
                   growthPct={discoveryData.discussion_growth_pct ?? null}
                 />
@@ -1185,7 +1287,7 @@
                 resetKey={sectionResetKey}
                 id="pain-points"
               >
-                <p class="section-intro">The highest-signal pain clusters from discovery, ranked by severity and commercial intent.</p>
+                <p class="section-intro">Pain clusters from discovery, ordered by reported severity.</p>
                 {#each visiblePainPoints as pp, i}
                   <PainPointSummaryCard painPoint={pp} rank={i + 1} isTop={i === 0} onViewOpportunity={scrollToSolutions} />
                 {/each}
@@ -1221,8 +1323,8 @@
             {#if discoveryData || previewReport?.evidence_appendix}
               <ExpandableSection
                 title="Community & Sources"
-                count={discoveryData?.subreddit_names?.length ?? 0}
-                countSuffix="sources"
+                count={dossier.communityNames.length}
+                countSuffix="communities"
                 variant={isSelectionPhase ? "default" : "success"}
                 defaultOpen={false}
                 resetKey={sectionResetKey}
@@ -1231,7 +1333,7 @@
                 <CommunitySourcesSection
                   subredditNames={discoveryData?.subreddit_names}
                   communityHubs={previewReport?.audience_mapping?.community_hubs}
-                  postsAnalyzed={((previewReport?.research_metadata?.reddit_posts_analyzed ?? 0) + (previewReport?.research_metadata?.generic_posts_analyzed ?? 0)) || undefined}
+                  postsAnalyzed={discussionCount || undefined}
                   sourcesSearched={discoveryData?.sources_searched}
                 />
 
@@ -1258,13 +1360,15 @@
         {#if !isCompleted && !isSelectionPhase && !isGatePhase}
           <!-- Capped preview: UnifiedHero with real blurred content -->
           <div class="preview-capped">
-            <UnifiedHero
-              report={previewHeroReport}
-              nicheName={nicheName}
-              nicheDescription={previewReport?.niche_context?.niche_description ?? `Analysis of the ${niche} market`}
-              funnelStats={realFunnelStats}
-              previewMode={true}
-            />
+            <div aria-hidden="true" inert>
+              <UnifiedHero
+                report={previewHeroReport}
+                nicheName={nicheName}
+                nicheDescription={previewReport?.niche_context?.niche_description ?? `Analysis of the ${niche} market`}
+                funnelStats={realFunnelStats}
+                previewMode={true}
+              />
+            </div>
             <div class="preview-capped-fade"></div>
             <div class="preview-capped-label">
               <span class="preview-capped-badge">Unlocks with Deep Research</span>
@@ -1272,17 +1376,22 @@
           </div>
 
           <!-- SEO Keywords preview - editorial hairline insert between capped cards -->
-          <SEOKeywordsPreview nicheName={placeholderNiche} />
+          <div aria-hidden="true" inert>
+            <SEOKeywordsPreview nicheName={placeholderNiche} />
+          </div>
+          <p class="sr-only">SEO keyword strategy unlocks with Deep Research.</p>
 
           <!-- Capped preview: Competitors with real blurred content -->
           <div class="preview-capped preview-capped--sm">
-            <Competitors
-              profiles={placeholderComp.profiles}
-              analysis={placeholderComp.analysis}
-              analytics={placeholderComp.analytics}
-              selectedSolutionName={`${placeholderNiche} Opportunity Analyzer`}
-              previewMode={true}
-            />
+            <div aria-hidden="true" inert>
+              <Competitors
+                profiles={placeholderComp.profiles}
+                analysis={placeholderComp.analysis}
+                analytics={placeholderComp.analytics}
+                selectedSolutionName={`${placeholderNiche} Opportunity Analyzer`}
+                previewMode={true}
+              />
+            </div>
             <div class="preview-capped-fade"></div>
             <div class="preview-capped-label">
               <span class="preview-capped-badge">Unlocks with Deep Research</span>
@@ -1387,12 +1496,27 @@
       {/if}
     {/if}
     </AnnotationProvider>
-  </main>
+  </div>
 </div>
 
 {#if jobId}
   <ShareDiscoveryModal bind:open={discoveryShareOpen} jobId={jobId} />
 {/if}
+
+<!-- First-run tutorial. `selectionToolTasks !== undefined` is the signal that the
+     CLIENT-side decision-state fetch landed: until it does, the shortlist dock has not
+     mounted and the guide card still reads "Updating your next useful step…", so two of
+     the five steps would have nothing to point at. -->
+<TourHost
+  chapter="job-shortlist"
+  enabled={decisionTools}
+  ready={isSelectionPhase
+    && displaySolutions.length > 0
+    && !solutionsLoading
+    && selectionToolTasks !== undefined}
+  deferred={seedRunning || isRegenQueued || invalidSolutionCount > 0}
+  reflowKey={selectionToolTasks}
+/>
 
 <style>
   /* Error-state icon box (zero-candidate fetch failure) — status tokens
@@ -1513,6 +1637,34 @@
 
   :global(.job-selection-header) {
     margin-bottom: 0;
+  }
+
+  .candidate-data-warning,
+  .dossier-load-warning {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    margin-bottom: var(--space-4);
+    padding: var(--space-4);
+    border: 1px solid color-mix(in srgb, var(--color-warning) 28%, var(--color-border));
+    border-radius: var(--radius-md);
+    background: var(--color-warning-subtle);
+    color: var(--color-text-primary);
+  }
+
+  .candidate-data-warning strong,
+  .dossier-load-warning strong {
+    font-size: var(--text-sm);
+    font-weight: 700;
+  }
+
+  .candidate-data-warning p,
+  .dossier-load-warning p {
+    margin: var(--space-1) 0 0;
+    color: var(--color-text-secondary);
+    font-size: var(--text-13);
+    line-height: var(--leading-normal);
   }
 
   :global(.job-selection-header .page-header-body) {

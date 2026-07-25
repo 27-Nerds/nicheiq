@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
+
+// These suites exercise route logic, not the decision-tools grant. The grant itself is
+// covered in middleware/__tests__/featureAccess.test.ts.
+vi.mock('../../middleware/featureAccess.js', () => ({
+  requireDecisionToolsAccess: (_req: any, _res: any, next: any) => next(),
+}));
 import { createHash } from 'node:crypto';
 
 const EXPECTED_OPERATION_ID = (() => {

@@ -32,13 +32,13 @@ const TAG_LABELS: Record<string, string> = {
   blocked: "Blocked data",
   unverified: "Unverified data",
   // build_complexity (plain effort phrasing — "high complexity" reads ambiguously)
-  low: "Easy to build",
-  medium: "Moderate build",
-  high: "Hard to build",
+  low: "Solo-manageable",
+  medium: "Some solo constraints",
+  high: "Hard to run solo",
   // novelty_level (self-describing — "moderate novelty" is vague)
-  conventional: "Unoriginal",
-  moderate: "Somewhat novel",
-  novel: "Novel approach",
+  conventional: "Familiar approach",
+  moderate: "Some differentiation",
+  novel: "Distinct approach",
   // growth_channels
   "programmatic-seo": "Programmatic SEO",
   content: "Content",
@@ -100,18 +100,18 @@ const TAG_DESCRIPTIONS: Record<string, string> = {
   public: "Built on openly available public data.",
   freemium: "Free data tier plus paid features.",
   paywalled: "Requires paid data access.",
-  unofficial: "Uses a Terms-of-service-gray route (unofficial API / scraping).",
+  unofficial: "Relies on an unofficial API or scraping route that needs a terms review.",
   restricted: "Data is hard to obtain in bulk (per-lookup or login-gated).",
   blocked: "No reliable route to the required data.",
   unverified: "Couldn't confirm or refute a public source for this data — verify it's obtainable before building.",
   // build_complexity (derived from solo-dev feasibility — the same number shown as the "Solo" score)
-  low: "Easy for one person to build and run — the Solo score is 0.78 or higher.",
-  medium: "Moderate effort for one person to build and run — the Solo score is 0.65–0.78.",
-  high: "Hard for one person to build and run — the Solo score (build + operate solo) is below 0.65.",
+  low: "The expected build and ongoing operating load look manageable for one person.",
+  medium: "One person could make progress, but parts of the build or ongoing operation may need help.",
+  high: "The build or ongoing operating load is likely to exceed what one person can sustain.",
   // novelty_level (derived from novelty / obviousness)
-  conventional: "A well-trodden, obvious approach.",
-  moderate: "Somewhat differentiated from the obvious path.",
-  novel: "A genuinely fresh angle (high novelty / low obviousness).",
+  conventional: "Uses a familiar mechanism that may be easy for alternatives to match.",
+  moderate: "Adds meaningful differences to a familiar approach.",
+  novel: "Uses a clearly different mechanism or product angle.",
   // growth_channels
   "programmatic-seo": "Grows via many auto-generated SEO pages.",
   content: "Grows via content marketing.",
@@ -130,11 +130,11 @@ const TAG_DESCRIPTIONS: Record<string, string> = {
   episodic: "Used when an irregular event triggers it (validating an idea, raising prices) — subscriptions churn between events.",
   "one-shot": "Delivers its value once — fits one-time pricing better than a subscription.",
   // strengths (derived from scores, standardized cutoffs)
-  "market-fit": "Strong product-market-fit signal (market-fit score ≥ 0.82).",
-  "seo-power": "High programmatic-SEO scalability (SEO score ≥ 0.85).",
-  innovator: "A genuinely novel angle (novelty ≥ 0.70).",
-  "quick-build": "Fast for a solo dev to build (technical feasibility ≥ 0.85).",
-  "solo-friendly": "Practical for one person to build and run (solo-dev ≥ 0.78).",
+  "market-fit": "The product closely matches an important, evidence-backed problem for buyers likely to pay.",
+  "seo-power": "The product can create useful, public pages that give it a strong organic-discovery path.",
+  innovator: "The core mechanism is meaningfully different from obvious approaches and existing alternatives.",
+  "quick-build": "The core product appears technically possible with available tools and obtainable data. This does not promise a short build.",
+  "solo-friendly": "The expected build and ongoing operating load look manageable for one person.",
 };
 
 /** One-line hover explanation for a tag value (empty string if unknown). */

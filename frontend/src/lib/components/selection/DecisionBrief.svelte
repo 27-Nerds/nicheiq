@@ -34,9 +34,12 @@
      *  constraints in its own header, so a second summary row there would be a
      *  duplicate of the same fact. */
     hideSummary?: boolean;
+    /** Blocks saving while the host workspace is not interactive (e.g. the job
+     *  is REGENERATING). The editor stays open so a dirty draft is preserved. */
+    disabled?: boolean;
   }
 
-  let { jobId, profile, onSaved, variant = "card", hideSummary = false }: Props = $props();
+  let { jobId, profile, onSaved, variant = "card", hideSummary = false, disabled = false }: Props = $props();
 
   const DEFAULT_PROFILE: SelectionDecisionProfile = {
     preset: "balanced",
@@ -113,8 +116,9 @@
   let editing = $state(false);
   let saving = $state(false);
   let error = $state("");
+  let showMoreContext = $state(false);
   let draft = $state<SelectionDecisionProfile>({ ...DEFAULT_PROFILE });
-  let lastCopilotRequestId = $state<string | null>(null);
+  let lastCopilotRequestId: string | null = null;
   /** Persists past the overlay closing so the save confirmation still reaches
    *  screen readers (the overlay itself unmounts on success). */
   let savedAnnouncement = $state("");
@@ -129,6 +133,11 @@
   function beginEditing() {
     if (editing || saving) return;
     draft = cloneProfile(profile ?? DEFAULT_PROFILE);
+    showMoreContext = Boolean(
+      profile?.distributionAdvantages.length
+      || profile?.strengths.trim()
+      || profile?.hardConstraints.trim(),
+    );
     error = "";
     editing = true;
   }
@@ -162,10 +171,16 @@
         ? [...values.distributionAdvantages]
         : [...base.distributionAdvantages],
     };
+    showMoreContext = Boolean(
+      values.revenueHorizon
+      || values.distributionAdvantages?.length
+      || values.strengths?.trim()
+      || values.hardConstraints?.trim(),
+    );
     error = "";
     editing = true;
     lastCopilotRequestId = requestId;
-    return { ok: true, message: "Build constraints opened. Review every value before saving." };
+    return { ok: true, message: "Build limits opened. Review every value before saving." };
   }
 
   function hasUnsavedChanges() {
@@ -222,16 +237,16 @@
   }
 
   async function save() {
-    if (saving) return;
+    if (saving || disabled) return;
     saving = true;
     error = "";
     try {
       const response = await saveSelectionDecisionProfile(jobId, draft);
       onSaved(cloneProfile(response.selectionDecisionProfile));
       editing = false;
-      savedAnnouncement = "Build constraints saved";
+      savedAnnouncement = "Build limits saved";
     } catch (cause) {
-      error = cause instanceof Error ? cause.message : "Could not save your build constraints.";
+      error = cause instanceof Error ? cause.message : "Could not save your build limits.";
     } finally {
       saving = false;
     }
@@ -242,7 +257,7 @@
   <!-- Editor-only mount: the host surface states the constraints itself. -->
 {:else if variant === "summary"}
   {#if profile}
-    <section class="brief-row" aria-label="Build constraints summary" data-annotation-anchor="selection:decision-brief">
+    <section class="brief-row" aria-label="Build limits summary" data-annotation-anchor="selection:decision-brief">
       <p class="brief-row-copy">{FOUNDER_CONTEXT_SAVED}</p>
       {#if !editing}
         <button type="button" class="edit-action" onclick={beginEditing}>
@@ -256,12 +271,12 @@
   <header class="brief-head">
     <div class="brief-copy">
       <p class="kicker">Founder fit</p>
-      <h3 id="decision-brief-title">Your build constraints</h3>
+      <h3 id="decision-brief-title">Your build limits</h3>
       <p>Research ranks the market. These constraints describe what is practical for you.</p>
     </div>
 
     {#if profile}
-      <dl class="profile-summary" aria-label="Saved build constraints">
+      <dl class="profile-summary" aria-label="Saved build limits">
         <div><dt>Time</dt><dd>{optionLabel(TIME_OPTIONS, profile.weeklyTime)}</dd></div>
         <div><dt>Budget</dt><dd>{optionLabel(BUDGET_OPTIONS, profile.budget)}</dd></div>
         <div><dt>Team</dt><dd>{optionLabel(TEAM_OPTIONS, profile.team)}</dd></div>
@@ -285,10 +300,10 @@
 
 <FormOverlay
   open={editing}
-  size="wizard"
+  size="form"
   eyebrow="Fit for you"
   title={FOUNDER_CONTEXT_OVERLAY_TITLE}
-  description="Set the time, budget, reach, and non-negotiables each candidate should be checked against. These never change the research score."
+  description="Set what you can realistically spend and build. These limits never change the Discovery score."
   annotationAnchor="selection:decision-profile-editor"
   onRequestClose={closeEditor}
   dirty={hasUnsavedChanges()}
@@ -296,7 +311,7 @@
   footerMessage="Private to you. Saved context is checked against every candidate."
 >
     <form id="decision-profile-form" class="brief-form" onsubmit={(event) => { event.preventDefault(); void save(); }}>
-      <div class="field preset-seg">
+      <div class="field preset-seg form-section form-section--lead">
         <span class="field-label" id="brief-preset-label">Starting point</span>
         <p class="field-hint">A preset fills every field below. Adjust anything after.</p>
         <SegmentControl
@@ -312,41 +327,60 @@
       <fieldset class="fgroup">
         <legend class="fgroup-title">Capacity and runway</legend>
 
-        <div class="field">
-          <span class="field-label" id="brief-time-label">Available time <span class="opt">Hours per week</span></span>
-          <SegmentControl
-            density="compact"
-            label="Available time"
-            labelledBy="brief-time-label"
-            options={TIME_SEG}
-            value={draft.weeklyTime}
-            onChange={(value) => (draft.weeklyTime = value as WeeklyTime)}
-          />
+        <div class="capacity-grid">
+          <div class="field">
+            <span class="field-label" id="brief-time-label">Available time <span class="opt">Hours per week</span></span>
+            <SegmentControl
+              density="compact"
+              label="Available time"
+              labelledBy="brief-time-label"
+              options={TIME_SEG}
+              value={draft.weeklyTime}
+              onChange={(value) => (draft.weeklyTime = value as WeeklyTime)}
+            />
+          </div>
+
+          <div class="field">
+            <span class="field-label" id="brief-budget-label">Testing budget</span>
+            <SegmentControl
+              density="compact"
+              label="Testing budget"
+              labelledBy="brief-budget-label"
+              options={BUDGET_SEG}
+              value={draft.budget}
+              onChange={(value) => (draft.budget = value as ValidationBudget)}
+            />
+          </div>
+
+          <div class="field capacity-grid__team">
+            <span class="field-label" id="brief-team-label">Team</span>
+            <SegmentControl
+              density="compact"
+              label="Team"
+              labelledBy="brief-team-label"
+              options={TEAM_OPTIONS}
+              value={draft.team}
+              onChange={(value) => (draft.team = value as TeamShape)}
+            />
+          </div>
         </div>
 
-        <div class="field">
-          <span class="field-label" id="brief-budget-label">Testing budget</span>
-          <SegmentControl
-            density="compact"
-            label="Testing budget"
-            labelledBy="brief-budget-label"
-            options={BUDGET_SEG}
-            value={draft.budget}
-            onChange={(value) => (draft.budget = value as ValidationBudget)}
-          />
-        </div>
+      </fieldset>
 
-        <div class="field">
-          <span class="field-label" id="brief-team-label">Team</span>
-          <SegmentControl
-            density="compact"
-            label="Team"
-            labelledBy="brief-team-label"
-            options={TEAM_OPTIONS}
-            value={draft.team}
-            onChange={(value) => (draft.team = value as TeamShape)}
-          />
-        </div>
+      <button
+        type="button"
+        class="advanced-toggle"
+        aria-expanded={showMoreContext}
+        aria-controls="build-context-fields"
+        onclick={() => (showMoreContext = !showMoreContext)}
+      >
+        <span>{showMoreContext ? "Hide launch context" : "Add launch context"}</span>
+        <small>Revenue timing, channels, advantages, and non-negotiables</small>
+      </button>
+
+      {#if showMoreContext}
+      <fieldset class="fgroup fgroup--secondary" id="build-context-fields">
+        <legend class="fgroup-title">Launch context</legend>
 
         <div class="field">
           <span class="field-label" id="brief-horizon-label">Revenue horizon <span class="opt">Time to first revenue</span></span>
@@ -359,10 +393,6 @@
             onChange={(value) => (draft.revenueHorizon = value as RevenueHorizon)}
           />
         </div>
-      </fieldset>
-
-      <fieldset class="fgroup">
-        <legend class="fgroup-title">Edge and limits</legend>
 
         <div class="field">
           <span class="field-label">Channels you can already reach</span>
@@ -399,10 +429,11 @@
           />
         </div>
       </fieldset>
+      {/if}
     </form>
 
-    {#snippet footerCancel()}
-      <button type="button" class="cancel-btn" disabled={saving} onclick={closeEditor}>Cancel</button>
+    {#snippet footerCancel(requestClose)}
+      <button type="button" class="cancel-btn" disabled={saving} onclick={requestClose}>Cancel</button>
     {/snippet}
     {#snippet footer()}
       <div class="footer-submit">
@@ -412,6 +443,7 @@
           label={SAVE_FOUNDER_CONTEXT_LABEL}
           loadingText="Saving…"
           loading={saving}
+          {disabled}
           onclick={save}
           class="submit-btn"
         />
@@ -425,8 +457,8 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 1rem;
-    padding: 0.75rem 1rem;
+    gap: var(--space-4);
+    padding: var(--space-3) var(--space-4);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
     background: var(--color-bg-elevated);
@@ -439,7 +471,7 @@
     font-weight: 600;
   }
   .brief {
-    margin: 1.15rem 0 1.35rem;
+    margin: var(--space-5) 0 var(--space-6);
     border-block: 1px solid var(--color-border);
     background: color-mix(in srgb, var(--color-bg-elevated) 72%, transparent);
   }
@@ -447,12 +479,12 @@
     display: grid;
     grid-template-columns: minmax(15rem, 1.15fr) minmax(24rem, 1.8fr) auto;
     align-items: center;
-    gap: 1.25rem;
-    padding: 1rem 0.2rem 1.08rem;
+    gap: var(--space-5);
+    padding: var(--space-4) 0;
   }
   .brief-copy { max-width: 30rem; }
   .kicker {
-    margin: 0 0 0.22rem;
+    margin: 0 0 var(--space-1);
     font-family: var(--font-mono);
     font-size: var(--text-xs);
     font-weight: 700;
@@ -460,9 +492,9 @@
     text-transform: uppercase;
     color: var(--color-text-secondary);
   }
-  h3 { margin: 0; font-size: 1rem; line-height: 1.25; letter-spacing: -0.01em; }
+  h3 { margin: 0; font-size: var(--text-md); line-height: 1.25; letter-spacing: -0.01em; }
   .brief-copy > p:last-child, .empty-copy {
-    margin: 0.32rem 0 0;
+    margin: var(--space-1) 0 0;
     color: var(--color-text-secondary);
     font-size: var(--text-sm);
     line-height: 1.45;
@@ -474,7 +506,7 @@
     grid-template-columns: repeat(4, minmax(0, 1fr));
     margin: 0;
   }
-  .profile-summary div { min-width: 0; padding: 0 0.85rem; border-left: 1px solid var(--color-border); }
+  .profile-summary div { min-width: 0; padding: 0 var(--space-3); border-left: 1px solid var(--color-border); }
   .profile-summary dt {
     font-family: var(--font-mono);
     font-size: var(--text-xs);
@@ -484,7 +516,7 @@
   }
   .profile-summary dd {
     overflow: hidden;
-    margin: 0.3rem 0 0;
+    margin: var(--space-1) 0 0;
     color: var(--color-text-primary);
     font-size: var(--text-sm);
     font-weight: 600;
@@ -493,8 +525,8 @@
   }
   button { font: inherit; }
   .edit-action {
-    min-height: 2.35rem;
-    padding: 0.48rem 0.82rem;
+    min-height: var(--space-10);
+    padding: var(--space-2) var(--space-3);
     border: 1px solid var(--color-input-border);
     border-radius: var(--radius-md);
     background: transparent;
@@ -519,12 +551,16 @@
   }
 
   /* ── Overlay form ── */
-  .brief-form { display: grid; gap: 1.3rem; }
-  .field { display: grid; gap: 0.4rem; }
+  .brief-form {
+    display: grid;
+    gap: var(--space-5);
+    padding-bottom: var(--space-1);
+  }
+  .field { display: grid; gap: var(--space-2); }
   .field-label {
     display: flex;
     align-items: baseline;
-    gap: 0.45rem;
+    gap: var(--space-2);
     font-size: var(--text-13);
     font-weight: 600;
     color: var(--color-text-primary);
@@ -535,10 +571,19 @@
     color: var(--color-text-secondary);
   }
   .field-hint {
-    margin: -0.1rem 0 0;
+    margin: 0;
     font-size: var(--text-sm);
-    line-height: 1.45;
+    line-height: var(--leading-normal);
     color: var(--color-text-muted);
+  }
+  .form-section {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+  .form-section--lead {
+    padding: 0 0 var(--space-5);
+    border-bottom: 1px solid var(--color-border);
   }
   .preset-seg :global(.segment-cards) {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -546,40 +591,92 @@
   .fgroup {
     min-width: 0;
     display: grid;
-    gap: 1rem;
+    gap: var(--space-4);
     margin: 0;
-    padding: 1.3rem 0 0;
+    padding: 0 0 var(--space-5);
     border: 0;
-    border-top: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border);
+    border-radius: 0;
+    background: transparent;
   }
   .fgroup-title {
     padding: 0;
-    font-size: var(--text-13);
+    font-size: var(--text-base);
     font-weight: 700;
     color: var(--color-text-primary);
+  }
+  .fgroup--secondary {
+    padding: var(--space-4);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-bg-surface);
+  }
+  .capacity-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-4);
+  }
+  .capacity-grid__team {
+    grid-column: 1 / -1;
+  }
+  .capacity-grid :global(.segment-track) {
+    width: 100%;
+  }
+  .capacity-grid :global(.segment) {
+    flex: 1 1 auto;
+  }
+  .advanced-toggle {
+    display: grid;
+    gap: var(--space-1);
+    min-height: var(--space-10);
+    padding: var(--space-2) 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--color-text-secondary);
+    text-align: left;
+    cursor: pointer;
+    transition: color var(--duration-fast) var(--ease-default), transform var(--duration-fast) var(--ease-default);
+  }
+  .advanced-toggle > span {
+    font-size: var(--text-sm);
+    font-weight: 600;
+  }
+  .advanced-toggle > small {
+    color: var(--color-text-muted);
+    font-size: var(--text-xs);
+    line-height: var(--leading-normal);
+  }
+  .advanced-toggle:hover {
+    color: var(--color-text-primary);
+  }
+  .advanced-toggle:active { transform: scale(0.99); }
+  .advanced-toggle:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
   }
   .notes-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 1rem;
+    gap: var(--space-4);
   }
   .footer-submit {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: var(--space-3);
   }
   .form-error {
     margin: 0;
     color: var(--color-error-text);
     font-size: var(--text-sm);
-    line-height: 1.4;
+    line-height: var(--leading-normal);
   }
   .cancel-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-height: 2.4rem;
-    padding: 0.5rem 0.9rem;
+    min-height: var(--space-10);
+    padding: var(--space-2) var(--space-4);
     border: 1px solid var(--color-input-border);
     border-radius: var(--radius-md);
     background: transparent;
@@ -609,20 +706,24 @@
   @media (max-width: 900px) {
     .brief-head { grid-template-columns: 1fr auto; }
     .profile-summary, .empty-copy { grid-column: 1 / -1; grid-row: 2; }
-    .profile-summary { border-top: 1px solid var(--color-border); padding-top: 0.75rem; }
+    .profile-summary { border-top: 1px solid var(--color-border); padding-top: var(--space-3); }
     .profile-summary div:first-child { border-left: 0; padding-left: 0; }
   }
   @media (max-width: 640px) {
     .preset-seg :global(.segment-cards) { grid-template-columns: 1fr; }
+    .capacity-grid { grid-template-columns: 1fr; }
+    .capacity-grid__team { grid-column: auto; }
     .notes-grid { grid-template-columns: 1fr; }
   }
   @media (max-width: 560px) {
-    .brief-head { display: flex; flex-direction: column; align-items: stretch; gap: 0.75rem; }
-    .profile-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 0.75rem; }
+    .brief-head { display: flex; flex-direction: column; align-items: stretch; gap: var(--space-3); }
+    .profile-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: var(--space-3); }
     .profile-summary div:nth-child(3) { border-left: 0; padding-left: 0; }
   }
   @media (prefers-reduced-motion: reduce) {
     .edit-action:active { transform: none; }
     .cancel-btn:active:not(:disabled) { transform: none; }
+    .advanced-toggle { transition: none; }
+    .advanced-toggle:active { transform: none; }
   }
 </style>

@@ -281,7 +281,7 @@ describe("ReshapeProposalPanel · experiment", () => {
     });
 
     await fireEvent.click(view.getByRole("button", { name: "Narrow this idea" }));
-    expect(await view.findByText("Evaluated. Added to ranked candidates.")).toBeInTheDocument();
+    expect(await view.findByText("Evaluated. Added to ranked ideas.")).toBeInTheDocument();
     expect(view.queryByRole("button", { name: /Evaluate variant/ })).not.toBeInTheDocument();
     expect(onEvaluate).not.toHaveBeenCalled();
   });

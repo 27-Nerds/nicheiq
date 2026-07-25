@@ -22,10 +22,12 @@ import { CreateJobSchema, SelectSolutionSchema, SelectionDecisionProfileSchema, 
 import { buildPatchEnvelope, buildReceiptContent, buildSeedEnvelope, buildSeedReceiptContent } from '../utils/ledgerEvents.js';
 import { JobStatus, AssetType, StageStatus, DispatchKind, BillingModel, DispatchState, Prisma } from '@prisma/client';
 import { openDispatch, settleDispatch } from '../services/dispatchService.js';
+import { broadcastProgress } from '../services/progressBroadcastService.js';
 import { CONFIG } from '../config.js';
 import { existsSync, createReadStream, statSync } from 'fs';
 import { readFile } from 'fs/promises';
 import { requireInternalAuth, requireInternalService, verifyOwnership, AuthenticatedRequest } from '../middleware/auth.js';
+import { requireDecisionToolsAccess } from '../middleware/featureAccess.js';
 import { jobCreationLimiter } from '../middleware/rateLimit.js';
 import { validateJobId } from '../middleware/validation.js';
 import { formatJobResponse } from '../utils/jobFormatter.js';
@@ -33,7 +35,7 @@ import { candidateSnapshotSha256, ensureIdeaIdentities, ideaName } from '../util
 import { currentSelectionDraft, selectionDraftDocument } from '../utils/selectionDraft.js';
 import { IdeaSynthesisPatchSchema } from '../types/ideaSynthesis.js';
 import { resolveAssetPath } from '../utils/assetPath.js';
-import { isEntitledUser } from '../services/catalogService.js';
+import { hasAnalystAccess } from '../services/featureAccess.js';
 import { parseCurrentFounderFitArtifact } from '../services/founderFitService.js';
 import {
   findIdeaForExport,
@@ -86,7 +88,7 @@ jobsRouter.post('/', requireInternalAuth, jobCreationLimiter, async (req: Authen
     // Guided research (Phase B) is paid-only — server-side coerce to false for
     // non-entitled users rather than 402ing the whole job-create request, so the
     // request degrades to a normal (non-guided) job instead of failing outright.
-    const chatMode = input.chatMode ? await isEntitledUser(userId) : false;
+    const chatMode = input.chatMode ? await hasAnalystAccess(userId) : false;
 
     // Create job + charge discovery cost in atomic transaction
     const { job } = await createJobAndChargeDiscovery(
@@ -859,7 +861,11 @@ jobsRouter.post('/:jobId/select-solution', requireInternalAuth, validateJobId, a
 
     // Reject if already selected
     if ((job.selectedSolutions as string[])?.length) {
-      res.status(400).json({ error: 'Solution already selected' });
+      res.status(409).json({
+        error: 'Deep Research has already started for this selection',
+        code: 'DEEP_RESEARCH_ALREADY_STARTED',
+        status: job.status,
+      });
       return;
     }
 
@@ -912,8 +918,9 @@ jobsRouter.post('/:jobId/select-solution', requireInternalAuth, validateJobId, a
     }
 
     if (job.status !== JobStatus.AWAITING_SELECTION) {
-      res.status(400).json({
+      res.status(409).json({
         error: 'Job not in a state that accepts solution selection',
+        code: 'DEEP_RESEARCH_NOT_AWAITING_SELECTION',
         status: job.status,
       });
       return;
@@ -1015,7 +1022,10 @@ jobsRouter.post('/:jobId/select-solution', requireInternalAuth, validateJobId, a
       return;
     }
     if (error instanceof Error && error.message === 'CONFLICT') {
-      res.status(409).json({ error: 'Solution already selected by another request' });
+      res.status(409).json({
+        error: 'Deep Research was started by another request',
+        code: 'DEEP_RESEARCH_START_CONFLICT',
+      });
       return;
     }
     if (error instanceof z.ZodError) {
@@ -1180,7 +1190,7 @@ jobsRouter.post('/:jobId/seed-idea', requireInternalAuth, validateJobId, async (
 
     // Selection chat (and the seed it produces) is paid-only, same entitlement gate as guided
     // gate-action — re-checked here, not just at job-create, since a subscription can lapse.
-    const entitled = await isEntitledUser(userId);
+    const entitled = await hasAnalystAccess(userId);
     if (!entitled) {
       res.status(402).json({
         error: 'Generating an idea from your own idea requires an active subscription',
@@ -1526,7 +1536,7 @@ jobsRouter.post('/:jobId/gate-action', requireInternalAuth, validateJobId, async
     // Guided chat is paid-only; re-check entitlement here (not just at job-create) since a
     // subscription can lapse between job creation and reaching a gate — mirrors the chat
     // route's per-request 402 (chat.ts) rather than trusting a one-time chatMode flag.
-    const entitled = await isEntitledUser(userId);
+    const entitled = await hasAnalystAccess(userId);
     if (!entitled) {
       res.status(402).json({ error: 'Guided research requires an active subscription', code: 'NOT_ENTITLED' });
       return;
@@ -1778,7 +1788,7 @@ jobsRouter.post('/:jobId/gate-action', requireInternalAuth, validateJobId, async
  * PUT /api/jobs/:jobId/decision-profile
  * Persist the owner's selection constraints without changing research scores.
  */
-jobsRouter.put('/:jobId/decision-profile', requireInternalAuth, validateJobId, async (req: AuthenticatedRequest, res: Response) => {
+jobsRouter.put('/:jobId/decision-profile', requireInternalAuth, requireDecisionToolsAccess, validateJobId, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { jobId } = req.params;
     const userId = req.user!.id;
@@ -1855,6 +1865,7 @@ jobsRouter.put('/:jobId/selection-draft', requireInternalAuth, validateJobId, as
       res.status(409).json({
         error: 'The shortlist is only editable during idea selection',
         code: 'SELECTION_DRAFT_LOCKED',
+        status: job.status,
       });
       return;
     }
@@ -1918,6 +1929,21 @@ jobsRouter.put('/:jobId/selection-draft', requireInternalAuth, validateJobId, as
         items: input.items,
       },
     });
+
+    // Notify other open tabs via the job's SSE progress channel. The SSE
+    // handler re-reads the job and sends the standard job payload, which
+    // carries the new selectionDraft version, so a stale tab can refresh
+    // before its next edit hits a 409. After res.json so the saving tab's own
+    // response (which bumps its local version) usually lands first.
+    try {
+      broadcastProgress(jobId, {
+        stage: 0,
+        name: 'Selection Draft',
+        status: 'completed',
+      });
+    } catch (broadcastErr) {
+      console.error('Broadcast failed but selection draft was saved:', broadcastErr);
+    }
   } catch (error) {
     if (error instanceof z.ZodError) {
       res.status(400).json({ error: 'Validation error', details: error.errors });

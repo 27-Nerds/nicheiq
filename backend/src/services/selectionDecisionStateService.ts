@@ -99,6 +99,13 @@ export interface SelectionDecisionStateInput {
   experiments: ExperimentRow[];
   previewReport: unknown;
   discoveryData: unknown;
+  /**
+   * Whether the owner has the optional decision tools grant (User.decisionToolsAccess).
+   * When false the optional ladder is skipped entirely and every decision-tool
+   * projection is emptied, so the client can never surface a step the API would 403.
+   * Required — a fail-closed gate must not have a permissive default.
+   */
+  decisionTools: boolean;
 }
 
 function ideaKey(ideaId: string, ideaRevision: number) {
@@ -297,8 +304,32 @@ export function buildSelectionDecisionState(input: SelectionDecisionStateInput):
   ));
   const currentExperimentById = new Map(currentExperiments.map(experiment => [experiment.id, experiment]));
 
+  const decisionTools = input.decisionTools === true;
+
   let nextAction: SelectionDecisionNextAction;
-  if (shortlist.length === 0) {
+  if (!decisionTools) {
+    // No grant: the spine is shortlist → Deep Research. Every rung of the optional
+    // ladder below opens a tool this owner cannot reach, so none of them may be
+    // suggested.
+    nextAction = shortlist.length === 0
+      ? {
+        kind: 'select_candidate',
+        target: 'shortlist',
+        reason: 'Choose at least one current candidate before starting Deep Research.',
+        required: true,
+        ideas: ideas.slice(0, 1).map(ideaRef),
+        lens: null,
+        records: [],
+      }
+      : optionalAction({
+        kind: 'start_deep_research',
+        target: 'deep_research',
+        reason: 'The current shortlist is ready for Deep Research.',
+        ideas: shortlist,
+        lens: null,
+        records: [],
+      });
+  } else if (shortlist.length === 0) {
     nextAction = {
       kind: 'select_candidate',
       target: 'shortlist',
@@ -506,14 +537,19 @@ export function buildSelectionDecisionState(input: SelectionDecisionStateInput):
     jobId: input.jobId,
     status: input.status,
     shortlist: { version: draft.version, items: shortlist },
-    profile,
-    founderFit,
-    challenges: currentChallenges,
-    ownerEvidence: currentOwnerEvidence,
-    assumptions: currentAssumptions,
-    experiments: currentExperiments,
-    conclusions: currentConclusions,
-    staleCounts,
+    // Without the grant these stay empty even when historical rows exist (the grant can
+    // be revoked after the owner used the tools) — the client renders progress and
+    // "saved work" badges straight off these arrays.
+    profile: decisionTools ? profile : null,
+    founderFit: decisionTools ? founderFit : null,
+    challenges: decisionTools ? currentChallenges : [],
+    ownerEvidence: decisionTools ? currentOwnerEvidence : [],
+    assumptions: decisionTools ? currentAssumptions : [],
+    experiments: decisionTools ? currentExperiments : [],
+    conclusions: decisionTools ? currentConclusions : [],
+    staleCounts: decisionTools
+      ? staleCounts
+      : { ...staleCounts, profile: 0, founderFit: 0, challenges: 0, ownerEvidence: 0, assumptions: 0, experiments: 0, conclusions: 0, total: staleCounts.shortlist },
     deepResearch: {
       eligible: blockers.length === 0,
       optionalWorkRequired: false,

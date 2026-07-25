@@ -1,221 +1,385 @@
 <script lang="ts">
+  import { goto, invalidateAll, replaceState } from "$app/navigation";
+  import { page } from "$app/state";
+  import { tick } from "svelte";
   import type { PageData } from "./$types";
+  import AssumptionMap from "$lib/components/selection/AssumptionMap.svelte";
+  import EvidenceChallenge from "$lib/components/selection/EvidenceChallenge.svelte";
+  import ExperimentWorkspace from "$lib/components/selection/ExperimentWorkspace.svelte";
+  import {
+    discardOwnerEvidenceDraft,
+    ownerEvidenceDraftIsDirty,
+  } from "$lib/components/selection/OwnerEvidenceLedger.svelte";
+  import SegmentControl from "$lib/components/ui/SegmentControl.svelte";
+  import Button from "$lib/components/ui/Button.svelte";
+  import EmptyState from "$lib/components/ui/EmptyState.svelte";
+  import { EVIDENCE_CHECK_EYEBROW } from "$lib/selection/labels";
+  import { getWorkspaceTools, workspaceIdeaKey } from "$lib/selection/workspaceTools";
+  import type {
+    SelectionAssumptionPrefill,
+    SelectionOwnerEvidencePrefill,
+  } from "$lib/types/selectionCopilot";
+  import type { SelectionChallengeLens } from "$lib/types/selectionChallenge";
   import { solutionDisplayTitle } from "$lib/utils/solution-utils";
-  import { getWorkspaceTools } from "$lib/selection/workspaceTools";
+
   let { data }: { data: PageData } = $props();
 
   const tools = getWorkspaceTools();
+  const validLenses: SelectionChallengeLens[] = [
+    "demand",
+    "distribution",
+    "competition",
+    "dependencies",
+  ];
 
-  const lenses = [
-    { key: "demand", label: "Customer demand" },
-    { key: "distribution", label: "Reachability" },
-    { key: "competition", label: "Competition" },
-    { key: "dependencies", label: "Dependencies" },
-  ] as const;
+  let assumptionPrefill = $state<SelectionAssumptionPrefill | null>(null);
+  let ownerEvidencePrefill = $state<SelectionOwnerEvidencePrefill | null>(null);
+  let evidenceWorkspaceEl = $state<HTMLDivElement | null>(null);
+  let proofRegionEl = $state<HTMLElement | null>(null);
+  let savedTestsOpen = $state(false);
+  let savedTestsEl = $state<HTMLDetailsElement | null>(null);
+  let handledProofFocus = "";
 
-  type LensKey = (typeof lenses)[number]["key"];
+  function revealEvidenceCheck(): void {
+    evidenceWorkspaceEl?.scrollIntoView({ block: "start" });
+  }
 
-  function lensHref(lens: LensKey): string {
+  function revealLinkedTest(): void {
+    savedTestsOpen = true;
+    void tick().then(() => savedTestsEl?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }
+  let handledAssumptionPrefill = "";
+  let handledOwnerEvidencePrefill = "";
+
+  const requestedIdeaId = $derived(page.url.searchParams.get("ideaId"));
+  const requestedIdeaRevision = $derived(Number(page.url.searchParams.get("ideaRevision") ?? "1"));
+  const focusedIdea = $derived(
+    data.workspace.ideas.find((idea) => (
+      idea.idea_id === requestedIdeaId
+      && (idea.idea_revision ?? 1) === requestedIdeaRevision
+    )) ?? data.workspace.ideas[0] ?? null,
+  );
+  const activeLens = $derived(
+    validLenses.includes(page.url.searchParams.get("lens") as SelectionChallengeLens)
+      ? page.url.searchParams.get("lens") as SelectionChallengeLens
+      : data.workspace.lens,
+  );
+  const experimentStateKey = $derived(JSON.stringify(data.decisionState?.experiments ?? []));
+  const focusRequestId = $derived(hashFocus(
+    [
+      focusedIdea?.idea_id ?? "",
+      focusedIdea?.idea_revision ?? 1,
+      activeLens,
+      page.url.searchParams.get("challengeId") ?? "",
+      page.url.searchParams.get("questionId") ?? "",
+    ].join(":"),
+  ));
+  const challengeFocus = $derived(
+    focusedIdea?.idea_id
+      ? {
+          requestId: focusRequestId,
+          ideaId: focusedIdea.idea_id,
+          ideaRevision: focusedIdea.idea_revision ?? 1,
+          lens: activeLens,
+          challengeId: page.url.searchParams.get("challengeId") ?? undefined,
+          questionId: page.url.searchParams.get("questionId") ?? undefined,
+        }
+      : null,
+  );
+
+  function hashFocus(value: string): number {
+    let hash = 0;
+    for (let index = 0; index < value.length; index += 1) {
+      hash = ((hash << 5) - hash + value.charCodeAt(index)) | 0;
+    }
+    return Math.abs(hash) || 1;
+  }
+
+  function focusedHref(
+    ideaId: string,
+    ideaRevision: number,
+    lens = activeLens,
+    focus?: "proof",
+  ): string {
     const params = new URLSearchParams(data.workspace.canonicalQuery.slice(1));
+    params.set("ideaId", ideaId);
+    params.set("ideaRevision", String(ideaRevision));
     params.set("lens", lens);
-    return `?${params.toString()}`;
+    for (const key of ["tool", "assumptionId", "challengeId", "questionId"]) params.delete(key);
+    if (focus) params.set("focus", focus);
+    else params.delete("focus");
+    return `/jobs/${data.job.id}/selection/risks?${params.toString()}`;
   }
 
-  /** Opens the evidence review in place, on the lens the page is already
-   *  showing, so the page-level lens and the review agree. */
-  function openReview(ideaId: string | undefined, ideaRevision: number | undefined, lens?: LensKey): void {
-    if (!ideaId) return;
-    tools.openChallenge({ ideaId, ideaRevision: ideaRevision ?? 1, lens: lens ?? data.workspace.lens });
+  function updateFocus(lens: SelectionChallengeLens): void {
+    if (!focusedIdea?.idea_id) return;
+    void goto(
+      focusedHref(
+        focusedIdea.idea_id,
+        focusedIdea.idea_revision ?? 1,
+        lens,
+        page.url.searchParams.get("focus") === "proof" ? "proof" : undefined,
+      ),
+      { replaceState: true, noScroll: true, keepFocus: true },
+    );
   }
 
-  function challengeFor(ideaId: string | undefined, ideaRevision: number | undefined, lens: LensKey) {
-    return data.decisionState?.challenges.find((challenge) => (
-      challenge.idea.ideaId === ideaId
-      && challenge.idea.ideaRevision === (ideaRevision ?? 1)
-      && challenge.lens === lens
-    )) ?? null;
+  function returnToEvidenceDraft(target: {
+    jobId: string;
+    ideaId: string;
+    ideaRevision: number;
+    lens: SelectionChallengeLens;
+  }): void {
+    if (target.jobId !== data.job.id) return;
+    void goto(focusedHref(target.ideaId, target.ideaRevision, target.lens), {
+      replaceState: true,
+      noScroll: true,
+    });
   }
 
-  function assumptionsFor(ideaId: string | undefined, ideaRevision: number | undefined, lens: LensKey) {
-    return data.decisionState?.assumptions.filter((assumption) => (
-      assumption.idea.ideaId === ideaId
-      && assumption.idea.ideaRevision === (ideaRevision ?? 1)
-      && assumption.lens === lens
-    )) ?? [];
+  const candidateOptions = $derived(
+    data.workspace.ideas
+      .filter((idea) => idea.idea_id)
+      .map((idea, index) => ({
+        value: workspaceIdeaKey(idea),
+        label: `${solutionDisplayTitle(idea)} · idea ${index + 1}`,
+      })),
+  );
+  // Bound so a cancelled switch can snap the control back to the focused idea.
+  let candidateKey = $state("");
+  $effect(() => {
+    candidateKey = focusedIdea ? workspaceIdeaKey(focusedIdea) : "";
+  });
+  function changeCandidate(key: string): void {
+    const idea = data.workspace.ideas.find((candidate) => workspaceIdeaKey(candidate) === key);
+    if (!idea?.idea_id) return;
+    const evidenceDraftIsDirty = ownerEvidenceDraftIsDirty();
+    if (
+      evidenceDraftIsDirty
+      && !window.confirm(
+        "You have unsaved evidence for this candidate. Switch anyway? The draft will remain attached to this exact idea and risk area.",
+      )
+    ) {
+      candidateKey = focusedIdea ? workspaceIdeaKey(focusedIdea) : "";
+      return;
+    }
+    if (!evidenceDraftIsDirty) discardOwnerEvidenceDraft();
+    void goto(focusedHref(idea.idea_id, idea.idea_revision ?? 1), {
+      replaceState: true,
+      noScroll: true,
+      keepFocus: true,
+    });
   }
 
-  // Each candidate's status across ALL four lenses — the evidence map. A lens is
-  // "open" when its review surfaced unresolved questions, "clear" when the
-  // evidence held up, and "unchecked" until reviewed. This is what makes the
-  // card informative before a single review is run.
-  type LensState = "open" | "clear" | "unchecked";
-  function lensStatus(ideaId: string | undefined, ideaRevision: number | undefined, lens: LensKey): LensState {
-    const challenge = challengeFor(ideaId, ideaRevision, lens);
-    if (!challenge) return "unchecked";
-    return challenge.gapQuestionIds.length > 0 ? "open" : "clear";
+  function trackRisk(prefill: SelectionAssumptionPrefill): void {
+    assumptionPrefill = prefill;
   }
 
-  const activeLens = $derived(data.workspace.lens as LensKey);
-  const activeLensLabel = $derived(lenses.find((l) => l.key === activeLens)?.label ?? activeLens);
+  function clearNavigationState(key: "selectionAssumptionPrefill" | "selectionOwnerEvidencePrefill"): void {
+    replaceState(`${page.url.pathname}${page.url.search}`, {
+      ...page.state,
+      [key]: undefined,
+    });
+  }
 
-  const STATE_COPY: Record<LensState, string> = {
-    open: "Open questions",
-    clear: "Holds up",
-    unchecked: "Not checked",
-  };
+  $effect(() => {
+    const prefill = page.state.selectionAssumptionPrefill;
+    if (!prefill || prefill.requestId === handledAssumptionPrefill) return;
+    handledAssumptionPrefill = prefill.requestId;
+    queueMicrotask(() => {
+      assumptionPrefill = prefill;
+      clearNavigationState("selectionAssumptionPrefill");
+    });
+  });
+
+  $effect(() => {
+    const prefill = page.state.selectionOwnerEvidencePrefill;
+    if (!prefill || prefill.requestId === handledOwnerEvidencePrefill) return;
+    handledOwnerEvidencePrefill = prefill.requestId;
+    queueMicrotask(() => {
+      ownerEvidencePrefill = prefill;
+      clearNavigationState("selectionOwnerEvidencePrefill");
+    });
+  });
+
+  $effect(() => {
+    if (page.url.searchParams.get("focus") !== "proof") {
+      handledProofFocus = "";
+      return;
+    }
+    const focusKey = `${focusedIdea?.idea_id ?? ""}@${focusedIdea?.idea_revision ?? 1}`;
+    if (!proofRegionEl || handledProofFocus === focusKey) return;
+    handledProofFocus = focusKey;
+    queueMicrotask(() => proofRegionEl?.scrollIntoView?.({ block: "start" }));
+  });
 </script>
 
-<section class="selection-page">
-  <header class="selection-page__header">
-    <div>
-      <h2>What could change your mind before you pay to research?</h2>
-      <p class="selection-page__lead">Two independent passes stress-test the captured evidence for each finalist. Nothing here moves your shortlist or scores.</p>
-    </div>
+<section class="evidence-page">
+  <header class="page-intro" data-tour="evidence-intro">
+    <p class="eyebrow">{EVIDENCE_CHECK_EYEBROW}</p>
+    <h2>Check the evidence before you spend credits</h2>
+    <p>Choose the question most likely to change your shortlist. Each check rereads saved evidence only and never changes a score.</p>
   </header>
 
-  <nav class="lens-bar" aria-label="Evidence area">
-    {#each lenses as lens}
-      <a
-        class:active={activeLens === lens.key}
-        href={lensHref(lens.key)}
-        aria-current={activeLens === lens.key ? "page" : undefined}
-      >{lens.label}</a>
-    {/each}
-  </nav>
+  {#if focusedIdea}
+    <nav class="candidate-switcher" aria-label="Candidate to review">
+      <span id="risk-candidate-label">Review idea</span>
+      <SegmentControl
+        options={candidateOptions}
+        bind:value={candidateKey}
+        density="compact"
+        label="Candidate to review"
+        labelledBy="risk-candidate-label"
+        onChange={changeCandidate}
+      />
+    </nav>
 
-  <div class:single-candidate={data.workspace.ideas.length === 1} class="risk-list">
-    {#each data.workspace.ideas as idea, i}
-      {@const state = lensStatus(idea.idea_id, idea.idea_revision, activeLens)}
-      {@const challenge = challengeFor(idea.idea_id, idea.idea_revision, activeLens)}
-      {@const assumptions = assumptionsFor(idea.idea_id, idea.idea_revision, activeLens)}
-      <article class="risk-card">
-        <div class="risk-head">
-          <span class="candidate-index" aria-hidden="true">{i + 1}</span>
-          <div class="candidate-id">
-            <h3>{solutionDisplayTitle(idea)}</h3>
-            {#if (idea.idea_revision ?? 1) > 1}<span class="rev">rev {idea.idea_revision}</span>{/if}
-          </div>
-          <span class="lens-state" data-state={state}>{STATE_COPY[state]}</span>
-        </div>
+    <div class="evidence-workspace" bind:this={evidenceWorkspaceEl}>
+      <EvidenceChallenge
+        jobId={data.job.id}
+        ideas={[focusedIdea]}
+        focus={challengeFocus}
+        onLensChange={updateFocus}
+        onTrackRisk={trackRisk}
+        onBranchDirection={() => tools.openVariants()}
+        {ownerEvidencePrefill}
+        onReturnToEvidenceDraft={returnToEvidenceDraft}
+        onChanged={() => { void invalidateAll(); }}
+      />
+    </div>
 
-        <div class="lens-map" role="group" aria-label="Evidence checked across areas">
-          {#each lenses as lens}
-            {@const s = lensStatus(idea.idea_id, idea.idea_revision, lens.key)}
-            <a
-              class="lens-cell"
-              class:current={lens.key === activeLens}
-              data-state={s}
-              href={lensHref(lens.key)}
-              aria-label={`${lens.label}: ${STATE_COPY[s]}`}
-              aria-current={lens.key === activeLens ? "true" : undefined}
-            >
-              <span class="lens-dot" data-state={s} aria-hidden="true">
-                {#if s === "clear"}<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2 5.2 4.2 7.4 8 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                {:else if s === "open"}<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M5 2.4v3.1M5 7.3v.3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>{/if}
-              </span>
-              <span class="lens-name">{lens.label}</span>
-            </a>
-          {/each}
-        </div>
+    <section class="proof-region" bind:this={proofRegionEl}>
+      <AssumptionMap
+        jobId={data.job.id}
+        ideas={[focusedIdea]}
+        prefill={assumptionPrefill}
+        onTestUnknown={(draft) => tools.openTestPlanner({
+          ideaId: draft.ideaId,
+          ideaRevision: draft.ideaRevision,
+          assumptionId: draft.assumptionId ?? undefined,
+          draft,
+        })}
+        onChanged={() => { void invalidateAll(); }}
+        onOpenLinkedTest={revealLinkedTest}
+      />
+    </section>
 
-        <p class="lens-detail">
-          {#if challenge}
-            {challenge.gapQuestionIds.length > 0
-              ? `${challenge.gapQuestionIds.length} open ${challenge.gapQuestionIds.length === 1 ? "question" : "questions"} in ${activeLensLabel.toLowerCase()} could change this choice.`
-              : `The captured ${activeLensLabel.toLowerCase()} evidence holds up.`}
-          {:else}
-            {idea.critic_concern ?? `No independent check has run on ${activeLensLabel.toLowerCase()} for this candidate yet.`}
-          {/if}
-        </p>
-
-        <div class="risk-actions">
-          <button type="button" class="review-action" onclick={() => openReview(idea.idea_id, idea.idea_revision)}>
-            {challenge ? "Reopen review" : "Run evidence review"}
-            <span class="link-arrow" aria-hidden="true">→</span>
-          </button>
-          {#if assumptions.length > 0}
-            <button type="button" class="tracked-count" onclick={() => tools.openAssumptions({
-              ideaId: idea.idea_id ?? "",
-              ideaRevision: idea.idea_revision ?? 1,
-              lens: activeLens,
-            })}>
-              {assumptions.length} tracked {assumptions.length === 1 ? "assumption" : "assumptions"}
-            </button>
-          {/if}
-        </div>
-      </article>
-    {:else}
-      <div class="selection-page__panel selection-page__empty"><div><h3>No candidate is in scope</h3><p>Add a candidate to your shortlist above, then check the evidence behind it.</p></div></div>
-    {/each}
-  </div>
+    {#if (data.decisionState?.experiments.length ?? 0) > 0}
+      <details class="saved-tests" bind:open={savedTestsOpen} bind:this={savedTestsEl}>
+        <summary>
+          <span>Saved test plans</span>
+          <small>{data.decisionState?.experiments.length} saved</small>
+        </summary>
+        {#key experimentStateKey}
+          <ExperimentWorkspace
+            surface="page"
+            jobId={data.job.id}
+            ideas={data.workspace.ideas}
+            onOpenChallenge={revealEvidenceCheck}
+            onChanged={() => { void invalidateAll(); }}
+          />
+        {/key}
+      </details>
+    {/if}
+  {:else}
+    <div class="empty">
+      <EmptyState
+        title="No candidate is in scope"
+        description="Choose a current idea revision before checking its evidence."
+      >
+        <Button href={`/jobs/${data.job.id}`} class="btn-ghost" label="Back to ranked ideas" />
+      </EmptyState>
+    </div>
+  {/if}
 </section>
 
 <style>
-  .lens-bar { display: flex; gap: 0.3rem; overflow-x: auto; margin-bottom: 1rem; padding-bottom: 0.25rem; }
-  .lens-bar a { flex: 0 0 auto; min-height: 1.75rem; display: inline-flex; align-items: center; padding: 0.375rem 0.75rem; border-radius: var(--radius-md); color: var(--color-text-secondary); font-size: var(--text-13); font-weight: 700; text-decoration: none; transition: background var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default); }
-  .lens-bar a:hover { color: var(--color-text-primary); }
-  .lens-bar a.active { background: var(--color-accent-subtle); color: var(--color-accent-dark); box-shadow: inset 0 0 0 1px var(--color-border-accent); }
-
-  .risk-list { display: grid; gap: 0.65rem; }
-  .risk-list.single-candidate { max-width: 60rem; }
-
-  .risk-card {
-    display: grid;
-    gap: 0.75rem;
-    padding: 1rem 1.1rem;
+  .evidence-page { display: grid; gap: var(--space-6); }
+  .page-intro { max-width: 58rem; }
+  .eyebrow {
+    margin: 0 0 var(--space-2);
+    color: var(--color-text-muted);
+    font: 700 var(--text-xs)/var(--leading-tight) var(--font-mono);
+    letter-spacing: var(--tracking-wider);
+    text-transform: uppercase;
+  }
+  .page-intro h2 {
+    max-width: 28ch;
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: var(--text-4xl);
+    font-weight: 700;
+    line-height: var(--leading-tight);
+    letter-spacing: var(--tracking-tight);
+    text-wrap: balance;
+  }
+  .saved-tests {
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
     background: var(--color-bg-elevated);
-    box-shadow: var(--shadow-sm);
+    overflow: clip;
+  }
+  .saved-tests > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    min-height: var(--space-12);
+    padding: var(--space-3) var(--space-4);
+    color: var(--color-text-primary);
+    font-size: var(--text-base);
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .saved-tests > summary:hover { background: var(--color-bg-surface); }
+  .saved-tests > summary:active { background: var(--color-bg-hover); }
+  .saved-tests > summary small {
+    color: var(--color-text-muted);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    letter-spacing: var(--tracking-wide);
+    text-transform: uppercase;
+  }
+  .saved-tests[open] > summary { border-bottom: 1px solid var(--color-border); }
+  .page-intro > p:last-child {
+    max-width: 66ch;
+    margin: var(--space-2) 0 0;
+    color: var(--color-text-secondary);
+    font-size: var(--text-md);
+    line-height: var(--leading-normal);
   }
 
-  .risk-head { display: flex; align-items: center; gap: 0.6rem; }
-  .candidate-index { display: grid; flex: 0 0 auto; width: 1.35rem; height: 1.35rem; place-items: center; border-radius: 50%; background: var(--color-bg-surface); color: var(--color-text-secondary); font: 700 var(--text-11)/1 var(--font-mono); font-variant-numeric: tabular-nums; }
-  .candidate-id { display: flex; flex: 1; min-width: 0; align-items: baseline; gap: 0.5rem; }
-  .candidate-id h3 { overflow: hidden; margin: 0; font-size: var(--text-base); font-weight: 700; letter-spacing: -0.005em; text-overflow: ellipsis; white-space: nowrap; }
-  .rev { flex: 0 0 auto; color: var(--color-text-muted); font: 600 var(--text-xs)/1 var(--font-mono); }
+  .candidate-switcher {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: var(--space-3);
+    align-items: center;
+    padding-block: var(--space-2);
+    border-block: 1px solid var(--color-border);
+  }
+  .candidate-switcher > span {
+    color: var(--color-text-muted);
+    font: 700 var(--text-xs)/var(--leading-tight) var(--font-mono);
+    letter-spacing: var(--tracking-wider);
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
 
-  /* Status pill — severity semantics, not brand orange (open = attention). */
-  .lens-state { flex: 0 0 auto; padding: 0.2rem 0.5rem; border-radius: 999px; font: 700 var(--text-xs)/1.3 var(--font-mono); letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; }
-  .lens-state[data-state="open"] { color: var(--color-warning-dark); background: var(--color-warning-subtle); }
-  .lens-state[data-state="clear"] { color: var(--color-success-dark); background: var(--color-success-subtle); }
-  .lens-state[data-state="unchecked"] { color: var(--color-text-secondary); background: var(--color-bg-surface); }
+  .evidence-workspace { min-width: 0; }
+  .proof-region {
+    padding-top: var(--space-6);
+    border-top: 1px solid var(--color-border-emphasis);
+  }
 
-  /* The evidence map: all four lenses at a glance. Signature element. State is
-     encoded by GLYPH (check / bar-dot / hollow) as well as color, so it reads
-     without color vision; colors use the AA-tuned -dark tokens for 3:1. */
-  .lens-map { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.375rem; }
-  .lens-cell { display: flex; align-items: center; gap: 0.375rem; min-width: 0; min-height: 1.75rem; padding: 0.375rem 0.5rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); color: var(--color-text-secondary); text-decoration: none; transition: border-color var(--duration-fast) var(--ease-default), background var(--duration-fast) var(--ease-default); }
-  .lens-cell:hover { border-color: var(--color-border-emphasis); }
-  .lens-cell:active { background: var(--color-bg-surface); }
-  .lens-cell.current { border-color: var(--color-border-accent); background: var(--color-accent-subtle); }
-  .lens-name { overflow: hidden; font-size: var(--text-sm); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-  .lens-dot { display: grid; flex: 0 0 auto; width: 0.75rem; height: 0.75rem; place-items: center; border-radius: 50%; color: var(--color-bg-elevated); background: var(--color-text-muted); }
-  .lens-dot svg { width: 0.6rem; height: 0.6rem; }
-  .lens-dot[data-state="open"] { background: var(--color-warning-dark); }
-  .lens-dot[data-state="clear"] { background: var(--color-success-dark); }
-  .lens-dot[data-state="unchecked"] { background: transparent; box-shadow: inset 0 0 0 1.5px var(--color-text-muted); }
-
-  .lens-detail { max-width: 78ch; margin: 0; color: var(--color-text-secondary); font-size: var(--text-13); line-height: 1.5; }
-
-  .risk-actions { display: flex; align-items: center; gap: 0.75rem; }
-  .review-action { display: inline-flex; gap: 0.375rem; align-items: center; min-height: 1.75rem; padding: 0.375rem 0.75rem 0.375rem 0.875rem; border: 0; border-radius: var(--radius-md); background: var(--color-accent-hover); color: var(--color-text-on-accent); font: inherit; font-size: var(--text-sm); font-weight: 700; cursor: pointer; transition: background var(--duration-fast) var(--ease-default), transform var(--duration-fast) var(--ease-default); }
-  .review-action:hover { background: var(--color-accent-dark); }
-  .review-action:active { transform: scale(0.98); }
-  .link-arrow { display: inline-grid; place-items: center; transition: transform 220ms cubic-bezier(0.32, 0.72, 0, 1); }
-  .review-action:hover .link-arrow { transform: translateX(0.15rem); }
-  .tracked-count { padding: 0.25rem 0; border: 0; background: transparent; color: var(--color-accent-dark); font: inherit; font-size: var(--text-sm); font-weight: 700; cursor: pointer; }
-  .tracked-count:hover { text-decoration: underline; text-underline-offset: 0.2rem; }
+  .empty {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-bg-elevated);
+  }
 
   @media (max-width: 767px) {
-    .risk-card { padding: 1rem; }
-    .lens-map { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .risk-actions { flex-wrap: wrap; }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .review-action, .review-action:active { transform: none; }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .link-arrow, .lens-cell, .lens-bar a, .review-action { transition: none; }
+    .evidence-page { gap: var(--space-5); }
+    .candidate-switcher { grid-template-columns: 1fr; }
   }
 </style>

@@ -338,6 +338,19 @@ describe('selectionChallengeService', () => {
     expect(withOwnerEvidence.inputFingerprint).not.toBe(base.inputFingerprint);
   });
 
+  it('turns structured preview evidence into readable cited-source text', () => {
+    const prepared = prepareSelectionChallengeInput({
+      lens: 'competition',
+      idea,
+      previewReport,
+      discoveryData,
+    });
+
+    const competitor = prepared.evidenceSnapshot.find(source => source.kind === 'competitor_fact');
+    expect(competitor?.excerpt).toBe('Pricing: $0 · Gap: Slow and inconsistent');
+    expect(competitor?.excerpt).not.toContain('{"');
+  });
+
   it('keeps owner-provided evidence unverified and canonically classifies it as proxy', async () => {
     const questions = ['pain_is_observed', 'urgency_is_behavioral', 'buyer_will_pay'] as const;
     mockChatComplete

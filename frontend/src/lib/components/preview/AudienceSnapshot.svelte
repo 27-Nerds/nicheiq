@@ -7,9 +7,23 @@
 
   let { data }: Props = $props();
 
-  const segments = $derived(data.audience_segments?.slice(0, 3) ?? []);
+  let showAllSegments = $state(false);
+
+  const segments = $derived(
+    showAllSegments
+      ? (data.audience_segments ?? [])
+      : (data.audience_segments?.slice(0, 3) ?? []),
+  );
   const communities = $derived(data.community_hubs?.slice(0, 6) ?? []);
   const vocabulary = $derived(data.common_vocabulary?.slice(0, 6) ?? []);
+  const totalSegments = $derived(data.audience_segments?.length ?? 0);
+  const hiddenSegmentCount = $derived(Math.max(0, totalSegments - segments.length));
+  const hiddenCommunityCount = $derived(
+    Math.max(0, (data.community_hubs?.length ?? 0) - communities.length),
+  );
+  const hiddenVocabularyCount = $derived(
+    Math.max(0, (data.common_vocabulary?.length ?? 0) - vocabulary.length),
+  );
   const primarySegment = $derived(
     data.primary_target_segment || segments[0]?.segment_name || "Audience segments",
   );
@@ -53,7 +67,7 @@
               <span class="audience-segment__size">{segment.size_estimate}</span>
             {/if}
           </div>
-          <h4>{segment.segment_name}</h4>
+          <h4 title={segment.segment_name}>{segment.segment_name}</h4>
           {#if segment.pain_point_alignment?.length}
             <p>{segment.pain_point_alignment.slice(0, 2).join(" · ")}</p>
           {/if}
@@ -74,6 +88,29 @@
         </article>
       {/each}
     </div>
+    {#if totalSegments > 3}
+      <div class="audience-snapshot__disclosure">
+        <p class="audience-snapshot__truncation">
+          {#if hiddenSegmentCount > 0}
+            Showing the first {segments.length} of {totalSegments} captured segments.
+          {:else}
+            Showing all {totalSegments} captured segments.
+          {/if}
+        </p>
+        <button
+          type="button"
+          class="audience-snapshot__toggle"
+          aria-expanded={showAllSegments}
+          onclick={() => (showAllSegments = !showAllSegments)}
+        >
+          {showAllSegments ? "Show fewer" : `Show all ${totalSegments} segments`}
+        </button>
+      </div>
+    {/if}
+  {:else}
+    <p class="audience-snapshot__empty">
+      No audience segments were captured in this report.
+    </p>
   {/if}
 
   {#if communities.length > 0 || vocabulary.length > 0}
@@ -83,8 +120,9 @@
           <span class="audience-signal-label">Where they gather</span>
           <div class="audience-signal-tags">
             {#each communities as hub}
-              <span>{hub}</span>
+              <span title={hub}>{hub}</span>
             {/each}
+            {#if hiddenCommunityCount > 0}<span>+{hiddenCommunityCount} more</span>{/if}
           </div>
         </div>
       {/if}
@@ -93,8 +131,9 @@
           <span class="audience-signal-label">Language</span>
           <div class="audience-signal-tags">
             {#each vocabulary as term}
-              <span>{term}</span>
+              <span title={term}>{term}</span>
             {/each}
+            {#if hiddenVocabularyCount > 0}<span>+{hiddenVocabularyCount} more</span>{/if}
           </div>
         </div>
       {/if}
@@ -105,27 +144,27 @@
 <style>
   .audience-snapshot {
     display: grid;
-    gap: 0.86rem;
+    gap: var(--space-4);
   }
 
   .audience-snapshot__hero {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    gap: 1rem;
+    gap: var(--space-4);
     align-items: start;
-    padding-bottom: 0.8rem;
+    padding-bottom: var(--space-3);
     border-bottom: 1px solid color-mix(in srgb, var(--color-border-emphasis) 34%, transparent);
   }
 
   .audience-snapshot__eyebrow,
   .audience-signal-label {
     display: block;
-    margin: 0 0 0.28rem;
+    margin: 0 0 var(--space-1);
     color: var(--color-text-muted);
     font-family: var(--font-mono);
-    font-size: 0.5625rem;
+    font-size: var(--text-xs);
     font-weight: 800;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.07em;
     line-height: 1;
     text-transform: uppercase;
   }
@@ -135,7 +174,7 @@
     margin: 0;
     color: var(--color-text-primary);
     font-family: var(--font-display);
-    font-size: 1rem;
+    font-size: var(--text-md);
     font-weight: 800;
     letter-spacing: -0.012em;
     line-height: 1.18;
@@ -144,9 +183,9 @@
 
   .audience-snapshot__hero p {
     max-width: 74ch;
-    margin: 0.34rem 0 0;
+    margin: var(--space-1) 0 0;
     color: var(--color-text-secondary);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     line-height: 1.5;
     text-wrap: pretty;
   }
@@ -159,12 +198,12 @@
     overflow: hidden;
     margin: 0;
     border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 38%, transparent);
-    border-radius: 0.625rem;
-    background: color-mix(in srgb, var(--color-bg-surface) 70%, white);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--color-bg-surface) 70%, var(--color-bg-elevated));
   }
 
   .audience-snapshot__stats div {
-    padding: 0.54rem 0.62rem;
+    padding: var(--space-2) var(--space-3);
     border-right: 1px solid color-mix(in srgb, var(--color-border-emphasis) 34%, transparent);
   }
 
@@ -174,16 +213,16 @@
 
   .audience-snapshot__stats dt {
     color: var(--color-text-muted);
-    font-size: 0.5625rem;
+    font-size: var(--text-xs);
     font-weight: 700;
     line-height: 1;
   }
 
   .audience-snapshot__stats dd {
-    margin: 0.18rem 0 0;
+    margin: var(--space-1) 0 0;
     color: var(--color-text-primary);
     font-family: var(--font-mono);
-    font-size: 0.9375rem;
+    font-size: var(--text-md);
     font-weight: 800;
     line-height: 1;
     font-variant-numeric: tabular-nums;
@@ -192,23 +231,21 @@
   .audience-snapshot__segments {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 
   .audience-segment {
     min-width: 0;
-    padding: 0.7rem 0.72rem;
+    padding: var(--space-3);
     border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 36%, transparent);
-    border-radius: 0.625rem;
+    border-radius: var(--radius-md);
     background:
       color-mix(in srgb, var(--color-bg-elevated) 84%, var(--color-bg-surface));
   }
 
   .audience-segment--primary {
     border-color: color-mix(in srgb, var(--color-accent) 30%, var(--color-border));
-    background:
-      linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 5%, transparent), transparent 62%),
-      color-mix(in srgb, var(--color-bg-elevated) 90%, var(--color-bg-surface));
+    background: color-mix(in srgb, var(--color-accent) 5%, var(--color-bg-elevated));
   }
 
   .audience-segment__top,
@@ -222,20 +259,20 @@
 
   .audience-segment__top {
     justify-content: space-between;
-    gap: 0.4rem;
-    margin-bottom: 0.42rem;
+    gap: var(--space-2);
+    margin-bottom: var(--space-2);
   }
 
   .audience-segment__rank {
     color: var(--color-text-muted);
     font-family: var(--font-mono);
-    font-size: 0.5625rem;
+    font-size: var(--text-xs);
     font-weight: 800;
   }
 
   .audience-segment__size {
     color: var(--color-text-secondary);
-    font-size: 0.5625rem;
+    font-size: var(--text-xs);
     font-weight: 700;
   }
 
@@ -243,33 +280,34 @@
     margin: 0;
     color: var(--color-text-primary);
     font-family: var(--font-display);
-    font-size: 0.8125rem;
+    font-size: var(--text-13);
     font-weight: 800;
     line-height: 1.22;
     text-wrap: balance;
+    overflow-wrap: anywhere;
   }
 
   .audience-segment p {
-    margin: 0.34rem 0 0;
+    margin: var(--space-1) 0 0;
     color: var(--color-text-secondary);
-    font-size: 0.6875rem;
+    font-size: var(--text-11);
     line-height: 1.43;
     text-wrap: pretty;
   }
 
   .audience-segment__meta {
-    gap: 0.5rem 0.9rem;
-    margin-top: 0.55rem;
-    padding-top: 0.5rem;
+    gap: var(--space-2) var(--space-4);
+    margin-top: var(--space-2);
+    padding-top: var(--space-2);
     border-top: 1px solid color-mix(in srgb, var(--color-border-emphasis) 22%, transparent);
   }
 
   .audience-segment__stat {
     display: flex;
     flex-direction: column;
-    gap: 0.14rem;
+    gap: var(--space-1);
     color: var(--color-text-secondary);
-    font-size: 0.6875rem;
+    font-size: var(--text-11);
     font-weight: 700;
     line-height: 1.05;
   }
@@ -277,30 +315,29 @@
   .audience-segment__stat-key {
     color: var(--color-text-muted);
     font-family: var(--font-mono);
-    font-size: 0.5625rem;
+    font-size: var(--text-xs);
     font-weight: 700;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.07em;
     line-height: 1;
     text-transform: uppercase;
   }
 
   .audience-signal-tags span {
     max-width: 100%;
-    padding: 0.16rem 0.42rem;
+    padding: var(--space-1) var(--space-2);
     overflow: hidden;
     border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 34%, transparent);
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     color: var(--color-text-muted);
-    background: color-mix(in srgb, var(--color-bg-surface) 76%, white);
-    font-size: 0.5625rem;
+    background: color-mix(in srgb, var(--color-bg-surface) 76%, var(--color-bg-elevated));
+    font-size: var(--text-xs);
     font-weight: 600;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
   }
 
   .audience-snapshot__signal-row {
-    gap: 0.76rem 1.2rem;
-    padding-top: 0.04rem;
+    gap: var(--space-3) var(--space-5);
+    padding-top: var(--space-1);
   }
 
   .audience-signal-group {
@@ -308,7 +345,51 @@
   }
 
   .audience-signal-tags {
-    gap: 0.32rem;
+    gap: var(--space-2);
+  }
+
+  .audience-snapshot__disclosure {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-1) var(--space-3);
+    flex-wrap: wrap;
+  }
+
+  .audience-snapshot__toggle {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    color: var(--color-accent-dark);
+    font-family: var(--font-body);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    line-height: var(--leading-normal);
+  }
+
+  .audience-snapshot__toggle:hover {
+    text-decoration: underline;
+  }
+
+  .audience-snapshot__toggle:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+
+  .audience-snapshot__truncation,
+  .audience-snapshot__empty {
+    margin: 0;
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+    line-height: var(--leading-normal);
+  }
+
+  .audience-snapshot__empty {
+    padding: var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
   }
 
   @media (max-width: 860px) {

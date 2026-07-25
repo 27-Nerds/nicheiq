@@ -108,43 +108,43 @@
     background: transparent;
     border-top: 1px solid color-mix(in srgb, var(--color-border-emphasis) 12%, transparent);
     border-bottom: 1px solid color-mix(in srgb, var(--color-border-emphasis) 12%, transparent);
-    padding: 2rem 0;
+    padding: var(--space-8) 0;
     margin-bottom: var(--space-3);
     display: flex;
     flex-direction: column;
-    gap: 1.25rem;
+    gap: var(--space-5);
   }
 
   .seo-preview-eyebrow {
     font-family: var(--font-mono);
-    font-size: 0.6875rem;
+    font-size: var(--text-11);
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--color-accent);
+    color: var(--color-text-muted);
   }
 
   .seo-preview-hero {
     display: flex;
     align-items: center;
-    gap: 1.25rem;
+    gap: var(--space-5);
   }
 
   .seo-preview-score {
     display: flex;
     align-items: baseline;
-    gap: 0.25rem;
+    gap: var(--space-1);
     font-family: var(--font-display);
     font-weight: 800;
     line-height: 1;
     color: var(--color-text-primary);
   }
   .seo-preview-score > span:first-child {
-    font-size: 2.5rem;
+    font-size: var(--text-5xl);
   }
   .seo-preview-score-unit {
     font-family: var(--font-mono);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     font-weight: 600;
     color: var(--color-text-muted);
     letter-spacing: 0.02em;
@@ -153,26 +153,26 @@
   .seo-preview-hero-meta {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: var(--space-1);
   }
   .seo-preview-hero-label {
     font-family: var(--font-display);
-    font-size: 0.9375rem;
+    font-size: var(--text-base);
     font-weight: 600;
     color: var(--color-text-primary);
   }
   .seo-preview-hero-support {
-    font-size: 0.8125rem;
+    font-size: var(--text-13);
     color: var(--color-text-muted);
   }
 
   .seo-preview-section-title {
     font-family: var(--font-display);
-    font-size: 0.8125rem;
+    font-size: var(--text-13);
     font-weight: 600;
     color: var(--color-text-secondary);
-    margin: 0 0 0.75rem;
-    padding-bottom: 0.5rem;
+    margin: 0 0 var(--space-3);
+    padding-bottom: var(--space-2);
     border-bottom: 1px solid var(--color-border);
   }
 
@@ -180,12 +180,12 @@
     display: grid;
     grid-template-columns: 180px 1fr;
     align-items: center;
-    gap: 0.75rem;
-    padding: 0.375rem 0;
+    gap: var(--space-3);
+    padding: var(--space-1-5) 0;
   }
   .seo-preview-tier-label {
     font-family: var(--font-display);
-    font-size: 0.8125rem;
+    font-size: var(--text-13);
     font-weight: 500;
     color: var(--color-text-primary);
   }
@@ -208,22 +208,22 @@
   .seo-preview-table-row {
     display: grid;
     grid-template-columns: 1fr 80px 80px;
-    gap: 1rem;
-    padding: 0.5rem 0;
+    gap: var(--space-4);
+    padding: var(--space-2) 0;
     font-family: var(--font-mono);
-    font-size: 0.8125rem;
+    font-size: var(--text-13);
     color: var(--color-text-secondary);
     border-bottom: 1px solid var(--color-border);
   }
   .seo-preview-table-header {
-    font-size: 0.6875rem;
+    font-size: var(--text-11);
     font-weight: 600;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.07em;
     text-transform: uppercase;
     color: var(--color-text-muted);
   }
   .seo-preview-table-header + .seo-preview-table-row {
-    padding-top: 0.625rem;
+    padding-top: var(--space-2);
   }
 
   .seo-preview-table-row--sample {
@@ -232,18 +232,18 @@
   .sample-cell {
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
   .sample-badge {
     font-family: var(--font-mono);
-    font-size: 0.5625rem;
+    font-size: var(--text-xs);
     font-weight: 600;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.07em;
     text-transform: uppercase;
     color: var(--color-text-secondary);
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
-    padding: 0.125rem 0.375rem;
+    padding: 0.125rem var(--space-1-5);
     border-radius: 3px;
   }
 
@@ -258,7 +258,7 @@
 
   @media (max-width: 640px) {
     .seo-preview {
-      padding: 1.5rem 0;
+      padding: var(--space-6) 0;
     }
     .seo-preview-hero {
       flex-direction: column;
@@ -266,7 +266,7 @@
     }
     .seo-preview-tier {
       grid-template-columns: 1fr;
-      gap: 0.375rem;
+      gap: var(--space-1-5);
     }
   }
 </style>

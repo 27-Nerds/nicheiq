@@ -119,7 +119,7 @@
           <img src="/niche-logo-beta.svg" alt="NicheIQ" class="h-11" />
         </a>
 
-        <nav class="flex items-center gap-5">
+        <nav class="flex items-center gap-5" aria-label="Primary">
           {@render navLink(
             "/dashboard",
             "Dashboard",
@@ -131,7 +131,7 @@
         </nav>
       </div>
 
-      <nav class="flex items-center gap-1">
+      <nav class="flex items-center gap-1" aria-label="Account and actions">
         <a
           href="/new"
           class="new-research-action"
@@ -160,7 +160,7 @@
             {creditBalance}
           </span>
           <span
-            class="text-[10px] font-mono uppercase tracking-[0.08em] text-text-muted hidden sm:inline"
+            class="text-[10px] font-mono uppercase tracking-[0.08em] text-text-secondary hidden sm:inline"
             >credits</span
           >
           {#if monthlyAllowance > 0 && resetDate}
@@ -176,6 +176,7 @@
         <div class="relative ml-3" bind:this={userMenuEl}>
           <button
             onclick={() => (showUserMenu = !showUserMenu)}
+            aria-label="Account menu"
             class="flex items-center gap-2.5 pl-3 pr-2 py-1.5 rounded-full hover:bg-bg-elevated transition-colors border border-transparent hover:border-border"
           >
             <span class="text-sm font-medium text-text-secondary hidden sm:inline"
