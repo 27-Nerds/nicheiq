@@ -53,7 +53,7 @@ _CADENCE_SHAPE_FIX = {
 STRENGTH_CUTOFFS: list[tuple[str, str, float]] = [
     ("market-fit", "market_fit_score", 0.82),
     ("seo-power", "seo_scalability_score", 0.85),
-    ("innovator", "novelty_score", 0.70),
+    ("innovator", "distinctiveness_score", 0.70),
     ("quick-build", "technical_feasibility_score", 0.85),
     ("solo-friendly", "solo_dev_feasibility", 0.78),
 ]
@@ -90,22 +90,28 @@ def _build_complexity(idea: "BaseSolutionIdea") -> Optional[str]:
     return "high"
 
 
+def _distinctiveness_score(idea: "BaseSolutionIdea") -> Optional[float]:
+    """Return the canonical distinctiveness signal used by tags and the UI.
+
+    Obviousness is authoritative when present (lower obviousness means higher
+    distinctiveness). Legacy ideas without it fall back to ``novelty_score``.
+    """
+    obviousness = idea.obviousness_score
+    if isinstance(obviousness, (int, float)) and not isinstance(obviousness, bool):
+        return 1 - obviousness
+    novelty = idea.novelty_score
+    if isinstance(novelty, (int, float)) and not isinstance(novelty, bool):
+        return novelty
+    return None
+
+
 def _novelty_level(idea: "BaseSolutionIdea") -> Optional[str]:
-    """Bucket distinctiveness, matching the UI's inverse-obviousness presentation.
-    Obviousness is the primary signal: LOWER = MORE distinct. novelty_score (higher = more
-    distinct) is the fallback when obviousness is absent."""
-    o = idea.obviousness_score
-    n = idea.novelty_score
-    if o is not None:
-        if o <= 0.30:        # very original (Orig ≥ 70)
+    """Bucket the same canonical distinctiveness value used by the strength badge."""
+    distinctiveness = _distinctiveness_score(idea)
+    if distinctiveness is not None:
+        if distinctiveness >= 0.70:
             return "novel"
-        if o >= 0.60:        # obvious / unoriginal (Orig ≤ 40)
-            return "conventional"
-        return "moderate"
-    if n is not None:
-        if n >= 0.70:
-            return "novel"
-        if n <= 0.40:
+        if distinctiveness <= 0.40:
             return "conventional"
         return "moderate"
     return None
@@ -116,10 +122,18 @@ def _strengths(idea: "BaseSolutionIdea") -> tuple[list[str], Optional[str]]:
     earned: list[str] = []
     margins: dict[str, float] = {}
     for key, field, cutoff in STRENGTH_CUTOFFS:
-        v = getattr(idea, field, None)
-        if isinstance(v, (int, float)) and v >= cutoff:
+        value = (
+            _distinctiveness_score(idea)
+            if key == "innovator"
+            else getattr(idea, field, None)
+        )
+        if (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and value >= cutoff
+        ):
             earned.append(key)
-            margins[key] = v - cutoff
+            margins[key] = value - cutoff
     primary = max(margins, key=margins.get) if margins else None
     return earned, primary
 
@@ -173,6 +187,17 @@ def derive_tag_facets(
     if rationale:
         rationale = rationale[:200]
 
+    # data_access is the one facet copied verbatim from an idea field rather than from the LLM
+    # tagging call, so a label that lost the closed vocab upstream lands here and is dropped
+    # silently — which reads downstream as "no data barrier". Log it: a hit means a write site
+    # let an off-vocab label through (see utils.data_access).
+    data_access = _valid(idea.data_access_model, DATA_ACCESS)
+    if idea.data_access_model and data_access is None:
+        logger.warning(
+            f"[IdeaTags] '{getattr(idea, 'solution_name', '?')}' data_access_model "
+            f"'{str(idea.data_access_model)[:40]}' outside DataAccessTag "
+            f"{sorted(DATA_ACCESS)} — tags.data_access dropped")
+
     monetization = _valid(llm.get("monetization"), MONETIZATION)
     usage_cadence = _valid(llm.get("usage_cadence"), USAGE_CADENCE)
 
@@ -186,7 +211,7 @@ def derive_tag_facets(
 
     return IdeaTags(
         project_type=_valid(idea.project_type, PROJECT_TYPES),
-        data_access=_valid(idea.data_access_model, DATA_ACCESS),
+        data_access=data_access,
         target_market=_valid(llm.get("target_market"), TARGET_MARKETS),
         monetization=monetization,
         monetization_secondary=_valid(llm.get("monetization_secondary"), MONETIZATION),

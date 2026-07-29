@@ -546,7 +546,7 @@
                           <span class="row-sub row-dim">{job.currentStageName ?? meta.label}{#if counts.total} · {counts.completed}/{counts.total}{/if}</span>
                         </div>
                       {:else if job.status === "REGENERATING"}
-                        <p class="row-sub row-dim"><Loader2 size={13} class="spinner" aria-hidden="true" /> Generating a fresh batch of ideas…</p>
+                        <p class="row-sub row-dim"><Loader2 size={13} class="spinner" aria-hidden="true" /> Adding another idea batch…</p>
                       {:else}
                         <p class="row-sub row-dim">{#if job.queuePosition}Position {job.queuePosition} in queue{:else}Preparing to start…{/if}</p>
                       {/if}

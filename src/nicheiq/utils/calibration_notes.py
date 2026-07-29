@@ -42,6 +42,28 @@ def humanize_score_mentions(text: str) -> str:
     return _WALLET_TOKEN_RE.sub(lambda m: _WALLET_TOKEN_INLINE[m.group(0).lower()], text)
 
 
+#: Longest reason worth persisting per criterion. Matches the largest `max_len` any
+#: consumer asks for (report_generator and research_flow both pass 280), so the
+#: display cap is the binding one and storage never silently loses text the UI
+#: would have shown.
+MAX_STORED_REASON_LEN = 280
+
+
+def truncate_at_word(text: str, max_len: int) -> str:
+    """Cut `text` to at most `max_len` chars on a word boundary, marking the cut with '…'.
+
+    Critic reasons are written as "addresses X, but Y" — the caveat lands last, so a raw
+    slice removes the only clause that makes the sentence a concern rather than praise.
+    Never slice these by hand; the '…' is also the reader's signal that more existed.
+    """
+    if len(text) <= max_len:
+        return text
+    cut = text[:max_len]
+    if " " in cut:
+        cut = cut[:cut.rindex(" ")]
+    return cut.rstrip(" ,;.") + "…"
+
+
 def extract_criterion_reason(notes: str | None, criterion: str = "market_fit",
                              max_len: int = 170) -> str:
     """Extract one criterion's reason from a calibration_notes string. '' when absent.
@@ -55,10 +77,5 @@ def extract_criterion_reason(notes: str | None, criterion: str = "market_fit",
         seg = seg.strip()
         if seg.lower().startswith(f"{criterion}:"):
             reason = humanize_score_mentions(seg.split(":", 1)[1].strip())
-            if len(reason) <= max_len:
-                return reason
-            cut = reason[:max_len]
-            if " " in cut:
-                cut = cut[:cut.rindex(" ")]
-            return cut.rstrip(" ,;.") + "…"
+            return truncate_at_word(reason, max_len)
     return ""

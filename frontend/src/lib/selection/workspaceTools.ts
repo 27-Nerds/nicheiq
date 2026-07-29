@@ -43,11 +43,6 @@ export interface WorkspaceToolsApi {
   openConstraints(): void;
   /** Durable founder-fit comparison route. */
   openFit(): void;
-  /** Shortlist mutation, shared with the scope strip in the workspace header. */
-  toggleShortlist(idea: SolutionPreview): void;
-  isShortlisted(idea: SolutionPreview): boolean;
-  shortlistFull(): boolean;
-  shortlistBusy(): boolean;
 }
 
 const WORKSPACE_TOOLS_KEY = Symbol("selection:workspace-tools");

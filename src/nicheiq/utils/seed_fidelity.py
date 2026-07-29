@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from math import ceil
 from typing import Any
 
 _IDENTITY_FIELDS = (
@@ -19,6 +20,18 @@ _IDENTITY_FIELDS = (
     "why_it_works",
     "innovation_angle",
     "technical_approach",
+)
+
+_STRUCTURED_IDENTITY_FIELDS = _IDENTITY_FIELDS + (
+    "target_personas",
+    "target_keywords",
+    "distribution_channel",
+    "delivery_format",
+    "data_source",
+    "data_access_model",
+    "data_acquisition_notes",
+    "organic_discovery_queries",
+    "programmatic_seo_opportunity",
 )
 
 
@@ -74,3 +87,47 @@ def is_seed_faithful(seed_text: str, candidate: Any) -> bool:
     )
     shared = seed_tokens & _content_tokens(candidate_text)
     return len(shared) >= min(3, len(seed_tokens))
+
+
+def structured_synthesis_fidelity_failures(
+    proposal: dict, candidate: Any,
+) -> list[str]:
+    """Return exact Concept Forge identity clauses missing from candidate copy.
+
+    This deliberately reads only product identity fields, never the attached
+    `synthesis_evaluation` provenance. Otherwise a drifted candidate would pass
+    simply because the original brief was serialized beside it.
+    """
+    candidate_text = " ".join(
+        _flatten(getattr(candidate, field, None))
+        for field in _STRUCTURED_IDENTITY_FIELDS
+    )
+    candidate_tokens = _content_tokens(candidate_text)
+    failures: list[str] = []
+
+    def require(label: str, text: str, fraction: float, floor: int) -> None:
+        tokens = _content_tokens(text)
+        if not tokens:
+            return
+        required = min(len(tokens), max(floor, ceil(len(tokens) * fraction)))
+        if len(tokens & candidate_tokens) < required:
+            failures.append(label)
+
+    require("proposedTitle", str(proposal.get("proposedTitle") or ""), 0.5, 1)
+    require("proposedBrief", str(proposal.get("proposedBrief") or ""), 0.35, 3)
+
+    exact = proposal.get("evaluation")
+    axes = exact.get("changedAxes") if isinstance(exact, dict) else None
+    if isinstance(axes, list):
+        for index, axis in enumerate(axes):
+            if not isinstance(axis, dict):
+                failures.append(f"changedAxes[{index}]")
+                continue
+            label = str(axis.get("axis") or index)
+            require(
+                f"changedAxes.{label}.to",
+                str(axis.get("to") or ""),
+                0.6,
+                1,
+            )
+    return failures

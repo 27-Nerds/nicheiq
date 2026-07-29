@@ -62,6 +62,7 @@ export interface SelectionJourney {
     version: number;
     maxItems: 3;
     items: SelectionDecisionIdeaRef[];
+    staleItems: SelectionDecisionIdeaRef[];
   };
   tasks: SelectionJourneyTask[];
   recommendation: SelectionJourneyRecommendation;
@@ -406,6 +407,11 @@ export function buildSelectionJourney(
       version: state.shortlist.version,
       maxItems: 3,
       items: state.shortlist.items.map((idea) => ({ ...idea })),
+      staleItems: (state.shortlist.staleItems ?? []).map((idea) => ({
+        ideaId: idea.ideaId,
+        ideaRevision: idea.ideaRevision,
+        title: idea.titleSnapshot ?? "Unavailable candidate",
+      })),
     },
     tasks,
     recommendation,

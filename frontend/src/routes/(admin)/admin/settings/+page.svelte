@@ -86,7 +86,7 @@
   const COST_FIELDS = [
     { key: "token_cost_discovery", label: "Discovery", default: 5 },
     { key: "token_cost_deep_research", label: "Deep Research", default: 15 },
-    { key: "token_cost_regenerate_ideas", label: "Generate More Ideas", default: 2 },
+    { key: "token_cost_regenerate_ideas", label: "Add Another Idea Batch", default: 2 },
     { key: "token_cost_landing_page", label: "Landing Page", default: 5 },
     { key: "token_cost_guided_s1", label: "Guided · Niche validation", default: 1 },
     { key: "token_cost_guided_s2_4", label: "Guided · Audience & pain analysis", default: 3 },

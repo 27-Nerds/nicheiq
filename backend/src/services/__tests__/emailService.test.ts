@@ -32,8 +32,8 @@ vi.mock('fs', () => ({
     if (path.includes('jobError.txt')) return '{{NICHE}} error: {{ERROR_MESSAGE}} guidance: {{GUIDANCE}}';
     if (path.includes('phase2Start.html')) return '<html>{{NICHE}} phase2 - {{SELECTED_SOLUTIONS}} - {{JOB_ID}}</html>';
     if (path.includes('phase2Start.txt')) return '{{NICHE}} phase2 - {{SELECTED_SOLUTIONS}} - {{JOB_ID}}';
-    if (path.includes('regenerationComplete.html')) return '<html>{{NICHE}} regen - {{NEW_SOLUTION_COUNT}} new of {{TOTAL_SOLUTION_COUNT}} - {{JOB_ID}}</html>';
-    if (path.includes('regenerationComplete.txt')) return '{{NICHE}} regen - {{NEW_SOLUTION_COUNT}} new of {{TOTAL_SOLUTION_COUNT}} - {{JOB_ID}}';
+    if (path.includes('regenerationComplete.html')) return '<html>{{NICHE}} - {{BATCH_RESULT}} - {{BATCH_GUIDANCE}} - {{JOB_ID}}</html>';
+    if (path.includes('regenerationComplete.txt')) return '{{NICHE}} - {{BATCH_RESULT}} - {{BATCH_GUIDANCE}} - {{JOB_ID}}';
     return '';
   }),
 }));
@@ -227,7 +227,7 @@ describe('emailService', () => {
       process.env.FROM_EMAIL = 'noreply@test.com';
     });
 
-    it('sends with correct subject and renders counts', async () => {
+    it('sends with correct subject and renders the added-candidate result', async () => {
       const { sendRegenerationCompleteEmail } = await import('../emailService.js');
       mockSendMail.mockResolvedValue({});
 
@@ -236,11 +236,23 @@ describe('emailService', () => {
       expect(mockSendMail).toHaveBeenCalledWith(
         expect.objectContaining({
           to: 'user@example.com',
-          subject: 'Your New NicheIQ Solution Ideas Are Ready!',
-          html: expect.stringContaining('3'),
+          subject: 'Your NicheIQ idea batch is ready',
+          html: expect.stringContaining('3 new candidates'),
           text: expect.stringContaining('8'),
         })
       );
+    });
+
+    it('does not claim candidates were added when the batch clears none', async () => {
+      const { sendRegenerationCompleteEmail } = await import('../emailService.js');
+      mockSendMail.mockResolvedValue({});
+
+      await sendRegenerationCompleteEmail('user@example.com', 'job-123', 'Test Niche', 0, 1);
+
+      const email = mockSendMail.mock.calls.at(-1)?.[0];
+      expect(email.text).toContain('no new candidates cleared the checks');
+      expect(email.text).toContain('existing 1 candidate is unchanged');
+      expect(email.text).not.toContain('0 new');
     });
   });
 

@@ -22,7 +22,7 @@ def _crew():
 
 def _idea(**kw):
     base = dict(novelty_score=None, obviousness_score=None, winning_angle=None,
-                market_fit_score=0.5, data_access_model="official", build_feasibility_score=0.8,
+                market_fit_score=0.5, data_access_model="public", build_feasibility_score=0.8,
                 solo_dev_feasibility=0.6, technical_feasibility_score=0.7)
     base.update(kw)
     return SimpleNamespace(**base)

@@ -1066,9 +1066,12 @@ RULES:
             self.state.completed_stages.sort()  # Keep sorted for readability
             logger.debug(f"[Stage Tracking] Stage {stage} marked complete")
 
-        # Track completion timestamp
+        # Track completion timestamp. MUST match `started_at` (ResearchState uses
+        # datetime.utcnow()) — both are stored naive with no tz marker, so mixing
+        # now() and utcnow() silently skews every duration computed against
+        # started_at by the local UTC offset.
         stage_key = str(stage)
-        self.state.stage_completion_timestamps[stage_key] = datetime.now()
+        self.state.stage_completion_timestamps[stage_key] = datetime.utcnow()
 
         # Track fallback usage
         if used_fallback and stage not in self.state.fallback_stages:
@@ -1106,7 +1109,7 @@ RULES:
         if stage_num not in self.state.skipped_stages:
             self.state.skipped_stages.append(stage_num)
             self.state.skipped_stages.sort()
-        self.state.stage_completion_timestamps[str(stage_num)] = datetime.now()
+        self.state.stage_completion_timestamps[str(stage_num)] = datetime.utcnow()  # see _mark_stage_complete
         logger.info(f"[Stage Tracking] Stage {stage_num} ({stage_name}) skipped: {reason}")
         self._emit_progress(stage_num, stage_name, "skipped", artifact={"skip_reason": reason})
         # Persist skipped_stages now — a terminal skip cascade (stages 10-13 before the report)
@@ -1601,7 +1604,14 @@ RULES:
 
                 # Build sorted array with 0-filled gaps
                 current = cutoff.replace(day=1)
-                end = now.replace(day=1)
+                # End at the last COMPLETE month. The current month is partial, so plotting it
+                # beside full months compares unequal windows — and because search APIs
+                # over-return recent content, it landed as the series maximum on 4 of 4 audited
+                # runs (2.4x/1.2x/4.3x/1.5x the next-highest month). That single partial bar drove
+                # the headline: every one of those runs reported growth (+43/46/116/49%), which is
+                # not four booming niches, it is a metric that can only say "up". Dropping it flips
+                # this run's figure from +43% to -12%.
+                end = (now.replace(day=1) - timedelta(days=1)).replace(day=1)
                 while current <= end:
                     key = current.strftime('%Y-%m')
                     discussion_trend.append({"month": key, "count": monthly.get(key, 0)})
@@ -1773,6 +1783,30 @@ RULES:
         """
         try:
             state = self.state
+            if self.job_id and state.idea_generation:
+                from ..utils.idea_identity import (
+                    link_legacy_findings_to_ideas,
+                    stamp_new_idea_identities,
+                    stamp_ruled_out_findings,
+                )
+
+                stamp_new_idea_identities(
+                    self.job_id,
+                    state.idea_generation.solution_ideas,
+                    origin="phase1",
+                    operation_key="initial",
+                    force=True,
+                    only_unowned=True,
+                )
+                state.idea_ruled_out = link_legacy_findings_to_ideas(
+                    state.idea_ruled_out,
+                    state.idea_generation.solution_ideas,
+                )
+                state.idea_ruled_out = stamp_ruled_out_findings(
+                    self.job_id,
+                    state.idea_ruled_out,
+                    operation_key="preview",
+                )
             report: dict = {}
 
             # ── Stage 1: Niche Context ──
@@ -2028,6 +2062,14 @@ RULES:
 
                         alt = {
                             "solution_name": solution.solution_name,
+                            "idea_id": getattr(solution, "idea_id", None),
+                            "idea_revision": getattr(solution, "idea_revision", 1),
+                            "identity_origin": getattr(
+                                solution, "identity_origin", None,
+                            ),
+                            "identity_operation_id": getattr(
+                                solution, "identity_operation_id", None,
+                            ),
                             "headline": getattr(solution, "headline", None),
                             "short_description": getattr(solution, "short_description", None),
                             "summary": summary,
@@ -2093,6 +2135,24 @@ RULES:
                             "source_segment_payability_class": getattr(solution, "source_segment_payability_class", None),
                             # Multi-Frame Idea Generation Portfolio: which frame minted this idea's cell
                             "source_frame": getattr(solution, "source_frame", None),
+                            # Exact Concept Forge evaluation provenance. These fields are
+                            # code-owned and must survive preview materialization so an
+                            # accepted result remains linkable to the same activity record
+                            # as a demoted result in examined_ruled_out.
+                            "evaluation_id": getattr(solution, "evaluation_id", None),
+                            "evaluation_source_message_id": getattr(
+                                solution, "evaluation_source_message_id", None,
+                            ),
+                            "proposed_title": getattr(solution, "proposed_title", None),
+                            "synthesis_evaluation": getattr(
+                                solution, "synthesis_evaluation", None,
+                            ),
+                            "generation_operation_id": getattr(
+                                solution, "generation_operation_id", None,
+                            ),
+                            "generation_batch_ordinal": getattr(
+                                solution, "generation_batch_ordinal", None,
+                            ),
                             # Closed-vocabulary filter facets (chips + future filtering).
                             "tags": refresh_tag_facets(solution).model_dump(),
                             "candidate_status": getattr(solution, "candidate_status", None),
@@ -2192,16 +2252,39 @@ RULES:
                 # Older findings stored only the verdict summary even though a demoted idea may
                 # remain in the checkpoint pool. Backfill its read-only detail payload during
                 # projection; rejected backfill ideas cannot be recovered from old checkpoints.
-                ideas_by_name = {
-                    (getattr(idea, "solution_name", "") or ""): idea
+                ideas_by_name: dict[str, list] = {}
+                for idea in (
+                    getattr(getattr(state, "idea_generation", None),
+                            "solution_ideas", None) or []
+                ):
+                    ideas_by_name.setdefault(
+                        getattr(idea, "solution_name", "") or "",
+                        [],
+                    ).append(idea)
+                ideas_by_ref = {
+                    (
+                        getattr(idea, "idea_id", None),
+                        getattr(idea, "idea_revision", 1),
+                    ): idea
                     for idea in (
                         getattr(getattr(state, "idea_generation", None),
                                 "solution_ideas", None) or [])
+                    if getattr(idea, "idea_id", None)
                 }
                 for finding in ruled_out:
                     if finding.get("idea"):
                         continue
-                    idea = ideas_by_name.get(finding.get("idea_name") or "")
+                    idea = ideas_by_ref.get(
+                        (
+                            finding.get("idea_id"),
+                            finding.get("idea_revision", 1),
+                        )
+                    )
+                    if idea is None:
+                        name_matches = ideas_by_name.get(
+                            finding.get("idea_name") or "", []
+                        )
+                        idea = name_matches[0] if len(name_matches) == 1 else None
                     if idea is not None and hasattr(idea, "model_dump"):
                         finding["idea"] = idea.model_dump(mode="json")
                 report["examined_ruled_out"] = ruled_out

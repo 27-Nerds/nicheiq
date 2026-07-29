@@ -133,7 +133,7 @@ class TestBackfillSolutionScores:
         assert names == {"Existing", "New"}
 
     def test_all_present_no_change(self):
-        """No backfill when all solutions already scored."""
+        """Existing selector composites stay fixed while final idea sub-scores synchronize."""
         existing = [
             SolutionScores(
                 solution_name="A",
@@ -145,11 +145,16 @@ class TestBackfillSolutionScores:
                 rank=1,
             )
         ]
-        ideas = [_FakeIdea("A", 0.9, 0.8, 0.7, 0.6)]
+        ideas = [_FakeIdea("A", 0.55, 0.65, 0.45, 0.50)]
         result = backfill_solution_scores(existing, ideas)
         assert len(result) == 1
-        # Original scores preserved (not recomputed)
+        # Task-4's strategic composite/ranking remains the selection decision record.
         assert result[0].composite_score == 0.75
+        # Its component ledger must reflect the finalized idea fields shown elsewhere.
+        assert result[0].market_fit_score == 0.55
+        assert result[0].technical_feasibility_score == 0.65
+        assert result[0].competitive_advantage_score == 0.45
+        assert result[0].seo_growth_potential_score == 0.50
 
     def test_reranks(self):
         """After backfill, entire list is re-ranked by composite_score."""

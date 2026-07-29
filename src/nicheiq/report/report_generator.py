@@ -1954,6 +1954,12 @@ It differentiates through {diff_text}.
                 alternative_solutions.append(AlternativeSolution(
                     # Existing fields (using pre-validated variables)
                     solution_name=solution.solution_name,
+                    idea_id=getattr(solution, 'idea_id', None),
+                    idea_revision=getattr(solution, 'idea_revision', 1),
+                    identity_origin=getattr(solution, 'identity_origin', None),
+                    identity_operation_id=getattr(
+                        solution, 'identity_operation_id', None,
+                    ),
                     headline=getattr(solution, 'headline', None),
                     short_description=getattr(solution, 'short_description', None),
                     summary=summary,  # Already stripped and validated above
@@ -2015,6 +2021,12 @@ It differentiates through {diff_text}.
                     source_segment_payability_class=getattr(solution, 'source_segment_payability_class', None),
                     # Multi-Frame Idea Generation Portfolio: which frame minted this idea's cell
                     source_frame=getattr(solution, 'source_frame', None),
+                    evaluation_id=getattr(solution, 'evaluation_id', None),
+                    evaluation_source_message_id=getattr(solution, 'evaluation_source_message_id', None),
+                    proposed_title=getattr(solution, 'proposed_title', None),
+                    synthesis_evaluation=getattr(solution, 'synthesis_evaluation', None),
+                    generation_operation_id=getattr(solution, 'generation_operation_id', None),
+                    generation_batch_ordinal=getattr(solution, 'generation_batch_ordinal', None),
 
                     # Closed-vocabulary filter facets (chips + future filtering).
                     tags=alternative_tags,
@@ -3752,6 +3764,8 @@ It differentiates through {diff_text}.
         Returns:
             List of MarketingChannel objects prioritized by evidence
         """
+        from ..models.marketing_blueprint import MarketingChannel
+
         try:
             channels = []
 

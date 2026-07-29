@@ -1,6 +1,6 @@
 import { CONFIG } from '../config.js';
 import { fenceContent } from '../utils/promptFence.js';
-import { ideaName, type IdeaRecord } from '../utils/ideaIdentity.js';
+import { ideaDisplayTitle, type IdeaRecord } from '../utils/ideaIdentity.js';
 import { stableJsonSha256 } from '../utils/stableJsonFingerprint.js';
 import {
   SELECTION_CHALLENGE_QUESTIONS,
@@ -246,6 +246,13 @@ function overallFrom(consensus: Array<ReturnType<typeof reduceSelectionChallenge
   if (consensus.includes('disputed')) return 'disputed';
   if (consensus.every(value => value === 'insufficient')) return 'insufficient_evidence';
   if (consensus.every(value => value === 'supported')) return 'withstands';
+  // 'weakened' claims the evidence pushed back on the idea. A question the packet could not
+  // answer is a gap, not pushback — and when gaps are half or more of the set, reporting
+  // "Saved evidence raises concerns" tells the owner their idea was challenged when it was
+  // merely unexamined. Observed as ['insufficient','insufficient','mixed'] rendering that
+  // banner directly above two cells both reading "Neither review perspective...".
+  const unanswered = consensus.filter(value => value === 'insufficient').length;
+  if (unanswered * 2 >= consensus.length) return 'insufficient_evidence';
   return 'weakened';
 }
 
@@ -320,7 +327,9 @@ export async function generateSelectionChallenge(
     inputFingerprint: prepared.inputFingerprint,
     ideaId: String(input.idea.idea_id),
     ideaRevision: Number(input.idea.idea_revision),
-    ideaTitle: ideaName(input.idea),
+    // Display title: this labels the candidate in the analyst dossier's evidence-check
+    // block, so it becomes the name the analyst uses when it talks about the check.
+    ideaTitle: ideaDisplayTitle(input.idea),
     lens: input.lens,
     overall: overallFrom(questions.map(question => question.consensus)),
     ideaSnapshot: prepared.ideaSnapshot,

@@ -186,6 +186,10 @@ export type SelectionExperimentDraftSeed = Pick<SelectionExperimentDraft, 'ideaI
 export interface SelectionExperimentPrefill {
   requestId: string;
   draft: SelectionExperimentDraftSeed;
+  /** Why fields were supplied. Generated suggestions are reviewable starting
+   * points, never owner-authored evidence or saved decisions. */
+  source?: "founder_fit" | "analyst" | "challenge" | "manual";
+  suggestedFields?: Array<keyof SelectionExperimentDraft>;
 }
 
 export interface SelectionExperiment extends SelectionExperimentDraft {

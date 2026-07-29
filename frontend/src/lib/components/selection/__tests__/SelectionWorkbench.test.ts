@@ -3,7 +3,7 @@ import { render, fireEvent, cleanup, waitFor, within } from "@testing-library/sv
 import { page } from "$app/state";
 import { goto, pushState, replaceState } from "$app/navigation";
 import SelectionWorkbench from "../SelectionWorkbench.svelte";
-import { seedIdea, getStageCosts, ApiError, createSelectionIdeaNarrowingProposal, getChatHistory, getSelectionChallenges, getSelectionConceptSets, getSelectionDecisionState, getSelectionExperiments, saveSelectionDecisionProfile, saveSelectionDraft, streamChat } from "$lib/api";
+import { seedIdea, regenerateIdeas, getStageCosts, ApiError, createSelectionIdeaNarrowingProposal, getChatHistory, getSelectionChallenges, getSelectionConceptSets, getSelectionDecisionState, getSelectionExperiments, saveSelectionDecisionProfile, saveSelectionDraft, streamChat } from "$lib/api";
 import { chatLedger } from "$lib/stores/chatLedger.svelte";
 import { chatPanel } from "$lib/stores/chatPanel.svelte";
 import { creditTopUp } from "$lib/stores/creditTopUp.svelte";
@@ -123,7 +123,7 @@ function seedHistoryMessage(id: string) {
 async function openAppendix(view: {
   findByRole: (role: string, options?: { name?: RegExp | string }) => Promise<HTMLElement>;
 }) {
-  await fireEvent.click(await view.findByRole("button", { name: /Appendix · Analysis & context/i }));
+  await fireEvent.click(await view.findByRole("button", { name: /Discovery appendix/i }));
 }
 
 // DecisionGuide persists its toolbox-disclosure open/closed state to
@@ -137,6 +137,12 @@ beforeEach(() => {
   localStorage.clear();
   page.url = new URL("http://localhost/jobs/job-1") as typeof page.url;
   page.state = {} as typeof page.state;
+  vi.mocked(regenerateIdeas).mockResolvedValue({
+    message: "Additional batch queued",
+    operationId: "batch-operation-1",
+    batchOrdinal: 2,
+    focus: "auto",
+  });
 });
 
 afterEach(() => {
@@ -448,18 +454,17 @@ describe("SelectionWorkbench — ruled-out panel: idea name primary + 'Your idea
     expect(dialog).toHaveTextContent("No buyer identified");
   });
 
-  it("toggles the ruled-out list from the section header", async () => {
+  it("keeps ruled-out findings visible as one appendix section", async () => {
     const view = render(SelectionWorkbench, {
       props: { ...baseProps, examinedRuledOut: RULED_OUT },
     });
-    const { findByRole } = view;
     await openAppendix(view);
 
-    const toggle = await findByRole("button", { name: /Examined & ruled out/i });
-    expect(toggle).toHaveAttribute("aria-expanded", "true");
-    await fireEvent.click(toggle);
-    expect(toggle).toHaveAttribute("aria-expanded", "false");
-    expect(view.getByText("InvoiceChaser")).not.toBeVisible();
+    expect(
+      await view.findByRole("heading", { name: "Ideas that did not clear the market-fit check" }),
+    ).toBeVisible();
+    expect(view.getByText("InvoiceChaser")).toBeVisible();
+    expect(view.queryByRole("button", { name: /Examined & ruled out/i })).toBeNull();
   });
 
   it("explains the section and opens full analysis for a generated idea", async () => {
@@ -478,7 +483,7 @@ describe("SelectionWorkbench — ruled-out panel: idea name primary + 'Your idea
     await openAppendix(view);
 
     await findByText(
-      "Concepts tied to researched pains that did not clear the final market-fit checks. Review why they were excluded.",
+      "These concepts were examined, then excluded from the shortlist. Open an idea to review the evidence and assumptions behind that decision.",
     );
     await fireEvent.click(await findByRole("button", { name: /ReconcileFlow/ }));
     await findByText("Matches transactions and flags reconciliation gaps");
@@ -529,13 +534,13 @@ describe("SelectionWorkbench — ruled-out panel: idea name primary + 'Your idea
     expect(alphaRow).toHaveTextContent("Recommended");
     expect(betaRow).not.toHaveTextContent("Recommended");
 
-    // Supporting notes move to the dossier appendix: collapsed by default,
-    // ONE plain mono meta line, zero counts omitted.
-    const trigger = await view.findByRole("button", { name: /Appendix · Analysis & context/i });
+    // Supporting notes move to the discovery appendix: collapsed by default,
+    // ONE plain meta line, zero counts omitted.
+    const trigger = await view.findByRole("button", { name: /Discovery appendix/i });
     expect(trigger).toHaveAttribute("aria-expanded", "false");
-    expect(trigger).toHaveTextContent("Analyst notes 2");
-    expect(trigger).not.toHaveTextContent("Collaborator");
-    expect(trigger).not.toHaveTextContent("Ruled out");
+    expect(trigger).toHaveTextContent("2 analyst notes");
+    expect(trigger).not.toHaveTextContent("feedback");
+    expect(trigger).not.toHaveTextContent("ruled out");
     expect(view.getByText("Free incumbents make willingness to pay the central risk.")).not.toBeVisible();
 
     await fireEvent.click(trigger);
@@ -847,7 +852,7 @@ describe("SelectionWorkbench — stable selection identity", () => {
       name: "Solution details: Exact shared candidate",
     });
     expect(detail).toBeInTheDocument();
-    expect(view.getByRole("tab", { name: "Full detail" })).toHaveAttribute(
+    expect(view.getByRole("tab", { name: "All details" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
@@ -883,7 +888,7 @@ describe("SelectionWorkbench — stable selection identity", () => {
     expect(openedUrl.searchParams.get("detailTab")).toBe("overview");
     expect(openedUrl.hash).toBe("#opportunities");
 
-    await fireEvent.click(view.getByRole("tab", { name: "Full detail" }));
+    await fireEvent.click(view.getByRole("tab", { name: "All details" }));
     const tabUrl = new URL(
       vi.mocked(replaceState).mock.calls.at(-1)?.[0] as string,
       "http://localhost",
@@ -1026,6 +1031,30 @@ describe("SelectionWorkbench — durable shortlist draft", () => {
     expect(first.checked).toBe(false);
   });
 
+  it("opens the stable saved-shortlist review route without ad-hoc idea query state", async () => {
+    const identified = [
+      solution("Alpha Idea", { idea_id: "idea-alpha", idea_revision: 3 }),
+      solution("Beta Idea", { idea_id: "idea-beta", idea_revision: 2 }),
+    ];
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: identified,
+        selectionDraft: {
+          version: 7,
+          items: [
+            { ideaId: "idea-alpha", ideaRevision: 3 },
+            { ideaId: "idea-beta", ideaRevision: 2 },
+          ],
+        },
+      },
+    });
+
+    await fireEvent.click(await view.findByRole("button", { name: "Review and start" }));
+
+    expect(goto).toHaveBeenCalledWith("/jobs/job-1/selection/review");
+  });
+
   it("autosaves the full exact-revision shortlist and confirms it inline", async () => {
     const identified = [solution("Alpha Idea", { idea_id: "idea-alpha", idea_revision: 3 })];
     const view = render(SelectionWorkbench, {
@@ -1044,6 +1073,44 @@ describe("SelectionWorkbench — durable shortlist draft", () => {
       [{ ideaId: "idea-alpha", ideaRevision: 3 }],
     ));
     expect(await view.findByText("Shortlist saved")).toBeInTheDocument();
+  });
+
+  it("consumes an exact routed proposal without mutating until the owner applies it", async () => {
+    const identified = [
+      solution("Alpha Idea", { idea_id: "idea-alpha", idea_revision: 3 }),
+      solution("Beta Idea", { idea_id: "idea-beta", idea_revision: 2 }),
+    ];
+    page.state = {
+      shortlistProposal: {
+        requestId: "proposal-1",
+        expectedVersion: 7,
+        refs: [{ ideaId: "idea-beta", ideaRevision: 2 }],
+        returnHref: "/jobs/job-1/selection/compare?idea=idea-beta%3A2",
+        reason: "compare_scope",
+      },
+    } as typeof page.state;
+
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: identified,
+        selectionDraft: {
+          version: 7,
+          items: [{ ideaId: "idea-alpha", ideaRevision: 3 }],
+        },
+      },
+    });
+
+    expect(await view.findByRole("dialog", { name: "Review shortlist changes" })).toBeInTheDocument();
+    expect(view.getByText("Proposed shortlist")).toBeInTheDocument();
+    expect(saveSelectionDraft).not.toHaveBeenCalled();
+
+    await fireEvent.click(view.getByRole("button", { name: "Apply shortlist" }));
+    await waitFor(() => expect(saveSelectionDraft).toHaveBeenCalledWith(
+      "job-1",
+      7,
+      [{ ideaId: "idea-beta", ideaRevision: 2 }],
+    ));
   });
 
   it("keeps a failed save visible and retries without losing the local pick", async () => {
@@ -1761,11 +1828,58 @@ describe("SelectionWorkbench — below-table IA (Phase 1b)", () => {
     expect(stats).not.toHaveTextContent("--");
   });
 
-  it("removes the regenerate strip and keeps one quiet alternative escape after the table", async () => {
+  it("separates append-batch generation from branching a specific direction", async () => {
     const view = render(SelectionWorkbench, { props: baseProps });
 
     expect(view.queryByText("Need another angle?")).toBeNull();
+    expect(await view.findByRole("button", { name: "Add another batch" })).toBeInTheDocument();
     expect(await view.findByRole("button", { name: /Branch a new direction/ })).toBeInTheDocument();
+    expect(view.getByText(/Existing candidate scores and your shortlist stay unchanged; the ranked list may reorder/)).toBeInTheDocument();
+
+    await fireEvent.click(view.getByRole("button", { name: "Add another batch" }));
+    expect(view.getByRole("dialog", { name: "Add another batch" })).toBeInTheDocument();
+    expect(view.getByText(/Existing candidate scores and your shortlist stay unchanged; the list may reorder/)).toBeInTheDocument();
+  });
+
+  it("opens the ruled-out record stamped with the durable generation operation id", async () => {
+    vi.mocked(getChatHistory).mockResolvedValue({
+      messages: [{
+        id: "batch-receipt-1",
+        gateStage: 5,
+        role: "receipt",
+        content: "No candidates added",
+        patchJson: {
+          kind: "ledger_event",
+          version: 1,
+          event: "regeneration_settled",
+          patch: {},
+          rows: [],
+          operationId: "generation-op-1",
+          batch: {
+            ordinal: 2,
+            outcome: "no_candidates_added",
+            addedCount: 0,
+            ruledOutCount: 1,
+          },
+        },
+        createdAt: "2026-07-27T00:00:00.000Z",
+      }],
+    } as never);
+    await chatLedger.init("job-1");
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        examinedRuledOut: [{
+          ...RULED_OUT_ONE[0],
+          generation_operation_id: "generation-op-1",
+        }],
+      },
+    });
+
+    await fireEvent.click(await view.findByRole("button", { name: "Review ruled-out ideas" }));
+
+    expect(view.getByRole("button", { name: /Discovery appendix/i })).toHaveAttribute("aria-expanded", "true");
+    expect(view.getByText("Manual reconciliation")).toBeInTheDocument();
   });
 
   it("marks job-page direction launches so closing returns to the exact originating page", async () => {
@@ -1833,15 +1947,15 @@ describe("SelectionWorkbench — below-table IA (Phase 1b)", () => {
       },
     });
 
-    const trigger = await view.findByRole("button", { name: /Appendix · Analysis & context/i });
-    expect(trigger).toHaveTextContent("Collaborator 2 · Ruled out 1");
-    expect(trigger).not.toHaveTextContent("Analyst notes");
+    const trigger = await view.findByRole("button", { name: /Discovery appendix/i });
+    expect(trigger).toHaveTextContent("2 feedback notes · 1 idea ruled out");
+    expect(trigger).not.toHaveTextContent("analyst note");
   });
 
   it("renders no appendix when there is nothing to file", () => {
     const view = render(SelectionWorkbench, { props: baseProps });
 
-    expect(view.queryByRole("button", { name: /Appendix · Analysis & context/i })).toBeNull();
+    expect(view.queryByRole("button", { name: /Discovery appendix/i })).toBeNull();
   });
 
   it("shows the display-only founder-context row with exactly one edit entry once a profile is saved", () => {
@@ -1871,7 +1985,7 @@ describe("SelectionWorkbench — below-table IA (Phase 1b)", () => {
     });
 
     // No appendix, no founder row, no verdict pull-quote — the shared view is untouched.
-    expect(view.queryByRole("button", { name: /Appendix · Analysis & context/i })).toBeNull();
+    expect(view.queryByRole("button", { name: /Discovery appendix/i })).toBeNull();
     expect(view.queryByLabelText("Build limits summary")).toBeNull();
     expect(view.queryByLabelText("Discovery take")).toBeNull();
 
@@ -1881,7 +1995,9 @@ describe("SelectionWorkbench — below-table IA (Phase 1b)", () => {
       /Alpha Idea.*most deserves deeper validation because it has the clearest buyer\./,
     );
     expect(view.getByText("Read full analysis")).toBeInTheDocument();
-    expect(view.getByRole("button", { name: /Examined & ruled out/i })).toBeInTheDocument();
+    expect(
+      view.getByRole("heading", { name: "Ideas that did not clear the market-fit check" }),
+    ).toBeInTheDocument();
   });
 });
 
@@ -1985,7 +2101,7 @@ describe("SelectionWorkbench — ranked candidates table semantics", () => {
 
     expect(within(table).getAllByRole("columnheader")).toHaveLength(7);
 
-    for (const label of ["#", "Select", "Idea", "Score", "Market fit", "Feasibility", "Build time"]) {
+    for (const label of ["#", "Select", "Idea", "Score /100", "Market fit", "Feasibility", "Build time"]) {
       expect(
         within(table).getByRole("columnheader", { name: label }),
       ).toBeInTheDocument();
@@ -2033,7 +2149,7 @@ describe("SelectionWorkbench — ranked candidates table semantics", () => {
 
     // Default sort is Score, descending.
     expect(
-      within(table).getByRole("columnheader", { name: "Score" }),
+      within(table).getByRole("columnheader", { name: "Score /100" }),
     ).toHaveAttribute("aria-sort", "descending");
 
     for (const label of ["Market fit", "Feasibility", "Build time"]) {
@@ -2066,7 +2182,7 @@ describe("SelectionWorkbench — ranked candidates table semantics", () => {
 
   it("uses aria-sort rather than aria-pressed to convey sort state", () => {
     const view = render(SelectionWorkbench, { props: baseProps });
-    expect(view.getByRole("button", { name: "Sort by Score, ascending" })).not.toHaveAttribute(
+    expect(view.getByRole("button", { name: "Sort by Score /100, ascending" })).not.toHaveAttribute(
       "aria-pressed",
     );
   });
@@ -2091,12 +2207,12 @@ describe("SelectionWorkbench — ranked candidates table semantics", () => {
 });
 
 describe("SelectionWorkbench without the decision tools grant", () => {
-  it("hides the optional-checks guide and the branch escape hatch", async () => {
+  it("hides optional decision tools but keeps append-batch generation available", async () => {
     const granted = render(SelectionWorkbench, { props: baseProps });
     await waitFor(() =>
       expect(granted.getByText("Optional next check")).toBeInTheDocument(),
     );
-    expect(granted.getByText("None of these fit?")).toBeInTheDocument();
+    expect(granted.getByText("Have a specific direction in mind?")).toBeInTheDocument();
     cleanup();
 
     const view = render(SelectionWorkbench, {
@@ -2108,7 +2224,8 @@ describe("SelectionWorkbench without the decision tools grant", () => {
 
     expect(view.queryByText("Optional next check")).toBeNull();
     expect(view.queryByLabelText("Optional checks progress")).toBeNull();
-    expect(view.queryByText("None of these fit?")).toBeNull();
+    expect(view.queryByText("Have a specific direction in mind?")).toBeNull();
+    expect(view.getByRole("button", { name: "Add another batch" })).toBeInTheDocument();
   });
 
   it("fails closed when the prop is omitted", async () => {

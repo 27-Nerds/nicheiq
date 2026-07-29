@@ -42,6 +42,7 @@ function data(options: {
   ideas?: Array<Record<string, unknown>>;
   challenges?: Array<Record<string, unknown>>;
   assumptions?: Array<Record<string, unknown>>;
+  ownerEvidence?: Array<Record<string, unknown>>;
   decisionTools?: boolean;
 } = {}) {
   const ideas = options.ideas ?? [idea];
@@ -56,6 +57,8 @@ function data(options: {
     },
     decisionState: {
       shortlist: {
+        version: 7,
+        fingerprint: "opaque-shortlist-fingerprint",
         items: options.saved === false
           ? []
           : ideas.map((entry) => ({
@@ -65,6 +68,7 @@ function data(options: {
           })),
       },
       challenges: options.challenges ?? [],
+      ownerEvidence: options.ownerEvidence ?? [],
       assumptions: options.assumptions ?? [],
       staleCounts: { challenges: 0 },
       deepResearch: { eligible: true },
@@ -95,8 +99,10 @@ describe("selection review page", () => {
     await fireEvent.click(view.getByRole("button", { name: "Start Deep Research · 100 credits" }));
 
     await waitFor(() => expect(mocks.selectSolution).toHaveBeenCalledWith("job-1", {
-      solutionNames: ["Signal desk"],
-      solutionIds: ["idea-a"],
+      clientRequestId: expect.any(String),
+      expectedDraftVersion: 7,
+      expectedSelectionFingerprint: "opaque-shortlist-fingerprint",
+      expectedCost: 100,
       rationale: "Strongest buyer evidence.",
     }));
     expect(mocks.goto).toHaveBeenCalledWith("/jobs/job-1");
@@ -131,6 +137,32 @@ describe("selection review page", () => {
 
     await waitFor(() => expect(mocks.invalidateAll).toHaveBeenCalled());
     expect(mocks.goto).toHaveBeenCalledWith("/jobs/job-1", { invalidateAll: true });
+  });
+
+  it("keeps a changed scope or price inline and requires a fresh confirmation", async () => {
+    const ApiError = (await import("$lib/api")).ApiError;
+    mocks.selectSolution
+      .mockRejectedValueOnce(new ApiError(
+        "Confirmation changed",
+        409,
+        { code: "DEEP_RESEARCH_SCOPE_CHANGED" },
+      ))
+      .mockResolvedValueOnce({});
+    const view = render(ReviewPage, { props: { data: data() } });
+
+    await fireEvent.click(view.getByRole("button", { name: "Start Deep Research · 100 credits" }));
+    expect(await view.findByRole("heading", { name: "Review the updated confirmation" }))
+      .toHaveFocus();
+    expect(view.getByText(/Nothing was charged or started/)).toBeInTheDocument();
+    expect(mocks.goto).not.toHaveBeenCalled();
+    expect(view.getByRole("button", { name: "Start Deep Research · 100 credits" })).toBeDisabled();
+
+    await fireEvent.click(view.getByRole("button", { name: "Use this updated scope and price" }));
+    await fireEvent.click(view.getByRole("button", { name: "Confirm updated scope · 100 credits" }));
+    await waitFor(() => expect(mocks.selectSolution).toHaveBeenCalledTimes(2));
+    const [firstRequest, secondRequest] = mocks.selectSolution.mock.calls.map((call) => call[1]);
+    expect(secondRequest.clientRequestId).not.toBe(firstRequest.clientRequestId);
+    expect(mocks.goto).toHaveBeenCalledWith("/jobs/job-1");
   });
 
   it("does not disguise invalid credit data as a zero balance", () => {
@@ -252,6 +284,31 @@ describe("selection review page", () => {
     const view = render(ReviewPage, { props: { data: data() } });
 
     expect(view.getByText("1 SHORTLISTED · 0 CHECKS")).toBeInTheDocument();
+  });
+
+  it("acknowledges owner-saved evidence at the gate", () => {
+    const view = render(ReviewPage, {
+      props: {
+        data: data({
+          ownerEvidence: [
+            { id: "oe-1", idea: { ideaId: "idea-a", ideaRevision: 3, title: "Signal desk" } },
+            { id: "oe-2", idea: { ideaId: "idea-a", ideaRevision: 3, title: "Signal desk" } },
+            // Belongs to an idea that is not on this shortlist — must not be counted.
+            { id: "oe-3", idea: { ideaId: "idea-z", ideaRevision: 1, title: "Other" } },
+          ],
+        }),
+      },
+    });
+
+    expect(view.getByText("1 SHORTLISTED · 0 CHECKS · 2 EVIDENCE ADDED")).toBeInTheDocument();
+    expect(view.getByRole("link", { name: "2 pieces of your own evidence" }))
+      .toHaveAttribute("href", "/jobs/job-1/selection/risks?idea=idea-a%3A3");
+  });
+
+  it("keeps the record line clean when no owner evidence was saved", () => {
+    const view = render(ReviewPage, { props: { data: data() } });
+
+    expect(view.queryByText(/EVIDENCE ADDED/)).toBeNull();
   });
 
   it("opens a shortlisted idea for read-only inspection without leaving the gate", async () => {

@@ -19,7 +19,7 @@ import {
   type SelectionConceptSetArtifact,
 } from '../types/selectionConceptSet.js';
 import type { SelectionDecisionHandoffArtifact } from './selectionDecisionHandoffService.js';
-import { ideaName } from '../utils/ideaIdentity.js';
+import { ideaDisplayTitle, ideaName } from '../utils/ideaIdentity.js';
 import type { SelectionDraftResponse } from '../utils/selectionDraft.js';
 import { sanitizeUntrustedContent } from '../utils/promptFence.js';
 
@@ -57,6 +57,24 @@ function ideaRefLabel(
     && Number(idea.idea_revision) === ideaRevision
   );
   return index >= 0 ? `R${index + 1}` : null;
+}
+
+/**
+ * The title the owner sees for a candidate a stored artifact points at. Artifacts keep
+ * `solutionName` (the internal codename) for lineage and matching; the dossier must not
+ * hand that codename to the analyst, which repeats whatever it is given.
+ */
+function displayTitleFor(
+  ideas: Record<string, unknown>[],
+  ideaId: string,
+  ideaRevision: number,
+  fallback: string,
+): string {
+  const idea = ideas.find(candidate =>
+    candidate.idea_id === ideaId
+    && Number(candidate.idea_revision) === ideaRevision
+  );
+  return (idea ? ideaDisplayTitle(idea) : null) ?? fallback;
 }
 
 export function buildSelectionDecisionStateBlock(
@@ -366,7 +384,7 @@ export function buildExperimentConclusionBlock(
       ? `${sample?.observed ?? 'unknown'} recorded exposures`
       : truncateContextText(String(evidence.observationSummary || 'manual observations recorded'), 220);
     return [
-      `- ${String((conclusion.experiment.ideaSnapshot as Record<string, unknown>).solution_name || conclusion.experiment.ideaId)} [${conclusion.experiment.ideaId} rev ${conclusion.experiment.ideaRevision}]`,
+      `- ${ideaDisplayTitle(conclusion.experiment.ideaSnapshot as Record<string, unknown>) ?? conclusion.experiment.ideaId} [${conclusion.experiment.ideaId} rev ${conclusion.experiment.ideaRevision}]`,
       `  Owner outcome: ${humanizeContextKey(conclusion.adjudication.outcome).toLowerCase()}`,
       `  Observed evidence: ${observed}`,
       `  Owner rationale: ${truncateContextText(conclusion.adjudication.rationale, 260)}`,
@@ -404,8 +422,10 @@ export function buildCollaboratorFeedbackBlock(
       : undefined;
     const idea = exactIdea ?? legacyIdea;
     const ideaIndex = idea ? ideas.indexOf(idea) : -1;
+    // Matching above stays on `solution_name` (that is what the vote row stored); only
+    // the printed label switches to the title the owner actually sees.
     const label = idea
-      ? `${ideaName(idea) ?? vote.solutionName} [R${ideaIndex + 1}; revision ${Number(idea.idea_revision) || 1}]`
+      ? `${ideaDisplayTitle(idea) ?? vote.solutionName} [R${ideaIndex + 1}; revision ${Number(idea.idea_revision) || 1}]`
       : vote.solutionId
         ? `${vote.solutionName} [previous candidate ${vote.solutionId}]`
         : `${vote.solutionName} [ambiguous legacy candidate; do not attach to a current idea]`;
@@ -437,7 +457,7 @@ export function buildWorkingShortlistBlock(
         && Number(idea.idea_revision) === item.ideaRevision,
     );
     if (index < 0) return [];
-    const title = ideaName(ideas[index]) ?? item.ideaId;
+    const title = ideaDisplayTitle(ideas[index]) ?? item.ideaId;
     return [`- [R${index + 1}] ${title} (revision ${item.ideaRevision})`];
   });
   if (!lines.length) return '';
@@ -465,7 +485,7 @@ function inScopeRoster(
     seen.add(ref);
     const index = ideas.findIndex(idea =>
       idea.idea_id === entry.ideaId && Number(idea.idea_revision) === entry.ideaRevision);
-    const name = entry.title ?? (index >= 0 ? ideaName(ideas[index]) ?? '' : '');
+    const name = entry.title ?? (index >= 0 ? ideaDisplayTitle(ideas[index]) ?? '' : '');
     roster.push(`[${ref}] ${name}`.trim());
   }
   return roster.length
@@ -598,7 +618,7 @@ export function buildExperimentBriefBlock(
     const ref = ideaRefLabel(ideas, row.ideaId, row.ideaRevision);
     const index = ideas.findIndex(idea =>
       idea.idea_id === row.ideaId && Number(idea.idea_revision) === row.ideaRevision);
-    const name = index >= 0 ? ideaName(ideas[index]) ?? '' : '';
+    const name = index >= 0 ? ideaDisplayTitle(ideas[index]) ?? '' : '';
     const label = ref
       ? `[${ref}] ${name} (revision ${row.ideaRevision})`
       : `${name || row.ideaId} [${row.ideaId} rev ${row.ideaRevision}]`;
@@ -670,9 +690,10 @@ export function buildConceptSetBlock(
   const blocks = conceptSets.map((set) => {
     const parentRefs = set.parents.map((parent) => {
       const ref = ideaRefLabel(ideas, parent.ideaId, parent.ideaRevision);
+      const title = displayTitleFor(ideas, parent.ideaId, parent.ideaRevision, parent.solutionName);
       return ref
-        ? `[${ref}] ${parent.solutionName}`
-        : `${parent.solutionName} [${parent.ideaId} rev ${parent.ideaRevision}]`;
+        ? `[${ref}] ${title}`
+        : `${title} [${parent.ideaId} rev ${parent.ideaRevision}]`;
     });
     const purposeLabel = CONCEPT_PURPOSE_LABELS[set.purpose] ?? humanizeContextKey(set.purpose);
     const header = `- Concept set to ${purposeLabel} from ${parentRefs.join(' + ')}${set.targetTradeoff ? `; tension: ${truncateContextText(set.targetTradeoff, 180)}` : ''}`;
@@ -692,7 +713,7 @@ export function buildConceptSetBlock(
     conceptSets.flatMap(set => set.parents.map(parent => ({
       ideaId: parent.ideaId,
       ideaRevision: parent.ideaRevision,
-      title: parent.solutionName,
+      title: displayTitleFor(ideas, parent.ideaId, parent.ideaRevision, parent.solutionName),
     }))),
     'these branch directions',
   );

@@ -54,9 +54,44 @@ class TestProcessJobRouting:
     @patch('worker.heartbeat.notify_job_completed')
     @patch('worker.heartbeat.set_current_job')
     @patch('worker.heartbeat.notify_job_started', return_value=True)
+    def test_research_phase2_passes_exact_selection_payload(
+        self, mock_started, mock_set_job, mock_completed
+    ):
+        refs = [
+            {"idea_id": "idea-1", "idea_revision": 2, "solution_name": "Sol1"}
+        ]
+        snapshots = [{"idea_id": "idea-1", "idea_revision": 2, "solution_name": "Sol1"}]
+        with patch('worker.tasks.run_research_phase2') as mock_task:
+            mock_task.return_value = {"status": "completed"}
+            from worker.queue_consumer import process_job
+
+            process_job({
+                "job_id": "job-1",
+                "task_type": "research_phase2",
+                "checkpoint_path": "/tmp/cp",
+                "selected_solution_refs": refs,
+                "selected_solution_snapshots": snapshots,
+                "selection_fingerprint": "a" * 64,
+            })
+
+            kwargs = mock_task.call_args.kwargs
+            assert kwargs["selected_solution_refs"] == refs
+            assert kwargs["selected_solution_snapshots"] == snapshots
+            assert kwargs["selection_fingerprint"] == "a" * 64
+
+    @patch('worker.heartbeat.notify_job_completed')
+    @patch('worker.heartbeat.set_current_job')
+    @patch('worker.heartbeat.notify_job_started', return_value=True)
     def test_regenerate_ideas_routes_correctly(
         self, mock_started, mock_set_job, mock_completed
     ):
+        base_refs = [
+            {
+                "idea_id": "idea-a",
+                "idea_revision": 2,
+                "snapshot_sha256": "ignored-by-worker",
+            }
+        ]
         with patch('worker.tasks.run_regenerate_ideas') as mock_task:
             mock_task.return_value = {"status": "regenerated"}
             from worker.queue_consumer import process_job
@@ -65,8 +100,14 @@ class TestProcessJobRouting:
                 "task_type": "regenerate_ideas",
                 "checkpoint_path": "/tmp/cp",
                 "niche": "test",
+                "dispatch_id": "dispatch-1",
+                "batch_ordinal": 2,
+                "base_candidate_refs": base_refs,
             })
             mock_task.assert_called_once()
+            assert mock_task.call_args.kwargs["dispatch_id"] == "dispatch-1"
+            assert mock_task.call_args.kwargs["batch_ordinal"] == 2
+            assert mock_task.call_args.kwargs["base_candidate_refs"] == base_refs
 
     @patch('worker.heartbeat.notify_job_completed')
     @patch('worker.heartbeat.set_current_job')
@@ -85,6 +126,7 @@ class TestProcessJobRouting:
                 "seed_text": "an idea from the user",
                 "pain_ref": "Pain A",
                 "tool_ref": "Spreadsheets",
+                "synthesis_evaluation": {"evaluation_id": "dispatch-1"},
                 "dispatch_id": "dispatch-1",
             })
             mock_task.assert_called_once()
@@ -93,6 +135,7 @@ class TestProcessJobRouting:
                 "seed_text": "an idea from the user",
                 "pain_ref": "Pain A",
                 "tool_ref": "Spreadsheets",
+                "synthesis_evaluation": {"evaluation_id": "dispatch-1"},
             }
             assert call_kwargs["dispatch_id"] == "dispatch-1"
             assert call_kwargs["checkpoint_path"] == "/tmp/cp"
@@ -409,10 +452,10 @@ class TestRegenerationFailureHandling:
     @patch('worker.heartbeat.notify_job_completed')
     @patch('worker.heartbeat.set_current_job')
     @patch('worker.heartbeat.notify_job_started', return_value=True)
-    def test_regeneration_failure_falls_through_to_job_failed_on_revert_error(
+    def test_regeneration_revert_delivery_failure_never_fails_parent_job(
         self, mock_started, mock_set_job, mock_completed, mock_job_failed
     ):
-        """When both regeneration and revert notification fail, falls through to notify_job_failed."""
+        """Stale recovery owns the operation; generic failure must not kill the parent job."""
         with patch('worker.tasks.run_regenerate_ideas') as mock_task:
             mock_task.side_effect = RuntimeError("LLM error")
             with patch('worker.progress.notify_regeneration_failed') as mock_regen_failed:
@@ -425,7 +468,7 @@ class TestRegenerationFailureHandling:
                     "niche": "test",
                 })
                 mock_regen_failed.assert_called_once()
-                mock_job_failed.assert_called_once_with("job-1", "LLM error", None)
+                mock_job_failed.assert_not_called()
 
     @patch('worker.heartbeat.notify_job_failed')
     @patch('worker.heartbeat.notify_job_completed')

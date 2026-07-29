@@ -1,10 +1,13 @@
 <script lang="ts">
   import { X } from "lucide-svelte";
   import { REVIEW_AND_START_LABEL } from "$lib/selection/labels";
+  import { overlapWarningText, type ShortlistOverlap } from "$lib/selection/overlapWarnings";
   import type { SelectionJourney } from "$lib/selection/decisionJourney";
 
   interface Props {
     journey: SelectionJourney;
+    /** Shortlisted ideas the pipeline flagged as the same product. Advisory only. */
+    overlapWarnings?: ShortlistOverlap[];
     deepResearchCost?: number | null;
     busy?: boolean;
     saveState?: "idle" | "saving" | "saved" | "error";
@@ -18,6 +21,7 @@
 
   let {
     journey,
+    overlapWarnings = [],
     deepResearchCost = null,
     busy = false,
     saveState = "idle",
@@ -29,15 +33,23 @@
     onStartDeepResearch,
   }: Props = $props();
 
-  const shortlistCount = $derived(journey.shortlist.items.length);
-  const canReview = $derived(journey.deepResearch.eligible && !busy);
+  const shortlistCount = $derived(
+    journey.shortlist.items.length + journey.shortlist.staleItems.length,
+  );
+  const canReview = $derived(
+    journey.deepResearch.eligible
+    && journey.shortlist.staleItems.length === 0
+    && !busy,
+  );
   const costLabel = $derived(
     deepResearchCost == null
       ? "Cost shown before research starts"
       : `${deepResearchCost} credit${deepResearchCost === 1 ? "" : "s"} total`,
   );
   const disabledReason = $derived(
-    shortlistCount === 0
+    journey.shortlist.staleItems.length > 0
+      ? "Replace unavailable candidate revisions before reviewing the research scope."
+      : shortlistCount === 0
       ? "Select at least one idea to review the research scope."
       : busy
         ? "Wait for the shortlist to finish saving."
@@ -45,9 +57,34 @@
           ? "Resolve the shortlist issue before reviewing the research scope."
           : "",
   );
+  // Publish the dock's measured height so bottom-anchored fixed overlays
+  // (TourInvitation) can lift clear of it instead of covering it. The dock is centred
+  // but spans nearly the full content width, so horizontal anchoring cannot avoid it.
+  // offsetHeight (border box), not clientHeight: the dock has a 1px border top and
+  // bottom, and the padding box excludes both — consumers would lift 2px short.
+  let dockHeight = $state(0);
+  $effect(() => {
+    const root = document.documentElement;
+    root.style.setProperty("--decision-rail-height", `${dockHeight}px`);
+    return () => root.style.removeProperty("--decision-rail-height");
+  });
 </script>
 
-<aside class="decision-dock" aria-label="Ideas for Deep Research">
+<aside
+  class="decision-dock"
+  aria-label="Ideas for Deep Research"
+  bind:offsetHeight={dockHeight}
+>
+  {#if overlapWarnings.length > 0}
+    <!-- Spans the dock so it reads as a note about the whole shortlist, not about the
+         count beside it. Advisory: the Start button stays enabled. -->
+    <p class="dock-overlap" role="status">
+      {#each overlapWarnings as overlap (overlap.sharedProduct)}
+        <span>{overlapWarningText(overlap)}</span>
+      {/each}
+    </p>
+  {/if}
+
   <div class="dock-count" aria-live="polite" aria-label={`${shortlistCount} of ${journey.shortlist.maxItems} ideas selected`}>
     <strong>{shortlistCount}</strong>
     <span>/ {journey.shortlist.maxItems}</span>
@@ -57,7 +94,7 @@
   <span class="dock-rule" aria-hidden="true"></span>
 
   <div class="dock-scope">
-    {#if journey.shortlist.items.length > 0}
+    {#if shortlistCount > 0}
       <ul aria-label="Selected ideas">
         {#each journey.shortlist.items as idea (`${idea.ideaId}:${idea.ideaRevision}`)}
           <li data-idea-id={idea.ideaId} data-idea-revision={idea.ideaRevision}>
@@ -70,6 +107,14 @@
             >
               <X aria-hidden="true" />
             </button>
+          </li>
+        {/each}
+        {#each journey.shortlist.staleItems as idea (`stale:${idea.ideaId}:${idea.ideaRevision}`)}
+          <li class="stale" data-idea-id={idea.ideaId} data-idea-revision={idea.ideaRevision}>
+            <span title={idea.title || "Unavailable candidate revision"}>
+              {idea.title || "Unavailable candidate"} · revision {idea.ideaRevision}
+            </span>
+            <small>Needs replacement</small>
           </li>
         {/each}
       </ul>
@@ -127,6 +172,22 @@
     box-shadow: var(--shadow-md);
     color: var(--color-text-primary);
     transform: translateX(-50%);
+  }
+
+  .dock-overlap {
+    display: grid;
+    gap: var(--space-1);
+    grid-column: 1 / -1;
+    margin: 0;
+    padding-bottom: var(--space-2);
+    border-bottom: 1px solid var(--color-border);
+    /* NOT warning-orange: --color-warning-text is byte-identical to --color-accent-dark
+       (#9A3412) and this row sits directly beside the accent-filled Start button, so
+       orange here reads as brand chrome, not caution. The note is advisory anyway —
+       the shortlist stays valid and startable — so primary ink is the honest weight. */
+    color: var(--color-text-primary);
+    font-size: var(--text-xs);
+    line-height: 1.4;
   }
 
   .dock-count {
@@ -205,6 +266,15 @@
     color: var(--color-text-muted);
     cursor: pointer;
     transition: color var(--duration-fast) var(--ease-default), background var(--duration-fast) var(--ease-default), transform var(--duration-fast) var(--ease-default);
+  }
+  .dock-scope li.stale {
+    border-style: dashed;
+    color: var(--color-warning-text);
+  }
+  .dock-scope li.stale small {
+    color: inherit;
+    font-size: var(--text-xs);
+    white-space: nowrap;
   }
 
   .dock-scope li > button:hover:not(:disabled) {

@@ -38,6 +38,7 @@
   import Section from "$lib/components/ui/Section.svelte";
   import { SvelteSet } from "svelte/reactivity";
   import { getTermTooltip } from "$lib/stores/glossary";
+  import { normalizeDataAccess } from "$lib/utils/ideaTagLabels";
 
   interface Props {
     solution: SolutionDetails;
@@ -114,12 +115,16 @@
     paywalled: "Paid Data",
     unofficial: "Scraping / Unofficial",
     restricted: "Access Restricted",
+    blocked: "Blocked data",
+    unverified: "Unverified data",
   };
+  // Empty label = value outside the closed vocabulary; the badge is omitted.
   function accessLabel(m: string | undefined): string {
-    return m ? (ACCESS_LABELS[m.toLowerCase()] ?? m) : "";
+    const k = normalizeDataAccess(m);
+    return k ? ACCESS_LABELS[k] : "";
   }
   function accessVariant(m: string | undefined): "success" | "warning" | "error" | "muted" {
-    const k = (m ?? "").toLowerCase();
+    const k = normalizeDataAccess(m) ?? "";
     if (k === "public" || k === "freemium") return "success";
     if (k === "paywalled" || k === "unofficial") return "warning";
     if (k === "restricted" || k === "blocked") return "error";
@@ -228,7 +233,7 @@
             <span class="text-xs text-text-muted uppercase tracking-wider"
               >Data Feasibility</span
             >
-            {#if solution.data_access_model}
+            {#if accessLabel(solution.data_access_model)}
               <Badge
                 variant={accessVariant(solution.data_access_model)}
                 size="sm"

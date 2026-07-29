@@ -76,8 +76,7 @@ describe("risks page", () => {
     vi.clearAllMocks();
   });
 
-  it("confirms before switching candidates while an evidence draft is dirty", async () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+  it("requires an inline decision before switching candidates while an evidence draft is dirty", async () => {
     const view = render(RisksPage, { props: { data: data() } });
 
     await fireEvent.click(await view.findByRole("button", { name: "Add your evidence" }));
@@ -87,13 +86,15 @@ describe("risks page", () => {
 
     const otherCandidate = view.getByRole("radio", { name: "Candidate B · idea 2" });
     await fireEvent.click(otherCandidate);
-    expect(confirmSpy).toHaveBeenCalledOnce();
     expect(navMocks.goto).not.toHaveBeenCalled();
-    // The cancelled switch snaps the control back to the focused candidate.
+    expect(view.getByRole("alert")).toHaveTextContent("Switch candidates?");
     await waitFor(() => expect(view.getByRole("radio", { name: "Candidate A · idea 1" })).toHaveAttribute("aria-checked", "true"));
 
-    confirmSpy.mockReturnValue(true);
+    await fireEvent.click(view.getByRole("button", { name: "Stay here" }));
+    expect(view.queryByRole("alert")).not.toBeInTheDocument();
+
     await fireEvent.click(view.getByRole("radio", { name: "Candidate B · idea 2" }));
+    await fireEvent.click(view.getByRole("button", { name: "Switch and keep draft" }));
     expect(navMocks.goto).toHaveBeenCalledWith(
       expect.stringContaining("ideaId=idea-b"),
       expect.objectContaining({ replaceState: true }),
@@ -101,11 +102,10 @@ describe("risks page", () => {
   });
 
   it("switches candidates without a prompt when nothing is dirty", async () => {
-    const confirmSpy = vi.spyOn(window, "confirm");
     const view = render(RisksPage, { props: { data: data() } });
 
     await fireEvent.click(await view.findByRole("radio", { name: "Candidate B · idea 2" }));
-    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(view.queryByRole("alert")).not.toBeInTheDocument();
     expect(navMocks.goto).toHaveBeenCalledWith(
       expect.stringContaining("ideaId=idea-b"),
       expect.objectContaining({ replaceState: true }),

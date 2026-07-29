@@ -10,7 +10,11 @@ const SOURCE_FRAME_LABELS: Record<string, string> = {
   pain: "Pain-point lens",
   gap: "Competitor-gap lens",
   data_asset: "Data-asset lens",
+  spend_adjacent: "Adjacent-spend lens",
   workflow: "Workflow lens",
+  user_seed: "Submitted idea",
+  owner_synthesis: "Branched direction",
+  additional_batch: "Additional batch",
 };
 
 /** Display label for a source_frame value, or empty string if unknown/unset. */

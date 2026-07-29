@@ -507,13 +507,31 @@ def test_free_culture_wallet_deduped_against_weak_wtp_challenge():
     assert not any("free-tool culture" in k for k in fp.key_points)
 
 
+def test_strengths_never_leak_into_key_challenges(monkeypatch):
+    """A strong-fit niche accrues frictions too, and both used to share one list surfaced as
+    `key_challenges` — so ReportBrief printed "There's room for a genuinely novel angle" as
+    the run's primary concern. The two polarities must stay separated."""
+    _patch_llm_headline(monkeypatch, "")
+    pains = [_pain("full")] * 6
+    ideas = [_idea(novelty=0.6)] * 4
+    fp = assess_niche_difficulty(pains, ideas, _nc())
+    v, _ = generate_niche_difficulty_verdict(fp, "x", _nc())
+
+    assert v.key_strengths, "a fully-addressable niche should report strengths"
+    encouragements = [p for p in v.key_challenges if "room for a genuinely novel angle" in p
+                      or "can directly own" in p or "without a heavy cold-start" in p]
+    assert not encouragements, f"strengths leaked into key_challenges: {encouragements}"
+
+
 def test_paying_wallet_positive_keypoint():
     from nicheiq.utils.niche_difficulty import _wallet_positive_note
     brief = {"wallet_class": "paying", "evidence": "tools run $19-59/mo", "free_density": "low"}
     fp = assess_niche_difficulty(
         [_pain()] * 4, [_idea(novelty=0.6)] * 4, _nc(), niche_wallet_brief=brief)
     assert fp.wallet_class == "paying"
-    assert _wallet_positive_note("tools run $19-59/mo") in fp.key_points
+    # A positive signal belongs in key_strengths; key_points is frictions-only.
+    assert _wallet_positive_note("tools run $19-59/mo") in fp.key_strengths
+    assert _wallet_positive_note("tools run $19-59/mo") not in fp.key_points
 
 
 def test_mixed_wallet_no_keypoint():

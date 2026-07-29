@@ -167,6 +167,8 @@
 
   let experiments = $state<SelectionExperiment[]>([]);
   let draft = $state<SelectionExperimentDraft>({ ...EMPTY_DRAFT });
+  let startingConcern = $state("");
+  let activeSuggestion = $state<SelectionExperimentPrefill["source"] | null>(null);
   let editingId = $state<string | null>(null);
   let editing = $state(false);
   let loading = $state(true);
@@ -505,11 +507,8 @@
       ...EMPTY_DRAFT,
       ideaId: idea.idea_id ?? idea.solution_name,
       ideaRevision: idea.idea_revision ?? 1,
-      assumption: idea.critic_concern?.trim() || "",
-      whyCritical: idea.value_proposition?.trim() || "",
       currentEvidence: evidence,
       audience,
-      stimulus: `A focused test of ${solutionDisplayTitle(idea)} with one observable next step.`,
     };
   }
 
@@ -565,6 +564,7 @@
     }
 
     const baseline = existing ? draftForExperiment(existing) : draftForIdea(candidate);
+    startingConcern = existing ? "" : candidate.critic_concern?.trim() || "";
     // Resuming a persisted record: the SAVED fields win over the seed values,
     // otherwise a stale copilot seed silently overwrites the owner's saved
     // brief and one Save persists the rewrite. Only a brand-new draft lets
@@ -592,6 +592,7 @@
     launchId = null;
     conclusionId = null;
     appliedPrefillId = requestId;
+    activeSuggestion = existing ? null : prefill?.source ?? "analyst";
     resetEditorValidation();
     return { ok: true, message: "Test draft opened. Review every field before saving." };
   }
@@ -606,6 +607,8 @@
     const firstIdea = seedIdea ?? ideas[0];
     if (!firstIdea) return;
     const baseline = draftForIdea(firstIdea);
+    startingConcern = firstIdea.critic_concern?.trim() || "";
+    activeSuggestion = newDraftSeed ? "manual" : null;
     draft = newDraftSeed
       ? {
           ...baseline,
@@ -663,6 +666,7 @@
         prefill.draft,
         existing ? { id: existing.id, status: existing.status } : undefined,
       );
+      if (!existing) activeSuggestion = prefill.source ?? activeSuggestion;
     } else {
       beginNew();
     }
@@ -684,6 +688,8 @@
 
   function edit(experiment: SelectionExperiment) {
     draft = draftForExperiment(experiment);
+    startingConcern = "";
+    activeSuggestion = null;
     editingId = experiment.id;
     error = "";
     editing = true;
@@ -706,12 +712,16 @@
       return;
     }
     draft = draftForIdea(idea);
+    startingConcern = idea.critic_concern?.trim() || "";
+    activeSuggestion = null;
     resetEditorValidation();
   }
 
   function confirmCandidateSwitch() {
     if (!pendingIdea) return;
     draft = draftForIdea(pendingIdea);
+    startingConcern = pendingIdea.critic_concern?.trim() || "";
+    activeSuggestion = null;
     resetEditorValidation();
     pendingIdea = null;
   }
@@ -1351,6 +1361,13 @@
           <small>Candidate revision {draft.ideaRevision}</small>
         </aside>
       {/if}
+      {#if activeSuggestion && activeSuggestion !== "manual"}
+        <aside class="origin-strip suggestion-strip" role="note">
+          <span>Suggested starting point</span>
+          <strong>Review every populated field before saving</strong>
+          <small>Nothing here is saved evidence or an owner decision yet.</small>
+        </aside>
+      {/if}
     </div>
     {#if editorStep === 1}
     <fieldset bind:this={editorStageEl} tabindex="-1">
@@ -1371,6 +1388,13 @@
           {#each ASSUMPTION_TYPES as option}<option value={option.value}>{option.label}</option>{/each}
         </FormField>
       </div>
+      {#if startingConcern}
+        <aside class="evidence-context" aria-label="Starting concern">
+          <span>Starting concern</span>
+          <p>{startingConcern}</p>
+          <small>Candidate context only. Rewrite it as one testable assumption below.</small>
+        </aside>
+      {/if}
       {#if pendingIdea}
         <div class="candidate-confirm" role="alert">
           <p>Switching to {solutionDisplayTitle(pendingIdea)} replaces every field below with its starting values. Your current entries will be lost.</p>

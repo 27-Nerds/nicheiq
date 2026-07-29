@@ -241,14 +241,22 @@ describe("ExperimentWorkspace", () => {
     expect(view.queryByLabelText("Current evidence note", { exact: false })).not.toBeInTheDocument();
 
     expect(view.getByRole("group", { name: "Name the decision risk" })).toBeInTheDocument();
+    await fireEvent.input(
+      view.getByLabelText("One atomic assumption that must be true", { exact: false }),
+      { target: { value: completedDraft.assumption } },
+    );
+    await fireEvent.input(
+      view.getByLabelText("Why failure changes the decision", { exact: false }),
+      { target: { value: completedDraft.whyCritical } },
+    );
     await fireEvent.click(view.getByRole("button", { name: "Continue" }));
-    expect(view.getByText("Decision risk", { exact: false })).toHaveTextContent("Decision risk completed");
     expect(view.getByRole("group", { name: "Design the smallest credible test" })).toBeInTheDocument();
     expect(view.getByText("Shows interest in the message or entry point.")).toBeInTheDocument();
 
     const fill = async (label: string, value: string) => {
       await fireEvent.input(view.getByLabelText(label, { exact: false }), { target: { value } });
     };
+    await fill("Exact stimulus, offer, prototype, or task", completedDraft.stimulus);
     await fill("Recruitment or traffic channel", completedDraft.channel);
     await fill("Primary behavioral metric, including numerator and denominator", completedDraft.primaryMetric);
     await fill("Pass at", completedDraft.passThreshold);
@@ -343,14 +351,12 @@ describe("ExperimentWorkspace", () => {
     expect(view.getByText("From evidence")).toBeInTheDocument();
     await fireEvent.click(view.getByRole("button", { name: "Continue" }));
     expect(view.getByLabelText("Qualified audience", { exact: false })).toHaveValue("Operations leads at service businesses");
-    expect(view.getByLabelText("Exact stimulus, offer, prototype, or task", { exact: false })).toHaveValue(
-      "A focused test of Signal Desk for operators with one observable next step.",
-    );
+    expect(view.getByLabelText("Exact stimulus, offer, prototype, or task", { exact: false })).toHaveValue("");
     await fireEvent.click(view.getByRole("button", { name: "Continue" }));
     expect(view.getByText("Name the recruitment or traffic channel.")).toBeInTheDocument();
     expect(view.getByText("Define the primary metric, including numerator and denominator.")).toBeInTheDocument();
-    // The first missing control receives focus instead of a silent no-op.
-    await waitFor(() => expect(document.activeElement?.id).toBe("experiment-channel"));
+    // The first missing owner-authored field receives focus instead of a silent no-op.
+    await waitFor(() => expect(document.activeElement?.id).toBe("experiment-stimulus"));
     expect(view.queryByRole("button", { name: "Save draft" })).not.toBeInTheDocument();
     expect(mocks.createSelectionExperiment).not.toHaveBeenCalled();
   });
@@ -785,16 +791,14 @@ describe("ExperimentWorkspace", () => {
 
     await fireEvent.click(await view.findByRole("button", { name: "Plan a test" }));
     const select = view.getByLabelText("Candidate", { exact: false }) as HTMLSelectElement;
-    expect(view.getByLabelText("One atomic assumption that must be true", { exact: false })).toHaveValue(
-      idea.critic_concern,
-    );
+    expect(view.getByLabelText("One atomic assumption that must be true", { exact: false })).toHaveValue("");
+    expect(view.getByText(idea.critic_concern!)).toBeInTheDocument();
 
     await fireEvent.change(select, { target: { value: "idea-ledger" } });
 
     expect(select.value).toBe("idea-ledger");
-    expect(view.getByLabelText("One atomic assumption that must be true", { exact: false })).toHaveValue(
-      idea2.critic_concern,
-    );
+    expect(view.getByLabelText("One atomic assumption that must be true", { exact: false })).toHaveValue("");
+    expect(view.getByText(idea2.critic_concern!)).toBeInTheDocument();
     expect(view.queryByRole("alert")).not.toBeInTheDocument();
   });
 
@@ -829,7 +833,8 @@ describe("ExperimentWorkspace", () => {
     await fireEvent.click(await view.findByRole("button", { name: "Discard draft and switch" }));
 
     expect(select.value).toBe("idea-ledger");
-    expect(assumptionField).toHaveValue(idea2.critic_concern);
+    expect(assumptionField).toHaveValue("");
+    expect(view.getByText(idea2.critic_concern!)).toBeInTheDocument();
     expect(view.queryByRole("alert")).not.toBeInTheDocument();
   });
 

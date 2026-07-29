@@ -1,8 +1,13 @@
 import { prisma } from './db.js';
 import { JobStatus, StageStatus, AssetType, Prisma, BillingModel, DispatchState, DispatchKind } from '@prisma/client';
 import { PIPELINE_STAGES, TOTAL_STAGES } from '../types/job.js';
-import { determineFailedStage, refundForStage, refundForRegenerationStage, refundForSeedIdeaStage, isGuidedSegment, type StageName } from './creditService.js';
-import { buildSeedEnvelope, buildSeedReceiptContent } from '../utils/ledgerEvents.js';
+import { determineFailedStage, refundChargeInTx, refundForStage, refundForRegenerationStage, refundForSeedIdeaStage, isGuidedSegment, type StageName } from './creditService.js';
+import {
+  buildRegenerationEnvelope,
+  buildRegenerationReceiptContent,
+  buildSeedEnvelope,
+  buildSeedReceiptContent,
+} from '../utils/ledgerEvents.js';
 
 /**
  * Create a new research job
@@ -477,7 +482,7 @@ export async function cancelSeedIdeaDispatch(
       },
       data: { status: JobStatus.AWAITING_SELECTION, activeDispatchId: null },
     });
-    if (result.count === 0) return 0;
+    if (result.count === 0) return { count: 0, creditRefunded: 0 };
 
     await tx.jobDispatch.updateMany({
       where: { id: dispatch.id },
@@ -497,7 +502,8 @@ export async function cancelSeedIdeaDispatch(
           role: 'receipt',
           content: buildSeedReceiptContent('seed_settled', 'refunded'),
           patchJson: buildSeedEnvelope(
-            'seed_settled', dispatch.sourceMessageId, 'refunded',
+            'seed_settled', dispatch.sourceMessageId, 'refunded', undefined,
+            dispatch.id,
           ) as unknown as object,
         },
       });
@@ -536,6 +542,143 @@ export async function cancelSeedIdeaDispatch(
     } catch (refundError) {
       console.error(`[JobService] Failed to refund seed idea credit for job ${jobId}:`, refundError);
     }
+  }
+
+  return { cancelled: true, creditRefunded };
+}
+
+function regenerationOrdinal(segment: string | null | undefined): number | null {
+  const match = /^regenerate_ideas_(\d+)$/.exec(segment ?? '');
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
+
+/**
+ * Operation-scoped failure recovery for an additional idea batch.
+ *
+ * A batch runs on top of an already-valid AWAITING_SELECTION job. A worker crash or
+ * failed callback must therefore restore that state and preserve the candidate pool,
+ * never fail the parent research job. The dispatch's numbered segment identifies the
+ * exact regeneration charge to refund.
+ */
+export async function cancelRegenerationDispatch(
+  jobId: string,
+  dispatch: { id: string; segment: string | null; chargeId?: string | null },
+  currentStatus: JobStatus,
+  failureKind: string,
+): Promise<CancelOutcome> {
+  const ordinal = regenerationOrdinal(dispatch.segment);
+  const reverted = await prisma.$transaction(async (tx) => {
+    const result = await tx.job.updateMany({
+      where: {
+        id: jobId,
+        status: { in: [JobStatus.QUEUED, JobStatus.REGENERATING] },
+        activeDispatchId: dispatch.id,
+      },
+      data: { status: JobStatus.AWAITING_SELECTION, activeDispatchId: null },
+    });
+    if (result.count === 0) return { count: 0, creditRefunded: 0 };
+
+    await tx.jobDispatch.updateMany({
+      where: { id: dispatch.id, kind: DispatchKind.REGENERATE },
+      data: { state: DispatchState.FAILED, failureKind, settledAt: new Date() },
+    });
+    const refund = dispatch.chargeId
+      ? await refundChargeInTx(tx, dispatch.chargeId)
+      : null;
+    if (refund) {
+      await tx.jobDispatch.update({
+        where: { id: dispatch.id },
+        data: {
+          state: DispatchState.REFUNDED,
+          refundTransactionId: refund.id,
+          refundedAt: new Date(),
+          refundedAmount: refund.amount,
+        },
+      });
+    }
+    // The settled receipt is the ONLY thing that clears the client's pending-batch state,
+    // and that state gates every pool mutation. It must therefore be written even when the
+    // segment carries no ordinal (dispatches opened before batches were numbered) — the
+    // exact ordinal is needed for the REFUND below, not for settling the operation.
+    const counted = await tx.job.findUnique({
+      where: { id: jobId },
+      select: { regenerationCount: true },
+    });
+    await tx.chatMessage.upsert({
+      where: { operationId: `regeneration:${dispatch.id}:settled` },
+      create: {
+        jobId,
+        gateStage: 5,
+        role: 'receipt',
+        content: buildRegenerationReceiptContent(
+          'regeneration_settled',
+          refund ? 'refunded' : 'failed',
+        ),
+        operationId: `regeneration:${dispatch.id}:settled`,
+        patchJson: buildRegenerationEnvelope({
+          event: 'regeneration_settled',
+          operationId: dispatch.id,
+          ordinal: ordinal ?? counted?.regenerationCount ?? 0,
+          outcome: refund ? 'refunded' : 'failed',
+          refunded: Boolean(refund),
+        }) as unknown as object,
+      },
+      update: {},
+    });
+    return { count: result.count, creditRefunded: refund?.amount ?? 0 };
+  });
+
+  if (reverted.count === 0) {
+    const current = await prisma.job.findUnique({
+      where: { id: jobId },
+      select: { status: true },
+    });
+    return { cancelled: false, reason: 'not_cancellable', status: current?.status };
+  }
+
+  if (currentStatus === JobStatus.QUEUED) {
+    const { removeJobFromQueue } = await import('./queueService.js');
+    await removeJobFromQueue(jobId).catch((error) =>
+      console.error(`[JobService] Failed to remove failed idea batch ${jobId} from the queue:`, error)
+    );
+  }
+
+  let creditRefunded = reverted.creditRefunded;
+  if (!dispatch.chargeId && ordinal != null) {
+    try {
+      const refund = await refundForRegenerationStage(jobId, ordinal);
+      if (refund) {
+        creditRefunded = Math.abs(refund.amount);
+        await prisma.$transaction(async (tx) => {
+          await tx.jobDispatch.updateMany({
+            where: { id: dispatch.id },
+            data: { state: DispatchState.REFUNDED },
+          });
+          await tx.chatMessage.update({
+            where: { operationId: `regeneration:${dispatch.id}:settled` },
+            data: {
+              content: buildRegenerationReceiptContent('regeneration_settled', 'refunded'),
+              patchJson: buildRegenerationEnvelope({
+                event: 'regeneration_settled',
+                operationId: dispatch.id,
+                ordinal,
+                outcome: 'refunded',
+                refunded: true,
+              }) as unknown as object,
+            },
+          });
+        });
+      }
+    } catch (error) {
+      console.error(`[JobService] Failed to refund idea batch ${dispatch.id}:`, error);
+    }
+  } else if (!dispatch.chargeId) {
+    console.error(
+      `[JobService] Regeneration dispatch ${dispatch.id} has no numbered segment; ` +
+      'cannot identify its exact charge for refund',
+    );
   }
 
   return { cancelled: true, creditRefunded };
@@ -735,4 +878,3 @@ export async function listJobs(options?: {
 
   return { jobs, total, limit, offset };
 }
-

@@ -10,6 +10,11 @@ group, so every facet is a fixed enum.
 - **Generation finalization:** `UnifiedSolutionCrew.execute_pipeline()` clears every incoming
   `tags` object and runs `_apply_tags()` after feasibility, parity, and SEO-realism work. This
   prevents birth-path or pre-calibration tags from surviving after their source scores change.
+  The earlier angle classifier reads canonical idea fields only; provisional generated tags are
+  deliberately excluded from that judgment.
+- **Selection finalization:** `backfill_solution_scores()` synchronizes every existing selection
+  entry's displayed component scores from the finalized idea fields, then adds any missing entries.
+  The strategic selector's composite/rank is preserved; stale pre-cap component values are not.
 - **Report finalization:** `ReportGenerator._sync_solution_scores()` first replaces the report's
   score fields with `ScoreAccessor`'s authoritative values, then calls `refresh_tag_facets()`
   (which delegates to `derive_tag_facets()`).
@@ -37,6 +42,13 @@ group, so every facet is a fixed enum.
 
 Facet vocabularies are **mutually exclusive** (no value appears in two facets) — enforced by
 `tests/unit/utils/test_idea_tags.py::test_facet_vocabularies_are_mutually_exclusive`.
+
+`data_access` keeps the seven values above closed; near-synonyms LLMs emit are folded in at the
+boundary instead of being added to the vocabulary — `none` / `not-data-dependent` / `official` →
+`public`, `licensed` → `paywalled` (mirrored in the frontend by
+`normalizeDataAccess()` in `frontend/src/lib/utils/ideaTagLabels.ts` so ideas stored before the
+pipeline normalized them still render). Do NOT promote an alias into the table: a superset breaks
+the chip labels, the friction sets, and mutual exclusivity with other facets.
 
 ## Per-value definitions (the non-obvious ones)
 
@@ -95,13 +107,18 @@ An idea earns **each** strength whose score clears a fixed per-dimension cutoff 
 |---|---|---|---|
 | `market-fit` | Strong demand fit | `market_fit_score` | ≥ 0.82 |
 | `seo-power` | Strong organic discovery | `seo_scalability_score` | ≥ 0.85 |
-| `innovator` | Distinct mechanism | `novelty_score` | ≥ 0.70 |
+| `innovator` | Distinct mechanism | canonical Distinctiveness (`1 − obviousness_score`; legacy fallback `novelty_score`) | ≥ 0.70 |
 | `quick-build` | Technically straightforward | `technical_feasibility_score` | ≥ 0.85 |
 | `solo-friendly` | Solo-manageable | `solo_dev_feasibility` | ≥ 0.78 |
 
 - `tags.strengths` = all earned (modal + future filtering).
 - `tags.primary_strength` = the single most exceptional = **largest margin above its cutoff**, or
   `null` if none clear (~30% of ideas). **The card shows `primary_strength`.**
+
+`innovator` and `novelty_level` share the same canonical Distinctiveness value. When
+`obviousness_score` exists it takes precedence; `novelty_score` is used only for legacy ideas
+without obviousness. This prevents contradictory labels such as “Distinct mechanism” and
+“Familiar approach” on the same idea.
 
 **Why margin, not raw score.** The previous `getSuperpower()` picked the raw max, which is biased
 toward higher-mean dimensions: in the historical 60-idea calibration sample it gave stored keys
@@ -131,8 +148,10 @@ back by `solution_name`.
 
 ## Display surfaces
 
-- **Card** (`SolutionCard.svelte`): unchanged layout; the single strength badge now reads
+- **Idea header** (`SolutionDetail.svelte`): the single strength badge reads
   `tags.primary_strength` (legacy client-side selection only for pre-tags reports).
+  The standalone `SolutionCard.svelte` that used to carry this badge was deleted with
+  its only consumer, `solutions/SolutionGrid.svelte`.
 - **Detail modal** (`SolutionDetailContent.svelte`): four labeled groups — **Strengths**
   (positives, variant-colored), **Model** (identity, neutral), **Growth** (channels, info), and
   **Watch-outs** (negatives, warning) — followed by a **"Why these tags"** line (`tags.rationale`).
@@ -165,4 +184,6 @@ back by `solution_name`.
 (`research_state.py`), the preview `alternative_solutions` dict
 (`research_flow._materialize_preview_report`), and the report assembly
 (`report_generator._generate_alternative_solutions`). Frontend receives it via the `/solutions`
-feed (`SolutionPreview.tags`) and the report (`AlternativeSolution.tags`).
+feed (`SolutionPreview.tags`) and the report (`AlternativeSolution.tags`). Worker serialization
+refreshes score-owned facets for both model instances and full dicts, covering queue/resume
+boundaries without trusting persisted pre-final tags.

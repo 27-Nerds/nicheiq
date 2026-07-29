@@ -205,8 +205,17 @@ export interface SolutionPreview {
   source_segment_payability?: number | null;
   source_segment_payability_class?: string | null;
   // Multi-Frame Idea Generation Portfolio: which generation frame minted this idea's cell.
-  // CODE-FILLED, never LLM-set. pain | gap | data_asset | spend_adjacent | workflow
+  // CODE-FILLED, never LLM-set. Includes owner_synthesis and additional_batch for
+  // user-triggered candidate-pool operations.
   source_frame?: string | null;
+  /** Durable identity and exact proposal retained for a Concept Forge evaluation. */
+  evaluation_id?: string | null;
+  evaluation_source_message_id?: string | null;
+  proposed_title?: string | null;
+  synthesis_evaluation?: Record<string, unknown> | null;
+  /** Durable provenance for an append-only additional batch. */
+  generation_operation_id?: string | null;
+  generation_batch_ordinal?: number | null;
   /** Submitted idea with no validated pain match in this run's evidence. */
   unanchored_hypothesis?: boolean | null;
   // Distilled bear case — the calibration critic's market_fit reason, distilled

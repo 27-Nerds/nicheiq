@@ -61,7 +61,18 @@ export interface SelectionDecisionState {
   schemaVersion: 1;
   jobId: string;
   status: string;
-  shortlist: { version: number; items: SelectionDecisionIdeaRef[] };
+  shortlist: {
+    version: number;
+    /** Opaque backend projection of the exact ordered ID/revision scope. */
+    fingerprint?: string;
+    items: SelectionDecisionIdeaRef[];
+    /** Forward-compatible placeholders for unavailable exact revisions. */
+    staleItems?: Array<{
+      ideaId: string;
+      ideaRevision: number;
+      titleSnapshot?: string;
+    }>;
+  };
   profile: SelectionDecisionProfile | null;
   founderFit: {
     inputFingerprint: string;
@@ -125,7 +136,11 @@ export interface SelectionDecisionState {
   deepResearch: {
     eligible: boolean;
     optionalWorkRequired: false;
-    blockers: Array<"JOB_NOT_AWAITING_SELECTION" | "NO_CURRENT_SHORTLIST">;
+    blockers: Array<
+      | "JOB_NOT_AWAITING_SELECTION"
+      | "NO_CURRENT_SHORTLIST"
+      | "STALE_SHORTLIST"
+    >;
   };
   nextAction: SelectionDecisionNextAction;
 }

@@ -9,7 +9,7 @@
 
 import { prisma } from './db.js';
 import { JobStatus, StageStatus, DispatchKind } from '@prisma/client';
-import { failJob, cancelSeedIdeaDispatch } from './jobService.js';
+import { failJob, cancelRegenerationDispatch, cancelSeedIdeaDispatch } from './jobService.js';
 import { notifyJobError } from './notificationService.js';
 import { getPhaseContext } from '../utils/phaseContext.js';
 import { refundForStage } from './creditService.js';
@@ -131,6 +131,7 @@ async function findStaleJobs(): Promise<Array<{
   currentStage: number | null;
   selectedSolutions: string[];
   activeDispatchId: string | null;
+  status: JobStatus;
   exceededMaxRuntime: boolean;
 }>> {
   const staleThreshold = new Date(Date.now() - STALE_THRESHOLD_MS);
@@ -178,6 +179,7 @@ async function findStaleJobs(): Promise<Array<{
       currentStage: true,
       selectedSolutions: true,
       activeDispatchId: true,
+      status: true,
     },
   });
 
@@ -245,6 +247,7 @@ async function markJobFailed(job: {
   currentStage: number | null;
   selectedSolutions: string[];
   activeDispatchId: string | null;
+  status: JobStatus;
 }, reason: string): Promise<void> {
   // A SEED_IDEA dispatch is an operation ON TOP OF an already-settled AWAITING_SELECTION job —
   // a crashed worker must not fail the WHOLE research job over it (plan: eager-meandering-
@@ -254,7 +257,14 @@ async function markJobFailed(job: {
   if (job.activeDispatchId) {
     const dispatch = await prisma.jobDispatch.findUnique({
       where: { id: job.activeDispatchId },
-      select: { id: true, kind: true, seedOrdinal: true, sourceMessageId: true },
+      select: {
+        id: true,
+        kind: true,
+        seedOrdinal: true,
+        sourceMessageId: true,
+        segment: true,
+        chargeId: true,
+      },
     });
     if (dispatch?.kind === DispatchKind.SEED_IDEA) {
       console.log(
@@ -262,6 +272,22 @@ async function markJobFailed(job: {
         `AWAITING_SELECTION (parent job left alive): ${reason}`
       );
       await cancelSeedIdeaDispatch(job.id, dispatch, JobStatus.RUNNING, 'SYSTEM_FAULT');
+      return;
+    }
+    if (dispatch?.kind === DispatchKind.REGENERATE) {
+      console.log(
+        `[Heartbeat] Job ${job.id} idea-batch dispatch ${dispatch.id} stale — restoring ` +
+        `AWAITING_SELECTION (parent job left alive): ${reason}`
+      );
+      // Pass the job's ACTUAL status: cancelRegenerationDispatch only drops the Redis
+      // queue entry when the batch was still QUEUED. Hardcoding REGENERATING here would
+      // orphan the entry, letting a worker later claim and run an already-refunded batch.
+      await cancelRegenerationDispatch(
+        job.id,
+        { id: dispatch.id, segment: dispatch.segment, chargeId: dispatch.chargeId },
+        job.status,
+        'SYSTEM_FAULT',
+      );
       return;
     }
   }

@@ -110,6 +110,37 @@ class TestDataAccessAndCompleteness:
         assert i.data_access_model is None
         assert "GitHub issues" in i.data_acquisition_notes
 
+    def test_legacy_labels_alias_onto_the_canonical_vocab(self):
+        # The screen used to run against a 10-value SUPERSET, so these passed the pool
+        # contract intact and were nulled much later by utils.idea_tags._valid().
+        crew = _crew()
+        ideas = [_idea(data_access_model="none"),
+                 _idea(data_access_model="official"),
+                 _idea(data_access_model="not-data-dependent"),
+                 _idea(data_access_model="licensed"),
+                 _idea(data_access_model="  Public  ")]
+        crew._finalize_idea_pool(ideas)
+        assert [i.data_access_model for i in ideas] == [
+            "public", "public", "public", "paywalled", "public"]
+
+    def test_aliased_none_skips_the_well_known_source_upgrade(self, monkeypatch):
+        # 'none' folded to 'public' must NOT enter the restrictive-label upgrade branch
+        # (that branch costs an LLM confirm call).
+        import nicheiq.utils.public_data_sources as pds
+        monkeypatch.setattr(pds, "retrieve_known_sources",
+                            lambda *a, **kw: (_ for _ in ()).throw(
+                                AssertionError("upgrade branch must not run for an aliased label")))
+        crew = _crew()
+        i = _idea(data_access_model="none", data_sources=["SAM.gov"])
+        crew._finalize_idea_pool([i])
+        assert i.data_access_model == "public"
+
+    def test_canonical_blocked_and_unverified_survive(self):
+        crew = _crew()
+        ideas = [_idea(data_access_model="blocked"), _idea(data_access_model="unverified")]
+        crew._finalize_idea_pool(ideas)
+        assert [i.data_access_model for i in ideas] == ["blocked", "unverified"]
+
     def test_under_evaluated_ideas_get_one_caveat(self):
         crew = _crew()
         ideas = [_idea(),

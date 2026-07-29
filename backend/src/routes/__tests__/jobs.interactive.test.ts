@@ -17,6 +17,7 @@ const mockJobUpdateMany = vi.fn();
 const mockTransaction = vi.fn();
 const mockCreditTransactionFindFirst = vi.fn();
 const mockUserCreditsFindUnique = vi.fn();
+const mockChatMessageCreate = vi.fn();
 
 vi.mock('../../services/db.js', () => ({
   prisma: {
@@ -69,7 +70,7 @@ vi.mock('../../services/creditService.js', () => ({
   refundForStage: vi.fn(),
   refundForRegenerationStage: vi.fn(),
   chargeForStageInTx: vi.fn().mockResolvedValue({ cost: 15 }),
-  chargeForRegenerationInTx: vi.fn().mockResolvedValue({}),
+  chargeForRegenerationInTx: vi.fn().mockResolvedValue({ id: 'charge-regeneration-1' }),
   chargeForResume: (...args: any[]) => mockChargeForResume(...args),
   getStageCost: vi.fn().mockResolvedValue(5),
 }));
@@ -293,7 +294,14 @@ beforeEach(async () => {
 
   // Default transaction: execute callback with tx that has job.updateMany
   mockTransaction.mockImplementation(async (callback: any) => {
-    const tx = { job: { updateMany: mockJobUpdateMany, update: async () => ({}) }, jobDispatch: { create: async () => ({ id: 'dispatch-test' }), updateMany: async () => ({ count: 1 }) }, };
+    const tx = {
+      job: { updateMany: mockJobUpdateMany, update: async () => ({}) },
+      jobDispatch: {
+        create: async () => ({ id: 'dispatch-test' }),
+        updateMany: async () => ({ count: 1 }),
+      },
+      chatMessage: { create: mockChatMessageCreate },
+    };
     return callback(tx);
   });
 
@@ -591,6 +599,21 @@ describe('POST /api/jobs/:jobId/regenerate-ideas', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.status).toBe('queued');
+    expect(response.body).toMatchObject({
+      operationId: 'dispatch-test',
+      batchOrdinal: 1,
+      focus: 'auto',
+    });
+    expect(mockChatMessageCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        role: 'receipt',
+        operationId: 'regeneration:dispatch-test:submitted',
+        patchJson: expect.objectContaining({
+          event: 'regeneration_submitted',
+          operationId: 'dispatch-test',
+        }),
+      }),
+    });
 
     const txCallArgs = mockJobUpdateMany.mock.calls[0][0];
     expect(txCallArgs.where.status).toBe('AWAITING_SELECTION');
@@ -613,6 +636,7 @@ describe('POST /api/jobs/:jobId/regenerate-ideas', () => {
       undefined, // ideaFocus: not set in this fixture (5th arg added with the idea_focus steer)
       'dispatch-test', // regeneration gets its own dispatch — a stale regen-A failure must not
                        // revert regen-B and refund B's charge
+      1,
     );
   });
 
@@ -650,7 +674,7 @@ describe('POST /api/jobs/:jobId/regenerate-ideas', () => {
       .send({});
 
     expect(response.status).toBe(400);
-    expect(response.body.error).toContain('only regenerate ideas when awaiting selection');
+    expect(response.body.error).toContain('only add another idea batch while awaiting selection');
   });
 
   it('returns 400 when max regenerations reached', async () => {
@@ -662,7 +686,7 @@ describe('POST /api/jobs/:jobId/regenerate-ideas', () => {
       .send({});
 
     expect(response.status).toBe(400);
-    expect(response.body.error).toContain('Maximum regenerations');
+    expect(response.body.error).toContain('Maximum additional idea batches');
   });
 
   it('allows regeneration when ideasRegeneratedAt is already set (not first regen)', async () => {

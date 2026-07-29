@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Copy, Check, Loader2 } from "lucide-svelte";
+  import { Copy, Check, ExternalLink, Loader2 } from "lucide-svelte";
   import FormOverlay from "$lib/components/ui/FormOverlay.svelte";
   import ConfirmGate from "$lib/components/ui/ConfirmGate.svelte";
   import {
@@ -112,7 +112,7 @@
   {open}
   eyebrow="Sharing"
   title="Share report"
-  description="Anyone with the link can view this report."
+  description="Anyone with the link can view report findings and sources. Analyst conversations, Decision Lab records, and annotations stay private."
   onRequestClose={() => (open = false)}
 >
   {#if loading}
@@ -158,6 +158,15 @@
             {shareInfo.viewCount === 1 ? "view" : "views"}
           </p>
         {/if}
+        <a
+          class="share-preview"
+          href={shareUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Preview shared report
+          <ExternalLink class="w-4 h-4" aria-hidden="true" />
+        </a>
       </div>
 
       <!-- Regenerate: destructive, so it takes two presses -->
@@ -248,13 +257,13 @@
 
   .share-url-block {
     display: grid;
-    gap: 0.6rem;
+    gap: var(--space-2);
   }
 
   .share-url-row {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 
   .share-url-input {
@@ -317,10 +326,26 @@
     margin: 0;
   }
 
+  .share-preview {
+    display: inline-flex;
+    width: fit-content;
+    align-items: center;
+    gap: var(--space-1-5);
+    color: var(--color-accent-dark);
+    font-size: var(--text-13);
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .share-preview:hover {
+    text-decoration: underline;
+    text-underline-offset: var(--space-1);
+  }
+
   .share-regenerate {
     display: grid;
-    gap: 0.6rem;
-    padding-top: 0.9rem;
+    gap: var(--space-2);
+    padding-top: var(--space-4);
     border-top: 1px solid var(--color-border);
   }
 

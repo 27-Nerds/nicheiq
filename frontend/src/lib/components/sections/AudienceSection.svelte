@@ -68,7 +68,7 @@
 <Section
   id="audience-intelligence"
   class="report-section"
-  icon={SECTION_MAP['audience'].icon}
+  icon={SECTION_MAP['audience-intelligence'].icon}
   title="Audience Intelligence"
   headerSize="lg"
   elevated={false}

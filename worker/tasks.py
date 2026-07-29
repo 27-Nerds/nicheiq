@@ -4,8 +4,10 @@ RQ Task definitions for NicheIQ research jobs.
 These tasks are enqueued by the Node.js backend and processed by RQ workers.
 """
 
+import hmac
 import json
 import os
+import re
 import traceback
 from pathlib import Path
 from typing import Optional
@@ -41,6 +43,371 @@ def _resolve_cost_summary(flow) -> Optional[dict]:
     if not summary and getattr(flow, "cost_tracker", None):
         summary = flow.cost_tracker.get_summary()
     return summary or None
+
+
+def _canonical_solution_snapshot(solutions: list) -> str:
+    """Stable full-model snapshot used to enforce append-only batch semantics."""
+    rows = []
+    for solution in solutions:
+        if hasattr(solution, "model_dump"):
+            rows.append(solution.model_dump(mode="json"))
+        elif isinstance(solution, dict):
+            rows.append(dict(solution))
+        else:
+            rows.append(str(solution))
+    return json.dumps(rows, sort_keys=True, separators=(",", ":"), default=str)
+
+
+def _ensure_phase1_identities(flow, job_id: str) -> None:
+    """Stamp and persist any Phase-1 records missed by an older generation path."""
+    state = flow.state
+    idea_gen = getattr(state, "idea_generation", None)
+    ideas = list(getattr(idea_gen, "solution_ideas", None) or [])
+    findings = list(getattr(state, "idea_ruled_out", None) or [])
+    needs_save = any(
+        not getattr(idea, "identity_origin", None)
+        or not getattr(idea, "idea_id", None)
+        for idea in ideas
+    ) or any(
+        not finding.get("finding_id") or not finding.get("idea_id")
+        for finding in findings
+    )
+    if not needs_save:
+        return
+
+    from nicheiq.utils.idea_identity import (
+        link_legacy_findings_to_ideas,
+        stamp_new_idea_identities,
+        stamp_ruled_out_findings,
+    )
+
+    stamp_new_idea_identities(
+        job_id,
+        ideas,
+        origin="phase1",
+        operation_key="initial",
+        force=True,
+        only_unowned=True,
+    )
+    state.idea_ruled_out = link_legacy_findings_to_ideas(findings, ideas)
+    state.idea_ruled_out = stamp_ruled_out_findings(
+        job_id,
+        state.idea_ruled_out,
+        operation_key="phase1",
+    )
+    if flow.checkpoint_mgr and idea_gen:
+        if not flow.checkpoint_mgr.save_stage("stage_5_3_refinement", idea_gen):
+            raise RuntimeError("Failed to persist durable Phase-1 candidate identities")
+
+
+_PHASE2_REVIEWED_FIELDS = (
+    "idea_id",
+    "idea_revision",
+    "solution_name",
+    "headline",
+    "short_description",
+    "description",
+    "value_proposition",
+    "pain_points_addressed",
+    "core_features",
+    "target_personas",
+    "technical_approach",
+    "estimated_development_time",
+    "dev_time_rationale",
+    "pricing_strategy",
+    "market_fit_score",
+    "technical_feasibility_score",
+    "data_feasibility_score",
+    "build_feasibility_score",
+    "novelty_score",
+    "seo_scalability_score",
+    "solo_dev_feasibility",
+    "winning_angle",
+    "angle_rationale",
+    "novelty_rationale",
+    "differentiation_locus",
+    "critic_concern",
+    "incumbent_parity",
+    "adjacent_market_parity",
+    "candidate_status",
+    "source_frame",
+)
+
+
+def _resolve_phase2_selection(
+    state,
+    job_id: str,
+    *,
+    selected_solution_refs: Optional[list[dict]] = None,
+    selected_solution_snapshots: Optional[list[dict]] = None,
+    provided_selection_fingerprint: Optional[str] = None,
+    legacy_solution_names: Optional[list[str]] = None,
+) -> tuple[list[str], list[dict]]:
+    """Resolve the paid Phase-2 request to exact hydrated checkpoint revisions."""
+    from nicheiq.models.solution_idea import visible_ideas
+    from nicheiq.utils.idea_identity import (
+        ensure_legacy_idea_identities,
+        normalize_solution_name,
+        normalized_solution_name_key,
+        selection_fingerprint,
+    )
+
+    pool = list(
+        getattr(getattr(state, "idea_generation", None), "solution_ideas", None) or []
+    )
+    ensure_legacy_idea_identities(job_id, pool)
+    visible = visible_ideas(pool)
+    by_ref: dict[tuple[str, int], object] = {}
+    for idea in visible:
+        key = (
+            str(getattr(idea, "idea_id", "") or "").strip(),
+            int(getattr(idea, "idea_revision", 0) or 0),
+        )
+        if not key[0] or key[1] < 1:
+            raise RuntimeError("Checkpoint candidate is missing a durable identity")
+        if key in by_ref:
+            raise RuntimeError(
+                f"Checkpoint contains duplicate candidate identity {key[0]}:{key[1]}"
+            )
+        by_ref[key] = idea
+
+    if selected_solution_refs:
+        normalized_refs: list[dict] = []
+        seen_refs: set[tuple[str, int]] = set()
+        for raw in selected_solution_refs:
+            if not isinstance(raw, dict):
+                raise RuntimeError("selected_solution_refs must contain objects")
+            idea_id = str(raw.get("idea_id") or "").strip()
+            revision = raw.get("idea_revision")
+            name = normalize_solution_name(raw.get("solution_name"))
+            if (
+                not idea_id
+                or isinstance(revision, bool)
+                or not isinstance(revision, int)
+                or revision < 1
+                or not name
+            ):
+                raise RuntimeError("Each selected_solution_ref must contain a valid exact reference")
+            key = (idea_id, revision)
+            if key in seen_refs:
+                raise RuntimeError(f"Duplicate selected candidate reference {idea_id}:{revision}")
+            seen_refs.add(key)
+            normalized_refs.append(
+                {
+                    "idea_id": idea_id,
+                    "idea_revision": revision,
+                    "solution_name": name,
+                }
+            )
+
+        if not 1 <= len(normalized_refs) <= 3:
+            raise RuntimeError("Phase 2 requires 1-3 exact candidate references")
+
+        if provided_selection_fingerprint is not None:
+            supplied = provided_selection_fingerprint.strip().lower()
+            if not re.fullmatch(r"[a-f0-9]{64}", supplied):
+                raise RuntimeError("selection_fingerprint must be a SHA-256 hex digest")
+            expected = selection_fingerprint(normalized_refs)
+            if not hmac.compare_digest(supplied, expected):
+                raise RuntimeError("selection_fingerprint does not match selected_solution_refs")
+
+        resolved: list[object] = []
+        canonical_refs: list[dict] = []
+        for ref in normalized_refs:
+            key = (ref["idea_id"], ref["idea_revision"])
+            candidate = by_ref.get(key)
+            if candidate is None:
+                raise RuntimeError(
+                    f"Selected candidate revision not found: {key[0]}:{key[1]}"
+                )
+            canonical_name = normalize_solution_name(
+                getattr(candidate, "solution_name", "")
+            )
+            if (
+                normalized_solution_name_key(ref["solution_name"])
+                != normalized_solution_name_key(canonical_name)
+            ):
+                raise RuntimeError(
+                    f"Selected candidate name does not match {key[0]}:{key[1]}"
+                )
+            resolved.append(candidate)
+            canonical_refs.append(
+                {
+                    "idea_id": key[0],
+                    "idea_revision": key[1],
+                    "solution_name": canonical_name,
+                }
+            )
+
+        name_keys = [
+            normalized_solution_name_key(ref["solution_name"]) for ref in canonical_refs
+        ]
+        if len(set(name_keys)) != len(name_keys):
+            raise RuntimeError(
+                "Phase 2 cannot safely join two selected candidates with the same name"
+            )
+
+        if selected_solution_snapshots is not None:
+            if (
+                not isinstance(selected_solution_snapshots, list)
+                or len(selected_solution_snapshots) != len(resolved)
+            ):
+                raise RuntimeError(
+                    "selected_solution_snapshots must align one-for-one with exact refs"
+                )
+            for index, (snapshot, candidate, ref) in enumerate(
+                zip(selected_solution_snapshots, resolved, canonical_refs)
+            ):
+                if not isinstance(snapshot, dict):
+                    raise RuntimeError(
+                        f"selected_solution_snapshots[{index}] must be an object"
+                    )
+                current = _solution_to_preview_dict(candidate)
+                for field in _PHASE2_REVIEWED_FIELDS:
+                    if field not in snapshot:
+                        continue
+                    left = json.dumps(
+                        snapshot.get(field),
+                        sort_keys=True,
+                        separators=(",", ":"),
+                        default=str,
+                    )
+                    right = json.dumps(
+                        current.get(field),
+                        sort_keys=True,
+                        separators=(",", ":"),
+                        default=str,
+                    )
+                    if left != right:
+                        raise RuntimeError(
+                            f"Selected candidate snapshot is stale at index {index}: {field}"
+                        )
+
+        return [ref["solution_name"] for ref in canonical_refs], canonical_refs
+
+    legacy = [
+        normalize_solution_name(name)
+        for name in (legacy_solution_names or [])
+        if normalize_solution_name(name)
+    ]
+    if not 1 <= len(legacy) <= 3:
+        raise RuntimeError("No solution selected for Phase 2")
+    if len({normalized_solution_name_key(name) for name in legacy}) != len(legacy):
+        raise RuntimeError("Legacy Phase-2 selection contains duplicate solution names")
+
+    canonical_refs = []
+    for requested_name in legacy:
+        matches = [
+            idea for idea in visible
+            if normalized_solution_name_key(getattr(idea, "solution_name", ""))
+            == normalized_solution_name_key(requested_name)
+        ]
+        if len(matches) != 1:
+            raise RuntimeError(
+                f"Legacy selected solution must resolve exactly once: {requested_name!r}"
+            )
+        candidate = matches[0]
+        canonical_refs.append(
+            {
+                "idea_id": candidate.idea_id,
+                "idea_revision": candidate.idea_revision,
+                "solution_name": normalize_solution_name(candidate.solution_name),
+            }
+        )
+    return [ref["solution_name"] for ref in canonical_refs], canonical_refs
+
+
+def _resolve_phase2_winner_ref(
+    selected_solution_refs: list[dict],
+    winner_name: str,
+) -> dict:
+    """Map the downstream name-only winner back to one exact selected revision."""
+    from nicheiq.utils.idea_identity import normalized_solution_name_key
+
+    matches = [
+        ref for ref in selected_solution_refs
+        if normalized_solution_name_key(ref["solution_name"])
+        == normalized_solution_name_key(winner_name)
+    ]
+    if len(matches) != 1:
+        raise RuntimeError(
+            f"Final winner {winner_name!r} does not map to exactly one selected revision"
+        )
+    return matches[0]
+
+
+def _validate_regeneration_base_candidate_refs(
+    state,
+    job_id: str,
+    base_candidate_refs: Optional[list[dict]],
+) -> None:
+    """Authorize regeneration against the exact selectable checkpoint pool.
+
+    Pool order is deliberately ignored: ordering is presentation/ranking state, while an
+    additional batch depends on membership in the immutable candidate revisions. The exact
+    ``{idea_id, idea_revision}`` set must match. Backend-supplied snapshot hashes are not
+    inspected here; arbitrary cross-language full-JSON hashes are not worker authority.
+    ``None`` preserves compatibility with queue messages created before this contract.
+    """
+    if base_candidate_refs is None:
+        return
+    if not isinstance(base_candidate_refs, list):
+        raise RuntimeError("base_candidate_refs must be a list")
+
+    from nicheiq.models.solution_idea import visible_ideas
+    from nicheiq.utils.idea_identity import ensure_legacy_idea_identities
+
+    pool = list(
+        getattr(getattr(state, "idea_generation", None), "solution_ideas", None) or []
+    )
+    ensure_legacy_idea_identities(job_id, pool)
+    current_refs: set[tuple[str, int]] = set()
+    for idea in visible_ideas(pool):
+        idea_id = str(getattr(idea, "idea_id", "") or "").strip()
+        revision = getattr(idea, "idea_revision", None)
+        if (
+            not idea_id
+            or isinstance(revision, bool)
+            or not isinstance(revision, int)
+            or revision < 1
+        ):
+            raise RuntimeError("Checkpoint candidate is missing a durable identity")
+        key = (idea_id, revision)
+        if key in current_refs:
+            raise RuntimeError(
+                f"Checkpoint contains duplicate candidate identity {idea_id}:{revision}"
+            )
+        current_refs.add(key)
+
+    authorized_refs: set[tuple[str, int]] = set()
+    for raw in base_candidate_refs:
+        if not isinstance(raw, dict):
+            raise RuntimeError("base_candidate_refs must contain objects")
+        idea_id = str(raw.get("idea_id") or "").strip()
+        revision = raw.get("idea_revision")
+        if (
+            not idea_id
+            or isinstance(revision, bool)
+            or not isinstance(revision, int)
+            or revision < 1
+        ):
+            raise RuntimeError(
+                "Each base_candidate_ref must contain idea_id and idea_revision"
+            )
+        key = (idea_id, revision)
+        if key in authorized_refs:
+            raise RuntimeError(
+                f"base_candidate_refs contains duplicate identity {idea_id}:{revision}"
+            )
+        authorized_refs.add(key)
+
+    if authorized_refs != current_refs:
+        missing = sorted(authorized_refs - current_refs)
+        unexpected = sorted(current_refs - authorized_refs)
+        raise RuntimeError(
+            "Additional-batch base candidate refs do not match the resumed checkpoint "
+            f"(missing={missing}, unexpected={unexpected})"
+        )
 
 
 def run_research_job(
@@ -254,6 +621,23 @@ def _solution_to_preview_dict(solution) -> dict:
             d["tags"] = refresh_tag_facets(solution).model_dump()
     elif isinstance(solution, dict):
         d = dict(solution)
+        # Queue/resume boundaries can hand us the same full idea as a plain dict.
+        # Re-validate when possible so stale score-owned tags cannot bypass the
+        # model-instance refresh path. Partial legacy dicts remain fail-soft.
+        from pydantic import ValidationError
+
+        from nicheiq.models.solution_idea import BaseSolutionIdea
+        from nicheiq.utils.idea_tags import refresh_tag_facets
+        try:
+            parsed = BaseSolutionIdea.model_validate(d)
+        except ValidationError as e:
+            # A partial legacy dict is the expected miss; keep its stored tags as-is.
+            logger.debug(
+                f"[Worker] Preview dict for {d.get('solution_name') or d.get('name')!r} "
+                f"is not a full idea, keeping stored tags: {e.error_count()} field(s) invalid"
+            )
+        else:
+            d["tags"] = refresh_tag_facets(parsed).model_dump()
     else:
         d = {"solution_name": str(solution)}
 
@@ -368,6 +752,7 @@ def run_interactive_research(
         if not idea_gen or not hasattr(idea_gen, "solution_ideas") or not idea_gen.solution_ideas:
             raise RuntimeError("Phase 1 did not produce solution ideas")
 
+        _ensure_phase1_identities(flow, job_id)
         from nicheiq.models.solution_idea import visible_ideas
 
         solutions = visible_ideas(idea_gen.solution_ideas)
@@ -458,6 +843,7 @@ def _notify_phase1_complete_from_gate(job_id: str, flow) -> dict:
     if not idea_gen or not hasattr(idea_gen, "solution_ideas") or not idea_gen.solution_ideas:
         raise RuntimeError("Phase 1 did not produce solution ideas")
 
+    _ensure_phase1_identities(flow, job_id)
     from nicheiq.models.solution_idea import visible_ideas
 
     solutions = visible_ideas(idea_gen.solution_ideas)
@@ -653,7 +1039,13 @@ def continue_from_gate(
 
 
 def _run_phase2_continuation(
-    flow, job_id, selected_solutions, selection_rationale, output_dir, progress_callback
+    flow,
+    job_id,
+    selected_solutions,
+    selected_solution_refs,
+    selection_rationale,
+    output_dir,
+    progress_callback,
 ) -> dict:
     """
     Continue from Phase 1 to Phase 2 with the selected solution(s).
@@ -766,8 +1158,12 @@ def _run_phase2_continuation(
 
     # Read final winner from state (keyword validation re-ranking may have changed it)
     final_winner = state.solution_selection.selected_solution_name if state.solution_selection else selected_solution
+    winner_ref = _resolve_phase2_winner_ref(
+        selected_solution_refs, final_winner,
+    )
     publish_report_ready(
         job_id, str(job_report_path), winner_name=final_winner,
+        winner_ref=winner_ref,
         cost_summary=_resolve_cost_summary(flow),
     )
 
@@ -778,6 +1174,8 @@ def _run_phase2_continuation(
         "status": "completed",
         "job_id": job_id,
         "report_path": str(job_report_path),
+        "winner_name": final_winner,
+        "winner_ref": winner_ref,
     }
 
 
@@ -786,6 +1184,9 @@ def run_research_phase2(
     checkpoint_path: str,
     selected_solutions: list[str] = None,
     selected_solution: str = "",
+    selected_solution_refs: Optional[list[dict]] = None,
+    selected_solution_snapshots: Optional[list[dict]] = None,
+    selection_fingerprint: Optional[str] = None,
     selection_rationale: str = "",
 ) -> dict:
     """
@@ -795,12 +1196,16 @@ def run_research_phase2(
     Supports multi-select via selected_solutions list, with backward compat
     via selected_solution string.
     """
-    solutions = selected_solutions or ([selected_solution] if selected_solution else [])
-    if not solutions:
+    legacy_solutions = selected_solutions or (
+        [selected_solution] if selected_solution else []
+    )
+    if not selected_solution_refs and not legacy_solutions:
         raise RuntimeError("No solution selected for Phase 2")
-    primary_solution = solutions[0]
 
-    logger.info(f"[Worker] Starting Phase 2 for job {job_id}, solutions: {solutions}")
+    logger.info(
+        f"[Worker] Starting Phase 2 for job {job_id}, "
+        f"exact_refs={len(selected_solution_refs or [])}, legacy={legacy_solutions}"
+    )
 
     output_base = Path(os.environ.get("NICHEIQ_OUTPUT_DIR", "./output/jobs"))
     output_dir = output_base / job_id
@@ -826,8 +1231,17 @@ def run_research_phase2(
         if not loaded:
             raise RuntimeError(f"Failed to load checkpoint from {checkpoint_path}")
 
+        solutions, canonical_refs = _resolve_phase2_selection(
+            flow.state,
+            job_id,
+            selected_solution_refs=selected_solution_refs,
+            selected_solution_snapshots=selected_solution_snapshots,
+            provided_selection_fingerprint=selection_fingerprint,
+            legacy_solution_names=legacy_solutions,
+        )
+
         return _run_phase2_continuation(
-            flow, job_id, solutions, selection_rationale,
+            flow, job_id, solutions, canonical_refs, selection_rationale,
             output_dir, progress_callback
         )
 
@@ -1156,6 +1570,9 @@ def run_regenerate_ideas(
     existing_solution_names: list[str],
     niche: str,
     idea_focus: Optional[str] = None,
+    dispatch_id: Optional[str] = None,
+    batch_ordinal: Optional[int] = None,
+    base_candidate_refs: Optional[list[dict]] = None,
 ) -> dict:
     """
     Regeneration task: generates new solution ideas avoiding existing names.
@@ -1165,7 +1582,11 @@ def run_regenerate_ideas(
     changing the GTM focus for the new batch. It does NOT overwrite the run-level state.idea_focus
     (kept immutable); it's passed straight to the crew. None → fall back to the checkpoint's focus.
     """
-    logger.info(f"[Worker] Regenerating ideas for job {job_id}, excluding: {existing_solution_names}")
+    logger.info(
+        f"[Worker] Adding idea batch for job {job_id} "
+        f"(operation={dispatch_id or 'legacy'}, ordinal={batch_ordinal}), "
+        f"excluding: {existing_solution_names}"
+    )
 
     flow = None
     try:
@@ -1187,6 +1608,11 @@ def run_regenerate_ideas(
 
         # Re-run the solution generation stage with exclusion list
         state = flow.state
+        _validate_regeneration_base_candidate_refs(
+            state,
+            job_id,
+            base_candidate_refs,
+        )
         progress_callback(5, "Solution Pipeline", "running")
 
         from nicheiq.crews.unified_solution_crew import UnifiedSolutionCrew
@@ -1259,6 +1685,16 @@ def run_regenerate_ideas(
             cost_tracker=flow.cost_tracker,
         )
 
+        if state.idea_generation and hasattr(state.idea_generation, "solution_ideas"):
+            old_solutions = list(state.idea_generation.solution_ideas)
+        else:
+            old_solutions = []
+        original_snapshot = _canonical_solution_snapshot(old_solutions)
+        # Captured before the batch runs so the delivery-failure handler can restore the
+        # exact pre-batch ruled-out list without relying on a per-finding dispatch stamp
+        # (legacy callers pass dispatch_id=None, which no filter can distinguish).
+        pre_batch_findings = list(getattr(state, "idea_ruled_out", None) or [])
+
         # Execute pipeline with skip_selection=True (no Task 4 needed for regeneration)
         result = crew.execute_pipeline(skip_selection=True)
         idea_gen = result[0]  # IdeaGenerationResult (result[1] is None)
@@ -1273,27 +1709,78 @@ def run_regenerate_ideas(
         from nicheiq.utils.validation.crew_guardrails import detect_catalog_duplicate
         existing_names_lower = {n.lower() for n in blacklist_names}
 
-        def _is_dup(s) -> bool:
+        def _duplicate_target(s) -> Optional[str]:
             name = getattr(s, "solution_name", "") or getattr(s, "name", "")
             if name.lower() in existing_names_lower:
-                return True
+                return next(
+                    (existing for existing in blacklist_names if existing.lower() == name.lower()),
+                    name,
+                )
             try:
-                return any(detect_catalog_duplicate(s, e) for e in existing_ideas_for_crew)
+                for existing in existing_ideas_for_crew:
+                    if detect_catalog_duplicate(s, existing):
+                        return existing.get("name") or name
             except Exception:
-                return False  # never drop on error
+                pass
+            return None
 
-        new_solutions = [s for s in idea_gen.solution_ideas if not _is_dup(s)]
+        generated_solutions = list(idea_gen.solution_ideas)
+        from nicheiq.utils.idea_identity import (
+            normalized_solution_name_key,
+            stamp_new_idea_identities,
+            stamp_ruled_out_findings,
+        )
 
-        if not new_solutions:
-            # If all were duplicates, keep them anyway (best effort)
-            new_solutions = idea_gen.solution_ideas
+        batch_operation_key = dispatch_id or f"batch_{batch_ordinal or 1}"
+        stamp_new_idea_identities(
+            job_id,
+            generated_solutions,
+            origin="regeneration",
+            operation_key=batch_operation_key,
+            force=True,
+        )
+        for solution in generated_solutions:
+            # source_frame is the GENERATION LENS (gap / data_asset / workflow) and drives
+            # the lens chip. Batch provenance lives in the two fields below, so overwriting
+            # the lens here would only strip batch ideas of a chip first-batch ideas keep.
+            # Fill it in only when the generator left it unset.
+            if not solution.source_frame:
+                solution.source_frame = "additional_batch"
+            solution.generation_operation_id = dispatch_id
+            solution.generation_batch_ordinal = batch_ordinal
+
+        duplicate_solutions = []
+        new_solutions = []
+        for solution in generated_solutions:
+            duplicate_of = _duplicate_target(solution)
+            if duplicate_of:
+                solution.candidate_status = "demoted"
+                solution.duplicate_of = duplicate_of
+                crew._record_ruled_out(
+                    solution,
+                    source="backfill_rejected",
+                    reason_override=(
+                        f"This batch result duplicated the existing candidate "
+                        f"'{duplicate_of}', so it was not appended."
+                    ),
+                )
+                duplicate_solutions.append(solution)
+            else:
+                new_solutions.append(solution)
+
+        if duplicate_solutions:
+            logger.info(
+                f"[Worker] Excluded {len(duplicate_solutions)} duplicate result(s) "
+                f"from append-only batch {dispatch_id or 'legacy'}"
+            )
 
         # Merge old (loaded from checkpoint) + new solutions so future
         # validate/analyze finds solutions from ALL batches
-        if state.idea_generation and hasattr(state.idea_generation, "solution_ideas"):
-            old_solutions = list(state.idea_generation.solution_ideas)
-        else:
-            old_solutions = []
+        if _canonical_solution_snapshot(old_solutions) != original_snapshot:
+            raise RuntimeError(
+                "Append-only invariant violated: an existing candidate changed "
+                "during additional-batch generation"
+            )
         merged_solutions = old_solutions + list(new_solutions)
         logger.info(
             f"Merged solutions: {len(old_solutions)} existing + {len(new_solutions)} new = {len(merged_solutions)} total"
@@ -1302,6 +1789,69 @@ def run_regenerate_ideas(
         # Update state in-place and re-save checkpoint
         if state.idea_generation and hasattr(state.idea_generation, "solution_ideas"):
             state.idea_generation.solution_ideas = merged_solutions
+        # Empty names are excluded: a blank entry would otherwise match every finding whose
+        # idea_name is missing, sweeping unrelated rows into this batch's receipt.
+        batch_names = {
+            name for name in (
+                getattr(solution, "solution_name", "") for solution in generated_solutions
+            ) if name
+        }
+        batch_findings = []
+        from collections import defaultdict, deque
+
+        generated_by_name = defaultdict(deque)
+        ruled_out_by_name = defaultdict(deque)
+        for solution in generated_solutions:
+            name_key = normalized_solution_name_key(solution.solution_name)
+            if name_key:
+                generated_by_name[name_key].append(solution)
+                if getattr(solution, "candidate_status", "active") in {
+                    "demoted",
+                    "absorbed",
+                }:
+                    ruled_out_by_name[name_key].append(solution)
+        for finding in list(crew.ruled_out_pains or []):
+            if finding.get("idea_name") not in batch_names:
+                continue
+            # Lens-preserving, same reasoning as the candidate stamping above.
+            if not finding.get("source_frame"):
+                finding["source_frame"] = "additional_batch"
+            finding["generation_operation_id"] = dispatch_id
+            finding["generation_batch_ordinal"] = batch_ordinal
+            finding_name_key = normalized_solution_name_key(finding.get("idea_name"))
+            candidates_for_name = (
+                ruled_out_by_name[finding_name_key]
+                if finding_name_key in ruled_out_by_name
+                else generated_by_name.get(finding_name_key)
+            )
+            matched_idea = (
+                candidates_for_name.popleft() if candidates_for_name else None
+            )
+            if matched_idea is not None:
+                finding["idea_id"] = matched_idea.idea_id
+                finding["idea_revision"] = matched_idea.idea_revision
+                finding["identity_origin"] = matched_idea.identity_origin
+                finding["identity_operation_id"] = matched_idea.identity_operation_id
+            nested_idea = finding.get("idea")
+            if isinstance(nested_idea, dict):
+                if not nested_idea.get("source_frame"):
+                    nested_idea["source_frame"] = "additional_batch"
+                nested_idea["generation_operation_id"] = dispatch_id
+                nested_idea["generation_batch_ordinal"] = batch_ordinal
+                if matched_idea is not None:
+                    nested_idea["idea_id"] = matched_idea.idea_id
+                    nested_idea["idea_revision"] = matched_idea.idea_revision
+                    nested_idea["identity_origin"] = matched_idea.identity_origin
+                    nested_idea["identity_operation_id"] = (
+                        matched_idea.identity_operation_id
+                    )
+            batch_findings.append(finding)
+        stamp_ruled_out_findings(
+            job_id,
+            batch_findings,
+            operation_key=f"regeneration:{batch_operation_key}",
+        )
+        state.idea_ruled_out = pre_batch_findings + batch_findings
         if flow.checkpoint_mgr and state.idea_generation:
             flow.checkpoint_mgr.save_stage("stage_5_3_refinement", state.idea_generation)
 
@@ -1330,15 +1880,60 @@ def run_regenerate_ideas(
 
         progress_callback(5, "Solution Pipeline", "completed")
 
-        # Notify backend with new solutions
-        notify_regeneration_complete(job_id, new_previews, cost_summary=_resolve_cost_summary(flow))
+        # Notify backend with new solutions. Delivery raises on exhausted retries; the tag
+        # lets the handler below tell "batch is saved but nobody was told" apart from a real
+        # pipeline failure, so the saved-but-unpaid batch is reverted before it is refunded.
+        try:
+            notify_regeneration_complete(
+                job_id,
+                new_previews,
+                cost_summary=_resolve_cost_summary(flow),
+                batch_ordinal=batch_ordinal,
+                generated_count=len(generated_solutions),
+                ruled_out_count=len(batch_findings),
+            )
+        except Exception as delivery_err:
+            delivery_err.regeneration_delivery_only = True  # type: ignore
+            raise
 
-        return {"status": "regenerated", "job_id": job_id, "new_count": len(new_previews)}
+        return {
+            "status": "regenerated",
+            "job_id": job_id,
+            "new_count": len(new_previews),
+            "generated_count": len(generated_solutions),
+            "ruled_out_count": len(batch_findings),
+        }
 
     except Exception as e:
         from .heartbeat import JobCancelledException
 
         if isinstance(e, JobCancelledException):
+            raise
+
+        if getattr(e, "regeneration_delivery_only", False):
+            logger.error(
+                f"[Worker] Idea batch for job {job_id} completed and was saved, but delivery to "
+                f"the backend failed: {e}. Reverting the undelivered batch before the "
+                "regeneration dispatch is settled and refunded."
+            )
+            # Same contract as run_seed_idea's seed_delivery_only handler: Phase 2 resolves
+            # selections from this checkpoint, so a batch the backend never accepted — and
+            # which queue_consumer is about to have refunded — must not survive there or in
+            # the separately materialized preview asset.
+            try:
+                if flow.checkpoint_mgr and state.idea_generation:
+                    state.idea_generation.solution_ideas = old_solutions
+                    state.idea_ruled_out = pre_batch_findings
+                    flow.checkpoint_mgr.save_stage("stage_5_3_refinement", state.idea_generation)
+                    flow._materialize_preview_report(str(settings.checkpoint_dir))
+                    logger.info(
+                        f"[Worker] Reverted unpaid idea batch for job {job_id} pending refund "
+                        "(delivery never landed)"
+                    )
+            except Exception as revert_err:
+                logger.error(
+                    f"[Worker] Failed to revert idea-batch checkpoint for {job_id}: {revert_err}"
+                )
             raise
 
         logger.error(f"[Worker] Regeneration failed for job {job_id}: {e}\n{traceback.format_exc()}")
@@ -1432,16 +2027,30 @@ def run_seed_idea(
         # process already paid for instead of cold-re-probing them (Phase 4 section C).
         crew.hydrate_from_state(state)
 
+        seed_operation_key = dispatch_id or "seed"
         idea = crew.execute_seed_pipeline(SeedRequest(
             seed_text=seed.get("seed_text") or "",
             pain_ref=seed.get("pain_ref"),
             tool_ref=seed.get("tool_ref"),
-            dispatch_id=dispatch_id or "seed",
+            dispatch_id=seed_operation_key,
+            synthesis_evaluation=seed.get("synthesis_evaluation"),
         ))
 
         if idea is None:
             raise RuntimeError("Seed pipeline did not produce an idea")
 
+        from nicheiq.utils.idea_identity import (
+            stamp_new_idea_identities,
+            stamp_ruled_out_findings,
+        )
+
+        stamp_new_idea_identities(
+            job_id,
+            [idea],
+            origin="seed",
+            operation_key=seed_operation_key,
+            force=True,
+        )
         old_solutions = list(getattr(state.idea_generation, "solution_ideas", None) or [])
 
         # Dedup: keep-with-caveat, NEVER drop. A paid seed is merged regardless of whether it
@@ -1480,9 +2089,29 @@ def run_seed_idea(
         # entry. `save_stage` below flushes this via its metadata side effect — no separate
         # persistence call needed (checkpoint_manager.py's `_update_checkpoint_metadata`
         # reads `self.state.idea_ruled_out` directly, not the `stage_data` argument).
-        state.idea_ruled_out = list(getattr(state, "idea_ruled_out", None) or []) + [
-            r for r in (crew.ruled_out_pains or []) if r.get("dispatch_id") == dispatch_id
+        seed_findings = [
+            r for r in (crew.ruled_out_pains or [])
+            if r.get("dispatch_id") == seed_operation_key
         ]
+        for finding in seed_findings:
+            finding["idea_id"] = idea.idea_id
+            finding["idea_revision"] = idea.idea_revision
+            finding["identity_origin"] = idea.identity_origin
+            finding["identity_operation_id"] = idea.identity_operation_id
+            nested = finding.get("idea")
+            if isinstance(nested, dict):
+                nested["idea_id"] = idea.idea_id
+                nested["idea_revision"] = idea.idea_revision
+                nested["identity_origin"] = idea.identity_origin
+                nested["identity_operation_id"] = idea.identity_operation_id
+        stamp_ruled_out_findings(
+            job_id,
+            seed_findings,
+            operation_key=f"seed:{seed_operation_key}",
+        )
+        state.idea_ruled_out = (
+            list(getattr(state, "idea_ruled_out", None) or []) + seed_findings
+        )
 
         # The WORKER's own authoritative save — execute_seed_pipeline/_finalize_seed_tail
         # deliberately never saves, so this is the ONLY write of the merged pool.
@@ -1503,6 +2132,16 @@ def run_seed_idea(
 
         outcome = "accepted" if getattr(idea, "candidate_status", "active") == "active" else "demoted"
         preview = _solution_to_preview_dict(idea)
+        if outcome == "demoted":
+            finding = next(
+                (
+                    r for r in (crew.ruled_out_pains or [])
+                    if r.get("dispatch_id") == seed_operation_key
+                ),
+                None,
+            )
+            if finding:
+                preview["evaluation_reason"] = finding.get("reason")
 
         # Save first so a successful callback can expose an internally consistent checkpoint.
         # If callback delivery exhausts its retries, the tagged handler below rolls both assets
@@ -1535,7 +2174,7 @@ def run_seed_idea(
                     state.idea_generation.solution_ideas = old_solutions
                     state.idea_ruled_out = [
                         r for r in (getattr(state, "idea_ruled_out", None) or [])
-                        if r.get("dispatch_id") != dispatch_id
+                        if r.get("dispatch_id") != seed_operation_key
                     ]
                     flow.checkpoint_mgr.save_stage("stage_5_3_refinement", state.idea_generation)
                     # The preview asset was materialized with the now-reverted idea before

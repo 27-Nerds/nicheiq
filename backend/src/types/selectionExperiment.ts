@@ -85,6 +85,14 @@ export const SelectionExperimentDraftSchema = z.object({
 export type SelectionExperimentDraft = z.infer<typeof SelectionExperimentDraftSchema>;
 export type SelectionExperimentOriginSnapshot = z.infer<typeof SelectionExperimentOriginSnapshotSchema>;
 
+export const SelectionExperimentDraftUpdateSchema = SelectionExperimentDraftSchema.extend({
+  expectedVersion: z.number().int().positive().max(1_000_000),
+}).strict();
+
+export const SelectionExperimentMutationSchema = z.object({
+  expectedVersion: z.number().int().positive().max(1_000_000),
+}).strict();
+
 export const ExperimentCtaLabelSchema = z.enum([
   'IM_INTERESTED',
   'SHOW_ME_THE_CONCEPT',

@@ -176,9 +176,31 @@ export async function cancelJob(jobId: string): Promise<{ message: string }> {
 // ============================================
 
 export interface SelectSolutionRequest {
-  solutionNames?: string[];
-  solutionIds?: string[];
+  clientRequestId: string;
+  expectedDraftVersion: number;
+  expectedSelectionFingerprint: string;
+  expectedCost: number;
   rationale?: string;
+}
+
+export interface SelectSolutionResponse {
+  status?: 'phase2_queued';
+  message: string;
+  operationId?: string;
+  operationState?: string;
+  deliveryPending?: boolean;
+  selectedSolutionRefs?: Array<{
+    ideaId: string;
+    ideaRevision: number;
+    snapshotSha256: string;
+  }> | null;
+  clientRequestId?: string;
+  selection?: {
+    version: number;
+    fingerprint: string;
+    items: Array<{ ideaId: string; ideaRevision: number; title?: string }>;
+  };
+  chargedCost?: number;
 }
 
 export interface SolutionsResponse {
@@ -195,28 +217,50 @@ export interface SolutionsResponse {
 /**
  * Select a solution for deep investigation (Phase 2)
  */
-export async function selectSolution(jobId: string, request: SelectSolutionRequest): Promise<{ message: string }> {
+export async function selectSolution(jobId: string, request: SelectSolutionRequest): Promise<SelectSolutionResponse> {
   const response = await fetch(`${API_BASE}/jobs/${jobId}/select-solution`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request),
   });
-  return handleResponse<{ message: string }>(response);
+  return handleResponse<SelectSolutionResponse>(response);
 }
 
 /**
  * Regenerate solution ideas
  */
+export interface RegenerationBatchSummary {
+  ordinal: number;
+  focus?: IdeaFocus;
+  outcome?: 'completed' | 'no_candidates_added' | 'failed' | 'refunded';
+  generatedCount?: number;
+  addedCount?: number;
+  /** Exact immutable candidate revisions produced by this batch. */
+  addedIdeas?: Array<{ ideaId: string; ideaRevision: number }>;
+  /** Older receipts only carried ids and therefore cannot guarantee a revision. */
+  refPrecision?: 'exact' | 'legacy_id_only';
+  addedIdeaIds?: string[];
+  ruledOutCount?: number;
+  refunded?: boolean;
+}
+
+export interface RegenerateIdeasResponse {
+  message: string;
+  operationId: string;
+  batchOrdinal: number;
+  focus?: IdeaFocus;
+}
+
 export async function regenerateIdeas(
   jobId: string,
   ideaFocus?: IdeaFocus,
-): Promise<{ message: string }> {
+): Promise<RegenerateIdeasResponse> {
   const response = await fetch(`${API_BASE}/jobs/${jobId}/regenerate-ideas`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(ideaFocus ? { idea_focus: ideaFocus } : {}),
   });
-  return handleResponse<{ message: string }>(response);
+  return handleResponse<RegenerateIdeasResponse>(response);
 }
 
 /**
@@ -267,7 +311,17 @@ export interface SynthesisSeedIdeaRequest {
 
 export type SeedIdeaRequest = UserSeedIdeaRequest | SynthesisSeedIdeaRequest;
 
-export async function seedIdea(jobId: string, request: SeedIdeaRequest): Promise<{ message: string }> {
+export interface SeedIdeaResponse {
+  message: string;
+  status?: 'queued' | 'settled';
+  /** Dispatch identity for this exact paid evaluation. Older servers omit it. */
+  evaluationId?: string;
+  dispatchId?: string;
+  sourceMessageId?: string;
+  outcome?: 'accepted' | 'demoted' | 'failed' | 'refunded';
+}
+
+export async function seedIdea(jobId: string, request: SeedIdeaRequest): Promise<SeedIdeaResponse> {
   const response = await fetch(`${API_BASE}/jobs/${jobId}/seed-idea`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -313,8 +367,14 @@ export interface SeedResultSummary {
   solution_name: string;
   short_description?: string;
   market_fit_score?: number;
+  reason?: string;
   idea_id?: string;
   idea_revision?: number;
+  /** The immutable paid-operation identity. */
+  evaluation_id?: string;
+  dispatch_id?: string;
+  evaluation_source_message_id?: string;
+  proposed_title?: string;
   synthesis_operation?: SynthesisOperation;
   synthesized_from?: {
     idea_id: string;
@@ -328,10 +388,22 @@ export interface SeedResultSummary {
 export interface LedgerEventEnvelope {
   kind: 'ledger_event';
   version: number;
-  event: 'gate_patch_submitted' | 'gate_patch_applied' | 'seed_submitted' | 'seed_settled';
+  event:
+    | 'gate_patch_submitted'
+    | 'gate_patch_applied'
+    | 'seed_submitted'
+    | 'seed_settled'
+    | 'regeneration_submitted'
+    | 'regeneration_settled';
   patch: Record<string, unknown>;
   rows: { label: string; value: string }[];
   sourceMessageId?: string;
+  /** Dispatch identity for seed evaluation receipts. */
+  evaluationId?: string;
+  dispatchId?: string;
+  /** Additional-batch operation identity and durable result. */
+  operationId?: string;
+  batch?: RegenerationBatchSummary;
   /** Compact evaluated result; full detail lives in the candidates/ruled-out UI. */
   idea?: SeedResultSummary;
   /** `seed_settled` only — the seed's terminal outcome. */
@@ -413,6 +485,25 @@ export interface IdeaSynthesisPatch {
     };
   };
   newAssumptions: string[];
+  /** Exact Concept Forge brief evaluated by the worker. Legacy analyst proposals
+   * may omit it and continue through the free-form synthesis path. */
+  evaluation?: {
+    version: 1;
+    conceptSetId: string;
+    optionId: string;
+    inputFingerprint: string;
+    changedAxes: Array<{
+      axis: import('$lib/types/selectionConceptSet').SelectionConceptAxis;
+      from: string;
+      to: string;
+      reason: string;
+    }>;
+    assumptions: import('$lib/types/selectionConceptSet').SelectionConceptAssumption[];
+    retainedEvidence: string[];
+    evidenceToRecheck: string[];
+    disqualifiers: string[];
+    suggestedTest: import('$lib/types/selectionConceptSet').SelectionConceptOption['suggestedTest'];
+  };
 }
 
 export type SelectionCopilotTarget =
@@ -585,9 +676,17 @@ export type ChatStreamEvent =
  * false otherwise) flags a free-culture-wallet pool where no idea cleared a strong
  * market-fit bar — drives the "Should I even proceed with this niche?" starter chip.
  */
-export async function getChatHistory(jobId: string): Promise<{ messages: ChatMessageDTO[]; weakPool?: boolean; usedTurns?: number; maxTurns?: number; stage?: number; capabilities?: string[]; activeOperation?: unknown }> {
+export interface ActiveJobOperation {
+  id: string;
+  kind: 'CONTINUE' | 'APPLY_STAY' | 'REGENERATE' | 'SEED_IDEA';
+  state: string;
+  createdAt?: string;
+  claimedAt?: string | null;
+}
+
+export async function getChatHistory(jobId: string): Promise<{ messages: ChatMessageDTO[]; weakPool?: boolean; usedTurns?: number; maxTurns?: number; stage?: number; capabilities?: string[]; activeOperation?: ActiveJobOperation | null }> {
   const response = await fetch(`${API_BASE}/jobs/${jobId}/chat/history`);
-  return handleResponse<{ messages: ChatMessageDTO[]; weakPool?: boolean; usedTurns?: number; maxTurns?: number; stage?: number; capabilities?: string[]; activeOperation?: unknown }>(response);
+  return handleResponse<{ messages: ChatMessageDTO[]; weakPool?: boolean; usedTurns?: number; maxTurns?: number; stage?: number; capabilities?: string[]; activeOperation?: ActiveJobOperation | null }>(response);
 }
 
 /**

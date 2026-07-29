@@ -145,3 +145,68 @@ describe('chatCompleteStream', () => {
     expect(createSpy.mock.calls[0][0].model).toBe('google/gemma-2-27b-it');
   });
 });
+
+describe('reasoning-model parameters', () => {
+  beforeEach(() => createSpy.mockClear());
+
+  it('defaults reasoning_effort to minimal, preserving every existing call site', async () => {
+    const { chatComplete } = await freshChatComplete();
+    await chatComplete({ model: 'gpt-5-mini', messages: [{ role: 'user', content: 'x' }] });
+    expect(createSpy.mock.calls[0][0].reasoning_effort).toBe('minimal');
+  });
+
+  it('honours an explicit reasoningEffort', async () => {
+    const { chatComplete } = await freshChatComplete();
+    await chatComplete({
+      model: 'gpt-5-mini',
+      messages: [{ role: 'user', content: 'x' }],
+      reasoningEffort: 'high',
+    });
+    expect(createSpy.mock.calls[0][0].reasoning_effort).toBe('high');
+  });
+
+  it('passes verbosity only when asked for', async () => {
+    const { chatComplete } = await freshChatComplete();
+    await chatComplete({ model: 'gpt-5-mini', messages: [{ role: 'user', content: 'x' }] });
+    expect(createSpy.mock.calls[0][0].verbosity).toBeUndefined();
+
+    createSpy.mockClear();
+    await chatComplete({
+      model: 'gpt-5-mini',
+      messages: [{ role: 'user', content: 'x' }],
+      verbosity: 'low',
+    });
+    expect(createSpy.mock.calls[0][0].verbosity).toBe('low');
+  });
+
+  it('still drops temperature and maps the token budget for reasoning models', async () => {
+    const { chatComplete } = await freshChatComplete();
+    await chatComplete({
+      model: 'gpt-5-mini',
+      messages: [{ role: 'user', content: 'x' }],
+      temperature: 0.45,
+      maxTokens: 16_000,
+      reasoningEffort: 'high',
+    });
+    const params = createSpy.mock.calls[0][0];
+    // gpt-5-mini accepts only temperature=1, so passing one is silently inert.
+    expect(params.temperature).toBeUndefined();
+    expect(params.max_tokens).toBeUndefined();
+    expect(params.max_completion_tokens).toBe(16_000);
+  });
+
+  it('ignores both knobs on a non-reasoning model', async () => {
+    const { chatComplete } = await freshChatComplete();
+    await chatComplete({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: 'x' }],
+      temperature: 0.3,
+      reasoningEffort: 'high',
+      verbosity: 'low',
+    });
+    const params = createSpy.mock.calls[0][0];
+    expect(params.reasoning_effort).toBeUndefined();
+    expect(params.verbosity).toBeUndefined();
+    expect(params.temperature).toBe(0.3);
+  });
+});

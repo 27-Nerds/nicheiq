@@ -3,7 +3,7 @@ Pydantic models for research flow state management.
 """
 
 from datetime import datetime
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -31,6 +31,35 @@ from .solution_idea import (
 from .solution_refinement import SolutionRefinement
 from .solution_selection import SolutionSelection
 from .technical_blueprint import SiteStructure, UserFlowsSection
+
+
+class RuledOutFinding(TypedDict, total=False):
+    """Durable envelope for an examined candidate that did not clear the bar."""
+
+    finding_id: str
+    finding_revision: int
+    idea_id: str
+    idea_revision: int
+    identity_origin: str
+    identity_operation_id: str
+    idea_name: str
+    pain_title: str
+    segment: Optional[str]
+    reason: str
+    market_fit: Optional[float]
+    market_fit_band: str
+    prior_tier: str
+    source: str
+    evidence: str
+    source_frame: Optional[str]
+    dispatch_id: Optional[str]
+    evaluation_id: Optional[str]
+    evaluation_source_message_id: Optional[str]
+    proposed_title: Optional[str]
+    synthesis_evaluation: Optional[dict[str, Any]]
+    generation_operation_id: Optional[str]
+    generation_batch_ordinal: Optional[int]
+    idea: dict[str, Any]
 
 
 class NicheContext(BaseModel):
@@ -175,7 +204,7 @@ class DataQualitySummary(BaseModel):
         default_factory=list,
         description="Warnings about data limitations or quality issues"
     )
-    examined_ruled_out: list[dict] = Field(
+    examined_ruled_out: list[RuledOutFinding] = Field(
         default_factory=list,
         description="Structured findings for weak ideas demoted/rejected during the "
                      "idea-generation funnel (see ResearchState.idea_ruled_out)"
@@ -215,7 +244,13 @@ class NicheDifficultyVerdict(BaseModel):
     )
     key_challenges: list[str] = Field(
         default_factory=list,
-        description="What makes the niche hard (or strong) — framed as what the product must be"
+        description="Frictions only — what makes the niche hard, framed as what the product "
+                    "must be. Strengths live in key_strengths; never mix the two, or "
+                    "consumers render encouragements as risks."
+    )
+    key_strengths: list[str] = Field(
+        default_factory=list,
+        description="What makes the niche favourable. Populated only for a strong-fit niche"
     )
     low_confidence: bool = Field(
         default=False,
@@ -370,6 +405,23 @@ class AlternativeSolution(BaseModel):
 
     # Core identification
     solution_name: str = Field(..., description="Name of the alternative solution")
+    idea_id: Optional[str] = Field(
+        default=None,
+        description="Durable candidate identity copied from the Stage-5 idea",
+    )
+    idea_revision: int = Field(
+        default=1,
+        ge=1,
+        description="Immutable revision of the candidate represented by this alternative",
+    )
+    identity_origin: Optional[str] = Field(
+        default=None,
+        description="Code-owned namespace used to mint this candidate identity",
+    )
+    identity_operation_id: Optional[str] = Field(
+        default=None,
+        description="Operation key used to mint this candidate identity",
+    )
     headline: Optional[str] = Field(default=None, description="Short searchable title for the solution (5-12 words)")
     short_description: Optional[str] = Field(default=None, description="Punchy 1-2 sentence card summary (<180 chars)")
     summary: str = Field(..., description="2-3 paragraph overview of the solution")
@@ -420,7 +472,7 @@ class AlternativeSolution(BaseModel):
 
     # Data feasibility (from the ideation feasibility critic; annotate-only, surfaced in UI)
     data_feasibility_score: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="Ease of obtaining required data (0-1)")
-    data_access_model: Optional[str] = Field(default=None, description="public | freemium | paywalled | unofficial | restricted")
+    data_access_model: Optional[str] = Field(default=None, description="public | freemium | paywalled | unofficial | restricted | blocked | unverified")
     data_acquisition_notes: Optional[str] = Field(default=None, description="Data source/route + access model + cost/ToS risk")
     build_feasibility_score: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="Independent critic's build-feasibility estimate (0-1)")
 
@@ -469,6 +521,31 @@ class AlternativeSolution(BaseModel):
         default=None,
         description="pain | gap | data_asset | workflow (mirrors "
         "BaseSolutionIdea.source_frame); None when not carried through")
+    evaluation_id: Optional[str] = Field(
+        default=None,
+        description="Durable Concept Forge evaluation identity when this was an exact synthesis",
+    )
+    evaluation_source_message_id: Optional[str] = Field(
+        default=None,
+        description="Concept Forge proposal message that originated this evaluation",
+    )
+    proposed_title: Optional[str] = Field(
+        default=None,
+        description="Immutable title selected for the exact Concept Forge evaluation",
+    )
+    synthesis_evaluation: Optional[dict] = Field(
+        default=None,
+        description="Complete structured Concept Forge evaluation payload",
+    )
+    generation_operation_id: Optional[str] = Field(
+        default=None,
+        description="Durable operation identity for an append-only additional batch",
+    )
+    generation_batch_ordinal: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="One-based append-only additional-batch ordinal",
+    )
 
     # Closed-vocabulary filter facets (chips + future filtering). See docs/IDEA_TAGS.md.
     tags: Optional[IdeaTags] = Field(default=None, description="Closed-vocabulary filter facets")
@@ -1742,7 +1819,7 @@ class ResearchState(BaseModel):
     # Caveats from post-crew pain-coverage enforcement (high-severity pains a
     # solution set could not cover). Surfaced in the data-quality summary.
     idea_coverage_caveats: list[str] = Field(default_factory=list)
-    idea_ruled_out: list[dict] = Field(
+    idea_ruled_out: list[RuledOutFinding] = Field(
         default_factory=list,
         description=(
             "Structured 'examined & ruled out' findings from Stage 5: {idea_name, pain_title, "

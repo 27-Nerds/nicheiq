@@ -3,6 +3,7 @@ import type { IdeaRecord } from './ideaIdentity.js';
 export interface SelectionDraftItem {
   ideaId: string;
   ideaRevision: number;
+  titleSnapshot?: string;
 }
 
 export interface SelectionDraftResponse {
@@ -16,6 +17,7 @@ export function selectionDraftDocument(items: SelectionDraftItem[]) {
     items: items.map(item => ({
       ideaId: item.ideaId,
       ideaRevision: item.ideaRevision,
+      ...(item.titleSnapshot ? { titleSnapshot: item.titleSnapshot } : {}),
     })),
   };
 }
@@ -32,11 +34,18 @@ export function parseSelectionDraft(value: unknown): SelectionDraftItem[] {
     const item = candidate as Record<string, unknown>;
     const ideaId = typeof item.ideaId === 'string' ? item.ideaId.trim() : '';
     const ideaRevision = Number(item.ideaRevision);
+    const titleSnapshot = typeof item.titleSnapshot === 'string'
+      ? item.titleSnapshot.trim().slice(0, 500)
+      : '';
     if (!ideaId || !Number.isInteger(ideaRevision) || ideaRevision < 1) continue;
     const key = `${ideaId}:${ideaRevision}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    items.push({ ideaId, ideaRevision });
+    items.push({
+      ideaId,
+      ideaRevision,
+      ...(titleSnapshot ? { titleSnapshot } : {}),
+    });
     if (items.length === 3) break;
   }
   return items;

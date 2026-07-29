@@ -354,20 +354,32 @@ def backfill_solution_scores(
     existing_scores: list[SolutionScores] | None,
     solution_ideas: list[BaseSolutionIdea],
 ) -> list[SolutionScores]:
-    """Add missing score entries for solutions not already scored.
+    """Synchronize final idea sub-scores and add entries the selector missed.
 
     Used in non-interactive mode after Task 4 (which may miss some solutions).
-    Re-ranks the entire list after backfill. Same field mapping as compute_solution_scores.
+    Task 4 runs before late evaluator caps, so its component scores can be stale even
+    when an entry exists. The selector's strategic composite is preserved, while the
+    four displayed component fields are synchronized from the finalized idea. Missing
+    entries use the same mapping as :func:`compute_solution_scores`.
     """
     result = list(existing_scores) if existing_scores else []
-    scored_names = {s.solution_name for s in result}
+    scores_by_name: dict[str, list[SolutionScores]] = {}
+    for score in result:
+        scores_by_name.setdefault(score.solution_name, []).append(score)
 
     for idea in solution_ideas:
-        if idea.solution_name not in scored_names:
-            mf = _extract_score(idea, "market_fit_score")
-            tf = _extract_score(idea, "technical_feasibility_score")
-            ca = _extract_optional_score(idea, "novelty_score")
-            seo = _extract_optional_score(idea, "seo_scalability_score")
+        mf = _extract_score(idea, "market_fit_score")
+        tf = _extract_score(idea, "technical_feasibility_score")
+        ca = _extract_optional_score(idea, "novelty_score")
+        seo = _extract_optional_score(idea, "seo_scalability_score")
+        existing_for_idea = scores_by_name.get(idea.solution_name, [])
+        if existing_for_idea:
+            for score in existing_for_idea:
+                score.market_fit_score = mf
+                score.technical_feasibility_score = tf
+                score.competitive_advantage_score = ca
+                score.seo_growth_potential_score = seo
+        else:
             bf = _extract_optional_score(idea, "build_feasibility_score")
             angle = getattr(idea, "winning_angle", None)
             rseo = ranking_seo(seo, idea)

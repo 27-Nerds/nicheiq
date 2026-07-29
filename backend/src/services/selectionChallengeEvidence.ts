@@ -308,29 +308,57 @@ export function selectionChallengeSubjects(idea: IdeaRecord): SelectionChallenge
   }));
 }
 
+const MAX_PAIN_QUOTES = 6;
+
+/**
+ * Customer quotes for the pains an idea addresses.
+ *
+ * Keyed on `source_pain` AND `pain_points_addressed`, because `source_pain` is null on
+ * most generated ideas — 4 of 6 on a representative run. Keying on `source_pain` alone
+ * shipped an empty packet, the reviewer then correctly reported "no direct customer
+ * quotes", and the UI rendered that as "SAVED EVIDENCE RAISES CONCERNS · NOT
+ * ESTABLISHED" for a pain whose verbatim quote was visible one page earlier. Absence of
+ * a packet is not absence of evidence.
+ */
 function painQuoteSources(discovery: unknown, idea: IdeaRecord): SourceInput[] {
   const quotes = record(record(discovery).quotes);
-  const pain = normalizeLabel(idea.source_pain);
-  if (!pain) return [];
-  const title = Object.keys(quotes).find(key => normalizeLabel(key) === pain);
-  if (!title) return [];
+  const quoteKeys = Object.keys(quotes);
+  if (quoteKeys.length === 0) return [];
 
-  return array(quotes[title]).slice(0, 6).flatMap((input, index) => {
-    const quote = record(input);
-    const excerpt = text(quote.text);
-    if (!excerpt) return [];
-    return [{
-      kind: 'customer_quote' as const,
-      title: `${title} · captured quote ${index + 1}`,
-      excerpt,
-      url: httpUrl(quote.source_url),
-      capturedAt: isoDate(quote.created_at),
-      provenance: {
-        assetType: 'DISCOVERY_DATA' as const,
-        jsonPointer: `/quotes/${title}/${index}`,
-      },
-    }];
-  });
+  // source_pain first so the originating pain's quotes survive the cap; the addressed
+  // pains follow in their stated order.
+  const candidates = [idea.source_pain, ...array(idea.pain_points_addressed)];
+  const titles: string[] = [];
+  for (const candidate of candidates) {
+    const pain = normalizeLabel(candidate);
+    if (!pain) continue;
+    const title = quoteKeys.find(key => normalizeLabel(key) === pain);
+    if (title && !titles.includes(title)) titles.push(title);
+  }
+  if (titles.length === 0) return [];
+
+  const sources: SourceInput[] = [];
+  for (const title of titles) {
+    array(quotes[title]).forEach((input, index) => {
+      if (sources.length >= MAX_PAIN_QUOTES) return;
+      const quote = record(input);
+      const excerpt = text(quote.text);
+      if (!excerpt) return;
+      sources.push({
+        kind: 'customer_quote' as const,
+        title: `${title} · captured quote ${index + 1}`,
+        excerpt,
+        url: httpUrl(quote.source_url),
+        capturedAt: isoDate(quote.created_at),
+        provenance: {
+          assetType: 'DISCOVERY_DATA' as const,
+          jsonPointer: `/quotes/${title}/${index}`,
+        },
+      });
+    });
+    if (sources.length >= MAX_PAIN_QUOTES) break;
+  }
+  return sources;
 }
 
 function competitorSources(preview: unknown): SourceInput[] {

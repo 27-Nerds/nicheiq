@@ -64,6 +64,17 @@ export interface ChatCompleteOpts {
   /** Output budget. Mapped to max_completion_tokens for reasoning models. */
   maxTokens?: number;
   responseFormat?: ChatCompletionCreateParamsNonStreaming['response_format'];
+  /**
+   * Reasoning budget for GPT-5/o-series. Defaults to `'minimal'` — the value every
+   * caller got implicitly before this was configurable — so behaviour is unchanged
+   * unless a caller opts in. OpenAI's own default is `'medium'`, and their guide warns
+   * `'minimal'` is for latency-sensitive work and should be avoided for multi-step
+   * planning; raise it for constraint-heavy generations.
+   * Ignored by non-reasoning models.
+   */
+  reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high';
+  /** GPT-5 output-length knob (`low | medium | high`, API default `medium`). */
+  verbosity?: 'low' | 'medium' | 'high';
   /** Chat agent tools (v1.1) — the unstreamed tool-resolution rounds in chat.ts's
    *  multi-round loop call this (not chatCompleteStream) so the full tool_calls array
    *  is available in one shot, without delta reassembly. */
@@ -85,7 +96,10 @@ export interface ChatCompleteOpts {
  * Non-reasoning models pass `temperature`/`max_tokens` through unchanged.
  */
 export async function chatComplete(opts: ChatCompleteOpts): Promise<ChatCompletion> {
-  const { model, messages, temperature, maxTokens, responseFormat, tools, toolChoice, signal } = opts;
+  const {
+    model, messages, temperature, maxTokens, responseFormat, tools, toolChoice, signal,
+    reasoningEffort, verbosity,
+  } = opts;
 
   // Route by 'openrouter/' prefix. Strip the prefix FIRST so both the model sent
   // to the API and the reasoning-model detection use the bare id.
@@ -99,11 +113,16 @@ export async function chatComplete(opts: ChatCompleteOpts): Promise<ChatCompleti
   if (toolChoice) params.tool_choice = toolChoice;
 
   if (isReasoningModel(baseModel)) {
+    // NOTE: max_completion_tokens covers reasoning tokens as well as visible output, so
+    // a caller raising reasoningEffort must raise this budget too or risk truncation.
     if (maxTokens !== undefined) params.max_completion_tokens = maxTokens;
     // 'minimal' is valid for GPT-5 at the API level; the installed SDK's
     // ReasoningEffort union predates it, so cast via `string` to keep TS happy.
-    const effort: string = 'minimal';
+    const effort: string = reasoningEffort ?? 'minimal';
     params.reasoning_effort = effort as ChatCompletionCreateParamsNonStreaming['reasoning_effort'];
+    if (verbosity) {
+      (params as unknown as Record<string, unknown>).verbosity = verbosity;
+    }
   } else {
     if (temperature !== undefined) params.temperature = temperature;
     if (maxTokens !== undefined) params.max_tokens = maxTokens;

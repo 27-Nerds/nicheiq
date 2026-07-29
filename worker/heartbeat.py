@@ -280,11 +280,14 @@ def notify_job_completed(job_id: str) -> bool:
     _current_job_id = None
 
     try:
+        from .progress import _dispatch_payload
+
         response = requests.post(
             f"{_get_backend_url()}/api/workers/job-completed",
             json={
                 "worker_id": WORKER_ID,
                 "job_id": job_id,
+                **_dispatch_payload(job_id),
             },
             headers={"x-internal-service": _get_internal_secret()},
             timeout=HEARTBEAT_TIMEOUT_SECONDS,
@@ -323,6 +326,8 @@ def notify_job_failed(job_id: str, error_message: str, error_stage: Optional[int
     logger.debug(f"[Heartbeat] Classified error as {classified.code} for job {job_id}")
 
     try:
+        from .progress import _dispatch_payload
+
         response = requests.post(
             f"{_get_backend_url()}/api/workers/job-failed",
             json={
@@ -332,6 +337,7 @@ def notify_job_failed(job_id: str, error_message: str, error_stage: Optional[int
                 "error_stage": error_stage,
                 "error_code": classified.code,
                 "error_details": error_details,
+                **_dispatch_payload(job_id),
             },
             headers={"x-internal-service": _get_internal_secret()},
             timeout=HEARTBEAT_TIMEOUT_SECONDS,

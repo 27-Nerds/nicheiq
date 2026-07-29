@@ -36,6 +36,7 @@ import {
 import {
   candidateSnapshotSha256,
   ensureIdeaIdentities,
+  ideaDisplayTitle,
   ideaName,
   type IdeaRecord,
 } from '../utils/ideaIdentity.js';
@@ -581,8 +582,10 @@ export function assembleDossierBundle(previewReport: unknown, fallbackSolutionId
   const funnelCounts = (researchMetadata.funnel_counts ?? {}) as Record<string, number>;
 
   const mfOf = (idea: Record<string, unknown>) => (typeof idea.market_fit_score === 'number' ? idea.market_fit_score : null);
+  // Display title, not the internal codename: these names are read out verbatim in the
+  // analyst's opening message ("Top ideas: …").
   const nameOf = (idea: Record<string, unknown>, i: number) =>
-    (idea.solution_name as string) || (idea.name as string) || `Idea ${i + 1}`;
+    ideaDisplayTitle(idea) || `Idea ${i + 1}`;
 
   const scored: DossierIdeaSummary[] = rawIdeas.map((idea, i) => ({ name: nameOf(idea, i), mf: mfOf(idea) }));
   const maxVisibleMf = scored.reduce<number | null>(
@@ -712,7 +715,10 @@ export function stripSchemaVocabulary(text: string): string {
 }
 
 function buildIdeaSection(idea: Record<string, unknown>, index: number, bodyBudget: number): string {
-  const name = (idea.solution_name as string) || (idea.name as string) || `Idea ${index + 1}`;
+  // The heading is the analyst's whole vocabulary for this candidate, and whatever it
+  // reads it eventually says back. `solution_name` is an internal codename that appears
+  // on no UI surface, so the dossier names candidates the way the owner's screen does.
+  const name = ideaDisplayTitle(idea) || `Idea ${index + 1}`;
   const tags = (idea.tags ?? {}) as Record<string, unknown>;
   const diffFactors = Array.isArray(idea.differentiation_factors) ? (idea.differentiation_factors as string[]) : [];
   const caveats = Array.isArray(idea.red_team_caveats) ? (idea.red_team_caveats as string[]) : [];

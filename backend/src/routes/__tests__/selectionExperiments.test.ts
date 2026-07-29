@@ -22,6 +22,17 @@ const mockAssumptionFindFirst = vi.fn();
 const mockPrepareChallengeInput = vi.fn();
 const mockPreviewReport = vi.fn();
 const mockDiscoveryData = vi.fn();
+const mockJobLock = vi.fn();
+
+const transactionClient = {
+  $queryRaw: (...args: unknown[]) => mockJobLock(...args),
+  selectionExperiment: {
+    create: (...args: unknown[]) => mockExperimentCreate(...args),
+    updateMany: (...args: unknown[]) => mockExperimentUpdateMany(...args),
+    deleteMany: (...args: unknown[]) => mockExperimentDeleteMany(...args),
+    findUnique: (...args: unknown[]) => mockExperimentFindUnique(...args),
+  },
+};
 
 vi.mock('../../services/db.js', () => ({
   prisma: {
@@ -38,6 +49,7 @@ vi.mock('../../services/db.js', () => ({
     selectionChallenge: { findFirst: (...args: unknown[]) => mockChallengeFindFirst(...args) },
     selectionOwnerEvidence: { findMany: (...args: unknown[]) => mockOwnerEvidenceFindMany(...args) },
     selectionAssumption: { findFirst: (...args: unknown[]) => mockAssumptionFindFirst(...args) },
+    $transaction: (callback: (tx: typeof transactionClient) => unknown) => callback(transactionClient),
   },
 }));
 
@@ -137,6 +149,7 @@ beforeEach(async () => {
   mockDiscoveryData.mockResolvedValue(null);
   mockPrepareChallengeInput.mockReturnValue({ inputFingerprint: 'f'.repeat(64) });
   mockAssumptionFindFirst.mockResolvedValue(null);
+  mockJobLock.mockResolvedValue([{ status: 'AWAITING_SELECTION' }]);
   app = express();
   app.use(express.json());
   const { selectionExperimentsRouter } = await import('../selectionExperiments.js');
@@ -379,7 +392,7 @@ describe('selection experiment API', () => {
     const response = await request(app)
       .put(`/api/jobs/${JOB_ID}/selection-experiments/${EXPERIMENT_ID}`)
       .set(headers)
-      .send({ ...draft, assumptionId });
+      .send({ ...draft, assumptionId, expectedVersion: 1 });
 
     expect(response.status).toBe(400);
     expect(response.body.error).toContain('exact idea revision');
@@ -406,12 +419,17 @@ describe('selection experiment API', () => {
 
     const response = await request(app)
       .post(`/api/jobs/${JOB_ID}/selection-experiments/${EXPERIMENT_ID}/lock`)
-      .set(headers);
+      .set(headers)
+      .send({ expectedVersion: 1 });
 
     expect(response.status).toBe(200);
     expect(mockExperimentUpdateMany).toHaveBeenCalledWith({
-      where: { id: EXPERIMENT_ID, status: 'DRAFT' },
-      data: { status: 'LOCKED', lockedAt: expect.any(Date) },
+      where: { id: EXPERIMENT_ID, status: 'DRAFT', version: 1 },
+      data: {
+        status: 'LOCKED',
+        lockedAt: expect.any(Date),
+        version: { increment: 1 },
+      },
     });
   });
 
@@ -425,11 +443,12 @@ describe('selection experiment API', () => {
 
     const response = await request(app)
       .delete(`/api/jobs/${JOB_ID}/selection-experiments/${EXPERIMENT_ID}`)
-      .set(headers);
+      .set(headers)
+      .send({ expectedVersion: 1 });
 
     expect(response.status).toBe(204);
     expect(mockExperimentDeleteMany).toHaveBeenCalledWith({
-      where: { id: EXPERIMENT_ID, status: 'DRAFT' },
+      where: { id: EXPERIMENT_ID, status: 'DRAFT', version: 1 },
     });
   });
 
@@ -443,7 +462,8 @@ describe('selection experiment API', () => {
 
     const response = await request(app)
       .delete(`/api/jobs/${JOB_ID}/selection-experiments/${EXPERIMENT_ID}`)
-      .set(headers);
+      .set(headers)
+      .send({ expectedVersion: 1 });
 
     expect(response.status).toBe(409);
     expect(response.body.error).toContain('locked brief');
@@ -460,7 +480,8 @@ describe('selection experiment API', () => {
 
     const response = await request(app)
       .delete(`/api/jobs/${JOB_ID}/selection-experiments/${EXPERIMENT_ID}`)
-      .set(headers);
+      .set(headers)
+      .send({ expectedVersion: 1 });
 
     expect(response.status).toBe(409);
     expect(mockExperimentDeleteMany).not.toHaveBeenCalled();
@@ -488,7 +509,8 @@ describe('selection experiment API', () => {
 
     const response = await request(app)
       .delete(`/api/jobs/${JOB_ID}/selection-experiments/${EXPERIMENT_ID}`)
-      .set(headers);
+      .set(headers)
+      .send({ expectedVersion: 1 });
 
     expect(response.status).toBe(409);
   });

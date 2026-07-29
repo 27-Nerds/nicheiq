@@ -7,6 +7,7 @@ export type IdeaRecord = Record<string, unknown> & {
   idea_revision?: number;
   solution_name?: string;
   name?: string;
+  headline?: string;
 };
 
 function validIdentity(value: unknown): value is string {
@@ -104,6 +105,20 @@ export function stampSynthesizedIdeaIdentity(
     })),
     synthesis_evidence: proposal.evidence,
     synthesis_source_message_id: sourceMessageId,
+    ...(proposal.evaluation
+      ? {
+          evaluation_id: operationKey,
+          dispatch_id: operationKey,
+          evaluation_source_message_id: sourceMessageId,
+          proposed_title: proposal.proposedTitle,
+          synthesis_evaluation: {
+            evaluation_id: operationKey,
+            dispatch_id: operationKey,
+            source_message_id: sourceMessageId,
+            proposal,
+          },
+        }
+      : {}),
     source_frame: 'owner_synthesis',
   };
 }
@@ -111,4 +126,16 @@ export function stampSynthesizedIdeaIdentity(
 export function ideaName(idea: IdeaRecord): string | null {
   const value = idea.solution_name ?? idea.name;
   return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+/**
+ * The title every UI surface actually shows. `solution_name` is an internal codename
+ * ("ConsolidatorAI") used for matching, dedup keys and payloads — it is NOT what the
+ * owner reads, so it must never be the identity handed to a generator whose output is
+ * user-facing prose. Mirrors the frontend's `solutionDisplayTitle()`.
+ */
+export function ideaDisplayTitle(idea: IdeaRecord): string | null {
+  const headline = idea.headline;
+  if (typeof headline === 'string' && headline.trim()) return headline.trim();
+  return ideaName(idea);
 }

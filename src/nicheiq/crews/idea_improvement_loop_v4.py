@@ -29,6 +29,7 @@ from pydantic import BaseModel, Field
 
 from ..config.settings import settings
 from ..models.solution_idea import BaseSolutionIdea
+from ..utils.data_access import DATA_ACCESS_VOCAB
 from ..utils.llm_service import LLMService
 from ..utils.public_data_sources import (
     llm_confirm_known_route,
@@ -131,7 +132,12 @@ class DataRouteVerdict(BaseModel):
     )
     access_model: str = Field(
         "",
-        description="when verdict='supported': 'official' (documented public/free) or 'unofficial' (only scraping / ToS-gray).",
+        description=(
+            "when verdict='supported': EXACTLY one of the two literal tokens 'official' "
+            "(documented public/free) or 'unofficial' (only scraping / ToS-gray). This describes "
+            "how the DATA is obtained — never the product's pricing or business model. Any other "
+            "token is discarded as unverified."
+        ),
     )
     obtainable: bool = Field(True, description="convenience flag; false only when verdict='refuted'.")
     note: str = Field("", description="≤160 chars CITING the specific search evidence for the verdict")
@@ -305,11 +311,22 @@ def _canonicalize_route(access_model: str, obtainable: bool) -> str:
     """Fold the v4 verifier's vocab (`official|unofficial|blocked`) onto the critic / `DataAccessTag`
     vocab the rest of the pipeline keys on. `official` is not a recognized `DataAccessTag` (it shows
     no chip and no downstream cap matches it) → map to `public` when obtainable, else `blocked` so a
-    confused `official + obtainable=false` keeps the cap."""
+    confused `official + obtainable=false` keeps the cap.
+
+    Anything else outside `DataAccessTag` ABSTAINS to 'unverified' rather than persisting: the
+    field is free-text on the wire (`DataRouteVerdict.access_model`) and lands verbatim in the
+    report's `data_access_model` AND `tags.data_access`, so an off-vocab token used to ship as a
+    real provenance label."""
     am = (access_model or "").strip().lower()
     if am == "official":
         return "public" if obtainable else "blocked"
-    return am or "blocked"
+    if not am:
+        return "blocked"
+    if am not in DATA_ACCESS_VOCAB:
+        logger.warning(f"[v4-verify] access_model '{am[:40]}' outside DataAccessTag "
+                       f"{sorted(DATA_ACCESS_VOCAB)} — abstaining to 'unverified'")
+        return "unverified"
+    return am
 
 
 # A no-op web search: no Google query can confirm/refute these — they're the verdict's

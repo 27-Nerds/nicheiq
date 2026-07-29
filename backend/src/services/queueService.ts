@@ -1,5 +1,7 @@
 import { Redis } from 'ioredis';
 import { CONFIG } from '../config.js';
+import { DispatchState, Prisma } from '@prisma/client';
+import { prisma } from './db.js';
 
 // Redis connection options with retry logic
 const redisOptions = {
@@ -20,6 +22,111 @@ redis.on('connect', () => {
 
 // Queue name for research jobs
 const QUEUE_NAME = 'nicheiq:jobs';
+const DISPATCH_RETRY_INTERVAL_MS = 30_000;
+const DISPATCH_RETRY_MIN_AGE_MS = 15_000;
+const DISPATCH_RETRY_MAX_AGE_MS = 5 * 60_000;
+let dispatchRetryTimer: NodeJS.Timeout | null = null;
+let dispatchRetryRunning = false;
+
+/**
+ * Deliver the private payload persisted on an AUTHORIZED dispatch.
+ *
+ * Redis delivery is deliberately outside the authorization transaction. A transport error is
+ * ambiguous, so callers must leave the dispatch AUTHORIZED; this function records the attempt and
+ * a later sweep can redeliver the same idempotent dispatch.
+ */
+export async function deliverDispatchWork(dispatchId: string): Promise<void> {
+  const dispatch = await prisma.jobDispatch.findUnique({
+    where: { id: dispatchId },
+    select: { state: true, workPayload: true },
+  });
+  if (!dispatch || dispatch.state !== DispatchState.AUTHORIZED || !dispatch.workPayload) {
+    throw new Error('DISPATCH_NOT_DELIVERABLE');
+  }
+  const payload = dispatch.workPayload as Prisma.JsonObject;
+  try {
+    await redis.lpush(QUEUE_NAME, JSON.stringify({ ...payload, dispatch_id: dispatchId }));
+    await prisma.jobDispatch.updateMany({
+      where: { id: dispatchId, state: DispatchState.AUTHORIZED },
+      data: {
+        deliveryAttempts: { increment: 1 },
+        lastDeliveryAt: new Date(),
+        lastDeliveryError: null,
+      },
+    });
+  } catch (error) {
+    await prisma.jobDispatch.updateMany({
+      where: { id: dispatchId, state: DispatchState.AUTHORIZED },
+      data: {
+        deliveryAttempts: { increment: 1 },
+        lastDeliveryAt: new Date(),
+        lastDeliveryError: error instanceof Error ? error.message.slice(0, 2000) : 'Redis delivery failed',
+      },
+    }).catch(() => undefined);
+    throw error;
+  }
+}
+
+export async function redeliverAuthorizedDispatches(limit = 25): Promise<number> {
+  const retryBefore = new Date(Date.now() - DISPATCH_RETRY_MIN_AGE_MS);
+  const due = await prisma.jobDispatch.findMany({
+    where: {
+      state: DispatchState.AUTHORIZED,
+      workPayload: { not: Prisma.JsonNull },
+      OR: [
+        { lastDeliveryAt: null },
+        {
+          lastDeliveryError: { not: null },
+          lastDeliveryAt: { lte: retryBefore },
+        },
+      ],
+    },
+    orderBy: { lastDeliveryAt: { sort: 'asc', nulls: 'first' } },
+    take: limit,
+    select: { id: true, deliveryAttempts: true, lastDeliveryAt: true },
+  });
+  let delivered = 0;
+  for (const dispatch of due) {
+    if (dispatch.lastDeliveryAt) {
+      const retryAge = Math.min(
+        DISPATCH_RETRY_MIN_AGE_MS * 2 ** Math.max(dispatch.deliveryAttempts - 1, 0),
+        DISPATCH_RETRY_MAX_AGE_MS,
+      );
+      if (Date.now() - dispatch.lastDeliveryAt.getTime() < retryAge) continue;
+    }
+    try {
+      await deliverDispatchWork(dispatch.id);
+      delivered += 1;
+    } catch {
+      // Per-dispatch error metadata is already recorded; continue the bounded sweep.
+    }
+  }
+  return delivered;
+}
+
+export function startDispatchDeliveryMonitor(): void {
+  if (dispatchRetryTimer) return;
+  const sweep = async () => {
+    if (dispatchRetryRunning) return;
+    dispatchRetryRunning = true;
+    try {
+      await redeliverAuthorizedDispatches();
+    } catch (error) {
+      console.error('[DispatchOutbox] Delivery sweep failed:', error);
+    } finally {
+      dispatchRetryRunning = false;
+    }
+  };
+  void sweep();
+  dispatchRetryTimer = setInterval(() => void sweep(), DISPATCH_RETRY_INTERVAL_MS);
+  dispatchRetryTimer.unref();
+}
+
+export function stopDispatchDeliveryMonitor(): void {
+  if (!dispatchRetryTimer) return;
+  clearInterval(dispatchRetryTimer);
+  dispatchRetryTimer = null;
+}
 
 /**
  * Enqueue a job for processing by Python worker
@@ -143,7 +250,8 @@ export async function enqueueRegenerateJob(
   existingSolutionNames: string[],
   niche: string,
   ideaFocus?: string,
-  dispatchId?: string
+  dispatchId?: string,
+  batchOrdinal?: number,
 ): Promise<void> {
   const jobData = JSON.stringify({
     job_id: jobId,
@@ -154,6 +262,7 @@ export async function enqueueRegenerateJob(
     // Batch-scoped GTM-focus override (omitted => worker uses the run's original focus).
     idea_focus: ideaFocus,
     dispatch_id: dispatchId ?? null,
+    batch_ordinal: batchOrdinal ?? null,
     created_at: new Date().toISOString(),
   });
 
@@ -172,7 +281,8 @@ export async function enqueueSeedIdeaJob(
   seedText: string,
   painRef?: string,
   toolRef?: string,
-  dispatchId?: string
+  dispatchId?: string,
+  synthesisEvaluation?: Record<string, unknown>,
 ): Promise<void> {
   const jobData = JSON.stringify({
     job_id: jobId,
@@ -181,6 +291,7 @@ export async function enqueueSeedIdeaJob(
     seed_text: seedText,
     pain_ref: painRef ?? null,
     tool_ref: toolRef ?? null,
+    synthesis_evaluation: synthesisEvaluation ?? null,
     task_type: 'seed_idea',
     dispatch_id: dispatchId ?? null,
     created_at: new Date().toISOString(),

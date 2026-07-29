@@ -151,7 +151,12 @@
     text-transform: none;
     white-space: nowrap;
   }
+  /* Positioned so it — not the individual trigger — is the panels' containing
+     block. Only the LAST trigger's right edge coincides with the group's; anchoring
+     a 42rem panel to `right: 0` of the FIRST trigger pushed its left edge off-screen
+     (silently cropped by .job-page-shell's `overflow-x: clip`). */
   .context-disclosures {
+    position: relative;
     display: flex;
     flex-shrink: 0;
     flex-wrap: wrap;
@@ -160,7 +165,6 @@
     margin-left: auto;
   }
   .coverage-disclosure {
-    position: relative;
     flex-shrink: 0;
     min-width: 11rem;
   }

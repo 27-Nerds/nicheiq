@@ -87,6 +87,30 @@ class TestMergedCritic:
         # Note is reconciled at the source so label and notes don't drift.
         assert "no bulk route confirmed" in (a.data_acquisition_notes or "")
 
+    def test_off_vocab_access_label_abstains_to_unverified(self, monkeypatch):
+        # data_access_model is free text on the wire; an off-vocab token used to land
+        # verbatim in the report field AND tags.data_access. Abstain, never persist.
+        concepts = [_rc("A")]
+        result = _verdicts([
+            {"name": "A", "independent_obviousness": 0.2, "build_feasibility": 0.7,
+             "data_feasibility": 0.7, "data_access_model": "subscription",
+             "bulk_route": "official public API", "data_notes": "vendor API"},
+        ])
+        out = self._run(monkeypatch, concepts, result)
+        assert out[0].data_access_model == "unverified"
+
+    def test_in_vocab_access_label_passes_through(self, monkeypatch):
+        # 'freemium' IS a DataAccessTag (free data tier + paid features) — not a
+        # monetization leak, so the guard must not touch it.
+        concepts = [_rc("A")]
+        result = _verdicts([
+            {"name": "A", "independent_obviousness": 0.2, "build_feasibility": 0.7,
+             "data_feasibility": 0.7, "data_access_model": "freemium",
+             "bulk_route": "official public API", "data_notes": "free tier API"},
+        ])
+        out = self._run(monkeypatch, concepts, result)
+        assert out[0].data_access_model == "freemium"
+
     def test_drop_names_allowlisted_and_applied(self, monkeypatch):
         concepts = [_rc(f"c{i}") for i in range(8)]  # >= MIN_KEEP so a drop survives
         result = _verdicts(

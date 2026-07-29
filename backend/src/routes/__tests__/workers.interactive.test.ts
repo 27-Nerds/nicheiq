@@ -10,6 +10,10 @@ const mockJobFindFirst = vi.fn();
 const mockJobFindUnique = vi.fn();
 const mockJobUpdate = vi.fn();
 const mockUserFindUnique = vi.fn();
+const mockJobDispatchFindUnique = vi.fn();
+const mockJobDispatchUpdateMany = vi.fn();
+const mockChatMessageCreate = vi.fn();
+const mockCancelRegenerationDispatch = vi.fn();
 
 vi.mock('../../services/db.js', () => ({
   prisma: {
@@ -22,6 +26,18 @@ vi.mock('../../services/db.js', () => ({
     user: {
       findUnique: (...args: any[]) => mockUserFindUnique(...args),
     },
+    jobDispatch: {
+      findUnique: (...args: any[]) => mockJobDispatchFindUnique(...args),
+      updateMany: (...args: any[]) => mockJobDispatchUpdateMany(...args),
+    },
+    chatMessage: {
+      create: (...args: any[]) => mockChatMessageCreate(...args),
+    },
+    $transaction: async (callback: any) => callback({
+      job: { updateMany: (...args: any[]) => mockJobUpdateMany(...args) },
+      jobDispatch: { updateMany: (...args: any[]) => mockJobDispatchUpdateMany(...args) },
+      chatMessage: { create: (...args: any[]) => mockChatMessageCreate(...args) },
+    }),
   },
 }));
 
@@ -46,6 +62,7 @@ vi.mock('../../services/notificationService.js', () => ({
 }));
 
 vi.mock('../../services/jobService.js', () => ({
+  cancelRegenerationDispatch: (...args: any[]) => mockCancelRegenerationDispatch(...args),
   failJob: vi.fn(),
   updateStageProgress: vi.fn(),
   completeJob: vi.fn(),
@@ -445,6 +462,69 @@ describe('POST /api/workers/regeneration-complete', () => {
     expect(response.body.error).toBe('Job not in REGENERATING state');
   });
 
+  it('returns 200 idempotent when a completed dispatch retries after response loss', async () => {
+    const dispatchId = '00000000-0000-0000-0000-000000000099';
+    mockJobFindFirst.mockResolvedValue(null);
+    mockJobDispatchFindUnique.mockResolvedValue({
+      jobId: validPayload.job_id,
+      kind: 'REGENERATE',
+      state: 'COMPLETED',
+    });
+
+    const response = await request(app)
+      .post('/api/workers/regeneration-complete')
+      .send({ ...validPayload, dispatch_id: dispatchId });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ status: 'ok', idempotent: true });
+    expect(mockJobUpdateMany).not.toHaveBeenCalled();
+    expect(mockChatMessageCreate).not.toHaveBeenCalled();
+  });
+
+  it('does not treat another job completed dispatch as this batch retry', async () => {
+    const dispatchId = '00000000-0000-0000-0000-000000000099';
+    mockJobFindFirst.mockResolvedValue(null);
+    mockJobDispatchFindUnique.mockResolvedValue({
+      jobId: '00000000-0000-0000-0000-000000000002',
+      kind: 'REGENERATE',
+      state: 'COMPLETED',
+    });
+    mockJobFindUnique.mockResolvedValue({
+      status: 'REGENERATING',
+      activeDispatchId: 'a-newer-dispatch',
+    });
+
+    const response = await request(app)
+      .post('/api/workers/regeneration-complete')
+      .send({ ...validPayload, dispatch_id: dispatchId });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ status: 'ok', stale: true });
+    expect(mockJobUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it('acknowledges a stale completion without touching the active batch', async () => {
+    const dispatchId = '00000000-0000-0000-0000-000000000099';
+    mockJobFindFirst.mockResolvedValue(null);
+    mockJobDispatchFindUnique.mockResolvedValue({ state: 'CLAIMED' });
+    mockJobFindUnique.mockResolvedValue({
+      status: 'REGENERATING',
+      activeDispatchId: '00000000-0000-0000-0000-000000000100',
+    });
+
+    const response = await request(app)
+      .post('/api/workers/regeneration-complete')
+      .send({ ...validPayload, dispatch_id: dispatchId });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      status: 'ok',
+      stale: true,
+      reason: 'stale_dispatch',
+    });
+    expect(mockJobUpdateMany).not.toHaveBeenCalled();
+  });
+
   it('returns 409 on race condition (updateMany count=0)', async () => {
     mockJobFindFirst.mockResolvedValue({ solutionIdeas: [] });
     mockJobUpdateMany.mockResolvedValue({ count: 0 });
@@ -502,6 +582,54 @@ describe('POST /api/workers/regeneration-complete', () => {
     const callArgs = mockJobUpdateMany.mock.calls[0][0];
     expect(callArgs.data.solutionIdeas).toMatchObject([{ name: 'Old1', idea_revision: 1 }]);
     expect(callArgs.data.solutionIdeas[0].idea_id).toMatch(/^idea_[a-f0-9]{32}$/);
+  });
+
+  it('atomically settles a dispatched zero-addition batch with a durable receipt', async () => {
+    const dispatchId = '00000000-0000-0000-0000-000000000099';
+    mockJobFindFirst.mockResolvedValue({
+      solutionIdeas: [{ name: 'Old1', idea_id: 'idea-old', idea_revision: 1 }],
+      userId: null,
+      niche: 'test',
+      costUsd: 0,
+      regenerationCount: 2,
+    });
+    mockJobUpdateMany.mockResolvedValue({ count: 1 });
+    mockJobDispatchUpdateMany.mockResolvedValue({ count: 1 });
+    mockJobDispatchFindUnique.mockResolvedValue({
+      jobId,
+      kind: 'REGENERATE',
+      state: 'CLAIMED',
+      requestFingerprint: null,
+      batchOrdinal: 2,
+    });
+
+    const response = await request(app)
+      .post('/api/workers/regeneration-complete')
+      .send({
+        ...validPayload,
+        dispatch_id: dispatchId,
+        batch_ordinal: 2,
+        generated_count: 3,
+        ruled_out_count: 3,
+        solutions: [],
+      });
+
+    expect(response.status).toBe(200);
+    expect(mockChatMessageCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        operationId: `regeneration:${dispatchId}:settled`,
+        patchJson: expect.objectContaining({
+          event: 'regeneration_settled',
+          operationId: dispatchId,
+          batch: expect.objectContaining({
+            outcome: 'no_candidates_added',
+            addedCount: 0,
+            generatedCount: 3,
+            ruledOutCount: 3,
+          }),
+        }),
+      }),
+    });
   });
 
   // Cost tracking (regeneration gap fix): unlike report-ready (which OVERWRITES costUsd with
@@ -592,6 +720,58 @@ describe('POST /api/workers/regeneration-failed', () => {
         }),
       })
     );
+  });
+
+  it('settles only the matching dispatched batch failure', async () => {
+    const dispatchId = '00000000-0000-0000-0000-000000000099';
+    mockJobFindFirst.mockResolvedValue({ status: 'REGENERATING' });
+    mockJobDispatchFindUnique.mockResolvedValue({
+      id: dispatchId,
+      kind: 'REGENERATE',
+      segment: 'regenerate_ideas_2',
+    });
+    mockCancelRegenerationDispatch.mockResolvedValue({
+      cancelled: true,
+      creditRefunded: 2,
+    });
+
+    const response = await request(app)
+      .post('/api/workers/regeneration-failed')
+      .send({ ...validPayload, dispatch_id: dispatchId });
+
+    expect(response.status).toBe(200);
+    expect(mockCancelRegenerationDispatch).toHaveBeenCalledWith(
+      jobId,
+      { id: dispatchId, segment: 'regenerate_ideas_2' },
+      'REGENERATING',
+      'SYSTEM_FAULT',
+    );
+  });
+
+  it('acknowledges a stale dispatched failure without reverting or refunding the active batch', async () => {
+    const dispatchId = '00000000-0000-0000-0000-000000000099';
+    mockJobFindFirst.mockResolvedValue(null);
+    mockJobDispatchFindUnique.mockResolvedValue({
+      id: dispatchId,
+      kind: 'REGENERATE',
+      segment: 'regenerate_ideas_2',
+    });
+    mockJobFindUnique.mockResolvedValue({
+      status: 'REGENERATING',
+      activeDispatchId: '00000000-0000-0000-0000-000000000100',
+    });
+
+    const response = await request(app)
+      .post('/api/workers/regeneration-failed')
+      .send({ ...validPayload, dispatch_id: dispatchId });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      status: 'ok',
+      stale: true,
+      reason: 'stale_dispatch',
+    });
+    expect(mockCancelRegenerationDispatch).not.toHaveBeenCalled();
   });
 
   it('clears worker heartbeat', async () => {

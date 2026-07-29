@@ -219,6 +219,7 @@ def publish_report_ready(
     job_id: str,
     report_path: str,
     winner_name: str = None,
+    winner_ref: Optional[dict] = None,
     cost_summary: Optional[dict] = None,
 ) -> None:
     """
@@ -237,9 +238,12 @@ def publish_report_ready(
             "worker_id": _get_worker_id(),
             "job_id": job_id,
             "report_path": report_path,
+            **_dispatch_payload(job_id),
         }
         if winner_name:
             payload["winner_name"] = winner_name
+        if winner_ref:
+            payload["winner_ref"] = winner_ref
         if cost_summary:
             payload["cost_summary"] = cost_summary
 
@@ -403,6 +407,9 @@ def notify_regeneration_complete(
     job_id: str,
     new_solutions: list[dict],
     cost_summary: Optional[dict] = None,
+    batch_ordinal: Optional[int] = None,
+    generated_count: Optional[int] = None,
+    ruled_out_count: Optional[int] = None,
 ) -> None:
     """
     Notify backend that regeneration is complete with new solutions.
@@ -413,31 +420,52 @@ def notify_regeneration_complete(
         cost_summary: Optional LLM cost breakdown (CostTracker.get_summary()) for this
             regeneration batch, accumulated onto the job's existing costUsd by the backend
     """
-    try:
-        payload = {
-            "worker_id": _get_worker_id(),
-            "job_id": job_id,
-            "solutions": new_solutions,
-            **_dispatch_payload(job_id),
-        }
-        if cost_summary:
-            payload["cost_summary"] = cost_summary
+    payload = {
+        "worker_id": _get_worker_id(),
+        "job_id": job_id,
+        "solutions": new_solutions,
+        **_dispatch_payload(job_id),
+    }
+    if cost_summary:
+        payload["cost_summary"] = cost_summary
+    if batch_ordinal is not None:
+        payload["batch_ordinal"] = batch_ordinal
+    if generated_count is not None:
+        payload["generated_count"] = generated_count
+    if ruled_out_count is not None:
+        payload["ruled_out_count"] = ruled_out_count
 
-        response = requests.post(
-            f"{_get_backend_url()}/api/workers/regeneration-complete",
-            json=payload,
-            headers={"x-internal-service": _get_internal_secret()},
-            timeout=30,
-        )
-        response.raise_for_status()
-        logger.info(f"[Progress] Regeneration complete notification sent for job {job_id}")
+    delays = (2.0, 5.0, 10.0)
+    last_error: Exception = RuntimeError("unreachable")
+    for attempt, delay in enumerate((*delays, None), start=1):
+        try:
+            response = requests.post(
+                f"{_get_backend_url()}/api/workers/regeneration-complete",
+                json=payload,
+                headers={"x-internal-service": _get_internal_secret()},
+                timeout=30,
+            )
+            response.raise_for_status()
+            logger.info(f"[Progress] Regeneration complete notification sent for job {job_id}")
+            return
+        except requests.exceptions.RequestException as e:
+            last_error = e
+            if delay is None:
+                break
+            logger.warning(
+                f"[Progress] Regeneration-complete attempt {attempt} failed for job "
+                f"{job_id}, retrying in {delay}s: {e}"
+            )
+            time.sleep(delay)
+    logger.error(
+        f"[Progress] Failed to notify regeneration complete for job {job_id} "
+        f"after {attempt} attempts"
+    )
+    raise last_error
 
-    except requests.exceptions.RequestException as e:
-        logger.error(f"[Progress] Failed to notify regeneration complete: {e}")
 
 
-
-def notify_regeneration_failed(job_id: str, error_message: str) -> None:
+def notify_regeneration_failed(job_id: str, error_message: str) -> bool:
     """
     Notify backend that regeneration failed. Reverts job to AWAITING_SELECTION
     so the user can see existing solutions and retry.
@@ -446,24 +474,37 @@ def notify_regeneration_failed(job_id: str, error_message: str) -> None:
         job_id: The job UUID
         error_message: Description of what went wrong
     """
-    try:
-        payload = {
-            "worker_id": _get_worker_id(),
-            "job_id": job_id,
-            "error_message": error_message[:2000],
-        }
-
-        response = requests.post(
-            f"{_get_backend_url()}/api/workers/regeneration-failed",
-            json=payload,
-            headers={"x-internal-service": _get_internal_secret()},
-            timeout=30,
-        )
-        response.raise_for_status()
-        logger.info(f"[Progress] Regeneration failed notification sent for job {job_id}")
-
-    except requests.exceptions.RequestException as e:
-        logger.error(f"[Progress] Failed to notify regeneration failed: {e}")
+    payload = {
+        "worker_id": _get_worker_id(),
+        "job_id": job_id,
+        "error_message": error_message[:2000],
+        **_dispatch_payload(job_id),
+    }
+    delays = (2.0, 5.0, 10.0)
+    for attempt, delay in enumerate((*delays, None), start=1):
+        try:
+            response = requests.post(
+                f"{_get_backend_url()}/api/workers/regeneration-failed",
+                json=payload,
+                headers={"x-internal-service": _get_internal_secret()},
+                timeout=30,
+            )
+            response.raise_for_status()
+            logger.info(f"[Progress] Regeneration failed notification sent for job {job_id}")
+            return True
+        except requests.exceptions.RequestException as e:
+            if delay is None:
+                logger.error(
+                    f"[Progress] Failed to notify regeneration failed for job {job_id} "
+                    f"after {attempt} attempts: {e}"
+                )
+                return False
+            logger.warning(
+                f"[Progress] Regeneration-failed attempt {attempt} failed for job "
+                f"{job_id}, retrying in {delay}s: {e}"
+            )
+            time.sleep(delay)
+    return False
 
 
 def notify_seed_complete(
@@ -479,13 +520,13 @@ def notify_seed_complete(
     are delivered; a demoted seed still surfaces to the user (Examined & ruled out), never
     silently discarded (a paid request must not vanish).
 
-    Mirrors `notify_gate_reached`'s retry-then-RAISE contract, deliberately NOT
-    `notify_regeneration_complete`'s swallow-and-log: this delivery is the seed's ONLY
-    transition out of QUEUED/RUNNING, and by the time this is called the merge is already
-    durable on disk — the money is owed regardless of whether this call lands. Raising on
-    exhausted retries lets the caller (`run_seed_idea`) tell a genuine pipeline failure apart
-    from "the work is done and saved but nobody was told" — the backend must never refund or
-    discard on the latter, only retry delivery against the dispatch id.
+    Mirrors `notify_gate_reached` and `notify_regeneration_complete`'s retry-then-RAISE
+    contract: this delivery is the seed's ONLY transition out of QUEUED/RUNNING, and by
+    the time this is called the merge is already durable on disk — the money is owed
+    regardless of whether this call lands. Raising on exhausted retries lets the caller
+    (`run_seed_idea`) tell a genuine pipeline failure apart from "the work is done and
+    saved but nobody was told" — the backend must never refund or discard on the latter,
+    only retry delivery against the dispatch id.
 
     Args:
         job_id: The job UUID

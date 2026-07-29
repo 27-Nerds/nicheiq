@@ -22,6 +22,8 @@ from typing import Literal, Optional
 from loguru import logger
 from pydantic import BaseModel, Field
 
+from .data_access import DATA_ACCESS_VOCAB, normalize_data_access, note_route_label
+
 
 class _RedTeamVerdict(BaseModel):
     verdict: Literal["survives", "weakened", "killed"] = "survives"
@@ -94,7 +96,8 @@ def _attempt_red_team_revision(crew, refined_solutions, orig, result, evidence) 
     accept: 1:1 in-place replacement carrying provenance, stamps `red_team_revised=True`.
     Fully fail-soft — any failure returns False and the original (with its verdict/caveats)
     stands. Returns True iff a revision REPLACED the original."""
-    from pydantic import BaseModel, Field as _F
+    from pydantic import BaseModel
+    from pydantic import Field as _F
 
     from ..config.settings import settings
     from ..models.solution_idea import BaseSolutionIdea
@@ -121,7 +124,9 @@ def _attempt_red_team_revision(crew, refined_solutions, orig, result, evidence) 
             technical_approach: str = ""
             data_access_model: str = _F(
                 "", description="EXACTLY one of: public | freemium | paywalled | "
-                                "unofficial | restricted | none")
+                                "unofficial | restricted | blocked | unverified. Use 'public' when "
+                                "the product needs no external data (pure computation / "
+                                "user-supplied input).")
             market_fit_score: float | None = None
             technical_feasibility_score: float | None = None
             build_feasibility_score: float = 0.7
@@ -161,9 +166,19 @@ def _attempt_red_team_revision(crew, refined_solutions, orig, result, evidence) 
             v = d.get(k)
             if isinstance(v, (int, float)) and not isinstance(v, bool):
                 d[k] = max(0.0, min(1.0, v / 100.0 if 1.0 < v <= 100.0 else v))
-        _dam = (d.get("data_access_model") or "").strip().lower()
-        d["data_access_model"] = _dam if _dam in (
-            "public", "freemium", "paywalled", "unofficial", "restricted", "none") else None
+        # Closed-vocab data route: off-vocab ABSTAINS to 'unverified'. Dropping to None used to
+        # erase the canonical 'blocked'/'unverified' labels (absent from the old accept-list),
+        # and a null label reads downstream as "no data barrier", skipping the feasibility caps.
+        _raw = (d.get("data_access_model") or "").strip()
+        _dam = normalize_data_access(_raw)
+        note_route_label(crew, "red-team", _dam)
+        if _raw and _dam is None:
+            logger.warning(
+                f"[RedTeam] revision of '{getattr(orig, 'solution_name', '?')}' data_access_model "
+                f"'{_raw[:40]}' outside DataAccessTag {sorted(DATA_ACCESS_VOCAB)} — "
+                f"abstaining to 'unverified'")
+            _dam = "unverified"
+        d["data_access_model"] = _dam
         d["description"] = d.get("description") or d.get("value_proposition", "")
         d["core_features"] = d.get("core_features") or ["revised workflow"]
         d["pain_points_addressed"] = list(

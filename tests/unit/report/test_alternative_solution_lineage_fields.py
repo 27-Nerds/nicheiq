@@ -32,6 +32,16 @@ def _generator():
                 incumbent_parity="Aftershoot ships partial parity — depth/pricing/roadmap",
                 adjacent_market_parity="none found",
                 source_frame="gap",
+                idea_id="idea-runner",
+                idea_revision=3,
+                identity_origin="regeneration",
+                identity_operation_id="batch-operation-1",
+                evaluation_id="evaluation-1",
+                evaluation_source_message_id="message-1",
+                proposed_title="Exact proposed direction",
+                synthesis_evaluation={"proposal": {"title": "Exact proposed direction"}},
+                generation_operation_id="batch-operation-1",
+                generation_batch_ordinal=2,
             ),
             _idea("Third"),
         ]
@@ -86,6 +96,23 @@ def test_source_frame_passes_through():
     gen = _generator()
     alt = gen._generate_alternative_solutions()[0]
     assert alt.source_frame == "gap"
+
+
+def test_user_triggered_operation_provenance_passes_through():
+    alt = _generator()._generate_alternative_solutions()[0]
+
+    assert alt.evaluation_id == "evaluation-1"
+    assert alt.evaluation_source_message_id == "message-1"
+    assert alt.proposed_title == "Exact proposed direction"
+    assert alt.synthesis_evaluation == {
+        "proposal": {"title": "Exact proposed direction"},
+    }
+    assert alt.generation_operation_id == "batch-operation-1"
+    assert alt.generation_batch_ordinal == 2
+    assert alt.idea_id == "idea-runner"
+    assert alt.idea_revision == 3
+    assert alt.identity_origin == "regeneration"
+    assert alt.identity_operation_id == "batch-operation-1"
 
 
 def test_source_frame_defaults_to_pain_when_not_overridden():

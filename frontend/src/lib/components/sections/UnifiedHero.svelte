@@ -60,6 +60,12 @@
     trends?: TrendLongevity;
     previewMode?: boolean;
     heroZoneOnly?: boolean;
+    /**
+     * Heading rank for the niche title. Defaults to 2: the hero is usually embedded
+     * under a page that already owns the single h1, and emitting a second one breaks
+     * the document outline. Pass 1 where this hero IS the page-level heading.
+     */
+    headingLevel?: 1 | 2;
   }
 
   let {
@@ -72,6 +78,7 @@
     trends,
     previewMode = false,
     heroZoneOnly = false,
+    headingLevel = 2,
   }: Props = $props();
 
   // Extract data from report
@@ -80,7 +87,11 @@
   const solution = $derived(dashboard?.recommended_solution_snapshot);
   const corePain = $derived(dashboard?.core_pain_point);
   const metrics = $derived(dashboard?.key_metrics);
-  const confidenceScore = $derived(dashboard?.confidence_score ?? 0);
+  // null is PRESERVED, never coerced to 0: "we did not measure this" and "we measured
+  // it as zero" are different claims, and collapsing them fabricates a finding. Note
+  // this deliberately does NOT fall back to market_analytics.selection_confidence —
+  // an explicit null in the current dashboard must not be backfilled by a legacy alias.
+  const confidenceScore = $derived(dashboard?.confidence_score ?? null);
   const solutionDetails = $derived(report.selected_solution_details);
 
   // Match pain_points_addressed to detailed_pain_points for enrichment
@@ -131,12 +142,20 @@
   const painAnalytics = $derived(report.pain_point_analytics);
 
   // Market signals
+  // See confidenceScore: missing stays missing. The Opportunity chip is omitted
+  // entirely when null rather than shown as a zero-scoring opportunity.
+  // The legacy market_analytics alias may only fill in when the dashboard has no
+  // opinion at all. If the dashboard carries the key and it is explicitly null, that
+  // null wins — otherwise "we could not measure this" is quietly overwritten by a
+  // stale number from another stage.
   const opportunityScore = $derived(
-    report.market_analytics?.overall_opportunity_score ?? 0,
+    dashboard && "confidence_score" in dashboard
+      ? (dashboard.confidence_score ?? null)
+      : (report.market_analytics?.overall_opportunity_score ?? null),
   );
   const trendDirection = $derived(trends?.trend_direction ?? "Unknown");
   const saturationScore = $derived(
-    report.competitive_analytics?.market_saturation_score ?? 0,
+    report.competitive_analytics?.market_saturation_score ?? null,
   );
 
   let descriptionExpanded = $state(false);
@@ -220,13 +239,15 @@
   };
 
   // Saturation helpers
-  const getSaturationLabel = (score: number): string => {
+  const getSaturationLabel = (score: number | null): string => {
+    if (score == null) return "Unknown";
     if (score <= 0.3) return "Low";
     if (score <= 0.6) return "Medium";
     return "High";
   };
 
-  const getSaturationClass = (score: number): string => {
+  const getSaturationClass = (score: number | null): string => {
+    if (score == null) return "muted";
     if (score <= 0.3) return "success";
     if (score <= 0.6) return "warning";
     return "error";
@@ -263,7 +284,7 @@
       "How crowded the market is. Low = blue ocean, High = intense competition.",
     risk: "Overall risk assessment factoring technical complexity, market uncertainty, and competitive threats.",
     researchDepth:
-      "Based on pain point quality — severity scores, buying-signal strength, quote evidence density, and cross-platform validation. Premium = strong evidence across multiple signals. Standard = solid data with some gaps. Basic = minimum viable evidence.",
+      "Based on pain point quality — severity scores, buying-signal strength, quote evidence density, and cross-platform validation. Premium = strong evidence across multiple signals. Standard = solid data with some gaps. Basic = minimum viable evidence. The tier uses distinct source posts, not total mentions, so one heavily-discussed thread cannot inflate it. It describes how much evidence we gathered. It does not measure how attractive the opportunity is — a Premium tier can sit under a weak opportunity, and the reverse.",
     pipelineScanned:
       "Reddit discussion URLs found via search. These are the raw results before relevance filtering.",
     pipelineRelevant:
@@ -303,26 +324,25 @@
     const avg = confidenceScore;
     const v = verdict?.verdict;
 
-    let parts = [`Opportunity Score: ${Math.round(avg * 100)}%`];
+    const pct = (n: number | null | undefined) =>
+      n != null ? `${Math.round(n * 100)}%` : "N/A";
+
+    const parts = [`Opportunity Score: ${pct(avg)}`];
     parts.push(
-      `Average of: Market Fit (${mf != null ? Math.round(mf * 100) + "%" : "N/A"}), Comp. Edge (${ca != null ? Math.round(ca * 100) + "%" : "N/A"}), Feasibility (${tf != null ? Math.round(tf * 100) + "%" : "N/A"}), SEO (${seo != null ? Math.round(seo * 100) + "%" : "N/A"})`,
+      `Average of: Market Fit (${pct(mf)}), Comp. Edge (${pct(ca)}), Feasibility (${pct(tf)}), SEO (${pct(seo)})`,
     );
+    // The average is over the dimensions we actually measured. Saying so matters:
+    // treating an unmeasured dimension as 0 would silently drag the score down and
+    // present that as a finding.
+    parts.push("Missing dimensions are left out, not treated as zero.");
     parts.push("");
-    if (v === "Go") {
-      parts.push("Verdict: Go \u2014 all thresholds met.");
-    } else if (v === "Conditional") {
-      const gates: string[] = [];
-      if (avg < 0.75) gates.push(`avg ${Math.round(avg * 100)}% < 75%`);
-      if (mf != null && mf < 0.6)
-        gates.push(`Market Fit ${Math.round(mf * 100)}% < 60%`);
-      if (tf != null && tf < 0.6)
-        gates.push(`Feasibility ${Math.round(tf * 100)}% < 60%`);
-      parts.push(
-        `Verdict: Conditional \u2014 ${gates.length > 0 ? gates.join(", ") : "trend/timing factors applied"}.`,
-      );
-    } else {
-      parts.push("Verdict: No-Go \u2014 scores below Conditional thresholds.");
-    }
+    // Describes the score only. The old copy asserted the verdict followed FROM these
+    // numbers ("all thresholds met"), which overstates it \u2014 the verdict also applies
+    // trend, timing and viability rules this average never sees.
+    parts.push(
+      "This score summarises the measured dimensions above. The recommendation is evaluated separately.",
+    );
+    if (v) parts.push(`Current recommendation: ${v}.`);
     return parts.join("\n");
   });
 
@@ -367,8 +387,13 @@
               />
             </span>
             <span class="verdict-percentage"
-              >{formatScorePercent(confidenceScore)}</span
+              >{confidenceScore == null
+                ? "N/A"
+                : formatScorePercent(confidenceScore)}</span
             >
+            {#if confidenceScore == null}
+              <span class="verdict-unavailable">NOT AVAILABLE</span>
+            {/if}
             <div class="verdict-label-row">
               {#if verdict?.verdict === "Go"}
                 <CheckCircle class="verdict-icon-large" />
@@ -415,7 +440,11 @@
 
       <!-- Right Column: Niche Info + Signal Chips -->
       <div class="hero-right">
-        <h2 class="niche-title">{titleCase(nicheName)}</h2>
+        {#if headingLevel === 1}
+          <h1 class="niche-title">{titleCase(nicheName)}</h1>
+        {:else}
+          <h2 class="niche-title">{titleCase(nicheName)}</h2>
+        {/if}
         <div class="niche-description-wrapper">
           <button
             type="button"
@@ -439,16 +468,20 @@
         <!-- Signal Chips (hidden in preview — Phase 2 data only) -->
         {#if !previewMode}
         <div class="signal-chips">
-          <Tooltip content={tooltips.opportunity} position="bottom">
-            {#snippet children()}
-              <div class="signal-chip">
-                <span class="signal-value"
-                  >{formatScorePercent(opportunityScore)}</span
-                >
-                <span class="signal-label">Opportunity</span>
-              </div>
-            {/snippet}
-          </Tooltip>
+          <!-- Omitted entirely when unmeasured: a 0% Opportunity chip would read as
+               a scored finding rather than an absent one. -->
+          {#if opportunityScore != null}
+            <Tooltip content={tooltips.opportunity} position="bottom">
+              {#snippet children()}
+                <div class="signal-chip">
+                  <span class="signal-value"
+                    >{formatScorePercent(opportunityScore)}</span
+                  >
+                  <span class="signal-label">Opportunity</span>
+                </div>
+              {/snippet}
+            </Tooltip>
+          {/if}
 
           <Tooltip content={tooltips.trend} position="bottom">
             {#snippet children()}
@@ -714,17 +747,26 @@
         <!-- Market Fit -->
         <div class="metric-cell" style="--cell-delay: 0.1s">
           <span class:preview-blur={previewMode}>
-            <ProgressRing
-              value={metrics?.market_fit_score ?? 0}
-              size={52}
-              strokeWidth={4}
-              color={getScoreColor(metrics?.market_fit_score)}
-              showValue={true}
-              showTooltip={true}
-              flat={true}
-              label="Market Fit"
-              description={marketFitTooltip}
-            />
+            <!-- ProgressRing takes a numeric value and would render an unmeasured
+                 score as a filled 0% ring. Branch instead, so "not measured" is
+                 announced as such rather than as a zero result. -->
+            {#if metrics?.market_fit_score == null}
+              <span class="metric-unavailable" aria-label="Market Fit: not available"
+                >N/A</span
+              >
+            {:else}
+              <ProgressRing
+                value={metrics.market_fit_score}
+                size={52}
+                strokeWidth={4}
+                color={getScoreColor(metrics.market_fit_score)}
+                showValue={true}
+                showTooltip={true}
+                flat={true}
+                label="Market Fit"
+                description={marketFitTooltip}
+              />
+            {/if}
           </span>
           <span class="metric-label">Market Fit</span>
           <span

@@ -16,8 +16,8 @@ import {
   registerWorkerHeartbeat,
   markWorkerShutdown,
 } from '../services/heartbeatService.js';
-import { failJob, updateStageProgress, completeJob, getJob, addJobAsset, getJobAsset } from '../services/jobService.js';
-import { refundForStage, refundForRegenerationStage, refundForSeedIdeaStage, isGuidedSegment } from '../services/creditService.js';
+import { cancelRegenerationDispatch, failJob, updateStageProgress, completeJob, getJob, addJobAsset, getJobAsset } from '../services/jobService.js';
+import { refundForStage, refundForSeedIdeaStage, isGuidedSegment } from '../services/creditService.js';
 import { broadcastProgress } from '../services/progressBroadcastService.js';
 import { notifySolutionsReady, notifyPhase2Start, notifyRegenerationComplete, notifyLandingPageReady } from '../services/notificationService.js';
 import {
@@ -36,14 +36,21 @@ import {
   startDispatchedJob,
   settleDispatch,
 } from '../services/dispatchService.js';
-import { buildSeedEnvelope, buildSeedReceiptContent } from '../utils/ledgerEvents.js';
+import {
+  buildRegenerationEnvelope,
+  buildRegenerationReceiptContent,
+  buildSeedEnvelope,
+  buildSeedReceiptContent,
+} from '../utils/ledgerEvents.js';
 import {
   ensureIdeaIdentities,
+  candidateSnapshotSha256,
   stampNewIdeaIdentities,
   stampSynthesizedIdeaIdentity,
 } from '../utils/ideaIdentity.js';
+import { canonicalJsonSha256 } from '../utils/canonicalFingerprint.js';
 import { IdeaSynthesisPatchSchema } from '../types/ideaSynthesis.js';
-import { AssetType, Prisma, DispatchState, DispatchKind } from '@prisma/client';
+import { AssetType, Prisma, DispatchState, DispatchKind, JobStatus } from '@prisma/client';
 import type { JobStatus as JobStatusType } from '@prisma/client';
 import { bigramSimilarity, canonicalizeAddressedTitles, normalizeTitle } from '../services/titleMatching.js';
 import { requireInternalService } from '../middleware/auth.js';
@@ -254,6 +261,8 @@ workersRouter.post('/job-started', async (req: Request, res: Response) => {
       : null;
     const runningStatus =
       dispatchKind === DispatchKind.SEED_IDEA ? JobStatus.RUNNING
+      : dispatchKind === DispatchKind.REGENERATE ? JobStatus.REGENERATING
+      : dispatchKind === DispatchKind.DEEP_RESEARCH ? JobStatus.RUNNING_PHASE2
       : isRegenerate ? JobStatus.REGENERATING
       : isPhase2 ? JobStatus.RUNNING_PHASE2
       : JobStatus.RUNNING;
@@ -416,8 +425,13 @@ workersRouter.post('/job-completed', async (req: Request, res: Response) => {
 const ReportReadySchema = z.object({
   worker_id: z.string().min(1),
   job_id: z.string().uuid(),
+  dispatch_id: z.string().uuid().optional(),
   report_path: z.string().min(1).max(500),
   winner_name: z.string().max(255).optional(),
+  winner_ref: z.object({
+    idea_id: z.string().min(1).max(128),
+    idea_revision: z.number().int().min(1),
+  }).optional(),
   cost_summary: z.record(z.any()).optional(),
 });
 
@@ -438,7 +452,10 @@ workersRouter.post('/report-ready', async (req: Request, res: Response) => {
         niche: true,
         selectedSolutions: true,
         selectedSolutionIds: true,
+        selectedSolutionRefs: true,
         solutionIdeas: true,
+        status: true,
+        activeDispatchId: true,
       },
     });
 
@@ -446,13 +463,49 @@ workersRouter.post('/report-ready', async (req: Request, res: Response) => {
       res.status(404).json({ error: 'Job not found' });
       return;
     }
+    if (data.dispatch_id) {
+      const dispatch = await prisma.jobDispatch.findUnique({
+        where: { id: data.dispatch_id },
+        select: { jobId: true, kind: true, state: true },
+      });
+      if (
+        dispatch?.jobId !== data.job_id
+        || dispatch.kind !== DispatchKind.DEEP_RESEARCH
+        || dispatch.state !== DispatchState.CLAIMED
+        || job.activeDispatchId !== data.dispatch_id
+        || job.status !== JobStatus.RUNNING_PHASE2
+      ) {
+        res.json({ status: 'ok', stale: true, reason: 'stale_dispatch' });
+        return;
+      }
+    }
 
     // Resolve the worker's name back to exactly one persisted candidate before registering
     // the report. A successful response without this identity would leave the immutable
     // decision artifact unable to reference the Deep Research recommendation.
     const normalizeName = (s: string) => s.trim().replace(/\s+/g, ' ').toLowerCase();
     let winnerUpdate: Prisma.JobUpdateInput = {};
-    if (data.winner_name) {
+    if (data.winner_ref) {
+      const selectedRefs = Array.isArray(job.selectedSolutionRefs)
+        ? job.selectedSolutionRefs as Array<Record<string, unknown>>
+        : [];
+      const matchedIndex = selectedRefs.findIndex(ref =>
+        ref.ideaId === data.winner_ref!.idea_id
+        && ref.ideaRevision === data.winner_ref!.idea_revision
+      );
+      if (matchedIndex < 0) {
+        res.status(409).json({
+          error: 'Deep Research winner is not part of the authorized exact selection',
+          code: 'WINNER_IDENTITY_UNRESOLVED',
+        });
+        return;
+      }
+      winnerUpdate = {
+        selectedSolution: job.selectedSolutions[matchedIndex],
+        deepResearchRecommendedIdeaId: data.winner_ref.idea_id,
+        deepResearchRecommendedIdeaRevision: data.winner_ref.idea_revision,
+      };
+    } else if (data.winner_name) {
       const winnerNorm = normalizeName(data.winner_name);
       const matchingIndexes = job.selectedSolutions.flatMap((solutionName, index) =>
         normalizeName(solutionName) === winnerNorm ? [index] : [],
@@ -485,23 +538,6 @@ workersRouter.post('/report-ready', async (req: Request, res: Response) => {
       };
     }
 
-    // Phase 5.4 — pre-check asset existence so the user-facing notification
-    // fires exactly once even if the worker re-delivers (publish_report_ready
-    // now re-raises on POST failure). Asset upsert is naturally idempotent;
-    // the notification is the side-effect that needs gating.
-    const existingAsset = await getJobAsset(data.job_id, AssetType.REPORT_JSON);
-    const isFirstDelivery = existingAsset == null;
-
-    await addJobAsset(data.job_id, AssetType.REPORT_JSON, data.report_path);
-
-    // Phase 5.4 — pre-project sanitized context for the SAME sourceJobId.
-    // For catalog jobs that already have a preview-derived row, this upgrades
-    // it to the richer REPORT_JSON projection (forceRefreshAll). For /new
-    // jobs without an existing context row, this pre-projects context that
-    // future publish hooks will short-circuit on. NOT a no-op.
-    const { extractOrCreateResearchContext } = await import('../services/researchContextService.js');
-    await extractOrCreateResearchContext(data.job_id, { forceRefreshAll: true });
-
     // Single Job update: LLM cost breakdown (for the admin pricing view) + Phase-2 winner.
     const jobUpdate: Prisma.JobUpdateInput = winnerUpdate;
 
@@ -514,9 +550,76 @@ workersRouter.post('/report-ready', async (req: Request, res: Response) => {
       jobUpdate.costSummary = cost as Prisma.InputJsonValue;
     }
 
-    if (Object.keys(jobUpdate).length > 0) {
+    if (data.dispatch_id) {
+      const resultSnapshot = {
+        schemaVersion: 1,
+        kind: 'deep_research_report',
+        reportPath: data.report_path,
+        winnerRef: data.winner_ref ?? null,
+        winnerName: data.winner_name ?? null,
+      };
+      const resultFingerprint = canonicalJsonSha256(resultSnapshot);
+      let guarded = false;
+      try {
+        guarded = await prisma.$transaction(async tx => {
+          const updated = await tx.job.updateMany({
+            where: {
+              id: data.job_id,
+              status: JobStatus.RUNNING_PHASE2,
+              activeDispatchId: data.dispatch_id,
+            },
+            data: {
+              ...(jobUpdate as Prisma.JobUpdateManyMutationInput),
+              updatedAt: new Date(),
+            },
+          });
+          if (updated.count !== 1) throw new Error('STALE_REPORT_DISPATCH');
+          const dispatch = await tx.jobDispatch.findFirst({
+            where: {
+              id: data.dispatch_id,
+              jobId: data.job_id,
+              kind: DispatchKind.DEEP_RESEARCH,
+              state: DispatchState.CLAIMED,
+            },
+            select: { resultFingerprint: true },
+          });
+          if (
+            !dispatch
+            || (dispatch.resultFingerprint && dispatch.resultFingerprint !== resultFingerprint)
+          ) {
+            throw new Error('STALE_REPORT_DISPATCH');
+          }
+          if (!dispatch.resultFingerprint) {
+            await tx.jobDispatch.update({
+              where: { id: data.dispatch_id },
+              data: {
+                resultSnapshot: resultSnapshot as unknown as Prisma.InputJsonValue,
+                resultFingerprint,
+              },
+            });
+          }
+          return true;
+        });
+      } catch (error) {
+        if (!(error instanceof Error) || error.message !== 'STALE_REPORT_DISPATCH') throw error;
+      }
+      if (!guarded) {
+        res.json({ status: 'ok', stale: true, reason: 'stale_dispatch' });
+        return;
+      }
+    } else if (Object.keys(jobUpdate).length > 0) {
       await prisma.job.update({ where: { id: data.job_id }, data: jobUpdate });
     }
+
+    // Phase 5.4 — pre-check asset existence so the user-facing notification
+    // fires exactly once even if the worker re-delivers. For dispatched work,
+    // this happens only after the exact operation has won its guarded write.
+    const existingAsset = await getJobAsset(data.job_id, AssetType.REPORT_JSON);
+    const isFirstDelivery = existingAsset == null;
+    await addJobAsset(data.job_id, AssetType.REPORT_JSON, data.report_path);
+
+    const { extractOrCreateResearchContext } = await import('../services/researchContextService.js');
+    await extractOrCreateResearchContext(data.job_id, { forceRefreshAll: true });
 
     if (isFirstDelivery && job?.userId) {
       const user = await prisma.user.findUnique({
@@ -832,22 +935,73 @@ workersRouter.post('/progress', async (req: Request, res: Response) => {
 
     // 2. Handle job completion (report_path indicates final success)
     if (data.status === 'completed' && data.report_path) {
-      await completeJob(
-        data.job_id,
-        data.report_path,
-        data.landing_path
-      );
-
       const { prisma: completionDb } = await import('../services/db.js');
       if (data.dispatch_id) {
-        await completionDb.jobDispatch.updateMany({
-          where: { id: data.dispatch_id },
-          data: { state: DispatchState.COMPLETED, settledAt: new Date() },
-        });
-        await completionDb.job.updateMany({
-          where: { activeDispatchId: data.dispatch_id },
-          data: { activeDispatchId: null },
-        });
+        let completed = false;
+        try {
+          completed = await completionDb.$transaction(async tx => {
+            const job = await tx.job.updateMany({
+              where: {
+                id: data.job_id,
+                status: JobStatus.RUNNING_PHASE2,
+                activeDispatchId: data.dispatch_id,
+              },
+              data: {
+                status: JobStatus.COMPLETED,
+                completedAt: new Date(),
+                progressPercent: 100,
+                activeDispatchId: null,
+              },
+            });
+            if (job.count !== 1) throw new Error('STALE_COMPLETION_DISPATCH');
+            const dispatch = await tx.jobDispatch.updateMany({
+              where: {
+                id: data.dispatch_id,
+                jobId: data.job_id,
+                kind: DispatchKind.DEEP_RESEARCH,
+                state: DispatchState.CLAIMED,
+              },
+              data: { state: DispatchState.COMPLETED, settledAt: new Date() },
+            });
+            if (dispatch.count !== 1) throw new Error('STALE_COMPLETION_DISPATCH');
+            await tx.jobAsset.upsert({
+              where: {
+                jobId_assetType: { jobId: data.job_id, assetType: AssetType.REPORT_JSON },
+              },
+              create: {
+                jobId: data.job_id,
+                assetType: AssetType.REPORT_JSON,
+                filePath: data.report_path!,
+              },
+              update: { filePath: data.report_path! },
+            });
+            if (data.landing_path) {
+              await tx.jobAsset.upsert({
+                where: {
+                  jobId_assetType: { jobId: data.job_id, assetType: AssetType.LANDING_PAGE },
+                },
+                create: {
+                  jobId: data.job_id,
+                  assetType: AssetType.LANDING_PAGE,
+                  filePath: data.landing_path,
+                },
+                update: { filePath: data.landing_path },
+              });
+            }
+            return true;
+          });
+        } catch (error) {
+          if (!(error instanceof Error) || error.message !== 'STALE_COMPLETION_DISPATCH') throw error;
+        }
+        if (!completed) {
+          return res.json({ status: 'ok', stale: true, shouldCancel: true });
+        }
+      } else {
+        await completeJob(
+          data.job_id,
+          data.report_path,
+          data.landing_path
+        );
       }
 
       try {
@@ -1118,15 +1272,85 @@ workersRouter.post('/regeneration-complete', async (req: Request, res: Response)
         ideasRegeneratedAt: { not: null },  // Guard: only regen-queued, not initial queued
         ...dispatchGuard(data.dispatch_id),
       },
-      select: { solutionIdeas: true, userId: true, niche: true, costUsd: true, regenerationCount: true },
+      select: {
+        solutionIdeas: true,
+        userId: true,
+        niche: true,
+        costUsd: true,
+        regenerationCount: true,
+        ideaBatchCompletedCount: true,
+      },
     });
 
     if (!job) {
+      if (data.dispatch_id) {
+        const dispatch = await prisma.jobDispatch.findUnique({
+          where: { id: data.dispatch_id },
+          select: { jobId: true, kind: true, state: true },
+        });
+        if (
+          dispatch?.jobId === data.job_id
+          && dispatch.kind === DispatchKind.REGENERATE
+          && dispatch.state === DispatchState.COMPLETED
+        ) {
+          res.json({ status: 'ok', idempotent: true });
+          return;
+        }
+        const reason = await diagnoseGuardMiss(
+          data.job_id,
+          data.dispatch_id,
+          [JobStatus.REGENERATING, JobStatus.QUEUED],
+        );
+        res.json({ status: 'ok', stale: true, reason });
+        return;
+      }
       res.status(409).json({ error: 'Job not in REGENERATING state' });
       return;
     }
 
     const existingSolutions = ensureIdeaIdentities(data.job_id, job.solutionIdeas);
+    const dispatch = data.dispatch_id
+      ? await prisma.jobDispatch.findUnique({
+          where: { id: data.dispatch_id },
+          select: {
+            jobId: true,
+            kind: true,
+            state: true,
+            requestFingerprint: true,
+            batchOrdinal: true,
+          },
+        })
+      : null;
+    if (
+      data.dispatch_id
+      && (
+        dispatch?.jobId !== data.job_id
+        || dispatch.kind !== DispatchKind.REGENERATE
+        || (
+          dispatch.state !== DispatchState.AUTHORIZED
+          && dispatch.state !== DispatchState.CLAIMED
+        )
+      )
+    ) {
+      res.json({ status: 'ok', stale: true, reason: 'stale_dispatch' });
+      return;
+    }
+    const currentBaseFingerprint = canonicalJsonSha256(existingSolutions.flatMap(solution =>
+      typeof solution.idea_id === 'string' && typeof solution.idea_revision === 'number'
+        ? [{
+            ideaId: solution.idea_id,
+            ideaRevision: solution.idea_revision,
+            snapshotSha256: candidateSnapshotSha256(solution),
+          }]
+        : []
+    ));
+    if (dispatch?.requestFingerprint && dispatch.requestFingerprint !== currentBaseFingerprint) {
+      res.status(409).json({
+        error: 'Candidate pool changed after this batch was authorized',
+        code: 'STALE_BATCH_BASE_POOL',
+      });
+      return;
+    }
     const stampedSolutions = stampNewIdeaIdentities(
       data.job_id,
       data.solutions,
@@ -1146,22 +1370,112 @@ workersRouter.post('/regeneration-complete', async (req: Request, res: Response)
         ? { costUsd: (job.costUsd ?? 0) + batchCost, costSummary: cost as Prisma.InputJsonValue }
         : {};
 
-    // Atomic update: REGENERATING/QUEUED → AWAITING_SELECTION (skip validation)
-    const result = await prisma.job.updateMany({
-      where: {
-        id: data.job_id,
-        status: { in: [JobStatus.REGENERATING, JobStatus.QUEUED] },
-        ideasRegeneratedAt: { not: null },
-        ...dispatchGuard(data.dispatch_id),
-      },
-      data: {
-        status: JobStatus.AWAITING_SELECTION,
-        solutionIdeas: mergedSolutions as any,
-        ...costData,
-      },
-    });
+    // Merge + status transition + dispatch settlement are one commit. Otherwise a
+    // second paid operation can be admitted after AWAITING_SELECTION is visible but
+    // before the first dispatch has been disarmed.
+    const commit = async (tx: Prisma.TransactionClient) => {
+      const updated = await tx.job.updateMany({
+        where: {
+          id: data.job_id,
+          status: { in: [JobStatus.REGENERATING, JobStatus.QUEUED] },
+          ideasRegeneratedAt: { not: null },
+          ...dispatchGuard(data.dispatch_id),
+        },
+        data: {
+          status: JobStatus.AWAITING_SELECTION,
+          solutionIdeas: mergedSolutions as any,
+          ideaBatchCompletedCount: { increment: 1 },
+          ...costData,
+        },
+      });
+      if (updated.count > 0 && data.dispatch_id) {
+        const addedRefs = stampedSolutions.flatMap((idea) =>
+          typeof idea.idea_id === 'string' && typeof idea.idea_revision === 'number'
+            ? [{
+                ideaId: idea.idea_id,
+                ideaRevision: idea.idea_revision,
+                snapshotSha256: candidateSnapshotSha256(idea),
+              }]
+            : []
+        );
+        const resultSnapshot = {
+          schemaVersion: 1,
+          kind: 'idea_batch_result',
+          ordinal: data.batch_ordinal ?? dispatch?.batchOrdinal ?? job.regenerationCount,
+          generatedCount: data.generated_count ?? data.solutions.length,
+          addedRefs,
+          ruledOutCount: data.ruled_out_count ?? 0,
+          ruledOutRefs: data.ruled_out_refs ?? [],
+        };
+        await tx.jobDispatch.updateMany({
+          where: { id: data.dispatch_id, resultSnapshot: { equals: Prisma.AnyNull } },
+          data: {
+            resultSnapshot: resultSnapshot as unknown as Prisma.InputJsonValue,
+            resultFingerprint: canonicalJsonSha256(resultSnapshot),
+          },
+        });
+        await settleDispatch(tx, data.dispatch_id, DispatchState.COMPLETED);
+        const addedIdeaIds = stampedSolutions.flatMap((idea) =>
+          typeof idea.idea_id === 'string' ? [idea.idea_id] : []
+        );
+        const outcome = addedIdeaIds.length > 0 ? 'completed' : 'no_candidates_added';
+        await tx.chatMessage.create({
+          data: {
+            jobId: data.job_id,
+            gateStage: 5,
+            role: 'receipt',
+            content: buildRegenerationReceiptContent(
+              'regeneration_settled',
+              outcome,
+              addedIdeaIds.length,
+            ),
+            operationId: `regeneration:${data.dispatch_id}:settled`,
+            patchJson: buildRegenerationEnvelope({
+              event: 'regeneration_settled',
+              operationId: data.dispatch_id,
+              ordinal: data.batch_ordinal ?? job.regenerationCount,
+              outcome,
+              generatedCount: data.generated_count ?? data.solutions.length,
+              addedIdeaIds,
+              addedIdeas: addedRefs.map(ref => ({
+                ideaId: ref.ideaId,
+                ideaRevision: ref.ideaRevision,
+              })),
+              refPrecision: 'exact',
+              ruledOutCount: data.ruled_out_count ?? 0,
+              refunded: false,
+            }) as unknown as object,
+          },
+        });
+      }
+      return updated;
+    };
+    const result = data.dispatch_id
+      ? await prisma.$transaction(commit)
+      : await prisma.job.updateMany({
+          where: {
+            id: data.job_id,
+            status: { in: [JobStatus.REGENERATING, JobStatus.QUEUED] },
+            ideasRegeneratedAt: { not: null },
+            activeDispatchId: null,
+          },
+          data: {
+            status: JobStatus.AWAITING_SELECTION,
+            solutionIdeas: mergedSolutions as any,
+            ...costData,
+          },
+        });
 
     if (result.count === 0) {
+      if (data.dispatch_id) {
+        const reason = await diagnoseGuardMiss(
+          data.job_id,
+          data.dispatch_id,
+          [JobStatus.REGENERATING, JobStatus.QUEUED],
+        );
+        res.json({ status: 'ok', stale: true, reason });
+        return;
+      }
       res.status(409).json({ error: 'Job state changed during regeneration' });
       return;
     }
@@ -1171,10 +1485,6 @@ workersRouter.post('/regeneration-complete', async (req: Request, res: Response)
     // updated Job.solutionIdeas alongside the old preview-backed dossier.
     const { invalidatePreviewReportCache } = await import('../services/assetService.js');
     invalidatePreviewReportCache(data.job_id);
-
-    if (data.dispatch_id) {
-      await prisma.$transaction((tx) => settleDispatch(tx, data.dispatch_id!, DispatchState.COMPLETED));
-    }
 
     const { createRegenerationAnalystFollowup } = await import('../services/analystFollowupService.js');
     await createRegenerationAnalystFollowup({
@@ -1224,35 +1534,63 @@ workersRouter.post('/regeneration-failed', async (req: Request, res: Response) =
     const { prisma } = await import('../services/db.js');
     const { JobStatus } = await import('@prisma/client');
 
-    // Fetch regenerationCount before reverting (needed for numbered refund)
-    const jobForRefund = await prisma.job.findUnique({
-      where: { id: data.job_id },
-      select: { regenerationCount: true },
-    });
-
-    // Atomic revert: REGENERATING/QUEUED → AWAITING_SELECTION
-    const result = await prisma.job.updateMany({
-      where: {
-        id: data.job_id,
-        status: { in: [JobStatus.REGENERATING, JobStatus.QUEUED] },
-        ideasRegeneratedAt: { not: null },  // Guard: only revert regen-queued, not initial queued
-      },
-      data: {
-        status: JobStatus.AWAITING_SELECTION,
-      },
-    });
-
-    if (result.count === 0) {
-      res.status(409).json({ error: 'Job not in REGENERATING state' });
-      return;
-    }
-
-    // Refund regeneration credits AFTER confirming the job was actually reverted
-    if (jobForRefund?.regenerationCount) {
-      try {
-        await refundForRegenerationStage(data.job_id, jobForRefund.regenerationCount);
-      } catch (refundErr) {
-        console.error(`[Workers] Failed to refund regeneration credits for job ${data.job_id}:`, refundErr);
+    if (data.dispatch_id) {
+      const [job, dispatch] = await Promise.all([
+        prisma.job.findFirst({
+          where: {
+            id: data.job_id,
+            status: { in: [JobStatus.REGENERATING, JobStatus.QUEUED] },
+            ...dispatchGuard(data.dispatch_id),
+          },
+          select: { status: true },
+        }),
+        prisma.jobDispatch.findUnique({
+          where: { id: data.dispatch_id },
+          select: { id: true, kind: true, segment: true, chargeId: true },
+        }),
+      ]);
+      if (!job || dispatch?.kind !== DispatchKind.REGENERATE) {
+        const reason = await diagnoseGuardMiss(
+          data.job_id,
+          data.dispatch_id,
+          [JobStatus.REGENERATING, JobStatus.QUEUED],
+        );
+        res.json({ status: 'ok', stale: true, reason });
+        return;
+      }
+      const settled = await cancelRegenerationDispatch(
+        data.job_id,
+        { id: dispatch.id, segment: dispatch.segment, chargeId: dispatch.chargeId },
+        job.status,
+        'SYSTEM_FAULT',
+      );
+      if (!settled.cancelled) {
+        res.json({ status: 'ok', stale: true, reason: settled.reason });
+        return;
+      }
+    } else {
+      // Narrow rolling-deploy compatibility path. Undispatched callbacks may only
+      // touch jobs that likewise have no active dispatch.
+      const legacyJob = await prisma.job.findUnique({
+        where: { id: data.job_id },
+        select: { regenerationCount: true },
+      });
+      const result = await prisma.job.updateMany({
+        where: {
+          id: data.job_id,
+          status: { in: [JobStatus.REGENERATING, JobStatus.QUEUED] },
+          ideasRegeneratedAt: { not: null },
+          activeDispatchId: null,
+        },
+        data: { status: JobStatus.AWAITING_SELECTION },
+      });
+      if (result.count === 0) {
+        res.status(409).json({ error: 'Job not in REGENERATING state' });
+        return;
+      }
+      if (legacyJob?.regenerationCount) {
+        const { refundForRegenerationStage } = await import('../services/creditService.js');
+        await refundForRegenerationStage(data.job_id, legacyJob.regenerationCount);
       }
     }
 
@@ -1332,7 +1670,13 @@ workersRouter.post('/seed-complete', async (req: Request, res: Response) => {
           ? stampSynthesizedIdeaIdentity(
             data.job_id,
             data.idea,
-            dispatch.sourceMessageId,
+            // Exact Concept Forge evaluations are attempt-scoped: the dispatch is
+            // their immutable evaluation identity. Legacy synthesis proposals did
+            // not carry an exact evaluation brief, so retain their historical
+            // source-message identity for retry-stable idea IDs.
+            synthesisProposal.data.evaluation
+              ? data.dispatch_id!
+              : dispatch.sourceMessageId,
             synthesisProposal.data,
             dispatch.sourceMessageId,
           )
@@ -1385,6 +1729,7 @@ workersRouter.post('/seed-complete', async (req: Request, res: Response) => {
               content: buildSeedReceiptContent('seed_settled', data.outcome),
               patchJson: buildSeedEnvelope(
                 'seed_settled', dispatch.sourceMessageId, data.outcome, stampedIdea,
+                data.dispatch_id,
               ) as unknown as object,
             },
           });
@@ -1406,9 +1751,16 @@ workersRouter.post('/seed-complete', async (req: Request, res: Response) => {
       // would otherwise mistake another attempt's arrival for "my own, already landed".
       if ((current.activeDispatchId ?? null) !== (data.dispatch_id ?? null)) {
         const dispatch = data.dispatch_id
-          ? await prisma.jobDispatch.findUnique({ where: { id: data.dispatch_id }, select: { state: true } })
+          ? await prisma.jobDispatch.findUnique({
+              where: { id: data.dispatch_id },
+              select: { jobId: true, kind: true, state: true },
+            })
           : null;
-        if (dispatch?.state === DispatchState.COMPLETED) {
+        if (
+          dispatch?.jobId === data.job_id
+          && dispatch.kind === DispatchKind.SEED_IDEA
+          && dispatch.state === DispatchState.COMPLETED
+        ) {
           // A previous delivery of THIS attempt already landed and the response was lost.
           res.json({ status: 'ok', idempotent: true });
           return;
@@ -1508,7 +1860,8 @@ workersRouter.post('/seed-failed', async (req: Request, res: Response) => {
               role: 'receipt',
               content: buildSeedReceiptContent('seed_settled', 'failed'),
               patchJson: buildSeedEnvelope(
-                'seed_settled', dispatch.sourceMessageId, 'failed',
+                'seed_settled', dispatch.sourceMessageId, 'failed', undefined,
+                data.dispatch_id,
               ) as unknown as object,
             },
           });

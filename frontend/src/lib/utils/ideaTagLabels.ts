@@ -141,3 +141,39 @@ const TAG_DESCRIPTIONS: Record<string, string> = {
 export function tagDescription(value?: string | null): string {
   return value ? (TAG_DESCRIPTIONS[value] ?? "") : "";
 }
+
+/** The closed data_access vocabulary (see docs/IDEA_TAGS.md). */
+const DATA_ACCESS_VALUES = new Set([
+  "public",
+  "freemium",
+  "paywalled",
+  "unofficial",
+  "restricted",
+  "blocked",
+  "unverified",
+]);
+
+/**
+ * Boundary aliases for off-vocabulary data_access_model values.
+ * The pipeline now folds these in before storing, but ideas generated earlier
+ * still carry them — mirrored here so they render without a data migration.
+ * Do NOT treat these as vocabulary: they are inbound-only synonyms.
+ */
+const DATA_ACCESS_ALIASES: Record<string, string> = {
+  none: "public",
+  "not-data-dependent": "public",
+  official: "public",
+  licensed: "paywalled",
+};
+
+/**
+ * Fold a raw data_access_model value into the canonical vocabulary.
+ * Returns null for anything still outside it, so callers can omit the field
+ * instead of printing a raw token.
+ */
+export function normalizeDataAccess(value?: string | null): string | null {
+  if (!value) return null;
+  const raw = value.trim().toLowerCase();
+  const canonical = DATA_ACCESS_ALIASES[raw] ?? raw;
+  return DATA_ACCESS_VALUES.has(canonical) ? canonical : null;
+}

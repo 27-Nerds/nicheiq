@@ -68,6 +68,7 @@
          a keyboard user back to the top of the document. -->
     <textarea
       bind:this={textareaEl}
+      name="message"
       rows={1}
       {placeholder}
       aria-label={label}

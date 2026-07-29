@@ -54,6 +54,17 @@ def test_canonicalize_official_gated_on_obtainable():
     assert _canonicalize_route("blocked", True) == "blocked"
 
 
+def test_canonicalize_rejects_off_vocab_label():
+    # access_model is free text on the wire; anything outside DataAccessTag abstains
+    # rather than shipping as a provenance label (it lands in tags.data_access too).
+    assert _canonicalize_route("subscription", True) == "unverified"
+    assert _canonicalize_route("licensed", True) == "unverified"
+    assert _canonicalize_route("", True) == "blocked"
+    # In-vocab labels still pass through untouched — 'freemium' is a real data tier.
+    assert _canonicalize_route("freemium", True) == "freemium"
+    assert _canonicalize_route("unverified", True) == "unverified"
+
+
 # --- self_sourced drives public (the regex gate's robust replacement) -----
 
 def test_self_sourced_verdict_maps_to_public(monkeypatch):

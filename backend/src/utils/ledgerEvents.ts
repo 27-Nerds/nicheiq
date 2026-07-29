@@ -40,11 +40,15 @@ export interface SeedResultSummary {
     contribution?: string;
   }[];
   synthesis_source_message_id?: string;
+  evaluation_id?: string;
+  proposed_title?: string;
+  reason?: string;
 }
 
 export type LedgerEventName =
   | 'gate_patch_submitted' | 'gate_patch_applied'
-  | 'seed_submitted' | 'seed_settled';
+  | 'seed_submitted' | 'seed_settled'
+  | 'regeneration_submitted' | 'regeneration_settled';
 
 export interface LedgerEventEnvelope {
   kind: 'ledger_event';
@@ -61,12 +65,28 @@ export interface LedgerEventEnvelope {
    *  proposal card in its terminal state after a reload — REQUIRED for seed events (card
    *  identity IS this id), optional for gate-patch events. */
   sourceMessageId?: string;
+  /** Dispatch-backed identity for this paid evaluation attempt. */
+  evaluationId?: string;
+  /** Dispatch-backed identity for a pool-level additional-batch operation. */
+  operationId?: string;
   /** `seed_settled` only — the seed's terminal outcome. 'failed' means the pipeline never
    *  produced anything (refunded); 'accepted'/'demoted' mean it did (never refunded). */
   outcome?: 'accepted' | 'demoted' | 'failed' | 'refunded';
   /** Compact evaluated result for the proposal card; full details live elsewhere. */
   idea?: SeedResultSummary;
-
+  /** Additional-batch settlement summary. Existing candidates are never included. */
+  batch?: {
+    ordinal: number;
+    focus?: string;
+    outcome?: 'completed' | 'no_candidates_added' | 'failed' | 'refunded';
+    generatedCount?: number;
+    addedCount?: number;
+    addedIdeaIds?: string[];
+    addedIdeas?: Array<{ ideaId: string; ideaRevision: number }>;
+    refPrecision?: 'exact' | 'legacy_id_only';
+    ruledOutCount?: number;
+    refunded?: boolean;
+  };
 }
 
 /** Mirrors the frontend's gateFields.ts labels — same words on both sides. */
@@ -148,6 +168,7 @@ export function buildSeedEnvelope(
   sourceMessageId: string,
   outcome?: LedgerEventEnvelope['outcome'],
   idea?: Record<string, unknown>,
+  evaluationId?: string,
 ): LedgerEventEnvelope {
   const synthesisOperation = (
     typeof idea?.synthesis_operation === 'string'
@@ -200,6 +221,15 @@ export function buildSeedEnvelope(
           ...(idea.synthesis_source_message_id === sourceMessageId
             ? { synthesis_source_message_id: sourceMessageId }
             : {}),
+          ...(typeof idea.evaluation_id === 'string'
+            ? { evaluation_id: idea.evaluation_id }
+            : {}),
+          ...(typeof idea.proposed_title === 'string'
+            ? { proposed_title: idea.proposed_title }
+            : {}),
+          ...(typeof idea.evaluation_reason === 'string'
+            ? { reason: idea.evaluation_reason }
+            : {}),
         }
       : undefined;
 
@@ -210,7 +240,64 @@ export function buildSeedEnvelope(
     patch: {},
     rows: [],
     sourceMessageId,
+    ...(evaluationId ? { evaluationId } : {}),
     ...(outcome ? { outcome } : {}),
     ...(result ? { idea: result } : {}),
+  };
+}
+
+export function buildRegenerationReceiptContent(
+  event: 'regeneration_submitted' | 'regeneration_settled',
+  outcome?: NonNullable<LedgerEventEnvelope['batch']>['outcome'],
+  addedCount = 0,
+): string {
+  if (event === 'regeneration_submitted') return 'Adding another idea batch…';
+  if (outcome === 'refunded' || outcome === 'failed') {
+    return 'The additional idea batch failed — existing candidates are unchanged.';
+  }
+  if (addedCount === 0 || outcome === 'no_candidates_added') {
+    return 'Batch reviewed — no new candidates cleared the bar.';
+  }
+  return `Batch added — ${addedCount} new candidate${addedCount === 1 ? '' : 's'}.`;
+}
+
+/** Durable operation receipt for the pool-level append-only batch flow. */
+export function buildRegenerationEnvelope(args: {
+  event: 'regeneration_submitted' | 'regeneration_settled';
+  operationId: string;
+  ordinal: number;
+  focus?: string;
+  outcome?: NonNullable<LedgerEventEnvelope['batch']>['outcome'];
+  generatedCount?: number;
+  addedIdeaIds?: string[];
+  addedIdeas?: Array<{ ideaId: string; ideaRevision: number }>;
+  refPrecision?: 'exact' | 'legacy_id_only';
+  ruledOutCount?: number;
+  refunded?: boolean;
+}): LedgerEventEnvelope {
+  const addedIdeaIds = args.addedIdeaIds ?? [];
+  return {
+    kind: 'ledger_event',
+    version: 1,
+    event: args.event,
+    patch: {},
+    rows: [],
+    operationId: args.operationId,
+    batch: {
+      ordinal: args.ordinal,
+      ...(args.focus ? { focus: args.focus } : {}),
+      ...(args.outcome ? { outcome: args.outcome } : {}),
+      ...(args.generatedCount != null ? { generatedCount: args.generatedCount } : {}),
+      ...(args.event === 'regeneration_settled'
+        ? {
+            addedCount: args.addedIdeas?.length ?? addedIdeaIds.length,
+            addedIdeaIds,
+            ...(args.addedIdeas ? { addedIdeas: args.addedIdeas } : {}),
+            ...(args.refPrecision ? { refPrecision: args.refPrecision } : {}),
+          }
+        : {}),
+      ...(args.ruledOutCount != null ? { ruledOutCount: args.ruledOutCount } : {}),
+      ...(args.refunded != null ? { refunded: args.refunded } : {}),
+    },
   };
 }

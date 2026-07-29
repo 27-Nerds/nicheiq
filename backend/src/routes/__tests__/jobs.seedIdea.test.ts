@@ -301,6 +301,40 @@ describe('POST /api/jobs/:jobId/seed-idea', () => {
           requiresValidation: ['Validate agency demand.'],
         },
         newAssumptions: [],
+        evaluation: {
+          version: 1,
+          conceptSetId: '22222222-2222-2222-2222-222222222222',
+          optionId: 'O11111111111',
+          inputFingerprint: 'f'.repeat(64),
+          changedAxes: [{
+            axis: 'scope',
+            from: 'All workflows',
+            to: 'One agency workflow',
+            reason: 'Keep the evaluation exact.',
+          }],
+          assumptions: [{
+            assumptionId: 'A1111111111',
+            type: 'demand',
+            statement: 'Agencies need this workflow.',
+            whyDecisionChanging: 'Demand determines viability.',
+            consequenceIfFalse: 'Do not build it.',
+          }],
+          retainedEvidence: ['The source pain remains relevant.'],
+          evidenceToRecheck: ['Validate agency demand.'],
+          disqualifiers: ['No agency commits.'],
+          suggestedTest: {
+            assumptionId: 'A1111111111',
+            hypothesis: 'Agencies will request access.',
+            method: 'CTA_CLICK',
+            evidenceSignal: 'SMALL_COMMITMENT',
+            audience: 'Agency operators',
+            artifact: 'Concept page with request-access CTA',
+            primaryMetric: 'Qualified CTA conversion',
+            passThreshold: 'At least 15 percent',
+            failThreshold: 'Below 5 percent',
+            measurementWindow: 'Thirty days',
+          },
+        },
       },
     });
 
@@ -322,7 +356,25 @@ describe('POST /api/jobs/:jobId/seed-idea', () => {
       'Missed workflow changes',
       undefined,
       'dispatch-seed-1',
+      expect.objectContaining({
+        evaluation_id: 'dispatch-seed-1',
+        dispatch_id: 'dispatch-seed-1',
+        source_message_id: 'msg-synthesis',
+        proposal: expect.objectContaining({
+          proposedTitle: 'Focused monitor',
+          evaluation: expect.objectContaining({
+            conceptSetId: '22222222-2222-2222-2222-222222222222',
+            disqualifiers: ['No agency commits.'],
+          }),
+        }),
+      }),
     );
+    expect(response.body).toMatchObject({
+      evaluationId: 'dispatch-seed-1',
+      dispatchId: 'dispatch-seed-1',
+      sourceMessageId: 'msg-synthesis',
+      proposedTitle: 'Focused monitor',
+    });
   });
 
   it('rejects a combined synthesis before charging when either source revision is stale', async () => {
@@ -552,6 +604,7 @@ describe('POST /api/jobs/:jobId/seed-idea', () => {
 
     expect(mockEnqueueSeedIdeaJob).toHaveBeenCalledWith(
       jobId, '/cp/path', 'test niche', 'A tool that does X for Y', 'Pain A', 'Spreadsheets', 'dispatch-seed-1',
+      undefined,
     );
   });
 

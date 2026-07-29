@@ -193,6 +193,7 @@ enum DispatchKind {
   APPLY_STAY // re-run the gate's stage with a patch, re-arrive at the SAME gate (free)
   REGENERATE // regenerate ideas at selection
   SEED_IDEA // birth + score a user-composed idea seed at selection (paid, numbered seed_idea_N)
+  DEEP_RESEARCH // exact-revision selection snapshot authorized for Phase 2
 }
 
 // authorized -> claimed -> completed | failed | refunded.
@@ -203,6 +204,7 @@ enum DispatchState {
   CLAIMED // a worker started it — the user is now paying for work that ran
   COMPLETED
   FAILED
+  CANCELLED // user cancelled before CLAIMED; refund linkage is recorded separately
   REFUNDED
 }
 
@@ -387,13 +389,16 @@ model Job {
   deepResearchRecommendedIdeaRevision Int?
   selectedSolutions                   String[]  @default([]) // Legacy worker-compatible names for the user's 1-3 selections
   selectedSolutionIds                 String[]  @default([]) // Durable identities for the same selections
+  selectedSolutionRefs                Json? // Immutable ordered [{ideaId, ideaRevision, snapshotSha256}] projection for Phase 2
   selectionRationale                  String?   @db.Text // User's reason for selection
   selectionDecisionProfile            Json? // Founder constraints for personal-fit comparison; never mutates research scores
+  selectionDecisionProfileVersion     Int       @default(0)
   selectionDraft                      Json? // Owner-only, editable exact-revision shortlist; separate from final selections
   selectionDraftVersion               Int       @default(0) // Optimistic concurrency version for selectionDraft
   selectionFounderFit                 Json? // Latest owner-only, exact-revision founder-fit artifact
   ideasRegeneratedAt                  DateTime? // When ideas were last regenerated (null = not regenerated)
   regenerationCount                   Int       @default(0) // Number of times ideas have been regenerated
+  ideaBatchCompletedCount             Int       @default(0) // Successful append-only batches; cancelled queued attempts do not consume the cap
   // Number of user-composed idea seeds submitted for this job (selection-chat "generate an idea
   // from your own idea"). Incremented with the SAME optimistic-lock CAS as regenerationCount
   // (updateMany guarded on the value just read) so it is the ordinal source for `seed_idea_N`
@@ -580,21 +585,32 @@ model SelectionAssumption {
 }
 
 model SelectionConceptSet {
-  id               String   @id @default(uuid())
+  id               String    @id @default(uuid())
   jobId            String
-  job              Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  purpose          String   @db.VarChar(32)
-  inputFingerprint String   @db.Char(64)
+  job              Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  purpose          String    @db.VarChar(32)
+  inputFingerprint String    @db.Char(64)
   parentRefs       Json
   artifact         Json
-  model            String   @db.VarChar(255)
-  promptId         String   @db.VarChar(100)
-  createdAt        DateTime @default(now())
+  model            String    @db.VarChar(255)
+  promptId         String    @db.VarChar(100)
+  createdAt        DateTime  @default(now())
   // Soft-archive: discarded sets keep their rows (evaluated options minted
   // proposals whose provenance points here) but leave the cap and lists.
   archivedAt       DateTime?
 
-  @@unique([jobId, inputFingerprint])
+  // Uniqueness covers LIVE sets only, via a PARTIAL unique index Prisma cannot express
+  // and therefore CANNOT SEE — it is declared in SQL, not here, and there is deliberately
+  // no @@index for the pair (one would only add drift; the partial index already serves
+  // the lookup):
+  //   UNIQUE ("jobId", "inputFingerprint") WHERE "archivedAt" IS NULL
+  //   -- migration 20260727120000_concept_set_unique_live_only
+  // A full unique constraint reserved the fingerprint forever, so re-asking for a
+  // discarded set's inputs revived the discarded artifact instead of generating fresh
+  // directions, and "Discard this set" could never be followed by different options.
+  // Because Prisma does not model it, `prisma migrate dev` will offer to DROP this index
+  // — keep it. Read the live row with findFirst + archivedAt: null; findUnique on the
+  // pair no longer type-checks, which is the intended signal.
   @@index([jobId, createdAt])
 }
 
@@ -613,6 +629,7 @@ model SelectionExperiment {
   linkedAssumption  SelectionAssumption? @relation("ExperimentAssumption", fields: [assumptionId], references: [id], onDelete: SetNull)
 
   status            SelectionExperimentStatus @default(DRAFT)
+  version           Int                       @default(1)
   assumptionType    ExperimentAssumptionType
   assumption        String                    @db.Text
   whyCritical       String                    @db.Text
@@ -816,14 +833,32 @@ model JobDispatch {
   jobId String
   job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
-  kind      DispatchKind
-  gateStage Int? // the gate this dispatch departed FROM (1 or 4); null for REGENERATE
+  kind            DispatchKind
+  gateStage       Int? // the gate this dispatch departed FROM (1 or 4); null for REGENERATE
+  clientRequestId String?      @db.Uuid
 
   // The segment this attempt bought, as a CreditTransaction.stage value (guided_s2_4, guided_s5).
   // Null when the attempt is free — every APPLY_STAY, and any CONTINUE on a DISCOVERY_PREPAID_V1
   // job, which already paid for the whole phase up front.
-  segment  String? @db.VarChar(50)
-  chargeId String? // CreditTransaction.id — the exact row a refund must settle
+  segment             String?            @db.VarChar(50)
+  chargeId            String?            @unique // CreditTransaction.id — the exact row a refund must settle
+  charge              CreditTransaction? @relation("DispatchCharge", fields: [chargeId], references: [id], onDelete: SetNull)
+  refundTransactionId String?            @unique
+  refundTransaction   CreditTransaction? @relation("DispatchRefund", fields: [refundTransactionId], references: [id], onDelete: SetNull)
+  refundedAt          DateTime?
+  refundedAmount      Int?
+
+  // Immutable admission/result snapshots. workPayload is private queue material and must
+  // never be serialized by an owner-facing API.
+  requestSnapshot    Json?
+  requestFingerprint String?   @db.Char(64)
+  workPayload        Json?
+  resultSnapshot     Json?
+  resultFingerprint  String?   @db.Char(64)
+  batchOrdinal       Int?
+  deliveryAttempts   Int       @default(0)
+  lastDeliveryAt     DateTime?
+  lastDeliveryError  String?   @db.Text
 
   // SEED_IDEA linkage. Null for every other kind.
   // seedOrdinal mirrors Job.seedIdeaCount at the moment this dispatch was opened — the same
@@ -849,6 +884,7 @@ model JobDispatch {
   claimedAt DateTime?
   settledAt DateTime?
 
+  @@unique([jobId, clientRequestId])
   @@index([jobId, state])
   @@index([state, createdAt]) // outbox sweep: AUTHORIZED rows whose delivery needs retrying
 }
@@ -1006,12 +1042,17 @@ model CreditTransaction {
   balanceBefore Int // Total AVAILABLE (monthly + purchased) before this tx
   balanceAfter  Int // Total AVAILABLE after this tx
 
-  description  String? @db.VarChar(500)
-  stage        String  @default("unknown") @db.VarChar(50)
-  cycle        Int     @default(0) // 0 = original, 1+ = resume attempts
-  relatedJobId String? // Link to job that used credits
-  relatedJob   Job?    @relation(fields: [relatedJobId], references: [id], onDelete: SetNull)
-  promoCodeId  String? // Link to promo code if redeemed
+  description      String?            @db.VarChar(500)
+  stage            String             @default("unknown") @db.VarChar(50)
+  cycle            Int                @default(0) // 0 = original, 1+ = resume attempts
+  relatedJobId     String? // Link to job that used credits
+  relatedJob       Job?               @relation(fields: [relatedJobId], references: [id], onDelete: SetNull)
+  promoCodeId      String? // Link to promo code if redeemed
+  reversalOfId     String?            @unique
+  reversalOf       CreditTransaction? @relation("CreditTransactionReversal", fields: [reversalOfId], references: [id], onDelete: SetNull)
+  reversedBy       CreditTransaction? @relation("CreditTransactionReversal")
+  chargedDispatch  JobDispatch?       @relation("DispatchCharge")
+  refundedDispatch JobDispatch?       @relation("DispatchRefund")
 
   // Bucket split for a deduction: how much came from the monthly allowance (rest = purchased),
   // and which monthly cycle it was drawn from — so refunds restore to the right bucket and never

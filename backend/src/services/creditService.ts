@@ -138,7 +138,7 @@ const STAGE_LABELS: Record<StageName, string> = {
   discovery: 'Discovery',
   deep_research: 'Deep Research',
   landing_page: 'Landing Page',
-  regenerate_ideas: 'Generate More Ideas',
+  regenerate_ideas: 'Add Another Idea Batch',
   seed_idea: 'Generate From Your Idea',
   guided_s1: 'Niche validation',
   guided_s2_4: 'Audience & pain analysis',
@@ -393,13 +393,110 @@ export async function chargeForRegenerationInTx(
   jobId: string,
   regenerationNumber: number,
   niche: string,
+  expectedCost: number,
 ): Promise<CreditTransaction> {
   const cost = await _getStageCostWithClient(tx, 'regenerate_ideas');
-  if (cost === 0) {
-    // Still create a zero-cost transaction record for audit
-    return _chargeForStageImpl(tx, userId, jobId, `regenerate_ideas_${regenerationNumber}`, niche, 0, `Generate More Ideas (#${regenerationNumber}): ${niche.substring(0, 100)}`);
+  if (cost !== expectedCost) {
+    throw new PriceChangedError(expectedCost, cost);
   }
-  return _chargeForStageImpl(tx, userId, jobId, `regenerate_ideas_${regenerationNumber}`, niche, cost, `Generate More Ideas (#${regenerationNumber}): ${niche.substring(0, 100)}`);
+  return _chargeForStageImpl(
+    tx,
+    userId,
+    jobId,
+    `regenerate_ideas_${regenerationNumber}`,
+    niche,
+    cost,
+    `Add Idea Batch (#${regenerationNumber}): ${niche.substring(0, 100)}`,
+  );
+}
+
+/**
+ * Reverse one exact deduction inside the caller's transaction.
+ *
+ * Dispatch settlement must never guess a stage/cycle. `reversalOfId` is the durable idempotency
+ * key, while the bucket restoration mirrors the historical stage refund policy.
+ */
+export async function refundChargeInTx(
+  tx: Prisma.TransactionClient,
+  chargeId: string,
+): Promise<CreditTransaction | null> {
+  const charge = await tx.creditTransaction.findUnique({
+    where: { id: chargeId },
+    include: {
+      reversedBy: true,
+      relatedJob: { select: { niche: true } },
+    },
+  });
+  if (!charge) return null;
+  if (charge.type !== CreditTransactionType.JOB_DEDUCTION) {
+    throw new Error('REFUND_TARGET_NOT_DEDUCTION');
+  }
+  if (charge.reversedBy) return charge.reversedBy;
+
+  const locked = await tx.$queryRaw<
+    Array<{
+      balance: number;
+      monthlyAllowance: number;
+      monthlyAllowancePeriodStart: Date | null;
+      monthlyAllowancePeriodEnd: Date | null;
+    }>
+  >`SELECT "balance", "monthlyAllowance", "monthlyAllowancePeriodStart", "monthlyAllowancePeriodEnd"
+    FROM "UserCredits" WHERE "userId" = ${charge.userId} FOR UPDATE`;
+  const row = locked[0];
+  if (!row) return null;
+
+  const refundAmount = Math.abs(charge.amount);
+  const fromMonthly = charge.fromMonthly ?? 0;
+  const fromPurchased = refundAmount - fromMonthly;
+  const sameCycle =
+    fromMonthly > 0
+    && charge.monthlyPeriodStart != null
+    && row.monthlyAllowancePeriodStart != null
+    && charge.monthlyPeriodStart.getTime() === row.monthlyAllowancePeriodStart.getTime()
+    && row.monthlyAllowancePeriodEnd != null
+    && row.monthlyAllowancePeriodEnd.getTime() > Date.now();
+  const monthlyRestore = sameCycle ? fromMonthly : 0;
+  const purchasedRestore = fromPurchased;
+  const actualRefund = monthlyRestore + purchasedRestore;
+  const availableBefore = spendableMonthly(row) + row.balance;
+
+  await tx.userCredits.update({
+    where: { userId: charge.userId },
+    data: {
+      monthlyAllowance: { increment: monthlyRestore },
+      balance: { increment: purchasedRestore },
+      totalUsed: { decrement: actualRefund },
+    },
+  });
+
+  return tx.creditTransaction.create({
+    data: {
+      userId: charge.userId,
+      type: CreditTransactionType.REFUND,
+      amount: actualRefund,
+      balanceBefore: availableBefore,
+      balanceAfter: availableBefore + actualRefund,
+      fromMonthly: monthlyRestore,
+      relatedJobId: charge.relatedJobId,
+      stage: charge.stage,
+      cycle: charge.cycle,
+      reversalOfId: charge.id,
+      description: `Refund ${STAGE_LABELS[charge.stage as StageName] ?? charge.stage}: ${
+        charge.relatedJob?.niche?.substring(0, 100) ?? 'research operation'
+      }`,
+    },
+  });
+}
+
+export async function refundCharge(chargeId: string): Promise<CreditTransaction | null> {
+  try {
+    return await prisma.$transaction((tx) => refundChargeInTx(tx, chargeId));
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return prisma.creditTransaction.findUnique({ where: { reversalOfId: chargeId } });
+    }
+    throw error;
+  }
 }
 
 /**

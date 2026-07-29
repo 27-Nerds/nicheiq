@@ -63,7 +63,13 @@ export interface SelectionDecisionState {
   status: string;
   shortlist: {
     version: number;
+    fingerprint: string;
     items: SelectionDecisionIdeaRef[];
+    staleItems: Array<{
+      ideaId: string;
+      ideaRevision: number;
+      titleSnapshot?: string;
+    }>;
   };
   profile: SelectionDecisionProfile | null;
   founderFit: {
@@ -128,7 +134,11 @@ export interface SelectionDecisionState {
   deepResearch: {
     eligible: boolean;
     optionalWorkRequired: false;
-    blockers: Array<'JOB_NOT_AWAITING_SELECTION' | 'NO_CURRENT_SHORTLIST'>;
+    blockers: Array<
+      'JOB_NOT_AWAITING_SELECTION'
+      | 'NO_CURRENT_SHORTLIST'
+      | 'STALE_SHORTLIST'
+    >;
   };
   nextAction: SelectionDecisionNextAction;
 }

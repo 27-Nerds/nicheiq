@@ -185,6 +185,9 @@ def process_job(job_data: dict) -> None:
                 job_id=job_id,
                 checkpoint_path=job_data["checkpoint_path"],
                 selected_solutions=job_data.get("selected_solutions") or [job_data.get("selected_solution", "")],
+                selected_solution_refs=job_data.get("selected_solution_refs"),
+                selected_solution_snapshots=job_data.get("selected_solution_snapshots"),
+                selection_fingerprint=job_data.get("selection_fingerprint"),
                 selection_rationale=job_data.get("selection_rationale", ""),
             )
         elif task_type == TASK_TYPE_REGENERATE_IDEAS:
@@ -196,6 +199,9 @@ def process_job(job_data: dict) -> None:
                 existing_solution_names=job_data.get("existing_solution_names", []),
                 niche=job_data.get("niche", ""),
                 idea_focus=job_data.get("idea_focus"),
+                dispatch_id=job_data.get("dispatch_id"),
+                batch_ordinal=job_data.get("batch_ordinal"),
+                base_candidate_refs=job_data.get("base_candidate_refs"),
             )
         elif task_type == TASK_TYPE_SEED_IDEA:
             from .tasks import run_seed_idea
@@ -207,6 +213,7 @@ def process_job(job_data: dict) -> None:
                     "seed_text": job_data.get("seed_text", ""),
                     "pain_ref": job_data.get("pain_ref"),
                     "tool_ref": job_data.get("tool_ref"),
+                    "synthesis_evaluation": job_data.get("synthesis_evaluation"),
                 },
                 niche=job_data.get("niche", ""),
                 dispatch_id=job_data.get("dispatch_id"),
@@ -349,16 +356,29 @@ def process_job(job_data: dict) -> None:
         error_traceback = traceback.format_exc()
         logger.error(f"Job {job_id} failed: {error_msg}\n{error_traceback}")
 
-        # Regeneration failures should revert to AWAITING_SELECTION, not FAILED.
-        # This preserves existing solutions and avoids an incorrect credit refund.
+        # Additional-batch failures settle/refund only that dispatch and restore
+        # AWAITING_SELECTION; the parent research job and existing pool stay intact.
+        # Two distinct outcomes reach here, both settled the same way:
+        #   1. regeneration_delivery_only: the batch finished, but notify_regeneration_complete
+        #      exhausted its retries. run_regenerate_ideas has already reverted the
+        #      checkpoint/preview, so the refund below is owed and no ghost candidate survives.
+        #   2. genuine pipeline failure: nothing was merged in the first place.
         if task_type == TASK_TYPE_REGENERATE_IDEAS:
             try:
                 from .progress import notify_regeneration_failed
-                notify_regeneration_failed(job_id, error_msg)
-                return  # Don't fall through to notify_job_failed
+                if getattr(e, "regeneration_delivery_only", False):
+                    error_msg = f"Batch completed but its result could not be delivered: {error_msg}"
+                delivered = notify_regeneration_failed(job_id, error_msg)
+                if not delivered:
+                    logger.error(
+                        f"Regeneration-failed revert not delivered for {job_id}; "
+                        "leaving stale recovery to settle the operation without failing "
+                        "the parent research job"
+                    )
+                return  # Never fail the parent job for an additional-batch operation
             except Exception as revert_err:
                 logger.error(f"Failed to revert regeneration for {job_id}: {revert_err}")
-                # Fall through to notify_job_failed as last resort
+                return  # stale recovery is operation-scoped for REGENERATE
 
         # Seed-idea failures (eager-meandering-feather.md Phase 5) must NEVER fall through to
         # the generic notify_job_failed — that path refunds 'discovery'/segment, a charge the

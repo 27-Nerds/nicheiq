@@ -1,7 +1,7 @@
 // Single source of truth for how a job's status maps to a lifecycle bucket,
 // a human label, an accent color, and a primary CTA. Previously this logic
-// was scattered across the dashboard page (statusPriority + getStatusLabel),
-// JobCard, and the job page — each with a slightly different vocabulary.
+// was scattered across the dashboard page (statusPriority + getStatusLabel), the
+// per-job card markup, and the job page — each with a slightly different vocabulary.
 //
 // Colors are CSS custom-property references so they can be dropped straight
 // into inline `style:color`/`style:background` bindings and stay theme-aware.
@@ -36,7 +36,7 @@ export const STATUS: Record<JobStatus, StatusMeta> = {
   // orange 'review' bucket. Blue = working; keeps the lifecycle rail legible.
   RUNNING: { label: 'Researching', color: 'var(--color-info-dark)', cta: 'View progress' },
   RUNNING_PHASE2: { label: 'Deep research', color: 'var(--color-info-dark)', cta: 'View progress' },
-  REGENERATING: { label: 'Regenerating ideas', color: 'var(--color-info-dark)', cta: 'View' },
+  REGENERATING: { label: 'Adding idea batch', color: 'var(--color-info-dark)', cta: 'View' },
   QUEUED: { label: 'Queued', color: 'var(--color-info-dark)', cta: 'View' },
   PENDING: { label: 'Preparing', color: 'var(--color-info-dark)', cta: 'View' },
   COMPLETED: { label: 'Ready', color: 'var(--color-success-text)', cta: 'View report' },

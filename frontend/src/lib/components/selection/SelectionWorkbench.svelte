@@ -23,6 +23,7 @@
     candidateStatsLine,
     generateNewBatchLabel,
   } from "$lib/selection/labels";
+  import { shortlistOverlaps } from "$lib/selection/overlapWarnings";
   import {
     regenerateIdeas,
     seedIdea,
@@ -96,6 +97,8 @@
     SelectionOwnerEvidencePrefill,
   } from "$lib/types/selectionCopilot";
   import DecisionRail from "$lib/components/selection/DecisionRail.svelte";
+  import BatchActivity from "$lib/components/selection/BatchActivity.svelte";
+  import EvaluationActivity from "$lib/components/selection/EvaluationActivity.svelte";
   import DecisionStatusBadge from "$lib/components/selection/DecisionStatusBadge.svelte";
   import {
     buildSelectionJourney,
@@ -130,6 +133,8 @@
     segmentCount?: number | null;
     onComplete?: () => void;
     onRegenerateStart?: () => void;
+    /** Durable additional-batch settlement arrived; refresh candidates and preview. */
+    onBatchSettled?: () => void;
     /** Emits the decision-journey tasks so the job-page sidebar (PhaseNav) can
      *  render the same two primary decision tools, with the same status, that
      *  the launchpad shows — one status source across the shell. */
@@ -181,6 +186,7 @@
     painPointCount = null,
     segmentCount = null,
     onRegenerateStart,
+    onBatchSettled,
     onJourneyTasks,
     onShortlistChange,
     onShortlistVersionChange,
@@ -256,6 +262,7 @@
     expectedVersion: number;
     ideas: SolutionPreview[];
     rationale: string;
+    source: "analyst" | "comparison";
   } | null>(null);
   let copilotShortlistError = $state("");
   let activeDecisionProfile = $state<SelectionDecisionProfile | null>(null);
@@ -285,12 +292,54 @@
   let selectionDecisionStateError = $state("");
   let selectionDecisionStateRequest = 0;
   let handledSelectionToolQuery = "";
+  let handledShortlistProposal = "";
 
   function ideaKey(solution: SolutionPreview): string {
     return solution.idea_id
       ? `${solution.idea_id}:${solution.idea_revision ?? 1}`
       : `legacy:${solution.solution_name}`;
   }
+
+  $effect(() => {
+    const proposal = page.state.shortlistProposal;
+    if (!interactive || !proposal || proposal.requestId === handledShortlistProposal) return;
+    handledShortlistProposal = proposal.requestId;
+    const proposedIdeas = proposal.refs.flatMap((reference) => {
+      const idea = solutions.find((candidate) => (
+        candidate.idea_id === reference.ideaId
+        && (candidate.idea_revision ?? 1) === reference.ideaRevision
+      ));
+      return idea ? [idea] : [];
+    });
+
+    replaceState(`${page.url.pathname}${page.url.search}${page.url.hash}`, {
+      ...page.state,
+      shortlistProposal: undefined,
+    });
+
+    if (
+      proposedIdeas.length !== proposal.refs.length
+      || proposedIdeas.length < 1
+      || proposedIdeas.length > MAX_SELECTIONS
+    ) {
+      selectError = "One or more proposed candidate revisions are no longer available. Your shortlist was not changed.";
+      return;
+    }
+
+    closeAllOverlays();
+    copilotShortlistReview = {
+      requestId: proposal.requestId,
+      expectedVersion: proposal.expectedVersion,
+      ideas: proposedIdeas,
+      source: "comparison",
+      rationale: proposal.reason === "branch_result"
+        ? "Review the evaluated direction before adding it to Deep Research."
+        : "This exact comparison scope was handed back for shortlist review.",
+    };
+    copilotShortlistError = proposal.expectedVersion === shortlistDraftVersion
+      ? ""
+      : "Your shortlist changed after this scope was prepared. Keep the current shortlist and reopen Compare before applying it.";
+  });
 
   function solutionForKey(key: string): SolutionPreview | undefined {
     return solutions.find((solution) => ideaKey(solution) === key);
@@ -559,6 +608,11 @@
   let regenerating = $state(false);
   let regenerateError = $state("");
   let regenerateOverlayOpen = $state(false);
+  let batchPollTimer: ReturnType<typeof setInterval> | null = null;
+  /** Plain `let`, never `$state`: both are read by the $effect that also drives them,
+   *  so as reactive state they would re-trigger the very effect they exist to dedupe. */
+  let batchPollOperationId: string | null = null;
+  const abandonedBatchPolls = new Set<string>();
   const canAffordRegenerate = $derived(
     creditBalance >= stageCosts.regenerate_ideas,
   );
@@ -572,6 +626,37 @@
     if (!isRegenerating && regenerating) regenerating = false;
   });
 
+  function stopBatchPoll() {
+    if (batchPollTimer) clearInterval(batchPollTimer);
+    batchPollTimer = null;
+    batchPollOperationId = null;
+  }
+
+  function beginBatchPoll(operationId: string) {
+    // Each tick's chatLedger.reload() reassigns the batch-activity map, which re-runs the
+    // $effect that calls us. Without these guards the interval would be torn down and
+    // rebuilt every tick — resetting `attempts`, so the give-up cap could never fire, and
+    // restarting a poll we had already abandoned.
+    if (batchPollOperationId === operationId || abandonedBatchPolls.has(operationId)) return;
+    stopBatchPoll();
+    batchPollOperationId = operationId;
+    let attempts = 0;
+    batchPollTimer = setInterval(async () => {
+      attempts += 1;
+      await chatLedger.reload();
+      const activity = chatLedger.batchActivities.find((item) => item.operationId === operationId);
+      if (activity && activity.outcome !== "pending") {
+        stopBatchPoll();
+        onBatchSettled?.();
+      } else if (attempts >= 200) {
+        abandonedBatchPolls.add(operationId);
+        stopBatchPoll();
+      }
+    }, 6000);
+  }
+
+  $effect(() => () => stopBatchPoll());
+
   // `focusOverride` lets the chat patch card ("Apply changes") drive the same
   // call the manual focus buttons use, instead of duplicating the credit/402
   // handling in ChatThread — the tool only ever proposes a change; this is the
@@ -584,10 +669,15 @@
     regenerateError = "";
     chatThreadRef?.stopStreaming();
     try {
-      await regenerateIdeas(
+      const response = await regenerateIdeas(
         jobId,
         focus === "auto" ? undefined : focus,
       );
+      chatLedger.markBatchPending(response.operationId, {
+        ordinal: response.batchOrdinal,
+        focus: response.focus ?? focus,
+      });
+      beginBatchPoll(response.operationId);
       regenerateOverlayOpen = false;
       onRegenerateStart?.();
     } catch (e) {
@@ -619,7 +709,10 @@
   let seedCostOverride = $state<number | null>(null);
   const seedCost = $derived(seedCostOverride ?? stageCosts.seed_idea ?? null);
   let seedPollTimer: ReturnType<typeof setInterval> | null = null;
+  /** Set when the seed poll exhausted its attempts, so the wait can offer a re-check. */
+  let seedPollStalledId = $state<string | null>(null);
   let seedHighlightName = $state<string | null>(null);
+  let batchHighlightIdeaIds = $state<Set<string>>(new Set());
   let seedHighlightRuledOutIndex = $state<number | null>(null);
   let seedBanner = $state<{ outcome: "accepted" | "demoted" | "failed" | "refunded" } | null>(null);
 
@@ -629,7 +722,11 @@
   // authoritative guard; this is UX-only. `chatLedger.hasPendingSeed` folds in the
   // durable (reload-surviving) case, not just this session's own submit.
   const poolMutationBusy = $derived(
-    regenerating || isRegenerating || seedPending || chatLedger.hasPendingSeed,
+    regenerating
+    || isRegenerating
+    || seedPending
+    || chatLedger.hasPendingSeed
+    || chatLedger.hasPendingBatch,
   );
 
   function stopSeedPoll() {
@@ -678,6 +775,81 @@
       if (seedHighlightRuledOutIndex === index) seedHighlightRuledOutIndex = null;
     }, 4000);
   }
+
+  function reviewBatchCandidates(ideaIds: string[]) {
+    const available = ideaIds.filter((ideaId) =>
+      solutions.some((solution) => solution.idea_id === ideaId));
+    if (available.length === 0) return;
+    batchHighlightIdeaIds = new Set(available);
+    requestAnimationFrame(() => {
+      const first = [...document.querySelectorAll<HTMLElement>("[data-idea-id]")]
+        .find((row) => available.includes(row.dataset.ideaId ?? ""));
+      first?.scrollIntoView({ behavior: scrollBehavior(), block: "center" });
+    });
+    setTimeout(() => {
+      batchHighlightIdeaIds = new Set();
+    }, 4000);
+  }
+
+  function reviewBatchRuledOut(operationId: string) {
+    // `generation_operation_id` is the only key the worker stamps with a BATCH dispatch id;
+    // dispatch_id/evaluation_id are seed-scoped and can never match one.
+    const index = (examinedRuledOut ?? []).findIndex((finding) =>
+      finding.generation_operation_id === operationId);
+    if (index >= 0) scrollAndHighlightRuledOut(index);
+    else {
+      appendixExpanded = true;
+      requestAnimationFrame(() => {
+        document.getElementById("examined-ruled-out")
+          ?.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
+      });
+    }
+  }
+
+  function reviewEvaluationResult(evaluationId: string) {
+    const finding = (examinedRuledOut ?? []).find((candidate) => (
+      candidate.evaluation_id === evaluationId || candidate.dispatch_id === evaluationId
+    ));
+    if (finding) {
+      openRuledOutDetail(finding);
+      return;
+    }
+    selectError = "That evaluated result is no longer available in this report.";
+  }
+
+  function retryBatch() {
+    if (!canRegenerate || poolMutationBusy) return;
+    regenerateError = "";
+    regenerateOverlayOpen = true;
+  }
+
+  let handledActivityDeepLink = "";
+  $effect(() => {
+    const evaluationId = page.url.searchParams.get("evaluationId");
+    const operationId = page.url.searchParams.get("batchOperationId")
+      ?? page.url.searchParams.get("reviewBatchRuledOut");
+    const addBatch = page.url.searchParams.get("addBatch");
+    const signature = evaluationId
+      ? `evaluation:${evaluationId}`
+      : operationId
+        ? `ruled-out:${operationId}`
+        : addBatch === "1"
+          ? "add-batch"
+          : "";
+    if (!signature || handledActivityDeepLink === signature) return;
+    handledActivityDeepLink = signature;
+    queueMicrotask(() => {
+      if (evaluationId) reviewEvaluationResult(evaluationId);
+      else if (operationId) reviewBatchRuledOut(operationId);
+      else retryBatch();
+      const next = new URL(page.url);
+      next.searchParams.delete("evaluationId");
+      next.searchParams.delete("batchOperationId");
+      next.searchParams.delete("reviewBatchRuledOut");
+      next.searchParams.delete("addBatch");
+      replaceState(`${next.pathname}${next.search}${next.hash}`, page.state);
+    });
+  });
 
   /** Set once settlement is detected; consumed by the $effect below once the
    *  parent's FORCED getSolutions()/getPreviewReport() refresh (onSeedSettled)
@@ -773,11 +945,22 @@
       if (outcome && outcome !== "pending") {
         settleSeed(outcome, priorNames, priorRuledOutCount);
       } else if (attempts >= MAX_ATTEMPTS) {
+        // Record WHY it stopped. Clearing seedPending alone still left the durable
+        // ledger pending — so poolMutationBusy stayed locked with no way forward
+        // except a manual page reload.
         stopSeedPoll();
         inFlightSeed = null;
         seedPending = false;
+        seedPollStalledId = sourceMessageId;
       }
     }, 6000);
+  }
+
+  function recheckSeed() {
+    const sourceMessageId = seedPollStalledId;
+    if (!sourceMessageId) return;
+    seedPollStalledId = null;
+    void chatLedger.reload();
   }
 
   async function handleSeed(
@@ -967,9 +1150,44 @@
       .filter((score): score is number => score != null);
     return scores.length ? Math.round(Math.max(...scores) * 100) : null;
   });
+  const synthesisActivities = $derived(
+    chatLedger.seedActivities.filter((activity) => activity.kind === "idea_synthesis"),
+  );
+  const batchActivities = $derived(chatLedger.batchActivities);
+  $effect(() => {
+    const pending = batchActivities.find((activity) => activity.outcome === "pending");
+    if (pending) beginBatchPoll(pending.operationId);
+  });
+  const settledSynthesisActivities = $derived(
+    synthesisActivities.filter((activity) => activity.outcome !== "pending"),
+  );
   const cmdStatsLine = $derived(
     candidateStatsLine({ candidates: solutions.length, topScore: bestScore, segments: segmentCount }),
   );
+  /** The always-visible receipt for paid evaluations: a tally in the header that opens
+   *  the record below, so settled results need no permanent block above the candidates. */
+  const evaluatedDirectionsLabel = $derived(
+    settledSynthesisActivities.length > 0
+      ? `${settledSynthesisActivities.length} evaluated `
+        + `${settledSynthesisActivities.length === 1 ? "direction" : "directions"}`
+      : "",
+  );
+
+  function openEvaluationRecord() {
+    document.getElementById("evaluation-record")
+      ?.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
+  }
+
+  /** The ruled-out list lives inside the collapsed appendix, so a pointer to it has to
+   *  open the disclosure — otherwise "it is listed under Examined and ruled out" sends
+   *  the reader to a heading with nothing under it. */
+  function openExaminedRuledOut() {
+    appendixExpanded = true;
+    requestAnimationFrame(() => {
+      document.getElementById("examined-ruled-out")
+        ?.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
+    });
+  }
   const detailEvidenceLinks = $derived.by(() => {
     const base = `/jobs/${encodeURIComponent(jobId)}`;
     const links: { href: string; label: string }[] = [];
@@ -1006,6 +1224,17 @@
     Array.from(selectedIdeaKeys)
       .map(solutionForKey)
       .filter((solution): solution is SolutionPreview => Boolean(solution)),
+  );
+  // Near-duplicate shortlist entries, surfaced at the dock rather than only in the
+  // dossier appendix — the appendix is not on the path to the commit gate.
+  const shortlistOverlapWarnings = $derived(
+    shortlistOverlaps(
+      overlapGroups,
+      selectedIdeas.map((idea) => ({
+        name: idea.solution_name,
+        label: solutionDisplayTitle(idea),
+      })),
+    ),
   );
   const analystSelectionContext = $derived<SelectionWorkspaceContext>({
     workspace: "candidates",
@@ -1267,7 +1496,10 @@
   );
 
   const SORT_COLS: { key: SortKey; label: string; tooltip?: string }[] = [
-    { key: "score", label: "Score", tooltip: SCORE_DEFINITIONS.composite },
+    // "/100" because the neighbouring columns render as percentages: a bare "70"
+    // beside "60%" and "95%" reads as a third, unstated scale. Score is a relative
+    // 0-100 ranking index, not a percentage, so it is labelled rather than converted.
+    { key: "score", label: "Score /100", tooltip: SCORE_DEFINITIONS.composite },
     { key: "fit", label: "Market fit", tooltip: SCORE_DEFINITIONS.market_fit },
     {
       key: "feas",
@@ -1379,8 +1611,7 @@
     const next = sortedSolutions[index];
     if (!next) return;
     modalIndex = index;
-    detailTab = "overview";
-    replaceState(detailUrl(next, "overview"), page.state);
+    replaceState(detailUrl(next, detailTab), page.state);
   }
 
   function handleDetailTabChange(tab: "overview" | "detail") {
@@ -1534,8 +1765,12 @@
       };
     }
     const params = new URLSearchParams();
-    for (const idea of (options?.ideas ?? selectedIdeas).slice(0, MAX_SELECTIONS)) {
-      if (idea.idea_id) params.append("idea", `${idea.idea_id}:${idea.idea_revision ?? 1}`);
+    // Review is the commit gate for the persisted shortlist, never an ad-hoc URL scope.
+    // Keeping it bare also gives the gate one stable, bookmarkable route identity.
+    if (workspace !== "review") {
+      for (const idea of (options?.ideas ?? selectedIdeas).slice(0, MAX_SELECTIONS)) {
+        if (idea.idea_id) params.append("idea", `${idea.idea_id}:${idea.idea_revision ?? 1}`);
+      }
     }
     if (options?.view) params.set("view", options.view);
     if (options?.tool) params.set("tool", options.tool);
@@ -1770,6 +2005,7 @@
         expectedVersion: action.expectedVersion,
         ideas,
         rationale: action.rationale,
+        source: "analyst",
       };
       chatPanel.close();
       return { ok: true, message: "Review the shortlist diff before applying it." };
@@ -2096,7 +2332,13 @@
            points, sources) live in the discovery-dossier ledger below. -->
       <div class="cmd-title-row">
         <h2 class="cmd-title">{interactive ? CHOOSE_IDEAS_LABEL : RANKED_LIST_HEADING}</h2>
-        <p class="record-line cmd-stats" aria-label="Idea summary">{cmdStatsLine}</p>
+        <p class="record-line cmd-stats" aria-label="Idea summary">
+          {cmdStatsLine}{#if evaluatedDirectionsLabel} · <button
+              type="button"
+              class="cmd-stats-link"
+              onclick={openEvaluationRecord}
+            >{evaluatedDirectionsLabel}</button>{/if}
+        </p>
       </div>
       {#if interactive}
         <p class="cmd-sub">
@@ -2122,6 +2364,24 @@
 
   <div class:selection-layout={interactive}>
     <div class="candidate-pool">
+      <BatchActivity
+        activities={batchActivities}
+        onReviewCandidates={reviewBatchCandidates}
+        onReviewRuledOut={reviewBatchRuledOut}
+        onRetry={retryBatch}
+      />
+      <!-- Running evaluations only. Settled ones are provenance, not status, and live
+           with the Discovery appendix so a rejected direction never outranks the
+           candidates this page exists to choose between. -->
+      <EvaluationActivity
+        {jobId}
+        activities={synthesisActivities}
+        view="live"
+        operation={chatLedger.activeOperation}
+        stalled={seedPollStalledId != null}
+        onRecheck={recheckSeed}
+      />
+
       {#if detailUrlError}
         <div class="detail-link-error" role="alert">
           <p>{detailUrlError}</p>
@@ -2151,8 +2411,10 @@
 
       <!-- The whole optional-checks guide belongs to the decision tools grant. Without
            it there is no optional work to report, and the shortlist rail already carries
-           "Review and start" — so the card would be an empty frame. -->
-      {#if interactive && decisionTools}
+           "Review and start" — so the card would be an empty frame.
+           Defined here, RENDERED below the ranked list: "what should I do next" and the
+           analyst's read across the ideas both assume you have seen the ideas. -->
+      {#snippet decisionGuideBlock()}
         <section class="decision-guide" aria-labelledby="decision-guide-title">
           <div class="decision-guide__copy">
             <p class="decision-guide__eyebrow">
@@ -2215,7 +2477,7 @@
             </p>
           </section>
         {/if}
-      {/if}
+      {/snippet}
 
       <!-- ── Ranked opportunity list ── -->
       <div
@@ -2225,7 +2487,7 @@
         data-annotation-anchor="shortlist-candidates"
       >
     <!-- Column header (desktop) -->
-    <div class="row row-head" role="row" data-tour="ranked-list">
+    <div class="opp-row opp-row-head" role="row" data-tour="ranked-list">
       <span class="cell-rank" role="columnheader">#</span>
       <span class="cell-select-label" role="columnheader">{interactive ? "Select" : "Vote"}</span>
       <span class="cell-title-label" role="columnheader">Idea</span>
@@ -2248,9 +2510,11 @@
             aria-describedby={col.tooltip ? `sort-tip-${col.key}` : undefined}
           >
             <span>{col.label}</span>
-            {#if sortKey === col.key}
-              {#if sortDir === "asc"}<ArrowUp class="w-3 h-3" aria-hidden="true" />{:else}<ArrowDown class="w-3 h-3" aria-hidden="true" />{/if}
-            {/if}
+            <!-- Always laid out, hidden while idle: an arrow that appears only on the
+                 active column shrinks that column's label mid-interaction. -->
+            <span class="sort-arrow" class:is-idle={sortKey !== col.key} aria-hidden="true">
+              {#if sortKey === col.key && sortDir === "asc"}<ArrowUp class="w-3 h-3" />{:else}<ArrowDown class="w-3 h-3" />{/if}
+            </span>
             {#if col.tooltip}
               <span id="sort-tip-{col.key}" class="sr-only">{col.tooltip}</span>
             {/if}
@@ -2266,11 +2530,13 @@
       {@const maxed = !isSel && selectedIdeaKeys.size >= MAX_SELECTIONS}
       {@const isAnalystPick = analystPickNames.has(s.solution_name)}
       <div
-        class="row"
+        class="opp-row"
         role="row"
-        class:row-sel={isSel}
-        class:row-maxed={maxed}
+        class:opp-row-sel={isSel}
+        class:opp-row-maxed={maxed}
         class:row-seed-highlight={seedHighlightName === s.solution_name}
+        class:row-batch-highlight={Boolean(s.idea_id && batchHighlightIdeaIds.has(s.idea_id))}
+        data-idea-id={s.idea_id}
         data-solution-name={s.solution_name}
         data-annotation-anchor={`candidate:${key}`}
       >
@@ -2414,25 +2680,63 @@
         {/each}
       </div>
 
-      <!-- "Branch a new direction" is a decision tool (ConceptForge / selection-concept-sets). -->
       {#if interactive && decisionTools}
-        <div class="decision-escape">
-          <div>
-            <strong>None of these fit?</strong>
-            <span>Branch from a promising idea without changing your current shortlist.</span>
-          </div>
-          <button
-            type="button"
-            disabled={poolMutationBusy}
-            onclick={() => {
-              void goto(selectionWorkspaceHref("compare", { tool: "variants" }), {
-                state: jobPageToolState(),
-              });
-            }}
-          >
-            {BRANCH_DIRECTION_LABEL}
-          </button>
-        </div>
+        {@render decisionGuideBlock()}
+      {/if}
+
+      <!-- A receipt for work the user paid for and started, so it stays a first-class
+           section: below the candidates it reports on, never inside the collapsed
+           "How the shortlist was formed" disclosure where it would be missed. Sitting
+           next to "Add another batch" also puts what you tried beside how to try more. -->
+      {#if interactive && settledSynthesisActivities.length > 0}
+        <EvaluationActivity
+          {jobId}
+          activities={synthesisActivities}
+          view="record"
+          onOpenRuledOut={openExaminedRuledOut}
+        />
+      {/if}
+
+      {#if interactive && (canRegenerate || decisionTools)}
+        <section class="idea-expansion-actions" aria-label="Explore more ideas">
+          {#if canRegenerate}
+            <div class="idea-expansion-row">
+              <div>
+                <strong>Want a broader pool?</strong>
+                <span>Append a fresh batch. Existing candidate scores and your shortlist stay unchanged; the ranked list may reorder around new arrivals.</span>
+              </div>
+              <button
+                type="button"
+                disabled={poolMutationBusy}
+                onclick={() => {
+                  regenerateError = "";
+                  regenerateOverlayOpen = true;
+                }}
+              >
+                Add another batch
+              </button>
+            </div>
+          {/if}
+          {#if decisionTools}
+            <div class="idea-expansion-row">
+              <div>
+                <strong>Have a specific direction in mind?</strong>
+                <span>Branch from one or two promising candidates, then evaluate only the direction you choose.</span>
+              </div>
+              <button
+                type="button"
+                disabled={poolMutationBusy}
+                onclick={() => {
+                  void goto(selectionWorkspaceHref("compare", { tool: "variants" }), {
+                    state: jobPageToolState(),
+                  });
+                }}
+              >
+                {BRANCH_DIRECTION_LABEL}
+              </button>
+            </div>
+          {/if}
+        </section>
       {/if}
     </div>
 
@@ -2441,6 +2745,7 @@
         {#if selectionJourney}
           <DecisionRail
             journey={selectionJourney}
+            overlapWarnings={shortlistOverlapWarnings}
             deepResearchCost={deepCost}
             busy={poolMutationBusy || selectLoading || shortlistSaveState === "saving"}
             saveState={shortlistSaveState}
@@ -2534,12 +2839,20 @@
       <AnalysisAppendix meta={appendixMeta} bind:expanded={appendixExpanded}>
         {#if summarySupportingNotes.length}
           <section class="appendix-notes" aria-label="Analyst notes">
-            <h3 class="appendix-notes-title">Analyst notes</h3>
-            {#each summarySupportingNotes as note}
-              <p class="appendix-note">
-                <IdeaReferenceText content={note} references={ideaReferences} onOpen={openIdeaReference} />
-              </p>
-            {/each}
+            <header class="appendix-notes-heading">
+              <span>Analyst synthesis</span>
+              <h3>What shaped the shortlist</h3>
+            </header>
+            <ol class="appendix-note-list">
+              {#each summarySupportingNotes as note, index}
+                <li class="appendix-note">
+                  <span class="appendix-note-index">{String(index + 1).padStart(2, "0")}</span>
+                  <p>
+                    <IdeaReferenceText content={note} references={ideaReferences} onOpen={openIdeaReference} />
+                  </p>
+                </li>
+              {/each}
+            </ol>
           </section>
         {/if}
         {#if collaboratorFeedbackGroups.length > 0}
@@ -2671,7 +2984,7 @@
     >
       {#if regenerating || isRegenerating}
         <Loader2 class="w-4 h-4 animate-spin" aria-hidden="true" />
-        Exploring…
+        Adding batch…
       {:else}
         {generateNewBatchLabel(stageCosts.regenerate_ideas)}
       {/if}
@@ -2681,8 +2994,8 @@
     open={regenerateOverlayOpen}
     size="compact"
     eyebrow="Fresh idea batch"
-    title="Generate more ideas"
-    description="Add a small set of ideas for review. Your current ranking and shortlist stay unchanged."
+    title="Add another batch"
+    description="Append a small set of ideas for review. Existing candidate scores and your shortlist stay unchanged; the list may reorder around new arrivals."
     onRequestClose={() => {
       if (!regenerating && !isRegenerating) regenerateOverlayOpen = false;
     }}
@@ -2742,7 +3055,7 @@
   {/snippet}
   <FormOverlay
     open={Boolean(copilotShortlistReview)}
-    eyebrow="Analyst suggestion"
+    eyebrow={copilotShortlistReview?.source === "comparison" ? "Comparison handoff" : "Analyst suggestion"}
     title="Review shortlist changes"
     description="Nothing changes until you apply this exact set. Saving uses the current shortlist version."
     onRequestClose={() => { copilotShortlistReview = null; copilotShortlistError = ""; }}
@@ -2762,7 +3075,9 @@
         {/if}
       </section>
       <section class="copilot-shortlist-proposed">
-        <p class="copilot-shortlist-label">Suggested shortlist</p>
+          <p class="copilot-shortlist-label">
+            {copilotShortlistReview?.source === "comparison" ? "Proposed shortlist" : "Suggested shortlist"}
+          </p>
         <ol>
           {#each copilotShortlistReview?.ideas ?? [] as idea}
             <li>{solutionDisplayTitle(idea)}</li>
@@ -2771,7 +3086,9 @@
       </section>
       {#if copilotShortlistReview?.rationale}
         <div class="copilot-shortlist-rationale">
-          <p class="copilot-shortlist-label">Why the analyst suggested it</p>
+          <p class="copilot-shortlist-label">
+            {copilotShortlistReview?.source === "comparison" ? "Why this handoff opened" : "Why the analyst suggested it"}
+          </p>
           <p>{copilotShortlistReview.rationale}</p>
         </div>
       {/if}
@@ -2846,14 +3163,19 @@
      table, then stacked a wall of chat into the page below 1440px.) */
   .workbench-shell {
     display: block;
-    padding-bottom: var(--space-20);
+    padding-bottom: calc(var(--decision-rail-height, var(--space-20)) + var(--space-4));
   }
 
   /* ── Launcher: the one way back in, always the same corner ── */
   .chat-launcher {
     position: fixed;
     right: clamp(0.75rem, 2vw, 1.5rem);
-    bottom: calc(var(--space-16) + var(--space-4));
+    /* Track the dock's MEASURED height rather than guessing it. The old
+       `--space-16` constant matched a one-line dock; when the shortlist-overlap warning
+       gave it a second row, the launcher stopped clearing it and sat on top of the
+       warning text. --decision-rail-height is published by DecisionRail; the constant
+       stays as the fallback for surfaces that render no dock. */
+    bottom: calc(var(--decision-rail-height, var(--space-16)) + var(--space-4));
     z-index: var(--z-overlay, 30);
     display: inline-flex;
     align-items: center;
@@ -2874,7 +3196,6 @@
   }
   .chat-launcher:hover {
     border-color: var(--color-accent);
-    box-shadow: var(--shadow-lg);
   }
   .chat-launcher:active {
     transform: scale(0.98);
@@ -2884,16 +3205,13 @@
     outline-offset: 2px;
   }
 
-  /* ── Analyst dock above modal overlays ──
-     "Ask analyst" inside a selection form opens the docked analyst without
-     closing that form. The dock's base layer (--z-overlay, 30) would otherwise
-     sit fully under the form's modal layer and scrim (--z-modal, 40), leaving
-     it invisible and unclickable. Lift only
-     the ANALYST dock (matched by its frame label; portaled to <body>, hence
-     :global) one step above the modal layer. The expanded analyst is itself
-     modal and mounts after the cockpit, so DOM order already stacks it on top. */
-  :global(.workspace-overlay--docked:has(.workspace-overlay__frame[aria-label="Analyst conversation"])) {
-    z-index: calc(var(--z-modal, 40) + 1);
+  /* A modal form makes every sibling inert. Leaving the analyst visibly above
+     that form created a dead-looking pane: present but impossible to use.
+     Preserve its store/draft while hiding the frame; closing the form reveals
+     the same docked/expanded state and FormOverlay restores focus. */
+  :global(body:has([data-form-overlay="true"]) .workspace-overlay:has(.workspace-overlay__frame[aria-label="Analyst conversation"])) {
+    visibility: hidden;
+    pointer-events: none;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -2902,7 +3220,6 @@
   }
 
   .workbench {
-    --selection-motion: cubic-bezier(0.32, 0.72, 0, 1);
     position: relative;
     display: flex;
     flex-direction: column;
@@ -3011,10 +3328,10 @@
     margin: 0;
     max-width: 42ch;
     font-family: var(--font-display);
-    font-size: var(--text-md);
-    font-weight: 800;
-    line-height: 1.2;
-    letter-spacing: 0;
+    font-size: 1.375rem;
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
     color: var(--color-text-primary);
     text-wrap: balance;
   }
@@ -3036,6 +3353,25 @@
   }
   .cmd-stats {
     margin: 0;
+  }
+  /* Inherits the record line's mono/uppercase treatment so the tally reads as part of
+     the stat run, not a button parked in it — only the underline marks it as openable. */
+  .cmd-stats-link {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--color-accent-dark);
+    font: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+    text-decoration: underline;
+    text-underline-offset: 0.25em;
+    cursor: pointer;
+  }
+  .cmd-stats-link:hover { color: var(--color-text-primary); }
+  .cmd-stats-link:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
   }
   .cmd-status {
     display: grid;
@@ -3113,10 +3449,10 @@
     font-weight: 700;
     cursor: pointer;
     transition:
-      transform 220ms var(--selection-motion),
-      border-color 220ms var(--selection-motion),
-      color 220ms var(--selection-motion),
-      background 220ms var(--selection-motion);
+      transform var(--duration-fast) var(--ease-default),
+      border-color var(--duration-fast) var(--ease-default),
+      color var(--duration-fast) var(--ease-default),
+      background var(--duration-fast) var(--ease-default);
   }
   .regen-focus-btn:hover:not(:disabled) {    color: var(--color-text-secondary);
   }
@@ -3243,12 +3579,12 @@
   }
 
   .decision-guide__candidate:active:not(:disabled),
-  .decision-escape button:active:not(:disabled) {
+  .idea-expansion-row button:active:not(:disabled) {
     transform: scale(0.98);
   }
 
   .decision-guide__candidate:disabled,
-  .decision-escape button:disabled {
+  .idea-expansion-row button:disabled {
     color: var(--color-text-muted);
     background: var(--color-bg-hover);
     cursor: not-allowed;
@@ -3296,34 +3632,43 @@
     line-height: 1.5;
   }
 
-  .decision-escape {
-    display: flex;
-    gap: var(--space-4);
-    align-items: center;
-    justify-content: space-between;
+  .idea-expansion-actions {
+    display: grid;
     margin-top: var(--space-3);
-    padding: var(--space-3) var(--space-4);
+    padding: 0 var(--space-4);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
     background: var(--color-bg-surface);
   }
 
-  .decision-escape > div {
+  .idea-expansion-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    padding: var(--space-3) 0;
+    border-top: 1px solid var(--color-border);
+  }
+  .idea-expansion-row:first-child { border-top: 0; }
+
+  .idea-expansion-row > div {
     display: grid;
     gap: var(--space-1);
   }
 
-  .decision-escape strong {
+  .idea-expansion-row strong {
     font-size: var(--text-sm);
     font-weight: 700;
   }
 
-  .decision-escape span {
+  .idea-expansion-row span {
     color: var(--color-text-muted);
     font-size: var(--text-xs);
+    line-height: var(--leading-normal);
   }
 
-  .decision-escape button {
+  .idea-expansion-row button {
+    flex: 0 0 auto;
     min-height: 2.5rem;
     padding: var(--space-2) var(--space-3);
     border: 0;
@@ -3337,17 +3682,17 @@
     transition: color var(--duration-fast) var(--ease-default), background var(--duration-fast) var(--ease-default), transform var(--duration-fast) var(--ease-default);
   }
 
-  .decision-escape button:hover:not(:disabled) {
+  .idea-expansion-row button:hover:not(:disabled) {
     background: var(--color-accent-subtle);
   }
 
   @media (prefers-reduced-motion: reduce) {
     .decision-guide__candidate,
-    .decision-escape button {
+    .idea-expansion-row button {
       transition: none;
     }
     .decision-guide__candidate:active,
-    .decision-escape button:active {
+    .idea-expansion-row button:active {
       transform: none;
     }
   }
@@ -3355,36 +3700,81 @@
   /* ── Appendix: analyst supporting notes ── */
   .appendix-notes {
     display: grid;
-    gap: 0.55rem;
-    padding: 0.15rem 0.05rem 0;
+    gap: var(--space-4);
   }
-  .appendix-notes-title {
-    margin: 0;
+  .appendix-notes-heading {
+    display: grid;
+    gap: var(--space-1);
+  }
+  .appendix-notes-heading span {
     color: var(--color-text-secondary);
-    font-size: var(--text-sm);
-    font-weight: 600;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: 700;
+    letter-spacing: var(--tracking-wide);
+    text-transform: uppercase;
+  }
+  .appendix-notes-heading h3 {
+    margin: 0;
+    color: var(--color-text-primary);
+    font-family: var(--font-display);
+    font-size: var(--text-xl);
+    font-weight: 700;
+    line-height: var(--leading-tight);
+  }
+  .appendix-note-list {
+    display: grid;
+    margin: 0;
+    padding: 0;
+    border-top: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border);
+    list-style: none;
   }
   .appendix-note {
-    max-width: 72ch;
+    display: grid;
+    grid-template-columns: var(--space-8) minmax(0, 1fr);
+    gap: var(--space-4);
+    padding: var(--space-4) 0;
+    border-top: 1px solid var(--color-border);
+  }
+  .appendix-note:first-child {
+    border-top: 0;
+  }
+  .appendix-note-index {
+    color: var(--color-text-muted);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .appendix-note p {
+    max-width: 76ch;
     margin: 0;
     color: var(--color-text-secondary);
-    font-size: var(--text-13);
-    line-height: 1.58;
+    font-size: var(--text-base);
+    line-height: var(--leading-relaxed);
     text-wrap: pretty;
   }
-  .appendix-note :global(button.idea-reference-link) {
+  .appendix-note p :global(button.idea-reference-link) {
     color: inherit;
     font-weight: 600;
     text-decoration-color: var(--color-border-emphasis);
     text-decoration-line: underline;
     text-decoration-style: dotted;
     text-decoration-thickness: 1px;
-    text-underline-offset: 0.18em;
+    text-underline-offset: var(--space-1);
     transition: color var(--duration-fast) var(--ease-default), text-decoration-color var(--duration-fast) var(--ease-default);
   }
-  .appendix-note :global(button.idea-reference-link:hover) {
+  .appendix-note p :global(button.idea-reference-link:hover) {
     color: var(--color-accent-dark);
     text-decoration-color: currentColor;
+  }
+
+  @media (max-width: 760px) {
+    .appendix-note {
+      grid-template-columns: var(--space-6) minmax(0, 1fr);
+      gap: var(--space-3);
+    }
   }
 
   .regen-error {
@@ -3434,7 +3824,7 @@
   }
 
   .detail-link-error button:active {
-    transform: translateY(1px);
+    transform: scale(0.97);
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -3463,7 +3853,8 @@
   }
 
   /* Momentary landing highlight for a settled seed — the row it scrolls to. */
-  .row-seed-highlight {
+  .row-seed-highlight,
+  .row-batch-highlight {
     animation: seed-row-flash var(--duration-slowest) var(--ease-out);
   }
   @keyframes seed-row-flash {
@@ -3486,13 +3877,18 @@
     display: grid;
     gap: 0;
     overflow: hidden;
-    background: var(--color-bg-surface);
-    border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 56%, transparent);
-    border-radius: var(--radius-md);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
   }
-  .row {
+  /* Metric tracks are sized for the widest UPPERCASE label plus the sort arrow,
+     which is always laid out (hidden when the column is idle) so activating a
+     sort never steals width from the label. FEASIBILITY (11 mono caps, no space
+     to wrap on) is the binding constraint. */
+  .opp-row {
     display: grid;
-    grid-template-columns: 1.35rem 5.65rem minmax(0, 1fr) 4rem 4.55rem 4.7rem 5.2rem;
+    grid-template-columns: 1.35rem 5.65rem minmax(0, 1fr) 5.5rem 5.5rem 5.8rem 5.5rem;
     align-items: center;
     gap: 0.56rem;
     padding: 0.56rem 0.68rem;
@@ -3502,10 +3898,10 @@
     background: var(--color-bg-elevated);
     box-shadow: none;
     transition:
-      background 280ms var(--selection-motion),
-      box-shadow 280ms var(--selection-motion);
+      background var(--duration-fast) var(--ease-default),
+      box-shadow var(--duration-fast) var(--ease-default);
   }
-  .row-head {
+  .opp-row-head {
     min-height: 1.75rem;
     padding: 0.4rem 0.7rem;
     border: 0;
@@ -3514,17 +3910,17 @@
     background: color-mix(in srgb, var(--color-bg-surface) 74%, var(--color-bg-elevated));
     box-shadow: none;
   }
-  .row:not(.row-head):hover {
+  .opp-row:not(.opp-row-head):hover {
     background: color-mix(in srgb, var(--color-bg-surface) 48%, var(--color-bg-elevated));
   }
-  .row-sel {
+  .opp-row-sel {
     background: var(--color-accent-subtle);
   }
-  .row-maxed { opacity: 1; }
+  .opp-row-maxed { opacity: 1; }
 
   /* Role-only wrapper: carries columnheader/rowheader semantics for an
      interactive cell without introducing a box, so the button underneath
-     stays a direct grid item of .row. */
+     stays a direct grid item of .opp-row. */
   .cell-shell {
     display: contents;
   }
@@ -3538,9 +3934,9 @@
     text-align: center;
   }
   /* Mono uppercase header, matching the dashboard list-head "hardware" label. */
-  .row-head .cell-rank,
-  .row-head .cell-select-label,
-  .row-head .cell-title-label {
+  .opp-row-head .cell-rank,
+  .opp-row-head .cell-select-label,
+  .opp-row-head .cell-title-label {
     font-family: var(--font-mono);
     font-size: var(--text-xs);
     font-weight: 800;
@@ -3549,7 +3945,7 @@
     line-height: 1;
     color: var(--color-text-secondary);
   }
-  .row-head .cell-title-label { padding-left: 0; }
+  .opp-row-head .cell-title-label { padding-left: 0; }
 
   /* select control */
   .cell-select-label {
@@ -3580,17 +3976,20 @@
     font-size: var(--text-11);
     font-weight: 700;
     transition:
-      transform 220ms var(--selection-motion),
-      border-color 220ms var(--selection-motion),
-      background 220ms var(--selection-motion),
-      color 220ms var(--selection-motion);
+      transform var(--duration-fast) var(--ease-default),
+      border-color var(--duration-fast) var(--ease-default),
+      background var(--duration-fast) var(--ease-default),
+      color var(--duration-fast) var(--ease-default);
   }
-  .select-control:hover:not(.maxed) {    border-color: var(--color-accent);
-    color: var(--color-accent-dark);
-    background: color-mix(in srgb, var(--color-accent) 5%, var(--color-bg-elevated));
+  /* Hover is a neutral control hover (§8) — it must never wear accent, or an
+     un-picked row under the cursor reads as picked. Accent belongs to .sel only. */
+  .select-control:hover:not(.maxed) {
+    border-color: var(--color-input-border-hover);
+    color: var(--color-text-primary);
+    background: var(--color-bg-surface);
   }
   .select-control.sel {
-    border-color: color-mix(in srgb, var(--color-accent) 54%, var(--color-border-emphasis));
+    border-color: var(--color-accent);
     background: color-mix(in srgb, var(--color-accent) 7%, var(--color-bg-elevated));
     color: var(--color-accent-dark);
     box-shadow: none;
@@ -3633,7 +4032,7 @@
     height: var(--space-3);
     flex-shrink: 0;
   }
-  .row:has(.cell-select input:focus-visible) .select-control {
+  .opp-row:has(.cell-select input:focus-visible) .select-control {
     outline: 2px solid var(--color-accent);
     outline-offset: 2px;
   }
@@ -3688,9 +4087,9 @@
     white-space: nowrap;
   }
   .opp-title {
-    font-family: var(--font-display);
-    font-size: var(--text-13);
+    font-size: var(--text-base);
     font-weight: 700;
+    letter-spacing: -0.005em;
     line-height: 1.2;
     color: var(--color-text-primary);
     transition: color var(--duration-fast) var(--ease-default);
@@ -3755,11 +4154,12 @@
     align-items: center;
     max-width: 22rem;
     padding: 0.09rem 0.34rem;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-md);
     font-family: var(--font-body);
-    font-size: var(--text-11);
+    font-size: var(--text-xs);
     font-weight: 700;
-    letter-spacing: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
     line-height: 1.18;
     white-space: nowrap;
     overflow: hidden;
@@ -3769,18 +4169,6 @@
   .tag-success {
     background: color-mix(in srgb, var(--color-success) 9%, transparent);
     color: var(--color-success-text);
-  }
-  .tag-accent {
-    background: var(--color-accent-subtle);
-    color: var(--color-accent-dark);
-  }
-  .tag-info {
-    background: var(--color-bg-surface);
-    color: var(--color-text-secondary);
-  }
-  .tag-warning {
-    background: color-mix(in srgb, var(--color-warning) 11%, transparent);
-    color: var(--color-warning-text);
   }
   .tag-angle {
     background: var(--color-bg-elevated);
@@ -3910,12 +4298,16 @@
     min-height: 1.5rem;
     padding: 0.16rem 0;
     border-radius: var(--radius-sm);
-    transition:
-      color 180ms var(--selection-motion),
-      transform 180ms var(--selection-motion);
+    transition: color var(--duration-fast) var(--ease-default);
   }
   .cell-metric-head:hover {    color: var(--color-text-primary);
   }
+  .sort-arrow {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+  }
+  .sort-arrow.is-idle { visibility: hidden; }
   .cell-metric-head.active { color: var(--color-accent-dark); }
   @media (prefers-reduced-motion: reduce) {
     .cell-metric-head { transition: none; }
@@ -4003,21 +4395,30 @@
   }
   .copilot-shortlist-cancel,
   .copilot-shortlist-apply {
-    min-height: 2.75rem;
-    padding: 0.65rem 1rem;
-    border-radius: var(--radius-lg);
-    font-weight: 700;
+    min-height: 2rem;
+    padding: 0 0.75rem;
+    border-radius: var(--radius-md);
+    font-size: var(--text-13);
+    font-weight: 600;
     cursor: pointer;
   }
   .copilot-shortlist-cancel {
-    border: 1px solid var(--color-border-emphasis);
-    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-input-border);
+    background: transparent;
+    color: var(--color-text-secondary);
+  }
+  .copilot-shortlist-cancel:hover {
+    border-color: var(--color-text-secondary);
+    background: var(--color-bg-surface);
     color: var(--color-text-primary);
   }
   .copilot-shortlist-apply {
-    border: 1px solid var(--color-text-primary);
-    background: var(--color-text-primary);
-    color: var(--color-bg-elevated);
+    border: 0;
+    background: var(--color-accent-hover);
+    color: var(--color-text-on-accent);
+  }
+  .copilot-shortlist-apply:hover:not(:disabled) {
+    background: var(--color-accent-dark);
   }
   .copilot-shortlist-apply:disabled {
     background: var(--color-bg-hover);
@@ -4027,22 +4428,24 @@
   /* ── Responsive ── */
   @media (max-width: 859px) {
     .workbench { padding: var(--space-3) var(--space-3) var(--space-5); }
-    .workbench-shell { padding-bottom: var(--space-20); }
+    .workbench-shell { padding-bottom: calc(var(--decision-rail-height, var(--space-20)) + var(--space-4)); }
     .decision-guide {
       grid-template-columns: 1fr;
       gap: var(--space-4);
     }
-    .decision-escape {
+    .idea-expansion-row {
       align-items: flex-start;
       flex-direction: column;
     }
-    .decision-escape button {
+    .idea-expansion-row button {
       width: 100%;
       text-align: left;
     }
-    .chat-launcher {
-      bottom: calc(var(--space-20) + var(--space-16));
-    }
+    /* No mobile override for .chat-launcher: it used to hardcode 144px, which discarded
+       the measured --decision-rail-height the base rule consumes — and mobile is where the
+       dock is MOST variable (below 40rem it goes full-bleed at bottom:0, wraps to two rows,
+       and adds env(safe-area-inset-bottom)). The base rule already clears a bottom:0 dock
+       correctly; re-adding a constant here just reintroduces the collision. */
     .copilot-shortlist-review { grid-template-columns: 1fr; }
     .cmd {
       grid-template-columns: 1fr;
@@ -4069,7 +4472,7 @@
     .variant-note-action {
       width: 100%;
     }
-    .row {
+    .opp-row {
       grid-template-columns: 2rem minmax(0, 1fr) 4.5rem;
       grid-template-areas:
         "rank title score"
@@ -4086,8 +4489,9 @@
       background: transparent;
       border: 0;
       border-radius: var(--radius-none);
+      box-shadow: none;
     }
-    .row-head { display: none; }
+    .opp-row-head { display: none; }
     .cell-metric.metric-fit,
     .cell-metric:not(.metric-score):not(.metric-fit),
     .cell-metric.metric-build {

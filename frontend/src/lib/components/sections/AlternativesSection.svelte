@@ -19,6 +19,7 @@ import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
   import Section from "$lib/components/ui/Section.svelte";
   import { getTermTooltip } from "$lib/stores/glossary";
   import { solutionDisplayTitle, originalityScore, originalityMetric } from "$lib/utils/solution-utils";
+  import { normalizeDataAccess } from "$lib/utils/ideaTagLabels";
 
   interface Props {
     data: AlternativeSolution[];
@@ -42,16 +43,19 @@ import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
     paywalled: "Paid Data",
     unofficial: "Scraping / Unofficial",
     restricted: "Access Restricted",
+    blocked: "Blocked",
+    unverified: "Unverified",
   };
+  // Empty label = value outside the closed vocabulary; the badge is omitted.
   function accessLabel(m: string | undefined): string {
-    if (!m) return "";
-    return ACCESS_LABELS[m.toLowerCase()] ?? m;
+    const k = normalizeDataAccess(m);
+    return k ? ACCESS_LABELS[k] : "";
   }
   function accessVariant(m: string | undefined): "success" | "warning" | "error" | "muted" {
-    const k = (m ?? "").toLowerCase();
+    const k = normalizeDataAccess(m);
     if (k === "public" || k === "freemium") return "success";
     if (k === "paywalled" || k === "unofficial") return "warning";
-    if (k === "restricted") return "error";
+    if (k === "restricted" || k === "blocked") return "error";
     return "muted";
   }
 </script>
@@ -117,7 +121,7 @@ import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
                   </Badge>
                 {/if}
               {/if}
-              {#if solution.data_access_model}
+              {#if accessLabel(solution.data_access_model)}
                 <Badge
                   variant={accessVariant(solution.data_access_model)}
                   size="sm"

@@ -340,15 +340,19 @@ export async function sendRegenerationCompleteEmail(
     JOB_ID: jobId,
     NICHE: truncateNiche(niche),
     STATUS_URL: `${CONFIG.baseUrl}/jobs/${jobId}`,
-    NEW_SOLUTION_COUNT: String(newSolutionCount),
-    TOTAL_SOLUTION_COUNT: String(totalSolutionCount),
+    BATCH_RESULT: newSolutionCount > 0
+      ? `${newSolutionCount} new candidate${newSolutionCount === 1 ? '' : 's'} cleared the checks and were added. You now have ${totalSolutionCount} candidates to review.`
+      : `The batch was evaluated, but no new candidates cleared the checks. Your existing ${totalSolutionCount} candidate${totalSolutionCount === 1 ? ' is' : 's are'} unchanged.`,
+    BATCH_GUIDANCE: newSolutionCount > 0
+      ? 'Compare the new candidates with the existing leaders. Nothing was added to your shortlist automatically.'
+      : 'Review the ruled-out findings before deciding whether a different batch focus is worth trying.',
   };
 
   try {
     const html = renderTemplate(loadTemplate('regenerationComplete.html'), vars);
     const text = renderTemplate(loadTemplate('regenerationComplete.txt'), vars);
 
-    await sendEmail(to, 'Your New NicheIQ Solution Ideas Are Ready!', text, html);
+    await sendEmail(to, 'Your NicheIQ idea batch is ready', text, html);
     console.log(`Regeneration complete email sent to ${to} for job ${jobId}`);
   } catch (error) {
     console.error('Failed to send regeneration complete email:', error);

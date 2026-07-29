@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Report } from "$lib/types/report";
-  import { AlertTriangle, CheckSquare2, Share2 } from "lucide-svelte";
+  import { AlertTriangle, MessageSquare, Share2 } from "lucide-svelte";
   import { page } from "$app/state";
 
   import ReportContent from "$lib/components/ReportContent.svelte";
@@ -8,6 +8,7 @@
   import EmptyState from "$lib/components/ui/EmptyState.svelte";
   import CompletedAnalyst from "$lib/components/chat/CompletedAnalyst.svelte";
   import FinalDecisionWorkspace from "$lib/components/decision/FinalDecisionWorkspace.svelte";
+  import Sheet from "$lib/components/ui/Sheet.svelte";
 
   interface Props {
     data: {
@@ -22,10 +23,12 @@
 
   let shareModalOpen = $state(false);
   let decisionLabOpen = $state(false);
+  let analystOpen = $state(false);
   // The post-research Decision Lab rides the same admin grant as the optional
   // selection checks. Its endpoints (final-decision, decision-handoff, GitHub
   // dispatch) all 403 without it, so the entry point is hidden too.
   const decisionTools = $derived(page.data.featureAccess?.decisionTools === true);
+  const analyst = $derived(page.data.featureAccess?.analyst === true);
 </script>
 
 <svelte:head>
@@ -54,20 +57,26 @@
   <ReportContent {report} showBackLink={true} {jobId}>
     {#snippet headerSlot()}
       <div class="header-actions">
-        {#if decisionTools}
+        {#if analyst}
           <button
             type="button"
-            class="share-btn"
+            class="report-action"
             aria-haspopup="dialog"
-            aria-expanded={decisionLabOpen}
-            onclick={() => (decisionLabOpen = true)}
+            aria-expanded={analystOpen}
+            onclick={() => (analystOpen = true)}
           >
-            <CheckSquare2 class="w-4 h-4" />
-            <span>Decision Lab</span>
+            <MessageSquare class="w-4 h-4" aria-hidden="true" />
+            <span>Ask analyst</span>
           </button>
         {/if}
-        <button onclick={() => (shareModalOpen = true)} class="share-btn">
-          <Share2 class="w-4 h-4" />
+        <button
+          type="button"
+          onclick={() => (shareModalOpen = true)}
+          class="report-action"
+          aria-haspopup="dialog"
+          aria-expanded={shareModalOpen}
+        >
+          <Share2 class="w-4 h-4" aria-hidden="true" />
           <span>Share</span>
         </button>
       </div>
@@ -79,7 +88,11 @@
     {/snippet}
   </ReportContent>
 
-  <CompletedAnalyst {jobId} />
+  <Sheet open={analyst && analystOpen} title="Report analyst" onClose={() => (analystOpen = false)}>
+    {#if analyst && analystOpen}
+      <CompletedAnalyst {jobId} compact />
+    {/if}
+  </Sheet>
   <ShareReportModal bind:open={shareModalOpen} {jobId} />
 {/if}
 
@@ -87,28 +100,38 @@
   .header-actions {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 
-  .share-btn {
+  .report-action {
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 0.875rem;
-    font-size: 0.875rem;
+    justify-content: center;
+    gap: var(--space-2);
+    min-height: var(--space-10);
+    padding: var(--space-2) var(--space-3);
+    font-family: var(--font-body);
+    font-size: var(--text-base);
     font-weight: 500;
     color: var(--color-text-secondary);
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-md);
     cursor: pointer;
-    transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+    transition:
+      color var(--duration-fast) var(--ease-default),
+      border-color var(--duration-fast) var(--ease-default),
+      background-color var(--duration-fast) var(--ease-default);
   }
 
-  .share-btn:hover {
+  .report-action:hover {
     color: var(--color-text-primary);
-    border-color: var(--color-accent);
-    background: var(--color-accent-subtle);
+    border-color: var(--color-border-emphasis);
+    background: var(--color-bg-hover);
+  }
+
+  .report-action:active {
+    background: var(--color-bg-subtle);
   }
 
   @media (max-width: 640px) {
@@ -117,11 +140,11 @@
       justify-content: flex-end;
     }
 
-    .share-btn {
-      min-height: 44px;
+    .report-action {
+      min-height: var(--space-12);
       flex: 0 1 auto;
       justify-content: center;
-      padding-inline: 0.7rem;
+      padding-inline: var(--space-3);
     }
   }
 </style>

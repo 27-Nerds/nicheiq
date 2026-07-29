@@ -1,9 +1,9 @@
 <script lang="ts">
   import { page } from "$app/state";
   import { goto, invalidateAll, replaceState } from "$app/navigation";
-  import { setContext, tick, type Snippet } from "svelte";
+  import { setContext, type Snippet } from "svelte";
   import type { LayoutData } from "./$types";
-  import { MessageSquare, Plus, X } from "lucide-svelte";
+  import { MessageSquare } from "lucide-svelte";
   import AnnotationProvider from "$lib/components/annotations/AnnotationProvider.svelte";
   import ChatThread from "$lib/components/chat/ChatThread.svelte";
   import WorkspaceOverlay from "$lib/components/ui/WorkspaceOverlay.svelte";
@@ -13,19 +13,21 @@
   import PageHeader from "$lib/components/ui/PageHeader.svelte";
   import { buildSelectionJourney } from "$lib/selection/decisionJourney";
   import ConceptForge from "$lib/components/selection/ConceptForge.svelte";
+  import BatchActivity from "$lib/components/selection/BatchActivity.svelte";
+  import EvaluationActivity from "$lib/components/selection/EvaluationActivity.svelte";
   import DecisionBrief from "$lib/components/selection/DecisionBrief.svelte";
   import ExperimentWorkspace from "$lib/components/selection/ExperimentWorkspace.svelte";
   import { chatPanel } from "$lib/stores/chatPanel.svelte";
+  import { chatLedger } from "$lib/stores/chatLedger.svelte";
   import {
     getStageCosts,
-    saveSelectionDraft,
     seedIdea,
     subscribeToProgress,
     ApiError,
     type SelectionWorkspaceContext,
     type IdeaSynthesisPatch,
   } from "$lib/api";
-  import type { Job, SelectionDraft, SelectionDraftItem, SolutionPreview } from "$lib/types/job";
+  import type { Job, SolutionPreview } from "$lib/types/job";
   import type { SelectionConceptForgePrefill } from "$lib/types/selectionCopilot";
   import type { SelectionConceptPurpose } from "$lib/types/selectionConceptSet";
   import type {
@@ -51,13 +53,6 @@
     SELECTION_LIFECYCLE_CONTEXT,
     type SelectionWorkspaceLifecycle,
   } from "./selectionWorkspace";
-  import {
-    escapeKeydown,
-    menuKeydown,
-    outsidePointerdown,
-    triggerKeydown,
-    type AddScopeMenuHost,
-  } from "$lib/selection/addScopeMenu";
   import {
     shouldForceCloseToolsOnStatus,
     shouldRefreshForDraftVersion,
@@ -95,9 +90,9 @@
   let shortlistConflict = $state<{
     code: "SELECTION_DRAFT_LOCKED" | "SELECTION_DRAFT_STALE_IDEA" | "SELECTION_DRAFT_CONFLICT";
     message: string;
-    latestDraft?: SelectionDraft;
   } | null>(null);
   let dataRetrying = $state(false);
+  let dataRetryError = $state("");
   const currentStatus = $derived(liveStatus || data.job.status);
   const decisionStateUnavailable = $derived(data.selectionLoadState.decisionStateUnavailable);
   const interactive = $derived(
@@ -105,6 +100,32 @@
     && !decisionStateUnavailable
     && shortlistConflict === null,
   );
+  const synthesisActivities = $derived(
+    chatLedger.jobId === data.job.id
+      ? chatLedger.seedActivities.filter((activity) => activity.kind === "idea_synthesis")
+      : [],
+  );
+  const batchActivities = $derived(
+    chatLedger.jobId === data.job.id ? chatLedger.batchActivities : [],
+  );
+  const seedEvaluationPending = $derived(
+    chatLedger.hasPendingSeed || chatLedger.activeOperation?.kind === "SEED_IDEA",
+  );
+  const selectionTransit = $derived(
+    ["QUEUED", "RUNNING", "REGENERATING"].includes(currentStatus)
+    && data.solutions.length > 0
+    && !(data.job.selectedSolutions?.length)
+    && !(data.job.selectedSolutionIds?.length),
+  );
+  const batchGenerationPending = $derived(
+    chatLedger.hasPendingBatch
+    || chatLedger.activeOperation?.kind === "REGENERATE"
+    || (selectionTransit && !seedEvaluationPending),
+  );
+  const selectionOperationPending = $derived(seedEvaluationPending || batchGenerationPending);
+  /** Pool operations temporarily lock mutations, but comparison remains useful.
+   * Terminal research states still retire the workspace. */
+  const workspaceReadable = $derived(interactive || selectionOperationPending);
   /** Admin-granted optional decision tools; resolved server-side in +layout.server.ts. */
   const decisionTools = $derived(data.decisionTools === true);
   const lifecycle = $state<SelectionWorkspaceLifecycle>({ status: "", canMutate: false });
@@ -117,14 +138,18 @@
     currentStatus === "QUEUED" && data.job.stagesCompleted === 0,
   );
   const lifecycleMessage = $derived(
-    currentStatus === "AWAITING_SELECTION"
+    seedEvaluationPending
+      ? "The exact direction is being evaluated. Your current candidates and shortlist stay unchanged, and you can keep comparing them."
+      : batchGenerationPending
+        ? "A new batch is being added. Existing candidate scores and your shortlist stay unchanged; the list may reorder when new candidates arrive."
+      : currentStatus === "AWAITING_SELECTION"
       ? ""
       : queuedBeforeDiscovery
         ? "This research is queued. Idea selection opens once discovery produces candidates."
       : ["QUEUED", "RUNNING_PHASE2"].includes(currentStatus)
         ? "Deep Research has started. Idea selection is now locked."
         : currentStatus === "REGENERATING"
-          ? "Candidates are being updated. Selection controls are temporarily locked."
+          ? "A new batch is being added. Existing candidate scores and your shortlist stay unchanged."
           : currentStatus === "RUNNING"
             ? "Research is running. This saved selection is now read-only."
         : currentStatus === "COMPLETED"
@@ -175,56 +200,11 @@
       : undefined,
   );
 
-  // ── Shortlist: the scope strip is the control, not a caption ──────────────
-  // Hydrated from the server draft and re-hydrated whenever the server version
-  // moves (our own save, or another tab). Local edits are optimistic; a failed
-  // save rolls the strip back to the last known-good server state.
+  // The job hub is the sole shortlist owner. Routed pages render the saved
+  // shortlist or a read-only comparison scope and hand exact proposals back.
   let shortlistKeys = $state<string[]>([]);
   let shortlistVersion = $state(0);
-  let shortlistBusy = $state(false);
-  let shortlistError = $state("");
   let hydratedFrom = "";
-  let addingScope = $state(false);
-  let addScopeTrigger = $state<HTMLButtonElement | null>(null);
-  let addScopeRoot = $state<HTMLDivElement | null>(null);
-
-  async function focusAddScopeItem(position: "first" | "last"): Promise<void> {
-    await tick();
-    const items = addScopeRoot?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]');
-    if (!items?.length) return;
-    items[position === "first" ? 0 : items.length - 1]?.focus();
-  }
-
-  // The menu's focus contract lives in $lib/selection/addScopeMenu so it can
-  // be unit-tested; these delegates only bind it to this layout's state.
-  const addScopeMenuHost: AddScopeMenuHost = {
-    isOpen: () => addingScope,
-    setOpen: (open) => { addingScope = open; },
-    focusTrigger: () => addScopeTrigger?.focus(),
-    focusItem: (position) => { void focusAddScopeItem(position); },
-    items: () => [...(addScopeRoot?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? [])],
-    root: () => addScopeRoot,
-  };
-
-  function handleWorkspaceKeydown(event: KeyboardEvent): void {
-    escapeKeydown(addScopeMenuHost, event);
-  }
-
-  function handleWorkspacePointerdown(event: PointerEvent): void {
-    outsidePointerdown(addScopeMenuHost, event);
-  }
-
-  function handleAddScopeTriggerKeydown(event: KeyboardEvent): void {
-    triggerKeydown(addScopeMenuHost, event);
-  }
-
-  function handleAddScopeMenuKeydown(event: KeyboardEvent): void {
-    menuKeydown(addScopeMenuHost, event);
-  }
-
-  const solutionsByKey = $derived(new Map(
-    data.solutions.map((solution) => [workspaceIdeaKey(solution), solution]),
-  ));
 
   $effect(() => {
     const serverItems = data.decisionState?.shortlist.items ?? [];
@@ -244,13 +224,30 @@
   /** Exact revisions resolved from the route drive both content and overlays.
    *  Bare routes are seeded from the saved draft server-side. */
   const activeIdeas = $derived(data.workspace.ideas);
-  const addableIdeas = $derived(
-    data.solutions.filter((solution) => !shortlistKeys.includes(workspaceIdeaKey(solution))),
-  );
-  const shortlistFull = $derived(shortlistKeys.length >= MAX_SCOPE);
-
   function workspaceHref(slug: "compare" | "risks" | "review"): string {
-    return `/jobs/${data.job.id}/selection/${slug}${data.workspace.canonicalQuery}`;
+    return slug === "review"
+      ? `/jobs/${data.job.id}/selection/review`
+      : `/jobs/${data.job.id}/selection/${slug}${data.workspace.canonicalQuery}`;
+  }
+
+  function batchCandidatesHref(activity: import("$lib/stores/chatLedger.svelte").BatchActivity): string {
+    const matching = activity.addedIdeas.length > 0
+      ? activity.addedIdeas.flatMap((reference) => {
+          const solution = data.solutions.find((candidate) => (
+            candidate.idea_id === reference.ideaId
+            && (candidate.idea_revision ?? 1) === reference.ideaRevision
+          ));
+          return solution ? [solution] : [];
+        }).slice(0, MAX_SCOPE)
+      : data.solutions
+          .filter((solution) => solution.idea_id && activity.addedIdeaIds.includes(solution.idea_id))
+          .slice(0, MAX_SCOPE);
+    if (matching.length === 0) return `/jobs/${data.job.id}#opportunities`;
+    const params = new URLSearchParams();
+    for (const idea of matching) {
+      params.append("idea", `${idea.idea_id}:${idea.idea_revision ?? 1}`);
+    }
+    return `/jobs/${data.job.id}/selection/compare?${params.toString()}`;
   }
 
   function workspaceToolHref(
@@ -265,101 +262,39 @@
     return `/jobs/${data.job.id}/selection/${slug}?${params.toString()}`;
   }
 
-  function parseSelectionDraft(value: unknown): SelectionDraft | undefined {
-    if (!value || typeof value !== "object") return undefined;
-    const draft = value as Record<string, unknown>;
-    if (!Number.isInteger(draft.version) || (draft.version as number) < 0 || !Array.isArray(draft.items)) {
-      return undefined;
-    }
-    const items = draft.items.filter((item): item is SelectionDraftItem => (
-      Boolean(item)
-      && typeof item === "object"
-      && typeof (item as Record<string, unknown>).ideaId === "string"
-      && Number.isInteger((item as Record<string, unknown>).ideaRevision)
-      && ((item as Record<string, unknown>).ideaRevision as number) >= 1
+  function proposeIdeas(ideas: SolutionPreview[], reason: "compare_scope" | "branch_result"): void {
+    const refs = ideas.flatMap((idea) => idea.idea_id
+      ? [{ ideaId: idea.idea_id, ideaRevision: idea.idea_revision ?? 1 }]
+      : []);
+    if (refs.length < 1 || refs.length > MAX_SCOPE) return;
+    void goto(`/jobs/${data.job.id}#opportunities`, {
+      state: {
+        ...page.state,
+        shortlistProposal: {
+          requestId: crypto.randomUUID(),
+          expectedVersion: shortlistVersion,
+          refs,
+          returnHref: `${page.url.pathname}${page.url.search}${page.url.hash}`,
+          reason,
+        },
+      },
+    });
+  }
+
+  function proposeActiveScope(): void {
+    proposeIdeas(activeIdeas, "compare_scope");
+  }
+
+  function proposeEvaluatedCandidate(
+    activity: import("$lib/stores/chatLedger.svelte").SeedActivity,
+  ): void {
+    const result = activity.result;
+    if (!result?.idea_id) return;
+    const idea = data.solutions.find((candidate) => (
+      candidate.idea_id === result.idea_id
+      && (candidate.idea_revision ?? 1) === (result.idea_revision ?? 1)
     ));
-    if (items.length !== draft.items.length) return undefined;
-    return { version: draft.version as number, items };
-  }
-
-  function applyAuthoritativeDraft(draft: SelectionDraft): void {
-    shortlistVersion = draft.version;
-    shortlistKeys = draft.items
-      .map((item) => data.solutions.find((solution) => (
-        solution.idea_id === item.ideaId
-        && (solution.idea_revision ?? 1) === item.ideaRevision
-      )))
-      .filter((solution): solution is SolutionPreview => Boolean(solution))
-      .map(workspaceIdeaKey);
-    hydratedFrom = "";
-  }
-
-  function handleShortlistConflict(error: ApiError): boolean {
-    if (error.status !== 409 || !error.details || typeof error.details !== "object") return false;
-    const details = error.details as Record<string, unknown>;
-    const code = details.code;
-    if (
-      code !== "SELECTION_DRAFT_LOCKED"
-      && code !== "SELECTION_DRAFT_STALE_IDEA"
-      && code !== "SELECTION_DRAFT_CONFLICT"
-    ) {
-      return false;
-    }
-
-    const latestDraft = parseSelectionDraft(details.selectionDraft);
-    if (latestDraft) applyAuthoritativeDraft(latestDraft);
-    const message = code === "SELECTION_DRAFT_LOCKED"
-      ? "Deep Research has already started, so this shortlist is locked."
-      : code === "SELECTION_DRAFT_STALE_IDEA"
-        ? "The candidate versions changed. Load the current shortlist before making another edit."
-        : "Another tab saved a different shortlist. Load its latest version before editing again.";
-    shortlistConflict = { code, message, latestDraft };
-
-    if (code === "SELECTION_DRAFT_LOCKED") void invalidateAll();
-    return true;
-  }
-
-  async function persistShortlist(nextKeys: string[]): Promise<void> {
-    const previous = shortlistKeys;
-    const previousVersion = shortlistVersion;
-    shortlistKeys = nextKeys;
-    shortlistBusy = true;
-    shortlistError = "";
-    const items: SelectionDraftItem[] = nextKeys
-      .map((key) => solutionsByKey.get(key))
-      .filter((solution): solution is SolutionPreview => Boolean(solution?.idea_id))
-      .map((solution) => ({
-        ideaId: solution.idea_id as string,
-        ideaRevision: solution.idea_revision ?? 1,
-      }));
-    try {
-      const draft = await saveSelectionDraft(data.job.id, previousVersion, items);
-      shortlistVersion = draft.version;
-      hydratedFrom = "";
-      await invalidateAll();
-    } catch (error) {
-      shortlistKeys = previous;
-      if (error instanceof ApiError && handleShortlistConflict(error)) {
-        shortlistError = "";
-      } else {
-        shortlistError = error instanceof Error
-          ? error.message
-          : "We could not save your shortlist.";
-      }
-    } finally {
-      shortlistBusy = false;
-    }
-  }
-
-  function toggleShortlist(idea: SolutionPreview): void {
-    if (!interactive || shortlistBusy) return;
-    const key = workspaceIdeaKey(idea);
-    if (shortlistKeys.includes(key)) {
-      void persistShortlist(shortlistKeys.filter((item) => item !== key));
-      return;
-    }
-    if (shortlistKeys.length >= MAX_SCOPE) return;
-    void persistShortlist([...shortlistKeys, key]);
+    if (idea) proposeIdeas([idea], "branch_result");
   }
 
   // ── Tools, opened in place over the page that asked for them ──────────────
@@ -372,9 +307,100 @@
   let seedCost = $state<number | null>(null);
   let decisionBriefRef = $state<DecisionBrief | null>(null);
   let toolError = $state("");
+  let evaluationPollTimer: ReturnType<typeof setInterval> | null = null;
+  let evaluationPollSourceId = $state<string | null>(null);
+  /** Set when the automatic poll exhausted its attempts, so the wait can say so and
+   *  offer a re-check instead of freezing on a stale "pending". */
+  let evaluationStalledSourceId = $state<string | null>(null);
+  let batchPollTimer: ReturnType<typeof setInterval> | null = null;
+  let batchPollOperationId = $state<string | null>(null);
 
   $effect(() => {
     seedCost = data.stageCosts.seed_idea ?? null;
+  });
+
+  $effect(() => {
+    const jobId = data.job.id;
+    // init() already performs the history request and shares its in-flight promise
+    // with ChatThread. Chaining reload() here made every workspace navigation fetch
+    // the same ledger at least twice before any SSE event occurred.
+    void chatLedger.init(jobId);
+  });
+
+  function stopEvaluationPoll(): void {
+    if (evaluationPollTimer) clearInterval(evaluationPollTimer);
+    evaluationPollTimer = null;
+    evaluationPollSourceId = null;
+  }
+
+  function beginEvaluationPoll(sourceMessageId: string): void {
+    if (evaluationPollSourceId === sourceMessageId && evaluationPollTimer) return;
+    stopEvaluationPoll();
+    evaluationPollSourceId = sourceMessageId;
+    evaluationStalledSourceId = null;
+    let attempts = 0;
+    evaluationPollTimer = setInterval(async () => {
+      attempts += 1;
+      await chatLedger.reload();
+      const outcome = chatLedger.seedOutcome(sourceMessageId);
+      if (outcome && outcome !== "pending") {
+        stopEvaluationPoll();
+        hydratedFrom = "";
+        await invalidateAll();
+      } else if (attempts >= 200) {
+        // Record WHY it stopped. Giving up silently left the pool locked behind a
+        // pending flag with no way forward except a manual page reload.
+        stopEvaluationPoll();
+        evaluationStalledSourceId = sourceMessageId;
+      }
+    }, 6000);
+  }
+
+  function recheckEvaluation(): void {
+    const sourceMessageId = evaluationStalledSourceId;
+    if (!sourceMessageId) return;
+    evaluationStalledSourceId = null;
+    beginEvaluationPoll(sourceMessageId);
+    void chatLedger.reload();
+  }
+
+  function stopBatchPoll(): void {
+    if (batchPollTimer) clearInterval(batchPollTimer);
+    batchPollTimer = null;
+    batchPollOperationId = null;
+  }
+
+  function beginBatchPoll(operationId: string): void {
+    if (batchPollOperationId === operationId && batchPollTimer) return;
+    stopBatchPoll();
+    batchPollOperationId = operationId;
+    let attempts = 0;
+    batchPollTimer = setInterval(async () => {
+      attempts += 1;
+      await chatLedger.reload();
+      const activity = chatLedger.batchActivities.find((item) => item.operationId === operationId);
+      if (activity && activity.outcome !== "pending") {
+        stopBatchPoll();
+        hydratedFrom = "";
+        await invalidateAll();
+      } else if (attempts >= 200) {
+        stopBatchPoll();
+      }
+    }, 6000);
+  }
+
+  $effect(() => {
+    const pending = synthesisActivities.find((activity) => activity.outcome === "pending");
+    if (pending) beginEvaluationPoll(pending.sourceMessageId);
+  });
+  $effect(() => {
+    const pending = batchActivities.find((activity) => activity.outcome === "pending");
+    if (pending) beginBatchPoll(pending.operationId);
+  });
+
+  $effect(() => () => {
+    stopEvaluationPoll();
+    stopBatchPoll();
   });
 
   /** One tool at a time: two stacked aria-modal dialogs corrupt the AX tree. */
@@ -427,6 +453,10 @@
         if (!job?.status || job.status === lastSseStatus) return;
         lastSseStatus = job.status;
         liveStatus = job.status;
+        // Operation receipts and status are two halves of the same transition.
+        // Reload both so a response-loss admission is still identified as an exact
+        // evaluation or additional batch instead of generic queued work.
+        void chatLedger.reload();
         void invalidateAll();
       },
       (error) => console.warn("Selection status stream error:", error.message),
@@ -438,8 +468,7 @@
     const status = currentStatus;
     if (!status || lastObservedStatus === status) return;
     lastObservedStatus = status;
-    if (status === "AWAITING_SELECTION") return;
-    addingScope = false;
+    if (status === "AWAITING_SELECTION" || selectionOperationPending) return;
     shortlistConflict = null;
     // REGENERATING is transient (the job returns to AWAITING_SELECTION), so a
     // dirty tool keeps its draft; `interactive` gating disables its submits.
@@ -451,13 +480,13 @@
   async function reloadSelectionData(clearConflict = false): Promise<void> {
     if (dataRetrying) return;
     dataRetrying = true;
-    shortlistError = "";
+    dataRetryError = "";
     try {
       hydratedFrom = "";
       await invalidateAll();
       if (clearConflict) shortlistConflict = null;
     } catch (error) {
-      shortlistError = error instanceof Error
+      dataRetryError = error instanceof Error
         ? error.message
         : "We could not reload the latest selection data.";
     } finally {
@@ -637,11 +666,17 @@
   ): Promise<boolean> {
     forgeError = "";
     try {
-      await seedIdea(data.job.id, {
+      const response = await seedIdea(data.job.id, {
         kind: "idea_synthesis",
         sourceMessageId,
         expectedCost: seedCost ?? 0,
       });
+      chatLedger.markSeedPending(sourceMessageId, {
+        evaluationId: response.evaluationId ?? response.dispatchId,
+        kind: "idea_synthesis",
+        proposedTitle: patch.proposedTitle,
+      });
+      beginEvaluationPoll(sourceMessageId);
       await invalidateAll();
       return true;
     } catch (error) {
@@ -828,10 +863,6 @@
       decisionBriefRef?.openEditor();
     },
     openFit: () => { if (decisionTools) openCompareView("founder"); },
-    toggleShortlist,
-    isShortlisted: (idea) => shortlistKeys.includes(workspaceIdeaKey(idea)),
-    shortlistFull: () => shortlistFull,
-    shortlistBusy: () => shortlistBusy,
   });
 
   // ── Header context and forward action ─────────────────────────────────────
@@ -874,11 +905,6 @@
         : "Help me review the exact ideas and cost before I start Deep Research.",
   ]);
 </script>
-
-<svelte:window
-  onkeydown={handleWorkspaceKeydown}
-  onpointerdown={handleWorkspacePointerdown}
-/>
 
 <svelte:head>
   <title>{tabTool} · {nicheHeading} · NicheIQ</title>
@@ -928,13 +954,29 @@
   </PageHeader>
 
   {#if lifecycleMessage}
-    <aside class="workspace-state workspace-state--locked" role="status" aria-live="assertive">
+    <aside class="workspace-state workspace-state--locked" role="status" aria-live="polite">
       <div>
-        <strong>Selection is read-only</strong>
+        <strong>
+          {seedEvaluationPending
+            ? "Evaluating direction"
+            : batchGenerationPending
+              ? "Adding another batch"
+              : "Selection is read-only"}
+        </strong>
         <p>{lifecycleMessage}</p>
       </div>
-      <a href={`/jobs/${data.job.id}`}>View progress <span aria-hidden="true">→</span></a>
+      {#if !selectionOperationPending}
+        <a href={currentStatus === "COMPLETED"
+          ? `/jobs/${data.job.id}/report`
+          : `/jobs/${data.job.id}`}>
+          {currentStatus === "COMPLETED" ? "Open report" : "View progress"}
+          <span aria-hidden="true">→</span>
+        </a>
+      {/if}
     </aside>
+  {/if}
+  {#if dataRetryError}
+    <p class="tool-error" role="alert">{dataRetryError}</p>
   {/if}
 
   {#if shortlistConflict}
@@ -973,12 +1015,36 @@
     </aside>
   {/if}
 
+  <BatchActivity
+    activities={batchActivities}
+    reviewCandidatesHref={batchCandidatesHref}
+    reviewRuledOutHref={(activity) =>
+      `/jobs/${data.job.id}?batchOperationId=${encodeURIComponent(activity.operationId)}#examined-ruled-out`}
+    retryHref={`/jobs/${data.job.id}?addBatch=1#opportunities`}
+  />
+  <!-- Live state only. A decision tool's own work owns this page; the settled record has
+       a single home in the job page's Discovery appendix, reachable from the header tally. -->
+  <EvaluationActivity
+    jobId={data.job.id}
+    activities={synthesisActivities}
+    view="live"
+    operation={chatLedger.activeOperation}
+    stalled={evaluationStalledSourceId != null}
+    onRecheck={recheckEvaluation}
+  />
+  <EvaluationActivity
+    jobId={data.job.id}
+    activities={synthesisActivities}
+    view="handoff"
+    onProposeCandidate={proposeEvaluatedCandidate}
+  />
+
   {#if activeSlug === "compare"}
   <section class="scope-strip" aria-labelledby="scope-title">
     <div class="scope-heading">
-      <p id="scope-title">Ideas selected for research</p>
-      <span class="scope-count" aria-label={`${shortlistKeys.length} of ${MAX_SCOPE} ideas selected`}>
-        {shortlistKeys.length} <span aria-hidden="true">of {MAX_SCOPE}</span>
+      <p id="scope-title">{scopeMatchesShortlist ? "Research shortlist" : "Comparison scope"}</p>
+      <span class="scope-count" aria-label={`${activeIdeas.length} of ${MAX_SCOPE} ideas in view`}>
+        {activeIdeas.length} <span aria-hidden="true">of {MAX_SCOPE}</span>
       </span>
     </div>
     <div class="candidate-pills">
@@ -986,75 +1052,25 @@
         {@const shortlisted = shortlistKeys.includes(workspaceIdeaKey(idea))}
         <span class="candidate-pill" class:preview={!shortlisted}>
           <span class="pill-title">{solutionDisplayTitle(idea)}</span>
+          <small>{shortlisted ? "Shortlisted" : "Preview only"}</small>
           {#if (idea.idea_revision ?? 1) > 1}
             <small>rev {idea.idea_revision}</small>
-          {/if}
-          {#if interactive && shortlisted}
-            <button
-              type="button"
-              class="pill-remove"
-              disabled={shortlistBusy}
-              aria-describedby={shortlistBusy ? "shortlist-busy-hint" : undefined}
-              aria-label={`Remove ${solutionDisplayTitle(idea)} from shortlist`}
-              onclick={() => toggleShortlist(idea)}
-            >
-              <X aria-hidden="true" />
-            </button>
-          {:else if interactive && !shortlistFull}
-            <button
-              type="button"
-              class="pill-add"
-              disabled={shortlistBusy}
-              aria-describedby={shortlistBusy ? "shortlist-busy-hint" : undefined}
-              aria-label={`Add ${solutionDisplayTitle(idea)} to shortlist`}
-              onclick={() => toggleShortlist(idea)}
-            >
-              <Plus aria-hidden="true" />
-            </button>
           {/if}
         </span>
       {:else}
         <span class="empty-scope">No candidates are available for this research yet.</span>
       {/each}
-
-      {#if interactive && !shortlistFull && addableIdeas.length > 0}
-        <div class="scope-add" bind:this={addScopeRoot}>
-          <button
-            type="button"
-            class="add-trigger"
-            bind:this={addScopeTrigger}
-            aria-expanded={addingScope}
-            aria-controls="scope-add-options"
-            aria-haspopup="menu"
-            disabled={shortlistBusy}
-            aria-describedby={shortlistBusy ? "shortlist-busy-hint" : undefined}
-            onclick={() => (addingScope = !addingScope)}
-            onkeydown={handleAddScopeTriggerKeydown}
-          >
-            <Plus aria-hidden="true" />
-            {shortlistBusy ? "Saving…" : "Add candidate"}
-          </button>
-          {#if addingScope}
-            <ul class="add-menu" id="scope-add-options" role="menu" onkeydown={handleAddScopeMenuKeydown}>
-              {#each addableIdeas.slice(0, 12) as idea (workspaceIdeaKey(idea))}
-                <li role="none">
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onclick={() => { toggleShortlist(idea); addingScope = false; }}
-                  >{solutionDisplayTitle(idea)}</button>
-                </li>
-              {/each}
-            </ul>
-          {/if}
-        </div>
-      {/if}
     </div>
-    {#if shortlistError}
-      <p class="scope-error" role="alert">{shortlistError}</p>
-    {/if}
-    {#if shortlistBusy}
-      <p class="sr-only" id="shortlist-busy-hint" role="status">Shortlist changes are being saved.</p>
+    <div class="scope-actions">
+      {#if interactive && !scopeMatchesShortlist && activeIdeas.length > 0}
+        <button type="button" class="scope-handoff" onclick={proposeActiveScope}>
+          Use this scope
+        </button>
+      {/if}
+      <a href={`/jobs/${data.job.id}#opportunities`}>Edit on Choose ideas</a>
+    </div>
+    {#if !scopeMatchesShortlist}
+      <p class="scope-help">Preview only — your saved shortlist has not changed.</p>
     {/if}
   </section>
   {/if}
@@ -1078,8 +1094,8 @@
 
   <div
     class="workspace-content"
-    aria-disabled={!interactive}
-    inert={!interactive ? true : undefined}
+    aria-disabled={!workspaceReadable}
+    inert={!workspaceReadable ? true : undefined}
   >
     {@render children()}
   </div>
@@ -1089,10 +1105,19 @@
       <p>
         {reviewScopeHint}
       </p>
-      <a class="commit-cta" data-tour="workspace-commit" class:ready={canReviewScope} href={workspaceHref(canReviewScope ? "review" : "compare")}>
-        {canReviewScope ? REVIEW_AND_START_LABEL : `${CHOOSE_IDEAS_LABEL} in Compare`}
-        <span aria-hidden="true">→</span>
-      </a>
+      {#if canReviewScope}
+        <a class="commit-cta ready" data-tour="workspace-commit" href={workspaceHref("review")}>
+          {REVIEW_AND_START_LABEL}<span aria-hidden="true">→</span>
+        </a>
+      {:else if activeIdeas.length > 0 && !scopeMatchesShortlist}
+        <button type="button" class="commit-cta" onclick={proposeActiveScope}>
+          Use this scope on Choose ideas<span aria-hidden="true">→</span>
+        </button>
+      {:else}
+        <a class="commit-cta" href={`/jobs/${data.job.id}#opportunities`}>
+          {CHOOSE_IDEAS_LABEL}<span aria-hidden="true">→</span>
+        </a>
+      {/if}
     </div>
   {/if}
   </div>
@@ -1134,7 +1159,9 @@
     {seedCost}
     disabled={!interactive}
     evaluateError={forgeError}
+    operation={chatLedger.activeOperation}
     onEvaluate={handleForgeEvaluate}
+    onChanged={() => { void invalidateAll(); }}
     onClose={handleForgeClose}
   />
 {/if}
@@ -1197,7 +1224,6 @@
     --workspace-ink: var(--color-text-primary);
     --workspace-muted: var(--color-text-secondary);
     --workspace-line: var(--color-border);
-    --workspace-accent: var(--color-accent-hover);
     flex: 1;
     min-width: 0;
     box-sizing: border-box;
@@ -1235,46 +1261,25 @@
   .ask-analyst:active { transform: scale(0.98); }
   .ask-analyst :global(svg) { width: var(--space-4); height: var(--space-4); }
 
-  .scope-strip { display: grid; grid-template-columns: minmax(10rem, auto) minmax(0, 1fr); gap: var(--space-3) var(--space-4); align-items: center; padding: var(--space-3) 0; border-bottom: 1px solid var(--workspace-line); }
+  .scope-strip { display: grid; grid-template-columns: minmax(10rem, auto) minmax(0, 1fr) auto; gap: var(--space-3) var(--space-4); align-items: center; padding: var(--space-3) 0; border-bottom: 1px solid var(--workspace-line); }
   .scope-heading { display: flex; gap: var(--space-1-5); align-items: baseline; }
   .scope-heading > p { margin: 0; color: var(--workspace-muted); font: 700 var(--text-11)/var(--leading-tight) var(--font-mono); letter-spacing: var(--tracking-wider); text-transform: uppercase; }
   .scope-count { color: var(--workspace-ink); font: 700 var(--text-sm)/var(--leading-none) var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .scope-count span { color: var(--workspace-muted); }
-  .candidate-pills { display: grid; grid-template-columns: repeat(2, minmax(12rem, 1fr)) auto; gap: var(--space-2); min-width: 0; align-items: center; }
+  .candidate-pills { display: grid; grid-template-columns: repeat(2, minmax(12rem, 1fr)); gap: var(--space-2); min-width: 0; align-items: center; }
   .candidate-pill { display: inline-flex; min-width: 0; gap: var(--space-2); align-items: center; padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3); border-radius: var(--radius-md); background: color-mix(in srgb, var(--color-accent) 6%, var(--color-bg-elevated)); box-shadow: inset 0 0 0 1px var(--color-border-accent); }
   .candidate-pill.preview { background: var(--color-bg-surface); box-shadow: inset 0 0 0 1px var(--workspace-line); }
   .pill-title { overflow: hidden; font-size: var(--text-base); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
   .candidate-pill small { flex: 0 0 auto; color: var(--workspace-muted); font: 600 var(--text-xs)/var(--leading-none) var(--font-mono); }
-  .pill-remove { display: grid; flex: 0 0 auto; width: var(--space-6); height: var(--space-6); padding: 0; place-items: center; border: 0; border-radius: var(--radius-full); color: var(--workspace-muted); background: transparent; cursor: pointer; transition: color var(--duration-fast) var(--ease-default), background var(--duration-fast) var(--ease-default), transform var(--duration-fast) var(--ease-default); }
-  .pill-remove:hover:not(:disabled) { color: var(--color-error-text); background: color-mix(in srgb, currentcolor 10%, transparent); }
-  .pill-remove:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
-  .pill-remove:active:not(:disabled) { transform: scale(0.92); }
-  .pill-remove:disabled { cursor: not-allowed; opacity: var(--opacity-disabled); }
-  .pill-remove :global(svg) { width: var(--space-3); height: var(--space-3); }
-  .pill-add { display: grid; flex: 0 0 auto; width: var(--space-6); height: var(--space-6); padding: 0; place-items: center; border: 1px solid var(--color-border); border-radius: var(--radius-full); color: var(--color-accent-dark); background: var(--color-bg-elevated); cursor: pointer; transition: color var(--duration-fast) var(--ease-default), background var(--duration-fast) var(--ease-default), border-color var(--duration-fast) var(--ease-default), transform var(--duration-fast) var(--ease-default); }
-  .pill-add:hover:not(:disabled) { border-color: var(--color-border-accent); background: var(--color-bg-hover); }
-  .pill-add:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
-  .pill-add:active:not(:disabled) { transform: scale(0.92); }
-  .pill-add:disabled { cursor: not-allowed; opacity: var(--opacity-disabled); }
-  .pill-add :global(svg) { width: var(--space-3); height: var(--space-3); }
-
-  .scope-add { position: relative; }
-  .add-trigger { display: inline-flex; gap: var(--space-1-5); align-items: center; min-height: var(--space-8); padding: var(--space-1-5) var(--space-2); border: 1px dashed var(--color-border-emphasis); border-radius: var(--radius-md); color: var(--workspace-muted); background: transparent; font: inherit; font-size: var(--text-sm); font-weight: 700; cursor: pointer; transition: color var(--duration-fast) var(--ease-default), border-color var(--duration-fast) var(--ease-default); }
-  .add-trigger:hover:not(:disabled) { color: var(--workspace-ink); border-style: solid; }
-  .add-trigger:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
-  .add-trigger:active:not(:disabled) { transform: scale(0.98); }
-  .add-trigger:disabled { cursor: not-allowed; opacity: var(--opacity-disabled); }
-  .add-trigger :global(svg) { width: var(--text-base); height: var(--text-base); }
-  .add-menu { position: absolute; z-index: var(--z-popover); top: calc(100% + var(--space-1-5)); left: 0; width: max(18rem, 100%); max-height: 17rem; overflow-y: auto; margin: 0; padding: var(--space-1); border: 1px solid var(--workspace-line); border-radius: var(--radius-md); background: var(--color-bg-elevated); box-shadow: var(--shadow-lg); list-style: none; }
-  .add-menu button { display: block; width: 100%; padding: var(--space-2); border: 0; border-radius: var(--radius-sm); color: var(--workspace-ink); background: transparent; font: inherit; font-size: var(--text-base); text-align: left; cursor: pointer; transition: background var(--duration-fast) var(--ease-default); }
-  .add-menu button:hover { background: var(--color-bg-surface); }
-  .add-menu button:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
-  .add-menu button:active { background: var(--color-bg-hover); }
-  .ask-analyst:active, .add-trigger:active:not(:disabled) { transform: scale(0.98); }
-
+  .scope-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; justify-content: flex-end; }
+  .scope-actions a, .scope-handoff { min-height: var(--space-9); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); font: inherit; font-size: var(--text-sm); font-weight: 700; text-decoration: none; }
+  .scope-actions a { display: inline-flex; align-items: center; color: var(--workspace-muted); }
+  .scope-handoff { border: 1px solid var(--color-input-border); color: var(--workspace-ink); background: var(--color-bg-elevated); cursor: pointer; }
+  .scope-actions a:hover, .scope-handoff:hover { color: var(--color-accent-dark); background: var(--color-bg-surface); }
+  .scope-actions a:focus-visible, .scope-handoff:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+  .scope-help { grid-column: 2 / -1; margin: calc(-1 * var(--space-2)) 0 0; color: var(--workspace-muted); font-size: var(--text-sm); }
   .empty-scope { color: var(--workspace-muted); font-size: var(--text-base); }
-  .scope-error { grid-column: 2; }
-  .scope-error, .tool-error { margin: var(--space-1-5) 0 0; color: var(--color-error-text); font-size: var(--text-base); }
+  .tool-error { margin: var(--space-1-5) 0 0; color: var(--color-error-text); font-size: var(--text-base); }
   .workspace-state {
     display: flex;
     flex-wrap: wrap;
@@ -1309,7 +1314,7 @@
   }
   .workspace-state a:hover, .workspace-state button:hover:not(:disabled) { background: color-mix(in srgb, currentcolor 8%, transparent); }
   .workspace-state a:focus-visible, .workspace-state button:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
-  .workspace-state button:disabled { cursor: wait; opacity: var(--opacity-disabled); }
+  .workspace-state button:disabled { cursor: wait; color: var(--color-text-muted); background: var(--color-bg-hover); }
   /* Info notice, not an alert: this is a reassuring "we fixed the link" message,
      so it uses INFO tokens (finding #20), matching DecisionStatusBadge non-error. */
   .scope-notice { display: flex; gap: var(--space-3); margin-top: var(--space-4); padding: var(--space-3) var(--space-4); border: 1px solid var(--color-border-info); border-radius: var(--radius-lg); background: var(--color-info-subtle); color: var(--color-info-dark); }
@@ -1342,7 +1347,7 @@
   :global(.selection-page__action) { display: inline-flex; align-items: center; gap: var(--space-2); margin-top: var(--space-4); min-height: var(--space-10); padding: var(--space-2) var(--space-4); border: 0; border-radius: var(--radius-md); color: var(--color-text-on-accent); background: var(--color-accent-hover); font: inherit; font-size: var(--text-base); font-weight: 700; cursor: pointer; transition: background var(--duration-fast) var(--ease-default), transform var(--duration-fast) var(--ease-default); }
   :global(.selection-page__action:hover) { background: var(--color-accent-dark); }
   :global(.selection-page__action:active) { transform: scale(0.98); }
-  :global(.selection-page__action:disabled) { cursor: not-allowed; opacity: var(--opacity-disabled); }
+  :global(.selection-page__action:disabled) { cursor: not-allowed; color: var(--color-text-muted); background: var(--color-bg-hover); }
   @keyframes workspace-enter { from { opacity: 0; transform: translateY(var(--space-1-5)); } to { opacity: 1; transform: translateY(0); } }
 
   @media (max-width: 1279px) {
@@ -1351,7 +1356,6 @@
        as a full-width strip, not beside it as a squeezed flex column. */
     .job-page-shell { flex-direction: column; }
     .candidate-pills { grid-template-columns: repeat(2, minmax(12rem, 1fr)); }
-    .scope-add { grid-column: 1 / -1; }
   }
 
   @media (max-width: 767px) {
@@ -1360,8 +1364,8 @@
     .candidate-pills { width: 100%; }
     .candidate-pill { width: 100%; justify-content: space-between; }
     .candidate-pills { grid-template-columns: 1fr; }
-    .scope-add, .scope-error { grid-column: 1; }
-    .add-menu { width: 100%; }
+    .scope-actions, .scope-help { grid-column: 1; justify-content: flex-start; }
+    .scope-actions a, .scope-handoff { min-height: 2.75rem; }
     :global(.selection-page__header) { display: block; }
   }
 
@@ -1369,10 +1373,15 @@
     .job-page-shell { overflow-x: hidden; }
   }
 
+  :global(body:has([data-form-overlay="true"]) .workspace-overlay:has(.workspace-overlay__frame[aria-label="Analyst conversation"])) {
+    visibility: hidden;
+    pointer-events: none;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     :global(.selection-page) { animation: none; }
-    .ask-analyst, .pill-remove, .pill-add, .add-trigger, .commit-cta { transition: none; }
-    .ask-analyst:active, .pill-remove:active, .pill-add:active, .add-trigger:active, .commit-cta:active { transform: none; }
+    .ask-analyst, .commit-cta { transition: none; }
+    .ask-analyst:active, .commit-cta:active { transform: none; }
     :global(.selection-page__action), :global(.selection-page__action:active) { transition: none; transform: none; }
   }
 </style>

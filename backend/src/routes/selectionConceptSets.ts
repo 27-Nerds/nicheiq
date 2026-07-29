@@ -5,9 +5,11 @@ import { CONFIG } from '../config.js';
 import { requireInternalAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { requireDecisionToolsAccess } from '../middleware/featureAccess.js';
 import { getPreviewReportForJob } from '../services/assetService.js';
+import { acquireGenerationLock } from '../services/selectionGenerationLock.js';
 import { prisma } from '../services/db.js';
 import {
   ConceptSetGenerationError,
+  ConceptSetTimeoutError,
   generateSelectionConceptSet,
   prepareSelectionConceptSetInput,
   type ConceptSetGuardrailCode,
@@ -51,6 +53,18 @@ const GUARDRAIL_MESSAGES: Record<ConceptSetGuardrailCode, string> = {
     'An option did not map cleanly onto your selected candidates. Try again.',
   INVALID_CONCEPT_TEST_ASSUMPTION:
     'A suggested test did not target one of its own assumptions. Try again.',
+  CONCEPT_OPTIONS_IGNORE_BUYER_EVIDENCE:
+    'This research has already ruled out ideas in this audience because it does not pay for tooling, and every option came back aimed at that same audience. Try again — one direction needs to move to a buyer with budget.',
+  CONCEPT_OPTIONS_COLLAPSE_ON_BUYER:
+    'Every option came back changing the same thing about who pays, so the three directions only ask one question. Try again — one of them should leave that alone and change the product instead.',
+  CONCEPT_BUYER_MOVE_STAYS_IN_DEAD_SEGMENT:
+    'The direction that changed the buyer moved it to an audience this research already ruled out for not paying. Try again.',
+  CONCEPT_TEST_WINDOW_INCONSISTENT:
+    'A suggested test came back measuring two different time windows at once, so its result would be unreadable. Try again.',
+  CONCEPT_TEST_BANDS_INVERTED:
+    'A suggested test came back with a pass bar that is not above its fail bar. Try again.',
+  CONCEPT_TEST_THRESHOLD_IMPLAUSIBLE:
+    'A suggested test set a pass bar that cold outreach does not reach, so a promising direction would fail it. Try again.',
 };
 
 async function recordForgeCost(jobId: string, costUsd: number): Promise<void> {
@@ -178,14 +192,18 @@ function parentRevisionStale(job: ConceptJob, artifact: SelectionConceptSetArtif
 function publicSet(
   row: { id: string; artifact: unknown; createdAt: Date },
   stale: boolean,
-  evaluatedOptionIds: string[] = [],
+  optionOutcomes: Record<string, ConceptOptionOutcome> = {},
 ) {
   return {
     id: row.id,
     artifact: SelectionConceptSetArtifactSchema.parse(row.artifact),
     stale,
     createdAt: row.createdAt,
-    evaluatedOptionIds,
+    evaluatedOptionIds: Object.keys(optionOutcomes),
+    // The OUTCOME, not just the fact of submission. Reopening the Forge used to show
+    // a long-settled direction as "Evaluation submitted" forever, because the only
+    // signal was a boolean that never advanced past "was sent".
+    optionOutcomes,
   };
 }
 
@@ -193,28 +211,70 @@ function operationIdFor(setId: string, optionId: string): string {
   return `concept:${setId}:${optionId}`;
 }
 
-/** Options that already minted a proposal, derived from the idempotency
- *  records (`concept:{setId}:{optionId}` chat messages) — no schema change.
- *  Returns optionIds keyed by setId; sets without proposals are absent. */
+export type ConceptOptionOutcome =
+  'pending' | 'accepted' | 'demoted' | 'failed' | 'refunded';
+
+/** Outcome per option that actually entered paid evaluation.
+ *
+ * A concept proposal row is free preparation, not an evaluation. Only expose an
+ * option once a durable seed receipt points back to that proposal message. This
+ * keeps a prepared-but-never-confirmed direction from rendering as "Evaluated" and
+ * prevents a settled option from re-arming after a reload. No schema change: both
+ * sides already live in the analyst ledger.
+ *
+ * `seed_settled` always wins over `seed_submitted` for the same proposal — the
+ * submitted receipt is never retracted, so preferring it would pin a finished
+ * evaluation at "pending" for the life of the job. */
 async function evaluatedOptionIdsBySet(
+  jobId: string,
   sets: Array<{ id: string; artifact: SelectionConceptSetArtifact }>,
-): Promise<Map<string, string[]>> {
+): Promise<Map<string, Record<string, ConceptOptionOutcome>>> {
   const operationIds = sets.flatMap((set) =>
     set.artifact.options.map((option) => operationIdFor(set.id, option.optionId)));
-  const evaluated = new Map<string, string[]>();
+  const evaluated = new Map<string, Record<string, ConceptOptionOutcome>>();
   if (!operationIds.length) return evaluated;
-  const rows = await prisma.chatMessage.findMany({
+  const proposalRows = await prisma.chatMessage.findMany({
     where: { operationId: { in: operationIds } },
-    select: { operationId: true },
+    select: { id: true, operationId: true },
   });
-  for (const row of rows) {
+  if (!proposalRows.length) return evaluated;
+  const receipts = await prisma.chatMessage.findMany({
+    where: { jobId, gateStage: 5, role: 'receipt' },
+    select: { patchJson: true },
+  });
+  const SETTLED: ReadonlySet<string> = new Set(['accepted', 'demoted', 'failed', 'refunded']);
+  const outcomeByProposal = new Map<string, ConceptOptionOutcome>();
+  for (const row of receipts) {
+    const patch = row.patchJson;
+    if (!patch || typeof patch !== 'object' || Array.isArray(patch)) continue;
+    const { event, sourceMessageId, outcome } = patch as Record<string, unknown>;
+    if (typeof sourceMessageId !== 'string') continue;
+    if (event === 'seed_submitted') {
+      if (!outcomeByProposal.has(sourceMessageId)) outcomeByProposal.set(sourceMessageId, 'pending');
+    } else if (event === 'seed_settled') {
+      // Settled always overwrites, whatever order the rows arrive in.
+      outcomeByProposal.set(
+        sourceMessageId,
+        typeof outcome === 'string' && SETTLED.has(outcome)
+          ? outcome as ConceptOptionOutcome
+          : 'failed',
+      );
+    }
+  }
+  for (const row of proposalRows) {
+    const outcome = outcomeByProposal.get(row.id);
+    if (!outcome) continue;
     const [, setId, optionId] = row.operationId!.split(':');
-    evaluated.set(setId, [...(evaluated.get(setId) ?? []), optionId]);
+    evaluated.set(setId, { ...(evaluated.get(setId) ?? {}), [optionId]: outcome });
   }
   return evaluated;
 }
 
-function patchForOption(artifact: SelectionConceptSetArtifact, optionId: string) {
+function patchForOption(
+  conceptSetId: string,
+  artifact: SelectionConceptSetArtifact,
+  optionId: string,
+) {
   const option = artifact.options.find((candidate) => candidate.optionId === optionId);
   if (!option) return null;
   return IdeaSynthesisPatchSchema.parse({
@@ -244,6 +304,18 @@ function patchForOption(artifact: SelectionConceptSetArtifact, optionId: string)
       ].slice(0, 10),
     },
     newAssumptions: option.assumptions.map((assumption) => assumption.statement),
+    evaluation: {
+      version: 1,
+      conceptSetId,
+      optionId: option.optionId,
+      inputFingerprint: artifact.inputFingerprint,
+      changedAxes: option.changedAxes,
+      assumptions: option.assumptions,
+      retainedEvidence: option.retainedEvidence,
+      evidenceToRecheck: option.evidenceToRecheck,
+      disqualifiers: option.disqualifiers,
+      suggestedTest: option.suggestedTest,
+    },
   });
 }
 
@@ -276,10 +348,11 @@ selectionConceptSetsRouter.get(
         return parsed.success ? [{ row, artifact: parsed.data }] : [];
       });
       const evaluated = await evaluatedOptionIdsBySet(
+        jobId,
         parsedRows.map(({ row, artifact }) => ({ id: row.id, artifact })),
       );
       const sets = parsedRows.map(({ row, artifact }) =>
-        publicSet(row, parentRevisionStale(job, artifact), evaluated.get(row.id) ?? []));
+        publicSet(row, parentRevisionStale(job, artifact), evaluated.get(row.id) ?? {}));
       res.setHeader('Cache-Control', 'private, no-store');
       res.json({ sets });
     } catch (error) {
@@ -317,92 +390,120 @@ selectionConceptSetsRouter.post(
         return;
       }
       const prepared = prepareSelectionConceptSetInput(input);
-      const cached = await prisma.selectionConceptSet.findUnique({
-        where: { jobId_inputFingerprint: { jobId, inputFingerprint: prepared.inputFingerprint } },
-        select: { id: true, artifact: true, createdAt: true, archivedAt: true },
+      // LIVE sets only. Reviving a discarded set here made "Discard this set" a no-op:
+      // asking for the same directions again handed back the artifact the user had just
+      // thrown away, with no way to get different ones. A discard is now final, and the
+      // same inputs generate fresh directions.
+      const cached = await prisma.selectionConceptSet.findFirst({
+        where: { jobId, inputFingerprint: prepared.inputFingerprint, archivedAt: null },
+        select: { id: true, artifact: true, createdAt: true },
       });
       if (cached) {
-        // A discarded set asked for again is revived instead of regenerated:
-        // the unique fingerprint row already holds the identical artifact.
-        if (cached.archivedAt) {
-          await prisma.selectionConceptSet.update({
-            where: { id: cached.id },
-            data: { archivedAt: null },
-          });
-        }
         const cachedArtifact = SelectionConceptSetArtifactSchema.parse(cached.artifact);
-        const evaluated = await evaluatedOptionIdsBySet([{ id: cached.id, artifact: cachedArtifact }]);
+        const evaluated = await evaluatedOptionIdsBySet(
+          jobId,
+          [{ id: cached.id, artifact: cachedArtifact }],
+        );
         res.setHeader('Cache-Control', 'private, no-store');
-        res.json({ set: publicSet(cached, false, evaluated.get(cached.id) ?? []), cached: true });
+        res.json({ set: publicSet(cached, false, evaluated.get(cached.id) ?? {}), cached: true });
         return;
       }
-      const existingSetCount = await prisma.selectionConceptSet.count({
-        where: { jobId, archivedAt: null },
-      });
-      if (existingSetCount >= MAX_CONCEPT_SETS_PER_JOB) {
-        res.status(409).json({ error: 'This job reached its Concept Forge limit. Work with the existing sets, or discard a saved set you no longer need to free room' });
+      // Single-flight. Deliberately AFTER the fingerprint cache read above: a second tab
+      // repeating the same request should get the finished set, not a "busy" error. Only
+      // a genuinely new generation contends for the lock.
+      const lock = await acquireGenerationLock(jobId);
+      if (!lock) {
+        res.status(409).json({
+          error: 'Directions are already being generated for this research. Wait for that run to finish, then try again — if it was the same request, its result will be waiting.',
+          code: 'CONCEPT_SET_GENERATION_IN_PROGRESS',
+        });
         return;
       }
-      if (!CONFIG.openaiApiKey && !CONFIG.openrouterApiKey) {
-        res.status(503).json({ error: 'Concept Forge is temporarily unavailable' });
-        return;
-      }
-
-      let generated;
       try {
-        generated = await generateSelectionConceptSet(input);
-      } catch (error) {
-        if (error instanceof ConceptSetGenerationError) {
-          // The tokens were spent even though the guardrails rejected the output.
-          await recordForgeCost(jobId, error.costUsd);
-          res.status(502).json({ error: GUARDRAIL_MESSAGES[error.code], code: error.code });
+        const existingSetCount = await prisma.selectionConceptSet.count({
+          where: { jobId, archivedAt: null },
+        });
+        if (existingSetCount >= MAX_CONCEPT_SETS_PER_JOB) {
+          res.status(409).json({ error: 'This job reached its Concept Forge limit. Work with the existing sets, or discard a saved set you no longer need to free room' });
           return;
         }
-        throw error;
-      }
-      const freshJob = await ownedJob(jobId, req.user!.id);
-      const freshInput = freshJob && editable(freshJob) === null
-        ? await loadContextInput(freshJob, request)
-        : null;
-      if (
-        !freshJob
-        || !freshInput
-        || prepareSelectionConceptSetInput(freshInput).inputFingerprint !== generated.artifact.inputFingerprint
-      ) {
-        res.status(409).json({ error: 'The shortlist or its evidence changed while options were being prepared' });
-        return;
-      }
+        if (!CONFIG.openaiApiKey && !CONFIG.openrouterApiKey) {
+          res.status(503).json({ error: 'Concept Forge is temporarily unavailable' });
+          return;
+        }
 
-      let created;
-      try {
-        created = await prisma.selectionConceptSet.create({
-          data: {
-            jobId,
-            purpose: generated.artifact.purpose,
-            inputFingerprint: generated.artifact.inputFingerprint,
-            parentRefs: generated.artifact.parents as unknown as Prisma.InputJsonValue,
-            artifact: generated.artifact as unknown as Prisma.InputJsonValue,
-            model: generated.artifact.model,
-            promptId: generated.artifact.promptId,
-          },
-          select: { id: true, artifact: true, createdAt: true },
-        });
-      } catch (error) {
-        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-          const winner = await prisma.selectionConceptSet.findUnique({
-            where: { jobId_inputFingerprint: { jobId, inputFingerprint: generated.artifact.inputFingerprint } },
-            select: { id: true, artifact: true, createdAt: true },
-          });
-          if (winner) {
-            await recordForgeCost(jobId, generated.costUsd);
-            res.json({ set: publicSet(winner, false), cached: true });
+        let generated;
+        try {
+          generated = await generateSelectionConceptSet(input);
+        } catch (error) {
+          if (error instanceof ConceptSetGenerationError) {
+            // The tokens were spent even though the guardrails rejected the output.
+            await recordForgeCost(jobId, error.costUsd);
+            res.status(502).json({ error: GUARDRAIL_MESSAGES[error.code], code: error.code });
             return;
           }
+          if (error instanceof ConceptSetTimeoutError) {
+            // Same billing rule: the upstream call ran, it just did not finish in time.
+            await recordForgeCost(jobId, error.costUsd);
+            res.status(504).json({
+              error: 'Generating directions took too long and was stopped. Nothing was saved — try again.',
+            });
+            return;
+          }
+          throw error;
         }
-        throw error;
+        const freshJob = await ownedJob(jobId, req.user!.id);
+        const freshInput = freshJob && editable(freshJob) === null
+          ? await loadContextInput(freshJob, request)
+          : null;
+        if (
+          !freshJob
+          || !freshInput
+          || prepareSelectionConceptSetInput(freshInput).inputFingerprint !== generated.artifact.inputFingerprint
+        ) {
+          res.status(409).json({ error: 'The shortlist or its evidence changed while options were being prepared' });
+          return;
+        }
+
+        let created;
+        try {
+          created = await prisma.selectionConceptSet.create({
+            data: {
+              jobId,
+              purpose: generated.artifact.purpose,
+              inputFingerprint: generated.artifact.inputFingerprint,
+              parentRefs: generated.artifact.parents as unknown as Prisma.InputJsonValue,
+              artifact: generated.artifact as unknown as Prisma.InputJsonValue,
+              model: generated.artifact.model,
+              promptId: generated.artifact.promptId,
+            },
+            select: { id: true, artifact: true, createdAt: true },
+          });
+        } catch (error) {
+          if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+            // The partial unique index still raises P2002 when a concurrent request won the
+            // race; the winner is by definition the LIVE row for this fingerprint.
+            const winner = await prisma.selectionConceptSet.findFirst({
+              where: {
+                jobId,
+                inputFingerprint: generated.artifact.inputFingerprint,
+                archivedAt: null,
+              },
+              select: { id: true, artifact: true, createdAt: true },
+            });
+            if (winner) {
+              await recordForgeCost(jobId, generated.costUsd);
+              res.json({ set: publicSet(winner, false), cached: true });
+              return;
+            }
+          }
+          throw error;
+        }
+        await recordForgeCost(jobId, generated.costUsd);
+        res.status(201).json({ set: publicSet(created, false), cached: false });
+      } finally {
+        await lock.release();
       }
-      await recordForgeCost(jobId, generated.costUsd);
-      res.status(201).json({ set: publicSet(created, false), cached: false });
     } catch (error) {
       if (error instanceof z.ZodError) {
         res.status(400).json({ error: 'Invalid Concept Forge request', details: error.errors });
@@ -506,7 +607,7 @@ selectionConceptSetsRouter.post(
       }
       let patch;
       try {
-        patch = patchForOption(artifact, params.optionId);
+        patch = patchForOption(row.id, artifact, params.optionId);
       } catch (error) {
         if (error instanceof z.ZodError) {
           console.error(`Stored concept set ${row.id} produced an invalid synthesis patch:`, error);

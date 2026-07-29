@@ -42,9 +42,13 @@
 <style>
   .tour-invite {
     position: fixed;
-    /* Above the shortlist dock (which is fixed bottom-center) rather than over it, and
-       left-anchored so it never collides with the analyst launcher bottom-right. */
-    bottom: var(--space-6);
+    /* Left-anchored so it never collides with the analyst launcher bottom-right.
+       The shortlist dock (DecisionRail) is fixed bottom-CENTRE but spans nearly the
+       full content width, so left-anchoring alone does NOT clear it — the card sat on
+       top of the dock and covered the "0 / " of "0 / 3 selected", making it read as
+       "3 selected" and contradicting the disabled CTA beside it. DecisionRail
+       publishes its measured height as --decision-rail-height; lift by that. */
+    bottom: calc(var(--space-6) + var(--decision-rail-height, 0px));
     left: var(--space-6);
     z-index: var(--z-popover);
     width: min(21rem, calc(100vw - var(--space-8)));

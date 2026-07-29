@@ -148,6 +148,7 @@ const SEED_SUBMITTED_RECEIPT = {
     patch: {},
     rows: [],
     sourceMessageId: "asst-seed-1",
+    evaluationId: "dispatch-1",
   },
   truncated: false,
   createdAt: "2026-07-13T00:00:01.000Z",
@@ -166,6 +167,7 @@ const SEED_SETTLED_RECEIPT = {
     patch: {},
     rows: [],
     sourceMessageId: "asst-seed-1",
+    evaluationId: "dispatch-1",
     idea: {
       solution_name: "PatchZero",
       short_description: "Finds missed esports reporting leads.",
@@ -202,8 +204,20 @@ describe("chatLedger — seed outcome derivation (durable receipts, not a parall
   });
 
   it("settled outcome overrides pending, and hasPendingSeed clears once settled", async () => {
+    const proposal = {
+      id: "asst-seed-1",
+      gateStage: 5,
+      role: "assistant" as const,
+      content: "A proposed direction",
+      patchJson: {
+        kind: "idea_synthesis" as const,
+        proposedTitle: "GLP-1 Off-Ramp + Peptide Maintenance Hub",
+      },
+      truncated: false,
+      createdAt: "2026-07-13T00:00:00.000Z",
+    };
     vi.mocked(getChatHistory).mockResolvedValue({
-      messages: [SEED_SUBMITTED_RECEIPT, SEED_SETTLED_RECEIPT],
+      messages: [proposal, SEED_SUBMITTED_RECEIPT, SEED_SETTLED_RECEIPT],
     } as never);
     await chatLedger.init("job-1");
 
@@ -214,14 +228,32 @@ describe("chatLedger — seed outcome derivation (durable receipts, not a parall
       market_fit_score: 0.45,
     });
     expect(chatLedger.hasPendingSeed).toBe(false);
+    expect(chatLedger.seedActivities).toEqual([
+      expect.objectContaining({
+        sourceMessageId: "asst-seed-1",
+        evaluationId: "dispatch-1",
+        kind: "idea_synthesis",
+        proposedTitle: "GLP-1 Off-Ramp + Peptide Maintenance Hub",
+        outcome: "accepted",
+      }),
+    ]);
   });
 
   it("markSeedPending is optimistic — flips the card before any server round-trip", () => {
     chatLedger.reset();
     expect(chatLedger.seedOutcome("asst-seed-2")).toBeUndefined();
-    chatLedger.markSeedPending("asst-seed-2");
+    chatLedger.markSeedPending("asst-seed-2", {
+      evaluationId: "dispatch-2",
+      kind: "idea_synthesis",
+      proposedTitle: "Off-ramp hub",
+    });
     expect(chatLedger.seedOutcome("asst-seed-2")).toBe("pending");
     expect(chatLedger.hasPendingSeed).toBe(true);
+    expect(chatLedger.seedActivities[0]).toEqual(expect.objectContaining({
+      evaluationId: "dispatch-2",
+      proposedTitle: "Off-ramp hub",
+      outcome: "pending",
+    }));
   });
 
   it("a later reload's server truth overwrites (but never erases) the optimistic mark", async () => {
@@ -238,6 +270,79 @@ describe("chatLedger — seed outcome derivation (durable receipts, not a parall
     await chatLedger.reload();
 
     expect(chatLedger.seedOutcome("asst-seed-1")).toBe("accepted");
+  });
+});
+
+describe("chatLedger — durable additional-batch activity", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    chatLedger.reset();
+  });
+
+  it("reconstructs a settled batch by operation id and lets settlement override submitted", async () => {
+    const submitted = {
+      id: "batch-r1",
+      gateStage: 5,
+      role: "receipt" as const,
+      content: "Additional batch queued",
+      patchJson: {
+        kind: "ledger_event" as const,
+        version: 1,
+        event: "regeneration_submitted" as const,
+        patch: {},
+        rows: [],
+        operationId: "batch-operation-1",
+        batch: { ordinal: 2, focus: "novelty" as const },
+      },
+      createdAt: "2026-07-27T00:00:01.000Z",
+    };
+    const settled = {
+      ...submitted,
+      id: "batch-r2",
+      patchJson: {
+        ...submitted.patchJson,
+        event: "regeneration_settled" as const,
+        batch: {
+          ordinal: 2,
+          outcome: "completed" as const,
+          generatedCount: 4,
+          addedCount: 2,
+          addedIdeaIds: ["idea-new-1", "idea-new-2"],
+          ruledOutCount: 2,
+        },
+      },
+      createdAt: "2026-07-27T00:00:02.000Z",
+    };
+    vi.mocked(getChatHistory).mockResolvedValue({ messages: [submitted, settled] } as never);
+
+    await chatLedger.init("job-1");
+
+    expect(chatLedger.hasPendingBatch).toBe(false);
+    expect(chatLedger.batchActivities).toEqual([
+      expect.objectContaining({
+        operationId: "batch-operation-1",
+        ordinal: 2,
+        focus: "novelty",
+        outcome: "completed",
+        addedCount: 2,
+        addedIdeaIds: ["idea-new-1", "idea-new-2"],
+      }),
+    ]);
+  });
+
+  it("adds an optimistic pending activity from the regenerate response", () => {
+    chatLedger.markBatchPending("batch-operation-2", {
+      ordinal: 3,
+      focus: "distribution",
+    });
+
+    expect(chatLedger.hasPendingBatch).toBe(true);
+    expect(chatLedger.batchActivities[0]).toEqual(expect.objectContaining({
+      operationId: "batch-operation-2",
+      ordinal: 3,
+      focus: "distribution",
+      outcome: "pending",
+    }));
   });
 });
 

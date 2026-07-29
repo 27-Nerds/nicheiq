@@ -10,7 +10,7 @@ allow-list, idempotent skip of already-classified ideas, parallel batching, and 
 from types import SimpleNamespace
 
 import nicheiq.crews.unified_solution_crew as usc
-from nicheiq.models.solution_idea import BaseSolutionIdea
+from nicheiq.models.solution_idea import BaseSolutionIdea, IdeaTags
 
 
 def _idea(name="A", **kw):
@@ -106,6 +106,22 @@ class TestNoOps:
         idea = _idea("A")
         _run(monkeypatch, [idea], [], fail=True)  # invoke_structured raises
         assert idea.winning_angle is None
+
+
+def test_classifier_prompt_ignores_provisional_generated_tags(monkeypatch):
+    captured = {}
+
+    def _capture(**kw):
+        captured["prompt"] = kw["prompt"]
+        return usc._AngleVerdicts(verdicts=[]), SimpleNamespace()
+
+    monkeypatch.setattr(usc.LLMService, "invoke_structured", staticmethod(_capture))
+    idea = _idea("A", tags=IdeaTags(growth_channels=["network-effects"]))
+
+    _angle_self()._classify_batch(batch=[idea])
+
+    assert "- growth channels:" not in captured["prompt"]
+    assert "network-effects" not in captured["prompt"]
 
 
 class TestAllowListAndIdempotent:

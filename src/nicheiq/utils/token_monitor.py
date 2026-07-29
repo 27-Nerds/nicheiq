@@ -133,12 +133,23 @@ class ContentTokenMonitor:
         "minimax/minimax-m3": {"input": 0.30, "output": 1.20},   # promo; list ~0.60/2.40
         "deepseek/deepseek-v4-flash": {"input": 0.09, "output": 0.18},
         "deepseek/deepseek-v4-pro": {"input": 0.435, "output": 0.87},
+        # Classification tiers (keyword/pain-solution/thread validation) pin the dated id;
+        # both resolve to the same canonical model + price on OpenRouter.
+        "inception/mercury-2": {"input": 0.25, "output": 0.75},
+        "inception/mercury-2-20260304": {"input": 0.25, "output": 0.75},
         "google/gemini-2.5-flash-lite": {"input": 0.10, "output": 0.40},  # workhorse default (first-party, reliable tool calls)
         "google/gemini-3.1-flash-lite": {"input": 0.25, "output": 1.50},
+        "google/gemini-3.5-flash-lite": {"input": 0.30, "output": 2.50},
+        "google/gemini-3.1-pro-preview": {"input": 2.00, "output": 12.00},  # brainstorm pool
+        "openai/gpt-5.2": {"input": 1.75, "output": 14.00},             # brainstorm_llm; vendor-prefixed id misses the bare MODEL_PRICING entry
         "qwen/qwen3.7-plus": {"input": 0.32, "output": 1.28},
+        "qwen/qwen3.7-max": {"input": 1.475, "output": 4.425},          # idea_angle / red_team / score_calibration + brainstorm pool
         "qwen/qwen3-235b-a22b-2507": {"input": 0.09, "output": 0.10},  # workhorse default
         "tencent/hy3-preview": {"input": 0.063, "output": 0.21},        # brainstorm pool (preview)
         "x-ai/grok-4.3": {"input": 1.25, "output": 2.50},               # brainstorm pool (grok-4.1-fast deprecated 2026-06; usage.cost is source of truth)
+        # ideation judge/refine pin the dated id; both resolve to canonical z-ai/glm-4.7.
+        "z-ai/glm-4.7": {"input": 0.40, "output": 1.75},
+        "z-ai/glm-4.7-20251222": {"input": 0.40, "output": 1.75},
         "z-ai/glm-4.7-flash": {"input": 0.06, "output": 0.40},          # GLM fast fallback
     }
 

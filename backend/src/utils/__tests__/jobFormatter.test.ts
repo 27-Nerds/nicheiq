@@ -107,6 +107,20 @@ describe('formatJobResponse includeSolutionIdeas', () => {
 
     expect(result.solutionIdeas).toBeNull();
   });
+
+  it('stops advertising additional batches at the backend limit', () => {
+    const available = formatJobResponse(
+      makeJob({ solutionIdeas: [], regenerationCount: 9 }),
+      { includeSolutionIdeas: true },
+    );
+    const exhausted = formatJobResponse(
+      makeJob({ solutionIdeas: [], regenerationCount: 10 }),
+      { includeSolutionIdeas: true },
+    );
+
+    expect(available.canRegenerate).toBe(true);
+    expect(exhausted.canRegenerate).toBe(false);
+  });
 });
 
 // Phase B — plans/eager-meandering-feather.md: guided-mode (chatMode) G1/G2 stage gates.

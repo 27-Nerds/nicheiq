@@ -1,4 +1,5 @@
 import { getDiscoveryDataForJob } from './assetService.js';
+import { ideaDisplayTitle } from '../utils/ideaIdentity.js';
 import { sanitizeUntrustedContent } from '../utils/promptFence.js';
 
 interface DiscoveryQuote {
@@ -140,7 +141,7 @@ export async function executeGetCompetitorDetail(
 
   const mentionLines: string[] = [];
   for (const idea of dossier?.ideas ?? []) {
-    const ideaTitle = (idea.solution_name as string) || (idea.name as string) || 'Unnamed idea';
+    const ideaTitle = ideaDisplayTitle(idea) || 'Unnamed idea';
     for (const field of ['incumbent_parity', 'adjacent_market_parity'] as const) {
       const text = idea[field];
       if (typeof text === 'string' && text.toLowerCase().includes(matchedName.toLowerCase())) {

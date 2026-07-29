@@ -180,7 +180,9 @@ class TestNoBuyerDemote:
         assert len(crew.ruled_out_pains) == 1
         finding = crew.ruled_out_pains[0]
         assert finding["source"] == "no_buyer"
-        assert "not software" in finding["reason"]
+        assert "free alternatives" in finding["reason"]
+        assert "low willingness to pay" in finding["reason"]
+        assert "only partly addressable by software" in finding["reason"]
 
     def test_paying_niche_equivalent_not_demoted(self, monkeypatch):
         monkeypatch.setattr(settings, "demotion_market_fit_max", 0.4)

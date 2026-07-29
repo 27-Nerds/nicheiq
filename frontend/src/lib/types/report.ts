@@ -70,6 +70,9 @@ export interface Report {
 
 	// Stage 6: Full SEO Strategy Report (not just seo_strategy)
 	seo_strategy_report?: SEOStrategy;
+	/** Catalog/report projection of the selected solution's SEO topic clusters.
+	 * Legacy reports and runs without SEO research may omit it. */
+	keyword_clusters?: TopicCluster[];
 
 	/// Stage 13: Full Data Source Research (not just summary)
 	data_source_research_full?: DataSourceResearchFull;
@@ -701,7 +704,10 @@ export interface NicheDifficultyVerdict {
 	software_addressability: number; // 0-1
 	headline: string;
 	narrative_summary: string;
+	/** Frictions only. Never render these as strengths. */
 	key_challenges: string[];
+	/** What makes the niche favourable. Populated only for a strong-fit niche; absent on legacy reports. */
+	key_strengths?: string[];
 	low_confidence: boolean;
 	/** Who actually pays here: budgeted-business | smb-operator | prosumer | indie-hobbyist | consumer | mixed. */
 	buyer_class?: string | null;
@@ -715,6 +721,9 @@ export interface DataQualitySummary {
 	pain_point_confidence_score?: number; // 0-1 (based on unique sources, subreddit diversity, quote density, pain point count)
 	overall_data_quality: string; // HIGH, MEDIUM, LOW
 	quality_caveats: string[];
+	/** Final-report location for weak ideas that were considered and ruled out.
+	 * Older preview payloads may still expose the same records at the report root. */
+	examined_ruled_out?: RuledOutFinding[];
 }
 
 // A pain/idea that was examined during the portfolio funnel but ultimately not carried
@@ -736,6 +745,13 @@ export interface RuledOutFinding {
 	 *  vocabulary) — 'user_seed' marks a chat-composed idea seed that was tested
 	 *  and demoted, rendered with a "Your idea" badge. */
 	source_frame?: string | null;
+	/** Durable identity of the paid evaluation that produced this finding. */
+	evaluation_id?: string | null;
+	dispatch_id?: string | null;
+	generation_operation_id?: string | null;
+	generation_batch_ordinal?: number | null;
+	evaluation_source_message_id?: string | null;
+	proposed_title?: string | null;
 	/** Full evaluated payload when available. It remains read-only because the market-fit
 	 *  verdict ruled it out, but users can still inspect the analysis. */
 	idea?: SolutionPreview | null;
@@ -964,8 +980,14 @@ export interface AlternativeSolution {
 	source_segment_payability?: number | null; // 0-1 buyer-wallet strength of the source segment (permanent signal; null = segment map failed)
 	source_segment_payability_class?: string | null; // corporate-budget | smb-budget | prosumer-wallet | personal-wallet | mixed
 	// Multi-Frame Idea Generation Portfolio: which generation frame minted this idea's cell.
-	// CODE-FILLED, never LLM-set. pain | gap | data_asset | spend_adjacent | workflow
+	// CODE-FILLED, never LLM-set; also carries owner_synthesis/additional_batch.
 	source_frame?: string | null;
+	evaluation_id?: string | null;
+	evaluation_source_message_id?: string | null;
+	proposed_title?: string | null;
+	synthesis_evaluation?: Record<string, unknown> | null;
+	generation_operation_id?: string | null;
+	generation_batch_ordinal?: number | null;
 
 	// Competitive landscape for this solution
 	top_competitors?: string[];

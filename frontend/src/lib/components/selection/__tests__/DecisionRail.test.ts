@@ -12,6 +12,7 @@ function journey(overrides: Partial<SelectionJourney> = {}): SelectionJourney {
         { ideaId: "idea-a", ideaRevision: 2, title: "Signal desk" },
         { ideaId: "idea-b", ideaRevision: 4, title: "Evidence map" },
       ],
+      staleItems: [],
     },
     tasks: [],
     recommendation: {
@@ -67,7 +68,7 @@ describe("DecisionRail", () => {
     const view = render(DecisionRail, {
       props: {
         journey: journey({
-          shortlist: { version: 0, maxItems: 3, items: [] },
+          shortlist: { version: 0, maxItems: 3, items: [], staleItems: [] },
           deepResearch: { eligible: false, optionalWorkRequired: false, blockers: ["NO_CURRENT_SHORTLIST"] },
         }),
         ...callbacks(),
@@ -77,6 +78,33 @@ describe("DecisionRail", () => {
     expect(view.getByText("Select 1–3 ideas to continue.")).toBeInTheDocument();
     expect(view.getByText("Select at least one idea to review the research scope.")).toBeInTheDocument();
     expect(view.getByRole("button", { name: "Review and start" })).toBeDisabled();
+  });
+
+  it("warns about same-product shortlist entries without blocking the start", () => {
+    const view = render(DecisionRail, {
+      props: {
+        journey: journey(),
+        overlapWarnings: [{
+          ideaNames: ["Signal desk", "Evidence map"],
+          sharedProduct: "vague-note to exact-edit translator",
+        }],
+        ...callbacks(),
+      },
+    });
+
+    expect(view.getByRole("status")).toHaveTextContent(
+      "Signal desk and Evidence map are variants of the same product (vague-note to exact-edit translator).",
+    );
+    // Advisory only — spending two slots on one product is the user's call to make.
+    expect(view.getByRole("button", { name: "Review and start" })).toBeEnabled();
+  });
+
+  it("stays quiet when no two shortlisted ideas share a product", () => {
+    const view = render(DecisionRail, {
+      props: { journey: journey(), overlapWarnings: [], ...callbacks() },
+    });
+
+    expect(view.queryByRole("status")).not.toBeInTheDocument();
   });
 
   it("offers the correct recovery action when saving the shortlist fails", async () => {
@@ -95,5 +123,26 @@ describe("DecisionRail", () => {
     await fireEvent.click(view.getByRole("button", { name: "Reload" }));
     expect(handlers.onReloadSave).toHaveBeenCalledOnce();
     expect(handlers.onRetrySave).not.toHaveBeenCalled();
+  });
+
+  it("renders unavailable revisions as placeholders and blocks review", () => {
+    const view = render(DecisionRail, {
+      props: {
+        journey: journey({
+          shortlist: {
+            version: 6,
+            maxItems: 3,
+            items: [{ ideaId: "idea-a", ideaRevision: 2, title: "Signal desk" }],
+            staleItems: [{ ideaId: "idea-old", ideaRevision: 5, title: "Archived angle" }],
+          },
+        }),
+        ...callbacks(),
+      },
+    });
+
+    expect(view.getByText(/Archived angle · revision 5/)).toBeInTheDocument();
+    expect(view.getByText("Needs replacement")).toBeInTheDocument();
+    expect(view.getByText(/Replace unavailable candidate revisions/)).toBeInTheDocument();
+    expect(view.getByRole("button", { name: "Review and start" })).toBeDisabled();
   });
 });

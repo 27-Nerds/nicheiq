@@ -152,7 +152,23 @@ describe('founderFitService', () => {
   });
 
   it('snapshots only the bounded fields used by the specialist', () => {
-    expect(founderFitIdeaSnapshot({ ...idea, secret_internal_note: 'do not expose' })).not.toHaveProperty('secret_internal_note');
+    const snapshot = founderFitIdeaSnapshot({
+      ...idea,
+      secret_internal_note: 'do not expose',
+      tags: {
+        ...idea.tags,
+        strengths: ['market-fit'],
+        primary_strength: 'market-fit',
+        rationale: 'Generated before final score calibration.',
+      },
+    });
+
+    expect(snapshot).not.toHaveProperty('secret_internal_note');
+    expect(snapshot.tags).toEqual({
+      build_complexity: 'medium',
+      data_access: null,
+      growth_channels: ['seo'],
+    });
   });
 
   it('drops hallucinated ideaFields and injects required profileFields instead of failing', async () => {

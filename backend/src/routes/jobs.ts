@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { getJob, getJobAsset, cancelJob } from '../services/jobService.js';
 import { getDiscoveryDataForJob, getPreviewReportForJob } from '../services/assetService.js';
-import { enqueueJob, enqueueLandingPageJob, enqueuePhase2Job, enqueueRegenerateJob, enqueueContinueFromGateJob, enqueueSeedIdeaJob, getQueueStats, getQueueLength } from '../services/queueService.js';
+import { enqueueJob, enqueueLandingPageJob, enqueuePhase2Job, enqueueContinueFromGateJob, enqueueSeedIdeaJob, getQueueStats, getQueueLength, deliverDispatchWork } from '../services/queueService.js';
 import {
   createJobAndChargeDiscovery,
   InsufficientCreditsError,
@@ -11,17 +11,23 @@ import {
   chargeForStageInTx,
   chargeForStageWithPriceCasInTx,
   chargeForRegenerationInTx,
-  refundForRegenerationStage,
   chargeForResume,
   segmentForGateContinue,
   chargeForSeedIdeaInTx,
   refundForSeedIdeaStage,
 } from '../services/creditService.js';
 import { prisma } from '../services/db.js';
-import { CreateJobSchema, SelectSolutionSchema, SelectionDecisionProfileSchema, SelectionDraftUpdateSchema, GateActionSchema, GateG1PatchSchema, GateG2PatchSchema, SeedIdeaSchema } from '../types/job.js';
-import { buildPatchEnvelope, buildReceiptContent, buildSeedEnvelope, buildSeedReceiptContent } from '../utils/ledgerEvents.js';
+import { CreateJobSchema, SelectSolutionSchema, RegenerateIdeasSchema, SelectionDecisionProfileSchema, SelectionDraftUpdateSchema, GateActionSchema, GateG1PatchSchema, GateG2PatchSchema, SeedIdeaSchema, MAX_IDEA_BATCHES } from '../types/job.js';
+import {
+  buildPatchEnvelope,
+  buildReceiptContent,
+  buildRegenerationEnvelope,
+  buildRegenerationReceiptContent,
+  buildSeedEnvelope,
+  buildSeedReceiptContent,
+} from '../utils/ledgerEvents.js';
 import { JobStatus, AssetType, StageStatus, DispatchKind, BillingModel, DispatchState, Prisma } from '@prisma/client';
-import { openDispatch, settleDispatch } from '../services/dispatchService.js';
+import { cancelAuthorizedSelectionDispatch, openDispatch, settleDispatch } from '../services/dispatchService.js';
 import { broadcastProgress } from '../services/progressBroadcastService.js';
 import { CONFIG } from '../config.js';
 import { existsSync, createReadStream, statSync } from 'fs';
@@ -32,8 +38,10 @@ import { jobCreationLimiter } from '../middleware/rateLimit.js';
 import { validateJobId } from '../middleware/validation.js';
 import { formatJobResponse } from '../utils/jobFormatter.js';
 import { candidateSnapshotSha256, ensureIdeaIdentities, ideaName } from '../utils/ideaIdentity.js';
+import { canonicalJsonSha256 } from '../utils/canonicalFingerprint.js';
+import { exactSelectionFingerprint, workerSelectionFingerprint } from '../utils/selectionFingerprint.js';
 import { currentSelectionDraft, selectionDraftDocument } from '../utils/selectionDraft.js';
-import { IdeaSynthesisPatchSchema } from '../types/ideaSynthesis.js';
+import { IdeaSynthesisPatchSchema, type IdeaSynthesisPatch } from '../types/ideaSynthesis.js';
 import { resolveAssetPath } from '../utils/assetPath.js';
 import { hasAnalystAccess } from '../services/featureAccess.js';
 import { parseCurrentFounderFitArtifact } from '../services/founderFitService.js';
@@ -516,6 +524,25 @@ jobsRouter.post('/:jobId/cancel', requireInternalAuth, validateJobId, async (req
       res.status(404).json({ error: 'Job not found' });
       return;
     }
+    if (job.activeDispatchId) {
+      const active = await prisma.jobDispatch.findUnique({
+        where: { id: job.activeDispatchId },
+        select: { kind: true, state: true },
+      });
+      if (
+        active
+        && (active.kind === DispatchKind.DEEP_RESEARCH || active.kind === DispatchKind.REGENERATE)
+        && (active.state === DispatchState.AUTHORIZED || active.state === DispatchState.CLAIMED)
+      ) {
+        res.status(409).json({
+          error: 'Cancel the active research operation explicitly',
+          code: 'ACTIVE_OPERATION_REQUIRES_EXACT_CANCEL',
+          operationId: job.activeDispatchId,
+          operationState: active.state,
+        });
+        return;
+      }
+    }
 
     const outcome = await cancelJob(jobId);
     if (!outcome.cancelled) {
@@ -546,6 +573,49 @@ jobsRouter.post('/:jobId/cancel', requireInternalAuth, validateJobId, async (req
     res.status(500).json({ error: 'Failed to cancel job' });
   }
 });
+
+jobsRouter.post(
+  '/:jobId/operations/:operationId/cancel',
+  requireInternalAuth,
+  validateJobId,
+  async (req: AuthenticatedRequest, res: Response) => {
+    const { jobId, operationId } = req.params;
+    const owned = await prisma.job.findFirst({
+      where: { id: jobId, userId: req.user!.id },
+      select: { id: true },
+    });
+    if (!owned) {
+      res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+    const outcome = await cancelAuthorizedSelectionDispatch(jobId, operationId);
+    if (outcome === 'not_found') {
+      res.status(404).json({ error: 'Operation not found' });
+      return;
+    }
+    if (outcome === 'started') {
+      res.status(409).json({
+        error: 'This operation has already started and can no longer be cancelled',
+        code: 'OPERATION_ALREADY_STARTED',
+      });
+      return;
+    }
+    if (outcome !== 'cancelled') {
+      res.status(409).json({ error: 'This operation is no longer cancellable', code: 'STALE_OPERATION' });
+      return;
+    }
+    const dispatch = await prisma.jobDispatch.findUnique({
+      where: { id: operationId },
+      select: { state: true, refundedAmount: true },
+    });
+    res.json({
+      status: 'cancelled',
+      operationId,
+      operationState: dispatch?.state ?? DispatchState.CANCELLED,
+      creditRefunded: dispatch?.refundedAmount ?? 0,
+    });
+  },
+);
 
 /**
  * POST /api/jobs/:jobId/resume
@@ -840,164 +910,143 @@ jobsRouter.post('/:jobId/select-solution', requireInternalAuth, validateJobId, a
   try {
     const { jobId } = req.params;
     const userId = req.user!.id;
-
     const input = SelectSolutionSchema.parse(req.body);
-
-    const job = await prisma.job.findFirst({
-      where: { id: jobId, userId },
-      select: {
-        status: true,
-        selectedSolutions: true,
-        phase1CheckpointPath: true,
-        solutionIdeas: true,
-        niche: true,
+    const prior = await prisma.jobDispatch.findFirst({
+      where: {
+        jobId,
+        clientRequestId: input.clientRequestId,
+        job: { userId },
       },
+      select: { id: true, state: true },
     });
-
-    if (!job) {
-      res.status(404).json({ error: 'Job not found' });
-      return;
-    }
-
-    // Reject if already selected
-    if ((job.selectedSolutions as string[])?.length) {
-      res.status(409).json({
-        error: 'Deep Research has already started for this selection',
-        code: 'DEEP_RESEARCH_ALREADY_STARTED',
-        status: job.status,
-      });
-      return;
-    }
-
-    const solutions = ensureIdeaIdentities(jobId, job.solutionIdeas);
-    const selectedById = input.solutionIds?.map(
-      id => solutions.find(solution => solution.idea_id === id),
-    );
-    if (input.solutionIds && selectedById?.some(solution => !solution)) {
-      const missing = input.solutionIds.filter(
-        id => !solutions.some(solution => solution.idea_id === id),
-      );
-      res.status(400).json({ error: 'Selected solution(s) not found in available ideas', missing });
-      return;
-    }
-
-    const resolvedNames = selectedById
-      ? selectedById.map(solution => ideaName(solution!)).filter((name): name is string => !!name)
-      : input.solutionNames ?? [];
-    const resolvedIds = selectedById
-      ? selectedById.map(solution => solution!.idea_id!)
-      : resolvedNames.map(name => solutions.find(solution => ideaName(solution) === name)?.idea_id)
-          .filter((id): id is string => !!id);
-
-    const missingNames = resolvedNames.filter(
-      name => !solutions.some(solution => ideaName(solution) === name),
-    );
-    if (missingNames.length > 0 || resolvedNames.length === 0) {
-      res.status(400).json({ error: 'Selected solution(s) not found in available ideas', missing: missingNames });
-      return;
-    }
-    if (input.solutionNames && input.solutionIds && (
-      input.solutionNames.length !== resolvedNames.length
-      || input.solutionNames.some((name, index) => name !== resolvedNames[index])
-    )) {
-      res.status(400).json({ error: 'solutionIds and solutionNames refer to different ideas' });
-      return;
-    }
-
-    // Phase 2 still joins candidates by solution name. Two distinct identities with
-    // the same normalized name would collapse in Python and make the winning identity
-    // impossible to recover. Reject before charging rather than silently producing an
-    // unresolved final recommendation.
-    const normalizedNames = resolvedNames.map(name => name.trim().replace(/\s+/g, ' ').toLowerCase());
-    if (new Set(normalizedNames).size !== normalizedNames.length) {
-      res.status(409).json({
-        error: 'Deep Research cannot compare two candidates with the same name yet. Choose one of them.',
-        code: 'AMBIGUOUS_PHASE2_SELECTION',
-      });
-      return;
-    }
-
-    if (job.status !== JobStatus.AWAITING_SELECTION) {
-      res.status(409).json({
-        error: 'Job not in a state that accepts solution selection',
-        code: 'DEEP_RESEARCH_NOT_AWAITING_SELECTION',
-        status: job.status,
-      });
-      return;
-    }
-
-    // Worker is done — atomically transition to QUEUED and enqueue phase 2
-    if (!job.phase1CheckpointPath) {
-      res.status(500).json({ error: 'Missing checkpoint path for phase 2' });
+    if (prior) {
+      res.json({ status: 'phase2_queued', operationId: prior.id, operationState: prior.state, idempotent: true });
       return;
     }
 
     const phase2Dispatch = await prisma.$transaction(async (tx) => {
-      // Charge for deep research inside the transaction
-      await chargeForStageInTx(tx, userId, jobId, 'deep_research', job!.niche);
+      const job = await tx.job.findFirst({
+        where: { id: jobId, userId },
+        select: {
+          status: true,
+          selectedSolutions: true,
+          phase1CheckpointPath: true,
+          solutionIdeas: true,
+          niche: true,
+          selectionDraft: true,
+          selectionDraftVersion: true,
+          activeDispatchId: true,
+        },
+      });
+      if (!job) throw new Error('NOT_FOUND');
+      if (job.status !== JobStatus.AWAITING_SELECTION || job.activeDispatchId) {
+        throw new Error('DEEP_RESEARCH_START_CONFLICT');
+      }
+      if (job.selectedSolutions.length) throw new Error('DEEP_RESEARCH_ALREADY_STARTED');
+      if (!job.phase1CheckpointPath) throw new Error('MISSING_PHASE1_CHECKPOINT');
+      const solutions = ensureIdeaIdentities(jobId, job.solutionIdeas);
+      const draft = currentSelectionDraft(job.selectionDraft, job.selectionDraftVersion, solutions);
+      if (draft.items.length < 1 || draft.items.length > 3) {
+        throw new Error('STALE_SELECTION_DRAFT');
+      }
 
-      // Atomically update status
-      const result = await tx.job.updateMany({
+      const selected = draft.items.map((draftRef) => {
+        const idea = solutions.find(candidate =>
+          candidate.idea_id === draftRef.ideaId && candidate.idea_revision === draftRef.ideaRevision
+        );
+        if (!idea) {
+          throw new Error('STALE_SOLUTION_REVISION');
+        }
+        const name = ideaName(idea);
+        if (!name) throw new Error('INVALID_SOLUTION');
+        const ref = {
+          ...draftRef,
+          snapshotSha256: candidateSnapshotSha256(idea),
+        };
+        return { ref, idea, name };
+      });
+      const selectedSolutionRefs = selected.map(item => item.ref);
+      const publicSelectionFingerprint = exactSelectionFingerprint(selectedSolutionRefs);
+      // The fingerprint is the authority. A draft version can advance and return to the same
+      // ordered exact refs while a confirmation dialog is open; that is not a stale selection.
+      if (publicSelectionFingerprint !== input.expectedSelectionFingerprint) {
+        throw new Error('STALE_SELECTION_DRAFT');
+      }
+      const normalizedNames = selected.map(item => item.name.trim().replace(/\s+/g, ' ').toLowerCase());
+      if (new Set(normalizedNames).size !== normalizedNames.length) {
+        throw new Error('AMBIGUOUS_PHASE2_SELECTION');
+      }
+
+      const workerSelectionRefs = selected.map(item => ({
+        idea_id: item.ref.ideaId,
+        idea_revision: item.ref.ideaRevision,
+        solution_name: item.name.trim().replace(/\s+/g, ' '),
+      }));
+      const workFingerprint = workerSelectionFingerprint(workerSelectionRefs);
+      const requestSnapshot = {
+        schemaVersion: 1,
+        kind: 'deep_research',
+        draftVersion: job.selectionDraftVersion,
+        selectedSolutionRefs,
+        selectedSolutionSnapshots: selected.map(item => item.idea),
+        publicSelectionFingerprint,
+        workerSelectionFingerprint: workFingerprint,
+        rationale: input.rationale ?? null,
+        expectedCost: input.expectedCost,
+      };
+
+      // Job first: worker claim and queued cancellation use the same first write.
+      const flipped = await tx.job.updateMany({
         where: {
           id: jobId,
           status: JobStatus.AWAITING_SELECTION,
-          selectedSolutions: { equals: [] }, // Guard against double-selection race
+          activeDispatchId: null,
+          selectedSolutions: { equals: [] },
+          selectionDraftVersion: job.selectionDraftVersion,
         },
         data: {
           status: JobStatus.QUEUED,
-          selectedSolutions: resolvedNames,
-          selectedSolutionIds: resolvedIds,
-          selectionRationale: input.rationale || null,
+          selectedSolutions: selected.map(item => item.name),
+          selectedSolutionIds: selected.map(item => item.ref.ideaId),
+          selectedSolutionRefs: selectedSolutionRefs as unknown as Prisma.InputJsonValue,
+          selectionRationale: input.rationale ?? null,
           queuedAt: new Date(),
         },
       });
+      if (flipped.count !== 1) throw new Error('DEEP_RESEARCH_START_CONFLICT');
 
-      if (result.count === 0) {
-        throw new Error('CONFLICT');
-      }
-
-      return openDispatch(tx, { jobId, kind: DispatchKind.CONTINUE });
+      const charge = await chargeForStageWithPriceCasInTx(
+        tx, userId, jobId, 'deep_research', 'deep_research', job.niche, input.expectedCost,
+      );
+      return openDispatch(tx, {
+        jobId,
+        kind: DispatchKind.DEEP_RESEARCH,
+        segment: 'deep_research',
+        chargeId: charge.transaction?.id ?? null,
+        clientRequestId: input.clientRequestId,
+        requestSnapshot: requestSnapshot as unknown as Prisma.InputJsonValue,
+        requestFingerprint: publicSelectionFingerprint,
+        workPayload: {
+          job_id: jobId,
+          checkpoint_path: job.phase1CheckpointPath,
+          task_type: 'research_phase2',
+          selected_solutions: selected.map(item => item.name),
+          selected_solution: selected[0].name,
+          selected_solution_refs: workerSelectionRefs,
+          selected_solution_snapshots: selected.map(item => item.idea),
+          selection_fingerprint: workFingerprint,
+          selection_rationale: input.rationale ?? '',
+          created_at: new Date().toISOString(),
+        } as unknown as Prisma.InputJsonValue,
+      });
     });
 
-    // Enqueue phase 2 outside transaction - compensating refund on failure
+    let deliveryPending = false;
     try {
-      await enqueuePhase2Job(
-        jobId,
-        job.phase1CheckpointPath,
-        resolvedNames,
-        input.rationale,
-        phase2Dispatch,
-      );
-    } catch (enqueueError) {
-      // Compensate: refund deep_research charge and revert job status.
-      //
-      // GUARDED, not unconditional. An enqueue error is ambiguous — the message may have landed
-      // and only the ack failed — so an unconditional update() here would stomp a worker that has
-      // already flipped the job to RUNNING_PHASE2, refund its credit, and wipe selectedSolutions
-      // (which that worker needs for its own phase-2 identity). Matching on our own dispatch means
-      // we can only undo an attempt that genuinely never started.
-      console.error(`[Jobs] Failed to enqueue phase 2 for job ${jobId}, compensating:`, enqueueError);
-      const reverted = await prisma.job.updateMany({
-        where: { id: jobId, status: JobStatus.QUEUED, activeDispatchId: phase2Dispatch },
-        data: {
-          status: JobStatus.AWAITING_SELECTION,
-          selectedSolutions: [],
-          selectedSolutionIds: [],
-          selectionRationale: null,
-          activeDispatchId: null,
-        },
-      });
-      // Only give the credit back if we actually undid the selection. Refunding a job a worker is
-      // busy running is how you end up doing paid work for free.
-      if (reverted.count > 0) {
-        await refundForStage(jobId, 'deep_research');
-      } else {
-        console.warn(
-          `[Jobs] Phase-2 enqueue failed for job ${jobId} but the attempt is no longer QUEUED ` +
-          'under this dispatch — a worker likely picked it up. Not refunding, not reverting.'
-        );
-      }
-      throw enqueueError;
+      await deliverDispatchWork(phase2Dispatch);
+    } catch (deliveryError) {
+      deliveryPending = true;
+      console.error(`[Jobs] Phase-2 dispatch ${phase2Dispatch} delivery pending:`, deliveryError);
     }
 
     // Auto-deactivate discovery share after successful enqueue (fire-and-forget)
@@ -1005,11 +1054,18 @@ jobsRouter.post('/:jobId/select-solution', requireInternalAuth, validateJobId, a
       where: { jobId, isActive: true },
       data: { isActive: false },
     }).catch(err => console.error('Failed to deactivate discovery share:', err));
+    const queuedSelection = await prisma.job.findUnique({
+      where: { id: jobId },
+      select: { selectedSolutionRefs: true },
+    });
 
     res.json({
       status: 'phase2_queued',
       message: 'Solution selected. Deep investigation is now queued.',
-      selectedSolutionIds: resolvedIds,
+      operationId: phase2Dispatch,
+      operationState: DispatchState.AUTHORIZED,
+      deliveryPending,
+      selectedSolutionRefs: queuedSelection?.selectedSolutionRefs ?? null,
     });
   } catch (error) {
     if (error instanceof InsufficientCreditsError) {
@@ -1021,11 +1077,25 @@ jobsRouter.post('/:jobId/select-solution', requireInternalAuth, validateJobId, a
       });
       return;
     }
-    if (error instanceof Error && error.message === 'CONFLICT') {
+    if (error instanceof PriceChangedError) {
       res.status(409).json({
-        error: 'Deep Research was started by another request',
-        code: 'DEEP_RESEARCH_START_CONFLICT',
+        error: 'Deep Research price changed; review the updated price before continuing',
+        code: 'PRICE_CHANGED',
+        expectedCost: error.expectedCost,
+        actualCost: error.actualCost,
       });
+      return;
+    }
+    if (error instanceof Error && error.message === 'NOT_FOUND') return void res.status(404).json({ error: 'Job not found' });
+    if (error instanceof Error && error.message === 'MISSING_PHASE1_CHECKPOINT') return void res.status(500).json({ error: 'Missing checkpoint path for phase 2' });
+    if (error instanceof Error && [
+      'DEEP_RESEARCH_START_CONFLICT',
+      'DEEP_RESEARCH_ALREADY_STARTED',
+      'STALE_SELECTION_DRAFT',
+      'STALE_SOLUTION_REVISION',
+      'AMBIGUOUS_PHASE2_SELECTION',
+    ].includes(error.message)) {
+      res.status(409).json({ error: 'The reviewed selection changed; reload before starting Deep Research', code: error.message });
       return;
     }
     if (error instanceof z.ZodError) {
@@ -1046,11 +1116,27 @@ jobsRouter.post('/:jobId/regenerate-ideas', requireInternalAuth, validateJobId, 
   try {
     const { jobId } = req.params;
     const userId = req.user!.id;
+    const input = RegenerateIdeasSchema.parse(req.body);
+    const ideaFocus = input.idea_focus;
 
-    // Optional batch-scoped GTM-focus override for this regeneration (auto | novelty | distribution).
-    // Allow-listed; anything else is ignored (worker falls back to the run's original focus).
-    const allowedFocus = ['auto', 'novelty', 'distribution'];
-    const ideaFocus = allowedFocus.includes(req.body?.idea_focus) ? req.body.idea_focus : undefined;
+    const prior = await prisma.jobDispatch.findFirst({
+      where: {
+        jobId,
+        clientRequestId: input.clientRequestId,
+        job: { userId },
+      },
+      select: { id: true, state: true, batchOrdinal: true },
+    });
+    if (prior) {
+      res.json({
+        status: 'queued',
+        operationId: prior.id,
+        operationState: prior.state,
+        batchOrdinal: prior.batchOrdinal,
+        idempotent: true,
+      });
+      return;
+    }
 
     const job = await prisma.job.findFirst({
       where: { id: jobId, userId },
@@ -1061,6 +1147,8 @@ jobsRouter.post('/:jobId/regenerate-ideas', requireInternalAuth, validateJobId, 
         phase1CheckpointPath: true,
         solutionIdeas: true,
         niche: true,
+        ideaBatchCompletedCount: true,
+        activeDispatchId: true,
       },
     });
 
@@ -1070,39 +1158,46 @@ jobsRouter.post('/:jobId/regenerate-ideas', requireInternalAuth, validateJobId, 
     }
 
     if (job.status !== JobStatus.AWAITING_SELECTION) {
-      res.status(400).json({ error: 'Can only regenerate ideas when awaiting selection', status: job.status });
+      res.status(400).json({ error: 'Can only add another idea batch while awaiting selection', status: job.status });
       return;
     }
 
-    const MAX_REGENERATIONS = 10;
-    if ((job.regenerationCount ?? 0) >= MAX_REGENERATIONS) {
-      res.status(400).json({ error: `Maximum regenerations (${MAX_REGENERATIONS}) reached for this job` });
+    if ((job.ideaBatchCompletedCount ?? 0) >= MAX_IDEA_BATCHES) {
+      res.status(400).json({ error: `Maximum additional idea batches (${MAX_IDEA_BATCHES}) reached for this job` });
       return;
     }
 
     if (!job.phase1CheckpointPath) {
-      res.status(500).json({ error: 'Missing checkpoint path for regeneration' });
+      res.status(500).json({ error: 'Missing checkpoint path for the additional idea batch' });
       return;
     }
 
     // Get existing solution names to exclude
-    const existingSolutionNames = ((job.solutionIdeas as any[]) || []).map(
-      (s: any) => s.name || s.solution_name
+    const existingSolutions = ensureIdeaIdentities(jobId, job.solutionIdeas);
+    const existingSolutionNames = existingSolutions.map(ideaName).filter((name): name is string => !!name);
+    const baseCandidateRefs = existingSolutions.flatMap(solution =>
+      typeof solution.idea_id === 'string' && typeof solution.idea_revision === 'number'
+        ? [{
+            ideaId: solution.idea_id,
+            ideaRevision: solution.idea_revision,
+            snapshotSha256: candidateSnapshotSha256(solution),
+          }]
+        : []
     );
+    const basePoolFingerprint = canonicalJsonSha256(baseCandidateRefs);
 
     const nextRegenNumber = (job.regenerationCount ?? 0) + 1;
 
     // Atomically update status + charge for regeneration
     const regenDispatch = await prisma.$transaction(async (tx) => {
-      // Charge with numbered stage
-      await chargeForRegenerationInTx(tx, userId, jobId, nextRegenNumber, job!.niche);
-
-      // Optimistic lock on regenerationCount to prevent concurrent requests
+      // Job first: prevent a batch admission, Deep Research start, or worker claim from crossing.
       const result = await tx.job.updateMany({
         where: {
           id: jobId,
           status: JobStatus.AWAITING_SELECTION,
           regenerationCount: job.regenerationCount ?? 0,
+          ideaBatchCompletedCount: job.ideaBatchCompletedCount ?? 0,
+          activeDispatchId: null,
         },
         data: {
           status: JobStatus.QUEUED,
@@ -1116,60 +1211,115 @@ jobsRouter.post('/:jobId/regenerate-ideas', requireInternalAuth, validateJobId, 
       if (result.count === 0) {
         throw new Error('CONFLICT');
       }
+      const charge = await chargeForRegenerationInTx(
+        tx, userId, jobId, nextRegenNumber, job!.niche, input.expectedCost,
+      );
 
-      // Regeneration needs its own identity too: its completion and failure callbacks correlate
-      // on status plus a re-read regenerationCount, so a stale failure from regen-A could revert
-      // regen-B and refund B's charge.
-      return openDispatch(tx, { jobId, kind: DispatchKind.REGENERATE });
+      // Regeneration needs its own identity too: every worker callback carries this dispatch id
+      // and is CAS-guarded against Job.activeDispatchId. A stale callback from batch A therefore
+      // cannot settle batch B or refund B's numbered charge.
+      const dispatchId = await openDispatch(tx, {
+        jobId,
+        kind: DispatchKind.REGENERATE,
+        segment: `regenerate_ideas_${nextRegenNumber}`,
+        chargeId: charge.id,
+        clientRequestId: input.clientRequestId,
+        batchOrdinal: nextRegenNumber,
+        requestSnapshot: {
+          schemaVersion: 1,
+          kind: 'idea_batch',
+          ordinal: nextRegenNumber,
+          focus: ideaFocus,
+          baseCandidateRefs,
+          basePoolFingerprint,
+          expectedCost: input.expectedCost,
+        } as unknown as Prisma.InputJsonValue,
+        requestFingerprint: basePoolFingerprint,
+        workPayload: {
+          job_id: jobId,
+          checkpoint_path: job.phase1CheckpointPath,
+          existing_solution_names: existingSolutionNames,
+          niche: job.niche,
+          task_type: 'regenerate_ideas',
+          idea_focus: ideaFocus,
+          batch_ordinal: nextRegenNumber,
+          base_candidate_refs: baseCandidateRefs.map(ref => ({
+            idea_id: ref.ideaId,
+            idea_revision: ref.ideaRevision,
+            snapshot_sha256: ref.snapshotSha256,
+          })),
+          base_pool_fingerprint: basePoolFingerprint,
+          created_at: new Date().toISOString(),
+        } as unknown as Prisma.InputJsonValue,
+      });
+      await tx.chatMessage.create({
+        data: {
+          jobId,
+          gateStage: 5,
+          role: 'receipt',
+          content: buildRegenerationReceiptContent('regeneration_submitted'),
+          operationId: `regeneration:${dispatchId}:submitted`,
+          patchJson: buildRegenerationEnvelope({
+            event: 'regeneration_submitted',
+            operationId: dispatchId,
+            ordinal: nextRegenNumber,
+            focus: ideaFocus,
+          }) as unknown as object,
+        },
+      });
+      return dispatchId;
     });
 
-    // Enqueue regeneration — compensating refund on failure
+    // Ambiguous Redis errors leave the durable outbox AUTHORIZED for retry.
+    let deliveryPending = false;
     try {
-      await enqueueRegenerateJob(jobId, job.phase1CheckpointPath, existingSolutionNames, job.niche, ideaFocus, regenDispatch);
-    } catch (enqueueError) {
-      // Guarded for the same reason as phase 2: an ambiguous enqueue error must not let us stomp
-      // a REGENERATING worker back to AWAITING_SELECTION and hand back a credit for work that is
-      // actually running.
-      console.error(`[Jobs] Failed to enqueue regeneration for job ${jobId}, compensating:`, enqueueError);
-      const reverted = await prisma.job.updateMany({
-        where: { id: jobId, status: JobStatus.QUEUED, activeDispatchId: regenDispatch },
-        data: { status: JobStatus.AWAITING_SELECTION, queuedAt: null, activeDispatchId: null },
-      });
-      if (reverted.count > 0) {
-        await refundForRegenerationStage(jobId, nextRegenNumber);
-      } else {
-        console.warn(
-          `[Jobs] Regeneration enqueue failed for job ${jobId} but the attempt is no longer ` +
-          'QUEUED under this dispatch — not refunding, not reverting.'
-        );
-      }
-      throw enqueueError;
+      await deliverDispatchWork(regenDispatch);
+    } catch (deliveryError) {
+      deliveryPending = true;
+      console.error(`[Jobs] Idea-batch dispatch ${regenDispatch} delivery pending:`, deliveryError);
     }
 
     res.json({
       status: 'queued',
-      message: 'Generating new solution ideas. Existing ideas will be preserved.',
+      operationId: regenDispatch,
+      batchOrdinal: nextRegenNumber,
+      focus: ideaFocus ?? 'auto',
+      deliveryPending,
+      message: 'Adding another idea batch. Existing candidates and the shortlist are unchanged.',
     });
   } catch (error) {
     if (error instanceof InsufficientCreditsError) {
       res.status(402).json({
-        error: 'Insufficient credits to regenerate ideas',
+        error: 'Insufficient credits to add another idea batch',
         code: 'INSUFFICIENT_CREDITS',
         balance: error.currentBalance,
         required: error.required,
       });
       return;
     }
+    if (error instanceof PriceChangedError) {
+      res.status(409).json({
+        error: 'Idea batch price changed; review the updated price before continuing',
+        code: 'PRICE_CHANGED',
+        expectedCost: error.expectedCost,
+        actualCost: error.actualCost,
+      });
+      return;
+    }
     if (error instanceof Error && error.message === 'CONFLICT') {
-      res.status(409).json({ error: 'Regeneration already in progress or completed' });
+      res.status(409).json({ error: 'Another idea batch is already in progress or was already admitted' });
       return;
     }
     if ((error as any)?.code === 'P2002') {
-      res.status(409).json({ error: 'Regeneration already in progress (duplicate charge)' });
+      res.status(409).json({ error: 'Another idea batch is already in progress (duplicate charge prevented)' });
       return;
     }
-    console.error('Failed to regenerate ideas:', error);
-    res.status(500).json({ error: 'Failed to regenerate ideas' });
+    if (error instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation error', details: error.errors });
+      return;
+    }
+    console.error('Failed to add another idea batch:', error);
+    res.status(500).json({ error: 'Failed to add another idea batch' });
   }
 });
 
@@ -1243,6 +1393,7 @@ jobsRouter.post('/:jobId/seed-idea', requireInternalAuth, validateJobId, async (
     let seedText: string;
     let painRef: string | undefined;
     let toolRef: string | undefined;
+    let structuredSynthesis: IdeaSynthesisPatch | undefined;
     if (input.kind === 'idea_synthesis') {
       const sourceMessage = await prisma.chatMessage.findFirst({
         where: {
@@ -1308,6 +1459,7 @@ jobsRouter.post('/:jobId/seed-idea', requireInternalAuth, validateJobId, async (
       }
 
       const proposal = parsedProposal.data;
+      structuredSynthesis = proposal;
       seedText = [
         proposal.proposedTitle,
         proposal.proposedBrief,
@@ -1368,7 +1520,9 @@ jobsRouter.post('/:jobId/seed-idea', requireInternalAuth, validateJobId, async (
           gateStage: 5, // G3/AWAITING_SELECTION sentinel — Phase A/seed chat only ever writes 5
           role: 'receipt',
           content: buildSeedReceiptContent('seed_submitted'),
-          patchJson: buildSeedEnvelope('seed_submitted', input.sourceMessageId) as unknown as object,
+          patchJson: buildSeedEnvelope(
+            'seed_submitted', input.sourceMessageId, undefined, undefined, dispatchId,
+          ) as unknown as object,
         },
         select: { id: true },
       });
@@ -1384,6 +1538,14 @@ jobsRouter.post('/:jobId/seed-idea', requireInternalAuth, validateJobId, async (
       await enqueueSeedIdeaJob(
         jobId, job.phase1CheckpointPath, job.niche,
         seedText, painRef, toolRef, seedDispatch,
+        structuredSynthesis?.evaluation
+          ? {
+              evaluation_id: seedDispatch,
+              dispatch_id: seedDispatch,
+              source_message_id: input.sourceMessageId,
+              proposal: structuredSynthesis,
+            }
+          : undefined,
       );
     } catch (enqueueError) {
       console.error(`[Jobs] Failed to enqueue seed idea for job ${jobId}, compensating:`, enqueueError);
@@ -1415,6 +1577,10 @@ jobsRouter.post('/:jobId/seed-idea', requireInternalAuth, validateJobId, async (
 
     res.json({
       status: 'queued',
+      evaluationId: seedDispatch,
+      dispatchId: seedDispatch,
+      sourceMessageId: input.sourceMessageId,
+      ...(structuredSynthesis ? { proposedTitle: structuredSynthesis.proposedTitle } : {}),
       message: input.kind === 'idea_synthesis'
         ? 'Evaluating the proposed candidate variant.'
         : 'Generating an idea from your own idea.',
@@ -1816,6 +1982,7 @@ jobsRouter.put('/:jobId/decision-profile', requireInternalAuth, requireDecisionT
       where: { id: jobId, userId, status: job.status },
       data: {
         selectionDecisionProfile: profile,
+        selectionDecisionProfileVersion: { increment: 1 },
         selectionFounderFit: Prisma.JsonNull,
       },
     });
@@ -1825,7 +1992,14 @@ jobsRouter.put('/:jobId/decision-profile', requireInternalAuth, requireDecisionT
       return;
     }
 
-    res.json({ selectionDecisionProfile: profile });
+    const updated = await prisma.job.findUnique({
+      where: { id: jobId },
+      select: { selectionDecisionProfileVersion: true },
+    });
+    res.json({
+      selectionDecisionProfile: profile,
+      selectionDecisionProfileVersion: updated?.selectionDecisionProfileVersion ?? 0,
+    });
   } catch (error) {
     if (error instanceof z.ZodError) {
       res.status(400).json({ error: 'Validation error', details: error.errors });
@@ -1871,6 +2045,12 @@ jobsRouter.put('/:jobId/selection-draft', requireInternalAuth, validateJobId, as
     }
 
     const ideas = ensureIdeaIdentities(jobId, job.solutionIdeas);
+    const ideaByKey = new Map(
+      ideas.map(idea => [
+        `${idea.idea_id}:${idea.idea_revision}`,
+        idea,
+      ]),
+    );
     const currentKeys = new Set(
       ideas.map(idea => `${idea.idea_id}:${idea.idea_revision}`),
     );
@@ -1898,7 +2078,13 @@ jobsRouter.put('/:jobId/selection-draft', requireInternalAuth, validateJobId, as
         selectionDraftVersion: input.expectedVersion,
       },
       data: {
-        selectionDraft: selectionDraftDocument(input.items) as Prisma.InputJsonValue,
+        selectionDraft: selectionDraftDocument(input.items.map(item => {
+          const idea = ideaByKey.get(`${item.ideaId}:${item.ideaRevision}`);
+          return {
+            ...item,
+            titleSnapshot: idea ? ideaName(idea) ?? 'Untitled candidate' : undefined,
+          };
+        })) as Prisma.InputJsonValue,
         selectionDraftVersion: { increment: 1 },
       },
     });
@@ -1969,11 +2155,16 @@ jobsRouter.get('/:jobId/solutions', requireInternalAuth, validateJobId, async (r
         selectedSolution: true,
         selectedSolutions: true,
         selectedSolutionIds: true,
+        selectedSolutionRefs: true,
         selectionRationale: true,
         selectionDecisionProfile: true,
+        selectionDecisionProfileVersion: true,
         selectionDraft: true,
         selectionDraftVersion: true,
         ideasRegeneratedAt: true,
+        regenerationCount: true,
+        ideaBatchCompletedCount: true,
+        activeDispatchId: true,
         status: true,
       },
     });
@@ -1990,20 +2181,50 @@ jobsRouter.get('/:jobId/solutions', requireInternalAuth, validateJobId, async (r
       : selectedSolutions?.map(
           name => solutionIdeas.find(solution => ideaName(solution) === name)?.idea_id,
         ).filter((id): id is string => !!id) ?? null;
+    const selectionDraft = currentSelectionDraft(
+      job.selectionDraft,
+      job.selectionDraftVersion,
+      solutionIdeas,
+    );
+    const draftRefsWithSnapshots = selectionDraft.items.flatMap((item) => {
+      const idea = solutionIdeas.find(candidate =>
+        candidate.idea_id === item.ideaId && candidate.idea_revision === item.ideaRevision
+      );
+      return idea ? [{ ...item, snapshotSha256: candidateSnapshotSha256(idea) }] : [];
+    });
+    const selectionFingerprint = draftRefsWithSnapshots.length === selectionDraft.items.length
+      ? exactSelectionFingerprint(draftRefsWithSnapshots)
+      : null;
+    const activeOperation = job.activeDispatchId
+      ? await prisma.jobDispatch.findUnique({
+          where: { id: job.activeDispatchId },
+          select: {
+            id: true,
+            kind: true,
+            state: true,
+            batchOrdinal: true,
+            createdAt: true,
+            refundedAmount: true,
+          },
+        })
+      : null;
 
     res.json({
       solutionIdeas,
       selectedSolution: job.selectedSolution,
       selectedSolutions,
       selectedSolutionIds,
+      selectedSolutionRefs: job.selectedSolutionRefs,
       selectionRationale: job.selectionRationale,
       selectionDecisionProfile: job.selectionDecisionProfile,
-      selectionDraft: currentSelectionDraft(
-        job.selectionDraft,
-        job.selectionDraftVersion,
-        solutionIdeas,
-      ),
-      canRegenerate: true,
+      selectionDecisionProfileVersion: job.selectionDecisionProfileVersion,
+      selectionDraft: {
+        ...selectionDraft,
+        selectionFingerprint,
+      },
+      canRegenerate: (job.ideaBatchCompletedCount ?? 0) < MAX_IDEA_BATCHES,
+      ideaBatchCompletedCount: job.ideaBatchCompletedCount,
+      activeOperation,
       status: job.status,
     });
   } catch (error) {

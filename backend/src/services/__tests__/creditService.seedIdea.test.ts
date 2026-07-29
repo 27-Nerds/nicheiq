@@ -217,7 +217,7 @@ describe('chargeForSeedIdeaInTx — numbered seed charges', () => {
     const { chargeForSeedIdeaInTx, chargeForRegenerationInTx } = await import('../creditService.js');
 
     await chargeForSeedIdeaInTx(tx, USER_ID, JOB_ID, 1, 'test niche', 2);
-    await chargeForRegenerationInTx(tx, USER_ID, JOB_ID, 1, 'test niche');
+    await chargeForRegenerationInTx(tx, USER_ID, JOB_ID, 1, 'test niche', 2);
 
     const stages = mockCreditTransactionCreate.mock.calls.map((c) => c[0].data.stage);
     expect(stages).toEqual(['seed_idea_1', 'regenerate_ideas_1']);

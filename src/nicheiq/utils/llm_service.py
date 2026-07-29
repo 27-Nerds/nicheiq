@@ -10,6 +10,7 @@ from loguru import logger
 from pydantic import BaseModel
 
 from ..config.settings import settings
+from .crew_llm_hooks import register_google_turn_hook
 
 T = TypeVar('T', bound=BaseModel)
 
@@ -147,7 +148,27 @@ _OPENROUTER_EFFORT_ENABLE = {
 }
 
 
-def openrouter_reasoning_body(reasoning_effort: str | None) -> dict:
+# Model prefixes whose OpenRouter endpoints REJECT an explicit reasoning-disable with
+# HTTP 400 "Reasoning is mandatory for this endpoint and cannot be disabled" (probed
+# 2026-07-27). For these the reasoning param is OMITTED instead: the endpoint's own
+# default applies, and it reports reasoning_tokens=0, so omitting costs no output
+# budget. Everything else keeps the explicit disable below.
+_REASONING_MANDATORY_PREFIXES = (
+    "google/gemini-3.1-pro",     # -preview, -preview-customtools
+    "google/gemini-3.5-flash",   # -lite too
+    "google/gemini-3.6-flash",
+)
+
+
+def _rejects_reasoning_disable(model: str) -> bool:
+    """True when ``model``'s OpenRouter endpoint 400s on an explicit reasoning-disable."""
+    m = (model or "").lower()
+    if m.startswith("openrouter/"):
+        m = m[len("openrouter/"):]
+    return m.startswith(_REASONING_MANDATORY_PREFIXES)
+
+
+def openrouter_reasoning_body(reasoning_effort: str | None, model: str = "") -> dict:
     """Build OpenRouter's unified ``reasoning`` request param (passed via extra_body).
 
     Policy: on OpenRouter, reasoning is **OFF by default** and only turned on when a
@@ -163,13 +184,19 @@ def openrouter_reasoning_body(reasoning_effort: str | None) -> dict:
         models that don't support reasoning, so the disable is safe on plain models
         (gemma, DeepSeek V4 Flash non-think, ...).
 
+    Exception: a few endpoints (see ``_REASONING_MANDATORY_PREFIXES``) reject the
+    disable with a 400 instead of ignoring it, so for those the param is omitted and
+    an EMPTY dict is returned — pass ``model`` to get that handling.
+
     This both **supports reasoning models** (set an effort to turn it on) and gives
-    an explicit **ability to disable** reasoning. Always returns a dict to attach as
-    ``extra_body`` on OpenRouter calls.
+    an explicit **ability to disable** reasoning. Returns a dict to attach as
+    ``extra_body`` on OpenRouter calls (empty = attach nothing).
     """
     mapped = _OPENROUTER_EFFORT_ENABLE.get((reasoning_effort or "").lower())
     if mapped:
         return {"reasoning": {"effort": mapped}}
+    if _rejects_reasoning_disable(model):
+        return {}
     return {"reasoning": {"enabled": False}}
 
 
@@ -369,7 +396,7 @@ def build_llm_kwargs(
         headers = openrouter_headers()
         if headers:
             kwargs["default_headers"] = headers
-        reasoning_body = openrouter_reasoning_body(reasoning_effort)
+        reasoning_body = openrouter_reasoning_body(reasoning_effort, model)
         if reasoning_body:
             kwargs["extra_body"] = reasoning_body
 
@@ -536,6 +563,11 @@ def build_crew_llm(
     explicit provider='openai' + base_url so CrewAI preserves the OpenRouter
     endpoint (ChatOpenAI's base_url is dropped by CrewAI's create_llm()).
     """
+    # Google models 400 on any request ending in an assistant turn, which CrewAI's ReAct
+    # loop emits on every iteration after the first. Registration is global + idempotent
+    # and must land before crew kickoff — this is the one path every crew agent takes.
+    register_google_turn_hook()
+
     if is_openrouter_model(model):
         from crewai.llm import LLM as CrewAILLM
 
@@ -560,7 +592,7 @@ def build_crew_llm(
         # reasoning-capable OR model honors the tier's effort while plain workhorse
         # models are unaffected. extra_body reaches the completion call via CrewAI's
         # additional_params (same mechanism as the Kimi `extra_body` path).
-        reasoning_body = openrouter_reasoning_body(reasoning_effort)
+        reasoning_body = openrouter_reasoning_body(reasoning_effort, clean_model)
         if reasoning_body:
             or_kwargs["extra_body"] = reasoning_body
         # Always bound max_tokens so a CrewAI agent can't inherit OpenRouter's 65536
@@ -785,7 +817,7 @@ class LLMService:
         # extraction/classification/mapping tiers that use it. A tier may still pass an effort
         # (e.g. thread_validation hardcodes 'minimal' for GPT-5-nano) — force it OFF here.
         effective_effort = None if use_json_schema else reasoning_effort
-        reasoning_body = openrouter_reasoning_body(effective_effort)
+        reasoning_body = openrouter_reasoning_body(effective_effort, clean_model)
         reasoning_on = "effort" in reasoning_body.get("reasoning", {})
 
         create_kwargs: dict = {
@@ -1088,7 +1120,7 @@ class LLMService:
                 headers = openrouter_headers()
                 if headers:
                     llm_kwargs["default_headers"] = headers
-                reasoning_body = openrouter_reasoning_body(reasoning_effort)
+                reasoning_body = openrouter_reasoning_body(reasoning_effort, clean_model)
                 if reasoning_body:
                     llm_kwargs["extra_body"] = reasoning_body
             if is_reasoning_model(clean_model):
@@ -1212,7 +1244,7 @@ class LLMService:
                 headers = openrouter_headers()
                 if headers:
                     llm_kwargs["default_headers"] = headers
-                reasoning_body = openrouter_reasoning_body(reasoning_effort)
+                reasoning_body = openrouter_reasoning_body(reasoning_effort, clean_model)
                 reasoning_on = "effort" in reasoning_body.get("reasoning", {})
                 if reasoning_body:
                     llm_kwargs["extra_body"] = reasoning_body

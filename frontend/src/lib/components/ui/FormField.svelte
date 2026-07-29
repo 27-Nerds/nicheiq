@@ -84,6 +84,7 @@
   {#if kind === "textarea"}
     <textarea
       {id}
+      name={id}
       bind:value
       {placeholder}
       {required}
@@ -103,6 +104,7 @@
     <div class="field-select-wrap">
       <select
         {id}
+        name={id}
         bind:value
         {required}
         {disabled}
@@ -124,6 +126,7 @@
     <input
       {type}
       {id}
+      name={id}
       bind:value
       {placeholder}
       {required}

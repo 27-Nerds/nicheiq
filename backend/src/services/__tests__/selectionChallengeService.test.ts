@@ -215,6 +215,43 @@ describe('selectionChallengeService', () => {
     expect(artifact.overall).toBe('insufficient_evidence');
   });
 
+  it('reports an evidence gap, not a weakening, when most questions went unanswered', async () => {
+    // Observed on the auto-repair run: ['insufficient','insufficient','mixed'] rendered
+    // "SAVED EVIDENCE RAISES CONCERNS" above two cells both saying no perspective raised one.
+    const questions = ['pain_is_observed', 'urgency_is_behavioral', 'buyer_will_pay'] as const;
+    mockChatComplete
+      .mockResolvedValueOnce(response(questions, ['insufficient', 'insufficient', 'supports']))
+      .mockResolvedValueOnce(response(questions, ['insufficient', 'insufficient', 'contradicts']));
+
+    const artifact = await generateSelectionChallenge({
+      lens: 'demand',
+      idea,
+      previewReport,
+      discoveryData,
+    });
+
+    expect(artifact.questions.map((question) => question.consensus))
+      .toEqual(['insufficient', 'insufficient', 'disputed']);
+    // 'disputed' outranks the gap rule — a real disagreement is a real signal.
+    expect(artifact.overall).toBe('disputed');
+  });
+
+  it('downgrades a half-unanswered set to insufficient rather than weakened', async () => {
+    const questions = ['pain_is_observed', 'urgency_is_behavioral', 'buyer_will_pay'] as const;
+    mockChatComplete
+      .mockResolvedValueOnce(response(questions, ['insufficient', 'insufficient', 'supports']))
+      .mockResolvedValueOnce(response(questions, ['insufficient', 'insufficient', 'mixed']));
+
+    const artifact = await generateSelectionChallenge({
+      lens: 'demand',
+      idea,
+      previewReport,
+      discoveryData,
+    });
+
+    expect(artifact.overall).toBe('insufficient_evidence');
+  });
+
   it('keeps valid evidence keys while dropping only hallucinated ones', async () => {
     const questions = ['pain_is_observed', 'urgency_is_behavioral', 'buyer_will_pay'] as const;
     mockChatComplete

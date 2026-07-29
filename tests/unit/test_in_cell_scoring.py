@@ -388,6 +388,40 @@ def test_finalize_dev_time_sets_grounded_estimate(monkeypatch):
     assert idea.estimated_development_time == "6-10 weeks"   # grounded range replaces the point guess
 
 
+def test_finalize_dev_time_truncates_rationale_at_word_boundary(monkeypatch):
+    from nicheiq.crews.unified_solution_crew import _DevTimeEstimate
+
+    rationale = ("binding component needs careful integration " * 8).strip()
+    monkeypatch.setattr(
+        usc.LLMService,
+        "invoke_structured",
+        lambda **kw: (
+            _DevTimeEstimate(rationale=rationale, estimate="6-10 weeks"),
+            {"u": 1},
+        ),
+    )
+    monkeypatch.setattr(
+        UnifiedSolutionCrew,
+        "_run_parallel",
+        lambda self, fn, jobs, *a, **k: [fn(**j) for j in jobs],
+    )
+    monkeypatch.setattr(
+        UnifiedSolutionCrew,
+        "_record_divergent_usage",
+        lambda self, u: None,
+        raising=False,
+    )
+    crew = _crew()
+    crew.search_tool = None
+    idea = _idea("DT boundary", core_features=["a"])
+
+    crew._finalize_dev_time([idea])
+
+    assert len(idea.dev_time_rationale) <= 200
+    assert idea.dev_time_rationale.endswith("…")
+    assert not idea.dev_time_rationale[:-1].endswith("integr")
+
+
 def test_finalize_dev_time_prompt_has_calibration_bands(monkeypatch):
     # run-2 review: estimates ran ~4x over for standard documented-API ideas (4-6 months for a
     # pip-audit + public API + arithmetic build). The bands tie the estimate to observable

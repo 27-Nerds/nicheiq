@@ -34,7 +34,7 @@ export const REPORT_SECTIONS: ReportSectionInfo[] = [
   { id: 'trends', label: 'Trends', icon: TrendingUp },
   { id: 'competitors', label: 'Competitors', icon: Swords },
   // PHASE 3: EXECUTE (How to launch & build)
-  { id: 'audience', label: 'Audience', icon: UserCheck },
+  { id: 'audience-intelligence', label: 'Audience', icon: UserCheck },
   { id: 'content-insights', label: 'Content', icon: MessageSquare },
   { id: 'gtm-playbook', label: 'GTM', icon: Briefcase },
   { id: 'seo', label: 'SEO', icon: Search },

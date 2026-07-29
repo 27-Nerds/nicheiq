@@ -225,12 +225,6 @@
 		box-shadow: var(--shadow-lg);
 	}
 
-	:global(.job-page-shell.has-sticky-bar)
-		.workspace-overlay--docked
-		.workspace-overlay__frame {
-		bottom: calc(max(var(--space-4), env(safe-area-inset-bottom)) + var(--space-20));
-	}
-
 	@keyframes workspace-scrim-in {
 		from {
 			opacity: 0;

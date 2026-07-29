@@ -1,6 +1,12 @@
 <script lang="ts">
   import { tick } from "svelte";
-  import { ArrowRight, Loader2, RefreshCw } from "lucide-svelte";
+  import { ArrowRight, Clock, Loader2, RefreshCw } from "lucide-svelte";
+  import {
+    elapsedClock,
+    evaluationProgress,
+    phaseNote,
+    type EvaluationOperation,
+  } from "$lib/selection/evaluationProgress.svelte";
   import {
     ApiError,
     archiveSelectionConceptSet,
@@ -22,6 +28,7 @@
     SelectionConceptOption,
     SelectionConceptPurpose,
     SelectionConceptSet,
+    ConceptOptionOutcome,
   } from "$lib/types/selectionConceptSet";
   import {
     BRANCH_PANEL_EYEBROW,
@@ -50,7 +57,12 @@
      *  PRICE_CHANGED message after the price re-fetch). Shown inline here so a
      *  failed evaluation is never explained only behind the overlay. */
     evaluateError?: string;
+    /** The job's active dispatch, so the post-submit wait can tell "queued behind
+     *  other work" from "a worker is scoring it" instead of showing one dead state. */
+    operation?: EvaluationOperation | null;
     onEvaluate: (patch: IdeaSynthesisPatch, sourceMessageId: string) => Promise<boolean>;
+    /** Server-side set list changed (discard); host should refresh its loaded data. */
+    onChanged?: () => void;
     onClose: () => void;
   }
 
@@ -63,9 +75,23 @@
     seedCost = null,
     disabled = false,
     evaluateError = "",
+    operation = null,
     onEvaluate,
+    onChanged,
     onClose,
   }: Props = $props();
+
+  /** The option this session submitted and is now waiting on. Only THIS option swaps
+   *  its gate for the live wait — options submitted in an earlier session keep the
+   *  plain "Evaluation submitted" tag, since their wait is not the one running now. */
+  let waitingOptionId = $state<string | null>(null);
+  const progress = $derived(evaluationProgress(operation, elapsedClock.now));
+
+  $effect(() => {
+    if (!waitingOptionId) return;
+    elapsedClock.start();
+    return () => elapsedClock.stop();
+  });
 
   let purpose = $state<SelectionConceptPurpose>("diverge");
   let targetTradeoff = $state("");
@@ -79,15 +105,32 @@
   let loadFailed = $state(false);
   let loadedKey = $state("");
   let evaluatingOptionId = $state<string | null>(null);
-  /** Options that entered paid evaluation this session — an optimistic
-   *  overlay for the just-evaluated case. The durable record is the set
-   *  payload's server-derived `evaluatedOptionIds`. */
-  let evaluatedOptionIds = $state<Set<string>>(new Set());
+  /** Options whose paid evaluation request was accepted in this mounted session.
+   * This is deliberately only "submitted": completion comes from the durable
+   * settlement activity on the owning selection page. */
+  let submittedOptionIds = $state<Set<string>>(new Set());
   let archiving = $state(false);
-  /** Server-persisted evaluated flags, merged with the session overlay. */
-  const persistedEvaluatedIds = $derived(new Set(conceptSet?.evaluatedOptionIds ?? []));
-  function isEvaluated(optionId: string): boolean {
-    return persistedEvaluatedIds.has(optionId) || evaluatedOptionIds.has(optionId);
+  /** Discard failure, rendered beside the discard control rather than only in the
+   *  far-below footer feedback. */
+  let discardError = $state("");
+  const persistedSubmittedIds = $derived(new Set(conceptSet?.evaluatedOptionIds ?? []));
+  function isSubmitted(optionId: string): boolean {
+    return persistedSubmittedIds.has(optionId) || submittedOptionIds.has(optionId);
+  }
+  /** The option's REAL state, not just "was sent". Reopening the Forge used to show a
+   *  long-settled direction as "Evaluation submitted" forever. Falls back to pending
+   *  only when the outcome map is absent (older response) or the submit is this
+   *  session's and no receipt has been read back yet. */
+  function outcomeOf(optionId: string): ConceptOptionOutcome | null {
+    return conceptSet?.optionOutcomes?.[optionId]
+      ?? (isSubmitted(optionId) ? "pending" : null);
+  }
+  function outcomeLabel(outcome: ConceptOptionOutcome): string {
+    if (outcome === "pending") return "Evaluation submitted";
+    if (outcome === "accepted") return "Added to candidates";
+    if (outcome === "demoted") return "Did not qualify";
+    if (outcome === "refunded") return "Refunded";
+    return "Evaluation failed";
   }
   let actionMessage = $state("");
   /** Announces generation completion to assistive tech (persistent region;
@@ -202,7 +245,11 @@
     if (!key || key === loadedKey) return;
     loadedKey = key;
     conceptSet = null;
-    evaluatedOptionIds = new Set();
+    submittedOptionIds = new Set();
+    // Belongs to the previous parent combo. Left set, it also kept the elapsed clock
+    // ticking for an evaluation the panel is no longer showing.
+    waitingOptionId = null;
+    syncedOutcomeSignature = "";
     actionMessage = "";
     error = "";
     loadFailed = false;
@@ -238,6 +285,43 @@
       .join("|");
     return !set.stale && refs === parentKey;
   }
+
+  /** Write-only dedupe guard; a `$state` here would re-trigger its own effect. */
+  let syncedOutcomeSignature = "";
+
+  /**
+   * Pick up settled outcomes while the panel stays OPEN.
+   *
+   * The loader effect above is keyed on job+parents and returns early when the key is
+   * unchanged, so it ignores `initialSets` updates for the whole time the panel is open.
+   * But outcomes settle asynchronously: the evaluation poll sees the worker finish and
+   * calls invalidateAll(), which delivers a fresh set as a prop. Without this sync the
+   * card kept its "pending" outcome and rendered the live wait ("Waiting for a free
+   * worker") indefinitely after the evaluation had already been demoted.
+   *
+   * Only the server-owned result fields are copied — purpose, tension note and local
+   * submission state stay as the owner left them.
+   */
+  $effect(() => {
+    const sets = initialSets;
+    const current = conceptSet;
+    if (!sets || !current) return;
+    const fresh = sets.find((candidate) => candidate.id === current.id);
+    if (!fresh) return;
+    const signature = JSON.stringify([
+      fresh.evaluatedOptionIds ?? null,
+      fresh.optionOutcomes ?? null,
+      fresh.stale,
+    ]);
+    if (signature === syncedOutcomeSignature) return;
+    syncedOutcomeSignature = signature;
+    conceptSet = {
+      ...current,
+      evaluatedOptionIds: fresh.evaluatedOptionIds,
+      optionOutcomes: fresh.optionOutcomes,
+      stale: fresh.stale,
+    };
+  });
 
   function restoreSavedSet(sets: SelectionConceptSet[]): void {
     conceptSet = sets.find(setMatchesParents) ?? null;
@@ -301,7 +385,7 @@
         ...(targetTradeoff.trim() ? { targetTradeoff: targetTradeoff.trim() } : {}),
       });
       conceptSet = response.set;
-      evaluatedOptionIds = new Set();
+      submittedOptionIds = new Set();
       // The note is now part of the persisted set: no longer at risk on close.
       tradeoffBaseline = targetTradeoff;
       const optionCount = response.set.artifact.options.length;
@@ -319,7 +403,7 @@
 
   async function resetQuestion() {
     conceptSet = null;
-    evaluatedOptionIds = new Set();
+    submittedOptionIds = new Set();
     actionMessage = "";
     error = "";
     await tick();
@@ -332,12 +416,19 @@
     if (!conceptSet || archiving || evaluatingOptionId || disabled) return;
     archiving = true;
     error = "";
+    discardError = "";
     try {
       await archiveSelectionConceptSet(jobId, conceptSet.id);
       await resetQuestion();
       actionMessage = "Set discarded. Ideas you already evaluated keep their provenance.";
+      // The host still holds the archived set in its loaded data; without this the
+      // next read serves a set the server no longer lists.
+      onChanged?.();
     } catch (cause) {
-      error = forgeError(cause, "Could not discard this set. Nothing changed.");
+      // Beside the control, NOT only in the shared footer feedback: the options list
+      // runs for thousands of pixels, so a footer-only message left a failed discard
+      // looking like the button did nothing at all.
+      discardError = forgeError(cause, "Could not discard this set. Nothing changed.");
     } finally {
       archiving = false;
     }
@@ -357,8 +448,11 @@
       );
       const started = await onEvaluate(prepared.patch, prepared.sourceMessageId);
       if (started) {
-        evaluatedOptionIds = new Set([...evaluatedOptionIds, option.optionId]);
-        actionMessage = `Evaluation started for “${option.title}”. The source candidates and other directions remain unchanged.`;
+        submittedOptionIds = new Set([...submittedOptionIds, option.optionId]);
+        waitingOptionId = option.optionId;
+        // The wait block below now carries this; a duplicate line under it would just
+        // restate what the status already says.
+        actionMessage = "";
       } else if (evaluateError) {
         // The owner page already handled the failure (409 PRICE_CHANGED
         // re-fetches the price into `seedCost`; 402 opens the top-up modal).
@@ -507,36 +601,41 @@
       <p class="slow-note" role="status">{generateSlow ? STILL_GENERATING_NOTE : ""}</p>
     </section>
   {:else}
-    {@const unevaluatedCount = conceptSet.artifact.options
-      .filter((option) => !isEvaluated(option.optionId)).length}
     <section
       class="option-section"
       aria-labelledby="forge-options-title"
       data-annotation-anchor="selection:concept-forge:options"
     >
       <div class="option-head">
-        <div>
-          <p class="section-label">{countWord(unevaluatedCount)} unevaluated {unevaluatedCount === 1 ? "option" : "options"}</p>
+        <div class="option-head-copy">
+          <p class="section-label">{countWord(conceptSet.artifact.options.length)} proposed directions</p>
           <h3 id="forge-options-title" tabindex="-1" bind:this={optionsHeadingEl}>Compare what changes and what becomes newly uncertain</h3>
           {#if seedCost != null}
             <p class="cost-hint">Evaluating a direction costs {costLine(seedCost)}.</p>
           {/if}
         </div>
         <div class="head-actions">
-          <div class="discard-gate">
-            <ConfirmGate
-              variant="free"
-              label="Discard this set"
-              confirmLabel="Discard this set"
-              consequence="SET IS ARCHIVED · EVALUATED IDEAS KEEP THEIR PROVENANCE"
-              busy={archiving}
-              disabled={disabled || evaluatingOptionId != null}
-              onConfirm={() => void discardSet()}
-            />
+          <div class="head-action-row">
+            <div class="discard-gate">
+              <ConfirmGate
+                variant="free"
+                label="Discard this set"
+                confirmLabel="Discard this set"
+                consequence="GONE FOR GOOD · EVALUATED IDEAS STAY IN YOUR POOL"
+                busy={archiving}
+                disabled={disabled || evaluatingOptionId != null}
+                onConfirm={() => void discardSet()}
+              />
+            </div>
+            <button type="button" class="change-brief" disabled={evaluatingOptionId != null || archiving} onclick={() => void resetQuestion()}>
+              <RefreshCw aria-hidden="true" /> Change the question
+            </button>
           </div>
-          <button type="button" class="change-brief" disabled={evaluatingOptionId != null || archiving} onclick={() => void resetQuestion()}>
-            <RefreshCw aria-hidden="true" /> Change the question
-          </button>
+          {#if discardError}
+            <p class="discard-error" role="alert">
+              {discardError}<span>Nothing was discarded.</span>
+            </p>
+          {/if}
         </div>
       </div>
 
@@ -549,11 +648,12 @@
       <div class="option-grid">
         {#each conceptSet.artifact.options as option (option.optionId)}
           {@const testedAssumption = option.assumptions.find((assumption) => assumption.assumptionId === option.suggestedTest.assumptionId)}
-          {@const optionEvaluated = isEvaluated(option.optionId)}
+          {@const optionOutcome = outcomeOf(option.optionId)}
+          {@const optionSubmitted = optionOutcome !== null}
           <article class="option-card">
             <div class="option-kicker">
               <strong>{operationLabel[option.operation]}</strong>
-              {#if optionEvaluated}<span class="evaluated-tag">Evaluated</span>{/if}
+              {#if optionOutcome}<span class="submitted-tag" class:settled={optionOutcome !== "pending"}>{outcomeLabel(optionOutcome)}</span>{/if}
             </div>
             <h4>{option.title}</h4>
             <p class="option-brief">{option.brief}</p>
@@ -608,17 +708,46 @@
               </dl>
             </div>
 
-            <div class="evaluate-gate">
-              <ConfirmGate
-                variant="paid"
-                label={optionEvaluated ? "Evaluated · run again" : "Evaluate this option"}
-                confirmLabel="Confirm evaluation"
-                costLine={costLine(seedCost)}
-                busy={evaluatingOptionId === option.optionId}
-                disabled={disabled || evaluatingOptionId != null || seedCost == null}
-                onConfirm={() => void evaluate(option)}
-              />
-            </div>
+            <!-- Once you have paid, your work in the Forge is done. Replacing the gate
+                 with the live wait keeps the answer to "what is happening" where you
+                 are standing, instead of only on the strip this overlay covers. -->
+            {#if optionOutcome === "pending" && waitingOptionId === option.optionId}
+              <div class="evaluate-wait" class:overdue={progress.phase === "overdue"} role="status">
+                <div class="wait-line">
+                  {#if progress.phase === "queued"}
+                    <Clock aria-hidden="true" />
+                  {:else}
+                    <Loader2 class="spin" aria-hidden="true" />
+                  {/if}
+                  <strong>
+                    {progress.phase === "queued"
+                      ? "Waiting for a free worker"
+                      : progress.phase === "running"
+                        ? "Scoring this direction"
+                        : "Still scoring"}
+                  </strong>
+                  <span class="wait-elapsed" aria-label={`Elapsed ${progress.elapsedLabel}`}>
+                    {progress.elapsedLabel}
+                  </span>
+                </div>
+                <p>{phaseNote(progress.phase)}</p>
+                <button type="button" class="wait-handoff" onclick={onClose}>
+                  Close and watch progress
+                </button>
+              </div>
+            {:else}
+              <div class="evaluate-gate">
+                <ConfirmGate
+                  variant="paid"
+                  label={optionOutcome ? outcomeLabel(optionOutcome) : "Evaluate this option"}
+                  confirmLabel="Confirm evaluation"
+                  costLine={costLine(seedCost)}
+                  busy={evaluatingOptionId === option.optionId}
+                  disabled={disabled || evaluatingOptionId != null || seedCost == null || optionSubmitted}
+                  onConfirm={() => void evaluate(option)}
+                />
+              </div>
+            {/if}
           </article>
         {/each}
       </div>
@@ -793,8 +922,60 @@
   .cancel-btn:disabled { border-color: var(--color-border-emphasis); background: var(--color-bg-hover); color: var(--color-text-muted); cursor: not-allowed; }
 
   /* ── Options view ── */
-  .option-head { display: flex; align-items: end; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-4); }
-  .head-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-4); }
+  /* Grid, not flex: the error message is a second ROW in the actions column, and
+     `grid-column` on it was silently inert while this was a flex row — which is how a
+     discard failure ended up floating in a third column beside the buttons. */
+  .option-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: var(--space-2) var(--space-6);
+    margin-bottom: var(--space-4);
+  }
+  /* Bounded so the gap between the title and the actions is a measured column, not
+     however much empty space the overlay happens to be wide. */
+  .option-head-copy { max-width: 46ch; }
+  .head-actions { display: grid; justify-items: end; gap: var(--space-2); }
+  .head-action-row { display: flex; align-items: center; gap: var(--space-3); }
+  /* Hairline between two peer utilities: they are siblings, not a primary and a
+     secondary, and the rule says so without adding a second icon. */
+  .head-action-row > * + * {
+    padding-left: var(--space-3);
+    border-left: 1px solid var(--color-border);
+  }
+  .discard-error {
+    max-width: 34ch;
+    margin: 0;
+    color: var(--color-error-text);
+    font-size: var(--text-sm);
+    line-height: var(--leading-normal);
+    text-align: left;
+    text-wrap: pretty;
+  }
+  /* The reassurance is the part that matters most on a failed destructive action, but
+     it is not the headline — own line, quieter. */
+  .discard-error span { display: block; color: var(--color-text-secondary); }
+
+  /* Armed state is a right-anchored popover, not an inline panel. Swapping a one-line
+     trigger for a full confirm panel grew the header row and re-wrapped the heading
+     underneath it — the page moved while the user was deciding. Taking it out of flow
+     keeps the header still and ties the choice to the control that raised it. */
+  .discard-gate { position: relative; }
+  .discard-gate :global(.confirm-gate) {
+    position: absolute;
+    top: calc(100% + var(--space-2));
+    right: 0;
+    z-index: 3;
+    width: max-content;
+    max-width: min(30rem, 78vw);
+    padding: var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    /* Opaque: it sits over the option cards below. */
+    background: var(--color-bg-surface);
+    box-shadow: var(--shadow-md);
+  }
+
   /* Quiet text-action trigger for the shared gate: the discard is deliberate
      but secondary, so it reads like "Change the question", not like a button. */
   .discard-gate :global(.gate-trigger) {
@@ -808,7 +989,12 @@
     font-size: var(--text-sm);
     font-weight: 700;
   }
-  .discard-gate :global(.gate-trigger:hover:not(:disabled)) { color: var(--color-text-primary); }
+  /* Differentiated by MEANING, not a second icon: the destructive one warms toward the
+     error colour as you reach for it; the constructive one keeps its refresh glyph. */
+  .discard-gate :global(.gate-trigger:hover:not(:disabled)),
+  .discard-gate :global(.gate-trigger:focus-visible:not(:disabled)) {
+    color: var(--color-error-text);
+  }
   .discard-gate :global(.gate-trigger:disabled) { background: transparent; border: 0; color: var(--color-text-muted); }
   .change-brief {
     display: inline-flex;
@@ -845,8 +1031,10 @@
   .option-card { display: flex; flex-direction: column; min-width: 0; padding: var(--space-4); border-right: 1px solid var(--color-border); background: var(--color-bg-surface); }
   .option-card:last-child { border-right: 0; }
   .option-kicker { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); color: var(--color-text-muted); font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 700; letter-spacing: var(--tracking-wide); text-transform: uppercase; }
-  /* Session status tag: success family (never orange) for a completed action. */
-  .evaluated-tag { color: var(--color-success-text); font-family: var(--font-mono); font-size: var(--text-11); font-weight: 700; letter-spacing: var(--tracking-wide); text-transform: uppercase; }
+  /* A settled outcome is history, not a live state: drop it to the quiet meta colour
+     so it stops competing with the option's own title. */
+  .submitted-tag.settled { color: var(--color-text-muted); }
+  .submitted-tag { color: var(--color-accent-dark); font-family: var(--font-mono); font-size: var(--text-11); font-weight: 700; letter-spacing: var(--tracking-wide); text-transform: uppercase; }
   .option-card h4 { margin-top: var(--space-3); font-size: var(--text-md); line-height: var(--leading-snug); }
   .option-brief { min-height: 4.5rem; margin-top: var(--space-2); color: var(--color-text-secondary); font-size: var(--text-sm); line-height: var(--leading-normal); }
   .axis-list { margin: var(--space-3) 0 0; padding: var(--space-3) 0; border-top: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); }
@@ -916,9 +1104,74 @@
     .option-card:last-child { border-bottom: 0; }
     .option-brief { min-height: 0; }
   }
+  .evaluate-wait {
+    display: grid;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-subtle, var(--color-bg-surface));
+  }
+  .wait-line {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .wait-line :global(svg) {
+    width: 0.95rem;
+    height: 0.95rem;
+    color: var(--color-info-dark);
+  }
+  .wait-line strong {
+    color: var(--color-text-primary);
+    font-size: var(--text-sm);
+  }
+  .wait-elapsed {
+    margin-left: auto;
+    color: var(--color-text-muted);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-variant-numeric: tabular-nums;
+  }
+  .evaluate-wait p {
+    max-width: 60ch;
+    margin: 0;
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+    line-height: var(--leading-normal);
+    text-wrap: pretty;
+  }
+  .wait-handoff {
+    justify-self: start;
+    min-height: 2.25rem;
+    padding: 0 var(--space-4);
+    border: 1px solid var(--color-border-strong, var(--color-border));
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-surface);
+    color: var(--color-text-primary);
+    font-family: inherit;
+    font-size: var(--text-sm);
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .wait-handoff:hover { border-color: var(--color-input-border-hover); background: var(--color-bg-surface); }
+  .wait-handoff:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+  /* Severity amber on the icon and edge only — overdue is not failure. */
+  .evaluate-wait.overdue { border-color: var(--color-warning-text); }
+  .evaluate-wait.overdue .wait-line :global(svg) { color: var(--color-warning-text); }
+
   @media (max-width: 640px) {
     .brief-head-row { flex-direction: column; }
-    .option-head { align-items: stretch; flex-direction: column; }
+    .option-head { grid-template-columns: minmax(0, 1fr); align-items: stretch; }
+    .option-head-copy { max-width: none; }
+    .head-actions { justify-items: start; }
+    /* No room to hang a popover off the right edge; let it sit in flow. */
+    .discard-gate :global(.confirm-gate) {
+      position: static;
+      max-width: none;
+      box-shadow: none;
+    }
+    .wait-handoff { justify-self: stretch; }
     .evaluate-gate :global(.confirm-gate) {
       align-items: stretch;
       flex-direction: column;

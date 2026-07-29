@@ -892,7 +892,7 @@
   .add-action :global(svg), .test-action :global(svg), .text-action :global(svg) { width: var(--text-base); height: var(--text-base); }
   .add-action:disabled { background: var(--color-bg-hover); color: var(--color-text-muted); cursor: not-allowed; }
   .add-action { min-height: var(--space-8); padding: var(--space-1-5) var(--space-3); border: 1px solid var(--color-border-accent); border-radius: var(--radius-md); background: var(--color-bg-surface); }
-  .add-action:hover:not(:disabled) { border-color: var(--color-accent); background: var(--color-accent-subtle); }
+  .add-action:hover:not(:disabled) { border-color: var(--color-input-border-hover); background: var(--color-bg-surface); }
   .idea-empty { max-width: 65ch; padding: var(--space-4) 0 var(--space-2); color: var(--color-text-secondary); font-size: var(--text-base); line-height: var(--leading-normal); text-wrap: pretty; }
   .assumption-list { display: grid; gap: var(--space-3); }
   .assumption { padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-bg-elevated); }
@@ -941,8 +941,8 @@
   .reload-action { display: inline-flex; align-items: center; flex: 0 0 auto; min-height: var(--space-8); border: 0; background: transparent; color: inherit; font: inherit; font-weight: 700; cursor: pointer; text-decoration: underline; text-underline-offset: var(--space-1); transition: opacity var(--duration-fast) var(--ease-default); }
   .reload-action:hover { opacity: 0.75; }
   .reload-action:active { transform: scale(0.98); }
-  .cancel-btn { display: inline-flex; align-items: center; justify-content: center; min-height: var(--space-10); padding: var(--space-2) var(--space-4); border: 1px solid var(--color-input-border); border-radius: var(--radius-md); background: transparent; color: var(--color-text-secondary); font-size: var(--text-13); font-weight: 700; white-space: nowrap; cursor: pointer; transition: transform var(--duration-fast) var(--ease-default), border-color var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default); }
-  .cancel-btn:hover:not(:disabled) { transform: translateY(-1px); border-color: var(--color-text-secondary); color: var(--color-text-primary); }
+  .cancel-btn { display: inline-flex; align-items: center; justify-content: center; min-height: var(--space-10); padding: var(--space-2) var(--space-4); border: 1px solid var(--color-input-border); border-radius: var(--radius-md); background: transparent; color: var(--color-text-secondary); font-size: var(--text-13); font-weight: 700; white-space: nowrap; cursor: pointer; transition: border-color var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default); }
+  .cancel-btn:hover:not(:disabled) { border-color: var(--color-text-secondary); color: var(--color-text-primary); }
   .cancel-btn:active:not(:disabled) { transform: scale(0.98); }
   .cancel-btn:disabled { background: var(--color-bg-hover); color: var(--color-text-muted); border-color: var(--color-border); cursor: wait; }
   .cancel-btn:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
@@ -968,7 +968,6 @@
     .test-action:active,
     .text-action:active:not(:disabled),
     .reload-action:active,
-    .cancel-btn:hover:not(:disabled),
     .cancel-btn:active:not(:disabled) {
       transform: none;
     }

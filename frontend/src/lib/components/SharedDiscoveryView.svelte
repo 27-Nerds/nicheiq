@@ -421,7 +421,7 @@
     </div>
   {/if}
 
-  <!-- Visitor CTA (replaces owner's DeepResearchCTABlock) -->
+  <!-- Visitor CTA: the shared/read-only counterpart to the owner's deep-research upsell -->
   <SharedViewEndCTA variant="discovery" shareToken={shareToken} />
 </div>
 </AnnotationProvider>

@@ -123,11 +123,12 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     );
   }
 
-  // Every status that can display Discovery context requests each artifact once.
+  // Every status that displays Discovery context requests each artifact once.
+  // Completed runs use the report as their canonical detail surface, so the
+  // compact run overview does not re-fetch or duplicate the Discovery dossier.
   // A 404/204 is a legitimate legacy absence; transport/5xx failures are surfaced
   // separately so the page can offer Retry instead of pretending the dossier is empty.
   if ([
-    'COMPLETED',
     'AWAITING_SELECTION',
     'REGENERATING',
     'AWAITING_GATE',

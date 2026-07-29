@@ -48,12 +48,12 @@ describe("SolutionDetail export links", () => {
   it("links to the exact stored revision's md and json exports when jobId is present", () => {
     const { getByRole } = renderDetail({ solution: solution(), jobId: "job-1" });
 
-    const md = getByRole("link", { name: /\.md/i });
+    const md = getByRole("link", { name: "Download Markdown" });
     expect(md).toHaveAttribute(
       "href",
       "/api/jobs/job-1/solutions/idea-1/export/md?revision=2",
     );
-    const json = getByRole("link", { name: /\.json/i });
+    const json = getByRole("link", { name: "Download JSON" });
     expect(json).toHaveAttribute(
       "href",
       "/api/jobs/job-1/solutions/idea-1/export/json?revision=2",
@@ -66,7 +66,7 @@ describe("SolutionDetail export links", () => {
       jobId: "job-1",
     });
 
-    expect(getByRole("link", { name: /\.md/i })).toHaveAttribute(
+    expect(getByRole("link", { name: "Download Markdown" })).toHaveAttribute(
       "href",
       "/api/jobs/job-1/solutions/idea-1/export/md?revision=1",
     );
@@ -74,20 +74,20 @@ describe("SolutionDetail export links", () => {
 
   it("hides export links without a job or an idea identity", () => {
     const noJob = renderDetail({ solution: solution() });
-    expect(noJob.queryByRole("link", { name: /\.md/i })).not.toBeInTheDocument();
+    expect(noJob.queryByRole("link", { name: "Download Markdown" })).not.toBeInTheDocument();
 
     cleanup();
 
     const noIdentity = renderDetail({ solution: solution({ idea_id: undefined }), jobId: "job-1" });
-    expect(noIdentity.queryByRole("link", { name: /\.md/i })).not.toBeInTheDocument();
+    expect(noIdentity.queryByRole("link", { name: "Download Markdown" })).not.toBeInTheDocument();
   });
 });
 
 describe("SolutionDetail interaction model", () => {
   it("uses roving tab focus and supports Arrow, Home, and End keys", async () => {
     const view = renderDetail({ solution: solution() });
-    const overview = view.getByRole("tab", { name: "Overview" });
-    const detail = view.getByRole("tab", { name: "Full detail" });
+    const overview = view.getByRole("tab", { name: "Decision summary" });
+    const detail = view.getByRole("tab", { name: "All details" });
 
     expect(overview).toHaveAttribute("tabindex", "0");
     expect(detail).toHaveAttribute("tabindex", "-1");
@@ -133,13 +133,13 @@ describe("SolutionDetail interaction model", () => {
       solution({ idea_id: "idea-2", solution_name: "Second idea" }),
     ];
     const view = renderDetail({ solution: ideas[0], solutions: ideas });
-    await fireEvent.click(view.getByRole("tab", { name: "Full detail" }));
-    expect(view.getByRole("tab", { name: "Full detail" })).toHaveAttribute(
+    await fireEvent.click(view.getByRole("tab", { name: "All details" }));
+    expect(view.getByRole("tab", { name: "All details" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
 
-    // Page to the next candidate — the user comparing Full details stays on that tab.
+    // Page to the next candidate — the user comparing All details stays on that tab.
     await view.rerender({
       open: true,
       solution: ideas[1],
@@ -149,7 +149,7 @@ describe("SolutionDetail interaction model", () => {
       onClose: vi.fn(),
     });
 
-    expect(view.getByRole("tab", { name: "Full detail" })).toHaveAttribute(
+    expect(view.getByRole("tab", { name: "All details" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
@@ -167,7 +167,7 @@ describe("SolutionDetail interaction model", () => {
       onSelect,
     });
 
-    await fireEvent.click(view.getByRole("button", { name: "Shortlist" }));
+    await fireEvent.click(view.getByRole("button", { name: "Add to shortlist" }));
     expect(onSelect).toHaveBeenCalledWith(candidate);
   });
 });
@@ -176,7 +176,7 @@ describe("SolutionDetail lifecycle and provenance", () => {
   it("labels a legacy candidate without score inputs as not scored", () => {
     const view = renderDetail({ solution: solution() });
 
-    expect(view.getByRole("button", { name: "Overall score details" })).toHaveTextContent(
+    expect(view.getByRole("button", { name: "Discovery score details" })).toHaveTextContent(
       "Not scored",
     );
   });
@@ -188,7 +188,11 @@ describe("SolutionDetail lifecycle and provenance", () => {
       onSelect: vi.fn(),
     });
 
-    expect(view.queryByRole("button", { name: /Shortlist|Remove|Limit reached/ })).not.toBeInTheDocument();
+    expect(
+      view.queryByRole("button", {
+        name: /Add to shortlist|Remove from shortlist|Shortlist full/,
+      }),
+    ).not.toBeInTheDocument();
     expect(view.getByText("Deep Research checked this idea")).toBeInTheDocument();
   });
 
@@ -299,7 +303,7 @@ describe("SolutionDetail lifecycle and provenance", () => {
     expect(duplicate.queryByText(/Working name/i)).not.toBeInTheDocument();
   });
 
-  it("links the disabled Limit reached button to the visible hint via aria-describedby", () => {
+  it("links the disabled Shortlist full button to the visible hint via aria-describedby", () => {
     const view = renderDetail({
       solution: solution(),
       lifecycle: "selection",
@@ -310,10 +314,10 @@ describe("SolutionDetail lifecycle and provenance", () => {
       onSelect: vi.fn(),
     });
 
-    const button = view.getByRole("button", { name: "Limit reached" });
+    const button = view.getByRole("button", { name: "Shortlist full" });
     expect(button).toBeDisabled();
     expect(button).toHaveAttribute("aria-describedby", "shortlist-limit-note");
     const note = document.getElementById("shortlist-limit-note");
-    expect(note).toHaveTextContent("Remove one to add this candidate.");
+    expect(note).toHaveTextContent("Shortlist is full. Remove another candidate first.");
   });
 });

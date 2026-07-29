@@ -47,6 +47,10 @@ import { prisma } from './services/db.js';
 import { startHeartbeatMonitor, stopHeartbeatMonitor } from './services/heartbeatService.js';
 import { startSubscriptionReconciliation, stopSubscriptionReconciliation } from './services/subscriptionService.js';
 import { startSelectionReminderMonitor, stopSelectionReminderMonitor } from './services/selectionReminderService.js';
+import {
+  startDispatchDeliveryMonitor,
+  stopDispatchDeliveryMonitor,
+} from './services/queueService.js';
 
 // Validate configuration
 validateConfig();
@@ -149,6 +153,7 @@ const server = app.listen(CONFIG.port, () => {
 
   // Start the heartbeat monitor for worker crash detection
   startHeartbeatMonitor();
+  startDispatchDeliveryMonitor();
 
   // Start the selection reminder monitor for interactive jobs
   startSelectionReminderMonitor();
@@ -169,6 +174,7 @@ async function shutdown() {
 
   // Stop the heartbeat monitor
   stopHeartbeatMonitor();
+  stopDispatchDeliveryMonitor();
   stopSelectionReminderMonitor();
   stopSubscriptionReconciliation();
 

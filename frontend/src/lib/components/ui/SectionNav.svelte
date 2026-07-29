@@ -43,25 +43,34 @@
 
     return allSections.filter((section) => {
       switch (section.id) {
+        case "unified-hero":
         case "solution":
           return !!report.executive_dashboard;
-        case "audience":
+        case "audience-intelligence":
           return !!report.audience_mapping;
         case "pain-analysis":
-          return (report.detailed_pain_points?.length ?? 0) > 0;
+          return (
+            (report.detailed_pain_points?.length ?? 0) > 0 &&
+            !!report.pain_point_analytics
+          );
+        case "market-sizing":
+          return !!report.market_sizing;
         case "content-insights":
           return (
             !!report.content_categorization ||
             !!report.overall_competitive_insights
           );
         case "monetization":
-          return !!report.pricing_strategy || !!report.traffic_monetization;
+          return !!report.pricing_strategy;
         case "competitors":
-          return !!report.competitive_analytics;
+          return (
+            !!report.competitive_analytics &&
+            !!report.competitive_analysis
+          );
         case "trends":
           return !!report.trend_longevity;
         case "seo":
-          return !!report.seo_strategy_report;
+          return !!report.seo_strategy_report && !!report.seo_analytics;
         case "gtm-playbook":
           return !!report.go_to_market_blueprint;
         case "data-infrastructure":
@@ -71,7 +80,7 @@
         case "evidence-appendix":
           return !!report.evidence_appendix;
         default:
-          return true; // Always visible: executive, market-sizing, technical
+          return true; // Technical always renders from the solution fallback.
       }
     });
   });

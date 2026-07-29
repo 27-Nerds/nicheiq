@@ -29,13 +29,11 @@
   import { creditTopUp } from "$lib/stores/creditTopUp.svelte";
   import { chatLedger } from "$lib/stores/chatLedger.svelte";
   import { getAdjustedStageCounts } from "$lib/utils/stages";
-  import { mapVerdict } from "$lib/types/publicCatalog";
   import type { Job, SolutionPreview, ReportSummary } from "$lib/types/job";
   import Button from "$lib/components/ui/Button.svelte";
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
   import SelectedSolutionsSummary from "$lib/components/SelectedSolutionsSummary.svelte";
   import DeliverableRow from "$lib/components/job/DeliverableRow.svelte";
-  import CompletedAnalyst from "$lib/components/chat/CompletedAnalyst.svelte";
   import JobHeroAside from "$lib/components/job/JobHeroAside.svelte";
 
   // Preview / Dashboard components
@@ -128,7 +126,11 @@
       + " at " + d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
   }
   const runTimeline = $derived.by(() => {
-    const parts = ["Discovery run"];
+    // startedAt/completedAt track the MOST RECENT phase, not the whole job: on a
+    // completed job they span the Deep Research run, so labelling that window
+    // "Discovery run" reported the wrong phase's duration (8 min for Deep Research
+    // where discovery had actually taken 74).
+    const parts = [job?.status === "COMPLETED" ? "Deep Research run" : "Discovery run"];
     if (job?.startedAt) parts.push(`started ${formatRunDate(job.startedAt)}`);
     if (job?.completedAt) parts.push(`completed ${formatRunDate(job.completedAt)}`);
     return parts.join(" · ");
@@ -146,7 +148,8 @@
       /* clipboard unavailable — no-op */
     }
   }
-  // Hidden-stage-adjusted counts so the aside matches JobCard / progress screen.
+  // Hidden-stage-adjusted counts so the aside matches the dashboard's in-progress
+  // rows and the progress screen (see $lib/utils/stages).
   const jobStageCounts = $derived(
     job ? getAdjustedStageCounts(job) : { completed: 0, total: 0 },
   );
@@ -155,6 +158,26 @@
   const discoveryData = $derived(clientDiscoveryData ?? serverDiscoveryData);
   const solutionVotes = $derived(clientSolutionVotes ?? serverSolutionVotes);
   const previewReport = $derived(clientPreviewReport ?? serverPreviewReport);
+  const completedEvidenceLimited = $derived.by(() => {
+    const quality = previewReport?.data_quality_summary?.overall_data_quality?.trim().toLowerCase();
+    return quality === "low" || (previewReport?.data_quality_summary?.quality_caveats?.length ?? 0) > 0;
+  });
+  const completedVerdict = $derived.by(() => {
+    const normalized = reportSummary?.verdict?.trim().toUpperCase().replace(/[\s_]+/g, "-");
+    if (normalized === "GO") {
+      return {
+        label: completedEvidenceLimited ? "Go · evidence-limited" : "Go",
+        tone: completedEvidenceLimited ? "caution" : "positive",
+      } as const;
+    }
+    if (normalized === "CONDITIONAL" || normalized === "MAYBE") {
+      return { label: "Conditional", tone: "caution" } as const;
+    }
+    if (normalized === "NO-GO" || normalized === "NO" || normalized === "NOGO") {
+      return { label: "No-go", tone: "negative" } as const;
+    }
+    return null;
+  });
   const invalidSolutionCount = $derived(
     clientInvalidSolutionCount ?? Number(data.invalidSolutionCount ?? 0),
   );
@@ -177,10 +200,7 @@
   let resumeError = $state("");
   let generatingLanding = $state(false);
   let landingError = $state("");
-  let hasPlayedReveal = $state(false);
-  let showReveal = $state(false);
-  let summaryFetched = $state(false);
-  let summaryLoading = $state(false);
+  let summaryFetched = false;
   let discoveryShareOpen = $state(false);
   let discoveryLoading = $state(false);
   let lastHandledStatus = $state('');
@@ -218,8 +238,11 @@
 
   const isRegenQueued = $derived(
     job?.status === 'QUEUED' &&
-    (job?.solutionIdeas?.length ?? 0) > 0 &&
-    !(job?.selectedSolutions?.length)
+    !(job?.selectedSolutions?.length) &&
+    (
+      (job?.solutionIdeas?.length ?? 0) > 0
+      || (chatLedger.jobId === jobId && chatLedger.hasPendingBatch)
+    )
   );
 
   // Guided-mode (Phase B) gate: gate-action('apply_stay') flips the job through
@@ -343,15 +366,19 @@
     ]);
   }
 
-  // "Generate more ideas" for the AWAITING_SELECTION zero-candidates case — same
-  // regenerate-ideas call SelectionWorkbench's own regen button uses, just without
+  // Append-only batch action for the AWAITING_SELECTION zero-candidates case — same
+  // operation as SelectionWorkbench's action, just without
   // a ranked set to attach it to.
   async function regenerateFromEmpty() {
     if (!job || !jobId || regeneratingFromEmpty) return;
     regeneratingFromEmpty = true;
     regenerateFromEmptyError = "";
     try {
-      await regenerateIdeas(jobId);
+      const response = await regenerateIdeas(jobId);
+      chatLedger.markBatchPending(response.operationId, {
+        ordinal: response.batchOrdinal,
+        focus: response.focus ?? "auto",
+      });
       clientJob = { ...job, status: 'QUEUED' };
     } catch (e) {
       if (e instanceof ApiError && e.status === 402) {
@@ -359,7 +386,7 @@
         creditTopUp.show({
           balance: body?.balance ?? (page.data.creditBalance as number) ?? 0,
           required: body?.required ?? (page.data.stageCosts as any)?.regenerate_ideas ?? 0,
-          stageName: "idea regeneration",
+          stageName: "additional idea batch",
         });
       } else {
         regenerateFromEmptyError = e instanceof Error ? e.message : "Failed to generate ideas";
@@ -474,8 +501,6 @@
     discoveryLoading = false;
     gateApplyPending = false;
     summaryFetched = !!d.reportSummary;
-    hasPlayedReveal = d.job?.status === 'COMPLETED';
-    showReveal = d.job?.status === 'COMPLETED';
     lastHandledStatus = d.job?.status ?? '';
     lastGateReachedAt = d.job?.gateReachedAt ?? null;
     solutionsLoading = false;
@@ -541,6 +566,11 @@
     // status never actually changes.
     if (
       (statusChanged && (status === 'AWAITING_GATE' || status === 'AWAITING_SELECTION')) ||
+      (
+        statusChanged
+        && Boolean(currentJob.awaitingSelectionAt)
+        && ['QUEUED', 'RUNNING', 'REGENERATING'].includes(status)
+      ) ||
       gateReArrived ||
       (statusChanged && ['COMPLETED', 'FAILED', 'CANCELLED'].includes(status))
     ) {
@@ -566,7 +596,7 @@
       case "AWAITING_SELECTION": return "Ready for Selection";
       case "AWAITING_GATE": return "Checkpoint reached";
       case "QUEUED": return "Queued";
-      case "REGENERATING": return "Generating New Ideas";
+      case "REGENERATING": return "Adding another batch";
       case "RUNNING_PHASE2": return "Deep Analysis";
       case "RUNNING": return "Running";
       case "COMPLETED": return "Completed";
@@ -602,6 +632,9 @@
   // Durable (survives a reload — see chatLedger.hasPendingSeed), not a parallel
   // client store: a chat-composed idea seed still being evaluated for THIS job.
   const seedPending = $derived(chatLedger.jobId === jobId && chatLedger.hasPendingSeed);
+  const hasBatchActivity = $derived(
+    chatLedger.jobId === jobId && chatLedger.batchActivities.length > 0,
+  );
 
   // A SEED_IDEA claim flips job.status to QUEUED/RUNNING for the birth pipeline's
   // duration, exactly like a regen/gate round-trip — mirrors the gateApplyPending
@@ -751,13 +784,11 @@
   // Aside state for the editorial hero. Maps the live job status into one of
   // the JobHeroAside variants. Defaults to "running" while data is loading.
   const asideState = $derived<
-    "running" | "queued" | "awaiting" | "regenerating" | "completed" | "failed" | "cancelled"
+    "running" | "queued" | "awaiting" | "regenerating" | "failed" | "cancelled"
   >(
     !job
       ? "running"
-      : job.status === "COMPLETED"
-        ? "completed"
-        : job.status === "FAILED"
+      : job.status === "FAILED"
           ? "failed"
           : job.status === "CANCELLED"
             ? "cancelled"
@@ -785,15 +816,6 @@
   const landingStageCost = $derived((page.data.stageCosts as any)?.landing_page ?? 5);
   const canAffordLanding = $derived((page.data.creditBalance as number ?? 0) >= landingStageCost);
 
-  $effect(() => {
-    if (!isCompleted) return;
-    if (untrack(() => hasPlayedReveal)) return;
-    hasPlayedReveal = true;
-    // Brief delay to let the last stage animate
-    const timer = setTimeout(() => { showReveal = true; }, 500);
-    return () => clearTimeout(timer);
-  });
-
   // Poll vote data while AWAITING_SELECTION
   $effect(() => {
     if (job?.status !== 'AWAITING_SELECTION' || !jobId) return;
@@ -817,13 +839,11 @@
   // Fetch report summary when job transitions to completed via SSE
   $effect(() => {
     if (!isCompleted || !reportAsset) return;
-    if (untrack(() => summaryFetched)) return;
+    if (summaryFetched) return;
     summaryFetched = true;
-    summaryLoading = true;
     getReportSummary(job!.id)
       .then(s => { clientReportSummary = s; })
-      .catch(() => { /* fallback to simple card */ })
-      .finally(() => { summaryLoading = false; });
+      .catch(() => { /* The completed handoff remains usable without the optional summary. */ });
   });
 
 
@@ -846,11 +866,21 @@
       chatMode={job.chatMode ?? false}
       gateStage={job.gateStage ?? null}
       {decisionTools}
+      landingPageStatus={lpStatus}
     />
   {/if}
   <!-- div, not <main>: the (app) layout already renders the page's single landmark <main>. -->
-  <div class="job-page-content" class:job-page-content--selection={isWorkbenchPhase}>
-    <AnnotationProvider mode="owner" enabled={['AWAITING_SELECTION', 'REGENERATING'].includes(job?.status ?? '')} jobId={jobId ?? undefined}>
+  <div
+    class="job-page-content"
+    class:job-page-content--selection={isWorkbenchPhase}
+    class:job-page-content--completed={isCompleted}
+  >
+    <AnnotationProvider
+      mode="owner"
+      enabled={['AWAITING_SELECTION', 'REGENERATING'].includes(job?.status ?? '')}
+      showLauncher={false}
+      jobId={jobId ?? undefined}
+    >
     {#if loading}
       <div class="text-center py-12">
         <Loader2 class="w-10 h-10 text-accent mx-auto animate-spin" />
@@ -891,7 +921,11 @@
         />
       {:else}
       <!-- ═══ EDITORIAL HERO (1fr | 320px grid) ═══ -->
-      <div class="job-hero-grid" class:job-hero-grid--selection={isWorkbenchPhase}>
+      <div
+        class="job-hero-grid"
+        class:job-hero-grid--selection={isWorkbenchPhase}
+        class:job-hero-grid--completed={isCompleted}
+      >
         <div class="job-hero-main" data-annotation-anchor="research-header">
           <PageHeader
             class={isWorkbenchPhase ? 'job-selection-header' : ''}
@@ -909,14 +943,13 @@
                 </p>
               {/if}
               {#if cancelError}
-                <div class="mt-2 text-sm text-error">{cancelError}</div>
+                <div class="mt-2 text-sm text-[color:var(--color-error-text)]">{cancelError}</div>
               {/if}
             {/snippet}
             {#snippet actions()}
               <div class="flex items-center gap-3 w-full sm:w-auto justify-end">
-                <TourRestartButton />
-                {#if isCompleted && reportAsset}
-                  <Button href="/jobs/{job.id}/report" icon={REPORT_ICON} label="View Report" class="btn-primary btn-sm" />
+                {#if isSelectionPhase}
+                  <TourRestartButton />
                 {/if}
                 {#if isSelectionPhase && displaySolutions.length > 0}
                   <button
@@ -928,7 +961,7 @@
                     <span>Share</span>
                   </button>
                 {/if}
-                {#if !isWorkbenchPhase}
+                {#if !isWorkbenchPhase && !isCompleted}
                   <Badge variant={getStatusVariant(isRegenQueued ? 'REGENERATING' : job.status)}>
                     {#if ['RUNNING', 'RUNNING_PHASE2', 'REGENERATING'].includes(job.status) || isRegenQueued}
                       <Loader2 class="w-3.5 h-3.5 animate-spin" />
@@ -939,9 +972,39 @@
               </div>
             {/snippet}
           </PageHeader>
+          {#if isCompleted && reportAsset}
+            <section class="completed-handoff" aria-labelledby="completed-handoff-title">
+              <div>
+                <p class="completed-handoff__eyebrow">Report ready</p>
+                <div class="completed-handoff__title">
+                  <h2 id="completed-handoff-title">Review the final recommendation</h2>
+                  {#if completedVerdict}
+                    <span class="completed-verdict {completedVerdict.tone}">
+                      {completedVerdict.label}
+                    </span>
+                  {/if}
+                </div>
+                <p class="completed-handoff__copy">
+                  See the recommendation, trace every conclusion to its evidence,
+                  and turn the result into a practical plan.
+                </p>
+                {#if reportSummary?.primary_concern}
+                  <p class="completed-handoff__concern">
+                    <strong>Verify before acting:</strong> {reportSummary.primary_concern}
+                  </p>
+                {/if}
+              </div>
+              <Button
+                href="/jobs/{job.id}/report"
+                icon={REPORT_ICON}
+                label="Open report"
+                class="btn-primary"
+              />
+            </section>
+          {/if}
         </div>
-        {#if !isWorkbenchPhase}
-          <aside class="job-hero-aside">
+        {#if !isWorkbenchPhase && !isCompleted}
+          <div class="job-hero-aside">
             <JobHeroAside
               state={asideState}
               progressPercent={job.progressPercent}
@@ -949,18 +1012,17 @@
               totalStages={jobStageCounts.total}
               startedAt={job.startedAt}
               selectionCount={displaySolutions.length}
-              summary={reportSummary}
               errorDetails={job.errorDetails}
               errorMessage={job.errorMessage}
               stopReason={job.stopReason}
               stopReasonDetails={job.stopReasonDetails}
               creditRefunded={job.creditRefunded}
             />
-          </aside>
+          </div>
         {/if}
       </div>
 
-      {#if !isWorkbenchPhase}
+      {#if !isWorkbenchPhase && !isCompleted}
         <!-- ═══ PROGRESS STEPPER ═══ -->
         <ProgressStepper
           currentStep={stepperStep}
@@ -980,7 +1042,7 @@
             <div class="flex-1">
               <h3 class="text-sm font-medium text-text-secondary">Research Cancelled</h3>
               <p class="mt-1 text-sm text-text-muted">This research was cancelled. Your credits have been refunded.</p>
-              <button onclick={() => goto(`/new?fromJob=${job.id}&prefilled=${encodeURIComponent(job.niche)}`)} class="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:text-accent-hover transition-colors">
+              <button onclick={() => goto(`/new?fromJob=${job.id}&prefilled=${encodeURIComponent(job.niche)}`)} class="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-accent-dark hover:text-accent-hover transition-colors">
                 Start new research <ArrowRight class="w-4 h-4" />
               </button>
             </div>
@@ -1014,10 +1076,10 @@
             </div>
             <div class="flex-1">
               {#if job.errorDetails}
-                <h3 class="text-sm font-medium text-error">{job.errorDetails.userMessage}</h3>
+                <h3 class="text-sm font-medium text-[color:var(--color-error-text)]">{job.errorDetails.userMessage}</h3>
                 <p class="mt-1 text-sm text-text-muted">{job.errorDetails.actionableGuidance}</p>
               {:else}
-                <h3 class="text-sm font-medium text-error">Error</h3>
+                <h3 class="text-sm font-medium text-[color:var(--color-error-text)]">Error</h3>
                 <p class="mt-1 text-sm text-text-muted">{job.errorMessage}</p>
               {/if}
             </div>
@@ -1035,7 +1097,7 @@
             <SubmitButton onclick={resumeJob} loading={isResuming} loadingText="Resuming..." icon={RotateCw} keepIconOnLoad label="Resume" class="btn-primary flex items-center gap-2" />
           </div>
           {#if resumeError}
-            <p class="mt-3 text-sm text-error">{resumeError}</p>
+            <p class="mt-3 text-sm text-[color:var(--color-error-text)]">{resumeError}</p>
           {/if}
         </div>
       {/if}
@@ -1062,7 +1124,12 @@
           </div>
         {/if}
 
-        {#if isSelectionPhase && (displaySolutions.length > 0 || examinedRuledOut.length > 0 || seedPending)}
+        {#if isSelectionPhase && (
+          displaySolutions.length > 0
+          || examinedRuledOut.length > 0
+          || seedPending
+          || hasBatchActivity
+        )}
           <SelectionWorkbench
             jobId={jobId ?? ''}
             solutions={displaySolutions}
@@ -1086,6 +1153,7 @@
             {solutionVotes}
             onComplete={handleSelectionComplete}
             onRegenerateStart={() => { clientJob = { ...job!, status: 'QUEUED' }; }}
+            onBatchSettled={handleSeedSettled}
             onJourneyTasks={(tasks) => selectionToolTasks = tasks}
             onShortlistChange={(count) => liveShortlist = { jobId: jobId ?? '', count }}
             onShortlistVersionChange={(version) => draftRefreshGuard.reportLocalVersion(version)}
@@ -1127,15 +1195,15 @@
                 <SubmitButton
                   onclick={regenerateFromEmpty}
                   loading={regeneratingFromEmpty}
-                  loadingText="Generating..."
-                  label="Generate more ideas"
+                  loadingText="Adding batch..."
+                  label="Add idea batch"
                   class="btn-primary mt-6 inline-block"
                 />
                 {#if regenerateFromEmptyError}
-                  <p class="mt-3 text-sm text-error">{regenerateFromEmptyError}</p>
+                  <p class="mt-3 text-sm text-[color:var(--color-error-text)]">{regenerateFromEmptyError}</p>
                 {/if}
               {:else}
-                <button onclick={() => goto(`/new?fromJob=${job.id}&prefilled=${encodeURIComponent(job.niche)}`)} class="mt-6 inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:text-accent-hover transition-colors">
+                <button onclick={() => goto(`/new?fromJob=${job.id}&prefilled=${encodeURIComponent(job.niche)}`)} class="mt-6 inline-flex items-center gap-1.5 text-sm font-medium text-accent-dark hover:text-accent-hover transition-colors">
                   Start new research <ArrowRight class="w-4 h-4" />
                 </button>
               {/if}
@@ -1167,7 +1235,7 @@
           />
         {/if}
 
-        {#if previewReport || discoveryData || discoveryFetchFailed || previewFetchFailed}
+        {#if !isCompleted && (previewReport || discoveryData || discoveryFetchFailed || previewFetchFailed)}
           <div class="discovery-sections" class:discovery-dossier={isSelectionPhase} data-annotation-anchor="research-dossier">
             {#if discoveryFetchFailed || previewFetchFailed}
               <div class="dossier-load-warning" role="alert">
@@ -1397,55 +1465,17 @@
               <span class="preview-capped-badge">Unlocks with Deep Research</span>
             </div>
           </div>
-        {:else if reportSummary}
-          <!-- ═══ COMPLETED: Report summary cards ═══ -->
-          {@const verdictNorm = mapVerdict(reportSummary.verdict)}
-          <div class="report-summary-card">
-            <div class="report-summary-header">
-              <div>
-                <p class="report-summary-eyebrow">Report ready</p>
-                <h2 class="report-summary-title">Your research is complete</h2>
-              </div>
-              <Button href="/jobs/{job.id}/report" icon={REPORT_ICON} label="View Full Report" class="btn-primary btn-sm" />
-            </div>
-            <div class="report-summary-metrics">
-              {#if reportSummary.opportunity_score != null}
-                <div class="report-metric">
-                  <span class="report-metric-value">{reportSummary.opportunity_score > 1 ? reportSummary.opportunity_score : Math.round(reportSummary.opportunity_score * 100)}</span>
-                  <span class="report-metric-label">Score</span>
-                </div>
-              {/if}
-              {#if verdictNorm}
-                <div class="report-metric">
-                  <span class="report-metric-value report-metric-value--{verdictNorm === 'GO' ? 'success' : verdictNorm === 'NO-GO' ? 'error' : 'warning'}">{verdictNorm}</span>
-                  <span class="report-metric-label">Verdict</span>
-                </div>
-              {/if}
-              {#if reportSummary.total_keywords != null}
-                <div class="report-metric">
-                  <span class="report-metric-value">{reportSummary.total_keywords}</span>
-                  <span class="report-metric-label">Keywords</span>
-                </div>
-              {/if}
-              {#if reportSummary.competitor_count != null}
-                <div class="report-metric">
-                  <span class="report-metric-value">{reportSummary.competitor_count}</span>
-                  <span class="report-metric-label">Competitors</span>
-                </div>
-              {/if}
-            </div>
-          </div>
         {/if}
 
-        <!-- ═══ EXTRAS ═══ -->
+        <!-- ═══ OPTIONAL DELIVERABLES ═══ -->
         {#if isCompleted}
-          <div class="extras-card">
+          <section class="extras-card" id="optional-deliverables" aria-labelledby="optional-deliverables-title">
             <div class="extras-header">
               <div class="extras-header-left">
                 <div class="extras-icon-box"><Package class="extras-icon" /></div>
                 <div class="extras-title-group">
-                  <span class="extras-title">Extras</span>
-                  <span class="extras-subtitle">Add-on deliverables</span>
+                  <h2 class="extras-title" id="optional-deliverables-title">Optional deliverables</h2>
+                  <span class="extras-subtitle">Create only what you need next</span>
                 </div>
               </div>
               {#if lpStatus === 'completed'}
@@ -1466,12 +1496,8 @@
                 onGenerate={generateLanding}
               />
             </div>
-          </div>
+          </section>
         {/if}
-      {/if}
-
-      {#if isCompleted}
-        <CompletedAnalyst jobId={job.id} compact />
       {/if}
 
       <!-- ═══ RUN PROVENANCE ═══ -->
@@ -1507,16 +1533,17 @@
      CLIENT-side decision-state fetch landed: until it does, the shortlist dock has not
      mounted and the guide card still reads "Updating your next useful step…", so two of
      the five steps would have nothing to point at. -->
-<TourHost
-  chapter="job-shortlist"
-  enabled={decisionTools}
-  ready={isSelectionPhase
-    && displaySolutions.length > 0
-    && !solutionsLoading
-    && selectionToolTasks !== undefined}
-  deferred={seedRunning || isRegenQueued || invalidSolutionCount > 0}
-  reflowKey={selectionToolTasks}
-/>
+{#if isSelectionPhase}
+  <TourHost
+    chapter="job-shortlist"
+    enabled={decisionTools}
+    ready={displaySolutions.length > 0
+      && !solutionsLoading
+      && selectionToolTasks !== undefined}
+    deferred={seedRunning || isRegenQueued || invalidSolutionCount > 0}
+    reflowKey={selectionToolTasks}
+  />
+{/if}
 
 <style>
   /* Error-state icon box (zero-candidate fetch failure) — status tokens
@@ -1533,21 +1560,21 @@
     align-items: center;
     justify-content: space-between;
     flex-wrap: wrap;
-    gap: 0.5rem 1rem;
+    gap: var(--space-2) var(--space-4);
   }
   .run-meta__timeline {
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
-    font-size: 0.75rem;
-    line-height: 1.4;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    line-height: var(--leading-normal);
     color: var(--color-text-secondary);
   }
   .run-meta__dot {
     flex-shrink: 0;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
+    width: var(--space-1-5);
+    height: var(--space-1-5);
+    border-radius: var(--radius-full);
     background: color-mix(in srgb, var(--color-text-muted) 55%, transparent);
   }
   .run-meta__dot--done {
@@ -1556,15 +1583,18 @@
   .run-meta__id {
     display: inline-flex;
     align-items: center;
-    gap: 0.42rem;
-    padding: 0.26rem 0.5rem 0.26rem 0.42rem;
+    gap: var(--space-1-5);
+    min-height: var(--space-8);
+    padding: var(--space-1) var(--space-2);
     border: 1px solid var(--color-border);
-    border-radius: 0.375rem;
+    border-radius: var(--radius-md);
     background: var(--color-bg-elevated);
     color: var(--color-text-secondary);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     cursor: pointer;
-    transition: border-color 0.15s ease, color 0.15s ease;
+    transition:
+      border-color var(--duration-fast) var(--ease-default),
+      color var(--duration-fast) var(--ease-default);
   }
   .run-meta__id:hover {
     border-color: var(--color-border-emphasis);
@@ -1577,9 +1607,9 @@
   .run-meta__id-label {
     color: var(--color-text-muted);
     font-family: var(--font-mono);
-    font-size: 0.5625rem;
+    font-size: var(--text-xs);
     font-weight: 700;
-    letter-spacing: 0.06em;
+    letter-spacing: var(--tracking-label);
     text-transform: uppercase;
   }
   .run-meta__id code {
@@ -1587,12 +1617,12 @@
     letter-spacing: 0.01em;
   }
   .run-meta__id :global(.run-meta__id-icon) {
-    width: 0.8rem;
-    height: 0.8rem;
+    width: var(--space-3);
+    height: var(--space-3);
     color: var(--color-text-muted);
   }
   .run-meta__id :global(.run-meta__id-icon--done) {
-    color: var(--color-success);
+    color: var(--color-success-text);
   }
 
   /* Share discovery button (header actions) — uses the global .btn-ghost
@@ -1628,6 +1658,10 @@
   }
 
   .job-page-content--selection {
+    width: min(76rem, 100%);
+  }
+
+  .job-page-content--completed {
     width: min(76rem, 100%);
   }
 
@@ -1671,12 +1705,12 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: start;
-    gap: 0.8rem;
+    gap: var(--space-3);
   }
 
   :global(.job-selection-header .page-header-title-row) {
     min-width: 0;
-    gap: 0.78rem;
+    gap: var(--space-3);
   }
 
   :global(.job-selection-header .page-header-actions) {
@@ -1685,8 +1719,8 @@
   }
 
   :global(.job-selection-header .page-header-title-row > div:first-child) {
-    padding: 0.42rem;
-    border-radius: 0.75rem;
+    padding: var(--space-2);
+    border-radius: var(--radius-md);
   }
 
   :global(.job-selection-header .page-header-title-row svg) {
@@ -1726,7 +1760,12 @@
     grid-template-columns: minmax(0, 1fr);
     align-items: start;
     gap: 0;
-    margin-bottom: 0.2rem;
+    margin-bottom: 0;
+  }
+  .job-hero-grid--completed {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    margin-bottom: var(--space-8);
   }
   .job-hero-main {
     min-width: 0;
@@ -1745,136 +1784,149 @@
     }
   }
 
+  .completed-handoff {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-6);
+    margin-top: var(--space-6);
+    padding: var(--space-6);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-bg-elevated);
+  }
+
+  .completed-handoff > div {
+    min-width: 0;
+  }
+
+  .completed-handoff__eyebrow {
+    margin: 0 0 var(--space-2);
+    color: var(--color-success-text);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .completed-handoff__title {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    align-items: center;
+  }
+
+  .completed-handoff h2 {
+    margin: 0;
+    color: var(--color-text-primary);
+    font-family: var(--font-display);
+    font-size: var(--text-xl);
+    font-weight: 700;
+    line-height: var(--leading-tight);
+  }
+
+  .completed-verdict {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--space-6);
+    padding-inline: var(--space-3);
+    border-radius: var(--radius-full);
+    font-size: var(--text-xs);
+    font-weight: 700;
+  }
+
+  .completed-verdict.positive {
+    color: var(--color-success-text);
+    background: var(--color-success-subtle);
+  }
+
+  .completed-verdict.caution {
+    color: var(--color-warning-text);
+    background: var(--color-warning-subtle);
+  }
+
+  .completed-verdict.negative {
+    color: var(--color-error-text);
+    background: var(--color-error-subtle);
+  }
+
+  .completed-handoff__copy {
+    max-width: 58ch;
+    margin: var(--space-2) 0 0;
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+    line-height: var(--leading-relaxed);
+  }
+
+  .completed-handoff__concern {
+    max-width: 68ch;
+    margin: var(--space-3) 0 0;
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+    line-height: var(--leading-relaxed);
+  }
+
+  .completed-handoff__concern strong {
+    color: var(--color-warning-text);
+  }
+
+  :global(.completed-handoff .btn-primary) {
+    flex-shrink: 0;
+  }
+
+  @media (max-width: 639px) {
+    .completed-handoff {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    :global(.completed-handoff .btn-primary) {
+      justify-content: center;
+      width: 100%;
+    }
+  }
+
   /* ═══ Section intro ═══ */
   .section-intro {
     max-width: 74ch;
-    font-size: 0.8125rem;
+    font-size: var(--text-13);
     color: var(--color-text-secondary);
-    line-height: 1.55;
-    margin: 0 0 0.72rem;
+    line-height: var(--leading-relaxed);
+    margin: 0 0 var(--space-3);
     text-wrap: pretty;
   }
 
   .section-footnote {
-    margin: 0.72rem 0 0;
-    padding-top: 0.7rem;
+    margin: var(--space-3) 0 0;
+    padding-top: var(--space-3);
     border-top: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
     color: var(--color-text-muted);
-    font-size: 0.75rem;
-    line-height: 1.42;
+    font-size: var(--text-sm);
+    line-height: var(--leading-normal);
     text-wrap: pretty;
   }
 
   /* ═══ Methodology footnote ═══ */
   .methodology-note {
     font-family: var(--font-mono);
-    font-size: 0.5625rem;
+    font-size: var(--text-xs);
     color: var(--color-text-muted);
-    letter-spacing: 0.02em;
-    margin: 0.78rem 0 0;
-    padding-top: 0.72rem;
+    line-height: var(--leading-normal);
+    letter-spacing: var(--tracking-normal);
+    margin: var(--space-3) 0 0;
+    padding-top: var(--space-3);
     border-top: 1px solid var(--color-border);
   }
 
   /* .preview-capped* classes moved to src/lib/styles/preview-capped.css
      (global; shared with SharedDiscoveryView). */
 
-  /* ═══ Report summary (completed state) ═══ */
-  .report-summary-card {
-    padding: 1.5rem;
-    margin-bottom: 1rem;
-    background: var(--color-bg-elevated);
-    border: 1px solid var(--color-border-success);
-    border-radius: 0.75rem;
-  }
-
-  .report-summary-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 1.25rem;
-    gap: 1rem;
-  }
-
-  .report-summary-eyebrow {
-    font-family: var(--font-mono);
-    font-size: 0.6875rem;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--color-accent);
-    margin: 0 0 0.25rem;
-  }
-
-  .report-summary-title {
-    font-family: var(--font-display);
-    font-size: 1.25rem;
-    font-weight: 700;
-    color: var(--color-text-primary);
-    margin: 0;
-  }
-
-  .report-summary-metrics {
-    display: flex;
-    gap: 2rem;
-    flex-wrap: wrap;
-  }
-
-  .report-metric {
-    display: flex;
-    flex-direction: column;
-    gap: 0.125rem;
-  }
-
-  .report-metric-value {
-    font-family: var(--font-mono);
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: var(--color-accent);
-    font-variant-numeric: tabular-nums;
-    line-height: 1;
-  }
-
-  .report-metric-value--success {
-    color: var(--color-success);
-  }
-
-  .report-metric-value--warning {
-    color: var(--color-warning);
-  }
-
-  .report-metric-value--error {
-    color: var(--color-error);
-  }
-
-  .report-metric-label {
-    font-family: var(--font-mono);
-    font-size: 0.6875rem;
-    font-weight: 500;
-    color: var(--color-text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
-
-  /* gate-locked and stage-list removed - no longer used in unified dashboard */
-
-  /* ═══ Responsive ═══ */
-  @media (max-width: 639px) {
-    .report-summary-header {
-      flex-direction: column;
-      align-items: flex-start;
-    }
-
-    .report-summary-metrics {
-      gap: 1rem;
-    }
-  }
-
-  /* ── Extras card ── */
+  /* ── Optional deliverables ── */
   .extras-card {
-    margin-top: 1rem;
+    margin-top: var(--space-4);
     padding: 0;
-    border-radius: 0.75rem;
+    border-radius: var(--radius-lg);
     background: var(--color-bg-elevated);
     border: 1px solid var(--color-border);
     overflow: hidden;
@@ -1886,19 +1938,19 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.875rem 1rem;
+    padding: var(--space-3) var(--space-4);
   }
 
   .extras-header-left {
     display: flex;
     align-items: center;
-    gap: 0.625rem;
+    gap: var(--space-3);
   }
 
   .extras-icon-box {
-    width: 1.75rem;
-    height: 1.75rem;
-    border-radius: 0.5rem;
+    width: var(--space-8);
+    height: var(--space-8);
+    border-radius: var(--radius-md);
     background: var(--color-accent-subtle);
     display: flex;
     align-items: center;
@@ -1907,55 +1959,56 @@
   }
 
   :global(.extras-icon) {
-    width: 0.875rem;
-    height: 0.875rem;
+    width: var(--space-4);
+    height: var(--space-4);
     color: var(--color-accent);
   }
 
   .extras-title-group {
     display: flex;
     flex-direction: column;
-    gap: 0.0625rem;
+    gap: var(--space-1);
   }
 
   .extras-title {
-    font-size: 0.875rem;
-    font-weight: 600;
+    margin: 0;
+    font-size: var(--text-base);
+    font-weight: 700;
     color: var(--color-text-primary);
-    line-height: 1.2;
+    line-height: var(--leading-tight);
   }
 
   .extras-subtitle {
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     color: var(--color-text-muted);
-    line-height: 1.3;
+    line-height: var(--leading-normal);
   }
 
   .extras-ready-badge {
     display: inline-flex;
     align-items: center;
-    gap: 0.25rem;
-    font-size: 0.75rem;
+    gap: var(--space-1);
+    font-size: var(--text-xs);
     font-weight: 600;
-    color: var(--color-success);
+    color: var(--color-success-text);
     background: var(--color-success-subtle);
-    padding: 0.1875rem 0.5rem;
-    border-radius: 9999px;
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-full);
   }
 
   :global(.extras-ready-icon) {
-    width: 0.75rem;
-    height: 0.75rem;
+    width: var(--space-3);
+    height: var(--space-3);
   }
 
   .extras-divider {
     height: 1px;
     background: var(--color-border);
-    margin: 0 1rem;
+    margin: 0 var(--space-4);
   }
 
   .extras-content {
-    padding: 0.75rem 1rem;
+    padding: var(--space-3) var(--space-4);
   }
 
   /* Discovery upsell styles moved to DeepResearchCTA.svelte */

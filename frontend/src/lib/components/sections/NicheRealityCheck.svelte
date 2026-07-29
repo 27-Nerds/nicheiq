@@ -47,8 +47,12 @@
 
   // Left = software can't fix it (HARD); right = software owns it (STRONG).
   const pct = $derived(Math.max(0, Math.min(100, Math.round(addr * 100))));
-  const positive = $derived(fitBand === "strong");
-  const pointsLabel = $derived(positive ? "What makes it strong" : "What makes it hard");
+  // Two lists, two headings. A single heading over one mixed list mislabelled whichever
+  // half it didn't name: a strong niche still accrues frictions (saturation, weak
+  // willingness-to-pay, incumbent density), and those were printing under "What makes it
+  // strong". Legacy reports carry only key_challenges, so the strengths block simply
+  // doesn't render for them.
+  const strengths = $derived(verdict.key_strengths ?? []);
 
   // Qualitative addressability label — the meter bar is the visual gauge; the text never shows the raw %.
   const addrLabel = $derived(
@@ -159,9 +163,20 @@
     <div class="rc-rationale">
       <p class="rc-narrative">{verdict.narrative_summary}</p>
 
+      {#if strengths.length}
+        <div class="rc-points-block">
+          <p class="rc-points-label">What makes it strong</p>
+          <ul class="rc-points">
+            {#each strengths as point}
+              <li>{point}</li>
+            {/each}
+          </ul>
+        </div>
+      {/if}
+
       {#if verdict.key_challenges?.length}
         <div class="rc-points-block">
-          <p class="rc-points-label">{pointsLabel}</p>
+          <p class="rc-points-label">What makes it hard</p>
           <ul class="rc-points">
             {#each verdict.key_challenges as point}
               <li>{point}</li>

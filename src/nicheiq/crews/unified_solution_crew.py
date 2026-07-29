@@ -54,6 +54,12 @@ from ..models.solution_idea import (
 from ..models.solution_selection import SolutionSelection
 from ..tools import CachedSerperDevTool, CompetitorQueryTool
 from ..utils.crew_helpers.content_preparers import format_competitor_mentions_for_prompt
+from ..utils.data_access import (
+    DATA_ACCESS_VOCAB,
+    normalize_data_access,
+    note_route_label,
+    route_label_summary,
+)
 from ..utils.validation import (
     create_diversity_guardrail,
     validate_competitive_analysis,
@@ -68,6 +74,8 @@ from ..utils.validation.crew_guardrails import (
 
 
 _NAME_STOP_WORDS = {"the", "a", "an", "app", "tool", "pro", "hub", "io", "ai", "my"}
+
+# The ONE data-provenance vocabulary + alias map live in utils.data_access.
 
 # Novelty/feasibility critic: concepts scored per parallel batch so each structured
 # call's output fits under the reasoning-ON token budget (a single ~24-concept call
@@ -329,6 +337,7 @@ class SeedRequest:
     pain_ref: str | None = None
     tool_ref: str | None = None
     dispatch_id: str = "seed"
+    synthesis_evaluation: dict | None = None
 
 
 # Per-cell archetype nudge rotation (pool-level project-type spread; filtered by allowed_types).
@@ -870,7 +879,10 @@ class _NoveltyVerdict(BaseModel):
     # default sentinels = "not scored" so novelty-only mode leaves them untouched).
     build_feasibility: float = -1.0
     data_feasibility: float = -1.0
-    data_access_model: str = ""
+    data_access_model: str = Field(
+        "", description="EXACTLY one of: public | freemium | paywalled | unofficial | restricted "
+                        "| blocked | unverified. Describes how the DATA is obtained — never the "
+                        "product's pricing or business model.")
     data_notes: str = ""
     # Bulk-access route the data is REALLY obtainable through (downloadable dump / list-or-index
     # endpoint / official API), or the literal "NO-BULK". Empty/NO-BULK => unverified source =>
@@ -3677,7 +3689,9 @@ class UnifiedSolutionCrew:
                 "people/businesses as the core mechanism); COLD-START corpus the solo dev must hand-create "
                 "before launch. build_feasibility cannot exceed data_feasibility — you can't build on data "
                 "you can't get.\n"
-                "- data_access_model: one of public | freemium | paywalled | unofficial | restricted | blocked. "
+                "- data_access_model: EXACTLY one of public | freemium | paywalled | unofficial | restricted | "
+                "blocked | unverified. Use 'public' when the concept needs no external data (pure computation / "
+                "user-supplied input). "
                 "Use 'unofficial' for ToS-gray data with a real bulk route; use 'restricted' for per-ID-lookup-only "
                 "/ login-gated / unverified sources. Keep ToS-gray-but-obtainable concepts (do NOT drop for ToS "
                 "alone); name the tool + risk in data_notes.\n"
@@ -3760,7 +3774,20 @@ class UnifiedSolutionCrew:
                         if v.data_feasibility is not None and v.data_feasibility >= 0:
                             c.data_feasibility_score = _clamp(v.data_feasibility)
                         if v.data_access_model:
-                            c.data_access_model = v.data_access_model.strip().lower()
+                            # The critic's label is free text on the wire and this was the one
+                            # write site that copied it verbatim (every other path — bundles,
+                            # pivots, red-team revisions — screens it). It lands in BOTH the
+                            # report's data_access_model and tags.data_access, so an off-vocab
+                            # token shipped as a real provenance label. Abstain to 'unverified'
+                            # (a documented DataAccessTag that carries no score cap) instead.
+                            _label = v.data_access_model.strip().lower()
+                            if _label not in DATA_ACCESS_VOCAB:
+                                logger.warning(
+                                    f"[FeasibilityCritic] '{getattr(c, 'solution_name', '?')}' "
+                                    f"data_access_model '{_label[:40]}' outside DataAccessTag "
+                                    f"{sorted(DATA_ACCESS_VOCAB)} — abstaining to 'unverified'")
+                                _label = "unverified"
+                            c.data_access_model = _label
                         if v.data_notes:
                             c.data_acquisition_notes = v.data_notes[:120]
                         # bulk_route gate: a source with no nameable bulk route is UNVERIFIED ->
@@ -4079,6 +4106,7 @@ class UnifiedSolutionCrew:
             return max(0.0, min(1.0, x))
 
         def _apply(idea, c) -> None:
+            from ..utils.calibration_notes import MAX_STORED_REASON_LEN, truncate_at_word
             notes = []
             # (idea attr, raw-preserve field, calibration-object attr). The idea field and the
             # critic field share a name for the five core scores; solo_dev_feasibility (idea) maps
@@ -4099,7 +4127,14 @@ class UnifiedSolutionCrew:
                 setattr(idea, idea_attr, _clamp(newv))
                 reason = getattr(c, cal_attr.replace("_score", "_reason"), "") or ""
                 if reason:
-                    notes.append(f"{cal_attr.replace('_score', '')}: {reason[:140]}")
+                    # Was a bare reason[:140]: it cut mid-word with no ellipsis, and
+                    # because the critic writes "addresses X, but Y" the clause it
+                    # severed was always the caveat — leaving "Known concern" rows in
+                    # the UI reading as unqualified praise ending in "...no in".
+                    notes.append(
+                        f"{cal_attr.replace('_score', '')}: "
+                        f"{truncate_at_word(reason, MAX_STORED_REASON_LEN)}"
+                    )
             if notes:
                 idea.calibration_notes = " | ".join(notes)
 
@@ -4208,7 +4243,7 @@ class UnifiedSolutionCrew:
             "paper over it.\n"
             "Ground the decision in: the addressed pain + its severity, the mechanism, the project_type, "
             "the scores (high seo → distribution; high novelty → novel; high fit + feasibility on a narrow "
-            "user → workflow), competitor density, and the growth channels (signal only, never the decision).\n\n"
+            "user → workflow), competitor density, and the concrete distribution mechanism described above.\n\n"
             "USER-FACING COMMENTS:\n"
             "- PLAIN LANGUAGE (applies to angle_rationale, differentiation_locus, AND novelty_rationale): these "
             "strings are shown to end users. Refer to the angle in plain English — 'distribution / SEO', 'a "
@@ -4250,14 +4285,6 @@ class UnifiedSolutionCrew:
                 sp = (getattr(i, "source_pain", "") or "").strip()
                 sev = sev_by_pain.get(sp.lower())
                 sev_s = f"{sev:.2f}" if isinstance(sev, (int, float)) else "n/a"
-                channels = ""
-                try:
-                    tg = getattr(i, "tags", None)
-                    ch = getattr(tg, "growth_channels", None) if tg is not None else None
-                    if ch:
-                        channels = ", ".join(str(c) for c in ch[:4])
-                except Exception:
-                    channels = ""
 
                 def _g(attr, n=240):
                     return sanitize_social_content(str(getattr(i, attr, "") or ""))[:n]
@@ -4275,8 +4302,7 @@ class UnifiedSolutionCrew:
                     f"novelty: {getattr(i, 'novelty_score', None)}; "
                     f"seo_scalability: {getattr(i, 'seo_scalability_score', None)}; "
                     f"technical_feas: {getattr(i, 'technical_feasibility_score', None)}; "
-                    f"solo_dev: {getattr(i, 'solo_dev_feasibility', None)}\n"
-                    f"- growth channels: {sanitize_social_content(channels)[:160] or 'n/a'}"
+                    f"solo_dev: {getattr(i, 'solo_dev_feasibility', None)}"
                 )
             return fence_content("\n\n".join(rows), source="generated-ideas", label="UNTRUSTED IDEAS")
 
@@ -5599,7 +5625,9 @@ class UnifiedSolutionCrew:
                 requires_data_aggregation: bool = False
                 data_access_model: str = _F(
                     "", description="EXACTLY one of: public | freemium | paywalled | "
-                                    "unofficial | restricted | none")
+                                    "unofficial | restricted | blocked | unverified. Use 'public' "
+                                    "when the product needs no external data (pure computation / "
+                                    "user-supplied input).")
                 build_feasibility_score: float = 0.7
                 data_feasibility_score: float = 0.7
                 # None-able so omission is DETECTABLE (schema defaults would silently mask it);
@@ -5662,17 +5690,19 @@ class UnifiedSolutionCrew:
                 # data_access_model must be a closed tier (codex-review finding: bundles carried
                 # prose like "Read-only aggregation from Hugging Face Hub…", breaking Rule-A SEO
                 # gating + tag facets). Prose moves to data_acquisition_notes; no tier invented.
-                _dam = (d.get("data_access_model") or "").strip().lower()
-                if _dam and _dam not in ("public", "freemium", "paywalled",
-                                         "unofficial", "restricted", "none"):
+                _raw = (d.get("data_access_model") or "").strip()
+                _dam = normalize_data_access(_raw)
+                note_route_label(self, "bundle", _dam)
+                if _raw and _dam is None:
                     d["data_acquisition_notes"] = (
-                        f"Data route: {d['data_access_model'].strip()}"
+                        f"Data route: {_raw}"
                         + (f" | {d['data_acquisition_notes']}" if d.get("data_acquisition_notes") else ""))
-                    d["data_access_model"] = None
-                elif _dam:
-                    d["data_access_model"] = _dam
-                else:
-                    d["data_access_model"] = None
+                    logger.warning(
+                        f"[Synthesis] bundle '{d.get('solution_name', '?')}' data_access_model "
+                        f"'{_raw[:40]}' outside DataAccessTag {sorted(DATA_ACCESS_VOCAB)} — "
+                        f"abstaining to 'unverified'")
+                    _dam = "unverified"
+                d["data_access_model"] = _dam
                 # estimated_indexable_pages: defensive int-normalization (models emit strings/
                 # floats); junk -> None (Rule B of the SEO cap simply won't bind).
                 try:
@@ -6209,6 +6239,11 @@ class UnifiedSolutionCrew:
         finding = {
             "idea_name": getattr(idea, "solution_name", "?"),
             "pain_title": str(sp),
+            # The buyer-reality digest keys on this to attribute deaths to a segment. It was
+            # never written, so `segment` was null on every finding and the digest ran purely
+            # off its parse-the-reason-prose fallback — a fallback for missing data that had
+            # become the only path.
+            "segment": getattr(idea, "source_segment", None),
             "reason": reason,
             "market_fit": round(mf, 2) if isinstance(mf, (int, float)) else None,
             "market_fit_band": band,
@@ -6217,7 +6252,24 @@ class UnifiedSolutionCrew:
             "evidence": evidence,
             "source_frame": source_frame,
             "dispatch_id": getattr(self, "_current_seed_dispatch_id", None),
+            "generation_operation_id": getattr(
+                idea, "generation_operation_id", None,
+            ),
+            "generation_batch_ordinal": getattr(
+                idea, "generation_batch_ordinal", None,
+            ),
         }
+        evaluation = getattr(self, "_current_seed_evaluation", None)
+        if isinstance(evaluation, dict):
+            proposal = evaluation.get("proposal")
+            finding.update({
+                "evaluation_id": evaluation.get("evaluation_id"),
+                "evaluation_source_message_id": evaluation.get("source_message_id"),
+                "proposed_title": (
+                    proposal.get("proposedTitle") if isinstance(proposal, dict) else None
+                ),
+                "synthesis_evaluation": evaluation,
+            })
         if hasattr(idea, "model_dump"):
             try:
                 finding["idea"] = idea.model_dump(mode="json")
@@ -6285,8 +6337,9 @@ class UnifiedSolutionCrew:
                 continue
             i.candidate_status = "demoted"
             self._record_ruled_out(i, source="no_buyer", reason_override=(
-                "Real pain, but its fix is platform/policy change, not software — the research "
-                "found users here, not customers."))
+                "The pain is real, but this direction did not clear the buyer bar: the niche "
+                "leans on free alternatives, the matched segment showed low willingness to pay, "
+                "and the anchored pain was only partly addressable by software."))
             n += 1
             logger.info(f"[Demote] '{getattr(i, 'solution_name', '?')}' no-buyer "
                         f"(wallet=free-culture, payability={pay})")
@@ -6598,6 +6651,118 @@ class UnifiedSolutionCrew:
             logger.warning(f"[Seed] cell failed (non-fatal): {str(e)[:160]}")
             return None
 
+    def _run_exact_synthesis_cell(
+        self, *, evaluation: dict, pain_ref: str | None = None,
+        tool_ref: str | None = None, dispatch_id: str = "seed",
+        search=None, usages: list,
+    ):
+        """Evaluate one exact Concept Forge option without divergent idea generation.
+
+        The structured option is converted directly into one RawConcept, expanded and
+        scored by the standard tournament path. There is deliberately no `_one_sample`
+        call and no variant selection: the paid operation evaluates the direction the
+        owner chose, not a nearby product invented from a lossy free-text summary.
+        """
+        from ..models.solution_idea import RawConcept
+        from ..utils.frames import FrameFocus
+        from ..utils.seed_resolver import resolve_seed_anchors
+
+        proposal = evaluation.get("proposal") if isinstance(evaluation, dict) else None
+        exact = proposal.get("evaluation") if isinstance(proposal, dict) else None
+        if not isinstance(proposal, dict) or not isinstance(exact, dict):
+            raise ValueError("Structured synthesis evaluation is missing its validated proposal")
+        if (
+            evaluation.get("evaluation_id") != dispatch_id
+            or evaluation.get("dispatch_id") != dispatch_id
+        ):
+            raise ValueError("Structured synthesis evaluation identity does not match dispatch")
+
+        title = str(proposal.get("proposedTitle") or "").strip()
+        brief = str(proposal.get("proposedBrief") or "").strip()
+        if not title or not brief:
+            raise ValueError("Structured synthesis evaluation is missing title or brief")
+
+        axes = exact.get("changedAxes") if isinstance(exact.get("changedAxes"), list) else []
+        axis_text = "; ".join(
+            f"{a.get('axis')}: {a.get('from')} -> {a.get('to')} ({a.get('reason')})"
+            for a in axes if isinstance(a, dict)
+        )
+        retained = exact.get("retainedEvidence")
+        retained_text = "; ".join(str(v) for v in retained) if isinstance(retained, list) else ""
+        assumptions = exact.get("assumptions")
+        assumption_text = "; ".join(
+            str(a.get("statement")) for a in assumptions if isinstance(a, dict)
+        ) if isinstance(assumptions, list) else ""
+        canonical_brief = "\n".join(filter(None, [
+            title,
+            brief,
+            f"Exact changed axes: {axis_text}" if axis_text else "",
+            f"Retained evidence: {retained_text}" if retained_text else "",
+            f"Decision-changing assumptions: {assumption_text}" if assumption_text else "",
+        ]))
+
+        pains = list(getattr(self.pain_point_analysis, "pain_points", None) or [])
+        segments = list(
+            getattr(getattr(self, "audience_mapping", None), "audience_segments", None) or []
+        )
+        resolved = resolve_seed_anchors(
+            canonical_brief, pain_ref, tool_ref, pains, segments,
+        )
+        anchor_titles, segment = list(resolved.anchor_pain_titles), resolved.segment
+        focus = FrameFocus(
+            frame="user_seed",
+            key=dispatch_id,
+            payload={"seed_text": canonical_brief, "tool_ref": tool_ref or ""},
+            anchor_pain_titles=anchor_titles,
+        )
+        cell = {"frame": "user_seed", "focus": focus, "pain": None, "segment": segment}
+
+        mechanism = next(
+            (str(a.get("to")) for a in axes
+             if isinstance(a, dict) and a.get("axis") == "mechanism"),
+            "",
+        )
+        channel = next(
+            (str(a.get("to")) for a in axes
+             if isinstance(a, dict) and a.get("axis") == "channel"),
+            "",
+        )
+        keyword_base = " ".join(title.split()[:8])
+        concept = RawConcept(
+            concept_name=title,
+            one_liner=canonical_brief,
+            ideation_technique="atomic_feature",
+            project_type="other",
+            target_keywords=[keyword_base, f"{keyword_base} tool"],
+            data_source_hint=mechanism or None,
+            why_non_obvious=str(proposal.get("rationale") or assumption_text or brief),
+            distribution_channel=channel or None,
+            source_frame="user_seed",
+            source_focus_key=dispatch_id,
+            source_segment=(
+                getattr(segment, "segment_name", None) if segment is not None else None
+            ),
+        )
+        usages.extend(self._score_concepts([concept], idx=97))
+        winner = self._tournament_cell(
+            cell=cell, candidates=[concept], search=search, usages=usages,
+            skip_selection=True,
+        )
+        if winner is not None:
+            winner.idea_tier = "single"
+        return winner, canonical_brief
+
+    @staticmethod
+    def _stamp_exact_synthesis(idea, evaluation: dict) -> None:
+        """Stamp code-owned identity/provenance after semantic fidelity has passed."""
+        proposal = evaluation["proposal"]
+        idea.solution_name = proposal["proposedTitle"]
+        idea.proposed_title = proposal["proposedTitle"]
+        idea.evaluation_id = evaluation["evaluation_id"]
+        idea.evaluation_source_message_id = evaluation.get("source_message_id")
+        idea.synthesis_evaluation = evaluation
+        idea.source_frame = "owner_synthesis"
+
     def _synthesize_variant_merge(self, variants: list, shared_product: str):
         """ONE structured synthesis call merging 2+ variant ideas (same buyer job) into a single
         product taking the strongest mechanism/features/GTM of each — a synthesis of EXISTING
@@ -6619,7 +6784,9 @@ class UnifiedSolutionCrew:
                 technical_approach: str = ""
                 data_access_model: str = _F(
                     "", description="EXACTLY one of: public | freemium | paywalled | "
-                                    "unofficial | restricted | none")
+                                    "unofficial | restricted | blocked | unverified. Use 'public' "
+                                    "when the product needs no external data (pure computation / "
+                                    "user-supplied input).")
                 market_fit_score: float | None = None
                 technical_feasibility_score: float | None = None
                 build_feasibility_score: float = 0.7
@@ -6657,9 +6824,19 @@ class UnifiedSolutionCrew:
             if not d.get("target_personas"):
                 d["target_personas"] = ["primary audience member"]
             # Closed-vocab data route + percent-scale normalization (same defenses as bundles).
-            _dam = (d.get("data_access_model") or "").strip().lower()
-            d["data_access_model"] = _dam if _dam in (
-                "public", "freemium", "paywalled", "unofficial", "restricted", "none") else None
+            # Off-vocab ABSTAINS to 'unverified' — dropping to None used to erase the canonical
+            # 'blocked'/'unverified' labels (they were missing from the old accept-list), and a
+            # null label reads downstream as "no data barrier", skipping the feasibility caps.
+            _raw = (d.get("data_access_model") or "").strip()
+            _dam = normalize_data_access(_raw)
+            note_route_label(self, "variant-merge", _dam)
+            if _raw and _dam is None:
+                logger.warning(
+                    f"[VariantMerge] '{d.get('solution_name', '?')}' data_access_model "
+                    f"'{_raw[:40]}' outside DataAccessTag {sorted(DATA_ACCESS_VOCAB)} — "
+                    f"abstaining to 'unverified'")
+                _dam = "unverified"
+            d["data_access_model"] = _dam
             d.setdefault("market_fit_score", 0.5)
             d.setdefault("technical_feasibility_score", 0.6)
             for k in ("build_feasibility_score", "data_feasibility_score",
@@ -6832,7 +7009,9 @@ class UnifiedSolutionCrew:
                 technical_approach: str = ""
                 data_access_model: str = _F(
                     "", description="EXACTLY one of: public | freemium | paywalled | "
-                                    "unofficial | restricted | none")
+                                    "unofficial | restricted | blocked | unverified. Use 'public' "
+                                    "when the product needs no external data (pure computation / "
+                                    "user-supplied input).")
                 market_fit_score: float | None = None
                 technical_feasibility_score: float | None = None
                 build_feasibility_score: float = 0.7
@@ -6868,9 +7047,17 @@ class UnifiedSolutionCrew:
                 v = d.get(k)
                 if isinstance(v, (int, float)) and not isinstance(v, bool):
                     d[k] = max(0.0, min(1.0, v / 100.0 if 1.0 < v <= 100.0 else v))
-            _dam = (d.get("data_access_model") or "").strip().lower()
-            d["data_access_model"] = _dam if _dam in (
-                "public", "freemium", "paywalled", "unofficial", "restricted", "none") else None
+            # Off-vocab ABSTAINS to 'unverified' (same rationale as the variant merge above).
+            _raw = (d.get("data_access_model") or "").strip()
+            _dam = normalize_data_access(_raw)
+            note_route_label(self, "parity-pivot", _dam)
+            if _raw and _dam is None:
+                logger.warning(
+                    f"[ParityPivot] '{d.get('solution_name', '?')}' data_access_model "
+                    f"'{_raw[:40]}' outside DataAccessTag {sorted(DATA_ACCESS_VOCAB)} — "
+                    f"abstaining to 'unverified'")
+                _dam = "unverified"
+            d["data_access_model"] = _dam
             d["description"] = d.get("description") or d.get("value_proposition", "")
             d["core_features"] = d.get("core_features") or ["pivoted workflow"]
             d["pain_points_addressed"] = list(
@@ -6950,10 +7137,27 @@ class UnifiedSolutionCrew:
             self._birth_verified_names = set()
         self._birth_verified_names.update(
             getattr(w, "solution_name", "") for w in (birth_verified or []))
+        # Route label is ADJUDICATED before it is priced (2026-07-27 ordering fix). The
+        # 'blocked' data cap (data <= 0.2 -> build <= 0.2+margin -> market_fit rule (b) <= 0.40,
+        # with nothing downstream able to un-cap — the calibration critic re-scores market_fit/
+        # technical/novelty/seo/obviousness/solo_dev but NOT build or data feasibility) was
+        # designed for the SEARCH-GROUNDED 'refuted' verdict of `verify_data_routes`, not for a
+        # generator self-report. Wave-born ideas (pivot revisions, variant merges, red-team
+        # revisions) carry only generator self-scores here, so running `_finalize_feasibility`
+        # FIRST priced an unverified self-reported 'blocked' irreversibly, and the verifier's
+        # later adjudication could no longer restore it. Order now: pool-contract (closed-vocab
+        # normalization + well-known-source upgrade) -> route-verify (authoritative label; also
+        # applies its own blocked caps) -> feasibility (deterministic cap on the ADJUDICATED
+        # label). The steps are independent: `verify_data_routes` reads data_sources /
+        # NEEDS-VERIFY flags and always overwrites data_access_model, and
+        # `_cap_feasibility_scores` is downgrade-only, so it can never loosen the verifier's
+        # own 'blocked' caps. `execute_pipeline` keeps route-verify LAST of the three for a
+        # different reason (there `_finalize_feasibility` restores the critic's stash onto the
+        # SAME concepts it scored — wave-born ideas are new products the critic never scored).
         for step_name, fn in (
-                ("feasibility", lambda: self._finalize_feasibility(wave)),
                 ("pool-contract", lambda: self._finalize_idea_pool(wave)),
                 ("route-verify", lambda: self._verify_pool_routes(wave)),
+                ("feasibility", lambda: self._finalize_feasibility(wave)),
                 ("pain-relevance", lambda: self._filter_pain_relevance(wave)),
                 ("payability", lambda: [self._stamp_payability(w) for w in wave]),
                 ("dev-time", lambda: self._finalize_dev_time(wave)),
@@ -7366,6 +7570,13 @@ class UnifiedSolutionCrew:
         if solution_selection is not None:
             self._prune_selection_to_ideas(solution_selection, refined_solutions.solution_ideas)
 
+        # Route-label emission rate — ONE line per run (both composition sites end here), so
+        # how often a birth path self-reports 'blocked' (which drives the irreversible
+        # feasibility caps) or an off-vocab label is measurable instead of estimated.
+        _route_summary = route_label_summary(self)
+        if _route_summary:
+            logger.info(f"[RouteLabels] {_route_summary}")
+
         # Systemic-LLM halt point: if a payment/auth failure tripped the breaker during
         # the post-union passes (each is fail-soft and would have silently skipped), the
         # pool is half-evaluated — FAIL the stage rather than persist/rank it. Resume
@@ -7462,6 +7673,7 @@ class UnifiedSolutionCrew:
         self._ma_serper_calls = 0
         self._ma_search_lock = threading.Lock()
         self._birth_verified_names = set()
+        self._route_label_counts = {}
 
         def _get(attr: str):
             return seed.get(attr) if isinstance(seed, dict) else getattr(seed, attr, None)
@@ -7471,11 +7683,15 @@ class UnifiedSolutionCrew:
         pain_ref = _get("pain_ref")
         tool_ref = _get("tool_ref")
         dispatch_id = _get("dispatch_id") or "seed"
+        synthesis_evaluation = _get("synthesis_evaluation")
         # Read by `_record_ruled_out` (via `_sweep_demote` in `_finalize_seed_tail` below) so a
         # DEMOTED seed's ruled-out finding carries the dispatch id — never set for any other
         # birth path (execute_pipeline never touches this attr), so every non-seed finding still
         # gets `dispatch_id: None`.
         self._current_seed_dispatch_id = dispatch_id
+        self._current_seed_evaluation = (
+            synthesis_evaluation if isinstance(synthesis_evaluation, dict) else None
+        )
 
         search = None
         if getattr(self, "search_tool", None) is not None:
@@ -7493,32 +7709,70 @@ class UnifiedSolutionCrew:
             "crew_inputs": None, "cells_run": 1,
         }
 
-        idea = self._run_seed_cell(
-            seed_text=seed_text, pain_ref=pain_ref, tool_ref=tool_ref,
-            dispatch_id=dispatch_id, search=search, usages=usages)
+        exact_semantic_brief = None
+        if self._current_seed_evaluation is not None:
+            idea, exact_semantic_brief = self._run_exact_synthesis_cell(
+                evaluation=self._current_seed_evaluation,
+                pain_ref=pain_ref,
+                tool_ref=tool_ref,
+                dispatch_id=dispatch_id,
+                search=search,
+                usages=usages,
+            )
+        else:
+            idea = self._run_seed_cell(
+                seed_text=seed_text, pain_ref=pain_ref, tool_ref=tool_ref,
+                dispatch_id=dispatch_id, search=search, usages=usages)
         if idea is None:
             self._record_divergent_usage(usages)
             return None
 
-        from ..utils.seed_fidelity import is_seed_faithful
-        if not is_seed_faithful(seed_text, idea):
+        from ..utils.seed_fidelity import (
+            is_seed_faithful,
+            structured_synthesis_fidelity_failures,
+        )
+        fidelity_brief = exact_semantic_brief or seed_text
+
+        def _identity_is_faithful(candidate) -> bool:
+            if self._current_seed_evaluation is None:
+                return is_seed_faithful(fidelity_brief, candidate)
+            proposal = self._current_seed_evaluation.get("proposal")
+            failures = structured_synthesis_fidelity_failures(
+                proposal if isinstance(proposal, dict) else {},
+                candidate,
+            )
+            if failures:
+                logger.error(
+                    "[Seed] exact synthesis lost required identity clauses: "
+                    + ", ".join(failures)
+                )
+                return False
+            return True
+
+        if not _identity_is_faithful(idea):
             logger.error("[Seed] birth violated the user-seed identity lock; refusing replacement")
             self._record_divergent_usage(usages)
             return None
+        if self._current_seed_evaluation is not None:
+            self._stamp_exact_synthesis(idea, self._current_seed_evaluation)
 
         self._score_wave([idea], birth_verified=[idea])
-        if not is_seed_faithful(seed_text, idea):
+        if not _identity_is_faithful(idea):
             logger.error("[Seed] scoring replaced the submitted product; refusing replacement")
             self._record_divergent_usage(usages)
             return None
+        if self._current_seed_evaluation is not None:
+            self._stamp_exact_synthesis(idea, self._current_seed_evaluation)
 
         seed_ideas = [idea]
         self._finalize_seed_tail(seed_ideas)
         idea = seed_ideas[0]
-        if not is_seed_faithful(seed_text, idea):
+        if not _identity_is_faithful(idea):
             logger.error("[Seed] final evaluation replaced the submitted product; refusing replacement")
             self._record_divergent_usage(usages)
             return None
+        if self._current_seed_evaluation is not None:
+            self._stamp_exact_synthesis(idea, self._current_seed_evaluation)
         self._record_divergent_usage(usages)
         return idea
 
@@ -7923,7 +8177,9 @@ class UnifiedSolutionCrew:
                     idea.estimated_development_time = est[:40]
                     rat = (getattr(r, "rationale", "") or "").strip()
                     if rat:
-                        idea.dev_time_rationale = rat[:200]
+                        from ..utils.calibration_notes import truncate_at_word
+
+                        idea.dev_time_rationale = truncate_at_word(rat, 200)
                 return usage
             except Exception as e:
                 logger.warning(f"[DEV-TIME] estimate skipped for "
@@ -7956,8 +8212,6 @@ class UnifiedSolutionCrew:
             logger.info(f"[SEO-REALISM] capped {capped_n}/{len(ideas)} idea SEO scores")
 
     _PROJECT_TYPE_VOCAB = ("saas", "directory", "aggregator", "comparison-tool", "marketplace")
-    _DATA_ACCESS_VOCAB = ("public", "freemium", "paywalled", "unofficial", "restricted", "none",
-                          "official", "licensed", "blocked", "unverified")
 
     def _finalize_idea_pool(self, ideas: list) -> None:
         """Pool-assembly contract (2026-07-03): the FINAL pool is fed by four birth paths
@@ -8012,17 +8266,29 @@ class UnifiedSolutionCrew:
                             f"({getattr(idea, 'solution_name', '?')})")
                 idea.project_type = norm
                 clamped += 1
-            # data_access_model closed vocab (Rule-A SEO gating + facets read the tier)
+            # data_access_model closed vocab (Rule-A SEO gating + facets read the tier).
+            # Alias FIRST (none/not-data-dependent/official -> public, licensed -> paywalled),
+            # then screen against the canonical DataAccessTag vocab. The screen used to run
+            # against a 10-value superset, so the legacy labels passed here intact and were
+            # silently nulled much later by utils.idea_tags._valid(); aliasing them also makes
+            # them skip the well-known-source upgrade below (they are already 'public').
             dam = getattr(idea, "data_access_model", None)
-            if dam and dam.strip().lower() not in self._DATA_ACCESS_VOCAB:
-                notes = getattr(idea, "data_acquisition_notes", "") or ""
-                if dam not in notes:
-                    idea.data_acquisition_notes = (f"Data route: {dam.strip()}"
-                                                   + (f" | {notes}" if notes else ""))
-                logger.info(f"[PoolContract] data_access_model prose -> notes "
-                            f"({getattr(idea, 'solution_name', '?')})")
-                idea.data_access_model = None
-                clamped += 1
+            if dam:
+                norm = normalize_data_access(dam)
+                if norm is None:
+                    notes = getattr(idea, "data_acquisition_notes", "") or ""
+                    if dam not in notes:
+                        idea.data_acquisition_notes = (f"Data route: {dam.strip()}"
+                                                       + (f" | {notes}" if notes else ""))
+                    logger.info(f"[PoolContract] data_access_model prose -> notes "
+                                f"({getattr(idea, 'solution_name', '?')})")
+                    idea.data_access_model = None
+                    clamped += 1
+                elif norm != dam:
+                    if norm != dam.strip().lower():
+                        logger.info(f"[PoolContract] data_access_model '{dam.strip()[:40]}' -> "
+                                    f"'{norm}' ({getattr(idea, 'solution_name', '?')})")
+                    idea.data_access_model = norm
             # Well-known-source label upgrade (2026-07-03): only tournament winners pass the
             # web verifier — bundles/salvaged/re-injections carry the critic's model-knowledge
             # label, observed wrong on famous sources (a bundle shipped SAM.gov as 'paywalled').
@@ -8432,9 +8698,11 @@ class UnifiedSolutionCrew:
         # (see the comment at `_current_seed_dispatch_id`'s seed-path setter) — never leak a
         # PRIOR run's seed dispatch id onto this run's findings.
         self._current_seed_dispatch_id = None
+        self._current_seed_evaluation = None
         self.overlap_groups = []
         self.funnel_counts = {}
         self._ma_serper_calls = 0  # market-awareness search budget counter (per run)
+        self._route_label_counts = {}  # generator-emitted route-label tally (per run)
         # Guards the check-truncate-increment budget bookkeeping in `_ma_search`/
         # `_ma_search_batch` only — never held during the network call itself (2026-07-10
         # parallelization audit). Eagerly (re)created here per run; `_get_ma_search_lock`

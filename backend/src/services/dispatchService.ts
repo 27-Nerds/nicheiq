@@ -11,6 +11,7 @@
  */
 import { Prisma, DispatchKind, DispatchState, JobStatus } from '@prisma/client';
 import { prisma } from './db.js';
+import { refundChargeInTx } from './creditService.js';
 
 /**
  * The CAS predicate, as a `where` fragment that `updateMany` can satisfy from the Job row alone
@@ -87,6 +88,11 @@ export async function openDispatch(
     seedOrdinal?: number | null;
     /** SEED_IDEA only: the durable chat message id that proposed this seed, for card identity. */
     sourceMessageId?: string | null;
+    clientRequestId?: string | null;
+    requestSnapshot?: Prisma.InputJsonValue | null;
+    requestFingerprint?: string | null;
+    workPayload?: Prisma.InputJsonValue | null;
+    batchOrdinal?: number | null;
   },
 ): Promise<string> {
   const dispatch = await tx.jobDispatch.create({
@@ -98,6 +104,11 @@ export async function openDispatch(
       chargeId: args.chargeId ?? null,
       seedOrdinal: args.seedOrdinal ?? null,
       sourceMessageId: args.sourceMessageId ?? null,
+      clientRequestId: args.clientRequestId ?? null,
+      requestSnapshot: args.requestSnapshot ?? undefined,
+      requestFingerprint: args.requestFingerprint ?? null,
+      workPayload: args.workPayload ?? undefined,
+      batchOrdinal: args.batchOrdinal ?? null,
       state: DispatchState.AUTHORIZED,
     },
     select: { id: true },
@@ -109,6 +120,75 @@ export async function openDispatch(
   });
 
   return dispatch.id;
+}
+
+/**
+ * Cancel one exact selection operation before any worker has crossed AUTHORIZED -> CLAIMED.
+ * Job-first write ordering mirrors `startDispatchedJob`, so cancellation and worker claim cannot
+ * both commit. The charge reversal is exact and part of the same transaction.
+ */
+export async function cancelAuthorizedSelectionDispatch(
+  jobId: string,
+  dispatchId: string,
+): Promise<'cancelled' | 'started' | 'stale' | 'not_found'> {
+  return prisma.$transaction(async (tx) => {
+    const dispatch = await tx.jobDispatch.findFirst({
+      where: { id: dispatchId, jobId },
+      select: { id: true, kind: true, state: true, chargeId: true },
+    });
+    if (!dispatch) return 'not_found';
+    if (dispatch.state !== DispatchState.AUTHORIZED) {
+      return dispatch.state === DispatchState.CLAIMED ? 'started' : 'stale';
+    }
+    if (dispatch.kind !== DispatchKind.DEEP_RESEARCH && dispatch.kind !== DispatchKind.REGENERATE) {
+      return 'stale';
+    }
+
+    const reverted = await tx.job.updateMany({
+      where: {
+        id: jobId,
+        status: JobStatus.QUEUED,
+        activeDispatchId: dispatchId,
+      },
+      data: {
+        status: JobStatus.AWAITING_SELECTION,
+        activeDispatchId: null,
+        queuedAt: null,
+        ...(dispatch.kind === DispatchKind.DEEP_RESEARCH
+          ? {
+              selectedSolutions: [],
+              selectedSolutionIds: [],
+              selectedSolutionRefs: Prisma.JsonNull,
+              selectionRationale: null,
+            }
+          : {}),
+      },
+    });
+    if (reverted.count !== 1) return 'stale';
+
+    const terminal = await tx.jobDispatch.updateMany({
+      where: { id: dispatchId, state: DispatchState.AUTHORIZED },
+      data: { state: DispatchState.CANCELLED, settledAt: new Date(), failureKind: 'USER_CANCELLED' },
+    });
+    if (terminal.count !== 1) {
+      throw new Error('DISPATCH_CANCEL_RACE');
+    }
+
+    if (dispatch.chargeId) {
+      const refund = await refundChargeInTx(tx, dispatch.chargeId);
+      if (refund) {
+        await tx.jobDispatch.update({
+          where: { id: dispatchId },
+          data: {
+            refundTransactionId: refund.id,
+            refundedAt: new Date(),
+            refundedAmount: refund.amount,
+          },
+        });
+      }
+    }
+    return 'cancelled';
+  });
 }
 
 /**

@@ -4,7 +4,7 @@
   import { APPENDIX_EYEBROW } from "$lib/selection/labels";
 
   interface Props {
-    /** ONE plain mono meta line ("Analyst notes 3 · Collaborator 2 · Ruled out 4"). */
+    /** ONE plain meta line ("3 analyst notes · 2 feedback notes · 4 ideas ruled out"). */
     meta: string;
     /** Collapsed by default; bindable so the workbench can force it open
      *  (e.g. when scrolling to a ruled-out entry inside). */
@@ -27,6 +27,7 @@
   >
     <span class="appendix-id">
       <span class="appendix-eyebrow">{APPENDIX_EYEBROW}</span>
+      <span class="appendix-title">How the shortlist was formed</span>
       {#if meta}
         <span class="appendix-meta">{meta}</span>
       {/if}
@@ -40,19 +41,18 @@
 
 <style>
   .analysis-appendix {
-    /* The dossier chrome supplies border/radius/background/shadow; the appendix
-       tightens its inset so the trigger's own padding sets the 1rem frame. */
-    padding: 0.25rem;
+    padding: 0;
+    overflow: hidden;
   }
   .appendix-trigger {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 1rem;
+    gap: var(--space-4);
     width: 100%;
-    padding: 0.75rem;
+    padding: var(--space-4);
     border: 0;
-    border-radius: calc(var(--radius-xl) - 0.25rem);
+    border-radius: var(--radius-xl);
     background: transparent;
     font: inherit;
     text-align: left;
@@ -71,33 +71,39 @@
   }
   .appendix-id {
     display: grid;
-    gap: 0.25rem;
+    gap: var(--space-1);
     min-width: 0;
   }
   .appendix-eyebrow {
     color: var(--color-text-secondary);
     font-family: var(--font-mono);
     font-size: var(--text-xs);
-    font-weight: 800;
+    font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
+  }
+  .appendix-title {
+    color: var(--color-text-primary);
+    font-family: var(--font-display);
+    font-size: var(--text-md);
+    font-weight: 700;
+    line-height: var(--leading-tight);
   }
   .appendix-meta {
     color: var(--color-text-secondary);
     font-family: var(--font-mono);
     font-size: var(--text-11);
-    font-weight: 600;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
+    font-weight: 500;
+    line-height: var(--leading-normal);
     font-variant-numeric: tabular-nums;
     font-feature-settings: "zero" 0;
   }
   .analysis-appendix :global(.appendix-chevron) {
     flex: 0 0 auto;
-    width: 1rem;
-    height: 1rem;
+    width: var(--space-4);
+    height: var(--space-4);
     color: var(--color-text-muted);
-    transition: transform 200ms cubic-bezier(0.32, 0.72, 0, 1);
+    transition: transform var(--duration-normal) var(--ease-default);
   }
   .analysis-appendix :global(.appendix-chevron--open) {
     transform: rotate(180deg);
@@ -105,8 +111,18 @@
   .appendix-body[hidden] { display: none; }
   .appendix-body {
     display: grid;
-    gap: 0.75rem;
-    padding: 0.25rem 0.75rem 0.75rem;
+    gap: var(--space-6);
+    padding: var(--space-5) var(--space-4) var(--space-4);
+    border-top: 1px solid var(--color-border);
+  }
+  .appendix-body :global(.context-notes) {
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--color-border);
+  }
+  .appendix-body :global(.context-disclosures) {
+    width: 100%;
+    margin-left: 0;
+    justify-content: flex-start;
   }
   @media (prefers-reduced-motion: reduce) {
     .appendix-trigger,

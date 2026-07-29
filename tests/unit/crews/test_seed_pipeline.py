@@ -377,6 +377,207 @@ class TestRunSeedCell:
 # ---------------------------------------------------------------------------
 
 class TestExecuteSeedPipeline:
+    def test_exact_synthesis_cell_builds_one_raw_concept_without_one_sample(
+        self, monkeypatch,
+    ):
+        import nicheiq.utils.seed_resolver as resolver
+
+        crew = _crew()
+        evaluation = {
+            "evaluation_id": "dispatch-exact",
+            "dispatch_id": "dispatch-exact",
+            "source_message_id": "message-exact",
+            "proposal": {
+                "proposedTitle": "Exact Protocol Hub",
+                "proposedBrief": "Indexes exit forecasts and peptide maintenance protocols.",
+                "rationale": "Evaluate the selected combined mechanism.",
+                "evaluation": {
+                    "changedAxes": [{
+                        "axis": "mechanism",
+                        "from": "forecast",
+                        "to": "forecast plus peptide protocol index",
+                        "reason": "Selected direction",
+                    }],
+                    "retainedEvidence": ["Exit planners need maintenance guidance"],
+                    "assumptions": [{"statement": "Planners seek protocol pages"}],
+                },
+            },
+        }
+        captured = {}
+        monkeypatch.setattr(
+            resolver,
+            "resolve_seed_anchors",
+            lambda *a, **kw: SimpleNamespace(
+                anchor_pain_titles=[], segment=None,
+            ),
+        )
+        monkeypatch.setattr(
+            UnifiedSolutionCrew,
+            "_one_sample",
+            lambda *a, **kw: (_ for _ in ()).throw(
+                AssertionError("structured evaluation must not generate variants")
+            ),
+        )
+        monkeypatch.setattr(
+            UnifiedSolutionCrew, "_score_concepts",
+            lambda self, concepts, idx=None: [],
+        )
+        winner = SimpleNamespace(idea_tier=None)
+        monkeypatch.setattr(
+            UnifiedSolutionCrew,
+            "_tournament_cell",
+            lambda self, **kw: captured.update(kw) or winner,
+        )
+
+        result, semantic_brief = crew._run_exact_synthesis_cell(
+            evaluation=evaluation,
+            dispatch_id="dispatch-exact",
+            usages=[],
+        )
+
+        assert result is winner
+        assert len(captured["candidates"]) == 1
+        assert captured["candidates"][0].concept_name == "Exact Protocol Hub"
+        assert "forecast plus peptide protocol index" in semantic_brief
+
+    def test_structured_synthesis_bypasses_divergent_seed_birth_and_keeps_exact_title(
+        self, monkeypatch,
+    ):
+        crew = _crew()
+        evaluation = {
+            "evaluation_id": "dispatch-exact",
+            "dispatch_id": "dispatch-exact",
+            "source_message_id": "message-exact",
+            "proposal": {
+                "proposedTitle": "GLP-1 Off-Ramp + Peptide Maintenance Hub",
+                "proposedBrief": (
+                    "Pairs GLP-1 exit forecasts with indexed peptide maintenance protocols."
+                ),
+                "evaluation": {
+                    "changedAxes": [{
+                        "axis": "mechanism",
+                        "from": "exit forecast",
+                        "to": "exit forecast plus peptide protocol index",
+                        "reason": "Evaluate the selected combined direction",
+                    }],
+                    "retainedEvidence": ["Users plan for weight regain after GLP-1 exit"],
+                    "assumptions": [{
+                        "statement": "Exit planners seek peptide maintenance protocols",
+                    }],
+                },
+            },
+        }
+        idea = SimpleNamespace(
+            solution_name="Model-renamed concept",
+            short_description=(
+                "GLP-1 exit forecasts plus a peptide maintenance protocol index."
+            ),
+        )
+        calls = []
+        monkeypatch.setattr(
+            UnifiedSolutionCrew, "_run_seed_cell",
+            lambda self, **kw: (_ for _ in ()).throw(
+                AssertionError("exact synthesis must not enter divergent seed generation")
+            ),
+        )
+        monkeypatch.setattr(
+            UnifiedSolutionCrew, "_run_exact_synthesis_cell",
+            lambda self, **kw: (idea, (
+                "GLP-1 Off-Ramp + Peptide Maintenance Hub "
+                "GLP-1 exit forecasts peptide maintenance protocol index"
+            )),
+        )
+        monkeypatch.setattr(
+            UnifiedSolutionCrew, "_score_wave",
+            lambda self, wave, **kw: calls.append("score"),
+        )
+        monkeypatch.setattr(
+            UnifiedSolutionCrew, "_finalize_seed_tail",
+            lambda self, wave: calls.append("tail"),
+        )
+        monkeypatch.setattr(
+            usc.UnifiedSolutionCrew, "_record_divergent_usage",
+            lambda self, u: None, raising=False,
+        )
+
+        result = crew.execute_seed_pipeline(SeedRequest(
+            seed_text="lossy legacy summary",
+            dispatch_id="dispatch-exact",
+            synthesis_evaluation=evaluation,
+        ))
+
+        assert result is idea
+        assert calls == ["score", "tail"]
+        assert idea.solution_name == evaluation["proposal"]["proposedTitle"]
+        assert idea.proposed_title == evaluation["proposal"]["proposedTitle"]
+        assert idea.evaluation_id == "dispatch-exact"
+        assert idea.evaluation_source_message_id == "message-exact"
+        assert idea.synthesis_evaluation == evaluation
+        assert idea.source_frame == "owner_synthesis"
+
+    def test_structured_synthesis_rejects_title_only_match_with_drifted_mechanism(
+        self, monkeypatch,
+    ):
+        crew = _crew()
+        evaluation = {
+            "evaluation_id": "dispatch-exact",
+            "dispatch_id": "dispatch-exact",
+            "source_message_id": "message-exact",
+            "proposal": {
+                "proposedTitle": "GLP-1 Off-Ramp + Peptide Maintenance Hub",
+                "proposedBrief": (
+                    "Pairs GLP-1 exit forecasts with indexed peptide maintenance protocols."
+                ),
+                "evaluation": {
+                    "changedAxes": [{
+                        "axis": "mechanism",
+                        "from": "exit forecast",
+                        "to": (
+                            "cohort matching plus compound canonicalization and indexed "
+                            "peptide dosing calculators"
+                        ),
+                        "reason": "Selected combined direction",
+                    }],
+                },
+            },
+        }
+        drift = SimpleNamespace(
+            solution_name="GLP-1 Off-Ramp + Peptide Maintenance Hub",
+            short_description=(
+                "A generic medication reminder and healthy recipe newsletter."
+            ),
+        )
+        calls = []
+        monkeypatch.setattr(
+            UnifiedSolutionCrew,
+            "_run_exact_synthesis_cell",
+            lambda self, **kw: (
+                drift,
+                "GLP-1 exit forecasts indexed peptide maintenance protocols",
+            ),
+        )
+        monkeypatch.setattr(
+            UnifiedSolutionCrew, "_score_wave",
+            lambda self, wave, **kw: calls.append("score"),
+        )
+        monkeypatch.setattr(
+            UnifiedSolutionCrew, "_finalize_seed_tail",
+            lambda self, wave: calls.append("tail"),
+        )
+        monkeypatch.setattr(
+            usc.UnifiedSolutionCrew, "_record_divergent_usage",
+            lambda self, u: None, raising=False,
+        )
+
+        result = crew.execute_seed_pipeline(SeedRequest(
+            seed_text="lossy summary",
+            dispatch_id="dispatch-exact",
+            synthesis_evaluation=evaluation,
+        ))
+
+        assert result is None
+        assert calls == []
+
     def test_returns_exactly_one_idea_and_runs_wave_then_tail(self, monkeypatch):
         crew = _crew()
         idea = SimpleNamespace(solution_name="Seed Idea")
@@ -479,6 +680,37 @@ class TestExecuteSeedPipeline:
 # ---------------------------------------------------------------------------
 
 class TestRuledOutSeedProvenance:
+    def test_exact_synthesis_ruled_out_finding_keeps_full_evaluation_identity(self):
+        evaluation = {
+            "evaluation_id": "dispatch-42",
+            "source_message_id": "message-42",
+            "proposal": {
+                "proposedTitle": "Exact owner direction",
+                "evaluation": {"disqualifiers": ["No qualified demand"]},
+            },
+        }
+        crew = _crew(
+            ruled_out_pains=[],
+            _current_seed_dispatch_id="dispatch-42",
+            _current_seed_evaluation=evaluation,
+        )
+        idea = SimpleNamespace(
+            solution_name="Exact owner direction",
+            source_frame="owner_synthesis",
+            market_fit_score=0.2,
+            source_pain=None,
+            pain_points_addressed=[],
+            idea_tier="single",
+        )
+
+        crew._record_ruled_out(idea, source="no_buyer")
+
+        finding = crew.ruled_out_pains[0]
+        assert finding["evaluation_id"] == "dispatch-42"
+        assert finding["evaluation_source_message_id"] == "message-42"
+        assert finding["proposed_title"] == "Exact owner direction"
+        assert finding["synthesis_evaluation"] == evaluation
+
     def test_execute_seed_pipeline_stamps_current_seed_dispatch_id(self, monkeypatch):
         crew = _crew()
         monkeypatch.setattr(UnifiedSolutionCrew, "_run_seed_cell",

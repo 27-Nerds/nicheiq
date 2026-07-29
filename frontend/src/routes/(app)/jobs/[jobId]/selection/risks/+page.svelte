@@ -147,6 +147,7 @@
   );
   // Bound so a cancelled switch can snap the control back to the focused idea.
   let candidateKey = $state("");
+  let pendingCandidateKey = $state("");
   $effect(() => {
     candidateKey = focusedIdea ? workspaceIdeaKey(focusedIdea) : "";
   });
@@ -154,16 +155,34 @@
     const idea = data.workspace.ideas.find((candidate) => workspaceIdeaKey(candidate) === key);
     if (!idea?.idea_id) return;
     const evidenceDraftIsDirty = ownerEvidenceDraftIsDirty();
-    if (
-      evidenceDraftIsDirty
-      && !window.confirm(
-        "You have unsaved evidence for this candidate. Switch anyway? The draft will remain attached to this exact idea and risk area.",
-      )
-    ) {
+    if (evidenceDraftIsDirty) {
+      pendingCandidateKey = key;
       candidateKey = focusedIdea ? workspaceIdeaKey(focusedIdea) : "";
       return;
     }
-    if (!evidenceDraftIsDirty) discardOwnerEvidenceDraft();
+    discardOwnerEvidenceDraft();
+    void goto(focusedHref(idea.idea_id, idea.idea_revision ?? 1), {
+      replaceState: true,
+      noScroll: true,
+      keepFocus: true,
+    });
+  }
+
+  function cancelCandidateSwitch(): void {
+    pendingCandidateKey = "";
+    candidateKey = focusedIdea ? workspaceIdeaKey(focusedIdea) : "";
+  }
+
+  function confirmCandidateSwitch(): void {
+    const idea = data.workspace.ideas.find(
+      (candidate) => workspaceIdeaKey(candidate) === pendingCandidateKey,
+    );
+    if (!idea?.idea_id) {
+      cancelCandidateSwitch();
+      return;
+    }
+    pendingCandidateKey = "";
+    candidateKey = workspaceIdeaKey(idea);
     void goto(focusedHref(idea.idea_id, idea.idea_revision ?? 1), {
       replaceState: true,
       noScroll: true,
@@ -233,6 +252,27 @@
         onChange={changeCandidate}
       />
     </nav>
+    {#if pendingCandidateKey}
+      {@const pendingCandidate = data.workspace.ideas.find(
+        (candidate) => workspaceIdeaKey(candidate) === pendingCandidateKey,
+      )}
+      <section class="candidate-switch-confirm" role="alert" aria-labelledby="candidate-switch-title">
+        <div>
+          <strong id="candidate-switch-title">Switch candidates?</strong>
+          <p>
+            Your unsaved evidence stays attached to
+            {focusedIdea ? solutionDisplayTitle(focusedIdea) : "this candidate"}.
+            {#if pendingCandidate} You are switching to {solutionDisplayTitle(pendingCandidate)}.{/if}
+          </p>
+        </div>
+        <div class="candidate-switch-confirm__actions">
+          <button type="button" onclick={cancelCandidateSwitch}>Stay here</button>
+          <button type="button" class="confirm" onclick={confirmCandidateSwitch}>
+            Switch and keep draft
+          </button>
+        </div>
+      </section>
+    {/if}
 
     <div class="evidence-workspace" bind:this={evidenceWorkspaceEl}>
       <EvidenceChallenge
@@ -365,6 +405,49 @@
     text-transform: uppercase;
     white-space: nowrap;
   }
+  .candidate-switch-confirm {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--color-border-emphasis);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-elevated);
+  }
+  .candidate-switch-confirm strong { color: var(--color-text-primary); }
+  .candidate-switch-confirm p {
+    margin: var(--space-1) 0 0;
+    color: var(--color-text-secondary);
+    font-size: var(--text-13);
+    line-height: var(--leading-snug);
+  }
+  .candidate-switch-confirm__actions {
+    display: flex;
+    flex: 0 0 auto;
+    gap: var(--space-2);
+  }
+  .candidate-switch-confirm button {
+    min-height: var(--space-10);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
+    font: inherit;
+    font-size: var(--text-13);
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .candidate-switch-confirm button.confirm {
+    border-color: var(--color-accent-dark);
+    background: var(--color-accent-dark);
+    color: var(--color-text-on-accent);
+  }
+  .candidate-switch-confirm button:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
 
   .evidence-workspace { min-width: 0; }
   .proof-region {
@@ -381,5 +464,7 @@
   @media (max-width: 767px) {
     .evidence-page { gap: var(--space-5); }
     .candidate-switcher { grid-template-columns: 1fr; }
+    .candidate-switch-confirm { align-items: stretch; flex-direction: column; }
+    .candidate-switch-confirm__actions { display: grid; grid-template-columns: 1fr; }
   }
 </style>

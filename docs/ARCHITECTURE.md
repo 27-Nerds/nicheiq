@@ -216,7 +216,7 @@ filter/refine/select tasks above:
    critic's score *overwrites* the ideator's own obviousness estimate — it is the system's
    independent obviousness signal. This SAME pass also
    scores **build feasibility** + **data feasibility** (`data_access_model`: public/freemium/
-   paywalled/unofficial/restricted), keeping ToS-gray-but-obtainable (`unofficial`) ideas and
+   paywalled/unofficial/restricted/blocked/unverified), keeping ToS-gray-but-obtainable (`unofficial`) ideas and
    dropping only genuine no-route ones. The data fields are surfaced and, post-selection,
    reconciled against Stage-13's verified findings (estimate→verified). (The build-feasibility
    verdict cap, `enable_verdict_data_caps`, was removed 2026-07-07 — never validated.)
@@ -476,6 +476,19 @@ crew.generate(
 Stages 6–10 run *after* a single idea is selected, so they're tuned to pressure-test that one
 idea rather than survey the niche. Several refinements gate this behavior (see
 `docs/DEEP_RESEARCH_IMPROVEMENT_PLAN.md` and `docs/ENV_REFERENCE.md`):
+
+The Phase-1 → Phase-2 handoff is an exact, versioned operation rather than a display-name join.
+The browser submits a request ID, saved-draft version, ordered shortlist fingerprint, and the
+price it confirmed. The backend reloads the owner's saved draft, resolves each
+`(idea_id, idea_revision)` against the current preview report, and computes the authoritative
+selection snapshots and worker payload. It then atomically records the charge, dispatch, and
+private outbox payload before delivery to Redis. Retries reuse the same job-scoped request ID;
+queued cancellation reverses the exact originating charge and records the refund linkage.
+
+The worker validates the ordered exact references and their narrow canonical fingerprint before
+resuming the checkpoint. Legacy jobs may fall back to unique normalized names, but new dispatches
+carry exact references. Report-ready and final callbacks include the dispatch identity, and the
+selected result returns an exact `winner_ref`; stale callbacks cannot settle a newer operation.
 
 - **Angle-conditioned research** (permanent): the selected idea's `winning_angle` kill-question is
   front-loaded into the SEO + competitor prompts so they investigate what would validate or kill

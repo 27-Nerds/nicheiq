@@ -112,7 +112,7 @@
           <Button onclick={() => { confirmPending = false; }} label="Cancel" class="btn-secondary btn-sm" />
         </div>
       {:else}
-        <button onclick={() => { confirmPending = true; }} class="btn-primary btn-sm">
+        <button onclick={() => { confirmPending = true; }} class="btn-secondary btn-sm">
           {#if Icon}<Icon class="w-4 h-4" />{/if}
           Generate
           {#if creditCost > 0}

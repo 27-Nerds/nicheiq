@@ -8,7 +8,27 @@ sys.path.insert(0, str(project_root))
 
 import pytest
 from unittest.mock import patch, MagicMock
+from types import SimpleNamespace
+from nicheiq.models.solution_idea import BaseSolutionIdea, IdeaGenerationResult
 from nicheiq.models.solution_selection import SolutionScores, SolutionSelection
+from nicheiq.utils.idea_identity import selection_fingerprint
+
+
+def _identified_idea(name: str, idea_id: str, revision: int = 1) -> BaseSolutionIdea:
+    return BaseSolutionIdea(
+        solution_name=name,
+        idea_id=idea_id,
+        idea_revision=revision,
+        identity_origin="phase1",
+        identity_operation_id="initial",
+        description=f"{name} description",
+        value_proposition=f"{name} value",
+        pain_points_addressed=["Pain"],
+        core_features=["Feature"],
+        target_personas=["Persona"],
+        market_fit_score=0.7,
+        technical_feasibility_score=0.8,
+    )
 
 
 class TestRunInteractiveResearch:
@@ -539,16 +559,21 @@ class TestRunResearchPhase2:
     """Tests for run_research_phase2 task."""
 
     @patch('worker.tasks._run_phase2_continuation')
+    @patch('worker.tasks._resolve_phase2_selection')
     @patch('worker.tasks.mark_job_running')
     @patch('worker.tasks.create_progress_callback')
     def test_loads_checkpoint_and_runs_phase2(
-        self, mock_progress, mock_mark, mock_phase2_cont
+        self, mock_progress, mock_mark, mock_resolve, mock_phase2_cont
     ):
         with patch('nicheiq.flows.research_flow.ResearchFlow') as MockFlow:
             flow = MockFlow.return_value
             flow.resume_from_checkpoint.return_value = True
             flow.cleanup_collections = MagicMock()
             mock_progress.return_value = MagicMock()
+            mock_resolve.return_value = (
+                ["Sol1"],
+                [{"idea_id": "idea-1", "idea_revision": 1, "solution_name": "Sol1"}],
+            )
             mock_phase2_cont.return_value = {"status": "completed"}
 
             from worker.tasks import run_research_phase2
@@ -604,8 +629,231 @@ class TestRunResearchPhase2:
                 )
 
 
+class TestResolvePhase2Selection:
+    def _state(self):
+        return SimpleNamespace(
+            idea_generation=IdeaGenerationResult(
+                solution_ideas=[
+                    _identified_idea("Alpha Hub", "idea-a", 2),
+                    _identified_idea("Beta Hub", "idea-b", 1),
+                    _identified_idea("Gamma Hub", "idea-c", 1),
+                ]
+            )
+        )
+
+    def test_exact_refs_are_authoritative_and_return_checkpoint_names(self):
+        from worker.tasks import _resolve_phase2_selection
+
+        refs = [
+            {
+                "idea_id": "idea-a",
+                "idea_revision": 2,
+                "solution_name": " Alpha   Hub ",
+            }
+        ]
+        names, canonical = _resolve_phase2_selection(
+            self._state(),
+            "job-1",
+            selected_solution_refs=refs,
+            provided_selection_fingerprint=selection_fingerprint(refs),
+        )
+
+        assert names == ["Alpha Hub"]
+        assert canonical == [
+            {
+                "idea_id": "idea-a",
+                "idea_revision": 2,
+                "solution_name": "Alpha Hub",
+            }
+        ]
+
+    def test_rejects_missing_revision_even_when_name_matches(self):
+        from worker.tasks import _resolve_phase2_selection
+
+        with pytest.raises(RuntimeError, match="revision not found"):
+            _resolve_phase2_selection(
+                self._state(),
+                "job-1",
+                selected_solution_refs=[
+                    {
+                        "idea_id": "idea-a",
+                        "idea_revision": 1,
+                        "solution_name": "Alpha Hub",
+                    }
+                ],
+            )
+
+    def test_rejects_fingerprint_mismatch(self):
+        from worker.tasks import _resolve_phase2_selection
+
+        with pytest.raises(RuntimeError, match="fingerprint does not match"):
+            _resolve_phase2_selection(
+                self._state(),
+                "job-1",
+                selected_solution_refs=[
+                    {
+                        "idea_id": "idea-a",
+                        "idea_revision": 2,
+                        "solution_name": "Alpha Hub",
+                    }
+                ],
+                provided_selection_fingerprint="0" * 64,
+            )
+
+    def test_rejects_stale_reviewed_snapshot(self):
+        from worker.tasks import _resolve_phase2_selection
+
+        with pytest.raises(RuntimeError, match="snapshot is stale.*value_proposition"):
+            _resolve_phase2_selection(
+                self._state(),
+                "job-1",
+                selected_solution_refs=[
+                    {
+                        "idea_id": "idea-a",
+                        "idea_revision": 2,
+                        "solution_name": "Alpha Hub",
+                    }
+                ],
+                selected_solution_snapshots=[
+                    {
+                        "idea_id": "idea-a",
+                        "idea_revision": 2,
+                        "solution_name": "Alpha Hub",
+                        "value_proposition": "old value",
+                    }
+                ],
+            )
+
+    def test_legacy_name_fallback_requires_unique_checkpoint_match(self):
+        from worker.tasks import _resolve_phase2_selection
+
+        state = self._state()
+        state.idea_generation.solution_ideas[1].solution_name = " alpha hub "
+        with pytest.raises(RuntimeError, match="resolve exactly once"):
+            _resolve_phase2_selection(
+                state,
+                "job-1",
+                legacy_solution_names=["Alpha Hub"],
+            )
+
+    def test_winner_name_maps_back_to_exact_revision(self):
+        from worker.tasks import _resolve_phase2_winner_ref
+
+        refs = [
+            {"idea_id": "idea-a", "idea_revision": 2, "solution_name": "Alpha Hub"},
+            {"idea_id": "idea-b", "idea_revision": 1, "solution_name": "Beta Hub"},
+        ]
+        assert _resolve_phase2_winner_ref(refs, " beta   hub ") == refs[1]
+
+
+class TestRegenerationBaseCandidateRefs:
+    def _state(self):
+        return SimpleNamespace(
+            idea_generation=IdeaGenerationResult(
+                solution_ideas=[
+                    _identified_idea("Alpha", "idea-a", 2),
+                    _identified_idea("Beta", "idea-b", 1),
+                    _identified_idea("Gamma", "idea-c", 4),
+                ]
+            )
+        )
+
+    def test_exact_pool_is_set_based_and_ignores_snapshot_hashes(self):
+        from worker.tasks import _validate_regeneration_base_candidate_refs
+
+        _validate_regeneration_base_candidate_refs(
+            self._state(),
+            "job-1",
+            [
+                {
+                    "idea_id": "idea-c",
+                    "idea_revision": 4,
+                    "snapshot_sha256": "not-worker-authority",
+                },
+                {"idea_id": "idea-a", "idea_revision": 2},
+                {"idea_id": "idea-b", "idea_revision": 1},
+            ],
+        )
+
+    def test_legacy_missing_refs_remains_allowed(self):
+        from worker.tasks import _validate_regeneration_base_candidate_refs
+
+        _validate_regeneration_base_candidate_refs(self._state(), "job-1", None)
+
+    def test_hidden_checkpoint_candidates_are_not_in_selectable_base_pool(self):
+        from worker.tasks import _validate_regeneration_base_candidate_refs
+
+        state = self._state()
+        state.idea_generation.solution_ideas[2].candidate_status = "demoted"
+        _validate_regeneration_base_candidate_refs(
+            state,
+            "job-1",
+            [
+                {"idea_id": "idea-a", "idea_revision": 2},
+                {"idea_id": "idea-b", "idea_revision": 1},
+            ],
+        )
+
+    def test_stale_revision_or_pool_membership_is_rejected(self):
+        from worker.tasks import _validate_regeneration_base_candidate_refs
+
+        with pytest.raises(RuntimeError, match="do not match the resumed checkpoint"):
+            _validate_regeneration_base_candidate_refs(
+                self._state(),
+                "job-1",
+                [
+                    {"idea_id": "idea-a", "idea_revision": 1},
+                    {"idea_id": "idea-b", "idea_revision": 1},
+                    {"idea_id": "idea-c", "idea_revision": 4},
+                ],
+            )
+
+    def test_duplicate_authorized_ref_is_rejected_before_set_comparison(self):
+        from worker.tasks import _validate_regeneration_base_candidate_refs
+
+        with pytest.raises(RuntimeError, match="duplicate identity idea-a:2"):
+            _validate_regeneration_base_candidate_refs(
+                self._state(),
+                "job-1",
+                [
+                    {"idea_id": "idea-a", "idea_revision": 2},
+                    {"idea_id": "idea-a", "idea_revision": 2},
+                ],
+            )
+
+
 class TestRunRegenerateIdeas:
     """Tests for run_regenerate_ideas task."""
+
+    @patch('worker.tasks.create_progress_callback')
+    def test_rejects_stale_base_immediately_after_checkpoint_load(self, mock_progress):
+        with patch('nicheiq.flows.research_flow.ResearchFlow') as MockFlow:
+            flow = MockFlow.return_value
+            flow.resume_from_checkpoint.return_value = True
+            flow.cleanup_collections = MagicMock()
+            flow.state = TestRegenerationBaseCandidateRefs()._state()
+            mock_progress.return_value = MagicMock()
+
+            from worker.tasks import run_regenerate_ideas
+
+            with pytest.raises(
+                RuntimeError,
+                match="do not match the resumed checkpoint",
+            ):
+                run_regenerate_ideas(
+                    job_id="job-1",
+                    checkpoint_path="/tmp/cp",
+                    existing_solution_names=["Alpha", "Beta", "Gamma"],
+                    niche="test",
+                    base_candidate_refs=[
+                        {"idea_id": "idea-a", "idea_revision": 1},
+                        {"idea_id": "idea-b", "idea_revision": 1},
+                        {"idea_id": "idea-c", "idea_revision": 4},
+                    ],
+                )
+
+            flow.resume_from_checkpoint.assert_called_once_with("/tmp/cp")
+            mock_progress.return_value.assert_not_called()
 
     @patch('worker.tasks.notify_regeneration_complete')
     @patch('worker.tasks.create_progress_callback')
@@ -627,26 +875,64 @@ class TestRunRegenerateIdeas:
                 flow.checkpoint_mgr = MagicMock()
                 mock_progress.return_value = MagicMock()
 
-                # Mock crew results
-                new_sol = MagicMock(solution_name="NewSol", name="NewSol")
+                # Mock crew results. source_frame is the GENERATION LENS: the batch marker
+                # is only a fallback for candidates the generator left unlabelled, so batch
+                # ideas keep the same lens chip first-batch ideas get.
+                new_sol = MagicMock(solution_name="NewSol", name="NewSol", source_frame=None)
                 new_sol.model_dump.return_value = {"solution_name": "NewSol", "name": "NewSol"}
-                idea_gen = MagicMock(solution_ideas=[new_sol])
+                lens_sol = MagicMock(
+                    solution_name="LensSol", name="LensSol", source_frame="workflow",
+                )
+                lens_sol.model_dump.return_value = {"solution_name": "LensSol", "name": "LensSol"}
+                idea_gen = MagicMock(solution_ideas=[new_sol, lens_sol])
                 MockCrew.return_value.execute_pipeline.return_value = [idea_gen]
 
                 from worker.tasks import run_regenerate_ideas
                 with patch(
                     'worker.tasks._solution_to_preview_dict',
-                    return_value={"solution_name": "NewSol"},
+                    side_effect=lambda solution: {
+                        "solution_name": solution.solution_name,
+                        "idea_id": solution.idea_id,
+                        "idea_revision": solution.idea_revision,
+                        "source_frame": solution.source_frame,
+                        "generation_operation_id": solution.generation_operation_id,
+                        "generation_batch_ordinal": solution.generation_batch_ordinal,
+                    },
                 ):
                     result = run_regenerate_ideas(
                         job_id='job-1',
                         checkpoint_path='/tmp/cp',
                         existing_solution_names=['OldSol'],
                         niche='test niche',
+                        dispatch_id='dispatch-1',
+                        batch_ordinal=2,
                     )
 
                 assert result["status"] == "regenerated"
+                assert new_sol.source_frame == "additional_batch"
+                assert lens_sol.source_frame == "workflow"  # lens preserved, not overwritten
+                for solution in (new_sol, lens_sol):
+                    assert solution.generation_operation_id == "dispatch-1"
+                    assert solution.generation_batch_ordinal == 2
                 mock_notify_regen.assert_called_once()
+                assert mock_notify_regen.call_args.args[1] == [
+                    {
+                        "solution_name": "NewSol",
+                        "idea_id": new_sol.idea_id,
+                        "idea_revision": 1,
+                        "source_frame": "additional_batch",
+                        "generation_operation_id": "dispatch-1",
+                        "generation_batch_ordinal": 2,
+                    },
+                    {
+                        "solution_name": "LensSol",
+                        "idea_id": lens_sol.idea_id,
+                        "idea_revision": 1,
+                        "source_frame": "workflow",
+                        "generation_operation_id": "dispatch-1",
+                        "generation_batch_ordinal": 2,
+                    },
+                ]
 
     @patch('worker.tasks.notify_regeneration_complete')
     @patch('worker.tasks.create_progress_callback')
@@ -717,6 +1003,151 @@ class TestRunRegenerateIdeas:
                     str(settings.checkpoint_dir)
                 )
                 assert events == ["preview", "notify"]
+
+    @patch('worker.tasks.notify_regeneration_complete')
+    @patch('worker.tasks.create_progress_callback')
+    def test_undelivered_batch_is_reverted_before_the_dispatch_is_refunded(
+        self, mock_progress, mock_notify_regen
+    ):
+        """Delivery exhausting its retries must not leave a refunded batch on disk.
+
+        queue_consumer settles/REFUNDS the dispatch when this raises, and Phase 2 resolves
+        selections from this checkpoint — so the merge and the preview asset must both be
+        rolled back to their pre-batch state first. Mirrors run_seed_idea's contract.
+        """
+        with patch('nicheiq.flows.research_flow.ResearchFlow') as MockFlow:
+            with patch('nicheiq.crews.unified_solution_crew.UnifiedSolutionCrew') as MockCrew:
+                flow = MockFlow.return_value
+                flow.resume_from_checkpoint.return_value = True
+                flow.cleanup_collections = MagicMock()
+                flow.allowed_project_types = None
+
+                old_sol = MagicMock(
+                    solution_name="OldSol", name="OldSol", candidate_status="active",
+                )
+                new_sol = MagicMock(
+                    solution_name="NewSol", name="NewSol",
+                    candidate_status="active", source_frame=None,
+                )
+                new_sol.model_dump.return_value = {"solution_name": "NewSol"}
+                state = MagicMock()
+                state.idea_generation = MagicMock(solution_ideas=[old_sol])
+                state.idea_ruled_out = [{"idea_name": "PriorFinding"}]
+                flow.state = state
+                flow.checkpoint_mgr = MagicMock()
+                mock_progress.return_value = MagicMock()
+                MockCrew.return_value.execute_pipeline.return_value = [
+                    MagicMock(solution_ideas=[new_sol])
+                ]
+
+                materialized = []
+                flow._materialize_preview_report.side_effect = lambda _dir: materialized.append(
+                    [idea.solution_name for idea in state.idea_generation.solution_ideas]
+                )
+                mock_notify_regen.side_effect = ConnectionError("backend unreachable")
+
+                from worker.tasks import run_regenerate_ideas
+
+                with patch(
+                    'worker.tasks._solution_to_preview_dict',
+                    return_value={"solution_name": "NewSol"},
+                ):
+                    with pytest.raises(ConnectionError) as excinfo:
+                        run_regenerate_ideas(
+                            job_id='job-1',
+                            checkpoint_path='/tmp/cp',
+                            existing_solution_names=['OldSol'],
+                            niche='test niche',
+                            dispatch_id='dispatch-1',
+                            batch_ordinal=2,
+                        )
+
+                # Tagged so queue_consumer refunds this dispatch instead of failing the
+                # parent research job.
+                assert getattr(excinfo.value, "regeneration_delivery_only", False) is True
+                # Merged for delivery, then rolled back once delivery failed.
+                assert materialized == [["OldSol", "NewSol"], ["OldSol"]]
+                assert state.idea_generation.solution_ideas == [old_sol]
+                assert state.idea_ruled_out == [{"idea_name": "PriorFinding"}]
+                assert flow.checkpoint_mgr.save_stage.call_count == 2
+
+    @patch('worker.tasks.notify_regeneration_complete')
+    @patch('worker.tasks.create_progress_callback')
+    def test_all_duplicates_settle_as_zero_additions_without_mutating_old_pool(
+        self, mock_progress, mock_notify_regen
+    ):
+        with patch('nicheiq.flows.research_flow.ResearchFlow') as MockFlow:
+            with patch('nicheiq.crews.unified_solution_crew.UnifiedSolutionCrew') as MockCrew:
+                flow = MockFlow.return_value
+                flow.resume_from_checkpoint.return_value = True
+                flow.cleanup_collections = MagicMock()
+                flow.allowed_project_types = None
+                old_sol = MagicMock(
+                    solution_name="OldSol",
+                    name="OldSol",
+                    candidate_status="active",
+                )
+                old_sol.model_dump.return_value = {
+                    "solution_name": "OldSol",
+                    "market_fit_score": 0.71,
+                    "candidate_status": "active",
+                }
+                duplicate = MagicMock(
+                    solution_name="RenamedOldSol",
+                    name="RenamedOldSol",
+                    candidate_status="active",
+                )
+                duplicate.model_dump.return_value = {
+                    "solution_name": "RenamedOldSol",
+                    "candidate_status": "active",
+                }
+                state = MagicMock()
+                state.idea_generation = MagicMock(solution_ideas=[old_sol])
+                state.idea_ruled_out = []
+                flow.state = state
+                flow.checkpoint_mgr = MagicMock()
+                flow._materialize_preview_report.return_value = "/tmp/preview.json"
+                mock_progress.return_value = MagicMock()
+                crew = MockCrew.return_value
+                crew.execute_pipeline.return_value = [
+                    MagicMock(solution_ideas=[duplicate])
+                ]
+                crew.ruled_out_pains = []
+                crew._record_ruled_out.side_effect = lambda idea, **_kwargs: crew.ruled_out_pains.append({
+                    "idea_name": idea.solution_name,
+                    "idea": idea.model_dump(),
+                })
+
+                from worker.tasks import run_regenerate_ideas
+
+                with patch(
+                    'nicheiq.utils.validation.crew_guardrails.detect_catalog_duplicate',
+                    return_value=True,
+                ):
+                    result = run_regenerate_ideas(
+                        job_id='job-1',
+                        checkpoint_path='/tmp/cp',
+                        existing_solution_names=['OldSol'],
+                        niche='test niche',
+                        dispatch_id='dispatch-1',
+                        batch_ordinal=2,
+                    )
+
+                assert result["new_count"] == 0
+                assert state.idea_generation.solution_ideas == [old_sol]
+                assert old_sol.model_dump() == {
+                    "solution_name": "OldSol",
+                    "market_fit_score": 0.71,
+                    "candidate_status": "active",
+                }
+                assert state.idea_ruled_out[0]["generation_operation_id"] == "dispatch-1"
+                assert state.idea_ruled_out[0]["generation_batch_ordinal"] == 2
+                assert state.idea_ruled_out[0]["source_frame"] == "additional_batch"
+                assert state.idea_ruled_out[0]["idea"]["source_frame"] == "additional_batch"
+                mock_notify_regen.assert_called_once()
+                assert mock_notify_regen.call_args.args[1] == []
+                assert mock_notify_regen.call_args.kwargs["generated_count"] == 1
+                assert mock_notify_regen.call_args.kwargs["ruled_out_count"] == 1
 
     @patch('worker.tasks.notify_regeneration_complete')
     @patch('worker.tasks.create_progress_callback')

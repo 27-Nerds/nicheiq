@@ -1,11 +1,11 @@
-Your New NicheIQ Solution Ideas Are Ready!
+Your NicheIQ idea batch is ready
 
-New solution ideas for "{{NICHE}}" have been generated!
+The additional idea batch for "{{NICHE}}" has finished.
 
-{{NEW_SOLUTION_COUNT}} new ideas have been added. You now have {{TOTAL_SOLUTION_COUNT}} solutions to choose from.
+{{BATCH_RESULT}}
 
-Review the expanded list and select your preferred solution to continue with deep research.
+{{BATCH_GUIDANCE}}
 
-Review Solutions: {{STATUS_URL}}
+Review candidates: {{STATUS_URL}}
 
 Job ID: {{JOB_ID}}

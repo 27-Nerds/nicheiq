@@ -15,7 +15,7 @@ from nicheiq.crews.unified_solution_crew import UnifiedSolutionCrew
 def _concept(name, pain="pain A", **kw):
     base = dict(concept_name=name, one_liner=f"{name} does a thing", mechanism_tag="calc",
                 source_segment="Seg", source_pain=pain, why_non_obvious="insight",
-                data_route="official state pages", data_acquisition_notes="", data_access_model="official",
+                data_route="official state pages", data_acquisition_notes="", data_access_model="public",
                 build_feasibility_score=0.7, data_feasibility_score=0.7, target_keywords=["kw"],
                 project_type="saas")
     base.update(kw)

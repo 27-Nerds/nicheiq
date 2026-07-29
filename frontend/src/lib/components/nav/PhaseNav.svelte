@@ -1,6 +1,13 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import {
+    FileText,
+    FlaskConical,
+    LayoutDashboard,
+    ListChecks,
+    Package,
+  } from "lucide-svelte";
+  import {
     PHASES,
     DEEP_RESEARCH_BLURRED_PREVIEW_IDS,
     DEEP_RESEARCH_PEEK_ITEMS,
@@ -61,6 +68,8 @@
      *  shows Choose ideas → Compare trade-offs → Review and start, and the
      *  "Check the evidence" row is omitted rather than linking into a 403. */
     decisionTools?: boolean;
+    /** Status of the completed run's optional landing-page deliverable. */
+    landingPageStatus?: "pending" | "running" | "completed" | "failed" | "locked";
   }
 
   let {
@@ -78,6 +87,7 @@
     chatMode = false,
     gateStage = null,
     decisionTools = false,
+    landingPageStatus = "pending",
   }: Props = $props();
 
   // Research shortlist: one shared nav group of the TWO primary tools (Compare,
@@ -96,7 +106,7 @@
       })),
   );
   const reviewHref = $derived(
-    jobId ? `/jobs/${jobId}/selection/review${selectionQuery}` : undefined,
+    jobId ? `/jobs/${jobId}/selection/review` : undefined,
   );
   const hubSectionHref = (sectionId: string): string | undefined =>
     nested && jobId ? `/jobs/${jobId}#${sectionId}` : undefined;
@@ -119,7 +129,23 @@
 
   const isSelectionMode = $derived(mode === "selection");
   const isGateMode = $derived(mode === "gate");
+  const isCompletedMode = $derived(jobStatus === "COMPLETED" && Boolean(jobId));
   const currentSection = $derived(activeSection || trackedSection || (isSelectionMode ? "opportunities" : ""));
+
+  const deliverableStatus = $derived.by(() => {
+    switch (landingPageStatus) {
+      case "completed":
+        return { label: "Ready", variant: "ready" };
+      case "running":
+        return { label: "Generating", variant: "running" };
+      case "failed":
+        return { label: "Needs attention", variant: "attention" };
+      case "locked":
+        return { label: "Unavailable", variant: "muted" };
+      default:
+        return { label: "Available", variant: "available" };
+    }
+  });
 
   // Phase badge states
   type BadgeState = "active" | "done" | "locked";
@@ -217,6 +243,30 @@
 
   const HEADER_OFFSET = 24; // static app header; keep a small breathing offset for anchors
   const SCROLL_THRESHOLD = HEADER_OFFSET + 10; // small buffer above header for activation
+
+  const completedReportItems = [
+    {
+      id: "report-brief",
+      label: "Brief",
+      description: "Understand the recommendation",
+      view: "brief",
+      icon: FileText,
+    },
+    {
+      id: "report-evidence",
+      label: "Evidence",
+      description: "Verify the case",
+      view: "evidence",
+      icon: FlaskConical,
+    },
+    {
+      id: "report-plan",
+      label: "Plan",
+      description: "Decide what to do next",
+      view: "plan",
+      icon: ListChecks,
+    },
+  ] as const;
 
   function scrollToElement(el: HTMLElement) {
     const y = el.getBoundingClientRect().top + window.scrollY - HEADER_OFFSET;
@@ -410,6 +460,48 @@
         </SidebarNavItem>
       {/each}
     </SidebarGroup>
+  {:else if isCompletedMode}
+    <SidebarGroup label="Completed run">
+      <SidebarNavItem
+        active
+        href={jobId ? `/jobs/${jobId}` : undefined}
+        aria-current="page"
+      >
+        {#snippet leading()}<LayoutDashboard class="sidebar-nav-ic" />{/snippet}
+        Run overview
+      </SidebarNavItem>
+      <span class="report-nav-description">Report and deliverables</span>
+    </SidebarGroup>
+
+    <SidebarDivider />
+    <SidebarGroup label="Research report">
+      {#each completedReportItems as item}
+        {@const Icon = item.icon}
+        <SidebarNavItem href={jobId ? `/jobs/${jobId}/report?view=${item.view}` : undefined}>
+          {#snippet leading()}<Icon class="sidebar-nav-ic" />{/snippet}
+          {item.label}
+        </SidebarNavItem>
+        <span class="report-nav-description">{item.description}</span>
+      {/each}
+    </SidebarGroup>
+
+    <SidebarDivider />
+    <SidebarGroup label="Optional deliverables">
+      <SidebarNavItem href={jobId ? `/jobs/${jobId}#optional-deliverables` : undefined}>
+        {#snippet leading()}<Package class="sidebar-nav-ic" />{/snippet}
+        Landing page
+        {#snippet trailing()}
+          <span
+            class="deliverable-status"
+            class:deliverable-status--ready={deliverableStatus.variant === "ready"}
+            class:deliverable-status--running={deliverableStatus.variant === "running"}
+            class:deliverable-status--attention={deliverableStatus.variant === "attention"}
+          >
+            {deliverableStatus.label}
+          </span>
+        {/snippet}
+      </SidebarNavItem>
+    </SidebarGroup>
   {:else}
     {#each PHASES as phase, phaseIndex}
       {@const badge = phaseBadges[phase.id]}
@@ -526,7 +618,23 @@
 
 {#if isSelectionMode}
 <div class="selection-mobile-navigation">
-<nav class="selection-mobile-nav" aria-label="Research shortlist journey">
+<button
+  type="button"
+  class="selection-step-toggle"
+  aria-expanded={isOpen}
+  aria-controls="selection-step-menu"
+  onclick={() => (isOpen = !isOpen)}
+>
+  <span>Selection step</span>
+  <strong>
+    {activeTool === "choose"
+      ? CHOOSE_IDEAS_LABEL
+      : activeTool === "review"
+        ? REVIEW_AND_START_LABEL
+        : toolItems.find((item) => item.slug === activeTool)?.label ?? CHOOSE_IDEAS_LABEL}
+  </strong>
+</button>
+<nav class="selection-mobile-nav selection-mobile-nav--journey" aria-label="Research shortlist journey">
   {#if opportunitySection}
     {#if nested}
       <a
@@ -574,23 +682,54 @@
     >{REVIEW_AND_START_LABEL}</a>
   {/if}
 </nav>
-<nav class="selection-mobile-nav selection-mobile-nav--context" aria-label="Discovery context">
-  {#each contextSections as section}
-    {#if nested}
-      <a class="selection-mobile-item" href={hubSectionHref(section.id)}>{section.label}</a>
-    {:else}
-      <button
-        class="selection-mobile-item"
-        class:active={currentSection === section.id}
-        type="button"
-        aria-current={currentSection === section.id ? "location" : undefined}
-        onclick={() => handleSectionClick(discoveryPhase, section)}
-      >
-        {section.label}
-      </button>
+<details class="selection-context-menu">
+  <summary>Research context</summary>
+  <nav aria-label="Discovery context">
+    {#each contextSections as section}
+      {#if nested}
+        <a href={hubSectionHref(section.id)}>{section.label}</a>
+      {:else}
+        <button
+          class:active={currentSection === section.id}
+          type="button"
+          aria-current={currentSection === section.id ? "location" : undefined}
+          onclick={() => handleSectionClick(discoveryPhase, section)}
+        >{section.label}</button>
+      {/if}
+    {/each}
+  </nav>
+</details>
+{#if isOpen}
+  <nav class="selection-step-menu" id="selection-step-menu" aria-label="Selection steps">
+    {#if opportunitySection}
+      {#if nested}
+        <a href={hubSectionHref(opportunitySection.id)} onclick={() => (isOpen = false)}>{CHOOSE_IDEAS_LABEL}</a>
+      {:else}
+        <button type="button" onclick={() => { isOpen = false; handleSectionClick(discoveryPhase, opportunitySection); }}>{CHOOSE_IDEAS_LABEL}</button>
+      {/if}
     {/if}
-  {/each}
-</nav>
+    {#each toolItems as item (item.slug)}
+      {#if item.href && item.task?.status !== "not_ready"}
+        <a href={item.href} aria-current={activeTool === item.slug ? "page" : undefined} onclick={() => (isOpen = false)}>{item.label}</a>
+      {:else if item.href}
+        <span aria-disabled="true">{item.label} · {item.task?.statusLabel}</span>
+      {/if}
+    {/each}
+    {#if reviewHref}
+      <a href={reviewHref} aria-current={activeTool === "review" ? "page" : undefined} onclick={() => (isOpen = false)}>{REVIEW_AND_START_LABEL}</a>
+    {/if}
+    <details>
+      <summary>Research context</summary>
+      {#each contextSections as section}
+        {#if nested}
+          <a href={hubSectionHref(section.id)} onclick={() => (isOpen = false)}>{section.label}</a>
+        {:else}
+          <button type="button" onclick={() => { isOpen = false; handleSectionClick(discoveryPhase, section); }}>{section.label}</button>
+        {/if}
+      {/each}
+    </details>
+  </nav>
+{/if}
 </div>
 {/if}
 
@@ -609,12 +748,61 @@
       <div class="mobile-progress-fill" style:width="{scrollProgress * 100}%"></div>
     </div>
     <span class="mobile-current">
-      {PHASES.flatMap((p) => p.sections).find((s) => s.id === currentSection)?.label || "Navigate"}
+      {isCompletedMode
+        ? "Run overview"
+        : PHASES.flatMap((p) => p.sections).find((s) => s.id === currentSection)?.label || "Navigate"}
     </span>
   </button>
 
   {#if isOpen}
     <div class="mobile-menu" id="phase-nav-mobile-menu">
+      {#if isCompletedMode}
+        <div class="mobile-phase-header">
+          <span class="phase-label">Completed run</span>
+        </div>
+        <a
+          class="mobile-item active"
+          href={jobId ? `/jobs/${jobId}` : undefined}
+          aria-current="page"
+          onclick={() => (isOpen = false)}
+        >
+          <span>Run overview</span>
+        </a>
+
+        <div class="mobile-divider"></div>
+        <div class="mobile-phase-header">
+          <span class="phase-label">Research report</span>
+        </div>
+        {#each completedReportItems as item}
+          <a
+            class="mobile-item"
+            href={jobId ? `/jobs/${jobId}/report?view=${item.view}` : undefined}
+            onclick={() => (isOpen = false)}
+          >
+            <span>{item.label}</span>
+          </a>
+        {/each}
+
+        <div class="mobile-divider"></div>
+        <div class="mobile-phase-header">
+          <span class="phase-label">Optional deliverables</span>
+        </div>
+        <a
+          class="mobile-item"
+          href={jobId ? `/jobs/${jobId}#optional-deliverables` : undefined}
+          onclick={() => (isOpen = false)}
+        >
+          <span>Landing page</span>
+          <span
+            class="deliverable-status"
+            class:deliverable-status--ready={deliverableStatus.variant === "ready"}
+            class:deliverable-status--running={deliverableStatus.variant === "running"}
+            class:deliverable-status--attention={deliverableStatus.variant === "attention"}
+          >
+            {deliverableStatus.label}
+          </span>
+        </a>
+      {:else}
       {#each PHASES as phase, phaseIndex}
         {@const badge = phaseBadges[phase.id]}
         {@const unlocked = isPhaseUnlocked(phase.id)}
@@ -664,6 +852,7 @@
           {/each}
         {/if}
       {/each}
+      {/if}
     </div>
   {/if}
 </nav>
@@ -701,6 +890,34 @@
   }
   :global(.phase-side .sidebar-nav-item.is-done .sidebar-nav-ic) {
     opacity: 0.7;
+  }
+
+  .report-nav-description {
+    display: block;
+    margin: calc(-1 * var(--space-2)) var(--space-3) var(--space-2);
+    padding-left: var(--space-8);
+    color: var(--color-text-muted);
+    font-size: var(--text-xs);
+    line-height: 1.4;
+  }
+
+  .deliverable-status {
+    margin-left: auto;
+    color: var(--color-text-muted);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+  }
+  .deliverable-status--ready {
+    color: var(--color-success-text);
+  }
+  .deliverable-status--running {
+    color: var(--color-info-dark);
+  }
+  .deliverable-status--attention {
+    color: var(--color-error-dark);
   }
 
   /* ── Phase badge (SidebarGroup trailing) ── */
@@ -925,9 +1142,15 @@
      into the shell and inflates the page at narrow viewports, pushing the commit
      CTA off-screen. The inner navs stay the scrollers (overflow-x:auto). */
   .selection-mobile-navigation {
+    position: relative;
     min-width: 0;
     max-width: 100%;
     overflow-x: clip;
+  }
+
+  .selection-step-toggle,
+  .selection-step-menu {
+    display: none;
   }
 
   .selection-mobile-nav {
@@ -939,10 +1162,36 @@
     background: var(--color-bg-base);
   }
 
-  .selection-mobile-nav--context {
-    padding-top: 0;
-    border-bottom: 0;
+  .selection-context-menu {
+    border-bottom: 1px solid var(--color-border);
     background: var(--color-bg-surface);
+  }
+  .selection-context-menu > summary {
+    width: fit-content;
+    min-height: var(--space-10);
+    padding: var(--space-2) var(--space-4);
+    color: var(--color-text-secondary);
+    font-size: var(--text-13);
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .selection-context-menu nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    padding: 0 var(--space-4) var(--space-3);
+  }
+  .selection-context-menu a,
+  .selection-context-menu button {
+    min-height: var(--space-9);
+    padding: var(--space-2);
+    border: 0;
+    background: transparent;
+    color: var(--color-text-secondary);
+    font: inherit;
+    font-size: var(--text-13);
+    text-decoration: none;
+    cursor: pointer;
   }
 
   .selection-mobile-item {
@@ -980,6 +1229,83 @@
     .selection-mobile-navigation { display: none; }
   }
 
+  @media (max-width: 40rem) {
+    .selection-mobile-nav--journey,
+    .selection-context-menu {
+      display: none;
+    }
+    .selection-step-toggle {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: var(--space-2);
+      align-items: baseline;
+      width: 100%;
+      min-height: var(--space-12);
+      padding: var(--space-2) var(--space-4);
+      border: 0;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-base);
+      color: var(--color-text-secondary);
+      text-align: left;
+    }
+    .selection-step-toggle span {
+      font: 700 var(--text-xs)/var(--leading-tight) var(--font-mono);
+      letter-spacing: var(--tracking-wide);
+      text-transform: uppercase;
+    }
+    .selection-step-toggle strong {
+      overflow: hidden;
+      color: var(--color-text-primary);
+      font-size: var(--text-sm);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .selection-step-menu {
+      display: grid;
+      position: absolute;
+      z-index: var(--z-dropdown);
+      top: 100%;
+      right: var(--space-3);
+      left: var(--space-3);
+      padding: var(--space-2);
+      border: 1px solid var(--color-border-emphasis);
+      border-radius: var(--radius-md);
+      background: var(--color-bg-elevated);
+      box-shadow: var(--shadow-md);
+    }
+    .selection-step-menu > a,
+    .selection-step-menu > button,
+    .selection-step-menu > span,
+    .selection-step-menu details > a,
+    .selection-step-menu details > button {
+      display: block;
+      width: 100%;
+      min-height: var(--space-10);
+      padding: var(--space-2) var(--space-3);
+      border: 0;
+      border-radius: var(--radius-sm);
+      background: transparent;
+      color: var(--color-text-primary);
+      font: inherit;
+      font-size: var(--text-sm);
+      line-height: var(--space-6);
+      text-align: left;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .selection-step-menu > span { color: var(--color-text-muted); }
+    .selection-step-menu a[aria-current="page"] { background: var(--color-accent-subtle); color: var(--color-accent-dark); }
+    .selection-step-menu details { border-top: 1px solid var(--color-border); }
+    .selection-step-menu details > summary {
+      min-height: var(--space-10);
+      padding: var(--space-2) var(--space-3);
+      color: var(--color-text-secondary);
+      font-size: var(--text-sm);
+      font-weight: 700;
+      cursor: pointer;
+    }
+  }
+
   /* ═══════════════════════════════════
      MOBILE BOTTOM BAR
      ═══════════════════════════════════ */
@@ -996,12 +1322,6 @@
 
   @media (min-width: 1280px) {
     .sidebar-mobile { display: none; }
-  }
-
-  @media (max-width: 639px) {
-    :global(.job-page-shell.has-sticky-bar) .sidebar-mobile {
-      bottom: calc(1rem + 128px);
-    }
   }
 
   .mobile-toggle {

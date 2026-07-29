@@ -11,7 +11,7 @@
 
 :root {
 	/* The chat/ledger family's shared easing — was redeclared per component as
-	   --chat-motion / --ledger-motion / --selection-motion with the same curve. */
+	   --chat-motion / --ledger-motion with the same curve. */
 	--ledger-motion: cubic-bezier(0.32, 0.72, 0, 1);
 	/* The mono gutter that YOU / ANALYST / SYSTEM tags sit in. Copy-pasted as a magic
 	   3.6rem into two files, with different padding, so adjacent rows didn't line up. */

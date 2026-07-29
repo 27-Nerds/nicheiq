@@ -8,6 +8,7 @@ import type {
   SelectionOwnerEvidencePrefill,
 } from '$lib/types/selectionCopilot';
 import type { SelectionToolOrigin } from '$lib/selection/toolOrigin';
+import type { ShortlistProposalHandoff } from '$lib/types/shortlistProposal';
 
 declare global {
   // GA4 gtag types
@@ -38,6 +39,8 @@ declare global {
       selectionOwnerEvidencePrefill?: SelectionOwnerEvidencePrefill;
       /** One-shot return contract for a routed tool launched from the job page. */
       selectionToolOrigin?: SelectionToolOrigin;
+      /** One-shot exact-scope proposal. Only the job hub may apply it. */
+      shortlistProposal?: ShortlistProposalHandoff;
     }
     // interface Platform {}
   }

@@ -391,6 +391,12 @@ scale (recalibrated from the legacy pad-to-12 scale of 8/5/3).
 
 ```json
 {
+  "finding_id": "finding_53a3...",
+  "finding_revision": 1,
+  "idea_id": "idea_18c2...",
+  "idea_revision": 1,
+  "identity_origin": "owner_synthesis",
+  "identity_operation_id": "57acd328-1cbb-487b-8b79-711438996378",
   "idea_name": "InvoiceChaser",
   "pain_title": "string",
   "reason": "Buyers in this segment (freelance photographers) rarely pay for tooling — the pain is real but the wallet is thin.",
@@ -399,13 +405,26 @@ scale (recalibrated from the legacy pad-to-12 scale of 8/5/3).
   "prior_tier": "single",
   "source": "demoted_winner",
   "evidence": "string",
-  "source_frame": "user_seed",
+  "source_frame": "owner_synthesis",
+  "dispatch_id": "57acd328-1cbb-487b-8b79-711438996378",
+  "evaluation_id": "57acd328-1cbb-487b-8b79-711438996378",
+  "evaluation_source_message_id": "75f99a67-a368-41b7-be2a-839d666b778a",
+  "proposed_title": "GLP-1 Off-Ramp + Peptide Maintenance Hub",
+  "generation_operation_id": null,
+  "generation_batch_ordinal": null,
+  "synthesis_evaluation": { "proposal": { "...": "full exact Concept Forge brief" } },
   "idea": { "solution_name": "InvoiceChaser", "...": "full SolutionPreview payload" }
 }
 ```
 
 | Field | Type | Description |
 |-------|------|-------------|
+| `finding_id` | `string \| null` | Durable code-owned identity for this ruled-out finding; absent only on reports that predate identity hydration |
+| `finding_revision` | `integer \| null` | Immutable revision of the finding envelope, currently `1` |
+| `idea_id` | `string \| null` | Durable identity of the candidate represented by this finding |
+| `idea_revision` | `integer \| null` | Immutable candidate revision used by exact selection references |
+| `identity_origin` | `string \| null` | Code-owned namespace that minted the candidate identity, such as `phase1`, `owner_synthesis`, `additional_batch`, or a legacy namespace |
+| `identity_operation_id` | `string \| null` | Operation key used to mint the candidate identity |
 | `idea_name` | `string \| null` | Evaluated idea name; optional on legacy findings |
 | `pain_title` | `string` | The pain this idea was generated against |
 | `reason` | `string` | Deterministic, user-facing explanation of why the market is thin — composed from the idea's own signals (incumbent parity, buyer payability, buildability), no LLM call |
@@ -414,7 +433,14 @@ scale (recalibrated from the legacy pad-to-12 scale of 8/5/3).
 | `prior_tier` | `string` | The idea's `idea_tier` (see below) before it was ruled out |
 | `source` | `"demoted_winner" \| "backfill_rejected" \| "no_buyer"` | Rule that removed the idea from the selectable pool |
 | `evidence` | `string` | First representative quote (or description) for `pain_title`, truncated to 220 chars |
-| `source_frame` | `string \| null` | Generation frame; `user_seed` identifies a submitted idea |
+| `source_frame` | `string \| null` | Generation frame; `user_seed` identifies a free-text submitted idea, `owner_synthesis` an exact Concept Forge evaluation, and `additional_batch` an appended batch candidate |
+| `dispatch_id` | `uuid \| null` | Paid seed/evaluation dispatch that produced this ruled-out result |
+| `evaluation_id` | `uuid \| null` | Immutable exact-evaluation identity; equals the evaluation dispatch ID |
+| `evaluation_source_message_id` | `string \| null` | Durable analyst-ledger proposal message used to reconcile submitted and settled states |
+| `proposed_title` | `string \| null` | Exact Concept Forge title selected by the owner before evaluation |
+| `synthesis_evaluation` | `object \| null` | Full exact option, including changed axes, assumption reasoning, retained/recheck evidence, disqualifiers, suggested test, parent revisions, and snapshot hashes |
+| `generation_operation_id` | `uuid \| null` | Dispatch identity for an appended additional batch |
+| `generation_batch_ordinal` | `integer \| null` | One-based additional-batch ordinal |
 | `idea` | `SolutionPreview \| null` | Full read-only evaluated payload when available, allowing a generated or submitted concept to remain inspectable after demotion; absent on older findings that cannot be recovered from the checkpoint |
 
 Populated by the post-parity demotion/backfill block in `unified_solution_crew.py`. In the
@@ -575,7 +601,7 @@ identical field at a top-level `idea_portfolio_summary`.
 | `estimated_cac_paid` | `string` | Paid CAC estimate |
 | `seo_scalability_score` | `number` (0-1) | SEO scalability |
 | `estimated_indexable_pages` | `number` | Year 1 pages |
-| `novelty_score` | `number` (0-1) | Calibrated internal novelty signal; contributes to the Research-score composite and drives the stored `innovator` strength key, displayed as **Distinct mechanism**. It is not necessarily the value shown in the Distinctiveness row. |
+| `novelty_score` | `number` (0-1) | Calibrated internal novelty signal used by the Research-score composite. For current records, the stored `innovator` strength and displayed **Distinct mechanism** label use canonical Distinctiveness (`1 − obviousness_score`); `novelty_score` is only their legacy fallback when obviousness is unavailable. |
 | `obviousness_score` | `number\|null` (0-1) | Independent novelty critic's estimate of how OBVIOUS the idea is — **lower = less obvious / more distinct**. Carried from the source `RawConcept` by whitespace-normalized name (M/D/J-tag pattern); `null` when the concept name didn't survive refinement. The UI displays **Distinctiveness** as `1 − obviousness_score`; legacy records without this field display `novelty_score` under the same label. Research ranking still uses `novelty_score`, so the displayed value does not directly determine rank. |
 | `conventional_approach` | `string` | What most builders would try |
 | `innovation_angle` | `string` | How this solution diverges |
@@ -584,7 +610,7 @@ identical field at a top-level `idea_portfolio_summary`.
 | `data_feasibility_score` | `number\|null` (0-1) | How readily a solo dev can OBTAIN the required data (annotate-only; from the independent feasibility critic). Higher = easier. |
 | `build_feasibility_score` | `number\|null` (0-1) | How readily a solo dev can BUILD the idea (independent of data access; from the feasibility critic). Higher = easier. Anchors `estimated_development_time`; surfaced as the "Build" ring in the Technical Blueprint. |
 | `differentiation_locus` | `string\|null` | Where the idea's edge actually lives (e.g. data representation, workflow integration, distribution) — the angle classifier's one-line read, distinct from `innovation_angle`. Rendered as "Where the edge lives" in the angle block. |
-| `data_access_model` | `string\|null` | `public` \| `freemium` \| `paywalled` \| `unofficial` (unofficial API / scraping lib, ToS-gray) \| `restricted` \| `blocked` (verifier *refuted* the route — score-capped) \| `unverified` (search could neither confirm nor refute — flagged, NOT score-capped). |
+| `data_access_model` | `string\|null` | `public` \| `freemium` \| `paywalled` \| `unofficial` (unofficial API / scraping lib, ToS-gray) \| `restricted` \| `blocked` (verifier *refuted* the route — score-capped) \| `unverified` (search could neither confirm nor refute — flagged, NOT score-capped). Closed vocabulary: near-synonyms are folded in at the boundary rather than added — `none` / `not-data-dependent` / `official` → `public`, `licensed` → `paywalled` (the frontend mirrors this in `normalizeDataAccess()` so pre-normalization records still render). Widening the list would break the tag chips and friction sets that switch on these seven values. |
 | `data_acquisition_notes` | `string\|null` | Data source/route + access model + cost/ToS risk (≤120 chars). |
 | `keyword_geographic_priorities` | `array[string]` | Geographic priorities |
 | `keyword_feature_priorities` | `array[string]` | Feature priorities |
@@ -1555,6 +1581,10 @@ Array of 7 recommended next steps.
 ```json
 {
   "solution_name": "string",
+  "idea_id": "idea_18c2...",
+  "idea_revision": 1,
+  "identity_origin": "phase1",
+  "identity_operation_id": "initial",
   "summary": "string",
   "market_fit_score": 0.75,
   "technical_feasibility_score": 0.8,
@@ -1636,14 +1666,30 @@ caps market_fit (downgrade-only), can hold a Go verdict to Conditional
 as Conditional/High with the validation condition named. See `docs/SCORING_METHODOLOGY.md`.
 
 `source_frame` (2026-07-10, permanent): which generation FRAME's cell minted this idea —
-`'pain' | 'gap' | 'data_asset' | 'spend_adjacent' | 'workflow'`. **CODE-FILLED**, never an LLM
+`'pain' | 'gap' | 'data_asset' | 'spend_adjacent' | 'workflow' | 'user_seed' |
+'owner_synthesis' | 'additional_batch'`. **CODE-FILLED**, never an LLM
 self-report — stamped from the (frame × pain × segment) cell that generated the idea and never
 overwritten downstream. `null` on legacy reports predating the Multi-Frame Idea Generation
 Portfolio. Present on `selected_solution_details` (inherited from `BaseSolutionIdea`),
 `alternative_solutions`, and the preview report's raw idea dumps / Stage-5 selection-preview
 payload. The frontend renders it as a neutral "generation lens" chip
 (`pain` → "Pain-point lens", `gap` → "Competitor-gap lens", `data_asset` → "Data-asset lens",
-`workflow` → "Workflow lens"; `spend_adjacent` and `null` render nothing).
+`spend_adjacent` → "Adjacent-spend lens", `workflow` → "Workflow lens",
+`user_seed` → "Submitted idea", `owner_synthesis` → "Branched direction",
+`additional_batch` → "Additional batch"; `null` renders nothing).
+
+Exact Concept Forge evaluations additionally carry `evaluation_id`,
+`evaluation_source_message_id`, `proposed_title`, and `synthesis_evaluation` on both accepted
+candidate payloads and demoted `RuledOutFinding` records. Additional batches carry
+`generation_operation_id` and `generation_batch_ordinal`. These fields are declared in the
+Pydantic model and carried into final-report alternatives so checkpoint or report validation
+cannot discard operation provenance.
+
+Every selectable candidate also carries `idea_id`, `idea_revision`, `identity_origin`, and
+`identity_operation_id`. These values are code-owned: the pipeline stamps them before the
+Stage-5 checkpoint and preserves them through preview and final-report materialization.
+Deep Research resolves the saved shortlist by the ordered `(idea_id, idea_revision)` references;
+display names remain snapshots for user confirmation and legacy compatibility, not identity.
 
 `tags` is an `IdeaTags` object of **closed-vocabulary filter facets** (chips now, filtering
 later). It is also present on each `SolutionIdea` and the preview `alternative_solutions`. Every
@@ -1744,6 +1790,7 @@ report (computed once, read from state). Null when there are no pains and no ide
     "Most pains are only partly software-addressable — build for the decision/advice layer, not the fix.",
     "Most ideas need a data corpus that doesn't exist yet — plan a cold-start play."
   ],
+  "key_strengths": [],
   "low_confidence": false,
   "buyer_class": "indie-hobbyist",
   "buyer_class_note": "Buyers here are indie/hobbyist builders spending personal money episodically — ..."
@@ -1761,12 +1808,23 @@ report (computed once, read from state). Null when there are no pains and no ide
 - `software_addressability`: `0–1`, share of the niche's pain a tool can actually fix
   (= `full_share*1.0 + partial_share*0.4 + none_share*0.0`, mirroring the pain-point
   tool-addressability caps).
-- `key_challenges`: bidirectional — frictions for a hard niche, strengths for a strong one.
+- `key_challenges`: **frictions only** (since 2026-07-28). This was previously bidirectional —
+  frictions for a hard niche, strengths for a strong one — which meant a strong niche's genuine
+  frictions (saturation, weak willingness-to-pay, incumbent density) landed in the same list as
+  its strengths, and consumers had to guess the polarity. `ReportBrief` guessed "risk" and
+  printed "There's room for a genuinely novel angle" as the run's primary concern. Strengths now
+  live in `key_strengths`; the two lists are never mixed. The same change stopped a strong-fit
+  niche from discarding its computed frictions outright, so the frictions that escalate the
+  difficulty band are now actually shown.
   Since 2026-07-06 these also draw on the web-verified competition probes and buyer signals:
   free/DIY-substitute share ("a paid product must beat the free route"), verified-incumbent
   density, adjacent-market monetization + weak wallets ("the same product sold to the adjacent
   buyer may be the better business"), and episodic usage share (pricing-shape warning). All
   informational — they color the prose and key points, never the difficulty band.
+- `key_strengths` (2026-07-28): what makes the niche favourable. Populated only for a
+  strong-fit niche (`difficulty_level == "low"` or addressability ≥ the strong threshold), plus
+  the `wallet_class == "paying"` note. Absent on reports generated before the split — render the
+  block conditionally.
 - `low_confidence`: `true` when the pain/idea sample is too small to be confident.
 
 ---
@@ -1889,6 +1947,14 @@ report (computed once, read from state). Null when there are no pains and no ide
 ---
 
 ## Version History
+
+- **v2.16** - Durable candidate and finding identities (2026-07-29)
+  - Added code-owned `idea_id`, `idea_revision`, `identity_origin`, and
+    `identity_operation_id` to Stage-5 candidates and final-report alternatives.
+  - Added `finding_id` / `finding_revision` plus the exact candidate reference to
+    `RuledOutFinding`, preserving demoted results as addressable outcomes.
+  - Exact Deep Research handoff now uses ordered candidate references; names are retained only
+    as reviewed display snapshots and as an explicit legacy fallback.
 
 - **v2.15** - Guided-research honesty block (2026-07-11)
   - New top-level `user_adjusted: boolean` and `user_adjustments: string[]` on both the final and

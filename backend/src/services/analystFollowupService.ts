@@ -171,7 +171,9 @@ export async function createRegenerationAnalystFollowup(args: {
   ideas: unknown[];
 }): Promise<void> {
   const names = args.ideas.slice(0, 4).map(ideaName).join(', ');
-  const fallback = `${args.ideas.length} regenerated idea${args.ideas.length === 1 ? '' : 's'} are ready${names ? `: ${names}` : ''}. Compare the new entries with the existing leaders using their stored evidence and scores, then select only the strongest fit.`;
+  const fallback = args.ideas.length > 0
+    ? `The additional batch added ${args.ideas.length} candidate${args.ideas.length === 1 ? '' : 's'}${names ? `: ${names}` : ''}. Your earlier candidates and shortlist were unchanged. Compare the new entries with the existing leaders, then select only the strongest fit.`
+    : 'The additional batch finished, but no new candidates cleared the checks. Your existing candidates and shortlist are unchanged; review the ruled-out findings before deciding whether to try a different focus.';
   await createFollowup({
     jobId: args.jobId,
     operationId: `regeneration:${args.dispatchId}`,

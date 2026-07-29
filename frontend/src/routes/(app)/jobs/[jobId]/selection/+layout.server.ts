@@ -123,6 +123,10 @@ export const load: LayoutServerLoad = async ({ params, locals, url, parent }) =>
       ).availableSectionIds
     : undefined;
 
+  const workspaceUrl = url.pathname.endsWith("/selection/review")
+    ? new URL(url.pathname, url.origin)
+    : url;
+
   return {
     job,
     solutions,
@@ -130,6 +134,9 @@ export const load: LayoutServerLoad = async ({ params, locals, url, parent }) =>
     metricExplanations,
     founderFit,
     conceptSets,
+    // Same-product idea groups, needed at /selection/review to warn before the
+    // shortlist is paid for. The preview report is already fetched above.
+    overlapGroups: previewReportArtifact.value?.overlap_groups ?? [],
     availableSectionIds,
     decisionTools,
     selectionLoadState: {
@@ -140,6 +147,8 @@ export const load: LayoutServerLoad = async ({ params, locals, url, parent }) =>
       founderFitUnavailable: decisionTools && (!founderFitResponse?.ok || founderFit === null),
       invalidSolutionCount: normalizedSolutions.invalidCount,
     },
-    workspace: resolveSelectionWorkspace(url, job, solutions),
+    // Review is the committed saved shortlist. Query refs remain useful on
+    // Compare/Evidence, but may never redefine the paid transaction scope.
+    workspace: resolveSelectionWorkspace(workspaceUrl, job, solutions),
   };
 };

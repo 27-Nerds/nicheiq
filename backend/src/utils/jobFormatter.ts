@@ -1,6 +1,7 @@
 import { Job, JobProgress, JobAsset } from '@prisma/client';
 import { ensureIdeaIdentities } from './ideaIdentity.js';
 import { currentSelectionDraft } from './selectionDraft.js';
+import { MAX_IDEA_BATCHES } from '../types/job.js';
 
 type JobWithRelations = Job & {
   progress: JobProgress[];
@@ -87,7 +88,7 @@ export function formatJobResponse(job: JobWithRelations, options: FormatOptions 
       ? ensureIdeaIdentities(job.id, job.solutionIdeas)
       : [];
     result.solutionIdeas = job.solutionIdeas ? solutionIdeas : null;
-    result.canRegenerate = true;
+    result.canRegenerate = (job.regenerationCount ?? 0) < MAX_IDEA_BATCHES;
     result.selectionRationale = job.selectionRationale || null;
     result.selectionDecisionProfile = job.selectionDecisionProfile || null;
     result.selectionDraft = currentSelectionDraft(

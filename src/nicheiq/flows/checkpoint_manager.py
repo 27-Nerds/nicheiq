@@ -125,6 +125,33 @@ class CheckpointManager:
             return True
 
         try:
+            if stage_name == "stage_5_3_refinement" and self.job_id:
+                from ..utils.idea_identity import (
+                    link_legacy_findings_to_ideas,
+                    stamp_new_idea_identities,
+                    stamp_ruled_out_findings,
+                )
+
+                ideas = getattr(stage_data, "solution_ideas", stage_data)
+                if isinstance(ideas, list):
+                    stamp_new_idea_identities(
+                        self.job_id,
+                        ideas,
+                        origin="phase1",
+                        operation_key="initial",
+                        force=True,
+                        only_unowned=True,
+                    )
+                self.state.idea_ruled_out = link_legacy_findings_to_ideas(
+                    self.state.idea_ruled_out,
+                    ideas if isinstance(ideas, list) else [],
+                )
+                self.state.idea_ruled_out = stamp_ruled_out_findings(
+                    self.job_id,
+                    self.state.idea_ruled_out,
+                    operation_key="phase1",
+                )
+
             # Initialize checkpoint folder if first checkpoint
             checkpoint_folder = self._init_checkpoint_folder()
 
@@ -663,6 +690,28 @@ class CheckpointManager:
             self.state.skipped_stages = metadata["skipped_stages"]
         if metadata.get("sources_searched"):
             self.state.sources_searched = metadata["sources_searched"]
+
+        # Compatibility hydration for checkpoints written before candidate/finding identity.
+        # This runs after both the Stage-5 model and metadata ledger have been restored, and
+        # mirrors the backend projection exactly for pool candidates.
+        if self.job_id and self.state.idea_generation:
+            from ..utils.idea_identity import (
+                ensure_legacy_idea_identities,
+                link_legacy_findings_to_ideas,
+                stamp_ruled_out_findings,
+            )
+
+            ideas = getattr(self.state.idea_generation, "solution_ideas", None) or []
+            ensure_legacy_idea_identities(self.job_id, ideas)
+            self.state.idea_ruled_out = link_legacy_findings_to_ideas(
+                self.state.idea_ruled_out,
+                ideas,
+            )
+            self.state.idea_ruled_out = stamp_ruled_out_findings(
+                self.job_id,
+                self.state.idea_ruled_out,
+                operation_key="legacy",
+            )
 
         # Guided-mode (chatMode) gate-patch fields — see the matching write block above.
         if metadata.get("user_pain_scope"):

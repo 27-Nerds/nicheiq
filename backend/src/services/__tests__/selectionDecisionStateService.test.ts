@@ -425,6 +425,36 @@ describe('selection decision state projection', () => {
     });
   });
 
+  it('preserves stale shortlist placeholders and blocks Deep Research until reconciliation', () => {
+    const state = buildSelectionDecisionState(input({
+      selectionDraft: {
+        schemaVersion: 1,
+        items: [
+          { ideaId: idea.idea_id, ideaRevision: idea.idea_revision },
+          { ideaId: 'removed-idea', ideaRevision: 4, titleSnapshot: 'Removed candidate' },
+        ],
+      },
+      selectionDraftVersion: 7,
+    }));
+
+    expect(state.shortlist.items).toEqual([
+      expect.objectContaining({ ideaId: idea.idea_id, ideaRevision: idea.idea_revision }),
+    ]);
+    expect(state.shortlist.staleItems).toEqual([{
+      ideaId: 'removed-idea',
+      ideaRevision: 4,
+      titleSnapshot: 'Removed candidate',
+    }]);
+    expect(state.deepResearch).toMatchObject({
+      eligible: false,
+      blockers: ['STALE_SHORTLIST'],
+    });
+    expect(state.nextAction).toMatchObject({
+      kind: 'select_candidate',
+      required: true,
+    });
+  });
+
   describe('without the decision tools grant', () => {
     const gated = (overrides = {}) =>
       buildSelectionDecisionState(input({ decisionTools: false, ...overrides }));

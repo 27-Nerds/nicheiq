@@ -13,6 +13,8 @@ import {
 import { ensureIdeaIdentities, ideaName, type IdeaRecord } from '../utils/ideaIdentity.js';
 import {
   SelectionExperimentDraftSchema,
+  SelectionExperimentDraftUpdateSchema,
+  SelectionExperimentMutationSchema,
   type SelectionExperimentDraft,
 } from '../types/selectionExperiment.js';
 import { SelectionChallengeArtifactSchema } from '../types/selectionChallenge.js';
@@ -71,6 +73,20 @@ async function validLinkedAssumption(
     where: { id: assumptionId, jobId, ideaId, ideaRevision },
     select: { id: true },
   });
+}
+
+async function lockEditableJob(
+  tx: Prisma.TransactionClient,
+  jobId: string,
+  userId: string,
+): Promise<boolean> {
+  const rows = await tx.$queryRaw<Array<{ status: JobStatus }>>(Prisma.sql`
+    SELECT "status"
+    FROM "Job"
+    WHERE "id" = ${jobId} AND "userId" = ${userId}
+    FOR UPDATE
+  `);
+  return rows.length === 1 && EDITABLE_JOB_STATUSES.has(rows[0].status);
 }
 
 selectionExperimentsRouter.get(
@@ -246,21 +262,33 @@ selectionExperimentsRouter.post('/:jobId/selection-experiments', requireInternal
       };
     }
 
-    const experiment = await prisma.selectionExperiment.create({
-      data: {
-        jobId: job.id,
-        ideaId: input.ideaId,
-        ideaRevision: input.ideaRevision,
-        ideaSnapshot: ideaSnapshot(idea),
-        assumptionId: input.assumptionId ?? null,
-        ...originData,
-        ...draftData(input),
-      },
+    const experiment = await prisma.$transaction(async tx => {
+      if (!await lockEditableJob(tx, job.id, req.user!.id)) {
+        throw new Prisma.PrismaClientKnownRequestError(
+          'Job left idea selection while the experiment was being created',
+          { code: 'P2025', clientVersion: Prisma.prismaVersion.client },
+        );
+      }
+      return tx.selectionExperiment.create({
+        data: {
+          jobId: job.id,
+          ideaId: input.ideaId,
+          ideaRevision: input.ideaRevision,
+          ideaSnapshot: ideaSnapshot(idea),
+          assumptionId: input.assumptionId ?? null,
+          ...originData,
+          ...draftData(input),
+        },
+      });
     });
     res.status(201).json({ experiment });
   } catch (error) {
     if (error instanceof z.ZodError) {
       res.status(400).json({ error: 'Validation error', details: error.errors });
+      return;
+    }
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+      res.status(409).json({ error: 'Job changed while the experiment was being created' });
       return;
     }
     console.error('Failed to create selection experiment:', error);
@@ -269,14 +297,9 @@ selectionExperimentsRouter.post('/:jobId/selection-experiments', requireInternal
 });
 
 selectionExperimentsRouter.put('/:jobId/selection-experiments/:experimentId', requireInternalAuth, requireDecisionToolsAccess, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const params = ExperimentParamsSchema.parse(req.params);
-    const input = SelectionExperimentDraftSchema.parse(req.body);
-    if (Boolean(input.originChallengeId) !== Boolean(input.originQuestionId)) {
-      res.status(400).json({ error: 'Challenge and question provenance must be provided together' });
-      return;
-    }
-    const existing = await prisma.selectionExperiment.findFirst({
+    try {
+      const params = ExperimentParamsSchema.parse(req.params);
+      const existing = await prisma.selectionExperiment.findFirst({
       where: { id: params.experimentId, jobId: params.jobId, job: { userId: req.user!.id } },
       include: { job: { select: { status: true } } },
     });
@@ -290,6 +313,11 @@ selectionExperimentsRouter.put('/:jobId/selection-experiments/:experimentId', re
     }
     if (!EDITABLE_JOB_STATUSES.has(existing.job.status)) {
       res.status(409).json({ error: 'Experiments can only be edited during idea selection' });
+      return;
+    }
+    const input = SelectionExperimentDraftUpdateSchema.parse(req.body);
+    if (Boolean(input.originChallengeId) !== Boolean(input.originQuestionId)) {
+      res.status(400).json({ error: 'Challenge and question provenance must be provided together' });
       return;
     }
     if (existing.ideaId !== input.ideaId || existing.ideaRevision !== input.ideaRevision) {
@@ -311,13 +339,27 @@ selectionExperimentsRouter.put('/:jobId/selection-experiments/:experimentId', re
       return;
     }
 
-    const experiment = await prisma.selectionExperiment.update({
-      where: { id: existing.id },
-      data: {
-        ...draftData(input),
-        ...(input.assumptionId !== undefined ? { assumptionId: input.assumptionId } : {}),
-      },
+    const experiment = await prisma.$transaction(async tx => {
+      if (!await lockEditableJob(tx, existing.jobId, req.user!.id)) return null;
+      const changed = await tx.selectionExperiment.updateMany({
+        where: {
+          id: existing.id,
+          status: SelectionExperimentStatus.DRAFT,
+          version: input.expectedVersion,
+        },
+        data: {
+          ...draftData(input),
+          ...(input.assumptionId !== undefined ? { assumptionId: input.assumptionId } : {}),
+          version: { increment: 1 },
+        },
+      });
+      if (changed.count !== 1) return null;
+      return tx.selectionExperiment.findUnique({ where: { id: existing.id } });
     });
+    if (!experiment) {
+      res.status(409).json({ error: 'Experiment changed or idea selection ended while it was being saved' });
+      return;
+    }
     res.json({ experiment });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -330,9 +372,9 @@ selectionExperimentsRouter.put('/:jobId/selection-experiments/:experimentId', re
 });
 
 selectionExperimentsRouter.delete('/:jobId/selection-experiments/:experimentId', requireInternalAuth, requireDecisionToolsAccess, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const params = ExperimentParamsSchema.parse(req.params);
-    const existing = await prisma.selectionExperiment.findFirst({
+    try {
+      const params = ExperimentParamsSchema.parse(req.params);
+      const existing = await prisma.selectionExperiment.findFirst({
       where: { id: params.experimentId, jobId: params.jobId, job: { userId: req.user!.id } },
       include: { job: { select: { status: true } } },
     });
@@ -348,12 +390,21 @@ selectionExperimentsRouter.delete('/:jobId/selection-experiments/:experimentId',
       res.status(409).json({ error: 'Experiments can only be deleted during idea selection' });
       return;
     }
+    const mutation = SelectionExperimentMutationSchema.parse(req.body);
 
-    const result = await prisma.selectionExperiment.deleteMany({
-      where: { id: existing.id, status: SelectionExperimentStatus.DRAFT },
+    const deleted = await prisma.$transaction(async tx => {
+      if (!await lockEditableJob(tx, existing.jobId, req.user!.id)) return false;
+      const result = await tx.selectionExperiment.deleteMany({
+        where: {
+          id: existing.id,
+          status: SelectionExperimentStatus.DRAFT,
+          version: mutation.expectedVersion,
+        },
+      });
+      return result.count === 1;
     });
-    if (result.count !== 1) {
-      res.status(409).json({ error: 'Experiment changed while it was being deleted' });
+    if (!deleted) {
+      res.status(409).json({ error: 'Experiment changed or idea selection ended while it was being deleted' });
       return;
     }
     res.status(204).send();
@@ -368,9 +419,9 @@ selectionExperimentsRouter.delete('/:jobId/selection-experiments/:experimentId',
 });
 
 selectionExperimentsRouter.post('/:jobId/selection-experiments/:experimentId/lock', requireInternalAuth, requireDecisionToolsAccess, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const params = ExperimentParamsSchema.parse(req.params);
-    const existing = await prisma.selectionExperiment.findFirst({
+    try {
+      const params = ExperimentParamsSchema.parse(req.params);
+      const existing = await prisma.selectionExperiment.findFirst({
       where: { id: params.experimentId, jobId: params.jobId, job: { userId: req.user!.id } },
       include: { job: { select: { status: true } } },
     });
@@ -386,17 +437,30 @@ selectionExperimentsRouter.post('/:jobId/selection-experiments/:experimentId/loc
       res.status(409).json({ error: 'Experiment is already locked' });
       return;
     }
+    const mutation = SelectionExperimentMutationSchema.parse(req.body);
 
-    const lockedAt = new Date();
-    const result = await prisma.selectionExperiment.updateMany({
-      where: { id: existing.id, status: SelectionExperimentStatus.DRAFT },
-      data: { status: SelectionExperimentStatus.LOCKED, lockedAt },
+    const experiment = await prisma.$transaction(async tx => {
+      if (!await lockEditableJob(tx, existing.jobId, req.user!.id)) return null;
+      const lockedAt = new Date();
+      const result = await tx.selectionExperiment.updateMany({
+        where: {
+          id: existing.id,
+          status: SelectionExperimentStatus.DRAFT,
+          version: mutation.expectedVersion,
+        },
+        data: {
+          status: SelectionExperimentStatus.LOCKED,
+          lockedAt,
+          version: { increment: 1 },
+        },
+      });
+      if (result.count !== 1) return null;
+      return tx.selectionExperiment.findUnique({ where: { id: existing.id } });
     });
-    if (result.count !== 1) {
-      res.status(409).json({ error: 'Experiment changed while it was being locked' });
+    if (!experiment) {
+      res.status(409).json({ error: 'Experiment changed or idea selection ended while it was being locked' });
       return;
     }
-    const experiment = await prisma.selectionExperiment.findUnique({ where: { id: existing.id } });
     res.json({ experiment });
   } catch (error) {
     if (error instanceof z.ZodError) {

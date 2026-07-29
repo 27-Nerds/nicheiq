@@ -428,6 +428,9 @@ describe('Seed idea E2E: full lifecycle', () => {
       jobId, '/cp/phase1', jobRow.niche,
       validSeedBody.free_text, validSeedBody.pain_ref, validSeedBody.tool_ref,
       dispatchRow!.id,
+      // A free-text seed carries no Concept Forge evaluation brief — only an
+      // `idea_synthesis` submission passes one through.
+      undefined,
     );
 
     // ── Hop 2: worker claims the dispatch ──

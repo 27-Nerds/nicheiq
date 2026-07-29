@@ -69,13 +69,17 @@ const patch: IdeaSynthesisPatch = {
   newAssumptions: ["A weekly review is timely enough."],
 };
 
-function set(evaluatedOptionIds: string[] = []): SelectionConceptSet {
+function set(
+  evaluatedOptionIds: string[] = [],
+  optionOutcomes?: SelectionConceptSet["optionOutcomes"],
+): SelectionConceptSet {
   const operations = ["narrow", "reposition", "adjacent"] as const;
   return {
     id: "660e8400-e29b-41d4-a716-446655440000",
     stale: false,
     createdAt: "2026-07-16T12:00:00.000Z",
     evaluatedOptionIds,
+    ...(optionOutcomes ? { optionOutcomes } : {}),
     artifact: {
       inputFingerprint: "f".repeat(64),
       purpose: "diverge",
@@ -272,7 +276,7 @@ describe("ConceptForge", () => {
     expect(await view.findByRole("heading", { name: "narrow direction" })).toBeInTheDocument();
     expect(view.getByRole("heading", { name: "reposition direction" })).toBeInTheDocument();
     expect(view.getByRole("heading", { name: "adjacent direction" })).toBeInTheDocument();
-    expect(view.getByText("three unevaluated options")).toBeInTheDocument();
+    expect(view.getByText("three proposed directions")).toBeInTheDocument();
   });
 
   it("sends the specific tension into the concept set request", async () => {
@@ -668,7 +672,7 @@ describe("ConceptForge", () => {
     expect(getSelectionConceptSets).not.toHaveBeenCalled();
   });
 
-  it("marks an option evaluated, relabels its gate, and recounts the section label", async () => {
+  it("marks an option submitted without claiming the evaluation has finished", async () => {
     vi.mocked(getSelectionConceptSets).mockResolvedValue([set()]);
     const onEvaluate = vi.fn().mockResolvedValue(true);
     const view = render(ConceptForge, {
@@ -687,13 +691,57 @@ describe("ConceptForge", () => {
     await fireEvent.click(first);
     await fireEvent.click(view.getByRole("button", { name: /Confirm evaluation/i }));
 
-    await waitFor(() => expect(within(firstCard).getByText("Evaluated")).toBeInTheDocument());
-    expect(within(firstCard).getByRole("button", { name: "Evaluated · run again" })).toBeEnabled();
-    expect(view.getByText("two unevaluated options")).toBeInTheDocument();
+    // The paid gate is replaced by the live wait: once you have paid, your work in the
+    // Forge is done, and a disabled "Evaluation submitted" button reads terminal when
+    // the operation has in fact only just started.
+    await waitFor(() =>
+      expect(within(firstCard).getByText("Waiting for a free worker")).toBeInTheDocument()
+    );
+    expect(within(firstCard).getByText("Evaluation submitted")).toBeInTheDocument();
+    expect(
+      within(firstCard).queryByRole("button", { name: "Evaluation submitted" })
+    ).not.toBeInTheDocument();
+    expect(
+      within(firstCard).getByRole("button", { name: "Close and watch progress" })
+    ).toBeInTheDocument();
+    expect(within(firstCard).queryByText("Evaluated")).not.toBeInTheDocument();
+    expect(view.getByText("three proposed directions")).toBeInTheDocument();
+    // The other two directions stay evaluable.
     expect(view.getAllByRole("button", { name: "Evaluate this option" })).toHaveLength(2);
   });
 
-  it("marks server-evaluated options across sessions from the set payload", async () => {
+  it("hands off to the progress surface behind the overlay", async () => {
+    vi.mocked(getSelectionConceptSets).mockResolvedValue([set()]);
+    const onEvaluate = vi.fn().mockResolvedValue(true);
+    const onClose = vi.fn();
+    const view = render(ConceptForge, {
+      props: {
+        open: true,
+        jobId: "job-1",
+        parents: [parent],
+        seedCost: 3,
+        onEvaluate,
+        onClose,
+      },
+    });
+
+    const first = (await view.findAllByRole("button", { name: /Evaluate this option/i }))[0];
+    const firstCard = first.closest("article") as HTMLElement;
+    await fireEvent.click(first);
+    await fireEvent.click(view.getByRole("button", { name: /Confirm evaluation/i }));
+
+    await waitFor(() =>
+      expect(
+        within(firstCard).getByRole("button", { name: "Close and watch progress" })
+      ).toBeInTheDocument()
+    );
+    await fireEvent.click(
+      within(firstCard).getByRole("button", { name: "Close and watch progress" })
+    );
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("restores submitted options without claiming their evaluation has completed", async () => {
     const saved = set([set().artifact.options[0].optionId]);
     vi.mocked(getSelectionConceptSets).mockResolvedValue([saved]);
     const view = render(ConceptForge, {
@@ -709,9 +757,10 @@ describe("ConceptForge", () => {
 
     const firstCard = (await view.findByRole("heading", { name: "narrow direction" }))
       .closest("article") as HTMLElement;
-    expect(within(firstCard).getByText("Evaluated")).toBeInTheDocument();
-    expect(within(firstCard).getByRole("button", { name: "Evaluated · run again" })).toBeEnabled();
-    expect(view.getByText("two unevaluated options")).toBeInTheDocument();
+    expect(within(firstCard).queryByText("Evaluated")).not.toBeInTheDocument();
+    expect(within(firstCard).getAllByText("Evaluation submitted")).toHaveLength(2);
+    expect(within(firstCard).getByRole("button", { name: "Evaluation submitted" })).toBeDisabled();
+    expect(view.getByText("three proposed directions")).toBeInTheDocument();
   });
 
   it("discards a saved set behind the gate and returns to the brief", async () => {
@@ -731,7 +780,9 @@ describe("ConceptForge", () => {
     await fireEvent.click(view.getByRole("button", { name: "Discard this set" }));
     // First click only arms the gate; nothing is archived yet.
     expect(archiveSelectionConceptSet).not.toHaveBeenCalled();
-    expect(view.getByText("SET IS ARCHIVED · EVALUATED IDEAS KEEP THEIR PROVENANCE")).toBeInTheDocument();
+    // States what discard now actually costs: the set cannot be revived, and the
+    // ideas already evaluated from it survive in the pool.
+    expect(view.getByText("GONE FOR GOOD · EVALUATED IDEAS STAY IN YOUR POOL")).toBeInTheDocument();
 
     await fireEvent.click(view.getByRole("button", { name: "Discard this set" }));
     await waitFor(() => expect(archiveSelectionConceptSet).toHaveBeenCalledWith("job-1", set().id));
@@ -760,9 +811,76 @@ describe("ConceptForge", () => {
     await fireEvent.click(view.getByRole("button", { name: "Discard this set" }));
     await fireEvent.click(view.getByRole("button", { name: "Discard this set" }));
 
-    expect(await view.findByRole("alert")).toHaveTextContent("Could not discard this set. Nothing changed.");
+    // Beside the discard control, not only in the footer feedback thousands of
+    // pixels below it — a footer-only message read as "the button did nothing".
+    const alert = await view.findByRole("alert");
+    expect(alert).toHaveTextContent("Could not discard this set. Nothing changed.");
+    expect(alert.closest(".option-head")).not.toBeNull();
     expect(view.getByRole("heading", { name: "narrow direction" })).toBeInTheDocument();
     consoleError.mockRestore();
+  });
+
+  it("tells the host to refresh after a discard so its loaded set list is not stale", async () => {
+    vi.mocked(getSelectionConceptSets).mockResolvedValue([set()]);
+    const onChanged = vi.fn();
+    const view = render(ConceptForge, {
+      props: {
+        open: true,
+        jobId: "job-1",
+        parents: [parent],
+        seedCost: 3,
+        onEvaluate: vi.fn(),
+        onChanged,
+        onClose: vi.fn(),
+      },
+    });
+
+    await view.findByRole("heading", { name: "narrow direction" });
+    await fireEvent.click(view.getByRole("button", { name: "Discard this set" }));
+    await fireEvent.click(view.getByRole("button", { name: "Discard this set" }));
+
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+  });
+
+  it("shows the settled outcome instead of pinning a finished direction at submitted", async () => {
+    const stored = set();
+    const optionId = stored.artifact.options[0].optionId;
+    vi.mocked(getSelectionConceptSets).mockResolvedValue([
+      set([optionId], { [optionId]: "demoted" }),
+    ]);
+    const view = render(ConceptForge, {
+      props: {
+        open: true,
+        jobId: "job-1",
+        parents: [parent],
+        seedCost: 3,
+        onEvaluate: vi.fn(),
+        onClose: vi.fn(),
+      },
+    });
+
+    await view.findByRole("heading", { name: "narrow direction" });
+    expect(view.getAllByText("Did not qualify").length).toBeGreaterThan(0);
+    expect(view.queryByText("Evaluation submitted")).not.toBeInTheDocument();
+  });
+
+  it("falls back to submitted when the backend sends no outcome map", async () => {
+    const stored = set();
+    const optionId = stored.artifact.options[0].optionId;
+    vi.mocked(getSelectionConceptSets).mockResolvedValue([set([optionId])]);
+    const view = render(ConceptForge, {
+      props: {
+        open: true,
+        jobId: "job-1",
+        parents: [parent],
+        seedCost: 3,
+        onEvaluate: vi.fn(),
+        onClose: vi.fn(),
+      },
+    });
+
+    await view.findByRole("heading", { name: "narrow direction" });
+    expect(view.getAllByText("Evaluation submitted").length).toBeGreaterThan(0);
   });
 
   it("surfaces a structured guardrail message verbatim and swaps the footer to a retry line", async () => {
@@ -911,5 +1029,75 @@ describe("ConceptForge", () => {
     });
 
     expect(await view.findByText("Evaluating a direction costs 2 credits.")).toBeInTheDocument();
+  });
+});
+
+describe("the live wait ends when the evaluation settles", () => {
+  // REGRESSION: the wait block rendered on `optionSubmitted`, which is
+  // `optionOutcome !== null` — still true once the option settled. Combined with
+  // evaluationProgress(null) reporting "queued", a DEMOTED evaluation kept showing
+  // "Waiting for a free worker" long after the worker had run, settled and released.
+  async function submitFirstOption(outcomes?: SelectionConceptSet["optionOutcomes"]) {
+    vi.mocked(getSelectionConceptSets).mockResolvedValue([set([], outcomes)]);
+    const view = render(ConceptForge, {
+      props: {
+        open: true,
+        jobId: "job-1",
+        parents: [parent],
+        seedCost: 3,
+        onEvaluate: vi.fn().mockResolvedValue(true),
+        onClose: vi.fn(),
+      },
+    });
+    const first = (await view.findAllByRole("button", { name: /Evaluate this option/i }))[0];
+    const card = first.closest("article") as HTMLElement;
+    await fireEvent.click(first);
+    await fireEvent.click(view.getByRole("button", { name: /Confirm evaluation/i }));
+    return { view, card };
+  }
+
+  it("shows the wait while the outcome is still pending", async () => {
+    // A null operation right after the POST is a real state — the wait must still show.
+    const { card } = await submitFirstOption();
+    await waitFor(() =>
+      expect(within(card).getByText("Waiting for a free worker")).toBeInTheDocument());
+  });
+
+  it("hides the wait once the option settles as demoted", async () => {
+    // Option ids are deterministic in the fixture: the first option is "O" + eleven 1s.
+    const FIRST_OPTION_ID = `O${"1".repeat(11)}`;
+    vi.mocked(getSelectionConceptSets).mockResolvedValue([set()]);
+    const view = render(ConceptForge, {
+      props: {
+        open: true,
+        jobId: "job-1",
+        parents: [parent],
+        seedCost: 3,
+        initialSets: [set()],
+        onEvaluate: vi.fn().mockResolvedValue(true),
+        onClose: vi.fn(),
+      },
+    });
+
+    const first = (await view.findAllByRole("button", { name: /Evaluate this option/i }))[0];
+    const card = first.closest("article") as HTMLElement;
+    await fireEvent.click(first);
+    await fireEvent.click(view.getByRole("button", { name: /Confirm evaluation/i }));
+    await waitFor(() =>
+      expect(within(card).getByText("Waiting for a free worker")).toBeInTheDocument());
+
+    // The worker ran and settled; the reloaded set now carries a terminal outcome.
+    await view.rerender({
+      open: true,
+      jobId: "job-1",
+      parents: [parent],
+      seedCost: 3,
+      initialSets: [set([FIRST_OPTION_ID], { [FIRST_OPTION_ID]: "demoted" } as never)],
+      onEvaluate: vi.fn().mockResolvedValue(true),
+      onClose: vi.fn(),
+    });
+
+    await waitFor(() =>
+      expect(view.queryByText("Waiting for a free worker")).toBeNull());
   });
 });

@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import { AlertCircle, ArrowLeft, Check, RefreshCw } from "lucide-svelte";
   import { ApiError, getFinalDecision, recordFinalDecision } from "$lib/api";
   import DecisionHelp from "$lib/components/ui/DecisionHelp.svelte";
@@ -53,7 +52,7 @@
   };
 
   let sources = $state<FinalDecisionLoadResponse | null>(null);
-  let loading = $state(true);
+  let loading = $state(false);
   let saving = $state(false);
   let error = $state("");
   let disposition = $state<FinalDecisionDisposition>("PROCEED");
@@ -72,6 +71,7 @@
   let closeWarning = $state(false);
   let focusHandoffAfterConfirm = $state(false);
   let confirmationHeadingEl = $state<HTMLParagraphElement>();
+  let loadRequested = false;
 
   const selectedFinalist = $derived(
     sources?.finalists.find((finalist) => finalistKey(finalist) === selectedKey) ?? null,
@@ -164,6 +164,12 @@
       selectedTestExperimentId = "";
       testBriefStatus = "The previous test brief does not match this idea revision and was cleared.";
     }
+  });
+
+  $effect(() => {
+    if (!open || loadRequested) return;
+    loadRequested = true;
+    void load();
   });
 
   function finalistKey(finalist: { ideaId: string; ideaRevision: number }): string {
@@ -363,6 +369,7 @@
   function openLab(): void {
     closeWarning = false;
     stage = sources?.decision ? "handoff" : "decision";
+    if (!sources) loading = true;
     open = true;
   }
 
@@ -439,17 +446,24 @@
     }
   }
 
-  onMount(load);
 </script>
 
 <section id="owner-decision" class="decision-launcher" aria-labelledby="decision-launcher-title" aria-busy={loading} data-annotation-anchor="report:decision-lab-launcher">
   <div>
     <p class="launcher-kicker">Decision Lab</p>
-    <h2 id="decision-launcher-title">{sources?.decision ? "Decision recorded" : "Choose the next move"}</h2>
+    <h2 id="decision-launcher-title">
+      {sources
+        ? sources.decision
+          ? "Decision recorded"
+          : "Choose the next move"
+        : "Record or review your decision"}
+    </h2>
     <p>
-      {sources?.decision
-        ? `${dispositionLabel(sources.decision.disposition)} is frozen as the owner record. Review its handoff and delivery status.`
-        : "Review the recommendation, name failure conditions, and freeze an owner decision."}
+      {sources
+        ? sources.decision
+          ? `${dispositionLabel(sources.decision.disposition)} is frozen as the owner record. Review its handoff and delivery status.`
+          : "Review the recommendation, name failure conditions, and freeze an owner decision."
+        : "Open the owner-only workspace to record a next move or review an existing decision."}
     </p>
   </div>
   <SubmitButton
@@ -466,15 +480,21 @@
   {open}
   size="wizard"
   eyebrow="Owner-only Decision Lab"
-  title={sources?.decision ? "Review the frozen decision" : "Commit to the next move"}
-  description={sources?.decision
-    ? "Inspect the owner record, prepare its deterministic handoff, and choose whether to send it to GitHub."
-    : "Research is an input. Record what you will do, why, and the observable evidence that would change your mind."}
+  title={loading && !sources
+    ? "Decision Lab"
+    : sources?.decision
+      ? "Review the frozen decision"
+      : "Commit to the next move"}
+  description={loading && !sources
+    ? "Loading the owner record and its exact research context."
+    : sources?.decision
+      ? "Inspect the owner record, prepare its deterministic handoff, and choose whether to send it to GitHub."
+      : "Research is an input. Record what you will do, why, and the observable evidence that would change your mind."}
   annotationAnchor="report:decision-lab"
   onRequestClose={requestClose}
 >
 <section class="decision-memo" aria-label="Decision Lab workspace" aria-busy={loading}>
-  {#if loading}
+  {#if loading || (!sources && !error)}
     <div class="memo-state">Loading decision sources…</div>
   {:else if error && !sources}
     <div class="memo-state memo-state-error" role="alert">

@@ -5,7 +5,7 @@
   import type { OverlapGroup } from "$lib/types/report";
   import FacetChips from "$lib/components/FacetChips.svelte";
   import Tooltip from "$lib/components/ui/Tooltip.svelte";
-  import { humanizeTag, tagDescription } from "$lib/utils/ideaTagLabels";
+  import { humanizeTag, tagDescription, normalizeDataAccess } from "$lib/utils/ideaTagLabels";
   import { angleLabel } from "$lib/utils/ideaAngleLabels";
   import { sourceFrameLabel } from "$lib/utils/sourceFrameLabels";
   import { strengthEntry, SUPERPOWERS_DETAILED } from "$lib/utils/superpower";
@@ -22,7 +22,7 @@
     solution: SolutionPreview;
     /** overview = the shortlist-decision snapshot; detail = the 7-card deep reference. */
     view?: "overview" | "detail";
-    /** Overview only: jump to the Full detail tab (from the "Read full detail" link). */
+    /** Decision summary only: jump to the All details tab. */
     onViewFull?: () => void;
     /** Overview only: the overlap group this candidate belongs to, if any. */
     overlapGroup?: OverlapGroup | null;
@@ -90,7 +90,7 @@
       return {
         title: "Deep Research would check this idea",
         incumbent: "Deep Research would validate this signal.",
-        estimate: "Discovery estimate · refined by Deep Research",
+        estimate: "Discovery estimate · Deep Research can verify this",
         parity: "Deep Research would map the direct incumbents and adjacent players.",
       };
     }
@@ -226,7 +226,7 @@
 
   function critColor(v: number | null | undefined): string {
     if (v == null) return "var(--color-text-muted)";
-    if (v >= 0.7) return "var(--color-success-dark)";
+    if (v >= 0.7) return "var(--color-success-text)";
     if (v >= 0.45) return "var(--color-text-primary)";
     return "var(--color-text-muted)";
   }
@@ -236,8 +236,9 @@
       || growthItems.length > 0
       || (solution.organic_discovery_queries?.length ?? 0) > 0,
   );
+  const dataAccess = $derived(normalizeDataAccess(solution.data_access_model));
   const hasBuild = $derived(
-    !!(solution.estimated_development_time || solution.technical_approach || solution.data_access_model || solution.data_acquisition_notes)
+    !!(solution.estimated_development_time || solution.technical_approach || dataAccess || solution.data_acquisition_notes)
       || (solution.data_sources?.length ?? 0) > 0,
   );
   const hasWedge = $derived(
@@ -403,14 +404,20 @@
       {/if}
       <p class="body-copy">{solution.description}</p>
       {#if journeyTag || mechanismTag}
-        <div class="fd-reftags">
+        <dl class="fd-reftags">
           {#if journeyTag}
-            <span><span class="mini-label">How users reach value</span>{journeyTag}</span>
+            <div>
+              <dt class="mini-label">How users reach value</dt>
+              <dd>{journeyTag}</dd>
+            </div>
           {/if}
           {#if mechanismTag}
-            <span><span class="mini-label">Core mechanism</span>{mechanismTag}</span>
+            <div>
+              <dt class="mini-label">Core mechanism</dt>
+              <dd>{mechanismTag}</dd>
+            </div>
           {/if}
-        </div>
+        </dl>
       {/if}
     </section>
 
@@ -461,111 +468,130 @@
 
     <!-- 4 · Distribution & economics -->
     {#if hasEconomics}
-      <section class="fd-card">
+      <section class="fd-card fd-card--ledger">
         <div class="fd-card-head">
           <h3 class="fd-card-title">Distribution &amp; economics</h3>
           <span class="fd-est-tag">{deepResearchCopy.estimate}</span>
         </div>
-        <div class="fd-grid">
+        <dl class="fd-ledger">
           {#if solution.pricing_strategy}
-            <div class="fd-col">
-              <span class="mini-label">Pricing</span>
-              <p>{solution.pricing_strategy}</p>
+            <div class="fd-ledger-row">
+              <dt class="mini-label">Pricing</dt>
+              <dd class="fd-ledger-value"><p>{solution.pricing_strategy}</p></dd>
             </div>
           {/if}
           {#if solution.estimated_cac_organic}
-            <div class="fd-col">
-              <span class="mini-label">Acquisition cost</span>
-              <p>{solution.estimated_cac_organic}{#if solution.estimated_cac_paid} <span class="fd-muted">(vs {solution.estimated_cac_paid} paid)</span>{/if}</p>
+            <div class="fd-ledger-row">
+              <dt class="mini-label">Acquisition cost</dt>
+              <dd class="fd-ledger-value">
+                <p>{solution.estimated_cac_organic}{#if solution.estimated_cac_paid} <span class="fd-muted">(vs {solution.estimated_cac_paid} paid)</span>{/if}</p>
+              </dd>
             </div>
           {/if}
           {#if solution.programmatic_seo_opportunity}
-            <div class="fd-col">
-              <span class="mini-label">SEO reach</span>
-              <div class="markdown-content markdown-content-compact fd-md">
-                {@html renderTechnicalContent(solution.programmatic_seo_opportunity)}
-              </div>
+            <div class="fd-ledger-row">
+              <dt class="mini-label">SEO reach</dt>
+              <dd class="fd-ledger-value">
+                <div class="markdown-content markdown-content-compact fd-md">
+                  {@html renderTechnicalContent(solution.programmatic_seo_opportunity)}
+                </div>
+              </dd>
             </div>
           {/if}
-        </div>
-        {#if growthItems.length > 0}
-          <div class="fd-chip-row">
-            <FacetChips label="Growth channels" items={growthItems} tone="neutral" />
-          </div>
-        {/if}
-        {#if solution.organic_discovery_queries && solution.organic_discovery_queries.length > 0}
-          <div class="fd-chip-row">
-            <span class="mini-label">Organic queries users search</span>
-            <div class="query-tags">
-              {#each solution.organic_discovery_queries as query}
-                <span>{query}</span>
-              {/each}
+          {#if growthItems.length > 0}
+            <div class="fd-ledger-row">
+              <dt class="mini-label">Growth channels</dt>
+              <dd class="fd-ledger-value fd-ledger-value--facet">
+                <FacetChips label="Growth channels" items={growthItems} tone="neutral" />
+              </dd>
             </div>
-          </div>
-        {/if}
+          {/if}
+          {#if solution.organic_discovery_queries && solution.organic_discovery_queries.length > 0}
+            <div class="fd-ledger-row">
+              <dt class="mini-label">Organic queries users search</dt>
+              <dd class="fd-ledger-value">
+                <div class="query-tags">
+                  {#each solution.organic_discovery_queries as query}
+                    <span>{query}</span>
+                  {/each}
+                </div>
+              </dd>
+            </div>
+          {/if}
+        </dl>
       </section>
     {/if}
 
     <!-- 5 · How it's built -->
     {#if hasBuild}
-      <section class="fd-card">
+      <section class="fd-card fd-card--ledger">
         <h3 class="fd-card-title">How it's built</h3>
-        <div class="fd-grid">
+        <dl class="fd-ledger">
           {#if solution.estimated_development_time}
-            <div class="fd-col">
-              <span class="mini-label">Build time</span>
-              <p>{solution.estimated_development_time}</p>
-              {#if solution.dev_time_rationale}
-                <p class="fd-subnote">{solution.dev_time_rationale}</p>
-              {/if}
+            <div class="fd-ledger-row">
+              <dt class="mini-label">Build time</dt>
+              <dd class="fd-ledger-value">
+                <p>{solution.estimated_development_time}</p>
+                {#if solution.dev_time_rationale}
+                  <p class="fd-subnote">{solution.dev_time_rationale}</p>
+                {/if}
+              </dd>
+            </div>
+          {/if}
+          {#if dataAccess || solution.data_acquisition_notes || (solution.data_sources?.length ?? 0) > 0}
+            <div class="fd-ledger-row">
+              <dt class="mini-label">Data</dt>
+              <dd class="fd-ledger-value">
+                {#if dataAccess}
+                  <p>{humanizeTag(dataAccess)}</p>
+                {/if}
+                {#if solution.data_acquisition_notes}
+                  <p class="fd-subnote">{solution.data_acquisition_notes}</p>
+                {/if}
+                {#if solution.data_sources && solution.data_sources.length > 0}
+                  <div class="query-tags">
+                    {#each solution.data_sources as src}
+                      <span>{src}</span>
+                    {/each}
+                  </div>
+                {/if}
+              </dd>
             </div>
           {/if}
           {#if solution.technical_approach}
-            <div class="fd-col">
-              <span class="mini-label">Technical approach</span>
-              <p>{solution.technical_approach}</p>
+            <div class="fd-ledger-row">
+              <dt class="mini-label">Technical approach</dt>
+              <dd class="fd-ledger-value">
+                <p>{solution.technical_approach}</p>
+              </dd>
             </div>
           {/if}
-          {#if solution.data_access_model || solution.data_acquisition_notes || (solution.data_sources?.length ?? 0) > 0}
-            <div class="fd-col">
-              <span class="mini-label">Data</span>
-              {#if solution.data_access_model}
-                <p>{humanizeTag(solution.data_access_model)}</p>
-              {/if}
-              {#if solution.data_acquisition_notes}
-                <p class="fd-subnote">{solution.data_acquisition_notes}</p>
-              {/if}
-              {#if solution.data_sources && solution.data_sources.length > 0}
-                <div class="query-tags">
-                  {#each solution.data_sources as src}
-                    <span>{src}</span>
-                  {/each}
-                </div>
-              {/if}
-            </div>
-          {/if}
-        </div>
+        </dl>
       </section>
     {/if}
 
     <!-- 6 · Competitive parity -->
     {#if hasParity}
-      <section class="fd-card">
+      <section class="fd-card fd-card--ledger">
         <h3 class="fd-card-title">Competitive parity</h3>
-        <div class="innovation-grid">
+        <dl class="fd-ledger">
           {#if solution.incumbent_parity?.trim()}
-            <div class="innovation-note">
-              <span class="mini-label">Direct incumbents</span>
-              <p>{solution.incumbent_parity}</p>
+            <div class="fd-ledger-row">
+              <dt class="mini-label">Direct incumbents</dt>
+              <dd class="fd-ledger-value">
+                <p>{solution.incumbent_parity}</p>
+              </dd>
             </div>
           {/if}
           {#if solution.adjacent_market_parity?.trim()}
-            <div class="innovation-note">
-              <span class="mini-label">Adjacent players</span>
-              <p>{solution.adjacent_market_parity}</p>
+            <div class="fd-ledger-row">
+              <dt class="mini-label">Adjacent players</dt>
+              <dd class="fd-ledger-value">
+                <p>{solution.adjacent_market_parity}</p>
+              </dd>
             </div>
           {/if}
-        </div>
+        </dl>
       </section>
     {:else}
       <section class="fd-card fd-card--locked">
@@ -622,7 +648,7 @@
     margin: 0;
     overflow: hidden;
     border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 58%, transparent);
-    border-radius: 0.625rem;
+    border-radius: var(--radius-md);
     background: color-mix(in srgb, var(--color-bg-surface) 56%, var(--color-bg-elevated));
   }
 
@@ -646,7 +672,7 @@
 
   .decision-facts dt {
     color: var(--color-text-secondary);
-    font-size: 0.625rem;
+    font-size: var(--text-xs);
     font-weight: 700;
     letter-spacing: 0.01em;
   }
@@ -654,7 +680,7 @@
   .decision-facts dd {
     margin: 0;
     color: var(--color-text-primary);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     font-weight: 700;
     line-height: 1.24;
     overflow-wrap: anywhere;
@@ -675,7 +701,7 @@
   .merged-note {
     margin: 0;
     font-family: var(--font-mono);
-    font-size: 0.6875rem;
+    font-size: var(--text-11);
     font-weight: 700;
     color: var(--color-text-muted);
     text-wrap: pretty;
@@ -726,7 +752,7 @@
     position: relative;
     padding-left: 0.75rem;
     color: var(--color-text-secondary);
-    font-size: 0.8125rem;
+    font-size: var(--text-13);
     line-height: 1.4;
     text-wrap: pretty;
     overflow-wrap: anywhere;
@@ -763,7 +789,7 @@
   .evidence-links a {
     min-height: 1.5rem;
     color: var(--color-accent-dark);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     font-weight: 700;
     line-height: 1.5rem;
     text-decoration: none;
@@ -785,7 +811,7 @@
     margin: 0;
     max-width: 74ch;
     color: var(--color-text-secondary);
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     line-height: 1.52;
     text-wrap: pretty;
     overflow-wrap: anywhere;
@@ -799,7 +825,7 @@
     margin-top: 0.25rem;
     padding: 0.75rem 0.875rem;
     border: 1px solid color-mix(in srgb, var(--color-accent) 26%, var(--color-border));
-    border-radius: 0.625rem;
+    border-radius: var(--radius-md);
     background: color-mix(in srgb, var(--color-accent) 5%, var(--color-bg-elevated));
   }
 
@@ -819,7 +845,7 @@
   .validation-title {
     color: var(--color-text-primary);
     font-family: var(--font-display);
-    font-size: 0.8125rem;
+    font-size: var(--text-13);
     font-weight: 700;
     letter-spacing: -0.01em;
   }
@@ -837,7 +863,7 @@
     position: relative;
     padding-left: 0.75rem;
     color: var(--color-text-secondary);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     line-height: 1.36;
   }
 
@@ -865,7 +891,7 @@
     margin: 0;
     max-width: 72ch;
     color: var(--color-text-secondary);
-    font-size: 0.8125rem;
+    font-size: var(--text-13);
     line-height: 1.5;
     text-wrap: pretty;
     overflow-wrap: anywhere;
@@ -887,10 +913,10 @@
     background: transparent;
     color: var(--color-accent-dark);
     font-family: var(--font-body);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     font-weight: 700;
     cursor: pointer;
-    transition: color 0.15s ease;
+    transition: color var(--duration-fast) var(--ease-default);
   }
 
   .callout-toggle:hover {
@@ -905,7 +931,7 @@
 
   .insight-callout .subnote {
     color: var(--color-text-muted);
-    font-size: 0.8125rem;
+    font-size: var(--text-13);
   }
 
   /* Weak-signal note — a calm, neutral aside (not an error): a LOW-FIT candidate is honest about
@@ -934,7 +960,7 @@
   }
   .weak-note-title {
     font-family: var(--font-body);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     font-weight: 700;
     color: var(--color-text-secondary);
   }
@@ -942,7 +968,7 @@
     margin: 0;
     max-width: 72ch;
     color: var(--color-text-muted);
-    font-size: 0.8125rem;
+    font-size: var(--text-13);
     line-height: 1.5;
     text-wrap: pretty;
   }
@@ -973,7 +999,7 @@
     margin: 0;
     color: var(--color-text-primary);
     font-family: var(--font-display);
-    font-size: 0.9375rem;
+    font-size: var(--text-md);
     font-weight: 700;
     line-height: 1.2;
     letter-spacing: -0.01em;
@@ -982,7 +1008,7 @@
   .fd-est-tag {
     color: var(--color-text-muted);
     font-family: var(--font-body);
-    font-size: 0.625rem;
+    font-size: var(--text-xs);
     font-weight: 700;
     letter-spacing: 0.02em;
     text-transform: uppercase;
@@ -992,27 +1018,43 @@
     margin: 0;
     max-width: 74ch;
     color: var(--color-text-primary);
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     font-weight: 600;
     line-height: 1.45;
     text-wrap: pretty;
   }
 
   .fd-reftags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.375rem 1.375rem;
-    padding-top: 0.5rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+    margin: 0;
+    padding-top: var(--space-4);
     border-top: 1px solid var(--color-border);
   }
 
-  .fd-reftags > span {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 0.375rem;
+  .fd-reftags > div {
+    display: grid;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+
+  .fd-reftags > div + div {
+    padding-left: var(--space-5);
+    border-left: 1px solid var(--color-border);
+  }
+
+  .fd-reftags dt,
+  .fd-reftags dd {
+    margin: 0;
+  }
+
+  .fd-reftags dd {
     color: var(--color-text-secondary);
-    font-size: 0.8125rem;
+    font-size: var(--text-base);
     font-weight: 600;
+    line-height: var(--leading-snug);
+    text-wrap: pretty;
+    overflow-wrap: anywhere;
   }
 
   .fd-persona-grid {
@@ -1028,7 +1070,7 @@
     position: relative;
     padding-left: 0.875rem;
     color: var(--color-text-secondary);
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     line-height: 1.4;
   }
 
@@ -1067,7 +1109,7 @@
   .innovation-note p {
     margin: 0;
     color: var(--color-text-secondary);
-    font-size: 0.8125rem;
+    font-size: var(--text-13);
     line-height: 1.48;
     text-wrap: pretty;
   }
@@ -1084,7 +1126,7 @@
     position: relative;
     padding-left: 1.25rem;
     color: var(--color-text-secondary);
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     line-height: 1.45;
   }
 
@@ -1093,15 +1135,15 @@
     position: absolute;
     left: 0;
     top: 0;
-    color: var(--color-success-dark);
+    color: var(--color-success-text);
     font-weight: 800;
-    font-size: 0.8125rem;
+    font-size: var(--text-13);
   }
 
   .fd-note {
     margin: 0;
     color: var(--color-text-secondary);
-    font-size: 0.8125rem;
+    font-size: var(--text-13);
     line-height: 1.48;
   }
 
@@ -1109,33 +1151,81 @@
     margin-right: 0.375rem;
   }
 
-  /* auto-fit so a card with only 1-2 populated columns fills the row instead of
-     leaving a ragged empty third. */
+  .fd-card--ledger {
+    gap: var(--space-4);
+    padding: var(--space-5);
+  }
+
+  .fd-card--ledger .fd-card-head {
+    align-items: flex-start;
+  }
+
+  .fd-card--ledger .fd-card-title {
+    font-size: var(--text-lg);
+  }
+
+  .fd-card--ledger .fd-est-tag {
+    max-width: 40ch;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    letter-spacing: 0;
+    line-height: var(--leading-snug);
+    text-align: right;
+    text-transform: none;
+  }
+
+  .fd-ledger {
+    display: grid;
+    margin: 0;
+  }
+
+  .fd-ledger-row {
+    display: grid;
+    grid-template-columns: minmax(8rem, 11rem) minmax(0, 1fr);
+    gap: var(--space-6);
+    padding: var(--space-4) 0;
+    border-top: 1px solid var(--color-border);
+  }
+
+  .fd-ledger-row:first-child {
+    padding-top: var(--space-2);
+    border-top: 0;
+  }
+
+  .fd-ledger-row:last-child {
+    padding-bottom: 0;
+  }
+
+  .fd-ledger-row dt {
+    margin: 0;
+  }
+
   .fd-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
     gap: 0.5rem 0.875rem;
   }
 
-  .fd-col {
+  .fd-ledger-value {
     display: grid;
-    gap: 0.25rem;
-    align-content: start;
+    gap: var(--space-2);
     min-width: 0;
+    max-width: 72ch;
+    margin: 0;
   }
 
-  .fd-col p {
+  .fd-ledger-value p {
     margin: 0;
     color: var(--color-text-secondary);
-    font-size: 0.875rem;
-    line-height: 1.45;
+    font-size: var(--text-base);
+    line-height: var(--leading-normal);
     text-wrap: pretty;
     overflow-wrap: anywhere;
   }
 
   .fd-subnote {
     color: var(--color-text-muted) !important;
-    font-size: 0.75rem !important;
+    font-size: var(--text-sm) !important;
     line-height: 1.42 !important;
   }
 
@@ -1145,15 +1235,25 @@
 
   .fd-md {
     color: var(--color-text-secondary);
-    font-size: 0.8125rem;
+    font-size: var(--text-13);
     line-height: 1.45;
   }
 
-  .fd-chip-row {
-    display: grid;
-    gap: 0.375rem;
-    padding-top: 0.5rem;
-    border-top: 1px solid var(--color-border);
+  .fd-ledger-value .fd-md {
+    font-size: var(--text-base);
+    line-height: var(--leading-normal);
+  }
+
+  .fd-ledger-value .markdown-content-compact :global(p:first-child) {
+    margin-top: 0;
+  }
+
+  .fd-ledger-value .markdown-content-compact :global(p:last-child) {
+    margin-bottom: 0;
+  }
+
+  .fd-ledger-value--facet :global(.mono-label) {
+    display: none;
   }
 
   .query-tags {
@@ -1165,11 +1265,11 @@
   .query-tags span {
     padding: 0.125rem 0.5rem;
     border: 1px solid var(--color-border);
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     background: var(--color-bg-surface);
     color: var(--color-text-secondary);
     font-family: var(--font-mono);
-    font-size: 0.6875rem;
+    font-size: var(--text-11);
     line-height: 1.25;
   }
 
@@ -1181,7 +1281,7 @@
   .fd-locked-note {
     margin: 0;
     color: var(--color-text-muted);
-    font-size: 0.8125rem;
+    font-size: var(--text-13);
     line-height: 1.45;
   }
 
@@ -1213,13 +1313,13 @@
 
   .fd-score-name {
     color: var(--color-text-primary);
-    font-size: 0.8125rem;
+    font-size: var(--text-13);
     font-weight: 700;
   }
 
   .fd-score-val {
     font-family: var(--font-mono);
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     font-weight: 800;
     font-variant-numeric: tabular-nums;
   }
@@ -1227,7 +1327,7 @@
   .fd-score-row dd {
     margin: 0;
     color: var(--color-text-secondary);
-    font-size: 0.8125rem;
+    font-size: var(--text-13);
     line-height: 1.45;
     text-wrap: pretty;
   }
@@ -1243,7 +1343,7 @@
   .fd-critic p {
     margin: 0;
     color: var(--color-text-secondary);
-    font-size: 0.8125rem;
+    font-size: var(--text-13);
     line-height: 1.45;
     text-wrap: pretty;
   }
@@ -1252,10 +1352,10 @@
   .solution-detail-content :global(.mono-label),
   .mini-label {
     font-family: var(--font-body);
-    font-size: 0.6875rem;
-    font-weight: 700;
-    letter-spacing: 0.02em;
-    text-transform: uppercase;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
     color: var(--color-text-muted);
   }
 
@@ -1269,7 +1369,7 @@
   .markdown-content-compact :global(h4) {
     margin-top: 0.75rem;
     margin-bottom: 0.25rem;
-    font-size: 0.875rem;
+    font-size: var(--text-base);
   }
   .markdown-content-compact :global(p) {
     margin-bottom: 0.5rem;
@@ -1290,18 +1390,18 @@
   }
   .facet-panel :global(.mono-label) {
     font-family: var(--font-body);
-    font-size: 0.6875rem;
-    font-weight: 700;
-    letter-spacing: 0.02em;
-    text-transform: uppercase;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
     color: var(--color-text-muted);
   }
   .facet-panel :global(.facet-chip),
-  .fd-chip-row :global(.facet-chip) {
+  .fd-ledger-value--facet :global(.facet-chip) {
     background: color-mix(in srgb, var(--color-bg-surface) 74%, var(--color-bg-elevated));
-    border-radius: 0.375rem;
+    border-radius: var(--radius-sm);
     font-family: var(--font-body);
-    font-size: 0.6875rem;
+    font-size: var(--text-11);
     font-weight: 600;
   }
   .facet-panel :global(.facet-chip-risk) {
@@ -1314,7 +1414,7 @@
   }
   .strength-chip {
     font-family: var(--font-body);
-    font-size: 0.6875rem;
+    font-size: var(--text-11);
     font-weight: 700;
     text-transform: none;
     letter-spacing: 0;
@@ -1322,12 +1422,9 @@
     padding: 0.125rem 0.5rem;
     background: color-mix(in srgb, currentColor 9%, transparent);
     border: 1px solid color-mix(in srgb, currentColor 55%, transparent);
-    border-radius: 0.375rem;
+    border-radius: var(--radius-sm);
   }
-  .strength-chip-success { color: var(--color-success-dark); }
-  .strength-chip-accent { color: var(--color-accent-dark); }
-  .strength-chip-info { color: var(--color-secondary-dark); }
-  .strength-chip-warning { color: var(--color-warning-dark); }
+  .strength-chip-success { color: var(--color-success-text); }
 
   @media (max-width: 720px) {
     .decision-facts {
@@ -1341,6 +1438,26 @@
     .fd-persona-grid,
     .validation-strip ul {
       grid-template-columns: minmax(0, 1fr);
+    }
+    .fd-card--ledger {
+      padding: var(--space-4);
+    }
+    .fd-card--ledger .fd-card-head {
+      display: grid;
+    }
+    .fd-card--ledger .fd-est-tag {
+      text-align: left;
+    }
+    .fd-ledger-row {
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--space-2);
+    }
+    .fd-reftags > div + div {
+      margin-top: var(--space-3);
+      padding-top: var(--space-3);
+      padding-left: 0;
+      border-top: 1px solid var(--color-border);
+      border-left: 0;
     }
   }
 </style>

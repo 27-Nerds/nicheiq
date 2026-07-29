@@ -121,6 +121,18 @@ def test_novelty_level_matches_originality():
     assert derive_tag_facets(_idea()).novelty_level is None
 
 
+def test_innovator_uses_same_distinctiveness_signal_as_novelty_level():
+    # Obviousness is canonical when present. A high legacy novelty score must not
+    # produce "Distinct mechanism" beside a "Familiar approach" classification.
+    familiar = derive_tag_facets(_idea(obviousness_score=0.80, novelty_score=0.95))
+    assert familiar.novelty_level == "conventional"
+    assert "innovator" not in familiar.strengths
+
+    distinct = derive_tag_facets(_idea(obviousness_score=0.20, novelty_score=0.10))
+    assert distinct.novelty_level == "novel"
+    assert "innovator" in distinct.strengths
+
+
 # --- pSEO force-add + tos-risk derivation ---------------------------------------
 
 def test_pseo_force_added_to_growth_channels():

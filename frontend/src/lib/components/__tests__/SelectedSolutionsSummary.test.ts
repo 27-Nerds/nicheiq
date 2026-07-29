@@ -33,7 +33,7 @@ describe("SelectedSolutionsSummary exact identity", () => {
     await fireEvent.click(view.getByRole("button", { name: /Same display name/ }));
 
     expect(view.getByText("Revision 2 description")).toBeInTheDocument();
-    expect(view.getByRole("link", { name: /\.md/i })).toHaveAttribute(
+    expect(view.getByRole("link", { name: "Download Markdown" })).toHaveAttribute(
       "href",
       "/api/jobs/job-1/solutions/idea-1/export/md?revision=2",
     );

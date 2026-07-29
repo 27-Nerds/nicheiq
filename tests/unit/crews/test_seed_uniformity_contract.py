@@ -53,6 +53,8 @@ def _fill(annotation):
         return {}
     if origin is typing.Literal:
         return args[0]
+    if annotation is dict:  # bare `dict`, e.g. Optional[dict] — no origin to match above
+        return {}
     if annotation is str:
         return "value"
     if annotation is int:

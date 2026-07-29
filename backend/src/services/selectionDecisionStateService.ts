@@ -13,6 +13,7 @@ import type {
 } from '../types/selectionDecisionState.js';
 import { ensureIdeaIdentities, ideaName, type IdeaRecord } from '../utils/ideaIdentity.js';
 import { currentSelectionDraft, parseSelectionDraft } from '../utils/selectionDraft.js';
+import { exactSelectionFingerprint } from '../utils/selectionFingerprint.js';
 
 type PrismaLens = 'DEMAND' | 'COMPETITION' | 'DISTRIBUTION' | 'DEPENDENCIES';
 
@@ -140,6 +141,12 @@ export function buildSelectionDecisionState(input: SelectionDecisionStateInput):
   ]));
   const storedDraft = parseSelectionDraft(input.selectionDraft);
   const draft = currentSelectionDraft(input.selectionDraft, input.selectionDraftVersion, ideas);
+  const currentKeys = new Set(ideas.map(idea =>
+    ideaKey(String(idea.idea_id), Number(idea.idea_revision))
+  ));
+  const staleShortlistItems = storedDraft.filter(item =>
+    !currentKeys.has(ideaKey(item.ideaId, item.ideaRevision))
+  );
   const shortlistIdeas = draft.items.flatMap(item => {
     const idea = currentIdeaByKey.get(ideaKey(item.ideaId, item.ideaRevision));
     return idea ? [idea] : [];
@@ -305,9 +312,20 @@ export function buildSelectionDecisionState(input: SelectionDecisionStateInput):
   const currentExperimentById = new Map(currentExperiments.map(experiment => [experiment.id, experiment]));
 
   const decisionTools = input.decisionTools === true;
+  const hasStaleShortlist = storedDraft.length !== shortlist.length;
 
   let nextAction: SelectionDecisionNextAction;
-  if (!decisionTools) {
+  if (hasStaleShortlist) {
+    nextAction = {
+      kind: 'select_candidate',
+      target: 'shortlist',
+      reason: 'The candidate pool changed. Review and save the shortlist again before starting Deep Research.',
+      required: true,
+      ideas: shortlist.length > 0 ? shortlist : ideas.slice(0, 1).map(ideaRef),
+      lens: null,
+      records: [],
+    };
+  } else if (!decisionTools) {
     // No grant: the spine is shortlist → Deep Research. Every rung of the optional
     // ladder below opens a tool this owner cannot reach, so none of them may be
     // suggested.
@@ -531,12 +549,18 @@ export function buildSelectionDecisionState(input: SelectionDecisionStateInput):
   const blockers: SelectionDecisionState['deepResearch']['blockers'] = [];
   if (input.status !== 'AWAITING_SELECTION') blockers.push('JOB_NOT_AWAITING_SELECTION');
   if (shortlist.length === 0) blockers.push('NO_CURRENT_SHORTLIST');
+  if (hasStaleShortlist) blockers.push('STALE_SHORTLIST');
 
   return {
     schemaVersion: 1,
     jobId: input.jobId,
     status: input.status,
-    shortlist: { version: draft.version, items: shortlist },
+    shortlist: {
+      version: draft.version,
+      fingerprint: exactSelectionFingerprint(shortlist),
+      items: shortlist,
+      staleItems: staleShortlistItems,
+    },
     // Without the grant these stay empty even when historical rows exist (the grant can
     // be revoked after the owner used the tools) — the client renders progress and
     // "saved work" badges straight off these arrays.

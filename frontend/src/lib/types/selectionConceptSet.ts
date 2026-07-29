@@ -83,13 +83,20 @@ export interface SelectionConceptSetArtifact {
   createdAt: string;
 }
 
+export type ConceptOptionOutcome =
+  "pending" | "accepted" | "demoted" | "failed" | "refunded";
+
 export interface SelectionConceptSet {
   id: string;
   artifact: SelectionConceptSetArtifact;
   stale: boolean;
   createdAt: string;
-  /** Options that already minted a proposal (server-derived, survives reloads). */
+  /** Options with a matching durable seed-submitted or seed-settled receipt.
+   * The activity ledger carries their exact terminal outcome. */
   evaluatedOptionIds: string[];
+  /** Outcome per option that entered paid evaluation. Absent on responses from a
+   *  backend that predates it, which is why the UI falls back to evaluatedOptionIds. */
+  optionOutcomes?: Record<string, ConceptOptionOutcome>;
 }
 
 export interface PreparedSelectionConceptOption {

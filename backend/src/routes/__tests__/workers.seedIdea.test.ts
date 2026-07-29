@@ -247,7 +247,8 @@ describe('POST /api/workers/seed-complete', () => {
                 contribution: 'Keep alerts.',
               }],
             }),
-            kind: 'ledger_event', event: 'seed_settled', sourceMessageId: 'msg-abc', outcome: 'demoted',
+            kind: 'ledger_event', event: 'seed_settled', sourceMessageId: 'msg-abc',
+            evaluationId: dispatchId, outcome: 'demoted',
           }),
         }),
       }),
@@ -288,12 +289,35 @@ describe('POST /api/workers/seed-complete', () => {
   it('reports idempotent success on a lost-response retry of the SAME (already-completed) dispatch', async () => {
     mockJobFindFirst.mockResolvedValue(null);
     mockJobFindUnique.mockResolvedValue({ status: 'AWAITING_SELECTION', activeDispatchId: null });
-    mockDispatchFindUnique.mockResolvedValue({ state: 'COMPLETED' });
+    mockDispatchFindUnique.mockResolvedValue({
+      jobId,
+      kind: 'SEED_IDEA',
+      state: 'COMPLETED',
+    });
 
     const response = await request(app).post('/api/workers/seed-complete').send(validPayload);
 
     expect(response.status).toBe(200);
     expect(response.body.idempotent).toBe(true);
+  });
+
+  it('does not accept another job completed seed dispatch as this evaluation retry', async () => {
+    mockJobFindFirst.mockResolvedValue(null);
+    mockJobFindUnique.mockResolvedValue({
+      status: 'AWAITING_SELECTION',
+      activeDispatchId: 'a-newer-dispatch',
+    });
+    mockDispatchFindUnique.mockResolvedValue({
+      jobId: '00000000-0000-0000-0000-000000000002',
+      kind: 'SEED_IDEA',
+      state: 'COMPLETED',
+    });
+
+    const response = await request(app).post('/api/workers/seed-complete').send(validPayload);
+
+    expect(response.status).toBe(200);
+    expect(response.body.stale).toBe(true);
+    expect(mockJobUpdateMany).not.toHaveBeenCalled();
   });
 
   it('returns 409 when the job is in some other unexpected state', async () => {

@@ -1,7 +1,8 @@
 // Shared stage-count display adjustment. Stage 4 (Audience Mapping) runs in
 // parallel with stage 3 and is hidden from users, so displayed counts subtract
-// it once it has been passed. Used by JobCard and ResearchProgressScreen so the
-// dashboard card and the job page always show the same "N / M".
+// it once it has been passed. Shared by every surface that shows progress — the
+// dashboard's in-progress rows, the job page aside, ResearchProgressScreen and
+// SegmentedLedger — so they always show the same "N / M" for the same job.
 
 // Mirrors backend TOTAL_STAGES (backend/src/types/job.ts). Fallback only —
 // the backend always sends totalStages on real jobs.

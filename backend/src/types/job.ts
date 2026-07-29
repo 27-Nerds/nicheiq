@@ -131,24 +131,30 @@ export const SelectionDraftUpdateSchema = z.object({
 
 export type SelectionDraftUpdateInput = z.infer<typeof SelectionDraftUpdateSchema>;
 
+export const ExactIdeaRefSchema = SelectionDraftItemSchema.extend({
+  snapshotSha256: z.string().regex(/^[a-f0-9]{64}$/),
+}).strict();
+
 export const SelectSolutionSchema = z.object({
-  solutionNames: z.array(z.string().trim().min(1).max(255)).min(1).max(3).optional(),
-  solutionIds: z.array(z.string().trim().min(1).max(128)).min(1).max(3).optional(),
+  clientRequestId: z.string().uuid(),
+  expectedCost: z.number().int().min(0).max(1000),
+  expectedDraftVersion: z.number().int().min(0),
+  expectedSelectionFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
   rationale: z.string().max(2000).optional(),
-}).superRefine((value, ctx) => {
-  if (!value.solutionNames?.length && !value.solutionIds?.length) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'solutionNames or solutionIds is required',
-    });
-  }
-});
+}).strict();
 
 export type SelectSolutionInput = z.infer<typeof SelectSolutionSchema>;
 
-export const RegenerateIdeasSchema = z.object({});
+export const RegenerateIdeasSchema = z.object({
+  clientRequestId: z.string().uuid(),
+  expectedCost: z.number().int().min(0).max(1000),
+  idea_focus: z.enum(['auto', 'novelty', 'distribution']).default('auto'),
+}).strict();
 
 export type RegenerateIdeasInput = z.infer<typeof RegenerateIdeasSchema>;
+
+/** Product limit for append-only idea batches on one discovery run. */
+export const MAX_IDEA_BATCHES = 10;
 
 // Worker → backend schemas for interactive flow
 export const IdeasReadySchema = z.object({
@@ -179,6 +185,17 @@ export const RegenerationCompleteSchema = z.object({
   job_id: z.string().uuid(),
   dispatch_id: z.string().uuid().optional(),
   solutions: z.array(z.record(z.any())),
+  batch_ordinal: z.number().int().positive().optional(),
+  generated_count: z.number().int().min(0).optional(),
+  ruled_out_count: z.number().int().min(0).optional(),
+  ruled_out_refs: z.array(z.object({
+    finding_id: z.string().min(1).max(128),
+    finding_revision: z.number().int().min(1),
+    idea_id: z.string().min(1).max(128),
+    idea_revision: z.number().int().min(1),
+    evaluation_id: z.string().max(128).optional(),
+    generation_operation_id: z.string().max(128).optional(),
+  }).passthrough()).optional(),
   // Per-batch LLM cost breakdown (CostTracker.get_summary()) for this regeneration.
   // Accumulated onto the job's existing costUsd (regeneration adds spend to an
   // already-completed job, unlike report-ready which sets the initial total).
@@ -190,6 +207,7 @@ export type RegenerationCompleteInput = z.infer<typeof RegenerationCompleteSchem
 export const RegenerationFailedSchema = z.object({
   worker_id: z.string().min(1),
   job_id: z.string().uuid(),
+  dispatch_id: z.string().uuid().optional(),
   error_message: z.string().max(2000),
 });
 
@@ -197,8 +215,8 @@ export type RegenerationFailedInput = z.infer<typeof RegenerationFailedSchema>;
 
 // ============================================
 // User-seed pipeline (plans/eager-meandering-feather.md Phase 5): "generate an idea from your
-// own idea" at selection chat. Paid, numbered (seed_idea_N), dispatch-lifecycle-backed (like
-// guided Continue) rather than the legacy status-field guard regenerate_ideas still uses.
+// own idea" at selection chat. Paid, numbered (seed_idea_N), and dispatch-lifecycle-backed,
+// like guided Continue and append-only additional batches.
 // ============================================
 
 // POST /:jobId/seed-idea body

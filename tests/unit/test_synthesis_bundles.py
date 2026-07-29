@@ -31,7 +31,7 @@ def _fake_bundle(name="BakePrice Pro", pains=("Cannot calculate COGS", "Labor ti
         "description": "", "core_features": [], "target_personas": [],
         "pain_points_addressed": list(pains), "conventional_approach": "",
         "innovation_angle": "bundle", "why_it_works": "sev 0.7 pains", "technical_approach": "deterministic",
-        "requires_data_aggregation": False, "data_access_model": "none",
+        "requires_data_aggregation": False, "data_access_model": "public",
         "build_feasibility_score": 0.8, "data_feasibility_score": 0.9,
         "programmatic_seo_opportunity": "", "content_generation_model": "",
     })
@@ -115,7 +115,8 @@ class TestSynthesizeBundles:
         with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
                    return_value=(fake, None)):
             out = crew._synthesize_bundles([_winner("W1")])
-        assert out[0].data_access_model is None                       # no invented tier
+        # abstains to 'unverified' (never None: a null label reads as "no data barrier")
+        assert out[0].data_access_model == "unverified"
         assert "Hugging Face Hub" in (out[0].data_acquisition_notes or "")
 
     def test_valid_tier_kept_and_normalized(self):

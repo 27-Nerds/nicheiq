@@ -22,6 +22,7 @@
     TOOL_NAMES,
     STRESS_TEST_EVIDENCE_LABEL,
   } from "$lib/selection/labels";
+  import { shortlistOverlaps, overlapWarningText } from "$lib/selection/overlapWarnings";
 
   let { data }: { data: PageData } = $props();
 
@@ -43,6 +44,14 @@
   let rationale = $state(restoreRationale());
   let submitting = $state(false);
   let submitError = $state("");
+  let clientRequestId = $state(crypto.randomUUID());
+  let confirmationMismatch = $state<{
+    previousIdeas: string[];
+    previousCost: number | null;
+    kind: "scope" | "cost" | "scope_and_cost";
+  } | null>(null);
+  let mismatchAcknowledged = $state(false);
+  let mismatchHeading = $state<HTMLHeadingElement>();
   /** Index into the shortlist of the idea open in the read-only detail overlay.
    *  Inspecting an idea at the gate must not offer a select control — the
    *  shortlist is edited in Compare — so this opens with lifecycle="reference". */
@@ -64,6 +73,17 @@
   const selectedIdeas = $derived(data.workspace.ideas);
   const selectedCount = $derived(selectedIdeas.length);
   const selectedRefs = $derived(new Set(selectedIdeas.map((idea) => `${idea.idea_id}:${idea.idea_revision ?? 1}`)));
+  // Last chance to notice two shortlisted ideas are the same product. Deep Research
+  // funds three slots and this gate is the only one that charges for them.
+  const overlapWarnings = $derived(
+    shortlistOverlaps(
+      data.overlapGroups,
+      selectedIdeas.map((idea) => ({
+        name: idea.solution_name,
+        label: solutionDisplayTitle(idea),
+      })),
+    ),
+  );
   const savedRefs = $derived(new Set((data.decisionState?.shortlist.items ?? []).map((reference) => (
     `${reference.ideaId}:${reference.ideaRevision}`
   ))));
@@ -74,6 +94,12 @@
     selectedRefs.has(`${challenge.idea.ideaId}:${challenge.idea.ideaRevision}`)
   )).length);
   const staleRiskChecks = $derived(data.decisionState?.staleCounts.challenges ?? 0);
+  // First-hand evidence the owner saved via "Add your evidence". Non-retracted rows
+  // whose idea is still on the current shortlist are already the only ones the state
+  // service returns, so the same selectedRefs filter as the checks applies.
+  const ownerEvidence = $derived((data.decisionState?.ownerEvidence ?? []).filter((record) => (
+    selectedRefs.has(`${record.idea.ideaId}:${record.idea.ideaRevision}`)
+  )).length);
   // The gate carries the same ledger line the guide panel uses, so the state a
   // user assembled across the workspace is restated once before they pay for it.
   // Without the decision-tools grant there are no checks to count.
@@ -84,6 +110,7 @@
         checks: riskChecks,
         stale: staleRiskChecks,
         contextSaved: Boolean(data.decisionState?.profile),
+        ownerEvidence,
       })
       : `${selectedCount} SHORTLISTED`,
   );
@@ -107,6 +134,7 @@
       ? null
       : nonNegativeInteger(data.stageCosts.deep_research),
   );
+  const selectionFingerprint = $derived(data.decisionState?.shortlist.fingerprint ?? null);
   const creditDataValid = $derived(creditBalance !== null && researchCost !== null);
   const creditAvailabilityMessage = $derived(
     data.billingLoadState?.balanceUnavailable && data.billingLoadState?.costsUnavailable
@@ -139,8 +167,10 @@
     && data.workspace.scopeSource !== "preview"
     && scopeMatchesSaved
     && Boolean(data.decisionState?.deepResearch.eligible)
+    && Boolean(selectionFingerprint)
     && creditDataValid
     && hasEnoughCredits
+    && (!confirmationMismatch || mismatchAcknowledged)
     && !submitting,
   );
 
@@ -160,8 +190,10 @@
     submitError = "";
     try {
       await selectSolution(data.job.id, {
-        solutionNames: selectedIdeas.map((idea) => idea.solution_name),
-        solutionIds: selectedIdeas.flatMap((idea) => idea.idea_id ? [idea.idea_id] : []),
+        clientRequestId,
+        expectedDraftVersion: data.decisionState?.shortlist.version ?? 0,
+        expectedSelectionFingerprint: selectionFingerprint as string,
+        expectedCost: researchCost as number,
         rationale: rationale.trim() || undefined,
       });
       try {
@@ -175,6 +207,38 @@
         submitError = researchCost === null
           ? "Credit information changed while you were confirming. Reload this review before trying again."
           : `You need ${researchCost} credits to start this research. Your balance may have changed; add credits, then return to confirm.`;
+      } else if (
+        error instanceof ApiError
+        && error.status === 409
+        && [
+          "DEEP_RESEARCH_SCOPE_CHANGED",
+          "DEEP_RESEARCH_COST_CHANGED",
+          "DEEP_RESEARCH_CONFIRMATION_STALE",
+          "PRICE_CHANGED",
+          "STALE_SELECTION_DRAFT",
+          "STALE_SOLUTION_REVISION",
+          "AMBIGUOUS_PHASE2_SELECTION",
+        ].includes(apiErrorCode(error) ?? "")
+      ) {
+        const code = apiErrorCode(error);
+        confirmationMismatch = {
+          previousIdeas: selectedIdeas.map(solutionDisplayTitle),
+          previousCost: researchCost,
+          kind: [
+            "DEEP_RESEARCH_SCOPE_CHANGED",
+            "STALE_SELECTION_DRAFT",
+            "STALE_SOLUTION_REVISION",
+            "AMBIGUOUS_PHASE2_SELECTION",
+          ].includes(code ?? "")
+            ? "scope"
+            : ["DEEP_RESEARCH_COST_CHANGED", "PRICE_CHANGED"].includes(code ?? "")
+              ? "cost"
+              : "scope_and_cost",
+        };
+        mismatchAcknowledged = false;
+        submitError = "";
+        await invalidateAll();
+        queueMicrotask(() => mismatchHeading?.focus());
       } else if (
         error instanceof ApiError
         && error.status === 409
@@ -286,6 +350,16 @@
               No risk check saved. You can continue because this step is optional.
             {/if}
           </p>
+          {#if ownerEvidence > 0}
+            <!-- Owner evidence was previously invisible here even though it is already
+                 in play: buildSelectionChallengeEvidence() folds it into every risk-check
+                 pack and the chat analyst cites it as O1/O2. It is NOT part of the Deep
+                 Research payload, so the copy must not promise that. -->
+            <p>
+              <a href={routeHref("risks")}>{ownerEvidence} {ownerEvidence === 1 ? "piece" : "pieces"} of your own evidence</a>
+              {ownerEvidence === 1 ? "is" : "are"} saved against these ideas — risk checks and the analyst cite it.
+            </p>
+          {/if}
           {#if openAssumptions > 0}
             <p>
               <a href={routeHref("risks")}>{openAssumptions} open {openAssumptions === 1 ? "question" : "questions"} to resolve</a>
@@ -371,6 +445,42 @@
           <li>If the run fails or finds too little data, credits are returned automatically.</li>
         </ul>
 
+        {#if confirmationMismatch}
+          <section class="confirmation-change" aria-labelledby="confirmation-change-title">
+            <h4 id="confirmation-change-title" tabindex="-1" bind:this={mismatchHeading}>
+              Review the updated confirmation
+            </h4>
+            <p>
+              {confirmationMismatch.kind === "scope"
+                ? "Your saved shortlist changed before the run started."
+                : confirmationMismatch.kind === "cost"
+                  ? "The Deep Research price changed before the run started."
+                  : "Your saved shortlist or price changed before the run started."}
+              Nothing was charged or started.
+            </p>
+            <dl>
+              <div>
+                <dt>Previously reviewed</dt>
+                <dd>{confirmationMismatch.previousIdeas.join(" · ") || "No ideas"} · {confirmationMismatch.previousCost ?? "unknown"} credits</dd>
+              </div>
+              <div>
+                <dt>Current confirmation</dt>
+                <dd>{selectedIdeas.map(solutionDisplayTitle).join(" · ") || "No ideas"} · {researchCost ?? "unknown"} credits</dd>
+              </div>
+            </dl>
+            {#if !mismatchAcknowledged}
+              <button
+                type="button"
+                class="credit-link credit-link--button"
+                onclick={() => {
+                  mismatchAcknowledged = true;
+                  clientRequestId = crypto.randomUUID();
+                }}
+              >Use this updated scope and price</button>
+            {/if}
+          </section>
+        {/if}
+
         {#if !creditDataValid}
           <p class="credit-warning">{creditAvailabilityMessage} Reload before starting so you can confirm the exact charge.</p>
           <button class="credit-link credit-link--button" type="button" onclick={() => void invalidateAll()}>Reload credit information</button>
@@ -387,10 +497,22 @@
           <a class="credit-link" href={routeHref("compare")}>Review and save this scope</a>
         {/if}
 
+        <!-- Advisory, so it sits outside the credit-warning blockers and leaves the
+             button enabled: two framings of one product is a defensible purchase,
+             just not one to make unknowingly. -->
+        {#each overlapWarnings as overlap (overlap.sharedProduct)}
+          <p class="overlap-warning">
+            {overlapWarningText(overlap)}
+            <a class="credit-link" href={routeHref("compare")}>Change your shortlist</a>
+          </p>
+        {/each}
+
         {#if submitError}<p class="submit-error" role="alert">{submitError}</p>{/if}
         <SubmitButton
           type="button"
-          label={researchCost === null ? "Start Deep Research" : startDeepResearchLabel(researchCost)}
+          label={confirmationMismatch && mismatchAcknowledged
+            ? `Confirm updated scope · ${researchCost ?? "?"} credits`
+            : researchCost === null ? "Start Deep Research" : startDeepResearchLabel(researchCost)}
           loadingText="Starting research…"
           loading={submitting}
           disabled={!canStart}
@@ -407,6 +529,10 @@
                   ? "Save this exact research scope before starting research."
                 : !creditDataValid
                   ? "Reload valid credit information before starting research."
+                  : !selectionFingerprint
+                    ? "Reload the exact shortlist confirmation before starting research."
+                  : confirmationMismatch && !mismatchAcknowledged
+                    ? "Review and accept the updated shortlist and price before starting research."
                 : !hasEnoughCredits
                   ? "Add enough credits before starting research."
                   : "Deep Research cannot be started in the current job state."}
@@ -459,7 +585,7 @@
   .selected-list small { color: var(--color-text-muted); font: 600 var(--text-xs)/var(--leading-snug) var(--font-mono); white-space: nowrap; }
   .flat-price-note { margin: var(--space-1) 0 0; color: var(--color-text-muted); font-size: var(--text-13); line-height: var(--leading-snug); }
   .idea-meta-row { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
-  .score-chip, .tier-chip { display: inline-flex; align-items: center; padding: var(--space-0-5, 0.125rem) var(--space-2); border-radius: var(--radius-full); font: 600 var(--text-xs)/var(--leading-snug) var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .score-chip, .tier-chip { display: inline-flex; align-items: center; padding: 0.125rem var(--space-2); border-radius: var(--radius-md); font: 600 var(--text-xs)/var(--leading-snug) var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .score-chip { color: var(--color-text-secondary); background: var(--color-bg-surface); box-shadow: inset 0 0 0 1px var(--color-border); }
   .tier-chip { color: var(--color-text-muted); background: var(--color-bg-surface); box-shadow: inset 0 0 0 1px var(--color-border); }
   .value-card, .note-card { min-width: 0; padding: var(--space-5); overflow-wrap: anywhere; }
@@ -480,7 +606,7 @@
      + shadow-sm), matched by the compare page's .fit-action. */
   .confirm-card { position: sticky; top: var(--space-4); min-width: 0; padding: var(--space-6); overflow-wrap: anywhere; border: 1px solid var(--color-border-accent); border-radius: var(--radius-lg); color: var(--color-text-primary); background: var(--color-accent-subtle); box-shadow: var(--shadow-sm); }
   .confirm-card .review-kicker { color: var(--color-accent-dark); }
-  .confirm-card > p:not(.review-kicker, .submit-error, .credit-warning) { margin: var(--space-3) 0 var(--space-5); color: var(--color-text-secondary); font-size: var(--text-base); line-height: var(--leading-normal); text-wrap: pretty; }
+  .confirm-card > p:not(.review-kicker, .submit-error, .credit-warning, .overlap-warning) { margin: var(--space-3) 0 var(--space-5); color: var(--color-text-secondary); font-size: var(--text-base); line-height: var(--leading-normal); text-wrap: pretty; }
   .price-summary { display: grid; gap: var(--space-2); margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--color-border); }
   .price-summary > div { display: flex; justify-content: space-between; gap: var(--space-4); align-items: baseline; }
   .price-summary span { color: var(--color-text-secondary); font-size: var(--text-13); }
@@ -491,7 +617,32 @@
   .price-summary .post-charge { margin-top: var(--space-1-5); padding-top: var(--space-3); border-top: 1px solid var(--color-border); }
   .price-summary .post-charge span, .price-summary .post-charge strong { color: var(--color-text-primary); }
   .price-notes { display: grid; gap: var(--space-1-5); margin: var(--space-3) 0 var(--space-4); padding: 0; list-style: none; color: var(--color-text-muted); font-size: var(--text-xs); line-height: var(--leading-snug); }
+  .confirmation-change {
+    display: grid;
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
+    padding: var(--space-4);
+    border: 1px solid var(--color-border-emphasis);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-elevated);
+  }
+  .confirmation-change h4 { margin: 0; color: var(--color-text-primary); font-size: var(--text-base); }
+  .confirmation-change h4:focus { outline: none; }
+  .confirmation-change h4:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+  .confirmation-change p { margin: 0; color: var(--color-text-secondary); font-size: var(--text-13); line-height: var(--leading-snug); }
+  .confirmation-change dl { display: grid; gap: var(--space-2); margin: 0; }
+  .confirmation-change dl > div { display: grid; gap: var(--space-1); }
+  .confirmation-change dt { color: var(--color-text-muted); font: 700 var(--text-xs)/var(--leading-tight) var(--font-mono); text-transform: uppercase; }
+  .confirmation-change dd { margin: 0; color: var(--color-text-primary); font-size: var(--text-13); overflow-wrap: anywhere; }
   .credit-warning { margin: 0 0 var(--space-1-5); color: var(--color-warning-text); font-size: var(--text-13); font-weight: 600; line-height: var(--leading-snug); }
+  /* Plain bordered card, per §9.1 "no accent stripes on ANY edge of cards, zones,
+     callouts — callout = plain bordered card or run-in text". Deliberately NOT
+     warning-orange: --color-warning-text is byte-identical to --color-accent-dark
+     (#9A3412), and this sits inside .confirm-card's accent-subtle fill, so orange text
+     here reads as brand chrome rather than a caution. The elevated fill lifts it off
+     that background instead. */
+  .overlap-warning { margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); border: 1px solid var(--color-border-emphasis); border-radius: var(--radius-md); color: var(--color-text-primary); background: var(--color-bg-elevated); font-size: var(--text-13); line-height: var(--leading-snug); }
+  .overlap-warning .credit-link { display: block; margin-bottom: 0; margin-top: var(--space-1); }
   .credit-link { display: inline-block; margin-bottom: var(--space-3); color: var(--color-accent-dark); font-size: var(--text-13); font-weight: 700; text-underline-offset: var(--space-1); }
   .credit-link--button { padding: 0; border: 0; background: transparent; font-family: inherit; text-decoration: underline; cursor: pointer; }
   .credit-link:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }

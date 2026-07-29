@@ -179,7 +179,9 @@ class NicheDifficultyFactPack(BaseModel):
     difficulty_level: str = "medium"
     low_confidence: bool = False
     flags: list[str] = Field(default_factory=list)
+    #: Frictions only. Never mixed with strengths — see the key-points block in the builder.
     key_points: list[str] = Field(default_factory=list)
+    key_strengths: list[str] = Field(default_factory=list)
 
 
 # Closed vocabulary for the niche's buyer class (who actually pays here), and the payability
@@ -459,20 +461,27 @@ def assess_niche_difficulty(
 
     low_confidence = len(pains) < MIN_SAMPLE and len(ideas) < MIN_SAMPLE
 
-    # --- Key points (bidirectional): strengths for a strong niche, frictions otherwise.
+    # --- Key points, split by polarity.
+    # These used to share one bidirectional `key_points` list surfaced as `key_challenges`.
+    # The conditional appends below fire on a STRONG niche too, so that single list came out
+    # genuinely mixed — and every consumer then had to guess. ReportBrief guessed "risk" and
+    # printed "There's room for a genuinely novel angle" as the primary concern. Keep the two
+    # polarities apart here, where each point's sign is known for certain.
+    key_strengths: list[str] = []
     if difficulty == "low" or software_addressability >= ADDR_STRONG:
-        strengths: list[str] = []
         if full_share >= FULL_SHARE_STRONG:
-            strengths.append(
+            key_strengths.append(
                 "Most pains are workflow or data problems a tool can directly own."
             )
         if (median_novelty or 0.0) >= NOVELTY_LOW:
-            strengths.append("There's room for a genuinely novel angle, not just a clone.")
+            key_strengths.append("There's room for a genuinely novel angle, not just a clone.")
         if cold_start_share < COLD_START_HEAVY:
-            strengths.append("Usable data is reachable without a heavy cold-start lift.")
-        key_points = strengths or challenges
-    else:
-        key_points = challenges
+            key_strengths.append("Usable data is reachable without a heavy cold-start lift.")
+    # Frictions always survive. The old single list computed `strengths or challenges`, so on a
+    # strong-fit niche the computed frictions were dropped outright — including the ones that had
+    # just escalated the difficulty band. That was a workaround for having one list to fill; with
+    # two, a strong niche can show both its strengths and what still makes it hard.
+    key_points = list(challenges)
 
     # Saturation is orthogonal to fit — surface it even when the verdict is otherwise strong
     # ("great data + clear pains, but a mature tool ecosystem").
@@ -514,9 +523,10 @@ def assess_niche_difficulty(
         key_points = [*key_points, _wallet_challenge(evidence)]
     elif wallet_class == "paying":
         # Positive/neutral signal: buyers here already pay for tooling. 'mixed' (and any other
-        # reading) adds nothing — neutral default.
+        # reading) adds nothing — neutral default. Goes to strengths: it is the one append in
+        # this block that is not a friction.
         evidence = ((niche_wallet_brief or {}).get("evidence") or "").strip()
-        key_points = [*key_points, _wallet_positive_note(evidence)]
+        key_strengths = [*key_strengths, _wallet_positive_note(evidence)]
 
     # Incumbent-map probe (2026-07-10): a dense web-verified tool count is a caution signal —
     # new entrants compete for attention inside an existing stack, not an empty field.
@@ -568,6 +578,7 @@ def assess_niche_difficulty(
         low_confidence=low_confidence,
         flags=flags,
         key_points=key_points,
+        key_strengths=key_strengths,
     )
 
 
@@ -822,6 +833,7 @@ def generate_niche_difficulty_verdict(
         headline=headline,
         narrative_summary=narrative,
         key_challenges=key_challenges,
+        key_strengths=list(fp.key_strengths),
         low_confidence=fp.low_confidence,
         buyer_class=buyer_class,
         buyer_class_note=buyer_class_note,

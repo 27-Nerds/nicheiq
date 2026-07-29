@@ -130,7 +130,13 @@ def test_user_seed_formatter_renders_seed_text_as_primary_directive():
         anchor_pain_titles=[],
     )
     rendered = FRAME_REGISTRY["user_seed"].brief_formatter(focus)
-    assert rendered.startswith("A tool that tracks late invoices for freelance plumbers")
+    # The brief opens by naming the seed as the immutable core, then quotes it — the seed
+    # still leads, ahead of the preservation clause that qualifies it.
+    assert rendered.startswith("USER-PROVIDED PRODUCT BRIEF — IMMUTABLE CORE:")
+    assert (
+        rendered.index("A tool that tracks late invoices for freelance plumbers")
+        < rendered.index("Preserve the product category")
+    )
     assert "INCUMBENT/TOOL TO DISPLACE" not in rendered
     assert _ANCHOR_GROUNDING_LINE not in rendered  # unanchored: no anchor list to ground in
 

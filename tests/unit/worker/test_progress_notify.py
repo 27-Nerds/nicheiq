@@ -9,6 +9,7 @@ fix: previously every 409 was swallowed as 'delivered'). Exhausted transient
 retries must raise so the task's failure path replaces a zombie RUNNING job.
 """
 
+import json
 import re
 import sys
 from pathlib import Path
@@ -23,6 +24,37 @@ sys.path.insert(0, str(project_root))
 
 # Matched by URL suffix so the test doesn't depend on the resolved backend host.
 _IDEAS_READY = re.compile(r".+/api/workers/ideas-ready$")
+_REGENERATION_COMPLETE = re.compile(r".+/api/workers/regeneration-complete$")
+_REPORT_READY = re.compile(r".+/api/workers/report-ready$")
+
+
+@responses.activate
+@patch("worker.progress._dispatch_payload", return_value={"dispatch_id": "dispatch-2"})
+@patch("worker.progress._get_worker_id", return_value="w1")
+def test_report_ready_carries_dispatch_and_exact_winner(_wid, _dispatch):
+    responses.add(responses.POST, _REPORT_READY, json={"status": "ok"}, status=200)
+    from worker.progress import publish_report_ready
+
+    winner_ref = {
+        "idea_id": "idea-a",
+        "idea_revision": 2,
+        "solution_name": "Alpha Hub",
+    }
+    publish_report_ready(
+        "job-1",
+        "/tmp/report.json",
+        winner_name="Alpha Hub",
+        winner_ref=winner_ref,
+    )
+
+    assert json.loads(responses.calls[0].request.body) == {
+        "worker_id": "w1",
+        "job_id": "job-1",
+        "report_path": "/tmp/report.json",
+        "dispatch_id": "dispatch-2",
+        "winner_name": "Alpha Hub",
+        "winner_ref": winner_ref,
+    }
 
 
 @responses.activate
@@ -116,5 +148,62 @@ def test_exhausted_retries_raise(mock_sleep, _wid):
     with pytest.raises(requests.exceptions.RequestException):
         notify_ideas_ready("job-1", [], "/cp", 0)
     # 1 initial + 3 retries; sleeps between attempts only
+    assert len(responses.calls) == 4
+    assert mock_sleep.call_count == 3
+
+
+@responses.activate
+@patch("worker.progress._dispatch_payload", return_value={"dispatch_id": "dispatch-2"})
+@patch("worker.progress._get_worker_id", return_value="w1")
+@patch("worker.progress.time.sleep")
+def test_regeneration_complete_delivers_batch_correlation_and_counts(
+    mock_sleep, _wid, _dispatch
+):
+    responses.add(
+        responses.POST,
+        _REGENERATION_COMPLETE,
+        json={"status": "ok", "idempotent": True},
+        status=200,
+    )
+    from worker.progress import notify_regeneration_complete
+
+    notify_regeneration_complete(
+        "job-1",
+        [],
+        batch_ordinal=2,
+        generated_count=3,
+        ruled_out_count=3,
+    )
+
+    assert json.loads(responses.calls[0].request.body) == {
+        "worker_id": "w1",
+        "job_id": "job-1",
+        "solutions": [],
+        "dispatch_id": "dispatch-2",
+        "batch_ordinal": 2,
+        "generated_count": 3,
+        "ruled_out_count": 3,
+    }
+    mock_sleep.assert_not_called()
+
+
+@responses.activate
+@patch("worker.progress._dispatch_payload", return_value={"dispatch_id": "dispatch-2"})
+@patch("worker.progress._get_worker_id", return_value="w1")
+@patch("worker.progress.time.sleep")
+def test_regeneration_complete_exhausted_retries_raise(
+    mock_sleep, _wid, _dispatch
+):
+    for _ in range(4):
+        responses.add(
+            responses.POST,
+            _REGENERATION_COMPLETE,
+            body=requests.exceptions.ConnectionError("backend down"),
+        )
+    from worker.progress import notify_regeneration_complete
+
+    with pytest.raises(requests.exceptions.RequestException):
+        notify_regeneration_complete("job-1", [])
+
     assert len(responses.calls) == 4
     assert mock_sleep.call_count == 3

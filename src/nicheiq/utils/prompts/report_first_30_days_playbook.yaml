@@ -159,22 +159,44 @@ template: |
 
   Generate a JSON structure with these EXACT fields:
 
-  - **week_1_actions**: List of 5-8 specific actions for Week 1 (Foundation)
-    Focus: Setup, analytics, landing page, email capture, social listening
-  - **week_2_actions**: List of 5-8 specific actions for Week 2 (Value First)
+  - **week_1_actions**: List of 3-5 specific actions for Week 1 (Foundation)
+    Pick from DISTINCT setup jobs — use each at most once: landing page + email capture
+    (ONE action, not two), analytics/conversion tracking, social listening setup,
+    competitor/SERP baseline, outreach shortlist of communities or people to contact,
+    first-draft positioning statement.
+  - **week_2_actions**: List of 3-5 specific actions for Week 2 (Value First)
     Focus: First content, community sharing, initial email list building
-  - **week_3_actions**: List of 5-8 specific actions for Week 3 (Validation)
+  - **week_3_actions**: List of 3-5 specific actions for Week 3 (Validation)
     Focus: Customer interviews, message iteration, case study/insight content
-  - **week_4_actions**: List of 5-8 specific actions for Week 4 (Optimization)
+  - **week_4_actions**: List of 3-5 specific actions for Week 4 (Optimization)
     Focus: Data analysis, content optimization, feature iteration planning
   - **success_metrics**: List of 3-5 metrics to track during the 30 days
+
+  **NO NEAR-DUPLICATES (hard rule):** Within a week, every action must be a DIFFERENT
+  job. Two actions that differ only by which pain point or persona they name are the
+  SAME action — merge them into one and use the freed slot for a different job, or
+  return fewer actions. Returning 3 distinct actions is BETTER than 8 with repeats.
+  Specifically: do NOT emit "set up landing page", "set up email capture form", and
+  "write landing page copy" as separate items — that is one action.
+
+  **Pain point spread:** across the 30 days, reference more than one pain point where
+  it is genuinely the right pain for that action — do not anchor every single action to
+  the same one. But NEVER repeat a job just to work in another pain point: distinct jobs
+  first, pain variety second. Lead with the most severe pain in Week 1.
 
   **IMPORTANT:** Each action should be a complete, self-contained string following the construction rules above.
   Include the week theme context within each action item itself.
 
   **Example action format:**
-  ✓ "Week 1 Foundation: Set up landing page with email capture targeting [persona] struggling with [PAIN_POINT_TITLE]"
+  ✓ "Week 1 Foundation: Set up landing page with email capture targeting [persona] struggling with [PAIN_POINT_TITLE] - track 10-20 early access signups"
   ✓ "Publish comparison guide on [CHANNEL] addressing [PAIN_POINT_TITLE] - target 50-100 views"
+
+  These show FORMAT ONLY — do not reuse the first one as a template for several actions.
+
+  ✗ WRONG (same job three times, differing only by pain point — this is ONE action):
+    "Week 1 Foundation: Set up email capture form on landing page targeting [persona] struggling with [PAIN_A]"
+    "Week 1 Foundation: Set up email capture form on landing page targeting [persona] struggling with [PAIN_B]"
+    "Week 1 Foundation: Create initial landing page copy highlighting [PAIN_A] pain point"
 
   **═══ CRITICAL RULES (Read Last - Recency Reminder) ═══**
   Remember:
@@ -183,6 +205,7 @@ template: |
   ✓ Metrics must be conservative (≤500 visitors, ≤70 subscribers in 30 days)
   ✓ At least 50% of actions must reference specific pain points by title
   ✓ Every action needs: deliverable + channel + pain point tie-in + measurable outcome
+  ✓ NO two actions in the same week may be the same job with a different pain point/persona
 
   <brief_explanation>
   First, state the solution type and the primary channel you'll focus on in Week 1-2.
@@ -193,7 +216,8 @@ template: |
   <verification>
   Before returning, verify:
   - JSON contains EXACTLY these 5 fields: week_1_actions, week_2_actions, week_3_actions, week_4_actions, success_metrics
-  - Each week_N_actions has 5-8 action items as strings
+  - Each week_N_actions has 3-5 action items as strings
+  - No two actions within a week are the same job with a swapped pain point/persona
   - ≥50% of actions reference specific pain point titles (exact match)
   - All channel names are EXACT copies from channels summary
   - All metrics in success_metrics are conservative (≤500 visitors, ≤70 subscribers)

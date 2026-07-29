@@ -26,9 +26,28 @@ const mocks = vi.hoisted(() => ({
   messageCreate: vi.fn(),
   getReport: vi.fn(),
   generate: vi.fn(),
+  /** Live row the create-path fingerprint cache should find, or null for a miss. */
+  setCachedLive: null as unknown,
+  /** Backing store for the mocked Redis single-flight lock. */
+  redisStore: new Map<string, string>(),
 }));
 
 vi.mock('../../config.js', () => ({ CONFIG: { openaiApiKey: 'test-key', openrouterApiKey: '' } }));
+// Real SET NX semantics, so the single-flight lock is exercised rather than failing open.
+vi.mock('../../services/redis.js', () => ({
+  getRedis: () => ({
+    set: async (key: string, value: string, _ex: string, _ttl: number, nx?: string) => {
+      if (nx === 'NX' && mocks.redisStore.has(key)) return null;
+      mocks.redisStore.set(key, value);
+      return 'OK';
+    },
+    eval: async (_s: string, _n: number, key: string, token: string) => {
+      if (mocks.redisStore.get(key) !== token) return 0;
+      mocks.redisStore.delete(key);
+      return 1;
+    },
+  }),
+}));
 vi.mock('../../services/assetService.js', () => ({
   getPreviewReportForJob: mocks.getReport,
 }));
@@ -165,6 +184,7 @@ app.use('/api/jobs', selectionConceptSetsRouter);
 describe('selection concept sets', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.redisStore.clear();
     const generated = artifact();
     mocks.jobFindFirst.mockResolvedValue(job());
     mocks.getReport.mockResolvedValue(report);
@@ -172,7 +192,14 @@ describe('selection concept sets', () => {
     mocks.evidenceFindMany.mockResolvedValue([]);
     mocks.conclusionFindMany.mockResolvedValue([]);
     mocks.setFindUnique.mockResolvedValue(null);
-    mocks.setFindFirst.mockResolvedValue({ id: SET_ID, artifact: generated });
+    // The create path's cache lookup and the by-id lookups share this mock. Discriminate
+    // on the where clause: a fingerprint query is the cache (no live hit by default), an
+    // id query is the proposal/archive read.
+    mocks.setCachedLive = null;
+    mocks.setFindFirst.mockImplementation(async ({ where }: any) =>
+      where?.inputFingerprint !== undefined
+        ? mocks.setCachedLive
+        : { id: SET_ID, artifact: generated });
     mocks.setFindMany.mockResolvedValue([]);
     mocks.setCount.mockResolvedValue(0);
     mocks.setCreate.mockImplementation(async ({ data }) => ({
@@ -222,11 +249,11 @@ describe('selection concept sets', () => {
   });
 
   it('returns the cached set without a model call when the fingerprint matches', async () => {
-    mocks.setFindUnique.mockResolvedValue({
+    mocks.setCachedLive = {
       id: SET_ID,
       artifact: artifact(),
       createdAt: new Date('2026-07-16T12:00:00.000Z'),
-    });
+    };
 
     const response = await request(app)
       .post(`/api/jobs/${JOB_ID}/selection-concept-sets`)
@@ -256,11 +283,11 @@ describe('selection concept sets', () => {
 
   it('still serves a cache hit when the job is at the concept-set cap', async () => {
     mocks.setCount.mockResolvedValue(12);
-    mocks.setFindUnique.mockResolvedValue({
+    mocks.setCachedLive = {
       id: SET_ID,
       artifact: artifact(),
       createdAt: new Date('2026-07-16T12:00:00.000Z'),
-    });
+    };
 
     const response = await request(app)
       .post(`/api/jobs/${JOB_ID}/selection-concept-sets`)
@@ -356,6 +383,18 @@ describe('selection concept sets', () => {
       operation: 'narrow',
       parents: [{ ideaId: 'idea-signal', ideaRevision: 3 }],
       evidence: { sourceAnchors: [{ candidateSnapshotSha256: current.parents[0].candidateSnapshotSha256 }] },
+      evaluation: {
+        version: 1,
+        conceptSetId: SET_ID,
+        optionId: current.options[0].optionId,
+        inputFingerprint: current.inputFingerprint,
+        changedAxes: current.options[0].changedAxes,
+        assumptions: current.options[0].assumptions,
+        retainedEvidence: current.options[0].retainedEvidence,
+        evidenceToRecheck: current.options[0].evidenceToRecheck,
+        disqualifiers: current.options[0].disqualifiers,
+        suggestedTest: current.options[0].suggestedTest,
+      },
     });
     expect(mocks.messageCreate).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ origin: 'concept_forge' }),
@@ -381,16 +420,19 @@ describe('selection concept sets', () => {
     consoleError.mockRestore();
   });
 
-  it('lists only unarchived sets and stamps evaluated options from proposal records', async () => {
+  it('does not call a prepared-only concept option evaluated', async () => {
     const stored = artifact();
     mocks.setFindMany.mockResolvedValue([{
       id: SET_ID,
       artifact: stored,
       createdAt: new Date('2026-07-16T12:00:00.000Z'),
     }]);
-    mocks.messageFindMany.mockResolvedValue([
-      { operationId: `concept:${SET_ID}:${stored.options[1].optionId}` },
-    ]);
+    mocks.messageFindMany
+      .mockResolvedValueOnce([{
+        id: 'proposal-message-1',
+        operationId: `concept:${SET_ID}:${stored.options[1].optionId}`,
+      }])
+      .mockResolvedValueOnce([]);
 
     const response = await request(app)
       .get(`/api/jobs/${JOB_ID}/selection-concept-sets`)
@@ -406,9 +448,120 @@ describe('selection concept sets', () => {
           in: stored.options.map((option) => `concept:${SET_ID}:${option.optionId}`),
         },
       },
-      select: { operationId: true },
+      select: { id: true, operationId: true },
+    });
+    expect(response.body.sets[0].evaluatedOptionIds).toEqual([]);
+  });
+
+  it('marks an option submitted only when a durable seed receipt names its proposal', async () => {
+    const stored = artifact();
+    mocks.setFindMany.mockResolvedValue([{
+      id: SET_ID,
+      artifact: stored,
+      createdAt: new Date('2026-07-16T12:00:00.000Z'),
+    }]);
+    mocks.messageFindMany
+      .mockResolvedValueOnce([{
+        id: 'proposal-message-1',
+        operationId: `concept:${SET_ID}:${stored.options[1].optionId}`,
+      }])
+      .mockResolvedValueOnce([{
+        patchJson: {
+          kind: 'ledger_event',
+          event: 'seed_settled',
+          sourceMessageId: 'proposal-message-1',
+          outcome: 'demoted',
+        },
+      }]);
+
+    const response = await request(app)
+      .get(`/api/jobs/${JOB_ID}/selection-concept-sets`)
+      .set(headers);
+
+    expect(response.status).toBe(200);
+    expect(mocks.messageFindMany).toHaveBeenLastCalledWith({
+      where: { jobId: JOB_ID, gateStage: 5, role: 'receipt' },
+      select: { patchJson: true },
     });
     expect(response.body.sets[0].evaluatedOptionIds).toEqual([stored.options[1].optionId]);
+    // The OUTCOME, not just the fact of submission — otherwise reopening the Forge
+    // shows a long-settled direction as "Evaluation submitted" forever.
+    expect(response.body.sets[0].optionOutcomes).toEqual({
+      [stored.options[1].optionId]: 'demoted',
+    });
+  });
+
+  it('lets a settled receipt win over the submitted receipt for the same proposal', async () => {
+    // seed_submitted is never retracted, so preferring it would pin every finished
+    // evaluation at "pending" for the life of the job. Ordered submitted-last here
+    // precisely because row order must not decide the answer.
+    const stored = artifact();
+    mocks.setFindMany.mockResolvedValue([{
+      id: SET_ID,
+      artifact: stored,
+      createdAt: new Date('2026-07-16T12:00:00.000Z'),
+    }]);
+    mocks.messageFindMany
+      .mockResolvedValueOnce([{
+        id: 'proposal-message-1',
+        operationId: `concept:${SET_ID}:${stored.options[0].optionId}`,
+      }])
+      .mockResolvedValueOnce([
+        {
+          patchJson: {
+            kind: 'ledger_event',
+            event: 'seed_settled',
+            sourceMessageId: 'proposal-message-1',
+            outcome: 'accepted',
+          },
+        },
+        {
+          patchJson: {
+            kind: 'ledger_event',
+            event: 'seed_submitted',
+            sourceMessageId: 'proposal-message-1',
+          },
+        },
+      ]);
+
+    const response = await request(app)
+      .get(`/api/jobs/${JOB_ID}/selection-concept-sets`)
+      .set(headers);
+
+    expect(response.status).toBe(200);
+    expect(response.body.sets[0].optionOutcomes).toEqual({
+      [stored.options[0].optionId]: 'accepted',
+    });
+  });
+
+  it('reports a still-running evaluation as pending', async () => {
+    const stored = artifact();
+    mocks.setFindMany.mockResolvedValue([{
+      id: SET_ID,
+      artifact: stored,
+      createdAt: new Date('2026-07-16T12:00:00.000Z'),
+    }]);
+    mocks.messageFindMany
+      .mockResolvedValueOnce([{
+        id: 'proposal-message-1',
+        operationId: `concept:${SET_ID}:${stored.options[0].optionId}`,
+      }])
+      .mockResolvedValueOnce([{
+        patchJson: {
+          kind: 'ledger_event',
+          event: 'seed_submitted',
+          sourceMessageId: 'proposal-message-1',
+        },
+      }]);
+
+    const response = await request(app)
+      .get(`/api/jobs/${JOB_ID}/selection-concept-sets`)
+      .set(headers);
+
+    expect(response.status).toBe(200);
+    expect(response.body.sets[0].optionOutcomes).toEqual({
+      [stored.options[0].optionId]: 'pending',
+    });
   });
 
   it('excludes archived sets from the cap and points the cap message at discarding', async () => {
@@ -426,13 +579,31 @@ describe('selection concept sets', () => {
     });
   });
 
-  it('revives an archived set on a matching fingerprint instead of regenerating', async () => {
-    mocks.setFindUnique.mockResolvedValue({
+  it('generates fresh directions after a discard instead of reviving the old set', async () => {
+    // Reviving made "Discard this set" a no-op: asking for the same directions again
+    // handed back the artifact the user had just thrown away, with no way to get
+    // different ones. The cache reads LIVE rows only, so a discarded set is never found.
+    mocks.setCachedLive = null;
+
+    const response = await request(app)
+      .post(`/api/jobs/${JOB_ID}/selection-concept-sets`)
+      .set(headers)
+      .send({ purpose: 'diverge', parents: [{ ideaId: 'idea-signal', ideaRevision: 3 }] });
+
+    expect(response.status).toBe(201);
+    expect(response.body.cached).toBe(false);
+    expect(mocks.generate).toHaveBeenCalled();
+    expect(mocks.setCreate).toHaveBeenCalled();
+    // Nothing un-archives the discarded row; the discard is final.
+    expect(mocks.setUpdate).not.toHaveBeenCalled();
+  });
+
+  it('only consults LIVE rows for the fingerprint cache', async () => {
+    mocks.setCachedLive = {
       id: SET_ID,
       artifact: artifact(),
       createdAt: new Date('2026-07-16T12:00:00.000Z'),
-      archivedAt: new Date('2026-07-17T12:00:00.000Z'),
-    });
+    };
 
     const response = await request(app)
       .post(`/api/jobs/${JOB_ID}/selection-concept-sets`)
@@ -441,11 +612,10 @@ describe('selection concept sets', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.cached).toBe(true);
-    expect(mocks.setUpdate).toHaveBeenCalledWith({
-      where: { id: SET_ID },
-      data: { archivedAt: null },
-    });
     expect(mocks.generate).not.toHaveBeenCalled();
+    expect(mocks.setFindFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ archivedAt: null }),
+    }));
   });
 
   it('archives an owned set with a timestamp and stays idempotent', async () => {
@@ -510,5 +680,103 @@ describe('selection concept sets', () => {
 
     expect(response.status).toBe(409);
     expect(mocks.messageCreate).not.toHaveBeenCalled();
+  });
+
+  describe('single-flight generation', () => {
+    it('rejects a second generation while one is already running', async () => {
+      mocks.setCachedLive = null;
+      // Hold the generation open so the second request arrives mid-flight.
+      let finishFirst: (v: unknown) => void = () => {};
+      mocks.generate.mockImplementationOnce(() => new Promise((resolve) => { finishFirst = resolve; }));
+
+      // `.then()` is what dispatches a supertest request — without it the call is lazy
+      // and the "first" request would not have taken the lock yet.
+      const first = request(app)
+        .post(`/api/jobs/${JOB_ID}/selection-concept-sets`)
+        .set(headers)
+        .send({ purpose: 'diverge', parents: [{ ideaId: 'idea-signal', ideaRevision: 3 }] })
+        .then((response) => response);
+      await new Promise((r) => setTimeout(r, 50));
+
+      const second = await request(app)
+        .post(`/api/jobs/${JOB_ID}/selection-concept-sets`)
+        .set(headers)
+        .send({ purpose: 'diverge', parents: [{ ideaId: 'idea-signal', ideaRevision: 3 }] });
+
+      expect(second.status).toBe(409);
+      expect(second.body.code).toBe('CONCEPT_SET_GENERATION_IN_PROGRESS');
+      // The whole point: the blocked request cost nothing upstream.
+      expect(mocks.generate).toHaveBeenCalledTimes(1);
+
+      finishFirst({ artifact: artifact(), costUsd: 0.01, usage: {} });
+      await first;
+    });
+
+    it('serves a repeat of the SAME request from cache without contending for the lock', async () => {
+      // Cache read happens before the lock, so a second tab repeating an identical
+      // request gets the finished set rather than a "busy" error.
+      mocks.redisStore.set(`nicheiq:conceptforge:lock:${JOB_ID}`, 'held-by-another-request');
+      mocks.setCachedLive = {
+        id: SET_ID,
+        artifact: artifact(),
+        createdAt: new Date('2026-07-16T12:00:00.000Z'),
+      };
+
+      const response = await request(app)
+        .post(`/api/jobs/${JOB_ID}/selection-concept-sets`)
+        .set(headers)
+        .send({ purpose: 'diverge', parents: [{ ideaId: 'idea-signal', ideaRevision: 3 }] });
+
+      expect(response.status).toBe(200);
+      expect(response.body.cached).toBe(true);
+      expect(mocks.generate).not.toHaveBeenCalled();
+    });
+
+    it('releases the lock after a successful generation', async () => {
+      mocks.setCachedLive = null;
+      await request(app)
+        .post(`/api/jobs/${JOB_ID}/selection-concept-sets`)
+        .set(headers)
+        .send({ purpose: 'diverge', parents: [{ ideaId: 'idea-signal', ideaRevision: 3 }] });
+
+      expect(mocks.redisStore.has(`nicheiq:conceptforge:lock:${JOB_ID}`)).toBe(false);
+    });
+
+    it('releases the lock when generation fails, so a retry is not locked out', async () => {
+      mocks.setCachedLive = null;
+      mocks.generate.mockRejectedValueOnce(new Error('CONCEPT_OPTIONS_NOT_DISTINCT'));
+
+      await request(app)
+        .post(`/api/jobs/${JOB_ID}/selection-concept-sets`)
+        .set(headers)
+        .send({ purpose: 'diverge', parents: [{ ideaId: 'idea-signal', ideaRevision: 3 }] });
+
+      expect(mocks.redisStore.has(`nicheiq:conceptforge:lock:${JOB_ID}`)).toBe(false);
+    });
+
+    it('releases the lock when the per-job set cap rejects the request', async () => {
+      mocks.setCachedLive = null;
+      mocks.setCount.mockResolvedValueOnce(12);
+
+      const response = await request(app)
+        .post(`/api/jobs/${JOB_ID}/selection-concept-sets`)
+        .set(headers)
+        .send({ purpose: 'diverge', parents: [{ ideaId: 'idea-signal', ideaRevision: 3 }] });
+
+      expect(response.status).toBe(409);
+      expect(mocks.redisStore.has(`nicheiq:conceptforge:lock:${JOB_ID}`)).toBe(false);
+    });
+
+    it('locks per job, so a different job can generate concurrently', async () => {
+      mocks.redisStore.set('nicheiq:conceptforge:lock:other-job', 'held');
+      mocks.setCachedLive = null;
+
+      const response = await request(app)
+        .post(`/api/jobs/${JOB_ID}/selection-concept-sets`)
+        .set(headers)
+        .send({ purpose: 'diverge', parents: [{ ideaId: 'idea-signal', ideaRevision: 3 }] });
+
+      expect(response.status).toBe(201);
+    });
   });
 });

@@ -292,11 +292,13 @@ describe("FinalDecisionWorkspace", () => {
     const view = render(FinalDecisionWorkspace, { props: { jobId: "job-1", open: false } });
 
     expect(await view.findByRole("button", { name: "Open Decision Lab" })).toBeInTheDocument();
+    expect(mocks.getFinalDecision).not.toHaveBeenCalled();
     expect(view.queryByRole("dialog")).not.toBeInTheDocument();
     expect(view.queryByLabelText("Why is this the right next move now?")).not.toBeInTheDocument();
 
     await fireEvent.click(view.getByRole("button", { name: "Open Decision Lab" }));
     expect(await view.findByRole("dialog", { name: "Commit to the next move" })).toBeInTheDocument();
+    expect(mocks.getFinalDecision).toHaveBeenCalledTimes(1);
   });
 
   it("guards a dirty draft without opening a nested confirmation dialog", async () => {

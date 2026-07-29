@@ -87,8 +87,8 @@
 
   const pct = $derived(Math.round(progressPercent ?? 0));
 
-  // Same hidden-stage adjustment as the dashboard JobCard, so both surfaces
-  // show identical "Stage N / M" numbers for the same job.
+  // Same hidden-stage adjustment as the dashboard's in-progress rows and the job
+  // page, so every surface shows identical "Stage N / M" numbers for the same job.
   const stageCounts = $derived(
     getAdjustedStageCounts({ stagesCompleted, totalStages, currentStage, status: jobStatus }),
   );

@@ -209,8 +209,11 @@
         class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted"
       />
       <input
+        id="user-search"
+        name="search"
         type="text"
         bind:value={searchInput}
+        aria-label="Search users"
         placeholder="Search by email or name..."
         class="w-full pl-10 pr-4 py-2 bg-bg-surface border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-glow)]"
       />
@@ -218,29 +221,34 @@
   </form>
 
   {#if data.usersData}
-    <div class="bg-bg-surface border border-border rounded-xl overflow-hidden">
-      <div class="overflow-x-auto">
-        <table class="data-table">
+    <div class="users-table-shell">
+      <div class="users-table-scroll">
+        <table class="data-table users-table">
+          <caption class="sr-only">User accounts and administrative controls</caption>
+          <colgroup>
+            <col class="col-user" />
+            <col class="col-role" />
+            <col class="col-access" />
+            <col class="col-usage" />
+            <col class="col-actions" />
+          </colgroup>
           <thead>
             <tr>
-              <th>Email</th>
-              <th>Name</th>
+              <th>User</th>
               <th>Role</th>
               <th>Access</th>
-              <th>Analyst</th>
-              <th>Tools</th>
-              <th class="num">Credits</th>
-              <th class="num">Jobs</th>
-              <th>Joined</th>
+              <th>Usage</th>
               <th style="text-align: right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {#each data.usersData.users as user}
               <tr>
-                <td class="cell-primary">{user.email}</td>
-                <td>{user.name || "-"}</td>
-                <td>
+                <td class="user-cell">
+                  <span class="user-email cell-primary">{user.email}</span>
+                  <span class="user-name">{user.name || "No name provided"}</span>
+                </td>
+                <td class="role-cell">
                   <Badge
                     variant={user.role === "ADMIN" ? "accent" : "muted"}
                     size="sm"
@@ -248,83 +256,90 @@
                     {user.role}
                   </Badge>
                 </td>
-                <td>
+                <td class="access-cell">
+                  <div class="access-list">
                   {#if user.role === "ADMIN"}
-                    <Badge variant="accent" size="sm">ADMIN</Badge>
+                    <Badge variant="accent" size="sm">All access</Badge>
                   {:else if user.subscriptionStatus}
                     <Badge variant="success" size="sm">
-                      Subscribed: {user.subscriptionPlanName || "—"} ({user.subscriptionStatus})
+                      {user.subscriptionPlanName || "Subscribed"}
                     </Badge>
+                    <span class="access-note">{user.subscriptionStatus}</span>
                   {:else if user.fullCatalogAccess}
                     <Badge variant="muted" size="sm">Catalog grant</Badge>
-                  {:else}
-                    <span class="text-text-muted">—</span>
                   {/if}
-                </td>
-                <td>
-                  {#if user.role === "ADMIN"}
-                    <Badge variant="accent" size="sm">ADMIN</Badge>
-                  {:else if user.chatAnalystAccess}
+                  {#if user.role !== "ADMIN" && user.chatAnalystAccess}
                     <Badge variant="muted" size="sm">Chat grant</Badge>
-                  {:else}
-                    <span class="text-text-muted">—</span>
                   {/if}
-                </td>
-                <td>
-                  {#if user.role === "ADMIN"}
-                    <Badge variant="accent" size="sm">ADMIN</Badge>
-                  {:else if user.decisionToolsAccess}
+                  {#if user.role !== "ADMIN" && user.decisionToolsAccess}
                     <Badge variant="muted" size="sm">Tools grant</Badge>
-                  {:else}
-                    <span class="text-text-muted">—</span>
                   {/if}
+                  {#if user.role !== "ADMIN" && !user.subscriptionStatus && !user.fullCatalogAccess && !user.chatAnalystAccess && !user.decisionToolsAccess}
+                    <span class="access-note">Standard access</span>
+                  {/if}
+                  </div>
                 </td>
-                <td class="num cell-primary">{user.creditBalance}</td>
-                <td class="num">{user.jobCount}</td>
-                <td class="cell-muted">{formatDate(user.createdAt)}</td>
-                <td class="text-right">
-                  <div class="grid grid-cols-2 gap-1">
+                <td class="usage-cell">
+                  <dl class="usage-list">
+                    <div>
+                      <dt>Credits</dt>
+                      <dd class="cell-primary">{user.creditBalance}</dd>
+                    </div>
+                    <div>
+                      <dt>Jobs</dt>
+                      <dd>{user.jobCount}</dd>
+                    </div>
+                    <div>
+                      <dt>Joined</dt>
+                      <dd class="usage-date cell-muted">{formatDate(user.createdAt)}</dd>
+                    </div>
+                  </dl>
+                </td>
+                <td class="actions-cell">
+                  <div class="action-grid">
                     <button
-                      class="text-xs px-2 py-0.5 rounded border border-accent/40 hover:bg-accent/10 transition-colors text-[color:var(--color-accent-dark)] disabled:opacity-50 whitespace-nowrap w-full"
+                      class="admin-action admin-action--accent"
                       onclick={() => openCreditModal(user.id, user.email)}
+                      aria-label={`Add credits to ${user.email}`}
                     >
                       + Credits
                     </button>
                     <button
-                      class="text-xs px-2 py-0.5 rounded border border-border text-text-secondary hover:bg-bg-elevated transition-colors disabled:opacity-50 whitespace-nowrap w-full"
+                      class="admin-action"
                       onclick={() => toggleRole(user.id, user.role)}
                       disabled={updatingRole === user.id}
+                      aria-label={`${user.role === "ADMIN" ? "Demote" : "Promote"} ${user.email}`}
                     >
                       {updatingRole === user.id ? "..." : user.role === "ADMIN" ? "Demote" : "Promote"}
                     </button>
                     {#if user.role !== "ADMIN"}
                       <button
-                        class="text-xs px-2 py-0.5 rounded border transition-colors disabled:opacity-50 whitespace-nowrap w-full {user.fullCatalogAccess
-                          ? 'border-accent/40 text-[color:var(--color-accent-dark)] bg-accent/5 hover:bg-accent/10'
-                          : 'border-border text-text-secondary hover:bg-bg-elevated'}"
+                        class="admin-action"
+                        class:is-active={user.fullCatalogAccess}
                         onclick={() => toggleCatalogAccess(user.id, user.fullCatalogAccess)}
                         disabled={updatingAccess === user.id}
                         title={user.fullCatalogAccess ? "Revoke full-catalog access" : "Grant full-catalog access"}
+                        aria-pressed={user.fullCatalogAccess}
                       >
                         {updatingAccess === user.id ? "..." : "Catalog"}
                       </button>
                       <button
-                        class="text-xs px-2 py-0.5 rounded border transition-colors disabled:opacity-50 whitespace-nowrap w-full {user.chatAnalystAccess
-                          ? 'border-accent/40 text-[color:var(--color-accent-dark)] bg-accent/5 hover:bg-accent/10'
-                          : 'border-border text-text-secondary hover:bg-bg-elevated'}"
+                        class="admin-action"
+                        class:is-active={user.chatAnalystAccess}
                         onclick={() => toggleChatAnalystAccess(user.id, user.chatAnalystAccess)}
                         disabled={updatingChatAccess === user.id}
                         title={user.chatAnalystAccess ? "Revoke chat with Analyst access" : "Grant chat with Analyst access"}
+                        aria-pressed={user.chatAnalystAccess}
                       >
-                        {updatingChatAccess === user.id ? "..." : "Chat"}
+                        {updatingChatAccess === user.id ? "..." : "Analyst"}
                       </button>
                       <button
-                        class="col-span-2 text-xs px-2 py-0.5 rounded border transition-colors disabled:opacity-50 whitespace-nowrap w-full {user.decisionToolsAccess
-                          ? 'border-accent/40 text-[color:var(--color-accent-dark)] bg-accent/5 hover:bg-accent/10'
-                          : 'border-border text-text-secondary hover:bg-bg-elevated'}"
+                        class="admin-action admin-action--wide"
+                        class:is-active={user.decisionToolsAccess}
                         onclick={() => toggleDecisionToolsAccess(user.id, user.decisionToolsAccess)}
                         disabled={updatingDecisionToolsAccess === user.id}
                         title={user.decisionToolsAccess ? "Revoke decision tools access" : "Grant decision tools access"}
+                        aria-pressed={user.decisionToolsAccess}
                       >
                         {updatingDecisionToolsAccess === user.id ? "..." : "Decision tools"}
                       </button>
@@ -409,6 +424,7 @@
         <label for="credit-amount" class="block text-sm font-medium text-text-secondary mb-1">Amount</label>
         <input
           id="credit-amount"
+          name="amount"
           type="number"
           min="1"
           max="10000"
@@ -420,6 +436,7 @@
         <label for="credit-description" class="block text-sm font-medium text-text-secondary mb-1">Description</label>
         <input
           id="credit-description"
+          name="description"
           type="text"
           maxlength="500"
           bind:value={creditDescription}
@@ -427,8 +444,8 @@
           class="input mb-3"
         />
 
-        <label class="flex items-center gap-2 cursor-pointer mb-4">
-          <input type="checkbox" bind:checked={sendNotification} class="w-4 h-4 rounded border-border text-accent focus:ring-accent" />
+        <label for="credit-notification" class="flex items-center gap-2 cursor-pointer mb-4">
+          <input id="credit-notification" name="sendNotification" type="checkbox" bind:checked={sendNotification} class="w-4 h-4 rounded border-border text-accent focus:ring-accent" />
           <span class="text-sm text-text-secondary">Notify user by email</span>
         </label>
 
@@ -459,5 +476,257 @@
   }
   .cell-muted {
     color: var(--color-text-muted);
+  }
+
+  .users-table-shell {
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-xl);
+    background: var(--color-bg-surface);
+  }
+
+  .users-table-scroll {
+    overflow-x: auto;
+  }
+
+  .users-table {
+    min-width: 60rem;
+    table-layout: fixed;
+  }
+
+  .users-table .col-user {
+    width: 25%;
+  }
+
+  .users-table .col-role {
+    width: 9%;
+  }
+
+  .users-table .col-access {
+    width: 22%;
+  }
+
+  .users-table .col-usage {
+    width: 25%;
+  }
+
+  .users-table .col-actions {
+    width: 19%;
+  }
+
+  .users-table th,
+  .users-table td {
+    padding-right: var(--space-4);
+    padding-left: var(--space-4);
+  }
+
+  .users-table td {
+    padding-top: var(--space-3);
+    padding-bottom: var(--space-3);
+    font-size: var(--text-13);
+  }
+
+  .user-cell {
+    display: grid;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+
+  .user-email {
+    overflow: hidden;
+    font-size: var(--text-13);
+    font-weight: var(--font-semibold);
+    line-height: var(--leading-snug);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .user-name,
+  .access-note {
+    color: var(--color-text-muted);
+    font-size: var(--text-11);
+    line-height: var(--leading-snug);
+  }
+
+  .access-list {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-1-5);
+  }
+
+  .usage-list {
+    display: grid;
+    grid-template-columns: minmax(0, 0.75fr) minmax(0, 0.55fr) minmax(6.5rem, 1.4fr);
+    gap: var(--space-3);
+    margin: 0;
+  }
+
+  .usage-list div {
+    min-width: 0;
+  }
+
+  .usage-list dt {
+    margin-bottom: var(--space-1);
+    color: var(--color-text-muted);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: var(--font-semibold);
+    letter-spacing: var(--tracking-wide);
+    line-height: var(--leading-tight);
+    text-transform: uppercase;
+  }
+
+  .usage-list dd {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+    line-height: var(--leading-snug);
+  }
+
+  .usage-date {
+    white-space: nowrap;
+  }
+
+  .actions-cell {
+    text-align: right;
+  }
+
+  .action-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-1-5);
+  }
+
+  .admin-action {
+    width: 100%;
+    min-height: 2rem;
+    padding: var(--space-1) var(--space-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-size: var(--text-xs);
+    font-weight: var(--font-medium);
+    line-height: var(--leading-tight);
+    transition:
+      color var(--duration-fast) ease,
+      border-color var(--duration-fast) ease,
+      background-color var(--duration-fast) ease;
+    white-space: nowrap;
+  }
+
+  .admin-action:hover:not(:disabled) {
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
+  }
+
+  .admin-action:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  .admin-action:disabled {
+    cursor: wait;
+    opacity: 0.5;
+  }
+
+  .admin-action--accent,
+  .admin-action.is-active {
+    border-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
+    background: color-mix(in srgb, var(--color-accent) 6%, transparent);
+    color: var(--color-accent-dark);
+  }
+
+  .admin-action--accent:hover:not(:disabled),
+  .admin-action.is-active:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  }
+
+  .admin-action--wide {
+    grid-column: 1 / -1;
+  }
+
+  @media (max-width: 1279px) {
+    .users-table-scroll {
+      overflow: visible;
+    }
+
+    .users-table {
+      display: block;
+      min-width: 0;
+    }
+
+    .users-table colgroup,
+    .users-table thead {
+      display: none;
+    }
+
+    .users-table tbody {
+      display: grid;
+    }
+
+    .users-table tbody tr {
+      display: grid;
+      grid-template-areas:
+        "user role"
+        "access access"
+        "usage usage"
+        "actions actions";
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: var(--space-4);
+      padding: var(--space-5);
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-surface);
+    }
+
+    .users-table tbody tr:nth-child(even) {
+      background: var(--color-bg-subtle);
+    }
+
+    .users-table tbody tr:last-child {
+      border-bottom: 0;
+    }
+
+    .users-table tbody tr:hover {
+      background: var(--color-bg-hover);
+    }
+
+    .users-table td {
+      padding: 0;
+      border-bottom: 0;
+    }
+
+    .user-cell {
+      grid-area: user;
+    }
+
+    .role-cell {
+      grid-area: role;
+    }
+
+    .access-cell {
+      grid-area: access;
+    }
+
+    .usage-cell {
+      grid-area: usage;
+      padding: var(--space-3) 0;
+      border-top: 1px solid var(--color-border);
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .actions-cell {
+      grid-area: actions;
+    }
+
+    .usage-list {
+      grid-template-columns: 0.75fr 0.55fr 1.4fr;
+    }
+
+    .admin-action {
+      min-height: 2.25rem;
+    }
   }
 </style>

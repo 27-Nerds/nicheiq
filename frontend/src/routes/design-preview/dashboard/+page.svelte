@@ -96,7 +96,7 @@
     FAILED: { label: "Failed", kind: "attention", color: "var(--color-error-text)", cta: "Resume" },
     RUNNING: { label: "Researching", kind: "progress", color: "var(--color-warning-text)", cta: "View progress" },
     RUNNING_PHASE2: { label: "Deep research", kind: "progress", color: "var(--color-warning-text)", cta: "View progress" },
-    REGENERATING: { label: "Regenerating ideas", kind: "progress", color: "var(--color-warning-text)", cta: "View" },
+    REGENERATING: { label: "Adding idea batch", kind: "progress", color: "var(--color-warning-text)", cta: "View" },
     QUEUED: { label: "Queued", kind: "progress", color: "var(--color-info-dark)", cta: "View" },
     PENDING: { label: "Preparing", kind: "progress", color: "var(--color-info-dark)", cta: "View" },
     COMPLETED: { label: "Ready", kind: "done", color: "var(--color-success-text)", cta: "View report" },

@@ -5,7 +5,18 @@
 // remounts without a "Loading conversation…" flash. One job page is on screen
 // at a time, so this is a singleton keyed by jobId: `init` with a new jobId
 // resets state; `init` with the same jobId is a no-op (cache hit).
-import { getChatHistory, isLedgerEvent, type ChatMessageDTO, type ChatPatch, type ChatToolCall, type SeedResultSummary } from "$lib/api";
+import {
+  getChatHistory,
+  isIdeaSynthesisPatch,
+  isLedgerEvent,
+  isNewIdeaSeedPatch,
+  type ChatMessageDTO,
+  type ChatPatch,
+  type ChatToolCall,
+  type ActiveJobOperation,
+  type IdeaFocus,
+  type SeedResultSummary,
+} from "$lib/api";
 
 /** Ledger row — a persisted ChatMessage plus session-local rows (optimistic user
  *  turns, streamed assistant turns, apply receipts) appended by the active surface. */
@@ -78,6 +89,33 @@ function saveDismissedIds(jobId: string, ids: Set<string>): void {
  *  states come from `seed_settled`. */
 export type SeedOutcome = 'pending' | 'accepted' | 'demoted' | 'failed' | 'refunded';
 
+export interface SeedActivity {
+  sourceMessageId: string;
+  evaluationId?: string;
+  kind: 'idea_synthesis' | 'user_seed' | 'unknown';
+  proposedTitle?: string;
+  outcome: SeedOutcome;
+  result?: SeedResultSummary;
+  createdAt?: string;
+}
+
+export type BatchOutcome = 'pending' | 'completed' | 'no_candidates_added' | 'failed' | 'refunded';
+
+export interface BatchActivity {
+  operationId: string;
+  ordinal: number;
+  focus?: IdeaFocus;
+  outcome: BatchOutcome;
+  generatedCount?: number;
+  addedCount?: number;
+  addedIdeas: Array<{ ideaId: string; ideaRevision: number }>;
+  refPrecision: 'exact' | 'legacy_id_only';
+  addedIdeaIds: string[];
+  ruledOutCount?: number;
+  refunded?: boolean;
+  createdAt?: string;
+}
+
 let _jobId = $state<string | null>(null);
 let _messages = $state<LedgerMessage[]>([]);
 let _historyLoaded = $state(false);
@@ -91,9 +129,12 @@ let _dismissedIds = $state<Set<string>>(new Set());
 /** Server-reported global turn usage (Phase 2 history response); null → derive locally. */
 let _serverUsedTurns = $state<number | null>(null);
 let _serverMaxTurns = $state(DEFAULT_MAX_TURNS);
-let _operationActive = $state(false);
+let _activeOperation = $state<ActiveJobOperation | null>(null);
 /** Seed card state, rebuilt fresh from durable receipts on every fetch — see SeedOutcome. */
 let _seedOutcomes = $state<Map<string, SeedOutcome>>(new Map());
+/** User-visible operation records reconstructed from the same durable receipts. */
+let _seedActivities = $state<Map<string, SeedActivity>>(new Map());
+let _batchActivities = $state<Map<string, BatchActivity>>(new Map());
 let _loadPromise: Promise<void> | null = null;
 
 const _segments = $derived.by((): LedgerSegment[] => {
@@ -164,15 +205,80 @@ async function fetchHistory(): Promise<void> {
     // server actually confirms/settles it.
     const seedResultsFromServer = new Map<string, SeedResultSummary>();
     const seedFromServer = new Map<string, SeedOutcome>();
+    const seedActivitiesFromServer = new Map<string, SeedActivity>();
+    const batchActivitiesFromServer = new Map<string, BatchActivity>();
+    const proposals = new Map(
+      (res.messages as ChatMessageDTO[])
+        .filter((message) => message.role === "assistant" && message.patchJson)
+        .map((message) => [message.id, message.patchJson!] as const),
+    );
     for (const m of res.messages as ChatMessageDTO[]) {
       if (m.role !== "receipt" || !m.patchJson || !isLedgerEvent(m.patchJson)) continue;
+      if (
+        (m.patchJson.event === "regeneration_submitted"
+          || m.patchJson.event === "regeneration_settled")
+        && m.patchJson.operationId
+        && m.patchJson.batch
+      ) {
+        const batch = m.patchJson.batch;
+        const previous = batchActivitiesFromServer.get(m.patchJson.operationId)
+          ?? _batchActivities.get(m.patchJson.operationId);
+        batchActivitiesFromServer.set(m.patchJson.operationId, {
+          operationId: m.patchJson.operationId,
+          ordinal: batch.ordinal,
+          focus: batch.focus ?? previous?.focus,
+          outcome: m.patchJson.event === "regeneration_submitted"
+            ? "pending"
+            : batch.outcome ?? "failed",
+          generatedCount: batch.generatedCount ?? previous?.generatedCount,
+          addedCount: batch.addedCount ?? previous?.addedCount,
+          addedIdeas: batch.addedIdeas ?? previous?.addedIdeas ?? [],
+          refPrecision: batch.refPrecision
+            ?? (batch.addedIdeas?.length ? "exact" : previous?.refPrecision ?? "legacy_id_only"),
+          addedIdeaIds: batch.addedIdeaIds ?? previous?.addedIdeaIds ?? [],
+          ruledOutCount: batch.ruledOutCount ?? previous?.ruledOutCount,
+          refunded: batch.refunded ?? previous?.refunded,
+          createdAt: m.createdAt,
+        });
+        continue;
+      }
       const sourceMessageId = m.patchJson.sourceMessageId;
       if (!sourceMessageId) continue;
+      const proposal = proposals.get(sourceMessageId);
+      const kind = proposal && isIdeaSynthesisPatch(proposal)
+        ? 'idea_synthesis'
+        : proposal && isNewIdeaSeedPatch(proposal)
+          ? 'user_seed'
+          : 'unknown';
+      const proposedTitle = proposal && isIdeaSynthesisPatch(proposal)
+        ? proposal.proposedTitle
+        : m.patchJson.idea?.proposed_title;
+      const evaluationId = m.patchJson.evaluationId
+        ?? m.patchJson.dispatchId
+        ?? m.patchJson.idea?.evaluation_id
+        ?? m.patchJson.idea?.dispatch_id;
       if (m.patchJson.event === "seed_submitted") {
         seedFromServer.set(sourceMessageId, "pending");
+        seedActivitiesFromServer.set(sourceMessageId, {
+          sourceMessageId,
+          evaluationId,
+          kind,
+          proposedTitle,
+          outcome: "pending",
+          createdAt: m.createdAt,
+        });
       } else if (m.patchJson.event === "seed_settled" && m.patchJson.outcome) {
         seedFromServer.set(sourceMessageId, m.patchJson.outcome);
         if (m.patchJson.idea) seedResultsFromServer.set(sourceMessageId, m.patchJson.idea);
+        seedActivitiesFromServer.set(sourceMessageId, {
+          sourceMessageId,
+          evaluationId,
+          kind,
+          proposedTitle,
+          outcome: m.patchJson.outcome,
+          result: m.patchJson.idea,
+          createdAt: m.createdAt,
+        });
       }
     }
     if (seedFromServer.size) {
@@ -180,6 +286,12 @@ async function fetchHistory(): Promise<void> {
     }
     if (seedResultsFromServer.size) {
       _seedResults = new Map([..._seedResults, ...seedResultsFromServer]);
+    }
+    if (seedActivitiesFromServer.size) {
+      _seedActivities = new Map([..._seedActivities, ...seedActivitiesFromServer]);
+    }
+    if (batchActivitiesFromServer.size) {
+      _batchActivities = new Map([..._batchActivities, ...batchActivitiesFromServer]);
     }
     // Keep session-local rows (optimistic turns, receipts) the server doesn't know
     // yet. A local receipt is the optimistic twin of a durable one — once the gate
@@ -201,7 +313,7 @@ async function fetchHistory(): Promise<void> {
     _serverUsedTurns = typeof used === "number" ? used : null;
     const max = (res as { maxTurns?: number }).maxTurns;
     _serverMaxTurns = typeof max === "number" ? max : DEFAULT_MAX_TURNS;
-    _operationActive = Boolean(res.activeOperation);
+    _activeOperation = res.activeOperation ?? null;
     _loadFailed = false;
   } catch {
     // GET /chat/history is auth+ownership only — any failure is a genuine load
@@ -223,7 +335,19 @@ export const chatLedger = {
   get appliedPatchIds() { return _appliedPatchIds; },
   get usedTurns() { return _usedTurns; },
   get maxTurns() { return _serverMaxTurns; },
-  get operationActive() { return _operationActive; },
+  get operationActive() { return _activeOperation !== null; },
+  get activeOperation() { return _activeOperation; },
+  get seedActivities() {
+    return [..._seedActivities.values()].sort((left, right) =>
+      (right.createdAt ?? "").localeCompare(left.createdAt ?? ""));
+  },
+  get batchActivities() {
+    return [..._batchActivities.values()].sort((left, right) =>
+      (right.createdAt ?? "").localeCompare(left.createdAt ?? ""));
+  },
+  get hasPendingBatch() {
+    return [..._batchActivities.values()].some((activity) => activity.outcome === "pending");
+  },
   /** True while ANY seed for this job is still being evaluated. Durable (rebuilt from
    *  the server's `seed_submitted`/`seed_settled` receipts on every fetch), so it's
    *  true immediately after a page reload mid-evaluation — even before SelectionWorkbench
@@ -258,8 +382,39 @@ export const chatLedger = {
    *  `seed_submitted` receipt won't be visible until the next reload, and the
    *  card must flip to "Evaluating…" immediately, not after a round-trip. A
    *  later reload's server truth (see fetchHistory) layers on top of this. */
-  markSeedPending(sourceMessageId: string): void {
+  markSeedPending(
+    sourceMessageId: string,
+    metadata?: {
+      evaluationId?: string;
+      kind?: SeedActivity['kind'];
+      proposedTitle?: string;
+    },
+  ): void {
     _seedOutcomes = new Map(_seedOutcomes).set(sourceMessageId, "pending");
+    _seedActivities = new Map(_seedActivities).set(sourceMessageId, {
+      sourceMessageId,
+      evaluationId: metadata?.evaluationId,
+      kind: metadata?.kind ?? 'unknown',
+      proposedTitle: metadata?.proposedTitle,
+      outcome: "pending",
+      createdAt: new Date().toISOString(),
+    });
+  },
+
+  markBatchPending(
+    operationId: string,
+    metadata: { ordinal: number; focus?: IdeaFocus },
+  ): void {
+    _batchActivities = new Map(_batchActivities).set(operationId, {
+      operationId,
+      ordinal: metadata.ordinal,
+      focus: metadata.focus,
+      outcome: "pending",
+      addedIdeas: [],
+      refPrecision: "exact",
+      addedIdeaIds: [],
+      createdAt: new Date().toISOString(),
+    });
   },
 
   /** Idempotent per job: first call fetches, repeat calls are cache hits. A new
@@ -274,9 +429,11 @@ export const chatLedger = {
     _appliedPatchIds = new Set();
     _serverUsedTurns = null;
     _serverMaxTurns = DEFAULT_MAX_TURNS;
-    _operationActive = false;
+    _activeOperation = null;
     _seedOutcomes = new Map();
     _seedResults = new Map();
+    _seedActivities = new Map();
+    _batchActivities = new Map();
     _dismissedIds = loadDismissedIds(jobId);
     _loadPromise = fetchHistory();
     return _loadPromise;
@@ -367,8 +524,11 @@ export const chatLedger = {
     _weakPool = false;
     _appliedPatchIds = new Set();
     _serverUsedTurns = null;
+    _activeOperation = null;
     _seedOutcomes = new Map();
     _seedResults = new Map();
+    _seedActivities = new Map();
+    _batchActivities = new Map();
     _dismissedIds = new Set();
     _loadPromise = null;
   },

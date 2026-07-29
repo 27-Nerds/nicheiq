@@ -1,4 +1,4 @@
-import type { SolutionPreview, ReportSummary, StrengthKey } from '$lib/types/job';
+import type { SolutionPreview, StrengthKey } from '$lib/types/job';
 import {
   getSuperpower as _getSuperpower,
   computeCompositeScore as _computeComposite,
@@ -92,29 +92,6 @@ export function displayCompositeScore(solution: SolutionPreview): number | null 
 
 export function solutionDisplayTitle(s: { headline?: string | null; solution_name: string }): string {
   return s.headline?.trim() || s.solution_name;
-}
-
-export interface TrifectaScores {
-  demand: number | null;
-  feasibility: number | null;
-  opportunity: number | null;
-}
-
-/**
- * Scale a ReportSummary's 0-1 scores to the 0-100 dial range. Returns null
- * when all three dials would be empty, so callers can skip rendering an empty
- * Trifecta. Shared by the dashboard page and JobsListTable.
- */
-export function summaryToScores(s: ReportSummary | undefined | null): TrifectaScores | null {
-  if (!s) return null;
-  const scale01 = (v: number | null | undefined) => (v == null ? null : Math.round(v * 100));
-  const out: TrifectaScores = {
-    demand: scale01(s.market_fit_score),
-    feasibility: scale01(s.technical_feasibility_score),
-    opportunity: scale01(s.opportunity_score),
-  };
-  if (out.demand == null && out.feasibility == null && out.opportunity == null) return null;
-  return out;
 }
 
 export function solutionCardDescription(s: { short_description?: string | null; description: string }): string {

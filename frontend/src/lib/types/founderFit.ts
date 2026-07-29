@@ -13,12 +13,47 @@ export type FounderFitDimension =
 export type FounderFitStatus = 'aligned' | 'conflict' | 'unknown' | 'irrelevant';
 export type FounderFitVerdict = 'fits' | 'needs_reshape' | 'blocked' | 'insufficient_evidence';
 
+export type FounderFitProfileField =
+  | 'preset'
+  | 'weeklyTime'
+  | 'budget'
+  | 'team'
+  | 'revenueHorizon'
+  | 'distributionAdvantages'
+  | 'strengths'
+  | 'hardConstraints';
+
+export type FounderFitIdeaField =
+  | 'description'
+  | 'value_proposition'
+  | 'source_pain'
+  | 'source_segment'
+  | 'target_personas'
+  | 'core_features'
+  | 'project_type'
+  | 'estimated_development_time'
+  | 'dev_time_rationale'
+  | 'technical_feasibility_score'
+  | 'solo_dev_feasibility'
+  | 'seo_scalability_score'
+  | 'programmatic_seo_opportunity'
+  | 'pricing_strategy'
+  | 'critic_concern'
+  | 'data_acquisition_notes'
+  | 'tags.build_complexity'
+  | 'tags.data_access'
+  | 'tags.growth_channels';
+
 export interface FounderFitDimensionResult {
   dimension: FounderFitDimension;
   status: FounderFitStatus;
   summary: string;
-  profileFields: string[];
-  ideaFields: string[];
+  /**
+   * Old stored artifacts may contain an unknown token. Rendering must pass
+   * through founderFitFieldLabel(), which deliberately hides unknown internals.
+   */
+  profileFields: Array<FounderFitProfileField | string>;
+  ideaFields: Array<FounderFitIdeaField | string>;
 }
 
 export interface FounderFitResult {

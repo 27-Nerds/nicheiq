@@ -2,9 +2,11 @@
   import type { Snippet } from "svelte";
   import { untrack } from "svelte";
   import {
+    Check,
     ChevronLeft,
     ChevronRight,
     Download,
+    Plus,
     X,
   } from "lucide-svelte";
   import Badge from "$lib/components/ui/Badge.svelte";
@@ -88,7 +90,7 @@
   );
 
   // Scroll to top whenever the pager moves to another idea. The active tab is kept
-  // across paging so a user comparing Full details isn't bounced back to Overview;
+  // across paging so a user comparing All details isn't bounced back to Decision summary;
   // the sr-only live region above the header still announces the candidate change.
   $effect(() => {
     exactIdentity;
@@ -179,10 +181,13 @@
     return overlapGroup.idea_names
       .filter((name) => name !== solution.solution_name)
       .map((name) => {
-        const index = solutions.findIndex((candidate) => candidate.solution_name === name);
+        const matches = solutions
+          .map((candidate, index) => ({ candidate, index }))
+          .filter(({ candidate }) => candidate.solution_name === name);
+        const match = matches.length === 1 ? matches[0] : null;
         return {
-          title: index >= 0 ? solutionDisplayTitle(solutions[index]) : name,
-          index: index >= 0 ? index : null,
+          title: match ? solutionDisplayTitle(match.candidate) : name,
+          index: match?.index ?? null,
         };
       });
   });
@@ -198,7 +203,6 @@
       : null,
   );
   const exportRevision = $derived(solution.idea_revision ?? 1);
-  const shortlistStatus = $derived(`${selectedCount}/${maxSelections} shortlisted`);
 
   function handleSelect() {
     if (!isToggleable || !onSelect) return;
@@ -239,14 +243,14 @@
 
 <!-- Click-popover content: methodology ("what it measures") + this idea's reasoning. -->
 {#snippet scoreDetail(def: string, why: string | null, value: number | null | undefined)}
-  <div class="space-y-3">
-    <div>
-      <div class="text-[10px] font-semibold uppercase tracking-wide text-text-muted mb-1">What this measures</div>
-      <p class="text-text-secondary">{def}</p>
+  <div class="score-detail">
+    <div class="score-detail-section">
+      <span class="score-detail-label">What this measures</span>
+      <p>{def}</p>
     </div>
-    <div>
-      <div class="text-[10px] font-semibold uppercase tracking-wide text-text-muted mb-1">Why this idea{value != null ? ` scored ${Math.round(value * 100)}` : ''}</div>
-      <p class="text-text-secondary">{why || 'No idea-specific detail available yet.'}</p>
+    <div class="score-detail-section">
+      <span class="score-detail-label">Why this idea{value != null ? ` scored ${Math.round(value * 100)}` : ''}</span>
+      <p>{why || 'No idea-specific detail available yet.'}</p>
     </div>
   </div>
 {/snippet}
@@ -271,7 +275,7 @@
           Viewing candidate {currentIndex + 1} of {total}: {displayTitle}, revision {exportRevision}.
         </p>
         <div class="modal-title-group" data-annotation-anchor="solution-header-copy">
-          <span class="modal-kicker">Candidate {currentIndex + 1} of {total}</span>
+          <span class="modal-kicker">Candidate detail</span>
           <h2 class="modal-title" data-annotation-anchor="solution-header-title">{displayTitle}</h2>
           {#if showWorkingName}
             <p class="modal-subtitle" title="The internal working name for this candidate">
@@ -280,15 +284,16 @@
             </p>
           {/if}
           <div class="modal-meta">
-            <Popover position="bottom" label="Overall score details">
+            <Popover position="bottom" label="Discovery score details">
               {#snippet trigger()}
                 <div class="score-token">
-                  {#if compositeScore !== null}
-                    <span class="score-dot" style:background={scoreColor} aria-hidden="true"></span>
-                  {/if}
-                  <span style:color={scoreColor}>
+                  <span class="score-token-label">Discovery score</span>
+                  <span class="score-token-value" style:color={scoreColor}>
                     {compositeScore === null ? "Not scored" : Math.round(compositeScore * 100)}
                   </span>
+                  {#if compositeScore !== null}
+                    <span class="score-token-scale">/ 100</span>
+                  {/if}
                 </div>
               {/snippet}
               {@render scoreDetail(SCORE_DEFINITIONS.composite, compositeWhy, compositeScore)}
@@ -329,19 +334,21 @@
                 class="modal-export-link"
                 href="{exportBase}/md?revision={exportRevision}"
                 download
+                aria-label="Download Markdown"
                 title="Download the full stored candidate record as Markdown"
               >
                 <Download class="w-4 h-4" aria-hidden="true" />
-                <span>.md</span>
+                <span>MD</span>
               </a>
               <a
                 class="modal-export-link"
                 href="{exportBase}/json?revision={exportRevision}"
                 download
+                aria-label="Download JSON"
                 title="Download the full stored candidate record as JSON"
               >
                 <Download class="w-4 h-4" aria-hidden="true" />
-                <span>.json</span>
+                <span>JSON</span>
               </a>
             </div>
           {/if}
@@ -371,7 +378,7 @@
           class:is-active={activeTab === "overview"}
           onclick={() => setTab("overview")}
           onkeydown={(event) => handleTabKeydown(event, "overview")}
-        >Overview</button>
+        >Decision summary</button>
         <button
           bind:this={detailTabEl}
           type="button"
@@ -384,7 +391,7 @@
           class:is-active={activeTab === "detail"}
           onclick={() => setTab("detail")}
           onkeydown={(event) => handleTabKeydown(event, "detail")}
-        >Full detail</button>
+        >All details</button>
       </div>
 
       <!-- Scrollable body -->
@@ -433,7 +440,7 @@
           {lifecycle}
           {evidenceLinks}
           {onOpenEvidence}
-          onViewFull={() => { setTab("detail"); document.getElementById("idea-tab-detail")?.focus(); }}
+          onViewFull={() => { setTab("detail"); detailTabEl?.focus(); }}
         />
         {:else}
         <SolutionDetailContent {solution} view="detail" {lifecycle} {evidenceLinks} {onOpenEvidence} />
@@ -444,9 +451,12 @@
       {#if lifecycle === "selection" && onSelect}
         <div class="modal-footer" data-annotation-anchor="solution-footer">
           <div class="modal-footer-status">
-            <strong>{shortlistStatus}</strong>
+            <span class="modal-footer-label">Research shortlist</span>
+            <strong>{selectedCount} of {maxSelections}</strong>
             {#if maxReached && !isSelected}
-              <span class="modal-footer-note" id="shortlist-limit-note">Remove one to add this candidate.</span>
+              <span class="modal-footer-note" id="shortlist-limit-note">
+                Shortlist is full. Remove another candidate first.
+              </span>
             {/if}
           </div>
           <div class="modal-footer-actions">
@@ -459,15 +469,22 @@
               class="modal-select-primary"
               class:is-selected={isSelected}
             >
-              <span class="select-indicator">
-                {#if isSelected && selectionIndex}{selectionIndex}{/if}
+              <span class="select-indicator" aria-hidden="true">
+                {#if isSelected}
+                  <Check class="w-4 h-4" />
+                {:else}
+                  <Plus class="w-4 h-4" />
+                {/if}
               </span>
+              {#if isSelected && selectionIndex}
+                <span class="sr-only">Shortlist position {selectionIndex}.</span>
+              {/if}
               {#if isSelected}
-                Remove
+                Remove from shortlist
               {:else if maxReached}
-                Limit reached
+                Shortlist full
               {:else}
-                Shortlist
+                Add to shortlist
               {/if}
             </button>
           </div>
@@ -500,8 +517,8 @@
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    gap: 1.25rem;
-    padding: 1rem 1rem 0.875rem;
+    gap: var(--space-5);
+    padding: var(--space-5) var(--space-5) var(--space-4);
     border-bottom: 1px solid var(--color-border);
     background: color-mix(in srgb, var(--color-bg-elevated) 94%, var(--color-bg-surface));
     flex-shrink: 0;
@@ -514,11 +531,11 @@
 
   .modal-title {
     margin: 0;
-    max-width: 31ch;
+    max-width: 34ch;
     font-family: var(--font-display);
-    font-size: clamp(1.125rem, 1.45vw, 1.375rem);
+    font-size: var(--text-2xl);
     font-weight: 800;
-    line-height: 1.12;
+    line-height: var(--leading-tight);
     letter-spacing: 0;
     color: var(--color-text-primary);
     text-wrap: balance;
@@ -527,22 +544,25 @@
 
   .modal-kicker {
     display: block;
-    margin-bottom: 0.25rem;
+    margin-bottom: var(--space-1);
     color: var(--color-text-muted);
-    font-size: 0.6875rem;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
     font-weight: 700;
+    letter-spacing: var(--tracking-wide);
+    text-transform: uppercase;
   }
 
   .modal-subtitle {
-    margin: 0.125rem 0 0;
+    margin: var(--space-1) 0 0;
     font-family: var(--font-mono);
-    font-size: 0.625rem;
+    font-size: var(--text-sm);
     color: var(--color-text-muted);
     overflow-wrap: anywhere;
   }
 
   .modal-subtitle-kicker {
-    margin-right: 0.25rem;
+    margin-right: var(--space-1);
     font-weight: 700;
     letter-spacing: 0.05em;
     text-transform: uppercase;
@@ -551,26 +571,26 @@
   .modal-meta {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    margin-top: 0.5rem;
+    gap: var(--space-2);
+    margin-top: var(--space-3);
     flex-wrap: wrap;
     color: var(--color-text-muted);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
   }
 
   .score-token {
     display: inline-flex;
     align-items: center;
-    gap: 0.375rem;
-    min-height: 1.45rem;
-    padding: 0.125rem 0.5rem 0.125rem 0.375rem;
+    gap: var(--space-1);
+    min-height: var(--space-8);
+    padding: var(--space-1) var(--space-2);
     border: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     background: color-mix(in srgb, var(--color-bg-surface) 58%, transparent);
     font-family: var(--font-mono);
-    font-size: 0.8125rem;
-    font-weight: 800;
-    transition: border-color 0.15s ease, background 0.15s ease;
+    transition:
+      border-color var(--duration-normal) var(--ease-out),
+      background var(--duration-normal) var(--ease-out);
   }
 
   /* The composite-score token is a Popover trigger — signal it's clickable on hover/focus. */
@@ -580,80 +600,119 @@
     background: var(--color-bg-surface);
   }
 
-  .score-dot {
-    width: 0.48rem;
-    height: 0.48rem;
-    border-radius: 50%;
+  .score-token-label {
+    color: var(--color-text-muted);
+    font-size: var(--text-xs);
+    font-weight: 600;
+  }
+
+  .score-token-value {
+    color: var(--color-text-primary);
+    font-size: var(--text-sm);
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .score-token-scale {
+    color: var(--color-text-muted);
+    font-size: var(--text-xs);
+    font-weight: 500;
+  }
+
+  .score-detail {
+    display: grid;
+    gap: var(--space-4);
+    max-width: 42ch;
+  }
+
+  .score-detail-section {
+    display: grid;
+    gap: var(--space-1);
+  }
+
+  .score-detail-label {
+    color: var(--color-text-muted);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: 700;
+    letter-spacing: var(--tracking-wide);
+    text-transform: uppercase;
+  }
+
+  .score-detail p {
+    margin: 0;
+    color: var(--color-text-secondary);
+    font-size: var(--text-base);
+    line-height: var(--leading-normal);
   }
 
   .modal-actions {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-2);
     flex-shrink: 0;
   }
 
-  .modal-nav {
+  .modal-nav,
+  .modal-export {
     display: inline-flex;
     align-items: center;
-    gap: 0.25rem;
-    padding: 0.25rem;
+    gap: var(--space-1);
+    padding: var(--space-1);
     background: color-mix(in srgb, var(--color-bg-surface) 78%, var(--color-bg-elevated));
     border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 72%, transparent);
-    border-radius: 0.625rem;
+    border-radius: var(--radius-lg);
   }
 
-  .modal-nav-btn {
+  .modal-nav-btn,
+  .modal-close {
     display: grid;
     place-items: center;
-    width: 1.72rem;
-    height: 1.72rem;
-    border: 0;
-    border-radius: 0.5rem;
+    width: var(--space-10);
+    height: var(--space-10);
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
     background: transparent;
     color: var(--color-text-muted);
     cursor: pointer;
-    transition:      background 220ms cubic-bezier(0.32, 0.72, 0, 1),
-      color 220ms cubic-bezier(0.32, 0.72, 0, 1);
+    transition:
+      background var(--duration-normal) var(--ease-out),
+      border-color var(--duration-normal) var(--ease-out),
+      color var(--duration-normal) var(--ease-out);
   }
 
-  .modal-nav-btn:hover {    background: var(--color-bg-elevated);
+  .modal-nav-btn:hover,
+  .modal-close:hover {
+    border-color: var(--color-border);
+    background: var(--color-bg-elevated);
     color: var(--color-text-primary);
   }
 
   .modal-position {
-    padding: 0 0.25rem;
-    font-size: 0.75rem;
+    padding: 0 var(--space-1);
     color: var(--color-text-muted);
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    font-weight: 600;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
-  }
-
-  .modal-export {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    padding: 0.25rem;
-    background: color-mix(in srgb, var(--color-bg-surface) 78%, var(--color-bg-elevated));
-    border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 72%, transparent);
-    border-radius: 0.625rem;
   }
 
   .modal-export-link {
     display: inline-flex;
     align-items: center;
-    gap: 0.25rem;
-    min-height: 1.72rem;
-    padding: 0 0.4rem;
-    border-radius: 0.5rem;
+    gap: var(--space-1);
+    min-height: var(--space-10);
+    padding: 0 var(--space-2);
+    border-radius: var(--radius-md);
     background: transparent;
     color: var(--color-text-muted);
-    font-size: 0.75rem;
-    font-weight: 600;
+    font-size: var(--text-sm);
+    font-weight: 700;
     text-decoration: none;
     transition:
-      background 220ms cubic-bezier(0.32, 0.72, 0, 1),
-      color 220ms cubic-bezier(0.32, 0.72, 0, 1);
+      background var(--duration-normal) var(--ease-out),
+      color var(--duration-normal) var(--ease-out);
   }
 
   .modal-export-link:hover {
@@ -665,78 +724,55 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 0.5rem;
-    border: 1px solid var(--color-border-emphasis);
-    background: var(--color-bg-elevated);
-    color: var(--color-text-secondary);
+    gap: var(--space-2);
+    min-height: var(--space-10);
+    padding: var(--space-2) var(--space-4);
+    border: 1px solid var(--color-accent-hover);
+    border-radius: var(--radius-md);
+    background: var(--color-accent-hover);
+    color: var(--color-text-on-accent);
     cursor: pointer;
+    font-size: var(--text-sm);
     font-weight: 700;
     transition:
-      border-color 220ms cubic-bezier(0.32, 0.72, 0, 1),
-      color 220ms cubic-bezier(0.32, 0.72, 0, 1),
-      background 220ms cubic-bezier(0.32, 0.72, 0, 1);
+      background var(--duration-normal) var(--ease-out),
+      border-color var(--duration-normal) var(--ease-out),
+      color var(--duration-normal) var(--ease-out);
   }
 
-  .modal-select-primary {
-    min-height: 2.36rem;
-    padding: 0.5rem 0.875rem;
-    border-radius: 0.625rem;
-    font-size: 0.8125rem;
+  .modal-select-primary:hover:not(:disabled):not(.is-selected) {
+    border-color: var(--color-accent-dark);
+    background: var(--color-accent-dark);
   }
 
-  .modal-select-primary:hover:not(:disabled) {
-    border-color: var(--color-accent);
-    background: color-mix(in srgb, var(--color-accent) 5%, var(--color-bg-elevated));
-    color: var(--color-accent-dark);
-  }
-
-  /* Shortlisted = a positive filled state, clearly distinct from the un-selected button. */
   .modal-select-primary.is-selected {
-    color: var(--color-accent-dark);
-    background: var(--color-accent-subtle);
-    border-color: color-mix(in srgb, var(--color-accent) 40%, var(--color-border));
+    border-color: var(--color-border-emphasis);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-secondary);
+  }
+
+  .modal-select-primary.is-selected:hover:not(:disabled) {
+    border-color: var(--color-text-secondary);
+    background: var(--color-bg-surface);
+    color: var(--color-text-primary);
   }
 
   .modal-select-primary:disabled {
-    opacity: 0.5;
+    border-color: var(--color-border);
+    background: var(--color-bg-surface);
+    color: var(--color-text-muted);
     cursor: not-allowed;
+    opacity: var(--opacity-disabled);
   }
 
   .select-indicator {
     display: grid;
     place-items: center;
-    width: 1.16rem;
-    height: 1.16rem;
-    border-radius: 0.375rem;
-    border: 1.5px solid currentColor;
-    font-family: var(--font-mono);
-    font-size: 0.6875rem;
-    font-weight: 800;
-    line-height: 1;
-  }
-
-  .is-selected .select-indicator {
-    background: transparent;
-    border-color: currentColor;
-    color: inherit;
-  }
-
-  .modal-close {
-    display: grid;
-    place-items: center;
-    width: 2.25rem;
-    height: 2.25rem;
-    border: 1px solid transparent;
-    border-radius: 0.625rem;
-    background: transparent;
-    color: var(--color-text-muted);
-    cursor: pointer;
-    transition:      background 220ms cubic-bezier(0.32, 0.72, 0, 1),
-      color 220ms cubic-bezier(0.32, 0.72, 0, 1);
-  }
-
-  .modal-close:hover {    background: var(--color-bg-surface);
-    color: var(--color-text-primary);
+    width: var(--space-5);
+    height: var(--space-5);
+    border: 1px solid currentColor;
+    border-radius: var(--radius-sm);
+    flex-shrink: 0;
   }
 
   .modal-select-primary:focus-visible,
@@ -749,37 +785,38 @@
 
   .modal-tabs {
     display: flex;
-    gap: 0.25rem;
+    gap: var(--space-1);
     flex-shrink: 0;
-    padding: 0 1rem;
+    padding: 0 var(--space-5);
     background: var(--color-bg-elevated);
     border-bottom: 1px solid var(--color-border);
   }
 
   .modal-tab {
     position: relative;
-    padding: 0.625rem 0.25rem;
-    margin-right: 1.125rem;
+    min-height: var(--space-10);
+    margin-right: var(--space-4);
+    padding: var(--space-2) var(--space-1);
     border: 0;
     background: transparent;
     color: var(--color-text-muted);
-    font-family: var(--font-body);
-    font-size: 0.8125rem;
-    font-weight: 700;
     cursor: pointer;
-    transition: color 0.15s ease;
+    font-family: var(--font-body);
+    font-size: var(--text-sm);
+    font-weight: 700;
+    transition: color var(--duration-normal) var(--ease-out);
   }
 
   .modal-tab::after {
     content: "";
     position: absolute;
-    left: 0;
     right: 0;
     bottom: -1px;
+    left: 0;
     height: 2px;
     background: var(--color-accent);
     opacity: 0;
-    transition: opacity 0.15s ease;
+    transition: opacity var(--duration-normal) var(--ease-out);
   }
 
   .modal-tab:hover {
@@ -797,29 +834,29 @@
   .modal-tab:focus-visible {
     outline: 2px solid var(--color-accent);
     outline-offset: 2px;
-    border-radius: 0.25rem;
+    border-radius: var(--radius-sm);
   }
 
   .modal-body {
     flex: 1;
     display: grid;
-    gap: 0.875rem;
+    gap: var(--space-4);
     align-content: start;
     min-height: 0;
     overflow-y: auto;
-    padding: 0.875rem 1rem 1rem;
+    padding: var(--space-4) var(--space-5) var(--space-5);
     background: color-mix(in srgb, var(--color-bg-elevated) 96%, var(--color-bg-surface));
   }
 
   .modal-score-panel {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    gap: 0.875rem;
+    gap: var(--space-4);
     align-items: center;
-    padding: 0.625rem;
+    padding: var(--space-3);
     background: color-mix(in srgb, var(--color-bg-surface) 46%, var(--color-bg-elevated));
     border: 1px solid color-mix(in srgb, var(--color-border) 78%, transparent);
-    border-radius: 0.625rem;
+    border-radius: var(--radius-lg);
   }
 
   .score-panel-summary {
@@ -829,53 +866,55 @@
   .score-panel-label,
   .score-item-label {
     display: block;
-    font-family: var(--font-mono);
-    font-size: 0.625rem;
-    font-weight: 700;
     color: var(--color-text-muted);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: 700;
+    letter-spacing: var(--tracking-wide);
+    text-transform: uppercase;
   }
 
   .score-panel-summary p {
-    margin: 0.25rem 0 0;
+    max-width: 68ch;
+    margin: var(--space-1) 0 0;
     color: var(--color-text-secondary);
-    font-size: 0.75rem;
-    line-height: 1.42;
-    text-wrap: pretty;
+    font-size: var(--text-sm);
+    line-height: var(--leading-normal);
     overflow-wrap: anywhere;
+    text-wrap: pretty;
   }
 
   .score-votes {
     display: inline-flex;
-    margin-top: 0.5rem;
+    margin-top: var(--space-2);
     color: var(--color-text-secondary);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     font-weight: 600;
   }
 
   .score-grid {
     display: grid;
-    grid-template-columns: repeat(5, minmax(3.42rem, 1fr));
-    justify-content: flex-end;
-    gap: 0.25rem;
+    grid-template-columns: repeat(5, minmax(var(--space-20), 1fr));
+    gap: var(--space-1);
     align-self: start;
+    justify-content: flex-end;
     overflow: visible;
     border: 0;
-    border-radius: 0;
   }
 
   .score-item {
     display: grid;
-    gap: 0.125rem;
+    gap: var(--space-1);
     min-width: 0;
+    min-height: var(--space-16);
     width: 100%;
-    min-height: 3.1rem;
-    padding: 0.375rem 0.5rem;
+    padding: var(--space-2);
     background: color-mix(in srgb, var(--color-bg-elevated) 84%, var(--color-bg-surface));
     border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 62%, transparent);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-md);
     transition:
-      border-color 220ms cubic-bezier(0.32, 0.72, 0, 1),
-      background 220ms cubic-bezier(0.32, 0.72, 0, 1);
+      background var(--duration-normal) var(--ease-out),
+      border-color var(--duration-normal) var(--ease-out);
   }
 
   .score-grid :global(.popover-trigger.score-popover-trigger) {
@@ -897,14 +936,14 @@
   .score-grid :global(.popover-trigger.score-popover-trigger:focus-visible) {
     outline: 2px solid var(--color-accent);
     outline-offset: 2px;
-    border-radius: 0.5rem;
+    border-radius: var(--radius-md);
   }
 
   .score-item-value {
     font-family: var(--font-mono);
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     font-weight: 800;
-    line-height: 1;
+    line-height: var(--leading-tight);
     font-variant-numeric: tabular-nums;
   }
 
@@ -912,9 +951,9 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 1rem;
+    gap: var(--space-4);
     flex-shrink: 0;
-    padding: 0.625rem 1rem;
+    padding: var(--space-3) var(--space-5);
     border-top: 1px solid var(--color-border);
     background: color-mix(in srgb, var(--color-bg-surface) 72%, var(--color-bg-elevated));
   }
@@ -923,17 +962,26 @@
     display: flex;
     align-items: baseline;
     flex-wrap: wrap;
-    gap: 0.25rem 0.5rem;
+    gap: var(--space-1) var(--space-2);
     min-width: 0;
     color: var(--color-text-muted);
-    font-size: 0.75rem;
-    line-height: 1.35;
+    font-size: var(--text-sm);
+    line-height: var(--leading-normal);
+  }
+
+  .modal-footer-label {
+    color: var(--color-text-muted);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: 700;
+    letter-spacing: var(--tracking-wide);
+    text-transform: uppercase;
   }
 
   .modal-footer-status strong {
-    font-family: var(--font-mono);
     color: var(--color-text-primary);
-    font-size: 0.8125rem;
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
     font-weight: 800;
     font-variant-numeric: tabular-nums;
   }
@@ -946,57 +994,110 @@
   .modal-footer-actions {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-2);
     flex-shrink: 0;
   }
 
-  /* On smaller screens, position arrows at edge */
   @media (max-width: 900px) {
     .modal-header {
       flex-direction: column;
-      padding: 1rem;
+      padding: var(--space-4);
     }
+
     .modal-actions {
       width: 100%;
       justify-content: flex-start;
       flex-wrap: wrap;
     }
+
     .modal-nav {
       margin-right: auto;
     }
-    .modal-body {
-      padding: 1rem;
+
+    .modal-tabs {
+      padding: 0 var(--space-4);
     }
+
+    .modal-body {
+      padding: var(--space-4);
+    }
+
     .modal-score-panel {
       grid-template-columns: 1fr;
     }
+
     .score-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
       justify-content: stretch;
     }
+
     .modal-footer {
-      align-items: stretch;
+      align-items: flex-start;
       flex-direction: column;
-      padding: 0.75rem 1rem;
     }
+
     .modal-footer-actions {
       width: 100%;
-    }
-    .modal-select-primary {
-      flex: 1;
+      justify-content: flex-end;
     }
   }
 
-  /* Hide arrows on very small screens (use keyboard/swipe instead) */
   @media (max-width: 480px) {
-    .modal-title {
-      font-size: 1.25rem;
+    .modal-header {
+      padding: var(--space-3);
     }
+
+    .modal-title {
+      font-size: var(--text-2xl);
+    }
+
+    .modal-actions,
+    .modal-export,
     .modal-select-primary {
       width: 100%;
     }
-    .modal-footer-actions {
-      flex-direction: column;
+
+    .modal-export-link {
+      flex: 1;
+      justify-content: center;
+    }
+
+    .modal-tabs {
+      overflow-x: auto;
+      padding: 0 var(--space-3);
+    }
+
+    .modal-tab {
+      flex: 0 0 auto;
+    }
+
+    .modal-body {
+      padding: var(--space-3);
+    }
+
+    .score-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .modal-footer {
+      padding: var(--space-3);
+    }
+
+    .modal-footer-actions,
+    .modal-select-primary {
+      width: 100%;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .modal-nav-btn,
+    .modal-close,
+    .modal-export-link,
+    .modal-select-primary,
+    .modal-tab,
+    .modal-tab::after,
+    .score-item {
+      transition-duration: var(--duration-instant);
     }
   }
 </style>

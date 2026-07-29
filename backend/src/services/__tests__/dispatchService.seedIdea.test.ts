@@ -14,9 +14,23 @@ import { DispatchKind, DispatchState } from '@prisma/client';
 const mockDispatchCreate = vi.fn();
 const mockDispatchUpdateMany = vi.fn();
 const mockDispatchFindUnique = vi.fn();
+const mockDispatchFindFirst = vi.fn();
+const mockDispatchUpdate = vi.fn();
 const mockJobUpdate = vi.fn();
 const mockJobUpdateMany = vi.fn();
 const mockJobFindUnique = vi.fn();
+const mockRefundChargeInTx = vi.fn();
+
+const transactionClient = {
+  jobDispatch: {
+    findFirst: (...args: any[]) => mockDispatchFindFirst(...args),
+    updateMany: (...args: any[]) => mockDispatchUpdateMany(...args),
+    update: (...args: any[]) => mockDispatchUpdate(...args),
+  },
+  job: {
+    updateMany: (...args: any[]) => mockJobUpdateMany(...args),
+  },
+};
 
 vi.mock('../db.js', () => ({
   prisma: {
@@ -30,7 +44,13 @@ vi.mock('../db.js', () => ({
       updateMany: (...args: any[]) => mockJobUpdateMany(...args),
       findUnique: (...args: any[]) => mockJobFindUnique(...args),
     },
+    $transaction: (callback: (client: typeof transactionClient) => unknown) =>
+      callback(transactionClient),
   },
+}));
+
+vi.mock('../creditService.js', () => ({
+  refundChargeInTx: (...args: any[]) => mockRefundChargeInTx(...args),
 }));
 
 const JOB_ID = 'job-seed-1';
@@ -48,6 +68,8 @@ beforeEach(() => {
     jobDispatch: { create: mockDispatchCreate },
     job: { update: mockJobUpdate },
   };
+  mockDispatchUpdate.mockResolvedValue({});
+  mockRefundChargeInTx.mockResolvedValue(null);
 });
 
 describe('DispatchKind.SEED_IDEA — open/claim/guard/settle round-trip', () => {
@@ -75,6 +97,11 @@ describe('DispatchKind.SEED_IDEA — open/claim/guard/settle round-trip', () => 
         chargeId: 'txn-seed-1',
         seedOrdinal: 1,
         sourceMessageId: 'msg-abc',
+        clientRequestId: null,
+        requestSnapshot: undefined,
+        requestFingerprint: null,
+        workPayload: undefined,
+        batchOrdinal: null,
         state: DispatchState.AUTHORIZED,
       },
       select: { id: true },
@@ -166,5 +193,41 @@ describe('DispatchKind.SEED_IDEA — open/claim/guard/settle round-trip', () => 
     const reason = await diagnoseGuardMiss(JOB_ID, MINE, ['AWAITING_SELECTION' as any]);
 
     expect(reason).toBe('stale_dispatch');
+  });
+
+  it('cancels and refunds only an unclaimed queued selection dispatch', async () => {
+    mockDispatchFindFirst.mockResolvedValue({
+      id: MINE,
+      kind: DispatchKind.DEEP_RESEARCH,
+      state: DispatchState.AUTHORIZED,
+      chargeId: 'charge-1',
+    });
+    mockJobUpdateMany.mockResolvedValue({ count: 1 });
+    mockDispatchUpdateMany.mockResolvedValue({ count: 1 });
+    mockRefundChargeInTx.mockResolvedValue({ id: 'refund-1', amount: 5 });
+
+    const { cancelAuthorizedSelectionDispatch } = await import('../dispatchService.js');
+    const result = await cancelAuthorizedSelectionDispatch(JOB_ID, MINE);
+
+    expect(result).toBe('cancelled');
+    expect(mockJobUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        id: JOB_ID,
+        status: 'QUEUED',
+        activeDispatchId: MINE,
+      }),
+    }));
+    expect(mockDispatchUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: MINE, state: DispatchState.AUTHORIZED },
+      data: expect.objectContaining({ state: DispatchState.CANCELLED }),
+    }));
+    expect(mockRefundChargeInTx).toHaveBeenCalledWith(transactionClient, 'charge-1');
+    expect(mockDispatchUpdate).toHaveBeenCalledWith({
+      where: { id: MINE },
+      data: expect.objectContaining({
+        refundTransactionId: 'refund-1',
+        refundedAmount: 5,
+      }),
+    });
   });
 });

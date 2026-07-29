@@ -1,8 +1,11 @@
-import { cleanup, render } from "@testing-library/svelte";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render } from "@testing-library/svelte";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import PhaseNav from "../PhaseNav.svelte";
 
 afterEach(cleanup);
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 describe("PhaseNav selection journey", () => {
   it("keeps the same four decision destinations on every selection route", () => {
@@ -38,7 +41,7 @@ describe("PhaseNav selection journey", () => {
     for (const link of view.getAllByRole("link", { name: "Review and start" })) {
       expect(link).toHaveAttribute(
         "href",
-        "/jobs/job-1/selection/review?idea=idea-a%3A3&idea=idea-b%3A1",
+        "/jobs/job-1/selection/review",
       );
     }
     expect(view.queryByText("Plan a test")).not.toBeInTheDocument();
@@ -105,5 +108,71 @@ describe("PhaseNav without the decision tools grant", () => {
     expect(view.getAllByText("Review and start").length).toBeGreaterThan(0);
     expect(view.queryByText("Check the evidence")).toBeNull();
     expect(view.queryByRole("link", { name: "Check the evidence" })).toBeNull();
+  });
+});
+
+describe("PhaseNav completed-report destinations", () => {
+  it.each([
+    ["Brief", "/jobs/job-1/report?view=brief"],
+    ["Evidence", "/jobs/job-1/report?view=evidence"],
+    ["Plan", "/jobs/job-1/report?view=plan"],
+  ])("links %s to its report view on desktop and mobile", async (label, href) => {
+    const view = render(PhaseNav, {
+      props: {
+        jobStatus: "COMPLETED",
+        jobId: "job-1",
+      },
+    });
+
+    await fireEvent.click(view.getByRole("button", { name: "Section navigation" }));
+    const links = view.getAllByRole("link", { name: label });
+    expect(links).toHaveLength(2);
+    for (const link of links) {
+      expect(link).toHaveAttribute("href", href);
+    }
+  });
+
+  it("does not duplicate report topics in the global phase navigation", () => {
+    const view = render(PhaseNav, {
+      props: {
+        jobStatus: "COMPLETED",
+        jobId: "job-1",
+      },
+    });
+
+    expect(view.queryByRole("button", { name: "Solution" })).not.toBeInTheDocument();
+    expect(view.queryByRole("button", { name: "Market" })).not.toBeInTheDocument();
+    expect(view.queryByRole("button", { name: "Competitors" })).not.toBeInTheDocument();
+    expect(view.queryByRole("button", { name: "Technical" })).not.toBeInTheDocument();
+    expect(view.queryByRole("button", { name: "GTM" })).not.toBeInTheDocument();
+  });
+
+  it("orients the completed hub without fake completion marks and shows the real deliverable state", async () => {
+    const view = render(PhaseNav, {
+      props: {
+        jobStatus: "COMPLETED",
+        jobId: "job-1",
+        landingPageStatus: "running",
+      },
+    });
+
+    const desktopOverview = view.getByRole("link", { name: "Run overview" });
+    expect(desktopOverview).toHaveAttribute("aria-current", "page");
+    expect(desktopOverview).toHaveAttribute("href", "/jobs/job-1");
+    expect(view.getByRole("link", { name: /Landing page Generating/ })).toHaveAttribute(
+      "href",
+      "/jobs/job-1#optional-deliverables",
+    );
+    expect(view.container.querySelector(".nav-check")).not.toBeInTheDocument();
+
+    await fireEvent.click(view.getByRole("button", { name: "Section navigation" }));
+
+    const overviewLinks = view.getAllByRole("link", { name: "Run overview" });
+    expect(overviewLinks).toHaveLength(2);
+    for (const link of overviewLinks) {
+      expect(link).toHaveAttribute("aria-current", "page");
+    }
+    expect(view.getAllByText("Generating")).toHaveLength(2);
+    expect(view.container.querySelector(".nav-check")).not.toBeInTheDocument();
   });
 });

@@ -97,6 +97,32 @@ describe('buildSeedEnvelope', () => {
     });
   });
 
+  it('keeps evaluation identity, proposed title, and demotion reason in the compact result', () => {
+    const envelope = buildSeedEnvelope(
+      'seed_settled',
+      'msg-exact',
+      'demoted',
+      {
+        solution_name: 'Exact evaluated result',
+        evaluation_id: '11111111-1111-1111-1111-111111111111',
+        proposed_title: 'Exact selected direction',
+        evaluation_reason: 'Demand did not clear the market-fit threshold.',
+      },
+      '11111111-1111-1111-1111-111111111111',
+    );
+
+    expect(envelope).toMatchObject({
+      evaluationId: '11111111-1111-1111-1111-111111111111',
+      sourceMessageId: 'msg-exact',
+      outcome: 'demoted',
+      idea: {
+        evaluation_id: '11111111-1111-1111-1111-111111111111',
+        proposed_title: 'Exact selected direction',
+        reason: 'Demand did not clear the market-fit threshold.',
+      },
+    });
+  });
+
   it.each(['accepted', 'demoted', 'failed'] as const)('threads outcome=%s through unchanged', (outcome) => {
     expect(buildSeedEnvelope('seed_settled', 'msg-abc', outcome).outcome).toBe(outcome);
   });

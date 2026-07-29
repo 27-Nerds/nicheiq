@@ -4,6 +4,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // tests never touch a real Redis instance. Only the methods queueService actually calls
 // need to exist on the mock instance.
 const mockLpush = vi.fn().mockResolvedValue(1);
+const mockDispatchFindMany = vi.fn();
+const mockDispatchFindUnique = vi.fn();
+const mockDispatchUpdateMany = vi.fn();
 
 vi.mock('ioredis', () => {
   class MockRedis {
@@ -20,6 +23,16 @@ vi.mock('ioredis', () => {
 
 vi.mock('../../config.js', () => ({
   CONFIG: { redisUrl: 'redis://localhost:6379' },
+}));
+
+vi.mock('../db.js', () => ({
+  prisma: {
+    jobDispatch: {
+      findMany: (...args: unknown[]) => mockDispatchFindMany(...args),
+      findUnique: (...args: unknown[]) => mockDispatchFindUnique(...args),
+      updateMany: (...args: unknown[]) => mockDispatchUpdateMany(...args),
+    },
+  },
 }));
 
 describe('queueService — enqueueJob chatMode payload', () => {
@@ -84,5 +97,90 @@ describe('queueService — enqueueContinueFromGateJob payload', () => {
     const parsed = JSON.parse(payload);
     expect(parsed.mode).toBe('apply_stay');
     expect(parsed.patch).toEqual({ excluded_segments: ['SegB'] });
+  });
+});
+
+describe('queueService — exact synthesis evaluation payload', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('carries the complete structured evaluation alongside the legacy seed text', async () => {
+    const { enqueueSeedIdeaJob } = await import('../queueService.js');
+    const evaluation = {
+      evaluation_id: '11111111-1111-1111-1111-111111111111',
+      dispatch_id: '11111111-1111-1111-1111-111111111111',
+      source_message_id: 'proposal-1',
+      proposal: {
+        proposedTitle: 'Exact direction',
+        evaluation: {
+          changedAxes: [{ axis: 'scope', from: 'broad', to: 'narrow' }],
+          disqualifiers: ['No buyer commits'],
+        },
+      },
+    };
+
+    await enqueueSeedIdeaJob(
+      'job-1', '/tmp/cp', 'niche', 'legacy summary', undefined, undefined,
+      '11111111-1111-1111-1111-111111111111', evaluation,
+    );
+
+    const [, payload] = mockLpush.mock.calls[0];
+    expect(JSON.parse(payload)).toMatchObject({
+      task_type: 'seed_idea',
+      seed_text: 'legacy summary',
+      synthesis_evaluation: evaluation,
+    });
+  });
+});
+
+describe('queueService — dispatch outbox retry', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockDispatchFindMany.mockResolvedValue([{
+      id: 'dispatch-1',
+      deliveryAttempts: 0,
+      lastDeliveryAt: null,
+    }]);
+    mockDispatchFindUnique.mockResolvedValue({
+      state: 'AUTHORIZED',
+      workPayload: { job_id: 'job-1', task_type: 'research_phase2' },
+    });
+    mockDispatchUpdateMany.mockResolvedValue({ count: 1 });
+  });
+
+  it('redelivers only never-attempted or failed AUTHORIZED payloads after the minimum age', async () => {
+    const { redeliverAuthorizedDispatches } = await import('../queueService.js');
+
+    await expect(redeliverAuthorizedDispatches(5)).resolves.toBe(1);
+
+    expect(mockDispatchFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        state: 'AUTHORIZED',
+        OR: [
+          { lastDeliveryAt: null },
+          {
+            lastDeliveryError: { not: null },
+            lastDeliveryAt: { lte: expect.any(Date) },
+          },
+        ],
+      }),
+      take: 5,
+    }));
+    expect(mockLpush).toHaveBeenCalledWith(
+      'nicheiq:jobs',
+      JSON.stringify({
+        job_id: 'job-1',
+        task_type: 'research_phase2',
+        dispatch_id: 'dispatch-1',
+      }),
+    );
+    expect(mockDispatchUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'dispatch-1', state: 'AUTHORIZED' },
+      data: expect.objectContaining({
+        deliveryAttempts: { increment: 1 },
+        lastDeliveryError: null,
+      }),
+    }));
   });
 });

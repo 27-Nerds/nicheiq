@@ -150,7 +150,7 @@ export const TOOL_NAMES = {
   /** Divergence op (a): branch new directions from the CURRENT ideas. */
   branch: "Branch a new direction",
   /** Divergence op (b): generate a fresh batch of ideas from scratch. */
-  newBatch: "Generate more ideas",
+  newBatch: "Add another batch",
 } as const;
 
 // ── Divergence ops: two DISTINCT operations, kept apart on purpose ──
@@ -247,17 +247,28 @@ export function briefCount(n: number): string {
   return `${n} BRIEF${n === 1 ? "" : "S"}`;
 }
 
-/** Memo state line: `2 SHORTLISTED · 3 CHECKS · CONTEXT SAVED`. */
+/** First-hand evidence the owner saved themselves ("Your evidence" in the ledger),
+ *  counted separately from CHECKS: a check is a run, this is material the owner
+ *  supplied. */
+export function ownerEvidenceCount(n: number): string {
+  return `${n} EVIDENCE ADDED`;
+}
+
+/** Memo state line: `2 SHORTLISTED · 3 CHECKS · 1 EVIDENCE ADDED · CONTEXT SAVED`. */
 export function guideRecordLine(input: {
   shortlisted: number;
   checks: number;
   stale: number;
   contextSaved: boolean;
+  ownerEvidence?: number;
 }): string {
   const parts = [
     `${input.shortlisted} SHORTLISTED`,
     `${checkCount(input.checks)}${staleSuffix(input.stale)}`,
   ];
+  // Omitted at 0 (unlike CHECKS, which is a required-looking tally): an untaken
+  // optional step should not read as a gap in the record.
+  if (input.ownerEvidence) parts.push(ownerEvidenceCount(input.ownerEvidence));
   if (input.contextSaved) parts.push("CONTEXT SAVED");
   return parts.join(" · ");
 }
@@ -295,7 +306,7 @@ export const FORGE_RETRY_NOTE = "Generation failed. You can try again at no cost
 // ── Below-table IA (Phase 1b) ──
 
 export const VERDICT_EYEBROW = "Analyst verdict";
-export const APPENDIX_EYEBROW = "Appendix · Analysis & context";
+export const APPENDIX_EYEBROW = "Discovery appendix";
 export const FOUNDER_CONTEXT_SAVED = "Build limits saved";
 
 /** Header stats as ONE record line: `12 ideas · Top score 82 · 4 segments`.
@@ -311,16 +322,22 @@ export function candidateStatsLine(input: {
   return parts.join(" · ");
 }
 
-/** Appendix header meta: `Analyst notes 3 · Collaborator 2 · Ruled out 4`.
- *  ONE plain mono record line; zero counts are omitted (guardrail 8). */
+/** Appendix header meta: `3 analyst notes · 2 feedback notes · 4 ideas ruled out`.
+ *  ONE plain record line; zero counts are omitted (guardrail 8). */
 export function appendixMetaLine(input: {
   analystNotes: number;
   collaborator: number;
   ruledOut: number;
 }): string {
   const parts: string[] = [];
-  if (input.analystNotes > 0) parts.push(`Analyst notes ${input.analystNotes}`);
-  if (input.collaborator > 0) parts.push(`Collaborator ${input.collaborator}`);
-  if (input.ruledOut > 0) parts.push(`Ruled out ${input.ruledOut}`);
+  if (input.analystNotes > 0) {
+    parts.push(`${input.analystNotes} analyst note${input.analystNotes === 1 ? "" : "s"}`);
+  }
+  if (input.collaborator > 0) {
+    parts.push(`${input.collaborator} feedback note${input.collaborator === 1 ? "" : "s"}`);
+  }
+  if (input.ruledOut > 0) {
+    parts.push(`${input.ruledOut} idea${input.ruledOut === 1 ? "" : "s"} ruled out`);
+  }
   return parts.join(" · ");
 }

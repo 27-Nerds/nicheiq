@@ -146,6 +146,61 @@ export const FounderFitSynthesisReferenceSchema = z.object({
   }).strict()).min(1).max(6),
 }).strict();
 
+const SynthesisChangedAxisSchema = z.object({
+  axis: z.enum(['buyer', 'job', 'mechanism', 'channel', 'scope', 'business_model']),
+  from: z.string().trim().min(1).max(500),
+  to: z.string().trim().min(1).max(500),
+  reason: z.string().trim().min(3).max(600),
+}).strict();
+
+const SynthesisDecisionAssumptionSchema = z.object({
+  assumptionId: z.string().regex(/^A[a-f0-9]{10}$/),
+  type: z.enum(['demand', 'distribution', 'competition', 'feasibility', 'founder_fit']),
+  statement: z.string().trim().min(3).max(500),
+  whyDecisionChanging: z.string().trim().min(3).max(600),
+  consequenceIfFalse: z.string().trim().min(3).max(600),
+}).strict();
+
+const SynthesisSuggestedTestSchema = z.object({
+  assumptionId: z.string().regex(/^A[a-f0-9]{10}$/),
+  hypothesis: z.string().trim().min(3).max(700),
+  method: z.string().trim().min(1).max(100),
+  evidenceSignal: z.string().trim().min(1).max(100),
+  audience: z.string().trim().min(3).max(500),
+  artifact: z.string().trim().min(3).max(700),
+  primaryMetric: z.string().trim().min(3).max(500),
+  passThreshold: z.string().trim().min(3).max(500),
+  failThreshold: z.string().trim().min(3).max(500),
+  measurementWindow: z.string().trim().min(3).max(300),
+}).strict();
+
+/**
+ * Exact, code-owned Concept Forge option selected for evaluation. Optional so older
+ * analyst-authored synthesis proposals and ordinary free-text seeds remain valid.
+ */
+export const SynthesisEvaluationBriefSchema = z.object({
+  version: z.literal(1),
+  conceptSetId: z.string().uuid(),
+  optionId: z.string().regex(/^O[a-f0-9]{11}$/),
+  inputFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+  changedAxes: z.array(SynthesisChangedAxisSchema).min(1).max(4),
+  assumptions: z.array(SynthesisDecisionAssumptionSchema).min(1).max(3),
+  retainedEvidence: z.array(z.string().trim().min(3).max(400)).min(1).max(6),
+  evidenceToRecheck: z.array(z.string().trim().min(3).max(400)).min(1).max(8),
+  disqualifiers: z.array(z.string().trim().min(3).max(400)).min(1).max(5),
+  suggestedTest: SynthesisSuggestedTestSchema,
+}).strict().superRefine((value, ctx) => {
+  if (!value.assumptions.some((assumption) =>
+    assumption.assumptionId === value.suggestedTest.assumptionId
+  )) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['suggestedTest', 'assumptionId'],
+      message: 'The suggested test must target one evaluation assumption',
+    });
+  }
+});
+
 export const IdeaSynthesisPatchSchema = z.object({
   kind: z.literal('idea_synthesis'),
   operation: SynthesisOperationSchema,
@@ -167,6 +222,7 @@ export const IdeaSynthesisPatchSchema = z.object({
     founderFitRef: FounderFitSynthesisReferenceSchema.optional(),
   }).strict(),
   newAssumptions: z.array(z.string().trim().min(1).max(300)).max(6),
+  evaluation: SynthesisEvaluationBriefSchema.optional(),
 }).superRefine((value, ctx) => {
   const requiredParents = value.operation === 'combine' ? 2 : 1;
   if (value.parents.length !== requiredParents) {

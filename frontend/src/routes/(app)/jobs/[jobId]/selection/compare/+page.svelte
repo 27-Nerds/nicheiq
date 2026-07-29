@@ -28,6 +28,7 @@
   } from "$lib/utils/solution-utils";
   import { getWorkspaceTools } from "$lib/selection/workspaceTools";
   import { formatBuildConstraints } from "$lib/selection/profileFormat";
+  import { founderFitReasoningSources } from "$lib/selection/founderFitLabels";
   import {
     founderFitMatchesScope,
     founderFitResultFor,
@@ -220,36 +221,8 @@
     }[status];
   }
 
-  const FIELD_LABELS: Record<string, string> = {
-    weeklyTime: "available time",
-    budget: "testing budget",
-    team: "team",
-    revenueHorizon: "revenue timing",
-    distributionAdvantages: "distribution advantages",
-    strengths: "founder strengths",
-    hardConstraints: "non-negotiables",
-    estimated_development_time: "build estimate",
-    technical_feasibility_score: "feasibility",
-    solo_dev_feasibility: "solo-build feasibility",
-    seo_scalability_score: "SEO opportunity",
-    programmatic_seo_opportunity: "programmatic SEO opportunity",
-    pricing_strategy: "pricing strategy",
-    critic_concern: "known concern",
-    data_acquisition_notes: "data access notes",
-  };
-
-  function humanizeField(field: string): string {
-    const normalized = field.replace(/^(profile|idea)\./, "");
-    if (FIELD_LABELS[normalized]) return FIELD_LABELS[normalized];
-    return normalized
-      .replaceAll("_", " ")
-      .replace(/([a-z])([A-Z])/g, "$1 $2")
-      .toLowerCase();
-  }
-
   function reasoningSources(profileFields: string[], ideaFields: string[]): string {
-    const fields = [...profileFields, ...ideaFields].map(humanizeField);
-    return fields.length > 0 ? fields.join(" · ") : "saved build limits and candidate evidence";
+    return founderFitReasoningSources(profileFields, ideaFields);
   }
 
   function formattedGeneratedAt(): string {
