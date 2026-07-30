@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { UserRole, Prisma } from '@prisma/client';
-import archiver from 'archiver';
+import { ZipArchive } from 'archiver';
 import path from 'path';
 import { requireInternalAdmin, requireInternalService, AuthenticatedRequest } from '../middleware/auth.js';
 import * as adminService from '../services/adminService.js';
@@ -709,7 +709,7 @@ adminRouter.get('/jobs/:jobId/checkpoint', async (req: AuthenticatedRequest, res
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename="${folderName}.zip"`);
 
-    const archive = archiver('zip', { zlib: { level: 6 } });
+    const archive = new ZipArchive({ zlib: { level: 6 } });
     archive.on('error', (err) => {
       console.error('Archiver error:', err);
       if (!res.headersSent) {

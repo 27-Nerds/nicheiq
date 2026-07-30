@@ -98,6 +98,16 @@ describe("+page.svelte — terminal-stop handoff", () => {
     await findByRole("link", { name: /Start new research/i });
   });
 
+  it("discloses that a refunded stage may be re-charged before resume", async () => {
+    const { findByText } = render(PageComponent, {
+      props: { data: baseData(baseJob({ creditRefunded: true })) as never },
+    });
+
+    await findByText(
+      "Resuming picks up from the last checkpoint and may re-charge the refunded stage at its original amount.",
+    );
+  });
+
   it("does not restate the aside's diagnosis — the failure headline appears exactly once", async () => {
     const job = baseJob({
       errorDetails: {

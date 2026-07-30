@@ -340,7 +340,7 @@ selectionConceptSetsRouter.get(
       const rows = await prisma.selectionConceptSet.findMany({
         where: { jobId, archivedAt: null },
         orderBy: { createdAt: 'desc' },
-        take: 10,
+        take: MAX_CONCEPT_SETS_PER_JOB,
         select: { id: true, artifact: true, createdAt: true },
       });
       const parsedRows = rows.flatMap((row) => {

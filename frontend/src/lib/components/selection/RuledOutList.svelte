@@ -21,8 +21,8 @@
       <span class="ruled-out-kicker">Screened out</span>
       <h3 id="ruled-out-title">Ideas that did not clear the market-fit check</h3>
       <p>
-        These concepts were examined, then excluded from the shortlist. Open an idea to review
-        the evidence and assumptions behind that decision.
+        These concepts were examined, then screened out before the ranked ideas were presented.
+        Open an idea to review the evidence and assumptions behind that decision.
       </p>
     </div>
     <span class="ruled-out-count">

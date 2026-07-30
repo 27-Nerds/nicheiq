@@ -462,6 +462,18 @@ class Settings(BaseSettings):
             "0 disables."
         ),
     )
+    parity_discovery_queries_per_run: int = Field(
+        default=12, ge=0,
+        description=(
+            "Max VENDOR-FREE discovery queries the mechanism-parity probe may issue per run "
+            "(§6(a) vocabulary fix, 2026-07-30). Name-anchored parity queries can only confirm "
+            "parity for incumbents the niche-level probe already found — they structurally cannot "
+            "discover a mechanism-specific competitor whose name shares no vocabulary with the "
+            "idea (live miss: Bookkeep/Link My Books/Synder for a POS payout-reconciliation idea, "
+            "which shipped as 'none found' and was killed by hand a day later). Spent on the "
+            "composite-ranked ideas first. 0 disables the arm (name-anchored queries only)."
+        ),
+    )
     parity_bundled_free_cap: float = Field(
         default=0.40, ge=0.0, le=1.0,
         description=(

@@ -1514,13 +1514,33 @@ RULES:
         """
         try:
             state = self.state
+            all_generic_posts = list(state.social_content.generic_posts or []) if state.social_content else []
+            discovery_generic_posts = [
+                post
+                for post in all_generic_posts
+                if post.platform != "hackernews"
+                or (
+                    post.relevance_grade is not None
+                    and post.relevance_grade >= 2
+                )
+            ]
+            excluded_hn_posts = [
+                post
+                for post in all_generic_posts
+                if post.platform == "hackernews"
+                and (
+                    post.relevance_grade is None
+                    or post.relevance_grade < 2
+                )
+            ]
+            excluded_hn_post_ids = {post.post_id for post in excluded_hn_posts}
 
             # Build post_id → post lookup for cross-referencing engagement
             post_lookup: dict[str, object] = {}
             if state.social_content:
                 for p in state.social_content.reddit_posts:
                     post_lookup[p.post_id] = p
-                for p in (state.social_content.generic_posts or []):
+                for p in discovery_generic_posts:
                     post_lookup[p.post_id] = p
 
             # ── Quotes: score and select top 3 per pain point ──
@@ -1535,6 +1555,8 @@ RULES:
 
                     for i, q_text in enumerate(raw_quotes):
                         post_id = raw_ids[i] if i < len(raw_ids) else ""
+                        if post_id in excluded_hn_post_ids:
+                            continue
                         post = post_lookup.get(post_id)
                         upvotes = getattr(post, "score", 0) if post else 0
 
@@ -1580,7 +1602,7 @@ RULES:
             # ── Discussion trend (monthly post counts, last 12 months, all sources) ──
             discussion_trend = []
             all_social_posts = list(state.social_content.reddit_posts) if state.social_content else []
-            all_social_posts += list(state.social_content.generic_posts or []) if state.social_content else []
+            all_social_posts += discovery_generic_posts
             if all_social_posts:
                 from collections import Counter
                 from datetime import timedelta
@@ -1629,8 +1651,32 @@ RULES:
             fs = state.filtering_stats or {}
             urls_searched = fs.get("total_urls_searched", 0)
             urls_relevant = fs.get("total_urls_relevant", 0)
+            if excluded_hn_post_ids:
+                hn_relevant = fs.get(
+                    "hackernews_urls_relevant",
+                    fs.get("hackernews_posts_collected", 0),
+                )
+                urls_relevant = max(
+                    0,
+                    urls_relevant - min(len(excluded_hn_post_ids), hn_relevant),
+                )
             scm = getattr(state, 'social_content_metrics', None)
             scm_dict = scm if isinstance(scm, dict) else {}
+            total_engagement = scm_dict.get("total_engagement", 0)
+            avg_engagement = scm_dict.get("avg_engagement_per_source", 0)
+            if excluded_hn_posts and scm_dict:
+                total_engagement = max(
+                    0,
+                    total_engagement - sum(post.score for post in excluded_hn_posts),
+                )
+                visible_source_count = max(
+                    0,
+                    scm_dict.get("total_sources", 0) - len(excluded_hn_posts),
+                )
+                avg_engagement = (
+                    round(total_engagement / visible_source_count, 1)
+                    if visible_source_count > 0 else 0
+                )
             methodology = {
                 "urls_searched": urls_searched,
                 "urls_relevant": urls_relevant,
@@ -1638,8 +1684,8 @@ RULES:
                 "quality_tier": state.social_content_quality_tier or "",
                 "pain_point_quality_tier": state.pain_point_quality_tier or "",
                 "pain_point_confidence": state.pain_point_confidence_score or 0,
-                "total_engagement": scm_dict.get("total_engagement", 0),
-                "avg_engagement": scm_dict.get("avg_engagement_per_source", 0),
+                "total_engagement": total_engagement,
+                "avg_engagement": avg_engagement,
             }
 
             # ── Community source names (Reddit subreddits + generic platform labels) ──
@@ -1655,7 +1701,7 @@ RULES:
                 # Generic sources by platform label
                 generic_sources = [
                     _platform_labels.get(p.platform, p.platform)
-                    for p in (state.social_content.generic_posts or [])
+                    for p in discovery_generic_posts
                     if p.platform
                 ]
                 subreddit_names = sorted(set(reddit_sources + generic_sources))
@@ -1664,7 +1710,7 @@ RULES:
                 from collections import Counter
                 all_source_labels = (
                     [getattr(p, "subreddit", "") for p in state.social_content.reddit_posts if getattr(p, "subreddit", "")]
-                    + [_platform_labels.get(p.platform, p.platform) for p in (state.social_content.generic_posts or []) if p.platform]
+                    + [_platform_labels.get(p.platform, p.platform) for p in discovery_generic_posts if p.platform]
                 )
                 subreddit_post_counts = dict(Counter(all_source_labels).most_common(10))
 
@@ -1729,7 +1775,7 @@ RULES:
                         "url": p.url,
                         "created_utc": p.created_utc.isoformat() if p.created_utc else "",
                     })
-                for p in (state.social_content.generic_posts or []):
+                for p in discovery_generic_posts:
                     container = _platform_labels.get(p.platform, p.platform)
                     all_sample_posts.append({
                         "title": p.title[:200],
@@ -1740,6 +1786,18 @@ RULES:
                         "created_utc": p.created_utc.isoformat() if p.created_utc else "",
                     })
                 social_posts_sample = sorted(all_sample_posts, key=lambda x: x["score"], reverse=True)[:10]
+
+            sources_searched = None if state.sources_searched is None else {
+                source: dict(details) if isinstance(details, dict) else details
+                for source, details in state.sources_searched.items()
+            }
+            if sources_searched and "hackernews" in sources_searched and isinstance(
+                sources_searched["hackernews"], dict
+            ):
+                sources_searched["hackernews"]["posts_found"] = sum(
+                    1 for post in discovery_generic_posts
+                    if post.platform == "hackernews"
+                )
 
             # ── Assemble final structure ──
             discovery_data = {
@@ -1752,7 +1810,7 @@ RULES:
                 "subreddit_names": subreddit_names,
                 "subreddit_post_counts": subreddit_post_counts,
                 "data_attribution": f"Public community activity from {', '.join(sorted(set(subreddit_names))) or 'Reddit'}",
-                "sources_searched": state.sources_searched,
+                "sources_searched": sources_searched,
                 "discussion_trend": discussion_trend,
                 "discussion_growth_pct": growth_pct,
             }
@@ -3334,21 +3392,30 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             return PlatformSearchResult()
 
     def _search_hackernews_pipeline(self, search_queries: list, niche_description: str) -> PlatformSearchResult:
-        """Full HN pipeline: Algolia search + token_jaccard filtering + collect."""
+        """Full HN pipeline: Algolia candidates → strict semantic gate → collect."""
         try:
             hn_queries = [q.query for q in search_queries if q.platform in ("hackernews", "both")]
             if not hn_queries:
                 hn_queries = [q.query for q in search_queries[:8]]
             logger.info(f"[HN] Collecting stories via Algolia API ({len(hn_queries)} queries)...")
-            hn_posts = self.hackernews_tool.search_and_collect(
+            from ..utils.validation.niche_anchor import format_anchor_block
+            collection = self.hackernews_tool.search_relevant_and_collect(
                 queries=hn_queries,
                 niche_description=niche_description,
                 min_points=settings.min_hn_points,
                 min_hn_comments=settings.min_hn_comments,
                 max_total=25,
+                anchor_guidance=format_anchor_block(self.state.niche_context),
             )
-            logger.info(f"[HN] Collected {len(hn_posts)} stories")
-            return PlatformSearchResult(posts=hn_posts)
+            logger.info(
+                f"[HN] Collected {len(collection.posts)} stories "
+                f"({collection.relevant_count}/{collection.candidate_count} relevant candidates)"
+            )
+            return PlatformSearchResult(
+                posts=collection.posts,
+                unique_results_count=collection.candidate_count,
+                relevant_urls_count=collection.relevant_count,
+            )
         except Exception as exc:
             logger.warning(f"[HN] Pipeline failed (non-fatal): {exc}")
             return PlatformSearchResult()
@@ -3588,10 +3655,11 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
         yt_searched = yt_result.unique_results_count
         yt_collected = len(youtube_posts)
         hn_searched = hn_result.unique_results_count
+        hn_relevant = hn_result.relevant_urls_count
         hn_collected = len(hn_posts)
 
         total_searched = reddit_searched + twitter_searched + yt_searched + hn_searched
-        total_relevant = reddit_relevant + twitter_relevant + yt_collected + hn_collected
+        total_relevant = reddit_relevant + twitter_relevant + yt_collected + hn_relevant
 
         self.state.filtering_stats = {
             "reddit_urls_searched": reddit_searched,
@@ -3603,6 +3671,7 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             "youtube_urls_searched": yt_searched,
             "youtube_posts_collected": yt_collected,
             "hackernews_urls_searched": hn_searched,
+            "hackernews_urls_relevant": hn_relevant,
             "hackernews_posts_collected": hn_collected,
             "total_urls_searched": total_searched,
             "total_urls_relevant": total_relevant,
@@ -3622,7 +3691,10 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
         if yt_searched > 0:
             logger.info(f"[Filtering Stats] YouTube: {yt_collected}/{yt_searched} collected")
         if hn_searched > 0:
-            logger.info(f"[Filtering Stats] HN: {hn_collected}/{hn_searched} collected")
+            logger.info(
+                f"[Filtering Stats] HN: {hn_relevant}/{hn_searched} relevant, "
+                f"{hn_collected} collected"
+            )
 
         # Validate social content quality
         from ..utils.validation import SocialContentValidator

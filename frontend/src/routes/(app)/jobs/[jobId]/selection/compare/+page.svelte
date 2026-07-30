@@ -34,6 +34,7 @@
     founderFitResultFor,
   } from "$lib/selection/founderFitScope";
   import { finiteUnitScore } from "$lib/utils/displayGuards";
+  import { adversarialReviewFinding } from "$lib/utils/adversarialReview";
 
   let { data }: { data: PageData } = $props();
 
@@ -253,6 +254,17 @@
     return valid !== null ? Math.round(valid * 100) : 0;
   }
 
+  function knownConcern(idea: (typeof data.workspace.ideas)[number]): string {
+    const adversarial = adversarialReviewFinding(idea);
+    if (adversarial && idea.red_team_verdict?.trim().toLowerCase() !== "survives") {
+      return [adversarial.label, ...adversarial.details].join(" — ");
+    }
+    return idea.critic_concern
+      ?? idea.incumbent_parity
+      ?? idea.data_acquisition_notes
+      ?? "No concern is recorded.";
+  }
+
   type RowKind = "score" | "text" | "narrative";
   const marketRows = $derived.by(() => {
     const ideas = data.workspace.ideas;
@@ -267,7 +279,7 @@
       { key: "evidence_anchor", fallback: "Evidence anchor", kind: "narrative", values: col((i) => i.source_pain ?? i.pain_points_addressed?.[0] ?? "No direct pain anchor is available.") },
       { key: "audience", fallback: "Audience", kind: "narrative", values: col((i) => i.source_segment ?? i.target_personas?.[0] ?? "No audience anchor is available.") },
       { key: "distinctive_wedge", fallback: "Distinctive wedge", kind: "narrative", values: col((i) => i.differentiation_locus ?? i.innovation_angle ?? i.differentiation_factors?.[0] ?? i.value_proposition) },
-      { key: "known_concern", fallback: "Known concern", kind: "narrative", values: col((i) => i.critic_concern ?? i.incumbent_parity ?? i.data_acquisition_notes ?? "No concern is recorded.") },
+      { key: "known_concern", fallback: "Known concern", kind: "narrative", values: col(knownConcern) },
     ];
     return rows.map((row) => ({
       ...row,

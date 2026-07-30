@@ -21,9 +21,10 @@ const ShareTokenParamSchema = z.object({
   shareToken: z.string().regex(/^[A-Za-z0-9_-]{22}$/, 'Invalid share token format'),
 });
 
-// Fields to strip from public report responses
+// Execution internals to strip from public report responses. Research-quality
+// grades and caveats are part of the report's evidence contract and must stay
+// identical between the owner and shared views.
 const STRIPPED_FIELDS = [
-  'data_quality_summary',
   'stage_timing_summary',
 ];
 

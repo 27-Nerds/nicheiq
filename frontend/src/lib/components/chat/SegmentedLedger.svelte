@@ -180,7 +180,7 @@
         : "Waiting for a worker. The analyst unlocks at the next checkpoint.";
     }
     const stage = workerStageCounts.total
-      ? `Stage ${workerStageCounts.completed} of ${workerStageCounts.total}`
+      ? `Stage ${workerStageCounts.current} of ${workerStageCounts.total}`
       : "Worker active";
     const percent = progressPercent != null ? ` · ${Math.round(progressPercent)}%` : "";
     return `${stage}${percent}. The conversation stays here and unlocks automatically when research pauses.`;

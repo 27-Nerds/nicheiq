@@ -13,9 +13,10 @@
   interface Props {
     open: boolean;
     jobId: string;
+    restoreFocusTo?: HTMLElement | null;
   }
 
-  let { open = $bindable(false), jobId }: Props = $props();
+  let { open = $bindable(false), jobId, restoreFocusTo }: Props = $props();
 
   let shareInfo = $state<ShareInfo | null>(null);
   let loading = $state(false);
@@ -113,11 +114,13 @@
   eyebrow="Sharing"
   title="Share report"
   description="Anyone with the link can view report findings and sources. Analyst conversations, Decision Lab records, and annotations stay private."
+  {restoreFocusTo}
   onRequestClose={() => (open = false)}
 >
   {#if loading}
-    <div class="share-loading">
+    <div class="share-loading" role="status" aria-live="polite">
       <Loader2 class="w-6 h-6 animate-spin" aria-hidden="true" />
+      <span class="sr-only">Loading share settings</span>
     </div>
   {:else}
     <!-- Toggle -->
@@ -127,7 +130,7 @@
         type="button"
         onclick={handleToggle}
         disabled={toggling}
-        aria-label="Toggle sharing"
+        aria-label={shareInfo?.isShared ? "Disable sharing" : "Enable sharing"}
         class="share-switch"
         class:is-on={shareInfo?.isShared}
         role="switch"
@@ -141,7 +144,14 @@
       <div class="share-url-block">
         <div class="share-url-row">
           <input type="text" readonly value={shareUrl} class="share-url-input" aria-label="Share link" />
-          <button type="button" onclick={handleCopy} class="share-copy" class:is-copied={copied}>
+          <button
+            type="button"
+            onclick={handleCopy}
+            class="share-copy"
+            class:is-copied={copied}
+            aria-label={copied ? "Share link copied" : "Copy share link"}
+            aria-live="polite"
+          >
             {#if copied}
               <Check class="w-4 h-4" aria-hidden="true" />
               Copied
@@ -218,8 +228,9 @@
     display: inline-flex;
     flex: 0 0 auto;
     width: 2.75rem;
-    height: 1.5rem;
-    padding: 2px;
+    height: 2rem;
+    align-items: center;
+    padding: 0.375rem 0.125rem;
     border: 0;
     border-radius: var(--radius-full);
     background: var(--color-border-emphasis);

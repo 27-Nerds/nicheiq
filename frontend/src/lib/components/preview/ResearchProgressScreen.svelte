@@ -100,13 +100,13 @@
       ? queuePosition
         ? `Queue position ${queuePosition}`
         : "The run is queued and will start automatically."
-      : `Stage ${stageCounts.completed} of ${stageCounts.total}`,
+      : `Stage ${stageCounts.current} of ${stageCounts.total}`,
   );
 
-  // 3-phase pipeline track (replaces the hidden PhaseNav journey cue + the ring):
-  // each segment renders done / active / queued / pending, with a fill bar.
-  const phases = ["Discovery", "Deep Research", "Build"];
-  const activePhase = $derived(isDiscovery ? 0 : 1);
+  // Purchased lifecycle only. "Build" is an optional post-report deliverable, not
+  // an automatic research phase; the required user choice belongs between the runs.
+  const phases = ["Discovery", "Pick ideas", "Deep Research"];
+  const activePhase = $derived(isDiscovery ? 0 : 2);
   const phaseState = (i: number): "done" | "active" | "queued" | "pending" =>
     i < activePhase
       ? "done"
@@ -171,7 +171,7 @@
       {#if isQueued}
         In&nbsp;queue{#if queuePosition}&nbsp;· position {queuePosition}{/if}
       {:else}
-        Stage {stageCounts.completed} / {stageCounts.total} · {pct}%
+        Stage {stageCounts.current} / {stageCounts.total} · {pct}%
       {/if}
     </p>
 

@@ -32,6 +32,19 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     ...rawJob,
     solutionIdeas: normalizedJobSolutions.solutions,
   };
+  // Paid pool mutations temporarily leave AWAITING_SELECTION even though the user
+  // still owns the same selection workspace. Key off the exact dispatch kind and
+  // its valid lifecycle states so initial Discovery and Deep Research queues keep
+  // their lightweight progress-page data contracts.
+  const selectionMutationActive =
+    (
+      job.activeDispatchKind === 'SEED_IDEA'
+      && ['QUEUED', 'RUNNING'].includes(job.status)
+    )
+    || (
+      job.activeDispatchKind === 'REGENERATE'
+      && ['QUEUED', 'REGENERATING'].includes(job.status)
+    );
 
   // Phase 2: Conditional parallel fetches based on job status
   let reportSummary: ReportSummary | null = null;
@@ -53,7 +66,10 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
   const conditionalFetches: Promise<void>[] = [];
 
-  if (['QUEUED', 'PENDING', 'RUNNING', 'RUNNING_PHASE2'].includes(job.status)) {
+  if (
+    ['QUEUED', 'PENDING', 'RUNNING', 'RUNNING_PHASE2'].includes(job.status)
+    && !selectionMutationActive
+  ) {
     conditionalFetches.push(
       fetchBackend('/api/public/catalog/top-pain-points?limit=8&freePreview=true', {
         signal: AbortSignal.timeout(3000),
@@ -78,7 +94,10 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
   // Statuses where SelectionWorkbench (and its score-hint overlays) can render — the
   // served capThresholds keep the "capped at X" copy aligned with the deployed env.
-  if (['AWAITING_SELECTION', 'REGENERATING', 'RUNNING_PHASE2'].includes(job.status)) {
+  if (
+    ['AWAITING_SELECTION', 'REGENERATING', 'RUNNING_PHASE2'].includes(job.status)
+    || selectionMutationActive
+  ) {
     conditionalFetches.push(
       fetchBackend('/api/selection/metric-explanations', { headers })
         .then(r => r.ok ? r.json() : null)
@@ -87,7 +106,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     );
   }
 
-  if (['AWAITING_SELECTION', 'REGENERATING'].includes(job.status)) {
+  if (['AWAITING_SELECTION', 'REGENERATING'].includes(job.status) || selectionMutationActive) {
     conditionalFetches.push(
       fetchBackend(`/api/jobs/${params.jobId}/solutions`, { headers })
         .then(async (response) => {
@@ -128,14 +147,17 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   // compact run overview does not re-fetch or duplicate the Discovery dossier.
   // A 404/204 is a legitimate legacy absence; transport/5xx failures are surfaced
   // separately so the page can offer Retry instead of pretending the dossier is empty.
-  if ([
-    'AWAITING_SELECTION',
-    'REGENERATING',
-    'AWAITING_GATE',
-    'FAILED',
-    'CANCELLED',
-    'RUNNING_PHASE2',
-  ].includes(job.status)) {
+  if (
+    [
+      'AWAITING_SELECTION',
+      'REGENERATING',
+      'AWAITING_GATE',
+      'FAILED',
+      'CANCELLED',
+      'RUNNING_PHASE2',
+    ].includes(job.status)
+    || selectionMutationActive
+  ) {
     conditionalFetches.push(
       fetchBackend(`/api/jobs/${params.jobId}/discovery-data`, { headers })
         .then(async (response) => {

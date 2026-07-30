@@ -65,7 +65,10 @@ const mockReadFileSync = vi.fn().mockReturnValue(
     executive_summary: 'Test summary',
     research_metadata: { secret: 'data' },
     seo_calculation_transparency: { internal: 'info' },
-    data_quality_summary: { quality: 'high' },
+    data_quality_summary: {
+      overall_data_quality: 'HIGH',
+      quality_caveats: ['One source was incomplete.'],
+    },
     stage_timing_summary: { total: 120 },
   })
 );
@@ -443,10 +446,14 @@ describe('GET /api/shared/:shareToken', () => {
       executive_summary: 'Test summary',
       research_metadata: { secret: 'data' },
       seo_calculation_transparency: { internal: 'info' },
+      data_quality_summary: {
+        overall_data_quality: 'HIGH',
+        quality_caveats: ['One source was incomplete.'],
+      },
     });
   });
 
-  it('strips data_quality_summary and stage_timing_summary but keeps research_metadata and seo_calculation_transparency', async () => {
+  it('keeps research quality and strips only execution timing from shared reports', async () => {
     mockFindUniqueShare.mockResolvedValue({
       ...activeShare,
       job: completedJob,
@@ -460,7 +467,12 @@ describe('GET /api/shared/:shareToken', () => {
 
     expect(response.body).toHaveProperty('research_metadata');
     expect(response.body).toHaveProperty('seo_calculation_transparency');
-    expect(response.body).not.toHaveProperty('data_quality_summary');
+    expect(response.body).toEqual(expect.objectContaining({
+      data_quality_summary: {
+        overall_data_quality: 'HIGH',
+        quality_caveats: ['One source was incomplete.'],
+      },
+    }));
     expect(response.body).not.toHaveProperty('stage_timing_summary');
   });
 

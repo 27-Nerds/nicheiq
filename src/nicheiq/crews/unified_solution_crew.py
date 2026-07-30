@@ -1601,6 +1601,71 @@ class UnifiedSolutionCrew:
                 break
         return " ".join(words)
 
+    def _capability_phrases(self, ideas: list) -> dict:
+        """{solution_name: BUYER-vocabulary capability phrase} for search queries — one batched
+        LLM call, cached per run, fail-soft to {} (callers fall back to `_mechanism_keywords`).
+
+        Why this exists (2026-07-30 §6(a) vocabulary fix): `_mechanism_keywords` derives query
+        words from `mechanism_tag` + the value proposition's first content words, which yields the
+        idea's own INVENTED shape vocabulary, not the words a buyer or the market uses. Live proof
+        — ClearingCalc (a POS payout-decomposition tool) produced 'parametric calculator stop
+        manually hunting sales', so its parity queries searched a calculator shape instead of
+        payout reconciliation and returned nothing about Bookkeep / Link My Books / Synder, the
+        real $19-65/mo direct competitors. The idea shipped as `incumbent_parity: none found` and
+        was killed by hand a day later.
+
+        The phrase is what a BUYER would type to find a tool that does this — category/outcome
+        words, no invented product name — so it can (a) confirm parity against a known incumbent
+        and (b) DISCOVER unknown competitors via a vendor-free query, which name-anchored queries
+        structurally cannot do."""
+        cached = getattr(self, "_capability_phrase_map", None)
+        if cached is None:
+            cached = self._capability_phrase_map = {}
+        todo = [i for i in ideas
+                if (getattr(i, "solution_name", "") or "").strip() not in cached]
+        if not todo:
+            return cached
+        try:
+            from pydantic import BaseModel
+            from pydantic import Field as _F
+
+            class _Capability(BaseModel):
+                idea_name: str = ""
+                phrase: str = _F("", description="3-6 words, buyer/market vocabulary")
+
+            class _Capabilities(BaseModel):
+                items: list[_Capability] = _F(default_factory=list)
+
+            rows = "\n\n".join(
+                f"### {(getattr(i, 'solution_name', '') or '?').strip()}\n"
+                f"- value_prop: {sanitize_social_content(getattr(i, 'value_proposition', '') or '')[:200]}\n"
+                f"- what it does: {sanitize_social_content(getattr(i, 'technical_approach', '') or '')[:200]}\n"
+                f"- features: {sanitize_social_content('; '.join((getattr(i, 'core_features', None) or [])[:3]))[:220]}"
+                for i in todo)
+            r, usage = LLMService.invoke_structured(
+                prompt=("For EACH idea below, write the 3-6 word phrase a BUYER would type into "
+                        "Google to find an existing tool that does this job. Use the CATEGORY and "
+                        "OUTCOME words the market already uses (e.g. 'payout deposit "
+                        "reconciliation', 'multi-entity consolidation software') — never the "
+                        "idea's invented product name, never its internal shape words "
+                        "('calculator', 'dashboard', 'engine', 'tracker') unless the market "
+                        "genuinely names the category that way. Key each entry by the EXACT "
+                        "idea name given. Return JSON.\n\n"
+                        + fence_content(rows, source="generated-ideas", label="UNTRUSTED IDEAS")),
+                output_model=_Capabilities, temperature=0, timeout=120,
+                model_name=settings.report_structured_llm, reasoning_effort="minimal")
+            if usage is not None and getattr(self, "cost_tracker", None):
+                self.cost_tracker.record_llm_usage("Stage 7 - Capability Phrases", usage.to_dict())
+            for item in (getattr(r, "items", None) or []):
+                name = (item.idea_name or "").strip()
+                phrase = " ".join((item.phrase or "").split())[:60]
+                if name and phrase:
+                    cached[name] = phrase
+            logger.info(f"[CapabilityPhrase] {len(cached)}/{len(ideas)} idea(s) mapped")
+        except Exception as e:  # noqa: BLE001 — callers fall back to _mechanism_keywords
+            logger.warning(f"[CapabilityPhrase] skipped (non-fatal): {str(e)[:120]}")
+        return cached
+
     # Max mechanism families the adjacent-market probe reformulates/searches per run — bounds
     # cost at ≤2 LLM calls + ≤(2×cap) searches regardless of idea count.
     _ADJACENT_FAMILY_CAP = 6
@@ -2248,16 +2313,45 @@ class UnifiedSolutionCrew:
                 tb = {w for w in (b or "").lower().split() if len(w) > 3}
                 return len(ta & tb)
 
+            # Buyer-vocabulary capability phrases for the queries (§6(a) vocabulary fix,
+            # 2026-07-30). Fail-soft: an empty map degrades every query to the previous
+            # `_mechanism_keywords` behavior, so this can never make the probe worse.
+            phrases = self._capability_phrases(top)
+            # Vendor-free discovery budget: name-anchored queries can only CONFIRM parity for
+            # incumbents already known from the niche-level probe — they can never discover a
+            # mechanism-specific competitor whose name shares no vocabulary with the idea
+            # (live miss: Bookkeep/Link My Books/Synder for ClearingCalc). Spent on the
+            # composite-ranked ideas first; 0 disables the arm.
+            #
+            # The counter is INSTANCE-level, not local: this probe runs once over the full set
+            # (`execute_pipeline`) and again per `_score_wave` for revision/backfill-born ideas —
+            # a live regenerate_ideas job called it FOUR times, so a per-call budget would have
+            # been 4× the documented "per run" cap. Same job also reported market-awareness
+            # spend at 52/60, i.e. this niche has little search headroom to give away.
+            spent = getattr(self, "_parity_discovery_spent", 0)
+            discovery_left = max(0, settings.parity_discovery_queries_per_run - spent)
+            # Short niche label for query framing — `niche` is the full niche_description
+            # (~400 chars), and the old f"{niche} software {kw}"[:120] fallback truncated the
+            # mechanism words away entirely, searching a prose fragment of the description.
+            niche_label = " ".join(niche.split()[:6])[:60]
+
             snippets = []
             for idea in top:
-                kw = self._mechanism_keywords(idea)
+                name = (getattr(idea, "solution_name", "") or "").strip()
+                kw = phrases.get(name) or self._mechanism_keywords(idea)
                 idea_text = f"{getattr(idea, 'value_proposition', '')} {getattr(idea, 'technical_approach', '')}"
                 ranked = sorted(incumbents,
                                 key=lambda r: -_overlap(r.get("focus", ""), idea_text))
                 queries = [f'"{r["name"]}" {kw}'[:120] for r in ranked[:2]
                            if _overlap(r.get("focus", ""), idea_text) > 0]
+                if discovery_left > 0:
+                    # Capability FIRST so it survives the 120-char cap.
+                    queries.append(f"{kw} software {niche_label}"[:120])
+                    discovery_left -= 1
+                    self._parity_discovery_spent = getattr(
+                        self, "_parity_discovery_spent", 0) + 1
                 if not queries:
-                    queries = [f"{niche} software {kw}"[:120]]
+                    queries = [f"{kw} software {niche_label}"[:120]]
                 for q in queries:
                     try:
                         snippets.append(
@@ -4972,7 +5066,16 @@ class UnifiedSolutionCrew:
             if settings.enable_direction_aware_eval:
                 grounding.winning_angle = self._provisional_angle(expanded) or ""  # P1b: loop optimizes on-direction
             winner = tournament_refine_cell_v4(
-                [expanded], grounding, rounds=settings.tournament_rounds, search=search, usage_sink=usages)
+                [expanded],
+                grounding,
+                # Exact Concept Forge options already had their one allowed
+                # schema-fill expansion above. Keep the review + route check,
+                # but do not let a later optimization round replace the chosen
+                # workflow to improve its score against retained evidence.
+                rounds=1 if cell.get("lock_identity") else settings.tournament_rounds,
+                search=search,
+                usage_sink=usages,
+            )
             winner = winner or expanded
             # RESET-THEN-STAMP: unanchored_hypothesis is a CODE-FILLED field, but it lives on the
             # same BaseSolutionIdea schema the generator/loop LLMs populate, so it can arrive
@@ -6580,7 +6683,12 @@ class UnifiedSolutionCrew:
             payload={"seed_text": seed_text or "", "tool_ref": tool_ref or ""},
             anchor_pain_titles=anchor_titles,
         )
-        cell = {"frame": "user_seed", "focus": focus, "pain": None, "segment": segment}
+        cell = {
+            "frame": "user_seed",
+            "focus": focus,
+            "pain": None,
+            "segment": segment,
+        }
 
         try:
             spec = FRAME_REGISTRY["user_seed"]
@@ -6712,13 +6820,68 @@ class UnifiedSolutionCrew:
             canonical_brief, pain_ref, tool_ref, pains, segments,
         )
         anchor_titles, segment = list(resolved.anchor_pain_titles), resolved.segment
+        evidence = proposal.get("evidence")
+        source_anchors = (
+            evidence.get("sourceAnchors")
+            if isinstance(evidence, dict)
+            and isinstance(evidence.get("sourceAnchors"), list)
+            else []
+        )
+        canonical_pain_titles = {
+            (getattr(pain, "title", "") or "").strip().casefold():
+            (getattr(pain, "title", "") or "").strip()
+            for pain in pains
+            if (getattr(pain, "title", "") or "").strip()
+        }
+        anchored_titles = []
+        source_audiences = []
+        for anchor in source_anchors:
+            if not isinstance(anchor, dict):
+                continue
+            pain_title = str(anchor.get("pain") or "").strip()
+            canonical_title = canonical_pain_titles.get(pain_title.casefold())
+            if canonical_title and canonical_title not in anchored_titles:
+                anchored_titles.append(canonical_title)
+            audience = str(anchor.get("audience") or "").strip()
+            if audience and audience.casefold() not in {
+                value.casefold() for value in source_audiences
+            }:
+                source_audiences.append(audience)
+        if anchored_titles:
+            # These are server-validated parent-candidate anchors. Keep every
+            # surviving checkpoint pain for combined directions instead of
+            # collapsing the exact option to the first legacy `pain_ref`.
+            anchor_titles = anchored_titles
+        target_buyer = next(
+            (
+                str(a.get("to") or "").strip()
+                for a in axes
+                if isinstance(a, dict) and a.get("axis") == "buyer"
+            ),
+            "",
+        )
+        target_audience = (
+            target_buyer
+            or (source_audiences[0] if len(source_audiences) == 1 else "")
+        )
+        if target_audience:
+            # An explicit buyer change wins; otherwise keep the unambiguous
+            # server-validated source audience. The resolver segment belongs to
+            # the attached pain and may be a different market.
+            segment = SimpleNamespace(segment_name=target_audience)
         focus = FrameFocus(
             frame="user_seed",
             key=dispatch_id,
             payload={"seed_text": canonical_brief, "tool_ref": tool_ref or ""},
             anchor_pain_titles=anchor_titles,
         )
-        cell = {"frame": "user_seed", "focus": focus, "pain": None, "segment": segment}
+        cell = {
+            "frame": "user_seed",
+            "focus": focus,
+            "pain": None,
+            "segment": segment,
+            "lock_identity": True,
+        }
 
         mechanism = next(
             (str(a.get("to")) for a in axes

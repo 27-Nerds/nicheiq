@@ -73,6 +73,22 @@ describe("scoreRationale", () => {
     );
   });
 
+  it("does not mislabel an adversarial evidence cap as an incumbent", () => {
+    expect(
+      scoreRationale(
+        base({
+          why_it_works_short: "strong pain",
+          incumbent_parity: "shipped by evidence: the proposed data source does not cover the buyer",
+          red_team_verdict: "killed",
+          market_fit_score: 0.45,
+        }),
+        "market_fit",
+      ),
+    ).toBe(
+      "strong pain — the fit signal was reduced because adversarial evidence challenged the core mechanism. Deep Research can verify this early signal",
+    );
+  });
+
   it("market_fit appends the partial-incumbent-parity cap clause when the cap bound", () => {
     expect(
       scoreRationale(base({ why_it_works_short: "strong pain", incumbent_parity: "partial", market_fit_score: 0.55 }), "market_fit"),

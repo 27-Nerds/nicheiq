@@ -411,6 +411,7 @@ describe('Security Audit: Jobs API', () => {
         .set(validUserHeaders)
         .send({
           niche: 'A niche long enough to pass validation',
+          expectedCost: 5,
           userId: 'attacker-injected-id', // should be ignored
         });
 
@@ -424,7 +425,8 @@ describe('Security Audit: Jobs API', () => {
         'interactive', // jobMode
         undefined, // entryMode
         undefined, // ideaFocus (persisted on the Job row since the resume-completeness fix)
-        false // chatMode (Phase B: entitlement-coerced server-side, false when not requested)
+        false, // chatMode (Phase B: entitlement-coerced server-side, false when not requested)
+        5 // expectedCost (price-CAS binding)
       );
     });
 
@@ -547,7 +549,7 @@ describe('Security Audit: Jobs API', () => {
         const res = await request(app)
           .post('/api/jobs')
           .set(validUserHeaders)
-          .send({ niche: 'Exactly 10' }); // 10 chars
+          .send({ niche: 'Exactly 10', expectedCost: 5 }); // 10 chars
         expect(res.status).toBe(201);
       });
 
@@ -564,6 +566,7 @@ describe('Security Audit: Jobs API', () => {
           .set(validUserHeaders)
           .send({
             niche: 'A valid niche that passes validation',
+            expectedCost: 5,
             malicious: '<script>alert(1)</script>',
           });
         expect(res.status).toBe(201);
@@ -598,6 +601,7 @@ describe('Security Audit: Jobs API', () => {
           .set(validUserHeaders)
           .send({
             niche: 'A valid niche for testing project types',
+            expectedCost: 5,
             allowedProjectTypes: ['saas', 'directory'],
           });
 

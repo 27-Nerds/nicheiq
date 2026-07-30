@@ -13,7 +13,7 @@ export const POST: RequestHandler = async ({ params, locals, request }) => {
     throw error(401, 'Unauthorized');
   }
 
-  // Forward the optional body (e.g. { idea_focus }) to the backend.
+  // Preserve the browser-confirmed price and idempotency key across the proxy boundary.
   const body = await request.json().catch(() => ({}));
 
   const response = await fetchBackend(`/api/jobs/${params.jobId}/regenerate-ideas`, {

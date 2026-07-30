@@ -71,40 +71,32 @@ describe("DecisionRail", () => {
           shortlist: { version: 0, maxItems: 3, items: [], staleItems: [] },
           deepResearch: { eligible: false, optionalWorkRequired: false, blockers: ["NO_CURRENT_SHORTLIST"] },
         }),
+        deepResearchCost: 100,
         ...callbacks(),
       },
     });
 
     expect(view.getByText("Select 1–3 ideas to continue.")).toBeInTheDocument();
+    expect(view.getByText("100 credits total")).toBeInTheDocument();
     expect(view.getByText("Select at least one idea to review the research scope.")).toBeInTheDocument();
     expect(view.getByRole("button", { name: "Review and start" })).toBeDisabled();
   });
 
-  it("warns about same-product shortlist entries without blocking the start", () => {
+  it("explains the actual operation that temporarily blocks review", () => {
     const view = render(DecisionRail, {
       props: {
         journey: journey(),
-        overlapWarnings: [{
-          ideaNames: ["Signal desk", "Evidence map"],
-          sharedProduct: "vague-note to exact-edit translator",
-        }],
+        busy: true,
+        busyReason: "Another idea update is running. You can review the research scope when it finishes.",
         ...callbacks(),
       },
     });
 
-    expect(view.getByRole("status")).toHaveTextContent(
-      "Signal desk and Evidence map are variants of the same product (vague-note to exact-edit translator).",
-    );
-    // Advisory only — spending two slots on one product is the user's call to make.
-    expect(view.getByRole("button", { name: "Review and start" })).toBeEnabled();
-  });
-
-  it("stays quiet when no two shortlisted ideas share a product", () => {
-    const view = render(DecisionRail, {
-      props: { journey: journey(), overlapWarnings: [], ...callbacks() },
-    });
-
-    expect(view.queryByRole("status")).not.toBeInTheDocument();
+    expect(view.getByText(
+      "Another idea update is running. You can review the research scope when it finishes.",
+    )).toBeInTheDocument();
+    expect(view.queryByText("Wait for the shortlist to finish saving.")).not.toBeInTheDocument();
+    expect(view.getByRole("button", { name: "Review and start" })).toBeDisabled();
   });
 
   it("offers the correct recovery action when saving the shortlist fails", async () => {

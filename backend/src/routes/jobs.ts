@@ -57,6 +57,29 @@ function asJsonRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function isSelectionMutationActive(
+  job: NonNullable<Awaited<ReturnType<typeof getJob>>>,
+): boolean {
+  if (!job.activeDispatchId) return false;
+  const dispatch = job.dispatches.find(({ id }) => id === job.activeDispatchId);
+  if (
+    !dispatch
+    || (
+      dispatch.state !== DispatchState.AUTHORIZED
+      && dispatch.state !== DispatchState.CLAIMED
+    )
+  ) {
+    return false;
+  }
+  if (dispatch.kind === DispatchKind.SEED_IDEA) {
+    return job.status === JobStatus.QUEUED || job.status === JobStatus.RUNNING;
+  }
+  if (dispatch.kind === DispatchKind.REGENERATE) {
+    return job.status === JobStatus.QUEUED || job.status === JobStatus.REGENERATING;
+  }
+  return false;
+}
+
 async function settledSeedOutcome(jobId: string, sourceMessageId: string): Promise<string | null> {
   const receipts = await prisma.chatMessage.findMany({
     where: { jobId, gateStage: 5, role: 'receipt' },
@@ -90,10 +113,17 @@ jobsRouter.post('/', requireInternalAuth, jobCreationLimiter, async (req: Authen
     // Use authenticated user's ID
     const userId = req.user!.id;
 
-    // Guided research (Phase B) is paid-only — server-side coerce to false for
-    // non-entitled users rather than 402ing the whole job-create request, so the
-    // request degrades to a normal (non-guided) job instead of failing outright.
-    const chatMode = input.chatMode ? await hasAnalystAccess(userId) : false;
+    // Never silently sell a different intake than the user confirmed. A guided request
+    // carries the guided first-segment price; coercing it to standard Discovery could
+    // charge a different product even before the price CAS runs.
+    if (input.chatMode && !(await hasAnalystAccess(userId))) {
+      res.status(403).json({
+        error: 'Guided research is not enabled for this account',
+        code: 'ANALYST_ACCESS_REQUIRED',
+      });
+      return;
+    }
+    const chatMode = input.chatMode === true;
 
     // The new Job, the exact charge that bought this attempt, and its dispatch authorization are
     // one commit. A dispatch can therefore never exist without its charge (or vice versa).
@@ -107,6 +137,7 @@ jobsRouter.post('/', requireInternalAuth, jobCreationLimiter, async (req: Authen
         input.entryMode,
         input.ideaFocus,
         chatMode,
+        input.expectedCost,
       );
       const dispatchId = await openDispatch(tx, {
         jobId: created.job.id,
@@ -166,6 +197,16 @@ jobsRouter.post('/', requireInternalAuth, jobCreationLimiter, async (req: Authen
       res.status(400).json({
         error: 'Validation error',
         details: error.errors,
+      });
+      return;
+    }
+
+    if (error instanceof PriceChangedError) {
+      res.status(409).json({
+        error: 'Research price changed; review the updated price before starting',
+        code: 'PRICE_CHANGED',
+        expectedCost: error.expectedCost,
+        actualCost: error.actualCost,
       });
       return;
     }
@@ -368,7 +409,10 @@ jobsRouter.get('/:jobId/discovery-data', requireInternalAuth, validateJobId, asy
       JobStatus.FAILED,
       JobStatus.CANCELLED,
     ];
-    if (!allowedStatuses.includes(job.status as JobStatus)) {
+    if (
+      !allowedStatuses.includes(job.status as JobStatus)
+      && !isSelectionMutationActive(job)
+    ) {
       res.status(400).json({ error: 'Discovery data not yet available' });
       return;
     }
@@ -421,7 +465,10 @@ jobsRouter.get('/:jobId/preview-report', requireInternalAuth, validateJobId, asy
       JobStatus.FAILED,
       JobStatus.CANCELLED,
     ];
-    if (!allowedStatuses.includes(job.status as JobStatus)) {
+    if (
+      !allowedStatuses.includes(job.status as JobStatus)
+      && !isSelectionMutationActive(job)
+    ) {
       res.status(400).json({ error: 'Preview report not yet available' });
       return;
     }
@@ -1095,6 +1142,12 @@ jobsRouter.post('/:jobId/select-solution', requireInternalAuth, validateJobId, a
       select: { id: true, state: true },
     });
     if (prior) {
+      // A lost-response retry can arrive after a deploy that predates transactional share
+      // revocation. Repair that legacy state before acknowledging the durable operation.
+      await prisma.discoveryShare.updateMany({
+        where: { jobId, isActive: true },
+        data: { isActive: false },
+      });
       res.json({ status: 'phase2_queued', operationId: prior.id, operationState: prior.state, idempotent: true });
       return;
     }
@@ -1200,6 +1253,15 @@ jobsRouter.post('/:jobId/select-solution', requireInternalAuth, validateJobId, a
       });
       if (flipped.count !== 1) throw new Error('DEEP_RESEARCH_START_CONFLICT');
 
+      // Revocation belongs to the same authorization boundary as the Job CAS, charge and
+      // dispatch. If any later step fails, the transaction restores the share along with the
+      // job and credits; once authorization commits, no share-enable transaction can cross
+      // the Job-row lock and reactivate it.
+      await tx.discoveryShare.updateMany({
+        where: { jobId, isActive: true },
+        data: { isActive: false },
+      });
+
       const charge = await chargeForStageWithPriceCasInTx(
         tx, userId, jobId, 'deep_research', 'deep_research', job.niche, input.expectedCost,
       );
@@ -1248,11 +1310,6 @@ jobsRouter.post('/:jobId/select-solution', requireInternalAuth, validateJobId, a
       console.error(`[Jobs] Phase-2 dispatch ${phase2Dispatch} delivery pending:`, deliveryError);
     }
 
-    // Auto-deactivate discovery share after successful enqueue (fire-and-forget)
-    prisma.discoveryShare.updateMany({
-      where: { jobId, isActive: true },
-      data: { isActive: false },
-    }).catch(err => console.error('Failed to deactivate discovery share:', err));
     const queuedSelection = await prisma.job.findUnique({
       where: { id: jobId },
       select: { selectedSolutionRefs: true },
@@ -2381,7 +2438,8 @@ jobsRouter.get('/:jobId/solutions', requireInternalAuth, validateJobId, async (r
         selectionFingerprint,
       },
       canRegenerate: (job.ideaBatchCompletedCount ?? 0) < MAX_IDEA_BATCHES,
-      ideaBatchCompletedCount: job.ideaBatchCompletedCount,
+      ideaBatchCompletedCount: job.ideaBatchCompletedCount ?? 0,
+      maxIdeaBatches: MAX_IDEA_BATCHES,
       activeOperation,
       status: job.status,
     });

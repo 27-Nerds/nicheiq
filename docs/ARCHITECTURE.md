@@ -70,7 +70,7 @@ User Input → Niche Description
 4. **ThreadRelevanceValidator**: LLM-based relevance filtering for remaining URLs
 5. **Reddit Tool (PRAW)**: Collects threads and comments → `RedditPost`
 6. **Twitter Tool**: Collects tweets (optional, currently disabled) → `TwitterThread`
-7. **Hacker News Tool (Algolia API)**: Direct search + comment collection → `SocialPost`
+7. **Hacker News Tool (Algolia API)**: Candidate search → strict semantic relevance gate → comment collection → `SocialPost`
 8. **Content Fencing**: Delimiter-based prompt injection defense on all scraped content
 9. **Hybrid Dedup**: n-gram + token Jaccard cross-source deduplication
 
@@ -81,7 +81,7 @@ NicheContext → QueryGenerator → Search Queries
             → TokenOverlapPrefilter → Pre-filtered URLs
             → ThreadRelevanceValidator → Validated URLs
             → PRAW → RedditPost[]
-            → HN Algolia API → SocialPost[] (generic)
+            → HN Algolia candidates → ThreadRelevanceValidator (fail-closed) → SocialPost[] (generic)
             → Cross-source Dedup → SocialContentCollection
                                    ├── reddit_posts
                                    ├── twitter_threads
@@ -91,6 +91,7 @@ NicheContext → QueryGenerator → Search Queries
 **Key Decisions**:
 - Token-overlap pre-filter before LLM validation saves ~30% API costs
 - HN uses Algolia API directly (free, no auth) — no Serper round-trip needed
+- HN comment trees are fetched only after semantic grade ≥2; accepted `SocialPost` records persist the grade
 - `SocialPost` generic model supports any future source (YouTube, Indie Hackers)
 - Content fencing uses delimiter markers (not XML tags) to survive RAG chunking
 - Per-source engagement normalization for cross-platform scoring
@@ -149,8 +150,8 @@ Stage 5 consumes the same unfenced structured shapes in the normal pipeline.
 **Quality passes (`flows/seed_enrichment.py`, both best-effort):** remix jobs (>1 pain) get an
 LLM-synthesized cross-niche `niche_context` (one structured call; the deterministic template from
 `catalog_seed.py` is the fallback on any failure). All seeded modes then run a targeted Hacker News
-evidence pass (permanent): pain/idea-derived queries → relevance
-post-filter + dedup → if ≥3 posts survive, `state.social_content` is set and checkpointed as
+evidence pass (permanent): pain/idea-derived queries → the shared fail-closed HN semantic gate
+(grade ≥2) → dedup → if ≥3 posts survive, `state.social_content` is set and checkpointed as
 `stage_2_social_content` (so Phase-2 resume keeps it, the stage-11 trend crew gets real data
 instead of its "Risky" missing-data fallback, and the report's evidence appendix has sources).
 Fewer than 3 posts → nothing is persisted (the checkpoint loader's quality gate would discard a

@@ -77,7 +77,7 @@ describe("ReportBrief", () => {
 
     expect(view.getByText("Go · evidence-limited")).toBeInTheDocument();
     expect(view.getByText("A concise product promise.")).toBeInTheDocument();
-    expect(view.getByRole("link", { name: /Review the biggest risk/ })).toHaveAttribute(
+    expect(view.getByRole("link", { name: /Review the evidence/ })).toHaveAttribute(
       "href",
       "/report?view=evidence",
     );
@@ -96,6 +96,59 @@ describe("ReportBrief", () => {
     });
 
     expect(view.getByText("Market fit 0.72 and feasibility 0.68.")).toBeInTheDocument();
+  });
+
+  it("keeps structured verdict adjustments available without exposing raw score rationale", () => {
+    const view = render(ReportBrief, {
+      props: {
+        report: report({
+          executive_dashboard: {
+            recommended_solution_snapshot: {
+              name: "Cold Start Atlas",
+              tagline: "Tune model cold starts with evidence",
+              core_value_prop: "A long generated value proposition.",
+              project_type: "SaaS",
+            },
+            go_no_go_verdict: {
+              verdict: "Conditional",
+              rationale: "Market fit 0.72 and feasibility 0.68.",
+              risk_level: "Medium",
+              primary_concern: "Validate demand before committing.",
+              trend_context: "Declining demand changed the recommendation.",
+              payability_context: "The buyer has a low subscription ceiling.",
+            },
+            core_pain_point: {
+              title: "Cold starts are unpredictable",
+              severity_score: 0.6,
+              commercial_intent_score: 0.6,
+              representative_quote: "We cannot tune what we cannot measure.",
+              source_platform: "reddit",
+            },
+            key_metrics: {
+              total_keyword_search_volume: 0,
+              tier0_keyword_count: 0,
+              tier1_keyword_count: 0,
+              tier2_keyword_count: 0,
+              tier3_keyword_count: 0,
+              tier4_keyword_count: 0,
+              total_keyword_count: 0,
+              primary_competitor_count: 0,
+              avg_pain_point_severity: 0,
+              avg_commercial_intent: 0,
+              social_evidence_threads: 12,
+            },
+            confidence_score: 0.68,
+          },
+        }),
+        evidenceHref: "/report?view=evidence",
+        planHref: "/report?view=plan",
+      },
+    });
+
+    expect(view.getByText("What changed the verdict")).toBeInTheDocument();
+    expect(view.getByText("Declining demand changed the recommendation.")).toBeInTheDocument();
+    expect(view.getByText("The buyer has a low subscription ceiling.")).toBeInTheDocument();
+    expect(view.queryByText("Market fit 0.72 and feasibility 0.68.")).not.toBeInTheDocument();
   });
 });
 
@@ -167,8 +220,35 @@ describe("ReportPlanSummary", () => {
     expect(view.getByText("Interview five qualified buyers.")).toBeInTheDocument();
     expect(view.getByText("Sequence only")).toBeInTheDocument();
     expect(view.queryByText("Legacy acquisition essay that should not appear here.")).not.toBeInTheDocument();
-		expect(
-			view.queryByRole("link", { name: /Open implementation appendix/ })
-		).not.toBeInTheDocument();
+    expect(
+      view.queryByRole("link", { name: /Open implementation appendix/ })
+    ).not.toBeInTheDocument();
+  });
+
+  it("links a capped summary to the complete weekly playbook", () => {
+    const view = render(ReportPlanSummary, {
+      props: {
+        report: report({
+          go_to_market_blueprint: {
+            first_30_days_playbook: {
+              week_1_actions: ["W1 A", "W1 B"],
+              week_2_actions: ["W2 A", "W2 B"],
+              week_3_actions: ["W3 A", "W3 B"],
+              week_4_actions: ["W4 A", "W4 B"],
+              success_metrics: ["Five interviews completed"],
+            },
+          } as never,
+        }),
+        topic: "first-30-days",
+        fullDetailHref:
+          "/report?view=plan&topic=launch&detail=full#first-30-days-playbook",
+      },
+    });
+
+    expect(view.getByText("2 additional actions are grouped by week in the full playbook.")).toBeInTheDocument();
+    expect(view.getByRole("link", { name: /Open full 30-day playbook/ })).toHaveAttribute(
+      "href",
+      "/report?view=plan&topic=launch&detail=full#first-30-days-playbook",
+    );
   });
 });

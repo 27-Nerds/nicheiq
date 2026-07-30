@@ -298,7 +298,7 @@
                 : `One price for up to 3 ideas — the same ${researchCost} credits for 1, 2, or 3.`}
             </p>
           </div>
-          <a href={routeHref("compare")}>{CHOOSE_IDEAS_LABEL}</a>
+          <a href={`/jobs/${data.job.id}#opportunities`}>{CHOOSE_IDEAS_LABEL}</a>
         </div>
         <ol class="selected-list">
           {#each selectedIdeas as idea, index (`${idea.idea_id}:${idea.idea_revision ?? 1}`)}
@@ -439,6 +439,7 @@
         <ul class="price-notes">
           <li>You are charged only after you start the run.</li>
           <li>Starting locks this shortlist — ideas can’t be changed during the run.</li>
+          <li>Any active discovery share link closes once Deep Research is successfully queued.</li>
           <!-- Refund truth: failJob() auto-refunds the in-flight stage on failure, and
                INSUFFICIENT_DATA quality stops go through the same path
                (backend/src/services/jobService.ts). -->
@@ -491,7 +492,7 @@
 
         {#if data.workspace.scopeSource === "preview"}
           <p class="credit-warning">Save at least one idea in Compare before starting research.</p>
-          <a class="credit-link" href={routeHref("compare")}>Choose ideas</a>
+          <a class="credit-link" href={`/jobs/${data.job.id}#opportunities`}>Choose ideas</a>
         {:else if !scopeMatchesSaved}
           <p class="credit-warning">This linked scope does not match your saved shortlist yet.</p>
           <a class="credit-link" href={routeHref("compare")}>Review and save this scope</a>
@@ -503,7 +504,7 @@
         {#each overlapWarnings as overlap (overlap.sharedProduct)}
           <p class="overlap-warning">
             {overlapWarningText(overlap)}
-            <a class="credit-link" href={routeHref("compare")}>Change your shortlist</a>
+            <a class="credit-link" href={`/jobs/${data.job.id}#opportunities`}>Change your shortlist</a>
           </p>
         {/each}
 

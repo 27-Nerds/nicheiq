@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 import time
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
@@ -33,13 +34,23 @@ _MAX_RETRIES = 2
 _RETRY_DELAY = 2.0
 
 
+@dataclass
+class HackerNewsCollectionResult:
+    """Strict HN collection result with candidate/relevance accounting."""
+
+    posts: list[SocialPost] = field(default_factory=list)
+    candidate_count: int = 0
+    relevant_count: int = 0
+
+
 class HackerNewsCollectorTool(BaseTool):
     """Collect Hacker News stories and comments via Algolia API."""
 
     name: str = "HackerNewsCollectorTool"
     description: str = (
         "Searches Hacker News for relevant discussions and collects "
-        "stories with their comment trees. Free API, no auth needed."
+        "stories with their comment trees after semantic validation. "
+        "Requires a niche description. Free API, no auth needed."
     )
 
     def search_stories(
@@ -108,7 +119,11 @@ class HackerNewsCollectorTool(BaseTool):
         logger.info(f"[HN] Found {len(stories)} stories from {len(queries)} queries")
         return stories
 
-    def collect_posts(self, stories: list[dict]) -> list[SocialPost]:
+    def collect_posts(
+        self,
+        stories: list[dict],
+        grade_by_id: dict[str, int] | None = None,
+    ) -> list[SocialPost]:
         """Fetch full story data with comment trees.
 
         Args:
@@ -124,7 +139,11 @@ class HackerNewsCollectorTool(BaseTool):
             if not story_id:
                 continue
             try:
-                post = self._fetch_story(story_id, story_meta=story)
+                post = self._fetch_story(
+                    story_id,
+                    story_meta=story,
+                    relevance_grade=(grade_by_id or {}).get(story_id),
+                )
                 if post:
                     posts.append(post)
             except Exception as exc:
@@ -145,8 +164,35 @@ class HackerNewsCollectorTool(BaseTool):
         min_hn_comments: int | None = None,
         max_results_per_query: int = 10,
         max_total: int = 25,
+        anchor_guidance: str = "",
     ) -> list[SocialPost]:
-        """Search and collect in one step (convenience method for Stage 2)."""
+        """Compatibility wrapper around strict semantic HN collection."""
+        return self.search_relevant_and_collect(
+            queries=queries,
+            niche_description=niche_description,
+            min_points=min_points,
+            min_hn_comments=min_hn_comments,
+            max_results_per_query=max_results_per_query,
+            max_total=max_total,
+            anchor_guidance=anchor_guidance,
+        ).posts
+
+    def search_relevant_and_collect(
+        self,
+        queries: list[str],
+        niche_description: str,
+        min_points: int | None = None,
+        min_hn_comments: int | None = None,
+        max_results_per_query: int = 10,
+        max_total: int = 25,
+        anchor_guidance: str = "",
+    ) -> HackerNewsCollectionResult:
+        """Search, strictly grade candidates, then fetch only relevant stories.
+
+        HN title overlap is only a cheap candidate filter. The semantic grade is
+        the authoritative gate, and any validator failure or missing result is
+        rejected rather than fetching a potentially large off-topic comment tree.
+        """
         stories = self.search_stories(
             queries=queries,
             niche_description=niche_description,
@@ -155,7 +201,73 @@ class HackerNewsCollectorTool(BaseTool):
             max_results_per_query=max_results_per_query,
             max_total=max_total,
         )
-        return self.collect_posts(stories)
+        candidate_count = len(stories)
+        if not stories:
+            return HackerNewsCollectionResult(candidate_count=0)
+        if not niche_description.strip():
+            logger.warning(
+                f"[HN] Semantic validation requires a niche description; "
+                f"rejecting {candidate_count} candidate(s)"
+            )
+            return HackerNewsCollectionResult(candidate_count=candidate_count)
+
+        from ..models.research_state import SearchResultItem
+        from ..utils.validation.thread_validator import ThreadRelevanceValidator
+
+        validation_items: list[SearchResultItem] = []
+        story_id_by_url: dict[str, str] = {}
+        for story in stories:
+            story_id = str(story.get("objectID", ""))
+            if not story_id:
+                continue
+            permalink = f"https://news.ycombinator.com/item?id={story_id}"
+            validation_items.append(
+                SearchResultItem(
+                    url=permalink,
+                    title=str(story.get("title") or ""),
+                    snippet=str(story.get("story_text") or ""),
+                )
+            )
+            story_id_by_url[permalink] = story_id
+
+        try:
+            validated = ThreadRelevanceValidator().validate_batch_parallel(
+                niche_description=niche_description,
+                search_results=validation_items,
+                batch_size=10,
+                anchor_guidance=anchor_guidance,
+                fail_open=False,
+            )
+        except Exception as exc:
+            logger.warning(
+                f"[HN] Semantic validation failed; rejecting all "
+                f"{candidate_count} candidate(s): {exc}"
+            )
+            return HackerNewsCollectionResult(candidate_count=candidate_count)
+
+        # Grade 2 is the minimum HN evidence bar even if another platform is
+        # configured more permissively.
+        min_grade = max(2, settings.thread_relevance_min_grade)
+        grade_by_id = {
+            story_id_by_url[item.url]: grade
+            for item, grade in validated
+            if item.url in story_id_by_url and grade >= min_grade
+        }
+        relevant_stories = [
+            story
+            for story in stories
+            if str(story.get("objectID", "")) in grade_by_id
+        ]
+        logger.info(
+            f"[HN] Semantic relevance kept {len(relevant_stories)}/"
+            f"{candidate_count} candidate stories"
+        )
+        posts = self.collect_posts(relevant_stories, grade_by_id=grade_by_id)
+        return HackerNewsCollectionResult(
+            posts=posts,
+            candidate_count=candidate_count,
+            relevant_count=len(relevant_stories),
+        )
 
     def _search_algolia(
         self,
@@ -192,7 +304,12 @@ class HackerNewsCollectorTool(BaseTool):
                 raise
         return []
 
-    def _fetch_story(self, story_id: str, story_meta: dict | None = None) -> SocialPost | None:
+    def _fetch_story(
+        self,
+        story_id: str,
+        story_meta: dict | None = None,
+        relevance_grade: int | None = None,
+    ) -> SocialPost | None:
         """Fetch a single story with its comment tree from Algolia items API."""
         # Validate story_id to prevent path traversal
         if not _VALID_STORY_ID.match(story_id):
@@ -242,6 +359,7 @@ class HackerNewsCollectorTool(BaseTool):
             created_utc=created_utc,
             responses=responses,
             raw_engagement={"points": points, "num_comments": num_comments, "date_estimated": False},
+            relevance_grade=relevance_grade,
         )
 
     def _parse_comments(
@@ -294,10 +412,15 @@ class HackerNewsCollectorTool(BaseTool):
             count += HackerNewsCollectorTool._count_responses(resp.replies)
         return count
 
-    def _run(self, queries: str) -> str:
+    def _run(self, queries: str, niche_description: str = "") -> str:
         """CrewAI tool interface. Accepts comma-separated search queries."""
         query_list = [q.strip() for q in queries.split(",") if q.strip()]
         if not query_list:
             return "No queries provided"
-        posts = self.search_and_collect(query_list)
+        if not niche_description.strip():
+            return "Niche description required for Hacker News relevance validation"
+        posts = self.search_and_collect(
+            query_list,
+            niche_description=niche_description,
+        )
         return f"Collected {len(posts)} Hacker News stories"

@@ -31,6 +31,7 @@
     jobId?: string;
     isSelected?: boolean;
     disabled?: boolean;
+    disabledReason?: string;
     maxReached?: boolean;
     selectionIndex?: number;
     selectedCount?: number;
@@ -59,6 +60,7 @@
     jobId,
     isSelected = false,
     disabled = false,
+    disabledReason,
     maxReached = false,
     selectionIndex = 0,
     selectedCount = 0,
@@ -457,6 +459,10 @@
               <span class="modal-footer-note" id="shortlist-limit-note">
                 Shortlist is full. Remove another candidate first.
               </span>
+            {:else if disabled && disabledReason}
+              <span class="modal-footer-note" id="shortlist-disabled-note">
+                {disabledReason}
+              </span>
             {/if}
           </div>
           <div class="modal-footer-actions">
@@ -464,8 +470,14 @@
               type="button"
               onclick={handleSelect}
               disabled={!isToggleable}
-              aria-describedby={maxReached && !isSelected ? 'shortlist-limit-note' : undefined}
-              title={maxReached && !isSelected ? 'Maximum 3 candidates shortlisted' : undefined}
+              aria-describedby={maxReached && !isSelected
+                ? 'shortlist-limit-note'
+                : disabled && disabledReason
+                  ? 'shortlist-disabled-note'
+                  : undefined}
+              title={maxReached && !isSelected
+                ? 'Maximum 3 candidates shortlisted'
+                : disabledReason}
               class="modal-select-primary"
               class:is-selected={isSelected}
             >

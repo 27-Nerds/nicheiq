@@ -441,6 +441,7 @@ describe('selection concept sets', () => {
     expect(response.status).toBe(200);
     expect(mocks.setFindMany).toHaveBeenCalledWith(expect.objectContaining({
       where: { jobId: JOB_ID, archivedAt: null },
+      take: 12,
     }));
     expect(mocks.messageFindMany).toHaveBeenCalledWith({
       where: {

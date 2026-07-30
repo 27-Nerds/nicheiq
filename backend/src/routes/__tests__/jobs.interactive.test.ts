@@ -23,6 +23,11 @@ const mockJobFindUnique = vi.fn();
 const mockDispatchFindFirst = vi.fn();
 const mockJobDispatchCreate = vi.fn();
 const mockChargeForStageWithPriceCasInTx = vi.fn();
+const mockGetJob = vi.fn();
+const mockGetDiscoveryDataForJob = vi.fn();
+const mockGetPreviewReportForJob = vi.fn();
+const mockDiscoveryShareUpdateMany = vi.fn();
+const mockTxDiscoveryShareUpdateMany = vi.fn();
 
 vi.mock('../../services/db.js', () => ({
   prisma: {
@@ -48,7 +53,7 @@ vi.mock('../../services/db.js', () => ({
     },
     $transaction: (...args: any[]) => mockTransaction(...args),
     discoveryShare: {
-      updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      updateMany: (...args: any[]) => mockDiscoveryShareUpdateMany(...args),
     },
   },
 }));
@@ -111,10 +116,15 @@ vi.mock('../../services/creditService.js', () => ({
 }));
 
 vi.mock('../../services/jobService.js', () => ({
-  getJob: vi.fn(),
+  getJob: (...args: any[]) => mockGetJob(...args),
   updateJobStatus: vi.fn(),
   getJobAsset: vi.fn(),
   cancelJob: vi.fn(),
+}));
+
+vi.mock('../../services/assetService.js', () => ({
+  getDiscoveryDataForJob: (...args: any[]) => mockGetDiscoveryDataForJob(...args),
+  getPreviewReportForJob: (...args: any[]) => mockGetPreviewReportForJob(...args),
 }));
 
 vi.mock('../../middleware/auth.js', () => ({
@@ -336,6 +346,8 @@ beforeEach(async () => {
     cost: 15,
     transaction: { id: 'charge-deep-research-1' },
   });
+  mockDiscoveryShareUpdateMany.mockResolvedValue({ count: 0 });
+  mockTxDiscoveryShareUpdateMany.mockResolvedValue({ count: 0 });
   // No prior dispatch for this clientRequestId — i.e. not an idempotent replay. Both
   // select-solution and regenerate-ideas short-circuit on this read before doing any work.
   mockDispatchFindFirst.mockResolvedValue(null);
@@ -354,6 +366,9 @@ beforeEach(async () => {
         create: (...args: any[]) => mockJobDispatchCreate(...args),
         updateMany: async () => ({ count: 1 }),
       },
+      discoveryShare: {
+        updateMany: (...args: any[]) => mockTxDiscoveryShareUpdateMany(...args),
+      },
       chatMessage: { create: mockChatMessageCreate },
     };
     return callback(tx);
@@ -368,6 +383,108 @@ beforeEach(async () => {
 // ============================================
 // Tests
 // ============================================
+describe('selection artifacts during seed evaluation', () => {
+  const selectionMutationJob = (
+    status: 'QUEUED' | 'RUNNING' | 'REGENERATING',
+    kind: 'SEED_IDEA' | 'REGENERATE',
+    state: 'AUTHORIZED' | 'CLAIMED' | 'COMPLETED' | 'FAILED' =
+      status === 'QUEUED' ? 'AUTHORIZED' : 'CLAIMED',
+  ) => ({
+    id: jobId,
+    userId: 'user-123',
+    status,
+    activeDispatchId: 'dispatch-selection-mutation',
+    dispatches: [{
+      id: 'dispatch-selection-mutation',
+      kind,
+      state,
+    }],
+  });
+
+  it('continues serving discovery data while an exact seed dispatch is running', async () => {
+    mockGetJob.mockResolvedValue(selectionMutationJob('RUNNING', 'SEED_IDEA'));
+    mockGetDiscoveryDataForJob.mockResolvedValue({ metadata: { sourceCount: 12 } });
+
+    const response = await request(app)
+      .get(`/api/jobs/${jobId}/discovery-data`)
+      .set(authHeaders);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ metadata: { sourceCount: 12 } });
+  });
+
+  it('continues serving the preview report while an exact seed dispatch is running', async () => {
+    mockGetJob.mockResolvedValue(selectionMutationJob('RUNNING', 'SEED_IDEA'));
+    mockGetPreviewReportForJob.mockResolvedValue({ user_segments: [{ name: 'Bookkeepers' }] });
+
+    const response = await request(app)
+      .get(`/api/jobs/${jobId}/preview-report`)
+      .set(authHeaders);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ user_segments: [{ name: 'Bookkeepers' }] });
+  });
+
+  it.each([
+    ['QUEUED', 'SEED_IDEA'],
+    ['QUEUED', 'REGENERATE'],
+    ['REGENERATING', 'REGENERATE'],
+  ] as const)(
+    'continues serving selection artifacts while %s %s work is active',
+    async (status, kind) => {
+      mockGetJob.mockResolvedValue(selectionMutationJob(status, kind));
+      mockGetPreviewReportForJob.mockResolvedValue({ user_segments: [{ name: 'Bookkeepers' }] });
+
+      const response = await request(app)
+        .get(`/api/jobs/${jobId}/preview-report`)
+        .set(authHeaders);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ user_segments: [{ name: 'Bookkeepers' }] });
+    },
+  );
+
+  it('does not expose selection artifacts during an initial discovery run', async () => {
+    mockGetJob.mockResolvedValue({
+      ...selectionMutationJob('RUNNING', 'SEED_IDEA'),
+      activeDispatchId: 'dispatch-discovery',
+      dispatches: [{
+        id: 'dispatch-discovery',
+        kind: 'DISCOVERY',
+        state: 'CLAIMED',
+      }],
+    });
+
+    const response = await request(app)
+      .get(`/api/jobs/${jobId}/preview-report`)
+      .set(authHeaders);
+
+    expect(response.status).toBe(400);
+    expect(mockGetPreviewReportForJob).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['COMPLETED', 'QUEUED'],
+    ['FAILED', 'RUNNING'],
+  ] as const)(
+    'does not expose selection artifacts for a %s seed dispatch while the job is %s',
+    async (dispatchState, status) => {
+      mockGetJob.mockResolvedValue(selectionMutationJob(
+        status as 'QUEUED' | 'RUNNING',
+        'SEED_IDEA',
+        dispatchState,
+      ));
+
+      const response = await request(app)
+        .get(`/api/jobs/${jobId}/preview-report`)
+        .set(authHeaders);
+
+      expect(response.status).toBe(400);
+      expect(mockGetPreviewReportForJob).not.toHaveBeenCalled();
+    },
+  );
+});
+
 describe('POST /api/jobs/:jobId/select-solution', () => {
   const defaultIdeas = [
     { name: 'Sol1', idea_id: 'idea_one', idea_revision: 1 },
@@ -407,6 +524,102 @@ describe('POST /api/jobs/:jobId/select-solution', () => {
     expect(response.status).toBe(200);
     expect(response.body.status).toBe('phase2_queued');
     expect(mockDeliverDispatchWork).toHaveBeenCalledWith('dispatch-test');
+  });
+
+  it('deactivates discovery sharing inside the Deep Research authorization transaction', async () => {
+    mockJobFindFirst.mockResolvedValue(makeJob());
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/select-solution`)
+      .set(authHeaders)
+      .send(selectPayload());
+
+    expect(response.status).toBe(200);
+    expect(mockTxDiscoveryShareUpdateMany).toHaveBeenCalledWith({
+      where: { jobId, isActive: true },
+      data: { isActive: false },
+    });
+    expect(mockDiscoveryShareUpdateMany).not.toHaveBeenCalled();
+    expect(mockJobUpdateMany.mock.invocationCallOrder[0])
+      .toBeLessThan(mockTxDiscoveryShareUpdateMany.mock.invocationCallOrder[0]);
+    expect(mockTxDiscoveryShareUpdateMany.mock.invocationCallOrder[0])
+      .toBeLessThan(mockChargeForStageWithPriceCasInTx.mock.invocationCallOrder[0]);
+  });
+
+  it('does not authorize or deliver work when transactional share revocation fails', async () => {
+    mockJobFindFirst.mockResolvedValue(makeJob());
+    mockTxDiscoveryShareUpdateMany.mockRejectedValue(new Error('database unavailable'));
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/select-solution`)
+      .set(authHeaders)
+      .send(selectPayload());
+
+    expect(response.status).toBe(500);
+    expect(mockChargeForStageWithPriceCasInTx).not.toHaveBeenCalled();
+    expect(mockJobDispatchCreate).not.toHaveBeenCalled();
+    expect(mockDeliverDispatchWork).not.toHaveBeenCalled();
+  });
+
+  it('keeps the share closed when durable authorization succeeds but delivery is pending', async () => {
+    mockJobFindFirst.mockResolvedValue(makeJob());
+    mockDeliverDispatchWork.mockRejectedValue(new Error('Redis unavailable'));
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/select-solution`)
+      .set(authHeaders)
+      .send(selectPayload());
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      operationId: 'dispatch-test',
+      deliveryPending: true,
+    });
+    expect(mockTxDiscoveryShareUpdateMany).toHaveBeenCalledTimes(1);
+    expect(mockDiscoveryShareUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it('repairs a lingering active share before acknowledging an idempotent replay', async () => {
+    mockDispatchFindFirst.mockResolvedValue({
+      id: 'dispatch-existing',
+      state: 'AUTHORIZED',
+    });
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/select-solution`)
+      .set(authHeaders)
+      .send(selectPayload());
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      operationId: 'dispatch-existing',
+      operationState: 'AUTHORIZED',
+      idempotent: true,
+    });
+    expect(mockDiscoveryShareUpdateMany).toHaveBeenCalledWith({
+      where: { jobId, isActive: true },
+      data: { isActive: false },
+    });
+    expect(mockTransaction).not.toHaveBeenCalled();
+    expect(mockDeliverDispatchWork).not.toHaveBeenCalled();
+  });
+
+  it('does not acknowledge an idempotent replay until legacy share repair succeeds', async () => {
+    mockDispatchFindFirst.mockResolvedValue({
+      id: 'dispatch-existing',
+      state: 'AUTHORIZED',
+    });
+    mockDiscoveryShareUpdateMany.mockRejectedValue(new Error('database unavailable'));
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/select-solution`)
+      .set(authHeaders)
+      .send(selectPayload());
+
+    expect(response.status).toBe(500);
+    expect(response.body.error).toBe('Failed to select solution');
+    expect(mockTransaction).not.toHaveBeenCalled();
+    expect(mockDeliverDispatchWork).not.toHaveBeenCalled();
   });
 
   it('accepts stable IDs and resolves the canonical names for the worker', async () => {
@@ -909,6 +1122,7 @@ describe('GET /api/jobs/:jobId/solutions', () => {
       selectionDraft: null,
       selectionDraftVersion: 0,
       ideasRegeneratedAt: null,
+      ideaBatchCompletedCount: 0,
       status: 'AWAITING_SELECTION',
     });
 
@@ -935,6 +1149,8 @@ describe('GET /api/jobs/:jobId/solutions', () => {
       },
       activeOperation: null,
       canRegenerate: true,
+      ideaBatchCompletedCount: 0,
+      maxIdeaBatches: 10,
       status: 'AWAITING_SELECTION',
     });
   });

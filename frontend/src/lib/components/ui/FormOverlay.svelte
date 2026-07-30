@@ -21,6 +21,8 @@
     description?: string;
     annotationAnchor?: string;
     onRequestClose: () => void;
+    /** Explicit opener for surfaces whose trigger is re-rendered while open. */
+    restoreFocusTo?: HTMLElement | null;
     children: Snippet;
     /** Bare footer content (legacy contract). In structured mode it renders on the right (submit side). */
     footer?: Snippet;
@@ -44,6 +46,7 @@
     description,
     annotationAnchor,
     onRequestClose,
+    restoreFocusTo,
     children,
     footer,
     footerCancel,
@@ -142,6 +145,7 @@
 
     const previousFocus =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const explicitRestoreTarget = restoreFocusTo ?? null;
     const unlockScroll = lockScroll();
     const restoreBackground = isolateModalBackground(layerEl);
     const focusFrame = requestAnimationFrame(() => frameEl?.focus());
@@ -151,7 +155,8 @@
       restoreBackground();
       unlockScroll();
       requestAnimationFrame(() => {
-        if (canRestoreFocus(previousFocus)) previousFocus.focus();
+        if (canRestoreFocus(explicitRestoreTarget)) explicitRestoreTarget.focus();
+        else if (canRestoreFocus(previousFocus)) previousFocus.focus();
       });
     };
   });

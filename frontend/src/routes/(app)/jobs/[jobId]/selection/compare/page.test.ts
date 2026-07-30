@@ -96,6 +96,31 @@ describe("compare page distinctiveness row", () => {
   });
 });
 
+describe("compare page known concern", () => {
+  it("prioritizes a killed adversarial finding over a softer critic concern", () => {
+    const view = render(ComparePage, {
+      props: {
+        data: data([
+          idea({
+            idea_id: "idea-a",
+            solution_name: "Candidate A",
+            critic_concern: "The moat may be thin.",
+            incumbent_parity: "shipped by evidence: the data source misses the buyer",
+            red_team_verdict: "killed",
+            red_team_caveats: ["Private-company records are unavailable."],
+          }),
+          idea({ idea_id: "idea-b", solution_name: "Candidate B" }),
+        ]),
+      },
+    });
+
+    expect(view.getByText(/Adversarial review: Killed/)).toHaveTextContent(
+      "Private-company records are unavailable.",
+    );
+    expect(view.queryByText("The moat may be thin.")).toBeNull();
+  });
+});
+
 describe("compare page metric help markers", () => {
   it("renders help markers as plain spans inside the Tooltip trigger — no nested button tab stop", () => {
     const view = render(ComparePage, {

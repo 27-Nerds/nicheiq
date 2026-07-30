@@ -143,6 +143,21 @@ describe('formatJobResponse refund truth', () => {
     expect(result.activeDispatchKind).toBe('SEED_IDEA');
   });
 
+  it('does not expose a terminal dispatch as the job owner', () => {
+    const result = formatJobResponse(makeJob({
+      activeDispatchId: 'seed-dispatch',
+      dispatches: [{
+        id: 'seed-dispatch',
+        kind: 'SEED_IDEA',
+        state: 'COMPLETED',
+        refundedAmount: null,
+        refundTransaction: null,
+      }],
+    }));
+
+    expect(result.activeDispatchKind).toBeNull();
+  });
+
   it('does not invent false when the caller did not load refund data', () => {
     const result = formatJobResponse(makeJob());
 
@@ -205,7 +220,11 @@ describe('formatJobResponse includeSolutionIdeas', () => {
     // Failed/cancelled attempts advance regenerationCount for ledger identity,
     // but only successful completed batches consume the product cap.
     expect(available.canRegenerate).toBe(true);
+    expect(available.ideaBatchCompletedCount).toBe(9);
+    expect(available.maxIdeaBatches).toBe(10);
     expect(exhausted.canRegenerate).toBe(false);
+    expect(exhausted.ideaBatchCompletedCount).toBe(10);
+    expect(exhausted.maxIdeaBatches).toBe(10);
   });
 });
 

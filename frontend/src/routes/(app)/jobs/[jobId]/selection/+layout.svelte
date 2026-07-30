@@ -23,6 +23,7 @@
     getStageCosts,
     seedIdea,
     subscribeToProgress,
+    shouldKeepSSEOpen,
     ApiError,
     type SelectionWorkspaceContext,
     type IdeaSynthesisPatch,
@@ -95,33 +96,52 @@
   let dataRetrying = $state(false);
   let dataRetryError = $state("");
   const currentStatus = $derived(liveStatus || data.job.status);
+  const reportAvailable = $derived(
+    (data.job.assets ?? []).some((asset) => asset.type === "REPORT_JSON"),
+  );
   const decisionStateUnavailable = $derived(data.selectionLoadState.decisionStateUnavailable);
   const interactive = $derived(
     currentStatus === "AWAITING_SELECTION"
     && !decisionStateUnavailable
     && shortlistConflict === null,
   );
+  const seedActivities = $derived(
+    chatLedger.jobId === data.job.id ? chatLedger.seedActivities : [],
+  );
   const synthesisActivities = $derived(
-    chatLedger.jobId === data.job.id
-      ? chatLedger.seedActivities.filter((activity) => activity.kind === "idea_synthesis")
-      : [],
+    seedActivities.filter((activity) => activity.kind === "idea_synthesis"),
   );
   const batchActivities = $derived(
     chatLedger.jobId === data.job.id ? chatLedger.batchActivities : [],
   );
-  const seedEvaluationPending = $derived(
-    chatLedger.hasPendingSeed || chatLedger.activeOperation?.kind === "SEED_IDEA",
+  const selectionTransitStatus = $derived(
+    ["QUEUED", "RUNNING", "REGENERATING"].includes(currentStatus),
   );
-  const selectionTransit = $derived(
-    ["QUEUED", "RUNNING", "REGENERATING"].includes(currentStatus)
-    && data.solutions.length > 0
-    && !(data.job.selectedSolutions?.length)
-    && !(data.job.selectedSolutionIds?.length),
+  const seedEvaluationPending = $derived(
+    (
+      data.job.activeDispatchKind === "SEED_IDEA"
+      && ["QUEUED", "RUNNING"].includes(currentStatus)
+    )
+    || (
+      selectionTransitStatus
+      && (
+        chatLedger.hasPendingSeed
+        || chatLedger.activeOperation?.kind === "SEED_IDEA"
+      )
+    ),
   );
   const batchGenerationPending = $derived(
-    chatLedger.hasPendingBatch
-    || chatLedger.activeOperation?.kind === "REGENERATE"
-    || (selectionTransit && !seedEvaluationPending),
+    (
+      data.job.activeDispatchKind === "REGENERATE"
+      && ["QUEUED", "REGENERATING"].includes(currentStatus)
+    )
+    || (
+      selectionTransitStatus
+      && (
+        chatLedger.hasPendingBatch
+        || chatLedger.activeOperation?.kind === "REGENERATE"
+      )
+    ),
   );
   const selectionOperationPending = $derived(seedEvaluationPending || batchGenerationPending);
   /** Pool operations temporarily lock mutations, but comparison remains useful.
@@ -231,26 +251,6 @@
       : `/jobs/${data.job.id}/selection/${slug}${data.workspace.canonicalQuery}`;
   }
 
-  function batchCandidatesHref(activity: import("$lib/stores/chatLedger.svelte").BatchActivity): string {
-    const matching = activity.addedIdeas.length > 0
-      ? activity.addedIdeas.flatMap((reference) => {
-          const solution = data.solutions.find((candidate) => (
-            candidate.idea_id === reference.ideaId
-            && (candidate.idea_revision ?? 1) === reference.ideaRevision
-          ));
-          return solution ? [solution] : [];
-        }).slice(0, MAX_SCOPE)
-      : data.solutions
-          .filter((solution) => solution.idea_id && activity.addedIdeaIds.includes(solution.idea_id))
-          .slice(0, MAX_SCOPE);
-    if (matching.length === 0) return `/jobs/${data.job.id}#opportunities`;
-    const params = new URLSearchParams();
-    for (const idea of matching) {
-      params.append("idea", `${idea.idea_id}:${idea.idea_revision ?? 1}`);
-    }
-    return `/jobs/${data.job.id}/selection/compare?${params.toString()}`;
-  }
-
   function workspaceToolHref(
     slug: "compare" | "risks",
     configure: (params: URLSearchParams) => void,
@@ -315,6 +315,7 @@
   let evaluationStalledSourceId = $state<string | null>(null);
   let batchPollTimer: ReturnType<typeof setInterval> | null = null;
   let batchPollOperationId = $state<string | null>(null);
+  let batchPollStalledOperationId = $state<string | null>(null);
 
   $effect(() => {
     seedCost = data.stageCosts.seed_idea ?? null;
@@ -373,25 +374,43 @@
 
   function beginBatchPoll(operationId: string): void {
     if (batchPollOperationId === operationId && batchPollTimer) return;
+    if (batchPollStalledOperationId === operationId) return;
     stopBatchPoll();
     batchPollOperationId = operationId;
+    if (batchPollStalledOperationId !== operationId) batchPollStalledOperationId = null;
     let attempts = 0;
     batchPollTimer = setInterval(async () => {
       attempts += 1;
       await chatLedger.reload();
       const activity = chatLedger.batchActivities.find((item) => item.operationId === operationId);
       if (activity && activity.outcome !== "pending") {
+        batchPollStalledOperationId = null;
         stopBatchPoll();
         hydratedFrom = "";
         await invalidateAll();
       } else if (attempts >= 200) {
         stopBatchPoll();
+        batchPollStalledOperationId = operationId;
       }
     }, 6000);
   }
 
+  async function recheckBatch(activity: import("$lib/stores/chatLedger.svelte").BatchActivity): Promise<void> {
+    const operationId = activity.operationId;
+    if (batchPollStalledOperationId !== operationId) return;
+    batchPollStalledOperationId = null;
+    beginBatchPoll(operationId);
+    await chatLedger.reload();
+    const refreshed = chatLedger.batchActivities.find((item) => item.operationId === operationId);
+    if (refreshed && refreshed.outcome !== "pending") {
+      stopBatchPoll();
+      hydratedFrom = "";
+      await invalidateAll();
+    }
+  }
+
   $effect(() => {
-    const pending = synthesisActivities.find((activity) => activity.outcome === "pending");
+    const pending = seedActivities.find((activity) => activity.outcome === "pending");
     if (pending) beginEvaluationPoll(pending.sourceMessageId);
   });
   $effect(() => {
@@ -436,6 +455,7 @@
 
   $effect(() => {
     const jobId = data.job.id;
+    if (!shouldKeepSSEOpen(data.job)) return;
     let lastSseStatus = data.job.status;
     // Plain closure variable: dedupes draft broadcasts, never rendered.
     let lastHandledDraftVersion = 0;
@@ -936,6 +956,7 @@
     selectionQuery={data.workspace.canonicalQuery}
     availableSectionIds={data.availableSectionIds}
     {decisionTools}
+    {reportAvailable}
   />
   <!-- A <div>, not <main>: the (app) layout already renders the page's single
        <main> landmark, and nested mains are invalid. Styling rides the class. -->
@@ -972,10 +993,10 @@
         <p>{lifecycleMessage}</p>
       </div>
       {#if !selectionOperationPending}
-        <a href={currentStatus === "COMPLETED"
+        <a href={currentStatus === "COMPLETED" && reportAvailable
           ? `/jobs/${data.job.id}/report`
           : `/jobs/${data.job.id}`}>
-          {currentStatus === "COMPLETED" ? "Open report" : "View progress"}
+          {currentStatus === "COMPLETED" && reportAvailable ? "Open report" : "View run"}
           <span aria-hidden="true">→</span>
         </a>
       {/if}
@@ -1023,16 +1044,15 @@
 
   <BatchActivity
     activities={batchActivities}
-    reviewCandidatesHref={batchCandidatesHref}
-    reviewRuledOutHref={(activity) =>
-      `/jobs/${data.job.id}?batchOperationId=${encodeURIComponent(activity.operationId)}#examined-ruled-out`}
-    retryHref={`/jobs/${data.job.id}?addBatch=1#opportunities`}
+    view="live"
+    stalledOperationId={batchPollStalledOperationId}
+    onRecheck={recheckBatch}
   />
   <!-- Live state only. A decision tool's own work owns this page; the settled record has
        a single home in the job page's Discovery appendix, reachable from the header tally. -->
   <EvaluationActivity
     jobId={data.job.id}
-    activities={synthesisActivities}
+    activities={seedActivities}
     view="live"
     operation={chatLedger.activeOperation}
     stalled={evaluationStalledSourceId != null}

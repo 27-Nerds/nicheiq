@@ -1,15 +1,13 @@
 <script lang="ts">
   import { X } from "lucide-svelte";
   import { REVIEW_AND_START_LABEL } from "$lib/selection/labels";
-  import { overlapWarningText, type ShortlistOverlap } from "$lib/selection/overlapWarnings";
   import type { SelectionJourney } from "$lib/selection/decisionJourney";
 
   interface Props {
     journey: SelectionJourney;
-    /** Shortlisted ideas the pipeline flagged as the same product. Advisory only. */
-    overlapWarnings?: ShortlistOverlap[];
     deepResearchCost?: number | null;
     busy?: boolean;
+    busyReason?: string;
     saveState?: "idle" | "saving" | "saved" | "error";
     saveError?: string;
     saveConflict?: boolean;
@@ -21,9 +19,9 @@
 
   let {
     journey,
-    overlapWarnings = [],
     deepResearchCost = null,
     busy = false,
+    busyReason = "Another update is in progress. You can review the research scope when it finishes.",
     saveState = "idle",
     saveError = "",
     saveConflict = false,
@@ -52,7 +50,7 @@
       : shortlistCount === 0
       ? "Select at least one idea to review the research scope."
       : busy
-        ? "Wait for the shortlist to finish saving."
+        ? busyReason
         : !journey.deepResearch.eligible
           ? "Resolve the shortlist issue before reviewing the research scope."
           : "",
@@ -65,8 +63,17 @@
   let dockHeight = $state(0);
   $effect(() => {
     const root = document.documentElement;
+    const previousScrollPaddingBottom = root.style.scrollPaddingBottom;
     root.style.setProperty("--decision-rail-height", `${dockHeight}px`);
-    return () => root.style.removeProperty("--decision-rail-height");
+    root.style.scrollPaddingBottom = `calc(${dockHeight}px + var(--space-4))`;
+    return () => {
+      root.style.removeProperty("--decision-rail-height");
+      if (previousScrollPaddingBottom) {
+        root.style.scrollPaddingBottom = previousScrollPaddingBottom;
+      } else {
+        root.style.removeProperty("scroll-padding-bottom");
+      }
+    };
   });
 </script>
 
@@ -75,16 +82,6 @@
   aria-label="Ideas for Deep Research"
   bind:offsetHeight={dockHeight}
 >
-  {#if overlapWarnings.length > 0}
-    <!-- Spans the dock so it reads as a note about the whole shortlist, not about the
-         count beside it. Advisory: the Start button stays enabled. -->
-    <p class="dock-overlap" role="status">
-      {#each overlapWarnings as overlap (overlap.sharedProduct)}
-        <span>{overlapWarningText(overlap)}</span>
-      {/each}
-    </p>
-  {/if}
-
   <div class="dock-count" aria-live="polite" aria-label={`${shortlistCount} of ${journey.shortlist.maxItems} ideas selected`}>
     <strong>{shortlistCount}</strong>
     <span>/ {journey.shortlist.maxItems}</span>
@@ -172,22 +169,6 @@
     box-shadow: var(--shadow-md);
     color: var(--color-text-primary);
     transform: translateX(-50%);
-  }
-
-  .dock-overlap {
-    display: grid;
-    gap: var(--space-1);
-    grid-column: 1 / -1;
-    margin: 0;
-    padding-bottom: var(--space-2);
-    border-bottom: 1px solid var(--color-border);
-    /* NOT warning-orange: --color-warning-text is byte-identical to --color-accent-dark
-       (#9A3412) and this row sits directly beside the accent-filled Start button, so
-       orange here reads as brand chrome, not caution. The note is advisory anyway —
-       the shortlist stays valid and startable — so primary ink is the honest weight. */
-    color: var(--color-text-primary);
-    font-size: var(--text-xs);
-    line-height: 1.4;
   }
 
   .dock-count {
@@ -402,10 +383,37 @@
   @media (max-width: 64rem) {
     .decision-dock {
       grid-template-columns: auto auto minmax(0, 1fr) auto;
+      gap: var(--space-2) var(--space-4);
+    }
+
+    .dock-count {
+      grid-column: 1;
+      grid-row: 1;
+    }
+
+    .dock-rule {
+      grid-column: 2;
+      grid-row: 1;
+    }
+
+    .dock-scope {
+      grid-column: 3;
+      grid-row: 1;
     }
 
     .dock-commit {
-      display: none;
+      display: flex;
+      grid-column: 3;
+      grid-row: 2;
+      align-items: baseline;
+      justify-content: flex-end;
+      min-width: 0;
+    }
+
+    .review-action {
+      grid-column: 4;
+      grid-row: 1 / 3;
+      align-self: center;
     }
   }
 
@@ -422,6 +430,27 @@
       border-radius: var(--radius-lg) var(--radius-lg) var(--radius-none) var(--radius-none);
     }
 
+    .dock-count {
+      grid-column: 1;
+      grid-row: 1;
+    }
+
+    .dock-commit {
+      display: grid;
+      grid-column: 2;
+      grid-row: 1;
+      gap: var(--space-1);
+    }
+
+    .dock-reason {
+      max-width: none;
+    }
+
+    .dock-scope {
+      grid-column: 1 / -1;
+      grid-row: 2;
+    }
+
     .dock-rule,
     .dock-scope ul,
     .dock-scope > p,
@@ -431,6 +460,7 @@
 
     .review-action {
       grid-column: 1 / -1;
+      grid-row: 3;
       width: 100%;
       min-height: 2.75rem;
     }

@@ -140,6 +140,11 @@ class SocialPost(BaseModel):
     raw_engagement: dict[str, int | float | bool] = Field(
         default_factory=dict, description="Platform-specific engagement metrics"
     )
+    relevance_grade: int | None = Field(
+        default=None, ge=0, le=3,
+        description="TREC/UMBRELA 0-3 niche-relevance from semantic validation; "
+        "None means the generic post was never graded",
+    )
 
 
 class SocialContentCollection(BaseModel):

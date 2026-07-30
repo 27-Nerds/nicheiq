@@ -27,7 +27,7 @@
   >
     <span class="appendix-id">
       <span class="appendix-eyebrow">{APPENDIX_EYEBROW}</span>
-      <span class="appendix-title">How the shortlist was formed</span>
+      <span class="appendix-title">How the ranked ideas were formed</span>
       {#if meta}
         <span class="appendix-meta">{meta}</span>
       {/if}

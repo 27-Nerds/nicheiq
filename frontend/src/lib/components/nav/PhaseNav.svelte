@@ -79,6 +79,8 @@
     decisionTools?: boolean;
     /** Status of the completed run's optional landing-page deliverable. */
     landingPageStatus?: "pending" | "running" | "completed" | "failed" | "locked";
+    /** Asset-backed report availability. COMPLETED alone does not make report routes valid. */
+    reportAvailable?: boolean;
   }
 
   let {
@@ -97,6 +99,7 @@
     gateStage = null,
     decisionTools = false,
     landingPageStatus = "pending",
+    reportAvailable = false,
     recoverLabel = "Next step",
     recoverHref,
     recoverOnclick,
@@ -518,19 +521,29 @@
         {#snippet leading()}<LayoutDashboard class="sidebar-nav-ic" />{/snippet}
         Run overview
       </SidebarNavItem>
-      <span class="report-nav-description">Report and deliverables</span>
+      <span class="report-nav-description">
+        {reportAvailable ? "Report and deliverables" : "Report unavailable"}
+      </span>
     </SidebarGroup>
 
     <SidebarDivider />
     <SidebarGroup label="Research report">
-      {#each completedReportItems as item}
-        {@const Icon = item.icon}
-        <SidebarNavItem href={jobId ? `/jobs/${jobId}/report?view=${item.view}` : undefined}>
-          {#snippet leading()}<Icon class="sidebar-nav-ic" />{/snippet}
-          {item.label}
+      {#if reportAvailable}
+        {#each completedReportItems as item}
+          {@const Icon = item.icon}
+          <SidebarNavItem href={jobId ? `/jobs/${jobId}/report?view=${item.view}` : undefined}>
+            {#snippet leading()}<Icon class="sidebar-nav-ic" />{/snippet}
+            {item.label}
+          </SidebarNavItem>
+          <span class="report-nav-description">{item.description}</span>
+        {/each}
+      {:else}
+        <SidebarNavItem disabled>
+          {#snippet leading()}<FileText class="sidebar-nav-ic" />{/snippet}
+          Report unavailable
         </SidebarNavItem>
-        <span class="report-nav-description">{item.description}</span>
-      {/each}
+        <span class="report-nav-description">Refresh the run overview to check again.</span>
+      {/if}
     </SidebarGroup>
 
     <SidebarDivider />
@@ -821,15 +834,21 @@
         <div class="mobile-phase-header">
           <span class="phase-label">Research report</span>
         </div>
-        {#each completedReportItems as item}
-          <a
-            class="mobile-item"
-            href={jobId ? `/jobs/${jobId}/report?view=${item.view}` : undefined}
-            onclick={() => (isOpen = false)}
-          >
-            <span>{item.label}</span>
-          </a>
-        {/each}
+        {#if reportAvailable}
+          {#each completedReportItems as item}
+            <a
+              class="mobile-item"
+              href={jobId ? `/jobs/${jobId}/report?view=${item.view}` : undefined}
+              onclick={() => (isOpen = false)}
+            >
+              <span>{item.label}</span>
+            </a>
+          {/each}
+        {:else}
+          <span class="mobile-item mobile-item--disabled" aria-disabled="true">
+            <span>Report unavailable</span>
+          </span>
+        {/if}
 
         <div class="mobile-divider"></div>
         <div class="mobile-phase-header">
@@ -1465,7 +1484,7 @@
     transition: color var(--duration-fast) var(--ease-default), background-color var(--duration-fast) var(--ease-default);
   }
 
-  .mobile-item:hover:not(.locked) {
+  .mobile-item:hover:not(.locked):not(.mobile-item--disabled) {
     color: var(--color-text-primary);
     background: var(--color-bg-hover, var(--color-bg-surface));
   }
@@ -1483,6 +1502,10 @@
   .mobile-item.locked {
     color: var(--color-text-muted);
     opacity: 0.5;
+  }
+  .mobile-item--disabled {
+    cursor: default;
+    opacity: 0.6;
   }
 
   .mobile-item.previewable {

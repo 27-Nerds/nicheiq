@@ -212,6 +212,8 @@ export interface SolutionsResponse {
   selectionDecisionProfile: SelectionDecisionProfile | null;
   selectionDraft: SelectionDraft;
   canRegenerate: boolean;
+  ideaBatchCompletedCount: number;
+  maxIdeaBatches: number;
 }
 
 /**
@@ -251,14 +253,20 @@ export interface RegenerateIdeasResponse {
   focus?: IdeaFocus;
 }
 
+export interface RegenerateIdeasRequest {
+  clientRequestId: string;
+  expectedCost: number;
+  idea_focus?: IdeaFocus;
+}
+
 export async function regenerateIdeas(
   jobId: string,
-  ideaFocus?: IdeaFocus,
+  request: RegenerateIdeasRequest,
 ): Promise<RegenerateIdeasResponse> {
   const response = await fetch(`${API_BASE}/jobs/${jobId}/regenerate-ideas`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(ideaFocus ? { idea_focus: ideaFocus } : {}),
+    body: JSON.stringify(request),
   });
   return handleResponse<RegenerateIdeasResponse>(response);
 }

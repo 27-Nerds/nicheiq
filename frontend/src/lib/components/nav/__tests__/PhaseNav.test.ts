@@ -121,6 +121,7 @@ describe("PhaseNav completed-report destinations", () => {
       props: {
         jobStatus: "COMPLETED",
         jobId: "job-1",
+        reportAvailable: true,
       },
     });
 
@@ -137,6 +138,7 @@ describe("PhaseNav completed-report destinations", () => {
       props: {
         jobStatus: "COMPLETED",
         jobId: "job-1",
+        reportAvailable: true,
       },
     });
 
@@ -153,6 +155,7 @@ describe("PhaseNav completed-report destinations", () => {
         jobStatus: "COMPLETED",
         jobId: "job-1",
         landingPageStatus: "running",
+        reportAvailable: true,
       },
     });
 
@@ -174,5 +177,22 @@ describe("PhaseNav completed-report destinations", () => {
     }
     expect(view.getAllByText("Generating")).toHaveLength(2);
     expect(view.container.querySelector(".nav-check")).not.toBeInTheDocument();
+  });
+
+  it("does not link into a report route until the report asset exists", async () => {
+    const view = render(PhaseNav, {
+      props: {
+        jobStatus: "COMPLETED",
+        jobId: "job-1",
+        reportAvailable: false,
+      },
+    });
+
+    expect(view.getAllByText("Report unavailable")).toHaveLength(2);
+    expect(view.queryByRole("link", { name: "Brief" })).toBeNull();
+
+    await fireEvent.click(view.getByRole("button", { name: "Section navigation" }));
+    expect(view.getAllByText("Report unavailable")).toHaveLength(3);
+    expect(view.queryByRole("link", { name: "Evidence" })).toBeNull();
   });
 });

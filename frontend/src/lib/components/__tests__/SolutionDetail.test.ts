@@ -23,6 +23,8 @@ function renderDetail(props: {
   jobId?: string;
   lifecycle?: "selection" | "reference" | "running" | "completed";
   isSelected?: boolean;
+  disabled?: boolean;
+  disabledReason?: string;
   maxReached?: boolean;
   selectedCount?: number;
   maxSelections?: number;
@@ -236,6 +238,28 @@ describe("SolutionDetail lifecycle and provenance", () => {
     expect(view.queryByText(/Severity 8\.0\/10/)).not.toBeInTheDocument();
   });
 
+  it("presents a killed red-team result as an adversarial finding, not an incumbent", async () => {
+    const view = renderDetail({
+      solution: solution({
+        winning_angle: "novel_differentiation",
+        angle_rationale: "A distinct service model.",
+        incumbent_parity:
+          "shipped by evidence: the public-company data source does not cover the target buyer",
+        red_team_verdict: "killed",
+        red_team_caveats: ["Private-company trial balances are not available in SEC filings."],
+      }),
+    });
+
+    expect(view.getByText("Adversarial review: Killed")).toBeInTheDocument();
+    expect(view.getByText(/Private-company trial balances/)).toBeInTheDocument();
+    expect(view.queryByText("Web-verified incumbent:")).not.toBeInTheDocument();
+
+    await fireEvent.click(view.getByRole("tab", { name: "All details" }));
+
+    expect(view.getByRole("heading", { name: "Adversarial review: Killed" })).toBeInTheDocument();
+    expect(view.queryByText("Direct incumbents")).not.toBeInTheDocument();
+  });
+
   it("links only to evidence sections supplied by the job-page caller", () => {
     const view = renderDetail({
       solution: solution(),
@@ -319,5 +343,22 @@ describe("SolutionDetail lifecycle and provenance", () => {
     expect(button).toHaveAttribute("aria-describedby", "shortlist-limit-note");
     const note = document.getElementById("shortlist-limit-note");
     expect(note).toHaveTextContent("Shortlist is full. Remove another candidate first.");
+  });
+
+  it("explains why shortlist changes are temporarily disabled", () => {
+    const view = renderDetail({
+      solution: solution(),
+      lifecycle: "selection",
+      disabled: true,
+      disabledReason: "Another idea update is running. You can change the shortlist when it finishes.",
+      onSelect: vi.fn(),
+    });
+
+    const button = view.getByRole("button", { name: "Add to shortlist" });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("aria-describedby", "shortlist-disabled-note");
+    expect(document.getElementById("shortlist-disabled-note")).toHaveTextContent(
+      "Another idea update is running. You can change the shortlist when it finishes.",
+    );
   });
 });

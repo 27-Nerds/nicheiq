@@ -1,13 +1,10 @@
 <script lang="ts">
   import { page } from "$app/state";
   import { onDestroy, untrack } from "svelte";
-  import { beforeNavigate } from "$app/navigation";
-  import { browser } from "$app/environment";
-  import { invalidateAll } from "$app/navigation";
+  import { beforeNavigate, invalidateAll } from "$app/navigation";
   import { SvelteMap, SvelteSet } from "svelte/reactivity";
   import {
     subscribeToProgress,
-    isTerminalStatus,
     getReportSummary,
   } from "$lib/api";
   import { INITIAL_VISIBLE_COMPLETED } from "$lib/config/dashboard";
@@ -110,22 +107,49 @@
       (job.selectedSolutionIds?.length ?? 0) > 0
       || (job.selectedSolutions?.length ?? 0) > 0
     );
-  const isDeepResearchProcessing = (job: Job) =>
-    job.status === "RUNNING_PHASE2"
-    || (
-      job.status === "QUEUED"
-      && (
-        job.entryMode === "deep_idea"
-        || (
-          job.jobMode === "interactive"
-          && (
-            (job.selectionDraft?.items.length ?? 0) > 0
-            || (job.selectedSolutionIds?.length ?? 0) > 0
-            || (job.selectedSolutions?.length ?? 0) > 0
-          )
+  const isDeepResearchProcessing = (job: Job) => {
+    if (job.status === "RUNNING_PHASE2") return true;
+    if (job.status !== "QUEUED") return false;
+    if (job.activeDispatchKind) return job.activeDispatchKind === "DEEP_RESEARCH";
+    // Compatibility fallback for jobs queued before exact dispatch identity shipped.
+    return job.entryMode === "deep_idea"
+      || (
+        job.jobMode === "interactive"
+        && (
+          (job.selectionDraft?.items.length ?? 0) > 0
+          || (job.selectedSolutionIds?.length ?? 0) > 0
+          || (job.selectedSolutions?.length ?? 0) > 0
         )
-      )
-    );
+      );
+  };
+  const processingCopy = (job: Job): string => {
+    if (job.status === "REGENERATING" || job.activeDispatchKind === "REGENERATE") {
+      return job.status === "REGENERATING"
+        ? "Adding another idea batch…"
+        : "Another idea batch is waiting for a worker…";
+    }
+    if (job.activeDispatchKind === "SEED_IDEA") {
+      return job.status === "RUNNING"
+        ? "Evaluating your new direction…"
+        : "Your new direction is waiting for evaluation…";
+    }
+    if (job.activeDispatchKind === "APPLY_STAY") {
+      return job.status === "RUNNING"
+        ? "Applying your checkpoint changes…"
+        : "Checkpoint changes are waiting for a worker…";
+    }
+    if (isDeepResearchProcessing(job)) {
+      return job.status === "RUNNING_PHASE2"
+        ? (job.currentStageName ?? "Deep Research is running…")
+        : "Deep Research is waiting for a worker…";
+    }
+    return job.queuePosition
+      ? `Position ${job.queuePosition} in queue`
+      : "Preparing to start…";
+  };
+  const canCancelFromDashboard = (job: Job) =>
+    !isDeepResearchProcessing(job)
+    && job.activeDispatchKind !== "REGENERATE";
   const archivedShown = $derived(archivedOpen || filter === "archived");
   const hasAnyVisible = $derived(
     fReview.length + fProgress.length + fDone.length + fFailed.length + fArchived.length > 0,
@@ -174,7 +198,7 @@
   // ══════════════════════════════════════════════════════════════
   // SSE — connect only for jobs actively processing server-side.
   // ══════════════════════════════════════════════════════════════
-  const SSE_STATUSES = ["PENDING", "QUEUED", "RUNNING", "RUNNING_PHASE2"];
+  const SSE_STATUSES = ["PENDING", "QUEUED", "RUNNING", "REGENERATING", "RUNNING_PHASE2"];
 
   $effect.pre(() => {
     const activeJobsList = initialJobs.filter((j) => SSE_STATUSES.includes(j.status));
@@ -192,12 +216,12 @@
                   })
                   .catch(() => {});
               }
-              if (isTerminalStatus(d.status) || !SSE_STATUSES.includes(d.status)) {
+              if (!SSE_STATUSES.includes(d.status)) {
                 sseUnsubscribers.get(job.id)?.();
                 sseUnsubscribers.delete(job.id);
-                if (isTerminalStatus(d.status)) {
-                  setTimeout(() => jobUpdates.delete(job.id), 5000);
-                }
+                // Keep the live transition visible until fresh server data owns it.
+                // Deleting the override on a timer resurrected the stale SSR status.
+                void invalidateAll().finally(() => jobUpdates.delete(job.id));
               }
             },
             (err) => console.warn(`SSE error for job ${job.id}:`, err.message),
@@ -224,47 +248,42 @@
     sseUnsubscribers.clear();
   });
 
-  // ── Resume a hard-failed job from checkpoint ──
-  let resumingJobs = new SvelteSet<string>();
-  async function resumeJob(job: Job) {
-    if (resumingJobs.has(job.id)) return;
-    resumingJobs.add(job.id);
-    try {
-      const res = await fetch(`/api/jobs/${job.id}/resume`, { method: "POST" });
-      if (res.ok) {
-        const data = await res.json();
-        window.location.href = data.status === "AWAITING_SELECTION"
-          ? `/jobs/${job.id}#opportunities`
-          : `/jobs/${job.id}`;
-      } else {
-        const d = await res.json();
-        console.error("Resume failed:", d.error || "Unknown error");
-      }
-    } catch (err) {
-      console.error("Resume failed:", err);
-    } finally {
-      resumingJobs.delete(job.id);
-    }
-  }
-
   // ── Cancel an active job ──
   let cancellingJobs = new SvelteSet<string>();
+  let actionNotice = $state<{ tone: "status" | "error"; message: string } | null>(null);
   async function cancelJob(job: Job) {
     if (cancellingJobs.has(job.id)) return;
     cancellingJobs.add(job.id);
     try {
       const res = await fetch(`/api/jobs/${job.id}/cancel`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
+        const refunded = Number(data.creditRefunded ?? 0);
         jobUpdates.set(job.id, {
           ...job,
           status: "CANCELLED",
           errorMessage: "Cancelled by user",
+          creditRefunded: refunded > 0,
         });
+        actionNotice = {
+          tone: "status",
+          message: refunded > 0
+            ? `Research cancelled. ${refunded} ${refunded === 1 ? "credit was" : "credits were"} refunded.`
+            : "Research cancelled.",
+        };
         sseUnsubscribers.get(job.id)?.();
         sseUnsubscribers.delete(job.id);
+      } else {
+        actionNotice = {
+          tone: "error",
+          message: data.error || "Research could not be cancelled. Refresh and try again.",
+        };
       }
     } catch (err) {
-      console.error("Cancel failed:", err);
+      actionNotice = {
+        tone: "error",
+        message: err instanceof Error ? err.message : "Research could not be cancelled.",
+      };
     } finally {
       cancellingJobs.delete(job.id);
     }
@@ -441,7 +460,7 @@
   </SidebarNav>
 
   <!-- ── MAIN ── -->
-  <main class="main">
+  <div class="main">
     <header class="main-head">
       <h1>Welcome back, {firstName}</h1>
       <p class="sub" aria-live="polite">
@@ -457,6 +476,15 @@
         {#if failedJobs.length}<span class="s-alert">· {failedJobs.length} failed</span>{/if}
       </p>
     </header>
+    {#if actionNotice}
+      <p
+        class="action-notice"
+        class:action-notice--error={actionNotice.tone === "error"}
+        role={actionNotice.tone === "error" ? "alert" : "status"}
+      >
+        {actionNotice.message}
+      </p>
+    {/if}
 
     {#if tab === "research"}
       {#if data.loadError && jobs.length === 0}
@@ -559,7 +587,11 @@
                     <span class="row-dot" class:row-dot-live={isLive(job.status)} style:--rail={meta.color} style:background={meta.color}></span>
                     <div class="row-main">
                       <h3 class="row-title">{job.niche}</h3>
-                      {#if job.status === "RUNNING" || job.status === "RUNNING_PHASE2"}
+                      {#if (
+                        job.status === "RUNNING"
+                        && job.activeDispatchKind !== "SEED_IDEA"
+                        && job.activeDispatchKind !== "APPLY_STAY"
+                      ) || job.status === "RUNNING_PHASE2"}
                         <div class="row-prog">
                           <div
                             class="prog-bar"
@@ -569,25 +601,27 @@
                             aria-valuemax="100"
                             aria-label="Research progress for {job.niche}"
                           ><span style:width="{job.progressPercent ?? 0}%" style:background={meta.color}></span></div>
-                          <span class="row-sub row-dim">{job.currentStageName ?? meta.label}{#if counts.total} · {counts.completed}/{counts.total}{/if}</span>
+                          <span class="row-sub row-dim">{job.currentStageName ?? meta.label}{#if counts.total} · {counts.current}/{counts.total}{/if}</span>
                         </div>
-                      {:else if job.status === "REGENERATING"}
-                        <p class="row-sub row-dim"><Loader2 size={13} class="spinner" aria-hidden="true" /> Adding another idea batch…</p>
-                      {:else if isDeepResearchProcessing(job)}
-                        <p class="row-sub row-dim">Deep Research is waiting for a worker…</p>
                       {:else}
-                        <p class="row-sub row-dim">{#if job.queuePosition}Position {job.queuePosition} in queue{:else}Preparing to start…{/if}</p>
+                        <p class="row-sub row-dim">
+                          {#if job.status === "REGENERATING" || job.activeDispatchKind === "SEED_IDEA" || job.activeDispatchKind === "APPLY_STAY"}
+                            <Loader2 size={13} class="spinner" aria-hidden="true" />
+                          {/if}
+                          {processingCopy(job)}
+                        </p>
                       {/if}
                     </div>
                     <div class="row-end">
                       <span class="row-badge" style:color={meta.color}>{meta.label}</span>
-                      {#if isDeepResearchProcessing(job)}
-                        <a class="link-cancel link-cancel--view" href={`/jobs/${job.id}`}>View</a>
-                      {:else}
+                      <span class="row-actions">
+                        <a class="link-cancel link-cancel--view" href={`/jobs/${job.id}`}>View progress</a>
+                        {#if canCancelFromDashboard(job)}
                         <button class="link-cancel" type="button" onclick={() => cancelJob(job)} disabled={cancellingJobs.has(job.id)}>
                           {cancellingJobs.has(job.id) ? "Cancelling…" : "Cancel"}
                         </button>
-                      {/if}
+                        {/if}
+                      </span>
                     </div>
                   </div>
                 {/each}
@@ -654,15 +688,10 @@
                     <span class="row-meta">
                       <span class="row-fail">Failed</span>{#if job.creditRefunded}<span class="row-dim"> · refunded</span>{/if}
                     </span>
-                    <button class="btn-ghost btn-xs" type="button" onclick={() => resumeJob(job)} disabled={resumingJobs.has(job.id)}>
-                      {#if resumingJobs.has(job.id)}
-                        <Loader2 size={13} class="spinner" aria-hidden="true" />
-                        {failedDuringDeepResearch(job) ? "Opening…" : "Resuming…"}
-                      {:else}
-                        <RotateCcw size={13} aria-hidden="true" />
-                        {failedDuringDeepResearch(job) ? "Review selection" : "Resume"}
-                      {/if}
-                    </button>
+                    <a class="btn-ghost btn-xs" href={`/jobs/${job.id}#recover-run`}>
+                      <RotateCcw size={13} aria-hidden="true" />
+                      {failedDuringDeepResearch(job) ? "Review selection" : "Review recovery"}
+                    </a>
                   </div>
                 {/each}
               </div>
@@ -762,7 +791,7 @@
         </a>
       {/if}
     {/if}
-  </main>
+  </div>
 </div>
 
 {#if pendingUndo}
@@ -806,6 +835,18 @@
     min-width: 0;
   }
   .main-head { margin-bottom: 1.55rem; }
+  .action-notice {
+    margin: calc(-1 * var(--space-2)) 0 var(--space-4);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid color-mix(in srgb, var(--color-success-text) 35%, var(--color-border));
+    border-radius: var(--radius-md);
+    color: var(--color-success-text);
+    font-size: var(--text-sm);
+  }
+  .action-notice--error {
+    border-color: color-mix(in srgb, var(--color-error-text) 35%, var(--color-border));
+    color: var(--color-error-text);
+  }
   .main-head h1 {
     margin: 0;
     font-family: var(--font-display);
@@ -1028,6 +1069,12 @@
   .link-cancel:hover:not(:disabled) { color: var(--color-error-text); }
   .link-cancel--view { text-decoration: none; }
   .link-cancel--view:hover { color: var(--color-accent); }
+  .row-actions {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-3);
+  }
   .link-cancel:active:not(:disabled) { opacity: 0.7; }
   .link-cancel:disabled { opacity: 0.6; cursor: default; }
   .link-cancel:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; border-radius: 3px; }

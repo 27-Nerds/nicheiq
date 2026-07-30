@@ -76,6 +76,11 @@ describe('selection metric explanations API', () => {
       .toContain('Research score always uses novelty_score');
     expect(response.body.metrics.find((metric: { key: string }) => metric.key === 'research_score').caveat)
       .toContain('missing field contributes zero');
+    expect(response.body.metrics.find((metric: { key: string }) => metric.key === 'known_concern'))
+      .toMatchObject({
+        sourceFields: expect.arrayContaining(['red_team_verdict', 'red_team_caveats']),
+        method: expect.stringContaining('adversarial-review verdict'),
+      });
   });
 
   it('serves the Python-default cap thresholds when no env override is set', async () => {

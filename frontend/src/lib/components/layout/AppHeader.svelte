@@ -90,6 +90,7 @@
 )}
   <a
     {href}
+    aria-label={label}
     aria-current={active ? "page" : undefined}
     class="flex items-center gap-2 text-sm font-medium transition-colors {active
       ? 'text-text-primary'
@@ -136,6 +137,7 @@
           href="/new"
           class="new-research-action"
           class:active={newActive}
+          aria-label="New Research"
           aria-current={newActive ? "page" : undefined}
         >
           <Plus class="w-4 h-4" />
@@ -176,12 +178,12 @@
         <div class="relative ml-3" bind:this={userMenuEl}>
           <button
             onclick={() => (showUserMenu = !showUserMenu)}
-            aria-label="Account menu"
             class="flex items-center gap-2.5 pl-3 pr-2 py-1.5 rounded-full hover:bg-bg-elevated transition-colors border border-transparent hover:border-border"
           >
             <span class="text-sm font-medium text-text-secondary hidden sm:inline"
               >{firstName}</span
             >
+            <span class="sr-only">account menu</span>
             {#if session?.user?.image && !imageError}
               <img
                 src={session.user.image}

@@ -27,9 +27,9 @@ from loguru import logger
 
 from ..config.settings import settings
 from ..models.research_state import NicheContext
-from ..models.social_content import SocialContentCollection, SocialPost
+from ..models.social_content import SocialContentCollection
 from ..utils.engagement_normalizer import normalize_engagement
-from ..utils.validation.dedup import deduplicate_posts, token_jaccard
+from ..utils.validation.dedup import deduplicate_posts
 from .catalog_seed import MAX_REMIX_PAINS, sanitize_label
 
 MAX_QUERIES = 6
@@ -39,11 +39,6 @@ MAX_POSTS = 12
 # on Phase-2 resume that would re-run discovery uncharged and overwrite the
 # user's explicitly selected pains. Never persist a thinner collection.
 MIN_POSTS = 3
-# The HN tool's internal jaccard threshold (0.05) is close to a no-op; a few
-# stale, marginally relevant threads fed to the stage-11 trend crew would be
-# WORSE than the honest "missing data" fallback. Stricter bar here also lets
-# non-HN-shaped niches self-gate to None (no hand-maintained niche allowlist).
-RELEVANCE_THRESHOLD = 0.10
 
 
 def synthesize_remix_niche_context(
@@ -120,10 +115,6 @@ Return a valid JSON object with this structure:
     return context, usage
 
 
-def _post_text(post: SocialPost) -> str:
-    return f"{post.title} {post.body[:500]}".strip()
-
-
 def collect_seed_evidence(
     query_candidates: list[str],
     niche_description: str,
@@ -151,7 +142,7 @@ def collect_seed_evidence(
 
     from ..tools.hackernews_tool import HackerNewsCollectorTool
 
-    posts = HackerNewsCollectorTool().search_and_collect(
+    collection = HackerNewsCollectorTool().search_relevant_and_collect(
         queries,
         niche_description=niche_description,
         max_results_per_query=8,
@@ -161,9 +152,12 @@ def collect_seed_evidence(
     if cancel_check:
         cancel_check()
 
+    # The shared HN collector owns semantic relevance. Keep this persisted-grade
+    # check as a contract boundary so no ungraded legacy/mock post can enter a
+    # seed checkpoint.
     relevant = [
-        p for p in posts
-        if token_jaccard(_post_text(p), niche_description) >= RELEVANCE_THRESHOLD
+        p for p in collection.posts
+        if p.relevance_grade is not None and p.relevance_grade >= 2
     ]
     relevant = deduplicate_posts(relevant, threshold=0.6)
     relevant.sort(key=normalize_engagement, reverse=True)

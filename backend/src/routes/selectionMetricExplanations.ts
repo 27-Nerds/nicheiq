@@ -112,8 +112,8 @@ const METRICS: SelectionMetricExplanation[] = [
     kind: 'evidence',
     range: 'text',
     summary: 'The strongest recorded reason the candidate may underperform or be difficult to execute.',
-    method: 'The comparison shows the realism critic\'s market-fit concern, then a web-verified incumbent-parity finding, then data-acquisition notes.',
-    sourceFields: ['critic_concern', 'incumbent_parity', 'data_acquisition_notes'],
+    method: 'The comparison shows a killed adversarial-review verdict and its caveats first, then the realism critic\'s market-fit concern, a web-verified incumbent-parity finding, or data-acquisition notes.',
+    sourceFields: ['red_team_verdict', 'red_team_caveats', 'critic_concern', 'incumbent_parity', 'data_acquisition_notes'],
   },
 ];
 

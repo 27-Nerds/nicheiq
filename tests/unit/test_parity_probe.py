@@ -467,3 +467,164 @@ def test_mechanism_keywords():
         value_proposition="Plan the most efficient daily route for your grooming van"))
     assert "route" in kw and "optimizer" in kw
     assert "the" not in kw.split() and "for" not in kw.split()
+
+
+# ── §6(a) vocabulary fix (2026-07-30): buyer-vocabulary capability phrases, a vendor-free
+# discovery arm, and the truncated-fallback bug ──────────────────────────────────────────
+
+def _recording_crew(niche_description="mobile dog groomers", incumbent_focus="grooming scheduling"):
+    """Crew stub whose search_tool RECORDS every query issued."""
+    crew = UnifiedSolutionCrew.__new__(UnifiedSolutionCrew)
+    crew.niche_context = SimpleNamespace(niche_description=niche_description)
+    crew.queries = []
+
+    def _run(search_query):
+        crew.queries.append(search_query)
+        return "some web result"
+    crew.search_tool = SimpleNamespace(run=_run, batch_run=lambda queries: {q: "r" for q in queries})
+    crew.cost_tracker = None
+    crew._incumbent_probe_text = "cached"
+    crew._incumbent_rows = [{"name": "MoeGo", "pricing": "$50/mo", "focus": incumbent_focus, "gap": ""}]
+    crew._calibrate_batch = lambda **kw: (len(kw["batch"]), None)
+    return crew
+
+
+def _capability_llm(phrase="payout deposit reconciliation", findings=None):
+    """invoke_structured mock: answers the capability call with `phrase`, the parity call with
+    `findings`. Branches on the prompt (only the capability prompt says 'BUYER would type')."""
+    def _invoke(**kw):
+        if "BUYER would type" in kw.get("prompt", ""):
+            return (SimpleNamespace(items=[SimpleNamespace(idea_name="A", phrase=phrase)]),
+                    None)
+        return SimpleNamespace(findings=findings or []), None
+    return _invoke
+
+
+class TestCapabilityPhraseQueries:
+    def test_capability_phrase_replaces_shape_words_in_queries(self, monkeypatch):
+        monkeypatch.setattr(settings, "parity_discovery_queries_per_run", 12)
+        crew = _recording_crew()
+        # mechanism_tag is the shape noise the fix exists to eliminate
+        idea = _idea("A", 0.6, vp="Stop manually hunting for the sales that make up a deposit",
+                     mech="parametric-calculator")
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   staticmethod(_capability_llm())):
+            crew._probe_mechanism_parity([idea])
+
+        assert crew.queries, "probe issued no queries"
+        assert all("payout deposit reconciliation" in q for q in crew.queries)
+        assert not any("parametric" in q for q in crew.queries)
+
+    def test_vendor_free_discovery_query_present_and_capability_first(self, monkeypatch):
+        monkeypatch.setattr(settings, "parity_discovery_queries_per_run", 12)
+        crew = _recording_crew()
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   staticmethod(_capability_llm())):
+            crew._probe_mechanism_parity([_idea("A", 0.6)])
+
+        vendor_free = [q for q in crew.queries if "MoeGo" not in q]
+        assert vendor_free, "no vendor-free discovery query issued"
+        # Capability leads so it survives the 120-char cap.
+        assert vendor_free[0].startswith("payout deposit reconciliation")
+
+    def test_discovery_arm_disabled_by_zero(self, monkeypatch):
+        monkeypatch.setattr(settings, "parity_discovery_queries_per_run", 0)
+        # Overlapping incumbent focus so the name-anchored path is taken (an idea with NO
+        # overlapping incumbent still gets the vendor-free FALLBACK query — that is the
+        # pre-existing contract, not the discovery arm).
+        crew = _recording_crew(incumbent_focus="route optimization scheduling")
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   staticmethod(_capability_llm())):
+            crew._probe_mechanism_parity([_idea("A", 0.6)])
+
+        assert crew.queries  # name-anchored queries still issued
+        assert all("MoeGo" in q for q in crew.queries)
+
+    def test_discovery_budget_capped_per_run(self, monkeypatch):
+        monkeypatch.setattr(settings, "parity_discovery_queries_per_run", 2)
+        crew = _recording_crew(incumbent_focus="route optimization scheduling")
+        ideas = [_idea(f"I{n}", 0.6) for n in range(5)]
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   staticmethod(_capability_llm())):
+            crew._probe_mechanism_parity(ideas)
+
+        # 5 ideas each have an overlapping incumbent, so every vendor-free query is a
+        # discovery query — and the per-run cap bounds them at 2.
+        assert len([q for q in crew.queries if "MoeGo" not in q]) == 2
+        assert len([q for q in crew.queries if "MoeGo" in q]) == 5
+
+    def test_fallback_query_still_issued_after_discovery_budget_exhausted(self, monkeypatch):
+        """An idea with no overlapping incumbent must never end up with ZERO queries, even once
+        the discovery arm is spent — the fallback is a separate, uncapped contract."""
+        monkeypatch.setattr(settings, "parity_discovery_queries_per_run", 0)
+        crew = _recording_crew(incumbent_focus="zzz unrelated")
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   staticmethod(_capability_llm())):
+            crew._probe_mechanism_parity([_idea("A", 0.6)])
+
+        assert len(crew.queries) == 1
+        assert "payout deposit reconciliation" in crew.queries[0]
+
+    def test_long_niche_description_no_longer_truncates_mechanism_away(self, monkeypatch):
+        """THE BUG: the old fallback was f"{niche} software {kw}"[:120] with `niche` = the full
+        ~400-char niche_description, so the mechanism words never reached the query at all."""
+        monkeypatch.setattr(settings, "parity_discovery_queries_per_run", 12)
+        long_niche = ("The professional bookkeeping and outsourced accounting services market "
+                      "encompasses the systems, software, and workflows used to manage financial "
+                      "records, regulatory compliance, and periodic financial reporting.")
+        # incumbent focus shares no words with the idea -> the fallback path is taken
+        crew = _recording_crew(niche_description=long_niche, incumbent_focus="zzz unrelated")
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   staticmethod(_capability_llm())):
+            crew._probe_mechanism_parity([_idea("A", 0.6)])
+
+        assert crew.queries
+        assert all("payout deposit reconciliation" in q for q in crew.queries), crew.queries
+        assert all(len(q) <= 120 for q in crew.queries)
+
+    def test_fail_soft_falls_back_to_mechanism_keywords(self, monkeypatch):
+        """A raising capability call must leave the probe working on the previous behavior."""
+        monkeypatch.setattr(settings, "parity_discovery_queries_per_run", 12)
+        crew = _recording_crew()
+
+        def _invoke(**kw):
+            if "BUYER would type" in kw.get("prompt", ""):
+                raise RuntimeError("capability call down")
+            return SimpleNamespace(findings=[]), None
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   staticmethod(_invoke)):
+            crew._probe_mechanism_parity([_idea("A", 0.6, mech="route-optimizer")])
+
+        assert crew.queries
+        assert any("route" in q for q in crew.queries)  # _mechanism_keywords vocabulary
+
+    def test_discovery_budget_is_per_run_not_per_call(self, monkeypatch):
+        """The probe runs once over the full set AND again per _score_wave (a live
+        regenerate_ideas job called it 4×), so a per-CALL counter would spend 4× the
+        documented per-run cap."""
+        monkeypatch.setattr(settings, "parity_discovery_queries_per_run", 2)
+        crew = _recording_crew(incumbent_focus="route optimization scheduling")
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   staticmethod(_capability_llm())):
+            crew._probe_mechanism_parity([_idea("A", 0.6), _idea("B", 0.6)])
+            crew._probe_mechanism_parity([_idea("C", 0.6), _idea("D", 0.6)])
+
+        assert len([q for q in crew.queries if "MoeGo" not in q]) == 2
+
+    def test_phrase_map_cached_across_calls(self, monkeypatch):
+        monkeypatch.setattr(settings, "parity_discovery_queries_per_run", 12)
+        crew = _recording_crew()
+        calls = []
+
+        def _invoke(**kw):
+            if "BUYER would type" in kw.get("prompt", ""):
+                calls.append(1)
+                return (SimpleNamespace(items=[SimpleNamespace(idea_name="A", phrase="x y z")]),
+                        None)
+            return SimpleNamespace(findings=[]), None
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   staticmethod(_invoke)):
+            crew._probe_mechanism_parity([_idea("A", 0.6)])
+            crew._probe_mechanism_parity([_idea("A", 0.6)])
+
+        assert len(calls) == 1, "capability phrases must be cached per run"

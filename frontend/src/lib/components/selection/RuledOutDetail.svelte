@@ -24,7 +24,11 @@
       <span class="detail-kicker">Examined &amp; ruled out</span>
       <h2>{title}</h2>
       <div class="detail-badges">
-        {#if finding.source_frame === "user_seed"}<span class="badge">Your idea</span>{/if}
+        {#if finding.source_frame === "user_seed"}
+          <span class="badge">Your idea</span>
+        {:else if finding.source_frame === "owner_synthesis"}
+          <span class="badge">Evaluated on request</span>
+        {/if}
         <span class="band">{bandLabel}</span>
       </div>
       <button type="button" class="detail-close" aria-label="Close ruled-out analysis" onclick={onClose}>

@@ -5,7 +5,7 @@ import { prisma } from '../services/db.js';
 import { getJob } from '../services/jobService.js';
 import { getDiscoveryDataForJob, getPreviewReportForJob } from '../services/assetService.js';
 import { sanitizeDiscoveryData, sanitizePreviewReport } from './schemas/sharedDiscoveryPayload.js';
-import { JobStatus } from '@prisma/client';
+import { JobStatus, Prisma } from '@prisma/client';
 import { requireInternalAuth, verifyOwnership, AuthenticatedRequest } from '../middleware/auth.js';
 import rateLimit from 'express-rate-limit';
 import { CONFIG } from '../config.js';
@@ -63,6 +63,19 @@ function generateShareToken(): string {
 
 function hashIp(ip: string): string {
   return crypto.createHash('sha256').update(`${IP_HASH_SALT}:${ip}`).digest('hex');
+}
+
+async function lockJobForShareMutation(
+  tx: Prisma.TransactionClient,
+  jobId: string,
+): Promise<{ userId: string | null; status: JobStatus } | null> {
+  const rows = await tx.$queryRaw<Array<{ userId: string | null; status: JobStatus }>>(Prisma.sql`
+    SELECT "userId", "status"
+    FROM "Job"
+    WHERE "id" = ${jobId}
+    FOR UPDATE
+  `);
+  return rows[0] ?? null;
 }
 
 // Helper: build vote summary for a share
@@ -238,51 +251,52 @@ discoverySharesRouter.post('/:jobId/discovery-share', requireInternalAuth, async
       return;
     }
 
-    const job = await getJob(parsed.data.jobId);
-    if (!job) {
+    const result = await prisma.$transaction(async (tx) => {
+      // Job first: Deep Research authorization takes this same lock before deactivating the
+      // share, so enable cannot commit a stale reactivation after authorization.
+      const job = await lockJobForShareMutation(tx, parsed.data.jobId);
+      if (!job) return { outcome: 'not_found' as const };
+      if (!verifyOwnership(req, job.userId)) return { outcome: 'forbidden' as const };
+      if (job.status !== JobStatus.AWAITING_SELECTION && job.status !== JobStatus.REGENERATING) {
+        return { outcome: 'invalid_status' as const };
+      }
+
+      const existing = await tx.discoveryShare.findUnique({
+        where: { jobId: parsed.data.jobId },
+      });
+      const share = existing
+        ? await tx.discoveryShare.update({
+            where: { jobId: parsed.data.jobId },
+            data: { isActive: true },
+          })
+        : await tx.discoveryShare.create({
+            data: {
+              jobId: parsed.data.jobId,
+              userId: req.user!.id,
+              shareToken: generateShareToken(),
+              isActive: true,
+            },
+          });
+      const voteCount = await tx.discoveryVote.count({ where: { shareId: share.id } });
+      return { outcome: 'ok' as const, share, voteCount };
+    });
+    if (result.outcome === 'not_found') {
       res.status(404).json({ error: 'Job not found' });
       return;
     }
-
-    if (!verifyOwnership(req, job.userId)) {
+    if (result.outcome === 'forbidden') {
       res.status(403).json({ error: 'Not authorized' });
       return;
     }
-
-    if (job.status !== JobStatus.AWAITING_SELECTION && job.status !== JobStatus.REGENERATING) {
+    if (result.outcome === 'invalid_status') {
       res.status(400).json({ error: 'Discovery can only be shared when awaiting selection' });
       return;
     }
-
-    // Upsert: reactivate or create
-    const existing = await prisma.discoveryShare.findUnique({
-      where: { jobId: parsed.data.jobId },
-    });
-
-    let share;
-    if (existing) {
-      share = await prisma.discoveryShare.update({
-        where: { jobId: parsed.data.jobId },
-        data: { isActive: true },
-      });
-    } else {
-      share = await prisma.discoveryShare.create({
-        data: {
-          jobId: parsed.data.jobId,
-          userId: req.user!.id,
-          shareToken: generateShareToken(),
-          isActive: true,
-        },
-      });
-    }
-
-    const voteCount = await prisma.discoveryVote.count({ where: { shareId: share.id } });
-
     res.json({
       isShared: true,
-      shareToken: share.shareToken,
-      viewCount: share.viewCount,
-      voteCount,
+      shareToken: result.share.shareToken,
+      viewCount: result.share.viewCount,
+      voteCount: result.voteCount,
     });
   } catch (error) {
     console.error('Failed to enable discovery sharing:', error);
@@ -341,43 +355,54 @@ discoverySharesRouter.post('/:jobId/discovery-share/regenerate', requireInternal
       return;
     }
 
-    const job = await getJob(parsed.data.jobId);
-    if (!job) {
+    const result = await prisma.$transaction(async (tx) => {
+      // Match Deep Research and share-enable lock order. The status check happens after the
+      // lock, preventing token regeneration from resurrecting a link after authorization.
+      const job = await lockJobForShareMutation(tx, parsed.data.jobId);
+      if (!job) return { outcome: 'not_found' as const };
+      if (!verifyOwnership(req, job.userId)) return { outcome: 'forbidden' as const };
+      if (job.status !== JobStatus.AWAITING_SELECTION && job.status !== JobStatus.REGENERATING) {
+        return { outcome: 'invalid_status' as const };
+      }
+
+      const existing = await tx.discoveryShare.findUnique({
+        where: { jobId: parsed.data.jobId },
+      });
+      if (!existing) return { outcome: 'share_not_found' as const };
+
+      // A regenerated token and its cleared vote history are one visible state transition.
+      await tx.discoveryVote.deleteMany({ where: { shareId: existing.id } });
+      const share = await tx.discoveryShare.update({
+        where: { jobId: parsed.data.jobId },
+        data: {
+          shareToken: generateShareToken(),
+          viewCount: 0,
+          lastViewedAt: null,
+          isActive: true,
+        },
+      });
+      return { outcome: 'ok' as const, share };
+    });
+    if (result.outcome === 'not_found') {
       res.status(404).json({ error: 'Job not found' });
       return;
     }
-
-    if (!verifyOwnership(req, job.userId)) {
+    if (result.outcome === 'forbidden') {
       res.status(403).json({ error: 'Not authorized' });
       return;
     }
-
-    const existing = await prisma.discoveryShare.findUnique({
-      where: { jobId: parsed.data.jobId },
-    });
-
-    if (!existing) {
+    if (result.outcome === 'invalid_status') {
+      res.status(400).json({ error: 'Discovery can only be shared when awaiting selection' });
+      return;
+    }
+    if (result.outcome === 'share_not_found') {
       res.status(404).json({ error: 'Sharing not enabled for this job' });
       return;
     }
-
-    // Delete all votes and regenerate token
-    await prisma.discoveryVote.deleteMany({ where: { shareId: existing.id } });
-
-    const share = await prisma.discoveryShare.update({
-      where: { jobId: parsed.data.jobId },
-      data: {
-        shareToken: generateShareToken(),
-        viewCount: 0,
-        lastViewedAt: null,
-        isActive: true,
-      },
-    });
-
     res.json({
       isShared: true,
-      shareToken: share.shareToken,
-      viewCount: share.viewCount,
+      shareToken: result.share.shareToken,
+      viewCount: result.share.viewCount,
       voteCount: 0,
     });
   } catch (error) {

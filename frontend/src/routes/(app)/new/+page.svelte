@@ -16,8 +16,6 @@
   } from "lucide-svelte";
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
   import Button from "$lib/components/ui/Button.svelte";
-  import Tooltip from "$lib/components/ui/Tooltip.svelte";
-  import type { UserSubscription } from "$lib/types/billing";
   import EntryModeCards from "$lib/components/new-research/EntryModeCards.svelte";
   import CatalogTrendingGrid from "$lib/components/new-research/CatalogTrendingGrid.svelte";
   import ProcessTimeline from "$lib/components/new-research/ProcessTimeline.svelte";
@@ -38,13 +36,32 @@
 
   // --- Mode state ---
   let entryMode = $state<EntryMode>("idea");
+  let chatMode = $state(false);
 
   // --- Credit data from layout ---
   const creditBalance = $derived((page.data.creditBalance as number) ?? 0);
   const stageCosts = $derived(
     (page.data.stageCosts as StageCosts) ?? DEFAULT_STAGE_COSTS,
   );
-  const hasCredits = $derived(creditBalance >= stageCosts.discovery);
+  const guidedEntryCost = $derived(
+    Number.isInteger(stageCosts.guided?.s1) && (stageCosts.guided?.s1 ?? -1) >= 0
+      ? stageCosts.guided!.s1
+      : null,
+  );
+  const entryCost = $derived(chatMode ? guidedEntryCost : stageCosts.discovery);
+  const entryPriceUnavailable = $derived(
+    (chatMode
+      ? Boolean(page.data.billingLoadState?.guidedCostsUnavailable)
+      : Boolean(page.data.billingLoadState?.discoveryCostUnavailable))
+    || entryCost === null
+    || !Number.isInteger(entryCost)
+    || entryCost < 0,
+  );
+  const displayEntryCost = $derived(entryCost ?? 0);
+  const entryCreditLabel = $derived(
+    `${displayEntryCost} ${displayEntryCost === 1 ? "credit" : "credits"}`,
+  );
+  const hasCredits = $derived(!entryPriceUnavailable && creditBalance >= displayEntryCost);
   // --- Project types ---
   const PROJECT_TYPES = [
     { value: "saas", label: "SaaS" },
@@ -65,6 +82,7 @@
   );
   function toggleProjectType(value: string) {
     if (selectedProjectTypes.includes(value)) {
+      if (selectedProjectTypes.length === 1) return;
       selectedProjectTypes = selectedProjectTypes.filter((t) => t !== value);
     } else {
       selectedProjectTypes = [...selectedProjectTypes, value];
@@ -81,23 +99,14 @@
   let showFocus = $state(false);
 
   // --- Guided research (Phase B — chatMode opt-in, paid-gated) ---
-  const subscription = $derived((page.data.subscription as UserSubscription | null) ?? null);
-  // Mirror the backend's isEntitledUser semantics: ADMIN role counts as entitled, not only an
-  // active subscription (backend coerces chatMode server-side either way — this only controls
-  // the toggle's enabled state). fullCatalogAccess isn't exposed client-side; those users are
-  // rare and the server still honors them if the flag is sent.
-  const hasActiveSubscription = $derived(
-    page.data.session?.user?.role === "ADMIN" ||
-      (!!subscription &&
-        (subscription.status === "ACTIVE" || subscription.status === "TRIALING") &&
-        !!subscription.currentPeriodEnd &&
-        new Date(subscription.currentPeriodEnd).getTime() > Date.now()),
-  );
+  // Exact server-owned grant. This includes admin, subscription/full-catalog entitlement,
+  // and a manual Analyst grant, matching the backend's hasAnalystAccess() contract.
+  const hasAnalystAccess = $derived(page.data.featureAccess?.analyst === true);
   let showGuided = $state(false);
-  let chatMode = $state(false);
 
   // --- Input state ---
   let niche = $state("");
+  const nicheIsValid = $derived(niche.trim().length >= 10);
   let loading = $state(false);
   let error = $state("");
 
@@ -347,7 +356,7 @@
   // --- Submit ---
   async function handleSubmit(e: Event) {
     e.preventDefault();
-    if (!niche.trim() || loading) return;
+    if (!nicheIsValid || loading || entryPriceUnavailable || entryCost === null) return;
 
     loading = true;
     error = "";
@@ -362,7 +371,8 @@
             allowedProjectTypes: selectedProjectTypes,
           }),
           ...(selectedFocus !== "auto" && { ideaFocus: selectedFocus }),
-          ...(chatMode && hasActiveSubscription && { chatMode: true }),
+          ...(chatMode && hasAnalystAccess && { chatMode: true }),
+          expectedCost: entryCost,
           entryMode,
         }),
       });
@@ -373,13 +383,17 @@
         if (res.status === 402 && data.code === "INSUFFICIENT_CREDITS") {
           creditTopUp.show({
             balance: data.balance ?? 0,
-            required: data.required ?? stageCosts.discovery,
-            stageName: "discovery",
+            required: data.required ?? displayEntryCost,
+            stageName: chatMode ? "guided research" : "discovery",
           });
           loading = false;
           return;
         }
         const detail = data.details?.[0]?.message;
+        if (res.status === 409 && data.code === "PRICE_CHANGED") {
+          await invalidateAll();
+          throw new Error("The research price changed. Review the updated cost and start again.");
+        }
         throw new Error(detail || data.error || "Failed to start research");
       }
 
@@ -554,6 +568,11 @@
                 </span>
               {/if}
             </div>
+            {#if niche.trim() && !nicheIsValid}
+              <p class="text-xs text-[color:var(--color-error-text)] mt-1.5" role="alert">
+                Add a little more detail — at least 10 characters are required.
+              </p>
+            {/if}
 
             {#if suggestError}
               <p
@@ -589,7 +608,7 @@
               <div id="business-model-panel" class="flex flex-wrap gap-2 mt-2">
                 <button
                   type="button"
-                  onclick={() => selectedProjectTypes = allSelected ? [] : PROJECT_TYPES.map(t => t.value)}
+                  onclick={() => selectedProjectTypes = PROJECT_TYPES.map(t => t.value)}
                   disabled={loading || showSuccess}
                   aria-pressed={allSelected}
                   class="text-xs py-1.5 transition-colors
@@ -676,7 +695,7 @@
                     Research stops after the niche is validated, and again after pain points and audience are mapped &mdash; chat with the analyst or adjust scope before it continues.
                   </p>
                 </div>
-                {#if hasActiveSubscription}
+                {#if hasAnalystAccess}
                   <button
                     type="button"
                     role="switch"
@@ -693,19 +712,20 @@
                     ></span>
                   </button>
                 {:else}
-                  <Tooltip content="Guided research is a subscriber feature — upgrade to pause and steer research at checkpoints." position="left">
-                    {#snippet children()}
-                      <span
-                        role="switch"
-                        aria-checked="false"
-                        aria-disabled="true"
-                        aria-label="Guided research (subscriber feature)"
-                        class="shrink-0 relative inline-flex h-6 w-11 items-center rounded-full bg-border opacity-50 cursor-not-allowed"
-                      >
-                        <span class="inline-block h-4 w-4 translate-x-1 transform rounded-full bg-white"></span>
-                      </span>
-                    {/snippet}
-                  </Tooltip>
+                  <div class="shrink-0 text-right">
+                    <span
+                      role="switch"
+                      aria-checked="false"
+                      aria-disabled="true"
+                      aria-label="Guided research is not enabled for this account"
+                      class="relative inline-flex h-6 w-11 items-center rounded-full bg-border opacity-50 cursor-not-allowed"
+                    >
+                      <span class="inline-block h-4 w-4 translate-x-1 transform rounded-full bg-white"></span>
+                    </span>
+                    <a class="block mt-1 text-[11px] text-accent-dark hover:text-accent-hover" href="/billing#plans">
+                      See access options
+                    </a>
+                  </div>
                 {/if}
               </div>
             {/if}
@@ -713,7 +733,7 @@
 
           <!-- Process timeline (contextual, near submit) -->
           <div class="mb-4">
-            <ProcessTimeline {stageCosts} />
+            <ProcessTimeline {stageCosts} guided={chatMode} />
           </div>
 
           {#if error}
@@ -736,27 +756,39 @@
               <CheckCircle2 class="w-5 h-5" />
               Analyzing {niche.length > 30 ? niche.slice(0, 30) + '\u2026' : niche}...
             </div>
+          {:else if entryPriceUnavailable}
+            <button
+              type="button"
+              class="btn-secondary w-full justify-center text-base py-3"
+              onclick={() => invalidateAll()}
+            >
+              Pricing unavailable · try again
+            </button>
           {:else if hasCredits}
             <SubmitButton
               {loading}
               loadingText="Starting..."
               icon={ArrowRight}
               iconPosition="end"
-              label="Discover ideas"
-              disabled={!niche.trim()}
+              label={chatMode ? "Start guided research" : "Discover ideas"}
+              disabled={!nicheIsValid}
               class="btn-primary w-full justify-center text-base py-3 min-w-[12rem]"
             />
           {:else}
             <Button
-              onclick={() => creditTopUp.show({ balance: creditBalance, required: stageCosts.discovery, stageName: 'discovery' })}
+              onclick={() => creditTopUp.show({ balance: creditBalance, required: displayEntryCost, stageName: chatMode ? 'guided research' : 'discovery' })}
               icon={Coins}
-              label="Get {stageCosts.discovery} Credits to Start"
+              label="Get {entryCreditLabel} to Start"
               class="btn-primary w-full justify-center text-base py-3"
             />
           {/if}
 
           <p class="text-xs text-text-muted text-center mt-2">
-            {stageCosts.discovery} credits &middot; see every idea before paying for validation
+            {#if chatMode}
+              {entryCreditLabel} to start &middot; you approve each later Discovery segment
+            {:else}
+              {entryCreditLabel} &middot; see every idea before paying for validation
+            {/if}
           </p>
           <p class="text-[11px] text-text-muted text-center mt-1">
             Credits auto-refund if a run can't complete.
@@ -773,11 +805,14 @@
           <StickyCtaBar
             visible={ctaBarVisible && !textareaFocused}
             {niche}
-            creditCost={stageCosts.discovery}
+            creditCost={displayEntryCost}
             {loading}
-            disabled={!niche.trim()}
+            disabled={!nicheIsValid}
             {hasCredits}
-            stageCost={stageCosts.discovery}
+            stageCost={displayEntryCost}
+            priceAvailable={!entryPriceUnavailable}
+            stageName={chatMode ? "guided research" : "discovery"}
+            ctaLabel={chatMode ? "Start guided research" : "Discover ideas"}
           />
         </div>
       </form>

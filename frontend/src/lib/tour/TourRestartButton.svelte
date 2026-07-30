@@ -14,7 +14,6 @@
   <button
     type="button"
     class="tour-restart"
-    aria-label="Restart the tour for this page"
     onclick={() => tourLauncher.restart()}
   >
     Show me around again

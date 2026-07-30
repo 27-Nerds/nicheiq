@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render } from "@testing-library/svelte";
+import { cleanup, fireEvent, render } from "@testing-library/svelte";
 import type { Job } from "$lib/types/job";
 
 vi.mock("$lib/api", async (importOriginal) => {
@@ -12,7 +12,10 @@ vi.mock("$lib/api", async (importOriginal) => {
 
 import DashboardPage from "../+page.svelte";
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 function job(overrides: Partial<Job> = {}): Job {
   return {
@@ -69,6 +72,7 @@ describe("dashboard awaiting-decision visibility", () => {
       job({
         status: "QUEUED",
         jobMode: "interactive",
+        activeDispatchKind: "DEEP_RESEARCH",
         selectedSolutionIds: ["idea-alpha"],
         selectedSolutions: ["Alpha Idea"],
       }),
@@ -76,6 +80,67 @@ describe("dashboard awaiting-decision visibility", () => {
 
     expect(view.getByText("Deep Research is waiting for a worker…")).toBeInTheDocument();
     expect(view.queryByRole("button", { name: "Cancel" })).toBeNull();
-    expect(view.getByRole("link", { name: "View" })).toHaveAttribute("href", "/jobs/job-1");
+    expect(view.getByRole("link", { name: "View progress" })).toHaveAttribute("href", "/jobs/job-1");
+  });
+
+  it("uses exact operation identity for queued idea work and preserves a progress re-entry link", () => {
+    const view = renderDashboard([
+      job({
+        status: "QUEUED",
+        jobMode: "interactive",
+        activeDispatchKind: "REGENERATE",
+        selectedSolutionIds: ["idea-alpha"],
+      }),
+    ]);
+
+    expect(view.getByText("Another idea batch is waiting for a worker…")).toBeInTheDocument();
+    expect(view.queryByText("Deep Research is waiting for a worker…")).toBeNull();
+    expect(view.getByRole("link", { name: "View progress" })).toHaveAttribute("href", "/jobs/job-1");
+    expect(view.queryByRole("button", { name: "Cancel" })).toBeNull();
+  });
+
+  it("always lets a running Discovery job be reopened and leaves the app layout as main owner", () => {
+    const view = renderDashboard([
+      job({
+        status: "RUNNING",
+        activeDispatchKind: "CONTINUE",
+        currentStageName: "Search & Discovery",
+        stagesCompleted: 1,
+        totalStages: 15,
+      }),
+    ]);
+
+    expect(view.getByRole("link", { name: "View progress" })).toHaveAttribute("href", "/jobs/job-1");
+    expect(view.getByRole("progressbar").parentElement).toHaveTextContent(
+      /Search & Discovery\s*· 2\/14/,
+    );
+    expect(view.queryByRole("main")).toBeNull();
+  });
+
+  it("routes failed runs to recovery context instead of resuming from the dashboard", () => {
+    const view = renderDashboard([job({ status: "FAILED", creditRefunded: true })]);
+
+    const recovery = view.getByRole("link", { name: "Review recovery" });
+    expect(recovery).toHaveAttribute("href", "/jobs/job-1#recover-run");
+    expect(view.queryByRole("button", { name: "Resume" })).toBeNull();
+  });
+
+  it("surfaces the authoritative refund receipt after cancellation", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      status: "cancelled",
+      creditRefunded: 5,
+    }), { status: 200, headers: { "Content-Type": "application/json" } })));
+    const view = renderDashboard([
+      job({
+        status: "QUEUED",
+        activeDispatchKind: "CONTINUE",
+      }),
+    ]);
+
+    await fireEvent.click(view.getByRole("button", { name: "Cancel" }));
+
+    expect(await view.findByRole("status")).toHaveTextContent(
+      "Research cancelled. 5 credits were refunded.",
+    );
   });
 });

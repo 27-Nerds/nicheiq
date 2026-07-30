@@ -5,20 +5,16 @@ import Tooltip from "../Tooltip.svelte";
 describe("Tooltip trigger semantics", () => {
   afterEach(cleanup);
 
-  it("is focusable with a described-by description but is NOT a button", () => {
+  it("uses one native help button with a described-by description", () => {
     const view = render(Tooltip, { props: { content: "Helpful explanation" } });
 
-    // No action → no button role. A role="button" here was announced as a
-    // dead control by screen readers.
-    expect(view.queryByRole("button")).toBeNull();
+    const wrapper = view.getByRole("button", { name: "More information" });
+    expect(wrapper).toHaveClass("tooltip-wrapper");
+    expect(wrapper).not.toHaveAttribute("tabindex");
 
-    const wrapper = document.querySelector<HTMLElement>(".tooltip-wrapper");
-    expect(wrapper).not.toBeNull();
-    expect(wrapper!.getAttribute("role")).toBeNull();
-    expect(wrapper!.getAttribute("tabindex")).toBe("0");
-
-    const descId = wrapper!.getAttribute("aria-describedby");
+    const descId = wrapper.getAttribute("aria-describedby");
     expect(descId).toBeTruthy();
     expect(document.getElementById(descId!)?.textContent).toBe("Helpful explanation");
+    expect(wrapper.querySelector("[aria-label]")).toBeNull();
   });
 });

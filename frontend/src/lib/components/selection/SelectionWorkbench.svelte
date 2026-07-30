@@ -23,7 +23,7 @@
     candidateStatsLine,
     generateNewBatchLabel,
   } from "$lib/selection/labels";
-  import { shortlistOverlaps } from "$lib/selection/overlapWarnings";
+  import { overlapWarningText, shortlistOverlaps } from "$lib/selection/overlapWarnings";
   import {
     regenerateIdeas,
     seedIdea,
@@ -41,7 +41,10 @@
   } from "$lib/api";
   import ChatThread from "$lib/components/chat/ChatThread.svelte";
   import { selectionSuggestions } from "$lib/components/chat/suggestions";
-  import { chatLedger } from "$lib/stores/chatLedger.svelte";
+  import {
+    chatLedger,
+    type BatchActivity as BatchActivityRecord,
+  } from "$lib/stores/chatLedger.svelte";
   import { chatPanel } from "$lib/stores/chatPanel.svelte";
   import { MessageSquare } from "lucide-svelte";
   import { creditTopUp } from "$lib/stores/creditTopUp.svelte";
@@ -71,6 +74,10 @@
     opportunityShape,
   } from "$lib/utils/solution-utils";
   import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
+  import {
+    adversarialReviewFinding,
+    directIncumbentParity,
+  } from "$lib/utils/adversarialReview";
   import { humanizeTag, tagDescription } from "$lib/utils/ideaTagLabels";
   import { angleLabel, angleDescription } from "$lib/utils/ideaAngleLabels";
   import {
@@ -114,6 +121,8 @@
     creditBalance: number;
     stageCosts?: StageCosts;
     canRegenerate?: boolean;
+    ideaBatchCompletedCount?: number | null;
+    maxIdeaBatches?: number | null;
     isRegenerating?: boolean;
     selectedSolutions?: string[];
     selectionDraft?: SelectionDraft | null;
@@ -171,6 +180,8 @@
     creditBalance,
     stageCosts = { ...DEFAULT_STAGE_COSTS },
     canRegenerate = false,
+    ideaBatchCompletedCount = null,
+    maxIdeaBatches = null,
     isRegenerating = false,
     selectedSolutions,
     selectionDraft = null,
@@ -617,8 +628,33 @@
    *  so as reactive state they would re-trigger the very effect they exist to dedupe. */
   let batchPollOperationId: string | null = null;
   const abandonedBatchPolls = new Set<string>();
+  let batchPollStalledOperationId = $state<string | null>(null);
+  let regenerateClientRequestId = $state(crypto.randomUUID());
+  let regenerateCostOverride = $state<number | null>(null);
+  const regenerateCost = $derived(
+    regenerateCostOverride ?? stageCosts.regenerate_ideas,
+  );
   const canAffordRegenerate = $derived(
-    creditBalance >= stageCosts.regenerate_ideas,
+    creditBalance >= regenerateCost,
+  );
+  const completedBatchCount = $derived(
+    typeof ideaBatchCompletedCount === "number" ? ideaBatchCompletedCount : 0,
+  );
+  const batchMaximum = $derived(
+    typeof maxIdeaBatches === "number" ? maxIdeaBatches : 0,
+  );
+  const batchUsageKnown = $derived(
+    typeof ideaBatchCompletedCount === "number"
+    && Number.isInteger(ideaBatchCompletedCount)
+    && typeof maxIdeaBatches === "number"
+    && Number.isInteger(maxIdeaBatches)
+    && batchMaximum > 0,
+  );
+  const batchLimitReached = $derived(
+    batchUsageKnown && completedBatchCount >= batchMaximum,
+  );
+  const canRequestBatch = $derived(
+    canRegenerate && !batchLimitReached,
   );
   const REGEN_FOCUSES = [
     { value: "auto", label: "Auto" },
@@ -644,19 +680,37 @@
     if (batchPollOperationId === operationId || abandonedBatchPolls.has(operationId)) return;
     stopBatchPoll();
     batchPollOperationId = operationId;
+    if (batchPollStalledOperationId !== operationId) batchPollStalledOperationId = null;
     let attempts = 0;
     batchPollTimer = setInterval(async () => {
       attempts += 1;
       await chatLedger.reload();
       const activity = chatLedger.batchActivities.find((item) => item.operationId === operationId);
       if (activity && activity.outcome !== "pending") {
+        abandonedBatchPolls.delete(operationId);
+        batchPollStalledOperationId = null;
         stopBatchPoll();
         onBatchSettled?.();
       } else if (attempts >= 200) {
         abandonedBatchPolls.add(operationId);
         stopBatchPoll();
+        batchPollStalledOperationId = operationId;
       }
     }, 6000);
+  }
+
+  async function recheckBatch(activity: BatchActivityRecord) {
+    const operationId = activity.operationId;
+    if (batchPollStalledOperationId !== operationId) return;
+    abandonedBatchPolls.delete(operationId);
+    batchPollStalledOperationId = null;
+    beginBatchPoll(operationId);
+    await chatLedger.reload();
+    const refreshed = chatLedger.batchActivities.find((item) => item.operationId === operationId);
+    if (refreshed && refreshed.outcome !== "pending") {
+      stopBatchPoll();
+      onBatchSettled?.();
+    }
   }
 
   $effect(() => () => stopBatchPoll());
@@ -667,7 +721,8 @@
   // one place it's actually applied (regenerate-ideas route, unchanged).
   async function handleRegenerate(focusOverride?: IdeaFocus) {
     if (
-      regenerating
+      !canRequestBatch
+      || regenerating
       || isRegenerating
       || seedPending
       || chatLedger.hasPendingSeed
@@ -681,8 +736,13 @@
     try {
       const response = await regenerateIdeas(
         jobId,
-        focus === "auto" ? undefined : focus,
+        {
+          clientRequestId: regenerateClientRequestId,
+          expectedCost: regenerateCost,
+          idea_focus: focus,
+        },
       );
+      regenerateClientRequestId = crypto.randomUUID();
       chatLedger.markBatchPending(response.operationId, {
         ordinal: response.batchOrdinal,
         focus: response.focus ?? focus,
@@ -694,9 +754,21 @@
       if (e instanceof ApiError && e.status === 402) {
         creditTopUp.show({
           balance: creditBalance,
-          required: stageCosts.regenerate_ideas,
+          required: regenerateCost,
           stageName: "idea regeneration",
         });
+      } else if (
+        e instanceof ApiError
+        && e.status === 409
+        && (e.details as { code?: string } | undefined)?.code === "PRICE_CHANGED"
+      ) {
+        try {
+          const fresh = await getStageCosts();
+          regenerateCostOverride = fresh.regenerate_ideas;
+          regenerateError = PRICE_CHANGED_RETRY;
+        } catch {
+          regenerateError = PRICE_CHANGED_RELOAD;
+        }
       } else {
         regenerateError =
           e instanceof Error ? e.message : "Failed to generate ideas";
@@ -829,8 +901,9 @@
     selectError = "That evaluated result is no longer available in this report.";
   }
 
-  function retryBatch() {
-    if (!canRegenerate || poolMutationBusy) return;
+  function retryBatch(activity?: BatchActivityRecord) {
+    if (!canRequestBatch || poolMutationBusy) return;
+    regenerateFocus = activity?.focus ?? "auto";
     regenerateError = "";
     regenerateOverlayOpen = true;
   }
@@ -918,6 +991,7 @@
     if (!inFlightSeed) return;
     stopSeedPoll();
     inFlightSeed = null;
+    seedPollStalledId = null;
     seedPending = false;
     seedBanner = { outcome };
     pendingSeedReconcile = { outcome, priorNames, priorRuledOutCount };
@@ -943,8 +1017,15 @@
    *  applied-patch state, not a parallel client store). Backstop only (see the
    *  reactive effect above) — kept because SSE delivery isn't guaranteed. */
   function beginSeedSettlementPoll(sourceMessageId: string, priorNames: Set<string>, priorRuledOutCount: number) {
+    if (
+      inFlightSeed?.sourceMessageId === sourceMessageId
+      && (seedPollTimer || seedPollStalledId === sourceMessageId)
+    ) {
+      return;
+    }
     stopSeedPoll();
     inFlightSeed = { sourceMessageId, priorNames, priorRuledOutCount };
+    seedPollStalledId = null;
     let attempts = 0;
     // ~20 minutes at 6s — a real seed run (tournament + score_wave + red-team + SEO
     // probes) routinely exceeds the old 4-minute ceiling. Generous because this is now
@@ -961,18 +1042,27 @@
         // ledger pending — so poolMutationBusy stayed locked with no way forward
         // except a manual page reload.
         stopSeedPoll();
-        inFlightSeed = null;
         seedPending = false;
         seedPollStalledId = sourceMessageId;
       }
     }, 6000);
   }
 
-  function recheckSeed() {
+  async function recheckSeed() {
     const sourceMessageId = seedPollStalledId;
-    if (!sourceMessageId) return;
+    const seed = inFlightSeed;
+    if (!sourceMessageId || seed?.sourceMessageId !== sourceMessageId) return;
     seedPollStalledId = null;
-    void chatLedger.reload();
+    beginSeedSettlementPoll(
+      sourceMessageId,
+      seed.priorNames,
+      seed.priorRuledOutCount,
+    );
+    await chatLedger.reload();
+    const outcome = chatLedger.seedOutcome(sourceMessageId);
+    if (outcome && outcome !== "pending") {
+      settleSeed(outcome, seed.priorNames, seed.priorRuledOutCount);
+    }
   }
 
   async function handleSeed(
@@ -1162,9 +1252,23 @@
       .filter((score): score is number => score != null);
     return scores.length ? Math.round(Math.max(...scores) * 100) : null;
   });
+  const seedActivities = $derived(chatLedger.seedActivities);
   const synthesisActivities = $derived(
-    chatLedger.seedActivities.filter((activity) => activity.kind === "idea_synthesis"),
+    seedActivities.filter((activity) => activity.kind === "idea_synthesis"),
   );
+  // A durable submitted receipt survives reloads and route changes. Re-arm the same
+  // settlement backstop when this component remounts; a stalled watcher stays stalled
+  // until the owner explicitly asks for another check.
+  $effect(() => {
+    if (chatLedger.jobId !== jobId) return;
+    const pending = seedActivities.find((activity) => activity.outcome === "pending");
+    if (!pending || seedPollStalledId === pending.sourceMessageId) return;
+    beginSeedSettlementPoll(
+      pending.sourceMessageId,
+      new Set(solutions.map((solution) => solution.solution_name)),
+      examinedRuledOut?.length ?? 0,
+    );
+  });
   const batchActivities = $derived(chatLedger.batchActivities);
   $effect(() => {
     const pending = batchActivities.find((activity) => activity.outcome === "pending");
@@ -1237,8 +1341,8 @@
       .map(solutionForKey)
       .filter((solution): solution is SolutionPreview => Boolean(solution)),
   );
-  // Near-duplicate shortlist entries, surfaced at the dock rather than only in the
-  // dossier appendix — the appendix is not on the path to the commit gate.
+  // Near-duplicate shortlist entries stay in the selection flow rather than only in
+  // the dossier appendix, where they could be missed before the commit gate.
   const shortlistOverlapWarnings = $derived(
     shortlistOverlaps(
       overlapGroups,
@@ -1282,13 +1386,11 @@
   $effect(() => {
     onShortlistChange?.(selectionCount);
   });
-  // When the build-limits card is the sole surface (briefVariant === "card"),
-  // drop the constraints row here so build limits is not shown twice on the hub.
+  // DecisionBrief is the sole build-limits owner in both card and saved-summary
+  // variants. This progress list reports only the remaining optional checks.
   const decisionHomeTasks = $derived.by(() =>
     (selectionJourney?.tasks ?? []).filter((task) =>
-      (task.key === "constraints" && briefVariant !== "card")
-      || task.key === "compare"
-      || task.key === "risks"
+      task.key === "compare" || task.key === "risks"
     ),
   );
   const decisionHomeRecommendation = $derived.by(() => {
@@ -1500,7 +1602,7 @@
       solutions: sortedSolutions,
       messages: chatLedger.segmentMessages(5),
       weakPool,
-      canRegenerate: canRegenerate && !regenerating && !isRegenerating,
+      canRegenerate: canRequestBatch && !regenerating && !isRegenerating,
       hasSelection: selectionCount > 0,
       collaboratorRationaleCount,
       poolMutationBusy,
@@ -2291,11 +2393,12 @@
             ? "conventional"
             : null);
     const mergedFrom = s.idea_tier === "merged" ? (s.merged_from ?? []) : [];
-    const parity = s.incumbent_parity?.trim();
+    const parity = directIncumbentParity(s);
     const incumbent =
-      parity && !parity.toLowerCase().startsWith("none")
+      parity
         ? { name: incumbentName(parity), full: parity }
         : null;
+    const adversarial = adversarialReviewFinding(s);
     const synthesisParents = s.synthesized_from ?? [];
     const synthesisLabel = s.synthesis_operation
       ? {
@@ -2329,6 +2432,7 @@
       synthesisLabel,
       synthesisParents: synthesisParents.map((parent) => parent.solution_name).join(", "),
       incumbent,
+      adversarial,
     };
   }
 </script>
@@ -2378,16 +2482,18 @@
     <div class="candidate-pool">
       <BatchActivity
         activities={batchActivities}
+        stalledOperationId={batchPollStalledOperationId}
+        onRecheck={recheckBatch}
         onReviewCandidates={reviewBatchCandidates}
         onReviewRuledOut={reviewBatchRuledOut}
-        onRetry={retryBatch}
+        onRetry={canRequestBatch ? retryBatch : undefined}
       />
       <!-- Running evaluations only. Settled ones are provenance, not status, and live
            with the Discovery appendix so a rejected direction never outranks the
            candidates this page exists to choose between. -->
       <EvaluationActivity
         {jobId}
-        activities={synthesisActivities}
+        activities={seedActivities}
         view="live"
         operation={chatLedger.activeOperation}
         stalled={seedPollStalledId != null}
@@ -2491,6 +2597,18 @@
         {/if}
       {/snippet}
 
+      {#if interactive && shortlistOverlapWarnings.length > 0}
+        <section
+          class="shortlist-overlap-notice"
+          role="status"
+          aria-label="Shortlist overlap"
+        >
+          {#each shortlistOverlapWarnings as overlap (overlap.sharedProduct)}
+            <p>{overlapWarningText(overlap)}</p>
+          {/each}
+        </section>
+      {/if}
+
       <!-- ── Ranked opportunity list ── -->
       <div
         class="opp-list"
@@ -2504,11 +2622,10 @@
       <span class="cell-select-label" role="columnheader">{interactive ? "Select" : "Vote"}</span>
       <span class="cell-title-label" role="columnheader">Idea</span>
       {#each SORT_COLS as col}
-        <!-- Explicit name: the subtree holds the sort-button label plus an
-             sr-only definition, neither of which should become the column name
-             every cell in this column is announced with. -->
+        <!-- Explicit name keeps the column name stable while the sibling help
+             control exposes the metric definition on mouse hover and keyboard focus. -->
         <span
-          class="cell-shell"
+          class="cell-metric-shell"
           role="columnheader"
           aria-label={col.label}
           aria-sort={sortKey === col.key ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
@@ -2519,7 +2636,6 @@
             class:active={sortKey === col.key}
             onclick={() => setSort(col.key)}
             aria-label={sortActionLabel(col.key, col.label)}
-            aria-describedby={col.tooltip ? `sort-tip-${col.key}` : undefined}
           >
             <span>{col.label}</span>
             <!-- Always laid out, hidden while idle: an arrow that appears only on the
@@ -2527,10 +2643,10 @@
             <span class="sort-arrow" class:is-idle={sortKey !== col.key} aria-hidden="true">
               {#if sortKey === col.key && sortDir === "asc"}<ArrowUp class="w-3 h-3" />{:else}<ArrowDown class="w-3 h-3" />{/if}
             </span>
-            {#if col.tooltip}
-              <span id="sort-tip-{col.key}" class="sr-only">{col.tooltip}</span>
-            {/if}
           </button>
+          {#if col.tooltip}
+            <Tooltip content={col.tooltip} position="bottom" class="metric-help" />
+          {/if}
         </span>
       {/each}
     </div>
@@ -2598,8 +2714,8 @@
           type="button"
           class="cell-title"
           onclick={() => openDetail(s)}
-          aria-label={`Review details for ${m.title}`}
         >
+          <span class="sr-only">Review details for </span>
           <span
             class="title-block"
             data-annotation-anchor={`candidate:${key}:content`}
@@ -2623,7 +2739,7 @@
               <span class="opp-evidence"><strong>Pain</strong><span>{m.provenance}</span></span>
             {/if}
             {#if m.mergedCount > 0}
-              <Tooltip content={`Synthesized from: ${m.mergedNames}`} position="bottom">
+              <Tooltip content={`Synthesized from: ${m.mergedNames}`} position="bottom" focusable={false}>
                 {#snippet children()}
                   <span class="opp-merged-note">Synthesized from {m.mergedCount} variant{m.mergedCount === 1 ? "" : "s"}</span>
                 {/snippet}
@@ -2631,14 +2747,14 @@
             {/if}
             {#if m.synthesisLabel}
               <span class="opp-workshop-note">
-                Workshop variant · {m.synthesisLabel}{#if m.synthesisParents} from {m.synthesisParents}{/if}
+                Workshop variant · {m.synthesisLabel}{#if m.synthesisParents}{" from "}{m.synthesisParents}{/if}
               </span>
             {/if}
             <span class="opp-tags">
               {#if m.strength}
                 {@const strength = m.strength}
                 {#if m.strengthWhy}
-                  <Tooltip content={m.strengthWhy} position="bottom">
+                  <Tooltip content={m.strengthWhy} position="bottom" focusable={false}>
                     {#snippet children()}<span class="tag tag-strength tag-{strength.variant}">{strength.label}</span>{/snippet}
                   </Tooltip>
                 {:else}
@@ -2647,19 +2763,29 @@
               {/if}
               {#if m.angle}
                 {@const angle = m.angle}
-                <Tooltip content={m.angleWhy ?? ""} position="bottom">
+                <Tooltip content={m.angleWhy ?? ""} position="bottom" focusable={false}>
                   {#snippet children()}<span class="tag tag-angle">{angle}</span>{/snippet}
                 </Tooltip>
               {/if}
               {#if m.incumbent}
                 {@const incumbent = m.incumbent}
-                <Tooltip content={incumbent.full} position="bottom">
+                <Tooltip content={incumbent.full} position="bottom" focusable={false}>
                   {#snippet children()}<span class="tag tag-parity">Incumbent: {incumbent.name}</span>{/snippet}
+                </Tooltip>
+              {/if}
+              {#if m.adversarial}
+                {@const adversarial = m.adversarial}
+                <Tooltip
+                  content={adversarial.details.join(" ") || "The adversarial review found a decision-critical objection."}
+                  position="bottom"
+                  focusable={false}
+                >
+                  {#snippet children()}<span class="tag tag-risk">{adversarial.label}</span>{/snippet}
                 </Tooltip>
               {/if}
               {#if m.risk}
                 {@const rowRisk = m.risk}
-                <Tooltip content={rowRisk.description} position="bottom">
+                <Tooltip content={rowRisk.description} position="bottom" focusable={false}>
                   {#snippet children()}<span class="tag tag-risk">{rowRisk.label}</span>{/snippet}
                 </Tooltip>
               {/if}
@@ -2710,17 +2836,20 @@
         />
       {/if}
 
-      {#if interactive && (canRegenerate || decisionTools)}
+      {#if interactive && (canRequestBatch || batchUsageKnown || decisionTools)}
         <section class="idea-expansion-actions" aria-label="Explore more ideas">
-          {#if canRegenerate}
+          {#if canRequestBatch || batchUsageKnown}
             <div class="idea-expansion-row">
               <div>
-                <strong>Want a broader pool?</strong>
+                <strong>{batchLimitReached ? "Idea batch limit reached" : "Want a broader pool?"}</strong>
                 <span>Append a fresh batch. Existing candidate scores and your shortlist stay unchanged; the ranked list may reorder around new arrivals.</span>
+                {#if batchUsageKnown}
+                  <small class="idea-batch-usage">{completedBatchCount} of {batchMaximum} additional batches used</small>
+                {/if}
               </div>
               <button
                 type="button"
-                disabled={poolMutationBusy}
+                disabled={poolMutationBusy || !canRequestBatch}
                 onclick={() => {
                   regenerateError = "";
                   regenerateOverlayOpen = true;
@@ -2758,9 +2887,13 @@
         {#if selectionJourney}
           <DecisionRail
             journey={selectionJourney}
-            overlapWarnings={shortlistOverlapWarnings}
             deepResearchCost={deepCost}
             busy={poolMutationBusy || selectLoading || shortlistSaveState === "saving"}
+            busyReason={shortlistSaveState === "saving"
+              ? "Wait for the shortlist to finish saving."
+              : poolMutationBusy
+                ? "Another idea update is running. You can review the research scope when it finishes."
+                : "Opening the research scope…"}
             saveState={shortlistSaveState}
             saveError={shortlistSaveError}
             saveConflict={shortlistSaveConflict}
@@ -2992,14 +3125,14 @@
     <button
       type="button"
       class="copilot-shortlist-apply"
-      disabled={poolMutationBusy || !canAffordRegenerate}
+      disabled={poolMutationBusy || !canRequestBatch || !canAffordRegenerate}
       onclick={() => void handleRegenerate()}
     >
       {#if regenerating || isRegenerating}
         <Loader2 class="w-4 h-4 animate-spin" aria-hidden="true" />
         Adding batch…
       {:else}
-        {generateNewBatchLabel(stageCosts.regenerate_ideas)}
+        {generateNewBatchLabel(regenerateCost)}
       {/if}
     </button>
   {/snippet}
@@ -3040,7 +3173,7 @@
       </p>
       {#if !canAffordRegenerate}
         <p class="copilot-shortlist-error" role="alert">
-          You need {stageCosts.regenerate_ideas} credits to generate this batch. Your current ideas are unchanged.
+          You need {regenerateCost} credits to generate this batch. Your current ideas are unchanged.
         </p>
       {/if}
       {#if regenerateError}
@@ -3133,6 +3266,11 @@
       maxSelections={MAX_SELECTIONS}
       maxReached={selectedIdeaKeys.size >= MAX_SELECTIONS}
       disabled={selectLoading || poolMutationBusy}
+      disabledReason={selectLoading
+        ? "Saving your shortlist…"
+        : poolMutationBusy
+          ? "Another idea update is running. You can change the shortlist when it finishes."
+          : undefined}
       onSelect={handleToggleAdapter}
       onOpenEvidence={handleOpenDetailEvidence}
       onTabChange={handleDetailTabChange}
@@ -3183,11 +3321,9 @@
   .chat-launcher {
     position: fixed;
     right: clamp(0.75rem, 2vw, 1.5rem);
-    /* Track the dock's MEASURED height rather than guessing it. The old
-       `--space-16` constant matched a one-line dock; when the shortlist-overlap warning
-       gave it a second row, the launcher stopped clearing it and sat on top of the
-       warning text. --decision-rail-height is published by DecisionRail; the constant
-       stays as the fallback for surfaces that render no dock. */
+    /* Track the dock's measured height rather than guessing it.
+       --decision-rail-height is published by DecisionRail; the constant stays as
+       the fallback for surfaces that render no dock. */
     bottom: calc(var(--decision-rail-height, var(--space-16)) + var(--space-4));
     z-index: var(--z-overlay, 30);
     display: inline-flex;
@@ -3452,6 +3588,7 @@
     border-radius: var(--radius-lg);
   }
   .regen-focus-btn {
+    min-height: 2.5rem;
     padding: 0.32rem 0.55rem;
     background: transparent;
     border: 1px solid transparent;
@@ -3675,9 +3812,16 @@
   }
 
   .idea-expansion-row span {
-    color: var(--color-text-muted);
+    color: var(--color-text-secondary);
     font-size: var(--text-xs);
     line-height: var(--leading-normal);
+  }
+
+  .idea-expansion-row .idea-batch-usage {
+    color: var(--color-text-secondary);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-variant-numeric: tabular-nums;
   }
 
   .idea-expansion-row button {
@@ -3895,6 +4039,21 @@
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-sm);
   }
+  .shortlist-overlap-notice {
+    display: grid;
+    gap: var(--space-1);
+    margin-bottom: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-surface);
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+    line-height: 1.45;
+  }
+  .shortlist-overlap-notice p {
+    margin: 0;
+  }
   /* Metric tracks are sized for the widest UPPERCASE label plus the sort arrow,
      which is always laid out (hidden when the column is idle) so activating a
      sort never steals width from the label. FEASIBILITY (11 mono caps, no space
@@ -3937,12 +4096,23 @@
   .cell-shell {
     display: contents;
   }
+  .cell-metric-shell {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.1rem;
+    align-items: center;
+    min-width: 0;
+  }
+  .cell-metric-shell :global(.metric-help.tooltip-wrapper) {
+    min-width: 1.75rem;
+    min-height: 2.5rem;
+  }
 
   .cell-rank {
     font-family: var(--font-mono);
     font-size: var(--text-13);
     font-weight: 700;
-    color: var(--color-text-muted);
+    color: var(--color-text-secondary);
     font-variant-numeric: tabular-nums;
     text-align: center;
   }
@@ -4126,7 +4296,7 @@
     max-width: 78ch;
     font-size: var(--text-11);
     line-height: 1.36;
-    color: var(--color-text-muted);
+    color: var(--color-text-secondary);
     min-width: 0;
     white-space: nowrap;
     overflow: hidden;
@@ -4308,8 +4478,9 @@
     background: transparent;
     border: none;
     cursor: pointer;
-    min-height: 1.5rem;
-    padding: 0.16rem 0;
+    width: 100%;
+    min-height: 2.5rem;
+    padding: 0.25rem 0;
     border-radius: var(--radius-sm);
     transition: color var(--duration-fast) var(--ease-default);
   }
@@ -4566,9 +4737,17 @@
 
   @media (max-width: 480px) {
     .cmd-sub { font-size: var(--text-13); }
+    .regen-focus {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      width: 100%;
+    }
     .regen-focus-btn {
-      padding: 0.3rem 0.46rem;
+      min-height: 2.75rem;
+      padding: 0.4rem 0.46rem;
       font-size: var(--text-11);
+      line-height: 1.2;
+      white-space: normal;
     }
   }
 

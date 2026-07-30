@@ -200,6 +200,9 @@ export interface SolutionPreview {
   // Competitive parity — set only by the web-verified parity probe (top ideas only); null otherwise.
   incumbent_parity?: string | null;
   adjacent_market_parity?: string | null;
+  // Adversarial review — a killed idea can remain visible and selectable with a capped score.
+  red_team_verdict?: string | null; // survives | weakened | killed
+  red_team_caveats?: string[] | null;
   // Buyer-segment payability (0-1) stamped from the segment map; drives the market_fit
   // payability cap in _validate_idea_caps rule (d).
   source_segment_payability?: number | null;
@@ -400,6 +403,8 @@ export interface Job {
   solutionIdeas?: SolutionPreview[] | null;
   solutionIdeasCount?: number | null;
   canRegenerate?: boolean;
+  ideaBatchCompletedCount?: number;
+  maxIdeaBatches?: number;
   // Guided mode (Phase B) — chatMode opts a job into the G1/G2 stage gates;
   // gateStage/gateArtifact/gateReachedAt are only set while status=AWAITING_GATE
   // (null otherwise, including at AWAITING_SELECTION).

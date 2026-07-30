@@ -11,6 +11,11 @@
   import { strengthEntry, SUPERPOWERS_DETAILED } from "$lib/utils/superpower";
   import { scoreRationale } from "$lib/utils/scoreRationale";
   import {
+    adversarialReviewFinding,
+    directIncumbentParity,
+    noDirectIncumbentFound,
+  } from "$lib/utils/adversarialReview";
+  import {
     originalityMetric,
     validatedBuildComplexity,
     validatedNoveltyLevel,
@@ -198,20 +203,18 @@
     return facts.slice(0, 4);
   });
 
-  // Full-detail helpers
+  // Full-detail helpers. Red-team evidence is deliberately separate from actual incumbent parity:
+  // the pipeline can encode a mechanism objection as "shipped by evidence: ...".
   const journeyTag = $derived(solution.journey_tag ? humanizeTag(solution.journey_tag) : null);
   const mechanismTag = $derived(solution.mechanism_tag ? humanizeTag(solution.mechanism_tag) : null);
-  const hasParity = $derived(!!(solution.incumbent_parity?.trim() || solution.adjacent_market_parity?.trim()));
+  const overviewIncumbentNote = $derived(directIncumbentParity(solution));
+  const noIncumbentFound = $derived(noDirectIncumbentFound(solution));
+  const adversarialReview = $derived(adversarialReviewFinding(solution));
+  const hasParity = $derived(
+    !!(overviewIncumbentNote || noIncumbentFound || solution.adjacent_market_parity?.trim()),
+  );
 
-  // Overview-only note: a web-verified incumbent finding, surfaced under "The read" as a
-  // calm early signal (not an error) — full parity detail lives in the Full-detail card.
-  const overviewIncumbentNote = $derived.by(() => {
-    const p = solution.incumbent_parity?.trim();
-    if (!p || p.toLowerCase().startsWith("none")) return null;
-    return p;
-  });
-
-  // Card 7 — the per-criterion scoring rationale (same user-facing text as the Overview
+  // Final card — the per-criterion scoring rationale (same user-facing text as the Overview
   // score-detail popovers; NOT the not-user-facing calibration_notes).
   const scoreCriteria = $derived.by(() => {
     const om = originalityMetric(solution);
@@ -362,6 +365,22 @@
             {overviewIncumbentNote} — thin early signal. {deepResearchCopy.incumbent}
           </p>
         {/if}
+      </div>
+    {/if}
+
+    {#if adversarialReview}
+      <div class="weak-note weak-note--critical">
+        <TriangleAlert class="weak-note-icon" aria-hidden="true" />
+        <div class="weak-note-body">
+          <span class="weak-note-title">{adversarialReview.label}</span>
+          {#each adversarialReview.details as detail}
+            <p>{detail}</p>
+          {/each}
+          <p>
+            This candidate remains available for comparison, but resolve this objection before
+            treating it as a shortlist-safe direction.
+          </p>
+        </div>
       </div>
     {/if}
 
@@ -570,16 +589,36 @@
       </section>
     {/if}
 
+    {#if adversarialReview}
+      <section class="fd-card fd-card--critical">
+        <h3 class="fd-card-title">{adversarialReview.label}</h3>
+        {#each adversarialReview.details as detail}
+          <p class="fd-lead">{detail}</p>
+        {/each}
+        <p class="fd-muted">
+          The score reflects this finding. The candidate stays available so you can compare it or
+          investigate the disputed assumption.
+        </p>
+      </section>
+    {/if}
+
     <!-- 6 · Competitive parity -->
     {#if hasParity}
       <section class="fd-card fd-card--ledger">
         <h3 class="fd-card-title">Competitive parity</h3>
         <dl class="fd-ledger">
-          {#if solution.incumbent_parity?.trim()}
+          {#if overviewIncumbentNote}
             <div class="fd-ledger-row">
               <dt class="mini-label">Direct incumbents</dt>
               <dd class="fd-ledger-value">
-                <p>{solution.incumbent_parity}</p>
+                <p>{overviewIncumbentNote}</p>
+              </dd>
+            </div>
+          {:else if noIncumbentFound}
+            <div class="fd-ledger-row">
+              <dt class="mini-label">Direct incumbent check</dt>
+              <dd class="fd-ledger-value">
+                <p>No incumbent was found shipping this idea's core mechanism.</p>
               </dd>
             </div>
           {/if}
@@ -971,6 +1010,17 @@
     font-size: var(--text-13);
     line-height: 1.5;
     text-wrap: pretty;
+  }
+
+  .weak-note--critical,
+  .fd-card--critical {
+    border-color: color-mix(in srgb, var(--color-error) 32%, var(--color-border));
+    background: color-mix(in srgb, var(--color-error) 5%, var(--color-bg-surface));
+  }
+
+  .weak-note--critical :global(.weak-note-icon),
+  .weak-note--critical .weak-note-title {
+    color: var(--color-error-text);
   }
 
   /* ── Full detail cards ── */

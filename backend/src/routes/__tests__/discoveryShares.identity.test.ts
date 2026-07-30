@@ -78,6 +78,18 @@ beforeEach(async () => {
 });
 
 describe('public discovery stable idea identity', () => {
+  it('rejects the public URL as soon as its share is inactive', async () => {
+    mockShareFindUnique.mockResolvedValue({
+      ...share([{ name: 'Legacy idea' }]),
+      isActive: false,
+    });
+
+    const response = await request(app).get(`/api/shared/discovery/${shareToken}`);
+
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({ error: 'Not found' });
+  });
+
   it('backfills stable IDs in shared discovery responses', async () => {
     mockShareFindUnique.mockResolvedValue(share([{ name: 'Legacy idea' }]));
 

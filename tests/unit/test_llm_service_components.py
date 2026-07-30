@@ -302,6 +302,45 @@ class TestValidatorsIntegration:
         out = ThreadRelevanceValidator().validate_batch("niche", items)
         assert out == [(items[0], 2)]
 
+    @patch('nicheiq.utils.validation.thread_validator.LLMService.invoke_structured')
+    def test_thread_validator_strict_mode_fails_closed_on_llm_error(
+        self, mock_invoke_structured
+    ):
+        from nicheiq.models.research_state import SearchResultItem
+
+        mock_invoke_structured.side_effect = RuntimeError("boom")
+        items = [SearchResultItem(url="http://t", title="T", snippet="s")]
+
+        out = ThreadRelevanceValidator().validate_batch(
+            "niche", items, fail_open=False
+        )
+
+        assert out == [(items[0], 0)]
+
+    @patch('nicheiq.utils.validation.thread_validator.LLMService.invoke_structured')
+    def test_thread_validator_strict_mode_fails_closed_on_incomplete_indices(
+        self, mock_invoke_structured
+    ):
+        from nicheiq.models.research_state import SearchResultItem
+        from nicheiq.utils.validation.thread_validator import ValidationResult
+
+        mock_invoke_structured.return_value = (
+            BatchValidationResponse(results=[
+                ValidationResult(thread_index=0, relevance_grade=3, reason="direct match"),
+            ]),
+            _mock_token_usage(),
+        )
+        items = [
+            SearchResultItem(url="http://relevant", title="Relevant", snippet="s"),
+            SearchResultItem(url="http://missing", title="Missing", snippet="s"),
+        ]
+
+        out = ThreadRelevanceValidator().validate_batch(
+            "niche", items, fail_open=False
+        )
+
+        assert out == [(items[0], 3), (items[1], 0)]
+
     @patch('nicheiq.utils.validation.keyword_validator.LLMService.invoke_structured')
     def test_keyword_validator_uses_llm_service(self, mock_invoke_structured):
         """Verify KeywordRelevanceValidator uses LLMService."""

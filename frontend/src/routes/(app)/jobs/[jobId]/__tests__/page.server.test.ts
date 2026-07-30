@@ -88,4 +88,77 @@ describe("job selection candidate load state", () => {
     expect(result.solutions).toEqual([]);
     expect(result.solutionsFetchFailed).toBe(false);
   });
+
+  it.each([
+    ["QUEUED", "SEED_IDEA"],
+    ["RUNNING", "SEED_IDEA"],
+    ["QUEUED", "REGENERATE"],
+    ["REGENERATING", "REGENERATE"],
+  ])(
+    "keeps the complete selection workspace loaded while %s %s work is active",
+    async (status, activeDispatchKind) => {
+      const selectionMutationJob = {
+        ...job([]),
+        status,
+        activeDispatchKind,
+      };
+      const previewReport = { user_segments: [{ name: "Freelance bookkeepers" }] };
+      const discoveryData = { metadata: { source_count: 12 } };
+
+      mocks.fetchBackend.mockImplementation((path: string) => {
+        if (path === "/api/jobs/job-1") return Promise.resolve(response(selectionMutationJob));
+        if (path === "/api/jobs/job-1/solutions") {
+          return Promise.resolve(response({ solutionIdeas: [] }));
+        }
+        if (path === "/api/jobs/job-1/preview-report") {
+          return Promise.resolve(response(previewReport));
+        }
+        if (path === "/api/jobs/job-1/discovery-data") {
+          return Promise.resolve(response(discoveryData));
+        }
+        if (path === "/api/selection/metric-explanations") {
+          return Promise.resolve(response({ metrics: {} }));
+        }
+        return Promise.resolve(response({}, 404));
+      });
+
+      const result = await load(event()) as Record<string, any>;
+
+      expect(result.solutions).toEqual([]);
+      expect(result.previewReport).toEqual(previewReport);
+      expect(result.discoveryData).toEqual(discoveryData);
+      expect(result.metricExplanations).toEqual({ metrics: {} });
+      expect(mocks.fetchBackend).not.toHaveBeenCalledWith(
+        "/api/public/catalog/top-pain-points?limit=8&freePreview=true",
+        expect.anything(),
+      );
+    },
+  );
+
+  it("keeps initial queued discovery on the lightweight progress data contract", async () => {
+    mocks.fetchBackend.mockImplementation((path: string) => {
+      if (path === "/api/jobs/job-1") {
+        return Promise.resolve(response({
+          ...job([]),
+          status: "QUEUED",
+          activeDispatchKind: null,
+        }));
+      }
+      if (path === "/api/public/catalog/top-pain-points?limit=8&freePreview=true") {
+        return Promise.resolve(response({ painPoints: [] }));
+      }
+      return Promise.resolve(response({}, 404));
+    });
+
+    await load(event());
+
+    expect(mocks.fetchBackend).toHaveBeenCalledWith(
+      "/api/public/catalog/top-pain-points?limit=8&freePreview=true",
+      expect.anything(),
+    );
+    expect(mocks.fetchBackend).not.toHaveBeenCalledWith(
+      "/api/jobs/job-1/preview-report",
+      expect.anything(),
+    );
+  });
 });

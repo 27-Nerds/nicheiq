@@ -240,6 +240,7 @@ describe("selection review page", () => {
     expect(sample).toHaveAttribute("target", "_blank");
     expect(view.getByText("One price for up to 3 ideas — the same 100 credits for 1, 2, or 3.")).toBeInTheDocument();
     expect(view.getByText("Starting locks this shortlist — ideas can’t be changed during the run.")).toBeInTheDocument();
+    expect(view.getByText("Any active discovery share link closes once Deep Research is successfully queued.")).toBeInTheDocument();
     expect(view.getByText("If the run fails or finds too little data, credits are returned automatically.")).toBeInTheDocument();
   });
 
@@ -276,8 +277,34 @@ describe("selection review page", () => {
 
     expect(view.getByRole("heading", { name: "Review your shortlist" })).toBeInTheDocument();
     expect(view.getByRole("link", { name: "Choose ideas" }))
-      .toHaveAttribute("href", "/jobs/job-1/selection/compare?idea=idea-a%3A3");
+      .toHaveAttribute("href", "/jobs/job-1#opportunities");
     expect(view.queryByText("Edit selection")).toBeNull();
+  });
+
+  it("routes every shortlist-editing action to the job hub that owns the shortlist", () => {
+    const secondIdea = {
+      idea_id: "idea-b",
+      idea_revision: 1,
+      solution_name: "Signal brief",
+      short_description: "Turns the same signals into a weekly brief.",
+    };
+    const pageData = data({ ideas: [idea, secondIdea] }) as unknown as {
+      workspace: { scopeSource: string };
+      overlapGroups: Array<{ idea_names: string[]; shared_product: string }>;
+    };
+    pageData.workspace.scopeSource = "preview";
+    pageData.overlapGroups = [{
+      idea_names: ["Signal desk", "Signal brief"],
+      shared_product: "market-signal briefing",
+    }];
+
+    const view = render(ReviewPage, { props: { data: pageData as never } });
+
+    for (const link of view.getAllByRole("link", { name: "Choose ideas" })) {
+      expect(link).toHaveAttribute("href", "/jobs/job-1#opportunities");
+    }
+    expect(view.getByRole("link", { name: "Change your shortlist" }))
+      .toHaveAttribute("href", "/jobs/job-1#opportunities");
   });
 
   it("states one shortlist record line at the gate", () => {

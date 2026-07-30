@@ -767,6 +767,7 @@ export async function createJobAndChargeDiscovery(
   entryMode?: string,
   ideaFocus?: string,
   chatMode?: boolean,
+  expectedCost?: number,
 ): Promise<{ job: Job; transaction?: CreditTransaction }> {
   return prisma.$transaction((tx) =>
     createJobAndChargeDiscoveryInTx(
@@ -778,6 +779,7 @@ export async function createJobAndChargeDiscovery(
       entryMode,
       ideaFocus,
       chatMode,
+      expectedCost,
     ),
   );
 }
@@ -795,6 +797,7 @@ export async function createJobAndChargeDiscoveryInTx(
   entryMode?: string,
   ideaFocus?: string,
   chatMode?: boolean,
+  expectedCost?: number,
 ): Promise<{ job: Job; transaction?: CreditTransaction }> {
   const stages = PIPELINE_STAGES.filter(s => s.number !== 15);
 
@@ -844,7 +847,19 @@ export async function createJobAndChargeDiscoveryInTx(
   //
   // Everything else: the whole discovery phase, unchanged.
   const entryStage: StageName = chatMode ? 'guided_s1' : 'discovery';
-  const chargeResult = await chargeForStageInTx(tx, userId, job.id, entryStage, niche);
+  const chargeResult = expectedCost === undefined
+    // Internal catalog flows do not yet present this intake price. Public job creation
+    // always supplies expectedCost; keep the wrapper compatible with those separate flows.
+    ? await chargeForStageInTx(tx, userId, job.id, entryStage, niche)
+    : await chargeForStageWithPriceCasInTx(
+        tx,
+        userId,
+        job.id,
+        entryStage,
+        entryStage,
+        niche,
+        expectedCost,
+      );
 
   return { job, transaction: chargeResult.transaction };
 }

@@ -201,17 +201,21 @@ class ThreadRelevanceValidator:
         niche_description: str,
         search_results: list['SearchResultItem'],
         batch_size: int = 10,
-        anchor_guidance: str = ""
+        anchor_guidance: str = "",
+        fail_open: bool = True,
     ) -> list[tuple['SearchResultItem', int]]:
         """
         Validate multiple search results in batches.
         Returns list of (SearchResultItem, relevance_grade) tuples (grade 0-3). Callers apply
-        the keep gate (grade >= settings.thread_relevance_min_grade); fail-open defaults to 2.
+        the keep gate (grade >= settings.thread_relevance_min_grade). Validation failures
+        default to grade 2 when ``fail_open`` is true and grade 0 when it is false.
 
         Args:
             niche_description: Description of the niche to validate against
             search_results: List of SearchResultItem objects to validate
             batch_size: Number of results to validate per API call
+            fail_open: Whether unvalidated results should receive the relevant-default
+                grade (2). Strict callers set this false so failures receive grade 0.
 
         Returns:
             List of (SearchResultItem, relevance_grade) tuples
@@ -265,28 +269,36 @@ class ThreadRelevanceValidator:
                         f"grade {grade} (reason: {validation_result.reason})"
                     )
 
-                # Verify all threads were validated (fail-open for missing)
+                # Verify all threads were validated.
                 if len(validated_indices) < len(batch):
                     missing_count = len(batch) - len(validated_indices)
+                    fallback_grade = 2 if fail_open else 0
+                    failure_mode = "keeping unvalidated threads (fail-open)" if fail_open else (
+                        "rejecting unvalidated threads (fail-closed)"
+                    )
                     logger.warning(
                         f"Validation incomplete: {missing_count}/{len(batch)} threads missing results - "
-                        f"keeping unvalidated threads (fail-open)"
+                        f"{failure_mode}"
                     )
-                    # Add missing threads with a relevant-default grade (fail-open)
                     for idx, thread_item in enumerate(batch):
                         if idx not in validated_indices:
-                            results.append((thread_item, 2))
+                            results.append((thread_item, fallback_grade))
                             logger.debug(
-                                f"Validation [idx={idx}]: {thread_item.title[:50]}... -> grade 2 "
+                                f"Validation [idx={idx}]: {thread_item.title[:50]}... "
+                                f"-> grade {fallback_grade} "
                                 f"(default, not in LLM response)"
                             )
 
             except Exception as e:
-                logger.warning(f"Validation batch failed: {e} - keeping all {len(batch)} results")
-                # On error, keep all results with a relevant-default grade (fail-open)
-                self.failed_open_batches += 1
-                self.failed_open_threads += len(batch)
-                results.extend([(result, 2) for result in batch])
+                fallback_grade = 2 if fail_open else 0
+                failure_mode = "keeping" if fail_open else "rejecting"
+                logger.warning(
+                    f"Validation batch failed: {e} - {failure_mode} all {len(batch)} results"
+                )
+                if fail_open:
+                    self.failed_open_batches += 1
+                    self.failed_open_threads += len(batch)
+                results.extend([(result, fallback_grade) for result in batch])
 
         return results
 
@@ -296,7 +308,8 @@ class ThreadRelevanceValidator:
         search_results: list['SearchResultItem'],
         batch_size: int = 10,
         max_workers: int | None = None,
-        anchor_guidance: str = ""
+        anchor_guidance: str = "",
+        fail_open: bool = True,
     ) -> list[tuple['SearchResultItem', int]]:
         """
         Validate multiple search results in parallel using ThreadPoolExecutor.
@@ -310,6 +323,8 @@ class ThreadRelevanceValidator:
             search_results: List of SearchResultItem objects to validate
             batch_size: Number of results to validate per API call within each worker
             max_workers: Number of parallel workers (default: from settings)
+            fail_open: Whether validation failures receive grade 2 (true) or grade 0
+                (false).
 
         Returns:
             List of (SearchResultItem, is_relevant) tuples
@@ -334,6 +349,7 @@ class ThreadRelevanceValidator:
                 search_results=search_results,
                 batch_size=batch_size,
                 anchor_guidance=anchor_guidance,
+                fail_open=fail_open,
             )
 
         # Guard against empty input
@@ -362,6 +378,7 @@ class ThreadRelevanceValidator:
                     niche_description,
                     batch_size,
                     anchor_guidance,
+                    fail_open,
                 ): chunk_num
                 for chunk_num, chunk in enumerate(chunks, 1)
             }
@@ -398,7 +415,8 @@ class ThreadRelevanceValidator:
         chunk_num: int,
         niche_description: str,
         batch_size: int,
-        anchor_guidance: str = ""
+        anchor_guidance: str = "",
+        fail_open: bool = True,
     ) -> list[tuple['SearchResultItem', int]]:
         """
         Worker method for parallel validation of a search result chunk.
@@ -424,6 +442,7 @@ class ThreadRelevanceValidator:
                 search_results=chunk,
                 batch_size=batch_size,
                 anchor_guidance=anchor_guidance,
+                fail_open=fail_open,
             )
 
             logger.debug(f"[Thread Worker {chunk_num}] Complete - validated {len(results)} threads")
@@ -431,7 +450,8 @@ class ThreadRelevanceValidator:
 
         except Exception as e:
             logger.error(f"[Thread Worker {chunk_num}] Failed: {e}")
-            # Fail-open: return all threads with a relevant-default grade on error
-            self.failed_open_batches += 1
-            self.failed_open_threads += len(chunk)
-            return [(result, 2) for result in chunk]
+            fallback_grade = 2 if fail_open else 0
+            if fail_open:
+                self.failed_open_batches += 1
+                self.failed_open_threads += len(chunk)
+            return [(result, fallback_grade) for result in chunk]

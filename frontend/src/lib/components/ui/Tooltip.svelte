@@ -12,6 +12,8 @@
     position?: "top" | "bottom" | "left" | "right";
     children?: Snippet;
     class?: string;
+    /** Set false when a custom trigger is already inside another interactive control. */
+    focusable?: boolean;
   }
 
   let {
@@ -19,6 +21,7 @@
     position = "top",
     children,
     class: className = "",
+    focusable = true,
   }: Props = $props();
 
   let isVisible = $state(false);
@@ -43,6 +46,9 @@
     if (e.key === "Escape" && isVisible) {
       e.stopPropagation();
       hide();
+    } else if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      show();
     }
   }
 
@@ -114,32 +120,49 @@
   });
 </script>
 
-<!-- Tooltip trigger: focusable so keyboard users can summon the tip (tabindex),
-     but deliberately NOT role="button" — it performs no action, and announcing a
-     button that does nothing reads as a dead control. The description is exposed
-     via aria-describedby regardless, and Escape dismisses it (WCAG 1.4.13). -->
-<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<span
-  class="tooltip-wrapper {className}"
-  bind:this={triggerRef}
-  onmouseenter={show}
-  onmouseleave={hide}
-  onfocus={show}
-  onblur={hide}
-  onkeydown={onKeydown}
-  tabindex="0"
-  aria-describedby={descId}
->
-  {#if children}
+{#if children}
+  <!-- Custom triggers can sit inside a larger control. In that case they stay
+       pointer-readable without creating invalid nested interactive content. -->
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <span
+    class="tooltip-wrapper {className}"
+    bind:this={triggerRef}
+    onmouseenter={show}
+    onmouseleave={hide}
+    onfocus={show}
+    onblur={hide}
+    onkeydown={focusable ? onKeydown : undefined}
+    onclick={focusable ? show : undefined}
+    role={focusable ? "button" : undefined}
+    tabindex={focusable ? 0 : undefined}
+    aria-describedby={focusable ? descId : undefined}
+  >
     {@render children()}
-  {:else}
-    <span class="tooltip-trigger" aria-label="More information">
-      <HelpCircle class="w-3.5 h-3.5" />
+    <span id={descId} class="sr-only">{content}</span>
+  </span>
+{:else}
+  <!-- The default help marker is a real control, so its accessible name and
+       description are valid and it works with mouse, touch, and keyboard. -->
+  <button
+    type="button"
+    class="tooltip-wrapper {className}"
+    bind:this={triggerRef}
+    onmouseenter={show}
+    onmouseleave={hide}
+    onfocus={show}
+    onblur={hide}
+    onkeydown={onKeydown}
+    onclick={show}
+    aria-label="More information"
+    aria-describedby={descId}
+  >
+    <span class="tooltip-trigger" aria-hidden="true">
+      <HelpCircle class="w-3.5 h-3.5" aria-hidden="true" />
     </span>
-  {/if}
-  <span id={descId} class="sr-only">{content}</span>
-</span>
+    <span id={descId} class="sr-only">{content}</span>
+  </button>
+{/if}
 
 <style>
   .tooltip-wrapper {
@@ -150,6 +173,11 @@
     min-width: 1.5rem;
     min-height: 1.5rem;
     max-width: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
     cursor: help;
   }
 

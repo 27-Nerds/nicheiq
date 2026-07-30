@@ -208,7 +208,7 @@
   </div>
 
   <!-- 30-Day Playbook - Always Visible (Core Value) -->
-  <div class="playbook-section">
+  <div class="playbook-section" id="first-30-days-playbook">
     <div class="playbook-header">
       <Calendar class="playbook-icon" />
       <h3 class="playbook-title">First 30 Days Playbook</h3>

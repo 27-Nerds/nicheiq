@@ -1,12 +1,15 @@
 <script lang="ts">
-  import { CheckCircle2, CircleX, Layers3, Loader2, RotateCcw } from "lucide-svelte";
+  import { CheckCircle2, CircleX, Clock, Layers3, Loader2, RotateCcw } from "lucide-svelte";
   import type { BatchActivity as BatchActivityRecord } from "$lib/stores/chatLedger.svelte";
 
   interface Props {
     activities: BatchActivityRecord[];
+    view?: "history" | "live";
+    stalledOperationId?: string | null;
+    onRecheck?: (activity: BatchActivityRecord) => void;
     onReviewCandidates?: (ideaIds: string[]) => void;
     onReviewRuledOut?: (operationId: string) => void;
-    onRetry?: () => void;
+    onRetry?: (activity: BatchActivityRecord) => void;
     reviewCandidatesHref?: (activity: BatchActivityRecord) => string;
     reviewRuledOutHref?: (activity: BatchActivityRecord) => string;
     retryHref?: string;
@@ -14,6 +17,9 @@
 
   let {
     activities,
+    view = "history",
+    stalledOperationId = null,
+    onRecheck,
     onReviewCandidates,
     onReviewRuledOut,
     onRetry,
@@ -45,8 +51,57 @@
     return activity.addedIdeas.length > 0 || activity.addedIdeaIds.length > 0;
   }
 
+  function canReviewRuledOut(activity: BatchActivityRecord): boolean {
+    return (activity.ruledOutCount ?? 0) > 0;
+  }
+
+  function isStalled(activity: BatchActivityRecord): boolean {
+    return activity.outcome === "pending" && activity.operationId === stalledOperationId;
+  }
+
+  function candidateCount(count: number): string {
+    return `${count} ${count === 1 ? "candidate" : "candidates"}`;
+  }
+
+  function activitySummary(activity: BatchActivityRecord): string {
+    const generated = activity.generatedCount;
+    const added = addedCandidateCount(activity);
+    const generatedSuffix = generated == null
+      ? ""
+      : ` after generating ${candidateCount(generated)}`;
+
+    if (activity.outcome === "pending") {
+      if (isStalled(activity)) {
+        return "Automatic checks paused. The batch still settles or refunds on its own; check for the latest result, or return later.";
+      }
+      return view === "live"
+        ? "Generating and checking new candidates. Existing scores and shortlist stay unchanged."
+        : "New candidates are being generated and checked. Existing candidate scores and your shortlist stay unchanged. You can leave this page and return while the batch runs.";
+    }
+    if (activity.outcome === "completed") {
+      const result = generated == null
+        ? `Added ${candidateCount(added)}.`
+        : `Added ${added} of ${generated} generated ${generated === 1 ? "candidate" : "candidates"}.`;
+      return `${result} The ranked list may reorder around the additions.`;
+    }
+    if (activity.outcome === "no_candidates_added") {
+      const result = generated == null
+        ? "No generated candidates cleared the checks."
+        : `0 of ${generated} generated ${generated === 1 ? "candidate was" : "candidates were"} added.`;
+      const ruledOut = activity.ruledOutCount ?? 0;
+      return ruledOut > 0
+        ? `${result} ${ruledOut} ${ruledOut === 1 ? "idea was" : "ideas were"} retained in the ruled-out analysis.`
+        : result;
+    }
+    if (activity.outcome === "refunded") {
+      return `The batch could not complete${generatedSuffix}. Charged credits were refunded, and the existing pool was unchanged.`;
+    }
+    return `The batch could not complete${generatedSuffix}. The existing pool and shortlist were unchanged.`;
+  }
+
   const visibleActivities = $derived.by(() => {
     const pending = activities.filter((activity) => activity.outcome === "pending");
+    if (view === "live") return pending;
     const latestTerminal = activities.find((activity) => activity.outcome !== "pending");
     return latestTerminal && !pending.includes(latestTerminal)
       ? [...pending, latestTerminal]
@@ -54,92 +109,104 @@
   });
   const visibleIds = $derived(new Set(visibleActivities.map((activity) => activity.operationId)));
   const olderActivities = $derived(
-    activities.filter((activity) => !visibleIds.has(activity.operationId)),
+    view === "history"
+      ? activities.filter((activity) => !visibleIds.has(activity.operationId))
+      : [],
   );
 </script>
 
-{#if activities.length > 0}
-  <section class="batch-activity" aria-labelledby="batch-activity-title">
-    <header>
-      <div>
-        <p>Additional batches</p>
-        <h2 id="batch-activity-title">
-          {activities.length} batch {activities.length === 1 ? "run" : "runs"}
-        </h2>
-      </div>
-      <span>Each batch appends results. Existing candidates and your shortlist are never replaced.</span>
-    </header>
+{#snippet activityIcon(activity: BatchActivityRecord)}
+  <div class="status-icon" aria-hidden="true">
+    {#if isStalled(activity)}
+      <Clock />
+    {:else if activity.outcome === "pending"}
+      <Loader2 class="spin" />
+    {:else if activity.outcome === "completed"}
+      <CheckCircle2 />
+    {:else if activity.outcome === "refunded"}
+      <RotateCcw />
+    {:else if activity.outcome === "no_candidates_added"}
+      <Layers3 />
+    {:else}
+      <CircleX />
+    {/if}
+  </div>
+{/snippet}
+
+{#snippet activityCopy(activity: BatchActivityRecord)}
+  <div class="batch-copy">
+    <div class="batch-heading">
+      <strong>{statusLabel(activity)}</strong>
+      <span>Batch {activity.ordinal} · {focusLabel(activity.focus)}</span>
+    </div>
+    <p>{activitySummary(activity)}</p>
+    {#if activity.outcome === "completed" && activity.refPrecision === "legacy_id_only"}
+      <p class="legacy-note">This older receipt identifies candidates by ID only. The destination uses their latest available revisions.</p>
+    {/if}
+    {#if view === "history"}
+      <details class="technical-details">
+        <summary>Technical details</summary>
+        <small>Operation {activity.operationId}</small>
+      </details>
+    {/if}
+  </div>
+{/snippet}
+
+{#snippet activityAction(activity: BatchActivityRecord)}
+  <div class="batch-action">
+    {#if isStalled(activity) && onRecheck}
+      <button type="button" onclick={() => onRecheck?.(activity)}>Check status</button>
+    {:else if activity.outcome === "completed" && canReviewCandidates(activity)}
+      {#if onReviewCandidates}
+        <button type="button" onclick={() => onReviewCandidates?.(activity.addedIdeaIds)}>Review new candidates</button>
+      {:else if reviewCandidatesHref}
+        <a href={reviewCandidatesHref(activity)}>Review new candidates</a>
+      {/if}
+    {:else if activity.outcome === "no_candidates_added" && canReviewRuledOut(activity)}
+      {#if onReviewRuledOut}
+        <button type="button" onclick={() => onReviewRuledOut?.(activity.operationId)}>Review ruled-out ideas</button>
+      {:else if reviewRuledOutHref}
+        <a href={reviewRuledOutHref(activity)}>Review ruled-out ideas</a>
+      {/if}
+    {:else if activity.outcome === "failed" || activity.outcome === "refunded"}
+      {#if onRetry}
+        <button type="button" onclick={() => onRetry(activity)}>Try again</button>
+      {:else if retryHref}
+        <a href={retryHref}>Try again</a>
+      {/if}
+    {/if}
+  </div>
+{/snippet}
+
+{#if (view === "history" && activities.length > 0) || visibleActivities.length > 0}
+  <section
+    class="batch-activity"
+    class:batch-activity--live={view === "live"}
+    aria-labelledby={view === "history" ? "batch-activity-title" : undefined}
+    aria-label={view === "live" ? "Idea batch in progress" : undefined}
+  >
+    {#if view === "history"}
+      <header>
+        <div>
+          <p>Additional batches</p>
+          <h2 id="batch-activity-title">
+            {activities.length} batch {activities.length === 1 ? "run" : "runs"}
+          </h2>
+        </div>
+        <span>Each batch appends results. Existing candidates and your shortlist are never replaced.</span>
+      </header>
+    {/if}
 
     <ol>
       {#each visibleActivities as activity (activity.operationId)}
-        <li class:pending={activity.outcome === "pending"} class:complete={activity.outcome === "completed"}>
-          <div class="status-icon" aria-hidden="true">
-            {#if activity.outcome === "pending"}
-              <Loader2 class="spin" />
-            {:else if activity.outcome === "completed"}
-              <CheckCircle2 />
-            {:else if activity.outcome === "refunded"}
-              <RotateCcw />
-            {:else if activity.outcome === "no_candidates_added"}
-              <Layers3 />
-            {:else}
-              <CircleX />
-            {/if}
-          </div>
-          <div class="batch-copy">
-            <div class="batch-heading">
-              <strong>{statusLabel(activity)}</strong>
-              <span>Batch {activity.ordinal} · {focusLabel(activity.focus)}</span>
-            </div>
-            {#if activity.outcome === "pending"}
-              <p>New candidates are being generated and checked. Existing candidate scores and your shortlist stay unchanged.</p>
-            {:else if activity.outcome === "completed"}
-              <p>
-                Added {addedCandidateCount(activity)}
-                {addedCandidateCount(activity) === 1 ? " candidate" : " candidates"}.
-                The ranked list may reorder around the additions.
-              </p>
-              {#if activity.refPrecision === "legacy_id_only"}
-                <p class="legacy-note">This older receipt identifies candidates by ID only. The destination uses their latest available revisions.</p>
-              {/if}
-            {:else if activity.outcome === "no_candidates_added"}
-              <p>
-                No generated candidates cleared the checks.
-                {#if (activity.ruledOutCount ?? 0) > 0}
-                  {activity.ruledOutCount} {(activity.ruledOutCount ?? 0) === 1 ? "idea was" : "ideas were"} retained in the ruled-out analysis.
-                {/if}
-              </p>
-            {:else if activity.outcome === "refunded"}
-              <p>The batch could not complete. Charged credits were refunded, and the existing pool was unchanged.</p>
-            {:else}
-              <p>The batch could not complete. The existing pool and shortlist were unchanged.</p>
-            {/if}
-            <details class="technical-details">
-              <summary>Technical details</summary>
-              <small>Operation {activity.operationId}</small>
-            </details>
-          </div>
-          <div class="batch-action">
-            {#if activity.outcome === "completed" && canReviewCandidates(activity)}
-              {#if onReviewCandidates}
-                <button type="button" onclick={() => onReviewCandidates?.(activity.addedIdeaIds)}>Review new candidates</button>
-              {:else if reviewCandidatesHref}
-                <a href={reviewCandidatesHref(activity)}>Review new candidates</a>
-              {/if}
-            {:else if activity.outcome === "no_candidates_added"}
-              {#if onReviewRuledOut}
-                <button type="button" onclick={() => onReviewRuledOut?.(activity.operationId)}>Review ruled-out ideas</button>
-              {:else if reviewRuledOutHref}
-                <a href={reviewRuledOutHref(activity)}>Review ruled-out ideas</a>
-              {/if}
-            {:else if activity.outcome === "failed" || activity.outcome === "refunded"}
-              {#if onRetry}
-                <button type="button" onclick={onRetry}>Try again</button>
-              {:else if retryHref}
-                <a href={retryHref}>Try again</a>
-              {/if}
-            {/if}
-          </div>
+        <li
+          class:pending={activity.outcome === "pending"}
+          class:complete={activity.outcome === "completed"}
+          role={activity.outcome === "pending" ? "status" : undefined}
+        >
+          {@render activityIcon(activity)}
+          {@render activityCopy(activity)}
+          {@render activityAction(activity)}
         </li>
       {/each}
     </ol>
@@ -148,23 +215,10 @@
         <summary>Batch history ({olderActivities.length})</summary>
         <ol>
           {#each olderActivities as activity (activity.operationId)}
-            <li>
-              <div class="status-icon" aria-hidden="true">
-                {#if activity.outcome === "completed"}<CheckCircle2 />
-                {:else if activity.outcome === "refunded"}<RotateCcw />
-                {:else if activity.outcome === "no_candidates_added"}<Layers3 />
-                {:else}<CircleX />{/if}
-              </div>
-              <div class="batch-copy">
-                <div class="batch-heading">
-                  <strong>{statusLabel(activity)}</strong>
-                  <span>Batch {activity.ordinal} · {focusLabel(activity.focus)}</span>
-                </div>
-                <details class="technical-details">
-                  <summary>Technical details</summary>
-                  <small>Operation {activity.operationId}</small>
-                </details>
-              </div>
+            <li class:complete={activity.outcome === "completed"}>
+              {@render activityIcon(activity)}
+              {@render activityCopy(activity)}
+              {@render activityAction(activity)}
             </li>
           {/each}
         </ol>
@@ -182,6 +236,16 @@
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
     background: var(--color-bg-surface);
+  }
+  .batch-activity--live {
+    gap: 0;
+    padding: var(--space-2) var(--space-3);
+  }
+  .batch-activity--live ol { border-top: 0; }
+  .batch-activity--live li {
+    align-items: center;
+    padding: var(--space-2) 0;
+    border-bottom: 0;
   }
   header { display: flex; align-items: end; justify-content: space-between; gap: var(--space-6); }
   header > div { display: grid; gap: var(--space-1); }
@@ -213,11 +277,11 @@
   .batch-copy { display: grid; gap: var(--space-1); min-width: 0; }
   .batch-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); }
   .batch-heading strong { color: var(--color-text-primary); font-size: var(--text-sm); }
-  .batch-heading span, small { color: var(--color-text-muted); font-family: var(--font-mono); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+  .batch-heading span, small { color: var(--color-text-secondary); font-family: var(--font-mono); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
   .batch-copy p { max-width: 70ch; margin: 0; color: var(--color-text-secondary); font-size: var(--text-sm); line-height: var(--leading-normal); text-wrap: pretty; }
   .technical-details summary, .batch-history > summary {
     width: fit-content;
-    color: var(--color-text-muted);
+    color: var(--color-text-secondary);
     font-size: var(--text-xs);
     cursor: pointer;
   }

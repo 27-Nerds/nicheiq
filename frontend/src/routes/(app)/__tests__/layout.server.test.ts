@@ -41,7 +41,13 @@ describe("authenticated app layout billing state", () => {
   it("marks validated balance and stage costs as available", async () => {
     mocks.fetchBackend.mockImplementation((path: string) => {
       if (path === "/api/billing/balance") return Promise.resolve(response({ available: 731 }));
-      if (path === "/api/billing/stage-costs") return Promise.resolve(response({ deep_research: 100 }));
+      if (path === "/api/billing/stage-costs") {
+        return Promise.resolve(response({
+          discovery: 99,
+          deep_research: 100,
+          guided: { s1: 19, s2_4: 59, s5: 21, total: 99 },
+        }));
+      }
       if (path === "/api/saves/counts") return Promise.resolve(response({ ideas: 0, painPoints: 0 }));
       return Promise.resolve(response({ subscription: null }));
     });
@@ -53,6 +59,8 @@ describe("authenticated app layout billing state", () => {
     expect(result.billingLoadState).toEqual({
       balanceUnavailable: false,
       costsUnavailable: false,
+      discoveryCostUnavailable: false,
+      guidedCostsUnavailable: false,
     });
   });
 
@@ -71,6 +79,8 @@ describe("authenticated app layout billing state", () => {
     expect(result.billingLoadState).toEqual({
       balanceUnavailable: true,
       costsUnavailable: true,
+      discoveryCostUnavailable: true,
+      guidedCostsUnavailable: true,
     });
   });
 
@@ -87,6 +97,8 @@ describe("authenticated app layout billing state", () => {
     expect(result.billingLoadState).toEqual({
       balanceUnavailable: true,
       costsUnavailable: false,
+      discoveryCostUnavailable: true,
+      guidedCostsUnavailable: true,
     });
   });
 });

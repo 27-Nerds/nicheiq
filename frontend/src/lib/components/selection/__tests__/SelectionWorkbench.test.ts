@@ -9,6 +9,7 @@ import { chatPanel } from "$lib/stores/chatPanel.svelte";
 import { creditTopUp } from "$lib/stores/creditTopUp.svelte";
 import type { SelectionDecisionProfile, SolutionPreview } from "$lib/types/job";
 import type { RuledOutFinding } from "$lib/types/report";
+import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
 
 // SelectionWorkbench embeds a REAL ChatThread (the seed card lives there), which loads
 // history on mount — stub the network-touching bits of $lib/api so mounting/submitting
@@ -298,6 +299,137 @@ describe("SelectionWorkbench — idea seed submit (402/409 CAS)", () => {
     },
     20000,
   );
+
+  it("resumes a durable pending seed after reload and settles it exactly once", async () => {
+    vi.useFakeTimers();
+    try {
+      const msgId = "asst-seed-reload";
+      const stillPending = {
+        messages: [
+          seedHistoryMessage(msgId),
+          {
+            id: "seed-receipt-pending",
+            gateStage: 5,
+            role: "receipt" as const,
+            content: "",
+            patchJson: {
+              kind: "ledger_event" as const,
+              version: 1,
+              event: "seed_submitted" as const,
+              patch: {},
+              rows: [],
+              sourceMessageId: msgId,
+            },
+            truncated: false,
+            createdAt: "2026-07-13T00:00:01.000Z",
+          },
+        ],
+        weakPool: false,
+      };
+      const settled = {
+        messages: [
+          ...stillPending.messages,
+          {
+            id: "seed-receipt-settled",
+            gateStage: 5,
+            role: "receipt" as const,
+            content: "",
+            patchJson: {
+              kind: "ledger_event" as const,
+              version: 1,
+              event: "seed_settled" as const,
+              outcome: "accepted" as const,
+              patch: {},
+              rows: [],
+              sourceMessageId: msgId,
+            },
+            truncated: false,
+            createdAt: "2026-07-13T00:00:02.000Z",
+          },
+        ],
+        weakPool: false,
+      };
+      vi.mocked(getChatHistory)
+        .mockResolvedValueOnce(stillPending as never)
+        .mockResolvedValue(settled as never);
+      const onSeedSettled = vi.fn();
+
+      render(SelectionWorkbench, { props: { ...baseProps, onSeedSettled } });
+      await vi.waitFor(() => expect(chatLedger.seedOutcome(msgId)).toBe("pending"));
+      await vi.advanceTimersByTimeAsync(6000);
+
+      expect(onSeedSettled).toHaveBeenCalledTimes(1);
+      expect(onSeedSettled).toHaveBeenCalledWith("accepted");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps seed recovery context after timeout and lets a manual check settle it", async () => {
+    vi.useFakeTimers();
+    try {
+      const msgId = "asst-seed-stalled";
+      const stillPending = {
+        messages: [
+          seedHistoryMessage(msgId),
+          {
+            id: "seed-receipt-pending",
+            gateStage: 5,
+            role: "receipt" as const,
+            content: "",
+            patchJson: {
+              kind: "ledger_event" as const,
+              version: 1,
+              event: "seed_submitted" as const,
+              patch: {},
+              rows: [],
+              sourceMessageId: msgId,
+            },
+            truncated: false,
+            createdAt: "2026-07-13T00:00:01.000Z",
+          },
+        ],
+        weakPool: false,
+      };
+      const settled = {
+        messages: [
+          ...stillPending.messages,
+          {
+            id: "seed-receipt-settled",
+            gateStage: 5,
+            role: "receipt" as const,
+            content: "",
+            patchJson: {
+              kind: "ledger_event" as const,
+              version: 1,
+              event: "seed_settled" as const,
+              outcome: "demoted" as const,
+              patch: {},
+              rows: [],
+              sourceMessageId: msgId,
+            },
+            truncated: false,
+            createdAt: "2026-07-13T00:00:02.000Z",
+          },
+        ],
+        weakPool: false,
+      };
+      vi.mocked(getChatHistory).mockResolvedValue(stillPending as never);
+      const onSeedSettled = vi.fn();
+      const view = render(SelectionWorkbench, { props: { ...baseProps, onSeedSettled } });
+
+      await vi.waitFor(() => expect(chatLedger.seedOutcome(msgId)).toBe("pending"));
+      await vi.advanceTimersByTimeAsync(200 * 6000);
+      expect(view.getByRole("button", { name: "Check for the result" })).toBeInTheDocument();
+
+      vi.mocked(getChatHistory).mockResolvedValue(settled as never);
+      await fireEvent.click(view.getByRole("button", { name: "Check for the result" }));
+      await vi.waitFor(() => expect(onSeedSettled).toHaveBeenCalledTimes(1));
+      expect(onSeedSettled).toHaveBeenCalledWith("demoted");
+    } finally {
+      vi.useRealTimers();
+    }
+  }, 20000);
 });
 
 describe("SelectionWorkbench — poolMutationBusy gates pool-mutating controls", () => {
@@ -483,7 +615,7 @@ describe("SelectionWorkbench — ruled-out panel: idea name primary + 'Your idea
     await openAppendix(view);
 
     await findByText(
-      "These concepts were examined, then excluded from the shortlist. Open an idea to review the evidence and assumptions behind that decision.",
+      "These concepts were examined, then screened out before the ranked ideas were presented. Open an idea to review the evidence and assumptions behind that decision.",
     );
     await fireEvent.click(await findByRole("button", { name: /ReconcileFlow/ }));
     await findByText("Matches transactions and flags reconciliation gaps");
@@ -876,7 +1008,7 @@ describe("SelectionWorkbench — stable selection identity", () => {
     });
 
     await fireEvent.click(
-      view.getByRole("button", { name: "Review details for Alpha Idea" }),
+      view.getByRole("button", { name: /^Review details for Alpha Idea/ }),
     );
     const openedUrl = new URL(
       vi.mocked(pushState).mock.calls.at(-1)?.[0] as string,
@@ -938,7 +1070,7 @@ describe("SelectionWorkbench — stable selection identity", () => {
       });
 
       await fireEvent.click(
-        view.getByRole("button", { name: "Review details for Alpha Idea" }),
+        view.getByRole("button", { name: /^Review details for Alpha Idea/ }),
       );
       await fireEvent.click(view.getByRole("link", { name: "Pain evidence" }));
 
@@ -1158,6 +1290,33 @@ describe("SelectionWorkbench — similar candidate families", () => {
 
   afterEach(cleanup);
 
+  it("keeps a selected-family advisory in document flow before the candidate table", async () => {
+    const identified = [
+      solution("Alpha Idea", { idea_id: "idea-alpha", headline: "Audience-led monitor" }),
+      solution("Beta Idea", { idea_id: "idea-beta", headline: "Workflow-led monitor" }),
+    ];
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: identified,
+        selectedSolutionIds: ["idea-alpha", "idea-beta"],
+        overlapGroups: [{
+          idea_names: ["Alpha Idea", "Beta Idea"],
+          shared_product: "Market signal monitor",
+        }],
+      },
+    });
+
+    const notice = await view.findByLabelText("Shortlist overlap");
+    const table = view.getByRole("table", { name: "Ranked ideas" });
+    expect(notice).toHaveTextContent(
+      "Audience-led monitor and Workflow-led monitor are variants of the same product (Market signal monitor).",
+    );
+    expect(
+      notice.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it("routes an exact overlap family to the canonical comparison without changing the shortlist", async () => {
     const identified = [
       solution("Alpha Idea", { idea_id: "idea-alpha", headline: "Audience-led monitor" }),
@@ -1307,7 +1466,7 @@ describe("SelectionWorkbench — shared workspace overlay", () => {
   it("uses the same modal shell for idea detail and expanded chat", async () => {
     const { findByLabelText, findByRole } = render(SelectionWorkbench, { props: baseProps });
 
-    await fireEvent.click(await findByLabelText("Review details for Alpha Idea"));
+    await fireEvent.click(await findByRole("button", { name: /^Review details for Alpha Idea/ }));
     const ideaDialog = await findByRole("dialog", { name: "Solution details: Alpha Idea" });
     const ideaOverlay = ideaDialog.closest('[data-workspace-overlay="modal"]');
     expect(ideaOverlay).not.toBeNull();
@@ -1455,6 +1614,7 @@ describe("SelectionWorkbench — accepted narrowed variant", () => {
     const view = render(SelectionWorkbench, {
       props: { ...baseProps, solutions: [parent, child], selectedSolutionIds: ["idea-parent"] },
     });
+    expect(view.getByText("Workshop variant · Narrowed from Signal Desk")).toBeInTheDocument();
     await waitFor(() => expect(goto).toHaveBeenCalledWith(
       "/jobs/job-1/selection/risks?idea=idea-parent%3A3&tool=tests",
       { replaceState: true },
@@ -1841,6 +2001,91 @@ describe("SelectionWorkbench — below-table IA (Phase 1b)", () => {
     expect(view.getByText(/Existing candidate scores and your shortlist stay unchanged; the list may reorder/)).toBeInTheDocument();
   });
 
+  it("submits an idempotent, price-confirmed differentiation batch", async () => {
+    const view = render(SelectionWorkbench, { props: baseProps });
+
+    await fireEvent.click(await view.findByRole("button", { name: "Add another batch" }));
+    await fireEvent.click(view.getByRole("button", { name: "Differentiation" }));
+    await fireEvent.click(view.getByRole("button", { name: "Add another batch · 2 credits" }));
+
+    await waitFor(() => expect(regenerateIdeas).toHaveBeenCalledWith(
+      "job-1",
+      {
+        clientRequestId: expect.any(String),
+        expectedCost: 2,
+        idea_focus: "novelty",
+      },
+    ));
+  });
+
+  it("keeps completed batch usage and the disabled add control visible at the cap", () => {
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        canRegenerate: false,
+        decisionTools: false,
+        ideaBatchCompletedCount: 10,
+        maxIdeaBatches: 10,
+      },
+    });
+
+    expect(view.getByText("10 of 10 additional batches used")).toBeInTheDocument();
+    expect(view.getByRole("button", { name: "Add another batch" })).toBeDisabled();
+    expect(view.getByText("Idea batch limit reached")).toBeInTheDocument();
+  });
+
+  it("opens the add-batch dialog from a recoverable history deep link", async () => {
+    page.url = new URL("http://localhost/jobs/job-1?addBatch=1#opportunities") as typeof page.url;
+    const view = render(SelectionWorkbench, { props: baseProps });
+
+    expect(await view.findByRole("dialog", { name: "Add another batch" })).toBeInTheDocument();
+    expect(replaceState).toHaveBeenCalledWith(
+      "/jobs/job-1#opportunities",
+      page.state,
+    );
+  });
+
+  it("turns a timed-out batch poll into a manual status check", async () => {
+    vi.useFakeTimers();
+    try {
+      const pendingHistory = {
+        messages: [{
+          id: "batch-receipt-pending",
+          gateStage: 5,
+          role: "receipt",
+          content: "Adding another batch",
+          patchJson: {
+            kind: "ledger_event",
+            version: 1,
+            event: "regeneration_submitted",
+            patch: {},
+            rows: [],
+            operationId: "generation-op-pending",
+            batch: {
+              ordinal: 4,
+              focus: "auto",
+            },
+          },
+          createdAt: "2026-07-27T00:00:00.000Z",
+        }],
+        weakPool: false,
+      };
+      vi.mocked(getChatHistory).mockResolvedValue(pendingHistory as never);
+      await chatLedger.init("job-1");
+      const view = render(SelectionWorkbench, { props: baseProps });
+
+      expect(view.getByText("Adding another batch")).toBeInTheDocument();
+      await vi.advanceTimersByTimeAsync(200 * 6000);
+
+      expect(view.getByText(/Automatic checks paused/)).toBeInTheDocument();
+      await fireEvent.click(view.getByRole("button", { name: "Check status" }));
+      expect(view.queryByText(/Automatic checks paused/)).not.toBeInTheDocument();
+      expect(getChatHistory).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  }, 20000);
+
   it("opens the ruled-out record stamped with the durable generation operation id", async () => {
     vi.mocked(getChatHistory).mockResolvedValue({
       messages: [{
@@ -1958,17 +2203,19 @@ describe("SelectionWorkbench — below-table IA (Phase 1b)", () => {
     expect(view.queryByRole("button", { name: /Discovery appendix/i })).toBeNull();
   });
 
-  it("shows the display-only founder-context row with exactly one edit entry once a profile is saved", () => {
+  it("shows the display-only founder-context row with exactly one edit entry once a profile is saved", async () => {
     const view = render(SelectionWorkbench, {
       props: { ...baseProps, decisionProfile: OLD_DECISION_PROFILE },
     });
 
+    await view.findByRole("complementary", { name: "Ideas for Deep Research" });
     const row = view.getByLabelText("Build limits summary");
     expect(row).toHaveTextContent("Build limits saved");
     // The row owns exactly one edit button; nothing else on the page duplicates it
     // (DecisionGuide no longer renders a founder-context entry of its own).
     expect(row.querySelectorAll("button")).toHaveLength(1);
     expect(view.getAllByRole("button", { name: "Edit build limits" })).toHaveLength(1);
+    expect(view.queryByText("Your build limits")).not.toBeInTheDocument();
   });
 
   it("visitor view keeps the original inline analysis rendering (no appendix regrouping)", async () => {
@@ -2134,6 +2381,23 @@ describe("SelectionWorkbench — ranked candidates table semantics", () => {
     expect(cells[5]).toHaveTextContent("2 weeks");
   });
 
+  it("labels red-team evidence as an adversarial finding rather than a fake incumbent", () => {
+    const candidate = solution("Evidence-challenged idea", {
+      incumbent_parity: "shipped by evidence: the proposed data route misses the buyer",
+      red_team_verdict: "killed",
+      red_team_caveats: ["The modal buyer has no SEC filing."],
+    });
+    const view = render(SelectionWorkbench, {
+      props: { ...baseProps, solutions: [candidate] },
+    });
+    const row = within(view.getByRole("table", { name: "Ranked ideas" }))
+      .getAllByRole("row")
+      .find((entry) => entry.textContent?.includes("Evidence-challenged idea")) as HTMLElement;
+
+    expect(row).toHaveTextContent("Adversarial review: Killed");
+    expect(row).not.toHaveTextContent("Incumbent: Evidence");
+  });
+
   it("does not re-state column names as aria-labels on non-interactive cells", () => {
     const view = render(SelectionWorkbench, { props: baseProps });
     const table = view.getByRole("table", { name: "Ranked ideas" });
@@ -2187,11 +2451,50 @@ describe("SelectionWorkbench — ranked candidates table semantics", () => {
     );
   });
 
+  it("exposes metric definitions through native, keyboard-focusable help buttons", async () => {
+    const view = render(SelectionWorkbench, { props: baseProps });
+    const table = view.getByRole("table", { name: "Ranked ideas" });
+    const scoreHeader = within(table).getByRole("columnheader", { name: "Score /100" });
+    const help = scoreHeader.querySelector<HTMLButtonElement>(".metric-help");
+
+    expect(help).not.toBeNull();
+    expect(help).toHaveAttribute("type", "button");
+    expect(help).toHaveAccessibleName("More information");
+
+    const descriptionId = help!.getAttribute("aria-describedby");
+    expect(document.getElementById(descriptionId!)).toHaveTextContent(
+      SCORE_DEFINITIONS.composite,
+    );
+
+    await fireEvent.focus(help!);
+    await waitFor(() => expect(
+      document.querySelector(".tooltip-portal-content"),
+    ).toHaveTextContent(SCORE_DEFINITIONS.composite));
+  });
+
+  it("does not nest interactive tooltip controls inside the row details button", () => {
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: [solution("Alpha Idea", {
+          winning_angle: "vertical_workflow",
+          angle_rationale: "Own the full workflow for one buyer.",
+        })],
+      },
+    });
+    const details = view.getByRole("button", { name: /^Review details for Alpha Idea/ });
+    const inlineTooltip = details.querySelector<HTMLElement>(".tooltip-wrapper");
+
+    expect(details.querySelector("button")).toBeNull();
+    expect(inlineTooltip).not.toHaveAttribute("role");
+    expect(inlineTooltip).not.toHaveAttribute("tabindex");
+  });
+
   it("keeps the pick control and the row details button reachable by name", async () => {
     const view = render(SelectionWorkbench, { props: baseProps });
     const table = view.getByRole("table", { name: "Ranked ideas" });
 
-    const details = within(table).getByRole("button", { name: "Review details for Alpha Idea" });
+    const details = within(table).getByRole("button", { name: /^Review details for Alpha Idea/ });
     expect(details).toBeInTheDocument();
 
     const pick = within(table).getByRole("checkbox", { name: "Select Alpha Idea" });

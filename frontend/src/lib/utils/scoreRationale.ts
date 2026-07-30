@@ -104,7 +104,12 @@ function marketFitCapHint(
   if (payLow) {
     candidates.push({ cap: caps.payabilityMarketFitCap, clause: "the fit signal was reduced because this buyer segment shows weak evidence of paying for tools" });
   }
-  if (parity.startsWith("shipped")) {
+  if (parity.startsWith("shipped by evidence:")) {
+    candidates.push({
+      cap: caps.parityShippedMarketFitCap,
+      clause: "the fit signal was reduced because adversarial evidence challenged the core mechanism",
+    });
+  } else if (parity.startsWith("shipped")) {
     candidates.push({
       cap: caps.parityShippedMarketFitCap,
       clause: "the fit signal was reduced because a verified incumbent already provides the core mechanism",

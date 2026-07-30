@@ -33,6 +33,8 @@ export const load: LayoutServerLoad = async (event) => {
   let savedCounts: SavedCounts = { ideas: 0, painPoints: 0 };
   let balanceUnavailable = true;
   let costsUnavailable = true;
+  let discoveryCostUnavailable = true;
+  let guidedCostsUnavailable = true;
   // Admin-granted per-user features. Read fresh each navigation rather than carried in
   // the session JWT, so a grant or revocation lands without a re-login. Fails CLOSED:
   // the backend re-checks on every gated route, this only drives what we render.
@@ -65,6 +67,8 @@ export const load: LayoutServerLoad = async (event) => {
       const data = await costsRes.json();
       stageCosts = { ...stageCosts, ...data };
       costsUnavailable = nonNegativeInteger(data.deep_research) === null;
+      discoveryCostUnavailable = nonNegativeInteger(data.discovery) === null;
+      guidedCostsUnavailable = nonNegativeInteger(data.guided?.s1) === null;
     }
     if (savedRes?.ok) {
       savedCounts = (await savedRes.json()) as SavedCounts;
@@ -96,6 +100,8 @@ export const load: LayoutServerLoad = async (event) => {
     billingLoadState: {
       balanceUnavailable,
       costsUnavailable,
+      discoveryCostUnavailable,
+      guidedCostsUnavailable,
     },
     savedCounts,
   };

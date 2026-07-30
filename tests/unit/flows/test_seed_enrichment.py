@@ -34,12 +34,13 @@ def _ctx(**over):
     return NicheContext(**base)
 
 
-def _post(i, title, body="", score=10, num_responses=5):
+def _post(i, title, body="", score=10, num_responses=5, relevance_grade=2):
     return SocialPost(
         post_id=f"hn-{i}", platform="hackernews", title=title, body=body,
         author="a", url=f"https://news.ycombinator.com/item?id={i}",
         score=score, num_responses=num_responses,
         created_utc=datetime.now(timezone.utc),
+        relevance_grade=relevance_grade,
     )
 
 
@@ -93,24 +94,34 @@ class TestCollectSeedEvidence:
     @patch("nicheiq.tools.hackernews_tool.HackerNewsCollectorTool")
     def test_relevant_posts_become_collection(self, MockTool):
         posts = [_post(i, t, num_responses=i + 1) for i, t in enumerate(RELEVANT_TITLES[:3])]
-        MockTool.return_value.search_and_collect.return_value = posts
+        MockTool.return_value.search_relevant_and_collect.return_value = SimpleNamespace(
+            posts=posts, candidate_count=3, relevant_count=3
+        )
         result = collect_seed_evidence(["manual invoicing"], NICHE_DESC)
         assert result is not None
         assert len(result.generic_posts) == 3
         assert result.total_generic_responses == sum(p.num_responses for p in posts)
+        MockTool.return_value.search_relevant_and_collect.assert_called_once()
 
     @patch("nicheiq.tools.hackernews_tool.HackerNewsCollectorTool")
-    def test_irrelevant_posts_filtered_below_floor_returns_none(self, MockTool):
-        # 2 relevant + 2 irrelevant -> after relevance filter only 2 remain (< MIN_POSTS)
-        posts = [_post(i, t) for i, t in enumerate(RELEVANT_TITLES[:2] + IRRELEVANT_TITLES)]
-        MockTool.return_value.search_and_collect.return_value = posts
+    def test_grade_below_two_filtered_below_floor_returns_none(self, MockTool):
+        posts = [
+            _post(0, RELEVANT_TITLES[0], relevance_grade=3),
+            _post(1, RELEVANT_TITLES[1], relevance_grade=2),
+            _post(2, IRRELEVANT_TITLES[0], relevance_grade=1),
+            _post(3, IRRELEVANT_TITLES[1], relevance_grade=None),
+        ]
+        MockTool.return_value.search_relevant_and_collect.return_value = SimpleNamespace(
+            posts=posts, candidate_count=4, relevant_count=2
+        )
         assert collect_seed_evidence(["manual invoicing"], NICHE_DESC) is None
 
     @patch("nicheiq.tools.hackernews_tool.HackerNewsCollectorTool")
     def test_below_floor_returns_none(self, MockTool):
-        MockTool.return_value.search_and_collect.return_value = [
-            _post(0, RELEVANT_TITLES[0])
-        ]
+        posts = [_post(0, RELEVANT_TITLES[0])]
+        MockTool.return_value.search_relevant_and_collect.return_value = SimpleNamespace(
+            posts=posts, candidate_count=1, relevant_count=1
+        )
         assert collect_seed_evidence(["manual invoicing"], NICHE_DESC) is None
         assert MIN_POSTS == 3  # checkpoint quality-gate floor — do not lower
 
@@ -130,14 +141,18 @@ class TestCollectSeedEvidence:
             _post(i, RELEVANT_TITLES[i % len(RELEVANT_TITLES)] + f" variant {i}")
             for i in range(15)
         ]
-        MockTool.return_value.search_and_collect.return_value = posts
+        MockTool.return_value.search_relevant_and_collect.return_value = SimpleNamespace(
+            posts=posts, candidate_count=15, relevant_count=15
+        )
         result = collect_seed_evidence(["manual invoicing"], NICHE_DESC)
         assert result is not None
         assert len(result.generic_posts) == 12
 
     @patch("nicheiq.tools.hackernews_tool.HackerNewsCollectorTool")
     def test_cancel_check_invoked_and_propagates(self, MockTool):
-        MockTool.return_value.search_and_collect.return_value = []
+        MockTool.return_value.search_relevant_and_collect.return_value = SimpleNamespace(
+            posts=[], candidate_count=0, relevant_count=0
+        )
         cancel = MagicMock()
         collect_seed_evidence(["manual invoicing"], NICHE_DESC, cancel_check=cancel)
         assert cancel.call_count >= 1

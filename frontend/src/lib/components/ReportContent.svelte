@@ -229,6 +229,11 @@
     url.hash = "";
     return `${url.pathname}${url.search}`;
   }
+  const fullFirstMonthHref = $derived(
+    hasDatedPlaybook
+      ? `${reportHref("plan", "launch", "full")}#first-30-days-playbook`
+      : undefined,
+  );
 </script>
 
 <div class="report-shell">
@@ -262,7 +267,8 @@
     </div>
   </aside>
 
-  <main class="report-main">
+  <!-- The app/public layouts already provide the page's single main landmark. -->
+  <div class="report-main">
     <header class="report-header">
       <div class="report-header-top">
         {#if showBackLink && jobId}
@@ -783,7 +789,7 @@
             {report}
             topic={currentPlanTopic}
             fullDetailHref={currentPlanTopic === "first-30-days"
-              ? undefined
+              ? fullFirstMonthHref
               : reportHref("plan", currentPlanTopic, "full")}
           />
         {:else}
@@ -933,7 +939,7 @@
         {/if}
       </div>
     {/if}
-  </main>
+  </div>
 </div>
 
 <style>

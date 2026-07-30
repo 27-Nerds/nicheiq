@@ -5,6 +5,7 @@ import {
   changePassword,
   getSelectionConceptSets,
   getSelectionMetricExplanations,
+  regenerateIdeas,
   ApiError,
 } from '../api';
 
@@ -265,6 +266,36 @@ describe('ApiError', () => {
       name: 'ApiError',
       status: 404,
       message: 'The request could not be completed. Please try again.',
+    });
+  });
+});
+
+describe('Idea batch API', () => {
+  it('forwards the idempotency key, confirmed price, and requested focus', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        message: 'Additional batch queued',
+        operationId: 'dispatch-1',
+        batchOrdinal: 3,
+        focus: 'novelty',
+      }),
+    });
+
+    await regenerateIdeas('job-1', {
+      clientRequestId: '15f6fe10-cbbe-4cea-94b8-ead2a0b718ee',
+      expectedCost: 2,
+      idea_focus: 'novelty',
+    });
+
+    expect(mockFetch).toHaveBeenCalledWith('/api/jobs/job-1/regenerate-ideas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clientRequestId: '15f6fe10-cbbe-4cea-94b8-ead2a0b718ee',
+        expectedCost: 2,
+        idea_focus: 'novelty',
+      }),
     });
   });
 });

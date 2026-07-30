@@ -19,6 +19,7 @@ export interface StageCountInput {
 
 export function getAdjustedStageCounts(input: StageCountInput): {
   completed: number;
+  current: number;
   total: number;
 } {
   const hiddenCount = HIDDEN_STAGES.length;
@@ -27,5 +28,14 @@ export function getAdjustedStageCounts(input: StageCountInput): {
     (input.currentStage ?? 0) > 4 ||
     (input.status ?? "").toUpperCase() === "COMPLETED";
   const completed = input.stagesCompleted - (passedHidden ? hiddenCount : 0);
-  return { completed: Math.max(0, completed), total };
+  const adjustedCompleted = Math.max(0, completed);
+  // stagesCompleted is a count of finished ledger rows. While a worker is active,
+  // the user is therefore on the next visible stage, not the last finished one.
+  const active = ["RUNNING", "RUNNING_PHASE2"].includes(
+    (input.status ?? "").toUpperCase(),
+  );
+  const current = active
+    ? Math.min(total, adjustedCompleted + 1)
+    : adjustedCompleted;
+  return { completed: adjustedCompleted, current, total };
 }

@@ -146,8 +146,11 @@ beforeEach(async () => {
   app.use('/api/jobs', jobsRouter);
 });
 
-describe('POST /api/jobs — chatMode entitlement coercion', () => {
-  const validBody = { niche: 'A niche description long enough to pass validation' };
+describe('POST /api/jobs — guided entitlement and entry-price confirmation', () => {
+  const validBody = {
+    niche: 'A niche description long enough to pass validation',
+    expectedCost: 5,
+  };
 
   it('passes chatMode=true through for an entitled user', async () => {
     mockIsEntitledUser.mockResolvedValue(true);
@@ -155,13 +158,13 @@ describe('POST /api/jobs — chatMode entitlement coercion', () => {
     const response = await request(app)
       .post('/api/jobs')
       .set(authHeaders)
-      .send({ ...validBody, chatMode: true });
+      .send({ ...validBody, chatMode: true, expectedCost: 1 });
 
     expect(response.status).toBe(201);
     expect(mockIsEntitledUser).toHaveBeenCalledWith('user-123');
     expect(mockCreateJobAndChargeDiscoveryInTx).toHaveBeenCalledWith(
       expect.objectContaining({ jobDispatch: expect.any(Object) }),
-      'user-123', validBody.niche, undefined, 'interactive', undefined, undefined, true
+      'user-123', validBody.niche, undefined, 'interactive', undefined, undefined, true, 1
     );
     expect(mockJobDispatchCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -185,20 +188,18 @@ describe('POST /api/jobs — chatMode entitlement coercion', () => {
     expect(mockDeliverDispatchWork).toHaveBeenCalledWith('dispatch-1');
   });
 
-  it('coerces chatMode to false for a non-entitled user requesting it', async () => {
+  it('rejects guided research for a non-entitled user without creating or charging a job', async () => {
     mockIsEntitledUser.mockResolvedValue(false);
 
     const response = await request(app)
       .post('/api/jobs')
       .set(authHeaders)
-      .send({ ...validBody, chatMode: true });
+      .send({ ...validBody, chatMode: true, expectedCost: 1 });
 
-    expect(response.status).toBe(201);
-    expect(mockCreateJobAndChargeDiscoveryInTx).toHaveBeenCalledWith(
-      expect.objectContaining({ jobDispatch: expect.any(Object) }),
-      'user-123', validBody.niche, undefined, 'interactive', undefined, undefined, false
-    );
-    expect(mockDeliverDispatchWork).toHaveBeenCalledWith('dispatch-1');
+    expect(response.status).toBe(403);
+    expect(response.body.code).toBe('ANALYST_ACCESS_REQUIRED');
+    expect(mockCreateJobAndChargeDiscoveryInTx).not.toHaveBeenCalled();
+    expect(mockDeliverDispatchWork).not.toHaveBeenCalled();
   });
 
   it('does not call isEntitledUser when chatMode is not requested (skips the entitlement check entirely)', async () => {
@@ -211,7 +212,7 @@ describe('POST /api/jobs — chatMode entitlement coercion', () => {
     expect(mockIsEntitledUser).not.toHaveBeenCalled();
     expect(mockCreateJobAndChargeDiscoveryInTx).toHaveBeenCalledWith(
       expect.objectContaining({ jobDispatch: expect.any(Object) }),
-      'user-123', validBody.niche, undefined, 'interactive', undefined, undefined, false
+      'user-123', validBody.niche, undefined, 'interactive', undefined, undefined, false, 5
     );
   });
 
@@ -224,6 +225,37 @@ describe('POST /api/jobs — chatMode entitlement coercion', () => {
     expect(response.status).toBe(201);
     const callArgs = mockCreateJobAndChargeDiscoveryInTx.mock.calls[0];
     expect(callArgs[7]).toBe(false);
+    expect(callArgs[8]).toBe(5);
+  });
+
+  it('requires the exact first-segment price before creating a job', async () => {
+    const response = await request(app)
+      .post('/api/jobs')
+      .set(authHeaders)
+      .send({ niche: validBody.niche });
+
+    expect(response.status).toBe(400);
+    expect(mockCreateJobAndChargeDiscoveryInTx).not.toHaveBeenCalled();
+  });
+
+  it('returns a refreshable conflict when the confirmed price changed', async () => {
+    const { PriceChangedError } = await import('../../services/creditService.js');
+    mockCreateJobAndChargeDiscoveryInTx.mockRejectedValueOnce(
+      new PriceChangedError(5, 7),
+    );
+
+    const response = await request(app)
+      .post('/api/jobs')
+      .set(authHeaders)
+      .send(validBody);
+
+    expect(response.status).toBe(409);
+    expect(response.body).toMatchObject({
+      code: 'PRICE_CHANGED',
+      expectedCost: 5,
+      actualCost: 7,
+    });
+    expect(mockDeliverDispatchWork).not.toHaveBeenCalled();
   });
 
   it('does not enqueue when dispatch authorization fails inside the creation transaction', async () => {

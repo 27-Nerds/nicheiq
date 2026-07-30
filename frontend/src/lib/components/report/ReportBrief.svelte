@@ -165,6 +165,19 @@
   const reviewEvidenceFirst = $derived(
     verdict?.verdict !== "Go" || evidenceLimited,
   );
+  const verdictAdjustments = $derived.by(() => {
+    const adjustments: Array<{ label: string; text: string }> = [];
+    const add = (label: string, value: string | null | undefined) => {
+      const text = value ? stripMarkdown(value).trim() : "";
+      if (text) adjustments.push({ label, text });
+    };
+
+    add("Trend context", verdict?.trend_context);
+    add("Market viability", verdict?.market_viability_context);
+    add("Buyer payability", verdict?.payability_context);
+    add("Red-team review", verdict?.red_team_context);
+    return adjustments;
+  });
 </script>
 
 <div class="brief">
@@ -202,6 +215,19 @@
         <details class="decision-trace">
           <summary>How the recommendation changed</summary>
           <p>{stripMarkdown(report.original_selection_reasoning)}</p>
+        </details>
+      {/if}
+      {#if verdictAdjustments.length}
+        <details class="decision-trace verdict-adjustments">
+          <summary>What changed the verdict</summary>
+          <ul>
+            {#each verdictAdjustments as adjustment}
+              <li>
+                <strong>{adjustment.label}</strong>
+                <span>{adjustment.text}</span>
+              </li>
+            {/each}
+          </ul>
         </details>
       {/if}
     </div>
@@ -303,7 +329,7 @@
     <div class="next-actions">
       {#if reviewEvidenceFirst}
         <a class="primary-action" href={evidenceHref}>
-          Review the biggest risk
+          Review the evidence
           <ArrowRight aria-hidden="true" />
         </a>
         <a class="secondary-action" href={planHref}>Open the action plan</a>
@@ -472,6 +498,34 @@
     color: var(--color-text-secondary);
     font-size: var(--text-sm);
     line-height: 1.6;
+  }
+
+  .verdict-adjustments ul {
+    display: grid;
+    gap: var(--space-3);
+    margin: var(--space-3) 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .verdict-adjustments li {
+    display: grid;
+    gap: var(--space-1);
+  }
+
+  .verdict-adjustments strong,
+  .verdict-adjustments span {
+    font-size: var(--text-sm);
+    line-height: 1.5;
+  }
+
+  .verdict-adjustments strong {
+    color: var(--color-text-primary);
+  }
+
+  .verdict-adjustments span {
+    max-width: 72ch;
+    color: var(--color-text-secondary);
   }
 
   .opportunity {

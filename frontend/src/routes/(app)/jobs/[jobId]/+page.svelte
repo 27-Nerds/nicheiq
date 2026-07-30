@@ -125,11 +125,10 @@
       + " at " + d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
   }
   const runTimeline = $derived.by(() => {
-    // startedAt/completedAt track the MOST RECENT phase, not the whole job: on a
-    // completed job they span the Deep Research run, so labelling that window
-    // "Discovery run" reported the wrong phase's duration (8 min for Deep Research
-    // where discovery had actually taken 74).
-    const parts = [job?.status === "COMPLETED" ? "Deep Research run" : "Discovery run"];
+    // startedAt/completedAt track the MOST RECENT operation, not the whole job.
+    // During selection that may be Discovery, an added batch, or a branched-direction
+    // evaluation, so naming it "Discovery run" becomes false after either idea update.
+    const parts = [job?.status === "COMPLETED" ? "Deep Research run" : "Latest research activity"];
     if (job?.startedAt) parts.push(`started ${formatRunDate(job.startedAt)}`);
     if (job?.completedAt) parts.push(`completed ${formatRunDate(job.completedAt)}`);
     return parts.join(" · ");
@@ -201,6 +200,7 @@
   let landingError = $state("");
   let summaryFetched = false;
   let discoveryShareOpen = $state(false);
+  let discoveryShareTrigger = $state<HTMLButtonElement>();
   let discoveryLoading = $state(false);
   let lastHandledStatus = $state('');
   // apply_stay round-trips can re-arrive at the SAME gate (status stays
@@ -214,8 +214,12 @@
   let solutionsFetchAttempted = $state(false);
   let regeneratingFromEmpty = $state(false);
   let regenerateFromEmptyError = $state("");
+  let regenerateFromEmptyClientRequestId = $state(crypto.randomUUID());
 
   const jobId = $derived(page.params.jobId);
+  const regenerateFromEmptyCost = $derived(
+    (page.data.stageCosts as { regenerate_ideas?: number } | undefined)?.regenerate_ideas ?? 0,
+  );
   // A durable seed receipt normally identifies this round-trip. The active
   // dispatch is the stronger fallback when receipt hydration lags or failed:
   // a queued seed must not become "Deep Research" merely because the owner
@@ -267,18 +271,7 @@
   const isRegenQueued = $derived(
     job?.status === 'QUEUED' &&
     !seedRunning &&
-    job?.activeDispatchKind !== 'DEEP_RESEARCH' &&
-    !(job?.selectedSolutions?.length) &&
-    (
-      job?.activeDispatchKind === 'REGENERATE'
-      || (
-        job?.activeDispatchKind == null
-        && (
-          (job?.solutionIdeas?.length ?? 0) > 0
-          || (chatLedger.jobId === jobId && chatLedger.hasPendingBatch)
-        )
-      )
-    )
+    job?.activeDispatchKind === 'REGENERATE'
   );
   const isQueuedPhase2 = $derived(
     job?.status === 'QUEUED'
@@ -314,8 +307,13 @@
   // stuck true and a later successful Continue would keep GateWorkbench mounted
   // instead of handing off to the progress screen.
   let gateApplyPending = $state(false);
+  const applyStayActive = $derived(
+    job?.activeDispatchKind === 'APPLY_STAY'
+    && ['QUEUED', 'RUNNING'].includes(job?.status ?? '')
+  );
   const isGatePhase = $derived(
     job?.status === 'AWAITING_GATE' ||
+    applyStayActive ||
     (gateApplyPending && ['QUEUED', 'RUNNING'].includes(job?.status ?? ''))
   );
 
@@ -338,7 +336,13 @@
         // (onShortlistVersionChange) before this callback sees the broadcast.
         draftRefreshGuard.handleSsePayload(sseData as Job | null);
         if (sseData && sseData.id) {
-          clientJob = sseData as Job;
+          // Progress events are intentionally partial. Replacing the job here drops
+          // the saved shortlist, dossier metadata, and other selection-only fields
+          // for the duration of a seed evaluation.
+          clientJob = {
+            ...(clientJob ?? serverJob),
+            ...sseData,
+          } as Job;
           if (sseData.solutionIdeas) {
             const normalized = normalizeSolutionPreviews(sseData.solutionIdeas);
             clientSolutions = normalized.solutions;
@@ -402,6 +406,8 @@
           ...job,
           selectionDraft: d.selectionDraft,
           canRegenerate: d.canRegenerate,
+          ideaBatchCompletedCount: d.ideaBatchCompletedCount,
+          maxIdeaBatches: d.maxIdeaBatches,
         };
       }
     } catch {
@@ -431,16 +437,22 @@
   // operation as SelectionWorkbench's action, just without
   // a ranked set to attach it to.
   async function regenerateFromEmpty() {
-    if (!job || !jobId || regeneratingFromEmpty) return;
+    if (!job || !jobId || regeneratingFromEmpty || costsUnavailable) return;
     regeneratingFromEmpty = true;
     regenerateFromEmptyError = "";
     try {
-      const response = await regenerateIdeas(jobId);
+      const response = await regenerateIdeas(jobId, {
+        clientRequestId: regenerateFromEmptyClientRequestId,
+        expectedCost: regenerateFromEmptyCost,
+        idea_focus: "auto",
+      });
+      regenerateFromEmptyClientRequestId = crypto.randomUUID();
       chatLedger.markBatchPending(response.operationId, {
         ordinal: response.batchOrdinal,
         focus: response.focus ?? "auto",
       });
-      clientJob = { ...job, status: 'QUEUED' };
+      clientJob = { ...job, status: 'QUEUED', activeDispatchKind: 'REGENERATE' };
+      void invalidateAll();
     } catch (e) {
       if (e instanceof ApiError && e.status === 402) {
         const body = e.details as { balance?: number; required?: number } | undefined;
@@ -449,6 +461,13 @@
           required: body?.required ?? (page.data.stageCosts as any)?.regenerate_ideas ?? 0,
           stageName: "additional idea batch",
         });
+      } else if (
+        e instanceof ApiError
+        && e.status === 409
+        && (e.details as { code?: string } | undefined)?.code === "PRICE_CHANGED"
+      ) {
+        await invalidateAll();
+        regenerateFromEmptyError = "The idea batch price changed. Review the updated cost and try again.";
       } else {
         regenerateFromEmptyError = e instanceof Error ? e.message : "Failed to generate ideas";
       }
@@ -554,11 +573,16 @@
     cancelError = "";
     try {
       const res = await fetch(`/api/jobs/${jobId}/cancel`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const data = await res.json();
         throw new Error(data.error || "Failed to cancel job");
       }
-      clientJob = { ...job, status: "CANCELLED", errorMessage: "Cancelled by user" };
+      clientJob = {
+        ...job,
+        status: "CANCELLED",
+        errorMessage: "Cancelled by user",
+        creditRefunded: Number(data.creditRefunded ?? 0) > 0,
+      };
       unsubscribeSSE?.();
     } catch (e) {
       cancelError = e instanceof Error ? e.message : "Failed to cancel job";
@@ -817,12 +841,11 @@
   const overlapGroups = $derived(previewReport?.overlap_groups ?? []);
   const marketReality = $derived(previewReport?.market_reality ?? null);
 
-  // A seed's settlement can add a brand-new pool candidate OR a brand-new ruled-out
-  // entry that the SSE stream's sorted-name diff has no way to see (it only reconciles
-  // NAMES it already knew about) — force both fetches rather than relying on SSE here.
+  // A settled seed or batch changes several authoritative surfaces at once: candidates,
+  // ruled-out evidence, status, limits, the active dispatch, and ledger-backed UI. Reload
+  // the route contract as one snapshot instead of refreshing only two artifacts.
   function handleSeedSettled() {
-    void fetchSolutions();
-    void loadPreviewReport(jobId ?? '');
+    void invalidateAll();
   }
 
   // Placeholder data for locked sections - use short niche name, not full description
@@ -934,7 +957,9 @@
               ?? 'Too few relevant discussions were found to produce a trustworthy result. A broader or differently-worded niche usually helps.')
           : failedDuringDeepResearch
             ? 'Return to selection and confirm Deep Research again. You will review the current price before any charge.'
-            : 'Resuming picks up from the last checkpoint rather than re-running the whole pipeline.',
+            : job?.creditRefunded
+              ? 'Resuming picks up from the last checkpoint and may re-charge the refunded stage at its original amount.'
+              : 'Resuming picks up from the last checkpoint rather than re-running the whole pipeline.',
   );
 
   // Aside state for the editorial hero. Maps the live job status into one of
@@ -958,6 +983,7 @@
   );
 
   const reportAsset = $derived((job?.assets ?? []).find((a) => a.type === "REPORT_JSON"));
+  const reportAvailable = $derived(Boolean(reportAsset));
   const landingAsset = $derived((job?.assets ?? []).find((a) => a.type === "LANDING_PAGE"));
 
   const lpStatus = $derived<'pending' | 'running' | 'completed' | 'failed' | 'locked'>(
@@ -1032,6 +1058,7 @@
       gateStage={job.gateStage ?? null}
       {decisionTools}
       landingPageStatus={lpStatus}
+      {reportAvailable}
     />
   {/if}
   <!-- div, not <main>: the (app) layout already renders the page's single landmark <main>. -->
@@ -1118,9 +1145,13 @@
                 {/if}
                 {#if isSelectionPhase && displaySolutions.length > 0}
                   <button
+                    bind:this={discoveryShareTrigger}
+                    type="button"
                     onclick={() => (discoveryShareOpen = true)}
                     class="btn-ghost share-discovery-btn"
                     aria-label="Share discovery"
+                    aria-haspopup="dialog"
+                    aria-expanded={discoveryShareOpen}
                   >
                     <Share2 class="w-3.5 h-3.5" />
                     <span>Share</span>
@@ -1164,6 +1195,25 @@
                 icon={REPORT_ICON}
                 label="Open report"
                 class="btn-primary"
+              />
+            </section>
+          {:else if isCompleted}
+            <section class="completed-handoff" aria-labelledby="completed-handoff-title" role="status">
+              <div>
+                <p class="completed-handoff__eyebrow">Report unavailable</p>
+                <div class="completed-handoff__title">
+                  <h2 id="completed-handoff-title">The report file has not arrived</h2>
+                </div>
+                <p class="completed-handoff__copy">
+                  This run is marked complete, but there is no report to open yet. Refresh the
+                  run before trying the report link again.
+                </p>
+              </div>
+              <Button
+                onclick={() => invalidateAll()}
+                icon={RotateCw}
+                label="Check again"
+                class="btn-secondary"
               />
             </section>
           {/if}
@@ -1305,6 +1355,8 @@
             creditBalance={page.data.creditBalance ?? 0}
             stageCosts={page.data.stageCosts ?? { discovery: 5, deep_research: 15, landing_page: 5, regenerate_ideas: 2 }}
             canRegenerate={job.canRegenerate ?? false}
+            ideaBatchCompletedCount={job.ideaBatchCompletedCount ?? null}
+            maxIdeaBatches={job.maxIdeaBatches ?? null}
             isRegenerating={job.status === 'REGENERATING' || isRegenQueued}
             poolMutationLocked={seedRunning}
             selectedSolutions={job.selectedSolutions ?? undefined}
@@ -1312,7 +1364,10 @@
             decisionProfile={job.selectionDecisionProfile ?? null}
             {solutionVotes}
             onComplete={handleSelectionComplete}
-            onRegenerateStart={() => { clientJob = { ...job!, status: 'QUEUED' }; }}
+            onRegenerateStart={() => {
+              clientJob = { ...job!, status: 'QUEUED', activeDispatchKind: 'REGENERATE' };
+              void invalidateAll();
+            }}
             onBatchSettled={handleSeedSettled}
             onJourneyTasks={(tasks) => selectionToolTasks = tasks}
             onShortlistChange={(count) => liveShortlist = { jobId: jobId ?? '', count }}
@@ -1354,15 +1409,38 @@
               {#if job.canRegenerate}
                 <SubmitButton
                   onclick={regenerateFromEmpty}
+                  disabled={costsUnavailable}
                   loading={regeneratingFromEmpty}
                   loadingText="Adding batch..."
-                  label="Add idea batch"
+                  label={costsUnavailable
+                    ? "Add idea batch · price unavailable"
+                    : `Add idea batch · ${regenerateFromEmptyCost} ${regenerateFromEmptyCost === 1 ? "credit" : "credits"}`}
                   class="btn-primary mt-6 inline-block"
                 />
+                {#if costsUnavailable}
+                  <p class="mt-3 text-sm text-text-secondary">
+                    Current pricing could not be loaded. Reload before adding a paid batch.
+                  </p>
+                {/if}
                 {#if regenerateFromEmptyError}
                   <p class="mt-3 text-sm text-[color:var(--color-error-text)]">{regenerateFromEmptyError}</p>
                 {/if}
               {:else}
+                {#if (
+                  typeof job.ideaBatchCompletedCount === "number"
+                  && typeof job.maxIdeaBatches === "number"
+                  && job.maxIdeaBatches > 0
+                )}
+                  <p class="mt-4 font-mono text-xs text-text-secondary">
+                    {job.ideaBatchCompletedCount} of {job.maxIdeaBatches} additional batches used
+                  </p>
+                  <SubmitButton
+                    disabled
+                    loadingText="Adding batch..."
+                    label="Add idea batch · limit reached"
+                    class="btn-primary mt-6 inline-block"
+                  />
+                {/if}
                 <button onclick={() => goto(`/new?fromJob=${job.id}&prefilled=${encodeURIComponent(job.niche)}`)} class="mt-6 inline-flex items-center gap-1.5 text-sm font-medium text-accent-dark hover:text-accent-hover transition-colors">
                   Start new research <ArrowRight class="w-4 h-4" />
                 </button>
@@ -1670,7 +1748,12 @@
             <span class="run-meta__dot" class:run-meta__dot--done={job.completedAt}></span>
             <span>{runTimeline}</span>
           </span>
-          <button type="button" class="run-meta__id" onclick={copyRunId} aria-label="Copy full run ID">
+          <button
+            type="button"
+            class="run-meta__id"
+            onclick={copyRunId}
+            aria-label={`Run ID ${job.id.slice(0, 8)}. Copy full run ID`}
+          >
             <span class="run-meta__id-label">Run ID</span>
             <code>{job.id.slice(0, 8)}</code>
             {#if copiedRunId}
@@ -1689,7 +1772,11 @@
 </div>
 
 {#if jobId}
-  <ShareDiscoveryModal bind:open={discoveryShareOpen} jobId={jobId} />
+  <ShareDiscoveryModal
+    bind:open={discoveryShareOpen}
+    jobId={jobId}
+    restoreFocusTo={discoveryShareTrigger}
+  />
 {/if}
 
 <!-- First-run tutorial. `selectionToolTasks !== undefined` is the signal that the

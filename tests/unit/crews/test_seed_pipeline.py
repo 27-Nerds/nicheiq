@@ -15,7 +15,10 @@ from nicheiq.crews.idea_improvement_loop import CellGrounding
 from nicheiq.crews.idea_improvement_loop_v4 import _ideator_system, _reviewer_system
 from nicheiq.crews.unified_solution_crew import SeedRequest, UnifiedSolutionCrew
 from nicheiq.utils.frames import FRAME_REGISTRY, FrameFocus
-from nicheiq.utils.seed_fidelity import is_seed_faithful
+from nicheiq.utils.seed_fidelity import (
+    is_seed_faithful,
+    structured_synthesis_fidelity_failures,
+)
 
 
 def _crew(**extra):
@@ -182,7 +185,10 @@ class TestBuildCellGroundingFromCellSetsUnanchored:
 # ---------------------------------------------------------------------------
 
 class TestTournamentCellUnanchoredStamp:
-    def _run(self, monkeypatch, anchor_titles):
+    def _run(
+        self, monkeypatch, anchor_titles, *,
+        lock_identity=False, tournament_kwargs=None,
+    ):
         expanded = SimpleNamespace(
             solution_name="X", source_pain=None, source_segment=None,
             mechanism_tag=None, data_source_tag=None, journey_tag=None,
@@ -197,11 +203,23 @@ class TestTournamentCellUnanchoredStamp:
         monkeypatch.setattr(usc.UnifiedSolutionCrew, "_record_divergent_usage",
                             lambda self, u: None, raising=False)
         import nicheiq.crews.idea_improvement_loop_v4 as v4
-        monkeypatch.setattr(v4, "tournament_refine_cell_v4", lambda cands, g, **kw: cands[0])
+
+        def fake_tournament(cands, grounding, **kwargs):
+            if tournament_kwargs is not None:
+                tournament_kwargs.update(kwargs)
+            return cands[0]
+
+        monkeypatch.setattr(v4, "tournament_refine_cell_v4", fake_tournament)
 
         focus = FrameFocus(frame="user_seed", key="seed-1", payload={"seed_text": "an idea"},
                            anchor_pain_titles=anchor_titles)
-        cell = {"frame": "user_seed", "focus": focus, "pain": None, "segment": None}
+        cell = {
+            "frame": "user_seed",
+            "focus": focus,
+            "pain": None,
+            "segment": None,
+            "lock_identity": lock_identity,
+        }
         concept = SimpleNamespace(concept_name="c", one_liner="ol", project_type="saas",
                                   target_keywords=[], why_non_obvious="w", source_pain=None,
                                   source_segment=None, obviousness_score=0.3,
@@ -220,6 +238,18 @@ class TestTournamentCellUnanchoredStamp:
         winner = self._run(monkeypatch, anchor_titles=["Real validated pain"])
         assert winner.pain_points_addressed == ["Real validated pain"]  # code-filled truth
         assert winner.unanchored_hypothesis is None  # reset-then-stamp: cleared, never left True
+
+    def test_exact_synthesis_disables_tournament_rewrites(self, monkeypatch):
+        tournament_kwargs = {}
+
+        self._run(
+            monkeypatch,
+            anchor_titles=["Real validated pain"],
+            lock_identity=True,
+            tournament_kwargs=tournament_kwargs,
+        )
+
+        assert tournament_kwargs["rounds"] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -397,6 +427,11 @@ class TestExecuteSeedPipeline:
                         "from": "forecast",
                         "to": "forecast plus peptide protocol index",
                         "reason": "Selected direction",
+                    }, {
+                        "axis": "buyer",
+                        "from": "Existing parent audience",
+                        "to": "Independent exit planners",
+                        "reason": "Selected buyer",
                     }],
                     "retainedEvidence": ["Exit planners need maintenance guidance"],
                     "assumptions": [{"statement": "Planners seek protocol pages"}],
@@ -408,7 +443,8 @@ class TestExecuteSeedPipeline:
             resolver,
             "resolve_seed_anchors",
             lambda *a, **kw: SimpleNamespace(
-                anchor_pain_titles=[], segment=None,
+                anchor_pain_titles=[],
+                segment=SimpleNamespace(segment_name="Existing parent audience"),
             ),
         )
         monkeypatch.setattr(
@@ -439,6 +475,80 @@ class TestExecuteSeedPipeline:
         assert len(captured["candidates"]) == 1
         assert captured["candidates"][0].concept_name == "Exact Protocol Hub"
         assert "forecast plus peptide protocol index" in semantic_brief
+        assert captured["cell"]["segment"].segment_name == "Independent exit planners"
+        assert captured["candidates"][0].source_segment == "Independent exit planners"
+        assert captured["cell"]["lock_identity"] is True
+
+    def test_exact_synthesis_keeps_source_audience_when_buyer_is_unchanged(
+        self, monkeypatch,
+    ):
+        import nicheiq.utils.seed_resolver as resolver
+
+        crew = _crew(
+            pain_point_analysis=SimpleNamespace(pain_points=[
+                _pain("Exit planning is fragmented"),
+                _pain("Maintenance guidance is difficult to compare"),
+            ]),
+        )
+        evaluation = {
+            "evaluation_id": "dispatch-exact",
+            "dispatch_id": "dispatch-exact",
+            "proposal": {
+                "proposedTitle": "Exact Protocol Hub",
+                "proposedBrief": "Indexes exit forecasts and maintenance protocols.",
+                "rationale": "Evaluate the selected scope.",
+                "evidence": {
+                    "sourceAnchors": [{
+                        "pain": "Exit planning is fragmented",
+                        "audience": "Independent exit planners",
+                    }, {
+                        "pain": "Maintenance guidance is difficult to compare",
+                        "audience": "Independent exit planners",
+                    }],
+                },
+                "evaluation": {
+                    "changedAxes": [{
+                        "axis": "scope",
+                        "from": "Forecasts",
+                        "to": "Forecasts plus maintenance protocols",
+                        "reason": "Selected scope",
+                    }],
+                },
+            },
+        }
+        captured = {}
+        monkeypatch.setattr(
+            resolver,
+            "resolve_seed_anchors",
+            lambda *a, **kw: SimpleNamespace(
+                anchor_pain_titles=[],
+                segment=SimpleNamespace(segment_name="Unrelated resolver segment"),
+            ),
+        )
+        monkeypatch.setattr(
+            UnifiedSolutionCrew, "_score_concepts",
+            lambda self, concepts, idx=None: [],
+        )
+        winner = SimpleNamespace(idea_tier=None)
+        monkeypatch.setattr(
+            UnifiedSolutionCrew,
+            "_tournament_cell",
+            lambda self, **kw: captured.update(kw) or winner,
+        )
+
+        result, _ = crew._run_exact_synthesis_cell(
+            evaluation=evaluation,
+            dispatch_id="dispatch-exact",
+            usages=[],
+        )
+
+        assert result is winner
+        assert captured["cell"]["segment"].segment_name == "Independent exit planners"
+        assert captured["candidates"][0].source_segment == "Independent exit planners"
+        assert captured["cell"]["focus"].anchor_pain_titles == [
+            "Exit planning is fragmented",
+            "Maintenance guidance is difficult to compare",
+        ]
 
     def test_structured_synthesis_bypasses_divergent_seed_birth_and_keeps_exact_title(
         self, monkeypatch,
@@ -577,6 +687,117 @@ class TestExecuteSeedPipeline:
 
         assert result is None
         assert calls == []
+
+    def test_structured_synthesis_rejects_same_vocabulary_workflow_substitution(self):
+        proposal = {
+            "proposedTitle": (
+                "Single-file, freelancer-friendly trial-balance normalizer "
+                "for solo bookkeepers"
+            ),
+            "proposedBrief": (
+                "A lightweight web tool that accepts 1–10 trial-balance CSVs, "
+                "applies fuzzy GL matcher, returns single normalized TB and "
+                "ready-for-review Excel, optimized for freelancers handling "
+                "a handful of clients."
+            ),
+            "evaluation": {
+                "changedAxes": [{
+                    "axis": "buyer",
+                    "from": "Multi-Client Practice Owners",
+                    "to": (
+                        "Independent Freelance Bookkeepers and "
+                        "Outsourced Solopreneurs"
+                    ),
+                    "reason": "Selected buyer-only direction",
+                }],
+            },
+        }
+        drift = SimpleNamespace(
+            # The exact title and buyer remain, and the copy reuses much of the
+            # brief's vocabulary. The workflow is nevertheless a different
+            # product: temporal comparison for one client instead of normalizing
+            # 1–10 files across a freelancer's handful of clients.
+            solution_name=proposal["proposedTitle"],
+            headline="Trial balance drift detector for freelance bookkeepers",
+            short_description=(
+                "Compare a current and prior-month trial-balance CSV for one "
+                "client, use fuzzy GL matching to flag renamed, new, and missing "
+                "accounts, then export the current trial balance in the "
+                "prior-period structure."
+            ),
+            description=(
+                "A month-to-month drift monitor for the same client. It detects "
+                "account changes before close review."
+            ),
+            value_proposition=(
+                "Detect account drift between monthly trial balances before "
+                "close review."
+            ),
+            core_features=[
+                "Upload current and prior-month trial-balance CSVs",
+                "Fuzzy-match general-ledger accounts",
+                "Export normalized current trial balance to Excel",
+            ],
+            target_personas=[
+                "Independent Freelance Bookkeepers",
+                "Outsourced Solopreneurs",
+            ],
+        )
+
+        failures = structured_synthesis_fidelity_failures(proposal, drift)
+
+        assert failures == ["proposedBrief"]
+
+    def test_structured_synthesis_does_not_launder_mechanism_through_seo_fields(self):
+        proposal = {
+            "proposedTitle": "Exact Maintenance Hub",
+            "proposedBrief": (
+                "Cohort matching canonicalizes indexed peptide protocols into "
+                "dosing calculators for GLP exit planners."
+            ),
+            "evaluation": {
+                "changedAxes": [{
+                    "axis": "mechanism",
+                    "from": "Exit forecast",
+                    "to": (
+                        "Cohort matching, compound canonicalization, indexed "
+                        "peptide protocols, and dosing calculators"
+                    ),
+                    "reason": "Selected mechanism",
+                }],
+            },
+        }
+        drift = SimpleNamespace(
+            solution_name="Exact Maintenance Hub",
+            headline="Weight regain journal for GLP users",
+            short_description=(
+                "Track weight, recipes, and medication reminders after stopping GLP-1."
+            ),
+            description=(
+                "A personal journal for logging weight and meals. It does not "
+                "provide peptide protocols or dosing guidance."
+            ),
+            value_proposition="Keep post-GLP habits in one private journal.",
+            core_features=["Weight log", "Recipe reminders"],
+            target_personas=["GLP exit planners"],
+            # Copying the selected mechanism into acquisition metadata must not
+            # make it part of the actual product.
+            organic_discovery_queries=[
+                "cohort matching compound canonicalization indexed peptide protocols",
+                "peptide dosing calculators",
+            ],
+            programmatic_seo_opportunity=(
+                "Pages for cohort matching, compound canonicalization, indexed "
+                "peptide protocols, and dosing calculators."
+            ),
+        )
+
+        failures = structured_synthesis_fidelity_failures(proposal, drift)
+
+        assert failures == [
+            "proposedBrief",
+            "changedAxes.mechanism.to",
+        ]
 
     def test_returns_exactly_one_idea_and_runs_wave_then_tail(self, monkeypatch):
         crew = _crew()

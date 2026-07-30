@@ -28,6 +28,15 @@ interface FormatOptions {
 
 export function formatJobResponse(job: JobWithRelations, options: FormatOptions = {}) {
   const latestDispatch = job.dispatches?.[0] ?? null;
+  const activeDispatch =
+    job.activeDispatchId
+    && latestDispatch?.id === job.activeDispatchId
+    && (
+      latestDispatch.state === DispatchState.AUTHORIZED
+      || latestDispatch.state === DispatchState.CLAIMED
+    )
+      ? latestDispatch
+      : null;
   const base = {
     id: job.id,
     niche: job.niche,
@@ -72,10 +81,7 @@ export function formatJobResponse(job: JobWithRelations, options: FormatOptions 
     gateApplyCount: job.gateApplyCount ?? 0,
     // The exact durable operation currently owning this job. The selection UI uses this
     // instead of inferring SEED_IDEA vs DEEP_RESEARCH from a separately-loaded chat ledger.
-    activeDispatchKind:
-      job.activeDispatchId && latestDispatch?.id === job.activeDispatchId
-        ? latestDispatch.kind
-        : null,
+    activeDispatchKind: activeDispatch?.kind ?? null,
   };
 
   // Optional fields based on endpoint needs
@@ -110,6 +116,10 @@ export function formatJobResponse(job: JobWithRelations, options: FormatOptions 
       : [];
     result.solutionIdeas = job.solutionIdeas ? solutionIdeas : null;
     result.canRegenerate = (job.ideaBatchCompletedCount ?? 0) < MAX_IDEA_BATCHES;
+    // Successful additional batches consume the cap. Expose both values even at the
+    // limit so clients can explain a disabled action instead of making it disappear.
+    result.ideaBatchCompletedCount = job.ideaBatchCompletedCount ?? 0;
+    result.maxIdeaBatches = MAX_IDEA_BATCHES;
     result.selectionRationale = job.selectionRationale || null;
     result.selectionDecisionProfile = job.selectionDecisionProfile || null;
     result.selectionDraft = currentSelectionDraft(

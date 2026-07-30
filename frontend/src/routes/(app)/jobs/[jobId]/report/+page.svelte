@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Report } from "$lib/types/report";
-  import { AlertTriangle, MessageSquare, Share2 } from "lucide-svelte";
+  import { AlertTriangle, Download, MessageSquare, Share2 } from "lucide-svelte";
   import { page } from "$app/state";
 
   import ReportContent from "$lib/components/ReportContent.svelte";
@@ -22,6 +22,7 @@
   const jobId = $derived(data.jobId);
 
   let shareModalOpen = $state(false);
+  let shareTrigger = $state<HTMLButtonElement>();
   let decisionLabOpen = $state(false);
   let analystOpen = $state(false);
   // The post-research Decision Lab rides the same admin grant as the optional
@@ -57,6 +58,14 @@
   <ReportContent {report} showBackLink={true} {jobId}>
     {#snippet headerSlot()}
       <div class="header-actions">
+        <a
+          href="/api/jobs/{jobId}/reportjson"
+          download
+          class="report-action"
+        >
+          <Download class="w-4 h-4" aria-hidden="true" />
+          <span>Download JSON</span>
+        </a>
         {#if analyst}
           <button
             type="button"
@@ -70,6 +79,7 @@
           </button>
         {/if}
         <button
+          bind:this={shareTrigger}
           type="button"
           onclick={() => (shareModalOpen = true)}
           class="report-action"
@@ -93,7 +103,7 @@
       <CompletedAnalyst {jobId} compact />
     {/if}
   </Sheet>
-  <ShareReportModal bind:open={shareModalOpen} {jobId} />
+  <ShareReportModal bind:open={shareModalOpen} {jobId} restoreFocusTo={shareTrigger} />
 {/if}
 
 <style>

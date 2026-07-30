@@ -56,4 +56,23 @@ describe("ResearchProgressScreen cancel confirm gate", () => {
 
     expect(view.queryByRole("button", { name: "Cancel research" })).not.toBeInTheDocument();
   });
+
+  it("shows the active visible stage, not the number of stages already completed", () => {
+    const view = render(ResearchProgressScreen, {
+      props: {
+        phase: "discovery" as const,
+        jobStatus: "RUNNING",
+        niche: "Freelance bookkeepers",
+        currentStage: 2,
+        currentStageName: "Search & Discovery",
+        stagesCompleted: 1,
+        totalStages: 15,
+      },
+    });
+
+    expect(view.getByText("Stage 2 of 14")).toBeInTheDocument();
+    expect(view.getByText(/Stage 2 \/ 14/)).toBeInTheDocument();
+    expect(view.queryByText("Build")).toBeNull();
+    expect(view.getByText("Pick ideas")).toBeInTheDocument();
+  });
 });

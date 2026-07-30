@@ -15,11 +15,18 @@ import { chatLedger } from "$lib/stores/chatLedger.svelte";
 import { getChatHistory, getSolutions } from "$lib/api";
 import type { Job } from "$lib/types/job";
 
+const apiMocks = vi.hoisted(() => ({
+  progressListener: null as ((job: Partial<Job>) => void) | null,
+}));
+
 vi.mock("$lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("$lib/api")>();
   return {
     ...actual,
-    subscribeToProgress: vi.fn(() => () => {}),
+    subscribeToProgress: vi.fn((_jobId, onProgress) => {
+      apiMocks.progressListener = onProgress;
+      return () => {};
+    }),
     shouldKeepSSEOpen: vi.fn(() => false),
     getReportSummary: vi.fn(() => Promise.resolve(null)),
     getDiscoveryShareStatus: vi.fn(() => Promise.resolve({ isShared: false, solutionVotes: {} })),
@@ -89,6 +96,7 @@ function baseData(job: Job) {
 
 describe("+page.svelte — workbench stays mounted through a seed's QUEUED/RUNNING round-trip", () => {
   beforeEach(() => {
+    apiMocks.progressListener = null;
     vi.clearAllMocks();
     chatLedger.reset();
     (page as any).params = { jobId: "job-1" };
@@ -115,6 +123,17 @@ describe("+page.svelte — workbench stays mounted through a seed's QUEUED/RUNNI
     await findByRole("heading", { level: 1, name: "Competitive Dota 2 And Cs2 Fans." });
     await findByText("Discovery is complete. Review the strongest opportunities before moving to Deep Research.");
     expect(queryByRole("heading", { name: "Select candidates for Deep Research" })).toBeNull();
+  });
+
+  it("does not mislabel the latest idea-update timestamp as the Discovery run", async () => {
+    const startedAt = "2026-07-30T11:16:27.000Z";
+    const job = baseJob({ startedAt });
+    const view = render(PageComponent, {
+      props: { data: baseData(job) as never },
+    });
+
+    await view.findByText(/Latest research activity · started/);
+    expect(view.queryByText(/Discovery run · started/)).toBeNull();
   });
 
   it("hydrates the authoritative shortlist draft instead of legacy selected solution IDs", async () => {
@@ -283,6 +302,68 @@ describe("+page.svelte — workbench stays mounted through a seed's QUEUED/RUNNI
     expect(view.queryByText(/We're validating your top picks/)).toBeNull();
   });
 
+  it("preserves the authoritative shortlist when a partial seed SSE update arrives", async () => {
+    const api = await import("$lib/api");
+    vi.mocked(api.shouldKeepSSEOpen).mockReturnValue(true);
+    const job = baseJob({
+      solutionIdeas: [
+        {
+          idea_id: "idea-alpha",
+          idea_revision: 1,
+          solution_name: "Alpha Idea",
+          description: "d",
+          value_proposition: "v",
+        } as never,
+      ],
+      selectionDraft: {
+        version: 2,
+        items: [{ ideaId: "idea-alpha", ideaRevision: 1 }],
+      },
+    });
+    const view = render(PageComponent, { props: { data: baseData(job) as never } });
+
+    await view.findByRole("checkbox", { name: "Deselect Alpha Idea" });
+    expect(apiMocks.progressListener).not.toBeNull();
+    apiMocks.progressListener?.({
+      id: job.id,
+      status: "RUNNING",
+      activeDispatchKind: "SEED_IDEA",
+    });
+
+    await waitFor(() =>
+      expect(view.getByRole("checkbox", { name: "Deselect Alpha Idea" })).toBeDisabled(),
+    );
+  });
+
+  it("lets an exact regeneration dispatch override stale committed selections", async () => {
+    const job = baseJob({
+      status: "QUEUED",
+      jobMode: "interactive",
+      activeDispatchKind: "REGENERATE",
+      solutionIdeas: [
+        {
+          idea_id: "idea-alpha",
+          idea_revision: 1,
+          solution_name: "Alpha Idea",
+          description: "d",
+          value_proposition: "v",
+        } as never,
+      ],
+      selectedSolutionIds: ["idea-alpha"],
+      selectedSolutions: ["Alpha Idea"],
+      selectionDraft: {
+        version: 2,
+        items: [{ ideaId: "idea-alpha", ideaRevision: 1 }],
+      },
+    });
+
+    const view = render(PageComponent, { props: { data: baseData(job) as never } });
+
+    const checkbox = await view.findByRole("checkbox", { name: "Deselect Alpha Idea" });
+    expect(checkbox).toBeDisabled();
+    expect(view.queryByText(/We're validating your top picks/)).toBeNull();
+  });
+
   it("uses the client solutions response as the current completed-batch limit", async () => {
     vi.mocked(getSolutions).mockResolvedValue({
       solutionIdeas: [
@@ -321,6 +402,34 @@ describe("+page.svelte — workbench stays mounted through a seed's QUEUED/RUNNI
     expect(chatLedger.hasPendingSeed).toBe(false);
 
     expect(document.querySelector('input[aria-label="Select Alpha Idea"]')).toBeNull();
+  });
+
+  it("keeps the checkpoint workspace mounted after reloading a queued apply-stay", async () => {
+    const job = baseJob({
+      status: "QUEUED",
+      activeDispatchKind: "APPLY_STAY",
+      chatMode: true,
+      gateStage: 1,
+      gateArtifact: null,
+      solutionIdeas: [],
+    });
+    const view = render(PageComponent, { props: { data: baseData(job) as never } });
+
+    expect(await view.findByRole("heading", { name: "Niche validated" })).toBeInTheDocument();
+    expect(view.queryByText("Waiting for a worker")).toBeNull();
+  });
+
+  it("owns a completed-without-report state without linking to a missing report", async () => {
+    const job = baseJob({
+      status: "COMPLETED",
+      assets: [],
+      solutionIdeas: [],
+    });
+    const view = render(PageComponent, { props: { data: baseData(job) as never } });
+
+    expect(await view.findByRole("heading", { name: "The report file has not arrived" })).toBeInTheDocument();
+    expect(view.queryByRole("link", { name: "Open report" })).toBeNull();
+    expect(view.getByRole("button", { name: "Check again" })).toBeInTheDocument();
   });
 
   it("renders queued interactive Phase 2 as Deep Research without a dead cancel action", async () => {

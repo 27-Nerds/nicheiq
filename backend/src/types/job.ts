@@ -23,9 +23,12 @@ export const CreateJobSchema = z.object({
   entryMode: z.enum(['idea', 'audience', 'discovery', 'pain_research', 'pain_remix', 'deep_idea']).optional(),
   // GTM-focus steer for idea generation/ranking emphasis (only active when angle eval is on).
   ideaFocus: z.enum(['auto', 'novelty', 'distribution']).optional(),
-  // Guided research (Phase B) opt-in — server-side coerced to false for non-entitled users
-  // (routes/jobs.ts job-create), so this is a pure "requested" flag at the schema layer.
+  // Guided research (Phase B) opt-in. The route re-checks entitlement and rejects
+  // non-entitled requests rather than silently changing the confirmed product/price.
   chatMode: z.boolean().optional(),
+  // The price the intake displayed for the first purchased segment. Job creation
+  // compares this inside the same transaction that creates the job and charge.
+  expectedCost: z.number().int().min(0).max(1000),
 });
 
 export type CreateJobInput = z.infer<typeof CreateJobSchema>;

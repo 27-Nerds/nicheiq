@@ -52,6 +52,19 @@
     }
     return report.next_steps?.slice(0, STEP_LIMIT) ?? [];
   });
+  const firstMonthStepCount = $derived.by(() => {
+    const playbook = gtm?.first_30_days_playbook;
+    if (!playbook) return report.next_steps?.length ?? 0;
+    return (
+      (playbook.week_1_actions?.length ?? 0) +
+      (playbook.week_2_actions?.length ?? 0) +
+      (playbook.week_3_actions?.length ?? 0) +
+      (playbook.week_4_actions?.length ?? 0)
+    );
+  });
+  const remainingFirstMonthSteps = $derived(
+    Math.max(0, firstMonthStepCount - firstMonthSteps.length),
+  );
   const budget = $derived.by(() => {
     if (!gtm?.budget_estimate) return "Budget unavailable";
     if (typeof gtm.budget_estimate === "string") return gtm.budget_estimate;
@@ -250,11 +263,20 @@
 {#if fullDetailHref}
   <div class="detail-entry">
     <div>
-      <strong>Need the implementation appendix?</strong>
-      <p>Open the detailed generated plan for this topic when you are ready to execute it.</p>
+      {#if topic === "first-30-days"}
+        <strong>Need the complete 30-day plan?</strong>
+        <p>
+          {remainingFirstMonthSteps
+            ? `${remainingFirstMonthSteps} additional ${remainingFirstMonthSteps === 1 ? "action is" : "actions are"} grouped by week in the full playbook.`
+            : "See the actions grouped by week with their success metrics."}
+        </p>
+      {:else}
+        <strong>Need the implementation appendix?</strong>
+        <p>Open the detailed generated plan for this topic when you are ready to execute it.</p>
+      {/if}
     </div>
     <a href={fullDetailHref}>
-      Open implementation appendix
+      {topic === "first-30-days" ? "Open full 30-day playbook" : "Open implementation appendix"}
       <ArrowRight aria-hidden="true" />
     </a>
   </div>

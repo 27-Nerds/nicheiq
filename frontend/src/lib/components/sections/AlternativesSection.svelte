@@ -20,6 +20,11 @@ import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
   import { getTermTooltip } from "$lib/stores/glossary";
   import { solutionDisplayTitle, originalityScore, originalityMetric } from "$lib/utils/solution-utils";
   import { normalizeDataAccess } from "$lib/utils/ideaTagLabels";
+  import {
+    adversarialReviewFinding,
+    directIncumbentParity,
+    noDirectIncumbentFound,
+  } from "$lib/utils/adversarialReview";
 
   interface Props {
     data: AlternativeSolution[];
@@ -79,6 +84,9 @@ import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
 
   <div class="space-y-6">
     {#each data as solution, index}
+      {@const directParity = directIncumbentParity(solution)}
+      {@const noIncumbentFound = noDirectIncumbentFound(solution)}
+      {@const adversarial = adversarialReviewFinding(solution)}
       <AnimateOnScroll animation="fade-in" delay={index * 100}>
         <div
           class="card hover:border-border-emphasis transition-colors"
@@ -433,15 +441,29 @@ import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
               </p>
             </div>
           {/if}
-          {#if solution.incumbent_parity}
+          {#if adversarial}
+            <div class="mt-4 p-3 rounded border border-error/30 bg-error/5">
+              <div class="text-xs text-error font-medium mb-1">
+                {adversarial.label}
+              </div>
+              {#each adversarial.details as detail}
+                <p class="text-sm text-text-secondary">{detail}</p>
+              {/each}
+              <p class="text-sm text-text-muted mt-1">
+                This candidate remains visible for comparison, but the objection should be
+                resolved before treating it as a strong direction.
+              </p>
+            </div>
+          {/if}
+          {#if directParity || noIncumbentFound}
             <div class="mt-4 p-3 rounded border border-border">
               <div class="text-xs text-text-muted font-medium mb-1">
                 Incumbent check (web-verified)
               </div>
               <p class="text-sm text-text-secondary">
-                {solution.incumbent_parity === "none found"
+                {noIncumbentFound
                   ? "No incumbent found shipping this idea's core mechanism."
-                  : solution.incumbent_parity}
+                  : directParity}
               </p>
             </div>
           {/if}

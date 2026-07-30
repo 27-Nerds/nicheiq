@@ -5,7 +5,7 @@
 <footer class="bg-bg-surface border-t border-border py-4">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <div
-      class="flex flex-col sm:flex-row items-center justify-between gap-2 text-sm text-text-muted"
+      class="flex flex-col sm:flex-row items-center justify-between gap-2 text-sm text-text-secondary"
     >
       <p>NicheIQ - AI-Powered Market Research</p>
       <div class="flex items-center gap-4">
@@ -13,13 +13,13 @@
           href="mailto:hello@nicheiq.dev"
           class="hover:text-accent-dark transition-colors">Support</a
         >
-        <span class="text-border-emphasis">·</span>
+        <span class="text-text-secondary">·</span>
         <button
           type="button"
           class="hover:text-accent-dark transition-colors"
           onclick={openCookiePreferences}>Cookies</button
         >
-        <span class="text-border-emphasis">·</span>
+        <span class="text-text-secondary">·</span>
         <span>© {new Date().getFullYear()}</span>
       </div>
     </div>

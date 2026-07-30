@@ -115,7 +115,7 @@ class TestRunSeedIdeaRuledOutMerge:
     @patch("worker.tasks._solution_to_preview_dict", return_value={"solution_name": "Seed Idea"})
     @patch("worker.tasks.notify_seed_complete")
     @patch("worker.tasks.create_progress_callback")
-    def test_accepted_seed_merges_into_pool_and_ignores_unrelated_ruled_out(
+    def test_red_team_killed_seed_at_visible_cap_is_still_selectable_and_accepted(
         self, mock_progress, mock_notify, mock_preview
     ):
         mock_progress.return_value = MagicMock()
@@ -126,6 +126,12 @@ class TestRunSeedIdeaRuledOutMerge:
 
             crew = MockCrew.return_value
             idea = _make_idea(candidate_status="active")
+            # Intentional policy: a shipped-parity red-team kill caps market fit at 0.45,
+            # above the strict <0.40 demotion bar. "Killed" is a downstream risk floor,
+            # not a visibility status, so the evaluated seed remains selectable.
+            idea.market_fit_score = 0.45
+            idea.red_team_verdict = "killed"
+            idea.incumbent_parity = "shipped by evidence: modal mechanism mismatch"
             crew.execute_seed_pipeline.return_value = idea
             # Nothing in the crew's list belongs to THIS dispatch.
             crew.ruled_out_pains = [{"pain_title": "P2", "dispatch_id": "other-dispatch"}]
@@ -141,8 +147,12 @@ class TestRunSeedIdeaRuledOutMerge:
             )
 
             assert result["outcome"] == "accepted"
+            assert idea.candidate_status == "active"
+            assert idea.market_fit_score == 0.45
+            assert idea.red_team_verdict == "killed"
             assert idea in flow.state.idea_generation.solution_ideas
             assert flow.state.idea_ruled_out == []
+            assert mock_notify.call_args.args[2] == "accepted"
             flow._materialize_preview_report.assert_called_once()
 
 

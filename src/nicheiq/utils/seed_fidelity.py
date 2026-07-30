@@ -22,17 +22,27 @@ _IDENTITY_FIELDS = (
     "technical_approach",
 )
 
-_STRUCTURED_IDENTITY_FIELDS = _IDENTITY_FIELDS + (
-    "target_personas",
-    "target_keywords",
-    "distribution_channel",
-    "delivery_format",
-    "data_source",
-    "data_access_model",
-    "data_acquisition_notes",
-    "organic_discovery_queries",
-    "programmatic_seo_opportunity",
-)
+_AXIS_IDENTITY_FIELDS = {
+    "buyer": _IDENTITY_FIELDS + ("target_personas",),
+    "job": _IDENTITY_FIELDS,
+    "mechanism": _IDENTITY_FIELDS + (
+        "data_sources",
+        "data_source",
+        "data_source_tag",
+        "data_access_model",
+        "data_acquisition_notes",
+    ),
+    "channel": _IDENTITY_FIELDS + (
+        "distribution_channel",
+        "programmatic_seo_opportunity",
+        "content_generation_model",
+        "organic_discovery_queries",
+        "estimated_cac_organic",
+        "estimated_cac_paid",
+    ),
+    "scope": _IDENTITY_FIELDS,
+    "business_model": _IDENTITY_FIELDS + ("pricing_strategy", "tags"),
+}
 
 
 def _content_tokens(text: str) -> set[str]:
@@ -98,14 +108,17 @@ def structured_synthesis_fidelity_failures(
     `synthesis_evaluation` provenance. Otherwise a drifted candidate would pass
     simply because the original brief was serialized beside it.
     """
-    candidate_text = " ".join(
+    identity_text = " ".join(
         _flatten(getattr(candidate, field, None))
-        for field in _STRUCTURED_IDENTITY_FIELDS
+        for field in _IDENTITY_FIELDS
     )
-    candidate_tokens = _content_tokens(candidate_text)
+    identity_tokens = _content_tokens(identity_text)
     failures: list[str] = []
 
-    def require(label: str, text: str, fraction: float, floor: int) -> None:
+    def require(
+        label: str, text: str, fraction: float, floor: int,
+        candidate_tokens: set[str],
+    ) -> None:
         tokens = _content_tokens(text)
         if not tokens:
             return
@@ -113,8 +126,23 @@ def structured_synthesis_fidelity_failures(
         if len(tokens & candidate_tokens) < required:
             failures.append(label)
 
-    require("proposedTitle", str(proposal.get("proposedTitle") or ""), 0.5, 1)
-    require("proposedBrief", str(proposal.get("proposedBrief") or ""), 0.35, 3)
+    require(
+        "proposedTitle",
+        str(proposal.get("proposedTitle") or ""),
+        0.5,
+        1,
+        identity_tokens,
+    )
+    # An exact Concept Forge option may be refined, but its core product copy
+    # must retain most of the selected workflow. A lower threshold let a title,
+    # persona, and recycled domain nouns conceal a different mechanism.
+    require(
+        "proposedBrief",
+        str(proposal.get("proposedBrief") or ""),
+        0.6,
+        3,
+        identity_tokens,
+    )
 
     exact = proposal.get("evaluation")
     axes = exact.get("changedAxes") if isinstance(exact, dict) else None
@@ -124,10 +152,16 @@ def structured_synthesis_fidelity_failures(
                 failures.append(f"changedAxes[{index}]")
                 continue
             label = str(axis.get("axis") or index)
+            axis_fields = _AXIS_IDENTITY_FIELDS.get(label, _IDENTITY_FIELDS)
+            axis_tokens = _content_tokens(" ".join(
+                _flatten(getattr(candidate, field, None))
+                for field in axis_fields
+            ))
             require(
                 f"changedAxes.{label}.to",
                 str(axis.get("to") or ""),
                 0.6,
                 1,
+                axis_tokens,
             )
     return failures
