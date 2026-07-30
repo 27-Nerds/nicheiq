@@ -173,101 +173,143 @@ class TestBuildRecommendedFocus:
 # TestStage85RationaleOverride
 # ---------------------------------------------------------------------------
 
+def _score(name, composite=0.5, demand=0.9, adjusted=None):
+    """SolutionScores stand-in for build_pivot_rationale (attribute access only)."""
+    from types import SimpleNamespace
+    if adjusted is None:
+        adjusted = round(0.7 * composite + 0.3 * demand, 4)
+    return SimpleNamespace(
+        solution_name=name, composite_score=composite, keyword_demand_score=demand,
+        adjusted_composite_score=adjusted, market_fit_score=0.5,
+        technical_feasibility_score=0.7, competitive_advantage_score=0.5,
+        seo_growth_potential_score=0.5,
+    )
+
+
 class TestStage85RationaleOverride:
-    """Tests for the rationale rewrite in _run_integrated_keyword_validation."""
+    """Tests for the REAL pivot rationale helper (`build_pivot_rationale`) — the old
+    local `_build_rationale` replica had drifted from the flow (missing the
+    '**Keyword-validation update:** ' prefix) and could not catch the false-cause bug."""
 
-    def _build_rationale(
-        self,
-        new_winner="PricingValueCalc",
-        original_winner="SoloClientQueue",
-        new_kd=0.37,
-        new_adj=0.31,
-        orig_kd=0.22,
-        orig_adj=0.19,
-        new_winner_validation=None,
-    ):
-        """Helper to build the rationale using the same logic as the flow."""
-        rationale_parts = [
-            f"**{new_winner}** emerged as the top solution after keyword validation "
-            f"with an adjusted composite score of {new_adj:.2f} "
-            f"(keyword demand score: {new_kd:.2f})."
-        ]
-
-        if new_winner_validation:
-            kw_names = [
-                k.get("keyword", "")
-                for k in (new_winner_validation.top_keywords or [])[:3]
-                if k.get("keyword")
-            ]
-            evidence = (
-                f"Keyword research shows {new_winner_validation.demand_signal} demand "
-                f"with {new_winner_validation.total_volume:,} monthly searches "
-                f"across {new_winner_validation.validated_count} validated keywords."
-            )
-            if kw_names:
-                evidence += f" Top keywords: {', '.join(kw_names)}."
-            rationale_parts.append(evidence)
-
-        rationale_parts.append(
-            f"The previous selection, {original_winner}, scored an adjusted composite "
-            f"of {orig_adj:.2f} (keyword demand: {orig_kd:.2f}) and was overtaken "
-            f"due to weaker keyword demand evidence."
-        )
-
-        return "\n\n".join(rationale_parts)
+    def _rationale(self, new=None, orig=None, validation=None, orig_validated=True):
+        from nicheiq.utils.score_helpers import build_pivot_rationale
+        new = new or _score("PricingValueCalc", composite=0.31, demand=0.37, adjusted=0.31)
+        orig_name = getattr(orig, "solution_name", None) or "SoloClientQueue"
+        return build_pivot_rationale(
+            new, orig, validation, orig_name=orig_name,
+            orig_validated=orig_validated)
 
     def test_rationale_leads_with_new_winner(self, sample_keyword_validation):
-        """Rationale starts with new winner name, not old winner."""
-        rationale = self._build_rationale(
-            new_winner_validation=sample_keyword_validation,
-        )
+        rationale = self._rationale(
+            orig=_score("SoloClientQueue", composite=0.19, demand=0.22, adjusted=0.19),
+            validation=sample_keyword_validation)
         first_line = rationale.split("\n")[0]
-        assert first_line.startswith("**PricingValueCalc**")
-
-    def test_rationale_does_not_start_with_old_winner(self, sample_keyword_validation):
-        """Old winner name does NOT appear in first paragraph."""
-        rationale = self._build_rationale(
-            new_winner_validation=sample_keyword_validation,
-        )
-        first_paragraph = rationale.split("\n\n")[0]
-        assert "SoloClientQueue" not in first_paragraph
+        assert first_line.startswith("**Keyword-validation update:** **PricingValueCalc**")
+        assert "SoloClientQueue" not in rationale.split("\n\n")[0]
 
     def test_rationale_includes_keyword_scores(self, sample_keyword_validation):
-        """Contains keyword demand score values."""
-        rationale = self._build_rationale(
-            new_winner_validation=sample_keyword_validation,
-        )
+        rationale = self._rationale(
+            orig=_score("SoloClientQueue", composite=0.19, demand=0.22, adjusted=0.19),
+            validation=sample_keyword_validation)
         assert "0.37" in rationale
         assert "0.31" in rationale
+        assert len(rationale) >= 100  # selection_rationale min_length
 
-    def test_rationale_mentions_original_as_context(self, sample_keyword_validation):
-        """Original winner mentioned but only in context paragraph."""
-        rationale = self._build_rationale(
-            new_winner_validation=sample_keyword_validation,
-        )
-        paragraphs = rationale.split("\n\n")
-        # Original winner should NOT be in first two paragraphs
-        for p in paragraphs[:-1]:
-            assert "SoloClientQueue" not in p
-        # But SHOULD be in the last paragraph
-        assert "SoloClientQueue" in paragraphs[-1]
+    def test_composite_dominant_flip_never_claims_demand(self):
+        """The real bookkeepers numbers: ~97% of the gap came from the composite term.
+        The old text asserted 'weaker keyword demand evidence' — arithmetically false."""
+        new = _score("MultiEntityConsolidationCalc", composite=0.625, demand=0.9804)
+        orig = _score("ConsolidatorAI", composite=0.430, demand=0.9660)
+        rationale = self._rationale(new=new, orig=orig)
+        assert "weaker keyword demand" not in rationale
+        assert "qualitative scoring" in rationale
+        assert "ConsolidatorAI" in rationale
+
+    def test_demand_dominant_flip_names_demand(self):
+        new = _score("A", composite=0.50, demand=0.90)
+        orig = _score("B", composite=0.50, demand=0.20)
+        rationale = self._rationale(new=new, orig=orig)
+        assert "keyword demand evidence" in rationale
+        assert "qualitative scoring" not in rationale
+
+    def test_tiebreak_flip_uses_tiebreak_phrasing(self):
+        """Novelty tiebreak can crown a winner with a LOWER adjusted score — a delta
+        decomposition would assert a new false cause."""
+        new = _score("A", composite=0.50, demand=0.90, adjusted=0.68)
+        orig = _score("B", composite=0.52, demand=0.90, adjusted=0.70)
+        rationale = self._rationale(new=new, orig=orig)
+        assert "tiebreak" in rationale
+        assert "overtaken" not in rationale
+
+    def test_unvalidated_original_no_fabricated_scores(self):
+        """Original missing from all_scores / not keyword-validated: no '0.00' claims."""
+        rationale = self._rationale(new=_score("A"), orig=None)
+        assert "not keyword-validated" in rationale
+        assert "0.00" not in rationale
+        rationale2 = self._rationale(
+            new=_score("A"), orig=_score("SoloClientQueue"), orig_validated=False)
+        assert "not keyword-validated" in rationale2
 
     def test_rationale_without_validation_data(self):
-        """When new_winner_validation is None, rationale still valid."""
-        rationale = self._build_rationale(
-            new_winner_validation=None,
-        )
+        rationale = self._rationale(
+            orig=_score("SoloClientQueue", composite=0.19, demand=0.22, adjusted=0.19))
         assert "PricingValueCalc" in rationale
         assert "SoloClientQueue" in rationale
-        # No keyword evidence paragraph
         assert "monthly searches" not in rationale
 
-    def test_rationale_meets_min_length(self, sample_keyword_validation):
-        """Result is >= 100 chars (SolutionSelection.selection_rationale min_length)."""
-        rationale = self._build_rationale(
-            new_winner_validation=sample_keyword_validation,
+
+class TestKeywordPivotUserGuard:
+    """Run-quality fixes §3: `_apply_keyword_pivot` must not silently override an
+    explicitly user-selected winner (`state._user_selected_solutions`); headless runs
+    (which stamp score_source='interactive' too) keep pivoting."""
+
+    def _flow(self, user_selected=None):
+        """Bind the real _apply_keyword_pivot to a plain object (Flow.state is a
+        CrewAI property; the method only touches self.state/_build_recommended_focus)."""
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+        from nicheiq.flows.research_flow import ResearchFlow
+        selection = SimpleNamespace(
+            selected_solution_name="UserPick",
+            selection_rationale="Original human rationale " + "x" * 100,
+            original_selection_reasoning=None,
+            selection_criteria_scores=[],
+            runner_up_solutions=["SomeOther"],
+            recommended_focus="old focus",
         )
-        assert len(rationale) >= 100
+        state = MagicMock()
+        state.solution_selection = selection
+        state.idea_generation.solution_ideas = []
+        state._user_selected_solutions = user_selected if user_selected is not None else set()
+        host = SimpleNamespace(state=state, checkpoint_mgr=MagicMock(),
+                               _build_recommended_focus=MagicMock(return_value="new focus"))
+        host._apply_keyword_pivot = ResearchFlow._apply_keyword_pivot.__get__(host)
+        return host
+
+    def _run(self, flow):
+        new = _score("KeywordFavorite", composite=0.6, demand=0.98)
+        orig = _score("UserPick", composite=0.43, demand=0.97)
+        flow._apply_keyword_pivot(
+            ranked_solutions=[new, orig], all_scores=[new, orig],
+            validation_results=[], validated_names={"KeywordFavorite", "UserPick"})
+
+    def test_user_selected_winner_is_kept(self):
+        flow = self._flow(user_selected={"UserPick"})
+        self._run(flow)
+        sel = flow.state.solution_selection
+        assert sel.selected_solution_name == "UserPick"
+        assert "Keyword-validation note" in sel.selection_rationale
+        assert sel.selection_rationale.startswith("Original human rationale")
+        assert sel.runner_up_solutions[0] == "KeywordFavorite"
+        assert sel.recommended_focus == "old focus"  # untouched
+
+    def test_headless_winner_still_pivots(self):
+        flow = self._flow(user_selected=set())  # headless: no user selections stamped
+        self._run(flow)
+        sel = flow.state.solution_selection
+        assert sel.selected_solution_name == "KeywordFavorite"
+        assert sel.selection_rationale.startswith("**Keyword-validation update:**")
+        assert "UserPick" in sel.runner_up_solutions
 
 
 # ---------------------------------------------------------------------------

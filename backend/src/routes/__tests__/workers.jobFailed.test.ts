@@ -32,6 +32,7 @@ vi.mock('../../services/jobService.js', () => ({
 }));
 
 const mockBroadcastProgress = vi.fn();
+const mockNotifyJobError = vi.fn();
 
 vi.mock('../../services/progressBroadcastService.js', () => ({
   broadcastProgress: (...args: any[]) => mockBroadcastProgress(...args),
@@ -50,7 +51,7 @@ vi.mock('../../services/heartbeatService.js', () => ({
 vi.mock('../../services/notificationService.js', () => ({
   notifyJobStart: vi.fn(),
   notifyJobComplete: vi.fn(),
-  notifyJobError: vi.fn().mockResolvedValue(undefined),
+  notifyJobError: (...args: any[]) => mockNotifyJobError(...args),
 }));
 
 vi.mock('../../utils/errorTranslator.js', () => ({
@@ -87,8 +88,12 @@ let app: Express;
 beforeEach(async () => {
   vi.clearAllMocks();
 
-  mockFailJob.mockResolvedValue({ id: 'job-1', status: 'FAILED' });
+  mockFailJob.mockResolvedValue({
+    applied: true,
+    job: { id: 'job-1', status: 'FAILED' },
+  });
   mockUpdateMany.mockResolvedValue({ count: 1 });
+  mockJobFindUnique.mockResolvedValue({ activeDispatchId: null });
   mockGetJobAsset.mockResolvedValue(null); // No report asset by default (normal failure path)
 
   app = express();
@@ -166,7 +171,7 @@ describe('POST /api/workers/job-failed - stage marking', () => {
     const callOrder: string[] = [];
     mockFailJob.mockImplementation(async () => {
       callOrder.push('failJob');
-      return { id: 'job-1', status: 'FAILED' };
+      return { applied: true, job: { id: 'job-1', status: 'FAILED' } };
     });
     mockUpdateMany.mockImplementation(async () => {
       callOrder.push('updateMany');
@@ -225,5 +230,87 @@ describe('POST /api/workers/job-failed - stage marking', () => {
 
     const updateManyCall = mockUpdateMany.mock.calls[0][0];
     expect(updateManyCall.data).not.toHaveProperty('completedAt');
+  });
+
+  it('preserves dispatch_id and passes it to exact failure settlement', async () => {
+    const dispatchId = '00000000-0000-4000-8000-000000000010';
+    mockJobFindUnique.mockResolvedValue({ activeDispatchId: dispatchId });
+
+    const response = await request(app)
+      .post('/api/workers/job-failed')
+      .send({ ...validPayload, dispatch_id: dispatchId });
+
+    expect(response.status).toBe(200);
+    expect(mockFailJob).toHaveBeenCalledWith(
+      validPayload.job_id,
+      validPayload.error_message,
+      validPayload.error_stage,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      dispatchId,
+    );
+  });
+
+  it('acknowledges stale dispatch A without failing progress or broadcasting over active B', async () => {
+    const staleDispatch = '00000000-0000-4000-8000-000000000010';
+    const activeDispatch = '00000000-0000-4000-8000-000000000011';
+    mockJobFindUnique.mockResolvedValue({ activeDispatchId: activeDispatch });
+
+    const response = await request(app)
+      .post('/api/workers/job-failed')
+      .send({ ...validPayload, dispatch_id: staleDispatch });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      success: true,
+      stale: true,
+      shouldCancel: true,
+    });
+    expect(mockFailJob).not.toHaveBeenCalled();
+    expect(mockUpdateMany).not.toHaveBeenCalled();
+    expect(mockBroadcastProgress).not.toHaveBeenCalled();
+  });
+
+  it('does not let an identityless callback terminate a modern active dispatch', async () => {
+    mockJobFindUnique.mockResolvedValue({
+      activeDispatchId: '00000000-0000-4000-8000-000000000011',
+    });
+
+    const response = await request(app)
+      .post('/api/workers/job-failed')
+      .send(validPayload);
+
+    expect(response.status).toBe(200);
+    expect(response.body.stale).toBe(true);
+    expect(mockFailJob).not.toHaveBeenCalled();
+    expect(mockUpdateMany).not.toHaveBeenCalled();
+    expect(mockBroadcastProgress).not.toHaveBeenCalled();
+  });
+
+  it('suppresses route side effects when a concurrent duplicate loses the settlement CAS', async () => {
+    const dispatchId = '00000000-0000-4000-8000-000000000010';
+    // The advisory route read still sees this attempt as active, then another callback wins
+    // before failJob's terminal CAS.
+    mockJobFindUnique.mockResolvedValue({ activeDispatchId: dispatchId });
+    mockFailJob.mockResolvedValue({
+      applied: false,
+      job: { id: validPayload.job_id, status: 'FAILED', activeDispatchId: null },
+    });
+
+    const response = await request(app)
+      .post('/api/workers/job-failed')
+      .send({ ...validPayload, dispatch_id: dispatchId });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      success: true,
+      stale: true,
+      shouldCancel: true,
+    });
+    expect(mockUpdateMany).not.toHaveBeenCalled();
+    expect(mockBroadcastProgress).not.toHaveBeenCalled();
+    expect(mockNotifyJobError).not.toHaveBeenCalled();
   });
 });

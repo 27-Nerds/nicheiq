@@ -158,6 +158,9 @@
      *  the required path only. The shortlist, ranked table, compare and review are
      *  never affected. */
     decisionTools?: boolean;
+    /** Server-authoritative lock for an active pool mutation that may not yet appear in
+     * the asynchronously hydrated chat ledger. */
+    poolMutationLocked?: boolean;
     totalVotes?: number;
     actionSlot?: Snippet<[{ solution: SolutionPreview; index: number }]>;
   }
@@ -193,6 +196,7 @@
     onSeedSettled,
     interactive = true,
     decisionTools = false,
+    poolMutationLocked = false,
     totalVotes = 0,
     actionSlot,
   }: Props = $props();
@@ -662,7 +666,13 @@
   // handling in ChatThread — the tool only ever proposes a change; this is the
   // one place it's actually applied (regenerate-ideas route, unchanged).
   async function handleRegenerate(focusOverride?: IdeaFocus) {
-    if (regenerating || isRegenerating || seedPending || chatLedger.hasPendingSeed) return;
+    if (
+      regenerating
+      || isRegenerating
+      || seedPending
+      || chatLedger.hasPendingSeed
+      || chatLedger.activeOperation?.kind === "SEED_IDEA"
+    ) return;
     const focus = focusOverride ?? regenerateFocus;
     regenerateFocus = focus;
     regenerating = true;
@@ -722,10 +732,12 @@
   // authoritative guard; this is UX-only. `chatLedger.hasPendingSeed` folds in the
   // durable (reload-surviving) case, not just this session's own submit.
   const poolMutationBusy = $derived(
-    regenerating
+    poolMutationLocked
+    || regenerating
     || isRegenerating
     || seedPending
     || chatLedger.hasPendingSeed
+    || chatLedger.activeOperation?.kind === "SEED_IDEA"
     || chatLedger.hasPendingBatch,
   );
 
@@ -2552,6 +2564,7 @@
             aria-disabled={maxed ? "true" : undefined}
           >
             <input
+              id={`idea-select-${i}`}
               type="checkbox"
               class="sr-only"
               checked={isSel}

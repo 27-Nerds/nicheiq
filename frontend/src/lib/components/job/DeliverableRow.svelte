@@ -21,6 +21,8 @@
     status: 'locked' | 'pending' | 'running' | 'completed' | 'failed';
     creditCost?: number;
     canAfford?: boolean;
+    priceAvailable?: boolean;
+    priceUnavailableMessage?: string;
     asset?: { url: string } | null;
     generating?: boolean;
     error?: string;
@@ -33,6 +35,8 @@
     status,
     creditCost = 0,
     canAfford = true,
+    priceAvailable = true,
+    priceUnavailableMessage = "Current price unavailable. Refresh to try again.",
     asset = null,
     generating = false,
     error: errorMsg = "",
@@ -40,6 +44,9 @@
   }: Props = $props();
 
   let confirmPending = $state(false);
+  const priceReasonId = $derived(
+    `deliverable-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-price-unavailable`,
+  );
 </script>
 
 <div
@@ -81,6 +88,8 @@
       <span class="dr-hint">Unlocks when research completes</span>
     {:else if status === 'running'}
       <span class="dr-hint dr-hint--info">Generating your page...</span>
+    {:else if (status === 'pending' || status === 'failed') && !priceAvailable}
+      <span id={priceReasonId} class="dr-hint dr-hint--warning">{priceUnavailableMessage}</span>
     {/if}
   </div>
 
@@ -95,9 +104,28 @@
         Generating...
       </span>
     {:else if status === 'failed'}
-      <SubmitButton onclick={onGenerate} loading={generating} loadingText="Retrying..." icon={RotateCw} label="Retry" class="btn-secondary btn-sm" />
+      <SubmitButton
+        onclick={onGenerate}
+        disabled={!priceAvailable}
+        loading={generating}
+        loadingText="Retrying..."
+        icon={RotateCw}
+        label={priceAvailable ? "Retry" : "Retry unavailable"}
+        describedBy={!priceAvailable ? priceReasonId : undefined}
+        title={!priceAvailable ? priceUnavailableMessage : undefined}
+        class="btn-secondary btn-sm"
+      />
     {:else if status === 'pending'}
-      {#if !canAfford && creditCost > 0}
+      {#if !priceAvailable}
+        <button
+          disabled
+          aria-describedby={priceReasonId}
+          title={priceUnavailableMessage}
+          class="btn-secondary btn-sm"
+        >
+          Generate unavailable
+        </button>
+      {:else if !canAfford && creditCost > 0}
         <!-- Insufficient credits strip — opens top-up modal -->
         <div class="dr-credit-warning">
           <AlertTriangle class="dr-credit-warning-icon" />
@@ -252,6 +280,7 @@
     line-height: 1.3;
   }
   .dr-hint--info { color: var(--color-info); }
+  .dr-hint--warning { color: var(--color-warning); }
 
   /* ── Actions column ── */
   .dr-actions {

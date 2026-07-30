@@ -11,6 +11,7 @@ const mockJobFindFirst = vi.fn();
 const mockJobUpdateManyCompensate = vi.fn();
 const mockJobUpdateMany = vi.fn();
 const mockTransaction = vi.fn();
+const mockDispatchCreate = vi.fn();
 // Durable ledger receipts (ledgerEvents.ts): apply_stay writes a 'gate_patch_submitted'
 // ChatMessage inside the flip transaction, and the compensating revert deletes it.
 const mockChatMessageCreate = vi.fn();
@@ -36,14 +37,15 @@ vi.mock('../../services/db.js', () => ({
   },
 }));
 
-const mockEnqueueContinueFromGateJob = vi.fn();
+const mockDeliverDispatchWork = vi.fn();
 
 vi.mock('../../services/queueService.js', () => ({
   enqueueJob: vi.fn(),
   enqueueLandingPageJob: vi.fn(),
   enqueuePhase2Job: vi.fn(),
   enqueueRegenerateJob: vi.fn(),
-  enqueueContinueFromGateJob: (...args: any[]) => mockEnqueueContinueFromGateJob(...args),
+  enqueueContinueFromGateJob: vi.fn(),
+  deliverDispatchWork: (...args: any[]) => mockDeliverDispatchWork(...args),
   getQueueStats: vi.fn(),
   getQueueLength: vi.fn(),
   removeJobFromQueue: vi.fn(),
@@ -70,6 +72,7 @@ const mockRefundForStage = vi.fn();
 
 vi.mock('../../services/creditService.js', () => ({
   createJobAndChargeDiscovery: vi.fn(),
+  createJobAndChargeDiscoveryInTx: vi.fn(),
   InsufficientCreditsError: class extends Error {
     currentBalance: number;
     required: number;
@@ -87,6 +90,8 @@ vi.mock('../../services/creditService.js', () => ({
   chargeForRegenerationInTx: vi.fn(),
   chargeForResume: vi.fn(),
   segmentForGateContinue: (...args: any[]) => mockSegmentForGateContinue(...args),
+  chargeForSeedIdeaInTx: vi.fn(),
+  refundChargeInTx: vi.fn(),
 }));
 
 vi.mock('../../services/jobService.js', () => ({
@@ -154,7 +159,7 @@ beforeEach(async () => {
   mockJobUpdateManyCompensate.mockResolvedValue({ count: 1 });
   mockDispatchUpdateManyCompensate.mockResolvedValue({ count: 1 });
   mockRefundForStage.mockResolvedValue({ amount: 5 });
-  mockEnqueueContinueFromGateJob.mockResolvedValue(undefined);
+  mockDeliverDispatchWork.mockResolvedValue(undefined);
   mockIsEntitledUser.mockResolvedValue(true);
 
   // Default transaction: execute callback with a tx that has job.updateMany, returning
@@ -166,10 +171,11 @@ beforeEach(async () => {
   );
   mockChargeForStageInTx.mockResolvedValue({ cost: 5, transaction: { id: 'txn-1' } });
   mockChargeForStageWithPriceCasInTx.mockResolvedValue({ cost: 5, transaction: { id: 'txn-1' } });
+  mockDispatchCreate.mockResolvedValue({ id: 'dispatch-test' });
   mockTransaction.mockImplementation(async (callback: any) => {
     const tx = {
       job: { updateMany: mockJobUpdateMany, update: async () => ({}) },
-      jobDispatch: { create: async () => ({ id: 'dispatch-test' }), updateMany: async () => ({ count: 1 }) },
+      jobDispatch: { create: mockDispatchCreate, updateMany: async () => ({ count: 1 }) },
       chatMessage: { create: mockChatMessageCreate },
     };
     return callback(tx);
@@ -280,21 +286,37 @@ describe('POST /api/jobs/:jobId/gate-action', () => {
       expect(callArgs.data.gateApplyCount).toBeUndefined();
     });
 
-    it('enqueues continue_from_gate with the checkpoint path, gateStage, and mode', async () => {
+    it('persists the exact continue_from_gate payload and delivers its dispatch', async () => {
       mockJobFindFirst.mockResolvedValue(makeJob());
 
-      await request(app)
+      const response = await request(app)
         .post(`/api/jobs/${jobId}/gate-action`)
         .set(authHeaders)
         .send({ action: 'continue', gateStage: 1 });
 
-      expect(mockEnqueueContinueFromGateJob).toHaveBeenCalledWith(
-        jobId, '/cp/path', 1, 'continue', undefined,
-      'dispatch-test',
+      expect(mockDispatchCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            jobId,
+            kind: 'CONTINUE',
+            workPayload: expect.objectContaining({
+              job_id: jobId,
+              checkpoint_path: '/cp/path',
+              gate_stage: 1,
+              mode: 'continue',
+              task_type: 'continue_from_gate',
+            }),
+          }),
+        }),
       );
+      expect(mockDeliverDispatchWork).toHaveBeenCalledWith('dispatch-test');
+      expect(response.body).toMatchObject({
+        operationId: 'dispatch-test',
+        deliveryPending: false,
+      });
     });
 
-    it('accepts an optional patch on continue and threads it through', async () => {
+    it('persists an optional validated patch in the immutable work payload', async () => {
       mockJobFindFirst.mockResolvedValue(makeJob());
 
       const response = await request(app)
@@ -303,9 +325,14 @@ describe('POST /api/jobs/:jobId/gate-action', () => {
         .send({ action: 'continue', gateStage: 1, patch: { niche_description: 'Edited' } });
 
       expect(response.status).toBe(200);
-      expect(mockEnqueueContinueFromGateJob).toHaveBeenCalledWith(
-        jobId, '/cp/path', 1, 'continue', { niche_description: 'Edited' },
-      'dispatch-test',
+      expect(mockDispatchCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            workPayload: expect.objectContaining({
+              patch: { niche_description: 'Edited' },
+            }),
+          }),
+        }),
       );
     });
 
@@ -320,102 +347,49 @@ describe('POST /api/jobs/:jobId/gate-action', () => {
       expect(response.status).toBe(500);
     });
 
-    it('reverts to AWAITING_GATE and compensates when enqueue fails', async () => {
+    it('keeps the authorized attempt durable when Redis delivery is ambiguous', async () => {
       mockJobFindFirst.mockResolvedValue(makeJob());
-      mockEnqueueContinueFromGateJob.mockRejectedValue(new Error('Redis unavailable'));
+      mockDeliverDispatchWork.mockRejectedValue(new Error('Redis unavailable'));
 
       const response = await request(app)
         .post(`/api/jobs/${jobId}/gate-action`)
         .set(authHeaders)
         .send({ action: 'continue', gateStage: 1 });
 
-      expect(response.status).toBe(500);
-      expect(mockJobUpdateManyCompensate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          // Compensation is scoped to ITS OWN dispatch, not just "still QUEUED". If the enqueue
-          // actually landed and only the ack failed, the worker can run, re-arrive, and the user
-          // can start a NEW attempt — putting the job back at QUEUED. Matching on status alone
-          // would then revert somebody else's attempt.
-          where: { id: jobId, status: 'QUEUED', activeDispatchId: 'dispatch-test' },
-          data: expect.objectContaining({ status: 'AWAITING_GATE', gateStage: 1, queuedAt: null }),
-        })
-      );
-    });
-
-    // Money-loss fix: an enqueue failure used to revert status/activeDispatchId but call
-    // neither refundForStage nor settle the dispatch — the segment charge stayed committed,
-    // and the dispatch was left AUTHORIZED forever with a live CAS a retry's own charge would
-    // collide with (P2002). Mirrors seed-idea's compensation (refund + settle + retract).
-    it('refunds the segment charge and settles the dispatch when a priced (GUIDED) Continue enqueue fails', async () => {
-      mockJobFindFirst.mockResolvedValue(makeJob({ billingModel: 'GUIDED_SEGMENTS_V1', niche: 'test niche' }));
-      mockEnqueueContinueFromGateJob.mockRejectedValue(new Error('Redis unavailable'));
-
-      const response = await request(app)
-        .post(`/api/jobs/${jobId}/gate-action`)
-        .set(authHeaders)
-        .send({ action: 'continue', gateStage: 1, expectedCost: 5 });
-
-      expect(response.status).toBe(500);
-      expect(mockJobUpdateManyCompensate).toHaveBeenCalled();
-      expect(mockDispatchUpdateManyCompensate).toHaveBeenCalledWith({
-        where: { id: 'dispatch-test' },
-        data: expect.objectContaining({ state: 'FAILED', failureKind: 'SYSTEM_FAULT' }),
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        status: 'queued',
+        operationId: 'dispatch-test',
+        deliveryPending: true,
       });
-      expect(mockRefundForStage).toHaveBeenCalledWith(jobId, 'guided_s2_4');
-    });
-
-    it('settles the dispatch but refunds nothing when a free Continue (no segment) enqueue fails', async () => {
-      mockJobFindFirst.mockResolvedValue(makeJob({ billingModel: 'DISCOVERY_PREPAID_V1' }));
-      mockEnqueueContinueFromGateJob.mockRejectedValue(new Error('Redis unavailable'));
-
-      const response = await request(app)
-        .post(`/api/jobs/${jobId}/gate-action`)
-        .set(authHeaders)
-        .send({ action: 'continue', gateStage: 1 });
-
-      expect(response.status).toBe(500);
-      expect(mockDispatchUpdateManyCompensate).toHaveBeenCalledWith({
-        where: { id: 'dispatch-test' },
-        data: expect.objectContaining({ state: 'FAILED', failureKind: 'SYSTEM_FAULT' }),
-      });
-      // Nothing was charged for a DISCOVERY_PREPAID_V1 Continue — there is nothing to refund.
-      expect(mockRefundForStage).not.toHaveBeenCalled();
-    });
-
-    it('does not settle the dispatch or refund when compensation is skipped (job no longer QUEUED under this dispatch)', async () => {
-      mockJobFindFirst.mockResolvedValue(makeJob({ billingModel: 'GUIDED_SEGMENTS_V1', niche: 'test niche' }));
-      mockEnqueueContinueFromGateJob.mockRejectedValue(new Error('Redis unavailable'));
-      mockJobUpdateManyCompensate.mockResolvedValue({ count: 0 });
-
-      const response = await request(app)
-        .post(`/api/jobs/${jobId}/gate-action`)
-        .set(authHeaders)
-        .send({ action: 'continue', gateStage: 1, expectedCost: 5 });
-
-      expect(response.status).toBe(500);
+      expect(mockJobUpdateManyCompensate).not.toHaveBeenCalled();
       expect(mockDispatchUpdateManyCompensate).not.toHaveBeenCalled();
       expect(mockRefundForStage).not.toHaveBeenCalled();
     });
 
-    it('finding 7 (REGRESSION): skips compensation when the job is no longer QUEUED (a worker '
-      + 'may have already started it) instead of stomping a legitimate RUNNING continuation', async () => {
-      mockJobFindFirst.mockResolvedValue(makeJob());
-      mockEnqueueContinueFromGateJob.mockRejectedValue(new Error('Redis unavailable'));
-      // The job moved on (e.g. to RUNNING) before the compensating revert ran — updateMany
-      // matches nothing.
-      mockJobUpdateManyCompensate.mockResolvedValue({ count: 0 });
+    it('keeps a priced segment charge linked to the durable dispatch on delivery failure', async () => {
+      mockJobFindFirst.mockResolvedValue(makeJob({
+        billingModel: 'GUIDED_SEGMENTS_V1',
+        niche: 'test niche',
+      }));
+      mockDeliverDispatchWork.mockRejectedValue(new Error('Redis unavailable'));
 
       const response = await request(app)
         .post(`/api/jobs/${jobId}/gate-action`)
         .set(authHeaders)
-        .send({ action: 'continue', gateStage: 1 });
+        .send({ action: 'continue', gateStage: 1, expectedCost: 5 });
 
-      expect(response.status).toBe(500);
-      expect(mockJobUpdateManyCompensate).toHaveBeenCalledWith(
+      expect(response.status).toBe(200);
+      expect(mockDispatchCreate).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: jobId, status: 'QUEUED', activeDispatchId: 'dispatch-test' },
-        })
+          data: expect.objectContaining({
+            segment: 'guided_s2_4',
+            chargeId: 'txn-1',
+            state: 'AUTHORIZED',
+          }),
+        }),
       );
+      expect(mockRefundForStage).not.toHaveBeenCalled();
     });
   });
 
@@ -468,17 +442,20 @@ describe('POST /api/jobs/:jobId/gate-action', () => {
       expect(response.status).toBe(200);
     });
 
-    it('decrements gateApplyCount on the compensating revert when enqueue fails', async () => {
+    it('keeps the apply receipt and increment durable when delivery is pending', async () => {
       mockJobFindFirst.mockResolvedValue(makeJob());
-      mockEnqueueContinueFromGateJob.mockRejectedValue(new Error('Redis unavailable'));
+      mockDeliverDispatchWork.mockRejectedValue(new Error('Redis unavailable'));
 
-      await request(app)
+      const response = await request(app)
         .post(`/api/jobs/${jobId}/gate-action`)
         .set(authHeaders)
         .send({ action: 'apply_stay', gateStage: 1, patch: { niche_description: 'Edited' } });
 
-      const revertArgs = mockJobUpdateManyCompensate.mock.calls[0][0];
-      expect(revertArgs.data.gateApplyCount).toEqual({ decrement: 1 });
+      expect(response.status).toBe(200);
+      expect(response.body.deliveryPending).toBe(true);
+      expect(mockJobUpdateManyCompensate).not.toHaveBeenCalled();
+      expect(mockChatMessageDelete).not.toHaveBeenCalled();
+      expect(mockChatMessageCreate).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -493,7 +470,7 @@ describe('POST /api/jobs/:jobId/gate-action', () => {
         .send({ action: 'continue', gateStage: 1, patch: { anchor_entities: ['hack'] } });
 
       expect(response.status).toBe(400);
-      expect(mockEnqueueContinueFromGateJob).not.toHaveBeenCalled();
+      expect(mockDeliverDispatchWork).not.toHaveBeenCalled();
     });
 
     it('rejects an invalid segment_emphasis enum value in a G2 patch (400)', async () => {
@@ -540,7 +517,7 @@ describe('POST /api/jobs/:jobId/gate-action', () => {
 
       expect(response.status).toBe(400);
       expect(response.body.error).toContain('unknown segment');
-      expect(mockEnqueueContinueFromGateJob).not.toHaveBeenCalled();
+      expect(mockDeliverDispatchWork).not.toHaveBeenCalled();
     });
 
     it('cross-check 400s when primary_target_segment references a segment not in the gateArtifact', async () => {

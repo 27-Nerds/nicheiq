@@ -274,11 +274,13 @@ filter/refine/select tasks above:
      "failed-RFP digest for founders"). A **coverage tripwire** appends a quality caveat when
      ≥80% of ideas come back "none found" with no adjacent coverage. Substitute + adjacent
      evidence also feeds the recal critic (permanent since the 2026-07-06 gate replay; display always on).
-   - **Segment payability** (permanent since the 2026-07-06 gate pass): one batched LLM call scores each
+   - **Segment payability** (permanent since the 2026-07-06 gate pass; prompt-side application
+     removed in the 2026-07-30 de-dup): one batched LLM call scores each
      Stage-4 segment's wallet (budget sensitivity + incumbent pricing + pain commercial-intent
      evidence, blended with deterministic class priors); ideas inherit it via `source_segment`
-     (niche-mean fallback keeps coverage uniform), the critic reads it as a per-idea evidence
-     line, cap (d) holds market_fit ≤ 0.55 below the low threshold, and a Phase-5 verdict floor
+     (niche-mean fallback keeps coverage uniform). The calibration critic scores
+     payability-BLIND; the wallet reaches market_fit through exactly one path —
+     cap (d) holds market_fit ≤ 0.55 below the low threshold, and a Phase-5 verdict floor
      holds direct-paid Go verdicts to Conditional. The niche-level **buyer_class** ("who pays
      here") rides the niche-difficulty narrative call and is always on.
    - **Generation lenses (permanent, 2026-07-10):** each run allocates its cell budget across FOUR

@@ -21,6 +21,7 @@ const mockAppSettingsFindUnique = vi.fn();
 // stage via tx.creditTransaction.findMany — distinct from the module-level mockCreditTransactionFindMany
 // below (used by refundForSeedIdeaStage, which reaches for the module-level `prisma`, not `tx`).
 const mockTxCreditTransactionFindMany = vi.fn();
+const mockTxCreditTransactionFindFirst = vi.fn();
 // refundForSeedIdeaStage (-> _refundForStageImpl) reaches for the module-level `prisma`
 // directly rather than a `tx` param, unlike the charge helpers below.
 const mockJobFindUnique = vi.fn();
@@ -53,6 +54,7 @@ beforeEach(() => {
     creditTransaction: {
       create: (...args: any[]) => mockCreditTransactionCreate(...args),
       findMany: (...args: any[]) => mockTxCreditTransactionFindMany(...args),
+      findFirst: (...args: any[]) => mockTxCreditTransactionFindFirst(...args),
     },
     appSettings: {
       findUnique: (...args: any[]) => mockAppSettingsFindUnique(...args),
@@ -75,6 +77,7 @@ beforeEach(() => {
   mockUserCreditsFindUnique.mockResolvedValue({ balance: 50, monthlyAllowance: 0 });
   // No prior charge for this ledger stage by default — cycle auto-detect resolves to 0.
   mockTxCreditTransactionFindMany.mockResolvedValue([]);
+  mockTxCreditTransactionFindFirst.mockResolvedValue(null);
   mockCreditTransactionCreate.mockImplementation(async (args: any) => ({
     id: `txn-${args.data.stage}`,
     ...args.data,
@@ -84,6 +87,37 @@ beforeEach(() => {
 
   mockJobFindUnique.mockResolvedValue({ userId: USER_ID, niche: 'test niche' });
   mockPrismaTransaction.mockImplementation(async (cb: any) => cb(tx));
+});
+
+describe('chargeForStageInTx — retryable stage cycles', () => {
+  it('places a retried landing-page charge after the immutable refunded attempt', async () => {
+    mockTxCreditTransactionFindFirst.mockResolvedValue({ cycle: 2 });
+    const { chargeForStageInTx } = await import('../creditService.js');
+
+    await chargeForStageInTx(
+      tx,
+      USER_ID,
+      JOB_ID,
+      'landing_page',
+      'test niche',
+      { nextCycle: true },
+    );
+
+    expect(mockTxCreditTransactionFindFirst).toHaveBeenCalledWith({
+      where: {
+        relatedJobId: JOB_ID,
+        type: 'JOB_DEDUCTION',
+        stage: 'landing_page',
+      },
+      orderBy: { cycle: 'desc' },
+      select: { cycle: true },
+    });
+    expect(mockCreditTransactionCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ stage: 'landing_page', cycle: 3 }),
+      }),
+    );
+  });
 });
 
 describe('chargeForStageWithPriceCasInTx — the shared hardened CAS', () => {

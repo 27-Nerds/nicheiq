@@ -1,5 +1,6 @@
-"""Adversarial red-team pass over the top visible ideas (2026-07-10) — a POST-demote,
-PRE-portfolio-summary attacker LLM pass that tries to KILL each top idea from search
+"""Adversarial red-team pass over top visible ideas (2026-07-10; slot allocation and
+off-category abstain reworked 2026-07-30, run-quality fixes §2/§5) — a POST-demote,
+PRE-portfolio-summary attacker LLM pass that tries to KILL each reviewed idea from search
 evidence alone: category incumbents the idea's own vocabulary would miss, free/bundled
 alternatives where the buyer already lives, whether the mechanism handles the MODAL case
 of the pain (the common form, not an edge case), and the one PRO-idea urgency question.
@@ -23,6 +24,12 @@ from loguru import logger
 from pydantic import BaseModel, Field
 
 from .data_access import DATA_ACCESS_VOCAB, normalize_data_access, note_route_label
+from .validation.niche_anchor import anchor_coverage
+
+# Minimum anchor_entities for the off-category guard to activate — below this the
+# guard fails OPEN (review proceeds). Mirrors QueryGenerator.MIN_ANCHORS_ACTIVE
+# (utils/generation/query_generator.py) without importing the class.
+_MIN_ANCHORS_ACTIVE = 3
 
 
 class _RedTeamVerdict(BaseModel):
@@ -54,19 +61,34 @@ def _is_actionable(result) -> bool:
 def _build_queries(crew, idea, niche_short: str, budget: int) -> list[str]:
     """Deterministic category-outcome / free-alternative / platform-native query set for one
     idea, reusing the same capability-phrase derivation as the market-awareness probes
-    (`_mechanism_keywords`). Truncated to `budget`; '' capability phrase -> no queries."""
+    (`_mechanism_keywords`, here glossary-expanded so ambiguous niche acronyms like "SMS"
+    search as their expansions). Truncated to `budget`; '' capability phrase -> no queries.
+
+    Run-quality fixes §2 (2026-07-30): every query but the last carries a short niche
+    anchor term — the old set anchored only 1 of 6, and that one sat at index 4 where any
+    budget < 5 dropped it, so mechanism vocabulary alone routinely retrieved a DIFFERENT
+    industry ("deterministic governance" -> AI-agent security). The anchor goes right
+    after `kw` (a trailing anchor would be chopped by the [:120] truncation). The LAST
+    candidate stays deliberately unanchored: it preserves the broad "incumbents the
+    idea's own vocabulary would miss" arm and hedges against anchored queries
+    over-constraining into all-empty retrieval."""
     if budget <= 0:
         return []
-    kw = crew._mechanism_keywords(idea)
+    from .jargon_glossary import build_jargon_glossary
+    from .validation.niche_anchor import niche_anchor_query_term
+
+    ctx = getattr(crew, "niche_context", None)
+    kw = crew._mechanism_keywords(idea, glossary=build_jargon_glossary(ctx))
     if not kw:
         return []
+    anchor = niche_anchor_query_term(ctx)
     candidates = [
+        f"{kw} {anchor}".strip(),
+        f"{kw} {anchor} alternative".strip(),
+        f"free {kw} {anchor}".strip(),
+        f"{kw} {anchor} built in".strip(),
+        f"{kw} {anchor} vs".strip(),
         f"{kw} alternative",
-        f"free {kw}",
-        f"{kw} built in",
-        f"{kw} vs",
-        f"{kw} {niche_short}".strip(),
-        f"{kw} reddit",
     ]
     seen: set[str] = set()
     out: list[str] = []
@@ -230,8 +252,11 @@ def _attempt_red_team_revision(crew, refined_solutions, orig, result, evidence) 
 
 
 def run_red_team_review(crew, refined_solutions) -> None:
-    """Attacker pass over the top `settings.red_team_top_k` visible ideas (by
-    market_fit_score). Mutates ideas in place (`red_team_verdict`, `red_team_caveats`, and —
+    """Attacker pass over `settings.red_team_top_k` visible ideas, slotted across three
+    axes — angle-composite leader, best shippability (min(build, solo) >= 0.70), then
+    market_fit / shippability alternation — so the likely selection AND the most
+    shippable ideas both get reviewed (a pure market_fit sort excluded whatever the
+    payability/parity caps had compressed). Mutates ideas in place (`red_team_verdict`, `red_team_caveats`, and —
     on a qualifying 'killed' verdict — `incumbent_parity` plus a `_validate_idea_caps` call
     that applies the existing downgrade-only cap). An actionable killed/weakened verdict then
     gets one accept-guarded revision attempt via `_attempt_red_team_revision`. Fail-soft per
@@ -254,7 +279,53 @@ def run_red_team_review(crew, refined_solutions) -> None:
         v = getattr(i, "market_fit_score", None)
         return v if isinstance(v, (int, float)) else -1.0
 
-    top = sorted(visible, key=_mf, reverse=True)[:top_k]
+    def _ship(i) -> float:
+        # Binding-constraint shippability: min(buildability, one-person operability).
+        bf = getattr(i, "build_feasibility_score", None)
+        sd = getattr(i, "solo_dev_feasibility", None)
+        if isinstance(bf, (int, float)) and isinstance(sd, (int, float)):
+            return min(bf, sd)
+        return -1.0
+
+    def _comp_key(i) -> float:
+        from ..utils.score_helpers import _composite_for_angle
+        return _composite_for_angle(
+            getattr(i, "market_fit_score", None),
+            getattr(i, "technical_feasibility_score", None),
+            getattr(i, "novelty_score", None),
+            getattr(i, "seo_scalability_score", None),
+            getattr(i, "winning_angle", None))
+
+    # Slot allocation (run-quality fixes §5, 2026-07-30) — reserve-then-fill across three
+    # axes instead of pure market_fit. market_fit is the field the payability/parity caps
+    # compress hardest, so a pure-mf sort systematically excluded the most shippable ideas
+    # AND (because selection ranks by composite) sometimes the likely winner itself from
+    # adversarial review. Slot 1 = composite leader (the idea most likely to become the
+    # selection, so the verdict floor has something to read). Slot 2 = best shippability
+    # (>= 0.70 bar — below it the axis is noise) from the REMAINDER (reserve-then-fill:
+    # picking both axes' winners independently collapses to pure-mf whenever one idea tops
+    # both). Slots 3+ alternate market_fit / shippability. Unscored ideas sink (-1.0);
+    # with no composite/shippability signal anywhere this degrades to the old mf order.
+    top: list = []
+
+    def _take(order_key, floor: float | None = None) -> None:
+        if len(top) >= top_k:
+            return
+        pool = [i for i in visible if i not in top]
+        pool.sort(key=order_key, reverse=True)
+        for cand in pool:
+            score = order_key(cand)
+            if floor is not None and score < floor:
+                break  # sorted desc — nothing later clears the floor
+            top.append(cand)
+            return
+
+    _take(_comp_key)
+    _take(_ship, floor=0.70)
+    ax = 0
+    while len(top) < min(top_k, len(visible)):
+        _take((_mf, _ship)[ax % 2])  # floorless — always fills from a non-empty pool
+        ax += 1
     if not top:
         return
 
@@ -262,7 +333,30 @@ def run_red_team_review(crew, refined_solutions) -> None:
     niche_short = niche[:80]
     budget = settings.red_team_searches_per_idea
 
+    # Off-category guard (run-quality fixes §2, 2026-07-30): anchor-vocabulary matchers
+    # decide whether retrieved evidence is even in this niche's category — a probe whose
+    # results are entirely foreign (live 3-of-4-runs failure: "deterministic governance"
+    # retrieved AI-agent security tools) must ABSTAIN, not report "no incumbents found".
+    # Matched against RESULT BODIES only, never the assembled evidence block: its
+    # "[query]" headers now contain the anchor term by construction and would make the
+    # guard self-satisfying. Matcher vocabulary = brands (anchor_entities) + multi-word
+    # community terms + jargon-glossary expansions; single-word jargon is deliberately
+    # excluded (generic tokens like "versioning" stem-match foreign evidence and would
+    # silently disable the guard). Fail-open below _MIN_ANCHORS_ACTIVE entities
+    # (mirrors QueryGenerator.MIN_ANCHORS_ACTIVE — see query_generator.py).
+    _ctx = getattr(crew, "niche_context", None)
+    _entities = list(getattr(_ctx, "anchor_entities", None) or [])
+    vocab_matchers: list = []
+    if len(_entities) >= _MIN_ANCHORS_ACTIVE:
+        from .jargon_glossary import build_jargon_glossary
+        from .validation.niche_anchor import build_anchor_matchers
+        _multiword = [t for t in (getattr(_ctx, "community_search_terms", None) or [])
+                      if len((t or "").split()) >= 2]
+        vocab_matchers = build_anchor_matchers(
+            _entities + _multiword + list(build_jargon_glossary(_ctx).values()))
+
     reviewed = revised = revision_accepted = 0
+    empty_abstained = offcategory_abstained = 0
     for idea in top:
         name = (getattr(idea, "solution_name", "") or "?").strip()
         try:
@@ -276,6 +370,24 @@ def run_red_team_review(crew, refined_solutions) -> None:
                 # results, the verdict said "weakened", and the summary spun the empty
                 # search into "no incumbents found — suggesting a potential gap").
                 logger.warning(f"[RedTeam] '{name}' skipped: no search evidence returned")
+                empty_abstained += 1
+                continue
+
+            bodies = [res for res in result_map.values() if res]
+            if vocab_matchers and anchor_coverage(bodies, vocab_matchers) == 0.0:
+                # ABSTAIN on off-category evidence — same semantics as the empty case:
+                # no verdict, no caveats, no revision. A vocabulary mismatch is a
+                # retrieval failure, not negative market evidence; stamping "weakened"
+                # here is how 3 of 4 audited runs laundered a bad query set into
+                # "no evidence this pain is real" (docs/RUN_QUALITY_ROOT_CAUSES.md §2).
+                idea.red_team_vocab_mismatch = (
+                    "probe evidence off-category: the idea's mechanism vocabulary "
+                    "retrieved a different industry — market conclusions abstained; "
+                    "rename/re-probe advised")
+                offcategory_abstained += 1
+                logger.warning(
+                    f"[RedTeam] '{name}' abstained: evidence shares no niche anchor "
+                    "(vocabulary mismatch)")
                 continue
 
             prompt = (
@@ -342,5 +454,7 @@ def run_red_team_review(crew, refined_solutions) -> None:
         fc["red_team_reviewed"] = reviewed
         fc["red_team_revised"] = revised
         fc["red_team_revision_accepted"] = revision_accepted
+        fc["red_team_empty_evidence_abstained"] = empty_abstained
+        fc["red_team_offcategory_abstained"] = offcategory_abstained
     except Exception as e:
         logger.warning(f"[RedTeam] funnel update skipped: {str(e)[:120]}")

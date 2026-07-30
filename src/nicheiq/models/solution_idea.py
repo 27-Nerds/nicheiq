@@ -746,6 +746,16 @@ class BaseSolutionIdea(BaseModel):
             "cleared its own parity re-probe (the shown idea IS the revision); None otherwise."
         ),
     )
+    red_team_vocab_mismatch: Optional[str] = Field(
+        default=None,
+        description=(
+            "CODE-FILLED by the red-team off-category abstain — ALWAYS leave null/omit this "
+            "field. Set when the probe's search evidence shared no niche anchor vocabulary "
+            "(the idea's mechanism wording retrieved a different industry): the review "
+            "ABSTAINED — this is a rename/re-probe signal, NOT negative market evidence. "
+            "None = no mismatch detected."
+        ),
+    )
     idea_tier: str = Field(
         default="single",
         description=(

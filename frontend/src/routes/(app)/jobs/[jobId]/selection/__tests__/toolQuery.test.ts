@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  currentToolQueryUrl,
   stateAfterToolQueryStrip,
   TOOL_QUERY_KEYS,
   strippedToolSignature,
@@ -9,6 +10,26 @@ import {
 const BASE = "https://app.test/jobs/j1/selection/compare";
 
 describe("selection tool-query guard helpers (P0-E)", () => {
+  it("retires a consumed tool when shallow replaceState leaves page.url stale", () => {
+    window.history.replaceState(
+      {},
+      "",
+      "/jobs/j1/selection/compare?idea=idea-1%3A1&tool=variants",
+    );
+    const stalePageUrl = new URL(window.location.href);
+
+    expect(currentToolQueryUrl(stalePageUrl).searchParams.get("tool")).toBe("variants");
+
+    // This is the second reactive tick that used to reopen the tool forever:
+    // the routed page URL is unchanged, but the shallow address-bar URL is not.
+    window.history.replaceState({}, "", "/jobs/j1/selection/compare?idea=idea-1%3A1");
+
+    const current = currentToolQueryUrl(stalePageUrl);
+
+    expect(current.searchParams.get("idea")).toBe("idea-1:1");
+    expect(current.searchParams.has("tool")).toBe(false);
+  });
+
   it("signature is pathname plus search", () => {
     const url = new URL(`${BASE}?tool=tests&lens=demand`);
     expect(toolQuerySignature(url)).toBe("/jobs/j1/selection/compare?tool=tests&lens=demand");

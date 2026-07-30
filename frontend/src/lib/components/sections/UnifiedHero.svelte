@@ -1007,6 +1007,15 @@
             </div>
           </div>
         {/if}
+        {#if verdict.red_team_context}
+          <div class="rationale-adjustment">
+            <AlertTriangle class="adjustment-icon" />
+            <div class="adjustment-content">
+              <span class="adjustment-label">RED-TEAM REVIEW</span>
+              <span class="adjustment-text">{verdict.red_team_context}</span>
+            </div>
+          </div>
+        {/if}
         <p class="rationale-text">{verdict.rationale}</p>
         {#if verdict.primary_concern}
           <div class="rationale-concern">

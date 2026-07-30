@@ -62,6 +62,7 @@
     type SelectionToolOrigin,
   } from "$lib/selection/toolOrigin";
   import {
+    currentToolQueryUrl,
     stateAfterToolQueryStrip,
     TOOL_QUERY_KEYS,
     strippedToolSignature,
@@ -631,13 +632,14 @@
   }
 
   function handleForgeClose(): void {
+    const currentUrl = currentToolQueryUrl(page.url);
     // The router can expose PageState after the one-shot tool effect has
     // already opened the overlay. Re-read it here instead of relying only on
     // the initial capture, or a job-page launch can be mistaken for an
     // in-place Compare launch.
     const origin = forgeOrigin ?? trustedSelectionToolOrigin(
       page.state.selectionToolOrigin,
-      page.url.origin,
+      currentUrl.origin,
       data.job.id,
     );
     forgeOpen = false;
@@ -649,7 +651,7 @@
     if (!origin) return;
     // Clear the consumed return contract on this history entry before leaving.
     // If the owner later uses Forward, Compare must not inherit an old caller.
-    replaceState(`${page.url.pathname}${page.url.search}${page.url.hash}`, {
+    replaceState(`${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`, {
       ...page.state,
       selectionToolOrigin: undefined,
     });
@@ -723,7 +725,11 @@
   });
 
   $effect(() => {
-    const tool = page.url.searchParams.get("tool");
+    // `replaceState` shallowly changes the address bar and page.state, but not
+    // page.url. Keep the page.url read for navigation reactivity and inspect
+    // the live address bar so consuming a tool cannot schedule itself forever.
+    const currentUrl = currentToolQueryUrl(page.url);
+    const tool = currentUrl.searchParams.get("tool");
     if (!tool || !interactive) return;
     // Every ?tool= value except `compare` opens a decision tool. Without the grant the
     // param is simply retired, so a stale bookmark lands on the page it names instead
@@ -732,13 +738,13 @@
       queueMicrotask(() => stripToolQuery());
       return;
     }
-    const signature = toolQuerySignature(page.url);
+    const signature = toolQuerySignature(currentUrl);
     if (handledToolQuery === signature) return;
     handledToolQuery = signature;
 
-    const ideaId = page.url.searchParams.get("ideaId");
-    const ideaRevision = Number(page.url.searchParams.get("ideaRevision") ?? "1");
-    const requestedLens = page.url.searchParams.get("lens");
+    const ideaId = currentUrl.searchParams.get("ideaId");
+    const ideaRevision = Number(currentUrl.searchParams.get("ideaRevision") ?? "1");
+    const requestedLens = currentUrl.searchParams.get("lens");
     const lens = requestedLens === "demand"
       || requestedLens === "distribution"
       || requestedLens === "competition"
@@ -748,13 +754,13 @@
     const focus = ideaId && Number.isInteger(ideaRevision) && ideaRevision >= 1
       ? { ideaId, ideaRevision, lens }
       : undefined;
-    // Read before stripping: `page.url` is live and the params are gone by the
-    // time the microtask below runs.
-    const assumptionId = page.url.searchParams.get("assumptionId") ?? undefined;
+    // Snapshot before stripping: the address bar params are gone by the time
+    // the microtask below runs.
+    const assumptionId = currentUrl.searchParams.get("assumptionId") ?? undefined;
     const conceptPrefill = page.state.selectionConceptPrefill;
     const toolOrigin = trustedSelectionToolOrigin(
       page.state.selectionToolOrigin,
-      page.url.origin,
+      currentUrl.origin,
       data.job.id,
     );
 
@@ -820,14 +826,14 @@
    *  identical URL (P0-E — the guard previously never reset, so a repeat
    *  deep-link neither opened the tool nor stripped the query). */
   function retireToolQuery(): void {
-    handledToolQuery = strippedToolSignature(page.url);
+    handledToolQuery = strippedToolSignature(currentToolQueryUrl(page.url));
   }
 
   /** Drops the one-shot tool params so closing the tool or refreshing never
    *  re-opens something the user already dismissed. On a cold load the router
    *  may not be ready on the first try, so this retries once. */
   function stripToolQuery(attempt = 0): void {
-    const stripped = new URL(page.url);
+    const stripped = currentToolQueryUrl(page.url);
     const nextState = stateAfterToolQueryStrip(page.state);
     let changed = false;
     for (const key of TOOL_QUERY_KEYS) {

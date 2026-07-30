@@ -68,5 +68,20 @@ describe('GET /api/users/:userId/jobs — awaiting jobs never fall out of the wi
     const secondCall = (prisma.job.findMany as any).mock.calls[1][0];
     expect(secondCall.where.status).toEqual({ in: ['AWAITING_SELECTION', 'AWAITING_GATE'] });
     expect(secondCall.take).toBeUndefined();
+    for (const [query] of (prisma.job.findMany as any).mock.calls) {
+      expect(query.include.dispatches).toEqual({
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+        select: {
+          id: true,
+          kind: true,
+          state: true,
+          refundedAmount: true,
+          refundTransaction: {
+            select: { amount: true },
+          },
+        },
+      });
+    }
   });
 });

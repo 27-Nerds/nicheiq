@@ -11,6 +11,19 @@
 /** Params that are one-shot open instructions, never workspace state. */
 export const TOOL_QUERY_KEYS = ["tool", "assumptionId"] as const;
 
+/**
+ * SvelteKit's shallow `replaceState` updates the address bar and `page.state`,
+ * but deliberately leaves `page.url` pointing at the routed URL. Tool params
+ * are one-shot shallow state, so the address bar is the source of truth after
+ * they have been consumed. Reading `pageUrl` at the call site still keeps the
+ * effect subscribed to real navigations.
+ */
+export function currentToolQueryUrl(pageUrl: URL): URL {
+  return typeof window === "undefined"
+    ? new URL(pageUrl)
+    : new URL(window.location.href);
+}
+
 /** Signature of a URL — what the dedupe guard stores and compares. */
 export function toolQuerySignature(url: URL): string {
   return `${url.pathname}${url.search}`;

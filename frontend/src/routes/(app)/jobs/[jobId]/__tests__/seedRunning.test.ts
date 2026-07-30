@@ -12,7 +12,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, cleanup, waitFor } from "@testing-library/svelte";
 import { page } from "$app/state";
 import { chatLedger } from "$lib/stores/chatLedger.svelte";
-import { getChatHistory } from "$lib/api";
+import { getChatHistory, getSolutions } from "$lib/api";
 import type { Job } from "$lib/types/job";
 
 vi.mock("$lib/api", async (importOriginal) => {
@@ -95,6 +95,11 @@ describe("+page.svelte — workbench stays mounted through a seed's QUEUED/RUNNI
     // `clearAllMocks` clears call history but NOT a prior test's `mockResolvedValue`
     // implementation — pin the default here so each test starts from the same base.
     vi.mocked(getChatHistory).mockResolvedValue({ messages: [], weakPool: false } as never);
+    vi.mocked(getSolutions).mockResolvedValue({
+      solutionIdeas: [],
+      selectionDraft: { version: 0, items: [] },
+      canRegenerate: true,
+    } as never);
   });
 
   afterEach(() => {
@@ -174,6 +179,138 @@ describe("+page.svelte — workbench stays mounted through a seed's QUEUED/RUNNI
     );
   });
 
+  it("keeps a queued seed with a saved shortlist in the workbench and shows its progress", async () => {
+    vi.mocked(getChatHistory).mockResolvedValue({
+      ...PENDING_SEED_HISTORY,
+      messages: [
+        {
+          id: "asst-seed-1",
+          gateStage: 5,
+          role: "assistant",
+          content: "A proposed direction",
+          patchJson: {
+            kind: "idea_synthesis",
+            operation: "adjacent",
+            proposedTitle: "A focused adjacent direction",
+            proposedBrief: "A deliberately different workflow for the same buyer.",
+            changeSummary: "Changes the workflow while keeping the buyer.",
+            rationale: "The current shortlist leaves this adjacent job untested.",
+            parents: [{
+              ideaId: "idea-alpha",
+              ideaRevision: 1,
+              solutionName: "Alpha Idea",
+              contribution: "Keep the validated buyer.",
+            }],
+            evidence: {
+              sourceAnchors: [{
+                ideaId: "idea-alpha",
+                ideaRevision: 1,
+                candidateSnapshotSha256: "a".repeat(64),
+              }],
+              requiresValidation: ["Validate demand for the adjacent workflow."],
+            },
+            newAssumptions: ["The same buyer owns the adjacent workflow."],
+          },
+          truncated: false,
+          createdAt: "2026-07-12T23:59:59.000Z",
+        },
+        ...PENDING_SEED_HISTORY.messages,
+      ],
+      activeOperation: {
+        id: "dispatch-seed-1",
+        kind: "SEED_IDEA",
+        state: "AUTHORIZED",
+        createdAt: "2026-07-13T00:00:00.000Z",
+      },
+    } as never);
+    const job = baseJob({
+      status: "QUEUED",
+      jobMode: "interactive",
+      solutionIdeas: [
+        {
+          idea_id: "idea-alpha",
+          idea_revision: 1,
+          solution_name: "Alpha Idea",
+          description: "d",
+          value_proposition: "v",
+        } as never,
+      ],
+      selectedSolutionIds: ["idea-alpha"],
+      selectedSolutions: ["Alpha Idea"],
+      selectionDraft: {
+        version: 2,
+        items: [{ ideaId: "idea-alpha", ideaRevision: 1 }],
+      },
+    });
+    const view = render(PageComponent, { props: { data: baseData(job) as never } });
+
+    await waitFor(() =>
+      expect(chatLedger.activeOperation?.kind).toBe("SEED_IDEA"),
+    );
+    await view.findByRole("region", { name: "Evaluation in progress" });
+    expect(document.querySelector('input[aria-label="Deselect Alpha Idea"]')).not.toBeNull();
+    expect(view.queryByText(/We're validating your top picks/)).toBeNull();
+  });
+
+  it("keeps a queued seed in the locked workbench when chat history cannot load", async () => {
+    vi.mocked(getChatHistory).mockRejectedValue(new Error("history unavailable"));
+    const job = baseJob({
+      status: "QUEUED",
+      jobMode: "interactive",
+      activeDispatchKind: "SEED_IDEA",
+      solutionIdeas: [
+        {
+          idea_id: "idea-alpha",
+          idea_revision: 1,
+          solution_name: "Alpha Idea",
+          description: "d",
+          value_proposition: "v",
+        } as never,
+      ],
+      selectedSolutionIds: ["idea-alpha"],
+      selectedSolutions: ["Alpha Idea"],
+      selectionDraft: {
+        version: 2,
+        items: [{ ideaId: "idea-alpha", ideaRevision: 1 }],
+      },
+    });
+
+    const view = render(PageComponent, { props: { data: baseData(job) as never } });
+
+    await waitFor(() => expect(chatLedger.loadFailed).toBe(true));
+    const checkbox = await view.findByRole("checkbox", { name: "Deselect Alpha Idea" });
+    expect(checkbox).toBeDisabled();
+    expect(view.queryByText(/We're validating your top picks/)).toBeNull();
+  });
+
+  it("uses the client solutions response as the current completed-batch limit", async () => {
+    vi.mocked(getSolutions).mockResolvedValue({
+      solutionIdeas: [
+        {
+          idea_id: "idea-alpha",
+          idea_revision: 1,
+          solution_name: "Alpha Idea",
+          description: "d",
+          value_proposition: "v",
+        },
+      ],
+      selectionDraft: { version: 3, items: [] },
+      canRegenerate: false,
+    } as never);
+    const job = baseJob({
+      solutionIdeas: [],
+      canRegenerate: true,
+    });
+    const view = render(PageComponent, {
+      props: { data: { ...baseData(job), solutions: null } as never },
+    });
+
+    await waitFor(() =>
+      expect(document.querySelector('input[aria-label="Select Alpha Idea"]')).not.toBeNull(),
+    );
+    expect(view.queryByRole("button", { name: "Add another batch" })).toBeNull();
+  });
+
   it("renders the progress screen (not the workbench) when RUNNING with no pending seed", async () => {
     const job = baseJob({ status: "RUNNING", solutionIdeas: [] });
 
@@ -183,6 +320,34 @@ describe("+page.svelte — workbench stays mounted through a seed's QUEUED/RUNNI
     await waitFor(() => expect(chatLedger.jobId).toBe("job-1"));
     expect(chatLedger.hasPendingSeed).toBe(false);
 
+    expect(document.querySelector('input[aria-label="Select Alpha Idea"]')).toBeNull();
+  });
+
+  it("renders queued interactive Phase 2 as Deep Research without a dead cancel action", async () => {
+    const job = baseJob({
+      status: "QUEUED",
+      jobMode: "interactive",
+      solutionIdeas: [
+        {
+          idea_id: "idea-alpha",
+          idea_revision: 1,
+          solution_name: "Alpha Idea",
+          description: "d",
+          value_proposition: "v",
+        } as never,
+      ],
+      selectedSolutionIds: ["idea-alpha"],
+      selectedSolutions: ["Alpha Idea"],
+      selectionDraft: {
+        version: 2,
+        items: [{ ideaId: "idea-alpha", ideaRevision: 1 }],
+      },
+    });
+    const view = render(PageComponent, { props: { data: baseData(job) as never } });
+
+    await view.findByText(/We're validating your top picks/);
+    await view.findByText("Alpha Idea");
+    expect(view.queryByRole("button", { name: "Cancel" })).toBeNull();
     expect(document.querySelector('input[aria-label="Select Alpha Idea"]')).toBeNull();
   });
 });

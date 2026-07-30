@@ -409,4 +409,6 @@ export interface Job {
   gateReachedAt?: string | null;
   /** apply_stay count for the CURRENT gate — capped at 5 (gate-action route). */
   gateApplyCount?: number | null;
+  /** Exact durable operation currently owning the job; null when no dispatch is active. */
+  activeDispatchKind?: 'CONTINUE' | 'APPLY_STAY' | 'REGENERATE' | 'SEED_IDEA' | 'DEEP_RESEARCH' | null;
 }

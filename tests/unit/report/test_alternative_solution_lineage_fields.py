@@ -130,3 +130,31 @@ def test_source_frame_defaults_to_pain_when_not_overridden():
     )
     alt = ReportGenerator(state)._generate_alternative_solutions()[0]
     assert alt.source_frame == "pain"
+
+
+def test_red_team_fields_pass_through():
+    """Run-quality fixes §1: red_team_verdict/red_team_caveats were stamped on the pooled
+    ideas but silently dropped at final-report assembly (AlternativeSolution extra='ignore')."""
+    state = ResearchState()
+    state.idea_generation = IdeaGenerationResult(
+        solution_ideas=[
+            _idea("Selected"),
+            _idea("RunnerUp", red_team_verdict="weakened",
+                  red_team_caveats=["vocabulary maps to a different industry"]),
+            _idea("Third"),
+        ]
+    )
+    state.solution_selection = SolutionSelection(
+        selected_solution_name="Selected",
+        selection_rationale="x" * 120,
+        runner_up_solutions=["RunnerUp"],
+        recommended_focus="x",
+    )
+    alt = ReportGenerator(state)._generate_alternative_solutions()[0]
+    assert alt.red_team_verdict == "weakened"
+    assert alt.red_team_caveats == ["vocabulary maps to a different industry"]
+    # Not-red-teamed ideas keep None (no empty-list noise).
+    state.solution_selection.runner_up_solutions = ["Third"]
+    alt2 = ReportGenerator(state)._generate_alternative_solutions()[0]
+    assert alt2.red_team_verdict is None
+    assert alt2.red_team_caveats is None

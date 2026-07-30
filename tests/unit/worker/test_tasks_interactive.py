@@ -31,6 +31,20 @@ def _identified_idea(name: str, idea_id: str, revision: int = 1) -> BaseSolution
     )
 
 
+def _unidentified_idea(name: str) -> BaseSolutionIdea:
+    """A candidate exactly as a checkpoint stores it — no identity fields at all."""
+    return BaseSolutionIdea(
+        solution_name=name,
+        description=f"{name} description",
+        value_proposition=f"{name} value",
+        pain_points_addressed=["Pain"],
+        core_features=["Feature"],
+        target_personas=["Persona"],
+        market_fit_score=0.7,
+        technical_feasibility_score=0.8,
+    )
+
+
 class TestRunInteractiveResearch:
     """Tests for run_interactive_research task."""
 
@@ -683,6 +697,84 @@ class TestResolvePhase2Selection:
                 ],
             )
 
+    def _unidentified_state(self):
+        """The pool as it actually comes off disk: no idea_id anywhere.
+
+        Identity is assigned by the BACKEND at /ideas-ready and persisted only in Postgres,
+        so no checkpoint ever carries one. Every other test here pre-stamps the pool, which
+        is why the production resolve path could break without a single red test.
+        """
+        return SimpleNamespace(
+            idea_generation=IdeaGenerationResult(
+                solution_ideas=[
+                    _unidentified_idea("Alpha Hub"),
+                    _unidentified_idea("Beta Hub"),
+                    _unidentified_idea("Gamma Hub"),
+                ]
+            )
+        )
+
+    def test_backend_pool_identities_resolve_an_identityless_checkpoint(self):
+        from worker.tasks import _resolve_phase2_selection
+
+        refs = [{"idea_id": "idea-b", "idea_revision": 3, "solution_name": "Beta Hub"}]
+        names, canonical = _resolve_phase2_selection(
+            self._unidentified_state(),
+            "job-1",
+            selected_solution_refs=refs,
+            provided_selection_fingerprint=selection_fingerprint(refs),
+            pool_identity_map=[
+                {"idea_id": "idea-a", "idea_revision": 2, "solution_name": "Alpha Hub"},
+                {"idea_id": "idea-b", "idea_revision": 3, "solution_name": "Beta Hub"},
+                {"idea_id": "idea-c", "idea_revision": 1, "solution_name": "Gamma Hub"},
+            ],
+        )
+
+        assert names == ["Beta Hub"]
+        assert canonical == [
+            {"idea_id": "idea-b", "idea_revision": 3, "solution_name": "Beta Hub"}
+        ]
+
+    def test_identityless_checkpoint_without_the_map_cannot_resolve(self):
+        """The regression itself: legacy backfill derives ids the backend never issued."""
+        from worker.tasks import _resolve_phase2_selection
+
+        with pytest.raises(RuntimeError, match="revision not found"):
+            _resolve_phase2_selection(
+                self._unidentified_state(),
+                "job-1",
+                selected_solution_refs=[
+                    {"idea_id": "idea-b", "idea_revision": 3, "solution_name": "Beta Hub"}
+                ],
+            )
+
+    def test_ambiguous_pool_names_are_skipped_rather_than_guessed(self):
+        """Two candidates sharing a name must not have an identity assigned by coin flip —
+        researching the wrong idea is worse than failing the lookup."""
+        from worker.tasks import _resolve_phase2_selection
+
+        state = SimpleNamespace(
+            idea_generation=IdeaGenerationResult(
+                solution_ideas=[
+                    _unidentified_idea("Twin Hub"),
+                    _unidentified_idea("Twin Hub"),
+                    _unidentified_idea("Solo Hub"),
+                ]
+            )
+        )
+        with pytest.raises(RuntimeError, match="revision not found"):
+            _resolve_phase2_selection(
+                state,
+                "job-1",
+                selected_solution_refs=[
+                    {"idea_id": "idea-a", "idea_revision": 1, "solution_name": "Twin Hub"}
+                ],
+                pool_identity_map=[
+                    {"idea_id": "idea-a", "idea_revision": 1, "solution_name": "Twin Hub"},
+                    {"idea_id": "idea-b", "idea_revision": 1, "solution_name": "Twin Hub"},
+                ],
+            )
+
     def test_rejects_fingerprint_mismatch(self):
         from worker.tasks import _resolve_phase2_selection
 
@@ -774,6 +866,56 @@ class TestRegenerationBaseCandidateRefs:
                 {"idea_id": "idea-b", "idea_revision": 1},
             ],
         )
+
+    def test_backend_pool_map_restores_real_identityless_checkpoint(self):
+        from worker.tasks import _validate_regeneration_base_candidate_refs
+
+        state = SimpleNamespace(
+            idea_generation=IdeaGenerationResult(
+                solution_ideas=[
+                    _unidentified_idea("Alpha"),
+                    _unidentified_idea("Beta"),
+                    _unidentified_idea("Gamma"),
+                ]
+            )
+        )
+        _validate_regeneration_base_candidate_refs(
+            state,
+            "job-1",
+            [
+                {"idea_id": "idea-a", "idea_revision": 2},
+                {"idea_id": "idea-b", "idea_revision": 1},
+                {"idea_id": "idea-c", "idea_revision": 4},
+            ],
+            [
+                {"idea_id": "idea-a", "idea_revision": 2, "solution_name": "Alpha"},
+                {"idea_id": "idea-b", "idea_revision": 1, "solution_name": "Beta"},
+                {"idea_id": "idea-c", "idea_revision": 4, "solution_name": "Gamma"},
+            ],
+        )
+
+    def test_identityless_checkpoint_without_pool_map_cannot_authorize_batch(self):
+        from worker.tasks import _validate_regeneration_base_candidate_refs
+
+        state = SimpleNamespace(
+            idea_generation=IdeaGenerationResult(
+                solution_ideas=[
+                    _unidentified_idea("Alpha"),
+                    _unidentified_idea("Beta"),
+                    _unidentified_idea("Gamma"),
+                ]
+            )
+        )
+        with pytest.raises(RuntimeError, match="do not match the resumed checkpoint"):
+            _validate_regeneration_base_candidate_refs(
+                state,
+                "job-1",
+                [
+                    {"idea_id": "idea-a", "idea_revision": 2},
+                    {"idea_id": "idea-b", "idea_revision": 1},
+                    {"idea_id": "idea-c", "idea_revision": 4},
+                ],
+            )
 
     def test_legacy_missing_refs_remains_allowed(self):
         from worker.tasks import _validate_regeneration_base_candidate_refs

@@ -99,13 +99,17 @@ def _send_heartbeat() -> bool:
     global _cancellation_requested
 
     try:
+        from .progress import _dispatch_payload
+
+        job_id = _current_job_id
         response = requests.post(
             f"{_get_backend_url()}/api/workers/heartbeat",
             json={
                 "worker_id": WORKER_ID,
-                "job_id": _current_job_id,
+                "job_id": job_id,
                 "hostname": socket.gethostname(),
                 "process_id": os.getpid(),
+                **(_dispatch_payload(job_id) if job_id else {}),
             },
             headers={"x-internal-service": _get_internal_secret()},
             timeout=HEARTBEAT_TIMEOUT_SECONDS,
@@ -118,7 +122,7 @@ def _send_heartbeat() -> bool:
             if data.get("shouldCancel", False):
                 with _cancellation_lock:
                     _cancellation_requested = True
-                logger.warning(f"[Heartbeat] Received cancellation signal for job {_current_job_id}")
+                logger.warning(f"[Heartbeat] Received cancellation signal for job {job_id}")
         except (ValueError, KeyError):
             pass  # Response parsing failed, ignore
 
@@ -140,7 +144,7 @@ _claim_refresher = None
 
 
 def set_claim_refresher(fn) -> None:
-    """Register fn(job_id) to be called each heartbeat tick while a job is in flight."""
+    """Register fn(job_id, dispatch_id) for the exact in-flight delivery lease."""
     global _claim_refresher
     _claim_refresher = fn
 
@@ -154,9 +158,12 @@ def _heartbeat_loop() -> None:
 
     while not _shutdown_event.is_set():
         _send_heartbeat()
-        if _current_job_id and _claim_refresher is not None:
+        if _current_job_id and _claim_refresher is not None and not is_cancellation_requested():
             try:
-                _claim_refresher(_current_job_id)
+                from .progress import _dispatch_payload
+
+                dispatch_id = _dispatch_payload(_current_job_id).get("dispatch_id")
+                _claim_refresher(_current_job_id, dispatch_id)
             except Exception as e:  # noqa: BLE001 — refresh is advisory, never kill the thread
                 logger.debug(f"[Heartbeat] claim refresh failed (non-fatal): {e}")
         # Wait for interval or until shutdown
@@ -240,13 +247,14 @@ def notify_job_started(job_id: str) -> bool:
     # the same dispatch instead of waving it through as a duplicate.
     from .progress import _dispatch_payload
 
+    dispatch_payload = _dispatch_payload(job_id)
     try:
         response = requests.post(
             f"{_get_backend_url()}/api/workers/job-started",
             json={
                 "worker_id": WORKER_ID,
                 "job_id": job_id,
-                **_dispatch_payload(job_id),
+                **dispatch_payload,
             },
             headers={"x-internal-service": _get_internal_secret()},
             timeout=HEARTBEAT_TIMEOUT_SECONDS,
@@ -263,7 +271,14 @@ def notify_job_started(job_id: str) -> bool:
         return True
     except requests.exceptions.RequestException as e:
         logger.warning(f"[Heartbeat] Failed to notify job started: {e}")
-        return True  # Proceed anyway if backend unreachable
+        if dispatch_payload:
+            # Modern work is not authorized until the backend atomically claims this exact
+            # dispatch. Network ambiguity must not run work that may already be cancelled/refunded.
+            logger.warning(
+                f"[Heartbeat] Dispatch claim for job {job_id} was not confirmed - aborting"
+            )
+            return False
+        return True  # Rolling-deploy compatibility for genuinely legacy queue deliveries
 
 
 def notify_job_completed(job_id: str) -> bool:
@@ -361,13 +376,17 @@ def notify_shutdown(reason: str = "signal") -> bool:
     Returns:
         True if successful, False otherwise
     """
+    from .progress import _dispatch_payload
+
+    job_id = _current_job_id
     try:
         response = requests.post(
             f"{_get_backend_url()}/api/workers/shutdown",
             json={
                 "worker_id": WORKER_ID,
-                "job_id": _current_job_id,
+                "job_id": job_id,
                 "reason": reason,
+                **(_dispatch_payload(job_id) if job_id else {}),
             },
             headers={"x-internal-service": _get_internal_secret()},
             timeout=HEARTBEAT_TIMEOUT_SECONDS,

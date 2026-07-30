@@ -68,6 +68,17 @@ def _idea_digest_line(idea) -> str:
     elif rt_verdict:
         first = f" ({rt_caveats[0]})" if rt_caveats else ""
         rt_clause = f"; red-team verdict: {rt_verdict}{first}"
+    elif getattr(idea, "red_team_vocab_mismatch", None):
+        # Off-category abstain — surface it as a retrieval failure so the summary
+        # LLM cannot spin it into "no incumbents found" (RUN_QUALITY_ROOT_CAUSES §2).
+        rt_clause = ("; red-team probe abstained: off-category evidence (vocabulary "
+                     "mismatch — not negative market evidence)")
+
+    # Operator≠payer hypothesis (run-quality fixes §5): computed inline, never stamped —
+    # stops the summary from writing "no wallet" over a re-targetable visible idea.
+    from .segment_payability import payer_retarget_hint
+    payer_hint = payer_retarget_hint(idea)
+    payer_clause = f"; payer note: {payer_hint}" if payer_hint else ""
 
     return (
         f"- {name}: market fit {mf_band}{corrected}; SEO scalability {seo_band}; "
@@ -76,6 +87,7 @@ def _idea_digest_line(idea) -> str:
         f"risk flags: {', '.join(risk_flags) if risk_flags else 'none'}; "
         f"pricing note: {pricing_note or 'none'}"
         + rt_clause
+        + payer_clause
     )
 
 

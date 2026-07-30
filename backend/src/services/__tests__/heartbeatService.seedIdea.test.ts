@@ -42,6 +42,7 @@ vi.mock('../../utils/phaseContext.js', () => ({
 
 vi.mock('../creditService.js', () => ({
   refundForStage: vi.fn(),
+  refundChargeInTx: vi.fn(),
 }));
 
 vi.mock('../progressBroadcastService.js', () => ({
@@ -52,7 +53,7 @@ const JOB_ID = 'job-1';
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockFailJob.mockResolvedValue({});
+  mockFailJob.mockResolvedValue({ applied: true, job: { status: 'FAILED' } });
   mockCancelSeedIdeaDispatch.mockResolvedValue({ cancelled: true, creditRefunded: 2 });
   mockCancelRegenerationDispatch.mockResolvedValue({ cancelled: true, creditRefunded: 2 });
 });
@@ -62,7 +63,7 @@ describe('checkAndRecoverStaleJobs — SEED_IDEA op-scoped recovery', () => {
     mockJobFindMany.mockResolvedValue([{
       id: JOB_ID, niche: 'test', userId: 'user-1', lastHeartbeat: new Date(0),
       startedAt: new Date(0), currentStage: 5, selectedSolutions: [],
-      activeDispatchId: 'dispatch-1',
+      activeDispatchId: 'dispatch-1', status: 'RUNNING',
     }]);
     mockDispatchFindUnique.mockResolvedValue({
       id: 'dispatch-1', kind: 'SEED_IDEA', seedOrdinal: 2, sourceMessageId: 'msg-1',
@@ -72,7 +73,8 @@ describe('checkAndRecoverStaleJobs — SEED_IDEA op-scoped recovery', () => {
     const stats = await checkAndRecoverStaleJobs();
 
     // sourceMessageId must be selected — cancelSeedIdeaDispatch needs it to key the
-    // terminal `seed_settled` receipt back to the right chat card.
+    // terminal `seed_settled` receipt back to the right chat card. segment/chargeId are for
+    // the REGENERATE branch, which shares this one read.
     expect(mockDispatchFindUnique).toHaveBeenCalledWith({
       where: { id: 'dispatch-1' },
       select: {
@@ -81,12 +83,14 @@ describe('checkAndRecoverStaleJobs — SEED_IDEA op-scoped recovery', () => {
         seedOrdinal: true,
         sourceMessageId: true,
         segment: true,
+        chargeId: true,
       },
     });
     expect(mockCancelSeedIdeaDispatch).toHaveBeenCalledWith(
       JOB_ID,
       { id: 'dispatch-1', kind: 'SEED_IDEA', seedOrdinal: 2, sourceMessageId: 'msg-1' },
       'RUNNING', 'SYSTEM_FAULT',
+      { status: 'RUNNING', lastHeartbeat: new Date(0) },
     );
     expect(mockFailJob).not.toHaveBeenCalled();
     expect(mockNotifyJobError).not.toHaveBeenCalled();
@@ -115,6 +119,7 @@ describe('checkAndRecoverStaleJobs — SEED_IDEA op-scoped recovery', () => {
       { id: 'dispatch-2', segment: 'regenerate_ideas_3' },
       'REGENERATING',
       'SYSTEM_FAULT',
+      { status: 'REGENERATING', lastHeartbeat: new Date(0) },
     );
     expect(mockFailJob).not.toHaveBeenCalled();
   });
@@ -144,6 +149,7 @@ describe('checkAndRecoverStaleJobs — SEED_IDEA op-scoped recovery', () => {
       { id: 'dispatch-3', segment: 'regenerate_ideas_4' },
       'QUEUED',
       'SYSTEM_FAULT',
+      { status: 'QUEUED', lastHeartbeat: new Date(0) },
     );
     expect(mockFailJob).not.toHaveBeenCalled();
   });
@@ -152,14 +158,24 @@ describe('checkAndRecoverStaleJobs — SEED_IDEA op-scoped recovery', () => {
     mockJobFindMany.mockResolvedValue([{
       id: JOB_ID, niche: 'test', userId: 'user-1', lastHeartbeat: new Date(0),
       startedAt: new Date(0), currentStage: 5, selectedSolutions: [],
-      activeDispatchId: 'dispatch-1',
+      activeDispatchId: 'dispatch-1', status: 'RUNNING',
     }]);
     mockDispatchFindUnique.mockResolvedValue({ id: 'dispatch-1', kind: 'CONTINUE', seedOrdinal: null });
 
     const { checkAndRecoverStaleJobs } = await import('../heartbeatService.js');
     await checkAndRecoverStaleJobs();
 
-    expect(mockFailJob).toHaveBeenCalledWith(JOB_ID, expect.any(String));
+    expect(mockFailJob).toHaveBeenCalledWith(
+      JOB_ID,
+      expect.any(String),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      'dispatch-1',
+      { status: 'RUNNING', lastHeartbeat: new Date(0) },
+    );
     expect(mockCancelSeedIdeaDispatch).not.toHaveBeenCalled();
   });
 
@@ -167,14 +183,24 @@ describe('checkAndRecoverStaleJobs — SEED_IDEA op-scoped recovery', () => {
     mockJobFindMany.mockResolvedValue([{
       id: JOB_ID, niche: 'test', userId: 'user-1', lastHeartbeat: new Date(0),
       startedAt: new Date(0), currentStage: 5, selectedSolutions: [],
-      activeDispatchId: null,
+      activeDispatchId: null, status: 'RUNNING',
     }]);
 
     const { checkAndRecoverStaleJobs } = await import('../heartbeatService.js');
     await checkAndRecoverStaleJobs();
 
     expect(mockDispatchFindUnique).not.toHaveBeenCalled();
-    expect(mockFailJob).toHaveBeenCalledWith(JOB_ID, expect.any(String));
+    expect(mockFailJob).toHaveBeenCalledWith(
+      JOB_ID,
+      expect.any(String),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { status: 'RUNNING', lastHeartbeat: new Date(0) },
+    );
     expect(mockCancelSeedIdeaDispatch).not.toHaveBeenCalled();
   });
 });

@@ -16,8 +16,22 @@ import {
   registerWorkerHeartbeat,
   markWorkerShutdown,
 } from '../services/heartbeatService.js';
-import { cancelRegenerationDispatch, failJob, updateStageProgress, completeJob, getJob, addJobAsset, getJobAsset } from '../services/jobService.js';
-import { refundForStage, refundForSeedIdeaStage, isGuidedSegment } from '../services/creditService.js';
+import {
+  cancelRegenerationDispatch,
+  cancelSeedIdeaDispatch,
+  failJob,
+  updateStageProgress,
+  completeJob,
+  getJob,
+  addJobAsset,
+  getJobAsset,
+} from '../services/jobService.js';
+import {
+  refundChargeInTx,
+  refundForStage,
+  refundForStageInTx,
+  isGuidedSegment,
+} from '../services/creditService.js';
 import { broadcastProgress } from '../services/progressBroadcastService.js';
 import { notifySolutionsReady, notifyPhase2Start, notifyRegenerationComplete, notifyLandingPageReady } from '../services/notificationService.js';
 import {
@@ -33,6 +47,10 @@ import { notifyJobStart, notifyJobComplete, notifyJobError, notifyGateReached } 
 import {
   dispatchGuard,
   diagnoseGuardMiss,
+  completeLandingPageDispatch,
+  failLandingPageDispatch,
+  publishDeepResearchReport,
+  startLandingPageDispatch,
   startDispatchedJob,
   settleDispatch,
 } from '../services/dispatchService.js';
@@ -70,6 +88,7 @@ workersRouter.use(requireInternalService);
 const HeartbeatSchema = z.object({
   worker_id: z.string().min(1),
   job_id: z.string().uuid().nullable(),
+  dispatch_id: z.string().uuid().optional(),
   hostname: z.string().optional(),
   process_id: z.number().int().optional(),
 });
@@ -83,18 +102,38 @@ workersRouter.post('/heartbeat', async (req: Request, res: Response) => {
   try {
     const data = HeartbeatSchema.parse(req.body);
 
-    // Register/update worker heartbeat
-    await registerWorkerHeartbeat(
-      data.worker_id,
-      data.job_id,
-      data.hostname,
-      data.process_id
-    );
-
     // Check if job should be cancelled
     let shouldCancel = false;
     if (data.job_id) {
-      await updateJobHeartbeat(data.job_id, data.worker_id);
+      const heartbeat = await updateJobHeartbeat(
+        data.job_id,
+        data.worker_id,
+        data.dispatch_id,
+      );
+      if (heartbeat === 'stale' || heartbeat === 'not_found') {
+        // Keep the worker process visible, but do not advertise a superseded attempt as its
+        // current job. shouldCancel stops that stale pipeline at its next cancellation check.
+        await registerWorkerHeartbeat(
+          data.worker_id,
+          null,
+          data.hostname,
+          data.process_id,
+        );
+        res.json({
+          status: 'ok',
+          timestamp: new Date().toISOString(),
+          shouldCancel: true,
+          stale: true,
+        });
+        return;
+      }
+
+      await registerWorkerHeartbeat(
+        data.worker_id,
+        data.job_id,
+        data.hostname,
+        data.process_id,
+      );
 
       // Check job status for cancellation
       const { prisma } = await import('../services/db.js');
@@ -107,6 +146,13 @@ workersRouter.post('/heartbeat', async (req: Request, res: Response) => {
       if (job?.status === 'CANCELLED') {
         shouldCancel = true;
       }
+    } else {
+      await registerWorkerHeartbeat(
+        data.worker_id,
+        null,
+        data.hostname,
+        data.process_id,
+      );
     }
 
     res.json({
@@ -131,6 +177,7 @@ const ShutdownSchema = z.object({
   worker_id: z.string().min(1),
   job_id: z.string().uuid().nullable().optional(),
   reason: z.string().optional(),
+  dispatch_id: z.string().uuid().optional(),
 });
 
 /**
@@ -154,16 +201,147 @@ workersRouter.post('/shutdown', async (req: Request, res: Response) => {
 
       const job = await prisma.job.findUnique({
         where: { id: data.job_id },
-        select: { status: true, niche: true, userId: true, currentStage: true, selectedSolutions: true },
+        select: {
+          status: true,
+          niche: true,
+          userId: true,
+          currentStage: true,
+          selectedSolutions: true,
+          activeDispatchId: true,
+          landingPageStatus: true,
+        },
       });
 
-      if (job && job.status === JobStatus.RUNNING) {
+      if (
+        job
+        && (
+          job.status === JobStatus.RUNNING
+          || job.status === JobStatus.REGENERATING
+          || job.status === JobStatus.RUNNING_PHASE2
+          || (
+            job.status === JobStatus.COMPLETED
+            && (job.landingPageStatus === 'RUNNING' || job.landingPageStatus === 'QUEUED')
+          )
+        )
+      ) {
+        if ((job.activeDispatchId ?? null) !== (data.dispatch_id ?? null)) {
+          console.warn(
+            `[Workers] Ignoring stale shutdown failure for job ${data.job_id}: ` +
+            `dispatch ${data.dispatch_id ?? 'missing'} (active: ${job.activeDispatchId ?? 'none'})`,
+          );
+          res.json({ status: 'ok', message: 'Shutdown acknowledged', stale: true });
+          return;
+        }
+
+        const dispatch = data.dispatch_id
+          ? await prisma.jobDispatch.findFirst({
+              where: { id: data.dispatch_id, jobId: data.job_id },
+              select: {
+                id: true,
+                kind: true,
+                segment: true,
+                chargeId: true,
+                seedOrdinal: true,
+                sourceMessageId: true,
+              },
+            })
+          : null;
+
+        // Regeneration and seed generation are paid operations layered on top of a completed
+        // Discovery run. A worker shutdown must settle only that operation and restore the
+        // selection workspace; failing the whole Job would destroy valid work the user already
+        // owns. These helpers repeat the active-dispatch CAS and exact-charge refund atomically.
+        if (
+          dispatch?.kind === DispatchKind.CONTINUE
+          && dispatch.segment === 'landing_page'
+        ) {
+          const errorMessage =
+            `Worker shutdown during landing page generation: ${data.reason || 'graceful shutdown'}.`;
+          const settled = await failLandingPageDispatch(data.job_id, dispatch.id, errorMessage);
+          if (!settled) {
+            res.json({ status: 'ok', message: 'Shutdown acknowledged', stale: true });
+            return;
+          }
+          broadcastProgress(data.job_id, {
+            stage: 15,
+            name: 'Landing Page Generation',
+            status: 'failed',
+            error: errorMessage,
+          });
+          res.json({ status: 'ok', message: 'Shutdown acknowledged' });
+          return;
+        }
+
+        if (dispatch?.kind === DispatchKind.REGENERATE) {
+          const settled = await cancelRegenerationDispatch(
+            data.job_id,
+            {
+              id: dispatch.id,
+              segment: dispatch.segment,
+              chargeId: dispatch.chargeId,
+            },
+            job.status,
+            'WORKER_CRASH',
+          );
+          if (!settled.cancelled) {
+            res.json({ status: 'ok', message: 'Shutdown acknowledged', stale: true });
+            return;
+          }
+          console.log(
+            `[Workers] Regeneration dispatch ${dispatch.id} settled after worker shutdown; ` +
+            `job ${data.job_id} restored to selection`,
+          );
+          res.json({ status: 'ok', message: 'Shutdown acknowledged' });
+          return;
+        }
+
+        if (dispatch?.kind === DispatchKind.SEED_IDEA) {
+          const settled = await cancelSeedIdeaDispatch(
+            data.job_id,
+            {
+              id: dispatch.id,
+              seedOrdinal: dispatch.seedOrdinal,
+              sourceMessageId: dispatch.sourceMessageId,
+              chargeId: dispatch.chargeId,
+            },
+            job.status,
+            'WORKER_CRASH',
+          );
+          if (!settled.cancelled) {
+            res.json({ status: 'ok', message: 'Shutdown acknowledged', stale: true });
+            return;
+          }
+          console.log(
+            `[Workers] Seed dispatch ${dispatch.id} settled after worker shutdown; ` +
+            `job ${data.job_id} restored to selection`,
+          );
+          res.json({ status: 'ok', message: 'Shutdown acknowledged' });
+          return;
+        }
+
         const errorMessage = `Worker shutdown: ${data.reason || 'graceful shutdown'}. Use checkpoint resume to continue.`;
 
         // Worker shutdown is classified as WORKER_CRASH for user-friendly messaging
         const translatedErrorDetails = buildErrorDetails('WORKER_CRASH', { rawMessage: errorMessage });
 
-        await failJob(data.job_id, errorMessage, undefined, undefined, undefined, 'WORKER_CRASH', translatedErrorDetails ?? undefined);
+        const failed = await failJob(
+          data.job_id,
+          errorMessage,
+          undefined,
+          undefined,
+          undefined,
+          'WORKER_CRASH',
+          translatedErrorDetails ?? undefined,
+          data.dispatch_id,
+        );
+        if (!failed.applied) {
+          console.warn(
+            `[Workers] Ignoring stale shutdown failure for job ${data.job_id} ` +
+            `(dispatch ${data.dispatch_id ?? 'missing'})`,
+          );
+          res.json({ status: 'ok', message: 'Shutdown acknowledged', stale: true });
+          return;
+        }
         console.log(`[Workers] Job ${data.job_id} marked as failed due to worker shutdown`);
 
         // Mark ALL running stages as FAILED
@@ -256,9 +434,15 @@ workersRouter.post('/job-started', async (req: Request, res: Response) => {
     // isRegenerate (`ideasRegeneratedAt != null && !hasSelections` — both true for a seed op
     // too) and get labelled REGENERATING. The dispatch kind is exact; the heuristics are a
     // fallback for the legacy (undispatched) path only.
-    const dispatchKind = data.dispatch_id
-      ? (await prisma.jobDispatch.findUnique({ where: { id: data.dispatch_id }, select: { kind: true } }))?.kind
+    const dispatch = data.dispatch_id
+      ? await prisma.jobDispatch.findUnique({
+          where: { id: data.dispatch_id },
+          select: { kind: true, segment: true },
+        })
       : null;
+    const dispatchKind = dispatch?.kind;
+    const isLandingPageDispatch =
+      dispatchKind === DispatchKind.CONTINUE && dispatch?.segment === 'landing_page';
     const runningStatus =
       dispatchKind === DispatchKind.SEED_IDEA ? JobStatus.RUNNING
       : dispatchKind === DispatchKind.REGENERATE ? JobStatus.REGENERATING
@@ -271,18 +455,22 @@ workersRouter.post('/job-started', async (req: Request, res: Response) => {
     // Cancellation updates the Job first too, so exactly one side crosses the billing boundary:
     // either RUNNING + CLAIMED commit together, or cancellation leaves the dispatch refundable.
     let result: { count: number };
+    let didStart = false;
     if (data.dispatch_id) {
-      const outcome = await startDispatchedJob(data.dispatch_id, data.worker_id, {
-        jobId: data.job_id,
-        runningStatus,
-      });
+      const outcome = isLandingPageDispatch
+        ? await startLandingPageDispatch(data.dispatch_id, data.worker_id, data.job_id)
+        : await startDispatchedJob(data.dispatch_id, data.worker_id, {
+            jobId: data.job_id,
+            runningStatus,
+          });
       if (!outcome) {
         console.warn(
           `[Workers] Job ${data.job_id} dispatch ${data.dispatch_id} could not start — telling ${data.worker_id} to skip`
         );
         return res.json({ status: 'ok', shouldCancel: true, stale: true });
       }
-      result = { count: outcome === 'started' ? 1 : 0 };
+      didStart = outcome === 'started';
+      result = { count: 1 };
     } else {
       // Narrow legacy path: a worker without a dispatch id may only start a job that has no
       // active dispatch. Dispatched jobs always use the transaction above.
@@ -300,6 +488,7 @@ workersRouter.post('/job-started', async (req: Request, res: Response) => {
           errorMessage: null,
         },
       });
+      didStart = result.count > 0;
     }
 
     // If no rows updated, check why
@@ -350,7 +539,7 @@ workersRouter.post('/job-started', async (req: Request, res: Response) => {
     await registerWorkerHeartbeat(data.worker_id, data.job_id);
 
     // Send job start notification (only if we actually started the job)
-    if (result.count > 0) {
+    if (didStart) {
       const job = await prisma.job.findUnique({
         where: { id: data.job_id },
         include: {
@@ -365,7 +554,7 @@ workersRouter.post('/job-started', async (req: Request, res: Response) => {
           notifyPhase2Start(job.userId, job.user.email, data.job_id, job.niche, existingJob.selectedSolutions).catch(err => {
             console.error('Failed to send phase 2 start notification:', err);
           });
-        } else if (!isRegenerate) {
+        } else if (!isRegenerate && !isLandingPageDispatch) {
           notifyJobStart(job.userId, job.user.email, data.job_id, job.niche).catch(err => {
             console.error('Failed to send job start notification:', err);
           });
@@ -454,6 +643,7 @@ workersRouter.post('/report-ready', async (req: Request, res: Response) => {
         selectedSolutionIds: true,
         selectedSolutionRefs: true,
         solutionIdeas: true,
+        entryMode: true,
         status: true,
         activeDispatchId: true,
       },
@@ -463,20 +653,43 @@ workersRouter.post('/report-ready', async (req: Request, res: Response) => {
       res.status(404).json({ error: 'Job not found' });
       return;
     }
+    if (job.activeDispatchId && !data.dispatch_id) {
+      res.json({ status: 'ok', stale: true, reason: 'missing_dispatch_identity' });
+      return;
+    }
+    let deepIdeaAuthorizedName: string | null = null;
     if (data.dispatch_id) {
       const dispatch = await prisma.jobDispatch.findUnique({
         where: { id: data.dispatch_id },
-        select: { jobId: true, kind: true, state: true },
+        select: { jobId: true, kind: true, state: true, workPayload: true },
       });
+      const activeDelivery =
+        dispatch?.state === DispatchState.CLAIMED
+        && job.activeDispatchId === data.dispatch_id
+        && job.status === JobStatus.RUNNING_PHASE2;
+      const completedRetry =
+        dispatch?.state === DispatchState.COMPLETED
+        && job.activeDispatchId === null
+        && job.status === JobStatus.COMPLETED;
       if (
         dispatch?.jobId !== data.job_id
         || dispatch.kind !== DispatchKind.DEEP_RESEARCH
-        || dispatch.state !== DispatchState.CLAIMED
-        || job.activeDispatchId !== data.dispatch_id
-        || job.status !== JobStatus.RUNNING_PHASE2
+        || (!activeDelivery && !completedRetry)
       ) {
         res.json({ status: 'ok', stale: true, reason: 'stale_dispatch' });
         return;
+      }
+      if (job.entryMode === 'deep_idea') {
+        const workPayload =
+          dispatch.workPayload && typeof dispatch.workPayload === 'object' && !Array.isArray(dispatch.workPayload)
+            ? dispatch.workPayload as Record<string, unknown>
+            : null;
+        const ideaSeed =
+          workPayload?.idea_seed && typeof workPayload.idea_seed === 'object' && !Array.isArray(workPayload.idea_seed)
+            ? workPayload.idea_seed as Record<string, unknown>
+            : null;
+        deepIdeaAuthorizedName =
+          typeof ideaSeed?.solution_name === 'string' ? ideaSeed.solution_name : null;
       }
     }
 
@@ -485,7 +698,25 @@ workersRouter.post('/report-ready', async (req: Request, res: Response) => {
     // decision artifact unable to reference the Deep Research recommendation.
     const normalizeName = (s: string) => s.trim().replace(/\s+/g, ' ').toLowerCase();
     let winnerUpdate: Prisma.JobUpdateInput = {};
-    if (data.winner_ref) {
+    if (job.entryMode === 'deep_idea') {
+      const selectedName = job.selectedSolutions.length === 1 ? job.selectedSolutions[0] : null;
+      if (
+        !data.winner_name
+        || !selectedName
+        || !deepIdeaAuthorizedName
+        || normalizeName(data.winner_name) !== normalizeName(selectedName)
+        || normalizeName(deepIdeaAuthorizedName) !== normalizeName(selectedName)
+      ) {
+        res.status(409).json({
+          error: 'Catalog Deep Research winner does not match its authorized seed',
+          code: 'WINNER_IDENTITY_UNRESOLVED',
+        });
+        return;
+      }
+      // Catalog seeds predate the Phase-1 candidate identity pool. Preserve the exact authorized
+      // name without inventing an idea id/revision that has no persisted candidate behind it.
+      winnerUpdate = { selectedSolution: selectedName };
+    } else if (data.winner_ref) {
       const selectedRefs = Array.isArray(job.selectedSolutionRefs)
         ? job.selectedSolutionRefs as Array<Record<string, unknown>>
         : [];
@@ -550,7 +781,9 @@ workersRouter.post('/report-ready', async (req: Request, res: Response) => {
       jobUpdate.costSummary = cost as Prisma.InputJsonValue;
     }
 
+    let isFirstDelivery: boolean;
     if (data.dispatch_id) {
+      const existingAsset = await getJobAsset(data.job_id, AssetType.REPORT_JSON);
       const resultSnapshot = {
         schemaVersion: 1,
         kind: 'deep_research_report',
@@ -559,67 +792,58 @@ workersRouter.post('/report-ready', async (req: Request, res: Response) => {
         winnerName: data.winner_name ?? null,
       };
       const resultFingerprint = canonicalJsonSha256(resultSnapshot);
-      let guarded = false;
-      try {
-        guarded = await prisma.$transaction(async tx => {
-          const updated = await tx.job.updateMany({
-            where: {
-              id: data.job_id,
-              status: JobStatus.RUNNING_PHASE2,
-              activeDispatchId: data.dispatch_id,
-            },
-            data: {
-              ...(jobUpdate as Prisma.JobUpdateManyMutationInput),
-              updatedAt: new Date(),
-            },
-          });
-          if (updated.count !== 1) throw new Error('STALE_REPORT_DISPATCH');
-          const dispatch = await tx.jobDispatch.findFirst({
-            where: {
-              id: data.dispatch_id,
-              jobId: data.job_id,
-              kind: DispatchKind.DEEP_RESEARCH,
-              state: DispatchState.CLAIMED,
-            },
-            select: { resultFingerprint: true },
-          });
-          if (
-            !dispatch
-            || (dispatch.resultFingerprint && dispatch.resultFingerprint !== resultFingerprint)
-          ) {
-            throw new Error('STALE_REPORT_DISPATCH');
-          }
-          if (!dispatch.resultFingerprint) {
-            await tx.jobDispatch.update({
-              where: { id: data.dispatch_id },
-              data: {
-                resultSnapshot: resultSnapshot as unknown as Prisma.InputJsonValue,
-                resultFingerprint,
-              },
-            });
-          }
-          return true;
-        });
-      } catch (error) {
-        if (!(error instanceof Error) || error.message !== 'STALE_REPORT_DISPATCH') throw error;
-      }
-      if (!guarded) {
+      const publication = await publishDeepResearchReport(
+        data.job_id,
+        data.dispatch_id,
+        data.report_path,
+        resultSnapshot as unknown as Prisma.InputJsonValue,
+        resultFingerprint,
+        jobUpdate as Prisma.JobUpdateManyMutationInput,
+      );
+      if (publication === 'stale') {
         res.json({ status: 'ok', stale: true, reason: 'stale_dispatch' });
         return;
       }
-    } else if (Object.keys(jobUpdate).length > 0) {
-      await prisma.job.update({ where: { id: data.job_id }, data: jobUpdate });
+      if (publication === 'idempotent') {
+        res.json({ status: 'ok', idempotent: true });
+        return;
+      }
+      isFirstDelivery = existingAsset == null;
+    } else {
+      if (Object.keys(jobUpdate).length > 0) {
+        await prisma.job.update({ where: { id: data.job_id }, data: jobUpdate });
+      }
+      const existingAsset = await getJobAsset(data.job_id, AssetType.REPORT_JSON);
+      isFirstDelivery = existingAsset == null;
+      await addJobAsset(data.job_id, AssetType.REPORT_JSON, data.report_path);
     }
 
-    // Phase 5.4 — pre-check asset existence so the user-facing notification
-    // fires exactly once even if the worker re-delivers. For dispatched work,
-    // this happens only after the exact operation has won its guarded write.
-    const existingAsset = await getJobAsset(data.job_id, AssetType.REPORT_JSON);
-    const isFirstDelivery = existingAsset == null;
-    await addJobAsset(data.job_id, AssetType.REPORT_JSON, data.report_path);
-
     const { extractOrCreateResearchContext } = await import('../services/researchContextService.js');
-    await extractOrCreateResearchContext(data.job_id, { forceRefreshAll: true });
+    try {
+      await extractOrCreateResearchContext(data.job_id, { forceRefreshAll: true });
+    } catch (contextError) {
+      // The report + exact dispatch are already durable. A projection failure must not turn that
+      // committed success into a worker failure/refund race.
+      console.error('Failed to extract report research context:', contextError);
+    }
+
+    if (data.dispatch_id) {
+      try {
+        const { getReportJsonForJob } = await import('../services/assetService.js');
+        const report = await getReportJsonForJob(data.job_id);
+        if (report) {
+          const { createReportAnalystFollowup } = await import('../services/analystFollowupService.js');
+          await createReportAnalystFollowup({
+            jobId: data.job_id,
+            operationId: data.dispatch_id,
+            niche: job.niche,
+            report,
+          });
+        }
+      } catch (followupError) {
+        console.error('[Workers] Failed to create report analyst follow-up:', followupError);
+      }
+    }
 
     if (isFirstDelivery && job?.userId) {
       const user = await prisma.user.findUnique({
@@ -634,12 +858,16 @@ workersRouter.post('/report-ready', async (req: Request, res: Response) => {
     }
 
     // Broadcast SSE event so frontend can show the report
-    broadcastProgress(data.job_id, {
-      stage: 14,
-      name: 'Report Generation',
-      status: 'completed',
-      report_path: data.report_path,
-    });
+    try {
+      broadcastProgress(data.job_id, {
+        stage: 14,
+        name: 'Report Generation',
+        status: 'completed',
+        report_path: data.report_path,
+      });
+    } catch (broadcastError) {
+      console.error('[Workers] Failed to broadcast report-ready:', broadcastError);
+    }
 
     console.log(`[Workers] Report ready for job ${data.job_id}: ${data.report_path} (firstDelivery=${isFirstDelivery})`);
     res.json({ status: 'ok' });
@@ -659,6 +887,7 @@ workersRouter.post('/report-ready', async (req: Request, res: Response) => {
 const JobFailedSchema = z.object({
   worker_id: z.string().min(1),
   job_id: z.string().uuid(),
+  dispatch_id: z.string().uuid().optional(),
   error_message: z.string(),
   error_stage: z.number().int().nullable().optional(),
   // Classified error fields for user-friendly messaging
@@ -694,6 +923,29 @@ workersRouter.post('/job-failed', async (req: Request, res: Response) => {
 
     const { prisma } = await import('../services/db.js');
 
+    // Reject a stale or identityless-modern callback before it can touch progress, refunds,
+    // notifications, or SSE. The service repeats this ownership check in its terminal CAS; this
+    // early read protects every route-level side effect that happens around that transaction.
+    const owner = await prisma.job.findUnique({
+      where: { id: data.job_id },
+      select: { activeDispatchId: true },
+    });
+    if ((owner?.activeDispatchId ?? null) !== (data.dispatch_id ?? null)) {
+      console.warn(
+        `[Workers] Ignoring stale job-failed callback for ${data.job_id}: ` +
+        `dispatch ${data.dispatch_id ?? 'missing'} (active: ${owner?.activeDispatchId ?? 'none'})`,
+      );
+      await registerWorkerHeartbeat(data.worker_id, null);
+      res.json({
+        success: true,
+        stale: true,
+        shouldCancel: true,
+        job_id: data.job_id,
+        status: 'ignored',
+      });
+      return;
+    }
+
     // Check if this is a landing-page-only failure with existing report
     const reportAsset = await getJobAsset(data.job_id, AssetType.REPORT_JSON);
     const isLandingPageFailure = data.error_stage === 15 && reportAsset;
@@ -701,46 +953,76 @@ workersRouter.post('/job-failed', async (req: Request, res: Response) => {
     let jobStatus: string;
 
     if (isLandingPageFailure) {
-      // Landing page failure only - don't fail the entire job, refund landing page credit
       console.log(`[Workers] Landing page failure for job ${data.job_id} - completing job without landing page`);
 
-      // Refund landing page credits
-      try {
-        await refundForStage(data.job_id, 'landing_page');
-      } catch (refundErr) {
-        console.error(`[Workers] Failed to refund landing page credits for job ${data.job_id}:`, refundErr);
-      }
-
-      await prisma.job.update({
-        where: { id: data.job_id },
-        data: { landingPageStatus: 'FAILED' },
-      });
-
-      // Mark stage 15 as FAILED
-      try {
-        await prisma.jobProgress.updateMany({
-          where: { jobId: data.job_id, stageNumber: 15, status: StageStatus.RUNNING },
-          data: { status: StageStatus.FAILED, errorMessage: data.error_message },
+      if (data.dispatch_id) {
+        const settled = await failLandingPageDispatch(
+          data.job_id,
+          data.dispatch_id,
+          data.error_message,
+        );
+        if (!settled) {
+          await registerWorkerHeartbeat(data.worker_id, null);
+          res.json({
+            success: true,
+            stale: true,
+            shouldCancel: true,
+            job_id: data.job_id,
+            status: 'ignored',
+          });
+          return;
+        }
+        jobStatus = JobStatus.COMPLETED;
+      } else {
+        // Rolling-deploy fallback for a genuinely legacy, identityless landing attempt.
+        try {
+          await refundForStage(data.job_id, 'landing_page');
+        } catch (refundErr) {
+          console.error(`[Workers] Failed to refund landing page credits for job ${data.job_id}:`, refundErr);
+        }
+        await prisma.job.update({
+          where: { id: data.job_id },
+          data: { landingPageStatus: 'FAILED' },
         });
-      } catch (stageErr) {
-        console.error(`[Workers] Failed to update stage 15 to FAILED:`, stageErr);
+        const completedJob = await completeJob(data.job_id, reportAsset.filePath);
+        jobStatus = completedJob?.status ?? 'COMPLETED';
       }
 
-      // Complete the job if not already completed
-      const completedJob = await completeJob(data.job_id, reportAsset.filePath);
-      jobStatus = completedJob?.status ?? 'COMPLETED';
+      if (!data.dispatch_id) {
+        try {
+          await prisma.jobProgress.updateMany({
+            where: { jobId: data.job_id, stageNumber: 15, status: StageStatus.RUNNING },
+            data: { status: StageStatus.FAILED, errorMessage: data.error_message },
+          });
+        } catch (stageErr) {
+          console.error(`[Workers] Failed to update stage 15 to FAILED:`, stageErr);
+        }
+      }
+
     } else {
       // Normal failure handling - failJob is idempotent
-      const job = await failJob(
+      const failure = await failJob(
         data.job_id,
         data.error_message,
         data.error_stage ?? undefined,
         data.stop_reason,
         data.stop_reason_details,
         data.error_code,
-        translatedErrorDetails ?? undefined
+        translatedErrorDetails ?? undefined,
+        data.dispatch_id,
       );
-      jobStatus = job?.status ?? 'unknown';
+      jobStatus = failure.job?.status ?? 'unknown';
+      if (!failure.applied) {
+        await registerWorkerHeartbeat(data.worker_id, null);
+        res.json({
+          success: true,
+          stale: true,
+          shouldCancel: true,
+          job_id: data.job_id,
+          status: jobStatus,
+        });
+        return;
+      }
 
       // Mark ALL running stages as FAILED (handles parallel stages 6 & 6.5)
       try {
@@ -854,70 +1136,165 @@ workersRouter.post('/progress', async (req: Request, res: Response) => {
     // This endpoint mutates JobProgress, which is the ledger everything else reads — including,
     // once segment billing lands, how much work a cancelled run actually consumed. A stale worker
     // writing here doesn't just add noise; it rewrites history that money depends on.
-    if (data.dispatch_id) {
-      const { prisma: progressDb } = await import('../services/db.js');
-      const owner = await progressDb.job.findUnique({
-        where: { id: data.job_id },
-        select: { activeDispatchId: true },
+    const { prisma: progressDb } = await import('../services/db.js');
+    const progressOwner = await progressDb.job.findUnique({
+      where: { id: data.job_id },
+      select: { activeDispatchId: true },
+    });
+    if (
+      progressOwner
+      && (progressOwner.activeDispatchId ?? null) !== (data.dispatch_id ?? null)
+    ) {
+      console.warn(
+        `[Workers] Ignoring progress for job ${data.job_id} from stale dispatch ${data.dispatch_id ?? 'missing'} ` +
+        `(active: ${progressOwner.activeDispatchId ?? 'none'})`
+      );
+      // shouldCancel tells the worker to stop, which is what we want: it is running work nobody
+      // is waiting for.
+      return res.json({ status: 'ok', stale: true, shouldCancel: true });
+    }
+
+    const progressDispatch = data.dispatch_id
+      ? await progressDb.jobDispatch.findUnique({
+          where: { id: data.dispatch_id },
+          select: { jobId: true, kind: true, segment: true },
+        })
+      : null;
+    const isModernLandingDispatch =
+      progressDispatch?.jobId === data.job_id
+      && progressDispatch.kind === DispatchKind.CONTINUE
+      && progressDispatch.segment === 'landing_page';
+
+    // The current landing worker reports the stage as completed once before it publishes the
+    // generated file. Acknowledge that intermediate callback without closing stage 15; the final
+    // callback below carries landing_path and owns the atomic asset + dispatch settlement.
+    if (
+      isModernLandingDispatch
+      && data.status === 'completed'
+      && !data.report_path
+      && !data.landing_path
+    ) {
+      return res.json({ status: 'ok', awaitingArtifact: true, shouldCancel: false });
+    }
+
+    // A guardrail can return no landing page, after which the worker publishes the existing
+    // report path as its final callback. That is not a paid landing-page success: settle and
+    // refund the exact attempt while preserving the already-completed research Job.
+    if (
+      isModernLandingDispatch
+      && data.status === 'completed'
+      && data.report_path
+      && !data.landing_path
+    ) {
+      const errorMessage = 'Landing page generation completed without an output file';
+      const settled = await failLandingPageDispatch(
+        data.job_id,
+        data.dispatch_id!,
+        errorMessage,
+      );
+      if (!settled) {
+        return res.json({ status: 'ok', stale: true, shouldCancel: true });
+      }
+      broadcastProgress(data.job_id, {
+        stage: 15,
+        name: 'Landing Page Generation',
+        status: 'failed',
+        error: errorMessage,
       });
-      if (owner && (owner.activeDispatchId ?? null) !== data.dispatch_id) {
-        console.warn(
-          `[Workers] Ignoring progress for job ${data.job_id} from stale dispatch ${data.dispatch_id} ` +
-          `(active: ${owner.activeDispatchId ?? 'none'})`
-        );
-        // shouldCancel tells the worker to stop, which is what we want: it is running work nobody
-        // is waiting for.
+      return res.json({ status: 'ok', shouldCancel: false, landingPageStatus: 'FAILED' });
+    }
+
+    let modernLandingCompleted = false;
+    if (isModernLandingDispatch && data.status === 'completed' && data.landing_path) {
+      modernLandingCompleted = await completeLandingPageDispatch(
+        data.job_id,
+        data.dispatch_id!,
+        data.landing_path,
+      );
+      if (!modernLandingCompleted) {
         return res.json({ status: 'ok', stale: true, shouldCancel: true });
       }
     }
 
+    // For whole-job failures, claim the terminal transition before writing JobProgress. The
+    // ownership read above is only advisory: another callback can settle the dispatch immediately
+    // after it. failJob's dispatch CAS is the authority, and a loser must leave every downstream
+    // projection untouched.
+    let failureReportAsset: Awaited<ReturnType<typeof getJobAsset>> = null;
+    let modernLandingFailed = false;
+    let terminalFailureApplied = false;
+    if (data.status === 'failed' && data.error) {
+      failureReportAsset = await getJobAsset(data.job_id, AssetType.REPORT_JSON);
+      const isLandingPageOnlyFailure = data.stage === 15 && failureReportAsset;
+      if (isLandingPageOnlyFailure && data.dispatch_id) {
+        modernLandingFailed = await failLandingPageDispatch(
+          data.job_id,
+          data.dispatch_id,
+          data.error,
+        );
+        if (!modernLandingFailed) {
+          return res.json({ status: 'ok', stale: true, shouldCancel: true });
+        }
+      } else if (!isLandingPageOnlyFailure) {
+        const failure = await failJob(
+          data.job_id,
+          data.error,
+          data.stage,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          data.dispatch_id,
+        );
+        if (!failure.applied) {
+          return res.json({ status: 'ok', stale: true, shouldCancel: true });
+        }
+        terminalFailureApplied = true;
+      }
+    }
+
     // 1. Update stage progress in database
-    await updateStageProgress(
-      data.job_id,
-      data.stage,
-      stageStatus,
-      data.error,
-      data.artifact
-    );
+    if (!modernLandingCompleted && !modernLandingFailed) {
+      const progress = await updateStageProgress(
+        data.job_id,
+        data.stage,
+        stageStatus,
+        data.error,
+        data.artifact,
+        terminalFailureApplied ? undefined : data.dispatch_id,
+      );
+      if (progress === null) {
+        return res.json({ status: 'ok', stale: true, shouldCancel: true });
+      }
+    }
 
     // Track landing page lifecycle via landingPageStatus
     if (data.stage === 15) {
       const { prisma: db } = await import('../services/db.js');
       if (data.status === 'running') {
-        // CAS: only transition QUEUED → RUNNING, also reset heartbeat so monitor
-        // doesn't immediately flag this as stale from an old pipeline heartbeat
-        await db.job.updateMany({
-          where: {
-            id: data.job_id,
-            OR: [
-              { landingPageStatus: 'QUEUED' },
-              { landingPageStatus: null },
-            ],
-          },
-          data: {
-            landingPageStatus: 'RUNNING',
-            lastHeartbeat: new Date(),
-          },
-        });
-      } else if (data.status === 'completed') {
-        // Record asset unconditionally — the file exists on disk regardless of status race
-        if (data.landing_path) {
-          await import('../services/jobService.js').then(m =>
-            m.addJobAsset(data.job_id, AssetType.LANDING_PAGE, data.landing_path!)
-          );
+        if (isModernLandingDispatch) {
+          // /job-started already claimed the exact landing dispatch and moved QUEUED -> RUNNING.
+          // Do not perform a weaker status-only write here.
+        } else {
+          // CAS: only transition QUEUED → RUNNING, also reset heartbeat so monitor
+          // doesn't immediately flag this as stale from an old pipeline heartbeat
+          await db.job.updateMany({
+            where: {
+              id: data.job_id,
+              OR: [
+                { landingPageStatus: 'QUEUED' },
+                { landingPageStatus: null },
+              ],
+            },
+            data: {
+              landingPageStatus: 'RUNNING',
+              lastHeartbeat: new Date(),
+            },
+          });
         }
-
-        // CAS: only transition RUNNING/QUEUED → COMPLETED
-        const lpResult = await db.job.updateMany({
-          where: {
-            id: data.job_id,
-            landingPageStatus: { in: ['RUNNING', 'QUEUED'] },
-          },
-          data: { landingPageStatus: 'COMPLETED' },
-        });
-
-        if (lpResult.count > 0) {
-          // Notify user landing page is ready
+      } else if (data.status === 'completed') {
+        if (modernLandingCompleted) {
+          // Asset, status, and dispatch settlement committed together above.
           const lpJob = await getJob(data.job_id);
           if (lpJob) {
             const email = await getCurrentEmailForJob(lpJob);
@@ -928,13 +1305,42 @@ workersRouter.post('/progress', async (req: Request, res: Response) => {
             }
           }
         } else {
-          console.warn(`[Workers] LP status for job ${data.job_id} already changed, skipping completion`);
+          // Record asset unconditionally — the file exists on disk regardless of status race
+          if (data.landing_path) {
+            await import('../services/jobService.js').then(m =>
+              m.addJobAsset(data.job_id, AssetType.LANDING_PAGE, data.landing_path!)
+            );
+          }
+
+          // CAS: only transition RUNNING/QUEUED → COMPLETED
+          const lpResult = await db.job.updateMany({
+            where: {
+              id: data.job_id,
+              landingPageStatus: { in: ['RUNNING', 'QUEUED'] },
+            },
+            data: { landingPageStatus: 'COMPLETED' },
+          });
+
+          if (lpResult.count > 0) {
+            // Notify user landing page is ready
+            const lpJob = await getJob(data.job_id);
+            if (lpJob) {
+              const email = await getCurrentEmailForJob(lpJob);
+              if (email) {
+                notifyLandingPageReady(lpJob.userId, email, data.job_id, lpJob.niche).catch(err => {
+                  console.error('Failed to send landing page notification:', err);
+                });
+              }
+            }
+          } else {
+            console.warn(`[Workers] LP status for job ${data.job_id} already changed, skipping completion`);
+          }
         }
       }
     }
 
     // 2. Handle job completion (report_path indicates final success)
-    if (data.status === 'completed' && data.report_path) {
+    if (data.status === 'completed' && data.report_path && !isModernLandingDispatch) {
       const { prisma: completionDb } = await import('../services/db.js');
       if (data.dispatch_id) {
         let completed = false;
@@ -1030,27 +1436,23 @@ workersRouter.post('/progress', async (req: Request, res: Response) => {
 
     // 3. Handle job failure
     if (data.status === 'failed' && data.error) {
-      // Check if this is a landing-page-only failure
-      const reportAsset = await getJobAsset(data.job_id, AssetType.REPORT_JSON);
-      if (data.stage === 15 && reportAsset) {
-        // Landing page failure - don't fail the entire job, refund landing page credit
-        const { prisma: db } = await import('../services/db.js');
-        await db.job.update({
-          where: { id: data.job_id },
-          data: { landingPageStatus: 'FAILED' },
-        });
-        // Refund landing page credits
-        try {
-          await refundForStage(data.job_id, 'landing_page');
-        } catch (refundErr) {
-          console.error(`[Workers] Failed to refund landing page credits for job ${data.job_id}:`, refundErr);
+      if (data.stage === 15 && failureReportAsset) {
+        if (!modernLandingFailed) {
+          // Rolling-deploy fallback for a genuinely legacy, identityless landing attempt.
+          const { prisma: db } = await import('../services/db.js');
+          await db.job.update({
+            where: { id: data.job_id },
+            data: { landingPageStatus: 'FAILED' },
+          });
+          try {
+            await refundForStage(data.job_id, 'landing_page');
+          } catch (refundErr) {
+            console.error(`[Workers] Failed to refund landing page credits for job ${data.job_id}:`, refundErr);
+          }
+          await completeJob(data.job_id, failureReportAsset.filePath);
         }
-        // Complete the job if not already completed
-        await completeJob(data.job_id, reportAsset.filePath);
         console.log(`[Workers] Landing page failed for job ${data.job_id} but job completed`);
       } else {
-        await failJob(data.job_id, data.error, data.stage);
-
         // Send failure notification with phase context
         const failedJob = await getJob(data.job_id);
         if (failedJob) {
@@ -1140,7 +1542,7 @@ workersRouter.post('/ideas-ready', async (req: Request, res: Response) => {
     // Continue does not end at /gate-reached — it runs on to stage 5 and terminates HERE. Guarding
     // only the two gate endpoints would have left the entire G2 continuation unprotected, which is
     // to say the busiest path in the whole flow.
-    const result = await prisma.job.updateMany({
+    const transition = {
       where: {
         id: data.job_id,
         status: JobStatus.RUNNING,
@@ -1152,19 +1554,44 @@ workersRouter.post('/ideas-ready', async (req: Request, res: Response) => {
         phase1CheckpointPath: data.checkpoint_path,
         ideasShownAt: new Date(),
         awaitingSelectionAt: new Date(),
-        // The guided continuation is over — disarm the CAS so a straggler callback for it now
-        // matches nothing.
         ...(data.dispatch_id ? { activeDispatchId: null } : {}),
         ...costData,
       },
-    });
+    };
 
-    // Close the dispatch record itself (the Job-side disarm rode the update above).
-    if (result.count > 0 && data.dispatch_id) {
-      await prisma.jobDispatch.updateMany({
-        where: { id: data.dispatch_id },
-        data: { state: DispatchState.COMPLETED, settledAt: new Date() },
-      });
+    let result: { count: number };
+    if (data.dispatch_id) {
+      try {
+        result = await prisma.$transaction(async (tx) => {
+          // Job first, matching start/cancel lock order. If the exact CLAIMED dispatch cannot
+          // close, throw so the Job transition rolls back with it; AWAITING_SELECTION must never
+          // coexist with a dangling in-flight attempt.
+          const jobResult = await tx.job.updateMany(transition);
+          if (jobResult.count === 0) return jobResult;
+          const dispatchResult = await tx.jobDispatch.updateMany({
+            where: {
+              id: data.dispatch_id,
+              jobId: data.job_id,
+              kind: DispatchKind.CONTINUE,
+              state: DispatchState.CLAIMED,
+            },
+            data: { state: DispatchState.COMPLETED, settledAt: new Date() },
+          });
+          if (dispatchResult.count !== 1) {
+            throw new Error('IDEAS_READY_DISPATCH_CONFLICT');
+          }
+          return jobResult;
+        });
+      } catch (error) {
+        if (!(error instanceof Error) || error.message !== 'IDEAS_READY_DISPATCH_CONFLICT') {
+          throw error;
+        }
+        result = { count: 0 };
+      }
+    } else {
+      // Legacy queue messages have no dispatch row to close, but remain fenced to jobs whose
+      // activeDispatchId is also null by dispatchGuard(undefined).
+      result = await prisma.job.updateMany(transition);
     }
 
     if (result.count === 0) {
@@ -1174,16 +1601,38 @@ workersRouter.post('/ideas-ready', async (req: Request, res: Response) => {
       // discarding a completed run's ideas.
       const job = await prisma.job.findUnique({
         where: { id: data.job_id },
-        select: { status: true, ideasShownAt: true },
+        select: { status: true, ideasShownAt: true, activeDispatchId: true },
       });
       if (!job) {
         res.status(404).json({ error: 'Job not found' });
         return;
       }
-      if (job.status === JobStatus.AWAITING_SELECTION || job.ideasShownAt !== null) {
+      const dispatch = data.dispatch_id
+        ? await prisma.jobDispatch.findUnique({
+            where: { id: data.dispatch_id },
+            select: { jobId: true, kind: true, state: true },
+          })
+        : null;
+      const exactDispatchCompleted =
+        dispatch?.jobId === data.job_id
+        && dispatch.kind === DispatchKind.CONTINUE
+        && dispatch.state === DispatchState.COMPLETED;
+      if (
+        (!data.dispatch_id && (job.status === JobStatus.AWAITING_SELECTION || job.ideasShownAt !== null))
+        || (
+          data.dispatch_id
+          && exactDispatchCompleted
+          && job.status === JobStatus.AWAITING_SELECTION
+          && job.ideasShownAt !== null
+        )
+      ) {
         // A previous attempt landed and the response was lost — idempotent success.
         // Skip re-broadcast/notify: the first delivery already did both.
         res.json({ status: 'ok', idempotent: true });
+        return;
+      }
+      if (data.dispatch_id && job.activeDispatchId !== data.dispatch_id) {
+        res.json({ status: 'ok', stale: true, shouldCancel: true });
         return;
       }
       res.status(409).json({
@@ -1846,6 +2295,7 @@ workersRouter.post('/seed-failed', async (req: Request, res: Response) => {
       });
       if (reverted.count === 0) return { count: 0 };
 
+      let refund: Awaited<ReturnType<typeof refundChargeInTx>> = null;
       if (data.dispatch_id) {
         await settleDispatch(tx, data.dispatch_id, DispatchState.FAILED, 'SYSTEM_FAULT');
 
@@ -1866,8 +2316,25 @@ workersRouter.post('/seed-failed', async (req: Request, res: Response) => {
             },
           });
         }
+
+        refund = dispatch?.chargeId
+          ? await refundChargeInTx(tx, dispatch.chargeId)
+          : dispatch?.seedOrdinal != null
+            ? await refundForStageInTx(tx, data.job_id, `seed_idea_${dispatch.seedOrdinal}`)
+            : null;
+        if (refund) {
+          await tx.jobDispatch.updateMany({
+            where: { id: data.dispatch_id, state: DispatchState.FAILED },
+            data: {
+              state: DispatchState.REFUNDED,
+              refundTransactionId: refund.id,
+              refundedAt: new Date(),
+              refundedAmount: refund.amount,
+            },
+          });
+        }
       }
-      return { count: reverted.count };
+      return { count: reverted.count, refund };
     });
 
     if (result.count === 0) {
@@ -1891,27 +2358,10 @@ workersRouter.post('/seed-failed', async (req: Request, res: Response) => {
       return;
     }
 
-    // The birth produced nothing — refund the numbered seed_idea_N charge. Promotes the
-    // dispatch FAILED -> REFUNDED once the credit is actually back (mirrors /gate-failed's
-    // own two-step settle: settleDispatch above records WHY it ended, this records that the
-    // money came back — the same distinction JobDispatch.state's own doc comment describes).
-    if (dispatch?.seedOrdinal != null) {
-      try {
-        const refund = await refundForSeedIdeaStage(data.job_id, dispatch.seedOrdinal);
-        if (refund) {
-          console.log(
-            `[Workers] Refunded ${Math.abs(refund.amount)} credits for job ${data.job_id} — seed idea failed`
-          );
-          if (data.dispatch_id) {
-            await prisma.jobDispatch.updateMany({
-              where: { id: data.dispatch_id },
-              data: { state: DispatchState.REFUNDED },
-            });
-          }
-        }
-      } catch (refundErr) {
-        console.error(`[Workers] Failed to refund seed idea credits for job ${data.job_id}:`, refundErr);
-      }
+    if (result.refund) {
+      console.log(
+        `[Workers] Refunded ${Math.abs(result.refund.amount)} credits for job ${data.job_id} — seed idea failed`
+      );
     }
 
     // Clear worker's current job
@@ -2152,6 +2602,21 @@ workersRouter.post('/gate-failed', async (req: Request, res: Response) => {
     // stage runs and was never restored, so five infrastructure failures permanently burned a
     // user's five applies without a single successful change. The budget means SUCCESSFUL applies.
     const failedApply = dispatch?.kind === 'APPLY_STAY';
+    const refundableSegment =
+      data.failure_kind === 'SYSTEM_FAULT'
+      && dispatch?.segment
+      && isGuidedSegment(dispatch.segment)
+        ? dispatch.segment
+        : null;
+    if (
+      data.failure_kind === 'SYSTEM_FAULT'
+      && dispatch?.segment
+      && !refundableSegment
+    ) {
+      console.warn(
+        `[Workers] Dispatch ${dispatch.id} has unrecognised segment '${dispatch.segment}' — skipping refund`
+      );
+    }
 
     // Revert + settle in one transaction, so the job cannot land back at the gate with its budget
     // still spent and a receipt still claiming a change is pending.
@@ -2191,46 +2656,35 @@ workersRouter.post('/gate-failed', async (req: Request, res: Response) => {
         }
       }
 
+      let refund: Awaited<ReturnType<typeof refundChargeInTx>> = null;
       if (data.dispatch_id) {
         await settleDispatch(tx, data.dispatch_id, DispatchState.FAILED, data.failure_kind);
-      }
-
-      return { count: reverted.count };
-    });
-
-    // Give the segment back when WE broke it — and only then.
-    //
-    // This has to happen here, not in failJob: an ordinary continuation failure never reaches
-    // failJob at all (the worker routes it to /gate-failed, which just puts the job back at its
-    // gate). A refund promise that lived only in failJob would be one the code never keeps.
-    //
-    // A rejected user patch is NOT a system fault and gets nothing back — otherwise "submit a
-    // deliberately invalid patch, collect a refund, repeat" is free research.
-    if (
-      result.count > 0 &&
-      dispatch?.segment &&
-      dispatch.chargeId &&
-      data.failure_kind === 'SYSTEM_FAULT'
-    ) {
-      if (!isGuidedSegment(dispatch.segment)) {
-        console.warn(`[Workers] Dispatch ${dispatch.id} has unrecognised segment '${dispatch.segment}' — skipping refund`);
-      } else {
-        try {
-          const refund = await refundForStage(data.job_id, dispatch.segment);
+        if (refundableSegment) {
+          refund = dispatch?.chargeId
+            ? await refundChargeInTx(tx, dispatch.chargeId)
+            : await refundForStageInTx(tx, data.job_id, refundableSegment);
           if (refund) {
-            console.log(
-              `[Workers] Refunded ${Math.abs(refund.amount)} credits for job ${data.job_id} — ` +
-              `system fault on segment ${dispatch.segment}`
-            );
-            await prisma.jobDispatch.updateMany({
-              where: { id: dispatch.id },
-              data: { state: DispatchState.REFUNDED },
+            await tx.jobDispatch.updateMany({
+              where: { id: data.dispatch_id, state: DispatchState.FAILED },
+              data: {
+                state: DispatchState.REFUNDED,
+                refundTransactionId: refund.id,
+                refundedAt: new Date(),
+                refundedAmount: refund.amount,
+              },
             });
           }
-        } catch (refundErr) {
-          console.error(`[Workers] Failed to refund segment for job ${data.job_id}:`, refundErr);
         }
       }
+
+      return { count: reverted.count, refund };
+    });
+
+    if (result.refund && refundableSegment) {
+      console.log(
+        `[Workers] Refunded ${Math.abs(result.refund.amount)} credits for job ${data.job_id} — ` +
+        `system fault on segment ${refundableSegment}`
+      );
     }
 
     if (result.count === 0) {

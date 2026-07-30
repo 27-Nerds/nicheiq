@@ -9,6 +9,7 @@ const mockUpdateMany = vi.fn();
 const mockJobFindUnique = vi.fn();
 const mockJobUpdate = vi.fn();
 const mockJobUpdateMany = vi.fn();
+const mockJobDispatchFindUnique = vi.fn();
 const mockUserFindUnique = vi.fn();
 
 vi.mock('../../services/db.js', () => ({
@@ -18,6 +19,9 @@ vi.mock('../../services/db.js', () => ({
       findUnique: (...args: any[]) => mockJobFindUnique(...args),
       update: (...args: any[]) => mockJobUpdate(...args),
       updateMany: (...args: any[]) => mockJobUpdateMany(...args),
+    },
+    jobDispatch: {
+      findUnique: (...args: any[]) => mockJobDispatchFindUnique(...args),
     },
     user: { findUnique: (...args: any[]) => mockUserFindUnique(...args) },
   },
@@ -43,6 +47,20 @@ const mockBroadcastProgress = vi.fn();
 
 vi.mock('../../services/progressBroadcastService.js', () => ({
   broadcastProgress: (...args: any[]) => mockBroadcastProgress(...args),
+}));
+
+const mockCompleteLandingPageDispatch = vi.fn();
+const mockFailLandingPageDispatch = vi.fn();
+
+vi.mock('../../services/dispatchService.js', () => ({
+  dispatchGuard: (dispatchId?: string | null) =>
+    dispatchId ? { activeDispatchId: dispatchId } : { activeDispatchId: null },
+  diagnoseGuardMiss: vi.fn().mockResolvedValue('status'),
+  startDispatchedJob: vi.fn(),
+  startLandingPageDispatch: vi.fn(),
+  settleDispatch: vi.fn(),
+  completeLandingPageDispatch: (...args: any[]) => mockCompleteLandingPageDispatch(...args),
+  failLandingPageDispatch: (...args: any[]) => mockFailLandingPageDispatch(...args),
 }));
 
 vi.mock('../../middleware/auth.js', () => ({
@@ -102,13 +120,19 @@ const REPORT_ASSET = { filePath: 'outputs/job-1/report.json' };
 beforeEach(async () => {
   vi.clearAllMocks();
 
-  mockFailJob.mockResolvedValue({ id: JOB_ID, status: 'FAILED' });
+  mockFailJob.mockResolvedValue({
+    applied: true,
+    job: { id: JOB_ID, status: 'FAILED' },
+  });
   mockCompleteJob.mockResolvedValue({ id: JOB_ID, status: 'COMPLETED' });
   mockUpdateMany.mockResolvedValue({ count: 1 });
   mockJobUpdate.mockResolvedValue({ id: JOB_ID });
   mockJobUpdateMany.mockResolvedValue({ count: 1 });
   mockJobFindUnique.mockResolvedValue({ status: 'RUNNING' });
+  mockJobDispatchFindUnique.mockResolvedValue(null);
   mockUpdateStageProgress.mockResolvedValue({});
+  mockCompleteLandingPageDispatch.mockResolvedValue(true);
+  mockFailLandingPageDispatch.mockResolvedValue(true);
 
   app = express();
   app.use(express.json());
@@ -216,6 +240,47 @@ describe('POST /api/workers/job-failed — landing page isolation', () => {
     expect(mockFailJob).toHaveBeenCalled();
     expect(mockCompleteJob).not.toHaveBeenCalled();
   });
+
+  it('modern landing failure settles the exact dispatch and keeps the parent Job COMPLETED', async () => {
+    const dispatchId = '00000000-0000-4000-8000-000000000015';
+    mockJobFindUnique.mockResolvedValue({
+      status: 'COMPLETED',
+      activeDispatchId: dispatchId,
+    });
+    mockGetJobAsset.mockResolvedValue(REPORT_ASSET);
+
+    const res = await request(app)
+      .post('/api/workers/job-failed')
+      .send({ ...baseLandingFailPayload, dispatch_id: dispatchId });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('COMPLETED');
+    expect(mockFailLandingPageDispatch).toHaveBeenCalledWith(
+      JOB_ID,
+      dispatchId,
+      baseLandingFailPayload.error_message,
+    );
+    expect(mockCompleteJob).not.toHaveBeenCalled();
+    expect(mockJobUpdate).not.toHaveBeenCalled();
+  });
+
+  it('duplicate modern landing failure is stale and emits no second projection', async () => {
+    const dispatchId = '00000000-0000-4000-8000-000000000015';
+    mockJobFindUnique.mockResolvedValue({
+      status: 'COMPLETED',
+      activeDispatchId: dispatchId,
+    });
+    mockGetJobAsset.mockResolvedValue(REPORT_ASSET);
+    mockFailLandingPageDispatch.mockResolvedValue(false);
+
+    const res = await request(app)
+      .post('/api/workers/job-failed')
+      .send({ ...baseLandingFailPayload, dispatch_id: dispatchId });
+
+    expect(res.body).toMatchObject({ stale: true, shouldCancel: true });
+    expect(mockUpdateMany).not.toHaveBeenCalled();
+    expect(mockBroadcastProgress).not.toHaveBeenCalled();
+  });
 });
 
 // ============================================
@@ -262,8 +327,136 @@ describe('POST /api/workers/progress — landing page isolation', () => {
       .send(baseProgressPayload);
 
     expect(res.status).toBe(200);
-    expect(mockFailJob).toHaveBeenCalledWith(JOB_ID, baseProgressPayload.error, 15);
+    expect(mockFailJob).toHaveBeenCalledWith(
+      JOB_ID,
+      baseProgressPayload.error,
+      15,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    );
     expect(mockCompleteJob).not.toHaveBeenCalled();
+  });
+
+  it('passes progress.dispatch_id into exact whole-job failure settlement', async () => {
+    const dispatchId = '00000000-0000-4000-8000-000000000010';
+    mockJobFindUnique.mockResolvedValue({ status: 'RUNNING_PHASE2', activeDispatchId: dispatchId });
+    mockGetJobAsset.mockResolvedValue(null);
+    mockGetJob.mockResolvedValue(null);
+
+    const res = await request(app)
+      .post('/api/workers/progress')
+      .send({
+        worker_id: 'worker-1',
+        job_id: JOB_ID,
+        stage: 6,
+        name: 'SEO & Keyword Strategy',
+        status: 'failed',
+        error: 'phase 2 failed',
+        dispatch_id: dispatchId,
+      });
+
+    expect(res.status).toBe(200);
+    expect(mockFailJob).toHaveBeenCalledWith(
+      JOB_ID,
+      'phase 2 failed',
+      6,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      dispatchId,
+    );
+  });
+
+  it('stops progress failure side effects when the settlement CAS reports a stale attempt', async () => {
+    const dispatchId = '00000000-0000-4000-8000-000000000010';
+    mockJobFindUnique.mockResolvedValue({ status: 'RUNNING_PHASE2', activeDispatchId: dispatchId });
+    mockGetJobAsset.mockResolvedValue(null);
+    mockFailJob.mockResolvedValue({
+      applied: false,
+      job: {
+        id: JOB_ID,
+        status: 'RUNNING_PHASE2',
+        activeDispatchId: 'newer-dispatch',
+      },
+    });
+
+    const res = await request(app)
+      .post('/api/workers/progress')
+      .send({
+        worker_id: 'worker-1',
+        job_id: JOB_ID,
+        stage: 6,
+        name: 'SEO & Keyword Strategy',
+        status: 'failed',
+        error: 'late failure',
+        dispatch_id: dispatchId,
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ stale: true, shouldCancel: true });
+    expect(mockUpdateStageProgress).not.toHaveBeenCalled();
+    expect(mockBroadcastProgress).not.toHaveBeenCalled();
+    expect(mockGetJob).not.toHaveBeenCalled();
+  });
+
+  it('rejects identityless progress before writing over a modern active dispatch', async () => {
+    mockJobFindUnique.mockResolvedValue({
+      status: 'RUNNING_PHASE2',
+      activeDispatchId: '00000000-0000-4000-8000-000000000010',
+    });
+
+    const res = await request(app)
+      .post('/api/workers/progress')
+      .send({
+        worker_id: 'worker-1',
+        job_id: JOB_ID,
+        stage: 6,
+        name: 'SEO & Keyword Strategy',
+        status: 'failed',
+        error: 'identityless late failure',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ stale: true, shouldCancel: true });
+    expect(mockFailJob).not.toHaveBeenCalled();
+    expect(mockUpdateStageProgress).not.toHaveBeenCalled();
+    expect(mockBroadcastProgress).not.toHaveBeenCalled();
+  });
+
+  it('suppresses progress when ownership changes after the advisory read but before the write fence', async () => {
+    const dispatchId = '00000000-0000-4000-8000-000000000010';
+    mockJobFindUnique.mockResolvedValue({
+      status: 'RUNNING_PHASE2',
+      activeDispatchId: dispatchId,
+    });
+    mockUpdateStageProgress.mockResolvedValue(null);
+
+    const res = await request(app)
+      .post('/api/workers/progress')
+      .send({
+        worker_id: 'worker-1',
+        job_id: JOB_ID,
+        stage: 6,
+        name: 'SEO & Keyword Strategy',
+        status: 'running',
+        dispatch_id: dispatchId,
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ stale: true, shouldCancel: true });
+    expect(mockUpdateStageProgress).toHaveBeenCalledWith(
+      JOB_ID,
+      6,
+      'RUNNING',
+      undefined,
+      undefined,
+      dispatchId,
+    );
+    expect(mockBroadcastProgress).not.toHaveBeenCalled();
   });
 
   it('stage=15, status=running → sets landingPageStatus=RUNNING via CAS updateMany', async () => {
@@ -313,5 +506,205 @@ describe('POST /api/workers/progress — landing page isolation', () => {
         data: { landingPageStatus: 'COMPLETED' },
       })
     );
+  });
+
+  it('modern landing completion settles the dispatch before projecting progress', async () => {
+    const dispatchId = '00000000-0000-4000-8000-000000000015';
+    const landingPath = 'outputs/job-1/landing.html';
+    mockJobFindUnique.mockResolvedValue({
+      status: 'COMPLETED',
+      activeDispatchId: dispatchId,
+    });
+    mockJobDispatchFindUnique.mockResolvedValue({
+      jobId: JOB_ID,
+      kind: 'CONTINUE',
+      segment: 'landing_page',
+    });
+    mockGetJob.mockResolvedValue(null);
+
+    const res = await request(app)
+      .post('/api/workers/progress')
+      .send({
+        worker_id: 'worker-1',
+        job_id: JOB_ID,
+        dispatch_id: dispatchId,
+        stage: 15,
+        name: 'Landing Page Generation',
+        status: 'completed',
+        landing_path: landingPath,
+      });
+
+    expect(res.status).toBe(200);
+    expect(mockCompleteLandingPageDispatch).toHaveBeenCalledWith(
+      JOB_ID,
+      dispatchId,
+      landingPath,
+    );
+    expect(mockUpdateStageProgress).not.toHaveBeenCalled();
+    expect(mockAddJobAsset).not.toHaveBeenCalled();
+    expect(mockJobUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it('duplicate modern landing completion is stale and sends no second notification or progress', async () => {
+    const dispatchId = '00000000-0000-4000-8000-000000000015';
+    mockJobFindUnique.mockResolvedValue({
+      status: 'COMPLETED',
+      activeDispatchId: dispatchId,
+    });
+    mockJobDispatchFindUnique.mockResolvedValue({
+      jobId: JOB_ID,
+      kind: 'CONTINUE',
+      segment: 'landing_page',
+    });
+    mockCompleteLandingPageDispatch.mockResolvedValue(false);
+
+    const res = await request(app)
+      .post('/api/workers/progress')
+      .send({
+        worker_id: 'worker-1',
+        job_id: JOB_ID,
+        dispatch_id: dispatchId,
+        stage: 15,
+        name: 'Landing Page Generation',
+        status: 'completed',
+        landing_path: 'outputs/job-1/landing.html',
+      });
+
+    expect(res.body).toMatchObject({ stale: true, shouldCancel: true });
+    expect(mockUpdateStageProgress).not.toHaveBeenCalled();
+    expect(mockBroadcastProgress).not.toHaveBeenCalled();
+  });
+
+  it('modern landing progress failure exact-settles without completing or failing the parent Job', async () => {
+    const dispatchId = '00000000-0000-4000-8000-000000000015';
+    mockJobFindUnique.mockResolvedValue({
+      status: 'COMPLETED',
+      activeDispatchId: dispatchId,
+    });
+    mockGetJobAsset.mockResolvedValue(REPORT_ASSET);
+
+    const res = await request(app)
+      .post('/api/workers/progress')
+      .send({ ...baseProgressPayload, dispatch_id: dispatchId });
+
+    expect(res.status).toBe(200);
+    expect(mockFailLandingPageDispatch).toHaveBeenCalledWith(
+      JOB_ID,
+      dispatchId,
+      baseProgressPayload.error,
+    );
+    expect(mockFailJob).not.toHaveBeenCalled();
+    expect(mockCompleteJob).not.toHaveBeenCalled();
+    expect(mockJobUpdate).not.toHaveBeenCalled();
+  });
+
+  it('acknowledges the worker intermediate completion until the landing artifact arrives', async () => {
+    const dispatchId = '00000000-0000-4000-8000-000000000015';
+    mockJobFindUnique.mockResolvedValue({
+      status: 'COMPLETED',
+      activeDispatchId: dispatchId,
+    });
+    mockJobDispatchFindUnique.mockResolvedValue({
+      jobId: JOB_ID,
+      kind: 'CONTINUE',
+      segment: 'landing_page',
+    });
+
+    const res = await request(app)
+      .post('/api/workers/progress')
+      .send({
+        worker_id: 'worker-1',
+        job_id: JOB_ID,
+        dispatch_id: dispatchId,
+        stage: 15,
+        name: 'Landing Page Generation',
+        status: 'completed',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ awaitingArtifact: true, shouldCancel: false });
+    expect(mockCompleteLandingPageDispatch).not.toHaveBeenCalled();
+    expect(mockUpdateStageProgress).not.toHaveBeenCalled();
+    expect(mockBroadcastProgress).not.toHaveBeenCalled();
+  });
+
+  it('handles the real final worker payload as landing settlement, not whole-job completion', async () => {
+    const dispatchId = '00000000-0000-4000-8000-000000000015';
+    const landingPath = 'outputs/job-1/landing.html';
+    mockJobFindUnique.mockResolvedValue({
+      status: 'COMPLETED',
+      activeDispatchId: dispatchId,
+    });
+    mockJobDispatchFindUnique.mockResolvedValue({
+      jobId: JOB_ID,
+      kind: 'CONTINUE',
+      segment: 'landing_page',
+    });
+    mockGetJob.mockResolvedValue(null);
+
+    const res = await request(app)
+      .post('/api/workers/progress')
+      .send({
+        worker_id: 'worker-1',
+        job_id: JOB_ID,
+        dispatch_id: dispatchId,
+        stage: 15,
+        name: 'Completed',
+        status: 'completed',
+        report_path: REPORT_ASSET.filePath,
+        landing_path: landingPath,
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.stale).not.toBe(true);
+    expect(mockCompleteLandingPageDispatch).toHaveBeenCalledWith(
+      JOB_ID,
+      dispatchId,
+      landingPath,
+    );
+    expect(mockCompleteJob).not.toHaveBeenCalled();
+  });
+
+  it('refunds a landing dispatch whose final worker callback has no output file', async () => {
+    const dispatchId = '00000000-0000-4000-8000-000000000015';
+    mockJobFindUnique.mockResolvedValue({
+      status: 'COMPLETED',
+      activeDispatchId: dispatchId,
+    });
+    mockJobDispatchFindUnique.mockResolvedValue({
+      jobId: JOB_ID,
+      kind: 'CONTINUE',
+      segment: 'landing_page',
+    });
+
+    const res = await request(app)
+      .post('/api/workers/progress')
+      .send({
+        worker_id: 'worker-1',
+        job_id: JOB_ID,
+        dispatch_id: dispatchId,
+        stage: 14,
+        name: 'Completed',
+        status: 'completed',
+        report_path: REPORT_ASSET.filePath,
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      shouldCancel: false,
+      landingPageStatus: 'FAILED',
+    });
+    expect(mockFailLandingPageDispatch).toHaveBeenCalledWith(
+      JOB_ID,
+      dispatchId,
+      'Landing page generation completed without an output file',
+    );
+    expect(mockCompleteJob).not.toHaveBeenCalled();
+    expect(mockBroadcastProgress).toHaveBeenCalledWith(JOB_ID, {
+      stage: 15,
+      name: 'Landing Page Generation',
+      status: 'failed',
+      error: 'Landing page generation completed without an output file',
+    });
   });
 });

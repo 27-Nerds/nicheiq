@@ -23,8 +23,12 @@ vi.mock('../db.js', () => ({
 }));
 
 vi.mock('../creditService.js', () => ({
+  refundChargeInTx: vi.fn(),
   refundForStage: vi.fn().mockResolvedValue(null),
+  refundForStageInTx: vi.fn(),
   refundForRegenerationStage: vi.fn().mockResolvedValue(null),
+  refundForSeedIdeaStage: vi.fn(),
+  isGuidedSegment: vi.fn(),
   determineFailedStage: vi.fn().mockReturnValue('discovery'),
 }));
 
@@ -44,7 +48,7 @@ describe('failJob — AWAITING_GATE is a valid pre-fail state', () => {
 
     const result = await failJob('job-1', 'worker crashed mid gate-continuation');
 
-    expect(result).not.toBeNull();
+    expect(result.applied).toBe(true);
     // The write is now a CAS: it may only fail a job that is still in a valid pre-fail state, so
     // a cancel that landed first wins and this matches nothing.
     expect(mockJobUpdateMany).toHaveBeenCalledWith(
@@ -63,7 +67,7 @@ describe('failJob — AWAITING_GATE is a valid pre-fail state', () => {
 
     const result = await failJob('job-1', 'should not apply');
 
-    expect(result).toBeNull();
+    expect(result.applied).toBe(false);
     expect(mockJobUpdate).not.toHaveBeenCalled();
   });
 });

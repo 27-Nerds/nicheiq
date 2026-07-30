@@ -7,24 +7,39 @@ import request from 'supertest';
 // ============================================
 const mockUpdateMany = vi.fn();
 const mockJobFindUnique = vi.fn();
+const mockDispatchFindFirst = vi.fn();
 const mockUserFindUnique = vi.fn();
 
 vi.mock('../../services/db.js', () => ({
   prisma: {
     jobProgress: { updateMany: (...args: any[]) => mockUpdateMany(...args) },
     job: { findUnique: (...args: any[]) => mockJobFindUnique(...args) },
+    jobDispatch: { findFirst: (...args: any[]) => mockDispatchFindFirst(...args) },
     user: { findUnique: (...args: any[]) => mockUserFindUnique(...args) },
   },
 }));
 
 const mockFailJob = vi.fn();
+const mockCancelRegenerationDispatch = vi.fn();
+const mockCancelSeedIdeaDispatch = vi.fn();
+const mockFailLandingPageDispatch = vi.fn();
 
 vi.mock('../../services/jobService.js', () => ({
   failJob: (...args: any[]) => mockFailJob(...args),
+  cancelRegenerationDispatch: (...args: any[]) => mockCancelRegenerationDispatch(...args),
+  cancelSeedIdeaDispatch: (...args: any[]) => mockCancelSeedIdeaDispatch(...args),
   updateStageProgress: vi.fn(),
   completeJob: vi.fn(),
   getJob: vi.fn(),
 }));
+
+vi.mock('../../services/dispatchService.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../services/dispatchService.js')>();
+  return {
+    ...actual,
+    failLandingPageDispatch: (...args: any[]) => mockFailLandingPageDispatch(...args),
+  };
+});
 
 const mockBroadcastProgress = vi.fn();
 
@@ -85,7 +100,14 @@ beforeEach(async () => {
   vi.clearAllMocks();
 
   mockMarkWorkerShutdown.mockResolvedValue(undefined);
-  mockFailJob.mockResolvedValue({ id: 'job-1', status: 'FAILED' });
+  mockFailJob.mockResolvedValue({
+    applied: true,
+    job: { id: 'job-1', status: 'FAILED' },
+  });
+  mockCancelRegenerationDispatch.mockResolvedValue({ cancelled: true, creditRefunded: 3 });
+  mockCancelSeedIdeaDispatch.mockResolvedValue({ cancelled: true, creditRefunded: 2 });
+  mockFailLandingPageDispatch.mockResolvedValue(true);
+  mockDispatchFindFirst.mockResolvedValue(null);
   mockUpdateMany.mockResolvedValue({ count: 1 });
   mockUserFindUnique.mockResolvedValue(null);
 
@@ -137,7 +159,7 @@ describe('POST /api/workers/shutdown - stage marking', () => {
     const callOrder: string[] = [];
     mockFailJob.mockImplementation(async () => {
       callOrder.push('failJob');
-      return { id: jobId, status: 'FAILED' };
+      return { applied: true, job: { id: jobId, status: 'FAILED' } };
     });
     mockUpdateMany.mockImplementation(async () => {
       callOrder.push('updateMany');
@@ -187,5 +209,265 @@ describe('POST /api/workers/shutdown - stage marking', () => {
 
     expect(mockUpdateMany).not.toHaveBeenCalled();
     expect(mockFailJob).not.toHaveBeenCalled();
+  });
+
+  it('passes a Phase-2 shutdown dispatch identity into exact failure settlement', async () => {
+    const jobId = '00000000-0000-0000-0000-000000000001';
+    const dispatchId = '00000000-0000-4000-8000-000000000010';
+    mockJobFindUnique.mockResolvedValue({
+      status: 'RUNNING_PHASE2',
+      niche: 'test niche',
+      userId: null,
+      activeDispatchId: dispatchId,
+    });
+
+    await request(app)
+      .post('/api/workers/shutdown')
+      .send({
+        worker_id: 'worker-1',
+        job_id: jobId,
+        reason: 'SIGTERM',
+        dispatch_id: dispatchId,
+      });
+
+    expect(mockFailJob).toHaveBeenCalledWith(
+      jobId,
+      expect.stringContaining('Worker shutdown'),
+      undefined,
+      undefined,
+      undefined,
+      'WORKER_CRASH',
+      undefined,
+      dispatchId,
+    );
+  });
+
+  it('settles a regeneration shutdown without failing the parent selection job', async () => {
+    const jobId = '00000000-0000-0000-0000-000000000001';
+    const dispatchId = '00000000-0000-4000-8000-000000000010';
+    mockJobFindUnique.mockResolvedValue({
+      status: 'REGENERATING',
+      niche: 'test niche',
+      userId: null,
+      activeDispatchId: dispatchId,
+    });
+    mockDispatchFindFirst.mockResolvedValue({
+      id: dispatchId,
+      kind: 'REGENERATE',
+      segment: 'regenerate_ideas_2',
+      chargeId: 'charge-regen-2',
+      seedOrdinal: null,
+      sourceMessageId: null,
+    });
+
+    const response = await request(app)
+      .post('/api/workers/shutdown')
+      .send({
+        worker_id: 'worker-1',
+        job_id: jobId,
+        reason: 'SIGTERM',
+        dispatch_id: dispatchId,
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.stale).toBeUndefined();
+    expect(mockCancelRegenerationDispatch).toHaveBeenCalledWith(
+      jobId,
+      {
+        id: dispatchId,
+        segment: 'regenerate_ideas_2',
+        chargeId: 'charge-regen-2',
+      },
+      'REGENERATING',
+      'WORKER_CRASH',
+    );
+    expect(mockFailJob).not.toHaveBeenCalled();
+    expect(mockUpdateMany).not.toHaveBeenCalled();
+    expect(mockBroadcastProgress).not.toHaveBeenCalled();
+  });
+
+  it('settles a seed shutdown without failing the parent selection job', async () => {
+    const jobId = '00000000-0000-0000-0000-000000000001';
+    const dispatchId = '00000000-0000-4000-8000-000000000010';
+    mockJobFindUnique.mockResolvedValue({
+      status: 'RUNNING',
+      niche: 'test niche',
+      userId: null,
+      activeDispatchId: dispatchId,
+    });
+    mockDispatchFindFirst.mockResolvedValue({
+      id: dispatchId,
+      kind: 'SEED_IDEA',
+      segment: null,
+      chargeId: 'charge-seed-3',
+      seedOrdinal: 3,
+      sourceMessageId: 'message-3',
+    });
+
+    const response = await request(app)
+      .post('/api/workers/shutdown')
+      .send({
+        worker_id: 'worker-1',
+        job_id: jobId,
+        reason: 'SIGTERM',
+        dispatch_id: dispatchId,
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.stale).toBeUndefined();
+    expect(mockCancelSeedIdeaDispatch).toHaveBeenCalledWith(
+      jobId,
+      {
+        id: dispatchId,
+        seedOrdinal: 3,
+        sourceMessageId: 'message-3',
+        chargeId: 'charge-seed-3',
+      },
+      'RUNNING',
+      'WORKER_CRASH',
+    );
+    expect(mockFailJob).not.toHaveBeenCalled();
+    expect(mockUpdateMany).not.toHaveBeenCalled();
+    expect(mockBroadcastProgress).not.toHaveBeenCalled();
+  });
+
+  it('settles an active landing shutdown without failing the completed parent job', async () => {
+    const jobId = '00000000-0000-0000-0000-000000000001';
+    const dispatchId = '00000000-0000-4000-8000-000000000010';
+    mockJobFindUnique.mockResolvedValue({
+      status: 'COMPLETED',
+      niche: 'test niche',
+      userId: null,
+      activeDispatchId: dispatchId,
+      landingPageStatus: 'RUNNING',
+    });
+    mockDispatchFindFirst.mockResolvedValue({
+      id: dispatchId,
+      kind: 'CONTINUE',
+      segment: 'landing_page',
+      chargeId: 'charge-landing',
+      seedOrdinal: null,
+      sourceMessageId: null,
+    });
+
+    const response = await request(app)
+      .post('/api/workers/shutdown')
+      .send({
+        worker_id: 'worker-1',
+        job_id: jobId,
+        reason: 'SIGTERM',
+        dispatch_id: dispatchId,
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.stale).toBeUndefined();
+    expect(mockFailLandingPageDispatch).toHaveBeenCalledWith(
+      jobId,
+      dispatchId,
+      'Worker shutdown during landing page generation: SIGTERM.',
+    );
+    expect(mockFailJob).not.toHaveBeenCalled();
+    expect(mockUpdateMany).not.toHaveBeenCalled();
+    expect(mockBroadcastProgress).toHaveBeenCalledWith(jobId, {
+      stage: 15,
+      name: 'Landing Page Generation',
+      status: 'failed',
+      error: expect.stringContaining('Worker shutdown during landing page generation'),
+    });
+  });
+
+  it('treats a duplicate regeneration shutdown as stale without failing the parent', async () => {
+    const jobId = '00000000-0000-0000-0000-000000000001';
+    const dispatchId = '00000000-0000-4000-8000-000000000010';
+    mockJobFindUnique.mockResolvedValue({
+      status: 'REGENERATING',
+      niche: 'test niche',
+      userId: null,
+      activeDispatchId: dispatchId,
+    });
+    mockDispatchFindFirst.mockResolvedValue({
+      id: dispatchId,
+      kind: 'REGENERATE',
+      segment: 'regenerate_ideas_2',
+      chargeId: 'charge-regen-2',
+      seedOrdinal: null,
+      sourceMessageId: null,
+    });
+    mockCancelRegenerationDispatch.mockResolvedValue({
+      cancelled: false,
+      reason: 'not_cancellable',
+      status: 'AWAITING_SELECTION',
+    });
+
+    const response = await request(app)
+      .post('/api/workers/shutdown')
+      .send({
+        worker_id: 'worker-1',
+        job_id: jobId,
+        reason: 'SIGTERM',
+        dispatch_id: dispatchId,
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.stale).toBe(true);
+    expect(mockFailJob).not.toHaveBeenCalled();
+    expect(mockUpdateMany).not.toHaveBeenCalled();
+    expect(mockBroadcastProgress).not.toHaveBeenCalled();
+  });
+
+  it('does not mark progress or broadcast when shutdown settlement is stale', async () => {
+    const dispatchId = '00000000-0000-4000-8000-000000000010';
+    mockJobFindUnique.mockResolvedValue({
+      status: 'RUNNING',
+      niche: 'test niche',
+      userId: null,
+      activeDispatchId: dispatchId,
+    });
+    mockFailJob.mockResolvedValue({
+      applied: false,
+      job: {
+        id: 'job-1',
+        status: 'RUNNING',
+        activeDispatchId: 'newer-dispatch',
+      },
+    });
+
+    const response = await request(app)
+      .post('/api/workers/shutdown')
+      .send({
+        worker_id: 'worker-1',
+        job_id: '00000000-0000-0000-0000-000000000001',
+        reason: 'SIGTERM',
+        dispatch_id: dispatchId,
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.stale).toBe(true);
+    expect(mockFailJob).toHaveBeenCalled();
+    expect(mockUpdateMany).not.toHaveBeenCalled();
+    expect(mockBroadcastProgress).not.toHaveBeenCalled();
+  });
+
+  it('does not let identityless shutdown terminate a modern active dispatch', async () => {
+    mockJobFindUnique.mockResolvedValue({
+      status: 'RUNNING',
+      niche: 'test niche',
+      userId: null,
+      activeDispatchId: '00000000-0000-4000-8000-000000000010',
+    });
+
+    const response = await request(app)
+      .post('/api/workers/shutdown')
+      .send({
+        worker_id: 'worker-1',
+        job_id: '00000000-0000-0000-0000-000000000001',
+        reason: 'SIGTERM',
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.stale).toBe(true);
+    expect(mockFailJob).not.toHaveBeenCalled();
+    expect(mockUpdateMany).not.toHaveBeenCalled();
+    expect(mockBroadcastProgress).not.toHaveBeenCalled();
   });
 });

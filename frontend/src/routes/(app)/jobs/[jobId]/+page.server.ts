@@ -133,6 +133,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     'REGENERATING',
     'AWAITING_GATE',
     'FAILED',
+    'CANCELLED',
     'RUNNING_PHASE2',
   ].includes(job.status)) {
     conditionalFetches.push(

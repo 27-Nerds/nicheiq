@@ -1,6 +1,14 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render } from "@testing-library/svelte";
 import type { Job } from "$lib/types/job";
+
+vi.mock("$lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("$lib/api")>();
+  return {
+    ...actual,
+    subscribeToProgress: vi.fn(() => () => {}),
+  };
+});
 
 import DashboardPage from "../+page.svelte";
 
@@ -54,5 +62,20 @@ describe("dashboard awaiting-decision visibility", () => {
       "href",
       "/jobs/job-1",
     );
+  });
+
+  it("labels queued Phase 2 as Deep Research and does not offer the rejected generic cancel", () => {
+    const view = renderDashboard([
+      job({
+        status: "QUEUED",
+        jobMode: "interactive",
+        selectedSolutionIds: ["idea-alpha"],
+        selectedSolutions: ["Alpha Idea"],
+      }),
+    ]);
+
+    expect(view.getByText("Deep Research is waiting for a worker…")).toBeInTheDocument();
+    expect(view.queryByRole("button", { name: "Cancel" })).toBeNull();
+    expect(view.getByRole("link", { name: "View" })).toHaveAttribute("href", "/jobs/job-1");
   });
 });

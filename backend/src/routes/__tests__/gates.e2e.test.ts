@@ -192,13 +192,14 @@ vi.mock('../../utils/assetPath.js', () => ({
   resolveAssetPath: vi.fn(),
 }));
 
-const mockEnqueueContinueFromGateJob = vi.fn();
+const mockDeliverDispatchWork = vi.fn();
 vi.mock('../../services/queueService.js', () => ({
   enqueueJob: vi.fn(),
   enqueueLandingPageJob: vi.fn(),
   enqueuePhase2Job: vi.fn(),
   enqueueRegenerateJob: vi.fn(),
-  enqueueContinueFromGateJob: (...a: any[]) => mockEnqueueContinueFromGateJob(...a),
+  enqueueContinueFromGateJob: vi.fn(),
+  deliverDispatchWork: (...a: any[]) => mockDeliverDispatchWork(...a),
   getQueueStats: vi.fn(),
   getQueueLength: vi.fn(),
   removeJobFromQueue: vi.fn(),
@@ -206,6 +207,7 @@ vi.mock('../../services/queueService.js', () => ({
 
 vi.mock('../../services/creditService.js', () => ({
   createJobAndChargeDiscovery: vi.fn(),
+  createJobAndChargeDiscoveryInTx: vi.fn(),
   InsufficientCreditsError: class extends Error {
     currentBalance: number;
     required: number;
@@ -230,6 +232,11 @@ vi.mock('../../services/creditService.js', () => ({
   chargeForStageWithPriceCasInTx: vi.fn(),
   chargeForRegenerationInTx: vi.fn(),
   chargeForResume: vi.fn(),
+  segmentForGateContinue: vi.fn(),
+  chargeForSeedIdeaInTx: vi.fn(),
+  refundChargeInTx: vi.fn(),
+  refundForStageInTx: vi.fn(),
+  isGuidedSegment: vi.fn(),
 }));
 
 const mockIsEntitledUser = vi.fn();
@@ -302,7 +309,7 @@ beforeEach(async () => {
   vi.clearAllMocks();
   resetJobRow();
   mockIsEntitledUser.mockResolvedValue(true);
-  mockEnqueueContinueFromGateJob.mockResolvedValue(undefined);
+  mockDeliverDispatchWork.mockResolvedValue(undefined);
   mockRegisterWorkerHeartbeat.mockResolvedValue(undefined);
   mockNotifyGateReached.mockResolvedValue(undefined);
   mockNotifySolutionsReady.mockResolvedValue(undefined);
@@ -345,14 +352,21 @@ describe('Guided research E2E: full gate chain to AWAITING_SELECTION', () => {
     expect(jobRow.status).toBe('QUEUED');
     expect(jobRow.gateApplyCount).toBe(1);
     expect(jobRow.gateReachedAt).toBeNull();
-    expect(mockEnqueueContinueFromGateJob).toHaveBeenCalledWith(
-      jobId,
-      '/cp/g1-a',
-      1,
-      'apply_stay',
-      { niche_description: 'Solo consultants managing multiple client invoices' },
-      'dispatch-test', // every continuation now carries its attempt id
+    expect(mockDispatchCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          workPayload: expect.objectContaining({
+            job_id: jobId,
+            checkpoint_path: '/cp/g1-a',
+            gate_stage: 1,
+            mode: 'apply_stay',
+            patch: { niche_description: 'Solo consultants managing multiple client invoices' },
+            task_type: 'continue_from_gate',
+          }),
+        }),
+      }),
     );
+    expect(mockDeliverDispatchWork).toHaveBeenCalledWith('dispatch-test');
     // Durable ledger, phase one: the apply is recorded as SUBMITTED (not yet applied —
     // the pipeline hasn't re-derived with it), inside the same transaction as the flip.
     expect(mockChatMessageCreate).toHaveBeenCalledTimes(1);
@@ -411,7 +425,7 @@ describe('Guided research E2E: full gate chain to AWAITING_SELECTION', () => {
       .send({ action: 'continue', gateStage: 1 });
     expect(res.status).toBe(200);
     expect(jobRow.status).toBe('QUEUED');
-    expect(mockEnqueueContinueFromGateJob).toHaveBeenCalledWith(jobId, '/cp/g1-b', 1, 'continue', undefined, 'dispatch-test');
+    expect(mockDeliverDispatchWork).toHaveBeenLastCalledWith('dispatch-test');
 
     // ── Hop 6: worker picks the job back up ──
     res = await request(app).post('/api/workers/job-started').send({ worker_id: 'w1', job_id: jobId });
@@ -442,7 +456,7 @@ describe('Guided research E2E: full gate chain to AWAITING_SELECTION', () => {
       .send({ action: 'continue', gateStage: 4 });
     expect(res.status).toBe(200);
     expect(jobRow.status).toBe('QUEUED');
-    expect(mockEnqueueContinueFromGateJob).toHaveBeenCalledWith(jobId, '/cp/g2-a', 4, 'continue', undefined, 'dispatch-test');
+    expect(mockDeliverDispatchWork).toHaveBeenLastCalledWith('dispatch-test');
 
     // ── Hop 9: worker picks the job back up for the final run to Phase 1 completion ──
     res = await request(app).post('/api/workers/job-started').send({ worker_id: 'w1', job_id: jobId });
@@ -506,26 +520,24 @@ describe('Guided research E2E: full gate chain to AWAITING_SELECTION', () => {
     expect(mockChatMessageUpdate).not.toHaveBeenCalled();
   });
 
-  it('retracts the receipt when the apply never gets queued (enqueue failure compensates)', async () => {
+  it('keeps the receipt and authorized apply durable when Redis delivery is ambiguous', async () => {
     jobRow.status = 'AWAITING_GATE';
     jobRow.gateStage = 1;
     jobRow.gateArtifact = { type: 'niche_validation', niche_description: 'x' };
     jobRow.phase1CheckpointPath = '/cp/g1-a';
     mockChatMessageCreate.mockResolvedValueOnce({ id: 'receipt-1' } as any);
-    mockEnqueueContinueFromGateJob.mockRejectedValueOnce(new Error('redis down'));
+    mockDeliverDispatchWork.mockRejectedValueOnce(new Error('redis down'));
 
     const res = await request(app)
       .post(`/api/jobs/${jobId}/gate-action`)
       .set(authHeaders)
       .send({ action: 'apply_stay', gateStage: 1, patch: { niche_description: 'never applied' } });
 
-    expect(res.status).toBe(500);
-    // The receipt WAS written (phase one) — and must now be retracted.
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ deliveryPending: true, operationId: 'dispatch-test' });
     expect(mockChatMessageCreate).toHaveBeenCalledTimes(1);
-    // The status revert and the receipt retraction go together — the ledger must not
-    // claim a change the pipeline never received.
-    expect(jobRow.status).toBe('AWAITING_GATE');
-    expect(mockChatMessageDelete).toHaveBeenCalledWith({ where: { id: 'receipt-1' } });
+    expect(jobRow.status).toBe('QUEUED');
+    expect(mockChatMessageDelete).not.toHaveBeenCalled();
   });
 });
 
@@ -551,6 +563,6 @@ describe('Guided research non-entitled matrix', () => {
     expect(res.status).toBe(402);
     expect(res.body.code).toBe('NOT_ENTITLED');
     expect(jobRow.status).toBe('AWAITING_GATE'); // never flipped to QUEUED
-    expect(mockEnqueueContinueFromGateJob).not.toHaveBeenCalled();
+    expect(mockDeliverDispatchWork).not.toHaveBeenCalled();
   });
 });

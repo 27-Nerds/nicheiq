@@ -251,12 +251,22 @@ export async function chargeForStageInTx(
   jobId: string,
   stage: StageName,
   niche: string,
+  options?: { nextCycle?: boolean },
 ): Promise<{ cost: number; transaction?: CreditTransaction }> {
   const cost = await _getStageCostWithClient(tx, stage);
 
   if (cost === 0) return { cost: 0 };
 
-  const transaction = await _chargeForStageImpl(tx, userId, jobId, stage, niche, cost);
+  let cycle = 0;
+  if (options?.nextCycle) {
+    const priorCharge = await tx.creditTransaction.findFirst({
+      where: { relatedJobId: jobId, type: CreditTransactionType.JOB_DEDUCTION, stage },
+      orderBy: { cycle: 'desc' },
+      select: { cycle: true },
+    });
+    cycle = (priorCharge?.cycle ?? -1) + 1;
+  }
+  const transaction = await _chargeForStageImpl(tx, userId, jobId, stage, niche, cost, undefined, cycle);
   return { cost, transaction };
 }
 
@@ -542,6 +552,28 @@ export async function refundForStage(
 }
 
 /**
+ * Resolve the newest charge for a ledger stage and refund that exact immutable row inside the
+ * caller's transaction. This is the legacy bridge for operations whose old dispatch lacks a
+ * chargeId; modern dispatches should call refundChargeInTx directly.
+ */
+export async function refundForStageInTx(
+  tx: Prisma.TransactionClient,
+  jobId: string,
+  stage: string,
+): Promise<CreditTransaction | null> {
+  const charge = await tx.creditTransaction.findFirst({
+    where: {
+      relatedJobId: jobId,
+      type: CreditTransactionType.JOB_DEDUCTION,
+      stage,
+    },
+    orderBy: { cycle: 'desc' },
+    select: { id: true },
+  });
+  return charge ? refundChargeInTx(tx, charge.id) : null;
+}
+
+/**
  * Refund credits for a numbered regeneration stage (e.g., regenerate_ideas_2).
  */
 export async function refundForRegenerationStage(
@@ -736,59 +768,85 @@ export async function createJobAndChargeDiscovery(
   ideaFocus?: string,
   chatMode?: boolean,
 ): Promise<{ job: Job; transaction?: CreditTransaction }> {
+  return prisma.$transaction((tx) =>
+    createJobAndChargeDiscoveryInTx(
+      tx,
+      userId,
+      niche,
+      allowedProjectTypes,
+      jobMode,
+      entryMode,
+      ideaFocus,
+      chatMode,
+    ),
+  );
+}
+
+/**
+ * Transaction-scoped form used when job creation, its charge, and the dispatch authorizing the
+ * paid work must commit together.
+ */
+export async function createJobAndChargeDiscoveryInTx(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  niche: string,
+  allowedProjectTypes?: string[],
+  jobMode?: string,
+  entryMode?: string,
+  ideaFocus?: string,
+  chatMode?: boolean,
+): Promise<{ job: Job; transaction?: CreditTransaction }> {
   const stages = PIPELINE_STAGES.filter(s => s.number !== 15);
 
-  return prisma.$transaction(async (tx) => {
-    // Create the job first so we have a real ID for the FK
-    const job = await tx.job.create({
-      data: {
-        niche,
-        userId,
-        allowedProjectTypes: allowedProjectTypes as Prisma.InputJsonValue,
-        generateLandingPage: false,
-        jobMode,
-        entryMode: entryMode || null,
-        ideaFocus: ideaFocus || null,
-        chatMode: chatMode ?? false,
-        // The billing contract this run is sold under, fixed at creation and never changed.
-        // Guided runs pay per segment as the user authorizes each one; everything else pays for
-        // the whole discovery phase up front, exactly as before.
-        //
-        // Every money branch (Continue, cancel, failure, price display) reads this marker rather
-        // than inferring from chatMode or a date — jobs that predate segment billing are stamped
-        // DISCOVERY_PREPAID_V1 by the migration's default, so they can never be charged twice.
-        billingModel: chatMode
-          ? BillingModel.GUIDED_SEGMENTS_V1
-          : BillingModel.DISCOVERY_PREPAID_V1,
-        status: JobStatus.PENDING,
-        totalStages: stages.length,
-        progress: {
-          create: stages.map((stage) => ({
-            stageNumber: stage.number,
-            stageName: stage.name,
-            status: StageStatus.PENDING,
-          })),
-        },
+  // Create the job first so we have a real ID for the FK
+  const job = await tx.job.create({
+    data: {
+      niche,
+      userId,
+      allowedProjectTypes: allowedProjectTypes as Prisma.InputJsonValue,
+      generateLandingPage: false,
+      jobMode,
+      entryMode: entryMode || null,
+      ideaFocus: ideaFocus || null,
+      chatMode: chatMode ?? false,
+      // The billing contract this run is sold under, fixed at creation and never changed.
+      // Guided runs pay per segment as the user authorizes each one; everything else pays for
+      // the whole discovery phase up front, exactly as before.
+      //
+      // Every money branch (Continue, cancel, failure, price display) reads this marker rather
+      // than inferring from chatMode or a date — jobs that predate segment billing are stamped
+      // DISCOVERY_PREPAID_V1 by the migration's default, so they can never be charged twice.
+      billingModel: chatMode
+        ? BillingModel.GUIDED_SEGMENTS_V1
+        : BillingModel.DISCOVERY_PREPAID_V1,
+      status: JobStatus.PENDING,
+      totalStages: stages.length,
+      progress: {
+        create: stages.map((stage) => ({
+          stageNumber: stage.number,
+          stageName: stage.name,
+          status: StageStatus.PENDING,
+        })),
       },
-      include: {
-        progress: { orderBy: { stageNumber: 'asc' } },
-        assets: true,
-      },
-    });
-
-    // What creating the job actually buys.
-    //
-    // Guided: only the first segment (stage 1, niche validation) — enough to reach the first
-    // checkpoint. The user pays for the rest at the checkpoints, where they can see what they're
-    // buying and decline. This is what makes the checkpoint mean something: before, all 5 credits
-    // were taken here and Continue was free, so the gate could not gate spend at all.
-    //
-    // Everything else: the whole discovery phase, unchanged.
-    const entryStage: StageName = chatMode ? 'guided_s1' : 'discovery';
-    const chargeResult = await chargeForStageInTx(tx, userId, job.id, entryStage, niche);
-
-    return { job, transaction: chargeResult.transaction };
+    },
+    include: {
+      progress: { orderBy: { stageNumber: 'asc' } },
+      assets: true,
+    },
   });
+
+  // What creating the job actually buys.
+  //
+  // Guided: only the first segment (stage 1, niche validation) — enough to reach the first
+  // checkpoint. The user pays for the rest at the checkpoints, where they can see what they're
+  // buying and decline. This is what makes the checkpoint mean something: before, all 5 credits
+  // were taken here and Continue was free, so the gate could not gate spend at all.
+  //
+  // Everything else: the whole discovery phase, unchanged.
+  const entryStage: StageName = chatMode ? 'guided_s1' : 'discovery';
+  const chargeResult = await chargeForStageInTx(tx, userId, job.id, entryStage, niche);
+
+  return { job, transaction: chargeResult.transaction };
 }
 
 /**
@@ -819,12 +877,14 @@ export async function refundCreditsForJob(
 export async function chargeForResume(
   userId: string,
   jobId: string,
-): Promise<{ charged: boolean; amount: number }> {
+  tx?: Prisma.TransactionClient,
+): Promise<{ charged: boolean; amount: number; transaction?: CreditTransaction }> {
+  const client = tx ?? prisma;
   const [allCharges, allRefunds] = await Promise.all([
-    prisma.creditTransaction.findMany({
+    client.creditTransaction.findMany({
       where: { relatedJobId: jobId, type: CreditTransactionType.JOB_DEDUCTION },
     }),
-    prisma.creditTransaction.findMany({
+    client.creditTransaction.findMany({
       where: { relatedJobId: jobId, type: CreditTransactionType.REFUND },
     }),
   ]);
@@ -841,23 +901,30 @@ export async function chargeForResume(
 
   const nextCycle = unmatchedRefund.cycle + 1;
   const refundAmount = Math.abs(unmatchedRefund.amount);
-  const job = await prisma.job.findUnique({ where: { id: jobId }, select: { niche: true } });
+  const job = await client.job.findUnique({ where: { id: jobId }, select: { niche: true } });
+  const charge = (chargeTx: Prisma.TransactionClient) =>
+    _chargeForStageImpl(
+      chargeTx,
+      userId,
+      jobId,
+      unmatchedRefund.stage,
+      job?.niche ?? '',
+      refundAmount,
+      `Resume: re-charge ${STAGE_LABELS[unmatchedRefund.stage as StageName] ?? unmatchedRefund.stage}`,
+      nextCycle,
+    );
+
+  // A caller-provided transaction owns error handling. In particular, a unique-constraint
+  // collision must abort the caller's state flip and dispatch open instead of being swallowed
+  // after Postgres has already marked that transaction as failed.
+  if (tx) {
+    const transaction = await charge(tx);
+    console.log(`[CreditService] Re-charged ${refundAmount} credits for job ${jobId} stage ${unmatchedRefund.stage} cycle ${nextCycle}`);
+    return { charged: true, amount: refundAmount, transaction };
+  }
 
   try {
-    await prisma.$transaction(async (tx) => {
-      // Route through the shared monthly-first deduction: it does the availability check,
-      // records the bucket split, and enforces the unique (job,stage,cycle) constraint.
-      await _chargeForStageImpl(
-        tx,
-        userId,
-        jobId,
-        unmatchedRefund.stage,
-        job?.niche ?? '',
-        refundAmount,
-        `Resume: re-charge ${STAGE_LABELS[unmatchedRefund.stage as StageName] ?? unmatchedRefund.stage}`,
-        nextCycle,
-      );
-    });
+    await prisma.$transaction(charge);
 
     console.log(`[CreditService] Re-charged ${refundAmount} credits for job ${jobId} stage ${unmatchedRefund.stage} cycle ${nextCycle}`);
     return { charged: true, amount: refundAmount };

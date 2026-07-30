@@ -104,6 +104,19 @@ usersRouter.get('/:userId/jobs', requireInternalAuth, async (req: AuthenticatedR
         where: { type: 'REFUND' as const },
         select: { id: true, amount: true },
       },
+      dispatches: {
+        orderBy: { createdAt: 'desc' as const },
+        take: 1,
+        select: {
+          id: true,
+          kind: true,
+          state: true,
+          refundedAmount: true,
+          refundTransaction: {
+            select: { amount: true },
+          },
+        },
+      },
     };
     const [recentJobs, awaitingJobs] = await Promise.all([
       prisma.job.findMany({

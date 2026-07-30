@@ -74,6 +74,82 @@ describe('formatJobResponse solutionIdeasCount', () => {
   });
 });
 
+describe('formatJobResponse refund truth', () => {
+  it('reports a refund only when spendable credits were actually restored', () => {
+    const refunded = formatJobResponse(makeJob({
+      creditTransactions: [{ id: 'refund-1', amount: 5 }],
+    }));
+    const notRefunded = formatJobResponse(makeJob({
+      creditTransactions: [{ id: 'refund-expired-monthly', amount: 0 }],
+    }));
+
+    expect(refunded.creditRefunded).toBe(true);
+    expect(notRefunded.creditRefunded).toBe(false);
+  });
+
+  it('returns false when refund data is loaded but empty', () => {
+    const result = formatJobResponse(makeJob({
+      creditTransactions: [],
+    }), { includeAssetFlags: true });
+
+    expect(result.creditRefunded).toBe(false);
+  });
+
+  it('does not attribute an older auxiliary-operation refund to the latest failed dispatch', () => {
+    const result = formatJobResponse(makeJob({
+      status: 'FAILED',
+      creditTransactions: [{ id: 'older-seed-refund', amount: 2 }],
+      dispatches: [{
+        id: 'latest-deep-research',
+        kind: 'DEEP_RESEARCH',
+        state: 'FAILED',
+        refundedAmount: null,
+        refundTransaction: null,
+      }],
+    }));
+
+    expect(result.creditRefunded).toBe(false);
+  });
+
+  it('reports the latest exact dispatch refund', () => {
+    const result = formatJobResponse(makeJob({
+      creditTransactions: [],
+      dispatches: [{
+        id: 'failed-deep-research',
+        kind: 'DEEP_RESEARCH',
+        state: 'REFUNDED',
+        refundedAmount: 100,
+        refundTransaction: { amount: 100 },
+      }],
+    }));
+
+    expect(result.creditRefunded).toBe(true);
+  });
+
+  it('exposes the exact active dispatch kind without inventing a refund', () => {
+    const result = formatJobResponse(makeJob({
+      activeDispatchId: 'seed-dispatch',
+      creditTransactions: [],
+      dispatches: [{
+        id: 'seed-dispatch',
+        kind: 'SEED_IDEA',
+        state: 'AUTHORIZED',
+        refundedAmount: null,
+        refundTransaction: null,
+      }],
+    }));
+
+    expect(result.creditRefunded).toBe(false);
+    expect(result.activeDispatchKind).toBe('SEED_IDEA');
+  });
+
+  it('does not invent false when the caller did not load refund data', () => {
+    const result = formatJobResponse(makeJob());
+
+    expect(result).not.toHaveProperty('creditRefunded');
+  });
+});
+
 describe('formatJobResponse includeSolutionIdeas', () => {
   it('serves the stored visible ideas with stable identities', () => {
     const solutions = [
@@ -110,14 +186,24 @@ describe('formatJobResponse includeSolutionIdeas', () => {
 
   it('stops advertising additional batches at the backend limit', () => {
     const available = formatJobResponse(
-      makeJob({ solutionIdeas: [], regenerationCount: 9 }),
+      makeJob({
+        solutionIdeas: [],
+        regenerationCount: 12,
+        ideaBatchCompletedCount: 9,
+      }),
       { includeSolutionIdeas: true },
     );
     const exhausted = formatJobResponse(
-      makeJob({ solutionIdeas: [], regenerationCount: 10 }),
+      makeJob({
+        solutionIdeas: [],
+        regenerationCount: 10,
+        ideaBatchCompletedCount: 10,
+      }),
       { includeSolutionIdeas: true },
     );
 
+    // Failed/cancelled attempts advance regenerationCount for ledger identity,
+    // but only successful completed batches consume the product cap.
     expect(available.canRegenerate).toBe(true);
     expect(exhausted.canRegenerate).toBe(false);
   });

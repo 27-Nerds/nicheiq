@@ -228,6 +228,8 @@ export interface GoNoGoVerdict {
 	market_viability_context?: string | null;
 	/** Buyer-payability floor explanation (Phase 5), null = no adjustment applied. */
 	payability_context?: string | null;
+	/** Red-team floor explanation (Phase 5.5) — adversarial weakened/killed finding, null = no adjustment applied. */
+	red_team_context?: string | null;
 }
 
 export interface CorePainPoint {

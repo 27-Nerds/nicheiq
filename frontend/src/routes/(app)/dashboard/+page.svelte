@@ -103,6 +103,29 @@
     { key: "archived", label: "Archived", count: fArchived.length, color: "var(--color-text-muted)" },
   ] as const);
   const show = (b: string) => filter === "all" || filter === b;
+  const failedDuringDeepResearch = (job: Job) =>
+    job.status === "FAILED"
+    && job.jobMode === "interactive"
+    && (
+      (job.selectedSolutionIds?.length ?? 0) > 0
+      || (job.selectedSolutions?.length ?? 0) > 0
+    );
+  const isDeepResearchProcessing = (job: Job) =>
+    job.status === "RUNNING_PHASE2"
+    || (
+      job.status === "QUEUED"
+      && (
+        job.entryMode === "deep_idea"
+        || (
+          job.jobMode === "interactive"
+          && (
+            (job.selectionDraft?.items.length ?? 0) > 0
+            || (job.selectedSolutionIds?.length ?? 0) > 0
+            || (job.selectedSolutions?.length ?? 0) > 0
+          )
+        )
+      )
+    );
   const archivedShown = $derived(archivedOpen || filter === "archived");
   const hasAnyVisible = $derived(
     fReview.length + fProgress.length + fDone.length + fFailed.length + fArchived.length > 0,
@@ -209,7 +232,10 @@
     try {
       const res = await fetch(`/api/jobs/${job.id}/resume`, { method: "POST" });
       if (res.ok) {
-        window.location.href = `/jobs/${job.id}`;
+        const data = await res.json();
+        window.location.href = data.status === "AWAITING_SELECTION"
+          ? `/jobs/${job.id}#opportunities`
+          : `/jobs/${job.id}`;
       } else {
         const d = await res.json();
         console.error("Resume failed:", d.error || "Unknown error");
@@ -547,15 +573,21 @@
                         </div>
                       {:else if job.status === "REGENERATING"}
                         <p class="row-sub row-dim"><Loader2 size={13} class="spinner" aria-hidden="true" /> Adding another idea batch…</p>
+                      {:else if isDeepResearchProcessing(job)}
+                        <p class="row-sub row-dim">Deep Research is waiting for a worker…</p>
                       {:else}
                         <p class="row-sub row-dim">{#if job.queuePosition}Position {job.queuePosition} in queue{:else}Preparing to start…{/if}</p>
                       {/if}
                     </div>
                     <div class="row-end">
                       <span class="row-badge" style:color={meta.color}>{meta.label}</span>
-                      <button class="link-cancel" type="button" onclick={() => cancelJob(job)} disabled={cancellingJobs.has(job.id)}>
-                        {cancellingJobs.has(job.id) ? "Cancelling…" : "Cancel"}
-                      </button>
+                      {#if isDeepResearchProcessing(job)}
+                        <a class="link-cancel link-cancel--view" href={`/jobs/${job.id}`}>View</a>
+                      {:else}
+                        <button class="link-cancel" type="button" onclick={() => cancelJob(job)} disabled={cancellingJobs.has(job.id)}>
+                          {cancellingJobs.has(job.id) ? "Cancelling…" : "Cancel"}
+                        </button>
+                      {/if}
                     </div>
                   </div>
                 {/each}
@@ -612,7 +644,7 @@
             <section class="group">
               <div class="group-head">
                 <h2>Failed</h2>
-                <span class="group-meta">resume from a checkpoint</span>
+                <span class="group-meta">resume or review your selection</span>
               </div>
               <div class="list">
                 {#each fFailed as job (job.id)}
@@ -624,9 +656,11 @@
                     </span>
                     <button class="btn-ghost btn-xs" type="button" onclick={() => resumeJob(job)} disabled={resumingJobs.has(job.id)}>
                       {#if resumingJobs.has(job.id)}
-                        <Loader2 size={13} class="spinner" aria-hidden="true" /> Resuming…
+                        <Loader2 size={13} class="spinner" aria-hidden="true" />
+                        {failedDuringDeepResearch(job) ? "Opening…" : "Resuming…"}
                       {:else}
-                        <RotateCcw size={13} aria-hidden="true" /> Resume
+                        <RotateCcw size={13} aria-hidden="true" />
+                        {failedDuringDeepResearch(job) ? "Review selection" : "Resume"}
                       {/if}
                     </button>
                   </div>
@@ -992,6 +1026,8 @@
     transition: color 0.12s ease, opacity 0.12s ease;
   }
   .link-cancel:hover:not(:disabled) { color: var(--color-error-text); }
+  .link-cancel--view { text-decoration: none; }
+  .link-cancel--view:hover { color: var(--color-accent); }
   .link-cancel:active:not(:disabled) { opacity: 0.7; }
   .link-cancel:disabled { opacity: 0.6; cursor: default; }
   .link-cancel:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; border-radius: 3px; }

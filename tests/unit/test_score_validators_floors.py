@@ -140,3 +140,55 @@ class TestPayabilityFloor:
         v = GoNoGoVerdict(verdict="Conditional", rationale="r", risk_level="Medium",
                           payability_context="Buyer payability: …")
         assert v.payability_context.startswith("Buyer payability")
+
+
+class TestRedTeamFloor:
+    """Phase 5.5 (run-quality fixes §1): adversarial weakened/killed findings reach the verdict."""
+
+    def _t(self):
+        return VerdictValidator(ScoreThresholds())
+
+    def test_weakened_caps_go_and_floors_risk(self):
+        v, r, c, ctx = self._t().apply_red_team_downgrade(
+            "Go", "Low", None, red_team_verdict="weakened",
+            red_team_caveats=["Krock.io ships this identically"])
+        assert v == "Conditional" and r == "Medium"
+        assert ctx and "weakened" in ctx and "Krock.io" in ctx
+        assert c and "weakened" in c
+
+    def test_killed_floors_risk_to_high(self):
+        v, r, c, ctx = self._t().apply_red_team_downgrade(
+            "Conditional", "Medium", None, red_team_verdict="killed",
+            red_team_caveats=["deterministic COA checks cannot detect fabricated certificates"])
+        assert v == "Conditional" and r == "High"
+        assert ctx and "killed" in ctx
+        assert c and "refuted" in c
+
+    def test_survives_and_none_abstain(self):
+        for rt in ("survives", None, ""):
+            v, r, c, ctx = self._t().apply_red_team_downgrade(
+                "Go", "Low", None, red_team_verdict=rt, red_team_caveats=None)
+            assert v == "Go" and r == "Low" and c is None and ctx is None, rt
+
+    def test_never_forces_no_go(self):
+        v, r, _c, ctx = self._t().apply_red_team_downgrade(
+            "Conditional", "Medium", "x", red_team_verdict="weakened", red_team_caveats=[])
+        assert v == "Conditional" and r == "Medium" and ctx is not None
+
+    def test_existing_concern_not_overwritten(self):
+        _v, _r, c, _ctx = self._t().apply_red_team_downgrade(
+            "Go", "Low", "existing concern", red_team_verdict="killed",
+            red_team_caveats=["caveat"])
+        assert c == "existing concern"
+
+    def test_caveat_truncated_to_200_chars(self):
+        _v, _r, _c, ctx = self._t().apply_red_team_downgrade(
+            "Go", "Low", None, red_team_verdict="weakened",
+            red_team_caveats=["z" * 500])
+        assert ctx and "z" * 200 in ctx and "z" * 201 not in ctx
+
+    def test_red_team_context_field_on_verdict_model(self):
+        from nicheiq.models.executive_summary import GoNoGoVerdict
+        v = GoNoGoVerdict(verdict="Conditional", rationale="r", risk_level="High",
+                          red_team_context="Red-team review: …")
+        assert v.red_team_context.startswith("Red-team review")

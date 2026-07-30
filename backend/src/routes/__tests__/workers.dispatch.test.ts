@@ -22,6 +22,8 @@ const mockChatMessageUpdate = vi.fn(async (_a?: any) => ({}) as any);
 const mockChatMessageDelete = vi.fn(async (_a?: any) => ({}) as any);
 const mockDispatchFindUnique = vi.fn();
 const mockDispatchUpdateMany = vi.fn(async (_a?: any) => ({ count: 1 }) as any);
+const mockRefundChargeInTx = vi.fn();
+const mockRefundForStageInTx = vi.fn();
 
 vi.mock('../../services/db.js', () => {
   const client: any = {
@@ -66,8 +68,11 @@ vi.mock('../../services/jobService.js', () => ({
   getJobAsset: vi.fn(async () => null),
 }));
 vi.mock('../../services/creditService.js', () => ({
+  refundChargeInTx: (...a: any[]) => mockRefundChargeInTx(...a),
   refundForStage: vi.fn(async () => null),
+  refundForStageInTx: (...a: any[]) => mockRefundForStageInTx(...a),
   refundForRegenerationStage: vi.fn(async () => null),
+  isGuidedSegment: (stage: string) => ['guided_s1', 'guided_s2_4', 'guided_s5'].includes(stage),
 }));
 vi.mock('../../services/progressBroadcastService.js', () => ({ broadcastProgress: vi.fn() }));
 vi.mock('../../services/notificationService.js', () => ({
@@ -99,6 +104,8 @@ let app: express.Express;
 beforeEach(async () => {
   vi.clearAllMocks();
   mockDispatchUpdateMany.mockResolvedValue({ count: 1 });
+  mockRefundChargeInTx.mockResolvedValue(null);
+  mockRefundForStageInTx.mockResolvedValue(null);
   mockChatMessageFindFirst.mockResolvedValue(null);
   const { workersRouter } = await import('../workers.js');
   app = express();
@@ -228,6 +235,57 @@ describe('worker callbacks are dispatch-addressed', () => {
       ([arg]: any[]) => arg?.data?.gateApplyCount !== undefined,
     );
     expect(touched).toBe(false);
+  });
+
+  it('rolls back a failed gate settlement when its exact refund fails, then refunds once on retry', async () => {
+    mockDispatchFindUnique.mockResolvedValue({
+      id: MINE,
+      kind: 'CONTINUE',
+      gateStage: 1,
+      segment: 'guided_s2_4',
+      chargeId: 'charge-gate-1',
+    });
+    mockJobUpdateMany
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 0 });
+    mockRefundChargeInTx
+      .mockRejectedValueOnce(new Error('ledger unavailable'))
+      .mockResolvedValueOnce({ id: 'refund-gate-1', amount: 3 });
+    mockJobFindUnique.mockResolvedValue({
+      status: 'AWAITING_GATE',
+      gateStage: 1,
+      activeDispatchId: null,
+    });
+
+    const body = {
+      worker_id: 'worker-1',
+      job_id: JOB,
+      gate_stage: 1,
+      error_message: 'provider failed',
+      dispatch_id: MINE,
+      failure_kind: 'SYSTEM_FAULT',
+    };
+    const first = await request(app).post('/api/workers/gate-failed').send(body);
+    const retry = await request(app).post('/api/workers/gate-failed').send(body);
+    const duplicate = await request(app).post('/api/workers/gate-failed').send(body);
+
+    expect(first.status).toBe(500);
+    expect(retry.status).toBe(200);
+    expect(duplicate.body.stale).toBe(true);
+    expect(mockRefundChargeInTx).toHaveBeenCalledTimes(2);
+    expect(mockRefundChargeInTx).toHaveBeenLastCalledWith(expect.any(Object), 'charge-gate-1');
+    expect(mockRefundForStageInTx).not.toHaveBeenCalled();
+    expect(mockDispatchUpdateMany).toHaveBeenCalledWith({
+      where: { id: MINE, state: 'FAILED' },
+      data: expect.objectContaining({
+        state: 'REFUNDED',
+        refundTransactionId: 'refund-gate-1',
+        refundedAmount: 3,
+      }),
+    });
   });
 
   it('ideas-ready is guarded too — it is where a guided G2 continue actually lands', async () => {

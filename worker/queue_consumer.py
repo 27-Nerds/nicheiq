@@ -53,9 +53,65 @@ QUEUE_NAME = "nicheiq:jobs"
 # the worker dies mid-processing). Jobs are BLMOVEd into the processing list, acked (LREM)
 # after process_job returns, and stale entries are requeued by the sweep below.
 PROCESSING_QUEUE = "nicheiq:jobs:processing"
-CLAIMS_HASH = "nicheiq:jobs:claims"          # job_id -> "<epoch>:<worker_id>"
+CLAIMS_HASH = "nicheiq:jobs:claims"          # attempt key -> "<epoch>:<worker_id>"
 STALE_CLAIM_SECONDS = 2 * 60 * 60            # > max observed job duration
 REQUEUE_SWEEP_INTERVAL_SECONDS = 10 * 60
+
+# Redis-side compare-and-set keeps a late worker for the same delivery from refreshing or deleting
+# the lease owned by the worker that actually won it. Different dispatches already have different
+# fields; the owner check also closes the duplicate-delivery race within one dispatch.
+_CLAIM_ATTEMPT_LUA = """
+local current = redis.call('HGET', KEYS[1], ARGV[1])
+if current then return 0 end
+redis.call('HSET', KEYS[1], ARGV[1], ARGV[2])
+return 1
+"""
+
+_REFRESH_CLAIM_LUA = """
+local current = redis.call('HGET', KEYS[1], ARGV[1])
+if current then
+  local sep = string.find(current, ':', 1, true)
+  local owner = sep and string.sub(current, sep + 1) or ''
+  if owner ~= ARGV[2] then return -1 end
+end
+redis.call('HSET', KEYS[1], ARGV[1], ARGV[3] .. ':' .. ARGV[2])
+return 1
+"""
+
+_ACK_PROCESSING_LUA = """
+local removed = redis.call('LREM', KEYS[1], 1, ARGV[1])
+local current = redis.call('HGET', KEYS[2], ARGV[2])
+if current then
+  local sep = string.find(current, ':', 1, true)
+  local owner = sep and string.sub(current, sep + 1) or ''
+  if owner == ARGV[3] then
+    redis.call('HDEL', KEYS[2], ARGV[2])
+  end
+end
+return removed
+"""
+
+_REQUEUE_STALE_LUA = """
+local current = redis.call('HGET', KEYS[2], ARGV[2])
+local claim_key = ARGV[2]
+if not current then
+  current = redis.call('HGET', KEYS[2], ARGV[4])
+  claim_key = ARGV[4]
+end
+local stale = not current
+if current then
+  local sep = string.find(current, ':', 1, true)
+  local claimed_at = sep and tonumber(string.sub(current, 1, sep - 1)) or nil
+  stale = (not claimed_at) or claimed_at <= tonumber(ARGV[3])
+end
+if not stale then return 0 end
+local removed = redis.call('LREM', KEYS[1], 1, ARGV[1])
+if removed > 0 then
+  redis.call('HDEL', KEYS[2], claim_key)
+  redis.call('LPUSH', KEYS[3], ARGV[1])
+end
+return removed
+"""
 
 # Task types and modes (must match backend/src/services/queueService.ts)
 TASK_TYPE_LANDING_PAGE = "landing_page"
@@ -189,6 +245,7 @@ def process_job(job_data: dict) -> None:
                 selected_solution_snapshots=job_data.get("selected_solution_snapshots"),
                 selection_fingerprint=job_data.get("selection_fingerprint"),
                 selection_rationale=job_data.get("selection_rationale", ""),
+                pool_identity_map=job_data.get("pool_identity_map"),
             )
         elif task_type == TASK_TYPE_REGENERATE_IDEAS:
             from .tasks import run_regenerate_ideas
@@ -202,6 +259,7 @@ def process_job(job_data: dict) -> None:
                 dispatch_id=job_data.get("dispatch_id"),
                 batch_ordinal=job_data.get("batch_ordinal"),
                 base_candidate_refs=job_data.get("base_candidate_refs"),
+                pool_identity_map=job_data.get("pool_identity_map"),
             )
         elif task_type == TASK_TYPE_SEED_IDEA:
             from .tasks import run_seed_idea
@@ -468,13 +526,70 @@ def process_job(job_data: dict) -> None:
         )
 
 
-def _ack_processing(redis_conn, raw_job_json: str, job_id: str | None) -> None:
+def _claim_key(job_id: str, dispatch_id: str | None) -> str:
+    """Stable Redis field for one delivery attempt; identityless jobs use a fenced legacy key."""
+    return f"dispatch:{dispatch_id}" if dispatch_id else f"legacy:{job_id}"
+
+
+def _claim_processing_attempt(
+    redis_conn,
+    job_id: str,
+    dispatch_id: str | None,
+    worker_id: str,
+    now: float,
+) -> bool:
+    """Acquire only this attempt; the backend start CAS arbitrates duplicate deliveries."""
+    result = redis_conn.eval(
+        _CLAIM_ATTEMPT_LUA,
+        1,
+        CLAIMS_HASH,
+        _claim_key(job_id, dispatch_id),
+        f"{now}:{worker_id}",
+    )
+    return result == 1
+
+
+def _refresh_processing_claim(
+    redis_conn,
+    job_id: str,
+    dispatch_id: str | None,
+    worker_id: str,
+    now: float,
+) -> bool:
+    """Refresh/create only this attempt's lease, without overwriting another worker's ownership."""
+    result = redis_conn.eval(
+        _REFRESH_CLAIM_LUA,
+        1,
+        CLAIMS_HASH,
+        _claim_key(job_id, dispatch_id),
+        worker_id,
+        str(now),
+    )
+    return result == 1
+
+
+def _ack_processing(
+    redis_conn,
+    raw_job_json: str,
+    job_id: str | None,
+    dispatch_id: str | None,
+    worker_id: str,
+) -> None:
     """Remove a finished/poison job from the processing list + its claim. Fail-soft: an ack
     failure only means the sweep requeues it later (at-least-once, never lost)."""
     try:
-        redis_conn.lrem(PROCESSING_QUEUE, 1, raw_job_json)
         if job_id:
-            redis_conn.hdel(CLAIMS_HASH, job_id)
+            redis_conn.eval(
+                _ACK_PROCESSING_LUA,
+                2,
+                PROCESSING_QUEUE,
+                CLAIMS_HASH,
+                raw_job_json,
+                _claim_key(job_id, dispatch_id),
+                worker_id,
+            )
+        else:
+            redis_conn.lrem(PROCESSING_QUEUE, 1, raw_job_json)
     except redis.RedisError as e:
         logger.warning(f"[Requeue] ack failed (job {job_id}): {e} — sweep will reclaim")
 
@@ -490,27 +605,34 @@ def requeue_stale_processing(redis_conn) -> int:
         now = _time.time()
         for raw in entries:
             try:
-                job_id = json.loads(raw).get("job_id")
+                payload = json.loads(raw)
+                job_id = payload.get("job_id")
+                dispatch_id = payload.get("dispatch_id")
             except (json.JSONDecodeError, AttributeError):
                 redis_conn.lrem(PROCESSING_QUEUE, 1, raw)
                 logger.warning("[Requeue] dropped malformed processing entry")
                 continue
-            claim = redis_conn.hget(CLAIMS_HASH, job_id) if job_id else None
-            claimed_at = None
-            if claim:
-                try:
-                    claimed_at = float(str(claim).split(":", 1)[0])
-                except ValueError:
-                    claimed_at = None
-            if claimed_at is None or (now - claimed_at) >= STALE_CLAIM_SECONDS:
-                # atomic-enough: remove first so two sweepers can't both requeue it
-                if redis_conn.lrem(PROCESSING_QUEUE, 1, raw):
-                    redis_conn.lpush(QUEUE_NAME, raw)
-                    requeued += 1
-                    logger.info(f"[Requeue] stale job {job_id} moved back to queue "
-                                f"(claim age: {'none' if claimed_at is None else int(now - claimed_at)}s)")
-                if job_id:
-                    redis_conn.hdel(CLAIMS_HASH, job_id)
+            if not job_id:
+                redis_conn.lrem(PROCESSING_QUEUE, 1, raw)
+                logger.warning("[Requeue] dropped processing entry without job_id")
+                continue
+            moved = redis_conn.eval(
+                _REQUEUE_STALE_LUA,
+                3,
+                PROCESSING_QUEUE,
+                CLAIMS_HASH,
+                QUEUE_NAME,
+                raw,
+                _claim_key(job_id, dispatch_id),
+                str(now - STALE_CLAIM_SECONDS),
+                job_id,
+            )
+            if moved:
+                requeued += 1
+                logger.info(
+                    f"[Requeue] stale job {job_id} dispatch={dispatch_id or 'legacy'} "
+                    "moved back to queue"
+                )
     except redis.RedisError as e:
         logger.warning(f"[Requeue] sweep failed (non-fatal): {e}")
     return requeued
@@ -542,8 +664,14 @@ def run_consumer():
     from .heartbeat import set_claim_refresher
     import time as _time0
 
-    def _refresh_claim(job_id: str) -> None:
-        redis_conn.hset(CLAIMS_HASH, job_id, f"{_time0.time()}:{worker_id}")
+    def _refresh_claim(job_id: str, dispatch_id: str | None) -> None:
+        _refresh_processing_claim(
+            redis_conn,
+            job_id,
+            dispatch_id,
+            worker_id,
+            _time0.time(),
+        )
 
     set_claim_refresher(_refresh_claim)
 
@@ -569,16 +697,31 @@ def run_consumer():
                 continue
 
             job_id = None
+            dispatch_id = None
             try:
                 job_data = json.loads(job_json)
                 job_id = job_data.get("job_id")
+                dispatch_id = job_data.get("dispatch_id")
+                owns_claim = True
                 if job_id:
                     try:
-                        redis_conn.hset(CLAIMS_HASH, job_id, f"{_time.time()}:{worker_id}")
+                        owns_claim = _claim_processing_attempt(
+                            redis_conn,
+                            job_id,
+                            dispatch_id,
+                            worker_id,
+                            _time.time(),
+                        )
                     except redis.RedisError:
                         pass  # claim is advisory; the sweep treats a missing claim as stale
                 logger.info(f"Received job: {job_id}")
-                process_job(job_data)
+                if owns_claim:
+                    process_job(job_data)
+                else:
+                    logger.warning(
+                        f"[Requeue] duplicate delivery already owned: job {job_id} "
+                        f"dispatch={dispatch_id or 'legacy'} — dropping duplicate"
+                    )
             except json.JSONDecodeError as e:
                 logger.error(f"Invalid job JSON: {e}")
             finally:
@@ -586,7 +729,13 @@ def run_consumer():
                 # raised, or the payload was poison: this delivery attempt is DONE either
                 # way — ack so the entry can't ping-pong via the stale sweep. A hard crash
                 # (kill/OOM) never reaches this line; the sweep requeues those.
-                _ack_processing(redis_conn, job_json, job_id)
+                _ack_processing(
+                    redis_conn,
+                    job_json,
+                    job_id,
+                    dispatch_id,
+                    worker_id,
+                )
 
             # Post-job recycle check. process_job() has returned (success,
             # failure, or user-cancellation), so the in-flight job is done

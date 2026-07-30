@@ -1,7 +1,10 @@
+import pytest
+
 from nicheiq.flows.checkpoint_manager import CheckpointManager
 from nicheiq.models.research_state import ResearchState
 from nicheiq.models.solution_idea import BaseSolutionIdea, IdeaGenerationResult
 from nicheiq.utils.idea_identity import (
+    apply_pool_identities,
     deterministic_idea_id,
     ensure_legacy_idea_identities,
     normalize_solution_name,
@@ -81,6 +84,74 @@ def test_legacy_hydration_indexes_visible_pool_like_old_backend_payload():
     assert hidden.idea_id == deterministic_idea_id(
         "job-1", "legacy_hidden", "pool", 0
     )
+
+
+def test_backend_pool_identity_preserves_matching_native_identity_and_provenance():
+    idea = _idea("Native")
+    idea.idea_id = "idea_native"
+    idea.idea_revision = 3
+    idea.identity_origin = "regeneration"
+    idea.identity_operation_id = "batch-7"
+
+    applied = apply_pool_identities(
+        [idea],
+        [{
+            "idea_id": "idea_native",
+            "idea_revision": 3,
+            "solution_name": " Native ",
+        }],
+    )
+
+    assert applied == 0
+    assert idea.idea_id == "idea_native"
+    assert idea.idea_revision == 3
+    assert idea.identity_origin == "regeneration"
+    assert idea.identity_operation_id == "batch-7"
+
+
+def test_backend_pool_identity_replaces_legacy_backfill_placeholder():
+    idea = _idea("Legacy")
+    ensure_legacy_idea_identities("job-1", [idea])
+    legacy_id = idea.idea_id
+
+    applied = apply_pool_identities(
+        [idea],
+        [{
+            "idea_id": "idea_backend",
+            "idea_revision": 4,
+            "solution_name": "Legacy",
+        }],
+    )
+
+    assert applied == 1
+    assert idea.idea_id != legacy_id
+    assert idea.idea_id == "idea_backend"
+    assert idea.idea_revision == 4
+    assert idea.identity_origin == "backend_pool"
+    assert idea.identity_operation_id is None
+
+
+def test_backend_pool_identity_rejects_conflicting_native_identity():
+    idea = _idea("Native")
+    idea.idea_id = "idea_checkpoint"
+    idea.idea_revision = 2
+    idea.identity_origin = "phase1"
+    idea.identity_operation_id = "initial"
+
+    with pytest.raises(RuntimeError, match="conflicts with backend pool"):
+        apply_pool_identities(
+            [idea],
+            [{
+                "idea_id": "idea_backend",
+                "idea_revision": 4,
+                "solution_name": "Native",
+            }],
+        )
+
+    assert idea.idea_id == "idea_checkpoint"
+    assert idea.idea_revision == 2
+    assert idea.identity_origin == "phase1"
+    assert idea.identity_operation_id == "initial"
 
 
 def test_ruled_out_finding_and_nested_idea_share_identity():

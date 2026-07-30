@@ -142,10 +142,12 @@ def _resolve_phase2_selection(
     selected_solution_snapshots: Optional[list[dict]] = None,
     provided_selection_fingerprint: Optional[str] = None,
     legacy_solution_names: Optional[list[str]] = None,
+    pool_identity_map: Optional[list[dict]] = None,
 ) -> tuple[list[str], list[dict]]:
     """Resolve the paid Phase-2 request to exact hydrated checkpoint revisions."""
     from nicheiq.models.solution_idea import visible_ideas
     from nicheiq.utils.idea_identity import (
+        apply_pool_identities,
         ensure_legacy_idea_identities,
         normalize_solution_name,
         normalized_solution_name_key,
@@ -155,6 +157,14 @@ def _resolve_phase2_selection(
     pool = list(
         getattr(getattr(state, "idea_generation", None), "solution_ideas", None) or []
     )
+    # The backend owns idea identity (stamped at /ideas-ready, seeded from the Phase-1
+    # dispatch id) and ships its stamped pool alongside the selection. Apply it before the
+    # legacy backfill, which only fills whatever this leaves unowned.
+    if pool_identity_map:
+        applied = apply_pool_identities(pool, pool_identity_map)
+        logger.info(
+            f"[Worker] Applied {applied}/{len(pool)} backend pool identities for job {job_id}"
+        )
     ensure_legacy_idea_identities(job_id, pool)
     visible = visible_ideas(pool)
     by_ref: dict[tuple[str, int], object] = {}
@@ -340,6 +350,7 @@ def _validate_regeneration_base_candidate_refs(
     state,
     job_id: str,
     base_candidate_refs: Optional[list[dict]],
+    pool_identity_map: Optional[list[dict]] = None,
 ) -> None:
     """Authorize regeneration against the exact selectable checkpoint pool.
 
@@ -355,11 +366,15 @@ def _validate_regeneration_base_candidate_refs(
         raise RuntimeError("base_candidate_refs must be a list")
 
     from nicheiq.models.solution_idea import visible_ideas
-    from nicheiq.utils.idea_identity import ensure_legacy_idea_identities
+    from nicheiq.utils.idea_identity import (
+        apply_pool_identities,
+        ensure_legacy_idea_identities,
+    )
 
     pool = list(
         getattr(getattr(state, "idea_generation", None), "solution_ideas", None) or []
     )
+    apply_pool_identities(pool, pool_identity_map or [])
     ensure_legacy_idea_identities(job_id, pool)
     current_refs: set[tuple[str, int]] = set()
     for idea in visible_ideas(pool):
@@ -1188,6 +1203,7 @@ def run_research_phase2(
     selected_solution_snapshots: Optional[list[dict]] = None,
     selection_fingerprint: Optional[str] = None,
     selection_rationale: str = "",
+    pool_identity_map: Optional[list[dict]] = None,
 ) -> dict:
     """
     Phase 2 task: runs deep investigation for user-selected solution(s).
@@ -1238,6 +1254,7 @@ def run_research_phase2(
             selected_solution_snapshots=selected_solution_snapshots,
             provided_selection_fingerprint=selection_fingerprint,
             legacy_solution_names=legacy_solutions,
+            pool_identity_map=pool_identity_map,
         )
 
         return _run_phase2_continuation(
@@ -1573,6 +1590,7 @@ def run_regenerate_ideas(
     dispatch_id: Optional[str] = None,
     batch_ordinal: Optional[int] = None,
     base_candidate_refs: Optional[list[dict]] = None,
+    pool_identity_map: Optional[list[dict]] = None,
 ) -> dict:
     """
     Regeneration task: generates new solution ideas avoiding existing names.
@@ -1612,6 +1630,7 @@ def run_regenerate_ideas(
             state,
             job_id,
             base_candidate_refs,
+            pool_identity_map,
         )
         progress_callback(5, "Solution Pipeline", "running")
 

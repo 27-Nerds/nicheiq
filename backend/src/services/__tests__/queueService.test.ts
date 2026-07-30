@@ -100,6 +100,31 @@ describe('queueService — enqueueContinueFromGateJob payload', () => {
   });
 });
 
+describe('queueService — catalog deep-research dispatch payload', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('carries the authorized dispatch id to the worker', async () => {
+    const { enqueueDeepIdeaResearchJob } = await import('../queueService.js');
+
+    await enqueueDeepIdeaResearchJob(
+      'job-1',
+      { solution_name: 'InvoiceFlow' },
+      'Invoice automation',
+      'user-1',
+      'dispatch-deep-1',
+    );
+
+    const [, payload] = mockLpush.mock.calls[0];
+    expect(JSON.parse(payload)).toMatchObject({
+      job_id: 'job-1',
+      task_type: 'catalog_deep_research',
+      dispatch_id: 'dispatch-deep-1',
+    });
+  });
+});
+
 describe('queueService — exact synthesis evaluation payload', () => {
   beforeEach(() => {
     vi.clearAllMocks();

@@ -37,9 +37,12 @@ eventsRouter.get('/:jobId/events', requireInternalAuth, async (req: Authenticate
   const landingInProgress = (job as any).landingPageStatus === 'QUEUED' || (job as any).landingPageStatus === 'RUNNING';
   if (isTerminal && !landingInProgress) {
     res.json({
-      id: job.id,
-      status: job.status,
-      progressPercent: job.progressPercent,
+      ...formatJobResponse(job, {
+        includeProgress: true,
+        includeAssets: true,
+        includeCreatedAt: true,
+        includeAssetFlags: true,
+      }),
       message: 'Job already finished',
     });
     return;

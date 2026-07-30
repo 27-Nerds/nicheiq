@@ -87,6 +87,28 @@ def anchor_coverage(texts: list[str], matchers: list[Matcher]) -> float:
     return hits / len(texts)
 
 
+def niche_anchor_query_term(niche_context) -> str:
+    """Best SHORT niche-category term for anchoring a search query.
+
+    Priority: first ``community_search_terms`` entry (Stage 1 generates these as
+    STRICTLY-1-3-word topic/identity terms — purpose-built for this), else the
+    first ``audience_jargon`` entry. Either is accepted only when it is 1-3 words
+    and parenthesis-free; otherwise returns "" so callers degrade to today's
+    unanchored behavior. Never falls back to niche_description — a truncated
+    prose slice ("The professional video post-production wo") is worse than no
+    anchor.
+    """
+    if niche_context is None:
+        return ""
+    for attr in ("community_search_terms", "audience_jargon"):
+        for term in getattr(niche_context, attr, None) or []:
+            term = (term or "").strip()
+            if term and "(" not in term and ")" not in term and len(term.split()) <= 3:
+                return term
+            break  # only the FIRST entry of each source is considered
+    return ""
+
+
 def format_anchor_block(niche_context, max_entities: int = 20, max_exclusions: int = 12) -> str:
     """Render the niche's anchor vocabulary as a prompt block.
 

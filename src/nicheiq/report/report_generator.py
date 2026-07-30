@@ -77,6 +77,11 @@ from .templates import ReportTemplates
 from ..utils.llm_service import LLMService
 from .utils import ScoreAccessor, StateAccessor
 
+# The base Conditional verdict's generic concern. Named so the red-team floor (Phase 5.5)
+# can recognize and null it on a 'killed' finding — every downgrade floor sets
+# primary_concern only-if-None, and this generic would otherwise always win.
+_GENERIC_CONDITIONAL_CONCERN = "Monitor market validation closely during MVP phase"
+
 
 class ReportGenerator:
     """
@@ -2017,6 +2022,11 @@ It differentiates through {diff_text}.
                     critic_concern=critic_concern or None,
                     incumbent_parity=getattr(solution, 'incumbent_parity', None),
                     adjacent_market_parity=getattr(solution, 'adjacent_market_parity', None),
+                    # Adversarial red-team pass (mirrors the preview-report threading in
+                    # research_flow._materialize_preview_report — the final report was
+                    # silently dropping these via AlternativeSolution's extra='ignore').
+                    red_team_verdict=getattr(solution, 'red_team_verdict', None),
+                    red_team_caveats=list(getattr(solution, 'red_team_caveats', None) or []) or None,
                     source_segment_payability=getattr(solution, 'source_segment_payability', None),
                     source_segment_payability_class=getattr(solution, 'source_segment_payability_class', None),
                     # Multi-Frame Idea Generation Portfolio: which frame minted this idea's cell
@@ -3093,7 +3103,7 @@ It differentiates through {diff_text}.
               gate_val >= settings.verdict_conditional_min_individual_score):
             verdict = "Conditional"
             risk_level = "Medium"
-            primary_concern = "Monitor market validation closely during MVP phase"
+            primary_concern = _GENERIC_CONDITIONAL_CONCERN
         else:
             verdict = "No-Go"
             risk_level = "High"
@@ -3239,6 +3249,30 @@ It differentiates through {diff_text}.
         if payability_context:
             logger.info(f"[Verdict Payability Floor] {payability_context}")
 
+        # Phase 5.5 (run-quality fixes §1, 2026-07-30): red-team floor — an adversarial
+        # 'weakened'/'killed' finding on the selected idea must reach the verdict; before
+        # this it was stamped on the idea and then discarded at verdict time (the audited
+        # ScopeShield run shipped 'Conditional/Medium/monitor closely' after being
+        # red-team weakened with devastating caveats). Runs before regulatory so the
+        # structural-legal concern still outranks when both fire.
+        from ..validators.score_validators import ScoreThresholds as _ST55, VerdictValidator as _VV55
+        _rt_v = getattr(solution, "red_team_verdict", None)
+        if ((_rt_v or "").strip().lower() == "killed"
+                and primary_concern == _GENERIC_CONDITIONAL_CONCERN):
+            # Null the generic base concern so the killed concern can land — every floor
+            # follows the only-if-None contract, and the generic Conditional concern
+            # would otherwise always win.
+            primary_concern = None
+        verdict, risk_level, primary_concern, red_team_context = (
+            _VV55(_ST55.from_settings(settings)).apply_red_team_downgrade(
+                verdict=verdict, risk_level=risk_level, primary_concern=primary_concern,
+                red_team_verdict=_rt_v,
+                red_team_caveats=getattr(solution, "red_team_caveats", None),
+            )
+        )
+        if red_team_context:
+            logger.info(f"[Verdict Red-Team Floor] {red_team_context}")
+
         # Phase 6 (flagged, default OFF): stacked regulatory + grey-market exposure caps the verdict.
         # Runs last so its concern outranks earlier downgrades when both fire (structural legal risk).
         from ..validators.score_validators import ScoreThresholds as _ST6, VerdictValidator as _VV6
@@ -3257,7 +3291,8 @@ It differentiates through {diff_text}.
         downgrade_note = None
         if verdict != pre_downgrade_verdict:
             downgrade_note = (regulatory_context or trend_context or market_viability_context
-                              or seo_kill_context or payability_context or "post-verdict validation")
+                              or seo_kill_context or payability_context or red_team_context
+                              or "post-verdict validation")
         rationale = self._generate_verdict_explanation(
             verdict=verdict,
             primary_concern=primary_concern,
@@ -3270,6 +3305,12 @@ It differentiates through {diff_text}.
             downgrade_note=downgrade_note,
             score_caveat=score_caveat,
         )
+        if red_team_context and red_team_context != downgrade_note:
+            # Unconditional surfacing (§1): the red-team finding must be visible even when
+            # the verdict LETTER did not change — all four audited runs were already
+            # Conditional, so a change-gated note alone would keep the finding invisible.
+            # Deterministic append, mirroring the score_caveat convention.
+            rationale = f"{rationale} {red_team_context}"
 
         result = GoNoGoVerdict(
             verdict=verdict,
@@ -3279,6 +3320,7 @@ It differentiates through {diff_text}.
             trend_context=trend_context,
             market_viability_context=market_viability_context,
             payability_context=payability_context,
+            red_team_context=red_team_context,
         )
         # Cache for other sections (market_analytics derives its recommendation
         # from the same verdict instead of maintaining parallel thresholds)

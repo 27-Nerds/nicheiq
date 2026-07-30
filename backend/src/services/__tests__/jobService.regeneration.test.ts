@@ -36,6 +36,7 @@ vi.mock('../db.js', () => ({
 vi.mock('../creditService.js', () => ({
   determineFailedStage: vi.fn(),
   refundForStage: vi.fn(),
+  refundForStageInTx: vi.fn(),
   refundForRegenerationStage: (...args: any[]) => mockRefundForRegenerationStage(...args),
   refundChargeInTx: (...args: any[]) => mockRefundChargeInTx(...args),
   refundForSeedIdeaStage: vi.fn(),

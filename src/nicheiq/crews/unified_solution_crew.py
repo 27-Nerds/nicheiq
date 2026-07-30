@@ -1574,14 +1574,25 @@ class UnifiedSolutionCrew:
                     f"{idea.source_segment_payability}")
 
     @staticmethod
-    def _mechanism_keywords(idea, max_words: int = 6) -> str:
+    def _mechanism_keywords(idea, max_words: int = 6, glossary: dict | None = None) -> str:
         """Distinctive search words for an idea's core mechanism: mechanism_tag words +
-        the first content words of the value proposition."""
+        the first content words of the value proposition.
+
+        ``glossary`` (optional, {acronym: expansion} from build_jargon_glossary)
+        expands ambiguous niche acronyms BEFORE the length filter — "SMS"/"RO"/"DVI"
+        are <=3 chars and would otherwise be dropped unexpanded, sending probe
+        queries to a different industry (run-quality fixes §2/§4). Only the
+        red-team query builder passes it; the other call sites are unchanged.
+        """
         stop = {"the", "and", "for", "with", "your", "that", "from", "into", "them",
                 "this", "their", "then", "every", "using", "without", "where"}
         words = []
         tag = (getattr(idea, "mechanism_tag", None) or "").replace("-", " ").replace("_", " ")
         vp = getattr(idea, "value_proposition", "") or ""
+        if glossary:
+            from ..utils.jargon_glossary import expand_jargon
+            tag = expand_jargon(tag, glossary)
+            vp = expand_jargon(vp, glossary)
         for w in (tag + " " + vp).split():
             w = w.strip(".,;:!?()\"'").lower()
             if len(w) > 3 and w not in stop and w not in words:
@@ -3998,29 +4009,18 @@ class UnifiedSolutionCrew:
             "band (0.45-0.60) is the honest default for an early idea — do NOT award 'good' market_fit "
             "on pain severity alone.\n\n"
         )
-        # Payability rubric (permanent since the 2026-07-06 gate pass): each idea's row carries
-        # its buyer segment's wallet class + 0-1 payability. Downgrade-framed — evidence can
-        # only ground market_fit, never lift it.
-        static_prompt += (
-            "BUYER PAYABILITY (read when a row shows 'buyer payability'):\n"
-            "- The payability line reflects whether the target segment holds budget authority "
-            "and demonstrably pays for software (incumbent pricing, spend quotes). Pain "
-            "without a wallet is not a market: for a personal-wallet or prosumer-wallet "
-            "segment, ground market_fit accordingly even when pain intensity is high — "
-            "episodic personal spending does not sustain the score a business budget would. "
-            "Never RAISE market_fit because payability is high; it is a reality check, "
-            "not a bonus.\n\n"
-        )
-        # Niche wallet (E1, 2026-07-09): the run's web-probed tooling-spend norm — same
-        # cache-and-reuse pattern as _menu/_dissat above. '' when the probe found nothing
-        # (getattr-guarded: some unit harnesses drive this off a bare SimpleNamespace 'self').
-        _wallet_fn = getattr(self, "_wallet_prompt_line", None)
-        _wallet = _wallet_fn() if callable(_wallet_fn) else ""
-        if _wallet:
-            static_prompt += (
-                f"{_wallet} Treat this as the ceiling on realistic willingness-to-pay; never "
-                "RAISE market_fit above it.\n\n"
-            )
+        # PAYABILITY DE-DUP (run-quality fixes §5 follow-up, 2026-07-30): the BUYER
+        # PAYABILITY rubric block, the per-idea 'buyer payability' row, and the niche-wallet
+        # willingness-to-pay ceiling were REMOVED from this prompt. Payability was being
+        # applied to market_fit up to six times on the same evidence (critic prompt ×2 +
+        # deterministic cap (d) + weak-wallet parity cap + demotion + verdict floor), and
+        # the composition was never gate-measured — observed market_fit landed at 0.40-0.45,
+        # BELOW cap (d)'s 0.55, proving the prompt stages were double-applying it. The
+        # segment-payability signal now reaches scores through exactly ONE auditable path:
+        # `_validate_idea_caps` rule (d) (+ its downstream demotion/verdict consumers).
+        # The critic scores payability-BLIND by design. (The 2026-07-06 calibration gate
+        # validated the prompt block in ISOLATION; re-measuring the removal requires the
+        # pre-change code — git history is the toggle.)
         # P1c: angle-conditional rule for distribution_seo ideas (each idea's winning_angle is shown in
         # its row). Suspends the obviousness→novelty coherence lock for SEO plays ONLY, but keeps novelty
         # BOUNDED and obviousness HONEST — the exemption stops the penalty, it does not license inflation.
@@ -4076,16 +4076,12 @@ class UnifiedSolutionCrew:
                 angle_line = ""
                 if settings.enable_direction_aware_eval:
                     angle_line = f"- winning_angle: {getattr(i, 'winning_angle', None) or 'unclassified'}\n"
-                pay_line = ""
-                if getattr(i, "source_segment_payability", None) is not None:
-                    pay_line = (
-                        f"- buyer payability: {getattr(i, 'source_segment_payability_class', None) or '?'} "
-                        f"({getattr(i, 'source_segment_payability'):.2f}) — segment: "
-                        f"{sanitize_social_content(getattr(i, 'source_segment', '') or 'n/a')[:60]}\n")
+                # NOTE: no payability row — the critic scores payability-BLIND; the segment
+                # wallet signal applies once, deterministically, in _validate_idea_caps (d)
+                # (payability de-dup 2026-07-30 — see _calibration_static_prompt).
                 rows.append(
                     f"### {nm}\n"
                     f"{angle_line}"
-                    f"{pay_line}"
                     f"- value_prop: {_g('value_proposition', 180)}\n"
                     f"- addressed pains: {sanitize_social_content(pains)[:200]} "
                     f"(source pain severity: {sev_s})\n"
@@ -6186,6 +6182,13 @@ class UnifiedSolutionCrew:
                 seg = getattr(idea, "source_segment", None) or "this audience"
                 reason = (f"Buyers in this segment ({seg}) rarely pay for tooling — the pain is "
                           "real but the wallet is thin.")
+                # Operator≠payer hypothesis (run-quality fixes §5): computed INLINE so the
+                # demotion-time snapshot carries it — a post-hoc stamp would arrive after
+                # _record_ruled_out has already materialized the finding.
+                from ..utils.segment_payability import payer_retarget_hint
+                hint = payer_retarget_hint(idea)
+                if hint:
+                    reason = f"{reason} {hint}"
             elif dam in ("unofficial", "restricted", "blocked") or (
                     isinstance(bf, (int, float)) and bf < 0.5):
                 reason = ("No defensible, buildable mechanism on obtainable data — the viable "

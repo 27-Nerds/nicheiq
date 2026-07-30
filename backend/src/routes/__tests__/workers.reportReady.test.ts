@@ -8,6 +8,13 @@ import request from 'supertest';
 const mockUpdateMany = vi.fn();
 const mockJobFindUnique = vi.fn();
 const mockJobUpdate = vi.fn();
+const mockJobUpdateMany = vi.fn();
+const mockDispatchFindUnique = vi.fn();
+const mockDispatchFindFirst = vi.fn();
+const mockDispatchUpdate = vi.fn();
+const mockDispatchUpdateMany = vi.fn();
+const mockJobAssetUpsert = vi.fn();
+const mockJobAssetFindUnique = vi.fn();
 const mockUserFindUnique = vi.fn();
 
 vi.mock('../../services/db.js', () => ({
@@ -16,8 +23,27 @@ vi.mock('../../services/db.js', () => ({
     job: {
       findUnique: (...args: any[]) => mockJobFindUnique(...args),
       update: (...args: any[]) => mockJobUpdate(...args),
+      updateMany: (...args: any[]) => mockJobUpdateMany(...args),
+    },
+    jobDispatch: {
+      findUnique: (...args: any[]) => mockDispatchFindUnique(...args),
+    },
+    jobAsset: {
+      findUnique: (...args: any[]) => mockJobAssetFindUnique(...args),
     },
     user: { findUnique: (...args: any[]) => mockUserFindUnique(...args) },
+    $transaction: (callback: (tx: any) => unknown) => callback({
+      job: { updateMany: (...args: any[]) => mockJobUpdateMany(...args) },
+      jobDispatch: {
+        findFirst: (...args: any[]) => mockDispatchFindFirst(...args),
+        update: (...args: any[]) => mockDispatchUpdate(...args),
+        updateMany: (...args: any[]) => mockDispatchUpdateMany(...args),
+      },
+      jobAsset: {
+        upsert: (...args: any[]) => mockJobAssetUpsert(...args),
+      },
+      jobProgress: { updateMany: (...args: any[]) => mockUpdateMany(...args) },
+    }),
   },
 }));
 
@@ -42,6 +68,16 @@ vi.mock('../../services/jobService.js', () => ({
 const mockExtractOrCreate = vi.fn();
 vi.mock('../../services/researchContextService.js', () => ({
   extractOrCreateResearchContext: (...args: any[]) => mockExtractOrCreate(...args),
+}));
+
+const mockGetReportJsonForJob = vi.fn();
+vi.mock('../../services/assetService.js', () => ({
+  getReportJsonForJob: (...args: any[]) => mockGetReportJsonForJob(...args),
+}));
+
+const mockCreateReportAnalystFollowup = vi.fn();
+vi.mock('../../services/analystFollowupService.js', () => ({
+  createReportAnalystFollowup: (...args: any[]) => mockCreateReportAnalystFollowup(...args),
 }));
 
 const mockBroadcastProgress = vi.fn();
@@ -109,7 +145,14 @@ beforeEach(async () => {
   // to simulate re-delivery override mockGetJobAsset.
   mockGetJobAsset.mockResolvedValue(null);
   mockExtractOrCreate.mockResolvedValue({});
+  mockGetReportJsonForJob.mockResolvedValue({});
+  mockCreateReportAnalystFollowup.mockResolvedValue({});
   mockJobUpdate.mockResolvedValue({});
+  mockJobUpdateMany.mockResolvedValue({ count: 1 });
+  mockDispatchFindFirst.mockResolvedValue({ resultFingerprint: null });
+  mockDispatchUpdate.mockResolvedValue({});
+  mockDispatchUpdateMany.mockResolvedValue({ count: 1 });
+  mockJobAssetUpsert.mockResolvedValue({});
 
   app = express();
   app.use(express.json());
@@ -236,6 +279,179 @@ describe('POST /api/workers/report-ready', () => {
     expect(response.body.code).toBe('WINNER_IDENTITY_UNRESOLVED');
     expect(mockAddJobAsset).not.toHaveBeenCalled();
     expect(mockJobUpdate).not.toHaveBeenCalled();
+  });
+
+  it('accepts the exact catalog deep-idea winner without inventing a candidate identity', async () => {
+    const dispatchId = '00000000-0000-4000-8000-000000000020';
+    mockJobFindUnique.mockResolvedValue({
+      userId: 'user-1',
+      niche: 'Auto invoicing',
+      selectedSolutions: ['InvoiceFlow'],
+      selectedSolutionIds: [],
+      selectedSolutionRefs: null,
+      solutionIdeas: [],
+      entryMode: 'deep_idea',
+      status: 'RUNNING_PHASE2',
+      activeDispatchId: dispatchId,
+    });
+    mockDispatchFindUnique.mockResolvedValue({
+      jobId: JOB_ID,
+      kind: 'DEEP_RESEARCH',
+      state: 'CLAIMED',
+      workPayload: {
+        task_type: 'catalog_deep_research',
+        idea_seed: { solution_name: 'InvoiceFlow' },
+      },
+    });
+    mockUserFindUnique.mockResolvedValue({ email: null });
+
+    const response = await request(app)
+      .post('/api/workers/report-ready')
+      .send({
+        ...validPayload,
+        dispatch_id: dispatchId,
+        winner_name: '  invoiceflow ',
+      });
+
+    expect(response.status).toBe(200);
+    expect(mockJobUpdateMany).toHaveBeenCalledWith({
+      where: {
+        id: JOB_ID,
+        status: 'RUNNING_PHASE2',
+        activeDispatchId: dispatchId,
+      },
+      data: {
+        selectedSolution: 'InvoiceFlow',
+        status: 'COMPLETED',
+        completedAt: expect.any(Date),
+        progressPercent: 100,
+        activeDispatchId: null,
+      },
+    });
+    expect(mockJobUpdateMany.mock.calls[0][0].data).not.toHaveProperty(
+      'deepResearchRecommendedIdeaId',
+    );
+    expect(mockDispatchUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: dispatchId,
+          state: 'CLAIMED',
+        }),
+        data: expect.objectContaining({ state: 'COMPLETED' }),
+      }),
+    );
+    expect(mockJobAssetUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ filePath: validPayload.report_path }),
+      }),
+    );
+  });
+
+  it('rejects an identityless report callback when a modern dispatch is active', async () => {
+    mockJobFindUnique.mockResolvedValue({
+      userId: 'user-1',
+      niche: 'test niche',
+      selectedSolutions: ['Signal Desk'],
+      selectedSolutionIds: ['idea-signal'],
+      solutionIdeas: [
+        { idea_id: 'idea-signal', idea_revision: 1, solution_name: 'Signal Desk' },
+      ],
+      status: 'RUNNING_PHASE2',
+      activeDispatchId: '00000000-0000-4000-8000-000000000020',
+    });
+
+    const response = await request(app)
+      .post('/api/workers/report-ready')
+      .send({ ...validPayload, winner_name: 'Signal Desk' });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      stale: true,
+      reason: 'missing_dispatch_identity',
+    });
+    expect(mockJobUpdate).not.toHaveBeenCalled();
+    expect(mockJobUpdateMany).not.toHaveBeenCalled();
+    expect(mockAddJobAsset).not.toHaveBeenCalled();
+    expect(mockJobAssetUpsert).not.toHaveBeenCalled();
+  });
+
+  it('rejects a catalog winner that differs from the immutable authorized seed', async () => {
+    const dispatchId = '00000000-0000-4000-8000-000000000020';
+    mockJobFindUnique.mockResolvedValue({
+      userId: 'user-1',
+      niche: 'Auto invoicing',
+      selectedSolutions: ['InvoiceFlow'],
+      selectedSolutionIds: [],
+      selectedSolutionRefs: null,
+      solutionIdeas: [],
+      entryMode: 'deep_idea',
+      status: 'RUNNING_PHASE2',
+      activeDispatchId: dispatchId,
+    });
+    mockDispatchFindUnique.mockResolvedValue({
+      jobId: JOB_ID,
+      kind: 'DEEP_RESEARCH',
+      state: 'CLAIMED',
+      workPayload: {
+        task_type: 'catalog_deep_research',
+        idea_seed: { solution_name: 'Different seed' },
+      },
+    });
+
+    const response = await request(app)
+      .post('/api/workers/report-ready')
+      .send({
+        ...validPayload,
+        dispatch_id: dispatchId,
+        winner_name: 'InvoiceFlow',
+      });
+
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe('WINNER_IDENTITY_UNRESOLVED');
+    expect(mockJobUpdateMany).not.toHaveBeenCalled();
+    expect(mockAddJobAsset).not.toHaveBeenCalled();
+  });
+
+  it('does not turn a committed modern report into failure when context projection fails', async () => {
+    const dispatchId = '00000000-0000-4000-8000-000000000020';
+    mockJobFindUnique.mockResolvedValue({
+      userId: 'user-1',
+      niche: 'Auto invoicing',
+      selectedSolutions: ['InvoiceFlow'],
+      selectedSolutionIds: [],
+      selectedSolutionRefs: null,
+      solutionIdeas: [],
+      entryMode: 'deep_idea',
+      status: 'RUNNING_PHASE2',
+      activeDispatchId: dispatchId,
+    });
+    mockDispatchFindUnique.mockResolvedValue({
+      jobId: JOB_ID,
+      kind: 'DEEP_RESEARCH',
+      state: 'CLAIMED',
+      workPayload: {
+        task_type: 'catalog_deep_research',
+        idea_seed: { solution_name: 'InvoiceFlow' },
+      },
+    });
+    mockExtractOrCreate.mockRejectedValue(new Error('projection unavailable'));
+
+    const response = await request(app)
+      .post('/api/workers/report-ready')
+      .send({
+        ...validPayload,
+        dispatch_id: dispatchId,
+        winner_name: 'InvoiceFlow',
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ status: 'ok' });
+    expect(mockDispatchUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ state: 'COMPLETED' }),
+      }),
+    );
+    expect(mockJobAssetUpsert).toHaveBeenCalledOnce();
   });
 
   it('calls notifyJobComplete() with correct user email', async () => {

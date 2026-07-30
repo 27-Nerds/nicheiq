@@ -61,3 +61,28 @@ def test_build_skips_blank_terms():
 def test_coverage_empty_texts():
     m = build_anchor_matchers(PEPTIDE_ANCHORS)
     assert anchor_coverage([], m) == 0.0
+
+
+class TestNicheAnchorQueryTerm:
+    def test_prefers_community_search_terms(self):
+        from types import SimpleNamespace
+        from nicheiq.utils.validation.niche_anchor import niche_anchor_query_term
+        ctx = SimpleNamespace(community_search_terms=["auto repair"],
+                              audience_jargon=["RO (repair order)"])
+        assert niche_anchor_query_term(ctx) == "auto repair"
+
+    def test_falls_back_to_jargon_rejecting_parenthetical(self):
+        from types import SimpleNamespace
+        from nicheiq.utils.validation.niche_anchor import niche_anchor_query_term
+        ctx = SimpleNamespace(community_search_terms=["RO (repair order)"],
+                              audience_jargon=["month-end close"])
+        assert niche_anchor_query_term(ctx) == "month-end close"
+
+    def test_rejects_long_terms_and_empty_context(self):
+        from types import SimpleNamespace
+        from nicheiq.utils.validation.niche_anchor import niche_anchor_query_term
+        ctx = SimpleNamespace(
+            community_search_terms=["a very long five word phrase"],
+            audience_jargon=["another overly long jargon phrase here"])
+        assert niche_anchor_query_term(ctx) == ""
+        assert niche_anchor_query_term(None) == ""

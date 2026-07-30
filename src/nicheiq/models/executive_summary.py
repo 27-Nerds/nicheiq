@@ -59,6 +59,12 @@ class GoNoGoVerdict(BaseModel):
         description="Buyer-payability floor explanation (Phase 5), if any. "
                     "None = no adjustment applied."
     )
+    red_team_context: Optional[str] = Field(
+        default=None,
+        description="Red-team floor explanation (Phase 5.5) — adversarial "
+                    "'weakened'/'killed' finding on the selected idea, if any. "
+                    "None = no adjustment applied."
+    )
 
 
 class VerdictExplanation(BaseModel):

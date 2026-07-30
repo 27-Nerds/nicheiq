@@ -43,8 +43,24 @@ vi.mock('../../services/creditService.js', () => ({
       this.required = required;
     }
   },
+  PriceChangedError: class PriceChangedError extends Error {
+    expectedCost: number;
+    actualCost: number;
+    constructor(expectedCost: number, actualCost: number) {
+      super('Price changed');
+      this.expectedCost = expectedCost;
+      this.actualCost = actualCost;
+    }
+  },
+  createJobAndChargeDiscoveryInTx: vi.fn(),
   refundForStage: (...args: any[]) => mockRefundForStage(...args),
   chargeForStageInTx: vi.fn(),
+  chargeForStageWithPriceCasInTx: vi.fn(),
+  chargeForRegenerationInTx: vi.fn(),
+  chargeForResume: vi.fn(),
+  segmentForGateContinue: vi.fn(),
+  chargeForSeedIdeaInTx: vi.fn(),
+  refundChargeInTx: vi.fn(),
   getStageCost: vi.fn().mockResolvedValue(5),
 }));
 

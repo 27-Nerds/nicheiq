@@ -687,6 +687,57 @@ class VerdictValidator:
             primary_concern = "Target segment has weak willingness-to-pay for direct-paid pricing"
         return verdict, risk_level, primary_concern, payability_context
 
+    def apply_red_team_downgrade(
+        self,
+        verdict: Literal["Go", "No-Go", "Conditional"],
+        risk_level: Literal["Low", "Medium", "High"],
+        primary_concern: Optional[str],
+        red_team_verdict: Optional[str],
+        red_team_caveats: Optional[list],
+    ) -> tuple[
+        Literal["Go", "No-Go", "Conditional"],
+        Literal["Low", "Medium", "High"],
+        Optional[str],
+        Optional[str],
+    ]:
+        """Red-team floor (Phase 5.5, run-quality fixes §1 2026-07-30): the adversarial
+        red-team pass produces evidence-cited 'weakened'/'killed' findings on the selected
+        idea, but until this floor they never reached the verdict — a weakened selection
+        presented exactly like an unexamined one. Downgrade-only, permanent (mirrors the
+        payability floor, not the flagged Phase-6 experiment): caps Go->Conditional;
+        'weakened' floors risk Low->Medium; 'killed' floors Medium->High — a killed idea
+        can still BE the selection (the sweep demotions run before the red team, and the
+        kill path only caps scores); never forces No-Go. primary_concern is set only when
+        currently None (standard floor contract) — the caller nulls the GENERIC base
+        concern for a killed verdict so this one can land. Abstains (no context) for
+        survives/None; a vocabulary-mismatch abstain (red_team_vocab_mismatch) is NOT a
+        verdict and never triggers this."""
+        rt = (red_team_verdict or "").strip().lower()
+        if rt not in ("weakened", "killed"):
+            return verdict, risk_level, primary_concern, None
+
+        if verdict == "Go":
+            verdict = "Conditional"
+        if risk_level == "Low":
+            risk_level = "Medium"
+        if rt == "killed" and risk_level == "Medium":
+            risk_level = "High"
+
+        caveats = [c for c in (red_team_caveats or []) if isinstance(c, str) and c.strip()]
+        first = caveats[0].strip()[:200] if caveats else ""
+        cited = f" — {first}" if first else ""
+        red_team_context = (
+            f"Red-team review: an adversarial evidence probe {rt} this idea{cited}. "
+            "Treat the caveat as a validation task, not a footnote."
+        )
+        if primary_concern is None:
+            primary_concern = (
+                "Adversarial red-team review found this idea's core premise refuted by evidence"
+                if rt == "killed"
+                else "Adversarial red-team review weakened the selected idea"
+            )
+        return verdict, risk_level, primary_concern, red_team_context
+
     def apply_regulatory_risk_downgrade(
         self,
         verdict: Literal["Go", "No-Go", "Conditional"],

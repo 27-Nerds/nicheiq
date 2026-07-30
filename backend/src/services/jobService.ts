@@ -1,7 +1,16 @@
 import { prisma } from './db.js';
-import { JobStatus, StageStatus, AssetType, Prisma, BillingModel, DispatchState, DispatchKind } from '@prisma/client';
+import { JobStatus, StageStatus, AssetType, Prisma, BillingModel, DispatchState, DispatchKind, CreditTransactionType, type Job } from '@prisma/client';
 import { PIPELINE_STAGES, TOTAL_STAGES } from '../types/job.js';
-import { determineFailedStage, refundChargeInTx, refundForStage, refundForRegenerationStage, refundForSeedIdeaStage, isGuidedSegment, type StageName } from './creditService.js';
+import {
+  determineFailedStage,
+  refundChargeInTx,
+  refundForStage,
+  refundForStageInTx,
+  refundForRegenerationStage,
+  refundForSeedIdeaStage,
+  isGuidedSegment,
+  type StageName,
+} from './creditService.js';
 import {
   buildRegenerationEnvelope,
   buildRegenerationReceiptContent,
@@ -57,6 +66,26 @@ export async function getJob(id: string) {
         orderBy: { stageNumber: 'asc' },
       },
       assets: true,
+      creditTransactions: {
+        where: { type: CreditTransactionType.REFUND },
+        select: {
+          id: true,
+          amount: true,
+        },
+      },
+      dispatches: {
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+        select: {
+          id: true,
+          kind: true,
+          state: true,
+          refundedAmount: true,
+          refundTransaction: {
+            select: { amount: true },
+          },
+        },
+      },
     },
   });
 }
@@ -100,96 +129,113 @@ export async function updateStageProgress(
   stageNumber: number,
   status: StageStatus,
   errorMessage?: string,
-  details?: Record<string, unknown>
+  details?: Record<string, unknown>,
+  dispatchId?: string,
 ) {
-  const now = new Date();
+  const applyUpdate = async (db: Prisma.TransactionClient | typeof prisma) => {
+    const now = new Date();
 
-  // Get current stage status to avoid overwriting historical data on resume
-  const currentStage = await prisma.jobProgress.findUnique({
-    where: { jobId_stageNumber: { jobId, stageNumber } },
-    select: { status: true, startedAt: true, completedAt: true, durationSeconds: true },
-  });
-
-  // Skip update if stage is already completed (preserve historical timestamps during resume)
-  // BUT still persist details/artifact if provided (handles resume/reload artifact population)
-  if (currentStage?.status === StageStatus.COMPLETED && (status === StageStatus.COMPLETED || status === StageStatus.SKIPPED)) {
-    if (details) {
-      await prisma.jobProgress.update({
-        where: { jobId_stageNumber: { jobId, stageNumber } },
-        data: { details: details as Prisma.InputJsonValue },
-      });
-    }
-    const existingProgress = await prisma.jobProgress.findUnique({
+    // Get current stage status to avoid overwriting historical data on resume
+    const currentStage = await db.jobProgress.findUnique({
       where: { jobId_stageNumber: { jobId, stageNumber } },
+      select: { status: true, startedAt: true, completedAt: true, durationSeconds: true },
     });
-    return existingProgress;
-  }
 
-  // Upsert: creates the row if it doesn't exist yet (forward compat for new stages)
-  const stageName = PIPELINE_STAGES.find(s => s.number === stageNumber)?.name ?? `Stage ${stageNumber}`;
-  const progress = await prisma.jobProgress.upsert({
-    where: {
-      jobId_stageNumber: {
+    // Skip update if stage is already completed (preserve historical timestamps during resume)
+    // BUT still persist details/artifact if provided (handles resume/reload artifact population)
+    if (currentStage?.status === StageStatus.COMPLETED && (status === StageStatus.COMPLETED || status === StageStatus.SKIPPED)) {
+      if (details) {
+        await db.jobProgress.update({
+          where: { jobId_stageNumber: { jobId, stageNumber } },
+          data: { details: details as Prisma.InputJsonValue },
+        });
+      }
+      const existingProgress = await db.jobProgress.findUnique({
+        where: { jobId_stageNumber: { jobId, stageNumber } },
+      });
+      return existingProgress;
+    }
+
+    // Upsert: creates the row if it doesn't exist yet (forward compat for new stages)
+    const stageName = PIPELINE_STAGES.find(s => s.number === stageNumber)?.name ?? `Stage ${stageNumber}`;
+    const progress = await db.jobProgress.upsert({
+      where: {
+        jobId_stageNumber: {
+          jobId,
+          stageNumber,
+        },
+      },
+      create: {
         jobId,
         stageNumber,
+        stageName,
+        status,
+        startedAt: status === StageStatus.RUNNING ? now : undefined,
+        completedAt: (status === StageStatus.COMPLETED || status === StageStatus.SKIPPED || status === StageStatus.FAILED) ? now : undefined,
+        errorMessage,
+        ...(details ? { details: details as Prisma.InputJsonValue } : {}),
       },
-    },
-    create: {
-      jobId,
-      stageNumber,
-      stageName,
-      status,
-      startedAt: status === StageStatus.RUNNING ? now : undefined,
-      completedAt: (status === StageStatus.COMPLETED || status === StageStatus.SKIPPED || status === StageStatus.FAILED) ? now : undefined,
-      errorMessage,
-      ...(details ? { details: details as Prisma.InputJsonValue } : {}),
-    },
-    update: {
-      status,
-      startedAt: status === StageStatus.RUNNING && !currentStage?.startedAt ? now : undefined,
-      completedAt: (status === StageStatus.COMPLETED || status === StageStatus.SKIPPED || status === StageStatus.FAILED) && !currentStage?.completedAt ? now : undefined,
-      errorMessage,
-      ...(details ? { details: details as Prisma.InputJsonValue } : {}),
-    },
-  });
-
-  // Only calculate duration if not already set
-  if (progress.startedAt && progress.completedAt && !currentStage?.durationSeconds) {
-    await prisma.jobProgress.update({
-      where: { id: progress.id },
-      data: {
-        durationSeconds: (progress.completedAt.getTime() - progress.startedAt.getTime()) / 1000,
+      update: {
+        status,
+        startedAt: status === StageStatus.RUNNING && !currentStage?.startedAt ? now : undefined,
+        completedAt: (status === StageStatus.COMPLETED || status === StageStatus.SKIPPED || status === StageStatus.FAILED) && !currentStage?.completedAt ? now : undefined,
+        errorMessage,
+        ...(details ? { details: details as Prisma.InputJsonValue } : {}),
       },
     });
-  }
 
-  // Update job's current stage and progress percent
-  const [completedStages, jobRecord] = await Promise.all([
-    prisma.jobProgress.count({
-      where: {
-        jobId,
-        status: { in: [StageStatus.COMPLETED, StageStatus.SKIPPED] },
-      },
-    }),
-    prisma.job.findUnique({
+    // Only calculate duration if not already set
+    if (progress.startedAt && progress.completedAt && !currentStage?.durationSeconds) {
+      await db.jobProgress.update({
+        where: { id: progress.id },
+        data: {
+          durationSeconds: (progress.completedAt.getTime() - progress.startedAt.getTime()) / 1000,
+        },
+      });
+    }
+
+    // Update job's current stage and progress percent
+    const [completedStages, jobRecord] = await Promise.all([
+      db.jobProgress.count({
+        where: {
+          jobId,
+          status: { in: [StageStatus.COMPLETED, StageStatus.SKIPPED] },
+        },
+      }),
+      db.job.findUnique({
+        where: { id: jobId },
+        select: { totalStages: true },
+      }),
+    ]);
+
+    const dynamicTotal = Math.max(jobRecord?.totalStages ?? TOTAL_STAGES, TOTAL_STAGES);
+
+    await db.job.update({
       where: { id: jobId },
-      select: { totalStages: true },
-    }),
-  ]);
+      data: {
+        currentStage: stageNumber,
+        currentStageName: stageName,
+        stagesCompleted: completedStages,
+        progressPercent: (completedStages / dynamicTotal) * 100,
+      },
+    });
 
-  const dynamicTotal = Math.max(jobRecord?.totalStages ?? TOTAL_STAGES, TOTAL_STAGES);
+    return progress;
+  };
 
-  await prisma.job.update({
-    where: { id: jobId },
-    data: {
-      currentStage: stageNumber,
-      currentStageName: stageName,
-      stagesCompleted: completedStages,
-      progressPercent: (completedStages / dynamicTotal) * 100,
-    },
+  if (!dispatchId) return applyUpdate(prisma);
+
+  return prisma.$transaction(async (tx) => {
+    // This is both the ownership check and the row lock. A terminal callback uses the same Job
+    // row first, so it either waits for this authorized projection to commit or wins first and
+    // makes the predicate miss. A read-before-write guard cannot provide that guarantee.
+    const fenced = await tx.job.updateMany({
+      where: { id: jobId, activeDispatchId: dispatchId },
+      data: { updatedAt: new Date() },
+    });
+    if (fenced.count !== 1) return null;
+    return applyUpdate(tx);
   });
-
-  return progress;
 }
 
 /**
@@ -338,7 +384,7 @@ export async function cancelJob(jobId: string): Promise<CancelOutcome> {
   if (existing.activeDispatchId) {
     const dispatch = await prisma.jobDispatch.findUnique({
       where: { id: existing.activeDispatchId },
-      select: { id: true, kind: true, seedOrdinal: true, sourceMessageId: true },
+      select: { id: true, kind: true, seedOrdinal: true, sourceMessageId: true, chargeId: true },
     });
     if (dispatch?.kind === DispatchKind.SEED_IDEA) {
       return cancelSeedIdeaDispatch(jobId, dispatch, existing.status, 'CANCELLED_BY_USER');
@@ -349,110 +395,131 @@ export async function cancelJob(jobId: string): Promise<CancelOutcome> {
     return { cancelled: false, reason: 'not_cancellable', status: existing.status };
   }
 
-  // Exclusive claim on the terminal state. If a failure got here first, count is 0 and we do
-  // nothing — including no refund.
-  const claimed = await prisma.job.updateMany({
-    where: { id: jobId, status: { in: CANCELLABLE_STATUSES } },
-    data: {
-      status: JobStatus.CANCELLED,
-      errorMessage: 'Cancelled by user',
-      completedAt: new Date(),
-      // Disarm the dispatch CAS. A worker still running this job can no longer mutate it — which
-      // is what stops a matching-but-late callback from dragging a cancelled job back to life.
-      activeDispatchId: null,
-    },
+  const settled = await prisma.$transaction(async (tx) => {
+    // Job-first CAS preserves the start/cancel lock order. The exact refunds below share this
+    // transaction: if the ledger is unavailable, cancellation rolls back and remains retryable.
+    const claimed = await tx.job.updateMany({
+      where: {
+        id: jobId,
+        status: { in: CANCELLABLE_STATUSES },
+        activeDispatchId: existing.activeDispatchId,
+      },
+      data: {
+        status: JobStatus.CANCELLED,
+        errorMessage: 'Cancelled by user',
+        completedAt: new Date(),
+        activeDispatchId: null,
+      },
+    });
+    if (claimed.count === 0) return null;
+
+    await tx.jobProgress.updateMany({
+      where: { jobId, status: StageStatus.RUNNING },
+      data: { status: StageStatus.FAILED, errorMessage: 'Cancelled by user' },
+    });
+
+    const billing = await tx.job.findUnique({
+      where: { id: jobId },
+      select: { billingModel: true, selectedSolutions: true },
+    });
+    const open = await tx.jobDispatch.findMany({
+      where: { jobId, state: { in: [DispatchState.AUTHORIZED, DispatchState.CLAIMED] } },
+      select: { id: true, state: true, segment: true, chargeId: true, kind: true, gateStage: true },
+    });
+
+    let creditRefunded = 0;
+    const markRefunded = async (
+      dispatchId: string,
+      refund: NonNullable<Awaited<ReturnType<typeof refundChargeInTx>>>,
+    ) => {
+      creditRefunded += Math.abs(refund.amount);
+      await tx.jobDispatch.updateMany({
+        where: {
+          id: dispatchId,
+          state: { in: [DispatchState.AUTHORIZED, DispatchState.CLAIMED] },
+        },
+        data: {
+          state: DispatchState.REFUNDED,
+          refundTransactionId: refund.id,
+          refundedAt: new Date(),
+          refundedAmount: refund.amount,
+          settledAt: new Date(),
+          failureKind: 'CANCELLED_BY_USER',
+        },
+      });
+    };
+
+    if (billing?.billingModel === BillingModel.GUIDED_SEGMENTS_V1) {
+      // Guided work is refundable only before claim. Resolve modern attempts by chargeId; the
+      // stage lookup remains solely for rolling-deploy dispatches that predate charge linkage.
+      for (const dispatch of open) {
+        if (dispatch.state !== DispatchState.AUTHORIZED) continue;
+
+        let refund = dispatch.chargeId
+          ? await refundChargeInTx(tx, dispatch.chargeId)
+          : null;
+        if (!dispatch.chargeId) {
+          let stage: StageName | null = null;
+          if (dispatch.segment) {
+            if (isGuidedSegment(dispatch.segment)) {
+              stage = dispatch.segment;
+            } else {
+              console.warn(
+                `[JobService] Dispatch ${dispatch.id} has unrecognised segment ` +
+                `'${dispatch.segment}' — skipping refund`,
+              );
+            }
+          } else if (dispatch.kind === DispatchKind.CONTINUE && dispatch.gateStage == null) {
+            stage = ((billing.selectedSolutions as string[] | null)?.length ?? 0) > 0
+              ? 'deep_research'
+              : 'guided_s1';
+          }
+          if (stage) refund = await refundForStageInTx(tx, jobId, stage);
+        }
+        if (refund) await markRefunded(dispatch.id, refund);
+      }
+    } else {
+      // Prepaid cancellation returns the attempt in full, even after claim. Prefer the active
+      // dispatch's immutable charge; only identityless rolling-deploy jobs use stage resolution.
+      const active =
+        open.find(dispatch => dispatch.id === existing.activeDispatchId)
+        ?? open.find(dispatch => dispatch.chargeId != null);
+      const refund = active?.chargeId
+        ? await refundChargeInTx(tx, active.chargeId)
+        : await refundForStageInTx(tx, jobId, 'discovery');
+      if (refund) {
+        if (active) {
+          await markRefunded(active.id, refund);
+        } else {
+          creditRefunded += Math.abs(refund.amount);
+        }
+      }
+    }
+
+    await tx.jobDispatch.updateMany({
+      where: { jobId, state: { in: [DispatchState.AUTHORIZED, DispatchState.CLAIMED] } },
+      data: {
+        state: DispatchState.FAILED,
+        failureKind: 'CANCELLED_BY_USER',
+        settledAt: new Date(),
+      },
+    });
+
+    return { creditRefunded };
   });
 
-  if (claimed.count === 0) {
+  if (!settled) {
     const current = await prisma.job.findUnique({ where: { id: jobId }, select: { status: true } });
     return { cancelled: false, reason: 'not_cancellable', status: current?.status };
   }
 
-  // Only reachable by the winner of the CAS, so each of these happens exactly once.
   if (existing.status === JobStatus.QUEUED) {
     const { removeJobFromQueue } = await import('./queueService.js');
     await removeJobFromQueue(jobId).catch((err) =>
       console.error(`[JobService] Failed to remove cancelled job ${jobId} from the queue:`, err)
     );
   }
-
-  await prisma.jobProgress.updateMany({
-    where: { jobId, status: StageStatus.RUNNING },
-    data: { status: StageStatus.FAILED, errorMessage: 'Cancelled by user' },
-  });
-
-  // What the user is owed, which depends on the contract the run was sold under.
-  const billing = await prisma.job.findUnique({
-    where: { id: jobId },
-    select: { billingModel: true, selectedSolutions: true },
-  });
-
-  const open = await prisma.jobDispatch.findMany({
-    where: { jobId, state: { in: [DispatchState.AUTHORIZED, DispatchState.CLAIMED] } },
-    select: { id: true, state: true, segment: true, chargeId: true, kind: true, gateStage: true },
-  });
-
-  await prisma.jobDispatch.updateMany({
-    where: { jobId, state: { in: [DispatchState.AUTHORIZED, DispatchState.CLAIMED] } },
-    data: { state: DispatchState.FAILED, failureKind: 'CANCELLED_BY_USER', settledAt: new Date() },
-  });
-
-  let creditRefunded = 0;
-  try {
-    if (billing?.billingModel === BillingModel.GUIDED_SEGMENTS_V1) {
-      // Segment billing: you keep what you bought and it ran; you get back what nobody started.
-      //
-      // AUTHORIZED means the charge was taken but no worker ever claimed the work — the user paid
-      // for nothing, so it comes back. CLAIMED means a worker picked it up and the analysis ran;
-      // that segment was authorized at a checkpoint that told them the price, and it is not owed
-      // back. This is what makes "pay for work that ran" literally true rather than a slogan.
-      //
-      // Note what is NOT here: no proration, no consumed-stage arithmetic, no reading of live
-      // prices. Those were all consequences of charging up front, and charging as work is
-      // authorized removes them rather than fixing them.
-      for (const d of open) {
-        if (d.state !== DispatchState.AUTHORIZED) continue;
-
-        let stage: StageName | null = null;
-        if (d.segment && d.chargeId) {
-          if (!isGuidedSegment(d.segment)) {
-            console.warn(`[JobService] Dispatch ${d.id} has unrecognised segment '${d.segment}' — skipping refund`);
-            continue;
-          }
-          stage = d.segment;
-        } else if (d.kind === DispatchKind.CONTINUE && d.gateStage == null) {
-          // No segment recorded — these are the two dispatches opened with no identity at all
-          // (jobs.ts: the job-creation dispatch, and the post-select-solution phase-2 dispatch).
-          // A segment-only lookup would silently lose them, so fall back to naming the stage the
-          // same way the charge itself was named — 'guided_s1' before a solution is selected,
-          // 'deep_research' after — mirroring how the DISCOVERY_PREPAID_V1 branch below refunds
-          // by stage name rather than by dispatch linkage.
-          stage = ((billing?.selectedSolutions as string[] | null)?.length ?? 0) > 0 ? 'deep_research' : 'guided_s1';
-        }
-
-        if (!stage) continue;
-
-        const refund = await refundForStage(jobId, stage);
-        if (refund) {
-          creditRefunded += Math.abs(refund.amount);
-          await prisma.jobDispatch.updateMany({
-            where: { id: d.id },
-            data: { state: DispatchState.REFUNDED },
-          });
-        }
-      }
-    } else {
-      // Prepaid (every non-guided run, and every guided run created before segment billing): the
-      // whole discovery phase was charged at creation, so cancelling refunds it in full — exactly
-      // as it always did.
-      const refund = await refundForStage(jobId, 'discovery');
-      if (refund) creditRefunded = Math.abs(refund.amount);
-    }
-  } catch (refundError) {
-    console.error(`[JobService] Failed to refund credit for cancelled job ${jobId}:`, refundError);
-  }
-
-  return { cancelled: true, creditRefunded };
+  return { cancelled: true, creditRefunded: settled.creditRefunded };
 }
 
 /**
@@ -469,16 +536,23 @@ export async function cancelJob(jobId: string): Promise<CancelOutcome> {
  */
 export async function cancelSeedIdeaDispatch(
   jobId: string,
-  dispatch: { id: string; seedOrdinal: number | null; sourceMessageId?: string | null },
+  dispatch: {
+    id: string;
+    seedOrdinal: number | null;
+    sourceMessageId?: string | null;
+    chargeId?: string | null;
+  },
   currentStatus: JobStatus,
   failureKind: string,
+  recoveryFence?: HeartbeatRecoveryFence,
 ): Promise<CancelOutcome> {
   const reverted = await prisma.$transaction(async (tx) => {
     const result = await tx.job.updateMany({
       where: {
         id: jobId,
-        status: { in: [JobStatus.QUEUED, JobStatus.RUNNING] },
+        status: recoveryFence?.status ?? { in: [JobStatus.QUEUED, JobStatus.RUNNING] },
         activeDispatchId: dispatch.id,
+        ...(recoveryFence ? { lastHeartbeat: recoveryFence.lastHeartbeat } : {}),
       },
       data: { status: JobStatus.AWAITING_SELECTION, activeDispatchId: null },
     });
@@ -488,6 +562,24 @@ export async function cancelSeedIdeaDispatch(
       where: { id: dispatch.id },
       data: { state: DispatchState.FAILED, failureKind, settledAt: new Date() },
     });
+
+    // Modern seed dispatches own the exact charge that bought this attempt. Refund it in the
+    // same transaction as restoring the parent Job so a process crash cannot leave the user
+    // back at selection while their credits remain captured.
+    const refund = dispatch.chargeId
+      ? await refundChargeInTx(tx, dispatch.chargeId)
+      : null;
+    if (refund) {
+      await tx.jobDispatch.updateMany({
+        where: { id: dispatch.id, state: DispatchState.FAILED },
+        data: {
+          state: DispatchState.REFUNDED,
+          refundTransactionId: refund.id,
+          refundedAt: new Date(),
+          refundedAmount: refund.amount,
+        },
+      });
+    }
 
     // Durable 'seed_settled' receipt with outcome='refunded' — without this the durable
     // 'seed_submitted' receipt (written by POST /:jobId/seed-idea) stays 'pending' forever,
@@ -511,10 +603,13 @@ export async function cancelSeedIdeaDispatch(
       console.warn(`[JobService] Seed dispatch ${dispatch.id} has no sourceMessageId — skipping seed_settled receipt`);
     }
 
-    return result.count;
+    return {
+      count: result.count,
+      creditRefunded: refund ? Math.abs(refund.amount) : 0,
+    };
   });
 
-  if (reverted === 0) {
+  if (reverted.count === 0) {
     // Somebody else already settled this dispatch (a completion landed first, or a concurrent
     // cancel/recovery won the CAS) — nothing to do, and definitely nothing to refund on top of it.
     const current = await prisma.job.findUnique({ where: { id: jobId }, select: { status: true } });
@@ -528,8 +623,8 @@ export async function cancelSeedIdeaDispatch(
     );
   }
 
-  let creditRefunded = 0;
-  if (dispatch.seedOrdinal != null) {
+  let creditRefunded = reverted.creditRefunded;
+  if (!dispatch.chargeId && dispatch.seedOrdinal != null) {
     try {
       const refund = await refundForSeedIdeaStage(jobId, dispatch.seedOrdinal);
       if (refund) {
@@ -567,14 +662,16 @@ export async function cancelRegenerationDispatch(
   dispatch: { id: string; segment: string | null; chargeId?: string | null },
   currentStatus: JobStatus,
   failureKind: string,
+  recoveryFence?: HeartbeatRecoveryFence,
 ): Promise<CancelOutcome> {
   const ordinal = regenerationOrdinal(dispatch.segment);
   const reverted = await prisma.$transaction(async (tx) => {
     const result = await tx.job.updateMany({
       where: {
         id: jobId,
-        status: { in: [JobStatus.QUEUED, JobStatus.REGENERATING] },
+        status: recoveryFence?.status ?? { in: [JobStatus.QUEUED, JobStatus.REGENERATING] },
         activeDispatchId: dispatch.id,
+        ...(recoveryFence ? { lastHeartbeat: recoveryFence.lastHeartbeat } : {}),
       },
       data: { status: JobStatus.AWAITING_SELECTION, activeDispatchId: null },
     });
@@ -684,6 +781,15 @@ export async function cancelRegenerationDispatch(
   return { cancelled: true, creditRefunded };
 }
 
+export type FailJobResult =
+  | { applied: true; job: Job | null }
+  | { applied: false; job: Job | null };
+
+export type HeartbeatRecoveryFence = {
+  status: JobStatus;
+  lastHeartbeat: Date | null;
+};
+
 export async function failJob(
   jobId: string,
   errorMessage: string,
@@ -691,8 +797,10 @@ export async function failJob(
   stopReason?: string,
   stopReasonDetails?: Record<string, any>,
   errorCode?: string,
-  errorDetails?: Record<string, any>
-) {
+  errorDetails?: Record<string, any>,
+  dispatchId?: string,
+  recoveryFence?: HeartbeatRecoveryFence,
+): Promise<FailJobResult> {
   // Check if job is already FAILED (idempotency)
   const existingJob = await prisma.job.findUnique({
     where: { id: jobId },
@@ -701,12 +809,15 @@ export async function failJob(
 
   if (!existingJob) {
     console.log(`[JobService] Job ${jobId} not found`);
-    return null;
+    return { applied: false, job: null };
   }
 
   if (existingJob.status === JobStatus.FAILED) {
     console.log(`[JobService] Job ${jobId} is already FAILED, skipping duplicate failJob() call`);
-    return prisma.job.findUnique({ where: { id: jobId } });
+    return {
+      applied: false,
+      job: await prisma.job.findUnique({ where: { id: jobId } }),
+    };
   }
 
   // Accept interactive flow statuses as valid pre-fail states. AWAITING_GATE included:
@@ -720,7 +831,121 @@ export async function failJob(
   ];
   if (!validPreFailStatuses.includes(existingJob.status)) {
     console.log(`[JobService] Job ${jobId} is in ${existingJob.status}, cannot fail from this state`);
-    return null;
+    return {
+      applied: false,
+      job: await prisma.job.findUnique({ where: { id: jobId } }),
+    };
+  }
+
+  const failureData = {
+    status: JobStatus.FAILED,
+    errorMessage,
+    errorStage,
+    stopReason: stopReason ?? null,
+    stopReasonDetails: stopReasonDetails ?? Prisma.JsonNull,
+    errorCode: errorCode ?? null,
+    errorDetails: errorDetails ?? Prisma.JsonNull,
+    activeDispatchId: null,
+  };
+
+  if (dispatchId) {
+    const dispatch = await prisma.jobDispatch.findUnique({
+      where: { id: dispatchId },
+      select: { id: true, jobId: true, chargeId: true },
+    });
+    if (!dispatch || dispatch.jobId !== jobId) {
+      console.warn(
+        `[JobService] Ignoring failure for job ${jobId}: dispatch ${dispatchId} does not belong to it`,
+      );
+      return {
+        applied: false,
+        job: await prisma.job.findUnique({ where: { id: jobId } }),
+      };
+    }
+
+    const settled = await prisma.$transaction(async (tx) => {
+      // The dispatch id is part of the terminal CAS. A delayed failure from attempt A must not
+      // terminate attempt B merely because both attempts used RUNNING_PHASE2.
+      const claimed = await tx.job.updateMany({
+        where: {
+          id: jobId,
+          status: recoveryFence?.status ?? { in: validPreFailStatuses },
+          activeDispatchId: dispatchId,
+          ...(recoveryFence ? { lastHeartbeat: recoveryFence.lastHeartbeat } : {}),
+        },
+        data: failureData,
+      });
+      if (claimed.count === 0) return null;
+
+      const terminal = await tx.jobDispatch.updateMany({
+        where: {
+          id: dispatchId,
+          jobId,
+          state: { in: [DispatchState.AUTHORIZED, DispatchState.CLAIMED] },
+        },
+        data: {
+          state: DispatchState.FAILED,
+          failureKind: 'SYSTEM_FAULT',
+          settledAt: new Date(),
+        },
+      });
+      if (terminal.count !== 1) {
+        // Roll the Job CAS back too. A FAILED job with an unsettled attempt is not a valid
+        // terminal state, and retrying the callback is safer than losing its exact refund target.
+        throw new Error('DISPATCH_FAILURE_SETTLEMENT_RACE');
+      }
+
+      let refund = null;
+      if (dispatch.chargeId) {
+        refund = await refundChargeInTx(tx, dispatch.chargeId);
+        if (refund) {
+          await tx.jobDispatch.update({
+            where: { id: dispatchId },
+            data: {
+              state: DispatchState.REFUNDED,
+              refundTransactionId: refund.id,
+              refundedAt: new Date(),
+              refundedAmount: refund.amount,
+            },
+          });
+        }
+      }
+
+      return {
+        job: await tx.job.findUnique({ where: { id: jobId } }),
+        refund,
+      };
+    });
+
+    if (!settled) {
+      const current = await prisma.job.findUnique({ where: { id: jobId } });
+      console.log(
+        `[JobService] Ignoring stale failure for job ${jobId} dispatch ${dispatchId} ` +
+        `(active: ${current?.activeDispatchId ?? 'none'}, status: ${current?.status ?? 'missing'})`,
+      );
+      return { applied: false, job: current };
+    }
+    if (settled.refund) {
+      console.log(
+        `[JobService] Refunded ${Math.abs(settled.refund.amount)} credits for failed job ${jobId} ` +
+        `dispatch ${dispatchId}`,
+      );
+    }
+    return { applied: true, job: settled.job };
+  }
+
+  // A callback with no dispatch identity is only valid for a genuinely legacy job that also has
+  // no active dispatch. Treating omission as "skip the guard" would let an old worker terminate
+  // and refund a newer, dispatch-scoped attempt.
+  if (existingJob.activeDispatchId) {
+    console.warn(
+      `[JobService] Ignoring identityless failure for job ${jobId}; ` +
+      `active dispatch is ${existingJob.activeDispatchId}`,
+    );
+    return {
+      applied: false,
+      job: await prisma.job.findUnique({ where: { id: jobId } }),
+    };
   }
 
   // Terminal write as a CAS, not a bare update().
@@ -731,18 +956,13 @@ export async function failJob(
   // be settled twice and the same user action could have two prices. Now exactly one of them can
   // win the transition, and only the winner pays out.
   const claimed = await prisma.job.updateMany({
-    where: { id: jobId, status: { in: validPreFailStatuses } },
-    data: {
-      status: JobStatus.FAILED,
-      errorMessage,
-      errorStage,
-      stopReason: stopReason ?? null,
-      stopReasonDetails: stopReasonDetails ?? Prisma.JsonNull,
-      errorCode: errorCode ?? null,
-      errorDetails: errorDetails ?? Prisma.JsonNull,
-      // Disarm the CAS: a worker still in flight for this job can no longer mutate it.
+    where: {
+      id: jobId,
+      status: recoveryFence?.status ?? { in: validPreFailStatuses },
       activeDispatchId: null,
+      ...(recoveryFence ? { lastHeartbeat: recoveryFence.lastHeartbeat } : {}),
     },
+    data: failureData,
   });
 
   if (claimed.count === 0) {
@@ -752,7 +972,7 @@ export async function failJob(
     console.log(
       `[JobService] Job ${jobId} was settled concurrently (now ${current?.status}) — not failing, not refunding`
     );
-    return current;
+    return { applied: false, job: current };
   }
 
   const job = await prisma.job.findUnique({ where: { id: jobId } });
@@ -806,23 +1026,13 @@ export async function failJob(
     } catch (refundError) {
       console.error(`[JobService] Failed to refund segment for failed job ${jobId}:`, refundError);
     }
-    return job;
+    return { applied: true, job };
   }
 
-  // Auto-refund the failed stage's credits. `activeDispatchKind` (read BEFORE the CAS above
-  // nulled it) lets determineFailedStage recognise a SEED_IDEA dispatch and return null rather
-  // than guessing 'discovery'/'deep_research' — a seed never charges either. In practice a
-  // SEED_IDEA dispatch is intercepted earlier (cancelJob / heartbeatService's stale-job
-  // recovery both branch on it before ever calling failJob), so this is defense-in-depth for
-  // any path that reaches failJob directly with one still active.
+  // Stage inference is a legacy-only fallback. Modern attempts settle the exact dispatch charge
+  // above; reaching this branch proves both the callback and Job lack a dispatch identity.
   try {
-    const activeDispatchKind = existingJob.activeDispatchId
-      ? (await prisma.jobDispatch.findUnique({
-          where: { id: existingJob.activeDispatchId },
-          select: { kind: true },
-        }))?.kind
-      : null;
-    const failedStage = determineFailedStage(errorStage, existingJob.status, activeDispatchKind);
+    const failedStage = determineFailedStage(errorStage, existingJob.status);
     if (failedStage) {
       const refund = await refundForStage(jobId, failedStage);
       if (refund) {
@@ -842,7 +1052,7 @@ export async function failJob(
     console.error(`[JobService] Failed to auto-refund credit for job ${jobId}:`, refundError);
   }
 
-  return job;
+  return { applied: true, job };
 }
 
 /**

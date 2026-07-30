@@ -148,6 +148,11 @@ const mockDispatchFindUnique = vi.fn(async ({ where }: any) => {
   if (!dispatchRow || dispatchRow.id !== where.id) return null;
   return { ...dispatchRow };
 });
+const mockDispatchUpdate = vi.fn(async ({ where, data }: any) => {
+  if (!dispatchRow || dispatchRow.id !== where.id) throw new Error('Dispatch not found');
+  applyDispatchData(data);
+  return { ...dispatchRow };
+});
 const mockDispatchUpdateMany = vi.fn(async ({ where, data }: any) => {
   if (!matchesDispatchWhere(where)) return { count: 0 };
   applyDispatchData(data);
@@ -186,6 +191,7 @@ const mockTransaction = vi.fn(async (cb: any) => {
     jobDispatch: {
       create: mockDispatchCreate,
       findUnique: mockDispatchFindUnique,
+      update: mockDispatchUpdate,
       updateMany: mockDispatchUpdateMany,
     },
     chatMessage: {
@@ -209,6 +215,7 @@ vi.mock('../../services/db.js', () => ({
     jobDispatch: {
       create: (args: any) => mockDispatchCreate(args),
       findUnique: (args: any) => mockDispatchFindUnique(args),
+      update: (args: any) => mockDispatchUpdate(args),
       updateMany: (args: any) => mockDispatchUpdateMany(args),
     },
     jobProgress: { updateMany: (args: any) => mockJobProgressUpdateMany(args) },
@@ -252,7 +259,7 @@ vi.mock('../../utils/assetPath.js', () => ({
   resolveAssetPath: vi.fn(),
 }));
 
-const mockEnqueueSeedIdeaJob = vi.fn();
+const mockDeliverDispatchWork = vi.fn();
 const mockRemoveFromQueue = vi.fn();
 vi.mock('../../services/queueService.js', () => ({
   enqueueJob: vi.fn(),
@@ -260,7 +267,8 @@ vi.mock('../../services/queueService.js', () => ({
   enqueuePhase2Job: vi.fn(),
   enqueueRegenerateJob: vi.fn(),
   enqueueContinueFromGateJob: vi.fn(),
-  enqueueSeedIdeaJob: (...a: any[]) => mockEnqueueSeedIdeaJob(...a),
+  enqueueSeedIdeaJob: vi.fn(),
+  deliverDispatchWork: (...a: any[]) => mockDeliverDispatchWork(...a),
   getQueueStats: vi.fn(),
   getQueueLength: vi.fn(),
   removeJobFromQueue: (...a: any[]) => mockRemoveFromQueue(...a),
@@ -290,11 +298,14 @@ class MockPriceChangedError extends Error {
 
 const mockChargeForSeedIdeaInTx = vi.fn();
 const mockRefundForSeedIdeaStage = vi.fn();
+const mockRefundChargeInTx = vi.fn();
 vi.mock('../../services/creditService.js', () => ({
   createJobAndChargeDiscovery: vi.fn(),
+  createJobAndChargeDiscoveryInTx: vi.fn(),
   InsufficientCreditsError: MockInsufficientCreditsError,
   PriceChangedError: MockPriceChangedError,
   refundForStage: vi.fn(),
+  refundForStageInTx: vi.fn(),
   refundForRegenerationStage: vi.fn(),
   chargeForStageInTx: vi.fn(),
   chargeForStageWithPriceCasInTx: vi.fn(),
@@ -303,6 +314,7 @@ vi.mock('../../services/creditService.js', () => ({
   segmentForGateContinue: vi.fn(),
   chargeForSeedIdeaInTx: (...a: any[]) => mockChargeForSeedIdeaInTx(...a),
   refundForSeedIdeaStage: (...a: any[]) => mockRefundForSeedIdeaStage(...a),
+  refundChargeInTx: (...a: any[]) => mockRefundChargeInTx(...a),
   // jobService.js (real, unmocked below) also imports these two at module scope.
   determineFailedStage: vi.fn(),
   isGuidedSegment: vi.fn(),
@@ -383,11 +395,12 @@ beforeEach(async () => {
   vi.clearAllMocks();
   resetState();
   mockIsEntitledUser.mockResolvedValue(true);
-  mockEnqueueSeedIdeaJob.mockResolvedValue(undefined);
+  mockDeliverDispatchWork.mockResolvedValue(undefined);
   mockRemoveFromQueue.mockResolvedValue(undefined);
   mockRegisterWorkerHeartbeat.mockResolvedValue(undefined);
   mockChargeForSeedIdeaInTx.mockResolvedValue({ cost: 2, transaction: { id: 'txn-seed-1' } });
   mockRefundForSeedIdeaStage.mockResolvedValue({ amount: -2 });
+  mockRefundChargeInTx.mockResolvedValue({ id: 'refund-seed-1', amount: -2 });
 
   app = express();
   app.use(express.json());
@@ -424,14 +437,17 @@ describe('Seed idea E2E: full lifecycle', () => {
     const submittedReceipt = receipts.find((r) => r.patchJson?.event === 'seed_submitted');
     expect(submittedReceipt).toBeTruthy();
     expect(submittedReceipt!.patchJson.sourceMessageId).toBe('msg-seed-1');
-    expect(mockEnqueueSeedIdeaJob).toHaveBeenCalledWith(
-      jobId, '/cp/phase1', jobRow.niche,
-      validSeedBody.free_text, validSeedBody.pain_ref, validSeedBody.tool_ref,
-      dispatchRow!.id,
-      // A free-text seed carries no Concept Forge evaluation brief — only an
-      // `idea_synthesis` submission passes one through.
-      undefined,
-    );
+    expect(dispatchRow!.workPayload).toEqual(expect.objectContaining({
+      job_id: jobId,
+      checkpoint_path: '/cp/phase1',
+      niche: jobRow.niche,
+      seed_text: validSeedBody.free_text,
+      pain_ref: validSeedBody.pain_ref,
+      tool_ref: validSeedBody.tool_ref,
+      synthesis_evaluation: null,
+      task_type: 'seed_idea',
+    }));
+    expect(mockDeliverDispatchWork).toHaveBeenCalledWith(dispatchRow!.id);
 
     // ── Hop 2: worker claims the dispatch ──
     res = await claimAsWorker();
@@ -543,8 +559,8 @@ describe('Seed idea E2E: full lifecycle', () => {
     expect(jobRow.status).toBe('AWAITING_SELECTION');
     expect(jobRow.solutionIdeas).toEqual(poolBefore); // untouched — nothing to merge
     expect(jobRow.activeDispatchId).toBeNull();
-    // The exact numbered stage this attempt paid for (ordinal 1 -> seed_idea_1).
-    expect(mockRefundForSeedIdeaStage).toHaveBeenCalledWith(jobId, 1);
+    expect(mockRefundChargeInTx).toHaveBeenCalledWith(expect.anything(), 'txn-seed-1');
+    expect(mockRefundForSeedIdeaStage).not.toHaveBeenCalled();
     expect(dispatchRow!.state).toBe('REFUNDED'); // FAILED, then promoted once the credit is back
     const settled = seedSettledReceipts();
     expect(settled).toHaveLength(1);
@@ -637,18 +653,18 @@ describe('Seed idea E2E: guard matrix', () => {
     expect(dispatchRow!.state).toBe('CLAIMED'); // never settled
   });
 
-  it('enqueue failure after charge -> compensating refund, dispatch settled FAILED, receipt retracted', async () => {
-    mockEnqueueSeedIdeaJob.mockRejectedValueOnce(new Error('Redis unavailable'));
+  it('ambiguous delivery failure keeps the charged dispatch and receipt durable for retry', async () => {
+    mockDeliverDispatchWork.mockRejectedValueOnce(new Error('Redis unavailable'));
 
     const res = await submitSeed();
 
-    expect(res.status).toBe(500);
-    // The user is not left charged for a seed that never actually started.
-    expect(jobRow.status).toBe('AWAITING_SELECTION');
-    expect(jobRow.activeDispatchId).toBeNull();
-    expect(dispatchRow!.state).toBe('FAILED');
-    expect(mockRefundForSeedIdeaStage).toHaveBeenCalledWith(jobId, 1);
-    expect(receipts).toHaveLength(0); // the seed_submitted receipt was retracted
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ status: 'queued', deliveryPending: true });
+    expect(jobRow.status).toBe('QUEUED');
+    expect(jobRow.activeDispatchId).toBe(dispatchRow!.id);
+    expect(dispatchRow!.state).toBe('AUTHORIZED');
+    expect(mockRefundForSeedIdeaStage).not.toHaveBeenCalled();
+    expect(receipts).toHaveLength(1);
   });
 
   it('cancelling a QUEUED seed refunds it, restores AWAITING_SELECTION, and the PARENT JOB SURVIVES', async () => {
@@ -672,7 +688,8 @@ describe('Seed idea E2E: guard matrix', () => {
     expect(jobRow.activeDispatchId).toBeNull();
     expect(jobRow.solutionIdeas).toEqual(poolBefore); // pool intact — the seed never merged
     expect(dispatchRow!.state).toBe('REFUNDED');
-    expect(mockRefundForSeedIdeaStage).toHaveBeenCalledWith(jobId, 1);
+    expect(mockRefundChargeInTx).toHaveBeenCalledWith(expect.anything(), 'txn-seed-1');
+    expect(mockRefundForSeedIdeaStage).not.toHaveBeenCalled();
     expect(mockRemoveFromQueue).toHaveBeenCalledWith(jobId); // it was QUEUED — pulled from redis too
   });
 });

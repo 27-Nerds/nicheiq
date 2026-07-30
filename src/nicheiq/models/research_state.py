@@ -509,6 +509,14 @@ class AlternativeSolution(BaseModel):
         default=None,
         description="Audience-independent incumbent in the adjacent commercial market the "
         "mechanism monetizes in (mirrors BaseSolutionIdea.adjacent_market_parity)")
+    red_team_verdict: Optional[str] = Field(
+        default=None,
+        description="'survives' | 'weakened' | 'killed' from the adversarial red-team pass "
+        "(mirrors BaseSolutionIdea.red_team_verdict); None = idea not red-teamed")
+    red_team_caveats: Optional[list[str]] = Field(
+        default=None,
+        description="Up to 3 evidence-cited red-team caveats (mirrors "
+        "BaseSolutionIdea.red_team_caveats); None = idea not red-teamed")
     source_segment_payability: Optional[float] = Field(
         default=None, ge=0.0, le=1.0,
         description="0-1 payability of the source segment (permanent buyer-wallet signal)")

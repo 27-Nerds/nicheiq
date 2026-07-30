@@ -21,6 +21,7 @@ const mockDispatchUpdateMany = vi.fn(async (_a?: any) => ({ count: 0 }) as any);
 const mockChatMessageCreate = vi.fn(async (_a?: any) => ({ id: 'receipt-1' }) as any);
 const mockRefundForStage = vi.fn();
 const mockRefundForSeedIdeaStage = vi.fn();
+const mockRefundChargeInTx = vi.fn();
 const mockRemoveFromQueue = vi.fn(async (_a?: any) => {});
 
 // $transaction just invokes the callback with the same mocked prisma — none of these tests
@@ -47,6 +48,8 @@ const prismaMock = {
 vi.mock('../db.js', () => ({ prisma: prismaMock }));
 vi.mock('../creditService.js', () => ({
   refundForStage: (a: any, b: any) => mockRefundForStage(a, b),
+  refundForStageInTx: (_tx: any, a: any, b: any) => mockRefundForStage(a, b),
+  refundChargeInTx: (tx: any, chargeId: any) => mockRefundChargeInTx(tx, chargeId),
   refundForRegenerationStage: vi.fn(),
   refundForSeedIdeaStage: (a: any, b: any) => mockRefundForSeedIdeaStage(a, b),
   determineFailedStage: vi.fn(() => 'discovery'),
@@ -64,6 +67,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockRefundForStage.mockResolvedValue({ amount: -5 });
   mockRefundForSeedIdeaStage.mockResolvedValue({ amount: -2 });
+  mockRefundChargeInTx.mockResolvedValue(null);
   mockProgressUpdateMany.mockResolvedValue({ count: 0 });
   mockDispatchFindMany.mockResolvedValue([]);
   mockDispatchFindUnique.mockResolvedValue(null);
@@ -153,17 +157,47 @@ describe('cancelJob', () => {
     expect(mockRefundForStage).not.toHaveBeenCalled();
   });
 
-  it('a refund failure does not silently report success', async () => {
-    // The job IS cancelled (the CAS won), but the credit did not come back. The caller must be
-    // able to see that creditRefunded is 0 rather than being told a number that was never issued.
-    mockJobFindUnique.mockResolvedValue({ status: 'RUNNING', billingModel: 'DISCOVERY_PREPAID_V1' });
+  it('rolls cancellation back when the exact refund fails, then lets the same request retry once', async () => {
+    mockJobFindUnique.mockResolvedValue({
+      status: 'RUNNING',
+      activeDispatchId: 'dispatch-1',
+      billingModel: 'DISCOVERY_PREPAID_V1',
+    });
+    mockDispatchFindUnique.mockResolvedValue({
+      id: 'dispatch-1',
+      kind: 'CONTINUE',
+      chargeId: 'charge-1',
+    });
+    mockDispatchFindMany.mockResolvedValue([{
+      id: 'dispatch-1',
+      state: 'CLAIMED',
+      segment: 'discovery',
+      chargeId: 'charge-1',
+      kind: 'CONTINUE',
+      gateStage: null,
+    }]);
     mockJobUpdateMany.mockResolvedValue({ count: 1 });
-    mockRefundForStage.mockRejectedValue(new Error('ledger unavailable'));
+    mockRefundChargeInTx
+      .mockRejectedValueOnce(new Error('ledger unavailable'))
+      .mockResolvedValueOnce({ id: 'refund-1', amount: 5 });
 
     const { cancelJob } = await import('../jobService.js');
+    await expect(cancelJob(JOB)).rejects.toThrow('ledger unavailable');
     const outcome = await cancelJob(JOB);
+    mockJobFindUnique.mockResolvedValueOnce({
+      status: 'CANCELLED',
+      activeDispatchId: null,
+    });
+    const duplicate = await cancelJob(JOB);
 
-    expect(outcome).toEqual({ cancelled: true, creditRefunded: 0 });
+    expect(outcome).toEqual({ cancelled: true, creditRefunded: 5 });
+    expect(duplicate).toEqual({
+      cancelled: false,
+      reason: 'not_cancellable',
+      status: 'CANCELLED',
+    });
+    expect(mockRefundChargeInTx).toHaveBeenCalledTimes(2);
+    expect(mockRefundChargeInTx).toHaveBeenLastCalledWith(prismaMock, 'charge-1');
   });
 
   it('returns not_found for a job that does not exist', async () => {
@@ -176,6 +210,37 @@ describe('cancelJob', () => {
 });
 
 describe('cancelJob — SEED_IDEA op-scoped cancellation (plan: eager-meandering-feather.md Phase 5)', () => {
+  it('refunds a modern seed dispatch by its exact charge inside the parent-state transaction', async () => {
+    mockJobFindUnique.mockResolvedValueOnce({ status: 'RUNNING', activeDispatchId: 'dispatch-1' });
+    mockDispatchFindUnique.mockResolvedValueOnce({
+      id: 'dispatch-1',
+      kind: 'SEED_IDEA',
+      seedOrdinal: 2,
+      sourceMessageId: 'msg-1',
+      chargeId: 'charge-seed-2',
+    });
+    mockJobUpdateMany.mockResolvedValue({ count: 1 });
+    mockRefundChargeInTx.mockResolvedValue({
+      id: 'refund-seed-2',
+      amount: 2,
+    });
+
+    const { cancelJob } = await import('../jobService.js');
+    const outcome = await cancelJob(JOB);
+
+    expect(outcome).toEqual({ cancelled: true, creditRefunded: 2 });
+    expect(mockRefundChargeInTx).toHaveBeenCalledWith(prismaMock, 'charge-seed-2');
+    expect(mockRefundForSeedIdeaStage).not.toHaveBeenCalled();
+    expect(mockDispatchUpdateMany).toHaveBeenCalledWith({
+      where: { id: 'dispatch-1', state: 'FAILED' },
+      data: expect.objectContaining({
+        state: 'REFUNDED',
+        refundTransactionId: 'refund-seed-2',
+        refundedAmount: 2,
+      }),
+    });
+  });
+
   it('settles only the seed dispatch, restores AWAITING_SELECTION, refunds seed_idea_N, and writes a terminal seed_settled receipt — never the whole-job CANCELLED path', async () => {
     mockJobFindUnique.mockResolvedValueOnce({ status: 'RUNNING', activeDispatchId: 'dispatch-1' });
     mockDispatchFindUnique.mockResolvedValueOnce({
@@ -300,8 +365,11 @@ describe('cancelJob — GUIDED_SEGMENTS_V1 falls back to stage-name refund for n
     expect(outcome).toEqual({ cancelled: true, creditRefunded: 1 });
     expect(mockRefundForStage).toHaveBeenCalledWith(JOB, 'guided_s1');
     expect(mockDispatchUpdateMany).toHaveBeenCalledWith({
-      where: { id: 'dispatch-create' },
-      data: { state: 'REFUNDED' },
+      where: {
+        id: 'dispatch-create',
+        state: { in: ['AUTHORIZED', 'CLAIMED'] },
+      },
+      data: expect.objectContaining({ state: 'REFUNDED' }),
     });
   });
 
@@ -330,13 +398,14 @@ describe('cancelJob — GUIDED_SEGMENTS_V1 falls back to stage-name refund for n
     mockDispatchFindMany.mockResolvedValue([
       { id: 'dispatch-gate', state: 'AUTHORIZED', segment: 'guided_s2_4', chargeId: 'txn-1', kind: 'CONTINUE', gateStage: 1 },
     ]);
-    mockRefundForStage.mockResolvedValue({ amount: -3 });
+    mockRefundChargeInTx.mockResolvedValue({ id: 'refund-gate', amount: 3 });
 
     const { cancelJob } = await import('../jobService.js');
     const outcome = await cancelJob(JOB);
 
     expect(outcome).toEqual({ cancelled: true, creditRefunded: 3 });
-    expect(mockRefundForStage).toHaveBeenCalledWith(JOB, 'guided_s2_4');
+    expect(mockRefundChargeInTx).toHaveBeenCalledWith(prismaMock, 'txn-1');
+    expect(mockRefundForStage).not.toHaveBeenCalled();
   });
 
   it('does not refund a free apply_stay dispatch (no segment, but gateStage is set — not one of the two implicit charges)', async () => {
@@ -370,7 +439,7 @@ describe('failJob loses the same race cleanly', () => {
     const { failJob } = await import('../jobService.js');
     const result = await failJob('job-1', 'worker crashed');
 
-    expect(result).toEqual({ status: 'CANCELLED' });
+    expect(result).toEqual({ applied: false, job: { status: 'CANCELLED' } });
     expect(mockRefundForStage).not.toHaveBeenCalled();
   });
 
@@ -392,22 +461,22 @@ describe('failJob loses the same race cleanly', () => {
     expect(mockRefundForStage).toHaveBeenCalled();
   });
 
-  it('passes the active dispatch kind to determineFailedStage (defense-in-depth — a SEED_IDEA dispatch reaching failJob directly must not get guessed a discovery/deep_research refund)', async () => {
+  it('does not let an identityless callback fail or refund a modern active dispatch', async () => {
     const { determineFailedStage } = await import('../creditService.js');
     mockJobFindUnique
       .mockResolvedValueOnce({ status: 'RUNNING', regenerationCount: 0, activeDispatchId: 'dispatch-1' })
-      .mockResolvedValueOnce({ id: 'job-1', status: 'FAILED', billingModel: 'DISCOVERY_PREPAID_V1' });
-    mockDispatchFindUnique.mockResolvedValueOnce({ kind: 'SEED_IDEA' });
-    mockJobUpdateMany.mockResolvedValue({ count: 1 });
+      .mockResolvedValueOnce({ id: 'job-1', status: 'RUNNING', activeDispatchId: 'dispatch-1' });
 
     const { failJob } = await import('../jobService.js');
-    await failJob('job-1', 'boom', 3);
+    const result = await failJob('job-1', 'boom', 3);
 
-    expect(mockDispatchFindUnique).toHaveBeenCalledWith({
-      where: { id: 'dispatch-1' },
-      select: { kind: true },
+    expect(result).toMatchObject({
+      applied: false,
+      job: { status: 'RUNNING', activeDispatchId: 'dispatch-1' },
     });
-    expect(determineFailedStage).toHaveBeenCalledWith(3, 'RUNNING', 'SEED_IDEA');
+    expect(mockJobUpdateMany).not.toHaveBeenCalled();
+    expect(determineFailedStage).not.toHaveBeenCalled();
+    expect(mockRefundForStage).not.toHaveBeenCalled();
   });
 });
 
@@ -420,7 +489,7 @@ describe('failJob loses the same race cleanly', () => {
 describe('failJob — GUIDED_SEGMENTS_V1 falls back to stage-name refund for no-segment dispatches', () => {
   it('refunds guided_s1 when stage-1 fails (no solution selected yet)', async () => {
     mockJobFindUnique
-      .mockResolvedValueOnce({ status: 'RUNNING', regenerationCount: 0, activeDispatchId: 'dispatch-create' })
+      .mockResolvedValueOnce({ status: 'RUNNING', regenerationCount: 0, activeDispatchId: null })
       .mockResolvedValueOnce({ id: 'job-1', status: 'FAILED', billingModel: 'GUIDED_SEGMENTS_V1', selectedSolutions: [] });
     mockJobUpdateMany.mockResolvedValue({ count: 1 });
     mockDispatchFindFirst.mockResolvedValue({
@@ -440,7 +509,7 @@ describe('failJob — GUIDED_SEGMENTS_V1 falls back to stage-name refund for no-
 
   it('refunds deep_research when phase 2 fails (a solution IS selected)', async () => {
     mockJobFindUnique
-      .mockResolvedValueOnce({ status: 'RUNNING_PHASE2', regenerationCount: 0, activeDispatchId: 'dispatch-phase2' })
+      .mockResolvedValueOnce({ status: 'RUNNING_PHASE2', regenerationCount: 0, activeDispatchId: null })
       .mockResolvedValueOnce({
         id: 'job-1', status: 'FAILED', billingModel: 'GUIDED_SEGMENTS_V1', selectedSolutions: ['Some Idea'],
       });
@@ -458,7 +527,7 @@ describe('failJob — GUIDED_SEGMENTS_V1 falls back to stage-name refund for no-
 
   it('still refunds a segment-carrying dispatch by its own segment (regression check)', async () => {
     mockJobFindUnique
-      .mockResolvedValueOnce({ status: 'AWAITING_GATE', regenerationCount: 0, activeDispatchId: 'dispatch-gate' })
+      .mockResolvedValueOnce({ status: 'AWAITING_GATE', regenerationCount: 0, activeDispatchId: null })
       .mockResolvedValueOnce({ id: 'job-1', status: 'FAILED', billingModel: 'GUIDED_SEGMENTS_V1', selectedSolutions: [] });
     mockJobUpdateMany.mockResolvedValue({ count: 1 });
     mockDispatchFindFirst.mockResolvedValue({

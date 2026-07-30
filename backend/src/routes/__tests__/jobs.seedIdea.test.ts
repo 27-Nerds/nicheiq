@@ -15,6 +15,7 @@ const mockJobFindFirst = vi.fn();
 const mockJobUpdateMany = vi.fn();
 const mockJobUpdate = vi.fn();
 const mockDispatchCreate = vi.fn();
+const mockDispatchUpdate = vi.fn();
 const mockDispatchUpdateMany = vi.fn();
 const mockChatMessageCreate = vi.fn();
 const mockChatMessageDelete = vi.fn();
@@ -39,7 +40,7 @@ vi.mock('../../services/founderFitService.js', () => ({
   parseCurrentFounderFitArtifact: (...a: any[]) => mockParseCurrentFounderFit(...a),
 }));
 
-const mockEnqueueSeedIdeaJob = vi.fn();
+const mockDeliverDispatchWork = vi.fn();
 
 vi.mock('../../services/queueService.js', () => ({
   enqueueJob: vi.fn(),
@@ -47,7 +48,8 @@ vi.mock('../../services/queueService.js', () => ({
   enqueuePhase2Job: vi.fn(),
   enqueueRegenerateJob: vi.fn(),
   enqueueContinueFromGateJob: vi.fn(),
-  enqueueSeedIdeaJob: (...a: any[]) => mockEnqueueSeedIdeaJob(...a),
+  enqueueSeedIdeaJob: vi.fn(),
+  deliverDispatchWork: (...a: any[]) => mockDeliverDispatchWork(...a),
   getQueueStats: vi.fn(),
   getQueueLength: vi.fn(),
 }));
@@ -79,6 +81,7 @@ class MockPriceChangedError extends Error {
 
 vi.mock('../../services/creditService.js', () => ({
   createJobAndChargeDiscovery: vi.fn(),
+  createJobAndChargeDiscoveryInTx: vi.fn(),
   InsufficientCreditsError: MockInsufficientCreditsError,
   PriceChangedError: MockPriceChangedError,
   refundForStage: vi.fn(),
@@ -90,6 +93,7 @@ vi.mock('../../services/creditService.js', () => ({
   segmentForGateContinue: vi.fn(),
   chargeForSeedIdeaInTx: (...a: any[]) => mockChargeForSeedIdeaInTx(...a),
   refundForSeedIdeaStage: (...a: any[]) => mockRefundForSeedIdeaStage(...a),
+  refundChargeInTx: vi.fn(),
 }));
 
 vi.mock('../../services/jobService.js', () => ({
@@ -160,12 +164,13 @@ const makeJob = (overrides: Record<string, any> = {}) => ({
 beforeEach(async () => {
   vi.clearAllMocks();
   mockIsEntitledUser.mockResolvedValue(true);
-  mockEnqueueSeedIdeaJob.mockResolvedValue(undefined);
+  mockDeliverDispatchWork.mockResolvedValue(undefined);
   mockChargeForSeedIdeaInTx.mockResolvedValue({ cost: 2, transaction: { id: 'txn-seed-1' } });
   mockRefundForSeedIdeaStage.mockResolvedValue({ amount: -2 });
   mockJobUpdateMany.mockResolvedValue({ count: 1 });
   mockJobUpdate.mockResolvedValue({});
   mockDispatchCreate.mockResolvedValue({ id: 'dispatch-seed-1' });
+  mockDispatchUpdate.mockResolvedValue({});
   mockDispatchUpdateMany.mockResolvedValue({ count: 1 });
   mockChatMessageCreate.mockResolvedValue({ id: 'receipt-1' });
   mockChatMessageDelete.mockResolvedValue({});
@@ -176,6 +181,7 @@ beforeEach(async () => {
     job: { updateMany: (...a: any[]) => mockJobUpdateMany(...a), update: (...a: any[]) => mockJobUpdate(...a) },
     jobDispatch: {
       create: (...a: any[]) => mockDispatchCreate(...a),
+      update: (...a: any[]) => mockDispatchUpdate(...a),
       updateMany: (...a: any[]) => mockDispatchUpdateMany(...a),
     },
     chatMessage: { create: (...a: any[]) => mockChatMessageCreate(...a) },
@@ -348,27 +354,33 @@ describe('POST /api/jobs/:jobId/seed-idea', () => {
       });
 
     expect(response.status).toBe(200);
-    expect(mockEnqueueSeedIdeaJob).toHaveBeenCalledWith(
-      jobId,
-      '/cp/path',
-      'test niche',
-      expect.stringContaining('Focused monitor'),
-      'Missed workflow changes',
-      undefined,
-      'dispatch-seed-1',
-      expect.objectContaining({
-        evaluation_id: 'dispatch-seed-1',
-        dispatch_id: 'dispatch-seed-1',
-        source_message_id: 'msg-synthesis',
-        proposal: expect.objectContaining({
-          proposedTitle: 'Focused monitor',
-          evaluation: expect.objectContaining({
-            conceptSetId: '22222222-2222-2222-2222-222222222222',
-            disqualifiers: ['No agency commits.'],
+    expect(mockDispatchUpdate).toHaveBeenCalledWith({
+      where: { id: 'dispatch-seed-1' },
+      data: {
+        workPayload: expect.objectContaining({
+          job_id: jobId,
+          checkpoint_path: '/cp/path',
+          niche: 'test niche',
+          seed_text: expect.stringContaining('Focused monitor'),
+          pain_ref: 'Missed workflow changes',
+          tool_ref: null,
+          task_type: 'seed_idea',
+          synthesis_evaluation: expect.objectContaining({
+            evaluation_id: 'dispatch-seed-1',
+            dispatch_id: 'dispatch-seed-1',
+            source_message_id: 'msg-synthesis',
+            proposal: expect.objectContaining({
+              proposedTitle: 'Focused monitor',
+              evaluation: expect.objectContaining({
+                conceptSetId: '22222222-2222-2222-2222-222222222222',
+                disqualifiers: ['No agency commits.'],
+              }),
+            }),
           }),
         }),
-      }),
-    );
+      },
+    });
+    expect(mockDeliverDispatchWork).toHaveBeenCalledWith('dispatch-seed-1');
     expect(response.body).toMatchObject({
       evaluationId: 'dispatch-seed-1',
       dispatchId: 'dispatch-seed-1',
@@ -529,7 +541,7 @@ describe('POST /api/jobs/:jobId/seed-idea', () => {
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({ status: 'settled', outcome: 'accepted' });
     expect(mockChargeForSeedIdeaInTx).not.toHaveBeenCalled();
-    expect(mockEnqueueSeedIdeaJob).not.toHaveBeenCalled();
+    expect(mockDeliverDispatchWork).not.toHaveBeenCalled();
   });
 
   it('returns 402 with balance/required on insufficient credits, no dispatch opened', async () => {
@@ -602,10 +614,26 @@ describe('POST /api/jobs/:jobId/seed-idea', () => {
       }),
     );
 
-    expect(mockEnqueueSeedIdeaJob).toHaveBeenCalledWith(
-      jobId, '/cp/path', 'test niche', 'A tool that does X for Y', 'Pain A', 'Spreadsheets', 'dispatch-seed-1',
-      undefined,
-    );
+    expect(mockDispatchUpdate).toHaveBeenCalledWith({
+      where: { id: 'dispatch-seed-1' },
+      data: {
+        workPayload: expect.objectContaining({
+          job_id: jobId,
+          checkpoint_path: '/cp/path',
+          niche: 'test niche',
+          seed_text: 'A tool that does X for Y',
+          pain_ref: 'Pain A',
+          tool_ref: 'Spreadsheets',
+          synthesis_evaluation: null,
+          task_type: 'seed_idea',
+        }),
+      },
+    });
+    expect(mockDeliverDispatchWork).toHaveBeenCalledWith('dispatch-seed-1');
+    expect(response.body).toMatchObject({
+      operationId: 'dispatch-seed-1',
+      deliveryPending: false,
+    });
   });
 
   it('a second seed on the same job charges seed_idea_2 (ordinal derived from seedIdeaCount)', async () => {
@@ -644,55 +672,40 @@ describe('POST /api/jobs/:jobId/seed-idea', () => {
 
     expect(response.status).toBe(409);
     expect(response.body.error).toBe('Seed idea already in progress (duplicate charge)');
-    expect(mockEnqueueSeedIdeaJob).not.toHaveBeenCalled();
+    expect(mockDeliverDispatchWork).not.toHaveBeenCalled();
   });
 
-  it('on enqueue failure: reverts to AWAITING_SELECTION, settles the dispatch FAILED, refunds seed_idea_1, and retracts the seed_submitted receipt', async () => {
+  it('keeps the charged dispatch and receipt durable when Redis delivery is ambiguous', async () => {
     mockJobFindFirst.mockResolvedValue(makeJob());
-    mockEnqueueSeedIdeaJob.mockRejectedValue(new Error('Redis unavailable'));
+    mockDeliverDispatchWork.mockRejectedValue(new Error('Redis unavailable'));
 
     const response = await request(app)
       .post(`/api/jobs/${jobId}/seed-idea`)
       .set(authHeaders)
       .send(validBody);
 
-    expect(response.status).toBe(500);
-
-    // The compensating revert (second $transaction call) reverted status and settled the
-    // dispatch — settleDispatch's own CAS-disarm update reuses the same tx.job.updateMany mock,
-    // so we assert on the REVERT call specifically (data.status === AWAITING_SELECTION).
-    const revertCall = mockJobUpdateMany.mock.calls.find(
-      (c: any[]) => c[0].data?.status === 'AWAITING_SELECTION',
-    );
-    expect(revertCall).toBeTruthy();
-    expect(revertCall![0].where).toEqual({ id: jobId, status: 'QUEUED', activeDispatchId: 'dispatch-seed-1' });
-
-    expect(mockDispatchUpdateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 'dispatch-seed-1' },
-        data: expect.objectContaining({ state: 'FAILED' }),
-      }),
-    );
-    expect(mockRefundForSeedIdeaStage).toHaveBeenCalledWith(jobId, 1);
-    expect(mockChatMessageDelete).toHaveBeenCalledWith({ where: { id: 'receipt-1' } });
-  });
-
-  it('skips refund/retraction when the enqueue-failure revert no longer matches (a worker already claimed it)', async () => {
-    mockJobFindFirst.mockResolvedValue(makeJob());
-    mockEnqueueSeedIdeaJob.mockRejectedValue(new Error('Redis unavailable'));
-    // First call (the main flip) must succeed with count 1; only the SECOND call (compensating
-    // revert) should report a lost race.
-    mockJobUpdateMany
-      .mockResolvedValueOnce({ count: 1 })
-      .mockResolvedValue({ count: 0 });
-
-    const response = await request(app)
-      .post(`/api/jobs/${jobId}/seed-idea`)
-      .set(authHeaders)
-      .send(validBody);
-
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      status: 'queued',
+      operationId: 'dispatch-seed-1',
+      deliveryPending: true,
+    });
+    expect(mockJobUpdateMany).toHaveBeenCalledTimes(1);
+    expect(mockDispatchUpdateMany).not.toHaveBeenCalled();
     expect(mockRefundForSeedIdeaStage).not.toHaveBeenCalled();
     expect(mockChatMessageDelete).not.toHaveBeenCalled();
+  });
+
+  it('does not attempt delivery when persisting the immutable work payload fails', async () => {
+    mockJobFindFirst.mockResolvedValue(makeJob());
+    mockDispatchUpdate.mockRejectedValue(new Error('database unavailable'));
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/seed-idea`)
+      .set(authHeaders)
+      .send(validBody);
+
+    expect(response.status).toBe(500);
+    expect(mockDeliverDispatchWork).not.toHaveBeenCalled();
   });
 });

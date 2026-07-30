@@ -41,13 +41,28 @@ vi.mock('../../services/jobService.js', () => ({
   getJobAsset: (...args: any[]) => mockGetJobAsset(...args),
 }));
 
-const mockChargeForStageInTx = vi.fn();
+const mockChargeForStageWithPriceCasInTx = vi.fn();
 
 vi.mock('../../services/creditService.js', () => ({
   createJobAndChargeDiscovery: vi.fn(),
+  createJobAndChargeDiscoveryInTx: vi.fn(),
   refundForStage: vi.fn(),
-  chargeForStageInTx: (...args: any[]) => mockChargeForStageInTx(...args),
+  chargeForStageWithPriceCasInTx: (...args: any[]) => mockChargeForStageWithPriceCasInTx(...args),
+  chargeForRegenerationInTx: vi.fn(),
+  chargeForResume: vi.fn(),
+  segmentForGateContinue: vi.fn(),
+  chargeForSeedIdeaInTx: vi.fn(),
+  refundChargeInTx: vi.fn(),
   getStageCost: vi.fn().mockResolvedValue(5),
+  PriceChangedError: class PriceChangedError extends Error {
+    expectedCost: number;
+    actualCost: number;
+    constructor(expectedCost: number, actualCost: number) {
+      super('Price changed');
+      this.expectedCost = expectedCost;
+      this.actualCost = actualCost;
+    }
+  },
   InsufficientCreditsError: class InsufficientCreditsError extends Error {
     currentBalance: number;
     required: number;
@@ -61,13 +76,13 @@ vi.mock('../../services/creditService.js', () => ({
 }));
 
 const mockEnqueueJob = vi.fn();
-const mockEnqueueLandingPageJob = vi.fn();
+const mockDeliverDispatchWork = vi.fn();
 const mockGetQueueStats = vi.fn();
 const mockGetQueueLength = vi.fn();
 
 vi.mock('../../services/queueService.js', () => ({
   enqueueJob: (...args: any[]) => mockEnqueueJob(...args),
-  enqueueLandingPageJob: (...args: any[]) => mockEnqueueLandingPageJob(...args),
+  deliverDispatchWork: (...args: any[]) => mockDeliverDispatchWork(...args),
   enqueuePhase2Job: vi.fn(),
   enqueueRegenerateJob: vi.fn(),
   getQueueStats: (...args: any[]) => mockGetQueueStats(...args),
@@ -170,8 +185,11 @@ beforeEach(async () => {
 
   mockGetQueueLength.mockResolvedValue(0);
   mockGetQueueStats.mockResolvedValue({ position: 1, aheadCount: 0, totalQueued: 1 });
-  mockEnqueueLandingPageJob.mockResolvedValue(undefined);
-  mockChargeForStageInTx.mockResolvedValue({ cost: 5 });
+  mockDeliverDispatchWork.mockResolvedValue(undefined);
+  mockChargeForStageWithPriceCasInTx.mockResolvedValue({
+    cost: 5,
+    transaction: { id: 'charge-landing-1' },
+  });
 });
 
 // ============================================
@@ -214,10 +232,15 @@ describe('POST /api/jobs/:jobId/generate-landing', () => {
 
     const res = await request(app)
       .post(`/api/jobs/${JOB_ID}/generate-landing`)
-      .set(validUserHeaders);
+      .set(validUserHeaders)
+      .send({ expectedCost: 5 });
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ status: 'ok' });
+    expect(res.body).toEqual({
+      status: 'ok',
+      operationId: 'dispatch-test',
+      deliveryPending: false,
+    });
 
     // Transaction should have upserted stage 15 progress (supports retry after monitor failure)
     expect(mockTx.jobProgress.upsert).toHaveBeenCalledWith({
@@ -244,8 +267,121 @@ describe('POST /api/jobs/:jobId/generate-landing', () => {
       }),
     });
 
-    // Should enqueue landing page job with correct report path
-    expect(mockEnqueueLandingPageJob).toHaveBeenCalledWith(JOB_ID, 'outputs/job-1/report.json', undefined, 'dispatch-test');
+    // The charge and its dispatch are written through the same transaction client, and the
+    // dispatch points at the exact ledger row that this landing-page attempt paid with.
+    expect(mockChargeForStageWithPriceCasInTx).toHaveBeenCalledWith(
+      mockTx,
+      USER_ID,
+      JOB_ID,
+      'landing_page',
+      'landing_page',
+      'test niche',
+      5,
+    );
+    expect(mockTx.jobDispatch.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        jobId: JOB_ID,
+        kind: 'CONTINUE',
+        segment: 'landing_page',
+        chargeId: 'charge-landing-1',
+        workPayload: expect.objectContaining({
+          job_id: JOB_ID,
+          report_path: 'outputs/job-1/report.json',
+          task_type: 'landing_page',
+        }),
+      }),
+      select: { id: true },
+    });
+
+    expect(mockDeliverDispatchWork).toHaveBeenCalledWith('dispatch-test');
+  });
+
+  it('retries a failed landing attempt on a new ledger cycle without adding stage 15 twice', async () => {
+    const job = {
+      id: JOB_ID,
+      userId: USER_ID,
+      niche: 'test niche',
+      status: JobStatus.COMPLETED,
+      landingPageStatus: 'FAILED',
+      assets: [{ assetType: 'REPORT_JSON', filePath: 'outputs/job-1/report.json' }],
+      progress: [{ stageNumber: 15, status: 'FAILED' }],
+    };
+    const mockTx = setupTransaction(job);
+
+    const res = await request(app)
+      .post(`/api/jobs/${JOB_ID}/generate-landing`)
+      .set(validUserHeaders)
+      .send({ expectedCost: 5 });
+
+    expect(res.status).toBe(200);
+    expect(mockChargeForStageWithPriceCasInTx).toHaveBeenCalledWith(
+      mockTx,
+      USER_ID,
+      JOB_ID,
+      'landing_page',
+      'landing_page',
+      'test niche',
+      5,
+    );
+    expect(mockTx.job.update).toHaveBeenCalledWith({
+      where: { id: JOB_ID },
+      data: {
+        generateLandingPage: true,
+        landingPageStatus: 'QUEUED',
+      },
+    });
+  });
+
+  it('requires the displayed landing-page price to be confirmed', async () => {
+    const res = await request(app)
+      .post(`/api/jobs/${JOB_ID}/generate-landing`)
+      .set(validUserHeaders)
+      .send({});
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Validation error');
+    expect(mockPrismaTransaction).not.toHaveBeenCalled();
+    expect(mockChargeForStageWithPriceCasInTx).not.toHaveBeenCalled();
+    expect(mockDeliverDispatchWork).not.toHaveBeenCalled();
+  });
+
+  it('rolls back when the landing-page price changes before the charge', async () => {
+    const { PriceChangedError } = await import('../../services/creditService.js');
+    const job = {
+      id: JOB_ID,
+      userId: USER_ID,
+      niche: 'test niche',
+      status: JobStatus.COMPLETED,
+      landingPageStatus: null,
+      assets: [{ assetType: 'REPORT_JSON', filePath: 'outputs/job-1/report.json' }],
+      progress: [],
+    };
+    const mockTx = setupTransaction(job);
+    mockChargeForStageWithPriceCasInTx.mockRejectedValueOnce(new PriceChangedError(5, 7));
+
+    const res = await request(app)
+      .post(`/api/jobs/${JOB_ID}/generate-landing`)
+      .set(validUserHeaders)
+      .send({ expectedCost: 5 });
+
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({
+      error: 'Landing page price changed; review the updated price before continuing',
+      code: 'PRICE_CHANGED',
+      expectedCost: 5,
+      actualCost: 7,
+    });
+    expect(mockChargeForStageWithPriceCasInTx).toHaveBeenCalledWith(
+      mockTx,
+      USER_ID,
+      JOB_ID,
+      'landing_page',
+      'landing_page',
+      'test niche',
+      5,
+    );
+    expect(mockTx.jobDispatch.create).not.toHaveBeenCalled();
+    expect(mockDeliverDispatchWork).not.toHaveBeenCalled();
   });
 
   it('rejects non-COMPLETED job → 400', async () => {
@@ -262,7 +398,8 @@ describe('POST /api/jobs/:jobId/generate-landing', () => {
 
     const res = await request(app)
       .post(`/api/jobs/${JOB_ID}/generate-landing`)
-      .set(validUserHeaders);
+      .set(validUserHeaders)
+      .send({ expectedCost: 5 });
 
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/must be completed/i);
@@ -285,7 +422,8 @@ describe('POST /api/jobs/:jobId/generate-landing', () => {
 
     const res = await request(app)
       .post(`/api/jobs/${JOB_ID}/generate-landing`)
-      .set(validUserHeaders);
+      .set(validUserHeaders)
+      .send({ expectedCost: 5 });
 
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/already exists/i);
@@ -305,7 +443,8 @@ describe('POST /api/jobs/:jobId/generate-landing', () => {
 
     const res = await request(app)
       .post(`/api/jobs/${JOB_ID}/generate-landing`)
-      .set(validUserHeaders);
+      .set(validUserHeaders)
+      .send({ expectedCost: 5 });
 
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/already exists|being generated/i);
@@ -325,7 +464,8 @@ describe('POST /api/jobs/:jobId/generate-landing', () => {
 
     const res = await request(app)
       .post(`/api/jobs/${JOB_ID}/generate-landing`)
-      .set(validUserHeaders);
+      .set(validUserHeaders)
+      .send({ expectedCost: 5 });
 
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/already exists|being generated/i);
@@ -345,7 +485,8 @@ describe('POST /api/jobs/:jobId/generate-landing', () => {
 
     const res = await request(app)
       .post(`/api/jobs/${JOB_ID}/generate-landing`)
-      .set(validUserHeaders);
+      .set(validUserHeaders)
+      .send({ expectedCost: 5 });
 
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/report not found/i);
@@ -366,13 +507,14 @@ describe('POST /api/jobs/:jobId/generate-landing', () => {
 
     const res = await request(app)
       .post(`/api/jobs/${JOB_ID}/generate-landing`)
-      .set(attackerHeaders);
+      .set(attackerHeaders)
+      .send({ expectedCost: 5 });
 
     expect(res.status).toBe(404);
     expect(res.body.error).toBe('Job not found');
   });
 
-  it('calls enqueueLandingPageJob with correct jobId and report filePath', async () => {
+  it('persists the report path in the durable dispatch work payload', async () => {
     const reportPath = 'outputs/special/report.json';
     const job = {
       id: JOB_ID,
@@ -383,14 +525,59 @@ describe('POST /api/jobs/:jobId/generate-landing', () => {
       progress: [],
     };
 
-    setupTransaction(job);
+    const mockTx = setupTransaction(job);
     mockGetJobAsset.mockResolvedValue({ filePath: reportPath });
 
     await request(app)
       .post(`/api/jobs/${JOB_ID}/generate-landing`)
-      .set(validUserHeaders);
+      .set(validUserHeaders)
+      .send({ expectedCost: 5 });
 
-    expect(mockEnqueueLandingPageJob).toHaveBeenCalledWith(JOB_ID, reportPath, undefined, 'dispatch-test');
+    expect(mockTx.jobDispatch.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workPayload: expect.objectContaining({
+          job_id: JOB_ID,
+          report_path: reportPath,
+          task_type: 'landing_page',
+        }),
+      }),
+      select: { id: true },
+    });
+    expect(mockDeliverDispatchWork).toHaveBeenCalledWith('dispatch-test');
+  });
+
+  it('does not enqueue or compensate when dispatch creation aborts the charge transaction', async () => {
+    const { refundForStage } = await import('../../services/creditService.js');
+    const job = {
+      id: JOB_ID,
+      userId: USER_ID,
+      niche: 'test niche',
+      status: JobStatus.COMPLETED,
+      landingPageStatus: null,
+      assets: [{ assetType: 'REPORT_JSON', filePath: 'outputs/job-1/report.json' }],
+      progress: [],
+    };
+
+    const mockTx = setupTransaction(job);
+    mockTx.jobDispatch.create.mockRejectedValueOnce(new Error('dispatch write failed'));
+
+    const res = await request(app)
+      .post(`/api/jobs/${JOB_ID}/generate-landing`)
+      .set(validUserHeaders)
+      .send({ expectedCost: 5 });
+
+    expect(res.status).toBe(500);
+    expect(mockChargeForStageWithPriceCasInTx).toHaveBeenCalledWith(
+      mockTx,
+      USER_ID,
+      JOB_ID,
+      'landing_page',
+      'landing_page',
+      'test niche',
+      5,
+    );
+    expect(mockDeliverDispatchWork).not.toHaveBeenCalled();
+    expect(refundForStage).not.toHaveBeenCalled();
   });
 
   it('no auth headers → 401', async () => {
@@ -400,7 +587,7 @@ describe('POST /api/jobs/:jobId/generate-landing', () => {
     expect(res.status).toBe(401);
   });
 
-  it('refunds credits and reverts job when enqueue fails', async () => {
+  it('keeps the authorized landing attempt durable when Redis delivery is ambiguous', async () => {
     const { refundForStage } = await import('../../services/creditService.js');
     const job = {
       id: JOB_ID,
@@ -414,38 +601,19 @@ describe('POST /api/jobs/:jobId/generate-landing', () => {
 
     setupTransaction(job);
     mockGetJobAsset.mockResolvedValue({ filePath: 'outputs/job-1/report.json' });
-    mockEnqueueLandingPageJob.mockRejectedValue(new Error('Redis unavailable'));
-
-    // Set up compensating transaction mock
-    const mockCompTx = {
-      job: { update: vi.fn().mockResolvedValue({}) },
-      jobProgress: { deleteMany: vi.fn().mockResolvedValue({}) },
-    };
-    // After the first transaction (charge), the second $transaction call is the compensating one
-    const originalImpl = mockPrismaTransaction.getMockImplementation();
-    let callCount = 0;
-    mockPrismaTransaction.mockImplementation(async (cb: any) => {
-      callCount++;
-      if (callCount === 1) {
-        // First call: the charge transaction (from setupTransaction)
-        return originalImpl!(cb);
-      }
-      // Second call: the compensating transaction
-      return cb(mockCompTx);
-    });
+    mockDeliverDispatchWork.mockRejectedValue(new Error('Redis unavailable'));
 
     const res = await request(app)
       .post(`/api/jobs/${JOB_ID}/generate-landing`)
-      .set(validUserHeaders);
+      .set(validUserHeaders)
+      .send({ expectedCost: 5 });
 
-    expect(res.status).toBe(500);
-    expect(refundForStage).toHaveBeenCalledWith(JOB_ID, 'landing_page');
-    expect(mockCompTx.job.update).toHaveBeenCalledWith({
-      where: { id: JOB_ID },
-      data: { landingPageStatus: null, generateLandingPage: false, totalStages: { decrement: 1 } },
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      status: 'ok',
+      operationId: 'dispatch-test',
+      deliveryPending: true,
     });
-    expect(mockCompTx.jobProgress.deleteMany).toHaveBeenCalledWith({
-      where: { jobId: JOB_ID, stageNumber: 15 },
-    });
+    expect(refundForStage).not.toHaveBeenCalled();
   });
 });

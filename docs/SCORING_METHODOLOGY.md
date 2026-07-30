@@ -175,12 +175,30 @@ this, all downgrade-only or informational:
   (`corporate-budget .85 | smb-budget .60 | prosumer-wallet .40 | personal-wallet .25` priors,
   averaged with the LLM's score and clamped — a single optimistic draw can't flip a
   personal-wallet segment). Ideas inherit it via `source_segment` (unmatched segments fall back
-  to the niche mean — a join failure can never silently create scoring asymmetry). It feeds the
-  calibration critic as a per-idea evidence line ("pain without a wallet is not a market"),
+  to the niche mean — a join failure can never silently create scoring asymmetry). It
   caps market_fit at `payability_market_fit_cap` (default 0.55) when payability is below
   `payability_low_threshold` (default 0.35), and can hold a Go verdict to Conditional for
   direct-paid ideas (Phase-5 floor; ads/affiliate/commission plays are exempt — they don't need
-  the buyer's wallet). Validation path: `scripts/calibration_gate.py gate --candidate payability`.
+  the buyer's wallet).
+
+  **Payability de-dup (2026-07-30):** the signal originally ALSO fed the calibration critic as
+  a per-idea evidence line + rubric ("pain without a wallet is not a market") and a niche-wallet
+  willingness-to-pay ceiling. The 2026-07-30 run-quality audit found the composed system applied
+  the same wallet evidence up to six times (observed market_fit landed at 0.40-0.45 — *below*
+  the 0.55 cap, proving the prompt stages double-applied it), so the prompt-side applications
+  were removed: **the critic now scores payability-blind**, and the segment wallet reaches
+  market_fit through exactly one auditable path — the deterministic cap (plus its downstream
+  demotion/verdict consumers). Practical effect: thin-wallet (<0.35) ideas land AT the 0.55 cap
+  instead of 0.40-0.45; ideas in the 0.35-0.55 payability band carry no market_fit wallet
+  discount (raise `payability_low_threshold` if that band over-scores).
+  Validation path: `scripts/calibration_gate.py gate --candidate dedup` (pre-de-dup prompt
+  replay vs shipped blind prompt, both reported with the post-cap composed view; the old
+  `--candidate payability` mode is a no-op since both arms now render identical prompts).
+  **Gate-validated 2026-07-30** (67 ideas / 7 niches / N=3 vs the neutral-Opus panel, composed
+  view): market_fit signed error −0.031 → **+0.002**, MAE 0.075 → **0.056**, verdict kappa
+  0.385 → **0.419**. The double-count was directly observable: pre-de-dup only 8/67 ideas ever
+  reached cap (d) (the prompt had already pushed market_fit below the cap); post-de-dup 18/67
+  hit it — one application, more accurate.
 
 ## Competition checks: direct, substitute, and adjacent-market (2026-07-06)
 
@@ -374,6 +392,20 @@ presents as **Conditional / High risk** with the condition named — "validate r
 (pre-sales, paid pilots, or a concierge version) before committing". Unbuildable ideas, refuted
 data routes, and weak markets with a *healthy* wallet remain genuine No-Gos. Rationale: a paid
 analysis should tell the user what must be true, not just "no".
+
+### Phase-5.5 red-team floor (2026-07-30)
+
+The adversarial red-team pass stamps `weakened` / `killed` findings on reviewed ideas, but until
+2026-07-30 those findings never reached the verdict — a weakened selection presented exactly like
+an unexamined one. The Phase-5.5 floor (between the payability and regulatory phases) fixes that:
+a **weakened** selected idea caps Go→Conditional and floors risk at Medium; a **killed** one
+additionally floors risk to High and names the refuted premise as the `primary_concern` (a killed
+idea can still *be* the selection — the sweep demotions run before the red team, and the kill
+path only caps scores). Downgrade-only, never forces No-Go. The explanation ships in
+`go_no_go_verdict.red_team_context` and is appended to the rationale **unconditionally** — the
+finding stays visible even when the verdict letter was already Conditional. A red-team
+vocabulary-mismatch abstain (`red_team_vocab_mismatch` — the probe's search evidence retrieved a
+different industry) is a retrieval failure, not a verdict, and never triggers this floor.
 
 ## Honest limitations
 

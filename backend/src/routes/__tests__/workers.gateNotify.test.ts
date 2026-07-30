@@ -94,8 +94,11 @@ vi.mock('../../utils/errorTranslator.js', () => ({
 }));
 
 vi.mock('../../services/creditService.js', () => ({
+  refundChargeInTx: vi.fn(),
   refundForStage: vi.fn(),
+  refundForStageInTx: vi.fn(),
   refundForRegenerationStage: vi.fn(),
+  isGuidedSegment: vi.fn(),
 }));
 
 vi.mock('../../types/job.js', async (importOriginal) => {

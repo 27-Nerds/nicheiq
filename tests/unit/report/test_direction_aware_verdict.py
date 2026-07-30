@@ -102,3 +102,37 @@ class TestPayabilityReclassification:
         assert v.verdict == "No-Go"       # weak market with a REAL wallet is a genuine No-Go
 
 
+
+
+class TestRedTeamPhase55:
+    """Run-quality fixes §1: the red-team floor wires into _compute_go_no_go_verdict and the
+    finding is surfaced in the rationale even when the verdict LETTER did not change."""
+
+    def test_weakened_selection_surfaces_in_rationale_without_letter_change(self, generator):
+        # Already-Conditional scores: the letter cannot change, so the change-gated
+        # downgrade_note never fires — the unconditional append must carry the finding.
+        _scores(generator, mf=0.55, tech=0.65, seo=0.5, nov=0.5)
+        v = generator._compute_go_no_go_verdict(
+            SimpleNamespace(winning_angle=None, red_team_verdict="weakened",
+                            red_team_caveats=["search maps to AI agent security, not video post"]),
+            narrative_rationale="ok")
+        assert v.verdict == "Conditional"
+        assert v.red_team_context and "weakened" in v.red_team_context
+        assert "Red-team review" in v.rationale
+        assert "AI agent security" in v.rationale
+
+    def test_killed_selection_escalates_risk_and_overrides_generic_concern(self, generator):
+        _scores(generator, mf=0.55, tech=0.65, seo=0.5, nov=0.5)
+        v = generator._compute_go_no_go_verdict(
+            SimpleNamespace(winning_angle=None, red_team_verdict="killed",
+                            red_team_caveats=["core premise refuted"]),
+            narrative_rationale="ok")
+        assert v.risk_level == "High"
+        assert v.primary_concern and "refuted" in v.primary_concern
+
+    def test_unreviewed_selection_unchanged(self, generator):
+        _scores(generator, mf=0.55, tech=0.65, seo=0.5, nov=0.5)
+        v = generator._compute_go_no_go_verdict(
+            SimpleNamespace(winning_angle=None), narrative_rationale="ok")
+        assert v.red_team_context is None
+        assert "Red-team review" not in v.rationale

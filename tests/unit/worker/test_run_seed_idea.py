@@ -85,9 +85,23 @@ class TestRunSeedIdeaRuledOutMerge:
 
             assert result == {"status": "seed_settled", "job_id": "job-1", "outcome": "demoted"}
             # Only THIS dispatch's ruled-out record was merged in — not the other dispatch's.
-            assert flow.state.idea_ruled_out == [
-                {"pain_title": "P1", "dispatch_id": "d-this", "source_frame": "user_seed"}
-            ]
+            assert len(flow.state.idea_ruled_out) == 1
+            ruled_out = flow.state.idea_ruled_out[0]
+            assert {
+                "pain_title": ruled_out["pain_title"],
+                "dispatch_id": ruled_out["dispatch_id"],
+                "source_frame": ruled_out["source_frame"],
+            } == {
+                "pain_title": "P1",
+                "dispatch_id": "d-this",
+                "source_frame": "user_seed",
+            }
+            assert ruled_out["idea_id"] == idea.idea_id
+            assert ruled_out["idea_revision"] == idea.idea_revision
+            assert ruled_out["identity_origin"] == "seed"
+            assert ruled_out["identity_operation_id"] == "d-this"
+            assert ruled_out["finding_id"].startswith("finding_")
+            assert ruled_out["finding_revision"] == 1
             # The idea itself is still merged into the checkpoint pool (Python-side keeps the
             # full outcome pair for audit; the BACKEND is what gates it out of the selectable
             # `solutionIdeas` array for a demoted outcome — see workers.ts /seed-complete).

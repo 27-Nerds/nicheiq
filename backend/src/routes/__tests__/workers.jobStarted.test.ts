@@ -10,6 +10,7 @@ const mockJobFindUnique = vi.fn();
 const mockJobUpdate = vi.fn();
 const mockDispatchFindUnique = vi.fn();
 const mockDispatchUpdateMany = vi.fn();
+const mockUpdateJobHeartbeat = vi.fn();
 
 vi.mock('../../services/db.js', () => ({
   prisma: {
@@ -30,7 +31,7 @@ vi.mock('../../services/db.js', () => ({
 const mockRegisterWorkerHeartbeat = vi.fn();
 
 vi.mock('../../services/heartbeatService.js', () => ({
-  updateJobHeartbeat: vi.fn(),
+  updateJobHeartbeat: (...args: any[]) => mockUpdateJobHeartbeat(...args),
   registerWorkerHeartbeat: (...args: any[]) => mockRegisterWorkerHeartbeat(...args),
   markWorkerShutdown: vi.fn(),
 }));
@@ -96,6 +97,7 @@ beforeEach(async () => {
   vi.clearAllMocks();
 
   mockRegisterWorkerHeartbeat.mockResolvedValue(undefined);
+  mockUpdateJobHeartbeat.mockResolvedValue('updated');
   mockNotifyJobStart.mockResolvedValue(undefined);
 
   app = express();
@@ -120,6 +122,58 @@ beforeEach(async () => {
 // ============================================
 // Tests
 // ============================================
+describe('POST /api/workers/heartbeat', () => {
+  it('passes the exact dispatch identity to heartbeat ownership validation', async () => {
+    const dispatchId = '00000000-0000-4000-8000-000000000010';
+    mockJobFindUnique.mockResolvedValue({ status: 'RUNNING' });
+
+    const response = await request(app)
+      .post('/api/workers/heartbeat')
+      .send({
+        worker_id: 'worker-1',
+        job_id: jobId,
+        dispatch_id: dispatchId,
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.shouldCancel).toBe(false);
+    expect(mockUpdateJobHeartbeat).toHaveBeenCalledWith(jobId, 'worker-1', dispatchId);
+    expect(mockRegisterWorkerHeartbeat).toHaveBeenCalledWith(
+      'worker-1',
+      jobId,
+      undefined,
+      undefined,
+    );
+  });
+
+  it('tells a stale worker to stop and does not register it against the current job', async () => {
+    const staleDispatchId = '00000000-0000-4000-8000-000000000010';
+    mockUpdateJobHeartbeat.mockResolvedValue('stale');
+
+    const response = await request(app)
+      .post('/api/workers/heartbeat')
+      .send({
+        worker_id: 'worker-old',
+        job_id: jobId,
+        dispatch_id: staleDispatchId,
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      status: 'ok',
+      stale: true,
+      shouldCancel: true,
+    });
+    expect(mockJobFindUnique).not.toHaveBeenCalled();
+    expect(mockRegisterWorkerHeartbeat).toHaveBeenCalledWith(
+      'worker-old',
+      null,
+      undefined,
+      undefined,
+    );
+  });
+});
+
 describe('POST /api/workers/job-started', () => {
   describe('cancellation handling', () => {
     it('returns shouldCancel: true when job is already CANCELLED', async () => {
@@ -365,13 +419,58 @@ describe('POST /api/workers/job-started', () => {
 
       expect(mockDispatchFindUnique).toHaveBeenCalledWith({
         where: { id: dispatchId },
-        select: { kind: true },
+        select: { kind: true, segment: true },
       });
       expect(mockJobUpdateMany).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ status: 'RUNNING' }),
         })
       );
+    });
+
+    it('claims a landing dispatch while preserving the parent Job as COMPLETED', async () => {
+      const dispatchId = '00000000-0000-0000-0000-0000000000ac';
+      mockJobUpdateMany.mockResolvedValue({ count: 1 });
+      mockDispatchUpdateMany.mockResolvedValue({ count: 1 });
+      mockDispatchFindUnique.mockResolvedValue({
+        kind: 'CONTINUE',
+        segment: 'landing_page',
+      });
+      mockJobFindUnique
+        .mockResolvedValueOnce({ selectedSolutions: [], ideasRegeneratedAt: null })
+        .mockResolvedValueOnce(null);
+
+      const res = await request(app)
+        .post('/api/workers/job-started')
+        .send({ worker_id: 'worker-1', job_id: jobId, dispatch_id: dispatchId });
+
+      expect(res.status).toBe(200);
+      expect(res.body.shouldCancel).toBe(false);
+      expect(mockJobUpdateMany).toHaveBeenCalledWith({
+        where: {
+          id: jobId,
+          status: 'COMPLETED',
+          landingPageStatus: 'QUEUED',
+          activeDispatchId: dispatchId,
+        },
+        data: {
+          landingPageStatus: 'RUNNING',
+          workerId: 'worker-1',
+          lastHeartbeat: expect.any(Date),
+        },
+      });
+      expect(mockDispatchUpdateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            id: dispatchId,
+            jobId,
+            segment: 'landing_page',
+            OR: expect.arrayContaining([{ state: 'AUTHORIZED' }]),
+          }),
+          data: expect.objectContaining({ state: 'CLAIMED', workerId: 'worker-1' }),
+        }),
+      );
+      expect(mockNotifyJobStart).not.toHaveBeenCalled();
     });
 
     describe('atomic dispatched start', () => {

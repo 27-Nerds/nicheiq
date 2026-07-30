@@ -94,6 +94,84 @@ def stamp_new_idea_identities(
     return stamped
 
 
+def apply_pool_identities(
+    ideas: Iterable[Any],
+    identity_map: Iterable[Any],
+) -> int:
+    """Stamp the backend's authoritative identities onto checkpoint candidates by name.
+
+    Identities are assigned by the BACKEND at /api/workers/ideas-ready, seeded from the
+    Phase-1 dispatch id, and persisted only in Postgres — the checkpoint on disk carries no
+    idea_id at all. `ensure_legacy_idea_identities` below therefore cannot reproduce them
+    (it does not know the dispatch id), and its `legacy_backfill` ids never match the refs
+    the backend later sends for Phase 2. The backend closes the gap by shipping its stamped
+    pool in the work payload; this applies it.
+
+    Keyed by normalized name rather than position: the checkpoint pool and the backend's
+    stored pool need not be the same length (a batch can land in one before the other), and
+    a positional assignment that silently slips by one would research an idea the user never
+    bought. Ambiguous names are skipped rather than guessed, leaving them to the legacy
+    backfill — a candidate with no usable identity must fail the lookup loudly. Native
+    checkpoint identities are never rewritten: exact matches already carry stronger
+    provenance, while a mismatch means the two pools disagree and must fail. The synthetic
+    `legacy_backfill` identity created during old-checkpoint reconstruction is only a
+    compatibility placeholder, so the backend map may replace it.
+    """
+    by_name: dict[str, tuple[str, int]] = {}
+    ambiguous: set[str] = set()
+    for entry in identity_map or []:
+        key = normalized_solution_name_key(_get(entry, "solution_name"))
+        idea_id = str(_get(entry, "idea_id") or "").strip()
+        revision = _get(entry, "idea_revision")
+        if not key or not _valid_identity(idea_id) or not _valid_revision(revision):
+            continue
+        if key in by_name:
+            ambiguous.add(key)
+            continue
+        by_name[key] = (idea_id, revision)
+    for key in ambiguous:
+        by_name.pop(key, None)
+
+    applied = 0
+    for idea in ideas:
+        identity = by_name.get(
+            normalized_solution_name_key(_get(idea, "solution_name"))
+        )
+        if identity is None:
+            continue
+        existing_id = str(_get(idea, "idea_id") or "").strip()
+        existing_revision = _get(idea, "idea_revision")
+        if (
+            _valid_identity(existing_id)
+            and _valid_revision(existing_revision)
+            and (existing_id, existing_revision) == identity
+        ):
+            continue
+        identity_origin = _get(idea, "identity_origin")
+        is_legacy_placeholder = identity_origin == "legacy_backfill"
+        has_owner = (
+            not is_legacy_placeholder
+            and (
+                _valid_identity(existing_id)
+                or bool(identity_origin)
+                or bool(_get(idea, "identity_operation_id"))
+            )
+        )
+        if has_owner:
+            name = normalize_solution_name(_get(idea, "solution_name"))
+            raise RuntimeError(
+                "Checkpoint candidate identity conflicts with backend pool "
+                f"for {name!r}: {existing_id or '<missing>'}:"
+                f"{existing_revision!r} != {identity[0]}:{identity[1]}"
+            )
+        _set(idea, "idea_id", identity[0])
+        _set(idea, "idea_revision", identity[1])
+        _set(idea, "identity_origin", "backend_pool")
+        _set(idea, "identity_operation_id", None)
+        applied += 1
+    return applied
+
+
 def ensure_legacy_idea_identities(job_id: str, ideas: Iterable[Any]) -> list[Any]:
     """Hydrate pre-identity checkpoints using the backend's old visible-pool ordering."""
     records = list(ideas)

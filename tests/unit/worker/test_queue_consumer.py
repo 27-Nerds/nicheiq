@@ -61,6 +61,9 @@ class TestProcessJobRouting:
             {"idea_id": "idea-1", "idea_revision": 2, "solution_name": "Sol1"}
         ]
         snapshots = [{"idea_id": "idea-1", "idea_revision": 2, "solution_name": "Sol1"}]
+        pool_identity_map = [
+            {"idea_id": "idea-1", "idea_revision": 2, "solution_name": "Sol1"}
+        ]
         with patch('worker.tasks.run_research_phase2') as mock_task:
             mock_task.return_value = {"status": "completed"}
             from worker.queue_consumer import process_job
@@ -72,12 +75,14 @@ class TestProcessJobRouting:
                 "selected_solution_refs": refs,
                 "selected_solution_snapshots": snapshots,
                 "selection_fingerprint": "a" * 64,
+                "pool_identity_map": pool_identity_map,
             })
 
             kwargs = mock_task.call_args.kwargs
             assert kwargs["selected_solution_refs"] == refs
             assert kwargs["selected_solution_snapshots"] == snapshots
             assert kwargs["selection_fingerprint"] == "a" * 64
+            assert kwargs["pool_identity_map"] == pool_identity_map
 
     @patch('worker.heartbeat.notify_job_completed')
     @patch('worker.heartbeat.set_current_job')
@@ -92,6 +97,9 @@ class TestProcessJobRouting:
                 "snapshot_sha256": "ignored-by-worker",
             }
         ]
+        pool_identity_map = [
+            {"idea_id": "idea-a", "idea_revision": 2, "solution_name": "Alpha"}
+        ]
         with patch('worker.tasks.run_regenerate_ideas') as mock_task:
             mock_task.return_value = {"status": "regenerated"}
             from worker.queue_consumer import process_job
@@ -103,11 +111,13 @@ class TestProcessJobRouting:
                 "dispatch_id": "dispatch-1",
                 "batch_ordinal": 2,
                 "base_candidate_refs": base_refs,
+                "pool_identity_map": pool_identity_map,
             })
             mock_task.assert_called_once()
             assert mock_task.call_args.kwargs["dispatch_id"] == "dispatch-1"
             assert mock_task.call_args.kwargs["batch_ordinal"] == 2
             assert mock_task.call_args.kwargs["base_candidate_refs"] == base_refs
+            assert mock_task.call_args.kwargs["pool_identity_map"] == pool_identity_map
 
     @patch('worker.heartbeat.notify_job_completed')
     @patch('worker.heartbeat.set_current_job')
@@ -695,26 +705,116 @@ class TestSeedIdeaFailureHandling:
 class TestReliableQueue:
     def _redis(self, entries=None, claims=None):
         from unittest.mock import MagicMock
+        import worker.queue_consumer as qc
+
         r = MagicMock()
         r.lrange.return_value = list(entries or [])
-        claims = claims or {}
+        claims = dict(claims or {})
+        r._claims = claims
         r.hget.side_effect = lambda h, k: claims.get(k)
         r.lrem.return_value = 1
+
+        def _hdel(_hash, key):
+            return 1 if claims.pop(key, None) is not None else 0
+
+        def _eval(script, _numkeys, *args):
+            if script == qc._CLAIM_ATTEMPT_LUA:
+                _hash, key, value = args
+                if key in claims:
+                    return 0
+                claims[key] = value
+                return 1
+            if script == qc._REFRESH_CLAIM_LUA:
+                _hash, key, worker_id, now = args
+                current = claims.get(key)
+                if current and current.split(":", 1)[1] != worker_id:
+                    return -1
+                claims[key] = f"{now}:{worker_id}"
+                return 1
+            if script == qc._ACK_PROCESSING_LUA:
+                processing, _hash, raw, key, worker_id = args
+                removed = r.lrem(processing, 1, raw)
+                current = claims.get(key)
+                if current and current.split(":", 1)[1] == worker_id:
+                    r.hdel(qc.CLAIMS_HASH, key)
+                return removed
+            if script == qc._REQUEUE_STALE_LUA:
+                processing, _hash, queue, raw, key, cutoff, legacy_key = args
+                claim_key = key if key in claims else legacy_key
+                current = claims.get(claim_key)
+                claimed_at = float(current.split(":", 1)[0]) if current else None
+                if claimed_at is not None and claimed_at > float(cutoff):
+                    return 0
+                removed = r.lrem(processing, 1, raw)
+                if removed:
+                    r.hdel(qc.CLAIMS_HASH, claim_key)
+                    r.lpush(queue, raw)
+                return removed
+            raise AssertionError("unexpected Redis script")
+
+        r.hdel.side_effect = _hdel
+        r.eval.side_effect = _eval
         return r
 
     def test_ack_removes_entry_and_claim(self):
-        from worker.queue_consumer import _ack_processing, PROCESSING_QUEUE, CLAIMS_HASH
-        r = self._redis()
-        _ack_processing(r, '{"job_id": "j1"}', "j1")
+        from worker.queue_consumer import (
+            _ack_processing, PROCESSING_QUEUE, CLAIMS_HASH,
+        )
+        r = self._redis(claims={"legacy:j1": "1:w1"})
+        _ack_processing(r, '{"job_id": "j1"}', "j1", None, "w1")
         r.lrem.assert_called_once_with(PROCESSING_QUEUE, 1, '{"job_id": "j1"}')
-        r.hdel.assert_called_once_with(CLAIMS_HASH, "j1")
+        r.hdel.assert_called_once_with(CLAIMS_HASH, "legacy:j1")
+
+    def test_old_attempt_ack_cannot_delete_new_attempt_claim(self):
+        from worker.queue_consumer import _ack_processing
+
+        r = self._redis(claims={
+            "dispatch:dispatch-a": "1:worker-a",
+            "dispatch:dispatch-b": "2:worker-b",
+        })
+        _ack_processing(
+            r,
+            '{"job_id":"j1","dispatch_id":"dispatch-a"}',
+            "j1",
+            "dispatch-a",
+            "worker-a",
+        )
+
+        assert "dispatch:dispatch-a" not in r._claims
+        assert r._claims["dispatch:dispatch-b"] == "2:worker-b"
+
+    def test_duplicate_worker_cannot_delete_the_claim_winners_lease(self):
+        from worker.queue_consumer import _ack_processing
+
+        r = self._redis(claims={"dispatch:dispatch-a": "1:winner"})
+        _ack_processing(
+            r,
+            '{"job_id":"j1","dispatch_id":"dispatch-a"}',
+            "j1",
+            "dispatch-a",
+            "loser",
+        )
+
+        assert r._claims["dispatch:dispatch-a"] == "1:winner"
+
+    def test_legacy_job_key_cannot_block_a_different_modern_attempt(self):
+        from worker.queue_consumer import _claim_processing_attempt
+
+        r = self._redis(claims={"j1": "1:old-worker"})
+
+        assert _claim_processing_attempt(
+            r, "j1", "dispatch-a", "new-worker", 2,
+        ) is True
+        assert r._claims["dispatch:dispatch-a"] == "2:new-worker"
+        assert r._claims["j1"] == "1:old-worker"
 
     def test_ack_fail_soft(self):
         import redis as redis_lib
         from worker.queue_consumer import _ack_processing
         r = self._redis()
-        r.lrem.side_effect = redis_lib.RedisError("down")
-        _ack_processing(r, "raw", "j1")   # must not raise — sweep reclaims later
+        r.eval.side_effect = redis_lib.RedisError("down")
+        _ack_processing(r, "raw", "j1", "dispatch-a", "w1")
+        # must not raise — sweep reclaims later
 
     def test_sweep_requeues_stale_and_keeps_fresh(self):
         import time
@@ -726,8 +826,8 @@ class TestReliableQueue:
         stale = '{"job_id": "old"}'
         fresh = '{"job_id": "new"}'
         r = self._redis(entries=[stale, fresh],
-                        claims={"old": f"{now - STALE_CLAIM_SECONDS - 10}:w1",
-                                "new": f"{now - 30}:w2"})
+                        claims={"legacy:old": f"{now - STALE_CLAIM_SECONDS - 10}:w1",
+                                "legacy:new": f"{now - 30}:w2"})
         n = requeue_stale_processing(r)
         assert n == 1
         r.lpush.assert_called_once_with(QUEUE_NAME, stale)
@@ -740,6 +840,20 @@ class TestReliableQueue:
         r = self._redis(entries=['{"job_id": "ghost"}'], claims={})
         assert requeue_stale_processing(r) == 1
         r.lpush.assert_called_once_with(QUEUE_NAME, '{"job_id": "ghost"}')
+
+    def test_sweep_honors_fresh_rolling_deploy_job_key(self):
+        import time
+        from worker.queue_consumer import requeue_stale_processing
+
+        raw = '{"job_id":"j1","dispatch_id":"dispatch-a"}'
+        r = self._redis(
+            entries=[raw],
+            claims={"j1": f"{time.time()}:old-worker"},
+        )
+
+        assert requeue_stale_processing(r) == 0
+        r.lrem.assert_not_called()
+        r.lpush.assert_not_called()
 
     def test_sweep_drops_malformed_poison(self):
         from worker.queue_consumer import PROCESSING_QUEUE, requeue_stale_processing
@@ -783,7 +897,15 @@ class TestReliableQueue:
         r.blmove.assert_called_once_with(
             qc.QUEUE_NAME, qc.PROCESSING_QUEUE, timeout=5, src="RIGHT", dest="LEFT")
         r.lrem.assert_any_call(qc.PROCESSING_QUEUE, 1, job)   # acked after process_job
-        r.hset.assert_called_once()                            # claim stamped
+        claim_calls = [
+            call for call in r.eval.call_args_list
+            if call.args[0] == qc._CLAIM_ATTEMPT_LUA
+        ]
+        assert len(claim_calls) == 1
+        assert claim_calls[0].args[1:4] == (
+            1, qc.CLAIMS_HASH, "legacy:j9",
+        )
+        assert claim_calls[0].args[4].endswith(":w1")
 
     def test_consume_loop_acks_even_when_process_job_raises(self):
         import worker.queue_consumer as qc
@@ -823,10 +945,14 @@ class TestClaimRefresh:
         import worker.heartbeat as hb
 
         calls = []
-        hb.set_claim_refresher(lambda job_id: calls.append(job_id))
+        hb.set_claim_refresher(
+            lambda job_id, dispatch_id: calls.append((job_id, dispatch_id))
+        )
         try:
             with patch.object(hb, "_send_heartbeat"), \
                  patch.object(hb, "_current_job_id", "j42"), \
+                 patch("worker.progress._dispatch_payload",
+                       return_value={"dispatch_id": "dispatch-42"}), \
                  patch.object(hb, "HEARTBEAT_INTERVAL_SECONDS", 0):
                 hb._shutdown_event.clear()
                 # run exactly one loop iteration: set shutdown from within wait
@@ -839,13 +965,13 @@ class TestClaimRefresh:
         finally:
             hb.set_claim_refresher(None)
             hb._shutdown_event.clear()
-        assert calls == ["j42"]
+        assert calls == [("j42", "dispatch-42")]
 
     def test_refresher_exception_never_kills_thread(self):
         from unittest.mock import patch
         import worker.heartbeat as hb
 
-        def _boom(job_id):
+        def _boom(job_id, dispatch_id):
             raise RuntimeError("redis down")
         hb.set_claim_refresher(_boom)
         try:
@@ -859,6 +985,32 @@ class TestClaimRefresh:
         finally:
             hb.set_claim_refresher(None)
             hb._shutdown_event.clear()
+
+    def test_old_attempt_refresh_cannot_touch_new_attempt_claim(self):
+        from worker.queue_consumer import _refresh_processing_claim
+
+        r = TestReliableQueue()._redis(claims={
+            "dispatch:dispatch-a": "1:worker-a",
+            "dispatch:dispatch-b": "2:worker-b",
+        })
+
+        assert _refresh_processing_claim(
+            r, "job-1", "dispatch-a", "worker-a", 3,
+        ) is True
+        assert r._claims["dispatch:dispatch-a"] == "3:worker-a"
+        assert r._claims["dispatch:dispatch-b"] == "2:worker-b"
+
+    def test_losing_worker_cannot_refresh_same_attempt_claim(self):
+        from worker.queue_consumer import _refresh_processing_claim
+
+        r = TestReliableQueue()._redis(
+            claims={"dispatch:dispatch-a": "1:winner"},
+        )
+
+        assert _refresh_processing_claim(
+            r, "job-1", "dispatch-a", "loser", 3,
+        ) is False
+        assert r._claims["dispatch:dispatch-a"] == "1:winner"
 
     def test_consumer_registers_refresher(self):
         # source-level pin: run_consumer wires set_claim_refresher before consuming

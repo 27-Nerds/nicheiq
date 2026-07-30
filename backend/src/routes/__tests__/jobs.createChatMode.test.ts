@@ -5,9 +5,11 @@ import request from 'supertest';
 // ============================================
 // Mock dependencies
 // ============================================
-const mockCreateJobAndChargeDiscovery = vi.fn();
-const mockEnqueueJob = vi.fn();
+const mockCreateJobAndChargeDiscoveryInTx = vi.fn();
+const mockDeliverDispatchWork = vi.fn();
 const mockJobUpdate = vi.fn();
+const mockJobDispatchCreate = vi.fn();
+const mockPrismaTransaction = vi.fn();
 const mockIsEntitledUser = vi.fn();
 
 vi.mock('../../services/db.js', () => {
@@ -18,14 +20,17 @@ vi.mock('../../services/db.js', () => {
     },
     // Job creation now opens a dispatch, so the initial run has an identity a worker callback can
     // be matched against — previously it was the one path with none at all.
-    jobDispatch: { create: vi.fn(async () => ({ id: 'dispatch-1' })) },
+    jobDispatch: { create: (...args: any[]) => mockJobDispatchCreate(...args) },
   };
-  client.$transaction = (arg: any) => (typeof arg === 'function' ? arg(client) : Promise.all(arg));
+  client.$transaction = (arg: any) => {
+    mockPrismaTransaction(arg);
+    return typeof arg === 'function' ? arg(client) : Promise.all(arg);
+  };
   return { prisma: client };
 });
 
 vi.mock('../../services/queueService.js', () => ({
-  enqueueJob: (...args: any[]) => mockEnqueueJob(...args),
+  deliverDispatchWork: (...args: any[]) => mockDeliverDispatchWork(...args),
   enqueueLandingPageJob: vi.fn(),
   enqueuePhase2Job: vi.fn(),
   enqueueRegenerateJob: vi.fn(),
@@ -36,7 +41,7 @@ vi.mock('../../services/queueService.js', () => ({
 }));
 
 vi.mock('../../services/creditService.js', () => ({
-  createJobAndChargeDiscovery: (...args: any[]) => mockCreateJobAndChargeDiscovery(...args),
+  createJobAndChargeDiscoveryInTx: (...args: any[]) => mockCreateJobAndChargeDiscoveryInTx(...args),
   InsufficientCreditsError: class extends Error {
     currentBalance: number;
     required: number;
@@ -46,11 +51,24 @@ vi.mock('../../services/creditService.js', () => ({
       this.required = r;
     }
   },
+  PriceChangedError: class extends Error {
+    expectedCost: number;
+    actualCost: number;
+    constructor(expectedCost: number, actualCost: number) {
+      super('Price changed');
+      this.expectedCost = expectedCost;
+      this.actualCost = actualCost;
+    }
+  },
   refundForStage: vi.fn(),
   refundForRegenerationStage: vi.fn(),
   chargeForStageInTx: vi.fn(),
+  chargeForStageWithPriceCasInTx: vi.fn(),
   chargeForRegenerationInTx: vi.fn(),
   chargeForResume: vi.fn(),
+  segmentForGateContinue: vi.fn(),
+  chargeForSeedIdeaInTx: vi.fn(),
+  refundChargeInTx: vi.fn(),
 }));
 
 vi.mock('../../services/jobService.js', () => ({
@@ -111,8 +129,15 @@ const authHeaders = { 'x-user-id': 'user-123' };
 
 beforeEach(async () => {
   vi.clearAllMocks();
-  mockCreateJobAndChargeDiscovery.mockResolvedValue({ job: { id: 'job-1' } });
-  mockEnqueueJob.mockResolvedValue(undefined);
+  mockCreateJobAndChargeDiscoveryInTx.mockImplementation(async (...args: any[]) => ({
+    job: { id: 'job-1' },
+    transaction: {
+      id: 'charge-initial-1',
+      stage: args[7] ? 'guided_s1' : 'discovery',
+    },
+  }));
+  mockJobDispatchCreate.mockResolvedValue({ id: 'dispatch-1' });
+  mockDeliverDispatchWork.mockResolvedValue(undefined);
   mockJobUpdate.mockResolvedValue({});
 
   app = express();
@@ -134,14 +159,30 @@ describe('POST /api/jobs — chatMode entitlement coercion', () => {
 
     expect(response.status).toBe(201);
     expect(mockIsEntitledUser).toHaveBeenCalledWith('user-123');
-    expect(mockCreateJobAndChargeDiscovery).toHaveBeenCalledWith(
+    expect(mockCreateJobAndChargeDiscoveryInTx).toHaveBeenCalledWith(
+      expect.objectContaining({ jobDispatch: expect.any(Object) }),
       'user-123', validBody.niche, undefined, 'interactive', undefined, undefined, true
     );
-    expect(mockEnqueueJob).toHaveBeenCalledWith(
-      // Trailing arg: the dispatch opened at creation. The initial run used to be the only path
-      // with no identity, so a duplicate delivery could put two workers on the same fresh job.
-      'job-1', validBody.niche, 'user-123', undefined, false, 'interactive', undefined, undefined, true, 'dispatch-1'
-    );
+    expect(mockJobDispatchCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        jobId: 'job-1',
+        kind: 'CONTINUE',
+        segment: 'guided_s1',
+        chargeId: 'charge-initial-1',
+        workPayload: expect.objectContaining({
+          job_id: 'job-1',
+          niche: validBody.niche,
+          chat_mode: true,
+        }),
+      }),
+      select: { id: true },
+    });
+    expect(mockJobUpdate).toHaveBeenCalledWith({
+      where: { id: 'job-1' },
+      data: { status: 'QUEUED', queuedAt: expect.any(Date) },
+    });
+    expect(mockPrismaTransaction).toHaveBeenCalledTimes(1);
+    expect(mockDeliverDispatchWork).toHaveBeenCalledWith('dispatch-1');
   });
 
   it('coerces chatMode to false for a non-entitled user requesting it', async () => {
@@ -153,12 +194,11 @@ describe('POST /api/jobs — chatMode entitlement coercion', () => {
       .send({ ...validBody, chatMode: true });
 
     expect(response.status).toBe(201);
-    expect(mockCreateJobAndChargeDiscovery).toHaveBeenCalledWith(
+    expect(mockCreateJobAndChargeDiscoveryInTx).toHaveBeenCalledWith(
+      expect.objectContaining({ jobDispatch: expect.any(Object) }),
       'user-123', validBody.niche, undefined, 'interactive', undefined, undefined, false
     );
-    expect(mockEnqueueJob).toHaveBeenCalledWith(
-      'job-1', validBody.niche, 'user-123', undefined, false, 'interactive', undefined, undefined, false, 'dispatch-1'
-    );
+    expect(mockDeliverDispatchWork).toHaveBeenCalledWith('dispatch-1');
   });
 
   it('does not call isEntitledUser when chatMode is not requested (skips the entitlement check entirely)', async () => {
@@ -169,7 +209,8 @@ describe('POST /api/jobs — chatMode entitlement coercion', () => {
 
     expect(response.status).toBe(201);
     expect(mockIsEntitledUser).not.toHaveBeenCalled();
-    expect(mockCreateJobAndChargeDiscovery).toHaveBeenCalledWith(
+    expect(mockCreateJobAndChargeDiscoveryInTx).toHaveBeenCalledWith(
+      expect.objectContaining({ jobDispatch: expect.any(Object) }),
       'user-123', validBody.niche, undefined, 'interactive', undefined, undefined, false
     );
   });
@@ -181,7 +222,43 @@ describe('POST /api/jobs — chatMode entitlement coercion', () => {
       .send(validBody);
 
     expect(response.status).toBe(201);
-    const callArgs = mockCreateJobAndChargeDiscovery.mock.calls[0];
-    expect(callArgs[6]).toBe(false);
+    const callArgs = mockCreateJobAndChargeDiscoveryInTx.mock.calls[0];
+    expect(callArgs[7]).toBe(false);
+  });
+
+  it('does not enqueue when dispatch authorization fails inside the creation transaction', async () => {
+    mockJobDispatchCreate.mockRejectedValueOnce(new Error('dispatch write failed'));
+
+    const response = await request(app)
+      .post('/api/jobs')
+      .set(authHeaders)
+      .send(validBody);
+
+    expect(response.status).toBe(500);
+    expect(mockPrismaTransaction).toHaveBeenCalledTimes(1);
+    expect(mockCreateJobAndChargeDiscoveryInTx).toHaveBeenCalledOnce();
+    expect(mockDeliverDispatchWork).not.toHaveBeenCalled();
+    expect(mockJobUpdate).not.toHaveBeenCalled();
+  });
+
+  it('keeps the authorized queued attempt durable when Redis delivery is ambiguous', async () => {
+    mockDeliverDispatchWork.mockRejectedValueOnce(new Error('redis timeout'));
+
+    const response = await request(app)
+      .post('/api/jobs')
+      .set(authHeaders)
+      .send(validBody);
+
+    expect(response.status).toBe(201);
+    expect(response.body).toMatchObject({
+      status: 'queued',
+      operationId: 'dispatch-1',
+      deliveryPending: true,
+    });
+    expect(mockJobDispatchCreate).toHaveBeenCalledOnce();
+    expect(mockJobUpdate).toHaveBeenCalledWith({
+      where: { id: 'job-1' },
+      data: { status: 'QUEUED', queuedAt: expect.any(Date) },
+    });
   });
 });

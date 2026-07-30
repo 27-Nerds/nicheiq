@@ -49,7 +49,16 @@
     /** 'gate' = guided-mode checkpoint (AWAITING_GATE): the page is a single
      *  checkpoint ledger with no scrollable sections, so the sidebar orients
      *  (gate rail + what-runs-next) instead of navigating. */
-    mode?: "default" | "selection" | "gate";
+    /** 'stopped' = a FAILED/CANCELLED run that still completed discovery. It keeps the
+     *  workbench shell (the discovery context is real and paid for) but swaps the idea
+     *  tools — none of which can be acted on — for the one recovery step. */
+    mode?: "default" | "selection" | "gate" | "stopped";
+    /** 'stopped' mode: label + href for the single recovery action, mirroring the
+     *  handoff card's primary button so the sidebar never offers a different next step. */
+    recoverLabel?: string;
+    recoverHref?: string;
+    recoverOnclick?: () => void;
+    recoverDisabled?: boolean;
     selectedCount?: number;
     /** Exact candidate-revision query carried between selection routes. */
     selectionQuery?: string;
@@ -88,6 +97,10 @@
     gateStage = null,
     decisionTools = false,
     landingPageStatus = "pending",
+    recoverLabel = "Next step",
+    recoverHref,
+    recoverOnclick,
+    recoverDisabled = false,
   }: Props = $props();
 
   // Research shortlist: one shared nav group of the TWO primary tools (Compare,
@@ -129,8 +142,12 @@
 
   const isSelectionMode = $derived(mode === "selection");
   const isGateMode = $derived(mode === "gate");
+  const isStoppedMode = $derived(mode === "stopped");
+  // Both shells are the full-width, aside-less workbench treatment; they differ only in
+  // which group sits above the discovery context.
+  const isWorkbenchMode = $derived(isSelectionMode || isStoppedMode);
   const isCompletedMode = $derived(jobStatus === "COMPLETED" && Boolean(jobId));
-  const currentSection = $derived(activeSection || trackedSection || (isSelectionMode ? "opportunities" : ""));
+  const currentSection = $derived(activeSection || trackedSection || (isWorkbenchMode ? "opportunities" : ""));
 
   const deliverableStatus = $derived.by(() => {
     switch (landingPageStatus) {
@@ -300,7 +317,7 @@
 
     // Only track sections that correspond to visible/interactive sidebar items.
     // For locked deep-research, only the blurred-preview items appear in the sidebar.
-    const allSections = isSelectionMode
+    const allSections = isWorkbenchMode
       ? selectionTrackedSections
       : PHASES.flatMap((p) => {
           if (isPhaseUnlocked(p.id)) return p.sections;
@@ -319,7 +336,7 @@
       .sort((a, b) => a.top - b.top);
 
     const scrollY = window.scrollY;
-    let nextSection = isSelectionMode ? "opportunities" : trackedSection;
+    let nextSection = isWorkbenchMode ? "opportunities" : trackedSection;
     for (let i = sectionElements.length - 1; i >= 0; i--) {
       const section = sectionElements[i];
       if (section.top - scrollY <= SCROLL_THRESHOLD) {
@@ -358,10 +375,10 @@
 
 <!-- ═══ DESKTOP SIDEBAR ═══ -->
 <SidebarNav
-  class={isSelectionMode ? "phase-side phase-side--selection" : "phase-side"}
+  class={isWorkbenchMode ? "phase-side phase-side--selection" : "phase-side"}
   desktopOnly
   width="300px"
-  background={isSelectionMode ? "var(--color-bg-base)" : "var(--color-bg-elevated)"}
+  background={isWorkbenchMode ? "var(--color-bg-base)" : "var(--color-bg-elevated)"}
   label="Research phases"
 >
   {#if isGateMode}
@@ -457,6 +474,37 @@
         >
           {#snippet leading()}{#if Icon}<Icon class="sidebar-nav-ic" />{/if}{/snippet}
           {section.label}
+        </SidebarNavItem>
+      {/each}
+    </SidebarGroup>
+  {:else if isStoppedMode}
+    <SidebarGroup label="Recover run">
+      <SidebarNavItem
+        active
+        href={recoverOnclick ? undefined : (recoverHref ?? "#recover-run")}
+        onclick={recoverOnclick}
+        disabled={recoverDisabled}
+        aria-current="page"
+      >
+        {#snippet leading()}<ListChecks class="sidebar-nav-ic" />{/snippet}
+        {recoverLabel}
+      </SidebarNavItem>
+    </SidebarGroup>
+
+    <SidebarDivider />
+    <SidebarGroup label="Discovery context">
+      <!-- Opportunities stays in this group rather than being promoted to its own
+           "Choose ideas" row: on a stopped run it is evidence to read, not a task to do. -->
+      {#each [opportunitySection, ...contextSections].filter(Boolean) as section}
+        {@const isActive = !nested && currentSection === section!.id}
+        {@const Icon = section!.icon}
+        <SidebarNavItem
+          active={isActive}
+          href={hubSectionHref(section!.id)}
+          onclick={nested ? undefined : () => handleSectionClick(discoveryPhase, section!)}
+        >
+          {#snippet leading()}{#if Icon}<Icon class="sidebar-nav-ic" />{/if}{/snippet}
+          {section!.label}
         </SidebarNavItem>
       {/each}
     </SidebarGroup>

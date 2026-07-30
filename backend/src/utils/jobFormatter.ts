@@ -1,4 +1,4 @@
-import { Job, JobProgress, JobAsset } from '@prisma/client';
+import { Job, JobProgress, JobAsset, DispatchKind, DispatchState } from '@prisma/client';
 import { ensureIdeaIdentities } from './ideaIdentity.js';
 import { currentSelectionDraft } from './selectionDraft.js';
 import { MAX_IDEA_BATCHES } from '../types/job.js';
@@ -7,6 +7,13 @@ type JobWithRelations = Job & {
   progress: JobProgress[];
   assets: JobAsset[];
   creditTransactions?: { id: string; amount: number }[];
+  dispatches?: {
+    id: string;
+    kind: DispatchKind;
+    state: DispatchState;
+    refundedAmount: number | null;
+    refundTransaction: { amount: number } | null;
+  }[];
 };
 
 interface FormatOptions {
@@ -20,6 +27,7 @@ interface FormatOptions {
 }
 
 export function formatJobResponse(job: JobWithRelations, options: FormatOptions = {}) {
+  const latestDispatch = job.dispatches?.[0] ?? null;
   const base = {
     id: job.id,
     niche: job.niche,
@@ -62,10 +70,24 @@ export function formatJobResponse(job: JobWithRelations, options: FormatOptions 
     // apply_stay counter for the CURRENT gate (gate-action route caps at 5) — the
     // GateWorkbench "change limit reached" affordance reads this.
     gateApplyCount: job.gateApplyCount ?? 0,
+    // The exact durable operation currently owning this job. The selection UI uses this
+    // instead of inferring SEED_IDEA vs DEEP_RESEARCH from a separately-loaded chat ledger.
+    activeDispatchKind:
+      job.activeDispatchId && latestDispatch?.id === job.activeDispatchId
+        ? latestDispatch.kind
+        : null,
   };
 
   // Optional fields based on endpoint needs
   const result: Record<string, any> = { ...base };
+  if (job.creditTransactions !== undefined) {
+    // A prior refunded seed/batch must not make a later, unrelated terminal failure claim
+    // that credits were restored. Modern jobs report against their latest exact dispatch;
+    // the broad transaction scan is only a compatibility fallback for legacy jobs.
+    result.creditRefunded = latestDispatch
+      ? (latestDispatch.refundedAmount ?? latestDispatch.refundTransaction?.amount ?? 0) > 0
+      : job.creditTransactions.some(transaction => transaction.amount > 0);
+  }
 
   if (options.includeCreatedAt) {
     result.createdAt = job.createdAt.toISOString();
@@ -74,7 +96,6 @@ export function formatJobResponse(job: JobWithRelations, options: FormatOptions 
   if (options.includeAssetFlags) {
     result.hasReport = job.assets.some(a => a.assetType === 'REPORT_JSON');
     result.hasLandingPage = job.assets.some(a => a.assetType === 'LANDING_PAGE');
-    result.creditRefunded = (job.creditTransactions?.length ?? 0) > 0;
   }
 
   if (options.queueStats) {
@@ -88,7 +109,7 @@ export function formatJobResponse(job: JobWithRelations, options: FormatOptions 
       ? ensureIdeaIdentities(job.id, job.solutionIdeas)
       : [];
     result.solutionIdeas = job.solutionIdeas ? solutionIdeas : null;
-    result.canRegenerate = (job.regenerationCount ?? 0) < MAX_IDEA_BATCHES;
+    result.canRegenerate = (job.ideaBatchCompletedCount ?? 0) < MAX_IDEA_BATCHES;
     result.selectionRationale = job.selectionRationale || null;
     result.selectionDecisionProfile = job.selectionDecisionProfile || null;
     result.selectionDraft = currentSelectionDraft(

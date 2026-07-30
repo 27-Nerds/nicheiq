@@ -8,11 +8,12 @@
  */
 
 import { prisma } from './db.js';
-import { JobStatus, StageStatus, DispatchKind } from '@prisma/client';
+import { JobStatus, StageStatus, DispatchKind, DispatchState } from '@prisma/client';
 import { failJob, cancelRegenerationDispatch, cancelSeedIdeaDispatch } from './jobService.js';
 import { notifyJobError } from './notificationService.js';
 import { getPhaseContext } from '../utils/phaseContext.js';
 import { refundForStage } from './creditService.js';
+import { failLandingPageDispatch } from './dispatchService.js';
 import { broadcastProgress } from './progressBroadcastService.js';
 
 // Configuration
@@ -45,22 +46,72 @@ async function getUserEmail(userId: string | null): Promise<string | null> {
  * Update worker heartbeat for a job
  * Called by Python worker via API endpoint
  */
+export type JobHeartbeatOutcome = 'updated' | 'pending' | 'stale' | 'not_found' | 'error';
+
 export async function updateJobHeartbeat(
   jobId: string,
-  workerId: string
-): Promise<boolean> {
+  workerId: string,
+  dispatchId?: string,
+): Promise<JobHeartbeatOutcome> {
   try {
-    await prisma.job.update({
+    const job = await prisma.job.findUnique({
       where: { id: jobId },
+      select: { activeDispatchId: true, workerId: true },
+    });
+    if (!job) return 'not_found';
+
+    // Omission is not a wildcard. Identityless workers belong only to genuinely legacy jobs;
+    // otherwise an old delivery can keep a newer attempt alive indefinitely.
+    if ((job.activeDispatchId ?? null) !== (dispatchId ?? null)) return 'stale';
+
+    if (dispatchId) {
+      const dispatch = await prisma.jobDispatch.findUnique({
+        where: { id: dispatchId },
+        select: { jobId: true, state: true, workerId: true },
+      });
+      if (!dispatch || dispatch.jobId !== jobId) return 'stale';
+
+      // The heartbeat thread can race the worker's /job-started request. AUTHORIZED is the exact
+      // attempt, but it has no owner yet: ignore the early tick without cancelling or letting it
+      // claim the job through this weaker endpoint.
+      if (dispatch.state === DispatchState.AUTHORIZED) return 'pending';
+      if (
+        dispatch.state !== DispatchState.CLAIMED
+        || dispatch.workerId !== workerId
+        || job.workerId !== workerId
+      ) {
+        return 'stale';
+      }
+
+      const updated = await prisma.job.updateMany({
+        where: {
+          id: jobId,
+          activeDispatchId: dispatchId,
+          workerId,
+        },
+        data: { lastHeartbeat: new Date() },
+      });
+      return updated.count === 1 ? 'updated' : 'stale';
+    }
+
+    // Rolling-deploy compatibility for deliveries created before dispatch identities existed.
+    // Even here, do not let a second worker overwrite an established legacy owner.
+    if (job.workerId && job.workerId !== workerId) return 'stale';
+    const updated = await prisma.job.updateMany({
+      where: {
+        id: jobId,
+        activeDispatchId: null,
+        ...(job.workerId ? { workerId } : { workerId: null }),
+      },
       data: {
         workerId,
         lastHeartbeat: new Date(),
       },
     });
-    return true;
+    return updated.count === 1 ? 'updated' : 'stale';
   } catch (error) {
     console.error(`Failed to update heartbeat for job ${jobId}:`, error);
-    return false;
+    return 'error';
   }
 }
 
@@ -199,6 +250,9 @@ async function findStaleLandingPageJobs(): Promise<Array<{
   niche: string;
   userId: string | null;
   landingPageStatus: string | null;
+  activeDispatchId: string | null;
+  lastHeartbeat: Date | null;
+  updatedAt: Date;
 }>> {
   const staleThreshold = new Date(Date.now() - STALE_THRESHOLD_MS);
   const maxRuntimeThreshold = new Date(Date.now() - MAX_RUNTIME_MS);
@@ -233,6 +287,9 @@ async function findStaleLandingPageJobs(): Promise<Array<{
       niche: true,
       userId: true,
       landingPageStatus: true,
+      activeDispatchId: true,
+      lastHeartbeat: true,
+      updatedAt: true,
     },
   });
 }
@@ -248,7 +305,12 @@ async function markJobFailed(job: {
   selectedSolutions: string[];
   activeDispatchId: string | null;
   status: JobStatus;
+  lastHeartbeat: Date | null;
 }, reason: string): Promise<void> {
+  const recoveryFence = {
+    status: job.status,
+    lastHeartbeat: job.lastHeartbeat,
+  };
   // A SEED_IDEA dispatch is an operation ON TOP OF an already-settled AWAITING_SELECTION job —
   // a crashed worker must not fail the WHOLE research job over it (plan: eager-meandering-
   // feather.md Phase 5, "op-scoped cancel + heartbeat"). Settle just that dispatch, refund its
@@ -271,7 +333,13 @@ async function markJobFailed(job: {
         `[Heartbeat] Job ${job.id} seed-idea dispatch ${dispatch.id} stale — restoring ` +
         `AWAITING_SELECTION (parent job left alive): ${reason}`
       );
-      await cancelSeedIdeaDispatch(job.id, dispatch, JobStatus.RUNNING, 'SYSTEM_FAULT');
+      await cancelSeedIdeaDispatch(
+        job.id,
+        dispatch,
+        job.status,
+        'SYSTEM_FAULT',
+        recoveryFence,
+      );
       return;
     }
     if (dispatch?.kind === DispatchKind.REGENERATE) {
@@ -287,6 +355,7 @@ async function markJobFailed(job: {
         { id: dispatch.id, segment: dispatch.segment, chargeId: dispatch.chargeId },
         job.status,
         'SYSTEM_FAULT',
+        recoveryFence,
       );
       return;
     }
@@ -294,8 +363,27 @@ async function markJobFailed(job: {
 
   console.log(`[Heartbeat] Job ${job.id} failed: ${reason}`);
 
-  // Use failJob which handles credit refunds
-  await failJob(job.id, reason);
+  // Use the exact active attempt. A heartbeat recovery racing with a newer dispatch must not
+  // terminate or refund that newer work, and a modern active dispatch must never fall through to
+  // the legacy stage-inference path.
+  const failed = await failJob(
+    job.id,
+    reason,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    job.activeDispatchId ?? undefined,
+    recoveryFence,
+  );
+  if (!failed.applied) {
+    console.warn(
+      `[Heartbeat] Stale recovery ignored for job ${job.id} ` +
+      `(dispatch ${job.activeDispatchId ?? 'missing'})`,
+    );
+    return;
+  }
 
   // Send failure notification with phase context
   const email = await getUserEmail(job.userId);
@@ -376,37 +464,58 @@ export async function checkStaleLandingPageJobs(): Promise<{ recovered: number }
             ? 'Landing page generation timed out waiting for a worker'
             : 'Landing page orphaned after job failure';
 
-        // Atomic CAS: only fail if LP status hasn't changed since query
-        const result = await prisma.job.updateMany({
-          where: {
-            id: job.id,
-            landingPageStatus: job.landingPageStatus,
-          },
-          data: { landingPageStatus: 'FAILED' },
-        });
-
-        if (result.count === 0) {
-          console.log(`[Heartbeat] LP job ${job.id} status already changed, skipping`);
-          continue;
+        if (job.activeDispatchId) {
+          const settled = await failLandingPageDispatch(
+            job.id,
+            job.activeDispatchId,
+            reason,
+            {
+              landingPageStatus: job.landingPageStatus,
+              lastHeartbeat: job.lastHeartbeat,
+              updatedAt: job.updatedAt,
+            },
+          );
+          if (!settled) {
+            console.log(`[Heartbeat] LP job ${job.id} dispatch already changed, skipping`);
+            continue;
+          }
+        } else {
+          // Rolling-deploy fallback for an identityless landing attempt.
+          const result = await prisma.job.updateMany({
+            where: {
+              id: job.id,
+              landingPageStatus: job.landingPageStatus,
+              activeDispatchId: null,
+              lastHeartbeat: job.lastHeartbeat,
+              updatedAt: job.updatedAt,
+            },
+            data: { landingPageStatus: 'FAILED' },
+          });
+          if (result.count === 0) {
+            console.log(`[Heartbeat] LP job ${job.id} status already changed, skipping`);
+            continue;
+          }
         }
 
         console.warn(`[Heartbeat] Recovered stale LP job ${job.id}: ${reason}`);
 
-        // Update stage 15 progress (may be PENDING or RUNNING)
-        await prisma.jobProgress.updateMany({
-          where: {
-            jobId: job.id,
-            stageNumber: 15,
-            status: { in: [StageStatus.RUNNING, StageStatus.PENDING] },
-          },
-          data: { status: StageStatus.FAILED, errorMessage: reason },
-        });
+        if (!job.activeDispatchId) {
+          await prisma.jobProgress.updateMany({
+            where: {
+              jobId: job.id,
+              stageNumber: 15,
+              status: { in: [StageStatus.RUNNING, StageStatus.PENDING] },
+            },
+            data: { status: StageStatus.FAILED, errorMessage: reason },
+          });
+        }
 
-        // Refund credits (idempotent — unique constraint prevents double refund)
-        try {
-          await refundForStage(job.id, 'landing_page');
-        } catch (refundErr) {
-          console.error(`[Heartbeat] Failed to refund LP credits for ${job.id}:`, refundErr);
+        if (!job.activeDispatchId) {
+          try {
+            await refundForStage(job.id, 'landing_page');
+          } catch (refundErr) {
+            console.error(`[Heartbeat] Failed to refund LP credits for ${job.id}:`, refundErr);
+          }
         }
 
         // Broadcast so frontend SSE picks up the FAILED state

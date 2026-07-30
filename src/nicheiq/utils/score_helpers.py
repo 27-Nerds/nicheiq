@@ -421,6 +421,110 @@ def blend_adjusted_composite(composite_score: float, keyword_demand_score: float
     return round(0.7 * composite_score + 0.3 * keyword_demand_score, 4)
 
 
+def build_pivot_rationale(
+    new_score,
+    orig_score,
+    new_validation,
+    orig_name: str,
+    orig_validated: bool = True,
+) -> str:
+    """User-facing rationale for a keyword-validation winner change (run-quality fixes §3,
+    2026-07-30). Lives next to `blend_adjusted_composite` because the honest attribution
+    depends on its 0.7/0.3 weights.
+
+    The old flow text unconditionally claimed the original "was overtaken due to weaker
+    keyword demand evidence" — arithmetically false whenever the composite term drove the
+    flip (the audited bookkeepers pivot was ~97% composite-driven), and impossible for a
+    novelty-tiebreak flip where the new winner's adjusted score is LOWER. Three branches,
+    never asserting a cause the numbers don't support:
+      (a) new adjusted > original adjusted -> decompose 0.7*Δcomposite vs 0.3*Δdemand and
+          name the dominant term;
+      (b) new adjusted <= original adjusted -> the novelty/competitive-advantage tiebreak
+          among near-tied leaders (see rerank_solutions_by_adjusted_score);
+      (c) original not keyword-validated (or missing from all_scores) -> validated
+          solutions take precedence; no fabricated 0.00 scores.
+    """
+    new_name = getattr(new_score, "solution_name", "") or "the new selection"
+    new_adj = getattr(new_score, "adjusted_composite_score", None) or 0.0
+    new_kd = getattr(new_score, "keyword_demand_score", None) or 0.0
+    parts = [
+        f"**Keyword-validation update:** **{new_name}** emerged as the top solution "
+        f"after keyword validation with an adjusted composite score of {new_adj:.2f} "
+        f"(keyword demand score: {new_kd:.2f})."
+    ]
+
+    if new_validation is not None:
+        kw_names = [
+            k.get("keyword", "")
+            for k in (getattr(new_validation, "top_keywords", None) or [])[:3]
+            if k.get("keyword")
+        ]
+        evidence = (
+            f"Keyword research shows {new_validation.demand_signal} demand "
+            f"with {new_validation.total_volume:,} monthly searches "
+            f"across {new_validation.validated_count} validated keywords."
+        )
+        if kw_names:
+            evidence += f" Top keywords: {', '.join(kw_names)}."
+        parts.append(evidence)
+
+    if orig_score is None or not orig_validated:
+        # (c) — the dethroned winner never went through keyword validation; only
+        # validated solutions can take rank 1 (rerank_solutions_by_adjusted_score).
+        parts.append(
+            f"The previous selection, {orig_name}, was not keyword-validated; "
+            "validated solutions take precedence in the post-validation ranking."
+        )
+        return "\n\n".join(parts)
+
+    orig_adj = getattr(orig_score, "adjusted_composite_score", None) or 0.0
+    orig_kd = getattr(orig_score, "keyword_demand_score", None) or 0.0
+    lead_in = (
+        f"The previous selection, {orig_name}, scored an adjusted composite "
+        f"of {orig_adj:.2f} (keyword demand: {orig_kd:.2f})"
+    )
+    if new_adj > orig_adj:
+        # (a) — decompose the gap into the blend's two terms (0.7/0.3 mirrors
+        # blend_adjusted_composite; recomputed here so the claim can't drift from it).
+        comp_delta = 0.7 * (
+            (getattr(new_score, "composite_score", None) or 0.0)
+            - (getattr(orig_score, "composite_score", None) or 0.0)
+        )
+        demand_delta = 0.3 * (new_kd - orig_kd)
+        if abs(comp_delta) >= abs(demand_delta):
+            cause = (
+                f"and was overtaken primarily on overall qualitative scoring "
+                f"(composite contribution {comp_delta:+.2f} of the gap, keyword "
+                f"demand {demand_delta:+.2f})."
+            )
+        else:
+            cause = (
+                f"and was overtaken primarily on keyword demand evidence "
+                f"(demand contribution {demand_delta:+.2f} of the gap, composite "
+                f"{comp_delta:+.2f})."
+            )
+        parts.append(f"{lead_in} {cause}")
+    else:
+        # (b) — the winner did NOT out-score the original on adjusted composite; it won
+        # the leader-anchored novelty tiebreak. Saying "weaker demand" here would be false.
+        parts.append(
+            f"{lead_in} — within the near-tie margin, {new_name} won on the "
+            "novelty/competitive-advantage tiebreak among near-tied leaders."
+        )
+    return "\n\n".join(parts)
+
+
+def build_keyword_advisory_note(new_name: str, new_adj: float, orig_adj: float) -> str:
+    """Advisory appended (never replacing) when keyword validation favors a different
+    solution but the current winner was explicitly USER-selected — the pivot must not
+    silently override a human decision (run-quality fixes §3)."""
+    return (
+        f"**Keyword-validation note:** keyword validation favors **{new_name}** "
+        f"(adjusted composite {new_adj:.2f} vs {orig_adj:.2f}), but your selected "
+        f"solution is kept. Review {new_name} as a runner-up."
+    )
+
+
 def rerank_solutions_by_adjusted_score(
     all_scores: list[SolutionScores],
     validated_names: set[str],

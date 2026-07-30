@@ -175,3 +175,38 @@ def score_segment_payability(segments, pain_points, incumbent_rows, niche_descri
     except Exception as e:  # noqa: BLE001 — fail-soft; callers no-op on missing payability
         logger.warning(f"[Payability] scoring failed (non-fatal): {str(e)[:120]}")
         return {}, None
+
+
+def payer_retarget_hint(idea) -> Optional[str]:
+    """Operator≠payer HYPOTHESIS for a thin-wallet idea with a B2B shape (run-quality
+    fixes §5, 2026-07-30, exposure-only). The payability machinery scores the SOURCE
+    segment's wallet — but when that segment merely OPERATES the tool (a freelance
+    bookkeeper reconciling a restaurant's books), the likely payer may be a different
+    segment with a real budget, and "thin wallet" is the wrong epitaph.
+
+    Deliberately phrased as a hypothesis, never a claim: the b2b tag alone cannot prove
+    a separate payer exists (live counter-example: ClearingCalc's b2b tag described the
+    thin-wallet bookkeeper it charged directly). Deterministic, no LLM. Fires only when
+    ALL hold: payability class is personal/prosumer-wallet, the payability score is
+    below settings.payability_low_threshold (noise gate — without it the condition
+    matches nearly every B2B pool), and tags.target_market is b2b/b2b2c. Pure function —
+    called INLINE at exposure time (`_compose_ruled_out_reason`, `_idea_digest_line`),
+    never stamped, so demotion-time snapshots can use it without ordering constraints."""
+    from ..config.settings import settings
+
+    pay_cls = (getattr(idea, "source_segment_payability_class", None) or "").strip().lower()
+    if pay_cls not in ("personal-wallet", "prosumer-wallet"):
+        return None
+    pay = getattr(idea, "source_segment_payability", None)
+    if not (isinstance(pay, (int, float)) and pay < settings.payability_low_threshold):
+        return None
+    tags = getattr(idea, "tags", None)
+    target = (getattr(tags, "target_market", None) or "").strip().lower() if tags is not None else ""
+    if target not in ("b2b", "b2b2c"):
+        return None
+    segment = getattr(idea, "source_segment", None) or "this segment"
+    return (
+        f"The low payability score describes {segment} as the buyer — if they operate "
+        "this tool on someone else's books or budget, the paying segment may differ; "
+        "worth re-checking who actually pays before ruling this out."
+    )

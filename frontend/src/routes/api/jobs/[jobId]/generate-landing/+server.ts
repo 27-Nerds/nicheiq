@@ -8,17 +8,21 @@ import { fetchBackend } from '$lib/backend';
  * Proxies to backend with internal service authentication
  * Charges landing_page stage credits
  */
-export const POST: RequestHandler = async ({ params, locals }) => {
+export const POST: RequestHandler = async ({ params, locals, request }) => {
   const session = await locals.auth();
   if (!session?.user) {
     throw error(401, 'Unauthorized');
   }
 
+  const body = await request.json().catch(() => ({}));
+
   const response = await fetchBackend(`/api/jobs/${params.jobId}/generate-landing`, {
     method: 'POST',
     headers: {
+      'Content-Type': 'application/json',
       'X-User-ID': session.user.id,
     },
+    body: JSON.stringify(body ?? {}),
   });
 
   const data = await response.json();

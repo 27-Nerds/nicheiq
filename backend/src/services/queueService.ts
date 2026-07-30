@@ -401,9 +401,11 @@ export async function enqueueDeepIdeaResearchJob(
   ideaSeed: Record<string, unknown>,
   niche: string,
   userId?: string,
+  dispatchId?: string,
 ): Promise<void> {
   const jobData = JSON.stringify({
     job_id: jobId,
+    dispatch_id: dispatchId ?? null,
     idea_seed: ideaSeed,
     niche,
     user_id: userId,

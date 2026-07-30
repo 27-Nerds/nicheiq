@@ -40,6 +40,9 @@ vi.mock('../../services/creditService.js', () => ({
     }
   },
   RateLimitError: class RateLimitError extends Error {},
+  getStageCost: vi.fn(),
+  getGuidedSegmentCosts: vi.fn(),
+  resetMonthlyAllowance: vi.fn(),
 }));
 
 // Mock auth middleware

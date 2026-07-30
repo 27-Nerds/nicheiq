@@ -10,6 +10,8 @@ import { Readable } from 'stream';
 const mockJobFindFirst = vi.fn();
 const mockJobFindUnique = vi.fn();
 const mockJobUpdate = vi.fn();
+const mockJobUpdateMany = vi.fn();
+const mockJobDispatchCreate = vi.fn();
 const mockUpdateMany = vi.fn();
 const mockCreditTransactionFindFirst = vi.fn();
 const mockCreditTransactionDelete = vi.fn();
@@ -23,6 +25,10 @@ vi.mock('../../services/db.js', () => ({
       findFirst: (...args: any[]) => mockJobFindFirst(...args),
       findUnique: (...args: any[]) => mockJobFindUnique(...args),
       update: (...args: any[]) => mockJobUpdate(...args),
+      updateMany: (...args: any[]) => mockJobUpdateMany(...args),
+    },
+    jobDispatch: {
+      create: (...args: any[]) => mockJobDispatchCreate(...args),
     },
     jobProgress: {
       updateMany: (...args: any[]) => mockUpdateMany(...args),
@@ -51,10 +57,10 @@ vi.mock('../../services/jobService.js', () => ({
   cancelJob: (...args: any[]) => mockCancelJob(...args),
 }));
 
-const mockCreateJobAndChargeDiscovery = vi.fn();
+const mockCreateJobAndChargeDiscoveryInTx = vi.fn();
 
 vi.mock('../../services/creditService.js', () => ({
-  createJobAndChargeDiscovery: (...args: any[]) => mockCreateJobAndChargeDiscovery(...args),
+  createJobAndChargeDiscoveryInTx: (...args: any[]) => mockCreateJobAndChargeDiscoveryInTx(...args),
   refundForStage: vi.fn(),
   chargeForResume: vi.fn().mockResolvedValue({ charged: false, amount: 0 }),
   chargeForStageInTx: vi.fn().mockResolvedValue({ cost: 5 }),
@@ -68,9 +74,24 @@ vi.mock('../../services/creditService.js', () => ({
       this.required = required;
     }
   },
+  PriceChangedError: class PriceChangedError extends Error {
+    expectedCost: number;
+    actualCost: number;
+    constructor(expectedCost: number, actualCost: number) {
+      super('Price changed');
+      this.expectedCost = expectedCost;
+      this.actualCost = actualCost;
+    }
+  },
+  chargeForStageWithPriceCasInTx: vi.fn(),
+  chargeForRegenerationInTx: vi.fn(),
+  segmentForGateContinue: vi.fn(),
+  chargeForSeedIdeaInTx: vi.fn(),
+  refundChargeInTx: vi.fn(),
 }));
 
 const mockEnqueueJob = vi.fn();
+const mockDeliverDispatchWork = vi.fn();
 const mockGetQueueStats = vi.fn();
 const mockGetQueueLength = vi.fn();
 
@@ -79,6 +100,7 @@ vi.mock('../../services/queueService.js', () => ({
   enqueueLandingPageJob: vi.fn(),
   enqueuePhase2Job: vi.fn(),
   enqueueRegenerateJob: vi.fn(),
+  deliverDispatchWork: (...args: any[]) => mockDeliverDispatchWork(...args),
   getQueueStats: (...args: any[]) => mockGetQueueStats(...args),
   getQueueLength: (...args: any[]) => mockGetQueueLength(...args),
 }));
@@ -193,6 +215,20 @@ beforeEach(async () => {
   mockGetQueueLength.mockResolvedValue(0);
   mockGetQueueStats.mockResolvedValue({ position: 1, aheadCount: 0, totalQueued: 1 });
   mockCancelJob.mockResolvedValue({ cancelled: true, creditRefunded: 0 });
+  mockJobUpdateMany.mockResolvedValue({ count: 1 });
+  mockJobUpdate.mockResolvedValue({});
+  mockJobDispatchCreate.mockResolvedValue({ id: 'resume-dispatch-1' });
+  mockDeliverDispatchWork.mockResolvedValue(undefined);
+  mockPrismaTransaction.mockImplementation(async (callback: any) => callback({
+    job: {
+      findFirst: (...args: any[]) => mockJobFindFirst(...args),
+      updateMany: (...args: any[]) => mockJobUpdateMany(...args),
+      update: (...args: any[]) => mockJobUpdate(...args),
+    },
+    jobDispatch: {
+      create: (...args: any[]) => mockJobDispatchCreate(...args),
+    },
+  }));
 });
 
 // ============================================
@@ -363,9 +399,9 @@ describe('Security Audit: Jobs API', () => {
     });
 
     it('POST / uses req.user.id, not body userId', async () => {
-      mockCreateJobAndChargeDiscovery.mockResolvedValue({
+      mockCreateJobAndChargeDiscoveryInTx.mockResolvedValue({
         job: { id: 'new-job-id' },
-        transaction: {},
+        transaction: { id: 'initial-charge-1', stage: 'discovery' },
       });
       mockEnqueueJob.mockResolvedValue(undefined);
       mockJobUpdate.mockResolvedValue({ id: 'new-job-id', status: JobStatus.QUEUED });
@@ -379,8 +415,9 @@ describe('Security Audit: Jobs API', () => {
         });
 
       expect(res.status).toBe(201);
-      // createJobAndChargeDiscovery should receive the authenticated user's ID
-      expect(mockCreateJobAndChargeDiscovery).toHaveBeenCalledWith(
+      // createJobAndChargeDiscoveryInTx should receive the authenticated user's ID
+      expect(mockCreateJobAndChargeDiscoveryInTx).toHaveBeenCalledWith(
+        expect.objectContaining({ jobDispatch: expect.any(Object) }),
         'user-123', // from auth, not from body
         expect.any(String),
         undefined,
@@ -500,9 +537,9 @@ describe('Security Audit: Jobs API', () => {
       });
 
       it('valid minimum-length niche → 201', async () => {
-        mockCreateJobAndChargeDiscovery.mockResolvedValue({
+        mockCreateJobAndChargeDiscoveryInTx.mockResolvedValue({
           job: { id: 'new-job-id' },
-          transaction: {},
+          transaction: { id: 'initial-charge-1', stage: 'discovery' },
         });
         mockEnqueueJob.mockResolvedValue(undefined);
         mockJobUpdate.mockResolvedValue({ id: 'new-job-id', status: JobStatus.QUEUED });
@@ -515,9 +552,9 @@ describe('Security Audit: Jobs API', () => {
       });
 
       it('extra fields are stripped by Zod', async () => {
-        mockCreateJobAndChargeDiscovery.mockResolvedValue({
+        mockCreateJobAndChargeDiscoveryInTx.mockResolvedValue({
           job: { id: 'new-job-id' },
-          transaction: {},
+          transaction: { id: 'initial-charge-1', stage: 'discovery' },
         });
         mockEnqueueJob.mockResolvedValue(undefined);
         mockJobUpdate.mockResolvedValue({ id: 'new-job-id', status: JobStatus.QUEUED });
@@ -530,9 +567,9 @@ describe('Security Audit: Jobs API', () => {
             malicious: '<script>alert(1)</script>',
           });
         expect(res.status).toBe(201);
-        // The malicious field should not reach createJobAndChargeDiscovery
-        const callArgs = mockCreateJobAndChargeDiscovery.mock.calls[0];
-        expect(callArgs[1]).toBe('A valid niche that passes validation');
+        // The malicious field should not reach createJobAndChargeDiscoveryInTx
+        const callArgs = mockCreateJobAndChargeDiscoveryInTx.mock.calls[0];
+        expect(callArgs[2]).toBe('A valid niche that passes validation');
       });
 
       it('allowedProjectTypes with injection strings rejected', async () => {
@@ -549,9 +586,9 @@ describe('Security Audit: Jobs API', () => {
       });
 
       it('allowedProjectTypes with valid enum values accepted', async () => {
-        mockCreateJobAndChargeDiscovery.mockResolvedValue({
+        mockCreateJobAndChargeDiscoveryInTx.mockResolvedValue({
           job: { id: 'new-job-id' },
-          transaction: {},
+          transaction: { id: 'initial-charge-1', stage: 'discovery' },
         });
         mockEnqueueJob.mockResolvedValue(undefined);
         mockJobUpdate.mockResolvedValue({ id: 'new-job-id', status: JobStatus.QUEUED });
@@ -975,6 +1012,8 @@ describe('Security Audit: Jobs API', () => {
         userId: targetUserId,
         status: JobStatus.FAILED,
         niche: 'test niche description',
+        selectedSolutions: [],
+        activeDispatchId: null,
       });
       mockCreditTransactionFindFirst.mockResolvedValue(null); // no refund
       mockJobUpdate.mockResolvedValue({

@@ -3061,6 +3061,8 @@ Extract five lists. Be specific and derive EVERYTHING from the niche above.
 3. **anchor_communities** (3-8): specific online communities/forums where this niche
    concentrates. Prefer specific over general.
 4. **audience_jargon** (8-12): insider terms/phrases the audience actually uses.
+   Any acronym or initialism MUST be written as "ACRONYM (full expansion)" — e.g.
+   "DVI (digital vehicle inspection)" — never a bare acronym.
 5. **community_search_terms** (3-6): SHORT terms (STRICTLY 1-3 words) someone would
    type into a community-search box to FIND this niche's groups — the topic/identity
    words communities NAME themselves after (e.g. a hobby name, a practitioner identity,
@@ -6792,128 +6794,9 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             original_winner = self.state.solution_selection.selected_solution_name
 
             if new_winner != original_winner:
-                logger.warning(
-                    f"[Stage 6-KV] Winner changed after keyword validation: "
-                    f"{original_winner} → {new_winner}"
+                self._apply_keyword_pivot(
+                    ranked_solutions, all_scores, validation_results, validated_names
                 )
-                self.state.solution_selection.selected_solution_name = new_winner
-
-                # Shared lookups
-                new_winner_score = ranked_solutions[0]
-                original_winner_score = next(
-                    (s for s in all_scores if s.solution_name == original_winner), None
-                )
-                new_winner_validation = next(
-                    (v for v in validation_results if v.solution_name == new_winner), None
-                )
-                new_winner_solution = find_solution_by_name(
-                    new_winner, self.state.idea_generation.solution_ideas
-                )
-
-                # Preserve the strategic selector's original rationale before
-                # mutating — the pivot APPENDS keyword evidence, never replaces
-                # the original multi-criteria reasoning.
-                original_rationale = self.state.solution_selection.selection_rationale
-                self.state.solution_selection.original_selection_reasoning = original_rationale
-
-                new_kd = new_winner_score.keyword_demand_score or 0.0
-                new_adj = new_winner_score.adjusted_composite_score or 0.0
-                rationale_parts = [
-                    f"**Keyword-validation update:** **{new_winner}** emerged as the top solution "
-                    f"after keyword validation with an adjusted composite score of {new_adj:.2f} "
-                    f"(keyword demand score: {new_kd:.2f})."
-                ]
-
-                # Keyword evidence paragraph
-                if new_winner_validation:
-                    kw_names = [
-                        k.get("keyword", "")
-                        for k in (new_winner_validation.top_keywords or [])[:3]
-                        if k.get("keyword")
-                    ]
-                    evidence = (
-                        f"Keyword research shows {new_winner_validation.demand_signal} demand "
-                        f"with {new_winner_validation.total_volume:,} monthly searches "
-                        f"across {new_winner_validation.validated_count} validated keywords."
-                    )
-                    if kw_names:
-                        evidence += f" Top keywords: {', '.join(kw_names)}."
-                    rationale_parts.append(evidence)
-
-                # Context paragraph about original winner
-                orig_kd = (
-                    original_winner_score.keyword_demand_score
-                    if original_winner_score else None
-                ) or 0.0
-                orig_adj = (
-                    original_winner_score.adjusted_composite_score
-                    if original_winner_score else None
-                ) or 0.0
-                rationale_parts.append(
-                    f"The previous selection, {original_winner}, scored an adjusted composite "
-                    f"of {orig_adj:.2f} (keyword demand: {orig_kd:.2f}) and was overtaken "
-                    f"due to weaker keyword demand evidence."
-                )
-
-                # Lead with the NEW winner's keyword-driven rationale — do NOT prepend the
-                # dethroned solution's text (it would surface as a contradictory rationale in the
-                # report). The original reasoning is preserved verbatim in original_selection_reasoning.
-                self.state.solution_selection.selection_rationale = "\n\n".join(rationale_parts)
-
-                # Refresh selection_criteria_scores to describe the NEW winner
-                # (they previously kept describing the dethroned original).
-                from ..models.solution_selection import SelectionCriteriaScore
-                pivot_note = "Carried from Stage 5 scoring after keyword-validation pivot"
-                self.state.solution_selection.selection_criteria_scores = [
-                    SelectionCriteriaScore(criterion=criterion, score=score, justification=pivot_note)
-                    for criterion, score in [
-                        ("market_fit", new_winner_score.market_fit_score),
-                        ("technical_feasibility", new_winner_score.technical_feasibility_score),
-                        ("competitive_advantage", new_winner_score.competitive_advantage_score),
-                        ("seo_growth_potential", new_winner_score.seo_growth_potential_score),
-                    ]
-                    if score is not None
-                ]
-
-                # Update recommended_focus
-                if new_winner_solution:
-                    self.state.solution_selection.recommended_focus = (
-                        self._build_recommended_focus(
-                            solution=new_winner_solution,
-                            keyword_validation=new_winner_validation,
-                        )
-                    )
-                else:
-                    logger.warning(
-                        f"[Stage 6-KV] Could not find solution '{new_winner}' in idea_generation - "
-                        f"recommended_focus not updated"
-                    )
-
-                # Update runner_up_solutions to reflect new ranking after pivot
-                new_runner_ups = []
-                for score in ranked_solutions[1:]:  # Skip position 0 (new winner)
-                    if score.solution_name not in new_runner_ups:
-                        new_runner_ups.append(score.solution_name)
-                    if len(new_runner_ups) >= 3:  # Keep top 3 runner-ups
-                        break
-
-                # Add original winner if not already in list (it should be a runner-up now)
-                if original_winner not in new_runner_ups:
-                    new_runner_ups.insert(0, original_winner)
-                    if len(new_runner_ups) > 3:
-                        new_runner_ups = new_runner_ups[:3]
-
-                # Preserve user-selected solutions in runner_up_solutions (interactive mode)
-                user_selected = getattr(self.state, '_user_selected_solutions', None)
-                if user_selected:
-                    new_winner = self.state.solution_selection.selected_solution_name
-                    for name in user_selected:
-                        if name != new_winner and name not in new_runner_ups:
-                            new_runner_ups.append(name)
-
-                self.state.solution_selection.runner_up_solutions = new_runner_ups
-                logger.info(f"[Stage 6-KV] Updated runner-ups after pivot: {new_runner_ups}")
-
             else:
                 logger.info(f"[Stage 6-KV] Winner confirmed by keyword validation: {new_winner}")
 
@@ -6930,6 +6813,141 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             logger.debug("[Stage 6-KV] Updated solution_selection checkpoint after keyword re-ranking")
 
         logger.info(f"[Stage 6-KV] Keyword validation complete - {len(validation_results)} solutions validated")
+
+    def _apply_keyword_pivot(
+        self, ranked_solutions, all_scores, validation_results, validated_names
+    ) -> None:
+        """Winner change after keyword validation (extracted from
+        `_run_integrated_keyword_validation` — run-quality fixes §3, 2026-07-30, so the
+        guard and rationale are testable against the real code instead of a drifting
+        test replica).
+
+        USER-SELECTION GUARD: when the current winner was explicitly picked by a human
+        (interactive flow / catalog seed — `state._user_selected_solutions`, stamped in
+        worker/tasks.py for exactly this purpose), the pivot must NOT silently override
+        it: an advisory note is appended and the keyword favorite becomes the lead
+        runner-up. NOTE: `score_source == 'interactive'` is NOT the discriminator — the
+        headless per-cell tournament stamps it too (`_build_headless_selection`), and
+        headless runs must keep pivoting.
+
+        Rationale honesty: `build_pivot_rationale` computes the actual composite-vs-
+        demand attribution instead of the old unconditional "overtaken due to weaker
+        keyword demand evidence" claim (false whenever the composite term or the novelty
+        tiebreak drove the flip)."""
+        from ..utils.score_helpers import build_keyword_advisory_note, build_pivot_rationale
+
+        new_winner = ranked_solutions[0].solution_name
+        original_winner = self.state.solution_selection.selected_solution_name
+        new_winner_score = ranked_solutions[0]
+        original_winner_score = next(
+            (s for s in all_scores if s.solution_name == original_winner), None
+        )
+        new_winner_validation = next(
+            (v for v in validation_results if v.solution_name == new_winner), None
+        )
+
+        user_selected = getattr(self.state, "_user_selected_solutions", None) or set()
+        if original_winner in user_selected:
+            new_adj = new_winner_score.adjusted_composite_score or 0.0
+            orig_adj = (
+                original_winner_score.adjusted_composite_score
+                if original_winner_score else None
+            ) or 0.0
+            advisory = build_keyword_advisory_note(new_winner, new_adj, orig_adj)
+            rationale = self.state.solution_selection.selection_rationale or ""
+            self.state.solution_selection.selection_rationale = (
+                f"{rationale}\n\n{advisory}".strip()
+            )
+            runner_ups = list(self.state.solution_selection.runner_up_solutions or [])
+            if new_winner not in runner_ups:
+                runner_ups.insert(0, new_winner)
+            self.state.solution_selection.runner_up_solutions = runner_ups
+            logger.info(
+                f"[Stage 6-KV] Keyword validation favors '{new_winner}' but "
+                f"'{original_winner}' is user-selected — keeping the user's pick, "
+                "advisory appended"
+            )
+            return
+
+        logger.warning(
+            f"[Stage 6-KV] Winner changed after keyword validation: "
+            f"{original_winner} → {new_winner}"
+        )
+        self.state.solution_selection.selected_solution_name = new_winner
+
+        new_winner_solution = find_solution_by_name(
+            new_winner, self.state.idea_generation.solution_ideas
+        )
+
+        # Preserve the strategic selector's original rationale before
+        # mutating — the pivot APPENDS keyword evidence, never replaces
+        # the original multi-criteria reasoning.
+        original_rationale = self.state.solution_selection.selection_rationale
+        self.state.solution_selection.original_selection_reasoning = original_rationale
+
+        # Lead with the NEW winner's keyword-driven rationale — do NOT prepend the
+        # dethroned solution's text (it would surface as a contradictory rationale in the
+        # report). The original reasoning is preserved verbatim in original_selection_reasoning.
+        self.state.solution_selection.selection_rationale = build_pivot_rationale(
+            new_winner_score,
+            original_winner_score,
+            new_winner_validation,
+            orig_name=original_winner,
+            orig_validated=original_winner in (validated_names or set()),
+        )
+
+        # Refresh selection_criteria_scores to describe the NEW winner
+        # (they previously kept describing the dethroned original).
+        from ..models.solution_selection import SelectionCriteriaScore
+        pivot_note = "Carried from Stage 5 scoring after keyword-validation pivot"
+        self.state.solution_selection.selection_criteria_scores = [
+            SelectionCriteriaScore(criterion=criterion, score=score, justification=pivot_note)
+            for criterion, score in [
+                ("market_fit", new_winner_score.market_fit_score),
+                ("technical_feasibility", new_winner_score.technical_feasibility_score),
+                ("competitive_advantage", new_winner_score.competitive_advantage_score),
+                ("seo_growth_potential", new_winner_score.seo_growth_potential_score),
+            ]
+            if score is not None
+        ]
+
+        # Update recommended_focus
+        if new_winner_solution:
+            self.state.solution_selection.recommended_focus = (
+                self._build_recommended_focus(
+                    solution=new_winner_solution,
+                    keyword_validation=new_winner_validation,
+                )
+            )
+        else:
+            logger.warning(
+                f"[Stage 6-KV] Could not find solution '{new_winner}' in idea_generation - "
+                f"recommended_focus not updated"
+            )
+
+        # Update runner_up_solutions to reflect new ranking after pivot
+        new_runner_ups = []
+        for score in ranked_solutions[1:]:  # Skip position 0 (new winner)
+            if score.solution_name not in new_runner_ups:
+                new_runner_ups.append(score.solution_name)
+            if len(new_runner_ups) >= 3:  # Keep top 3 runner-ups
+                break
+
+        # Add original winner if not already in list (it should be a runner-up now)
+        if original_winner not in new_runner_ups:
+            new_runner_ups.insert(0, original_winner)
+            if len(new_runner_ups) > 3:
+                new_runner_ups = new_runner_ups[:3]
+
+        # Preserve user-selected solutions in runner_up_solutions (interactive mode)
+        if user_selected:
+            new_winner = self.state.solution_selection.selected_solution_name
+            for name in user_selected:
+                if name != new_winner and name not in new_runner_ups:
+                    new_runner_ups.append(name)
+
+        self.state.solution_selection.runner_up_solutions = new_runner_ups
+        logger.info(f"[Stage 6-KV] Updated runner-ups after pivot: {new_runner_ups}")
 
     def _build_recommended_focus(
         self,

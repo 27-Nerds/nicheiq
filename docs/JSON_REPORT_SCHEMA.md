@@ -1948,6 +1948,33 @@ report (computed once, read from state). Null when there are no pains and no ide
 
 ## Version History
 
+- **v2.17** - Red-team surfacing + pivot honesty + payability de-dup (2026-07-30)
+  - **Alternatives**: `alternative_solutions[*]` gain `red_team_verdict`
+    (`survives | weakened | killed | null`) and `red_team_caveats` (`string[] | null`) — the
+    adversarial red-team findings were previously threaded into the PREVIEW report only and
+    silently dropped at final-report assembly (`AlternativeSolution` is `extra='ignore'`).
+    `selected_solution_details` already carried them via the full model dump.
+  - **Verdict**: new `go_no_go_verdict.red_team_context` (`string | null`) — Phase-5.5
+    red-team floor explanation. A `weakened` finding on the selected idea caps Go→Conditional
+    and floors risk at Medium; `killed` floors risk to High and names the refuted premise in
+    `primary_concern`. The finding is also appended to `go_no_go_verdict.rationale`
+    UNCONDITIONALLY (not only on a verdict-letter change). Rendered in `UnifiedHero` as a
+    "RED-TEAM REVIEW" adjustment row.
+  - **Ideas** (selected details): new `red_team_vocab_mismatch` (`string | null`) — set when
+    the red-team probe ABSTAINED because its search evidence shared no niche anchor
+    vocabulary (a retrieval failure, NOT negative market evidence). Not yet surfaced in the
+    preview report or UI.
+  - **Selection**: `selection_rationale` after a keyword-validation winner change now states
+    the COMPUTED cause (composite-driven vs demand-driven vs novelty-tiebreak vs
+    original-not-validated) instead of the previous unconditional "overtaken due to weaker
+    keyword demand evidence". When the dethroned winner was explicitly user-selected
+    (interactive flow / catalog seed), the pivot NO LONGER reassigns the winner: a
+    "**Keyword-validation note:**" advisory is appended and the keyword favorite leads
+    `runner_up_solutions`.
+  - **Scoring note** (no schema change): the calibration critic is now payability-BLIND —
+    segment payability reaches `market_fit_score` through the deterministic cap only
+    (`payability_market_fit_cap`); see `docs/SCORING_METHODOLOGY.md`.
+
 - **v2.16** - Durable candidate and finding identities (2026-07-29)
   - Added code-owned `idea_id`, `idea_revision`, `identity_origin`, and
     `identity_operation_id` to Stage-5 candidates and final-report alternatives.

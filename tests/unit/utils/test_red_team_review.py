@@ -303,3 +303,203 @@ class TestRedTeamRevision:
         assert crew.funnel_counts["red_team_reviewed"] == 2
         assert crew.funnel_counts["red_team_revised"] == 1
         assert crew.funnel_counts["red_team_revision_accepted"] == 1
+
+
+# ── Run-quality fixes §2 (2026-07-30): anchored queries + off-category abstain ──
+
+_BOUNDARIES = (
+    "This market includes shop management systems (SMS) and digital vehicle "
+    "inspection (DVI) software for independent repair shops."
+)
+
+
+def _anchored_ctx(**overrides):
+    """niche_context with the anchor vocabulary opt-IN (legacy tests stay fail-open)."""
+    base = dict(
+        niche_description="automotive aftermarket repair software",
+        anchor_entities=["Tekmetric", "Shop-Ware", "Mitchell1 Manager SE"],
+        community_search_terms=["auto repair"],
+        audience_jargon=["RO (repair order)"],
+        industry_boundaries=_BOUNDARIES,
+    )
+    base.update(overrides)
+    return SimpleNamespace(**base)
+
+
+def _survives():
+    return SimpleNamespace(verdict="survives", caveats=[], uplift=None)
+
+
+class TestAnchoredQueries:
+    def test_all_but_last_query_anchored(self, monkeypatch):
+        monkeypatch.setattr(settings, "red_team_top_k", 1)
+        monkeypatch.setattr(settings, "red_team_searches_per_idea", 6)
+        crew = _crew(search_map={"q": "Tekmetric review"})
+        crew.niche_context = _anchored_ctx()
+        monkeypatch.setattr(
+            llm_service.LLMService, "invoke_structured",
+            staticmethod(lambda **kw: (_survives(), SimpleNamespace(to_dict=lambda: {}))))
+
+        run_red_team_review(crew, _refined([_idea()]))
+
+        queries = crew._ma_search_batch.call_args[0][0]
+        assert len(queries) == 6
+        assert all("auto repair" in q for q in queries[:-1])
+        assert "auto repair" not in queries[-1]  # broad arm stays unanchored
+        assert queries[0].endswith("auto repair")  # anchored core query first
+
+    def test_low_budget_queries_still_anchored(self, monkeypatch):
+        monkeypatch.setattr(settings, "red_team_top_k", 1)
+        monkeypatch.setattr(settings, "red_team_searches_per_idea", 3)
+        crew = _crew(search_map={"q": "Tekmetric review"})
+        crew.niche_context = _anchored_ctx()
+        monkeypatch.setattr(
+            llm_service.LLMService, "invoke_structured",
+            staticmethod(lambda **kw: (_survives(), SimpleNamespace(to_dict=lambda: {}))))
+
+        run_red_team_review(crew, _refined([_idea()]))
+
+        queries = crew._ma_search_batch.call_args[0][0]
+        assert len(queries) == 3
+        assert all("auto repair" in q for q in queries)
+
+    def test_glossary_expands_acronym_in_queries(self, monkeypatch):
+        monkeypatch.setattr(settings, "red_team_top_k", 1)
+        monkeypatch.setattr(settings, "red_team_searches_per_idea", 4)
+        crew = _crew(search_map={"q": "Tekmetric shop management system migration"})
+        crew.niche_context = _anchored_ctx()
+        idea = _idea(mechanism_tag="sms-migration",
+                     value_proposition="Rehearse your SMS switch before signing")
+        monkeypatch.setattr(
+            llm_service.LLMService, "invoke_structured",
+            staticmethod(lambda **kw: (_survives(), SimpleNamespace(to_dict=lambda: {}))))
+
+        run_red_team_review(crew, _refined([idea]))
+
+        queries = crew._ma_search_batch.call_args[0][0]
+        assert any("shop management system" in q for q in queries)
+        assert not any(" sms " in f" {q} " for q in queries)
+
+
+class TestOffCategoryAbstain:
+    def test_foreign_evidence_abstains(self, monkeypatch):
+        monkeypatch.setattr(settings, "red_team_top_k", 1)
+        monkeypatch.setattr(settings, "red_team_searches_per_idea", 2)
+        # Result BODIES are devops content; query keys contain the anchor term —
+        # the guard must look at bodies only, never the query labels.
+        crew = _crew(search_map={
+            "pricing calc auto repair": "Flyway vs Liquibase database migration devops",
+            "pricing calc auto repair alternative": "Kubernetes migration checklist",
+        })
+        crew.niche_context = _anchored_ctx()
+        llm = MagicMock()
+        monkeypatch.setattr(llm_service.LLMService, "invoke_structured", llm)
+        idea = _idea()
+
+        run_red_team_review(crew, _refined([idea]))
+
+        llm.assert_not_called()
+        assert idea.red_team_verdict is None
+        assert idea.red_team_caveats is None
+        assert "off-category" in idea.red_team_vocab_mismatch
+        assert crew.funnel_counts["red_team_offcategory_abstained"] == 1
+        assert crew.funnel_counts["red_team_reviewed"] == 0
+
+    def test_on_category_via_glossary_longform(self, monkeypatch):
+        monkeypatch.setattr(settings, "red_team_top_k", 1)
+        monkeypatch.setattr(settings, "red_team_searches_per_idea", 2)
+        # No brand name in the body — matches only through the glossary expansion
+        # "shop management system" parsed from industry_boundaries.
+        crew = _crew(search_map={
+            "q": "best shop management system for independent shops"})
+        crew.niche_context = _anchored_ctx()
+        idea = _idea()
+        monkeypatch.setattr(
+            llm_service.LLMService, "invoke_structured",
+            staticmethod(lambda **kw: (_survives(), SimpleNamespace(to_dict=lambda: {}))))
+
+        run_red_team_review(crew, _refined([idea]))
+
+        assert idea.red_team_verdict == "survives"
+        assert getattr(idea, "red_team_vocab_mismatch", None) is None
+        assert crew.funnel_counts["red_team_offcategory_abstained"] == 0
+
+    def test_fail_open_below_min_anchors(self, monkeypatch):
+        monkeypatch.setattr(settings, "red_team_top_k", 1)
+        monkeypatch.setattr(settings, "red_team_searches_per_idea", 2)
+        crew = _crew(search_map={"q": "Kubernetes migration checklist"})
+        crew.niche_context = _anchored_ctx(anchor_entities=["Tekmetric", "Shop-Ware"])
+        idea = _idea()
+        monkeypatch.setattr(
+            llm_service.LLMService, "invoke_structured",
+            staticmethod(lambda **kw: (_survives(), SimpleNamespace(to_dict=lambda: {}))))
+
+        run_red_team_review(crew, _refined([idea]))
+
+        assert idea.red_team_verdict == "survives"  # guard inactive, review proceeded
+
+    def test_empty_evidence_counter(self, monkeypatch):
+        monkeypatch.setattr(settings, "red_team_top_k", 1)
+        monkeypatch.setattr(settings, "red_team_searches_per_idea", 2)
+        crew = _crew(search_map={})
+        llm = MagicMock()
+        monkeypatch.setattr(llm_service.LLMService, "invoke_structured", llm)
+
+        run_red_team_review(crew, _refined([_idea()]))
+
+        llm.assert_not_called()
+        assert crew.funnel_counts["red_team_empty_evidence_abstained"] == 1
+
+    def test_digest_line_renders_abstain(self):
+        idea = _idea(red_team_vocab_mismatch="probe evidence off-category: ...")
+        line = _idea_digest_line(idea)
+        assert "vocabulary mismatch" in line
+        assert "not negative market evidence" in line
+
+
+class TestTopKSlotAllocation:
+    """Run-quality fixes §5: reserve-then-fill across composite / shippability / market_fit
+    (a pure market_fit sort excluded whatever the payability caps had compressed)."""
+
+    def _run(self, ideas, monkeypatch, top_k=2):
+        monkeypatch.setattr(settings, "red_team_top_k", top_k)
+        monkeypatch.setattr(settings, "red_team_searches_per_idea", 2)
+        crew = _crew(search_map={"q": "some result"})
+        monkeypatch.setattr(
+            llm_service.LLMService, "invoke_structured",
+            staticmethod(lambda **kw: (_survives(), SimpleNamespace(to_dict=lambda: {}))))
+        run_red_team_review(crew, _refined(ideas))
+        return [i.solution_name for i in ideas if i.red_team_verdict is not None]
+
+    def test_shippable_idea_reviewed_despite_capped_mf(self, monkeypatch):
+        # A tops composite AND shippability (the collapse case); C — not B — is the best
+        # remaining ship candidate and must take the shippability slot.
+        a = _idea(name="A", mf=0.9, technical_feasibility_score=0.9,
+                  build_feasibility_score=0.95, solo_dev_feasibility=0.9)
+        b = _idea(name="B", mf=0.6, technical_feasibility_score=0.6,
+                  build_feasibility_score=0.5, solo_dev_feasibility=0.4)
+        c = _idea(name="C", mf=0.4, technical_feasibility_score=0.7,
+                  build_feasibility_score=0.9, solo_dev_feasibility=0.9)
+        reviewed = self._run([a, b, c], monkeypatch)
+        assert reviewed == ["A", "C"]  # NOT the pure-mf {A, B}
+
+    def test_no_shippability_scores_degrades_to_mf_order(self, monkeypatch):
+        a = _idea(name="A", mf=0.9, solo_dev_feasibility=None, build_feasibility_score=None,
+                  technical_feasibility_score=0.6)
+        b = _idea(name="B", mf=0.8, solo_dev_feasibility=None, build_feasibility_score=None,
+                  technical_feasibility_score=0.6)
+        c = _idea(name="C", mf=0.5, solo_dev_feasibility=None, build_feasibility_score=None,
+                  technical_feasibility_score=0.6)
+        reviewed = self._run([a, b, c], monkeypatch)
+        assert reviewed == ["A", "B"]
+
+    def test_ship_floor_excludes_weak_shippability(self, monkeypatch):
+        # Best remaining ship = 0.5 < 0.70 bar -> slot 2 falls back to market_fit.
+        a = _idea(name="A", mf=0.9, technical_feasibility_score=0.9,
+                  build_feasibility_score=0.6, solo_dev_feasibility=0.5)
+        b = _idea(name="B", mf=0.7, technical_feasibility_score=0.6,
+                  build_feasibility_score=0.5, solo_dev_feasibility=0.5)
+        c = _idea(name="C", mf=0.3, technical_feasibility_score=0.4,
+                  build_feasibility_score=0.5, solo_dev_feasibility=0.5)
+        reviewed = self._run([a, b, c], monkeypatch)
+        assert reviewed == ["A", "B"]

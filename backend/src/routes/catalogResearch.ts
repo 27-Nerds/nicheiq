@@ -7,12 +7,11 @@ import {
   isEntitledUser,
 } from '../services/catalogService.js';
 import {
-  createJobAndChargeDiscovery,
+  createJobAndChargeDiscoveryInTx,
   chargeForStageInTx,
-  refundForStage,
   InsufficientCreditsError,
 } from '../services/creditService.js';
-import { enqueuePainResearchJob, enqueueDeepIdeaResearchJob } from '../services/queueService.js';
+import { deliverDispatchWork } from '../services/queueService.js';
 import { requireInternalAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { jobCreationLimiter } from '../middleware/rateLimit.js';
 import { JobStatus, StageStatus, Prisma, DispatchKind } from '@prisma/client';
@@ -132,44 +131,46 @@ catalogResearchRouter.post(
           ? painTitles[0]
           : `Remix: ${painTitles.slice(0, 2).join(' + ')}${painTitles.length > 2 ? ` +${painTitles.length - 2} more` : ''}`;
 
-      // Create PENDING job + charge discovery atomically (rolls back on 402).
+      // Create, charge, and authorize the exact paid attempt in one transaction.
       // 'pain_remix' vs 'pain_research' drives the provenance badge's singular/plural.
-      const { job } = await createJobAndChargeDiscovery(
-        userId,
-        niche,
-        undefined,
-        'interactive',
-        painTitles.length > 1 ? 'pain_remix' : 'pain_research',
-      );
+      const { job, dispatchId } = await prisma.$transaction(async (tx) => {
+        const created = await createJobAndChargeDiscoveryInTx(
+          tx,
+          userId,
+          niche,
+          undefined,
+          'interactive',
+          painTitles.length > 1 ? 'pain_remix' : 'pain_research',
+        );
+        const dispatchId = await openDispatch(tx, {
+          jobId: created.job.id,
+          kind: DispatchKind.CONTINUE,
+          segment: created.transaction?.stage ?? null,
+          chargeId: created.transaction?.id ?? null,
+          workPayload: {
+            job_id: created.job.id,
+            pain_seeds: painSeeds,
+            niche,
+            user_id: userId,
+            allowed_project_types: null,
+            task_type: 'catalog_pain_research',
+            created_at: new Date().toISOString(),
+          } as unknown as Prisma.InputJsonValue,
+        });
+        await tx.job.update({
+          where: { id: created.job.id },
+          data: { status: JobStatus.QUEUED, queuedAt: new Date() },
+        });
+        return { job: created.job, dispatchId };
+      });
 
-      // Enqueue; compensating refund + FAILED on failure. Only the enqueue call
-      // is compensated: once the payload is on Redis the worker WILL run the job,
-      // so a failed post-enqueue status update must never trigger a refund.
+      let deliveryPending = false;
       try {
-        const painResearchDispatch = await prisma.$transaction((tx) =>
-          openDispatch(tx, { jobId: job.id, kind: DispatchKind.CONTINUE })
-        );
-        await enqueuePainResearchJob(job.id, painSeeds, niche, userId, undefined, painResearchDispatch);
-      } catch (enqueueError) {
-        console.error(`[CatalogResearch] enqueue pain-research failed for ${job.id}:`, enqueueError);
-        // FAILED first so a refund error can't leave the job stuck PENDING+charged.
-        await prisma.job
-          .update({ where: { id: job.id }, data: { status: JobStatus.FAILED } })
-          .catch((e) => console.error(`[CatalogResearch] failed to mark ${job.id} FAILED:`, e));
-        try {
-          await refundForStage(job.id, 'discovery');
-        } catch (refundError) {
-          // refundForStage is idempotent — safe to replay manually from this marker.
-          console.error(`[CatalogResearch] REFUND FAILED jobId=${job.id} stage=discovery:`, refundError);
-        }
-        throw enqueueError;
+        await deliverDispatchWork(dispatchId);
+      } catch (deliveryError) {
+        deliveryPending = true;
+        console.error(`[CatalogResearch] pain-research dispatch ${dispatchId} delivery pending:`, deliveryError);
       }
-      // Benign if this fails: /job-started accepts PENDING, so the queued job still runs.
-      await prisma.job
-        .update({ where: { id: job.id }, data: { status: JobStatus.QUEUED, queuedAt: new Date() } })
-        .catch((e) =>
-          console.error(`[CatalogResearch] mark-QUEUED failed for ${job.id} (job is enqueued):`, e),
-        );
 
       // Telemetry (reuse existing signals — Job.entryMode is also queryable).
       console.log(JSON.stringify({
@@ -181,6 +182,8 @@ catalogResearchRouter.post(
         id: job.id,
         status: 'queued',
         statusUrl: `${CONFIG.baseUrl}/jobs/${job.id}`,
+        operationId: dispatchId,
+        deliveryPending,
       });
     } catch (error) {
       respondCreditsOrError(res, error, 'Failed to start pain-point research');
@@ -274,6 +277,7 @@ catalogResearchRouter.post(
       // Create PENDING job + charge deep_research atomically.
       const stages = PIPELINE_STAGES.filter((s) => s.number !== 15);
       let jobId: string;
+      let dispatchId: string;
       try {
         const created = await prisma.$transaction(async (tx) => {
           const job = await tx.job.create({
@@ -285,7 +289,8 @@ catalogResearchRouter.post(
               entryMode: 'deep_idea',
               selectedSolutions: [solutionName],
               selectionRationale,
-              status: JobStatus.PENDING,
+              status: JobStatus.QUEUED,
+              queuedAt: new Date(),
               totalStages: stages.length,
               progress: {
                 create: stages.map((stage) => ({
@@ -296,10 +301,25 @@ catalogResearchRouter.post(
               },
             },
           });
-          await chargeForStageInTx(tx, userId, job.id, 'deep_research', niche);
-          return job;
+          const charge = await chargeForStageInTx(tx, userId, job.id, 'deep_research', niche);
+          const dispatchId = await openDispatch(tx, {
+            jobId: job.id,
+            kind: DispatchKind.DEEP_RESEARCH,
+            segment: 'deep_research',
+            chargeId: charge.transaction?.id ?? null,
+            workPayload: {
+              job_id: job.id,
+              idea_seed: ideaSeed,
+              niche,
+              user_id: userId,
+              task_type: 'catalog_deep_research',
+              created_at: new Date().toISOString(),
+            } as unknown as Prisma.InputJsonValue,
+          });
+          return { job, dispatchId };
         });
-        jobId = created.id;
+        jobId = created.job.id;
+        dispatchId = created.dispatchId;
       } catch (error) {
         // 402 (and any tx failure) surface here; nothing to compensate (tx rolled back).
         respondCreditsOrError(res, error, 'Failed to start deep research');
@@ -308,7 +328,6 @@ catalogResearchRouter.post(
 
       // Best-effort interest counter (decoupled from the paid job): one row per
       // (idea, user); increment researchCount only on first-ever research by this user.
-      let counterCreated = false;
       try {
         await prisma.$transaction(async (tx) => {
           const existing = await tx.catalogIdeaResearch.findUnique({
@@ -326,7 +345,6 @@ catalogResearchRouter.post(
               where: { id: idea.id },
               data: { researchCount: { increment: 1 } },
             });
-            counterCreated = true;
           }
         });
       } catch (counterError) {
@@ -340,49 +358,13 @@ catalogResearchRouter.post(
         }
       }
 
-      // Enqueue; compensating refund + FAILED on failure. Only the enqueue call
-      // is compensated: once the payload is on Redis the worker WILL run the job,
-      // so a failed post-enqueue status update must never trigger a refund.
+      let deliveryPending = false;
       try {
-        await enqueueDeepIdeaResearchJob(jobId, ideaSeed, niche, userId);
-      } catch (enqueueError) {
-        console.error(`[CatalogResearch] enqueue deep-research failed for ${jobId}:`, enqueueError);
-        // FAILED first so a refund error can't leave the job stuck PENDING+charged.
-        await prisma.job
-          .update({ where: { id: jobId }, data: { status: JobStatus.FAILED } })
-          .catch((e) => console.error(`[CatalogResearch] failed to mark ${jobId} FAILED:`, e));
-        try {
-          await refundForStage(jobId, 'deep_research');
-        } catch (refundError) {
-          // refundForStage is idempotent — safe to replay manually from this marker.
-          console.error(`[CatalogResearch] REFUND FAILED jobId=${jobId} stage=deep_research:`, refundError);
-        }
-        // Roll back the interest counter if this click created it: the job never
-        // ran, and leaving the row would also suppress the increment on a future
-        // successful research by the same user.
-        if (counterCreated) {
-          await prisma
-            .$transaction([
-              prisma.catalogIdeaResearch.delete({
-                where: { ideaId_userId: { ideaId: idea.id, userId } },
-              }),
-              prisma.catalogIdea.update({
-                where: { id: idea.id },
-                data: { researchCount: { decrement: 1 } },
-              }),
-            ])
-            .catch((e) =>
-              console.error(`[CatalogResearch] counter rollback failed for idea ${idea.id}:`, e),
-            );
-        }
-        throw enqueueError;
+        await deliverDispatchWork(dispatchId);
+      } catch (deliveryError) {
+        deliveryPending = true;
+        console.error(`[CatalogResearch] deep-research dispatch ${dispatchId} delivery pending:`, deliveryError);
       }
-      // Benign if this fails: /job-started accepts PENDING, so the queued job still runs.
-      await prisma.job
-        .update({ where: { id: jobId }, data: { status: JobStatus.QUEUED, queuedAt: new Date() } })
-        .catch((e) =>
-          console.error(`[CatalogResearch] mark-QUEUED failed for ${jobId} (job is enqueued):`, e),
-        );
 
       // Telemetry (reuse existing signals — Job.entryMode + CatalogIdeaResearch).
       console.log(JSON.stringify({ event: 'deep_idea_research', userId, jobId, ideaId: idea.id }));
@@ -391,6 +373,8 @@ catalogResearchRouter.post(
         id: jobId,
         status: 'queued',
         statusUrl: `${CONFIG.baseUrl}/jobs/${jobId}`,
+        operationId: dispatchId,
+        deliveryPending,
       });
     } catch (error) {
       respondCreditsOrError(res, error, 'Failed to start deep research');

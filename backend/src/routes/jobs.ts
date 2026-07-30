@@ -2,19 +2,16 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { getJob, getJobAsset, cancelJob } from '../services/jobService.js';
 import { getDiscoveryDataForJob, getPreviewReportForJob } from '../services/assetService.js';
-import { enqueueJob, enqueueLandingPageJob, enqueuePhase2Job, enqueueContinueFromGateJob, enqueueSeedIdeaJob, getQueueStats, getQueueLength, deliverDispatchWork } from '../services/queueService.js';
+import { getQueueStats, getQueueLength, deliverDispatchWork } from '../services/queueService.js';
 import {
-  createJobAndChargeDiscovery,
+  createJobAndChargeDiscoveryInTx,
   InsufficientCreditsError,
   PriceChangedError,
-  refundForStage,
-  chargeForStageInTx,
   chargeForStageWithPriceCasInTx,
   chargeForRegenerationInTx,
   chargeForResume,
   segmentForGateContinue,
   chargeForSeedIdeaInTx,
-  refundForSeedIdeaStage,
 } from '../services/creditService.js';
 import { prisma } from '../services/db.js';
 import { CreateJobSchema, SelectSolutionSchema, RegenerateIdeasSchema, SelectionDecisionProfileSchema, SelectionDraftUpdateSchema, GateActionSchema, GateG1PatchSchema, GateG2PatchSchema, SeedIdeaSchema, MAX_IDEA_BATCHES } from '../types/job.js';
@@ -27,7 +24,7 @@ import {
   buildSeedReceiptContent,
 } from '../utils/ledgerEvents.js';
 import { JobStatus, AssetType, StageStatus, DispatchKind, BillingModel, DispatchState, Prisma } from '@prisma/client';
-import { cancelAuthorizedSelectionDispatch, openDispatch, settleDispatch } from '../services/dispatchService.js';
+import { cancelAuthorizedSelectionDispatch, openDispatch } from '../services/dispatchService.js';
 import { broadcastProgress } from '../services/progressBroadcastService.js';
 import { CONFIG } from '../config.js';
 import { existsSync, createReadStream, statSync } from 'fs';
@@ -98,35 +95,51 @@ jobsRouter.post('/', requireInternalAuth, jobCreationLimiter, async (req: Authen
     // request degrades to a normal (non-guided) job instead of failing outright.
     const chatMode = input.chatMode ? await hasAnalystAccess(userId) : false;
 
-    // Create job + charge discovery cost in atomic transaction
-    const { job } = await createJobAndChargeDiscovery(
-      userId,
-      input.niche,
-      input.allowedProjectTypes,
-      'interactive',
-      input.entryMode,
-      input.ideaFocus,
-      chatMode
-    );
-
-    // Open the dispatch BEFORE the queue message exists, so the worker that picks it up can be
-    // matched against it. Without one, the initial run is the one path with no identity at all —
-    // and a fresh job is precisely where a duplicate delivery can put two workers on the same run.
-    const dispatchId = await prisma.$transaction((tx) =>
-      openDispatch(tx, { jobId: job.id, kind: DispatchKind.CONTINUE })
-    );
-
-    // Enqueue job for Python worker
-    await enqueueJob(job.id, input.niche, userId, input.allowedProjectTypes, false, 'interactive', input.entryMode, input.ideaFocus, chatMode, dispatchId);
-
-    // Update status to QUEUED and set queuedAt timestamp
-    await prisma.job.update({
-      where: { id: job.id },
-      data: {
-        status: JobStatus.QUEUED,
-        queuedAt: new Date(),
-      }
+    // The new Job, the exact charge that bought this attempt, and its dispatch authorization are
+    // one commit. A dispatch can therefore never exist without its charge (or vice versa).
+    const { job, dispatchId } = await prisma.$transaction(async (tx) => {
+      const created = await createJobAndChargeDiscoveryInTx(
+        tx,
+        userId,
+        input.niche,
+        input.allowedProjectTypes,
+        'interactive',
+        input.entryMode,
+        input.ideaFocus,
+        chatMode,
+      );
+      const dispatchId = await openDispatch(tx, {
+        jobId: created.job.id,
+        kind: DispatchKind.CONTINUE,
+        segment: created.transaction?.stage ?? null,
+        chargeId: created.transaction?.id ?? null,
+        workPayload: {
+          job_id: created.job.id,
+          niche: input.niche,
+          user_id: userId,
+          allowed_project_types: input.allowedProjectTypes ?? null,
+          resume: false,
+          job_mode: 'interactive',
+          entry_mode: input.entryMode ?? null,
+          idea_focus: input.ideaFocus || 'auto',
+          chat_mode: chatMode,
+          created_at: new Date().toISOString(),
+        },
+      });
+      await tx.job.update({
+        where: { id: created.job.id },
+        data: { status: JobStatus.QUEUED, queuedAt: new Date() },
+      });
+      return { job: created.job, dispatchId };
     });
+
+    let deliveryPending = false;
+    try {
+      await deliverDispatchWork(dispatchId);
+    } catch (deliveryError) {
+      deliveryPending = true;
+      console.error(`[Jobs] Initial dispatch ${dispatchId} delivery pending:`, deliveryError);
+    }
 
     // Return job info with status URL
     res.status(201).json({
@@ -134,6 +147,8 @@ jobsRouter.post('/', requireInternalAuth, jobCreationLimiter, async (req: Authen
       status: 'queued',
       statusUrl: `${CONFIG.baseUrl}/jobs/${job.id}`,
       message: 'Research job created. Check the status URL for progress.',
+      operationId: dispatchId,
+      deliveryPending,
     });
   } catch (error) {
     // Handle insufficient credits error
@@ -343,13 +358,15 @@ jobsRouter.get('/:jobId/discovery-data', requireInternalAuth, validateJobId, asy
       return;
     }
 
-    // Available after discovery phase completes
+    // Available after discovery phase completes. CANCELLED belongs here alongside FAILED
+    // and for the same reason — cancelling Deep Research does not un-write Phase 1.
     const allowedStatuses: JobStatus[] = [
       JobStatus.AWAITING_SELECTION,
       JobStatus.REGENERATING,
       JobStatus.RUNNING_PHASE2,
       JobStatus.COMPLETED,
       JobStatus.FAILED,
+      JobStatus.CANCELLED,
     ];
     if (!allowedStatuses.includes(job.status as JobStatus)) {
       res.status(400).json({ error: 'Discovery data not yet available' });
@@ -389,12 +406,20 @@ jobsRouter.get('/:jobId/preview-report', requireInternalAuth, validateJobId, asy
       return;
     }
 
-    // Available after discovery phase completes
+    // Available once discovery has WRITTEN it — which is a fact about the artifact, not
+    // about the job still being alive. FAILED/CANCELLED are included for the same reason
+    // discovery-data includes them: a run that stopped after Phase 1 still owns (and the
+    // owner still paid for) everything Phase 1 produced. Omitting them here 400'd the
+    // stopped-run page into a permanent "dossier could not be loaded" banner.
+    // A genuinely absent report is the 404 below, which the client treats as "no dossier"
+    // rather than as a failure.
     const allowedStatuses: JobStatus[] = [
       JobStatus.AWAITING_SELECTION,
       JobStatus.REGENERATING,
       JobStatus.RUNNING_PHASE2,
       JobStatus.COMPLETED,
+      JobStatus.FAILED,
+      JobStatus.CANCELLED,
     ];
     if (!allowedStatuses.includes(job.status as JobStatus)) {
       res.status(400).json({ error: 'Preview report not yet available' });
@@ -619,110 +644,237 @@ jobsRouter.post(
 
 /**
  * POST /api/jobs/:jobId/resume
- * Resume a failed job from checkpoint (requires authentication and ownership)
- * No credit charge - user already paid for the original job
+ * Resume a failed job (requires authentication and ownership).
+ *
+ * A failed Phase-2 attempt is not replayable from names alone. Reopen its preserved editable
+ * draft at AWAITING_SELECTION so the user explicitly reconfirms and buys a fresh, fully stamped
+ * dispatch. Legacy Discovery resumes still run, but their state flip, optional re-charge, and
+ * durable dispatch are one transaction.
  */
 jobsRouter.post('/:jobId/resume', requireInternalAuth, validateJobId, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { jobId } = req.params;
     const userId = req.user!.id;
+    const input = z.object({
+      expectedCost: z.number().int().nonnegative().optional(),
+    }).strict().parse(req.body ?? {});
+    const outcome = await prisma.$transaction(async (tx) => {
+      const job = await tx.job.findFirst({
+        where: { id: jobId, userId },
+      });
+      if (!job) throw new Error('RESUME_NOT_FOUND');
+      if (job.status !== JobStatus.FAILED) {
+        throw new Error(`RESUME_NOT_FAILED:${job.status}`);
+      }
 
-    // Get job and verify ownership
-    const job = await prisma.job.findFirst({
-      where: { id: jobId, userId },
+      const isFailedPhase2 =
+        job.jobMode === 'interactive'
+        && job.entryMode !== 'deep_idea'
+        && job.phase1CheckpointPath != null
+        && (
+          job.selectedSolutions.length > 0
+          || (job.selectedSolutionIds?.length ?? 0) > 0
+          || job.selectedSolutionRefs != null
+        );
+
+      if (isFailedPhase2) {
+        const reopened = await tx.job.updateMany({
+          where: {
+            id: jobId,
+            userId,
+            status: JobStatus.FAILED,
+            activeDispatchId: null,
+          },
+          data: {
+            status: JobStatus.AWAITING_SELECTION,
+            selectedSolution: null,
+            selectedSolutions: [],
+            selectedSolutionIds: [],
+            selectedSolutionRefs: Prisma.DbNull,
+            selectionRationale: null,
+            errorMessage: null,
+            errorStage: null,
+            errorCode: null,
+            errorDetails: Prisma.DbNull,
+            stopReason: null,
+            stopReasonDetails: Prisma.DbNull,
+            queuedAt: null,
+            awaitingSelectionAt: new Date(),
+          },
+        });
+        if (reopened.count !== 1) throw new Error('RESUME_CONFLICT');
+        return { mode: 'selection' as const };
+      }
+
+      // Job-first CAS: if charging or dispatch creation fails, this state flip rolls back with it.
+      const flipped = await tx.job.updateMany({
+        where: {
+          id: jobId,
+          userId,
+          status: JobStatus.FAILED,
+          activeDispatchId: null,
+        },
+        data: {
+          status: JobStatus.QUEUED,
+          errorMessage: null,
+          errorStage: null,
+          errorCode: null,
+          errorDetails: Prisma.DbNull,
+          stopReason: null,
+          stopReasonDetails: Prisma.DbNull,
+          queuedAt: new Date(),
+        },
+      });
+      if (flipped.count !== 1) throw new Error('RESUME_CONFLICT');
+
+      let dispatchKind: DispatchKind = DispatchKind.CONTINUE;
+      let workPayload: Prisma.InputJsonValue = {
+        job_id: jobId,
+        niche: job.niche,
+        user_id: userId,
+        allowed_project_types: job.allowedProjectTypes ?? null,
+        resume: true,
+        job_mode: job.jobMode ?? null,
+        entry_mode: job.entryMode ?? null,
+        idea_focus: job.ideaFocus ?? 'auto',
+        chat_mode: job.chatMode,
+        created_at: new Date().toISOString(),
+      } as unknown as Prisma.InputJsonValue;
+
+      if (job.entryMode === 'deep_idea') {
+        if (typeof input.expectedCost !== 'number') {
+          throw new Error('RESUME_CATALOG_PRICE_REQUIRED');
+        }
+        const priorDispatch = await tx.jobDispatch.findFirst({
+          where: { jobId, kind: DispatchKind.DEEP_RESEARCH },
+          orderBy: { createdAt: 'desc' },
+          select: { workPayload: true },
+        });
+        const priorPayload = priorDispatch?.workPayload;
+        if (
+          !priorPayload
+          || Array.isArray(priorPayload)
+          || typeof priorPayload !== 'object'
+          || priorPayload.task_type !== 'catalog_deep_research'
+          || !priorPayload.idea_seed
+        ) {
+          throw new Error('RESUME_CATALOG_PAYLOAD_MISSING');
+        }
+        dispatchKind = DispatchKind.DEEP_RESEARCH;
+        workPayload = {
+          ...priorPayload,
+          job_id: jobId,
+          user_id: userId,
+          created_at: new Date().toISOString(),
+        } as Prisma.InputJsonValue;
+      }
+
+      const charge = job.entryMode === 'deep_idea'
+        ? await chargeForStageWithPriceCasInTx(
+            tx,
+            userId,
+            jobId,
+            'deep_research',
+            'deep_research',
+            job.niche,
+            input.expectedCost!,
+          )
+        : await chargeForResume(userId, jobId, tx);
+      const dispatchId = await openDispatch(tx, {
+        jobId,
+        kind: dispatchKind,
+        segment: charge.transaction?.stage ?? null,
+        chargeId: charge.transaction?.id ?? null,
+        workPayload,
+      });
+      return {
+        mode: 'queued' as const,
+        dispatchId,
+        creditCharged: 'cost' in charge ? charge.cost : charge.amount,
+      };
     });
 
-    if (!job) {
-      res.status(404).json({ error: 'Job not found' });
-      return;
-    }
-
-    // Only failed jobs can be resumed
-    if (job.status !== JobStatus.FAILED) {
-      res.status(400).json({
-        error: 'Only failed jobs can be resumed',
-        status: job.status,
+    if (outcome.mode === 'selection') {
+      res.json({
+        message: 'Your saved shortlist is ready to review and confirm again.',
+        jobId,
+        status: JobStatus.AWAITING_SELECTION,
+        creditCharged: 0,
+        requiresSelectionConfirmation: true,
       });
       return;
     }
 
-    // Re-charge credits if the job was refunded
-    let creditCharged = 0;
+    let deliveryPending = false;
     try {
-      const result = await chargeForResume(userId, jobId);
-      creditCharged = result.amount;
-      if (result.charged) {
-        console.log(`[Jobs] Re-charged ${result.amount} credits for resuming job ${jobId}`);
-      }
-    } catch (error) {
-      if (error instanceof InsufficientCreditsError) {
-        res.status(402).json({
-          error: 'Insufficient credits to resume job',
-          code: 'INSUFFICIENT_CREDITS',
-          balance: error.currentBalance,
-          required: error.required,
-        });
-        return;
-      }
-      throw error;
+      await deliverDispatchWork(outcome.dispatchId);
+    } catch (deliveryError) {
+      deliveryPending = true;
+      console.error(`[Jobs] Resume dispatch ${outcome.dispatchId} delivery pending:`, deliveryError);
     }
 
-    // Reset job status to QUEUED
-    await prisma.job.update({
-      where: { id: jobId },
-      data: {
-        status: JobStatus.QUEUED,
-        errorMessage: null,
-        errorStage: null,
-        queuedAt: new Date(),
-      },
-    });
-
-    // A resume is a NEW attempt, so it needs a new dispatch. Without one, the job would still be
-    // carrying the activeDispatchId of the run that just failed — nothing clears it — and every
-    // callback from the resuming worker (which would send no id) would be rejected as stale. The
-    // resume would appear to queue and then silently do nothing.
-    const resumeDispatch = await prisma.$transaction((tx) =>
-      openDispatch(tx, { jobId: job.id, kind: DispatchKind.CONTINUE })
-    );
-
-    // Interactive job that failed during Phase 2: re-enqueue as phase 2
-    if (job.jobMode === 'interactive' && (job.selectedSolutions as string[])?.length > 0 && job.phase1CheckpointPath) {
-      const selectedSolutions = job.selectedSolutions as string[];
-      await enqueuePhase2Job(
-        job.id,
-        job.phase1CheckpointPath,
-        selectedSolutions,
-        job.selectionRationale || undefined,
-        resumeDispatch,
-      );
-    } else {
-      // Re-enqueue with resume flag
-      // Full original inputs (infra review round 2): a failure BEFORE a usable checkpoint
-      // previously lost entryMode/ideaFocus on resume — both now come from the Job row.
-      await enqueueJob(
-        job.id,
-        job.niche,
-        userId,
-        job.allowedProjectTypes as string[] | undefined,
-        true, // resume = true
-        job.jobMode || undefined,
-        job.entryMode || undefined,
-        job.ideaFocus || undefined,
-        undefined, // chatMode: unchanged on resume (read from the Job row by the worker)
-        resumeDispatch
-      );
-    }
-
-    console.log(`[Jobs] Job ${jobId} queued for resume by user ${userId}${creditCharged ? ' (credit charged)' : ''}`);
-
+    console.log(`[Jobs] Job ${jobId} queued for resume by user ${userId}${outcome.creditCharged ? ' (credit charged)' : ''}`);
     res.json({
-      message: creditCharged ? 'Job queued for resume (credit charged)' : 'Job queued for resume',
+      message: outcome.creditCharged ? 'Job queued for resume (credit charged)' : 'Job queued for resume',
       jobId,
       status: 'queued',
-      creditCharged,
+      creditCharged: outcome.creditCharged,
+      operationId: outcome.dispatchId,
+      operationState: DispatchState.AUTHORIZED,
+      deliveryPending,
     });
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation error', details: error.errors });
+      return;
+    }
+    if (error instanceof InsufficientCreditsError) {
+      res.status(402).json({
+        error: 'Insufficient credits to resume job',
+        code: 'INSUFFICIENT_CREDITS',
+        balance: error.currentBalance,
+        required: error.required,
+      });
+      return;
+    }
+    if (error instanceof PriceChangedError) {
+      res.status(409).json({
+        error: 'Deep Research price changed; review the updated price before retrying',
+        code: 'PRICE_CHANGED',
+        expectedCost: error.expectedCost,
+        actualCost: error.actualCost,
+      });
+      return;
+    }
+    if (error instanceof Error && error.message === 'RESUME_NOT_FOUND') {
+      res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+    if (error instanceof Error && error.message.startsWith('RESUME_NOT_FAILED:')) {
+      res.status(400).json({
+        error: 'Only failed jobs can be resumed',
+        status: error.message.slice('RESUME_NOT_FAILED:'.length),
+      });
+      return;
+    }
+    if (error instanceof Error && error.message === 'RESUME_CONFLICT') {
+      res.status(409).json({ error: 'This job changed before it could be resumed', code: 'RESUME_CONFLICT' });
+      return;
+    }
+    if (error instanceof Error && error.message === 'RESUME_CATALOG_PAYLOAD_MISSING') {
+      res.status(409).json({
+        error: 'This catalog research retry cannot be reconstructed safely. Start a fresh research run from the catalog.',
+        code: 'RESUME_CATALOG_PAYLOAD_MISSING',
+      });
+      return;
+    }
+    if (error instanceof Error && error.message === 'RESUME_CATALOG_PRICE_REQUIRED') {
+      res.status(400).json({
+        error: 'expectedCost is required to retry catalog Deep Research',
+        code: 'EXPECTED_COST_REQUIRED',
+      });
+      return;
+    }
     console.error('Failed to resume job:', error);
     res.status(500).json({ error: 'Failed to resume job' });
   }
@@ -736,12 +888,12 @@ jobsRouter.post('/:jobId/generate-landing', requireInternalAuth, jobCreationLimi
   try {
     const { jobId } = req.params;
     const userId = req.user!.id;
-
-    // Assigned inside the transaction below, alongside the charge and the status change.
-    let landingDispatch: string | undefined;
+    const input = z.object({
+      expectedCost: z.number().int().nonnegative(),
+    }).strict().parse(req.body);
 
     // Atomic transaction to prevent race conditions on double-click
-    await prisma.$transaction(async (tx) => {
+    const landingDispatch = await prisma.$transaction(async (tx) => {
       const job = await tx.job.findFirst({
         where: { id: jobId, userId },
         include: { progress: true, assets: true },
@@ -763,15 +915,24 @@ jobsRouter.post('/:jobId/generate-landing', requireInternalAuth, jobCreationLimi
       }
 
       // Check report asset exists
-      const hasReport = job.assets.some(a => a.assetType === AssetType.REPORT_JSON);
-      if (!hasReport) {
+      const reportAsset = job.assets.find(a => a.assetType === AssetType.REPORT_JSON);
+      if (!reportAsset) {
         throw new Error('Report not found');
       }
 
       // Charge for landing page generation
-      await chargeForStageInTx(tx, userId, jobId, 'landing_page', job.niche);
+      const charge = await chargeForStageWithPriceCasInTx(
+        tx,
+        userId,
+        jobId,
+        'landing_page',
+        'landing_page',
+        job.niche,
+        input.expectedCost,
+      );
 
       // Create or reset stage 15 progress entry (upsert handles retry after monitor-triggered failure)
+      const hasLandingProgress = job.progress.some(progress => progress.stageNumber === 15);
       await tx.jobProgress.upsert({
         where: { jobId_stageNumber: { jobId, stageNumber: 15 } },
         create: { jobId, stageNumber: 15, stageName: 'Landing Page Generation', status: StageStatus.PENDING },
@@ -784,7 +945,7 @@ jobsRouter.post('/:jobId/generate-landing', requireInternalAuth, jobCreationLimi
         data: {
           generateLandingPage: true,
           landingPageStatus: 'QUEUED',
-          totalStages: { increment: 1 },
+          ...(!hasLandingProgress ? { totalStages: { increment: 1 } } : {}),
         },
       });
 
@@ -793,40 +954,54 @@ jobsRouter.post('/:jobId/generate-landing', requireInternalAuth, jobCreationLimi
       // without it). Landing-page generation runs on an already-COMPLETED job that is still
       // carrying the activeDispatchId of the research run that produced it; this replaces it, so
       // the landing worker's callbacks are matched against ITS attempt and not that older one.
-      landingDispatch = await openDispatch(tx, { jobId, kind: DispatchKind.CONTINUE });
+      return openDispatch(tx, {
+        jobId,
+        kind: DispatchKind.CONTINUE,
+        segment: 'landing_page',
+        chargeId: charge.transaction?.id ?? null,
+        workPayload: {
+          job_id: jobId,
+          report_path: reportAsset.filePath,
+          page_mode: 'coming_soon',
+          task_type: 'landing_page',
+          created_at: new Date().toISOString(),
+        },
+      });
     });
 
-    // Get report asset path for the queue
-    const reportAsset = await getJobAsset(jobId, AssetType.REPORT_JSON);
-    if (!reportAsset) {
-      res.status(500).json({ error: 'Report asset not found after transaction' });
+    let deliveryPending = false;
+    try {
+      await deliverDispatchWork(landingDispatch);
+    } catch (deliveryError) {
+      deliveryPending = true;
+      console.error(`[Jobs] Landing dispatch ${landingDispatch} delivery pending:`, deliveryError);
+    }
+
+    res.json({
+      status: 'ok',
+      operationId: landingDispatch,
+      deliveryPending,
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation error', details: error.errors });
       return;
     }
-
-    // Enqueue landing page generation — compensating refund on failure
-    try {
-      await enqueueLandingPageJob(jobId, reportAsset.filePath, undefined, landingDispatch);
-    } catch (enqueueError) {
-      console.error(`[Jobs] Failed to enqueue landing page for job ${jobId}, compensating:`, enqueueError);
-      await refundForStage(jobId, 'landing_page');
-      await prisma.$transaction(async (tx) => {
-        await tx.job.update({
-          where: { id: jobId },
-          data: { landingPageStatus: null, generateLandingPage: false, totalStages: { decrement: 1 } },
-        });
-        await tx.jobProgress.deleteMany({ where: { jobId, stageNumber: 15 } });
-      });
-      throw enqueueError;
-    }
-
-    res.json({ status: 'ok' });
-  } catch (error) {
     if (error instanceof InsufficientCreditsError) {
       res.status(402).json({
         error: 'Insufficient credits for landing page generation',
         code: 'INSUFFICIENT_CREDITS',
         balance: error.currentBalance,
         required: error.required,
+      });
+      return;
+    }
+    if (error instanceof PriceChangedError) {
+      res.status(409).json({
+        error: 'Landing page price changed; review the updated price before continuing',
+        code: 'PRICE_CHANGED',
+        expectedCost: error.expectedCost,
+        actualCost: error.actualCost,
       });
       return;
     }
@@ -976,6 +1151,16 @@ jobsRouter.post('/:jobId/select-solution', requireInternalAuth, validateJobId, a
       if (new Set(normalizedNames).size !== normalizedNames.length) {
         throw new Error('AMBIGUOUS_PHASE2_SELECTION');
       }
+      const poolNameCounts = new Map<string, number>();
+      for (const idea of solutions) {
+        const poolName = ideaName(idea);
+        if (!poolName) continue;
+        const normalized = poolName.trim().replace(/\s+/g, ' ').toLowerCase();
+        poolNameCounts.set(normalized, (poolNameCounts.get(normalized) ?? 0) + 1);
+      }
+      if (normalizedNames.some(name => (poolNameCounts.get(name) ?? 0) !== 1)) {
+        throw new Error('AMBIGUOUS_PHASE2_SELECTION');
+      }
 
       const workerSelectionRefs = selected.map(item => ({
         idea_id: item.ref.ideaId,
@@ -1036,6 +1221,20 @@ jobsRouter.post('/:jobId/select-solution', requireInternalAuth, validateJobId, a
           selected_solution_snapshots: selected.map(item => item.idea),
           selection_fingerprint: workFingerprint,
           selection_rationale: input.rationale ?? '',
+          // Identity is OURS: stamped at /api/workers/ideas-ready and seeded from the Phase-1
+          // dispatch id, so it lives only in Postgres — the checkpoint on disk has no idea_id.
+          // Without this map the worker falls back to its legacy_backfill scheme, derives
+          // different ids for the same candidates, and every exact ref above fails to resolve.
+          pool_identity_map: solutions.flatMap(idea => {
+            const poolName = ideaName(idea);
+            return poolName && typeof idea.idea_id === 'string' && typeof idea.idea_revision === 'number'
+              ? [{
+                  idea_id: idea.idea_id,
+                  idea_revision: idea.idea_revision,
+                  solution_name: poolName,
+                }]
+              : [];
+          }),
           created_at: new Date().toISOString(),
         } as unknown as Prisma.InputJsonValue,
       });
@@ -1248,6 +1447,18 @@ jobsRouter.post('/:jobId/regenerate-ideas', requireInternalAuth, validateJobId, 
             idea_revision: ref.ideaRevision,
             snapshot_sha256: ref.snapshotSha256,
           })),
+          pool_identity_map: existingSolutions.flatMap(solution => {
+            const poolName = ideaName(solution);
+            return poolName
+              && typeof solution.idea_id === 'string'
+              && typeof solution.idea_revision === 'number'
+              ? [{
+                  idea_id: solution.idea_id,
+                  idea_revision: solution.idea_revision,
+                  solution_name: poolName,
+                }]
+              : [];
+          }),
           base_pool_fingerprint: basePoolFingerprint,
           created_at: new Date().toISOString(),
         } as unknown as Prisma.InputJsonValue,
@@ -1481,7 +1692,7 @@ jobsRouter.post('/:jobId/seed-idea', requireInternalAuth, validateJobId, async (
     // 'seed_submitted' receipt (continuous-analyst-ledger idiom — mirrors gate-action's
     // 'gate_patch_submitted' receipt) so the seed card survives a reload as "evaluating",
     // keyed on the SAME sourceMessageId the dispatch itself carries.
-    const { dispatchId: seedDispatch, receiptId } = await prisma.$transaction(async (tx) => {
+    const seedDispatch = await prisma.$transaction(async (tx) => {
       const charge = await chargeForSeedIdeaInTx(
         tx, userId, jobId, nextSeedOrdinal, job.niche, input.expectedCost,
       );
@@ -1514,7 +1725,32 @@ jobsRouter.post('/:jobId/seed-idea', requireInternalAuth, validateJobId, async (
         sourceMessageId: input.sourceMessageId,
       });
 
-      const receipt = await tx.chatMessage.create({
+      const synthesisEvaluation = structuredSynthesis?.evaluation
+        ? {
+            evaluation_id: dispatchId,
+            dispatch_id: dispatchId,
+            source_message_id: input.sourceMessageId,
+            proposal: structuredSynthesis,
+          }
+        : null;
+      await tx.jobDispatch.update({
+        where: { id: dispatchId },
+        data: {
+          workPayload: {
+            job_id: jobId,
+            checkpoint_path: job.phase1CheckpointPath,
+            niche: job.niche,
+            seed_text: seedText,
+            pain_ref: painRef ?? null,
+            tool_ref: toolRef ?? null,
+            synthesis_evaluation: synthesisEvaluation,
+            task_type: 'seed_idea',
+            created_at: new Date().toISOString(),
+          } as unknown as Prisma.InputJsonValue,
+        },
+      });
+
+      await tx.chatMessage.create({
         data: {
           jobId,
           gateStage: 5, // G3/AWAITING_SELECTION sentinel — Phase A/seed chat only ever writes 5
@@ -1524,62 +1760,29 @@ jobsRouter.post('/:jobId/seed-idea', requireInternalAuth, validateJobId, async (
             'seed_submitted', input.sourceMessageId, undefined, undefined, dispatchId,
           ) as unknown as object,
         },
-        select: { id: true },
       });
 
-      return { dispatchId, receiptId: receipt.id };
+      return dispatchId;
     });
 
-    // Enqueue OUTSIDE the transaction — compensating refund + dispatch settle + receipt
-    // retraction on failure (mirrors regenerate-ideas/gate-action, but this ALSO settles the
-    // dispatch since it is never revisited otherwise: an ambiguous enqueue error must not
-    // leave an AUTHORIZED dispatch dangling forever with a live CAS that nothing will settle).
+    // Redis delivery is outside the authorization transaction. A transport failure is ambiguous:
+    // the message may have landed, so keep the paid AUTHORIZED attempt and its receipt durable for
+    // the outbox monitor to redeliver instead of refunding work that may already be running.
+    let deliveryPending = false;
     try {
-      await enqueueSeedIdeaJob(
-        jobId, job.phase1CheckpointPath, job.niche,
-        seedText, painRef, toolRef, seedDispatch,
-        structuredSynthesis?.evaluation
-          ? {
-              evaluation_id: seedDispatch,
-              dispatch_id: seedDispatch,
-              source_message_id: input.sourceMessageId,
-              proposal: structuredSynthesis,
-            }
-          : undefined,
-      );
-    } catch (enqueueError) {
-      console.error(`[Jobs] Failed to enqueue seed idea for job ${jobId}, compensating:`, enqueueError);
-      const reverted = await prisma.$transaction(async (tx) => {
-        const r = await tx.job.updateMany({
-          where: { id: jobId, status: JobStatus.QUEUED, activeDispatchId: seedDispatch },
-          data: { status: JobStatus.AWAITING_SELECTION, queuedAt: null, activeDispatchId: null },
-        });
-        if (r.count > 0) {
-          await settleDispatch(tx, seedDispatch, DispatchState.FAILED, 'SYSTEM_FAULT');
-        }
-        return r.count;
-      });
-      if (reverted > 0) {
-        await refundForSeedIdeaStage(jobId, nextSeedOrdinal);
-        // The seed never got queued — retract the 'submitted' receipt, or the ledger would
-        // claim an evaluation is in flight that never actually started.
-        await prisma.chatMessage
-          .delete({ where: { id: receiptId } })
-          .catch((err) => console.error('[Jobs] Failed to retract seed-submitted receipt after compensation:', err));
-      } else {
-        console.warn(
-          `[Jobs] Seed idea enqueue failed for job ${jobId} but the attempt is no longer ` +
-          'QUEUED under this dispatch — not refunding, not reverting, not settling.'
-        );
-      }
-      throw enqueueError;
+      await deliverDispatchWork(seedDispatch);
+    } catch (deliveryError) {
+      deliveryPending = true;
+      console.error(`[Jobs] Seed dispatch ${seedDispatch} delivery pending:`, deliveryError);
     }
 
     res.json({
       status: 'queued',
       evaluationId: seedDispatch,
       dispatchId: seedDispatch,
+      operationId: seedDispatch,
       sourceMessageId: input.sourceMessageId,
+      deliveryPending,
       ...(structuredSynthesis ? { proposedTitle: structuredSynthesis.proposedTitle } : {}),
       message: input.kind === 'idea_synthesis'
         ? 'Evaluating the proposed candidate variant.'
@@ -1834,6 +2037,15 @@ jobsRouter.post('/:jobId/gate-action', requireInternalAuth, validateJobId, async
         gateStage: input.gateStage,
         segment,
         chargeId,
+        workPayload: {
+          job_id: jobId,
+          checkpoint_path: job.phase1CheckpointPath,
+          gate_stage: input.gateStage,
+          mode: input.action,
+          ...(validatedPatch ? { patch: validatedPatch } : {}),
+          task_type: 'continue_from_gate',
+          created_at: new Date().toISOString(),
+        } as unknown as Prisma.InputJsonValue,
       });
 
       return { count: result.count, receiptId, dispatchId };
@@ -1844,74 +2056,20 @@ jobsRouter.post('/:jobId/gate-action', requireInternalAuth, validateJobId, async
       return;
     }
 
-    // Enqueue OUTSIDE the transaction — compensating revert on failure (mirrors
-    // regenerate-ideas above).
+    // An ambiguous Redis error leaves the durable attempt AUTHORIZED. The delivery monitor retries
+    // the immutable payload; reverting/refunding here could authorize free work if LPUSH succeeded.
+    let deliveryPending = false;
     try {
-      await enqueueContinueFromGateJob(jobId, job.phase1CheckpointPath, input.gateStage, input.action, validatedPatch, flip.dispatchId ?? undefined);
-    } catch (enqueueError) {
-      console.error(`[Jobs] Failed to enqueue gate continuation for job ${jobId}, compensating:`, enqueueError);
-      // Codex review finding 7 (REGRESSION): an enqueue failure here is ambiguous — the
-      // job could still be QUEUED (safe to revert), but it could also have already been
-      // picked up by a worker and flipped to RUNNING (e.g. the enqueue actually landed and
-      // only the client-side confirmation errored). Only revert if the job is STILL QUEUED;
-      // an unconditional update() would stomp a legitimate RUNNING continuation back to
-      // AWAITING_GATE out from under the worker.
-      // Scoped to THIS attempt, not merely to "still QUEUED". Status alone has an ABA hole: if
-      // the queue actually accepted our message and only the ack failed, the worker can run it,
-      // re-arrive at the gate, and the user can start a NEW attempt — putting the job back at
-      // QUEUED. A late catch here would then see QUEUED and revert somebody else's attempt.
-      // Matching the dispatch id means we can only ever compensate our own.
-      const reverted = await prisma.job.updateMany({
-        where: {
-          id: jobId,
-          status: JobStatus.QUEUED,
-          ...(flip.dispatchId ? { activeDispatchId: flip.dispatchId } : {}),
-        },
-        data: {
-          status: JobStatus.AWAITING_GATE,
-          gateStage: input.gateStage,
-          gateReachedAt: new Date(),
-          queuedAt: null,
-          activeDispatchId: null,
-          ...(input.action === 'apply_stay' ? { gateApplyCount: { decrement: 1 } } : {}),
-        },
-      });
-      if (reverted.count === 0) {
-        console.warn(
-          `[Jobs] Gate continuation enqueue failed for job ${jobId} but it is no longer ` +
-          'QUEUED under this dispatch — skipping compensation (a worker may have already ' +
-          'started it, or a newer attempt has replaced it); leaving status as-is.'
-        );
-      } else {
-        // The status/dispatch revert above undid the ATTEMPT, but on its own leaves the segment
-        // charge (if any) committed with nothing to give it back, and the dispatch itself sitting
-        // AUTHORIZED forever — a retry's own charge would then collide with this row's (job, type,
-        // stage, cycle) and 500 with P2002 instead of queueing. Settle the dispatch and refund the
-        // segment, mirroring seed-idea's compensation (refund + settle + receipt retraction) so a
-        // retry is clean. A free apply_stay/Continue (DISCOVERY_PREPAID_V1, or gate 4->5) never had
-        // a segment, so there is nothing to refund — only the dispatch needs settling.
-        if (flip.dispatchId) {
-          await prisma.jobDispatch.updateMany({
-            where: { id: flip.dispatchId },
-            data: { state: DispatchState.FAILED, failureKind: 'SYSTEM_FAULT', settledAt: new Date() },
-          });
-        }
-        if (segment) {
-          await refundForStage(jobId, segment);
-        }
-        if (flip.receiptId) {
-          // The apply never got queued and the status was reverted — retract the
-          // receipt too, or the ledger would claim a change that never happened.
-          await prisma.chatMessage
-            .delete({ where: { id: flip.receiptId } })
-            .catch((err) => console.error('[Jobs] Failed to retract gate receipt after compensation:', err));
-        }
-      }
-      throw enqueueError;
+      await deliverDispatchWork(flip.dispatchId!);
+    } catch (deliveryError) {
+      deliveryPending = true;
+      console.error(`[Jobs] Gate dispatch ${flip.dispatchId} delivery pending:`, deliveryError);
     }
 
     res.json({
       status: 'queued',
+      operationId: flip.dispatchId,
+      deliveryPending,
       message: input.action === 'apply_stay'
         ? 'Applying changes and refreshing this checkpoint.'
         : 'Continuing research.',

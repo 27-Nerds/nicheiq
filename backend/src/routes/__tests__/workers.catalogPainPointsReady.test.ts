@@ -97,8 +97,11 @@ vi.mock('../../services/notificationService.js', () => ({
   notifyLandingPageReady: vi.fn(),
 }));
 vi.mock('../../services/creditService.js', () => ({
+  refundChargeInTx: vi.fn(),
   refundForStage: vi.fn(),
+  refundForStageInTx: vi.fn(),
   refundForRegenerationStage: vi.fn(),
+  isGuidedSegment: vi.fn(),
 }));
 vi.mock('../../utils/errorTranslator.js', () => ({
   buildErrorDetails: vi.fn(),

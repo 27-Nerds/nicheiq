@@ -8,6 +8,7 @@ const mockJobProgressUpdate = vi.fn();
 const mockJobProgressUpsert = vi.fn();
 const mockJobProgressCount = vi.fn();
 const mockJobUpdate = vi.fn();
+const mockJobUpdateMany = vi.fn();
 const mockJobFindUnique = vi.fn();
 
 vi.mock('../db.js', () => ({
@@ -20,13 +21,32 @@ vi.mock('../db.js', () => ({
     },
     job: {
       update: (...args: any[]) => mockJobUpdate(...args),
+      updateMany: (...args: any[]) => mockJobUpdateMany(...args),
       findUnique: (...args: any[]) => mockJobFindUnique(...args),
     },
+    $transaction: (callback: (tx: any) => unknown) => callback({
+      jobProgress: {
+        findUnique: (...args: any[]) => mockJobProgressFindUnique(...args),
+        update: (...args: any[]) => mockJobProgressUpdate(...args),
+        upsert: (...args: any[]) => mockJobProgressUpsert(...args),
+        count: (...args: any[]) => mockJobProgressCount(...args),
+      },
+      job: {
+        update: (...args: any[]) => mockJobUpdate(...args),
+        updateMany: (...args: any[]) => mockJobUpdateMany(...args),
+        findUnique: (...args: any[]) => mockJobFindUnique(...args),
+      },
+    }),
   },
 }));
 
-vi.mock('./creditService.js', () => ({
+vi.mock('../creditService.js', () => ({
+  refundChargeInTx: vi.fn(),
   refundForStage: vi.fn(),
+  refundForStageInTx: vi.fn(),
+  refundForRegenerationStage: vi.fn(),
+  refundForSeedIdeaStage: vi.fn(),
+  isGuidedSegment: vi.fn(),
   determineFailedStage: vi.fn(),
 }));
 
@@ -74,6 +94,7 @@ beforeEach(() => {
 
   // Default: job update succeeds
   mockJobUpdate.mockResolvedValue({});
+  mockJobUpdateMany.mockResolvedValue({ count: 1 });
 });
 
 // ============================================
@@ -148,5 +169,28 @@ describe('updateStageProgress', () => {
       stagesCompleted: 2,
       progressPercent: (2 / 16) * 100,
     });
+  });
+
+  it('does not write progress when the dispatch loses ownership before the transaction fence', async () => {
+    mockJobUpdateMany.mockResolvedValue({ count: 0 });
+
+    await expect(
+      updateStageProgress(
+        JOB_ID,
+        STAGE_NUMBER,
+        'RUNNING' as any,
+        undefined,
+        undefined,
+        'dispatch-old',
+      ),
+    ).resolves.toBeNull();
+
+    expect(mockJobUpdateMany).toHaveBeenCalledWith({
+      where: { id: JOB_ID, activeDispatchId: 'dispatch-old' },
+      data: { updatedAt: expect.any(Date) },
+    });
+    expect(mockJobProgressFindUnique).not.toHaveBeenCalled();
+    expect(mockJobProgressUpsert).not.toHaveBeenCalled();
+    expect(mockJobUpdate).not.toHaveBeenCalled();
   });
 });

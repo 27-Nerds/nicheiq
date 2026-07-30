@@ -165,11 +165,16 @@ def test_cap_d_noop_none_payability_or_low_mf():
 
 # --- critic line ------------------------------------------------------------------
 
-def test_fenced_row_carries_payability_line_only_when_stamped(monkeypatch):
+def test_critic_prompt_is_payability_blind(monkeypatch):
+    """Payability de-dup (2026-07-30): the critic prompt must carry NO payability signal —
+    neither the per-idea row nor the rubric paragraph nor the wallet ceiling — even for a
+    stamped idea. The segment wallet applies exactly once, in _validate_idea_caps (d)."""
     import nicheiq.crews.unified_solution_crew as usc
     crew = _crew()
     crew._format_competitor_mentions = lambda: ""
     crew.pain_point_analysis = SimpleNamespace(pain_points=[])
+    crew._niche_wallet_brief = {"wallet_class": "free-culture",
+                                "evidence": "seven free calculators", "free_density": "high"}
     idea = SimpleNamespace(
         solution_name="X", source_segment="Agency Owner", source_segment_payability=0.15,
         source_segment_payability_class="personal-wallet", pain_points_addressed=[],
@@ -186,12 +191,10 @@ def test_fenced_row_carries_payability_line_only_when_stamped(monkeypatch):
     monkeypatch.setattr(usc.LLMService, "invoke_structured", staticmethod(_cap))
 
     crew._calibrate_batch(batch=[idea])
-    assert "buyer payability: personal-wallet (0.15)" in captured["prompt"]
-    assert "BUYER PAYABILITY" in captured["prompt"]        # rubric paragraph
-
-    idea.source_segment_payability = None                  # unstamped -> no line (rubric stays)
-    crew._calibrate_batch(batch=[idea])
-    assert "buyer payability:" not in captured["prompt"]
+    assert "buyer payability" not in captured["prompt"]
+    assert "BUYER PAYABILITY" not in captured["prompt"]
+    assert "willingness-to-pay" not in captured["prompt"]  # wallet ceiling line removed
+    assert "NICHE WALLET" not in captured["prompt"]
 
 
 def test_stamp_resets_llm_fabricated_values():
@@ -204,3 +207,51 @@ def test_stamp_resets_llm_fabricated_values():
     _crew({})._stamp_payability(idea)
     assert idea.source_segment_payability is None
     assert idea.source_segment_payability_class is None
+
+
+class TestPayerRetargetHint:
+    """Run-quality fixes §5: operator≠payer hypothesis — inline, deterministic, exposure-only."""
+
+    def _idea(self, pay=0.15, pay_cls="personal-wallet", target="b2b", segment="Freelance Bookkeepers"):
+        from types import SimpleNamespace
+        tags = SimpleNamespace(target_market=target) if target is not None else None
+        return SimpleNamespace(
+            source_segment_payability=pay, source_segment_payability_class=pay_cls,
+            source_segment=segment, tags=tags)
+
+    def test_fires_on_thin_wallet_b2b(self):
+        from nicheiq.utils.segment_payability import payer_retarget_hint
+        hint = payer_retarget_hint(self._idea())
+        assert hint and "Freelance Bookkeepers" in hint
+        assert "may differ" in hint  # hypothesis phrasing, never a claim
+        assert "re-checking who actually pays" in hint
+
+    def test_abstains_on_smb_budget_b2c_high_pay_and_missing_tags(self):
+        from nicheiq.utils.segment_payability import payer_retarget_hint
+        assert payer_retarget_hint(self._idea(pay_cls="smb-budget", pay=0.15)) is None
+        assert payer_retarget_hint(self._idea(target="b2c")) is None
+        assert payer_retarget_hint(self._idea(pay=0.5)) is None      # noise gate
+        assert payer_retarget_hint(self._idea(target=None)) is None  # no tags
+        assert payer_retarget_hint(self._idea(pay=None)) is None     # unscored
+
+    def test_digest_line_carries_payer_note(self):
+        from nicheiq.utils.idea_portfolio_summary import _idea_digest_line
+        idea = self._idea()
+        idea.solution_name = "ClearingCalc"
+        line = _idea_digest_line(idea)
+        assert "payer note:" in line
+        assert "may differ" in line
+
+    def test_ruled_out_reason_carries_hint(self):
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+        from nicheiq.crews.unified_solution_crew import UnifiedSolutionCrew
+        crew = UnifiedSolutionCrew.__new__(UnifiedSolutionCrew)
+        idea = self._idea()
+        idea.market_fit_score = 0.35
+        idea.incumbent_parity = None
+        idea.data_access_model = "public"
+        idea.build_feasibility_score = 0.9
+        reason, band = UnifiedSolutionCrew._compose_ruled_out_reason(crew, idea)
+        assert "wallet is thin" in reason
+        assert "may differ" in reason

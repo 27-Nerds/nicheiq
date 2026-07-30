@@ -14,6 +14,13 @@ const mockJobDispatchFindUnique = vi.fn();
 const mockJobDispatchUpdateMany = vi.fn();
 const mockChatMessageCreate = vi.fn();
 const mockCancelRegenerationDispatch = vi.fn();
+const mockPrismaTransaction = vi.fn();
+
+const transactionClient = {
+  job: { updateMany: (...args: any[]) => mockJobUpdateMany(...args) },
+  jobDispatch: { updateMany: (...args: any[]) => mockJobDispatchUpdateMany(...args) },
+  chatMessage: { create: (...args: any[]) => mockChatMessageCreate(...args) },
+};
 
 vi.mock('../../services/db.js', () => ({
   prisma: {
@@ -33,11 +40,7 @@ vi.mock('../../services/db.js', () => ({
     chatMessage: {
       create: (...args: any[]) => mockChatMessageCreate(...args),
     },
-    $transaction: async (callback: any) => callback({
-      job: { updateMany: (...args: any[]) => mockJobUpdateMany(...args) },
-      jobDispatch: { updateMany: (...args: any[]) => mockJobDispatchUpdateMany(...args) },
-      chatMessage: { create: (...args: any[]) => mockChatMessageCreate(...args) },
-    }),
+    $transaction: (callback: any) => mockPrismaTransaction(callback),
   },
 }));
 
@@ -90,8 +93,11 @@ vi.mock('../../utils/errorTranslator.js', () => ({
 }));
 
 vi.mock('../../services/creditService.js', () => ({
+  refundChargeInTx: vi.fn(),
   refundForStage: vi.fn(),
+  refundForStageInTx: vi.fn(),
   refundForRegenerationStage: vi.fn(),
+  isGuidedSegment: vi.fn(),
 }));
 
 vi.mock('../../types/job.js', async (importOriginal) => {
@@ -129,6 +135,8 @@ const jobId = '00000000-0000-0000-0000-000000000001';
 beforeEach(async () => {
   vi.clearAllMocks();
   mockNotifySolutionsReady.mockResolvedValue(undefined);
+  mockJobDispatchUpdateMany.mockResolvedValue({ count: 1 });
+  mockPrismaTransaction.mockImplementation(async (callback: any) => callback(transactionClient));
 
   app = express();
   app.use(express.json());
@@ -171,6 +179,81 @@ describe('POST /api/workers/ideas-ready', () => {
         }),
       })
     );
+  });
+
+  it('atomically closes the exact claimed dispatch with the job transition', async () => {
+    const dispatchId = '00000000-0000-4000-8000-000000000010';
+    mockJobUpdateMany.mockResolvedValue({ count: 1 });
+    mockJobDispatchUpdateMany.mockResolvedValue({ count: 1 });
+    mockJobFindUnique.mockResolvedValue({ userId: null, niche: 'test' });
+
+    const response = await request(app)
+      .post('/api/workers/ideas-ready')
+      .send({ ...validPayload, dispatch_id: dispatchId });
+
+    expect(response.status).toBe(200);
+    expect(mockPrismaTransaction).toHaveBeenCalledTimes(1);
+    expect(mockJobDispatchUpdateMany).toHaveBeenCalledWith({
+      where: {
+        id: dispatchId,
+        jobId,
+        kind: 'CONTINUE',
+        state: 'CLAIMED',
+      },
+      data: {
+        state: 'COMPLETED',
+        settledAt: expect.any(Date),
+      },
+    });
+  });
+
+  it('rolls back the job transition when the exact claimed dispatch cannot close', async () => {
+    const dispatchId = '00000000-0000-4000-8000-000000000010';
+    mockJobUpdateMany.mockResolvedValue({ count: 1 });
+    mockJobDispatchUpdateMany.mockResolvedValue({ count: 0 });
+    mockJobFindUnique.mockResolvedValue({
+      status: 'RUNNING',
+      ideasShownAt: null,
+      activeDispatchId: dispatchId,
+    });
+    mockJobDispatchFindUnique.mockResolvedValue({
+      jobId,
+      kind: 'CONTINUE',
+      state: 'AUTHORIZED',
+    });
+
+    const response = await request(app)
+      .post('/api/workers/ideas-ready')
+      .send({ ...validPayload, dispatch_id: dispatchId });
+
+    expect(response.status).toBe(409);
+    expect(response.body.state).toBe('RUNNING');
+    expect(mockBroadcastProgress).not.toHaveBeenCalled();
+    expect(mockNotifySolutionsReady).not.toHaveBeenCalled();
+  });
+
+  it('accepts a lost-response retry only when that exact dispatch already completed', async () => {
+    const dispatchId = '00000000-0000-4000-8000-000000000010';
+    mockJobUpdateMany.mockResolvedValue({ count: 0 });
+    mockJobFindUnique.mockResolvedValue({
+      status: 'AWAITING_SELECTION',
+      ideasShownAt: new Date(),
+      activeDispatchId: null,
+    });
+    mockJobDispatchFindUnique.mockResolvedValue({
+      jobId,
+      kind: 'CONTINUE',
+      state: 'COMPLETED',
+    });
+
+    const response = await request(app)
+      .post('/api/workers/ideas-ready')
+      .send({ ...validPayload, dispatch_id: dispatchId });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ status: 'ok', idempotent: true });
+    expect(mockBroadcastProgress).not.toHaveBeenCalled();
+    expect(mockNotifySolutionsReady).not.toHaveBeenCalled();
   });
 
   it('stores solutionIdeas and checkpointPath', async () => {

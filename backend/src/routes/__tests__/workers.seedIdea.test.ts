@@ -85,9 +85,15 @@ vi.mock('../../utils/errorTranslator.js', () => ({
 }));
 
 const mockRefundForSeedIdeaStage = vi.fn();
+const mockRefundChargeInTx = vi.fn();
 
 vi.mock('../../services/creditService.js', () => ({
+  refundChargeInTx: (...a: any[]) => mockRefundChargeInTx(...a),
   refundForStage: vi.fn(),
+  refundForStageInTx: (_tx: any, id: string, stage: string) => {
+    const ordinal = Number(stage.replace('seed_idea_', ''));
+    return mockRefundForSeedIdeaStage(id, ordinal);
+  },
   refundForRegenerationStage: vi.fn(),
   refundForSeedIdeaStage: (...a: any[]) => mockRefundForSeedIdeaStage(...a),
   isGuidedSegment: vi.fn(),
@@ -111,7 +117,8 @@ const dispatchId = '11111111-1111-1111-1111-111111111111';
 
 beforeEach(async () => {
   vi.clearAllMocks();
-  mockRefundForSeedIdeaStage.mockResolvedValue({ amount: -2 });
+  mockRefundForSeedIdeaStage.mockResolvedValue({ id: 'refund-seed-3', amount: 2 });
+  mockRefundChargeInTx.mockResolvedValue({ id: 'refund-exact', amount: 2 });
   mockChatMessageCreate.mockResolvedValue({ id: 'settled-receipt-1' });
 
   app = express();
@@ -385,8 +392,12 @@ describe('POST /api/workers/seed-failed', () => {
     // Promoted FAILED -> REFUNDED once the credit is actually back — a SEPARATE call from the
     // settleDispatch one above (mirrors /gate-failed's own two-step settle).
     expect(mockDispatchUpdateMany).toHaveBeenCalledWith({
-      where: { id: dispatchId },
-      data: { state: 'REFUNDED' },
+      where: { id: dispatchId, state: 'FAILED' },
+      data: expect.objectContaining({
+        state: 'REFUNDED',
+        refundTransactionId: 'refund-seed-3',
+        refundedAmount: 2,
+      }),
     });
   });
 
@@ -453,6 +464,38 @@ describe('POST /api/workers/seed-failed', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.stale).toBe(true);
+    expect(mockRefundForSeedIdeaStage).not.toHaveBeenCalled();
+  });
+
+  it('rolls back on exact-charge refund failure and refunds exactly once after retry', async () => {
+    mockDispatchFindUnique.mockResolvedValue({
+      seedOrdinal: 3,
+      sourceMessageId: 'msg-xyz',
+      chargeId: 'charge-seed-3',
+    });
+    mockJobUpdateMany
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 0 });
+    mockDispatchUpdateMany.mockResolvedValue({ count: 1 });
+    mockRefundChargeInTx
+      .mockRejectedValueOnce(new Error('ledger unavailable'))
+      .mockResolvedValueOnce({ id: 'refund-seed-3', amount: 2 });
+    mockJobFindUnique.mockResolvedValue({
+      status: 'AWAITING_SELECTION',
+      activeDispatchId: null,
+    });
+
+    const first = await request(app).post('/api/workers/seed-failed').send(validPayload);
+    const retry = await request(app).post('/api/workers/seed-failed').send(validPayload);
+    const duplicate = await request(app).post('/api/workers/seed-failed').send(validPayload);
+
+    expect(first.status).toBe(500);
+    expect(retry.status).toBe(200);
+    expect(duplicate.body.stale).toBe(true);
+    expect(mockRefundChargeInTx).toHaveBeenCalledTimes(2);
     expect(mockRefundForSeedIdeaStage).not.toHaveBeenCalled();
   });
 });
