@@ -223,6 +223,27 @@ describe('landing auxiliary dispatch lifecycle', () => {
     );
   });
 
+  it('keeps an expired-allowance zero reversal FAILED', async () => {
+    mockDispatchFindFirst.mockResolvedValue({ chargeId: 'charge-landing-expired' });
+    mockJobUpdateMany.mockResolvedValue({ count: 1 });
+    mockRefundChargeInTx.mockResolvedValue({ id: 'reversal-zero', amount: 0 });
+    mockDispatchUpdateMany.mockResolvedValue({ count: 1 });
+
+    const { failLandingPageDispatch } = await import('../dispatchService.js');
+    await expect(failLandingPageDispatch(JOB_ID, DISPATCH_ID)).resolves.toBe(true);
+
+    expect(mockDispatchUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          state: DispatchState.FAILED,
+          refundTransactionId: 'reversal-zero',
+          refundedAt: undefined,
+          refundedAmount: 0,
+        }),
+      }),
+    );
+  });
+
   it('a duplicate failure loses the Job CAS and produces no second refund or side effect', async () => {
     mockDispatchFindFirst.mockResolvedValue({ chargeId: 'charge-landing-1' });
     mockJobUpdateMany.mockResolvedValue({ count: 0 });

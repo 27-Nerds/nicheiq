@@ -4,6 +4,7 @@ import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { CONFIG } from '../config.js';
+import { translateError } from '../utils/errorTranslator.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -214,9 +215,18 @@ export async function sendFailureEmail(
   errorDetails?: ErrorDetails | null,
   phaseContext?: PhaseContextForEmail | null
 ): Promise<void> {
-  // Use friendly message if available, otherwise fall back to raw error
-  let displayMessage = errorDetails?.userMessage || errorMessage;
-  let guidance = errorDetails?.actionableGuidance || 'You can try submitting your research request again. If the problem persists, please contact support.';
+  // `errorMessage` is the RAW stored job error — worker text, a traceback, or an internal token
+  // like `RESUME_NOT_FAILED:QUEUED`. It is a debugging handle, not copy, and echoing it into an
+  // email was the leak. Callers that have a translation pass one; the ones that do not (the
+  // heartbeat stall path, and the worker `data.error` progress path) used to fall straight
+  // through to the raw string.
+  //
+  // So the fallback is the translator every other error surface already uses, rather than the
+  // raw text: unclassifiable input resolves to INTERNAL_ERROR, whose userMessage/guidance are
+  // fixed copy. `rawMessage` keeps the original for the debugging channel without rendering it.
+  const fallback = translateError('INTERNAL_ERROR', errorMessage);
+  let displayMessage = errorDetails?.userMessage || fallback.userMessage;
+  let guidance = errorDetails?.actionableGuidance || fallback.actionableGuidance;
 
   // Enrich with phase context if provided
   if (phaseContext) {

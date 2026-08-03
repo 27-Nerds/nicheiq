@@ -32,6 +32,8 @@
      *  until a manual page reload; now the wait says so and offers a re-check. */
     stalled?: boolean;
     onRecheck?: () => void;
+    cancelling?: boolean;
+    onCancel?: () => void;
     /** Opens the collapsed Examined-and-ruled-out list. Record view only. */
     onOpenRuledOut?: () => void;
     /** Routed handoff: the job hub remains the only place that may apply it. */
@@ -45,6 +47,8 @@
     operation = null,
     stalled = false,
     onRecheck,
+    cancelling = false,
+    onCancel,
     onOpenRuledOut,
     onProposeCandidate,
   }: Props = $props();
@@ -63,11 +67,19 @@
   });
 
   const progress = $derived(evaluationProgress(operation, elapsedClock.now));
+  const recovering = $derived(operation?.state === "RECOVERING");
+
+  function recoveryHeadline(title: string): string {
+    return `Restoring your previous candidate set — ${title}`;
+  }
+
+  const recoveryNote = "The evaluation stopped before it settled. We are restoring the candidate set from before it started. After restoration, any refundable credits are returned; if no refund applies, the receipt will say so.";
 
   function outcomeLabel(outcome: SeedActivity["outcome"]): string {
     if (outcome === "accepted") return "Added to candidates";
     if (outcome === "demoted") return "Did not qualify";
     if (outcome === "refunded") return "Refunded";
+    if (outcome === "cancelled") return "Cancelled";
     return "Evaluation failed";
   }
 
@@ -76,6 +88,7 @@
     if (outcome === "accepted") return "It is in the ranked candidates above.";
     if (outcome === "demoted") return "The full analysis is kept with the ideas you screened out.";
     if (outcome === "refunded") return "No candidate was produced. Your credits were returned.";
+    if (outcome === "cancelled") return "The evaluation was cancelled before work started.";
     return "No candidate was produced.";
   }
 
@@ -96,17 +109,25 @@
     <section class="evaluation-live" aria-label="Evaluation in progress">
       {#each shown as activity (activity.evaluationId ?? activity.sourceMessageId)}
         <p class="live-row" class:overdue={progress.phase === "overdue"} role="status">
-          {#if progress.phase === "queued"}
+          {#if recovering}
+            <RotateCcw aria-hidden="true" />
+          {:else if progress.phase === "queued"}
             <Clock aria-hidden="true" />
           {:else}
             <Loader2 class="spin" aria-hidden="true" />
           {/if}
-          <span class="live-title">{phaseHeadline(progress.phase, titleOf(activity))}</span>
+          <span class="live-title">
+            {recovering
+              ? recoveryHeadline(titleOf(activity))
+              : phaseHeadline(progress.phase, titleOf(activity))}
+          </span>
           <span class="live-elapsed" aria-label={`Elapsed ${progress.elapsedLabel}`}>
             {progress.elapsedLabel}
           </span>
           <span class="live-note">
-            {#if stalled}
+            {#if recovering}
+              {recoveryNote}
+            {:else if stalled}
               We stopped checking automatically. The evaluation still settles or refunds
               on its own — check for the result, or reload later.
             {:else}
@@ -116,6 +137,11 @@
           {#if stalled && onRecheck}
             <button type="button" class="live-recheck" onclick={onRecheck}>
               Check for the result
+            </button>
+          {/if}
+          {#if onCancel && !recovering}
+            <button type="button" class="live-cancel" disabled={cancelling} onclick={onCancel}>
+              {cancelling ? "Cancelling…" : "Cancel evaluation"}
             </button>
           {/if}
         </p>
@@ -174,8 +200,12 @@
                     <p>This direction cleared the market-fit check and was appended to the candidate pool.</p>
                   {:else if activity.outcome === "demoted"}
                     <p>This direction was evaluated but did not clear the market-fit check.</p>
+                  {:else if activity.outcome === "refunded"}
+                    <p>The evaluation did not produce a candidate. Eligible credits were returned.</p>
+                  {:else if activity.outcome === "cancelled"}
+                    <p>The evaluation was cancelled before work started, so no candidate was produced.</p>
                   {:else}
-                    <p>The evaluation did not produce a candidate. Any charged credits were refunded.</p>
+                    <p>The evaluation failed before producing a candidate.</p>
                   {/if}
                   {#if activity.evaluationId}
                     <small>Evaluation {activity.evaluationId}</small>
@@ -272,6 +302,21 @@
     font-weight: 700;
     cursor: pointer;
   }
+  .live-cancel {
+    min-height: 2rem;
+    padding: 0 var(--space-2);
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-text-secondary);
+    font: inherit;
+    font-size: var(--text-sm);
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .live-cancel:hover { background: var(--color-bg-surface); color: var(--color-text-primary); }
+  .live-cancel:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+  .live-cancel:disabled { opacity: 0.55; cursor: wait; }
   .live-recheck:hover { border-color: var(--color-input-border-hover); background: var(--color-bg-surface); }
   .live-recheck:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 

@@ -11,22 +11,24 @@
 # Variables:
 #   - solution_name, solution_description, value_proposition, technical_approach
 #   - project_type, estimated_development_time
-#   - top_pain_points_list (formatted with severity/WTP scores)
+#   - top_pain_points_list (formatted with severity/WTP scores), pain_scope_requirement
 #   - channels_summary (list of recommended marketing channels from GTM blueprint)
 #   - icp_summary (ideal customer profile overview)
 #   - total_keyword_count, tier0_keyword_count, tier1_keyword_count
 #   - competitor_count
 #   - niche
-#   - metric_calibration: Pre-computed 30-day visitor target from keyword data
+#   - metric_calibration: Pre-computed 30-day visitor target, weekly ramp and subscriber
+#     target, all derived from keyword data
+#   - metric_ceiling: Pre-computed hard cap, derived from the same band as metric_calibration
 
 template: |
   Generate a tactical 30-day Go-to-Market action plan with week-by-week steps for launching {solution_name}.
 
   **═══ CRITICAL RULES (Read First) ═══**
-  ✓ ALL actions must reference ACTUAL pain points from the provided list (use exact titles)
+  ✓ Pain claims must use ACTUAL pain points from the provided list (use exact titles)
   ✓ ALL channel names must be EXACT copies from the channels summary
   ✓ ALL metrics must use conservative ranges appropriate for early-stage niche products
-  ✓ At least 50% of actions must explicitly address one of the 3 pain points by title
+  ✓ {pain_scope_requirement}
   ✗ NO generic actions without channel + pain point specificity
   ✗ NO unrealistic metrics (no "10,000 visitors" or "500 subscribers" goals)
 
@@ -54,7 +56,7 @@ template: |
 
   {top_pain_points_list}
 
-  **REQUIREMENT:** At least 50% of your action items must explicitly mention one of these pain point titles.
+  **REQUIREMENT:** {pain_scope_requirement}
 
   **═════════════════════════════════════════════════════════════════════════**
   **IDEAL CUSTOMER PROFILE**
@@ -87,10 +89,10 @@ template: |
 
   | Phase | Primary Focus | Channel Integration | Action Types | Success Indicators |
   |-------|--------------|---------------------|--------------|-------------------|
-  | **Week 1: Foundation** | Setup & Listening | Set up tracking, analytics | - Landing page creation<br>- Email capture setup<br>- Social listening in target communities | - Analytics configured<br>- First 10-20 early access signups |
-  | **Week 2: Value First** | Initial Engagement | Begin content publishing on 1-2 primary channels | - Publish first content addressing top pain point<br>- Share in relevant communities<br>- Begin building email list | - 50-150 landing page visitors<br>- 10-30 email subscribers<br>- First community engagement |
-  | **Week 3: Validation** | Customer Discovery | Engage directly with early adopters | - Conduct 5-10 customer interviews<br>- Iterate messaging based on feedback<br>- Publish case study or insight content | - 5+ meaningful conversations<br>- Refined value prop messaging<br>- First testimonial or quote |
-  | **Week 4: Optimization** | Data-Driven Iteration | Double down on best-performing channel | - Analyze Week 2-3 data<br>- Optimize top content<br>- Plan first feature iteration | - 100-300 total visitors<br>- 20-50 total subscribers<br>- Clear next steps identified |
+  | **Week 1: Foundation** | Setup & Listening | Set up tracking, analytics | - Landing page creation<br>- Email capture setup<br>- Social listening in target communities | - Analytics configured<br>- First early access signups (use the Week 1 figure from the metric calibration below) |
+  | **Week 2: Value First** | Initial Engagement | Begin content publishing on 1-2 primary channels | - Publish first content addressing top pain point<br>- Share in relevant communities<br>- Begin building email list | - Week 2 visitor figure from the metric calibration below<br>- First email subscribers<br>- First community engagement |
+  | **Week 3: Validation** | Customer Discovery | Engage directly with early adopters | - Conduct {interview_count_range} customer interviews<br>- Iterate messaging based on feedback<br>- Publish case study or insight content | - 5+ meaningful conversations<br>- Refined value prop messaging<br>- First testimonial or quote |
+  | **Week 4: Optimization** | Data-Driven Iteration | Double down on best-performing channel | - Analyze Week 2-3 data<br>- Optimize top content<br>- Plan first feature iteration | - Week 4 visitor figure from the metric calibration below<br>- 30-day subscriber target from the same block<br>- Clear next steps identified |
 
   **═════════════════════════════════════════════════════════════════════════**
   **ACTION CONSTRUCTION RULES**
@@ -99,7 +101,10 @@ template: |
   **Pattern for Well-Formed Actions:**
   ✓ CORRECT: "Publish [specific content type] on [EXACT_CHANNEL_NAME] addressing [EXACT_PAIN_POINT_TITLE]"
   ✓ CORRECT: "Set up email capture form on landing page targeting [persona] struggling with [EXACT_PAIN_POINT_TITLE]"
-  ✓ CORRECT: "Conduct 5 customer interviews with [persona] to validate [EXACT_PAIN_POINT_TITLE] severity"
+  ✓ CORRECT: "Conduct {interview_count_range} customer interviews with [persona] to validate [EXACT_PAIN_POINT_TITLE] severity"
+    (the interview count is interpolated from one shared constant across every prompt in
+    this report — the decision table and the metric calibration below render the SAME
+    value. Copy that figure verbatim; do not narrow, widen, or round it.)
 
   ✗ WRONG: "Create content" (too vague - which channel? which pain point?)
   ✗ WRONG: "Build community" (no channel specified, no pain point reference)
@@ -117,30 +122,20 @@ template: |
 
   {metric_calibration}
 
-  Use this keyword-calibrated target as the primary anchor for your 30-day visitor goals.
-  Adjust the weekly breakdown below accordingly.
+  This block is the ONLY source of visitor and subscriber figures. Use its weekly ramp and
+  its 30-day totals verbatim — do not substitute your own ranges, and do not exceed the
+  ceiling stated at the end of this prompt.
 
   **═════════════════════════════════════════════════════════════════════════**
   **SUCCESS METRICS CALIBRATION (Conservative Niche Market Ranges)**
   **═════════════════════════════════════════════════════════════════════════**
 
-  **Landing Page Traffic:**
-  - Week 1: 10-50 visitors (friends, network, initial shares)
-  - Week 2: 50-150 visitors (first content distribution)
-  - Week 3: 100-250 visitors (community engagement)
-  - Week 4: 150-400 visitors (optimization + momentum)
-  - **30-Day Total Target:** 300-500 unique visitors
-
-  **Email List Growth:**
-  - Week 1: 5-15 early access signups
-  - Week 2: 10-30 subscribers (content + community)
-  - Week 3: 15-40 subscribers (validation content)
-  - Week 4: 20-50 subscribers (optimized funnel)
-  - **30-Day Total Target:** 30-70 email subscribers
+  **Landing Page Traffic and Email List Growth:** use the weekly ramp and the 30-day
+  subscriber target from the pre-computed metric calibration block above.
 
   **Community Engagement:**
   - Meaningful conversations: 10-20 over 30 days
-  - Customer interviews: 5-10 in Weeks 3-4
+  - Customer interviews: {interview_count_range} in Weeks 3-4
   - First testimonial/social proof: 1-3 quotes by Week 4
 
   **Content Performance:**
@@ -188,8 +183,8 @@ template: |
   Include the week theme context within each action item itself.
 
   **Example action format:**
-  ✓ "Week 1 Foundation: Set up landing page with email capture targeting [persona] struggling with [PAIN_POINT_TITLE] - track 10-20 early access signups"
-  ✓ "Publish comparison guide on [CHANNEL] addressing [PAIN_POINT_TITLE] - target 50-100 views"
+  ✓ "Week 1 Foundation: Set up landing page with email capture targeting [persona] struggling with [PAIN_POINT_TITLE] - track [WEEK_1_SIGNUP_TARGET] early access signups"
+  ✓ "Publish comparison guide on [CHANNEL] addressing [PAIN_POINT_TITLE] - target [WEEK_2_VISITOR_TARGET] views"
 
   These show FORMAT ONLY — do not reuse the first one as a template for several actions.
 
@@ -202,7 +197,7 @@ template: |
   Remember:
   ✓ Pain point titles must be EXACT copies from the list
   ✓ Channel names must be EXACT copies from the summary
-  ✓ Metrics must be conservative (≤500 visitors, ≤70 subscribers in 30 days)
+  ✓ Metrics must be conservative and within the calibrated ceiling ({metric_ceiling})
   ✓ At least 50% of actions must reference specific pain points by title
   ✓ Every action needs: deliverable + channel + pain point tie-in + measurable outcome
   ✓ NO two actions in the same week may be the same job with a different pain point/persona
@@ -220,5 +215,5 @@ template: |
   - No two actions within a week are the same job with a swapped pain point/persona
   - ≥50% of actions reference specific pain point titles (exact match)
   - All channel names are EXACT copies from channels summary
-  - All metrics in success_metrics are conservative (≤500 visitors, ≤70 subscribers)
+  - All metrics in success_metrics are within the calibrated ceiling ({metric_ceiling})
   </verification>

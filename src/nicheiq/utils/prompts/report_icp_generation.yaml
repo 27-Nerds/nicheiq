@@ -12,7 +12,8 @@ template: |
   **═══ CRITICAL RULES ═══**
   - Ground EVERY field in the data below — do NOT invent demographics, psychographics, or triggers
   - Use specific segment names, pain point titles, and vocabulary from the research
-  - Demographics must include age range, occupation/role, and context — NOT the niche description
+  - Demographics must include occupation/role and professional context — NOT the niche
+    description. Include an age range ONLY if the data above supplies one; omit it otherwise
   - Psychographics must describe values, motivations, and behaviors — NOT repeat pain points
   - Buying triggers must describe real-world events that push someone to seek a solution
   - Decision criteria must describe what the persona evaluates when comparing options
@@ -42,7 +43,7 @@ template: |
   {audience_segments_summary}
 
   **═════════════════════════════════════════════════════════════════════════**
-  **TOP PAIN POINTS (by severity)**
+  **VALIDATED PAIN POINTS ADDRESSED BY THIS SOLUTION (by priority)**
   **═════════════════════════════════════════════════════════════════════════**
 
   {pain_points_list}
@@ -70,9 +71,9 @@ template: |
     Use format "[Role] [First Name]" (e.g., "Startup Founder Sarah", "Agency Owner Alex").
     Base the role on the primary segment name above.
 
-  - **demographics**: 1-2 sentences covering age range, occupation/role, location tendency,
-    and professional context. Example: "25-40 year old solo SaaS founders and indie hackers,
-    predominantly based in North America and Europe, working remotely on bootstrapped products."
+  - **demographics**: 1-2 sentences covering occupation/role, location tendency, and
+    professional context — plus an age range only if the data above supplies one.
+    Shape: "[role/occupation from the segment], [location tendency], [working context]."
     DO NOT echo the niche description here.
 
   - **psychographics**: 2-3 sentences describing values, motivations, and behavioral patterns.
@@ -81,29 +82,32 @@ template: |
     product-market fit quickly with limited resources. Actively seeks peer advice on Reddit
     and Twitter before purchasing tools."
 
-  - **pain_points**: List of 3-5 pain point titles from the TOP PAIN POINTS section above.
-    Use the exact titles — do not rephrase.
+  - **pain_points**: Use only exact titles from the addressed-pain section above — do not
+    rephrase, borrow other niche pains, or invent titles. If that section says no validated
+    pain matched, return an empty list.
 
   - **goals**: List of 3-5 goals. Use the inferred goals above, refining wording to be
     outcome-oriented (e.g., "Reduce customer churn by identifying at-risk users early").
 
   - **buying_triggers**: 1-2 sentences describing real-world events or situations that
     push this persona to actively search for a solution. Reference specific pain points.
-    Example: "Triggered when monthly churn exceeds 5% or when a key customer cancels citing
-    poor onboarding. Often begins searching after reading a competitor success story on Twitter."
+    Shape: "Triggered when [measurable event tied to an addressed pain] or when [concrete
+    incident from the research]. Often begins searching after [discovery moment from the
+    audience data]."
 
   - **decision_criteria**: 1-2 sentences describing what this persona evaluates when
     comparing solutions. Reference budget sensitivity and expertise level from audience data.
-    Example: "Prioritizes ease of setup (must work within a day), transparent pricing under
-    $50/month, and integration with existing tools. Values community proof — checks Reddit
-    threads and Product Hunt reviews before committing."
+    Shape: "Prioritizes [setup/effort criterion], [pricing criterion stated in terms of the
+    audience's budget sensitivity, not an invented price point], and [integration or
+    expertise criterion]. Values [proof source named in the audience data]."
 
   **═══ VERIFICATION ═══**
   Before returning, verify:
   - persona_name is based on the primary segment, not generic
-  - demographics contains age range and occupation — NOT the niche description text
+  - demographics contains occupation and professional context — NOT the niche description
+    text, and no age range unless the data above supplied one
   - psychographics describes motivations and behaviors — NOT just "motivated by solving X"
-  - pain_points are exact titles from the research data
+  - pain_points are exact titles from the addressed-pain section only
   - buying_triggers describe specific real-world events, not generic "experiencing challenges"
   - decision_criteria reference concrete evaluation factors, not "requires customer interviews"
 

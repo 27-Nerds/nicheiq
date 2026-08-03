@@ -72,6 +72,24 @@ describe('formatJobResponse solutionIdeasCount', () => {
 
     expect(result.solutionIdeasCount).toBe(0);
   });
+
+  it('exposes immutable selected idea refs without rebuilding them from the current pool', () => {
+    const selectedSolutionRefs = [{
+      ideaId: 'idea-alpha',
+      ideaRevision: 2,
+      snapshotSha256: 'a'.repeat(64),
+    }];
+    const result = formatJobResponse(makeJob({
+      selectedSolutionRefs,
+      deepResearchRecommendedIdeaId: 'idea-alpha',
+      deepResearchRecommendedIdeaRevision: 2,
+      solutionIdeas: [{ idea_id: 'idea-alpha', idea_revision: 3, solution_name: 'Alpha v3' }],
+    }));
+
+    expect(result.selectedSolutionRefs).toEqual(selectedSolutionRefs);
+    expect(result.deepResearchRecommendedIdeaId).toBe('idea-alpha');
+    expect(result.deepResearchRecommendedIdeaRevision).toBe(2);
+  });
 });
 
 describe('formatJobResponse refund truth', () => {
@@ -124,6 +142,7 @@ describe('formatJobResponse refund truth', () => {
     }));
 
     expect(result.creditRefunded).toBe(true);
+    expect(result.creditRefundedAmount).toBe(100);
   });
 
   it('exposes the exact active dispatch kind without inventing a refund', () => {
@@ -140,7 +159,13 @@ describe('formatJobResponse refund truth', () => {
     }));
 
     expect(result.creditRefunded).toBe(false);
+    expect(result.creditRefundedAmount).toBe(0);
     expect(result.activeDispatchKind).toBe('SEED_IDEA');
+    expect(result.activeOperation).toEqual({
+      id: 'seed-dispatch',
+      kind: 'SEED_IDEA',
+      state: 'AUTHORIZED',
+    });
   });
 
   it('does not expose a terminal dispatch as the job owner', () => {
@@ -156,12 +181,34 @@ describe('formatJobResponse refund truth', () => {
     }));
 
     expect(result.activeDispatchKind).toBeNull();
+    expect(result.activeOperation).toBeNull();
+  });
+
+  it('keeps a paid-pool recovery visible as the active operation', () => {
+    const result = formatJobResponse(makeJob({
+      activeDispatchId: 'seed-dispatch',
+      dispatches: [{
+        id: 'seed-dispatch',
+        kind: 'SEED_IDEA',
+        state: 'RECOVERING',
+        refundedAmount: null,
+        refundTransaction: null,
+      }],
+    }));
+
+    expect(result.activeDispatchKind).toBe('SEED_IDEA');
+    expect(result.activeOperation).toEqual({
+      id: 'seed-dispatch',
+      kind: 'SEED_IDEA',
+      state: 'RECOVERING',
+    });
   });
 
   it('does not invent false when the caller did not load refund data', () => {
     const result = formatJobResponse(makeJob());
 
     expect(result).not.toHaveProperty('creditRefunded');
+    expect(result).not.toHaveProperty('creditRefundedAmount');
   });
 });
 

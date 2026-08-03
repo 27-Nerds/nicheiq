@@ -45,6 +45,27 @@ def test_phase1_fields_survive_checkpoint_round_trip(tmp_path, monkeypatch):
     save_state.niche_data_menu_text = "- Public permit records (city open-data portal)"
     save_state.niche_dissatisfaction_text = ""  # probed, found nothing — must round-trip as '', not None
     save_state.idea_portfolio_summary = "AlphaTool and BetaTracker both show moderate market fit."
+    # The partition itself must survive: regenerate/seed batches REUSE it so family_id (the
+    # thesis identity) stays stable instead of being re-labeled per batch.
+    save_state.buyer_job_partition = {
+        "source": "llm", "degraded": False, "degradation_reason": None,
+        "families": [{"family_id": "f1", "buyer": "Photographer",
+                      "triggering_job": "Cull a shoot", "economic_outcome": "Studio budget",
+                      "display_label": "Cull a shoot", "member_pain_ids": ["Culling is slow"],
+                      "inferred": False}],
+    }
+    save_state.idea_theses = {
+        "family_source": "llm",
+        "theses": [{"family_id": "f1", "display_label": "Cull a shoot",
+                    "members": [{"name": "AlphaTool", "winning_angle": "vertical_workflow"}],
+                    "lead_idea_name": "AlphaTool",
+                    "incumbent_status": "occupied", "incumbent_vendors": ["Aftershoot"],
+                    "fatal_assumptions": []}],
+        "uncovered_families": [{"family_id": "f2", "display_label": "Deliver galleries",
+                                "member_pain_ids": ["Galleries expire"],
+                                "reason": "no_cell_allocated", "reason_detail": "budget_exhausted"}],
+        "unassigned": [],
+    }
     save_state.user_pain_scope = PainScope(excluded_titles=["Noisy pain"], pinned_titles=["Keep this"])
     save_state.user_audience_scope = AudienceScope(
         excluded_segments=["Enterprise buyers"], segment_emphasis={"Solo founders": "high"},
@@ -91,6 +112,8 @@ def test_phase1_fields_survive_checkpoint_round_trip(tmp_path, monkeypatch):
     assert load_state.idea_portfolio_summary == (
         "AlphaTool and BetaTracker both show moderate market fit."
     )
+    assert load_state.idea_theses == save_state.idea_theses
+    assert load_state.buyer_job_partition == save_state.buyer_job_partition
     assert load_state.niche_difficulty_verdict is not None
     assert load_state.niche_difficulty_verdict.difficulty_level == "low"
     assert load_state.niche_difficulty_verdict.headline == "Software Fit: Strong"
@@ -137,7 +160,8 @@ _PERSISTED_VIA_METADATA = {
     "filtering_stats", "completed_stages", "fallback_stages", "social_content_metrics",
     "seeded_from_catalog", "stage_completion_timestamps", "idea_focus",
     "idea_coverage_caveats", "pipeline_degradations", "niche_drift_telemetry", "skipped_stages",
-    "sources_searched", "idea_ruled_out", "idea_funnel_counts", "idea_overlap_groups",
+    "sources_searched", "idea_ruled_out", "idea_funnel_counts", "idea_cell_allocation",
+    "idea_overlap_groups", "idea_theses", "buyer_job_partition",
     "niche_incumbent_map", "niche_wallet_brief", "idea_portfolio_summary",
     "user_pain_scope", "user_audience_scope", "user_adjusted",
     "niche_data_menu_text", "niche_dissatisfaction_text",

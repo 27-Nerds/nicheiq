@@ -258,7 +258,10 @@
   <!-- Competitive Summary (if available) -->
   {#if summary}
     <div class="summary-card">
-      <p class="summary-text" class:preview-blur={previewMode}>{@html renderMarkdown(summary)}</p>
+      <!-- A block, not a <p>: renderMarkdown emits its own <p>, and a <p> inside a
+           <p> is closed early by the HTML parser, so the hydrated DOM could not
+           match the server markup. The :global(p) rules below already style it. -->
+      <div class="summary-text" class:preview-blur={previewMode}>{@html renderMarkdown(summary)}</div>
     </div>
   {/if}
 
@@ -283,9 +286,12 @@
   {/if}
 
   <!-- Expandable: Competitive Landscape (Merged) -->
+  <!-- A wider population than the competitor tile above: this is the union of every
+       shortlisted idea's landscape, not the direct competitors for the selected one.
+       The title says so, otherwise the two counts read as contradicting each other. -->
   {#if totalCompetitors > 0}
     <ExpandableSection
-      title="Competitive Landscape"
+      title="Competitive landscape across all shortlisted ideas"
       icon={Layers}
       count={totalCompetitors}
       defaultOpen={previewMode}

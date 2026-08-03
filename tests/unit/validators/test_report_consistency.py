@@ -591,6 +591,19 @@ class TestCorePainPointCoverage:
         assert len(coverage_warnings) == 1
         assert coverage_warnings[0].severity == "INFO"
 
+    def test_paraphrased_solution_pain_uses_shared_token_match(self):
+        report = _make_report_with_pain_coverage(
+            core_pain_point="Vague client briefs cause multiple revision rounds",
+            pain_points_addressed=[
+                "Vague client briefs like cut the boring parts cause repeated revision rounds",
+            ],
+        )
+        validator = ReportConsistencyValidator()
+        warnings = validator.validate(report)
+        coverage_warnings = [w for w in warnings if "core pain point" in w.message.lower()]
+        assert len(coverage_warnings) == 1
+        assert coverage_warnings[0].severity == "INFO"
+
     def test_no_dashboard_no_crash(self):
         report = _make_report_with_pain_coverage(
             core_pain_point="High Setup Costs",
@@ -1003,3 +1016,89 @@ class TestViabilityVsVerdictConsistencyCheck:
             if "viability" in w.message.lower()
         ]
         assert len(viability_warnings) == 0
+
+
+# ======================================================================
+# Parity/Wallet Contradiction Check (2026-08 parity fix, plan Step 1)
+# ======================================================================
+
+
+def _make_solution(name="VetIdea", incumbent_parity=None):
+    sol = MagicMock()
+    sol.solution_name = name
+    sol.incumbent_parity = incumbent_parity
+    sol.pain_points_addressed = None   # keep the pain-coverage check quiet
+    return sol
+
+
+def _make_state_with_incumbents(rows):
+    state = _make_state(include_market_sizing=False, include_trend=False)
+    state.niche_incumbent_map = rows
+    return state
+
+
+class TestParityWalletContradiction:
+    def _warnings(self, report, state):
+        validator = ReportConsistencyValidator()
+        return [w for w in validator.validate(report, state)
+                if "incumbent_parity" in w.field_path]
+
+    def test_priced_vendor_bundled_free_stamp_flagged(self):
+        report = _make_report()
+        report.selected_solution_details = None
+        report.alternative_solutions = [_make_solution(
+            incumbent_parity="bundled_free (VetSnap): logs controlled drugs free")]
+        state = _make_state_with_incumbents(
+            [{"name": "VetSnap", "pricing": "$300/mo", "focus": "", "gap": ""}])
+        warnings = self._warnings(report, state)
+        assert len(warnings) == 1
+        assert warnings[0].severity == "WARNING"
+        assert "VetSnap" in warnings[0].message and "$300/mo" in warnings[0].message
+        assert warnings[0].field_path == "alternative_solutions[0].incumbent_parity"
+
+    def test_free_priced_vendor_not_flagged(self):
+        # Liquipedia-shaped row: pricing contains "free" → genuinely free, stamp stands.
+        report = _make_report()
+        report.selected_solution_details = None
+        report.alternative_solutions = [_make_solution(
+            incumbent_parity="bundled_free (Liquipedia): live brackets free")]
+        state = _make_state_with_incumbents(
+            [{"name": "Liquipedia", "pricing": "free", "focus": "", "gap": ""}])
+        assert self._warnings(report, state) == []
+
+    def test_non_bundled_free_stamps_not_flagged(self):
+        report = _make_report()
+        report.selected_solution_details = None
+        report.alternative_solutions = [
+            _make_solution(incumbent_parity="shipped by VetSnap: ships it"),
+            _make_solution(incumbent_parity="none found"),
+            _make_solution(incumbent_parity=None),
+        ]
+        state = _make_state_with_incumbents(
+            [{"name": "VetSnap", "pricing": "$300/mo", "focus": "", "gap": ""}])
+        assert self._warnings(report, state) == []
+
+    def test_nested_paren_vendor_parsed(self):
+        report = _make_report()
+        report.selected_solution_details = _make_solution(
+            name="DoseCalc",
+            incumbent_parity="bundled_free (Peptide Calculator (pepdose.com)): dosing")
+        report.alternative_solutions = []
+        state = _make_state_with_incumbents(
+            [{"name": "Peptide Calculator (pepdose.com)", "pricing": "$10/mo",
+              "focus": "", "gap": ""}])
+        warnings = self._warnings(report, state)
+        assert len(warnings) == 1
+        assert warnings[0].field_path == "selected_solution_details.incumbent_parity"
+
+    def test_no_state_or_unpriced_map_no_warning(self):
+        report = _make_report()
+        report.selected_solution_details = None
+        report.alternative_solutions = [_make_solution(
+            incumbent_parity="bundled_free (Hostaway): task automation")]
+        validator = ReportConsistencyValidator()
+        assert [w for w in validator.validate(report, None)
+                if "incumbent_parity" in w.field_path] == []
+        state = _make_state_with_incumbents(
+            [{"name": "Hostaway", "pricing": "unknown", "focus": "", "gap": ""}])
+        assert self._warnings(report, state) == []

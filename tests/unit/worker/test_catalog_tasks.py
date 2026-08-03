@@ -54,6 +54,31 @@ def _mock_solution(name="Sol1"):
     return s
 
 
+class TestRunCatalogPainPoints:
+    @patch("worker.tasks.mark_job_running")
+    @patch("worker.tasks.create_progress_callback")
+    def test_preview_materialization_failure_is_a_terminal_attempt(
+        self, mock_progress, mock_mark, tmp_path, monkeypatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        mock_progress.return_value = MagicMock()
+        with patch("nicheiq.flows.research_flow.ResearchFlow") as MockFlow:
+            flow = MockFlow.return_value
+            flow.state = SimpleNamespace(current_stage=5)
+            flow._materialize_preview_report.return_value = None
+
+            from worker.tasks import run_catalog_pain_points
+
+            with pytest.raises(RuntimeError, match="aborting catalog generation") as exc_info:
+                run_catalog_pain_points(
+                    "catalog-job-1", "category-1", "Bookkeeping", "Month-end close"
+                )
+
+        assert "retry" not in str(exc_info.value).lower()
+        assert getattr(exc_info.value, "failed_stage", None) == 5
+        flow.cleanup_collections.assert_called_once_with()
+
+
 @pytest.fixture(autouse=True)
 def _no_real_enrichment(monkeypatch):
     """Default every test to a no-op enrichment (no HN network); individual

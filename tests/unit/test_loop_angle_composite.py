@@ -8,7 +8,8 @@ from nicheiq.crews.idea_improvement_loop_v4 import IdeaCritiqueV4
 
 def _crit(mf, nov, clarity, seo):
     return IdeaCritiqueV4(market_fit=mf, novelty=nov, clarity=clarity, seo_surface=seo,
-                          binding_constraint="novelty", directive="x", meets_bar=False)
+                          on_anchor_pain=True, binding_constraint="novelty", directive="x",
+                          meets_bar=False)
 
 
 class TestAngleComposite:
@@ -38,6 +39,6 @@ class TestAngleComposite:
 
     def test_seo_surface_defaults_to_neutral(self):
         # legacy/flag-off path where the reviewer never scores seo_surface -> default 0.5, no crash
-        c = IdeaCritiqueV4(market_fit=0.6, novelty=0.5, clarity=0.6,
+        c = IdeaCritiqueV4(market_fit=0.6, novelty=0.5, clarity=0.6, on_anchor_pain=True,
                            binding_constraint="clarity", directive="x", meets_bar=False)
         assert c.seo_surface == 0.5

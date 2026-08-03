@@ -4,9 +4,18 @@ Uses CompetitorQueryGenerator with semantic validation.
 """
 
 from crewai.tools import BaseTool
+from loguru import logger
 
 from ..models.research_state import NicheContext
 from ..utils.generation import CompetitorQueryGenerator
+
+# The tool takes a positional pipe-delimited string, so the calling LLM can slide the niche
+# into the project_type slot (live-caught 2026-08-03: project_type arrived as "independent
+# U.S. live music venues"). An unrecognized value poisons every "Project Type:" instruction
+# in the query prompt, so it degrades to the default instead.
+_PROJECT_TYPES = frozenset(
+    {"saas", "directory", "aggregator", "comparison-tool", "marketplace"}
+)
 
 
 class CompetitorQueryTool(BaseTool):
@@ -36,6 +45,12 @@ class CompetitorQueryTool(BaseTool):
         parts = input_str.split("|")
         solution_name = parts[0].strip() if len(parts) > 0 else ""
         project_type = parts[1].strip() if len(parts) > 1 else "saas"
+        if project_type.lower() not in _PROJECT_TYPES:
+            logger.warning(
+                f"[CompetitorQueryTool] Unrecognized project_type '{project_type[:60]}' "
+                "— falling back to 'saas'"
+            )
+            project_type = "saas"
         pain_points = (
             [p.strip() for p in parts[2].split(",")]
             if len(parts) > 2 and parts[2].strip()

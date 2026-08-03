@@ -2,7 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({ chatComplete: vi.fn() }));
 
-vi.mock('../openai.js', () => ({ chatComplete: mocks.chatComplete }));
+vi.mock('../openai.js', () => ({
+  chatComplete: mocks.chatComplete,
+  hasApiKeyForModel: () => true,
+}));
 vi.mock('../../config.js', () => ({
   CONFIG: { openaiApiKey: 'test-key', openrouterApiKey: '' },
   // Mirrors the pipeline's payability_low_threshold; the buyer-evidence digest reads it
@@ -36,6 +39,7 @@ import {
   generateSelectionConceptSet,
   prepareSelectionConceptSetInput,
 } from '../selectionConceptSetService.js';
+import { candidateSnapshotSha256 } from '../../utils/ideaIdentity.js';
 
 const parent = {
   idea_id: 'idea-signal',
@@ -897,5 +901,102 @@ describe('retry feedback carries specifics', () => {
     const feedback = retryMessage();
     expect(feedback).toContain('INVALID_CONCEPT_SOURCE_COUNT');
     expect(feedback).toMatch(/adjacent direction/);
+  });
+});
+
+
+/**
+ * `promptPayload.parents[].candidate` is the WHOLE stored candidate, and the options this
+ * model writes are shown to the owner as titles, change summaries and rationales — the
+ * same route by which the analyst repeated `red_team_verdict: "killed"` onto a screen.
+ */
+describe('stored vocabulary in the fenced concept-forge payload', () => {
+  // Sibling describe: it does not inherit the main suite's beforeEach, so it arms the
+  // mock itself and clears the call history the earlier suites left behind.
+  beforeEach(() => {
+    mocks.chatComplete.mockReset();
+    mocks.chatComplete.mockResolvedValue({
+      choices: [{ message: { content: JSON.stringify({
+        options: [option('narrow', 1), option('reposition', 2), option('adjacent', 3)],
+      }) } }],
+      usage: { prompt_tokens: 300, completion_tokens: 900 },
+    });
+  });
+
+  /** None of the three is product vocabulary — `killed`'s shipped label is
+   *  "Premise unproven" and the other two have never had a user-facing form. */
+  const INTERNAL_VERDICT_TOKENS = /\b(killed|weakened|survives)\b/i;
+  /** The leak shape: a stored parity value still LEADING with its class token. */
+  const BARE_PARITY_CLASS =
+    /"(?:incumbent_parity|adjacent_market_parity)":\s*"(?:shipped|partial|substitute|bundled_free)\b/i;
+
+  const STORED_PARITY = [
+    'shipped by Aftershoot: culls RAW batches',
+    'partial by Opendate: covers the settlement step',
+    'substitute (Forrager): free templates cover it',
+    'bundled_free (Notion): included in the free tier',
+  ];
+
+  async function fencedPayload(extraFields: Record<string, unknown>): Promise<string> {
+    await generateSelectionConceptSet({
+      ...baseInput,
+      parents: [{ ...parent, ...extraFields }],
+    });
+    return mocks.chatComplete.mock.calls[0][0].messages[1].content as string;
+  }
+
+  it.each(['killed', 'weakened', 'survives'])(
+    'hands the concept forge no raw "%s" verdict to parrot',
+    async (verdict) => {
+      const content = await fencedPayload({ red_team_verdict: verdict });
+
+      expect(content).not.toMatch(INTERNAL_VERDICT_TOKENS);
+      // Non-destructive: the field is still there, nothing was dropped.
+      expect(content).toContain('"red_team_verdict"');
+    },
+  );
+
+  it('names the killed verdict the way the owner\'s screen does', async () => {
+    const content = await fencedPayload({ red_team_verdict: 'killed' });
+
+    expect(content).toContain('"red_team_verdict":"Premise unproven"');
+  });
+
+  it.each(STORED_PARITY)('hands the concept forge no bare parity class for "%s"', async (stored) => {
+    const content = await fencedPayload({
+      incumbent_parity: stored,
+      adjacent_market_parity: stored,
+    });
+
+    expect(content).not.toMatch(BARE_PARITY_CLASS);
+    expect(content).toContain('"incumbent_parity"');
+    expect(content).toContain('"adjacent_market_parity"');
+  });
+
+  /**
+   * `inputFingerprint` is the cache/staleness key for a stored concept set. It is derived
+   * from `parents` (hashing the raw candidate) and `context`, NEVER from `promptPayload`,
+   * so presenting the payload must leave it and the per-parent snapshot hash untouched.
+   */
+  it('leaves the fingerprint chain reading the raw stored candidate', async () => {
+    const stored = {
+      ...parent,
+      red_team_verdict: 'killed',
+      incumbent_parity: 'partial by Opendate: covers the settlement step',
+    };
+    const before = JSON.stringify(stored);
+    const input = { ...baseInput, parents: [stored] };
+
+    const prepared = prepareSelectionConceptSetInput(input);
+
+    expect(JSON.stringify(stored)).toBe(before);
+    expect(prepared.parents[0].candidateSnapshotSha256).toBe(candidateSnapshotSha256(stored));
+    // Re-deriving from the same stored input reproduces the key the row is stored under —
+    // this is exactly the staleness check routes/selectionConceptSets.ts runs.
+    expect(prepareSelectionConceptSetInput(input).inputFingerprint)
+      .toBe(prepared.inputFingerprint);
+    // And the payload the model reads is the presented copy, not the stored one.
+    expect(JSON.stringify(prepared.promptPayload)).not.toMatch(INTERNAL_VERDICT_TOKENS);
+    expect(JSON.stringify(prepared.promptPayload)).not.toMatch(BARE_PARITY_CLASS);
   });
 });

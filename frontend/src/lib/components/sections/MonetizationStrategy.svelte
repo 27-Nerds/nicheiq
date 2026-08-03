@@ -17,7 +17,7 @@
   } from "lucide-svelte";
   import { SECTION_MAP } from "$lib/config/report-sections";
   import type { PricingStrategy, TrafficMonetization } from "$lib/types/report";
-  import { renderMarkdown } from "$lib/utils/format";
+  import { renderMarkdown, stripLeadingHeading } from "$lib/utils/format";
   import Badge from "$lib/components/ui/Badge.svelte";
   import AnimateOnScroll from "$lib/components/ui/AnimateOnScroll.svelte";
   import SubsectionHeader from "$lib/components/ui/SubsectionHeader.svelte";
@@ -449,7 +449,7 @@
       variant="muted"
     >
       <div class="markdown-content narrative">
-        {@html renderMarkdown(cacBreakdown)}
+        {@html renderMarkdown(stripLeadingHeading(cacBreakdown, "CAC Breakdown"))}
       </div>
     </ExpandableSection>
   {/if}

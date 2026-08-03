@@ -30,6 +30,10 @@
    *  /selection/review itself is never gated — only this block inside it. */
   const decisionTools = $derived(data.decisionTools === true);
 
+  const lifecycle = getContext<SelectionWorkspaceLifecycle | undefined>(SELECTION_LIFECYCLE_CONTEXT);
+  const currentStatus = $derived(lifecycle?.status || data.job.status);
+  const canMutate = $derived(lifecycle?.status ? lifecycle.canMutate : currentStatus === "AWAITING_SELECTION");
+
   // Rationale survives navigation away from the commit gate: write-through to
   // sessionStorage per job, restored on mount, cleared after a successful start.
   const rationaleStorageKey = $derived(`nicheiq:research-rationale:${data.job.id}`);
@@ -41,7 +45,8 @@
       return "";
     }
   }
-  let rationale = $state(restoreRationale());
+  let rationale = $state("");
+  let rationaleJobId = $state("");
   let submitting = $state(false);
   let submitError = $state("");
   let clientRequestId = $state(crypto.randomUUID());
@@ -58,6 +63,17 @@
   let detailIndex = $state<number | null>(null);
 
   $effect(() => {
+    if (rationaleJobId === data.job.id) return;
+    rationaleJobId = data.job.id;
+    rationale = canMutate ? restoreRationale() : data.job.selectionRationale ?? "";
+  });
+
+  $effect(() => {
+    if (rationaleJobId !== data.job.id) return;
+    if (!canMutate) {
+      rationale = data.job.selectionRationale ?? "";
+      return;
+    }
     const value = rationale;
     try {
       if (value) sessionStorage.setItem(rationaleStorageKey, value);
@@ -67,9 +83,6 @@
     }
   });
 
-  const lifecycle = getContext<SelectionWorkspaceLifecycle | undefined>(SELECTION_LIFECYCLE_CONTEXT);
-  const currentStatus = $derived(lifecycle?.status || data.job.status);
-  const canMutate = $derived(lifecycle?.status ? lifecycle.canMutate : currentStatus === "AWAITING_SELECTION");
   const selectedIdeas = $derived(data.workspace.ideas);
   const selectedCount = $derived(selectedIdeas.length);
   const selectedRefs = $derived(new Set(selectedIdeas.map((idea) => `${idea.idea_id}:${idea.idea_revision ?? 1}`)));
@@ -266,7 +279,11 @@
   <header class="selection-page__header">
     <div>
       <h2>Review your shortlist</h2>
-      <p class="selection-page__lead">Nothing is charged until you confirm this exact set of ideas.</p>
+      <p class="selection-page__lead">
+        {canMutate
+          ? "Nothing is charged until you confirm this exact set of ideas."
+          : "View-only record of the exact shortlist. Open any idea for details; changes and a new research start are unavailable."}
+      </p>
     </div>
     {#if selectedCount > 0}
       <p class="review-record">{recordLine}</p>
@@ -276,10 +293,15 @@
   {#if selectedCount === 0}
     <div class="selection-page__panel">
       <EmptyState
-        title="Select at least one idea first"
-        description="Return to the comparison, choose up to three ideas, then review the scope again."
+        title={canMutate ? "Select at least one idea first" : "No saved shortlist to review"}
+        description={canMutate
+          ? "Return to the comparison, choose up to three ideas, then review the scope again."
+          : "This run does not contain a saved shortlist record."}
       >
-        <Button href={routeHref("compare")} label={TOOL_NAMES.compare} />
+        <Button
+          href={canMutate ? routeHref("compare") : `/jobs/${data.job.id}`}
+          label={canMutate ? TOOL_NAMES.compare : "View run"}
+        />
       </EmptyState>
     </div>
   {:else}
@@ -298,7 +320,11 @@
                 : `One price for up to 3 ideas — the same ${researchCost} credits for 1, 2, or 3.`}
             </p>
           </div>
-          <a href={`/jobs/${data.job.id}#opportunities`}>{CHOOSE_IDEAS_LABEL}</a>
+          {#if canMutate}
+            <a href={`/jobs/${data.job.id}#opportunities`}>{CHOOSE_IDEAS_LABEL}</a>
+          {:else}
+            <span class="readonly-label">Saved scope</span>
+          {/if}
         </div>
         <ol class="selected-list">
           {#each selectedIdeas as idea, index (`${idea.idea_id}:${idea.idea_revision ?? 1}`)}
@@ -336,7 +362,11 @@
               <strong>Risk check</strong>
               <Badge variant="muted" size="sm">Optional</Badge>
             </div>
-            <a href={routeHref("risks")}>{riskChecks > 0 ? "Review checks" : STRESS_TEST_EVIDENCE_LABEL}</a>
+            <a href={routeHref("risks")}>
+              {canMutate
+                ? riskChecks > 0 ? "Review checks" : STRESS_TEST_EVIDENCE_LABEL
+                : "Open evidence record"}
+            </a>
           </div>
           <!-- One sentence, never two that appear to contradict: with nothing
                current AND older checks archived, the old copy read "No risk check
@@ -345,9 +375,11 @@
             {#if riskChecks > 0}
               {riskChecks} current evidence {riskChecks === 1 ? "check is" : "checks are"} saved. This does not change your selected ideas.
             {:else if staleRiskChecks > 0}
-              No current risk check: earlier checks were archived when their source evidence changed. You can continue because this step is optional.
+              No current risk check: earlier checks were archived when their source evidence changed.{canMutate ? " You can continue because this step is optional." : ""}
             {:else}
-              No risk check saved. You can continue because this step is optional.
+              {canMutate
+                ? "No risk check saved. You can continue because this step is optional."
+                : "No risk check was saved before selection closed."}
             {/if}
           </p>
           {#if ownerEvidence > 0}
@@ -368,7 +400,7 @@
           {/if}
           {#if weakenedChecks > 0}
             <p class="risk-flag">
-              {weakenedChecks} {weakenedChecks === 1 ? "check" : "checks"} found claims weakened or contradicted — worth a look before you start.
+              {weakenedChecks} {weakenedChecks === 1 ? "check" : "checks"} found claims weakened or contradicted{canMutate ? " — worth a look before you start." : "."}
             </p>
           {/if}
           {#if riskChecks > 0 && staleRiskChecks > 0}
@@ -390,27 +422,39 @@
           <li>Competitor &amp; alternatives landscape</li>
           <li>SEO &amp; keyword strategy</li>
           <li>Go-to-market playbook &amp; monetization</li>
-          <li>Risks &amp; a clear go / no-go verdict</li>
+          <li>Risks, a clear recommendation, and decision-changing conditions</li>
         </ul>
         <!-- /sample-report lives in the (public) route group, so following it in
              this tab drops the user out of the app shell mid-commit. -->
-        <a class="deliverables__sample" href="/sample-report" target="_blank" rel="noopener">
-          See a sample report →<span class="sr-only"> (opens in a new tab)</span>
-        </a>
+        {#if data.sampleReportAvailable}
+          <a class="deliverables__sample" href="/sample-report" target="_blank" rel="noopener">
+            See a sample report →<span class="sr-only"> (opens in a new tab)</span>
+          </a>
+        {:else}
+          <p class="deliverables__sample-unavailable">Sample report temporarily unavailable.</p>
+        {/if}
       </section>
 
       <section class="note-card selection-page__panel">
-        <FormField
-          id="research-rationale"
-          kind="textarea"
-          label="Why these ideas?"
-          optional
-          hint="Leave a note so you can remember the reasoning behind this choice."
-          bind:value={rationale}
-          maxlength={2000}
-          rows={4}
-          placeholder="Add a note for your future self about this choice."
-        />
+        {#if canMutate}
+          <FormField
+            id="research-rationale"
+            kind="textarea"
+            label="Why these ideas?"
+            optional
+            hint="Private to your workspace. Keep the reasoning behind this choice for your future self and the Analyst."
+            bind:value={rationale}
+            maxlength={2000}
+            rows={4}
+            placeholder="Add a note for your future self about this choice."
+          />
+        {:else}
+          <p class="review-kicker">Selection note</p>
+          <h3>Why these ideas?</h3>
+          <p class:empty-note={!rationale.trim()}>
+            {rationale.trim() || "No note was saved with this selection."}
+          </p>
+        {/if}
       </section>
       </div>
 
@@ -491,11 +535,19 @@
         {/if}
 
         {#if data.workspace.scopeSource === "preview"}
-          <p class="credit-warning">Save at least one idea in Compare before starting research.</p>
-          <a class="credit-link" href={`/jobs/${data.job.id}#opportunities`}>Choose ideas</a>
+          <p class="credit-warning">
+            {canMutate
+              ? "Save at least one idea in Compare before starting research."
+              : "No saved idea scope is available in this selection record."}
+          </p>
+          {#if canMutate}<a class="credit-link" href={`/jobs/${data.job.id}#opportunities`}>Choose ideas</a>{/if}
         {:else if !scopeMatchesSaved}
-          <p class="credit-warning">This linked scope does not match your saved shortlist yet.</p>
-          <a class="credit-link" href={routeHref("compare")}>Review and save this scope</a>
+          <p class="credit-warning">
+            {canMutate
+              ? "This linked scope does not match your saved shortlist yet."
+              : "This link does not match the shortlist saved for this run."}
+          </p>
+          {#if canMutate}<a class="credit-link" href={routeHref("compare")}>Review and save this scope</a>{/if}
         {/if}
 
         <!-- Advisory, so it sits outside the credit-warning blockers and leaves the
@@ -504,7 +556,7 @@
         {#each overlapWarnings as overlap (overlap.sharedProduct)}
           <p class="overlap-warning">
             {overlapWarningText(overlap)}
-            <a class="credit-link" href={`/jobs/${data.job.id}#opportunities`}>Change your shortlist</a>
+            {#if canMutate}<a class="credit-link" href={`/jobs/${data.job.id}#opportunities`}>Change your shortlist</a>{/if}
           </p>
         {/each}
 
@@ -567,8 +619,12 @@
   .scope-card { min-width: 0; overflow: hidden; overflow-wrap: anywhere; }
   .scope-card-head { display: flex; justify-content: space-between; gap: var(--space-4); align-items: end; padding: var(--space-5); border-bottom: 1px solid var(--color-border); }
   .review-kicker { margin: 0; color: var(--color-text-muted); font: 700 var(--text-xs)/var(--leading-tight) var(--font-mono); letter-spacing: var(--tracking-wider); text-transform: uppercase; }
+  .note-card h3 { margin: var(--space-2) 0 0; font-family: var(--font-display); font-size: var(--text-lg); line-height: var(--leading-tight); }
+  .note-card > p:last-child { margin: var(--space-3) 0 0; color: var(--color-text-secondary); font-size: var(--text-sm); line-height: var(--leading-normal); white-space: pre-wrap; }
+  .note-card > p.empty-note { color: var(--color-text-muted); }
   .scope-card h3, .value-card h3, .confirm-card h3 { margin: var(--space-2) 0 0; font-family: var(--font-display); font-size: var(--text-xl); line-height: var(--leading-tight); letter-spacing: var(--tracking-tight); text-wrap: balance; }
   .scope-card-head a, .risk-summary a { color: var(--color-accent-dark); font-size: var(--text-base); font-weight: 700; text-decoration: none; white-space: nowrap; }
+  .readonly-label { color: var(--color-text-muted); font-size: var(--text-sm); font-weight: 700; white-space: nowrap; }
   .scope-card-head a:hover, .risk-summary a:hover { text-decoration: underline; text-underline-offset: var(--space-1); }
   .scope-card-head a:focus-visible, .risk-summary a:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
   .selected-list { margin: 0; padding: 0; list-style: none; }
@@ -594,6 +650,7 @@
   .deliverables li { position: relative; padding-left: var(--space-5); color: var(--color-text-secondary); font-size: var(--text-base); line-height: var(--leading-normal); }
   .deliverables li::before { content: "✓"; position: absolute; left: 0; color: var(--color-success-text); font-weight: 700; }
   .deliverables__sample { display: inline-block; margin-top: var(--space-4); color: var(--color-text-secondary); font: 600 var(--text-xs)/var(--leading-snug) var(--font-mono); text-decoration: none; }
+  .deliverables__sample-unavailable { margin: var(--space-4) 0 0; color: var(--color-text-muted); font: 500 var(--text-xs)/var(--leading-snug) var(--font-mono); }
   .deliverables__sample:hover { color: var(--color-text-primary); text-decoration: underline; text-underline-offset: var(--space-1); }
   .deliverables__sample:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
   .risk-summary { padding: var(--space-4) var(--space-5); background: color-mix(in srgb, var(--color-bg-surface) 76%, var(--color-bg-elevated)); }

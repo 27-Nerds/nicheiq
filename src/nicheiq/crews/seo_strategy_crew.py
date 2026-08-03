@@ -51,6 +51,7 @@ from ..models.seo_strategy import (
 # UniversalSEOElements, UniversalSEOElementsLight (Task 5/6 deleted)
 from ..tools.dataforseo_tool import DataForSEOExpandTool, DataForSEOSearchVolumeTool
 from ..utils.generation import KeywordSeedGenerator
+from ..utils.intent_volume_bands import compute_intent_volume_bands
 from ..utils.validation import (
     validate_category_tier_output,
     validate_content_strategy_output,
@@ -1434,7 +1435,7 @@ class SEOStrategyCrew:
             return result
 
         except Exception as e:
-            logger.error(f"Phase 6a keyword generation failed: {e}", exc_info=True)
+            logger.opt(exception=True).error("Phase 6a keyword generation failed: {}", e)
             raise
 
     def _extract_page_types_from_task2(self, task2_output) -> str:
@@ -2657,6 +2658,9 @@ class SEOStrategyCrew:
                 **task_2_output.model_dump(),
                 # Task 3 fields (implementation_roadmap, budget_allocation)
                 **task_3_output.model_dump(),
+                # Q-049 three-band volume honesty (code-computed from idea_intent_grade stamps;
+                # all None below 80% graded coverage — total_monthly_volume stays UNCHANGED)
+                **compute_intent_volume_bands(enriched_keywords),
             )
 
             logger.info(
@@ -3353,6 +3357,9 @@ class SEOStrategyCrew:
                 **task_2_output.model_dump(),
                 # Task 3 fields (implementation_roadmap, budget_allocation)
                 **task_3_output.model_dump(),
+                # Q-049 three-band volume honesty (code-computed from idea_intent_grade stamps;
+                # all None below 80% graded coverage — total_monthly_volume stays UNCHANGED)
+                **compute_intent_volume_bands(enriched_keywords),
             )
 
             logger.info(

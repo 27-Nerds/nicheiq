@@ -53,7 +53,9 @@ pricing_analyst:
     choosing a model.
 
     **Verification Standard:** Every pricing recommendation must meet viability criteria:
-    - For subscription: LTV/CAC ratio must be at least 2:1, preferably 3:1+
+    - For subscription: read the computed LTV/CAC ratio against its bands (excellent / good /
+      thin / does not work) and say plainly which band it lands in — the bands are there to
+      evaluate the ratio, never a floor the ratio has to clear
     - For ad-supported: Estimated traffic must justify CPM-based revenue projections
     - For affiliate: CTR and conversion assumptions must be realistic for the niche
     - For usage-based: Average usage estimates must be grounded in comparable tools

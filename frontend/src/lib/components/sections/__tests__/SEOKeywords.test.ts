@@ -166,7 +166,7 @@ describe('SEOKeywords Component', () => {
       render(SEOKeywords, { props: { strategy, analytics } });
 
       expect(screen.getByText('Keywords')).toBeInTheDocument();
-      expect(screen.getByText('Monthly Vol')).toBeInTheDocument();
+      expect(screen.getByText('Category reach')).toBeInTheDocument();
     });
 
     it('renders key findings when present', () => {
@@ -179,6 +179,39 @@ describe('SEOKeywords Component', () => {
 
       expect(screen.getByText('Key Findings')).toBeInTheDocument();
       expect(screen.getByText('This niche has strong SEO potential')).toBeInTheDocument();
+    });
+
+    it('leads with idea-intent volume and demotes the aggregate to category reach', () => {
+      const strategy = createMockStrategy({
+        total_monthly_volume: 2264020,
+        idea_intent_monthly_volume: 5230,
+        offtopic_volume_share: 0.5182,
+        category_volume_share: 0.4795,
+      });
+      const analytics = createMockAnalytics({ total_search_volume: 2264020 });
+
+      render(SEOKeywords, { props: { strategy, analytics } });
+
+      expect(screen.getByText('Idea-intent vol')).toBeInTheDocument();
+      expect(screen.getByText('5.2K')).toBeInTheDocument();
+      expect(screen.getByText('Category reach')).toBeInTheDocument();
+      expect(screen.queryByText('Monthly Vol')).not.toBeInTheDocument();
+      expect(
+        screen.getByText(/52% of that volume is off-topic, 48% is broader category terms/)
+      ).toBeInTheDocument();
+    });
+
+    it('relabels the aggregate as category reach when idea-intent volume is missing', () => {
+      const strategy = createMockStrategy({ total_monthly_volume: 2264020 });
+      const analytics = createMockAnalytics({ total_search_volume: 2264020 });
+
+      render(SEOKeywords, { props: { strategy, analytics } });
+
+      expect(screen.queryByText('Idea-intent vol')).not.toBeInTheDocument();
+      expect(screen.getByText('Category reach')).toBeInTheDocument();
+      expect(
+        screen.getByText(/Treat it as category reach, not validated idea demand/)
+      ).toBeInTheDocument();
     });
 
     it('renders keyword preview section', () => {

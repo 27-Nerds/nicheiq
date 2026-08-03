@@ -6,7 +6,7 @@ export const settingsRouter = Router();
 
 settingsRouter.get('/sample-report-url', requireInternalService, async (_req, res: Response) => {
   try {
-    const url = await adminService.getAppSetting('sample_report_url');
+    const url = await adminService.getAvailableSampleReportUrl();
     res.json({ url });
   } catch (error) {
     console.error('Sample report URL endpoint error:', error);

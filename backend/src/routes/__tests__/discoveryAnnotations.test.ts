@@ -68,6 +68,12 @@ const validDocument = {
   },
 };
 
+const selectionLifecycleJob = {
+  status: 'AWAITING_SELECTION',
+  activeDispatchId: null,
+  dispatches: [],
+};
+
 let app: Express;
 
 beforeEach(async () => {
@@ -226,11 +232,39 @@ describe('discovery annotation owner API', () => {
 
     expect(mockUpsertAnnotation).not.toHaveBeenCalled();
   });
+
+  it('keeps annotations editable while an append-only seed is running', async () => {
+    mockGetJob.mockResolvedValue({
+      id: JOB_ID,
+      userId: USER_ID,
+      status: 'RUNNING',
+      activeDispatchId: 'seed-dispatch',
+      dispatches: [{ id: 'seed-dispatch', kind: 'SEED_IDEA' }],
+    });
+    mockUpsertAnnotation.mockResolvedValue({
+      jobId: JOB_ID,
+      document: validDocument,
+      revision: 4,
+      updatedAt: UPDATED_AT,
+    });
+
+    await request(app)
+      .put(`/api/jobs/${JOB_ID}/discovery-annotations`)
+      .set(headers)
+      .send({ document: validDocument })
+      .expect(200);
+
+    expect(mockUpsertAnnotation).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('discovery annotation public polling API', () => {
   it('returns annotations for an active share', async () => {
-    mockFindShare.mockResolvedValue({ jobId: JOB_ID, isActive: true });
+    mockFindShare.mockResolvedValue({
+      jobId: JOB_ID,
+      isActive: true,
+      job: selectionLifecycleJob,
+    });
     mockFindAnnotation.mockResolvedValue({
       jobId: JOB_ID,
       document: validDocument,
@@ -248,7 +282,11 @@ describe('discovery annotation public polling API', () => {
   });
 
   it('returns 204 when the viewer already has the latest revision', async () => {
-    mockFindShare.mockResolvedValue({ jobId: JOB_ID, isActive: true });
+    mockFindShare.mockResolvedValue({
+      jobId: JOB_ID,
+      isActive: true,
+      job: selectionLifecycleJob,
+    });
     mockFindAnnotation.mockResolvedValue({
       jobId: JOB_ID,
       document: validDocument,
@@ -263,6 +301,46 @@ describe('discovery annotation public polling API', () => {
 
   it('does not expose annotations for an inactive share', async () => {
     mockFindShare.mockResolvedValue({ jobId: JOB_ID, isActive: false });
+
+    await request(app)
+      .get(`/api/shared/discovery/${SHARE_TOKEN}/annotations`)
+      .expect(404);
+
+    expect(mockFindAnnotation).not.toHaveBeenCalled();
+  });
+
+  it('returns annotations while append-only regeneration is running', async () => {
+    mockFindShare.mockResolvedValue({
+      jobId: JOB_ID,
+      isActive: true,
+      job: {
+        status: 'RUNNING',
+        activeDispatchId: 'regenerate-dispatch',
+        dispatches: [{ id: 'regenerate-dispatch', kind: 'REGENERATE' }],
+      },
+    });
+    mockFindAnnotation.mockResolvedValue({
+      jobId: JOB_ID,
+      document: validDocument,
+      revision: 3,
+      updatedAt: UPDATED_AT,
+    });
+
+    await request(app)
+      .get(`/api/shared/discovery/${SHARE_TOKEN}/annotations`)
+      .expect(200);
+  });
+
+  it('does not expose annotations after Deep Research starts when isActive is stale', async () => {
+    mockFindShare.mockResolvedValue({
+      jobId: JOB_ID,
+      isActive: true,
+      job: {
+        status: 'QUEUED',
+        activeDispatchId: 'deep-dispatch',
+        dispatches: [{ id: 'deep-dispatch', kind: 'DEEP_RESEARCH' }],
+      },
+    });
 
     await request(app)
       .get(`/api/shared/discovery/${SHARE_TOKEN}/annotations`)

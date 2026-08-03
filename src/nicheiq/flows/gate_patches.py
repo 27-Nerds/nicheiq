@@ -55,7 +55,7 @@ class G1Patch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     niche_description: Optional[str] = Field(default=None, max_length=2000)
-    market_segments: Optional[list[str]] = Field(default=None, max_length=8)
+    market_segments: Optional[list[str]] = Field(default=None, max_length=12)
     industry_boundaries: Optional[str] = Field(default=None, max_length=2000)
     user_target_audience: Optional[str] = Field(default=None, max_length=500)
 

@@ -10,14 +10,30 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockJobFindMany = vi.fn();
 const mockDispatchFindUnique = vi.fn();
+const mockWorkerHeartbeatFindUnique = vi.fn();
 
 vi.mock('../db.js', () => ({
   prisma: {
     job: { findMany: (...a: any[]) => mockJobFindMany(...a) },
     jobDispatch: { findUnique: (...a: any[]) => mockDispatchFindUnique(...a) },
+    workerHeartbeat: { findUnique: (...a: any[]) => mockWorkerHeartbeatFindUnique(...a) },
     // getUserEmail — not under test here, just needs to resolve without throwing.
     user: { findUnique: vi.fn().mockResolvedValue(null) },
   },
+}));
+
+const mockEnqueuePaidPoolRecovery = vi.fn();
+vi.mock('../queueService.js', () => ({
+  enqueuePaidPoolRecovery: (...a: any[]) => mockEnqueuePaidPoolRecovery(...a),
+}));
+
+const mockFencePaidPoolMutationForRecovery = vi.fn();
+const mockRefencePaidPoolRecovery = vi.fn();
+const mockFailUnpreparedPaidPoolMutation = vi.fn();
+vi.mock('../paidPoolRecoveryService.js', () => ({
+  fencePaidPoolMutationForRecovery: (...a: any[]) => mockFencePaidPoolMutationForRecovery(...a),
+  failUnpreparedPaidPoolMutation: (...a: any[]) => mockFailUnpreparedPaidPoolMutation(...a),
+  refencePaidPoolRecovery: (...a: any[]) => mockRefencePaidPoolRecovery(...a),
 }));
 
 const mockFailJob = vi.fn();
@@ -56,17 +72,27 @@ beforeEach(() => {
   mockFailJob.mockResolvedValue({ applied: true, job: { status: 'FAILED' } });
   mockCancelSeedIdeaDispatch.mockResolvedValue({ cancelled: true, creditRefunded: 2 });
   mockCancelRegenerationDispatch.mockResolvedValue({ cancelled: true, creditRefunded: 2 });
+  mockWorkerHeartbeatFindUnique.mockResolvedValue(null);
+  mockFencePaidPoolMutationForRecovery.mockResolvedValue({
+    recoveryToken: '22222222-2222-4222-8222-222222222222',
+    journal: { schemaVersion: 1, lockPath: '/tmp/lock', files: [] },
+  });
+  mockEnqueuePaidPoolRecovery.mockResolvedValue(undefined);
+  mockFailUnpreparedPaidPoolMutation.mockResolvedValue(true);
 });
 
 describe('checkAndRecoverStaleJobs — SEED_IDEA op-scoped recovery', () => {
-  it('a stale job with an active SEED_IDEA dispatch settles ONLY that dispatch — never calls failJob (parent job survives)', async () => {
+  it('fences a dead prepared SEED_IDEA writer and schedules restore before any refund', async () => {
+    const staleAt = new Date(Date.now() - 120_000);
     mockJobFindMany.mockResolvedValue([{
-      id: JOB_ID, niche: 'test', userId: 'user-1', lastHeartbeat: new Date(0),
-      startedAt: new Date(0), currentStage: 5, selectedSolutions: [],
+      id: JOB_ID, niche: 'test', userId: 'user-1', lastHeartbeat: staleAt,
+      startedAt: staleAt, currentStage: 5, selectedSolutions: [], workerId: 'worker-dead',
       activeDispatchId: 'dispatch-1', status: 'RUNNING',
     }]);
     mockDispatchFindUnique.mockResolvedValue({
-      id: 'dispatch-1', kind: 'SEED_IDEA', seedOrdinal: 2, sourceMessageId: 'msg-1',
+      id: 'dispatch-1', kind: 'SEED_IDEA', state: 'CLAIMED', workerId: 'worker-dead',
+      seedOrdinal: 2, sourceMessageId: 'msg-1', recoveryPreparedAt: new Date(),
+      recoveryJournal: { schemaVersion: 1, lockPath: '/tmp/lock', files: [] },
     });
 
     const { checkAndRecoverStaleJobs } = await import('../heartbeatService.js');
@@ -80,47 +106,109 @@ describe('checkAndRecoverStaleJobs — SEED_IDEA op-scoped recovery', () => {
       select: {
         id: true,
         kind: true,
+        state: true,
         seedOrdinal: true,
         sourceMessageId: true,
         segment: true,
         chargeId: true,
+        workerId: true,
+        recoveryPreparedAt: true,
+        recoveryJournal: true,
+        recoveryToken: true,
+        lastDeliveryAt: true,
+        claimedAt: true,
+        createdAt: true,
       },
     });
-    expect(mockCancelSeedIdeaDispatch).toHaveBeenCalledWith(
+    expect(mockFencePaidPoolMutationForRecovery).toHaveBeenCalledWith(
       JOB_ID,
-      { id: 'dispatch-1', kind: 'SEED_IDEA', seedOrdinal: 2, sourceMessageId: 'msg-1' },
-      'RUNNING', 'SYSTEM_FAULT',
-      { status: 'RUNNING', lastHeartbeat: new Date(0) },
+      'dispatch-1',
+      { status: 'RUNNING', workerId: 'worker-dead', lastHeartbeat: staleAt },
     );
+    expect(mockEnqueuePaidPoolRecovery).toHaveBeenCalledWith(
+      JOB_ID,
+      'dispatch-1',
+      '22222222-2222-4222-8222-222222222222',
+      expect.objectContaining({ schemaVersion: 1 }),
+    );
+    expect(mockCancelSeedIdeaDispatch).not.toHaveBeenCalled();
     expect(mockFailJob).not.toHaveBeenCalled();
     expect(mockNotifyJobError).not.toHaveBeenCalled();
     expect(stats.checked).toBe(1);
+    expect(stats.failed).toBe(1);
+    expect(stats.timedOut).toBe(0);
   });
 
-  it('a stale REGENERATE dispatch restores selection instead of failing the parent job', async () => {
+  it('does not recover a fresh REGENERATE just because the parent job started long ago', async () => {
     mockJobFindMany.mockResolvedValue([{
       id: JOB_ID, niche: 'test', userId: 'user-1', lastHeartbeat: new Date(0),
       startedAt: new Date(0), currentStage: 5, selectedSolutions: [],
-      activeDispatchId: 'dispatch-2', status: 'REGENERATING',
+      activeDispatchId: 'dispatch-2', status: 'REGENERATING', workerId: 'worker-live',
     }]);
     mockDispatchFindUnique.mockResolvedValue({
       id: 'dispatch-2',
       kind: 'REGENERATE',
+      state: 'CLAIMED',
+      workerId: 'worker-live',
+      recoveryPreparedAt: new Date(),
+      recoveryJournal: { schemaVersion: 1, lockPath: '/tmp/lock', files: [] },
       seedOrdinal: null,
       sourceMessageId: null,
       segment: 'regenerate_ideas_3',
+      claimedAt: new Date(),
+      createdAt: new Date(),
+    });
+    mockWorkerHeartbeatFindUnique.mockResolvedValue({
+      currentJobId: JOB_ID,
+      status: 'active',
+      lastHeartbeat: new Date(),
     });
 
     const { checkAndRecoverStaleJobs } = await import('../heartbeatService.js');
     await checkAndRecoverStaleJobs();
 
-    expect(mockCancelRegenerationDispatch).toHaveBeenCalledWith(
+    expect(mockCancelRegenerationDispatch).not.toHaveBeenCalled();
+    expect(mockFencePaidPoolMutationForRecovery).not.toHaveBeenCalled();
+    expect(mockEnqueuePaidPoolRecovery).not.toHaveBeenCalled();
+    expect(mockFailJob).not.toHaveBeenCalled();
+  });
+
+  it('fences a prepared operation after its own hard runtime even with fresh heartbeats', async () => {
+    const freshHeartbeat = new Date();
+    mockJobFindMany.mockResolvedValue([{
+      id: JOB_ID, niche: 'test', userId: 'user-1', lastHeartbeat: freshHeartbeat,
+      startedAt: new Date(0), currentStage: 5, selectedSolutions: [],
+      activeDispatchId: 'dispatch-hard-timeout', status: 'REGENERATING', workerId: 'worker-live',
+    }]);
+    mockDispatchFindUnique.mockResolvedValue({
+      id: 'dispatch-hard-timeout',
+      kind: 'REGENERATE',
+      state: 'CLAIMED',
+      workerId: 'worker-live',
+      recoveryPreparedAt: new Date(),
+      recoveryJournal: { schemaVersion: 1, lockPath: '/tmp/lock', files: [] },
+      recoveryToken: null,
+      claimedAt: new Date(0),
+      createdAt: new Date(0),
+      seedOrdinal: null,
+      sourceMessageId: null,
+      segment: 'regenerate_ideas_3',
+    });
+    mockWorkerHeartbeatFindUnique.mockResolvedValue({
+      currentJobId: JOB_ID,
+      status: 'active',
+      lastHeartbeat: freshHeartbeat,
+    });
+
+    const { checkAndRecoverStaleJobs } = await import('../heartbeatService.js');
+    await checkAndRecoverStaleJobs();
+
+    expect(mockFencePaidPoolMutationForRecovery).toHaveBeenCalledWith(
       JOB_ID,
-      { id: 'dispatch-2', segment: 'regenerate_ideas_3' },
-      'REGENERATING',
-      'SYSTEM_FAULT',
-      { status: 'REGENERATING', lastHeartbeat: new Date(0) },
+      'dispatch-hard-timeout',
+      { status: 'REGENERATING', workerId: 'worker-live', lastHeartbeat: freshHeartbeat },
     );
+    expect(mockEnqueuePaidPoolRecovery).toHaveBeenCalledOnce();
     expect(mockFailJob).not.toHaveBeenCalled();
   });
 
@@ -136,6 +224,7 @@ describe('checkAndRecoverStaleJobs — SEED_IDEA op-scoped recovery', () => {
     mockDispatchFindUnique.mockResolvedValue({
       id: 'dispatch-3',
       kind: 'REGENERATE',
+      state: 'AUTHORIZED',
       seedOrdinal: null,
       sourceMessageId: null,
       segment: 'regenerate_ideas_4',
@@ -146,7 +235,7 @@ describe('checkAndRecoverStaleJobs — SEED_IDEA op-scoped recovery', () => {
 
     expect(mockCancelRegenerationDispatch).toHaveBeenCalledWith(
       JOB_ID,
-      { id: 'dispatch-3', segment: 'regenerate_ideas_4' },
+      { id: 'dispatch-3', segment: 'regenerate_ideas_4', chargeId: undefined },
       'QUEUED',
       'SYSTEM_FAULT',
       { status: 'QUEUED', lastHeartbeat: new Date(0) },
@@ -160,7 +249,7 @@ describe('checkAndRecoverStaleJobs — SEED_IDEA op-scoped recovery', () => {
       startedAt: new Date(0), currentStage: 5, selectedSolutions: [],
       activeDispatchId: 'dispatch-1', status: 'RUNNING',
     }]);
-    mockDispatchFindUnique.mockResolvedValue({ id: 'dispatch-1', kind: 'CONTINUE', seedOrdinal: null });
+    mockDispatchFindUnique.mockResolvedValue({ id: 'dispatch-1', kind: 'CONTINUE', state: 'CLAIMED', seedOrdinal: null });
 
     const { checkAndRecoverStaleJobs } = await import('../heartbeatService.js');
     await checkAndRecoverStaleJobs();

@@ -3,16 +3,24 @@ import type { TourStep } from './tourController';
 /**
  * The tutorial content: four per-surface chapters, offered on that surface's first visit.
  *
- * Every chapter exists to kill one of three misconceptions:
+ * Every chapter exists to kill one of five misconceptions:
  *   1. Only the shortlist is required — every optional check can be skipped.
  *   2. Nothing in the optional tools changes the Discovery ranking or any score.
  *   3. One run is priced flat for 1-3 ideas, and nothing is charged until the final confirm.
+ *   4. A score rates the idea if its premise holds; the recommendation reports what came
+ *      through the adversarial review intact. The two point at different rows on purpose.
+ *   5. Ideas that answer the same buyer job are one thesis with variants, not separate bets.
  *
  * Placement (`side`/`align`) is deliberate, not decorative. driver.js measures the
  * target's VIEWPORT rect; when the requested side doesn't fit it falls back
  * left → right → top → bottom, and when none fit it pins the popover to the bottom of the
  * screen with no arrow — visually detached from what it is describing. The notes on each
  * step record why its side was chosen.
+ *
+ * Some anchors only render when their subject exists — the premise-split note, the thesis
+ * cards, the fit panel on Compare. That is intentional: `skipMissingElement` drops the
+ * step, so nobody is told about a split that is not on their screen. The cost is a
+ * progress counter that occasionally skips a number.
  */
 
 export interface TourChapter {
@@ -26,8 +34,11 @@ export const JOB_SHORTLIST_CHAPTER: TourChapter = {
   id: 'job-shortlist',
   invitation: {
     heading: 'A quick tour of the shortlist',
-    body: 'Five short steps, about a minute, and you can close it at any point.',
+    body: 'Seven short steps, under two minutes, and you can close it at any point.',
   },
+  // Steps follow DOM order, top to bottom. Reading order and scroll order are the same
+  // thing here: `onHighlightStarted` only scrolls when a target is off-screen, so a step
+  // sequenced out of document order makes the page jump backwards under the user.
   steps: [
     {
       element: '[data-annotation-anchor="shortlist-header"]',
@@ -40,19 +51,51 @@ export const JOB_SHORTLIST_CHAPTER: TourChapter = {
       },
     },
     {
-      // The header row, NOT the whole table: a table taller than the viewport scrolls to
-      // top and then fits no side, collapsing to the bottom-pinned fallback. The header
-      // also holds the sort buttons this copy is about.
-      element: '[data-tour="ranked-list"]',
+      // Only rendered when the top-scoring idea is NOT the recommended one, which is the
+      // only time this needs saying. The anchor states the case (both ideas by name and
+      // that the top one stays selectable); this states the rule behind it.
+      element: '[data-tour="recommendation-split"]',
       popover: {
-        title: 'Where the ranking comes from',
+        title: 'Top score, different recommendation',
         description:
-          'These scores were set during Discovery and stay fixed. Sorting a column reorders what you see; it never recalculates anything or moves an idea up.',
+          "Scores say how well an idea would work if its premise holds. The adversarial review could not confirm this one's premise, so the recommendation moved to the strongest idea that came through intact.",
+        // A full-width note with the table directly beneath it: no side gutter fits, and
+        // `top` would cover the header the previous step just introduced.
         side: 'bottom',
         align: 'start',
       },
     },
     {
+      // The header row, NOT the whole table: a table taller than the viewport scrolls to
+      // top and then fits no side, collapsing to the bottom-pinned fallback.
+      element: '[data-tour="ranked-list"]',
+      popover: {
+        title: 'Where the ranking comes from',
+        // Says nothing about cards: this step also runs on pools with no thesis
+        // partition, which render as a flat list. There is no column sorting on either
+        // path any more, so the copy states the standing order instead of how to change
+        // it — what is true of both is that the numbers are fixed and new work appends.
+        description:
+          'These scores were set during Discovery and stay fixed; nothing here recalculates them. The strongest idea leads, and anything you add later joins the end rather than reshuffling it.',
+        side: 'bottom',
+        align: 'start',
+      },
+    },
+    {
+      // The first card's header band, present only when the pool actually partitions into
+      // theses. It is a full-width row inside the table, so it spotlights cleanly.
+      element: '[data-tour="thesis-group"]',
+      popover: {
+        title: 'One card per buyer job',
+        description:
+          'Ideas answering the same buyer job sit in one card, as variants of a single business. Cards lead with their strongest variant and stay put; an extra batch joins a card or opens a new one.',
+        side: 'bottom',
+        align: 'start',
+      },
+    },
+    {
+      // The lead row of the first card — NOT `i === 0`. The top-ranked idea is often a
+      // variant, and a variant inside a collapsed card is not in the DOM at all.
       element: '[data-tour="shortlist-checkbox"]',
       popover: {
         title: 'What the checkbox commits to',

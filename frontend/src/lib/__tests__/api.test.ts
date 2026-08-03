@@ -6,8 +6,12 @@ import {
   getSelectionConceptSets,
   getSelectionMetricExplanations,
   regenerateIdeas,
+  updateSelectionExperiment,
+  lockSelectionExperiment,
+  deleteSelectionExperiment,
   ApiError,
 } from '../api';
+import type { SelectionExperimentDraft } from '../types/selectionExperiment';
 
 // Mock global fetch
 const mockFetch = vi.fn();
@@ -296,6 +300,46 @@ describe('Idea batch API', () => {
         expectedCost: 2,
         idea_focus: 'novelty',
       }),
+    });
+  });
+});
+
+describe('Selection experiment mutation API', () => {
+  beforeEach(() => {
+    mockFetch.mockReset();
+  });
+
+  it('sends the compare-and-set version for update, lock, and delete', async () => {
+    const draft = { ideaId: 'idea-1', ideaRevision: 2 } as SelectionExperimentDraft;
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ experiment: { id: 'experiment-1', version: 8 } }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ experiment: { id: 'experiment-1', version: 9 } }),
+      })
+      .mockResolvedValueOnce({ ok: true, status: 204 });
+
+    await updateSelectionExperiment('job-1', 'experiment-1', 7, draft);
+    await lockSelectionExperiment('job-1', 'experiment-1', 8);
+    await deleteSelectionExperiment('job-1', 'experiment-1', 9);
+
+    expect(mockFetch).toHaveBeenNthCalledWith(1, '/api/jobs/job-1/selection-experiments/experiment-1', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...draft, expectedVersion: 7 }),
+    });
+    expect(mockFetch).toHaveBeenNthCalledWith(2, '/api/jobs/job-1/selection-experiments/experiment-1/lock', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expectedVersion: 8 }),
+    });
+    expect(mockFetch).toHaveBeenNthCalledWith(3, '/api/jobs/job-1/selection-experiments/experiment-1', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expectedVersion: 9 }),
     });
   });
 });

@@ -1,10 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { mockChatComplete } = vi.hoisted(() => ({ mockChatComplete: vi.fn() }));
+const { mockChatComplete, mockHasApiKeyForModel } = vi.hoisted(() => ({
+  mockChatComplete: vi.fn(),
+  mockHasApiKeyForModel: vi.fn(),
+}));
 
-vi.mock('../openai.js', () => ({ chatComplete: mockChatComplete }));
+vi.mock('../openai.js', () => ({
+  chatComplete: mockChatComplete,
+  hasApiKeyForModel: mockHasApiKeyForModel,
+}));
 vi.mock('../../config.js', () => ({
-  CONFIG: { chatModel: 'gpt-test' },
+  CONFIG: { founderFitModel: 'gpt-founder-fit-test' },
 }));
 
 import {
@@ -38,6 +44,14 @@ const idea = {
   technical_feasibility_score: 0.8,
   seo_scalability_score: 0.7,
   tags: { growth_channels: ['seo'], build_complexity: 'medium' },
+};
+
+const secondIdea = {
+  ...idea,
+  idea_id: 'idea_brief',
+  idea_revision: 4,
+  solution_name: 'Brief Builder',
+  headline: 'Turn demand signals into briefs',
 };
 
 const profileField = {
@@ -92,7 +106,21 @@ function modelResult(overrides: Record<string, unknown> = {}) {
 }
 
 describe('founderFitService', () => {
-  beforeEach(() => mockChatComplete.mockReset());
+  beforeEach(() => {
+    mockChatComplete.mockReset();
+    mockHasApiKeyForModel.mockReset();
+    mockHasApiKeyForModel.mockReturnValue(true);
+  });
+
+  it('refuses generation when the configured model provider has no API key', async () => {
+    mockHasApiKeyForModel.mockReturnValue(false);
+
+    await expect(generateFounderFitArtifact(profile, [idea])).rejects.toMatchObject({
+      failureCause: 'upstream',
+    });
+    expect(mockHasApiKeyForModel).toHaveBeenCalledWith('gpt-founder-fit-test');
+    expect(mockChatComplete).not.toHaveBeenCalled();
+  });
 
   it('maps temporary model references to canonical idea revisions and fences founder text', async () => {
     mockChatComplete.mockResolvedValue({
@@ -114,6 +142,34 @@ describe('founderFitService', () => {
     expect(request.messages[0].content).toContain('Do not rank ideas');
     expect(request.messages[0].content).toContain('Available idea references (ideaRef): R1');
     expect(request.messages[1].content).toContain('Available idea references: R1');
+    expect(request.model).toBe('gpt-founder-fit-test');
+    expect(artifact.model).toBe('gpt-founder-fit-test');
+  });
+
+  it('maps an exact two-idea response by temporary reference, independent of response order', async () => {
+    mockChatComplete.mockResolvedValue({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            results: [modelResult({ ideaRef: 'R2', verdict: 'fits' }), modelResult()],
+          }),
+        },
+      }],
+    });
+
+    const artifact = await generateFounderFitArtifact(profile, [idea, secondIdea]);
+
+    expect(artifact.results.map(result => ({
+      ideaId: result.ideaId,
+      ideaRevision: result.ideaRevision,
+      ideaTitle: result.ideaTitle,
+    }))).toEqual([
+      { ideaId: 'idea_signal', ideaRevision: 2, ideaTitle: 'Signal Desk' },
+      { ideaId: 'idea_brief', ideaRevision: 4, ideaTitle: 'Turn demand signals into briefs' },
+    ]);
+    expect(mockChatComplete.mock.calls[0][0].messages[0].content).toContain(
+      'Available idea references (ideaRef): R1, R2',
+    );
   });
 
   it('rejects a model that softens an explicit hard-constraint conflict', async () => {
@@ -128,8 +184,10 @@ describe('founderFitService', () => {
       choices: [{ message: { content: JSON.stringify({ results: [result] }) } }],
     });
 
-    await expect(generateFounderFitArtifact(constrained, [idea]))
-      .rejects.toThrow('softened a hard-constraint conflict');
+    await expect(generateFounderFitArtifact(constrained, [idea])).rejects.toMatchObject({
+      name: 'FounderFitGenerationError',
+      failureCause: 'schema_mismatch',
+    });
   });
 
   it('invalidates a persisted artifact when the profile or exact idea revision changes', async () => {
@@ -223,5 +281,45 @@ describe('founderFitService', () => {
     const hardConstraints = artifact.results[0].dimensions.find((d) => d.dimension === 'hard_constraints')!;
     expect(hardConstraints.status).toBe('irrelevant');
     expect(hardConstraints.ideaFields).toEqual([]);
+  });
+
+  it('classifies timeout, empty, JSON, schema, and two-idea coverage failures', async () => {
+    const timeout = Object.assign(new Error('request timed out'), { name: 'TimeoutError' });
+    mockChatComplete.mockRejectedValueOnce(timeout);
+    await expect(generateFounderFitArtifact(profile, [idea])).rejects.toMatchObject({
+      failureCause: 'timeout',
+    });
+
+    mockChatComplete.mockResolvedValueOnce({ choices: [{ message: { content: '' } }] });
+    await expect(generateFounderFitArtifact(profile, [idea])).rejects.toMatchObject({
+      failureCause: 'no_content',
+    });
+
+    mockChatComplete.mockResolvedValueOnce({ choices: [{ message: { content: '{not-json' } }] });
+    await expect(generateFounderFitArtifact(profile, [idea])).rejects.toMatchObject({
+      failureCause: 'bad_json',
+    });
+
+    mockChatComplete.mockResolvedValueOnce({
+      choices: [{ message: { content: JSON.stringify({ results: [{ ideaRef: 'R1' }] }) } }],
+    });
+    await expect(generateFounderFitArtifact(profile, [idea])).rejects.toMatchObject({
+      failureCause: 'schema_mismatch',
+    });
+
+    mockChatComplete.mockResolvedValueOnce({
+      choices: [{ message: { content: JSON.stringify({ results: [modelResult()] }) } }],
+    });
+    await expect(generateFounderFitArtifact(profile, [idea, secondIdea])).rejects.toMatchObject({
+      failureCause: 'coverage_mismatch',
+    });
+  });
+
+  it('classifies non-timeout provider failures as upstream', async () => {
+    mockChatComplete.mockRejectedValueOnce(new Error('provider unavailable'));
+
+    await expect(generateFounderFitArtifact(profile, [idea])).rejects.toMatchObject({
+      failureCause: 'upstream',
+    });
   });
 });

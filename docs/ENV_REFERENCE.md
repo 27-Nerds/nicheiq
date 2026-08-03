@@ -410,11 +410,15 @@ FAQ_SAVE_RATE_HOURLY=60
 # AWAITING_SELECTION (G3, all entitled users) and, once chatMode is on for a job,
 # the G1/G2 stage gates (Phase B). Entitled-only; requireInternalAuth + isEntitledUser
 # gate every call in routes/chat.ts.
-CHAT_LLM_MODEL=gpt-5-mini
+CHAT_LLM_MODEL=gpt-5.6-luna
 # Model for the guided-chat endpoint (POST /api/jobs/:jobId/chat). MUST be
-# strict-tool-capable (the single `propose_modification` tool call is Zod-validated
-# before any patch card renders) — prefer an OpenAI-direct model id here, not an
-# OpenRouter passthrough, per the plan's Decisions section.
+# strict-tool-capable. GPT-5 tool rounds use Chat Completions with
+# reasoning_effort=none; tool-free rounds retain the normal minimal default.
+# Code-level fallback when unset: 'gpt-5.6-luna'.
+
+FOUNDER_FIT_LLM_MODEL=gpt-5-mini
+# Model for bounded founder-fit JSON analysis. This is intentionally independent
+# from CHAT_LLM_MODEL so a guided-chat migration cannot break founder fit.
 # Code-level fallback when unset: 'gpt-5-mini'.
 
 CHAT_RATE_HOURLY=20
@@ -544,10 +548,23 @@ BRAINSTORM_LLM=gpt-4o
 # (directory/aggregator/comparison) are NOT penalized — they are first-class SEO monetization outcomes;
 # variety comes from the per-pain partition, not a type bias.
 # Auto-falls back to the legacy broad-sample path when fewer than 2 distinct pains are available.
-# DIVERGENT_MAX_GENERATORS=8        # ceiling on generators (~1 per diverse pain); 5-8 is the sweet spot
-# DIVERGENT_MAX_WORKERS=8           # parallel generator threads in partitioned mode (legacy path stays at 4)
+# DIVERGENT_TARGET_GENERATORS=9     # target (pain x segment) generator cells; widened from the
+#                                   # affinity graph if the selected pains yield fewer edges
+# DIVERGENT_MAX_GENERATORS=11       # ceiling on generators (~1 per diverse pain); prod default raised
+#                                   # 8->11 (S3.1, generation-breadth fix, ~+$0.63/run)
+# DIVERGENT_MAX_WORKERS=9           # parallel generator threads in partitioned mode (legacy path stays at 4)
 # DIVERGENT_PARTITIONED_KEEP_FRACTION=0.67  # keep-fraction override (narrow pain-separated concepts dedup
 #                                   # far less than broad samples, so 0.5 over-discards them)
+
+# --- Per-cell tournament architecture (Stage-5 DEFAULT) ---------------------------------------
+# ENABLE_PER_CELL_TOURNAMENT=true
+# Each (pain x segment) cell runs its OWN ideator+judge tournament (keep-best across
+# TOURNAMENT_ROUNDS) converging to one best idea; the union of per-cell winners (deduped only) is
+# shown — replaces the pooled convergent-refine + the late per-idea improvement loop + diversity
+# caps. Set to false to roll back to the legacy pooled flow (kept as the no-cells fallback).
+# Note: ~2.5-3x the cost/latency of the pooled flow.
+# TOURNAMENT_ROUNDS=2
+# Ideator<->reviewer rounds per cell (keep-best across rounds). Range 1-4.
 
 # --- Stated-audience cell-floor guarantee (Round 0c) --------------------------------------------
 # DIVERGENT_STATED_AUDIENCE_FLOOR_COUNT=1
@@ -581,6 +598,16 @@ BRAINSTORM_LLM=gpt-4o
 # DIVERSITY_MAX_PER_MECHANISM=2     # max ideas per mechanism family
 # DIVERSITY_MAX_PER_PROJECT_TYPE=3  # lenient (info-products first-class); set 2 to force type-spread
 
+# --- Weak-winner demotion + feasibility caps (downgrade-only) -----------------------------------
+# DEMOTION_MARKET_FIT_MAX=0.4
+# Weak-winner demotion bar on FINAL post-parity calibrated market_fit. Ideas below it are demoted
+# from the visible candidate list into "examined & ruled out" findings. 0 disables demotion (and
+# with it backfill/merge acceptance gating).
+# FEASIBILITY_RESTRICTED_DATA_CAP=0.45
+# Critic data-feasibility ceiling when the data source is "restricted" (per-record lookup needing a
+# pre-known key, login/CAPTCHA, or no nameable bulk route). Also the build-feasibility ceiling when
+# build is scored but data was left unscored.
+
 # --- SEO-realism caps (downgrade-only, always on; mirror the feasibility caps) ------------------
 # SEO scalability = realistic count of distinct, indexable, non-thin pages. These caps key ONLY on
 # that — page count, page quality, and indexability. They do NOT penalize data sourcing (official vs
@@ -605,6 +632,19 @@ BRAINSTORM_LLM=gpt-4o
 # SEO_CAP_MODERATE_PAGES_CEILING=0.7
 # (Data sourcing — unofficial/ToS-gray — is intentionally NOT an SEO cap; it's a feasibility concern.)
 
+# PROVISIONAL_SEO_RANK_CEILING=0.7
+# RANKING-only cap on seo_scalability_score while it is still provisional (no Stage-12 keyword
+# grounding). A speculative SEO score carries the heaviest angle weight and can put a weaker idea
+# at rank 1 before any keyword data exists. Display/verdict fields keep the uncapped value. 1.0
+# disables.
+# SERP_OWNED_SEO_CEILING=0.5
+# Rule D: ceiling on stored seo_scalability_score when the representative SERP is stamped "owned"
+# (authority/entrenched-commercial domain count at/above SERP_OWNED_DOMAIN_THRESHOLD). 0 disables.
+# SEO_FALLBACK_PREFILTER=true
+# Stage 6-KV: when a solution's seed-overlap keyword slice is too thin (<20) and the code falls
+# back to the cross-solution expansion pool, run a deterministic token-overlap prefilter first so a
+# 0-seed solution never inherits the raw cross-solution keyword pool.
+
 # Feasibility grounding
 # The merged build+data feasibility critic is PERMANENT (flag removed 2026-07-06; previously off in
 # prod — prod now runs it): it scores build_feasibility / data_feasibility, classifies data_access_model
@@ -612,6 +652,36 @@ BRAINSTORM_LLM=gpt-4o
 # API / scraping lib) and drops only genuine no-route ones. Surfaces the data fields in the report
 # (alternatives badge + the selected-solution "Data Feasibility" ring). Fail-open.
 # (ENABLE_VERDICT_DATA_CAPS — downgrade-only verdict-boundary caps — removed 2026-07-07, never validated.)
+
+# --- Market-awareness parity caps (downgrade-only, mirrors the SEO/feasibility caps) ------------
+# market_fit ceilings when a web-verified incumbent covers the idea's core mechanism. Idea stays
+# visible (no auto-demote) at these ceilings; 0 disables each individually.
+# PARITY_SHIPPED_MARKET_FIT_CAP=0.45       # incumbent SHIPS the core mechanism
+# PARITY_PARTIAL_MARKET_FIT_CAP=0.55       # incumbent partially covers it (limited/adjacent)
+# PARITY_SUBSTITUTE_MARKET_FIT_CAP=0.50    # a free/DIY route delivers the core outcome
+# PARITY_SUBSTITUTE_WEAK_WALLET_CAP=0.35   # substitute AND source-segment payability is LOW —
+#                                           # deliberately crosses the 0.4 demotion bar
+# PARITY_BUNDLED_FREE_CAP=0.40             # capability already bundled free / given away as a
+#                                           # loss-leader in a tool the niche already uses
+# MARKET_AWARENESS_SERPER_BUDGET=60
+# Shared per-run Serper query budget for the market-awareness probes (parity niche-frame queries,
+# niche wallet probe, SERP-composition probe). Exhausted probes skip fail-soft. 0 disables the new
+# probes only (name-anchored parity queries still run).
+
+# --- Segment payability + self-issued-trust + unverified-route caps (downgrade-only; PERMANENT — ---
+# --- flags removed 2026-07-06 after same-day calibration-gate passes vs a neutral Fable panel) ---
+# PAYABILITY_LOW_THRESHOLD=0.35
+# Segment payability below this counts as LOW (cap + verdict floor trigger). 0.0 disables the
+# cap/floor/reclassify.
+# PAYABILITY_MARKET_FIT_CAP=0.55
+# market_fit ceiling for ideas whose segment payability is LOW (downgrade-only).
+# SELFISSUED_TRUST_MARKET_FIT_CAP=0.35
+# market_fit ceiling for ideas that self-issue a trust artifact (badge/certificate/verified/trust
+# seal) with no third-party verification language. 0 disables.
+# UNVERIFIED_ROUTE_CLAIM_MARKET_FIT_CAP=0.0
+# market_fit ceiling for ideas whose calibration critic claimed a data route as market-fit support
+# while the route verifier left it unverified. Ships 0.0 (DISABLED) — see settings.py for the two
+# prerequisites gating enablement.
 
 # Realism score-calibration critic (default ON)
 ENABLE_SCORE_CALIBRATION=true
@@ -723,9 +793,11 @@ LANDING_PAGE_LLM=gpt-5.2
 # Used for: Creative landing page content generation
 # Why gpt-5.2: Needs strong creative and reasoning abilities
 
-LANDING_PAGE_EXECUTION_LLM=gpt-5.1-codex-max
+LANDING_PAGE_EXECUTION_LLM=gpt-5.3-codex
 # Used for: Landing page code execution/generation
 # Why codex: Optimized for code generation
+# Note: gpt-5.1-codex-max is RETIRED (404s). LANDING_PREFLIGHT_MODEL_CHECK=true (default)
+# validates both landing tiers at job start and fails fast on retired model ids.
 
 # Landing Page Reasoning Effort (GPT-5 series only)
 LANDING_PAGE_CREATIVE_REASONING_EFFORT=high
@@ -797,7 +869,7 @@ The `reasoning_effort` parameter is ignored (only applies to GPT-5 series).
 
 **To switch back:** Just change the model name back to an OpenAI model:
 ```bash
-LANDING_PAGE_EXECUTION_LLM=gpt-5.1-codex-max
+LANDING_PAGE_EXECUTION_LLM=gpt-5.3-codex
 ```
 
 ### OpenRouter (Alternative Provider, Per-Tier)
@@ -990,6 +1062,11 @@ AUDIENCE_QUERY_ALLOTMENT=6
 # Extra Reddit query slots reserved for audience-flavored queries when the gate
 # above is on. Added ON TOP of NUM_SEARCH_QUERIES so the broad set is untouched.
 
+QUERY_NAMED_ENTITY_CAP=0.4
+# Product-lock-in ceiling: at most this fraction of generated search queries may name a SPECIFIC
+# product/entity. Niche-identity terms (the niche's own name/games/market) do NOT count. Excess
+# named-entity queries are dropped. 1.0 disables.
+
 PAIN_PROVENANCE_SEGMENTS=true
 # Populate PainPoint.evidence_segments from source-post provenance (subreddit -> validated
 # segment hub overlap), alongside the existing lexical affected_segments. A segment's hubs are
@@ -1051,6 +1128,16 @@ MIN_COMMENT_SCORE=2
 # Minimum Reddit score (upvotes - downvotes) for comments
 # Higher = only include upvoted, quality comments
 # Recommended: 1-5
+
+ENABLE_COMMENT_LEVEL_PAIN_CONTENT=true
+# Feed the pain-point finder COMMENT-level units (each thread's OP anchor + its best comments,
+# round-robined across threads to fit the token budget) instead of whole comment trees from a few
+# threads. Massively widens thread coverage within the same budget. false = legacy whole-thread
+# formatting.
+
+LOW_EVIDENCE_SEVERITY_CLAMP=0.45
+# Severity is clamped DOWN to this when a pain has too few stance-verified quotes. Heuristic prior,
+# NOT outcome-calibrated (there is no labeled outcome data to optimize round-number score cutoffs).
 ```
 
 ### Reddit Freshness Search
@@ -1559,6 +1646,18 @@ VERDICT_CONDITIONAL_MIN_INDIVIDUAL_SCORE=0.55
 - **Go**: All key metrics exceed thresholds - strong opportunity
 - **Conditional**: Promising but has weaknesses - proceed with risk mitigation
 - **No-Go**: Scores below thresholds - high risk or poor fit
+
+```bash
+# Verdict flags (dark-by-default experiments; downgrade-only)
+ENABLE_DIRECTION_AWARE_EVAL=false
+# P1: replace the uniform min(market_fit, tech_feasibility) hard gate with a lift-only
+# angle-binding gate (binding dim = seo for distribution_seo, novelty for novel_differentiation,
+# tech otherwise), so e.g. an SEO play is gated on SEO not tech. Never wrongly demotes.
+
+ENABLE_REGULATORY_RISK_DOWNGRADE=false
+# An idea carrying BOTH "regulatory" and "grey-market" risk flags caps its Go/No-Go verdict at
+# Conditional and floors risk at Medium (drop-only). A lone "regulatory" flag is not a trigger.
+```
 
 #### Pain Point & Competitive Thresholds
 

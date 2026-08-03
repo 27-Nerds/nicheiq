@@ -7,8 +7,6 @@
     Check,
     Plus,
     Loader2,
-    ArrowUp,
-    ArrowDown,
   } from "lucide-svelte";
   import {
     ASK_ANALYST_LABEL,
@@ -27,6 +25,7 @@
   import {
     regenerateIdeas,
     seedIdea,
+    cancelSelectionOperation,
     getStageCosts,
     saveSelectionDraft,
     getSelectionDecisionState,
@@ -61,7 +60,12 @@
     SelectionDecisionNextAction,
     SelectionDecisionState,
   } from "$lib/types/selectionDecisionState";
-  import type { RuledOutFinding, OverlapGroup, MarketReality } from "$lib/types/report";
+  import type {
+    RuledOutFinding,
+    OverlapGroup,
+    MarketReality,
+    NicheDifficultyVerdict,
+  } from "$lib/types/report";
   import {
     displayCompositeScore,
     solutionDisplayTitle,
@@ -76,10 +80,15 @@
   import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
   import {
     adversarialReviewFinding,
+    adversarialReviewSummary,
     directIncumbentParity,
+    incumbentParityPhrase,
+    isPremiseUnproven,
+    recommendationSplitNote,
   } from "$lib/utils/adversarialReview";
   import { humanizeTag, tagDescription } from "$lib/utils/ideaTagLabels";
   import { angleLabel, angleDescription } from "$lib/utils/ideaAngleLabels";
+  import { buildCollaboratorFeedbackGroups } from "$lib/utils/collaboratorFeedback";
   import {
     buildIdeaReferences,
     matchIdeaReferences,
@@ -90,6 +99,7 @@
   import SolutionDetail from "$lib/components/SolutionDetail.svelte";
   import DecisionBrief from "$lib/components/selection/DecisionBrief.svelte";
   import CollaboratorFeedback from "$lib/components/selection/CollaboratorFeedback.svelte";
+  import NicheRealityCheck from "$lib/components/sections/NicheRealityCheck.svelte";
   import RuledOutList from "$lib/components/selection/RuledOutList.svelte";
   import ResearchContextNotes from "$lib/components/selection/ResearchContextNotes.svelte";
   import AnalystRecommendation from "$lib/components/selection/AnalystRecommendation.svelte";
@@ -98,6 +108,12 @@
   import RuledOutDetail from "$lib/components/selection/RuledOutDetail.svelte";
   import FormOverlay from "$lib/components/ui/FormOverlay.svelte";
   import type { SelectionChallengeLens } from "$lib/types/selectionChallenge";
+  import type {
+    IdeaThesis,
+    ThesisFatalAssumption,
+    ThesisIncumbentStatus,
+    UncoveredFamily,
+  } from "$lib/types/ideaThesis";
   import type {
     SelectionAssumptionPrefill,
     SelectionConceptForgePrefill,
@@ -134,7 +150,19 @@
     coverageNotes?: string[] | null;
     examinedRuledOut?: RuledOutFinding[] | null;
     overlapGroups?: OverlapGroup[] | null;
+    /** Complete buyer-job partition over the visible pool. When present the ranked
+     *  list groups its rows under one thesis per family (variants nested, collapsed);
+     *  when absent — older reports, runs before the contract shipped — the list stays
+     *  exactly the flat ranking it has always been. */
+    ideaTheses?: IdeaThesis[] | null;
+    /** Validated buyer jobs that NO surviving idea addresses. Rendered as its own
+     *  section: hiding them is what makes a thin pool look like twelve bets. */
+    uncoveredFamilies?: UncoveredFamily[] | null;
     marketReality?: MarketReality | null;
+    /** Software-fit verdict for the niche — rendered above the candidate grid so the
+     *  owner (and visitors on the vote view) see it while choosing, not only inside the
+     *  collapsed dossier. */
+    nicheDifficultyVerdict?: NicheDifficultyVerdict | null;
     ideaPortfolioSummary?: string | null;
     userAdjustments?: string[] | null;
     discussionCount?: number | null;
@@ -142,6 +170,8 @@
     segmentCount?: number | null;
     onComplete?: () => void;
     onRegenerateStart?: () => void;
+    /** Paid seed authorization succeeded; refresh the shared credit balance immediately. */
+    onSeedStart?: () => void;
     /** Durable additional-batch settlement arrived; refresh candidates and preview. */
     onBatchSettled?: () => void;
     /** Emits the decision-journey tasks so the job-page sidebar (PhaseNav) can
@@ -158,7 +188,7 @@
      *  SSE's sorted-name diff misses a same-name demotion/score change and can't see
      *  a brand-new ruled-out entry at all — the parent must force BOTH getSolutions()
      *  and getPreviewReport() here rather than rely on the existing SSE reconciliation. */
-    onSeedSettled?: (outcome: "accepted" | "demoted" | "failed" | "refunded") => void;
+    onSeedSettled?: (outcome: "accepted" | "demoted" | "failed" | "refunded" | "cancelled") => void;
     /** Visitor (read-only) mode: shortlist/Deep-Research affordances are replaced by
      *  the per-row actionSlot (vote button on the shared view). */
     interactive?: boolean;
@@ -193,13 +223,17 @@
     coverageNotes = [],
     examinedRuledOut = [],
     overlapGroups = [],
+    ideaTheses = [],
+    uncoveredFamilies = [],
     marketReality = null,
+    nicheDifficultyVerdict = null,
     ideaPortfolioSummary = null,
     userAdjustments = [],
     discussionCount = null,
     painPointCount = null,
     segmentCount = null,
     onRegenerateStart,
+    onSeedStart,
     onBatchSettled,
     onJourneyTasks,
     onShortlistChange,
@@ -256,19 +290,57 @@
     });
   });
   const hasExplicitRecommendation = $derived(
-    /\b(?:recommend(?:ed|s|ing)?|most deserves?|strongest|best (?:idea|option|candidate|pick)|top (?:idea|option|candidate|pick)|prioriti[sz]e|validate(?:d|s|ing)? first|first choice)\b/i
+    /\b(?:recommend(?:ed|s|ing)?|most deserves?|deserves? (?:further|deeper) validation|strongest|best (?:idea|option|candidate|pick)|top (?:idea|option|candidate|pick)|prioriti[sz]e|validate(?:d|s|ing)? first|first choice)\b/i
       .test(summaryRecommendation),
   );
-  const analystPickNames = $derived(new Set(
-    hasExplicitRecommendation
-      ? matchIdeaReferences(summaryRecommendation, ideaReferences)
-          .flatMap((segment) => (
-            segment.reference?.kind === "ranked" && segment.reference.solutionName
-              ? [segment.reference.solutionName]
-              : []
-          ))
-      : [],
-  ));
+  // The explicit recommendation sentence is the one page-level recommendation
+  // authority. Resolve it back to exact current records in prose order; an
+  // ambiguous working name is deliberately ignored rather than guessed.
+  const analystRecommendedSolutions = $derived.by(() => {
+    if (!hasExplicitRecommendation) return [] as SolutionPreview[];
+    const picks: SolutionPreview[] = [];
+    const seen = new Set<string>();
+    for (const segment of matchIdeaReferences(summaryRecommendation, ideaReferences)) {
+      const name = segment.reference?.kind === "ranked"
+        ? segment.reference.solutionName
+        : null;
+      if (!name) continue;
+      const matches = solutions.filter((solution) => solution.solution_name === name);
+      if (matches.length !== 1) continue;
+      const key = ideaKey(matches[0]);
+      if (!seen.has(key)) {
+        seen.add(key);
+        picks.push(matches[0]);
+      }
+    }
+    return picks;
+  });
+  const analystPickKeys = $derived(new Set(analystRecommendedSolutions.map(ideaKey)));
+
+  // The one case that reads as broken without a sentence of help: the best-scoring idea
+  // carries the recommendation nowhere near it, because the adversarial review could not
+  // establish its premise. Scored on evidence the review DID accept, it is genuinely the
+  // leader — so state the split rather than letting the user reconcile two numbers alone.
+  // Keyed on score, not row position: the default sort floats recommendations to the top,
+  // which is exactly what makes a higher score sitting in row 2 look like a bug.
+  const premiseSplit = $derived.by(() => {
+    if (analystRecommendedSolutions.length === 0) return null;
+    let top: SolutionPreview | null = null;
+    let topScore = Number.NEGATIVE_INFINITY;
+    for (const candidate of solutions) {
+      const score = displayCompositeScore(candidate) ?? -1;
+      if (score > topScore) {
+        topScore = score;
+        top = candidate;
+      }
+    }
+    if (!top || !isPremiseUnproven(top) || analystPickKeys.has(ideaKey(top))) return null;
+    // Name the recommendation the user can actually act on: the first pick that itself
+    // survived review, falling back to the analyst's leading pick when none did.
+    const pick = analystRecommendedSolutions.find((idea) => !isPremiseUnproven(idea))
+      ?? analystRecommendedSolutions[0];
+    return recommendationSplitNote(solutionDisplayTitle(top), solutionDisplayTitle(pick));
+  });
 
   // ── Selection state ──
   let selectedIdeaKeys = new SvelteSet<string>();
@@ -287,10 +359,16 @@
   let selectLoading = $state(false);
   let selectError = $state("");
   let modalIndex = $state<number | null>(null); // index into the current ranked pool
+  // WHICH idea the overlay is showing. `modalIndex` alone is a position, and a position
+  // silently means a different idea the moment the pool changes underneath it.
+  let openIdeaKey = "";
   let detailTab = $state<"overview" | "detail">("overview");
   let detailUrlError = $state("");
   let detailHistoryOwned = false;
   let handledDetailQuery = "";
+  /** A detail query a local click replaced — still in the address bar if the shallow
+   *  navigation did not take effect, and never to be resolved again. */
+  let supersededDetailQuery = "";
   let ruledOutDetail = $state<RuledOutFinding | null>(null);
   let returnToChatState = $state<"docked" | "expanded" | null>(null);
   type ShortlistSaveState = "idle" | "saving" | "saved" | "error";
@@ -308,6 +386,22 @@
   let selectionDecisionStateRequest = 0;
   let handledSelectionToolQuery = "";
   let handledShortlistProposal = "";
+  const detailTriggers = new Map<string, HTMLButtonElement>();
+
+  function registerDetailTrigger(node: HTMLButtonElement, key: string) {
+    let registeredKey = key;
+    detailTriggers.set(registeredKey, node);
+    return {
+      update(nextKey: string) {
+        if (detailTriggers.get(registeredKey) === node) detailTriggers.delete(registeredKey);
+        registeredKey = nextKey;
+        detailTriggers.set(registeredKey, node);
+      },
+      destroy() {
+        if (detailTriggers.get(registeredKey) === node) detailTriggers.delete(registeredKey);
+      },
+    };
+  }
 
   function ideaKey(solution: SolutionPreview): string {
     return solution.idea_id
@@ -444,50 +538,9 @@
   }
 
 
-  interface CollaboratorFeedbackGroup {
-    key: string;
-    linked: boolean;
-    solutionName: string;
-    comments: string[];
-  }
-
-  const collaboratorFeedbackGroups = $derived.by(() => {
-    const nameCounts = new Map<string, number>();
-    for (const solution of solutions) {
-      nameCounts.set(solution.solution_name, (nameCounts.get(solution.solution_name) ?? 0) + 1);
-    }
-
-    const groups = new Map<string, CollaboratorFeedbackGroup>();
-    for (const rationale of voteRationales) {
-      const solution = rationale.solutionId
-        ? solutions.find((candidate) => candidate.idea_id === rationale.solutionId) ?? null
-        : nameCounts.get(rationale.solutionName) === 1
-          ? solutions.find((candidate) => candidate.solution_name === rationale.solutionName) ?? null
-          : null;
-      const key = solution
-        ? ideaKey(solution)
-        : rationale.solutionId
-          ? `previous:${rationale.solutionId}`
-          : `legacy:${rationale.solutionName}`;
-      const existing = groups.get(key);
-      if (existing) {
-        existing.comments.push(rationale.comment);
-      } else {
-        groups.set(key, {
-          key,
-          linked: solution !== null,
-          solutionName: solution ? solutionDisplayTitle(solution) : rationale.solutionName,
-          comments: [rationale.comment],
-        });
-      }
-    }
-
-    return [...groups.values()].sort((a, b) => {
-      if (a.linked && !b.linked) return -1;
-      if (!a.linked && b.linked) return 1;
-      return a.solutionName.localeCompare(b.solutionName);
-    });
-  });
+  const collaboratorFeedbackGroups = $derived(
+    buildCollaboratorFeedbackGroups(solutions, voteRationales),
+  );
   const collaboratorRationaleCount = $derived(
     collaboratorFeedbackGroups.reduce((total, group) => total + group.comments.length, 0),
   );
@@ -713,6 +766,38 @@
     }
   }
 
+  let batchCancellingOperationId = $state<string | null>(null);
+  const cancellableBatchOperationId = $derived(
+    chatLedger.activeOperation?.kind === "REGENERATE"
+    && chatLedger.activeOperation.state === "AUTHORIZED"
+      ? chatLedger.activeOperation.id
+      : null,
+  );
+
+  async function cancelBatch(activity: BatchActivityRecord) {
+    if (
+      batchCancellingOperationId
+      || activity.operationId !== cancellableBatchOperationId
+    ) return;
+    batchCancellingOperationId = activity.operationId;
+    regenerateError = "";
+    try {
+      await cancelSelectionOperation(jobId, activity.operationId);
+      stopBatchPoll();
+      await chatLedger.reload();
+      onBatchSettled?.();
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        await chatLedger.reload();
+        regenerateError = "This batch has already started and can no longer be cancelled. It will finish or refund automatically.";
+      } else {
+        regenerateError = error instanceof Error ? error.message : "Failed to cancel the queued batch";
+      }
+    } finally {
+      batchCancellingOperationId = null;
+    }
+  }
+
   $effect(() => () => stopBatchPoll());
 
   // `focusOverride` lets the chat patch card ("Apply changes") drive the same
@@ -796,7 +881,7 @@
   let seedHighlightName = $state<string | null>(null);
   let batchHighlightIdeaIds = $state<Set<string>>(new Set());
   let seedHighlightRuledOutIndex = $state<number | null>(null);
-  let seedBanner = $state<{ outcome: "accepted" | "demoted" | "failed" | "refunded" } | null>(null);
+  let seedBanner = $state<{ outcome: "accepted" | "demoted" | "failed" | "refunded" | "cancelled" } | null>(null);
 
   // One paid pool-mutation operation at a time (mirrors the backend's single
   // `Job.activeDispatchId`) — gates the seed card, regenerate, shortlist toggles,
@@ -805,6 +890,7 @@
   // durable (reload-surviving) case, not just this session's own submit.
   const poolMutationBusy = $derived(
     poolMutationLocked
+    || shortlistSaveState === "saving"
     || regenerating
     || isRegenerating
     || seedPending
@@ -943,7 +1029,7 @@
    *  general (the SSE sorted-name-diff bug this plan explicitly avoids repeating;
    *  a brand-new seed's name is guaranteed novel, which is what makes this safe). */
   let pendingSeedReconcile = $state<{
-    outcome: "accepted" | "demoted" | "failed" | "refunded";
+    outcome: "accepted" | "demoted" | "failed" | "refunded" | "cancelled";
     priorNames: Set<string>;
     priorRuledOutCount: number;
   } | null>(null);
@@ -980,7 +1066,7 @@
   } | null>(null);
 
   function settleSeed(
-    outcome: "accepted" | "demoted" | "failed" | "refunded",
+    outcome: "accepted" | "demoted" | "failed" | "refunded" | "cancelled",
     priorNames: Set<string>,
     priorRuledOutCount: number,
   ) {
@@ -1101,6 +1187,7 @@
             },
       );
       chatLedger.markSeedPending(sourceMessageId);
+      onSeedStart?.();
       beginSeedSettlementPoll(sourceMessageId, priorNames, priorRuledOutCount);
       return true;
     } catch (e) {
@@ -1124,6 +1211,37 @@
         seedError = e instanceof Error ? e.message : "Failed to submit your idea";
       }
       return false;
+    }
+  }
+
+  let seedCancelling = $state(false);
+  async function cancelSeedEvaluation() {
+    if (
+      seedCancelling
+      || chatLedger.activeOperation?.kind !== "SEED_IDEA"
+      || chatLedger.activeOperation.state !== "AUTHORIZED"
+    ) return;
+    const sourceMessageId = inFlightSeed?.sourceMessageId
+      ?? seedActivities.find((activity) => activity.outcome === "pending")?.sourceMessageId;
+    if (!sourceMessageId) return;
+    seedCancelling = true;
+    seedError = "";
+    try {
+      await cancelSelectionOperation(jobId, chatLedger.activeOperation.id);
+      await chatLedger.reload();
+      const outcome = chatLedger.seedOutcome(sourceMessageId);
+      if (outcome && outcome !== "pending") {
+        if (inFlightSeed) {
+          settleSeed(outcome, inFlightSeed.priorNames, inFlightSeed.priorRuledOutCount);
+        } else {
+          seedPending = false;
+          onSeedSettled?.(outcome);
+        }
+      }
+    } catch (error) {
+      seedError = error instanceof Error ? error.message : "Failed to cancel the evaluation";
+    } finally {
+      seedCancelling = false;
     }
   }
 
@@ -1341,6 +1459,36 @@
       .map(solutionForKey)
       .filter((solution): solution is SolutionPreview => Boolean(solution)),
   );
+  const projectedSelectionNextAction = $derived.by(() => {
+    if (!selectionDecisionState) return null;
+    const displayRef = (reference: SelectionDecisionNextAction["ideas"][number]) => {
+      const current = solutionForKey(`${reference.ideaId}:${reference.ideaRevision}`);
+      return current
+        ? { ...reference, title: solutionDisplayTitle(current) }
+        : { ...reference };
+    };
+    let action: SelectionDecisionNextAction = {
+      ...selectionDecisionState.nextAction,
+      ideas: selectionDecisionState.nextAction.ideas.map(displayRef),
+    };
+    // With no shortlist, the analyst's explicit portfolio recommendation owns
+    // the Suggested-next candidate too. The backend's raw pool position is not a
+    // recommendation signal and may point at a different working-name record.
+    if (action.kind === "select_candidate" && selectedIdeas.length === 0) {
+      const recommended = analystRecommendedSolutions.find((idea) => Boolean(idea.idea_id));
+      if (recommended?.idea_id) {
+        action = {
+          ...action,
+          ideas: [{
+            ideaId: recommended.idea_id,
+            ideaRevision: recommended.idea_revision ?? 1,
+            title: solutionDisplayTitle(recommended),
+          }],
+        };
+      }
+    }
+    return action;
+  });
   // Near-duplicate shortlist entries stay in the selection flow rather than only in
   // the dossier appendix, where they could be missed before the commit gate.
   const shortlistOverlapWarnings = $derived(
@@ -1374,6 +1522,7 @@
       }));
     return buildSelectionJourney({
       ...selectionDecisionState,
+      nextAction: projectedSelectionNextAction ?? selectionDecisionState.nextAction,
       shortlist: {
         ...selectionDecisionState.shortlist,
         items: localShortlist,
@@ -1468,25 +1617,12 @@
     return colonIdx > 0 ? parity.slice(0, colonIdx).trim() : parity.trim();
   }
 
-  // ── Sorting ──
-  type SortKey = "score" | "fit" | "feas" | "build";
-  let sortKey = $state<SortKey>("score");
-  let sortDir = $state<"asc" | "desc">("desc");
-  function setSort(k: SortKey) {
-    if (sortKey === k) {
-      sortDir = sortDir === "desc" ? "asc" : "desc";
-    } else {
-      sortKey = k;
-      sortDir = k === "build" ? "asc" : "desc";
-    }
-  }
-  /** Accessible name for a sort button: states the action the next press performs. */
-  function sortActionLabel(k: SortKey, label: string): string {
-    if (sortKey !== k) return `Sort by ${label}`;
-    return sortDir === "desc"
-      ? `Sort by ${label}, ascending`
-      : `Sort by ${label}, descending`;
-  }
+  // ── Ranking ──
+  // There is no column sorting. It was a leaderboard affordance, and this screen is a
+  // portfolio of buyer-job cards with variants nested inside them: a sort would either
+  // reorder the cards (breaking the promise that a card you have read stays put) or
+  // renumber rows inside them, which is what made the rank column look broken. One
+  // standing order — the Discovery ranking — applies on both the grouped and flat paths.
   function buildWeeks(s?: string | null): number {
     if (!s) return Infinity;
     const m = s.match(/(\d+(?:\.\d+)?)\s*(day|week|month|year)/i);
@@ -1504,42 +1640,496 @@
             : 1;
     return n * mult;
   }
-  function sortValue(s: SolutionPreview, k: SortKey): number {
-    if (k === "score") return displayCompositeScore(s) ?? -1;
-    if (k === "fit") return s.market_fit_score ?? -1;
-    if (k === "feas") return s.technical_feasibility_score ?? -1;
-    return buildWeeks(s.estimated_development_time);
-  }
   const sortedSolutions = $derived.by(() => {
     const arr = [...solutions];
+    const recommendationOrder = new Map(
+      analystRecommendedSolutions.map((solution, index) => [ideaKey(solution), index]),
+    );
     arr.sort((a, b) => {
-      const va = sortValue(a, sortKey);
-      const vb = sortValue(b, sortKey);
-      return sortDir === "desc" ? vb - va : va - vb;
+      const aRank = recommendationOrder.get(ideaKey(a)) ?? Number.POSITIVE_INFINITY;
+      const bRank = recommendationOrder.get(ideaKey(b)) ?? Number.POSITIVE_INFINITY;
+      if (aRank !== bRank) return aRank - bRank;
+      const scoreDelta = (displayCompositeScore(b) ?? -1) - (displayCompositeScore(a) ?? -1);
+      if (scoreDelta !== 0) return scoreDelta;
+      return solutionDisplayTitle(a).localeCompare(solutionDisplayTitle(b));
     });
     return arr;
   });
+
+  // ── Thesis partition ──
+  // One card per product thesis, variants nested beneath it. Rows keep their rank in
+  // the global ranking (`index`), so the detail overlay's prev/next and every existing
+  // row affordance behave exactly as they do in the flat list.
+  type ThesisRow = { solution: SolutionPreview; index: number };
+  type ThesisGroup = {
+    key: string;
+    thesis: IdeaThesis | null;
+    label: string;
+    lead: ThesisRow;
+    variants: ThesisRow[];
+    isNew: boolean;
+  };
+
+  const UNGROUPED_THESIS_KEY = "__ungrouped__";
+
+  // Batch provenance is DURABLE on the idea itself, but `generation_batch_ordinal` ALONE
+  // is not a safe key for it: pools generated before the worker stamp was fixed carry
+  // FABRICATED ordinals (ordinal 1 with `generation_operation_id: "expansion"`) and there
+  // is no backfill, so an ordinal match over-counts the batch on every stale pool — six
+  // "new" chips over five real arrivals, directly above a 100-credit commit.
+  //
+  // The only trustworthy key is the dispatch id of a batch THIS JOB actually ran: the
+  // same `generation_operation_id` `reviewBatchRuledOut` matches findings on. An idea
+  // whose operation id is missing, or is not one of those dispatch ids, is NOT new
+  // however new its ordinal looks.
+  const latestBatchOperationId = $derived.by(() => {
+    let latest: BatchActivityRecord | null = null;
+    for (const activity of batchActivities) {
+      // Only a batch that actually landed candidates can have stamped an idea.
+      if (activity.outcome !== "completed") continue;
+      if (!latest || activity.ordinal > latest.ordinal) latest = activity;
+    }
+    return latest?.operationId ?? "";
+  });
+  /** The ONE set behind every new-batch marker on this screen — the chips, the card
+   *  badge and the summary line all read it, so they cannot report different counts. */
+  const newIdeaKeys = $derived.by(() => {
+    const keys = new Set<string>();
+    if (!latestBatchOperationId) return keys;
+    for (const solution of solutions) {
+      if (solution.generation_operation_id === latestBatchOperationId) {
+        keys.add(ideaKey(solution));
+      }
+    }
+    return keys;
+  });
+
+  /**
+   * Card order: strongest thesis first, and then frozen.
+   *
+   * Payload order opened the board on the second-worst idea, so cards are placed by
+   * their best member's composite. Placement happens exactly ONCE per family: a family
+   * keeps its slot for the rest of the session, and one that arrives with a later batch
+   * is appended after everything already on screen. That is what preserves the standing
+   * guarantee — an added batch can only extend the board downwards, never reorder or
+   * re-nest a card the user has already reviewed.
+   */
+  const thesisPlacement = new Map<string, number>();
+  let nextThesisPlacement = 0;
+  /**
+   * Lead slot: decided once per card, and then frozen — same guarantee as card order.
+   *
+   * The partition recomputes `lead_idea_name` after every batch, so a newcomer that
+   * outscored the incumbent took the card's lead slot and pushed an idea the user had
+   * already read down into a collapsed "Show 1 variant". That is a re-nest of reviewed
+   * content, which the ordering contract above forbids. Two rules keep the slot still:
+   *   1. a member of the LATEST batch can never hold the lead while any older member
+   *      survives (durable — it re-derives the same way after a reload), and
+   *   2. whatever led first keeps leading for the rest of the session.
+   * Keyed on `idea_id` rather than `ideaKey`, so a revision bump (workshop edit) is the
+   * same idea holding its slot, not a new one claiming it.
+   */
+  const thesisLeadIdentity = new Map<string, string>();
+  function leadIdentity(solution: SolutionPreview): string {
+    return solution.idea_id || `legacy:${solution.solution_name}`;
+  }
+  function resolveThesisLead(rows: ThesisRow[], thesis: IdeaThesis): ThesisRow {
+    // Rule 1: arrivals from the latest batch are only eligible when nothing older exists.
+    const older = rows.filter((row) => !newIdeaKeys.has(ideaKey(row.solution)));
+    const eligible = older.length > 0 ? older : rows;
+    // Rule 2: the frozen lead wins as long as it is still eligible. (It stops being
+    // eligible only if the idea left the pool, or if the batch ledger settled late and
+    // revealed the frozen row to be a newcomer — both mean re-deriving is the honest move.)
+    const frozen = thesisLeadIdentity.get(thesis.family_id);
+    const frozenRow = frozen
+      ? eligible.find((row) => leadIdentity(row.solution) === frozen)
+      : undefined;
+    if (frozenRow) return frozenRow;
+    const leadName = thesis.lead_idea_name
+      || thesis.members.find((member) =>
+        eligible.some((row) => row.solution.solution_name === member.name))?.name;
+    const lead = eligible.find((row) => row.solution.solution_name === leadName) ?? eligible[0];
+    thesisLeadIdentity.set(thesis.family_id, leadIdentity(lead.solution));
+    return lead;
+  }
+  function orderThesisGroups(groups: ThesisGroup[]): ThesisGroup[] {
+    const unplaced = groups.filter((group) => !thesisPlacement.has(group.key));
+    if (unplaced.length > 0) {
+      const bestScore = (group: ThesisGroup) =>
+        Math.max(
+          ...[group.lead, ...group.variants]
+            .map((row) => displayCompositeScore(row.solution) ?? -1),
+        );
+      // Stable sort: families that tie on their best idea keep payload order.
+      unplaced
+        .slice()
+        .sort((a, b) => bestScore(b) - bestScore(a))
+        .forEach((group) => thesisPlacement.set(group.key, nextThesisPlacement++));
+    }
+    return groups
+      .slice()
+      .sort((a, b) => thesisPlacement.get(a.key)! - thesisPlacement.get(b.key)!);
+  }
+
+  const thesisGroups = $derived.by(() => {
+    // The partition's "unassigned" ideas are not a thesis — they fall through to the
+    // local ungrouped bucket below, which is what an idea added after the partition
+    // was computed (extra batch, seeded idea) also lands in.
+    const theses = (ideaTheses ?? []).filter((thesis) => thesis.family_id !== "unassigned");
+    if (theses.length === 0) return [] as ThesisGroup[];
+
+    // First thesis claiming an idea name owns it — a name in two families would
+    // otherwise duplicate a row, and a duplicated row is a second selectable copy.
+    const familyByName = new Map<string, IdeaThesis>();
+    for (const thesis of theses) {
+      for (const member of thesis.members) {
+        if (!familyByName.has(member.name)) familyByName.set(member.name, thesis);
+      }
+    }
+
+    const rowsByFamily = new Map<string, ThesisRow[]>();
+    const ungrouped: ThesisRow[] = [];
+    sortedSolutions.forEach((solution, index) => {
+      const thesis = familyByName.get(solution.solution_name);
+      if (!thesis) {
+        ungrouped.push({ solution, index });
+        return;
+      }
+      const rows = rowsByFamily.get(thesis.family_id);
+      if (rows) rows.push({ solution, index });
+      else rowsByFamily.set(thesis.family_id, [{ solution, index }]);
+    });
+
+    const groups: ThesisGroup[] = [];
+    for (const thesis of theses) {
+      const rows = rowsByFamily.get(thesis.family_id);
+      // A thesis whose ideas all died is an UNCOVERED family, not an empty card.
+      if (!rows || rows.length === 0) continue;
+      // Variants read best-first inside the card. The partition already emits `members`
+      // best-first on the same composite the grid shows, so follow that rather than
+      // re-sorting client-side; anything the partition does not name keeps its
+      // (append-order) place at the end.
+      const memberOrder = new Map(thesis.members.map((member, order) => [member.name, order]));
+      rows.sort((a, b) =>
+        (memberOrder.get(a.solution.solution_name) ?? Number.POSITIVE_INFINITY)
+        - (memberOrder.get(b.solution.solution_name) ?? Number.POSITIVE_INFINITY));
+      // Lead resolution is STABLE by construction — see `resolveThesisLead`.
+      const lead = resolveThesisLead(rows, thesis);
+      const memberKeys = rows.map((row) => ideaKey(row.solution));
+      groups.push({
+        key: thesis.family_id,
+        thesis,
+        label: thesis.display_label,
+        lead,
+        variants: rows.filter((row) => row !== lead),
+        // A family is new only when NOTHING in it predates the latest batch. A batch
+        // that merely added a variant to a standing thesis is not a new bet.
+        isNew: newIdeaKeys.size > 0 && memberKeys.every((key) => newIdeaKeys.has(key)),
+      });
+    }
+    // Cards are placed best-first ONCE and then frozen for the session (see
+    // `orderThesisGroups`): the user must not open on the second-worst idea, and a card
+    // they have already read must never move or re-nest under them.
+    const ordered = orderThesisGroups(groups);
+
+    if (ungrouped.length > 0) {
+      ordered.push({
+        key: UNGROUPED_THESIS_KEY,
+        thesis: null,
+        label: "Not yet grouped",
+        lead: ungrouped[0],
+        variants: ungrouped.slice(1),
+        isNew: false,
+      });
+    }
+    return ordered;
+  });
+
+  const uncoveredJobs = $derived(uncoveredFamilies ?? []);
+  /** A thesis band is only worth showing when it actually carries structure: two or
+   *  more surviving theses, or exactly one thesis that leaves genuinely ungrouped rows
+   *  beside it. A single thesis wrapping the whole list, or zero theses at all, is pure
+   *  chrome — render the flat list (and hide the uncovered-jobs card, which would
+   *  otherwise render with no portfolio structure above it for context). */
+  const thesisViewMeaningful = $derived.by(() => {
+    const realTheses = thesisGroups.filter((group) => group.thesis !== null);
+    if (realTheses.length >= 2) return true;
+    if (realTheses.length === 1) {
+      const thesisMemberCount = realTheses[0].variants.length + 1;
+      return thesisMemberCount < sortedSolutions.length;
+    }
+    return false;
+  });
+  /**
+   * The single row whose select control the first-run tutorial spotlights.
+   *
+   * `i === 0` used to carry this, and thesis grouping broke it: the top-ranked idea is
+   * often a VARIANT, and a variant inside a collapsed card is not in the DOM at all — so
+   * the selector matched nothing and driver.js pinned that step to the bottom of the
+   * screen with no arrow. The lead of the first card is rendered unconditionally in
+   * either layout, so this is always the first select control the user can see.
+   */
+  const tourAnchorKey = $derived.by(() => {
+    if (!interactive) return "";
+    const first = thesisViewMeaningful ? thesisGroups[0]?.lead.solution : sortedSolutions[0];
+    return first ? ideaKey(first) : "";
+  });
+  /** "5 jobs examined · 3 theses · 2 uncovered" — the honest one-line read of the pool. */
+  const thesisCoverageLine = $derived.by(() => {
+    if (!thesisViewMeaningful) return "";
+    const theses = thesisGroups.filter((group) => group.thesis !== null).length;
+    const examined = theses + uncoveredJobs.length;
+    const parts = [`${examined} buyer job${examined === 1 ? "" : "s"} examined`];
+    parts.push(`${theses} thes${theses === 1 ? "is" : "es"}`);
+    if (uncoveredJobs.length > 0) {
+      parts.push(`${uncoveredJobs.length} with no idea in this pool`);
+    }
+    return parts.join(" · ");
+  });
+
+  /** What the last "Add another batch" actually bought, in thesis terms — the signal a
+   *  per-batch block would destroy ("you asked for more and got more of the same
+   *  families"). Omitted entirely when the pool carries no batch provenance. */
+  const newBatchSummary = $derived.by(() => {
+    if (!thesisViewMeaningful || newIdeaKeys.size === 0) return "";
+    let joinedExisting = 0;
+    let newTheses = 0;
+    let ungrouped = 0;
+    // Counted off the SAME rows that paint the chips rather than off `newIdeaKeys.size`,
+    // so the headline number and the markers under it can never disagree.
+    let total = 0;
+    for (const group of thesisGroups) {
+      const newMembers = [group.lead, ...group.variants]
+        .filter((row) => newIdeaKeys.has(ideaKey(row.solution))).length;
+      if (newMembers === 0) continue;
+      total += newMembers;
+      if (group.thesis === null) ungrouped += newMembers;
+      else if (group.isNew) newTheses += 1;
+      else joinedExisting += newMembers;
+    }
+    if (total === 0) return "";
+    const outcomes: string[] = [];
+    if (joinedExisting > 0) {
+      outcomes.push(`${joinedExisting} joined existing theses`);
+    }
+    if (newTheses > 0) {
+      outcomes.push(`${newTheses} opened ${newTheses === 1 ? "a new thesis" : "new theses"}`);
+    }
+    if (ungrouped > 0) outcomes.push(`${ungrouped} not yet grouped`);
+    const head = `${total} new idea${total === 1 ? "" : "s"} from your last request`;
+    return outcomes.length ? `${head} — ${outcomes.join(", ")}.` : `${head}.`;
+  });
+
+  const expandedThesisKeys = new SvelteSet<string>();
+  /**
+   * Some cards are held open no matter what the toggle says, and the toggle used to lie
+   * about it: it still read "Hide 2 variants" and clicking it did nothing at all. When
+   * expansion is FORCED, this returns the reason, the card renders it as a statement
+   * instead of a button, and there is no inert control left to click.
+   *
+   * A shortlisted variant is never hidden behind a collapsed card (whatever was
+   * selectable in the flat list stays selectable here), and neither is an arrival from
+   * the batch the user just paid for — with the lead slot frozen, a newcomer lands as a
+   * variant, and an invisible new idea is exactly the wrong thing to sell someone.
+   */
+  function thesisForcedExpansion(group: ThesisGroup): string {
+    if (group.thesis === null) return "";
+    const shortlisted = group.variants
+      .filter((row) => selectedIdeaKeys.has(ideaKey(row.solution))).length;
+    const arrivals = group.variants
+      .filter((row) => newIdeaKeys.has(ideaKey(row.solution))).length;
+    const reasons: string[] = [];
+    if (shortlisted > 0) reasons.push(`${shortlisted} shortlisted here`);
+    if (arrivals > 0) reasons.push(`${arrivals} new in this batch`);
+    return reasons.length ? `Expanded · ${reasons.join(" · ")}` : "";
+  }
+  /** The ungrouped bucket never collapses: an idea you just generated must be visible
+   *  the moment it lands. */
+  function thesisExpanded(group: ThesisGroup): boolean {
+    if (group.thesis === null || expandedThesisKeys.has(group.key)) return true;
+    return thesisForcedExpansion(group) !== "";
+  }
+  function toggleThesis(group: ThesisGroup): void {
+    if (expandedThesisKeys.has(group.key)) {
+      expandedThesisKeys.delete(group.key);
+      return;
+    }
+    expandedThesisKeys.add(group.key);
+    // The variants open below the fold on a tall card, so the only visible change was
+    // the button's own label — the control read as dead. Bring the first one into view.
+    const first = group.variants[0]?.solution;
+    if (!first) return;
+    void tick().then(() => {
+      const selector = first.idea_id
+        ? `[data-idea-id="${CSS.escape(first.idea_id)}"]`
+        : `[data-solution-name="${CSS.escape(first.solution_name)}"]`;
+      document.querySelector(selector)
+        ?.scrollIntoView?.({ behavior: scrollBehavior(), block: "nearest" });
+    });
+  }
+
+  const INCUMBENT_LABEL: Record<ThesisIncumbentStatus, string> = {
+    occupied: "Incumbent: occupied",
+    partial: "Incumbent: partial cover",
+    open: "Incumbent: no direct tool found",
+    unknown: "Incumbent: not checked",
+  };
+  const INCUMBENT_TAG: Record<ThesisIncumbentStatus, string> = {
+    occupied: "tag-risk",
+    partial: "tag-caution",
+    open: "tag-success",
+    unknown: "tag-parity",
+  };
+  /**
+   * `refine_binding_constraint` is the tournament judge's IMPROVEMENT DIRECTIVE — the
+   * thing to strengthen next, explicitly not a guaranteed bear case (the idea overlay
+   * carries the same warning next to the field). Labelling it "Fatal assumption"
+   * promoted a coaching note to a death sentence. Every other source field is a
+   * deterministic kill-signal already stamped on the idea, and keeps the harder word.
+   */
+  function thesisFlagLabel(assumption: ThesisFatalAssumption): string {
+    return assumption.source_field === "refine_binding_constraint"
+      ? "Weak point"
+      : "Fatal assumption";
+  }
+  /**
+   * `fatal_assumptions[].idea_name` is the internal WORKING name, and every row on this
+   * board is titled with its headline — so the attribution named ideas the reader could
+   * not find in the list it sits above. Lead with the headline the rows show and keep the
+   * working name beside it, since the overlay and the exports still use that one.
+   */
+  function thesisFlagIdea(
+    assumption: ThesisFatalAssumption,
+    fallback: string,
+  ): { title: string; working: string } {
+    const workingName = assumption.idea_name?.trim() ?? "";
+    if (!workingName) return { title: fallback, working: "" };
+    const match = solutions.find((candidate) => candidate.solution_name === workingName);
+    const headline = match ? solutionDisplayTitle(match) : "";
+    // A working name the headline already contains ("Living Settlement Sheet" under
+    // "Living Settlement Sheet for Door Deal Closeout") is noise, not provenance.
+    const redundant = headline.toLowerCase().includes(workingName.toLowerCase());
+    return headline && headline !== workingName
+      ? { title: headline, working: redundant ? "" : workingName }
+      : { title: workingName, working: "" };
+  }
+  const expandedThesisFlagKeys = new SvelteSet<string>();
+  function toggleThesisFlags(key: string): void {
+    if (expandedThesisFlagKeys.has(key)) expandedThesisFlagKeys.delete(key);
+    else expandedThesisFlagKeys.add(key);
+  }
+  function incumbentTooltip(thesis: IdeaThesis): string {
+    const vendors = thesis.incumbent_vendors ?? [];
+    if (vendors.length > 0) return `Already shipped by: ${vendors.join(", ")}`;
+    if (thesis.incumbent_status === "open") {
+      return "No direct incumbent surfaced for this buyer job during the parity probe.";
+    }
+    return "Incumbent coverage for this buyer job was not established.";
+  }
+  /** `reason` is an enum token, not prose — the pipeline's own `reason_detail` is the
+   *  sentence to show when it sent one. */
+  const UNCOVERED_REASON_LABEL: Record<UncoveredFamily["reason"], string> = {
+    no_cell_allocated: "No idea generation was allocated to this job.",
+    no_surviving_idea: "Ideas were generated for this job; none survived the review bar.",
+    unknown: "",
+  };
+  function uncoveredReason(family: UncoveredFamily): string {
+    return family.reason_detail?.trim() || UNCOVERED_REASON_LABEL[family.reason];
+  }
+  /** The thesis subtitle: buyer, the job that triggers the purchase, and who pays. */
+  function thesisJobLine(thesis: IdeaThesis): string {
+    return [thesis.buyer, thesis.triggering_job, thesis.economic_outcome]
+      .filter((part): part is string => Boolean(part))
+      .join(" · ");
+  }
+  /** Angle is orthogonal to the buyer job — family is who + what job, angle is how you
+   *  go to market. So it stays a per-variant chip (rendered in the row), and the card
+   *  header only tallies it: one job carrying several angles is several GTM bets on the
+   *  same demand, which is worth seeing before you expand. Ideas without an angle
+   *  (angle eval off, legacy records) are simply absent from the tally. */
+  function thesisAngleSummary(group: ThesisGroup): { label: string; counts: string } {
+    const counts = new Map<string, number>();
+    for (const row of [group.lead, ...group.variants]) {
+      const label = angleLabel(row.solution.winning_angle);
+      if (!label) continue;
+      counts.set(label, (counts.get(label) ?? 0) + 1);
+    }
+    if (counts.size === 0) return { label: "", counts: "" };
+    return {
+      label: counts.size > 1 ? "Angles across variants" : "Angle",
+      counts: [...counts.entries()]
+        .map(([label, count]) => (count > 1 ? `${label} ×${count}` : label))
+        .join(" · "),
+    };
+  }
+
+  /** The overlay's real subject: `modalIndex` is only where that idea currently sits. */
+  function setModalIndex(index: number | null): void {
+    modalIndex = index;
+    const solution = index === null ? undefined : sortedSolutions[index];
+    openIdeaKey = solution ? ideaKey(solution) : "";
+  }
+  function detailQuery(url: URL | { pathname: string; search: string }): string {
+    return `${jobId}:${url.pathname}:${url.search}`;
+  }
+  /**
+   * A click is AUTHORITATIVE over whatever the address bar still says.
+   *
+   * Shallow routing does not always land: `pushState` throws before the router has
+   * initialised, and any failure leaves the previous idea's `ideaId` in the URL. The
+   * sync effect below would then re-resolve that stale id and quietly swap the open
+   * idea's body under the clicked idea's title. So record BOTH the query this
+   * navigation intends and the one it replaces, and treat either as already handled.
+   */
+  function navigateDetail(url: string, mode: "push" | "replace"): void {
+    supersededDetailQuery = detailQuery(page.url);
+    const next = new URL(url, page.url);
+    handledDetailQuery = detailQuery(next);
+    try {
+      if (mode === "push") pushState(url, page.state);
+      else replaceState(url, page.state);
+    } catch {
+      // The overlay still shows what the user asked for; only the URL is behind.
+    }
+  }
 
   // Detail links are durable, exact candidate references. Browser Back removes the
   // shallow detail entry; refresh/share restores the same revision and tab. Names are
   // accepted only for legacy candidates that have no stable id, and only when unique.
   $effect(() => {
     const requestedTab = page.url.searchParams.get("detailTab");
-    const poolIdentity = sortedSolutions
-      .map((solution) => ideaKey(solution))
-      .join("|");
-    const queryKey = `${jobId}:${page.url.pathname}:${page.url.search}:${poolIdentity}`;
-    if (handledDetailQuery === queryKey) return;
+    const queryKey = detailQuery(page.url);
+    const pool = sortedSolutions;
+    if (queryKey === handledDetailQuery || queryKey === supersededDetailQuery) {
+      if (queryKey === handledDetailQuery) supersededDetailQuery = "";
+      // Nothing new in the URL — but the pool may have moved under it (a batch landed,
+      // the list re-sorted). Re-point at the SAME idea instead of re-reading the address
+      // bar, which is what used to reopen a stale link over the user's own click.
+      if (openIdeaKey) {
+        const next = pool.findIndex((candidate) => ideaKey(candidate) === openIdeaKey);
+        modalIndex = next >= 0 ? next : null;
+        if (next < 0) {
+          openIdeaKey = "";
+          detailTab = "overview";
+        }
+      }
+      return;
+    }
+    // The ranked pool arrives after mount on a cold load. A deep link has to WAIT for
+    // it — resolving against an empty list would report a dead link and consume the
+    // query, so the link would stay dead once the ideas landed.
+    if (requestedTab && pool.length === 0) return;
     handledDetailQuery = queryKey;
+    supersededDetailQuery = "";
 
     if (!requestedTab) {
-      modalIndex = null;
+      setModalIndex(null);
       detailTab = "overview";
       detailHistoryOwned = false;
       return;
     }
     if (requestedTab !== "overview" && requestedTab !== "detail") {
-      modalIndex = null;
+      setModalIndex(null);
       detailUrlError = "This idea-detail link requests a view that no longer exists.";
       detailHistoryOwned = false;
       return;
@@ -1553,7 +2143,7 @@
     if (ideaId) {
       const revision = Number(revisionParam);
       if (!revisionParam || !Number.isInteger(revision) || revision < 1) {
-        modalIndex = null;
+        setModalIndex(null);
         detailUrlError = "This idea-detail link is missing a valid idea revision.";
         detailHistoryOwned = false;
         return;
@@ -1570,26 +2160,26 @@
         );
       if (matches.length === 1) index = matches[0].candidateIndex;
       else if (matches.length > 1) {
-        modalIndex = null;
+        setModalIndex(null);
         detailUrlError = "This older name-only link is ambiguous. Open the exact idea from the ranked list.";
         detailHistoryOwned = false;
         return;
       }
     } else {
-      modalIndex = null;
+      setModalIndex(null);
       detailUrlError = "This idea-detail link does not identify an idea.";
       detailHistoryOwned = false;
       return;
     }
 
     if (index < 0) {
-      modalIndex = null;
+      setModalIndex(null);
       detailUrlError = "That exact idea revision is no longer available. Return to the ranked ideas to choose a current one.";
       detailHistoryOwned = false;
       return;
     }
 
-    modalIndex = index;
+    setModalIndex(index);
     detailTab = requestedTab;
     detailUrlError = "";
   });
@@ -1609,7 +2199,7 @@
     }),
   );
 
-  const SORT_COLS: { key: SortKey; label: string; tooltip?: string }[] = [
+  const METRIC_COLS: { key: string; label: string; tooltip?: string }[] = [
     // "/100" because the neighbouring columns render as percentages: a bare "70"
     // beside "60%" and "95%" reads as a third, unstated scale. Score is a relative
     // 0-100 ranking index, not a percentage, so it is labelled rather than converted.
@@ -1661,7 +2251,7 @@
   // here; its dock/expand/close state is independent of overlay exclusivity.
   function closeAllOverlays(preserveDetailUrl = false): void {
     const hadDetail = modalIndex !== null || page.url.searchParams.has("detailTab");
-    modalIndex = null;
+    setModalIndex(null);
     detailTab = "overview";
     if (!preserveDetailUrl && hadDetail) {
       detailHistoryOwned = false;
@@ -1695,7 +2285,7 @@
       next.searchParams.delete(key);
     }
     if (hash !== undefined) next.hash = hash;
-    replaceState(`${next.pathname}${next.search}${next.hash}`, page.state);
+    navigateDetail(`${next.pathname}${next.search}${next.hash}`, "replace");
   }
 
   function openDetail(solution: SolutionPreview) {
@@ -1705,11 +2295,11 @@
       detailUrlError = "That idea revision is no longer in this research run.";
       return;
     }
-    modalIndex = index;
+    setModalIndex(index);
     detailTab = "overview";
     detailUrlError = "";
     detailHistoryOwned = true;
-    pushState(detailUrl(sortedSolutions[index], "overview"), page.state);
+    navigateDetail(detailUrl(sortedSolutions[index], "overview"), "push");
   }
 
   function openDetailByKey(key: string) {
@@ -1724,8 +2314,8 @@
   function handleNavigate(index: number) {
     const next = sortedSolutions[index];
     if (!next) return;
-    modalIndex = index;
-    replaceState(detailUrl(next, detailTab), page.state);
+    setModalIndex(index);
+    navigateDetail(detailUrl(next, detailTab), "replace");
   }
 
   function handleDetailTabChange(tab: "overview" | "detail") {
@@ -1733,11 +2323,20 @@
     const current = sortedSolutions[modalIndex];
     if (!current) return;
     detailTab = tab;
-    replaceState(detailUrl(current, tab), page.state);
+    navigateDetail(detailUrl(current, tab), "replace");
+  }
+
+  async function restoreDetailTrigger(solution: SolutionPreview): Promise<void> {
+    await tick();
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    const trigger = detailTriggers.get(ideaKey(solution));
+    if (trigger?.isConnected) trigger.focus({ preventScroll: true });
   }
 
   function handleCloseDetail() {
-    modalIndex = null;
+    const closingSolution = modalIndex === null ? null : sortedSolutions[modalIndex] ?? null;
+    const returningToChat = returnToChatState !== null;
+    setModalIndex(null);
     detailTab = "overview";
     detailUrlError = "";
     if (detailHistoryOwned) {
@@ -1747,6 +2346,7 @@
       clearDetailUrl();
     }
     restoreChatAfterDetail();
+    if (closingSolution && !returningToChat) void restoreDetailTrigger(closingSolution);
   }
 
   async function handleOpenDetailEvidence(href: string) {
@@ -1754,7 +2354,7 @@
     const targetId = decodeURIComponent(targetUrl.hash.slice(1));
     if (!targetId) return;
 
-    modalIndex = null;
+    setModalIndex(null);
     detailTab = "overview";
     detailUrlError = "";
     detailHistoryOwned = false;
@@ -2394,9 +2994,14 @@
             : null);
     const mergedFrom = s.idea_tier === "merged" ? (s.merged_from ?? []) : [];
     const parity = directIncumbentParity(s);
+    // Red-team parity classes ("bundled_free (red-team): …") name an alternative CLASS,
+    // not a product — the adversarial chip already carries that signal on the row.
+    const parityName = parity ? incumbentName(parity) : null;
     const incumbent =
-      parity
-        ? { name: incumbentName(parity), full: parity }
+      parity && parityName && !/\(red-team\)\s*$/i.test(parityName)
+        // `full` is the tooltip body: phrase the stored class prefix rather than showing
+        // the raw "shipped by X: …" token (matches the analyst's wording).
+        ? { name: parityName, full: incumbentParityPhrase(parity) }
         : null;
     const adversarial = adversarialReviewFinding(s);
     const synthesisParents = s.synthesized_from ?? [];
@@ -2433,6 +3038,8 @@
       synthesisParents: synthesisParents.map((parent) => parent.solution_name).join(", "),
       incumbent,
       adversarial,
+      // Only an explicit `false` is a watch-out; null/undefined means "not judged".
+      audienceAdjacent: s.audience_fit === false,
     };
   }
 </script>
@@ -2456,13 +3063,18 @@
             >{evaluatedDirectionsLabel}</button>{/if}
         </p>
       </div>
+      <!-- Coverage before options: how many buyer jobs were examined, how many
+           theses survived, how many jobs nothing addresses. -->
+      {#if thesisCoverageLine}
+        <p class="record-line cmd-coverage" aria-label="Buyer-job coverage">{thesisCoverageLine}</p>
+      {/if}
       {#if interactive}
         <p class="cmd-sub">
-          Select one to three ideas. One Deep Research run covers the full shortlist; comparison and risk checks are optional.
+          {#if analystRecommendedSolutions.length > 0}Discovery recommendations appear first. {/if}Select one to three ideas. One Deep Research run covers the full shortlist; comparison and risk checks are optional.
         </p>
       {:else}
         <p class="cmd-sub">
-          Solution ideas from the discovery run, ranked by composite score.
+          Solution ideas from the discovery run, {analystRecommendedSolutions.length > 0 ? "with Discovery recommendations first" : "ranked by composite score"}.
           Open a row for full detail and vote for the idea you like most.
         </p>
       {/if}
@@ -2478,12 +3090,20 @@
     {/if}
   </header>
 
+  {#if nicheDifficultyVerdict}
+    <NicheRealityCheck verdict={nicheDifficultyVerdict} context="report" />
+  {/if}
+
   <div class:selection-layout={interactive}>
     <div class="candidate-pool">
       <BatchActivity
         activities={batchActivities}
         stalledOperationId={batchPollStalledOperationId}
+        cancellableOperationId={cancellableBatchOperationId}
+        cancellingOperationId={batchCancellingOperationId}
+        operation={chatLedger.activeOperation}
         onRecheck={recheckBatch}
+        onCancel={cancelBatch}
         onReviewCandidates={reviewBatchCandidates}
         onReviewRuledOut={reviewBatchRuledOut}
         onRetry={canRequestBatch ? retryBatch : undefined}
@@ -2497,7 +3117,12 @@
         view="live"
         operation={chatLedger.activeOperation}
         stalled={seedPollStalledId != null}
+        cancelling={seedCancelling}
         onRecheck={recheckSeed}
+        onCancel={chatLedger.activeOperation?.kind === "SEED_IDEA"
+          && chatLedger.activeOperation.state === "AUTHORIZED"
+            ? cancelSeedEvaluation
+            : undefined}
       />
 
       {#if detailUrlError}
@@ -2521,8 +3146,12 @@
             Evaluation complete. The result was added to the ranked ideas below.
           {:else if seedBanner.outcome === "demoted"}
             We tested your idea. It didn't clear the market-fit bar. See why below.
+          {:else if seedBanner.outcome === "refunded"}
+            Evaluation failed. Eligible credits were returned.
+          {:else if seedBanner.outcome === "cancelled"}
+            Evaluation cancelled before work started. The candidate pool is unchanged.
           {:else}
-            Evaluation failed. Your credits were refunded.
+            Evaluation failed. No candidate was produced.
           {/if}
         </p>
       {/if}
@@ -2549,7 +3178,7 @@
                   class="decision-guide__candidate"
                   disabled={poolMutationBusy || selectLoading}
                   onclick={() => {
-                    if (selectionDecisionState) runSelectionDecisionAction(selectionDecisionState.nextAction);
+                    if (projectedSelectionNextAction) runSelectionDecisionAction(projectedSelectionNextAction);
                   }}
                 >
                   <!-- The evidence-check journey step reuses its heading as the
@@ -2609,41 +3238,50 @@
         </section>
       {/if}
 
+      <!-- What the last batch bought, read in theses rather than raw count. -->
+      {#if newBatchSummary}
+        <p class="batch-summary" role="status">{newBatchSummary}</p>
+      {/if}
+
+      <!-- Sits directly above the rows it explains: the top score and the "Recommended"
+           marker point at different ideas on purpose. -->
+      {#if premiseSplit}
+        <p
+          class="batch-summary"
+          role="note"
+          aria-label="Why the top-scoring idea is not the recommendation"
+          data-tour="recommendation-split"
+        >
+          {premiseSplit}
+        </p>
+      {/if}
+
       <!-- ── Ranked opportunity list ── -->
       <div
         class="opp-list"
+        class:opp-list--grouped={thesisViewMeaningful}
         role="table"
         aria-label={RANKED_LIST_HEADING}
         data-annotation-anchor="shortlist-candidates"
       >
     <!-- Column header (desktop) -->
     <div class="opp-row opp-row-head" role="row" data-tour="ranked-list">
-      <span class="cell-rank" role="columnheader">#</span>
+      <!-- The grouped board drops "#" entirely: once ideas are nested under the buyer
+           job they answer, a strong idea can sit in a weak card, so a global rank column
+           reads 1, 7, 2, 3 no matter how the cards are ordered. The card IS the
+           organizing principle there; Score stays as the comparable number. The flat
+           fallback list really is a ranking, so it keeps the column. -->
+      {#if !thesisViewMeaningful}
+        <span class="cell-rank" role="columnheader">#</span>
+      {/if}
       <span class="cell-select-label" role="columnheader">{interactive ? "Select" : "Vote"}</span>
       <span class="cell-title-label" role="columnheader">Idea</span>
-      {#each SORT_COLS as col}
-        <!-- Explicit name keeps the column name stable while the sibling help
-             control exposes the metric definition on mouse hover and keyboard focus. -->
-        <span
-          class="cell-metric-shell"
-          role="columnheader"
-          aria-label={col.label}
-          aria-sort={sortKey === col.key ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
-        >
-          <button
-            type="button"
-            class="cell-metric-head"
-            class:active={sortKey === col.key}
-            onclick={() => setSort(col.key)}
-            aria-label={sortActionLabel(col.key, col.label)}
-          >
-            <span>{col.label}</span>
-            <!-- Always laid out, hidden while idle: an arrow that appears only on the
-                 active column shrinks that column's label mid-interaction. -->
-            <span class="sort-arrow" class:is-idle={sortKey !== col.key} aria-hidden="true">
-              {#if sortKey === col.key && sortDir === "asc"}<ArrowUp class="w-3 h-3" />{:else}<ArrowDown class="w-3 h-3" />{/if}
-            </span>
-          </button>
+      <!-- Labels, not controls. Sorting was a leaderboard affordance on a screen that is
+           no longer a leaderboard; the standing Discovery order is the only order. The
+           sibling help control still exposes each metric's definition. -->
+      {#each METRIC_COLS as col (col.key)}
+        <span class="cell-metric-shell" role="columnheader" aria-label={col.label}>
+          <span class="cell-metric-head">{col.label}</span>
           {#if col.tooltip}
             <Tooltip content={col.tooltip} position="bottom" class="metric-help" />
           {/if}
@@ -2651,12 +3289,14 @@
       {/each}
     </div>
 
-    {#each sortedSolutions as s, i (ideaKey(s))}
+    <!-- One row definition, rendered either flat (no thesis partition) or nested
+         under its thesis. `i` stays the rank in the global ranking either way. -->
+    {#snippet oppRow(s: SolutionPreview, i: number)}
       {@const m = rowMeta(s)}
       {@const key = ideaKey(s)}
       {@const isSel = selectedIdeaKeys.has(key)}
       {@const maxed = !isSel && selectedIdeaKeys.size >= MAX_SELECTIONS}
-      {@const isAnalystPick = analystPickNames.has(s.solution_name)}
+      {@const isAnalystPick = analystPickKeys.has(key)}
       <div
         class="opp-row"
         role="row"
@@ -2668,13 +3308,15 @@
         data-solution-name={s.solution_name}
         data-annotation-anchor={`candidate:${key}`}
       >
-        <span class="cell-rank" role="cell">{i + 1}</span>
+        {#if !thesisViewMeaningful}
+          <span class="cell-rank" role="cell">{i + 1}</span>
+        {/if}
 
         {#if interactive}
           <span class="cell-shell" role="cell">
           <label
             class="cell-select select-control"
-            data-tour={i === 0 ? "shortlist-checkbox" : undefined}
+            data-tour={key === tourAnchorKey ? "shortlist-checkbox" : undefined}
             class:sel={isSel}
             class:maxed
             aria-disabled={maxed ? "true" : undefined}
@@ -2696,7 +3338,10 @@
             {:else if maxed}
               <span class="select-marker"><span class="select-dash" aria-hidden="true">-</span></span>
               <span class="select-copy">3 selected</span>
-              <span id="select-maxed-hint-{i}" class="sr-only">Deselect one to add this</span>
+              <!-- The REASON the control refuses, on screen and not only in the
+                   accessibility tree: "3 selected" alone reads as a broken button to
+                   everyone who can see it. Same sentence the overlay gives. -->
+              <span id="select-maxed-hint-{i}" class="select-maxed-hint">Deselect one to add this</span>
             {:else}
               <span class="select-marker"><Plus class="select-icon" strokeWidth={2} aria-hidden="true" /></span>
               <span class="select-copy">Select</span>
@@ -2713,6 +3358,7 @@
         <button
           type="button"
           class="cell-title"
+          use:registerDetailTrigger={key}
           onclick={() => openDetail(s)}
         >
           <span class="sr-only">Review details for </span>
@@ -2739,7 +3385,7 @@
               <span class="opp-evidence"><strong>Pain</strong><span>{m.provenance}</span></span>
             {/if}
             {#if m.mergedCount > 0}
-              <Tooltip content={`Synthesized from: ${m.mergedNames}`} position="bottom" focusable={false}>
+              <Tooltip content={`Synthesized from: ${m.mergedNames}`} position="bottom" focusable={false} class="self-start">
                 {#snippet children()}
                   <span class="opp-merged-note">Synthesized from {m.mergedCount} variant{m.mergedCount === 1 ? "" : "s"}</span>
                 {/snippet}
@@ -2751,6 +3397,9 @@
               </span>
             {/if}
             <span class="opp-tags">
+              {#if newIdeaKeys.has(key)}
+                <span class="tag tag-new">New in this batch</span>
+              {/if}
               {#if m.strength}
                 {@const strength = m.strength}
                 {#if m.strengthWhy}
@@ -2776,17 +3425,26 @@
               {#if m.adversarial}
                 {@const adversarial = m.adversarial}
                 <Tooltip
-                  content={adversarial.details.join(" ") || "The adversarial review found a decision-critical objection."}
+                  content={adversarialReviewSummary(adversarial)}
                   position="bottom"
                   focusable={false}
                 >
-                  {#snippet children()}<span class="tag tag-risk">{adversarial.label}</span>{/snippet}
+                  {#snippet children()}<span class="tag {adversarial.severity === 'weakened' ? 'tag-caution' : 'tag-risk'}">{adversarial.chipLabel}</span>{/snippet}
                 </Tooltip>
               {/if}
               {#if m.risk}
                 {@const rowRisk = m.risk}
                 <Tooltip content={rowRisk.description} position="bottom" focusable={false}>
                   {#snippet children()}<span class="tag tag-risk">{rowRisk.label}</span>{/snippet}
+                </Tooltip>
+              {/if}
+              {#if m.audienceAdjacent}
+                <Tooltip
+                  content="This idea primarily serves an audience next to the one you named, not that audience itself. It stays in the list, but ranks slightly below equally-scored ideas built for your audience."
+                  position="bottom"
+                  focusable={false}
+                >
+                  {#snippet children()}<span class="tag tag-caution">Adjacent audience</span>{/snippet}
                 </Tooltip>
               {/if}
             </span>
@@ -2815,9 +3473,154 @@
           <span class="metric-num metric-build-num">{m.build}</span>
         </span>
       </div>
+    {/snippet}
 
-        {/each}
+    {#if thesisViewMeaningful}
+      {#each thesisGroups as group, groupIndex (group.key)}
+        {@const forcedExpansion = thesisForcedExpansion(group)}
+        {@const expanded = thesisExpanded(group)}
+        {@const thesis = group.thesis}
+        <div class="thesis-group" role="rowgroup">
+          <!-- The tutorial spotlights the FIRST card only. The ungrouped bucket is always
+               pushed last, so index 0 is a real thesis whenever this branch renders. -->
+          <div
+            class="thesis-head"
+            class:thesis-head--ungrouped={!thesis}
+            role="row"
+            data-tour={groupIndex === 0 ? "thesis-group" : undefined}
+          >
+            <span class="thesis-head-cell" role="cell">
+              <span class="thesis-copy">
+                <span class="thesis-kicker">
+                  {thesis ? "Product thesis" : "Added after grouping"} · {group.variants.length + 1} idea{group.variants.length === 0 ? "" : "s"}
+                </span>
+                <strong class="thesis-label">{group.label}</strong>
+                {#if thesis}
+                  {@const jobLine = thesisJobLine(thesis)}
+                  {@const angles = thesisAngleSummary(group)}
+                  {@const flags = thesis.fatal_assumptions ?? []}
+                  {@const flagsOpen = expandedThesisFlagKeys.has(group.key)}
+                  {#if jobLine}
+                    <span class="thesis-job">{jobLine}</span>
+                  {/if}
+                  {#if angles.counts}
+                    <span class="thesis-job thesis-angles">{angles.label}: {angles.counts}</span>
+                  {/if}
+                  <span class="opp-tags thesis-tags">
+                    {#if group.isNew}
+                      <span class="tag tag-new">New thesis this batch</span>
+                    {/if}
+                    {#if thesis.incumbent_status}
+                      {@const status = thesis.incumbent_status}
+                      <Tooltip content={incumbentTooltip(thesis)} position="bottom" focusable={false}>
+                        {#snippet children()}<span class="tag {INCUMBENT_TAG[status]}">{INCUMBENT_LABEL[status]}</span>{/snippet}
+                      </Tooltip>
+                    {/if}
+                    <!-- A COUNT, not seven clipped sentences. Each entry belongs to one
+                         member idea, so the text lives in the attributed list below,
+                         where it is fully readable and reachable from the keyboard. -->
+                    {#if flags.length > 0}
+                      <button
+                        type="button"
+                        class="tag tag-caution thesis-flag-toggle"
+                        aria-expanded={flagsOpen}
+                        aria-controls={`thesis-flags-${group.key}`}
+                        onclick={() => toggleThesisFlags(group.key)}
+                      >
+                        {flags.length} flagged assumption{flags.length === 1 ? "" : "s"}
+                      </button>
+                    {/if}
+                  </span>
+                  {#if flags.length > 0}
+                    <ul class="thesis-flags" id={`thesis-flags-${group.key}`} hidden={!flagsOpen}>
+                      <li class="thesis-flags-note">
+                        Each line is stamped on ONE variant below, not on the whole thesis —
+                        two variants can honestly disagree.
+                      </li>
+                      {#each flags as flag (`${flag.idea_name}:${flag.source_field}:${flag.assumption}`)}
+                        {@const flagIdea = thesisFlagIdea(flag, group.label)}
+                        <li class="thesis-flag">
+                          <span class="thesis-flag-head">
+                            <span class="thesis-flag-kind">{thesisFlagLabel(flag)}</span>
+                            <span class="thesis-flag-idea">{flagIdea.title}</span>
+                            {#if flagIdea.working}
+                              <span class="thesis-flag-working">{flagIdea.working}</span>
+                            {/if}
+                          </span>
+                          <span class="thesis-flag-text">{flag.assumption}</span>
+                        </li>
+                      {/each}
+                    </ul>
+                  {/if}
+                {:else}
+                  <span class="thesis-job">
+                    Added after the buyer jobs were partitioned — a new batch, a seeded idea, or an
+                    idea no family matched. Shown in full and selectable exactly like the rest.
+                  </span>
+                {/if}
+              </span>
+              {#if thesis && group.variants.length > 0}
+                <!-- A card held open by its own contents gets a STATEMENT, not a button
+                     that cannot collapse it. -->
+                {#if forcedExpansion}
+                  <span class="thesis-toggle thesis-toggle--locked">{forcedExpansion}</span>
+                {:else}
+                  <button
+                    type="button"
+                    class="thesis-toggle"
+                    aria-expanded={expanded}
+                    onclick={() => toggleThesis(group)}
+                  >
+                    {expanded ? "Hide" : "Show"}
+                    {group.variants.length} variant{group.variants.length === 1 ? "" : "s"}
+                  </button>
+                {/if}
+              {/if}
+            </span>
+          </div>
+          {@render oppRow(group.lead.solution, group.lead.index)}
+          {#if expanded}
+            {#each group.variants as row (ideaKey(row.solution))}
+              {@render oppRow(row.solution, row.index)}
+            {/each}
+          {/if}
+        </div>
+      {/each}
+    {:else}
+      {#each sortedSolutions as s, i (ideaKey(s))}
+        {@render oppRow(s, i)}
+      {/each}
+    {/if}
       </div>
+
+      {#if thesisViewMeaningful && uncoveredJobs.length > 0}
+        <section class="uncovered-jobs" aria-labelledby="uncovered-jobs-title">
+          <!-- NOT "no surviving idea": most of these were never allocated a generator
+               cell at all, which the body copy then contradicted. The heading states the
+               one thing true of every entry — nothing in this pool addresses it. -->
+          <span class="thesis-kicker">Validated jobs · no idea in this pool</span>
+          <h3 id="uncovered-jobs-title">
+            {uncoveredJobs.length} validated buyer job{uncoveredJobs.length === 1 ? "" : "s"} above {uncoveredJobs.length === 1 ? "has" : "have"} no idea in this pool
+          </h3>
+          <p class="uncovered-jobs-lede">
+            The pain research validated {uncoveredJobs.length === 1 ? "this job" : "these jobs"}, but nothing in the ranked list addresses {uncoveredJobs.length === 1 ? "it" : "them"}. Unexamined is not the same as ruled out.
+          </p>
+          <ul class="uncovered-job-list">
+            {#each uncoveredJobs as family (family.family_id)}
+              {@const reason = uncoveredReason(family)}
+              <li class="uncovered-job">
+                <strong>{family.display_label}</strong>
+                {#if reason}<span>{reason}</span>{/if}
+                {#if (family.member_pain_ids ?? []).length > 0}
+                  <span class="uncovered-job-meta">
+                    Evidence: {(family.member_pain_ids ?? []).length} validated pain point{(family.member_pain_ids ?? []).length === 1 ? "" : "s"}
+                  </span>
+                {/if}
+              </li>
+            {/each}
+          </ul>
+        </section>
+      {/if}
 
       {#if interactive && decisionTools}
         {@render decisionGuideBlock()}
@@ -2973,6 +3776,7 @@
         {jobId}
         profile={activeDecisionProfile}
         variant={briefVariant}
+        disabled={poolMutationBusy}
         onSaved={handleDecisionProfileSaved}
       />
     {/if}
@@ -3314,7 +4118,10 @@
      table, then stacked a wall of chat into the page below 1440px.) */
   .workbench-shell {
     display: block;
-    padding-bottom: calc(var(--decision-rail-height, var(--space-20)) + var(--space-4));
+    /* The dock is itself inset by --space-4 from the viewport bottom, so reserving only
+       its height left the last row's pain line flush against (and under) its shadow.
+       Clear the dock's own inset as well, plus a gap. */
+    padding-bottom: calc(var(--decision-rail-height, var(--space-20)) + var(--space-10));
   }
 
   /* ── Launcher: the one way back in, always the same corner ── */
@@ -3502,6 +4309,9 @@
   }
   .cmd-stats {
     margin: 0;
+  }
+  .cmd-coverage {
+    margin: 0.3rem 0 0;
   }
   /* Inherits the record line's mono/uppercase treatment so the tally reads as part of
      the stat run, not a button parked in it — only the underline marks it as openable. */
@@ -3755,7 +4565,7 @@
     color: var(--color-text-primary);
     font-family: var(--font-display);
     font-size: var(--text-md);
-    font-weight: 600;
+    font-weight: 400;
     line-height: 1.45;
     letter-spacing: -0.01em;
     text-wrap: pretty;
@@ -3763,6 +4573,7 @@
   .discovery-take__quote :global(button.idea-reference-link) {
     color: inherit;
     font: inherit;
+    font-weight: 650;
     text-decoration-color: var(--color-border-emphasis);
     text-decoration-line: underline;
     text-decoration-style: dotted;
@@ -4022,9 +4833,9 @@
     .row-seed-highlight { animation: none; }
   }
 
-  .cell-metric-head:focus-visible,
   .regen-focus-btn:focus-visible,
-  .variant-note-action:focus-visible {
+  .variant-note-action:focus-visible,
+  .thesis-toggle:focus-visible {
     outline: 2px solid var(--color-accent);
     outline-offset: 2px;
   }
@@ -4054,13 +4865,24 @@
   .shortlist-overlap-notice p {
     margin: 0;
   }
-  /* Metric tracks are sized for the widest UPPERCASE label plus the sort arrow,
-     which is always laid out (hidden when the column is idle) so activating a
-     sort never steals width from the label. FEASIBILITY (11 mono caps, no space
-     to wrap on) is the binding constraint. */
+  .batch-summary {
+    margin: 0 0 var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-surface);
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+    line-height: 1.45;
+  }
+  /* Metric tracks include the label, the always-reserved sort arrow, and—for
+     the first three columns—the keyboard-focusable help target. FEASIBILITY
+     (11 mono caps, no space to wrap on) remains the binding constraint. */
   .opp-row {
     display: grid;
-    grid-template-columns: 1.35rem 5.65rem minmax(0, 1fr) 5.5rem 5.5rem 5.8rem 5.5rem;
+    grid-template-columns:
+      1.35rem 5.65rem minmax(0, 1fr)
+      7.35rem 7.35rem 7.65rem 5.5rem;
     align-items: center;
     gap: 0.56rem;
     padding: 0.56rem 0.68rem;
@@ -4072,6 +4894,12 @@
     transition:
       background var(--duration-fast) var(--ease-default),
       box-shadow var(--duration-fast) var(--ease-default);
+  }
+  /* Grouped board: no rank track — the "#" cell is not rendered there. */
+  .opp-list--grouped .opp-row {
+    grid-template-columns:
+      5.65rem minmax(0, 1fr)
+      7.35rem 7.35rem 7.65rem 5.5rem;
   }
   .opp-row-head {
     min-height: 1.75rem;
@@ -4087,6 +4915,12 @@
   }
   .opp-row-sel {
     background: var(--color-accent-subtle);
+  }
+  /* Hover LAYERS over the selected tint instead of replacing it — the plain hover rule
+     outranks `.opp-row-sel` on specificity, so a selected row used to read as
+     unselected the moment the pointer touched it. */
+  .opp-row-sel:not(.opp-row-head):hover {
+    background: color-mix(in srgb, var(--color-bg-surface) 22%, var(--color-accent-subtle));
   }
   .opp-row-maxed { opacity: 1; }
 
@@ -4186,6 +5020,17 @@
     border-color: var(--color-border);
     color: var(--color-text-secondary);
     cursor: not-allowed;
+    flex-wrap: wrap;
+    padding: 0.28rem 0.44rem;
+  }
+  .select-maxed-hint {
+    flex-basis: 100%;
+    color: var(--color-text-muted);
+    font-size: var(--text-11);
+    font-weight: 600;
+    line-height: 1.2;
+    text-align: center;
+    white-space: normal;
   }
   .select-control:active:not(.maxed) { transform: scale(0.96); }
   @media (prefers-reduced-motion: reduce) {
@@ -4353,11 +5198,14 @@
     background: color-mix(in srgb, var(--color-success) 9%, transparent);
     color: var(--color-success-text);
   }
-  .tag-angle {
+  .tag-angle,
+  .tag-new {
     background: var(--color-bg-elevated);
     border: 1px solid var(--color-border);
     color: var(--color-text-muted);
   }
+  /* Arrival provenance, not a quality signal — the neutral chip, never accent. */
+  .tag-new { border-color: var(--color-border-emphasis); }
   .tag-parity {
     background: var(--color-bg-elevated);
     border: 1px solid var(--color-border);
@@ -4369,17 +5217,179 @@
     border: 1px solid color-mix(in srgb, var(--color-error) 30%, transparent);
     color: var(--color-error-text);
   }
+  .tag-caution {
+    background: var(--color-warning-subtle);
+    border: 1px solid color-mix(in srgb, var(--color-warning) 30%, transparent);
+    color: var(--color-warning-text);
+  }
   .opp-merged-note {
     display: inline-flex;
     align-items: center;
     width: fit-content;
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    font-size: var(--text-11);
+    line-height: 1.36;
     color: var(--color-text-muted);
     cursor: help;
+  }
+
+  /* ── Thesis grouping ── */
+  /* Same surface-tinted band as the column head, so a thesis reads as a section of
+     the ranked list rather than a second competing card stack. */
+  .thesis-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    padding: 0.62rem 0.7rem;
+    border-top: 1px solid var(--color-border-emphasis);
+    background: color-mix(in srgb, var(--color-bg-surface) 74%, var(--color-bg-elevated));
+  }
+  /* The column head already draws the rule under itself. */
+  .opp-row-head + .thesis-group > .thesis-head { border-top: 0; }
+  /* Not a thesis and not competing with one: a plain divider over the pool's
+     leftovers (new batches, seeded ideas). */
+  .thesis-head--ungrouped {
+    border-top-color: var(--color-border);
+    background: var(--color-bg-elevated);
+  }
+  .thesis-head--ungrouped .thesis-label {
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+  }
+  .thesis-head-cell {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 0.85rem;
+    min-width: 0;
+  }
+  .thesis-copy {
+    display: grid;
+    gap: 0.22rem;
+    min-width: 0;
+  }
+  .thesis-label {
+    color: var(--color-text-primary);
+    font-size: var(--text-base);
+    font-weight: 700;
+    line-height: 1.25;
+  }
+  .thesis-job {
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+    line-height: 1.35;
+  }
+  .thesis-angles { color: var(--color-text-muted); }
+  .thesis-tags { padding-top: 0.1rem; }
+  /* The chip is a real button, so the flag text is reachable by keyboard and touch —
+     it used to be a hover-only tooltip on a span with no tabindex. */
+  .thesis-flag-toggle {
+    border: 1px solid color-mix(in srgb, var(--color-warning) 30%, transparent);
+    cursor: pointer;
+  }
+  .thesis-flag-toggle:hover,
+  .thesis-flag-toggle:focus-visible {
+    border-color: var(--color-warning);
+  }
+  .thesis-flags {
+    display: grid;
+    gap: 0.4rem;
+    margin: 0.35rem 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .thesis-flags[hidden] { display: none; }
+  .thesis-flags-note {
+    color: var(--color-text-muted);
+    font-size: var(--text-11);
+    line-height: 1.4;
+  }
+  .thesis-flag {
+    display: grid;
+    gap: 0.18rem;
+    padding: 0.45rem 0.65rem;
+    border-left: 2px solid var(--color-warning);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-elevated);
+  }
+  .thesis-flag-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.4rem;
+  }
+  .thesis-flag-kind {
+    font-family: var(--font-mono);
+    font-size: var(--text-11);
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--color-warning-text);
+  }
+  .thesis-flag-idea {
+    color: var(--color-text-primary);
+    font-size: var(--text-13);
+    font-weight: 700;
+  }
+  .thesis-flag-working {
+    font-family: var(--font-mono);
+    font-size: var(--text-11);
+    color: var(--color-text-muted);
+  }
+  .thesis-flag-text {
+    color: var(--color-text-secondary);
+    font-size: var(--text-13);
+    line-height: 1.45;
+  }
+  .uncovered-jobs {
+    display: grid;
+    gap: 0.3rem;
+    margin-top: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-bg-surface);
+  }
+  .uncovered-jobs h3 {
+    margin: 0;
+    color: var(--color-text-primary);
+    font-size: var(--text-base);
+    font-weight: 700;
+    line-height: 1.3;
+  }
+  .uncovered-jobs-lede {
+    margin: 0;
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+    line-height: 1.45;
+  }
+  .uncovered-job-list {
+    display: grid;
+    gap: 0.5rem;
+    margin: var(--space-2) 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .uncovered-job {
+    display: grid;
+    gap: 0.18rem;
+    padding: 0.5rem 0.7rem;
+    border-left: 2px solid var(--color-warning);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-elevated);
+  }
+  .uncovered-job > strong {
+    color: var(--color-text-primary);
+    font-size: var(--text-13);
+    line-height: 1.3;
+  }
+  .uncovered-job > span {
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+    line-height: 1.4;
+  }
+  .uncovered-job > .uncovered-job-meta {
+    font-family: var(--font-mono);
+    font-size: var(--text-11);
+    color: var(--color-text-muted);
   }
 
   /* ── Variant grouping note ── */
@@ -4408,7 +5418,8 @@
     font-size: var(--text-13);
     line-height: 1.25;
   }
-  .variant-note-kicker {
+  .variant-note-kicker,
+  .thesis-kicker {
     font-family: var(--font-mono);
     color: var(--color-text-secondary);
     font-size: var(--text-xs);
@@ -4429,7 +5440,8 @@
     margin-left: 0.5rem;
     color: var(--color-border-emphasis);
   }
-  .variant-note-action {
+  .variant-note-action,
+  .thesis-toggle {
     min-height: 2.2rem;
     padding: 0.42rem 0.68rem;
     border: 1px solid var(--color-border-emphasis);
@@ -4442,14 +5454,26 @@
     cursor: pointer;
     transition: transform var(--duration-fast) var(--ease-default), border-color var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default);
   }
-  .variant-note-action:hover {
+  /* Not a control: the card is held open by its own contents, so this states why. */
+  .thesis-toggle--locked {
+    border-style: dashed;
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-weight: 600;
+    cursor: default;
+  }
+  .variant-note-action:hover,
+  .thesis-toggle:not(.thesis-toggle--locked):hover {
     border-color: var(--color-accent);
     color: var(--color-accent-dark);
   }
-  .variant-note-action:active { transform: scale(0.98); }
+  .variant-note-action:active,
+  .thesis-toggle:active { transform: scale(0.98); }
   @media (prefers-reduced-motion: reduce) {
-    .variant-note-action { transition: none; }
-    .variant-note-action:active { transform: none; }
+    .variant-note-action,
+    .thesis-toggle { transition: none; }
+    .variant-note-action:active,
+    .thesis-toggle:active { transform: none; }
   }
   .variant-note-hint {
     color: var(--color-text-muted);
@@ -4475,26 +5499,9 @@
     /* -secondary, not -muted: 10-11px mono caps on the surface-tinted header
        row needs more than muted's 4.32:1. */
     color: var(--color-text-secondary);
-    background: transparent;
-    border: none;
-    cursor: pointer;
     width: 100%;
     min-height: 2.5rem;
     padding: 0.25rem 0;
-    border-radius: var(--radius-sm);
-    transition: color var(--duration-fast) var(--ease-default);
-  }
-  .cell-metric-head:hover {    color: var(--color-text-primary);
-  }
-  .sort-arrow {
-    display: inline-flex;
-    flex-shrink: 0;
-    align-items: center;
-  }
-  .sort-arrow.is-idle { visibility: hidden; }
-  .cell-metric-head.active { color: var(--color-accent-dark); }
-  @media (prefers-reduced-motion: reduce) {
-    .cell-metric-head { transition: none; }
   }
   .metric-num {
     font-family: var(--font-mono);
@@ -4666,6 +5673,12 @@
       border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 54%, transparent);
       border-radius: var(--radius-lg, 0.875rem);
       background: var(--color-bg-elevated);
+    }
+    .opp-list--grouped .opp-row {
+      grid-template-columns: minmax(0, 1fr) 4.5rem;
+      grid-template-areas:
+        "title score"
+        "pick pick";
     }
     .opp-list {
       gap: 0.55rem;

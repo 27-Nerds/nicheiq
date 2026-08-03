@@ -103,7 +103,7 @@ class TestBuildLlm:
 class TestTierGuard:
     def test_blocks_landing_page_llm(self, monkeypatch):
         monkeypatch.setattr(llm_service.settings, "landing_page_llm", "openrouter/google/gemma-2-27b-it")
-        monkeypatch.setattr(llm_service.settings, "landing_page_execution_llm", "gpt-5.1-codex-max")
+        monkeypatch.setattr(llm_service.settings, "landing_page_execution_llm", "gpt-5.3-codex")
         with pytest.raises(ValueError, match="landing-page tiers"):
             validate_openrouter_tier_compatibility()
 
@@ -115,14 +115,14 @@ class TestTierGuard:
 
     def test_warns_but_allows_risky_tier(self, monkeypatch):
         monkeypatch.setattr(llm_service.settings, "landing_page_llm", "gpt-5.2")
-        monkeypatch.setattr(llm_service.settings, "landing_page_execution_llm", "gpt-5.1-codex-max")
+        monkeypatch.setattr(llm_service.settings, "landing_page_execution_llm", "gpt-5.3-codex")
         monkeypatch.setattr(llm_service.settings, "content_analysis_llm", "openrouter/google/gemma-2-27b-it")
         # Should not raise (warn only)
         validate_openrouter_tier_compatibility()
 
     def test_default_config_passes(self, monkeypatch):
         monkeypatch.setattr(llm_service.settings, "landing_page_llm", "gpt-5.2")
-        monkeypatch.setattr(llm_service.settings, "landing_page_execution_llm", "gpt-5.1-codex-max")
+        monkeypatch.setattr(llm_service.settings, "landing_page_execution_llm", "gpt-5.3-codex")
         monkeypatch.setattr(llm_service.settings, "content_analysis_llm", "gpt-4.1-mini")
         monkeypatch.setattr(llm_service.settings, "function_calling_llm", "gpt-4o-mini")
         monkeypatch.setattr(llm_service.settings, "brainstorm_llm", "gpt-5.2")

@@ -11,6 +11,7 @@ import {
   DispatchKind,
 } from '@prisma/client';
 import { PIPELINE_STAGES, DISCOVERY_PHASE_MAX_STAGE } from '../types/job.js';
+import { humanizeEnumToken } from '../utils/selectionVocabulary.js';
 
 // ============================================
 // Custom Error Classes
@@ -144,6 +145,60 @@ const STAGE_LABELS: Record<StageName, string> = {
   guided_s2_4: 'Audience & pain analysis',
   guided_s5: 'Idea generation',
 };
+
+/**
+ * Ledger stages that never came from a pipeline run, so they are not — and must not become —
+ * `StageName` members. They are written by addCredits (`admin` / `purchase`), promo redemption
+ * (`promo`), subscription grants (`subscription`) and, historically, by hand.
+ */
+const OPERATIONAL_STAGE_LABELS: Record<string, string> = {
+  admin: 'Account adjustment',
+  purchase: 'Credit purchase',
+  promo: 'Promo code',
+  subscription: 'Subscription credits',
+};
+
+/** Hand-inserted ledger corrections carry an internal handle (`repair_bad_refund_72c5cc0a`).
+ *  The handle is a debugging aid for us; a billing line must never show it. */
+const REPAIR_STAGE = /^repair_bad_refund(?:_|$)/;
+
+/** `<base>_<ordinal>` — the numbered per-attempt ledger stages (`regenerate_ideas_3`,
+ *  `seed_idea_2`). `guided_s1` does not match: the digit there is not underscore-separated. */
+const NUMBERED_STAGE = /^(.*)_(\d+)$/;
+
+/**
+ * The words a ledger line shows for a stage. THE resolver — every description built from a stage
+ * goes through it, charge and refund alike.
+ *
+ * `STAGE_LABELS` is exhaustive over `StageName`, so a `?? stage` fallback beside it only ever
+ * fired for values OUTSIDE that type — and the ledger is full of those: the numbered per-attempt
+ * stages that `chargeForRegenerationInTx` / `chargeForSeedIdeaInTx` deliberately write, plus the
+ * operational and hand-repaired stages above. Those were reaching billing history verbatim, so a
+ * user's own statement read `regenerate_ideas_1: <niche>`.
+ *
+ * The ordinal SURVIVES into the copy (`Add Another Idea Batch (#3)`) instead of being dropped. A
+ * single job can hold nine numbered regeneration rows; without the number the history is nine
+ * identical lines and a refund cannot be paired with the charge it reverses. `(#N)` is the form
+ * the seed charge description already used, so the two agree.
+ *
+ * A value that matches nothing is humanized rather than echoed — a future stage token degrades
+ * to readable words instead of shouting itself.
+ */
+export function stageDisplayLabel(stage: string | null | undefined): string {
+  const key = stage?.trim();
+  if (!key) return 'Credit adjustment';
+  if (key in STAGE_LABELS) return STAGE_LABELS[key as StageName];
+  if (key in OPERATIONAL_STAGE_LABELS) return OPERATIONAL_STAGE_LABELS[key];
+  if (REPAIR_STAGE.test(key)) return 'Billing correction';
+
+  const numbered = NUMBERED_STAGE.exec(key);
+  if (numbered && numbered[1] in STAGE_LABELS) {
+    return `${STAGE_LABELS[numbered[1] as StageName]} (#${numbered[2]})`;
+  }
+
+  const words = humanizeEnumToken(key);
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
 
 export function isGuidedSegment(stage: string): stage is GuidedSegment {
   return (GUIDED_SEGMENTS as readonly string[]).includes(stage);
@@ -387,7 +442,7 @@ async function _chargeForStageImpl(
       relatedJobId: jobId,
       stage,
       cycle,
-      description: description ?? `${STAGE_LABELS[stage as StageName] ?? stage}: ${niche.substring(0, 100)}`,
+      description: description ?? `${stageDisplayLabel(stage)}: ${niche.substring(0, 100)}`,
     },
   });
 }
@@ -416,7 +471,8 @@ export async function chargeForRegenerationInTx(
     `regenerate_ideas_${regenerationNumber}`,
     niche,
     cost,
-    `Add Idea Batch (#${regenerationNumber}): ${niche.substring(0, 100)}`,
+    // Same resolver the refund line uses, so the two read as one pair.
+    `${stageDisplayLabel(`regenerate_ideas_${regenerationNumber}`)}: ${niche.substring(0, 100)}`,
   );
 }
 
@@ -491,7 +547,7 @@ export async function refundChargeInTx(
       stage: charge.stage,
       cycle: charge.cycle,
       reversalOfId: charge.id,
-      description: `Refund ${STAGE_LABELS[charge.stage as StageName] ?? charge.stage}: ${
+      description: `Refund ${stageDisplayLabel(charge.stage)}: ${
         charge.relatedJob?.niche?.substring(0, 100) ?? 'research operation'
       }`,
     },
@@ -536,7 +592,8 @@ export async function chargeForSeedIdeaInTx(
     `seed_idea_${seedOrdinal}`,
     niche,
     expectedCost,
-    `Generate From Your Idea (#${seedOrdinal}): ${niche.substring(0, 100)}`,
+    // Same resolver the refund line uses, so the two read as one pair.
+    `${stageDisplayLabel(`seed_idea_${seedOrdinal}`)}: ${niche.substring(0, 100)}`,
   );
 }
 
@@ -632,7 +689,7 @@ async function _refundForStageImpl(
   }
 
   const refundAmount = Math.abs(unrefundedCharge.amount);
-  const label = STAGE_LABELS[stage as StageName] ?? stage;
+  const label = stageDisplayLabel(stage);
 
   try {
     return await prisma.$transaction(async (tx) => {
@@ -925,7 +982,7 @@ export async function chargeForResume(
       unmatchedRefund.stage,
       job?.niche ?? '',
       refundAmount,
-      `Resume: re-charge ${STAGE_LABELS[unmatchedRefund.stage as StageName] ?? unmatchedRefund.stage}`,
+      `Resume: re-charge ${stageDisplayLabel(unmatchedRefund.stage)}`,
       nextCycle,
     );
 

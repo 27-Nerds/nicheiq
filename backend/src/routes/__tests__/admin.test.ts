@@ -23,6 +23,7 @@ const mockUpdatePlan = vi.fn();
 const mockGetAppSetting = vi.fn();
 const mockSetAppSetting = vi.fn();
 const mockDeleteAppSetting = vi.fn();
+const mockIsSampleReportUrlAvailable = vi.fn();
 
 vi.mock('../../services/adminService.js', async (importOriginal) => {
   const actual = await importOriginal() as Record<string, unknown>;
@@ -46,6 +47,7 @@ vi.mock('../../services/adminService.js', async (importOriginal) => {
     getAppSetting: (...args: any[]) => mockGetAppSetting(...args),
     setAppSetting: (...args: any[]) => mockSetAppSetting(...args),
     deleteAppSetting: (...args: any[]) => mockDeleteAppSetting(...args),
+    isSampleReportUrlAvailable: (...args: any[]) => mockIsSampleReportUrlAvailable(...args),
     getRegistrationCredits: (...args: any[]) => mockGetRegistrationCredits(...args),
     addCreditsToUser: vi.fn(),
   };
@@ -159,6 +161,7 @@ let app: Express;
 
 beforeEach(async () => {
   vi.clearAllMocks();
+  mockIsSampleReportUrlAvailable.mockResolvedValue(true);
 
   app = express();
   app.use(express.json());
@@ -468,15 +471,31 @@ describe('App Settings', () => {
 
   it('PUT /api/admin/settings/:key saves value for valid key', async () => {
     mockSetAppSetting.mockResolvedValue(undefined);
+    const url = '/shared/abcdefghijklmnopqrstuv';
 
     const response = await request(app)
       .put('/api/admin/settings/sample_report_url')
       .set(adminHeaders)
-      .send({ value: '/shared/abc123' })
+      .send({ value: url })
       .expect(200);
 
-    expect(response.body).toEqual({ key: 'sample_report_url', value: '/shared/abc123' });
-    expect(mockSetAppSetting).toHaveBeenCalledWith('sample_report_url', '/shared/abc123', 'admin-123');
+    expect(response.body).toEqual({ key: 'sample_report_url', value: url });
+    expect(mockIsSampleReportUrlAvailable).toHaveBeenCalledWith(url);
+    expect(mockSetAppSetting).toHaveBeenCalledWith('sample_report_url', url, 'admin-123');
+  });
+
+  it('PUT /api/admin/settings/:key rejects an inactive or incomplete sample share', async () => {
+    const url = '/shared/abcdefghijklmnopqrstuv';
+    mockIsSampleReportUrlAvailable.mockResolvedValue(false);
+
+    const response = await request(app)
+      .put('/api/admin/settings/sample_report_url')
+      .set(adminHeaders)
+      .send({ value: url })
+      .expect(400);
+
+    expect(response.body.error).toMatch(/active share.*completed report/i);
+    expect(mockSetAppSetting).not.toHaveBeenCalled();
   });
 
   it('PUT /api/admin/settings/:key returns 400 for invalid key', async () => {
@@ -535,6 +554,16 @@ describe('App Settings', () => {
       .set(adminHeaders)
       .send({ value: '/shared/' })
       .expect(400);
+  });
+
+  it('PUT /api/admin/settings/:key rejects a truncated share token', async () => {
+    await request(app)
+      .put('/api/admin/settings/sample_report_url')
+      .set(adminHeaders)
+      .send({ value: '/shared/abc123' })
+      .expect(400);
+
+    expect(mockIsSampleReportUrlAvailable).not.toHaveBeenCalled();
   });
 
   it('PUT /api/admin/settings/:key returns 400 for missing value field', async () => {

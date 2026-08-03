@@ -1,7 +1,7 @@
 <script lang="ts">
   import { goto, invalidateAll, replaceState } from "$app/navigation";
   import { page } from "$app/state";
-  import { tick } from "svelte";
+  import { getContext, tick } from "svelte";
   import type { PageData } from "./$types";
   import AssumptionMap from "$lib/components/selection/AssumptionMap.svelte";
   import EvidenceChallenge from "$lib/components/selection/EvidenceChallenge.svelte";
@@ -21,10 +21,17 @@
   } from "$lib/types/selectionCopilot";
   import type { SelectionChallengeLens } from "$lib/types/selectionChallenge";
   import { solutionDisplayTitle } from "$lib/utils/solution-utils";
+  import {
+    SELECTION_LIFECYCLE_CONTEXT,
+    type SelectionWorkspaceLifecycle,
+  } from "../selectionWorkspace";
 
   let { data }: { data: PageData } = $props();
 
   const tools = getWorkspaceTools();
+  const lifecycle = getContext<SelectionWorkspaceLifecycle | undefined>(SELECTION_LIFECYCLE_CONTEXT);
+  const currentStatus = $derived(lifecycle?.status || data.job.status);
+  const canMutate = $derived(lifecycle?.status ? lifecycle.canMutate : currentStatus === "AWAITING_SELECTION");
   const validLenses: SelectionChallengeLens[] = [
     "demand",
     "distribution",
@@ -191,6 +198,7 @@
   }
 
   function trackRisk(prefill: SelectionAssumptionPrefill): void {
+    if (!canMutate) return;
     assumptionPrefill = prefill;
   }
 
@@ -203,7 +211,7 @@
 
   $effect(() => {
     const prefill = page.state.selectionAssumptionPrefill;
-    if (!prefill || prefill.requestId === handledAssumptionPrefill) return;
+    if (!canMutate || !prefill || prefill.requestId === handledAssumptionPrefill) return;
     handledAssumptionPrefill = prefill.requestId;
     queueMicrotask(() => {
       assumptionPrefill = prefill;
@@ -213,7 +221,7 @@
 
   $effect(() => {
     const prefill = page.state.selectionOwnerEvidencePrefill;
-    if (!prefill || prefill.requestId === handledOwnerEvidencePrefill) return;
+    if (!canMutate || !prefill || prefill.requestId === handledOwnerEvidencePrefill) return;
     handledOwnerEvidencePrefill = prefill.requestId;
     queueMicrotask(() => {
       ownerEvidencePrefill = prefill;
@@ -236,8 +244,10 @@
 <section class="evidence-page">
   <header class="page-intro" data-tour="evidence-intro">
     <p class="eyebrow">{EVIDENCE_CHECK_EYEBROW}</p>
-    <h2>Check the evidence before you spend credits</h2>
-    <p>Choose the question most likely to change your shortlist. Each check rereads saved evidence only and never changes a score.</p>
+    <h2>{canMutate ? "Check the evidence before you spend credits" : "Evidence and risk record"}</h2>
+    <p>{canMutate
+      ? "Choose the question most likely to change your shortlist. Each check rereads saved evidence only and never changes a score."
+      : "Saved evidence checks, owner evidence, unresolved questions, and test plans from the selection decision. This record cannot be changed."}</p>
   </header>
 
   {#if focusedIdea}
@@ -285,6 +295,7 @@
         {ownerEvidencePrefill}
         onReturnToEvidenceDraft={returnToEvidenceDraft}
         onChanged={() => { void invalidateAll(); }}
+        disabled={!canMutate}
       />
     </div>
 
@@ -299,8 +310,9 @@
           assumptionId: draft.assumptionId ?? undefined,
           draft,
         })}
-        onChanged={() => { void invalidateAll(); }}
+        onChanged={async () => { await invalidateAll(); }}
         onOpenLinkedTest={revealLinkedTest}
+        disabled={!canMutate}
       />
     </section>
 
@@ -317,6 +329,7 @@
             ideas={data.workspace.ideas}
             onOpenChallenge={revealEvidenceCheck}
             onChanged={() => { void invalidateAll(); }}
+            disabled={!canMutate}
           />
         {/key}
       </details>
@@ -325,7 +338,9 @@
     <div class="empty">
       <EmptyState
         title="No candidate is in scope"
-        description="Choose a current idea revision before checking its evidence."
+        description={canMutate
+          ? "Choose a current idea revision before checking its evidence."
+          : "No current idea revision is available in this saved decision record."}
       >
         <Button href={`/jobs/${data.job.id}`} class="btn-ghost" label="Back to ranked ideas" />
       </EmptyState>

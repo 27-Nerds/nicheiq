@@ -1,4 +1,4 @@
-"""NicheIQ RQ Worker - Python worker for processing research jobs from Redis queue."""
+"""NicheIQ worker package for processing backend JSON jobs from Redis."""
 
 __version__ = "1.0.0"
 

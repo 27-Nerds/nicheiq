@@ -661,6 +661,28 @@ describe('POST /api/jobs/:jobId/select-solution', () => {
     });
   });
 
+  it('keeps the owner selection note in private job metadata, not the report work payload', async () => {
+    const privateNote = 'This matches a confidential client workflow.';
+    mockJobFindFirst.mockResolvedValue(makeJob());
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/select-solution`)
+      .set(authHeaders)
+      .send(selectPayload(defaultRefs, { rationale: privateNote }));
+
+    expect(response.status).toBe(200);
+    expect(mockJobUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ selectionRationale: privateNote }),
+    }));
+    expect(mockJobDispatchCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        requestSnapshot: expect.objectContaining({ rationale: privateNote }),
+        workPayload: expect.objectContaining({ selection_rationale: '' }),
+      }),
+      select: { id: true },
+    });
+  });
+
   it('rejects a saved draft whose exact idea revision no longer resolves', async () => {
     const staleRefs = [{ ideaId: 'idea_missing', ideaRevision: 1 }];
     mockJobFindFirst.mockResolvedValue(makeJob({

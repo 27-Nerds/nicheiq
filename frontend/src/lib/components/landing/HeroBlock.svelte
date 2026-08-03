@@ -132,16 +132,17 @@
 			{#if session?.user}
 				<a href="/dashboard" class="landing-btn-pill-primary"> Go to Dashboard </a>
 			{:else}
-				{@const heroPrimary = ctaTexts?.cta_hero_primary}
-				{@const heroSecondary = ctaTexts?.cta_hero_secondary}
-				{@const secondaryUrl = heroSecondary?.url ?? '/sample-report'}
+					{@const heroPrimary = ctaTexts?.cta_hero_primary}
+					{@const heroSecondary = ctaTexts?.cta_hero_secondary}
+					{@const secondaryUrl = heroSecondary?.url ?? '/sample-report'}
+					{@const secondaryNeedsSample = secondaryUrl.split(/[?#]/, 1)[0] === '/sample-report'}
 				{#if heroPrimary?.visible !== false}
 					<a href={heroPrimary?.url ?? '/register'} class="landing-btn-pill-primary">
 						{heroPrimary?.text ?? 'Start for free'}
 						<CtaIcon name={heroPrimary?.icon} />
 					</a>
 				{/if}
-				{#if heroSecondary?.visible !== false}
+					{#if heroSecondary?.visible !== false && (!secondaryNeedsSample || hasSampleReport)}
 					<a
 						href={secondaryUrl}
 						onclick={(e) => handleAnchorClick(e, secondaryUrl)}

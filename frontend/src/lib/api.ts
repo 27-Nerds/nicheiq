@@ -39,9 +39,10 @@ export type {
   SelectionDecisionProfile,
   SelectionDraft,
   SelectionDraftItem,
+  SelectedSolutionRef,
 } from '$lib/types/job';
-import type { Job, SolutionPreview, SelectionDecisionProfile, SelectionDraft, SelectionDraftItem, ReportSummary, GateG1PatchFields, GateG2PatchFields } from '$lib/types/job';
-import type { RuledOutFinding, OverlapGroup, MarketReality, NicheDifficultyVerdict, DataQualitySummary } from '$lib/types/report';
+import type { Job, SolutionPreview, SelectionDecisionProfile, SelectionDraft, SelectionDraftItem, SelectedSolutionRef, ReportSummary, GateG1PatchFields, GateG2PatchFields } from '$lib/types/job';
+import type { RuledOutFinding, OverlapGroup, IdeaThesisPartition, MarketReality, NicheDifficultyVerdict, DataQualitySummary } from '$lib/types/report';
 import type { DiscoveryAnnotationDocument, DiscoveryAnnotationResponse } from '$lib/types/discoveryAnnotations';
 import type { SelectionCopilotGrounding } from '$lib/types/selectionCopilot';
 import type {
@@ -163,12 +164,38 @@ export async function getJob(jobId: string): Promise<Job> {
 /**
  * Cancel a job
  */
-export async function cancelJob(jobId: string): Promise<{ message: string }> {
+export async function cancelJob(jobId: string): Promise<{ message: string; creditRefunded?: number }> {
   const response = await fetch(`${API_BASE}/jobs/${jobId}`, {
     method: 'DELETE',
   });
 
-  return handleResponse<{ message: string }>(response);
+  return handleResponse<{ message: string; creditRefunded?: number }>(response);
+}
+
+/** Settle the currently active job operation through the refund-aware cancel endpoint. */
+export async function cancelActiveJobOperation(
+  jobId: string,
+): Promise<{ status: 'cancelled'; message: string; creditRefunded: number }> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/cancel`, { method: 'POST' });
+  return handleResponse<{ status: 'cancelled'; message: string; creditRefunded: number }>(response);
+}
+
+export interface CancelSelectionOperationResponse {
+  status: 'cancelled';
+  operationId: string;
+  operationState: string;
+  creditRefunded: number;
+}
+
+/** Cancel one exact queued selection operation without cancelling the parent research job. */
+export async function cancelSelectionOperation(
+  jobId: string,
+  operationId: string,
+): Promise<CancelSelectionOperationResponse> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/operations/${operationId}/cancel`, {
+    method: 'POST',
+  });
+  return handleResponse<CancelSelectionOperationResponse>(response);
 }
 
 // ============================================
@@ -189,11 +216,7 @@ export interface SelectSolutionResponse {
   operationId?: string;
   operationState?: string;
   deliveryPending?: boolean;
-  selectedSolutionRefs?: Array<{
-    ideaId: string;
-    ideaRevision: number;
-    snapshotSha256: string;
-  }> | null;
+  selectedSolutionRefs?: SelectedSolutionRef[] | null;
   clientRequestId?: string;
   selection?: {
     version: number;
@@ -208,6 +231,7 @@ export interface SolutionsResponse {
   selectedSolution: string | null;
   selectedSolutionIds: string[] | null;
   selectedSolutions: string[] | null;
+  selectedSolutionRefs: SelectedSolutionRef[] | null;
   selectionRationale: string | null;
   selectionDecisionProfile: SelectionDecisionProfile | null;
   selectionDraft: SelectionDraft;
@@ -234,7 +258,7 @@ export async function selectSolution(jobId: string, request: SelectSolutionReque
 export interface RegenerationBatchSummary {
   ordinal: number;
   focus?: IdeaFocus;
-  outcome?: 'completed' | 'no_candidates_added' | 'failed' | 'refunded';
+  outcome?: 'completed' | 'no_candidates_added' | 'failed' | 'refunded' | 'cancelled';
   generatedCount?: number;
   addedCount?: number;
   /** Exact immutable candidate revisions produced by this batch. */
@@ -326,7 +350,7 @@ export interface SeedIdeaResponse {
   evaluationId?: string;
   dispatchId?: string;
   sourceMessageId?: string;
-  outcome?: 'accepted' | 'demoted' | 'failed' | 'refunded';
+  outcome?: 'accepted' | 'demoted' | 'failed' | 'refunded' | 'cancelled';
 }
 
 export async function seedIdea(jobId: string, request: SeedIdeaRequest): Promise<SeedIdeaResponse> {
@@ -415,7 +439,7 @@ export interface LedgerEventEnvelope {
   /** Compact evaluated result; full detail lives in the candidates/ruled-out UI. */
   idea?: SeedResultSummary;
   /** `seed_settled` only — the seed's terminal outcome. */
-  outcome?: 'accepted' | 'demoted' | 'failed' | 'refunded';
+  outcome?: 'accepted' | 'demoted' | 'failed' | 'refunded' | 'cancelled';
 }
 
 /** G3 (AWAITING_SELECTION) patch shape — the user composes their own idea via chat
@@ -1187,6 +1211,9 @@ export interface SharedPreviewReport {
   examined_ruled_out?: RuledOutFinding[];
   /** Passed through by the sanitizer unless explicitly stripped (it isn't). */
   overlap_groups?: OverlapGroup[];
+  /** Complete thesis partition of the visible pool + validated families no concept covers.
+   *  Passed through by the sanitizer unless explicitly stripped (it isn't). */
+  idea_theses?: IdeaThesisPartition;
   /** Passed through by the sanitizer unless explicitly stripped (it isn't). */
   market_reality?: MarketReality;
   /** Passed through by the sanitizer unless explicitly stripped (it isn't). */
@@ -1719,12 +1746,13 @@ export async function createSelectionExperiment(
 export async function updateSelectionExperiment(
   jobId: string,
   experimentId: string,
+  expectedVersion: number,
   draft: SelectionExperimentDraft,
 ): Promise<SelectionExperiment> {
   const response = await fetch(`${API_BASE}/jobs/${jobId}/selection-experiments/${experimentId}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(draft),
+    body: JSON.stringify({ ...draft, expectedVersion }),
   });
   const result = await handleResponse<{ experiment: SelectionExperiment }>(response);
   return result.experiment;
@@ -1733,9 +1761,12 @@ export async function updateSelectionExperiment(
 export async function deleteSelectionExperiment(
   jobId: string,
   experimentId: string,
+  expectedVersion: number,
 ): Promise<void> {
   const response = await fetch(`${API_BASE}/jobs/${jobId}/selection-experiments/${experimentId}`, {
     method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ expectedVersion }),
   });
   if (response.status === 204) return;
   await handleResponse<never>(response);
@@ -1744,9 +1775,12 @@ export async function deleteSelectionExperiment(
 export async function lockSelectionExperiment(
   jobId: string,
   experimentId: string,
+  expectedVersion: number,
 ): Promise<SelectionExperiment> {
   const response = await fetch(`${API_BASE}/jobs/${jobId}/selection-experiments/${experimentId}/lock`, {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ expectedVersion }),
   });
   const result = await handleResponse<{ experiment: SelectionExperiment }>(response);
   return result.experiment;

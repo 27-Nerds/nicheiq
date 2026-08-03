@@ -200,6 +200,30 @@ class TestPinnedPainAsFloor:
         assert "Ambiguous pain" not in titles
 
 
+class TestEffectivePrimaryInPrompt:
+    """1.2(d): a G2 primary_target_segment override (user_audience_scope) is the EFFECTIVE
+    primary in _format_audience_context's generation-prompt inputs — audience_mapping is
+    never mutated, so without this the generation prompts kept the Stage-4 primary."""
+
+    def _am(self, primary):
+        return SimpleNamespace(audience_segments=[], primary_target_segment=primary,
+                               common_vocabulary=[], frustrations_with_existing=[],
+                               tools_currently_used=[])
+
+    def test_g2_override_feeds_generation_prompt(self):
+        crew = _crew(audience_mapping=self._am("SegA"),
+                     user_audience_scope=AudienceScope(primary_target_segment="SegB"))
+        assert crew._format_audience_context()["primary_target_segment"] == "SegB"
+
+    def test_without_override_keeps_stage4_primary(self):
+        crew = _crew(audience_mapping=self._am("SegA"))
+        assert crew._format_audience_context()["primary_target_segment"] == "SegA"
+
+    def test_empty_scope_object_keeps_stage4_primary(self):
+        crew = _crew(audience_mapping=self._am("SegA"), user_audience_scope=AudienceScope())
+        assert crew._format_audience_context()["primary_target_segment"] == "SegA"
+
+
 class TestAudienceScopeFilterReorder:
     def test_excluded_segment_dropped_never_mutates_audience_mapping(self, monkeypatch):
         monkeypatch.setattr(settings, "divergent_target_generators", 2)

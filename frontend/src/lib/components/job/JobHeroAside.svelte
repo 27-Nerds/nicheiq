@@ -2,17 +2,14 @@
   // Editorial right-rail aside for live /jobs/[id] states:
   //  - running/queued/awaiting/regenerating → inline progress panel
   //    (single composite ring + Stage X/Y + Elapsed)
-  //  - failed → inline error panel (status badge + headline + suggestion)
-
-  import type { Job } from "$lib/types/job";
+  // Terminal stops (FAILED/CANCELLED) never render this aside — the job page's
+  // stop-handoff card in the workbench layout carries that state.
 
   type AsideState =
     | "running"
     | "queued"
     | "awaiting"
-    | "regenerating"
-    | "failed"
-    | "cancelled";
+    | "regenerating";
 
   interface Props {
     state: AsideState;
@@ -23,12 +20,6 @@
     startedAt?: string | null;
     // awaiting — number of solution ideas waiting to be reviewed/picked.
     selectionCount?: number | null;
-    // failed
-    errorDetails?: Job["errorDetails"];
-    errorMessage?: string | null;
-    stopReason?: string | null;
-    stopReasonDetails?: Job["stopReasonDetails"];
-    creditRefunded?: boolean;
   }
 
   let {
@@ -38,11 +29,6 @@
     totalStages = 0,
     startedAt = null,
     selectionCount = null,
-    errorDetails = null,
-    errorMessage = null,
-    stopReason = null,
-    stopReasonDetails = null,
-    creditRefunded = false,
   }: Props = $props();
 
   // ── RUNNING state: derived elapsed time ───────────────────────────────────
@@ -62,19 +48,6 @@
   const elapsed = $derived(formatElapsed(startedAt));
   const progressDisplay = $derived(
     progressPercent == null ? "—" : `${Math.round(progressPercent)}%`,
-  );
-
-  // ── FAILED state: prefer richer copy when available ───────────────────────
-  const failedHeadline = $derived(
-    errorDetails?.userMessage ?? errorMessage ?? "Research failed",
-  );
-  const failedSuggestion = $derived(
-    errorDetails?.actionableGuidance ??
-      stopReasonDetails?.recommendation ??
-      "Try again or contact support.",
-  );
-  const failedKind = $derived(
-    stopReason === "INSUFFICIENT_DATA" ? "quality" : "error",
   );
 </script>
 
@@ -106,46 +79,6 @@
       <div class="fi">
         <div class="n cta">Select<span class="cta-arrow" aria-hidden="true">→</span></div>
         <div class="l">To continue</div>
-      </div>
-    </div>
-  </aside>
-{:else if state === "failed"}
-  <aside class="panel panel-error">
-    <div class="sp-top">
-      <p class="kicker">Status</p>
-      <p class="overall">FAILED</p>
-      <p class="tier">{failedKind === "quality" ? "Insufficient data" : "Error"}</p>
-    </div>
-    <div class="sp-rows">
-      <p class="row-title">{failedHeadline}</p>
-      <p class="row-sub">{failedSuggestion}</p>
-    </div>
-    <div class="sp-foot">
-      <div class="fi">
-        <div class="n">{creditRefunded ? "Yes" : "No"}</div>
-        <div class="l">Refunded</div>
-      </div>
-      <div class="fi">
-        <div class="n">FAILED</div>
-        <div class="l">Status</div>
-      </div>
-    </div>
-  </aside>
-{:else if state === "cancelled"}
-  <aside class="panel">
-    <div class="sp-top">
-      <p class="kicker">Status</p>
-      <p class="overall overall-muted">CNCLD</p>
-      <p class="tier">Research cancelled</p>
-    </div>
-    <div class="sp-foot">
-      <div class="fi">
-        <div class="n">{creditRefunded ? "Yes" : "—"}</div>
-        <div class="l">Refunded</div>
-      </div>
-      <div class="fi">
-        <div class="n">{stagesCompleted}</div>
-        <div class="l">Stages</div>
       </div>
     </div>
   </aside>
@@ -186,9 +119,6 @@
     border-radius: var(--radius-lg);
     background: var(--color-bg-elevated);
     overflow: hidden;
-  }
-  .panel-error {
-    border-color: var(--color-border-error);
   }
   /* Awaiting state — subtle accent edge so the "action needed" panel reads as
      a prompt rather than a passive status. */
@@ -232,33 +162,10 @@
     color: var(--color-accent);
     margin: 0;
   }
-  .panel-error .overall {
-    color: var(--color-error-dark);
-  }
-  .overall-muted {
-    color: var(--color-text-muted) !important;
-  }
   .tier {
     font-size: var(--text-sm);
     color: var(--color-text-secondary);
     margin: var(--space-2) 0 0;
-  }
-
-  .sp-rows {
-    padding: var(--space-4) var(--space-5);
-  }
-  .row-title {
-    font-size: var(--text-base);
-    font-weight: 600;
-    color: var(--color-text-primary);
-    margin: 0 0 var(--space-1-5);
-    line-height: 1.35;
-  }
-  .row-sub {
-    font-size: var(--text-13);
-    color: var(--color-text-secondary);
-    line-height: 1.45;
-    margin: 0;
   }
 
   .sp-foot {

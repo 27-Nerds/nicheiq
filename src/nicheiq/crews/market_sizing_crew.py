@@ -271,13 +271,23 @@ class MarketSizingCrew:
         # slice it actually serves), while the broad niche/SEO keyword expansion is the FOLLOW-ON reach
         # ceiling (drives TAM only, never the SAM headline). Anchoring SAM independently on the beachhead —
         # rather than as a % of an inflated niche TAM — avoids the "1% fallacy" for narrow ideas.
+        pool_graded_off_idea = False
         if keyword_validation:
             unfiltered_volume = keyword_validation.total_volume or 0
             nrv = keyword_validation.niche_relevant_volume
-            # niche_relevant_volume is the preferred semantically-filtered demand, BUT it is 0 when
-            # keyword validation degraded (empty validated_keywords) — fall back to the solution's total
-            # validated volume rather than zeroing the beachhead anchor.
-            kv_volume = nrv if nrv else unfiltered_volume
+            pool_graded_off_idea = nrv == 0
+            # niche_relevant_volume is the semantically-filtered demand and 0 is a MEASURED
+            # zero: every expansion keyword was graded off-idea. Substituting the unfiltered
+            # total there manufactured market size out of keywords already judged irrelevant
+            # (`nrv if nrv else unfiltered_volume` — the old falsy test). Only None, i.e.
+            # never computed (legacy checkpoint, or relevance < 0.3 so the filter is not
+            # trustworthy), may fall back.
+            kv_volume = unfiltered_volume if nrv is None else nrv
+            if nrv == 0 and unfiltered_volume > 0:
+                logger.warning(
+                    f"[Stage 9] Niche-relevant volume is 0 (unfiltered: {unfiltered_volume:,}) — "
+                    "beachhead demand stays 0; the unfiltered total is off-idea keywords, not market size"
+                )
             if kv_volume != unfiltered_volume and unfiltered_volume > 0:
                 logger.info(
                     f"[Stage 9] Beachhead demand {kv_volume:,} (niche-relevant; "
@@ -295,7 +305,13 @@ class MarketSizingCrew:
         # unfiltered keyword total). Equals the beachhead when no broader signal exists (honest no-op).
         beachhead_volume = kv_volume
         seo_total_volume = (seo_strategy_report.total_monthly_volume or 0) if seo_strategy_report else 0
-        niche_reach_ceiling = max(seo_total_volume, unfiltered_volume, beachhead_volume)
+        # Same manufacture, one line down: when grading measured 0 on-idea volume the whole
+        # expansion pool is off-idea, so it is not this solution's expansion runway either.
+        # Only the independently-built niche-wide SEO universe may raise the ceiling then.
+        ceiling_inputs = [seo_total_volume, beachhead_volume]
+        if not pool_graded_off_idea:
+            ceiling_inputs.append(unfiltered_volume)
+        niche_reach_ceiling = max(ceiling_inputs)
         if niche_reach_ceiling > beachhead_volume and beachhead_volume > 0:
             logger.info(
                 f"[Stage 9] Follow-on reach ceiling {niche_reach_ceiling:,} "
@@ -361,7 +377,9 @@ class MarketSizingCrew:
             "niche_reach_ceiling": niche_reach_ceiling,
             "pricing_anchor": pricing_anchor,
             "unfiltered_keyword_volume": unfiltered_volume,
-            "validated_keyword_count": keyword_validation.validated_count if keyword_validation else (seo_strategy_report.total_keywords_analyzed if seo_strategy_report else 0),
+            # graded_keyword_count, not validated_count: the latter carried the unfiltered
+            # expansion pool size in checkpoints written before 2026-08.
+            "validated_keyword_count": keyword_validation.graded_keyword_count if keyword_validation else (seo_strategy_report.total_keywords_analyzed if seo_strategy_report else 0),
             "pain_point_count": len(pain_point_analysis.pain_points) if pain_point_analysis else 0,
             "competitor_count": competitor_count,
             "strive_pre_check": strive_pre_check,
@@ -460,7 +478,7 @@ class MarketSizingCrew:
 
         signals = []
         signals.append(f"**Total Monthly Search Volume:** {keyword_validation.total_volume:,} searches")
-        signals.append(f"**Validated Keywords:** {keyword_validation.validated_count}")
+        signals.append(f"**Validated Keywords:** {keyword_validation.graded_keyword_count}")
         signals.append(f"**Demand Signal:** {keyword_validation.demand_signal}")
         signals.append(f"**Average Competition:** {keyword_validation.avg_competition:.2f}")
 
@@ -527,27 +545,9 @@ class MarketSizingCrew:
         """Return the subset of ``pains`` the solution's ``pain_points_addressed`` strings refer to,
         by token overlap (>=0.5 of the smaller token set) against each pain's title/categories/description.
         Reuses ``segment_matching._tokens`` (shared stemmer/stopwords) so we don't fork a tokenizer."""
-        from ..utils.segment_matching import _tokens
+        from ..utils.pain_matching import scope_pains_to_addressed
 
-        addressed_tokens = [_tokens(a) for a in addressed if a]
-        addressed_tokens = [t for t in addressed_tokens if t]
-        if not addressed_tokens:
-            return []
-        out = []
-        for pp in pains:
-            pv = _tokens(
-                getattr(pp, "title", "") or "",
-                " ".join(getattr(pp, "categories", None) or []),
-                getattr(pp, "description", "") or "",
-            )
-            if not pv:
-                continue
-            for av in addressed_tokens:
-                shared = pv & av
-                if shared and len(shared) >= 0.5 * min(len(pv), len(av)):
-                    out.append(pp)
-                    break
-        return out
+        return scope_pains_to_addressed(pains, addressed)
 
     def _format_competitive_signals(
         self,

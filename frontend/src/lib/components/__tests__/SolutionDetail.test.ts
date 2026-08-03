@@ -250,14 +250,89 @@ describe("SolutionDetail lifecycle and provenance", () => {
       }),
     });
 
-    expect(view.getByText("Adversarial review: Killed")).toBeInTheDocument();
-    expect(view.getByText(/Private-company trial balances/)).toBeInTheDocument();
+    expect(view.getByText("Adversarial review: Premise unproven")).toBeInTheDocument();
+    // Body finding + the facet chip's tooltip summary both quote the caveat.
+    expect(view.getAllByText(/Private-company trial balances/).length).toBeGreaterThan(0);
+    expect(view.getByText("Premise unproven")).toBeInTheDocument();
     expect(view.queryByText("Web-verified incumbent:")).not.toBeInTheDocument();
 
     await fireEvent.click(view.getByRole("tab", { name: "All details" }));
 
-    expect(view.getByRole("heading", { name: "Adversarial review: Killed" })).toBeInTheDocument();
+    expect(view.getByRole("heading", { name: "Adversarial review: Premise unproven" })).toBeInTheDocument();
     expect(view.queryByText("Direct incumbents")).not.toBeInTheDocument();
+  });
+
+  it("explains that a premise-unproven idea's other scores assume the premise holds", async () => {
+    const view = renderDetail({
+      solution: solution({
+        market_fit_score: 0.78,
+        technical_feasibility_score: 0.71,
+        red_team_verdict: "killed",
+        red_team_caveats: ["No reachable buyer owns the fax queue."],
+      }),
+    });
+
+    // Overview: the finding is a verdict on the premise, not a rating of the idea.
+    expect(
+      view.getByText(/This is a verdict on the premise, not on the idea/),
+    ).toBeInTheDocument();
+    expect(view.getByText(/keeps its rank and stays selectable/)).toBeInTheDocument();
+
+    await fireEvent.click(view.getByRole("tab", { name: "All details" }));
+
+    // Full detail: the score list says outright what the numbers are conditional on.
+    expect(view.getByText(/These scores assume the premise holds/)).toBeInTheDocument();
+  });
+
+  it("leaves the scoring card unqualified when the review raised nothing", async () => {
+    const view = renderDetail({
+      solution: solution({ market_fit_score: 0.78, technical_feasibility_score: 0.71 }),
+    });
+
+    expect(view.queryByText(/Premise unproven/)).not.toBeInTheDocument();
+    await fireEvent.click(view.getByRole("tab", { name: "All details" }));
+    expect(view.queryByText(/These scores assume the premise holds/)).not.toBeInTheDocument();
+  });
+
+  it("keeps the tournament bear case out of the overview and shows it in full detail", async () => {
+    const view = renderDetail({
+      solution: solution({
+        market_fit_score: 0.62,
+        critic_concern: "Buyer urgency has not been demonstrated behaviorally.",
+        refine_binding_constraint: "novelty: differentiate the tapering mechanism, not the copy",
+      }),
+    });
+
+    expect(view.queryByText("Tournament bear case")).not.toBeInTheDocument();
+    expect(
+      view.queryByText(/differentiate the tapering mechanism/),
+    ).not.toBeInTheDocument();
+
+    await fireEvent.click(view.getByRole("tab", { name: "All details" }));
+
+    expect(view.getByText("Tournament bear case")).toBeInTheDocument();
+    expect(
+      view.getByText("novelty: differentiate the tapering mechanism, not the copy"),
+    ).toBeInTheDocument();
+    // sits alongside, not in place of, the calibration critic's note
+    expect(view.getByText("Independent critic's take")).toBeInTheDocument();
+  });
+
+  it("lets a clamped score reason be read in full", async () => {
+    // The rationale is clamped to 240 chars so the popover stays scannable; every
+    // reason on the scoring card ended in "…" with no way to reach the rest.
+    const long = `Venue finance leads reconcile door splits by hand every night, ${"and the sheet they trust is a spreadsheet nobody owns ".repeat(6)}which is the whole opening.`;
+    const view = renderDetail({
+      solution: solution({ market_fit_score: 0.62, why_it_works: long }),
+    });
+
+    await fireEvent.click(view.getByRole("tab", { name: "All details" }));
+
+    const more = view.getByRole("button", { name: "Show full reasoning" });
+    expect(view.queryByText(long)).not.toBeInTheDocument();
+    await fireEvent.click(more);
+    expect(view.getByText(long)).toBeInTheDocument();
+    expect(view.getByRole("button", { name: "Show less" })).toBeInTheDocument();
   });
 
   it("links only to evidence sections supplied by the job-page caller", () => {

@@ -1,7 +1,6 @@
 import { JobStatus, Prisma } from '@prisma/client';
 import { Router, type Response } from 'express';
 import { z } from 'zod';
-import { CONFIG } from '../config.js';
 import { requireInternalAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { requireDecisionToolsAccess } from '../middleware/featureAccess.js';
 import { getPreviewReportForJob } from '../services/assetService.js';
@@ -212,7 +211,7 @@ function operationIdFor(setId: string, optionId: string): string {
 }
 
 export type ConceptOptionOutcome =
-  'pending' | 'accepted' | 'demoted' | 'failed' | 'refunded';
+  'pending' | 'accepted' | 'demoted' | 'failed' | 'refunded' | 'cancelled';
 
 /** Outcome per option that actually entered paid evaluation.
  *
@@ -242,7 +241,7 @@ async function evaluatedOptionIdsBySet(
     where: { jobId, gateStage: 5, role: 'receipt' },
     select: { patchJson: true },
   });
-  const SETTLED: ReadonlySet<string> = new Set(['accepted', 'demoted', 'failed', 'refunded']);
+  const SETTLED: ReadonlySet<string> = new Set(['accepted', 'demoted', 'failed', 'refunded', 'cancelled']);
   const outcomeByProposal = new Map<string, ConceptOptionOutcome>();
   for (const row of receipts) {
     const patch = row.patchJson;
@@ -427,11 +426,6 @@ selectionConceptSetsRouter.post(
           res.status(409).json({ error: 'This job reached its Concept Forge limit. Work with the existing sets, or discard a saved set you no longer need to free room' });
           return;
         }
-        if (!CONFIG.openaiApiKey && !CONFIG.openrouterApiKey) {
-          res.status(503).json({ error: 'Concept Forge is temporarily unavailable' });
-          return;
-        }
-
         let generated;
         try {
           generated = await generateSelectionConceptSet(input);
@@ -507,6 +501,10 @@ selectionConceptSetsRouter.post(
     } catch (error) {
       if (error instanceof z.ZodError) {
         res.status(400).json({ error: 'Invalid Concept Forge request', details: error.errors });
+        return;
+      }
+      if (error instanceof Error && error.message === 'AI_PROVIDER_UNAVAILABLE') {
+        res.status(503).json({ error: 'Concept Forge is temporarily unavailable' });
         return;
       }
       if (error instanceof Error && error.message in GUARDRAIL_MESSAGES) {

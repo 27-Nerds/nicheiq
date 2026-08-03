@@ -5,11 +5,14 @@ import { CONFIG } from '../config.js';
 import { requireInternalAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { requireDecisionToolsAccess } from '../middleware/featureAccess.js';
 import { prisma } from '../services/db.js';
+import { hasApiKeyForModel } from '../services/openai.js';
 import {
+  FounderFitGenerationError,
   founderFitFingerprint,
   founderFitIdeaSnapshot,
   generateFounderFitArtifact,
   parseCurrentFounderFitArtifact,
+  type FounderFitFailureCause,
 } from '../services/founderFitService.js';
 import { FounderFitRequestSchema } from '../types/founderFit.js';
 import { SelectionDecisionProfileSchema } from '../types/job.js';
@@ -17,6 +20,33 @@ import { ensureIdeaIdentities } from '../utils/ideaIdentity.js';
 
 const JobParamsSchema = z.object({ jobId: z.string().uuid() });
 const EDITABLE_JOB_STATUSES = new Set<JobStatus>([JobStatus.AWAITING_SELECTION]);
+
+const FOUNDER_FIT_FAILURES: Record<FounderFitFailureCause, { code: string; error: string }> = {
+  timeout: {
+    code: 'FOUNDER_FIT_TIMEOUT',
+    error: 'Founder-fit analysis timed out; no selection data was changed',
+  },
+  upstream: {
+    code: 'FOUNDER_FIT_UPSTREAM',
+    error: 'Founder-fit analysis is temporarily unavailable; no selection data was changed',
+  },
+  no_content: {
+    code: 'FOUNDER_FIT_NO_CONTENT',
+    error: 'Founder-fit analysis returned no usable result; no selection data was changed',
+  },
+  bad_json: {
+    code: 'FOUNDER_FIT_BAD_JSON',
+    error: 'Founder-fit analysis returned an invalid result; no selection data was changed',
+  },
+  schema_mismatch: {
+    code: 'FOUNDER_FIT_SCHEMA_MISMATCH',
+    error: 'Founder-fit analysis returned an incomplete result; no selection data was changed',
+  },
+  coverage_mismatch: {
+    code: 'FOUNDER_FIT_COVERAGE_MISMATCH',
+    error: 'Founder-fit analysis did not cover every selected idea; no selection data was changed',
+  },
+};
 
 export const founderFitRouter = Router();
 
@@ -115,7 +145,7 @@ founderFitRouter.post('/:jobId/founder-fit', requireInternalAuth, requireDecisio
       res.json({ analysis: current, cached: true });
       return;
     }
-    if (!CONFIG.openaiApiKey && !CONFIG.openrouterApiKey) {
+    if (!hasApiKeyForModel(CONFIG.founderFitModel)) {
       res.status(503).json({ error: 'Founder-fit analysis is temporarily unavailable' });
       return;
     }
@@ -139,6 +169,11 @@ founderFitRouter.post('/:jobId/founder-fit', requireInternalAuth, requireDecisio
     res.status(201).json({ analysis, cached: false });
   } catch (error) {
     console.error('Failed to analyze founder fit:', error);
+    if (error instanceof FounderFitGenerationError) {
+      const failure = FOUNDER_FIT_FAILURES[error.failureCause];
+      res.status(error.failureCause === 'timeout' ? 504 : 502).json(failure);
+      return;
+    }
     res.status(502).json({ error: 'Founder-fit analysis failed; no selection data was changed' });
   }
 });

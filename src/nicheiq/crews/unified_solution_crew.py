@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from concurrent.futures import TimeoutError as FuturesTimeoutError
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from ..flows.checkpoint_manager import CheckpointManager
@@ -39,7 +39,7 @@ from loguru import logger
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..config.settings import settings
-from ..utils.llm_service import LLMService, build_crew_llm
+from ..utils.llm_service import LLMService, LLMSystemicError, build_crew_llm
 from ..utils.content_security import fence_content, sanitize_social_content
 from ..models.competitor import CompetitiveAnalysisResult
 from ..models.pain_point import PainPointAnalysisResult
@@ -54,6 +54,7 @@ from ..models.solution_idea import (
 from ..models.solution_selection import SolutionSelection
 from ..tools import CachedSerperDevTool, CompetitorQueryTool
 from ..utils.crew_helpers.content_preparers import format_competitor_mentions_for_prompt
+from ..utils.idea_carryover import carry_forward_idea_fields
 from ..utils.data_access import (
     DATA_ACCESS_VOCAB,
     normalize_data_access,
@@ -428,6 +429,17 @@ def _median_calibrations(sample_maps: list[dict]) -> dict:
             closest = min(present, key=lambda o: abs(getattr(o, a) - med))
             setattr(ns, a, med)
             setattr(ns, reason_attr, getattr(closest, reason_attr, "") or "")
+        # Q-030/Q-035: fold the claimed market-fit route across samples — case-insensitive
+        # modal value, FIRST-WINS on ties (deliberately no Counter.most_common: its tie order
+        # is impl-defined; at samples=3 free text this degenerates to first-wins by design).
+        routes = [r for r in ((getattr(o, "market_fit_claimed_route", None) or "").strip()
+                              for o in objs) if r]
+        best, best_n = None, 0
+        for r in routes:
+            n = sum(1 for x in routes if x.lower() == r.lower())
+            if n > best_n:
+                best, best_n = r, n
+        ns.market_fit_claimed_route = best
         out[nm] = ns
     return out
 
@@ -523,7 +535,8 @@ def _assign_generator_cells(pains: list, segments: list, *, target: int, max_gen
                             relevance: dict | None = None, severity_floor: int = 0,
                             commercial_floor: int = 0, commercial_min_intent: float = 0.6,
                             stated_audience_floor: int = 0, stated_audience: str | None = None,
-                            pinned_titles: set | None = None) -> list:
+                            pinned_titles: set | None = None,
+                            family_of: dict | None = None) -> list:
     """Assign divergent generator cells from the (pain × segment) affinity graph.
 
     One cell per real (pain × affected-segment) edge, de-clustered by BUILD-TIME per-segment
@@ -533,7 +546,16 @@ def _assign_generator_cells(pains: list, segments: list, *, target: int, max_gen
     `target` ordered high->low opportunity (so the allow_zero tail lands on the weakest). The theme
     cap relaxes only when no theme-diverse option remains, so cell count still reaches `target`.
     Returns up to `max_gen` dicts {pain, segment}; `segment` is None when no audience segments exist
-    (persona falls back to the generic archetypes). Pure function — no I/O, deterministic."""
+    (persona falls back to the generic archetypes). Pure function — no I/O, deterministic.
+
+    `family_of` (2026-08-02, docs/DIVERSITY_DECISION_2026-08.md) maps ``id(pain) -> family_id`` for
+    a validated buyer-job partition. When present, Round 0e allocates ONE cell per family (each
+    family's best-ranked pain, bypassing the theme cap) BEFORE any family may take a SECOND cell —
+    themes were the only spreading key before, and several themes routinely describe one buyer
+    doing one job, which is why a 9-generator budget still produced 3 product families. It
+    re-allocates a FIXED budget: a family with no allocatable pain is left uncovered rather than
+    manufactured, and every cell carries its intended `family_id` for telemetry. `family_of=None`
+    => byte-identical legacy allocation (no extra round, no stamp)."""
     if not pains:
         return []
     def _rel(p):
@@ -571,9 +593,13 @@ def _assign_generator_cells(pains: list, segments: list, *, target: int, max_gen
     cand = {id(p): _candidate_segments_for_pain(p, segments) for p in pains_ordered}
     seg_count: dict = {}
     theme_count: dict = {}
+    family_count: dict = {}
     per_pain_used: dict = {}
     cells: list = []
     limit = min(max(target, 1), max_gen)
+
+    def _fam(pain):
+        return family_of.get(id(pain)) if family_of else None
 
     def _theme_ok(pain, relax: bool) -> bool:
         th = getattr(pain, "parent_theme_id", None)
@@ -599,12 +625,18 @@ def _assign_generator_cells(pains: list, segments: list, *, target: int, max_gen
 
     def _take(pain, seg):
         name = getattr(seg, "segment_name", "") or ""
-        cells.append({"pain": pain, "segment": seg})
+        cell = {"pain": pain, "segment": seg}
+        if family_of:  # additive stamp — only when a partition exists (legacy stays byte-identical)
+            cell["family_id"] = _fam(pain)
+        cells.append(cell)
         seg_count[name] = seg_count.get(name, 0) + 1
         per_pain_used.setdefault(id(pain), set()).add(name)
         th = getattr(pain, "parent_theme_id", None)
         if th is not None:
             theme_count[th] = theme_count.get(th, 0) + 1
+        fam = _fam(pain)
+        if fam is not None:
+            family_count[fam] = family_count.get(fam, 0) + 1
 
     floored: set = set()
     if severity_floor and segments:         # Round 0: guarantee the top-N pains by severity a cell
@@ -682,6 +714,25 @@ def _assign_generator_cells(pains: list, segments: list, *, target: int, max_gen
                 if s is not None:
                     _take(p, s)
                     floored.add(id(p))
+    if family_of:                            # Round 0e: BUYER-JOB FAMILY coverage
+        # The load-bearing diversity round (docs/DIVERSITY_DECISION_2026-08.md). One cell per
+        # family, taken in `pains_ordered` order so each family is represented by its best-ranked
+        # pain, and the theme cap is bypassed exactly as the floors do — a family whose pains all
+        # sit in one saturated theme must still get its cell. Families already covered by a floor
+        # round (they incremented `family_count` through `_take`) are skipped, so the floors keep
+        # their guarantees and never pay twice. Pains with no family (absent from the partition)
+        # are left to Round 1. Nothing is manufactured: a family with no pickable segment stays
+        # uncovered and is reported as such.
+        for p in pains_ordered:
+            if len(cells) >= limit:
+                break
+            fam = _fam(p)
+            if fam is None or fam in family_count:
+                continue                     # unfamilied pain, or a floor already covered it
+            s = _pick(p)
+            if s is not None:
+                _take(p, s)
+                floored.add(id(p))           # one cell per family before ANY family's second
     for p in pains_ordered:                 # Round 1: theme-spread coverage (1 cell per pain)
         if len(cells) >= limit:             # stop at target so a deep pain pool doesn't overshoot
             break
@@ -824,6 +875,15 @@ _REPAIRABLE_TEXT_FIELDS = (
 )
 _REPAIRABLE_LIST_FIELDS = ("organic_discovery_queries", "differentiation_factors")
 
+# Repairable in general, but NOT groundable on a REBUILD (pivot / merge / red-team revision).
+# First-pass generation prices acquisition against audience payability and the competitive
+# set; a rebuild's repair sees only the idea's own spec, so anything it wrote here would be a
+# confident-looking number with nothing behind it. Both already render as "N/A" when absent
+# (report_templates.py:81-82) and `estimated_cac_organic` is overwritten for the selected
+# solution by Stage 12's SEO-grounded `estimated_cac_organic_refined` — so leaving them blank
+# costs the reader nothing and fabricating them would cost the report its honesty.
+_UNGROUNDABLE_ON_REBUILD = ("estimated_cac_organic", "estimated_cac_paid")
+
 _DEV_TIME_BANDS = ("3-6 weeks", "2-4 months", "4-6+ months")
 _DEV_TIME_BAND_WEEKS = ((2.0, 7.0), (7.0, 19.0), (16.0, 999.0))
 
@@ -916,6 +976,9 @@ class _ScoreCalibration(BaseModel):
     obviousness_score: float = -1.0
     solo_dev_feasibility_reason: str = ""
     solo_dev_feasibility_score: float = -1.0
+    # Q-030/Q-035 route reconcile: the data route (if any) the market_fit reason leans on.
+    # None/empty = no route claimed. Reconciled against data_access_model in _apply.
+    market_fit_claimed_route: Optional[str] = None
 
 
 class _ScoreCalibrations(BaseModel):
@@ -1103,6 +1166,12 @@ class UnifiedSolutionCrew:
         self.ruled_out_pains: list[dict] = []
         self.overlap_groups: list[dict] = []
         self.funnel_counts: dict = {}
+        # Buyer-job family partition + allocation telemetry (docs/DIVERSITY_DECISION_2026-08.md).
+        # The partition is computed ONCE per run by `_ensure_buyer_job_partition` right before
+        # cell allocation; None means "never computed" (unit tests / offline replays / a run that
+        # never reached ideation), which the allocator treats as "no family key".
+        self._buyer_job_partition = None
+        self.cell_allocation_telemetry: dict = {}
         # Tournament-branch context stashed for the post-union demote/merge/backfill block
         # (search closure, usage sink, counts live inside the `if use_tournament:` scope).
         self._tournament_ctx: dict | None = None
@@ -1147,8 +1216,14 @@ class UnifiedSolutionCrew:
             _seg_line(s) for s in self.audience_mapping.audience_segments[:5]
         ) if self.audience_mapping.audience_segments else "Not available"
 
+        # 1.2(d): a G2 gate patch's primary_target_segment override (recorded on
+        # user_audience_scope; audience_mapping is never mutated) is the EFFECTIVE
+        # primary for generation prompts.
+        effective_primary = ((getattr(getattr(self, "user_audience_scope", None),
+                                      "primary_target_segment", None) or "").strip()
+                             or self.audience_mapping.primary_target_segment)
         return {
-            "primary_target_segment": self.audience_mapping.primary_target_segment or "Not available",
+            "primary_target_segment": effective_primary or "Not available",
             "audience_segments_summary": segments,
             "common_vocabulary": ", ".join(self.audience_mapping.common_vocabulary[:12]) if self.audience_mapping.common_vocabulary else "Not available",
             "frustrations_with_existing": "\n".join(
@@ -1278,7 +1353,7 @@ class UnifiedSolutionCrew:
                         "Extract the REAL software products/tools serving this niche (max 12). Only "
                         "products actually named in the results — never invent. Return JSON."),
                 output_model=_Incumbents, temperature=0, timeout=120,
-                model_name=settings.report_structured_llm, reasoning_effort="minimal")
+                model_name=settings.report_structured_llm, reasoning_effort="none")
             rows = [i for i in (r.incumbents or []) if (i.name or "").strip()][:12]
             if rows:
                 lines = "\n".join(
@@ -1359,7 +1434,7 @@ class UnifiedSolutionCrew:
                           "clearly free/DIY with no meaningful paid adoption. Never invent "
                           "evidence. Return JSON."),
                 output_model=_NicheWallet, temperature=0, timeout=90,
-                model_name=settings.report_structured_llm, reasoning_effort="minimal")
+                model_name=settings.report_structured_llm, reasoning_effort="none")
             if hasattr(self, "cost_tracker") and self.cost_tracker and usage is not None:
                 self.cost_tracker.record_llm_usage("Stage 7 - Niche Wallet", usage.to_dict())
             wc = (r.wallet_class or "").strip().lower()
@@ -1514,6 +1589,16 @@ class UnifiedSolutionCrew:
                 pay_map = self._payability_map_from_segments(segs)
                 if pay_map:
                     self._payability_map = pay_map
+            # Buyer-job partition: unlike the caches above this is not a cost optimization but a
+            # CORRECTNESS one — a seed batch that re-labeled the pains would stamp its idea with a
+            # family id from a different partition than the pool it merges into. Also restored
+            # defensively in `_ensure_buyer_job_partition` for the regenerate path, which has no
+            # hydration hook.
+            if getattr(self, "_buyer_job_partition", None) is None:
+                from ..utils.buyer_jobs import partition_from_dict
+                persisted = partition_from_dict(getattr(state, "buyer_job_partition", None))
+                if persisted is not None:
+                    self._buyer_job_partition = persisted
         except Exception as e:  # noqa: BLE001 — hydration is best-effort, never fatal
             logger.warning(f"[Seed] state hydration skipped (non-fatal): {str(e)[:120]}")
 
@@ -1653,7 +1738,7 @@ class UnifiedSolutionCrew:
                         "idea name given. Return JSON.\n\n"
                         + fence_content(rows, source="generated-ideas", label="UNTRUSTED IDEAS")),
                 output_model=_Capabilities, temperature=0, timeout=120,
-                model_name=settings.report_structured_llm, reasoning_effort="minimal")
+                model_name=settings.report_structured_llm, reasoning_effort="none")
             if usage is not None and getattr(self, "cost_tracker", None):
                 self.cost_tracker.record_llm_usage("Stage 7 - Capability Phrases", usage.to_dict())
             for item in (getattr(r, "items", None) or []):
@@ -1661,7 +1746,10 @@ class UnifiedSolutionCrew:
                 phrase = " ".join((item.phrase or "").split())[:60]
                 if name and phrase:
                     cached[name] = phrase
-            logger.info(f"[CapabilityPhrase] {len(cached)}/{len(ideas)} idea(s) mapped")
+            newly = sum(1 for i in todo
+                        if (getattr(i, "solution_name", "") or "").strip() in cached)
+            logger.info(f"[CapabilityPhrase] mapped {newly}/{len(todo)} new idea(s) "
+                        f"({len(cached)} cached this run)")
         except Exception as e:  # noqa: BLE001 — callers fall back to _mechanism_keywords
             logger.warning(f"[CapabilityPhrase] skipped (non-fatal): {str(e)[:120]}")
         return cached
@@ -1857,7 +1945,7 @@ class UnifiedSolutionCrew:
                         + fence_content("\n\n".join(fam_rows), source="generated-ideas",
                                         label="UNTRUSTED IDEAS")),
                 output_model=_AdjacentMarkets, temperature=0, timeout=120,
-                model_name=settings.report_structured_llm, reasoning_effort="minimal")
+                model_name=settings.report_structured_llm, reasoning_effort="none")
             if usage is not None and hasattr(self, "cost_tracker") and self.cost_tracker:
                 self.cost_tracker.record_llm_usage("Stage 7 - Adjacent Market Probe", usage.to_dict())
             cats_by_key = {m.family_key.strip(): [c for c in (m.categories or []) if c.strip()][:3]
@@ -1980,7 +2068,7 @@ class UnifiedSolutionCrew:
                         "actually show — never invent products, features, or coverage. "
                         "Return JSON.\n\n" + judge_rows),
                 output_model=_AdjacentIncumbentFindings, temperature=0, timeout=120,
-                model_name=settings.report_structured_llm, reasoning_effort="minimal")
+                model_name=settings.report_structured_llm, reasoning_effort="none")
             if jusage is not None and hasattr(self, "cost_tracker") and self.cost_tracker:
                 self.cost_tracker.record_llm_usage("Stage 7 - Adjacent Market Probe", jusage.to_dict())
 
@@ -2051,6 +2139,29 @@ class UnifiedSolutionCrew:
             logger.warning(f"[AdjacentProbe] failed (non-fatal): {str(e)[:120]}")
             return [], 0
 
+    # Currency amount inside an incumbent-map pricing string ("$300/mo", "€15", "35 USD").
+    _PRICING_CURRENCY_RE = re.compile(
+        r"[$€£]\s*\d|\b\d+(?:\.\d+)?\s*(?:USD|EUR|GBP)\b", re.IGNORECASE)
+
+    def _wallet_priced_row(self, vendor: str) -> dict | None:
+        """Exact-name row from `_incumbent_rows` whose pricing carries a currency amount and
+        NO 'free' marker — wallet evidence the vendor charges for the product (correction 2:
+        wallet reclassify). None when the vendor is absent, unpriced, or genuinely free
+        (Liquipedia-shaped rows stay eligible for bundled_free)."""
+        v = (vendor or "").strip().casefold()
+        if not v:
+            return None
+        for row in (getattr(self, "_incumbent_rows", None) or []):
+            if not isinstance(row, dict):
+                continue
+            if (row.get("name") or "").strip().casefold() != v:
+                continue
+            pricing = (row.get("pricing") or "").strip()
+            if (self._PRICING_CURRENCY_RE.search(pricing)
+                    and not re.search(r"\bfree\b", pricing, re.IGNORECASE)):
+                return row
+        return None
+
     def _probe_toolbelt_free_bundle(self, top: list) -> tuple[list[str], int]:
         """Toolbelt/free-bundle parity probe (2026-07-10, live-motivated): the direct parity
         probe (`_probe_mechanism_parity`) searches by each idea's OWN vocabulary, so it misses a
@@ -2065,6 +2176,12 @@ class UnifiedSolutionCrew:
         `incumbent_parity = "bundled_free (<tool_or_route>): <evidence>"` — strictness-upgrade-
         only, mirroring the adjacent-probe niche back-fill guard (a stronger finding may only
         overwrite a weaker/no existing cap, never loosen one).
+
+        2026-08 parity fix (plan Step 1, corrections 2+3): `bundled_free` now requires a
+        free/included/no-cost token CO-LOCATED with the route in the RESULT text of a query
+        derived from that idea's own keyword; a vendor the wallet brief prices with no free
+        tier is reclassified to `shipped`; a finding failing the evidence conditions is
+        DOWNGRADED to `shipped`/`partial` (never silently dropped).
 
         Returns (per-idea evidence lines, count of ideas covered by a finding). Fail-soft ->
         ([], 0)."""
@@ -2096,8 +2213,11 @@ class UnifiedSolutionCrew:
 
             # 1. Build queries per idea (toolbelt-feature + free-bundle), truncated to 6 total
             #    across the whole run (session cache dedups repeats against the parity leg).
+            #    `query_owner` records which idea's keyword each query derived from — the
+            #    per-idea evidence provenance the bundled_free stamp requires (correction 3).
             idea_kw: dict[str, str] = {}
             queries: list[str] = []
+            query_owner: dict[str, str] = {}
             for idea in top:
                 kw = self._mechanism_keywords(idea)
                 if not kw:
@@ -2106,18 +2226,32 @@ class UnifiedSolutionCrew:
                 if not name:
                     continue
                 idea_kw[name] = kw
-                for tool in toolbelt:
-                    queries.append(f"{tool} {kw}"[:120])
-                queries.append(f"{kw} free"[:120])
+                idea_queries = [f"{tool} {kw}"[:120] for tool in toolbelt]
+                idea_queries.append(f"{kw} free"[:120])
                 if niche_short:
-                    queries.append(f"free {kw} {niche_short}"[:120])
+                    idea_queries.append(f"free {kw} {niche_short}"[:120])
+                for q in idea_queries:
+                    queries.append(q)
+                    query_owner.setdefault(q, name)
             queries = queries[:6]
             if not queries:
                 return [], 0
 
             result_map = self._ma_search_batch(queries)
-            snippets = [f"[{q}]\n{res[:1500]}" for q, res in result_map.items() if res]
-            if not snippets:
+            # Split the LLM feed from the verification text (2026-08 parity fix): the old
+            # single snippet string embedded the query (`[q]`) in the very text the route
+            # guard checked, so a toolbelt vendor named in the QUERY always "verified" —
+            # the guard could never fail for a toolbelt vendor. `llm_snippets` (with the
+            # `[q]` prefix, unchanged) still goes to the LLM; all verification below runs
+            # against `verify_blobs` — per-query RESULT text only.
+            llm_snippets: list[str] = []
+            verify_blobs: list[tuple[str, str]] = []   # (query, result-text[:1500])
+            for q, res in result_map.items():
+                if not res:
+                    continue
+                llm_snippets.append(f"[{q}]\n{res[:1500]}")
+                verify_blobs.append((q, str(res)[:1500]))
+            if not llm_snippets:
                 return [], 0
 
             class _ToolbeltFinding(BaseModel):
@@ -2140,7 +2274,7 @@ class UnifiedSolutionCrew:
                 prompt=(f"Niche: {niche_short or 'n/a'}\n\nIDEAS under evaluation:\n{idea_lines}\n\n"
                         f"Toolbelt tools this niche already uses: "
                         f"{', '.join(toolbelt) or 'none known'}\n\n"
-                        + fence_content("\n\n".join(snippets), source="web-search",
+                        + fence_content("\n\n".join(llm_snippets), source="web-search",
                                         label="UNTRUSTED WEB RESULTS")
                         + "\n\nFor EACH idea, judge from the search results ONLY whether the "
                           "idea's core capability is already BUNDLED FREE in a tool this niche "
@@ -2149,13 +2283,18 @@ class UnifiedSolutionCrew:
                           "free in evidence), outcome=none (no evidence of either). Cite only "
                           "what the results actually show — never invent features. Return JSON."),
                 output_model=_ToolbeltFindings, temperature=0, timeout=120,
-                model_name=settings.report_structured_llm, reasoning_effort="minimal")
+                model_name=settings.report_structured_llm, reasoning_effort="none")
             if usage is not None and hasattr(self, "cost_tracker") and self.cost_tracker:
                 self.cost_tracker.record_llm_usage(
                     "Stage 7 - Toolbelt Free-Bundle Probe", usage.to_dict())
 
             by_name = {(f.idea_name or "").strip().lower(): f for f in (r.findings or [])}
-            snips_lower = "\n".join(snippets).lower()
+            verify_text = "\n".join(res for _, res in verify_blobs).lower()
+            free_token_re = re.compile(
+                r"\b(?:free|included|includes|no[-\s]?cost|no charge)\b", re.IGNORECASE)
+            incumbent_rows = getattr(self, "_incumbent_rows", None) or []
+            if not incumbent_rows:
+                logger.info("[ToolbeltProbe] wallet brief absent — reclassify pass skipped")
             lines: list[str] = []
             covered = 0
             for idea in top:
@@ -2164,14 +2303,55 @@ class UnifiedSolutionCrew:
                 if f is None or (f.outcome or "").strip().lower() != "bundled_free":
                     continue
                 route = (f.tool_or_route or "").strip()
-                if not route or route.lower() not in snips_lower:
+                if not route or route.lower() not in verify_text:
                     logger.info(f"[ToolbeltProbe] dropped unverifiable route '{route[:40]}' "
-                                "(name not in search results)")
+                                "(name not in search RESULT text)")
                     continue
-                note = f"bundled_free ({route}): {(f.evidence or 'free in-tool').strip()}"
+                evidence = (f.evidence or "free in-tool").strip()
+                # bundled_free requires BOTH (correction 3): a free/included/no-cost token
+                # CO-LOCATED with the route in the same result blob, AND that evidencing
+                # blob's query derived from THIS idea's own keyword. With the shared 6-query
+                # pool only the top 1-2 ideas ever own queries — so a failed condition
+                # DOWNGRADES the finding (never drops an otherwise-evidenced parity claim):
+                # vendor priced in the wallet brief -> `shipped`, else -> `partial`.
+                route_l = route.lower()
+                colocated = False
+                own_evidence = False
+                for q, res in verify_blobs:
+                    res_l = res.lower()
+                    if route_l in res_l and free_token_re.search(res_l):
+                        colocated = True
+                        if query_owner.get(q) == name:
+                            own_evidence = True
+                            break
+                priced_row = self._wallet_priced_row(route)
+                if colocated and own_evidence:
+                    if priced_row is not None:
+                        # Wallet reclassify (correction 2): the incumbent map prices this
+                        # exact vendor with no free marker — the "free" claim contradicts
+                        # wallet data; the PARITY claim stands. Downgrade-only: `shipped`
+                        # (cap 0.45), never void.
+                        klass = "shipped"
+                        note = f"shipped by {route}: {evidence}"
+                        logger.info(
+                            f"[ToolbeltProbe] wallet reclassify '{name}': '{route[:40]}' is "
+                            f"priced ({(priced_row.get('pricing') or '')[:30]}) — "
+                            "bundled_free -> shipped")
+                    else:
+                        klass = "bundled_free"
+                        note = f"bundled_free ({route}): {evidence}"
+                else:
+                    klass = "shipped" if priced_row is not None else "partial"
+                    note = (f"shipped by {route}: {evidence}" if klass == "shipped"
+                            else f"partial by {route}: {evidence}")
+                    logger.info(
+                        f"[ToolbeltProbe] downgraded '{name}' bundled_free -> {klass} "
+                        f"('{route[:40]}': "
+                        + ("no idea-specific evidence" if colocated
+                           else "no free-token co-located with route in results") + ")")
                 cur = (getattr(idea, "incumbent_parity", None) or "").strip().lower()
                 cur_cap = _parity_cap(cur)
-                new_cap = _parity_cap("bundled_free")
+                new_cap = _parity_cap(klass)
                 if cur_cap is None or (new_cap is not None and new_cap < cur_cap):
                     idea.incumbent_parity = note
                     covered += 1
@@ -2229,7 +2409,25 @@ class UnifiedSolutionCrew:
                 logger.warning(f"[SerpProbe] idea skipped (non-fatal): {str(e)[:100]}")
         if not idea_queries:
             return
-        result_map = self._ma_search_batch(all_queries)
+        # budget_exempt: this probe runs LAST (after the parity/adjacent/toolbelt probes have
+        # spent the shared market-awareness budget) and carries its OWN cap
+        # (`serp_probe_queries_per_idea` × eligible distribution_seo ideas, preview path only) —
+        # exactly the case the exemption exists for. Live-caught 2026-07-30: a run finished at
+        # 60/60 shared spend, so every query here returned '' and `_serp_owned` was never
+        # stamped, silently disabling Rule D's provisional-SEO cap. Because the probe only logged
+        # on a POSITIVE finding, "budget starved" and "no owned SERPs" were indistinguishable —
+        # an idea's SEO score therefore depended on how much budget earlier probes happened to
+        # leave. Same disease the red-team pass was exempted for.
+        result_map = self._ma_search_batch(all_queries, budget_exempt=True)
+        answered = sum(1 for q in all_queries if result_map.get(q))
+        if not answered:
+            logger.warning(
+                f"[SerpProbe] 0/{len(all_queries)} quer(ies) returned results for "
+                f"{len(idea_queries)} eligible idea(s) — Rule D cannot fire this run "
+                "(check search-tool health; budget is exempt here)")
+        else:
+            logger.info(f"[SerpProbe] {answered}/{len(all_queries)} quer(ies) answered across "
+                        f"{len(idea_queries)} distribution_seo idea(s)")
 
         # 2. Per-idea classification from the returned map — logic/guards unchanged.
         for idea, queries in idea_queries:
@@ -2389,7 +2587,7 @@ class UnifiedSolutionCrew:
                         "none (no evidence of either). Cite only what the "
                         "results actually show — never invent features. Return JSON."),
                 output_model=_ParityFindings, temperature=0, timeout=120,
-                model_name=settings.report_structured_llm, reasoning_effort="minimal")
+                model_name=settings.report_structured_llm, reasoning_effort="none")
             by_name = {(f.idea_name or "").strip().lower(): f for f in (r.findings or [])}
             if hasattr(self, "cost_tracker") and self.cost_tracker and usage is not None:
                 self.cost_tracker.record_llm_usage("Stage 7 - Parity Probe", usage.to_dict())
@@ -2399,6 +2597,14 @@ class UnifiedSolutionCrew:
             none_n = 0
             probed_ideas = []
             for idea in top:
+                # RESET-FIRST (mirrors _stamp_payability; 2026-08 parity fix): incumbent_parity
+                # sits on BaseSolutionIdea — the same model generator LLMs emit through
+                # structured output, so a fabricated value (or a stale stronger finding from an
+                # earlier probe of this same idea) must never survive a re-probe. Scoped to THE
+                # PROBED SET only (`top` = the ideas passed in): the probe runs per wave, so an
+                # unscoped reset would wipe other waves' findings. The adjacent/toolbelt probes
+                # below stay additive within this pass.
+                idea.incumbent_parity = None
                 f = by_name.get((getattr(idea, "solution_name", "") or "").strip().lower())
                 if f is None:
                     continue
@@ -2993,7 +3199,19 @@ class UnifiedSolutionCrew:
         cells are carved OUT of the SAME budget, never additive to it. Every pain cell is stamped
         frame='pain', focus=None (ONLY when >=1 frame cell minted — fix #1) so downstream
         consumers can branch on `cell.get('frame') or 'pain'` uniformly (Codex BLOCKER-1: no
-        cell['pain'] alias reliance)."""
+        cell['pain'] alias reliance).
+
+        FAMILY-FIRST ALLOCATION (2026-08-02, docs/DIVERSITY_DECISION_2026-08.md): when a validated
+        buyer-job partition is on the crew (`self._buyer_job_partition`, computed once per run by
+        `_ensure_buyer_job_partition`) every pain is keyed to a family, and the allocator covers
+        each family once before any family takes a second cell. The FAMILY floor then REPLACES
+        `floors + 2` as the pain quantity protected from the frame subtraction (kept as a lower
+        bound, so the existing floor guarantees can only strengthen). The reserve arithmetic
+        itself is UNCHANGED — a bigger `pain_min` is exactly how frames yield: `max_frames` shrinks
+        and `pain_target` can never drop under the family floor. Consequence worth knowing: as
+        today when `pain_min` binds, total cells may reach `divergent_max_generators` rather than
+        `divergent_target_generators`. No partition (unit tests, legacy path) => every family
+        branch no-ops and allocation is byte-identical."""
         am = getattr(self, "audience_mapping", None)
         segments = list(getattr(am, "audience_segments", None) or []) if am else []
         target = settings.divergent_target_generators
@@ -3127,14 +3345,44 @@ class UnifiedSolutionCrew:
         if pinned_titles:
             pinned_set = set(pinned_titles)
             unique_floor_ids |= {id(p) for p in all_pains if getattr(p, "title", None) in pinned_set}
+        # Buyer-job family key (2026-08-02): id(pain) -> family_id over the SAME `all_pains` the
+        # floors/widening see, so a family reachable only through the medium/low tail still counts.
+        partition = getattr(self, "_buyer_job_partition", None)
+        family_of: dict | None = None
+        if partition is not None:
+            family_of = {}
+            for p in all_pains:
+                fam = partition.family_for_pain(p)
+                if fam:
+                    family_of[id(p)] = fam
+            if not family_of:
+                family_of = None
+        n_families_available = len(set(family_of.values())) if family_of else 0
+
+        # FAMILY FLOOR — the quantity of pain cells protected from the frame subtraction. Enough
+        # cells to honor every floor pain AND still reach every family once, never more than
+        # `target` (families must not silently inflate the generator budget). `max(..., floors+2)`
+        # keeps the pre-family reserve as a LOWER bound: the family floor can raise protection,
+        # never lower it.
+        family_min = 0
+        if family_of:
+            floor_families = {family_of.get(i) for i in unique_floor_ids}
+            floor_families.discard(None)
+            families_needed = len(unique_floor_ids) + max(
+                0, n_families_available - len(floor_families))
+            family_min = min(families_needed, target)
         # Fix #3: floors+2 can exceed max_gen on a small niche (few pains, low cap) — clamp so
         # pain_min never itself exceeds the cap (which would otherwise push pain_target above
         # pain_cap downstream), and warn since this is a degradation of the floor guarantees.
-        pain_min = min(cap, len(unique_floor_ids) + 2)
-        if pain_min < len(unique_floor_ids) + 2:
+        pain_min_wanted = max(len(unique_floor_ids) + 2, family_min)
+        pain_min = min(cap, pain_min_wanted)
+        if pain_min < pain_min_wanted:
             logger.warning(
-                f"[FrameSeed] pain_min clamped {len(unique_floor_ids) + 2} -> {pain_min} "
+                f"[FrameSeed] pain_min clamped {pain_min_wanted} -> {pain_min} "
                 f"(max_gen={cap} too small for the floor guarantees; frame budget forced to 0)")
+        # Unchanged arithmetic — only `pain_min` grew. That is the whole yield mechanism: frames
+        # get whatever the protected pain quantity leaves, and `pain_target` below can never fall
+        # under it, so a frame cell is dropped exactly when it would cost a family its cell.
         max_frames = max(0, cap - pain_min)
 
         try:
@@ -3155,16 +3403,34 @@ class UnifiedSolutionCrew:
                 severity_floor=sev_floor, commercial_floor=com_floor,
                 commercial_min_intent=com_min, stated_audience_floor=aud_floor,
                 stated_audience=stated_audience,
-                pinned_titles=set(pinned_titles) if pinned_titles else None)
+                pinned_titles=set(pinned_titles) if pinned_titles else None,
+                family_of=family_of)
 
         cells = _alloc()
         extra = list(extra_pains or [])
         widened = 0
-        # Widen while the cells (a) under-fill the target OR (b) span fewer distinct themes than
-        # the target, i.e. there's still theme diversity to gain. Stop once cells cover `target`
-        # distinct themes (rich-enough spread) or we run out of pains / hit the cap.
-        while (widened < len(extra) and len(cells) < pain_cap
-               and (len(cells) < pain_target or _theme_count(cells) < pain_target)):
+        # Widen while the cells (a) under-fill the target OR (b) span fewer distinct SPREAD KEYS
+        # than the target, i.e. there's still diversity to gain. The spread key is the buyer-job
+        # family when a partition exists (themes over-count: several themes = one buyer job),
+        # else the theme. The family target is clamped to the families that ACTUALLY EXIST, so
+        # widening can never chase — or manufacture — a family the run does not have.
+        _spread_count = (lambda cs: len({c.get("family_id") for c in cs if c.get("family_id")})
+                         ) if family_of else _theme_count
+        spread_target = min(pain_target, n_families_available) if family_of else pain_target
+
+        def _needs_widening() -> bool:
+            if len(cells) < pain_target and len(cells) < pain_cap:
+                return True
+            if _spread_count(cells) < spread_target:
+                # Legacy: only widen while there is still CELL headroom. Family-first: widen for
+                # spread even at a full cell count — re-allocating the SAME budget over a wider
+                # pain set moves cells onto uncovered families instead of adding cells. Without
+                # this the family floor self-defeats exactly when it binds: pain_min == pain_cap
+                # leaves zero headroom, so the old guard froze the pain set at `selected` + floors.
+                return bool(family_of) or len(cells) < pain_cap
+            return False
+
+        while widened < len(extra) and _needs_widening():
             pains.append(extra[widened])
             widened += 1
             cells = _alloc()
@@ -3175,11 +3441,135 @@ class UnifiedSolutionCrew:
         # Transparency: flag cells whose pain was chosen for niche-fit over a higher-severity
         # theme-mate, so the report can note "addresses your stated focus, not the top-severity pain".
         self._anchor_severity_notes = self._build_anchor_severity_notes(cells, all_pains, relevance)
+        try:
+            self.cell_allocation_telemetry = self._build_cell_allocation_telemetry(
+                partition=partition, family_of=family_of, pain_cells=cells,
+                frame_cells=frame_cells, n_families_available=n_families_available,
+                pain_min=pain_min, max_frames=max_frames, pain_target=pain_target,
+                pain_cap=pain_cap, target=target, cap=cap)
+        except Exception as e:  # noqa: BLE001 — telemetry must never block allocation
+            logger.warning(f"[CellAlloc] telemetry skipped: {str(e)[:120]}")
         logger.info(
             f"[Divergent][partitioned] cells={len(cells)} themes={_theme_count(cells)} "
+            f"families={_spread_count(cells) if family_of else 0}/{n_families_available} "
             f"(segments={len(segments)}, widened_pains={widened}, target={pain_target}, "
             f"anchor_notes={len(self._anchor_severity_notes)}, frame_cells={len(frame_cells)})")
         return cells + frame_cells
+
+    def _build_cell_allocation_telemetry(
+            self, *, partition, family_of: dict | None, pain_cells: list, frame_cells: list,
+            n_families_available: int, pain_min: int, max_frames: int, pain_target: int,
+            pain_cap: int, target: int, cap: int) -> dict:
+        """Acceptance-grade allocation telemetry (docs/DIVERSITY_DECISION_2026-08.md, item 4).
+
+        DISAMBIGUATION (Codex 2026-08-02: `cells_run`, the generator telemetry and the funnel's
+        `by_frame` describe three different stages and could not be reconciled): every count here
+        is the ALLOCATION stage — cells the allocator produced, before any generator ran. The
+        funnel's `cells_run` is the GENERATION stage (cells actually executed) and its `by_frame`
+        is the FINAL VISIBLE IDEA stage. `stage` and `stage_note` say so on the record.
+        """
+        covered: dict = {}
+        per_cell: list = []
+        for idx, c in enumerate(pain_cells + frame_cells):
+            frame = c.get("frame") or "pain"
+            fam = c.get("family_id")
+            if fam:
+                covered[fam] = covered.get(fam, 0) + 1
+            seg = c.get("segment")
+            per_cell.append({
+                "index": idx,
+                "frame": frame,
+                "family_id": fam,
+                "family_label": partition.label_for(fam) if (partition and fam) else None,
+                "pain_title": getattr(c.get("pain"), "title", None),
+                "segment": getattr(seg, "segment_name", None) if seg is not None else None,
+            })
+
+        frames_minted = len(frame_cells)
+        # A family stays UNCOVERED when the fixed budget ran out before it — never because the
+        # allocator declined to invent one. The reason distinguishes the two ways that happens.
+        limit_reached = len(pain_cells) >= min(max(pain_target, 1), pain_cap)
+        uncovered: list = []
+        if partition is not None and family_of:
+            available = set(family_of.values())
+            for fam in sorted(available - set(covered)):
+                if limit_reached and frames_minted and pain_target < n_families_available:
+                    reason = "frame_displacement"
+                elif limit_reached:
+                    reason = "budget_exhausted"
+                else:
+                    reason = "no_allocatable_pain"
+                members = next((f.member_pain_ids for f in partition.families
+                                if f.family_id == fam), ())
+                uncovered.append({"family_id": fam, "label": partition.label_for(fam),
+                                  "member_pain_count": len(members), "reason": reason})
+
+        by_frame: dict = {}
+        for c in pain_cells + frame_cells:
+            f = c.get("frame") or "pain"
+            by_frame[f] = by_frame.get(f, 0) + 1
+
+        source = partition.source if partition is not None else "not_computed"
+        return {
+            "stage": "allocation",
+            "stage_note": ("cells_* / by_frame here = ALLOCATION stage (cells built). The funnel's "
+                           "cells_run = GENERATION stage; the funnel's by_frame = FINAL VISIBLE "
+                           "IDEAS. They are different populations by construction."),
+            "family_source": source,
+            "classifier_degraded": source != "llm",
+            "degradation_reason": (partition.degradation_reason if partition is not None
+                                   else "buyer-job partition never computed for this run"),
+            "families_available": n_families_available,
+            "families_covered": len(covered),
+            "families_uncovered": uncovered,
+            "cells_by_family": covered,
+            "family_labels": ({f.family_id: f.display_label for f in partition.families}
+                              if partition is not None else {}),
+            "cells_allocated": len(pain_cells) + frames_minted,
+            "pain_cells": len(pain_cells),
+            "frame_cells": frames_minted,
+            "cells_by_frame": by_frame,
+            "per_cell": per_cell,
+            "budget": {"target": target, "cap": cap, "pain_min": pain_min,
+                       "max_frames": max_frames, "frames_minted": frames_minted,
+                       "pain_target": pain_target, "pain_cap": pain_cap},
+        }
+
+    def _ensure_buyer_job_partition(self, pains: list) -> None:
+        """Compute the run's buyer-job family partition ONCE, before cell allocation.
+
+        Deliberately called from the ideation entry point rather than lazily from
+        `_build_partition_cells`: the allocator is exercised directly by unit tests and offline
+        harnesses, and it must never be able to fire an LLM call. Absent this call the allocator
+        simply sees no partition and allocates exactly as it did before.
+
+        REUSE BEFORE RECOMPUTE: the partition is a per-JOB fact. A regenerate/seed batch (or a
+        resumed run) builds a fresh crew whose `_buyer_job_partition` is None, and re-labeling the
+        same pains would hand the batch's ideas family ids from a DIFFERENT partition — splitting
+        one buyer job across two theses. So a persisted, non-degraded partition on the checkpoint
+        state wins, extended (never re-partitioned) for pains it has never seen.
+        """
+        if getattr(self, "_buyer_job_partition", None) is not None:
+            return
+        from ..utils.buyer_jobs import classify_buyer_job_families, extend_partition, partition_from_dict
+
+        state = getattr(getattr(self, "checkpoint_mgr", None), "state", None)
+        persisted = partition_from_dict(getattr(state, "buyer_job_partition", None)) if state else None
+        if persisted is not None:
+            self._buyer_job_partition = extend_partition(persisted, pains)
+            logger.info(
+                f"[BuyerJobs] reusing persisted partition "
+                f"({len(self._buyer_job_partition.families)} families) — no re-labeling")
+            return
+
+        cc = getattr(self.pain_point_analysis, "content_categorization", None)
+        themes = list(getattr(cc, "theme_categories", None) or []) if cc else []
+        self._buyer_job_partition = classify_buyer_job_families(
+            pains,
+            theme_categories=themes,
+            niche=getattr(getattr(self, "niche_context", None), "niche_description", "") or "",
+            cost_tracker=getattr(self, "cost_tracker", None),
+        )
 
     # gap/data_asset/workflow are ALWAYS ON (adopted permanently 2026-07-10 after the Multi-Frame
     # A/B concluded) — each mints exactly 1 cell per run, budget/seed-data permitting.
@@ -4032,8 +4422,12 @@ class UnifiedSolutionCrew:
             "- For EACH criterion write the one-line reason FIRST (cite the specific evidence: the "
             "addressed pain + its severity, the innovation_angle/why_it_works for novelty, the SEO "
             "content model, the feasibility/data route), THEN the number. Reason before number.\n"
-            "- DEFAULT TO THE LOWER BAND when the evidence is thin, generic, or unverified. Only "
-            "award a high band when the evidence specifically supports it. Do not be charitable.\n"
+            # REMOVED 2026-08-03: an unbounded global "default to the lower band" lean. The
+            # critic already judges blind (self-scores withheld above), so the lean had no
+            # optimistic anchor left to correct against and simply floored everything —
+            # measured at 61-of-67 No-Go verdicts against a reference of 32. Removing it
+            # gained +0.084 κ on one model and +0.024 on another. The bounded, A/B-validated
+            # per-criterion realism block (MARKET_FIT REALISM, below) is deliberately KEPT.
             "- Use the SAME 0-1 bands below — do not invent your own scale.\n"
             "- novelty_score and obviousness_score are INVERSE facets of the same originality "
             "judgment (Originality = 1 - obviousness). They MUST stay numerically coherent: "
@@ -4103,6 +4497,14 @@ class UnifiedSolutionCrew:
             "band (0.45-0.60) is the honest default for an early idea — do NOT award 'good' market_fit "
             "on pain severity alone.\n\n"
         )
+        # Q-030/Q-035 route reconcile (flag-gated): make the critic NAME the data route its
+        # market_fit argument leans on, so code can reconcile it against the verifier's label.
+        if settings.score_calibration_route_reconcile:
+            static_prompt += (
+                "- If your market_fit reason relies on a data route (a specific API, dataset, or "
+                "source the mechanism needs), name it in market_fit_claimed_route; otherwise leave "
+                "it null.\n\n"
+            )
         # PAYABILITY DE-DUP (run-quality fixes §5 follow-up, 2026-07-30): the BUYER
         # PAYABILITY rubric block, the per-idea 'buyer payability' row, and the niche-wallet
         # willingness-to-pay ceiling were REMOVED from this prompt. Payability was being
@@ -4216,15 +4618,40 @@ class UnifiedSolutionCrew:
                     setattr(idea, raw_field, getattr(idea, idea_attr, None))  # preserve original once
                 setattr(idea, idea_attr, _clamp(newv))
                 reason = getattr(c, cal_attr.replace("_score", "_reason"), "") or ""
+                note = ""
                 if reason:
                     # Was a bare reason[:140]: it cut mid-word with no ellipsis, and
                     # because the critic writes "addresses X, but Y" the clause it
                     # severed was always the caveat — leaving "Known concern" rows in
                     # the UI reading as unqualified praise ending in "...no in".
-                    notes.append(
+                    note = (
                         f"{cal_attr.replace('_score', '')}: "
                         f"{truncate_at_word(reason, MAX_STORED_REASON_LEN)}"
                     )
+                # Q-030/Q-035 route reconcile (single-branch, honesty-only — never mutates
+                # scores). The critic named the data route its market_fit argument leans on;
+                # dam == unverified/blocked/restricted PROVES the route verifier did not
+                # clear it (allowlist-clearing routes short-circuit to 'public'). Documented
+                # fail-open: an abstained market_fit re-score never reaches this block, so
+                # the route is lost for that idea (no false annotation).
+                if idea_attr == "market_fit_score" and settings.score_calibration_route_reconcile:
+                    route = (getattr(c, "market_fit_claimed_route", None) or "").strip() or None
+                    idea.market_fit_claimed_route = route
+                    dam = (getattr(idea, "data_access_model", None) or "").strip().lower()
+                    if route is not None and dam in ("unverified", "blocked", "restricted"):
+                        if note:
+                            note += (f" (route not confirmed: the verifier did not establish "
+                                     f"this data route — access model: {dam})")
+                        idea_name = getattr(idea, "solution_name", "?") or "?"
+                        self.coverage_caveats = list(
+                            getattr(self, "coverage_caveats", None) or []) + [
+                            f'Calibration note for "{idea_name}" cites data route "{route}" as '
+                            f"market-fit support, but the route verifier did not confirm it "
+                            f"(data_access_model: {dam}). Treat the market-fit score as "
+                            f"unverified on the data-route dimension."
+                        ]
+                if note:
+                    notes.append(note)
             if notes:
                 idea.calibration_notes = " | ".join(notes)
 
@@ -4260,6 +4687,10 @@ class UnifiedSolutionCrew:
             usage = _merge_usages(usages)
         applied = 0
         for idea in batch:
+            # Q-030/Q-035 reset-then-stamp (fields on BaseSolutionIdea get fabricated by
+            # generator LLMs — never trust-if-present): clear BEFORE the lookup so an idea
+            # the critic missed can never ship a fabricated route claim.
+            idea.market_fit_claimed_route = None
             nm = (getattr(idea, "solution_name", "") or "").strip().lower()
             c = by_name.get(nm)  # allow-list: look up by INPUT name, never trust output-only names
             if c is None:
@@ -4448,8 +4879,24 @@ class UnifiedSolutionCrew:
         `calibration_notes`. The per-batch work lives in `_calibrate_batch` (also called per-cell in
         the tournament); this wrapper only handles the post-union path: it SKIPS ideas already
         calibrated in-cell (any `*_score_raw` set), batches the remaining stragglers into
-        `_CRITIC_BATCH` groups run in PARALLEL via `_run_parallel` (fail-open per batch), and records
-        usage once. Double-gated by settings.enable_score_calibration (here AND at the call site).
+        `_CRITIC_BATCH` groups run in PARALLEL via `_run_parallel`, and records usage once.
+        Double-gated by settings.enable_score_calibration (here AND at the call site).
+
+        NOT fail-open when the critic did not run. These scores are SCORE-BEARING — every
+        downstream ranking, cap and verdict floor consumes them — so an idea that misses
+        calibration silently ships the generator's own optimistic self-score (measured live
+        2026-08-03 against the Opus benchmark: market_fit +0.227, 38/67 "Go" verdicts where the
+        reference gives 2). Two outcomes, never a silent one:
+          * SYSTEMIC provider failure (payment/auth) -> RAISE. The breaker fast-fails every
+            later call, so the critic cannot run at all in this process and the pool would be
+            an uncalibrated (or worse, half-calibrated) zombie ranked as authoritative. A
+            visible job failure is refundable and resumable — exactly what `_detect_systemic`
+            already advises. Partial calibration is the messiest case and dies here too.
+          * transient/deadline failure -> keep the fail-open (bounded: a few stragglers) but
+            NAME it in `coverage_caveats` so a mixed pool can never look normal. Distinct from
+            `_account_evaluation_completeness`, which only flags ideas missing angle AND
+            novelty AND notes — an uncalibrated idea that kept its generator novelty/angle
+            passes that check untouched.
         """
         if not ideas or not settings.enable_score_calibration:
             return
@@ -4469,6 +4916,18 @@ class UnifiedSolutionCrew:
             f"[CALIBRATE] re-scored {applied}/{len(todo)} straggler idea(s) across {len(batches)} "
             f"batch(es) ({len(ideas) - len(todo)} already scored in-cell)"
         )
+        missed = len(todo) - applied
+        if missed > 0:
+            # Halt on a payment/auth breaker (see docstring); `_run_parallel` swallowed the
+            # per-batch exception, so the breaker state is the only surviving evidence.
+            LLMService.raise_if_systemic()
+            msg = (
+                f"{missed} of {len(todo)} idea(s) kept the generator's own self-assessed scores "
+                "— the independent realism critic failed for them; treat those scores as "
+                "optimistic."
+            )
+            self.coverage_caveats = list(getattr(self, "coverage_caveats", None) or []) + [msg]
+            logger.warning(f"[CALIBRATE] {msg}")
 
     def _classify_idea_angles(self, ideas: list) -> None:
         """Post-union angle straggler-finisher. The in-cell classifier already labels every cell
@@ -4610,6 +5069,20 @@ class UnifiedSolutionCrew:
                          f"third-party verification; cap {cap:.2f}")
                 idea.market_fit_score = round(cap, 2)
 
+        # (g) market_fit ≤ unverified-route-claim cap — the calibration critic NAMED a data
+        # route as its market-fit support (market_fit_claimed_route) while the route verifier
+        # left the idea 'unverified': the market-fit argument rests on an unconfirmed route.
+        # Ships DISABLED (unverified_route_claim_market_fit_cap = 0.0; enable prerequisites in
+        # the setting description). Downgrade-only, idempotent, min-composes with (b)/(d)/(e)/(f).
+        mf = getattr(idea, "market_fit_score", None)
+        cap = settings.unverified_route_claim_market_fit_cap
+        claimed = getattr(idea, "market_fit_claimed_route", None)
+        if (cap > 0 and isinstance(mf, (int, float)) and mf > cap
+                and dam == "unverified" and claimed is not None):
+            f.append(f"market_fit {mf:.2f} unsupported — claimed data route "
+                     f"('{str(claimed)[:40]}') unverified; cap {cap:.2f}")
+            idea.market_fit_score = round(cap, 2)
+
         # (c) solo_dev ≤ build_feasibility + margin (downgrade-only). The calibration critic now
         # re-scores solo_dev (ops-burden-weighted) — this is the logical floor under that re-score:
         # you can't solo-run what you can't build. Mirrors the build≤data coupling.
@@ -4655,6 +5128,34 @@ class UnifiedSolutionCrew:
                 self.coverage_caveats = list(getattr(self, "coverage_caveats", None) or []) + [
                     f"{c} ideas address one pain ('{sp[:60]}') — above the diversity cap of {caps_cap}."
                 ]
+
+        # 4.6 complement-collapse check (post-calibration, set-level): when nearly the whole
+        # pool re-scores novelty/obviousness as EXACT complements, the two axes carried one
+        # signal this run — surface it as a standing methodology note. Ideas whose rule-(a)
+        # cap fired THIS run are excluded (the cap itself forces novelty = 1 − obviousness,
+        # so counting them would let the cap manufacture the finding).
+        pool = []
+        for i in ideas:
+            fl = flags.get(getattr(i, "solution_name", "") or "?") or []
+            if any("overstates originality" in r or "distribution_seo moderate ceiling" in r
+                   for r in fl):
+                continue  # rule (a) modified this idea this run
+            pool.append(i)
+        if len(pool) >= 5:
+            complements = [
+                i for i in pool
+                if isinstance(getattr(i, "novelty_score", None), (int, float))
+                and isinstance(getattr(i, "obviousness_score", None), (int, float))
+                and abs(i.novelty_score + i.obviousness_score - 1) < 0.01
+            ]
+            if len(complements) / len(pool) >= 0.8:
+                self.coverage_caveats = list(getattr(self, "coverage_caveats", None) or []) + [
+                    "Novelty/obviousness collapsed to exact complements this run — treat the "
+                    "two originality axes as one signal."
+                ]
+                logger.info(
+                    f"[IDEA-VALIDATE] novelty/obviousness complement collapse: "
+                    f"{len(complements)}/{len(pool)} eligible ideas at |nov+obv−1| < 0.01")
 
         if flags:
             self.coverage_caveats = list(getattr(self, "coverage_caveats", None) or []) + [
@@ -4763,16 +5264,76 @@ class UnifiedSolutionCrew:
                 out.append((cell, concepts))
         return out
 
+    @staticmethod
+    def _reserve_cell_best(pooled: list, cells: list) -> list:
+        """S3.2 survival floor, reserve half: capture each generator cell's best concept BEFORE
+        the pool-wide culls (critic drop-marks + MIN_KEEP floor, name/structural/semantic dedup,
+        clamp) — with 9+ cells a pool-wide floor of 6 can starve whole cells to zero. Grouping
+        reuses _group_pool_by_cell (same `_key`), so reserve/restore bucketing is byte-identical
+        to tournament grouping. Returns [(cell, best_concept)] for every cell that produced >=1
+        concept.
+
+        Precedence per cell mirrors _finalize_critic_pool's least-bad refill order: an unflagged
+        concept if any, else the least-bad no_route drop, else the least-bad already_exists drop
+        (a concept marked BOTH counts as already_exists, matching the critic's short-circuit) —
+        ranked within tier by obviousness ascending (unknown/-1 ranked worst). A cell whose
+        concepts are ALL flagged still reserves its best one: "this space is commoditized" is
+        signal for the salvage/novelty path, not silent disappearance.
+        """
+        def _tier(c) -> int:
+            if getattr(c, "critic_already_exists", False):
+                return 2
+            if getattr(c, "critic_no_route", False):
+                return 1
+            return 0
+
+        def _obv(c) -> float:
+            s = getattr(c, "obviousness_score", -1.0)
+            return s if (s is not None and s >= 0) else 1.5  # unknown ranked worst, not best
+
+        return [
+            (cell, min(concepts, key=lambda c: (_tier(c), _obv(c))))
+            for cell, concepts in UnifiedSolutionCrew._group_pool_by_cell(pooled, cells)
+        ]
+
+    @staticmethod
+    def _restore_reserved_cells(pooled: list, reserved: list, cells: list) -> list:
+        """S3.2 survival floor, restore half: after the pool-wide culls and right before
+        tournament grouping, re-append the reserved concept of every cell that lost ALL
+        representation among the survivors. Exact-name duplicates are guarded (name dedup may
+        have kept an identical name under another cell's provenance — re-appending it would
+        duplicate downstream). No-op when nothing was reserved (legacy broad path / fallback
+        pools have no cells). Returns a new list; `pooled` is not mutated.
+        """
+        if not reserved:
+            return pooled
+        survived = {id(cell) for cell, _ in UnifiedSolutionCrew._group_pool_by_cell(pooled, cells)}
+        names = {_norm_name(getattr(c, "concept_name", "")) for c in pooled}
+        out = list(pooled)
+        restored = 0
+        for cell, best in reserved:
+            if id(cell) in survived:
+                continue
+            name = _norm_name(getattr(best, "concept_name", ""))
+            if name and name in names:
+                continue
+            out.append(best)
+            names.add(name)
+            restored += 1
+        logger.info(f"[SurvivalFloor] restored {restored}/{len(reserved)} cells")
+        return out
+
     def _enhance_idea_mechanism(self, idea, *, usages: list):
         """Ask the ideator for a MORE DIFFERENTIATED MECHANISM on the SAME pain + SAME data route.
         Returns a deep-copied idea with the mechanism fields replaced and calibration provenance
         reset (so the caller re-scores it from scratch), or None on failure. Read-only on shared
         crew state, so safe in a cell thread."""
         prompt = (
-            "You are a senior product strategist improving ONE micro-SaaS idea. An independent critic "
-            "judged the SOLUTION as OBVIOUS — most builders would propose the same thing — but the "
-            "underlying PROBLEM is validated and worth solving. Invent a MORE DIFFERENTIATED MECHANISM "
-            "for the SAME problem, buildable on the SAME data.\n\n"
+            "You are a Y Combinator partner reviewing a rejected application. The idea was "
+            "rejected because it's too OBVIOUS — any builder would propose the same thing — but "
+            "the underlying PAIN is validated and worth solving. Your one job: rewrite the idea "
+            "so dramatically that if it were resubmitted, partners would fight over who gets to "
+            "interview this founder.\n\n"
             "HARD CONSTRAINTS (do not change):\n"
             f"- Same validated pain: {sanitize_social_content(getattr(idea, 'source_pain', '') or '')[:160]}\n"
             f"- Same data route / access: {getattr(idea, 'data_access_model', None) or 'n/a'} "
@@ -4788,10 +5349,10 @@ class UnifiedSolutionCrew:
             f"- innovation_angle: {sanitize_social_content(getattr(idea, 'innovation_angle', '') or '')[:300]}\n"
             f"- why_it_works: {sanitize_social_content(getattr(idea, 'why_it_works', '') or '')[:300]}\n"
             f"- technical_approach: {sanitize_social_content(getattr(idea, 'technical_approach', '') or '')[:400]}\n\n"
-            "Produce a revised idea whose MECHANISM is genuinely non-obvious — a structural angle most "
-            "builders would NOT land on — while solving the same pain on the same data. A slicker "
-            "description is NOT enough; change the actual approach. Reground why_it_works in the validated "
-            "pain.\n"
+            "Change the mechanism so fundamentally that nobody would say 'oh, another [category] tool.' "
+            "If the original is a CRM, the new one should NOT be a CRM at all — it should be a "
+            "conversation recovery engine, a deal autopsy tool, a decision accelerator, etc. Same for "
+            "any other category: reframe what the product IS, not just how it works.\n\n"
             "Return ALL revised fields, INCLUDING the display fields rewritten to describe the NEW "
             "mechanism (they must NOT describe the old approach): description (4-6 sentences on how the "
             "new mechanism works), short_description (<=180 chars), and headline (5-12 words). In those "
@@ -5490,7 +6051,26 @@ class UnifiedSolutionCrew:
             if w:
                 idea.why_it_works_short = w[:117].rstrip() + ("…" if len(w) > 117 else "")
 
-    def _repair_blank_idea_fields(self, idea) -> None:
+    def _pain_wtp_label(self, idea) -> str | None:
+        """This idea's source pain's commercial intent as `n/10`, for pricing repair.
+
+        Mirrors `_synthesize_idea_from_concept`'s pricing directive, which exists because
+        pricing written without willingness-to-pay defaults to a $/mo subscription whatever
+        the buyer would actually pay. A rebuild keeps `source_pain`, so the number is
+        recoverable — it just was not being passed."""
+        title = (getattr(idea, "source_pain", "") or "").strip().lower()
+        if not title:
+            return None
+        pains = getattr(getattr(self, "pain_point_analysis", None), "pain_points", None) or []
+        for pain in pains:
+            if (getattr(pain, "title", "") or "").strip().lower() == title:
+                ci = getattr(pain, "commercial_intent", None)
+                return f"{ci * 10:.1f}/10" if isinstance(ci, (int, float)) else None
+        return None
+
+    def _repair_blank_idea_fields(
+        self, idea, *, escaped_parity: str | None = None, rebuild: bool = False,
+    ) -> None:
         """Fill-in for a tournament-loop winner that shipped with blank prose fields (live
         2026-07-05: 'RFPFailWatch' had why_it_works/pricing_strategy/... = None). The improve loop
         never back-fills surface pitch fields (stale-pitch protection assumed the reviewer surfaces
@@ -5498,12 +6078,29 @@ class UnifiedSolutionCrew:
         chain so the critic / angle classifier / weak-text novelty cap see the repaired text.
         Fill-ONLY: never overwrites a non-blank field, so the loop's latest coherent pitch and any
         verifier-written data notes are untouched. No blanks -> no LLM call. The non-tournament
-        convergent fallback is not repaired (no loop runs there, so no loop-born blanks). Fail-soft."""
+        convergent fallback is not repaired (no loop runs there, so no loop-born blanks). Fail-soft.
+
+        ``escaped_parity``: the incumbent finding a REBUILD (pivot / red-team revision) was
+        performed to escape. A rebuild clears `differentiation_factors` because the old one
+        described the old product (idea_carryover rule 4), and that field's whole job is to
+        say how the product differs from the incumbent — repairing it without naming the
+        incumbent produces generic copy for the one field the pivot most needs to be right.
+        The original's finding is not on the revision (rule 1 clears it to be re-earned), so
+        the caller passes it in.
+
+        This repair is grounded ONLY in the idea's own spec — it has no pain evidence,
+        competitive landscape or audience payability. That is acceptable for prose that
+        restates the product, and NOT equivalent to first-pass generation for the fields
+        that price it, which is why the WTP directive below is included verbatim."""
         try:
             self._derive_why_short(idea)
             blanks = [f for f in _REPAIRABLE_TEXT_FIELDS
                       if not (getattr(idea, f, None) or "").strip()]
             blanks += [f for f in _REPAIRABLE_LIST_FIELDS if not (getattr(idea, f, None) or [])]
+            if rebuild:
+                # Leave the un-groundable ones blank rather than inventing them; both render
+                # as "N/A" and the reader is better served by a gap than by a fabricated cost.
+                blanks = [f for f in blanks if f not in _UNGROUNDABLE_ON_REBUILD]
             if not blanks:
                 return
             from ..models.solution_idea import BaseSolutionIdea
@@ -5523,7 +6120,26 @@ class UnifiedSolutionCrew:
                 f"TECHNICAL APPROACH: {(getattr(idea, 'technical_approach', '') or '')[:400]}\n"
                 f"DATA ROUTE: {getattr(idea, 'data_access_model', None) or 'n/a'} — "
                 f"{(getattr(idea, 'data_acquisition_notes', '') or '')[:200]}\n"
-                f"FIELDS CURRENTLY BLANK (fill these): {', '.join(sorted(blanks))}\n"
+                + (
+                    # Without this the model prices to project type and defaults to a $/mo
+                    # subscription regardless of willingness to pay — the same failure the
+                    # concept-synthesis path carries this directive to prevent.
+                    f"PRICING (WTP-FIRST): {self._monetization_directive}\n"
+                    f"This pain's willingness to pay is {self._pain_wtp_label(idea) or 'unknown'}. "
+                    "Price to WTP FIRST — project type shapes the FORM of monetization, not "
+                    "whether to charge.\n"
+                    if "pricing_strategy" in blanks
+                    and (getattr(self, "_monetization_directive", "") or "").strip()
+                    else ""
+                )
+                + (
+                    f"INCUMBENT THIS PRODUCT WAS REPOSITIONED TO ESCAPE: {escaped_parity[:300]}\n"
+                    "Differentiation must say how THIS product differs from that incumbent — "
+                    "not generic product virtues.\n"
+                    if escaped_parity and "differentiation_factors" in blanks
+                    else ""
+                )
+                + f"FIELDS CURRENTLY BLANK (fill these): {', '.join(sorted(blanks))}\n"
             )
             r, usage = LLMService.invoke_structured(
                 prompt=prompt,
@@ -6007,7 +6623,7 @@ class UnifiedSolutionCrew:
                             "the negativity targets something other than the named tool, and "
                             "off-topic products. Return JSON: {\"keep_indices\": [...]}"),
                     output_model=_Kept, temperature=0, timeout=60,
-                    model_name=settings.report_structured_llm, reasoning_effort="minimal")
+                    model_name=settings.report_structured_llm, reasoning_effort="none")
                 signals = [candidates[i] for i in (r.keep_indices or [])
                            if 0 <= i < len(candidates)][:6]
                 if hasattr(self, "cost_tracker") and self.cost_tracker and usage is not None:
@@ -6239,7 +6855,7 @@ class UnifiedSolutionCrew:
                         "are omitted. Distinct products that merely share the niche vocabulary are "
                         "NOT a group. Return JSON."),
                 output_model=_Groups, temperature=0, timeout=90,
-                model_name=settings.report_structured_llm, reasoning_effort="minimal")
+                model_name=settings.report_structured_llm, reasoning_effort="none")
             valid_names = {(getattr(i, "solution_name", "") or "").strip().lower() for i in ideas}
             if hasattr(self, "cost_tracker") and self.cost_tracker and usage is not None:
                 self.cost_tracker.record_llm_usage("Stage 7 - Overlap Note", usage.to_dict())
@@ -7039,6 +7655,11 @@ class UnifiedSolutionCrew:
             slim.source_frame = getattr(winner_member, "source_frame", None) or "pain"
             merged_names = [getattr(v, "solution_name", "?") for v in variants]
             expanded = self._expand_bundle(slim) or slim
+            # Same reset-then-stamp gap as the parity pivot: `_Merged` names ~14 fields and
+            # `_expand_bundle` does not fill `project_type`, so merges shipped with it null
+            # in two audited runs. Carry from the member that contributed the winning
+            # source_pain — the merge keeps that variant's classification and provenance.
+            carry_forward_idea_fields(winner_member, expanded)
             # Re-assert the fields the merge owns (expansion may rebuild the model).
             expanded.idea_tier = "merged"
             expanded.merged_from = merged_names
@@ -7230,11 +7851,20 @@ class UnifiedSolutionCrew:
                 getattr(orig, "pain_points_addressed", None) or ["pivoted pain"])
             d["target_personas"] = list(getattr(orig, "target_personas", None) or ["primary audience member"])
             rev = BaseSolutionIdea.model_validate(d)
+            # Fix #6 generalized (2026-08-03): `_Pivot` names ~14 of BaseSolutionIdea's 80
+            # fields, so reconstruction used to reset the other ~60 and re-stamp four by
+            # hand. Live in run 8ef396eb the accepted pivot came back with 26 nulls its 15
+            # peers all had — including `project_type`, whose None failed SolutionSnapshot
+            # validation and deleted the report's go/no-go verdict. Carry-over is now
+            # preserve-then-reset (see utils/idea_carryover.py), so nothing the pivot did
+            # not rewrite is lost and future fields are covered automatically.
+            carried = carry_forward_idea_fields(orig, rev)
+            if carried:
+                logger.debug(
+                    f"[ParityPivot] '{rev.solution_name}' carried {len(carried)} field(s) "
+                    f"from the original: {', '.join(carried[:12])}")
             rev.source_pain = getattr(orig, "source_pain", None)
             rev.source_segment = getattr(orig, "source_segment", None)
-            # Fix #6: a frame idea's `source_frame` was dropped on pivot reconstruction —
-            # without this, an accepted pivot of a non-pain-cell idea silently resets to
-            # 'pain', losing its frame identity for every downstream frame-aware consumer.
             rev.source_frame = getattr(orig, "source_frame", None) or "pain"
             rev.idea_tier = getattr(orig, "idea_tier", "single") or "single"
             return rev
@@ -7492,6 +8122,23 @@ class UnifiedSolutionCrew:
             for orig, rev in pivot_results:
                 try:
                     if rev is not None and self._pivot_acceptable(orig, rev):
+                        # A rebuild deliberately does NOT carry `headline` /
+                        # `short_description` (idea_carryover rule 2: they summarize the
+                        # description the pivot just rewrote, so the old copy would
+                        # describe a product that no longer exists). Nothing re-derived
+                        # them: `_repair_blank_idea_fields` runs on the tournament winner,
+                        # which is BEFORE this wave. Live run 8ef396eb shipped its accepted
+                        # pivot — the report's selected solution — with short_description
+                        # null while its 15 peers had one, so the report header fell back
+                        # to the full 1,093-char executive summary as its deck.
+                        # Fill-only and no LLM call when nothing is blank. The original's
+                        # parity finding is passed so regenerated differentiation names the
+                        # incumbent this pivot exists to escape.
+                        rev.rebuild_origin = "parity_pivot"
+                        self._repair_blank_idea_fields(
+                            rev, escaped_parity=getattr(orig, "incumbent_parity", None),
+                            rebuild=True,
+                        )
                         idx = ideas.index(orig)
                         ideas[idx] = rev
                         p_acc += 1
@@ -7507,6 +8154,9 @@ class UnifiedSolutionCrew:
                     continue
                 try:
                     if self._merge_acceptable(merged, members, bar):
+                        # Same rebuild-clears-summary gap as the accepted pivot above.
+                        merged.rebuild_origin = "variant_merge"
+                        self._repair_blank_idea_fields(merged, rebuild=True)
                         ideas.append(merged)
                         for m in members:
                             m.candidate_status = "absorbed"
@@ -7624,6 +8274,41 @@ class UnifiedSolutionCrew:
             funnel["by_frame"] = by_frame
         except Exception as e:
             logger.warning(f"[Funnel] by_frame tally skipped: {str(e)[:120]}")
+
+        # Buyer-job family closure (docs/DIVERSITY_DECISION_2026-08.md item 4). Reconciles the
+        # three previously incomparable populations: `cells_allocated`/`pain_cells`/`frame_cells`
+        # = ALLOCATION stage, `cells_run` = GENERATION stage, `by_frame` above = FINAL VISIBLE
+        # IDEAS. `product_families_final` maps each surviving idea back to the family of the pain
+        # it was generated from — the honest end-to-end diversity number.
+        try:
+            ca = dict(getattr(self, "cell_allocation_telemetry", None) or {})
+            if ca:
+                partition = getattr(self, "_buyer_job_partition", None)
+                final_families: dict = {}
+                unmapped = 0
+                for i in visible_ideas(ideas):
+                    fam = (partition.family_for(getattr(i, "source_pain", "") or "")
+                           if partition is not None else None)
+                    if fam:
+                        final_families[fam] = final_families.get(fam, 0) + 1
+                    else:
+                        unmapped += 1
+                ca["final_product_families"] = len(final_families)
+                ca["final_families_by_id"] = final_families
+                ca["final_ideas_unmapped_to_family"] = unmapped
+                self.cell_allocation_telemetry = ca
+                funnel.update({
+                    "cells_allocated": ca.get("cells_allocated"),
+                    "pain_cells": ca.get("pain_cells"),
+                    "frame_cells": ca.get("frame_cells"),
+                    "families_available": ca.get("families_available"),
+                    "families_covered": ca.get("families_covered"),
+                    "product_families_final": len(final_families),
+                })  # NOTE: numbers only — `funnel_counts` is typed Record<string, number> in
+                # frontend/src/lib/types/report.ts. The degradation FLAG and every non-numeric
+                # field (labels, reasons, per-cell rows) live in `idea_cell_allocation`.
+        except Exception as e:
+            logger.warning(f"[Funnel] family telemetry skipped: {str(e)[:120]}")
 
         funnel["candidates_shown"] = len(visible_ideas(ideas))
         self.funnel_counts = funnel
@@ -8398,6 +9083,30 @@ class UnifiedSolutionCrew:
             # (the demote/merge/backfill block runs later in the same flow), so an unconditional
             # reset here can never wipe a legitimate stamp — it only clears birth fabrication.
             idea.candidate_status = "active"
+            # Batch-provenance RESET-THEN-STAMP (live audit 2026-08: a first-run job with zero
+            # regenerations rendered "1 new idea from your last request" and a NEW-IN-THIS-BATCH
+            # chip). Both fields sit on BaseSolutionIdea — the model generator LLMs emit through
+            # structured output — and "batch ordinal" reads to them as a field to fill, so they
+            # emit 1 and it passes `ge=1`. Only the WORKER may stamp these, and it does so AFTER
+            # this contract runs (worker/tasks.py run_regenerate_ideas / run_seed_idea), on the
+            # newly generated ideas only — so an unconditional reset here can never wipe a real
+            # stamp, and a first-run pool is guaranteed null.
+            idea.generation_operation_id = None
+            idea.generation_batch_ordinal = None
+            # Same reset-then-stamp reason: `rebuild_origin` sits on BaseSolutionIdea, so a
+            # generator can invent it. Only the pivot/merge/red-team accept blocks may stamp
+            # it, and they run AFTER this contract, so an unconditional reset here can never
+            # wipe a real stamp.
+            idea.rebuild_origin = None
+            # Q-030/Q-035 guarded reset: an idea NEVER calibrated — no `*_score_raw` stamped,
+            # judged by the SAME five-criterion tuple `_calibrate_idea_scores` uses to detect
+            # in-cell calibration — cannot legitimately carry a market_fit_claimed_route;
+            # anything present is generator fabrication. Calibrated ideas keep their in-cell
+            # stamp (reset-then-stamp already ran in `_calibrate_batch`).
+            if not any(getattr(idea, f"{c}_score_raw", None) is not None
+                       for c in ("market_fit", "technical_feasibility", "novelty",
+                                 "seo_scalability", "obviousness")):
+                idea.market_fit_claimed_route = None
             # source_frame closed vocab (funnel by_frame + lens chip key off it): the stamps
             # set it at birth, but tournament-born ideas can arrive with None and generator
             # LLMs can fabricate values — normalize both to the legacy default 'pain'.
@@ -8532,6 +9241,24 @@ class UnifiedSolutionCrew:
             for t in (getattr(i, "pain_points_addressed", None) or []):
                 if t and str(t).strip():
                     covered_norm.add(_norm(str(t)))
+
+        # Exact title equality alone contradicts the rest of the report. Market sizing scopes
+        # pains to an idea with the fuzzy token-overlap matcher in utils/pain_matching, and the
+        # planning prompts consume that scoped list — so a paraphrased pain was simultaneously
+        # one of "the four in-scope pains", a "validated pain with no idea", and the subject of
+        # a 30-day action (live 2026-08 8ef396eb: "Cannot validate production deductions against
+        # services actually supplied"). One definition of "this idea addresses this pain": reuse
+        # the same matcher. Union with the exact set, so this can only shrink the uncovered list.
+        from ..utils.pain_matching import scope_pains_to_addressed
+
+        for i in ideas:
+            addressed = [str(t) for t in (getattr(i, "pain_points_addressed", None) or []) if t]
+            source_pain = getattr(i, "source_pain", None)
+            if source_pain:
+                addressed.append(str(source_pain))
+            for matched in scope_pains_to_addressed(pains, addressed):
+                covered_norm.add(_norm(getattr(matched, "title", "")))
+
         uncovered_pains = [
             p for p in pains
             if getattr(getattr(p, "opportunity_level", None), "value", "") in ("high", "medium")
@@ -8611,7 +9338,7 @@ class UnifiedSolutionCrew:
             # (a ChatOpenAI instance would have it dropped by CrewAI's create_llm).
             function_calling_llm=build_crew_llm(
                 model=settings.function_calling_llm,
-                reasoning_effort="minimal",  # Fast/cheap tool-arg synthesis
+                reasoning_effort="none",  # Fast/cheap tool-arg synthesis
             ),
             verbose=True,
         )
@@ -8951,6 +9678,12 @@ class UnifiedSolutionCrew:
             # every run and discarded long-tail themes entirely.
             high_priority = select_diverse_pain_points(high_priority)
 
+            # Buyer-job family partition — ONE structured call over every validated pain the
+            # allocator can reach, made HERE (not inside the allocator) so the allocator stays a
+            # pure, LLM-free function for tests and offline replays. Fail-soft inside.
+            self._ensure_buyer_job_partition(
+                list(high_priority) + list(medium_priority) + list(low_priority))
+
             # Pain-partitioned divergent: build (pain × segment) cells from the audience
             # affinity graph, widening the pain set (medium then low) until the generator
             # target is met. Below 2 cells -> None (legacy broad-sample path).
@@ -9103,19 +9836,48 @@ class UnifiedSolutionCrew:
                 crew_inputs, partition_cells=partition_cells)
             self._record_divergent_usage(divergent_usages)
             _funnel_concepts_generated = len(pooled)  # raw pool, pre-critic/pre-dedup
+            # S3.2 survival floor (reserve half): capture each generator cell's best concept
+            # BEFORE the three pool-wide culls below can starve whole cells to zero. Provenance-
+            # bearing path only — the legacy broad pool has no cells to reserve for.
+            reserved_cells = (
+                self._reserve_cell_best(pooled, partition_cells) if partition_cells else []
+            )
             # Critic scoring already ran PER SAMPLE inside _generate_divergent_pool (score_inline)
             # — here we only partition by the marks + floor-guard (the scores/usage are already in).
             pooled = self._finalize_critic_pool(pooled)          # independent critic (before dedup)
             # Partitioned narrow concepts are far less redundant -> keep more before the filter.
             _keep_frac = settings.divergent_partitioned_keep_fraction if partition_cells else None
             pooled = self._pool_and_dedup_raw_concepts(pooled, keep_fraction=_keep_frac)   # dedup + clamp [6, cap]
+            fallback_pool_used = False
             # Fail-open: if the pool is too small for the filter, use the guarded
             # single-call divergent task instead of feeding the filter a degenerate pool.
             if len(pooled) < 6:
-                fb = self._divergent_fallback(crew_inputs)
-                if len(fb) >= len(pooled):
-                    pooled = self._pool_and_dedup_raw_concepts(fb) or fb
+                try:
+                    fb = self._divergent_fallback(crew_inputs)
+                except Exception:
+                    # The partitioned fanout may already have tripped the systemic-provider
+                    # breaker. Prefer that actionable cause over a wrapped CrewAI fallback error.
+                    LLMService.raise_if_systemic()
+                    raise
+                fallback_pooled = self._pool_and_dedup_raw_concepts(fb) or fb
+                if len(fallback_pooled) >= len(pooled):
+                    pooled = fallback_pooled
+                    fallback_pool_used = len(pooled) >= 6
+                if fallback_pool_used:
+                    # A successful call through the separately configured guarded ideator proves
+                    # that the earlier generator-pool 401/402 was provider-specific, not fatal to
+                    # every configured LLM route. Clear that stale breaker generation; a later
+                    # provider failure can still trip it again at the normal evaluator halt point.
+                    LLMService.reset_systemic()
+                    logger.warning(
+                        f"[Divergent] guarded broad fallback recovered {len(pooled)} concepts — "
+                        "using pooled convergent refinement because fallback concepts have no "
+                        "per-cell provenance"
+                    )
             if len(pooled) < 6:
+                # If all configured generation paths were exhausted by provider billing/auth,
+                # preserve that cause instead of reporting a misleading thin-pool ValueError.
+                LLMService.raise_if_systemic()
                 raise ValueError(
                     f"Divergent generation produced only {len(pooled)} concepts after pooling "
                     "and fallback — cannot proceed (need >= 6 to refine)."
@@ -9128,7 +9890,11 @@ class UnifiedSolutionCrew:
             logger.info(f"  Divergent pool: {len(raw_concepts.concepts)} concepts fed to the refiner")
             crew_inputs["pooled_concepts"] = self._format_pooled_concepts(raw_concepts.concepts)
 
-            use_tournament = settings.enable_per_cell_tournament and partition_cells
+            use_tournament = bool(
+                settings.enable_per_cell_tournament
+                and partition_cells
+                and not fallback_pool_used
+            )
             if use_tournament:
                 # ── PER-CELL TOURNAMENTS: each (pain × segment) cell → 1 best idea, run in PARALLEL.
                 # Replaces the pooled convergent refine + the late per-idea improvement loop.
@@ -9140,6 +9906,10 @@ class UnifiedSolutionCrew:
                         except Exception:
                             return ""
                 t_usages: list = []
+                # S3.2 survival floor (restore half): re-append each starved cell's reserved
+                # best so every generator cell reaches its tournament. Tournament branch only —
+                # the guarded broad fallback (fallback_pool_used) never gets here.
+                pooled = self._restore_reserved_cells(pooled, reserved_cells, partition_cells)
                 groups = self._group_pool_by_cell(pooled, partition_cells)
                 jobs = [{"cell": c, "candidates": cand, "search": search, "usages": t_usages,
                          "skip_selection": skip_selection}
@@ -9370,10 +10140,15 @@ class UnifiedSolutionCrew:
             # novelty / seo / obviousness; REPLACES the generator's optimistic self-scores, originals
             # kept in *_score_raw). Runs AFTER _finalize_feasibility so build/data are final when
             # technical capability is re-scored, and BEFORE the SEO-realism cap + _apply_tags so both
-            # read calibrated values. Dark by default; whole call is fail-soft (never blocks).
+            # read calibrated values. Fail-soft for transient errors — but NOT for a systemic
+            # payment/auth failure: the critic never ran, so every idea would ship the
+            # generator's optimistic self-score dressed as calibrated (see
+            # `_calibrate_idea_scores`). Let that one propagate to the stage's own handler.
             if settings.enable_score_calibration:
                 try:
                     self._calibrate_idea_scores(refined_solutions.solution_ideas)
+                except LLMSystemicError:
+                    raise
                 except Exception as e:
                     logger.warning(f"Score calibration skipped: {e}")
 

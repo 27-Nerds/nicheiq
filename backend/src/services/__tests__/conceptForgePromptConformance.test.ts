@@ -15,7 +15,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  */
 
 const mocks = vi.hoisted(() => ({ chatComplete: vi.fn() }));
-vi.mock('../openai.js', () => ({ chatComplete: mocks.chatComplete }));
+vi.mock('../openai.js', () => ({
+  chatComplete: mocks.chatComplete,
+  hasApiKeyForModel: () => true,
+}));
 vi.mock('../../config.js', () => ({
   CONFIG: { openaiApiKey: 'test-key', openrouterApiKey: '' },
   getSelectionCapThresholds: () => ({

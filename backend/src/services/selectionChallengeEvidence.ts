@@ -6,6 +6,7 @@ import {
   type SelectionChallengeSubject,
 } from '../types/selectionChallenge.js';
 import { ideaName, type IdeaRecord } from '../utils/ideaIdentity.js';
+import { walletClassLabel } from '../utils/selectionVocabulary.js';
 
 const SUBJECT_FIELDS = [
   'solution_name',
@@ -438,7 +439,7 @@ function caveatSources(preview: unknown): SourceInput[] {
   }
   if (hasValue(wallet.evidence)) {
     inputs.push({
-      title: `Buyer-wallet evidence${wallet.wallet_class ? ` · ${text(wallet.wallet_class, 80)}` : ''}`,
+      title: `Buyer-wallet evidence${wallet.wallet_class ? ` · ${walletClassLabel(text(wallet.wallet_class, 80))}` : ''}`,
       excerpt: wallet.evidence,
       pointer: '/market_reality/wallet/evidence',
     });

@@ -47,6 +47,41 @@ describe('serializeIdeaJson', () => {
   it('round-trips the full stored record', () => {
     expect(JSON.parse(serializeIdeaJson(IDEA))).toEqual(IDEA);
   });
+
+  it('keeps stored vocabulary verbatim — it is the data artifact, not the reading copy', () => {
+    const reviewed: IdeaRecord = {
+      ...IDEA,
+      red_team_verdict: 'killed',
+      incumbent_parity: 'partial by Opendate: covers settlement',
+    };
+    const parsed = JSON.parse(serializeIdeaJson(reviewed));
+    expect(parsed.red_team_verdict).toBe('killed');
+    expect(parsed.incumbent_parity).toBe('partial by Opendate: covers settlement');
+  });
+});
+
+describe('renderIdeaMarkdown vocabulary', () => {
+  const reviewed: IdeaRecord = {
+    ...IDEA,
+    red_team_verdict: 'killed',
+    incumbent_parity: 'partial by Opendate: covers settlement',
+  };
+
+  it('humanizes closed-vocabulary values, matching what the candidate view shows', () => {
+    const md = renderIdeaMarkdown(reviewed);
+    // The owner's downloaded file said "## Red team verdict / killed" about an
+    // idea the UI calls "Premise unproven" (live audit 2026-08-03).
+    expect(md).toContain('Premise unproven');
+    expect(md).toContain('Partly covered by Opendate');
+    expect(md).not.toMatch(/\bkilled\b/i);
+    expect(md).not.toMatch(/\bpartial by\b/i);
+  });
+
+  it('does not mutate the record it was handed', () => {
+    renderIdeaMarkdown(reviewed);
+    expect(reviewed.red_team_verdict).toBe('killed');
+    expect(reviewed.incumbent_parity).toBe('partial by Opendate: covers settlement');
+  });
 });
 
 describe('renderIdeaMarkdown', () => {

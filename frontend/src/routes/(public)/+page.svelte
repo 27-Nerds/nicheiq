@@ -48,11 +48,16 @@
 	<ProductDemoBlock />
 	<ProblemBlock />
 	<MarqueeBlock />
-	<HowItWorksBlock />
+		<HowItWorksBlock hasSampleReport={data.hasSampleReport} />
 	<StepsBlock />
 	<SamplesBlock topPainPoints={data.topPainPoints} />
 	<AboutBlock />
 	<TestimonialsBlock ctaTexts={data.ctaTexts} />
-	<Pricing {session} ctaTexts={data.ctaTexts} plans={data.plans ?? []} />
+	<Pricing
+		{session}
+		ctaTexts={data.ctaTexts}
+		plans={data.plans ?? []}
+		hasSampleReport={data.hasSampleReport}
+	/>
 	<FAQBlock />
 </main>

@@ -4,13 +4,13 @@
   // (PhaseNav sidebar, hero, stepper, preview sections, meta footer) during
   // generation, so this screen OWNS the niche title + progress. Niche-led
   // hierarchy keeps it from reading as a generic loading splash; restrained
-  // editorial styling (Plus Jakarta + JetBrains mono, hairline borders, no
+  // editorial styling (product sans + mono tokens, hairline borders, no
   // shadows/animation/decoration) matches DocketEmpty / JobHeroAside.
   import Button from "$lib/components/ui/Button.svelte";
   import Breadcrumb from "$lib/components/ui/Breadcrumb.svelte";
   import ConfirmGate from "$lib/components/ui/ConfirmGate.svelte";
   import SelectedSolutionsSummary from "$lib/components/SelectedSolutionsSummary.svelte";
-  import { LayoutDashboard, Library, ArrowRight } from "lucide-svelte";
+  import { LayoutDashboard, Library, ListChecks, ArrowRight } from "lucide-svelte";
   import { IDEAS_HUB_PATH, painPointPath } from "$lib/utils/urls";
   import { scaleSeverity, type CatalogTopPainPoint } from "$lib/types/publicCatalog";
   import { IDEA_ICON, PAIN_ICON } from "$lib/config/entity-icons";
@@ -36,9 +36,16 @@
     selectedItems?: SelectionDraftItem[];
     solutionIdeas?: SolutionPreview[];
     primaryWinner?: string | null;
+    primaryWinnerRef?: Pick<SelectionDraftItem, "ideaId" | "ideaRevision"> | null;
     jobId?: string;
     onCancel?: () => void;
     cancelling?: boolean;
+    cancelLabel?: string;
+    cancelConfirmLabel?: string;
+    cancelConsequence?: string;
+    cancelError?: string;
+    connectionState?: "live" | "reconnecting" | "paused";
+    onRefresh?: () => void;
   }
 
   let {
@@ -59,9 +66,16 @@
     selectedItems = [],
     solutionIdeas = [],
     primaryWinner = null,
+    primaryWinnerRef = null,
     jobId,
     onCancel,
     cancelling = false,
+    cancelLabel = "Cancel research",
+    cancelConfirmLabel = "Stop this run",
+    cancelConsequence = "RUN STOPS · ELIGIBLE CREDITS REFUNDED",
+    cancelError = "",
+    connectionState = "live",
+    onRefresh,
   }: Props = $props();
 
   const isDiscovery = $derived(phase === "discovery");
@@ -144,7 +158,8 @@
       </p>
     {/if}
 
-    <div class="rp-live" role="status" aria-live="polite">
+    <p class="sr-only" role="status" aria-live="polite">{liveTitle}. {liveDetail}.</p>
+    <div class="rp-live">
       <span class="rp-live-mark" data-state={isQueued ? "queued" : "running"} aria-hidden="true"></span>
       <span class="rp-live-copy">
         <strong>{liveTitle}</strong>
@@ -152,6 +167,19 @@
       </span>
       <span class="rp-live-value">{isQueued ? "Queued" : `${pct}%`}</span>
     </div>
+
+    {#if connectionState !== "live"}
+      <div class="rp-connection" role="status">
+        <span>
+          {connectionState === "reconnecting"
+            ? "Reconnecting live updates…"
+            : "Live updates paused. The research continues in the background."}
+        </span>
+        {#if connectionState === "paused" && onRefresh}
+          <button type="button" onclick={onRefresh}>Refresh status</button>
+        {/if}
+      </div>
+    {/if}
 
     <div class="rp-track" role="group" aria-label="Research progress">
       {#each phases as label, i}
@@ -167,13 +195,10 @@
       {/each}
     </div>
 
-    <p class="rp-stage">
-      {#if isQueued}
-        In&nbsp;queue{#if queuePosition}&nbsp;· position {queuePosition}{/if}
-      {:else}
-        Stage {stageCounts.current} / {stageCounts.total} · {pct}%
-      {/if}
-    </p>
+    <!-- The stage line that used to sit here restated what `.rp-live` already shows
+         12rem above it, in both states: `liveDetail` renders "Stage N of M" while
+         running and "Queue position N" when queued, and `rp-live-value` carries the
+         percent / "Queued". Two readings of the same thing under one progress bar. -->
 
     <p class="rp-body">
       {#if isDiscovery}
@@ -195,29 +220,45 @@
           label="Return to Dashboard"
           class="btn-secondary"
         />
-        <Button
-          href={IDEAS_HUB_PATH}
-          icon={Library}
-          label="Browse Ideas Catalog"
-          class="btn-secondary"
-        />
+        {#if isDiscovery}
+          <Button
+            href={IDEAS_HUB_PATH}
+            icon={Library}
+            label="Browse Ideas Catalog"
+            class="btn-secondary"
+          />
+        {:else if jobId}
+          <Button
+            href={`/jobs/${jobId}/selection/compare`}
+            icon={ListChecks}
+            label="Review research scope"
+            class="btn-secondary"
+          />
+        {/if}
       </div>
       {#if onCancel}
-        <!-- Cancel is destructive (run stops; refund settles per billing contract) — armed
-             two-step ConfirmGate, never an immediate POST. Consequence line verified against
-             backend/src/services/jobService.ts cancelJob(): prepaid runs refund the discovery
-             charge; segment-billed runs refund every segment no worker has started. -->
+        <!-- Cancellation changes paid operation state, so it is always armed through the
+             two-step ConfirmGate. The caller supplies the exact consequence for Discovery
+             (terminal run) versus queued Deep Research (return to selection). -->
         <div class="rp-cancel-gate">
           <ConfirmGate
-            label="Cancel research"
-            confirmLabel="Stop this run"
+            label={cancelLabel}
+            confirmLabel={cancelConfirmLabel}
             variant="free"
-            consequence="RUN STOPS · UNUSED CREDITS REFUNDED"
+            consequence={cancelConsequence}
             busy={cancelling}
             loadingText="Cancelling…"
             onConfirm={onCancel}
           />
         </div>
+      {/if}
+      {#if !isDiscovery && !isQueued && !onCancel}
+        <p class="rp-cancel-note">
+          Research has started and can no longer be cancelled. System failures refund eligible credits automatically.
+        </p>
+      {/if}
+      {#if cancelError}
+        <p class="rp-cancel-error" role="alert">{cancelError}</p>
       {/if}
     </div>
   </section>
@@ -229,13 +270,15 @@
         {selectedItems}
         {solutionIdeas}
         {primaryWinner}
+        {primaryWinnerRef}
+        showIdentity={true}
         {jobId}
         status={jobStatus}
       />
     </section>
   {/if}
 
-  {#if painRows.length > 0}
+  {#if isDiscovery && painRows.length > 0}
     <section class="rp-explore">
       <p class="rp-kicker">From the NicheIQ catalog</p>
       <h2 class="rp-explore-title">Validated problems from other research</h2>
@@ -359,24 +402,8 @@
     border-radius: 50%;
     background: var(--color-accent);
   }
-  .rp-live-mark::after {
-    content: "";
-    position: absolute;
-    inset: -0.3rem;
-    border: 1px solid color-mix(in srgb, var(--color-accent) 40%, transparent);
-    border-radius: inherit;
-    animation: rp-live-pulse 1.8s ease-out infinite;
-  }
   .rp-live-mark[data-state="queued"] {
     background: var(--color-text-muted);
-  }
-  .rp-live-mark[data-state="queued"]::after {
-    border-color: color-mix(in srgb, var(--color-text-muted) 38%, transparent);
-    animation-duration: 2.8s;
-  }
-  @keyframes rp-live-pulse {
-    0% { opacity: 0.9; transform: scale(0.65); }
-    75%, 100% { opacity: 0; transform: scale(1.35); }
   }
   .rp-live-copy {
     display: grid;
@@ -402,6 +429,27 @@
     font-weight: 700;
     font-variant-numeric: tabular-nums;
     color: var(--color-accent-dark);
+  }
+  .rp-connection {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin: calc(-1 * var(--space-3)) 0 var(--space-5);
+    color: var(--color-warning-text);
+    font-size: var(--text-sm);
+  }
+  .rp-connection button {
+    min-height: var(--space-8);
+    padding-inline: var(--space-3);
+    border: 1px solid var(--color-border-emphasis);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
   }
 
   /* ── Pipeline track (Discovery / Deep Research / Build) ── */
@@ -459,7 +507,7 @@
     height: 100%;
     border-radius: 2px;
     background: var(--color-accent);
-    transition: width 600ms cubic-bezier(0.4, 0, 0.2, 1);
+    transition: width 240ms cubic-bezier(0.4, 0, 0.2, 1);
   }
   /* state coloring */
   .rp-seg[data-state="done"] .rp-seg-label {
@@ -510,51 +558,10 @@
     }
   }
 
-  .rp-stage {
-    font-family: var(--font-mono);
-    font-size: var(--text-13);
-    font-variant-numeric: tabular-nums;
-    letter-spacing: 0.02em;
-    color: var(--color-text-secondary);
-    margin: 0 0 var(--space-6);
-  }
-
-  /* ── Orchestrated load reveal (one staggered cascade) ── */
-  .rp-hero > * {
-    animation: rp-rise 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
-  }
-  .rp-hero > *:nth-child(1) {
-    animation-delay: 0.04s;
-  }
-  .rp-hero > *:nth-child(2) {
-    animation-delay: 0.1s;
-  }
-  .rp-hero > *:nth-child(3) {
-    animation-delay: 0.16s;
-  }
-  .rp-hero > *:nth-child(4) {
-    animation-delay: 0.22s;
-  }
-  .rp-hero > *:nth-child(5) {
-    animation-delay: 0.28s;
-  }
-  .rp-hero > *:nth-child(6) {
-    animation-delay: 0.34s;
-  }
-  /* 7th child exists when the provenance caption renders (seeded jobs) —
-     without this the actions block gets 0 delay and pops in first. */
-  .rp-hero > *:nth-child(7) {
-    animation-delay: 0.4s;
-  }
-  @keyframes rp-rise {
-    from {
-      opacity: 0;
-      transform: translateY(6px);
-    }
-    to {
-      opacity: 1;
-      transform: none;
-    }
+  /* `.rp-stage` removed with its markup — it duplicated `.rp-live`. The track keeps the
+     bottom spacing the removed element used to provide. */
+  .rp-track {
+    margin-block-end: var(--space-6);
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -562,12 +569,6 @@
       transition: none;
     }
     .rp-seg-bar::after {
-      animation: none;
-    }
-    .rp-hero > * {
-      animation: none;
-    }
-    .rp-live-mark::after {
       animation: none;
     }
   }
@@ -616,9 +617,26 @@
   }
   .rp-cancel-gate {
     display: flex;
+    flex-direction: column;
+    align-items: center;
     justify-content: center;
   }
+  .rp-cancel-error {
+    max-width: 58ch;
+    margin: var(--space-2) 0 0;
+    color: var(--color-error-text);
+    font-size: var(--text-sm);
+    line-height: var(--leading-normal);
+  }
+  .rp-cancel-note {
+    max-width: 58ch;
+    margin: 0;
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+    line-height: var(--leading-normal);
+  }
   .research-progress--embedded .rp-cancel-gate {
+    align-items: flex-start;
     justify-content: flex-start;
   }
 
@@ -691,6 +709,9 @@
   }
 
   @media (max-width: 480px) {
+    .rp-niche {
+      font-size: var(--text-2xl);
+    }
     .research-progress--embedded .rp-hero {
       padding: var(--space-4) var(--space-4) var(--space-5);
       border-radius: var(--radius-lg);

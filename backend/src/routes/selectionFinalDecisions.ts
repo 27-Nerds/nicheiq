@@ -1,4 +1,6 @@
 import {
+  DispatchKind,
+  DispatchState,
   JobStatus,
   Prisma,
   SelectionExperimentStatus,
@@ -36,7 +38,12 @@ import {
   type SelectionFinalDecisionInput,
 } from '../types/selectionFinalDecision.js';
 import type { FrozenSelectionPreMortem } from '../types/selectionPreMortem.js';
-import { ensureIdeaIdentities, ideaName, type IdeaRecord } from '../utils/ideaIdentity.js';
+import {
+  candidateSnapshotSha256,
+  ensureIdeaIdentities,
+  ideaName,
+  type IdeaRecord,
+} from '../utils/ideaIdentity.js';
 
 const ParamsSchema = z.object({ jobId: z.string().uuid() });
 
@@ -47,6 +54,11 @@ type Finalist = {
   solutionName: string;
   idea: IdeaRecord;
   reportEvidence: Record<string, unknown> | null;
+};
+type FrozenSelectionRef = {
+  ideaId: string;
+  ideaRevision: number;
+  snapshotSha256: string;
 };
 type FinalDecisionRiskPrompt = {
   challengeId: string;
@@ -133,12 +145,101 @@ function reportEvidenceFor(name: string, report: ReportRecord): Record<string, u
   return matches.length === 1 ? { role: 'alternative', details: matches[0] } : null;
 }
 
+function recordValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function frozenSelectionRefs(value: unknown): FrozenSelectionRef[] | null {
+  if (value == null) return null;
+  if (!Array.isArray(value) || value.length < 1 || value.length > 3) {
+    throw new Error('FINALIST_IDENTITY_UNRESOLVED');
+  }
+  const refs = value.map((candidate) => {
+    const record = recordValue(candidate);
+    const ideaId = typeof record?.ideaId === 'string' ? record.ideaId.trim() : '';
+    const ideaRevision = Number(record?.ideaRevision);
+    const snapshotSha256 = typeof record?.snapshotSha256 === 'string'
+      ? record.snapshotSha256.toLowerCase()
+      : '';
+    if (
+      !ideaId
+      || !Number.isInteger(ideaRevision)
+      || ideaRevision < 1
+      || !/^[a-f0-9]{64}$/.test(snapshotSha256)
+    ) {
+      throw new Error('FINALIST_IDENTITY_UNRESOLVED');
+    }
+    return { ideaId, ideaRevision, snapshotSha256 };
+  });
+  if (new Set(refs.map(ref => `${ref.ideaId}:${ref.ideaRevision}`)).size !== refs.length) {
+    throw new Error('FINALIST_IDENTITY_UNRESOLVED');
+  }
+  return refs;
+}
+
+function frozenFinalistSnapshots(
+  refs: FrozenSelectionRef[],
+  dispatches: Array<{ requestSnapshot: Prisma.JsonValue | null }>,
+): IdeaRecord[] {
+  const requestSnapshot = recordValue(dispatches[0]?.requestSnapshot);
+  const dispatchRefs = frozenSelectionRefs(requestSnapshot?.selectedSolutionRefs);
+  const snapshots = requestSnapshot?.selectedSolutionSnapshots;
+  if (
+    !dispatchRefs
+    || dispatchRefs.length !== refs.length
+    || !dispatchRefs.every((ref, index) => (
+      ref.ideaId === refs[index].ideaId
+      && ref.ideaRevision === refs[index].ideaRevision
+      && ref.snapshotSha256 === refs[index].snapshotSha256
+    ))
+    || !Array.isArray(snapshots)
+  ) {
+    throw new Error('FINALIST_IDENTITY_UNRESOLVED');
+  }
+
+  return refs.map((ref) => {
+    const matches = snapshots
+      .map(recordValue)
+      .filter((snapshot): snapshot is IdeaRecord => (
+        snapshot?.idea_id === ref.ideaId
+        && snapshot.idea_revision === ref.ideaRevision
+      ));
+    if (matches.length !== 1 || candidateSnapshotSha256(matches[0]) !== ref.snapshotSha256) {
+      throw new Error('FINALIST_IDENTITY_UNRESOLVED');
+    }
+    return matches[0];
+  });
+}
+
 function exactFinalists(job: {
   id: string;
   solutionIdeas: Prisma.JsonValue | null;
   selectedSolutionIds: string[];
   selectedSolutions: string[];
+  selectedSolutionRefs: Prisma.JsonValue | null;
+  dispatches: Array<{ requestSnapshot: Prisma.JsonValue | null }>;
 }, report: ReportRecord): Finalist[] {
+  const immutableRefs = frozenSelectionRefs(job.selectedSolutionRefs);
+  if (immutableRefs) {
+    const snapshots = frozenFinalistSnapshots(immutableRefs, job.dispatches);
+    return immutableRefs.map((ref, index) => {
+      const idea = snapshots[index];
+      const solutionName = ideaName(idea);
+      if (!solutionName) throw new Error('FINALIST_IDENTITY_UNRESOLVED');
+      return {
+        ideaId: ref.ideaId,
+        ideaRevision: ref.ideaRevision,
+        solutionName,
+        idea,
+        reportEvidence: reportEvidenceFor(solutionName, report),
+      };
+    });
+  }
+
+  // Compatibility path for reports completed before exact refs and frozen dispatch
+  // snapshots existed. Never use this current-pool lookup for a modern selection.
   const ideas = ensureIdeaIdentities(job.id, job.solutionIdeas);
   const references = job.selectedSolutionIds.length > 0
     ? job.selectedSolutionIds.map((ideaId, index) => ({ ideaId, selectedName: job.selectedSolutions[index] }))
@@ -198,6 +299,13 @@ const jobSelect = Prisma.validator<Prisma.JobSelect>()({
   selectedSolution: true,
   selectedSolutions: true,
   selectedSolutionIds: true,
+  selectedSolutionRefs: true,
+  dispatches: {
+    where: { kind: DispatchKind.DEEP_RESEARCH, state: DispatchState.COMPLETED },
+    orderBy: { createdAt: 'desc' },
+    take: 1,
+    select: { requestSnapshot: true },
+  },
   deepResearchRecommendedIdeaId: true,
   deepResearchRecommendedIdeaRevision: true,
   selectionRationale: true,

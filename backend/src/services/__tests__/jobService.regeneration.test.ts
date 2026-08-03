@@ -83,6 +83,27 @@ describe('cancelRegenerationDispatch', () => {
     });
   });
 
+  it('keeps a zero-amount exact-charge reversal FAILED', async () => {
+    mockRefundChargeInTx.mockResolvedValue({ id: 'reversal-zero', amount: 0 });
+
+    const result = await cancelRegenerationDispatch(
+      'job-1',
+      { id: 'dispatch-7', segment: 'regenerate_ideas_7', chargeId: 'charge-7' },
+      'REGENERATING' as any,
+      'SYSTEM_FAULT',
+    );
+
+    expect(result).toEqual({ cancelled: true, creditRefunded: 0 });
+    expect(mockDispatchUpdate).not.toHaveBeenCalled();
+    expect(mockReceiptUpsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({
+        patchJson: expect.objectContaining({
+          batch: expect.objectContaining({ outcome: 'failed', refunded: false }),
+        }),
+      }),
+    }));
+  });
+
   it('refunds the exact numbered segment owned by the failed dispatch', async () => {
     const result = await cancelRegenerationDispatch(
       'job-1',
@@ -108,6 +129,23 @@ describe('cancelRegenerationDispatch', () => {
         }),
       }),
     });
+  });
+
+  it('does not promote a zero-amount legacy reversal to REFUNDED', async () => {
+    mockRefundForRegenerationStage.mockResolvedValue({ id: 'reversal-zero', amount: 0 });
+
+    const result = await cancelRegenerationDispatch(
+      'job-1',
+      { id: 'dispatch-7', segment: 'regenerate_ideas_7' },
+      'REGENERATING' as any,
+      'SYSTEM_FAULT',
+    );
+
+    expect(result).toEqual({ cancelled: true, creditRefunded: 0 });
+    expect(mockDispatchUpdateMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: { state: 'REFUNDED' } }),
+    );
+    expect(mockReceiptUpdate).not.toHaveBeenCalled();
   });
 
   it('still writes the settled receipt when the segment carries no ordinal', async () => {

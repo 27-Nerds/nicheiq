@@ -17,6 +17,9 @@ const mockTxPainPointFindUnique = vi.fn();
 const mockTxPainPointCreate = vi.fn();
 const mockTxPainPointUpdateMany = vi.fn();
 const mockTxJobUpdateMany = vi.fn();
+const mockTxDispatchUpdateMany = vi.fn();
+const mockTxIdeaFindMany = vi.fn();
+const mockTxIdeaCreate = vi.fn();
 
 let lastTx: unknown;
 const buildTx = () => ({
@@ -31,7 +34,12 @@ const buildTx = () => ({
   catalogResearchContext: {
     findMany: (...args: unknown[]) => mockTxCtxFindMany(...args),
   },
+  catalogIdea: {
+    findMany: (...args: unknown[]) => mockTxIdeaFindMany(...args),
+    create: (...args: unknown[]) => mockTxIdeaCreate(...args),
+  },
   job: { updateMany: (...args: unknown[]) => mockTxJobUpdateMany(...args) },
+  jobDispatch: { updateMany: (...args: unknown[]) => mockTxDispatchUpdateMany(...args) },
 });
 
 vi.mock('../../services/db.js', () => ({
@@ -49,6 +57,7 @@ const mockAddJobAsset = vi.fn();
 const mockExtractOrCreate = vi.fn();
 const mockHasMeaningfulResearchContext = vi.fn();
 const mockGeneratePainPointSlug = vi.fn();
+const mockGenerateIdeaSlug = vi.fn();
 const mockInvalidateCategoryLanding = vi.fn();
 const mockInvalidateCatalogTotals = vi.fn();
 const mockInvalidateTopCatalogPainPoints = vi.fn();
@@ -70,6 +79,7 @@ vi.mock('../../services/researchContextService.js', () => ({
 }));
 vi.mock('../../services/catalogService.js', () => ({
   generatePainPointSlug: (...args: unknown[]) => mockGeneratePainPointSlug(...args),
+  generateIdeaSlug: (...args: unknown[]) => mockGenerateIdeaSlug(...args),
   invalidateCategoryLanding: (...args: unknown[]) =>
     mockInvalidateCategoryLanding(...args),
   invalidateCatalogTotals: (...args: unknown[]) => mockInvalidateCatalogTotals(...args),
@@ -117,18 +127,22 @@ let app: Express;
 
 const jobId = '00000000-0000-0000-0000-000000000001';
 const categoryId = '00000000-0000-0000-0000-000000000010';
+const dispatchId = '00000000-0000-0000-0000-000000000020';
 
 beforeEach(async () => {
   vi.clearAllMocks();
 
   // Default-RUNNING job for the row-lock query.
-  mockTxQueryRaw.mockResolvedValue([{ id: jobId, status: 'RUNNING' }]);
+  mockTxQueryRaw.mockResolvedValue([{ id: jobId, status: 'RUNNING', activeDispatchId: null }]);
   // Reasonable defaults; tests override per-case.
-  mockJobFindUnique.mockResolvedValue({ status: 'RUNNING' });
+  mockJobFindUnique.mockResolvedValue({ status: 'RUNNING', activeDispatchId: null });
   mockExtractOrCreate.mockResolvedValue({ detailedPainPoints: [{ title: 'x' }] });
   mockHasMeaningfulResearchContext.mockReturnValue(true);
   mockGeneratePainPointSlug.mockResolvedValue('slug');
   mockTxPainPointUpdateMany.mockResolvedValue({ count: 0 });
+  mockTxJobUpdateMany.mockResolvedValue({ count: 1 });
+  mockTxDispatchUpdateMany.mockResolvedValue({ count: 1 });
+  mockTxIdeaFindMany.mockResolvedValue([]);
 
   app = express();
   app.use(express.json());
@@ -161,6 +175,70 @@ function wireHasMeaningful(jobIdToMeaningful: Record<string, boolean>) {
 }
 
 describe('POST /api/workers/catalog-pain-points-ready — legacy sweep', () => {
+  it('settles the matching modern dispatch atomically with completion', async () => {
+    mockJobFindUnique.mockResolvedValue({ status: 'RUNNING', activeDispatchId: dispatchId });
+    mockTxQueryRaw.mockResolvedValue([
+      { id: jobId, status: 'RUNNING', activeDispatchId: dispatchId },
+    ]);
+    mockTxPainPointFindMany.mockResolvedValue([]);
+    mockTxCtxFindMany.mockResolvedValue([]);
+
+    await request(app)
+      .post('/api/workers/catalog-pain-points-ready')
+      .send({ ...buildPayload([]), dispatch_id: dispatchId })
+      .expect(200);
+
+    expect(mockTxJobUpdateMany).toHaveBeenCalledWith({
+      where: {
+        id: jobId,
+        status: { in: ['RUNNING', 'QUEUED'] },
+        activeDispatchId: dispatchId,
+      },
+      data: expect.objectContaining({ status: 'COMPLETED', activeDispatchId: null }),
+    });
+    expect(mockTxDispatchUpdateMany).toHaveBeenCalledWith({
+      where: {
+        id: dispatchId,
+        jobId,
+        kind: 'CONTINUE',
+        state: 'CLAIMED',
+        workerId: 'w1',
+      },
+      data: expect.objectContaining({ state: 'COMPLETED' }),
+    });
+  });
+
+  it('rejects a stale dispatch before registering the preview asset', async () => {
+    mockJobFindUnique.mockResolvedValue({
+      status: 'RUNNING',
+      activeDispatchId: '00000000-0000-0000-0000-000000000099',
+    });
+
+    await request(app)
+      .post('/api/workers/catalog-pain-points-ready')
+      .send({ ...buildPayload([]), dispatch_id: dispatchId })
+      .expect(409);
+
+    expect(mockAddJobAsset).not.toHaveBeenCalled();
+    expect(mockTxJobUpdateMany).not.toHaveBeenCalled();
+    expect(mockTxDispatchUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it('returns a stale-writer conflict when dispatch settlement loses its CAS', async () => {
+    mockJobFindUnique.mockResolvedValue({ status: 'RUNNING', activeDispatchId: dispatchId });
+    mockTxQueryRaw.mockResolvedValue([
+      { id: jobId, status: 'RUNNING', activeDispatchId: dispatchId },
+    ]);
+    mockTxPainPointFindMany.mockResolvedValue([]);
+    mockTxCtxFindMany.mockResolvedValue([]);
+    mockTxDispatchUpdateMany.mockResolvedValue({ count: 0 });
+
+    await request(app)
+      .post('/api/workers/catalog-pain-points-ready')
+      .send({ ...buildPayload([]), dispatch_id: dispatchId })
+      .expect(409);
+  });
+
   it('deactivates unmatched legacy rows; merges matched legacy; preserves non-legacy', async () => {
     const existingRows = [
       { id: 'pp-a', sourceJobId: 'legacy-1', title: 'Old A', isActive: true,
@@ -304,5 +382,37 @@ describe('POST /api/workers/catalog-pain-points-ready — legacy sweep', () => {
     );
     expect(mockTxPainPointUpdateMany).not.toHaveBeenCalled();
     expect(res.body).toEqual({ merged: 1, created: 0, deactivated: 0, total: 1 });
+  });
+});
+
+describe('POST /api/workers/catalog-ideas-ready — dispatch settlement', () => {
+  it('settles the matching modern dispatch for an empty successful batch', async () => {
+    mockJobFindUnique.mockResolvedValue({ status: 'RUNNING', activeDispatchId: dispatchId });
+    mockTxQueryRaw.mockResolvedValue([
+      { id: jobId, status: 'RUNNING', activeDispatchId: dispatchId },
+    ]);
+
+    await request(app)
+      .post('/api/workers/catalog-ideas-ready')
+      .send({
+        worker_id: 'w1',
+        job_id: jobId,
+        dispatch_id: dispatchId,
+        category_id: categoryId,
+        ideas: [],
+        niche: 'test-niche',
+      })
+      .expect(200);
+
+    expect(mockTxDispatchUpdateMany).toHaveBeenCalledWith({
+      where: {
+        id: dispatchId,
+        jobId,
+        kind: 'CONTINUE',
+        state: 'CLAIMED',
+        workerId: 'w1',
+      },
+      data: expect.objectContaining({ state: 'COMPLETED' }),
+    });
   });
 });

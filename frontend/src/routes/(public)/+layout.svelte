@@ -29,13 +29,13 @@
 		if (useAppShell) menuOpen = false;
 	});
 
-	const navLinks = [
+	const navLinks = $derived([
 		{ label: 'Idea Catalog', href: '/ideas' },
 		{ label: 'Features', href: '#how-it-works' },
 		{ label: 'Pricing', href: '#pricing' },
-		{ label: 'Sample Reports', href: '/sample-report' },
+		...(hasSampleReport ? [{ label: 'Sample Report', href: '/sample-report' }] : []),
 		{ label: 'Blog', href: '/blog' },
-	];
+	]);
 
 	function onScroll() {
 		// The public header isn't rendered under the app shell — skip the work.

@@ -39,7 +39,7 @@
       <div
         class="mx-auto w-16 h-16 rounded-full bg-bg-surface flex items-center justify-center mb-6"
       >
-        <Link2Off class="w-8 h-8 text-[color:var(--color-text-muted)]" />
+        <Link2Off class="w-8 h-8 text-[color:var(--color-text-muted)]" aria-hidden="true" />
       </div>
       <h1 class="text-2xl font-bold text-text-primary mb-2">
         This report is no longer available
@@ -49,14 +49,16 @@
       </p>
       <a href="/" class="btn-primary inline-flex items-center gap-2">
         Discover NicheIQ
-        <ArrowRight class="w-4 h-4" />
+        <ArrowRight class="w-4 h-4" aria-hidden="true" />
       </a>
     </div>
   </div>
 {:else}
   <SharedViewBanner variant="report" shareToken={data.shareToken} />
 
-  <ReportContent {report} showBackLink={false} showShareButton={false} />
+  <article aria-label="Shared Deep Research report">
+    <ReportContent {report} showBackLink={false} showShareButton={false} />
+  </article>
 
   <SharedViewEndCTA variant="report" shareToken={data.shareToken} />
 {/if}

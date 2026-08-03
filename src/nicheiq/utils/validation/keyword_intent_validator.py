@@ -112,7 +112,7 @@ class KeywordIntentRelevanceValidator:
         )
         resp, _ = LLMService.invoke_structured(
             prompt=prompt, output_model=_BatchKwGrades, temperature=0.0,
-            model_name=self.model, reasoning_effort="minimal", timeout=120,
+            model_name=self.model, reasoning_effort="none", timeout=120,
         )
         out: dict[str, int] = {}
         for r in resp.results:

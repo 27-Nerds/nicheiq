@@ -100,6 +100,23 @@
 
   const budgetDisplay = $derived(formatBudgetRange(budgetEstimate));
 
+  // Why a rebuilt idea carries no acquisition-cost figure. The research repositioned the
+  // product mid-run; the earlier estimate priced the product it replaced, and re-estimating
+  // needs audience-payability and competitive research the rebuild does not redo. Stating
+  // that is more useful than a number with nothing behind it.
+  const REBUILD_REASON: Record<string, string> = {
+    parity_pivot: "this idea was repositioned during research to avoid an existing product",
+    variant_merge: "this idea was merged from several overlapping candidates during research",
+    red_team_revision: "this idea was revised during research to answer an adversarial review",
+  };
+  const rebuildNote = $derived.by(() => {
+    const reason = REBUILD_REASON[solution.rebuild_origin ?? ""];
+    return reason
+      ? `Not estimated: ${reason}, and acquisition cost is not carried across that change — `
+        + "the earlier figure priced the product it replaced."
+      : null;
+  });
+
   // Use structured pricing object when available (fixes Freemium-Lite display for existing reports)
   const businessModelText = $derived(
     pricingStrategy
@@ -218,7 +235,7 @@
   <div class="solution-hero-card">
     <div class="hero-top">
       <div class="hero-badges">
-        {#if snapshot.project_type}
+        {#if snapshot?.project_type}
           <Badge variant="default">{snapshot.project_type}</Badge>
         {/if}
       </div>
@@ -233,7 +250,7 @@
       <p class="hero-codename">{solution.solution_name}</p>
     {/if}
 
-    {#if snapshot.tagline}
+    {#if snapshot?.tagline}
       <p class="hero-tagline">{snapshot.tagline}</p>
     {:else if solution.short_description}
       <p class="hero-tagline">{solution.short_description}</p>
@@ -243,14 +260,17 @@
     <InsightCard variant="accent" border="left" padding="md">
       <p class="value-text">
         {solution.value_proposition ||
-          snapshot.core_value_prop ||
+          snapshot?.core_value_prop ||
           solution.description}
       </p>
     </InsightCard>
   </div>
 
   <!-- Launch Parameters Strip -->
-  {#if solution.estimated_development_time || solution.estimated_indexable_pages || solution.estimated_cac_organic || budgetDisplay}
+  <!-- `rebuildNote` counts: when a rebuilt idea's only entry in this strip is the
+       explanation for its missing CAC, that explanation is exactly what must not be
+       hidden. -->
+  {#if solution.estimated_development_time || solution.estimated_indexable_pages || solution.estimated_cac_organic || budgetDisplay || rebuildNote}
     <div class="launch-params">
       <div class="launch-params-header">
         <span class="launch-params-label">LAUNCH PARAMETERS</span>
@@ -308,6 +328,23 @@
               <span class="param-label">
                 Organic CAC
                 <Tooltip content={getTermTooltip("CAC")} position="top" />
+              </span>
+            </div>
+          </div>
+        {:else if rebuildNote}
+          <!-- A missing CAC used to remove the tile entirely, so the reader could not tell
+               a deliberate gap from an oversight. State it: the idea was rebuilt during
+               research, and acquisition cost is not carried across a rebuild because the
+               old figure priced a product that no longer exists. -->
+          <div class="param-card param-cost param-cost--unestimated" style="--param-delay: 0.16s">
+            <div class="param-icon-wrap">
+              <DollarSign class="param-icon" />
+            </div>
+            <div class="param-data">
+              <span class="param-value">Not estimated</span>
+              <span class="param-label">
+                Organic CAC
+                <Tooltip content={rebuildNote} position="top" />
               </span>
             </div>
           </div>

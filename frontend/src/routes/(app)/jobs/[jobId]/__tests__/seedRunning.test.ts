@@ -444,18 +444,33 @@ describe("+page.svelte — workbench stays mounted through a seed's QUEUED/RUNNI
           description: "d",
           value_proposition: "v",
         } as never,
+        {
+          idea_id: "idea-alpha",
+          idea_revision: 2,
+          solution_name: "Alpha Idea",
+          description: "newer draft",
+          value_proposition: "newer draft",
+        } as never,
       ],
       selectedSolutionIds: ["idea-alpha"],
       selectedSolutions: ["Alpha Idea"],
+      selectedSolutionRefs: [{
+        ideaId: "idea-alpha",
+        ideaRevision: 1,
+        snapshotSha256: "a".repeat(64),
+      }],
       selectionDraft: {
         version: 2,
-        items: [{ ideaId: "idea-alpha", ideaRevision: 1 }],
+        items: [{ ideaId: "idea-alpha", ideaRevision: 2 }],
       },
     });
     const view = render(PageComponent, { props: { data: baseData(job) as never } });
 
     await view.findByText(/We're validating your top picks/);
-    await view.findByText("Alpha Idea");
+    expect((await view.findAllByText("Alpha Idea")).length).toBeGreaterThan(0);
+    const receipt = view.getByLabelText("Exact Deep Research selection");
+    expect(receipt).toHaveTextContent("Idea idea-alpha · rev 1");
+    expect(receipt).not.toHaveTextContent("rev 2");
     expect(view.queryByRole("button", { name: "Cancel" })).toBeNull();
     expect(document.querySelector('input[aria-label="Select Alpha Idea"]')).toBeNull();
   });

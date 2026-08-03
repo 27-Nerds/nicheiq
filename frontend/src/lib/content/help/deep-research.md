@@ -21,14 +21,16 @@ Discovery is broad by design: it looks across a niche to find recurring problems
 
 - **Who the buyer is.** The report narrows the audience and the job the product would serve.
 - **Competition and substitutes.** It looks for direct products, adjacent products, free alternatives, and do-it-yourself routes.
-- **Distribution and search demand.** It checks whether the proposed acquisition surface is plausible, not just whether broad keywords have volume.
+- **Distribution and search demand.** It checks whether the proposed acquisition surface is plausible, not just whether broad keywords have volume. Each keyword is graded on whether it is genuinely about the idea before its volume counts toward demand, and the keyword count you see is that graded set. If none pass, the report calls demand unmeasured rather than borrowing volume from the category. In narrow or technical markets the graded volume is often too thin to separate the candidates at all, and demand then carries no weight in the comparison. (See [How scoring works](/help/methodology).)
 - **Pricing signals.** It uses captured commercial-intent evidence and competitor pricing where available. It does not treat those signals as measured willingness to pay.
-- **Market size and timing.** It separates the initial serviceable slice from a broader market ceiling and labels estimates as estimates.
+- **Market size and timing.** It separates the initial serviceable slice from a broader market ceiling and labels estimates as estimates. Both are built from the keywords that survived grading, so a market size here can come out well below the size of the niche around it.
 - **Data access and build feasibility.** It checks whether required inputs appear obtainable and whether the implementation assumptions hold up.
 
 ### The recommendation
 
 The selected candidates continue through the validation stages as one saved scope. The final report records a recommended winner, runner-up context where applicable, and a Go, Conditional, or No-Go verdict with its supporting reasons. That recommendation is research output, not a promise that the business will succeed.
+
+The recommendation is not simply the top of the ranking. A candidate whose core premise the adversarial review could not confirm is marked **premise unproven** and is passed over for the recommendation, so the highest-scoring idea in a report is sometimes not the recommended one. Its scores still stand — they describe how well it would work if the premise holds — and it stays available to you. (See [How scoring works](/help/methodology).)
 
 ### What it can't do
 

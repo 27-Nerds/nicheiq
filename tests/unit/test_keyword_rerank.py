@@ -6,6 +6,8 @@ Covers:
 - rerank_solutions_by_adjusted_score: novelty tiebreaker + stale-rank rewrite
 - Regression: a demand-poor/novelty-rich solution survives the blend that the
   old multiplicative formula killed
+- Two-tier ranking (flow-weakness fix plan 2026-08, correction 1): graded-and-empty
+  solutions (demand_unmeasured) rank below validated-with-keywords solutions
 """
 
 from nicheiq.models.solution_selection import SolutionScores
@@ -22,6 +24,7 @@ def _make_score(
     competitive_advantage=0.5,
     rank=0,
     demand=None,
+    demand_unmeasured=False,
 ):
     return SolutionScores(
         solution_name=name,
@@ -33,6 +36,7 @@ def _make_score(
         rank=rank,
         keyword_demand_score=demand,
         adjusted_composite_score=adjusted,
+        demand_unmeasured=demand_unmeasured,
     )
 
 
@@ -136,3 +140,81 @@ class TestRerankSolutions:
         assert ranked[0].solution_name == "Top"
         assert ranked[-1].solution_name == "Low"
         assert [s.rank for s in ranked] == [1, 2, 3]
+
+
+class TestTwoTierDemandUnmeasured:
+    """Correction 1: graded-and-empty solutions (demand_unmeasured=True, demand=None,
+    adjusted=composite) rank strictly below validated-with-keywords solutions."""
+
+    def test_unmeasured_ranks_below_measured_despite_higher_adjusted(self):
+        """A graded-and-empty idea whose unblended composite EXCEEDS the measured
+        leader's blended adjusted score still ranks below it (no fabricated demand,
+        no free ride past the 0.3-demand toll)."""
+        empty = _make_score(
+            "GradedEmpty",
+            composite=0.90,
+            adjusted=0.90,  # flow sets adjusted = composite (blend skipped)
+            demand=None,
+            demand_unmeasured=True,
+        )
+        measured = _make_score(
+            "Measured",
+            composite=0.70,
+            adjusted=blend_adjusted_composite(0.70, 0.50),  # 0.64 < 0.90
+            demand=0.50,
+        )
+        ranked = rerank_solutions_by_adjusted_score(
+            [empty, measured], validated_names={"GradedEmpty", "Measured"}
+        )
+        assert [s.solution_name for s in ranked] == ["Measured", "GradedEmpty"]
+        assert measured.rank == 1
+        assert empty.rank == 2
+
+    def test_unmeasured_cannot_win_novelty_tiebreak(self):
+        """The leader cluster is built from the measured tier only — an unmeasured
+        idea within margin of the leader with sky-high novelty must not take rank 1."""
+        measured_a = _make_score("A", composite=0.80, adjusted=0.80, competitive_advantage=0.4, demand=0.80)
+        measured_b = _make_score("B", composite=0.78, adjusted=0.78, competitive_advantage=0.5, demand=0.60)
+        empty = _make_score(
+            "GradedEmpty", composite=0.79, adjusted=0.79,
+            competitive_advantage=0.99, demand=None, demand_unmeasured=True,
+        )
+        ranked = rerank_solutions_by_adjusted_score(
+            [measured_a, measured_b, empty], validated_names={"A", "B", "GradedEmpty"}
+        )
+        assert ranked[-1].solution_name == "GradedEmpty"
+        assert ranked[0].solution_name in {"A", "B"}
+
+    def test_within_tier_order_preserved(self):
+        """Within the unmeasured tier, existing (adjusted=composite) order holds."""
+        e1 = _make_score("E1", composite=0.70, adjusted=0.70, demand=None, demand_unmeasured=True)
+        e2 = _make_score("E2", composite=0.60, adjusted=0.60, demand=None, demand_unmeasured=True)
+        m = _make_score("M", composite=0.50, adjusted=0.55, demand=0.60)
+        ranked = rerank_solutions_by_adjusted_score(
+            [e2, e1, m], validated_names={"E1", "E2", "M"}
+        )
+        assert [s.solution_name for s in ranked] == ["M", "E1", "E2"]
+        assert [s.rank for s in ranked] == [1, 2, 3]
+
+    def test_all_unmeasured_degrades_to_adjusted_order(self):
+        """When EVERY validated solution is graded-and-empty, the tier ordering
+        degrades to plain adjusted(=composite) order — someone must still be rank 1."""
+        e1 = _make_score("E1", composite=0.80, adjusted=0.80, demand=None, demand_unmeasured=True)
+        e2 = _make_score("E2", composite=0.60, adjusted=0.60, demand=None, demand_unmeasured=True)
+        ranked = rerank_solutions_by_adjusted_score(
+            [e2, e1], validated_names={"E1", "E2"}
+        )
+        assert [s.solution_name for s in ranked] == ["E1", "E2"]
+        assert [s.rank for s in ranked] == [1, 2]
+
+    def test_unmeasured_still_ranks_above_non_validated(self):
+        """Two-tier applies WITHIN the validated set; non-validated entries keep
+        trailing everything validated."""
+        empty = _make_score("GradedEmpty", composite=0.60, adjusted=0.60, demand=None, demand_unmeasured=True)
+        unvalidated = _make_score("Unvalidated", composite=0.95, adjusted=0.95)
+        ranked = rerank_solutions_by_adjusted_score(
+            [empty, unvalidated], validated_names={"GradedEmpty"}
+        )
+        assert ranked[0].solution_name == "GradedEmpty"
+        assert empty.rank == 1
+        assert unvalidated.rank == 2

@@ -134,13 +134,16 @@ class TestStage1Classifier:
 # _resolve_primary_audience
 # ---------------------------------------------------------------------------
 class TestResolvePrimaryAudience:
-    def _run(self, scope, audience, segs=None, caveats=None):
+    def _run(self, scope, audience, segs=None, caveats=None, primary_target_segment=None,
+             user_audience_scope=None):
         flow = rf.ResearchFlow.__new__(rf.ResearchFlow)
         nc = _nc(audience_scope=scope, user_target_audience=audience)
-        am = (SimpleNamespace(audience_segments=[SimpleNamespace(segment_name=s) for s in segs])
+        am = (SimpleNamespace(audience_segments=[SimpleNamespace(segment_name=s) for s in segs],
+                              primary_target_segment=primary_target_segment)
               if segs is not None else None)
         flow._state = SimpleNamespace(niche_context=nc, audience_mapping=am,
-                                      idea_coverage_caveats=list(caveats or []))
+                                      idea_coverage_caveats=list(caveats or []),
+                                      user_audience_scope=user_audience_scope)
         flow.checkpoint_mgr = SimpleNamespace(save_stage=lambda *a, **k: None)
         flow._resolve_primary_audience()
         return nc, flow._state.idea_coverage_caveats
@@ -213,6 +216,42 @@ class TestResolvePrimaryAudience:
         flow._refine_audience_against_ideas()
         assert nc.resolved_primary_audience == "left-handed guitarists"
 
+    def test_refine_g2_override_redirects_to_matching_idea_segment(self):
+        # 1.2(c): a G2 primary override maps into the idea-segment namespace and wins.
+        from nicheiq.models.research_state import AudienceScope
+        flow = rf.ResearchFlow.__new__(rf.ResearchFlow)
+        nc = _nc(audience_scope="segment_of_niche", user_target_audience="GLP-1 users",
+                 resolved_primary_audience="GLP-1 users")
+        ideas = [SimpleNamespace(source_segment="Peptide buyers"),
+                 SimpleNamespace(source_segment="GLP-1 users"),
+                 SimpleNamespace(source_segment="PT-141 users")]
+        flow._state = SimpleNamespace(
+            niche_context=nc, idea_generation=SimpleNamespace(solution_ideas=ideas),
+            user_audience_scope=AudienceScope(primary_target_segment="PT-141 users"),
+            idea_coverage_caveats=[])
+        flow.checkpoint_mgr = SimpleNamespace(save_stage=lambda *a, **k: None)
+        flow._refine_audience_against_ideas()
+        assert nc.resolved_primary_audience == "PT-141 users"
+        assert flow._state.idea_coverage_caveats == []
+
+    def test_refine_g2_override_mismatch_keeps_label_and_adds_caveat(self):
+        # 1.2(c): an override with no matching idea segment must NOT overwrite the label —
+        # keep it, log, and surface an idea_coverage_caveat.
+        from nicheiq.models.research_state import AudienceScope
+        flow = rf.ResearchFlow.__new__(rf.ResearchFlow)
+        nc = _nc(audience_scope="segment_of_niche", user_target_audience="GLP-1 users",
+                 resolved_primary_audience="GLP-1 users")
+        ideas = [SimpleNamespace(source_segment="Peptide buyers"),
+                 SimpleNamespace(source_segment="GLP-1 users")]
+        flow._state = SimpleNamespace(
+            niche_context=nc, idea_generation=SimpleNamespace(solution_ideas=ideas),
+            user_audience_scope=AudienceScope(primary_target_segment="Enterprise procurement teams"),
+            idea_coverage_caveats=[])
+        flow.checkpoint_mgr = SimpleNamespace(save_stage=lambda *a, **k: None)
+        flow._refine_audience_against_ideas()
+        assert nc.resolved_primary_audience == "GLP-1 users"
+        assert any("Enterprise procurement teams" in c for c in flow._state.idea_coverage_caveats)
+
     def test_refine_against_ideas_noop_for_non_segment_scope(self):
         flow = rf.ResearchFlow.__new__(rf.ResearchFlow)
         nc = _nc(audience_scope="community", user_target_audience="porsche owners",
@@ -229,6 +268,51 @@ class TestResolvePrimaryAudience:
         assert f("GLP-1 users", ["Peptide buyers", "GLP-1 users", "PT-141 users"]) == "GLP-1 users"
         assert f("completely unrelated xyz topic", ["Peptide buyers"]) is None  # 0 overlap
         assert f("", ["x"]) is None and f("x", []) is None
+
+    # --- 1.2(a): keyword-only `preferred` tie-break (eps=1e-9, raw intersection, stable-first) ---
+    def test_preferred_breaks_exact_tie(self):
+        f = rf._best_segment_match
+        # Both score 0.5 ("users" overlaps, min token-set size 2) — preferred wins the tie.
+        names = ["GLP-1 users", "PT-141 users"]
+        assert f("peptide users", names) == "GLP-1 users"  # stable-first without preferred
+        assert f("peptide users", names, preferred="PT-141 users") == "PT-141 users"
+
+    def test_preferred_never_overrides_strictly_higher_score(self):
+        f = rf._best_segment_match
+        assert f("GLP-1 users", ["GLP-1 users", "PT-141 users"],
+                 preferred="PT-141 users") == "GLP-1 users"
+
+    def test_tie_prefers_higher_raw_intersection(self):
+        f = rf._best_segment_match
+        # Both score 1.0 (overlap/min) but the longer name shares MORE raw tokens.
+        assert f("alpha beta gamma delta", ["alpha beta", "alpha beta gamma"]) == "alpha beta gamma"
+
+    def test_tie_is_stable_first_without_preferred_or_intersection_edge(self):
+        f = rf._best_segment_match
+        assert f("alpha beta", ["alpha beta", "beta alpha"]) == "alpha beta"
+
+    # --- 1.2(b): G2 override exact-first -> S4-preferred fuzzy -> raw ---
+    def test_g2_override_exact_wins_over_fuzzy(self):
+        from nicheiq.models.research_state import AudienceScope
+        nc, _ = self._run("segment_of_niche", "experienced tirzepatide users",
+                          ["Experimental Tirzepatide & Peptide Compound Users", "Skincare Enthusiasts"],
+                          user_audience_scope=AudienceScope(
+                              primary_target_segment="Skincare Enthusiasts"))
+        assert nc.resolved_primary_audience == "Skincare Enthusiasts"
+
+    def test_g2_override_unknown_name_falls_back_to_fuzzy(self):
+        from nicheiq.models.research_state import AudienceScope
+        nc, _ = self._run("segment_of_niche", "experienced tirzepatide users",
+                          ["Experimental Tirzepatide & Peptide Compound Users", "Skincare Enthusiasts"],
+                          user_audience_scope=AudienceScope(primary_target_segment="No Such Segment"))
+        assert nc.resolved_primary_audience == "Experimental Tirzepatide & Peptide Compound Users"
+
+    def test_s4_primary_breaks_fuzzy_tie(self):
+        # "peptide users" ties (0.5) between the two segments; the Stage-4 primary wins.
+        nc, _ = self._run("segment_of_niche", "peptide users",
+                          ["GLP-1 users", "PT-141 users"],
+                          primary_target_segment="PT-141 users")
+        assert nc.resolved_primary_audience == "PT-141 users"
 
     def test_idempotent_no_duplicate_caveat(self):
         flow = rf.ResearchFlow.__new__(rf.ResearchFlow)

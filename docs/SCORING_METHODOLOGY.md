@@ -266,6 +266,14 @@ could out-rank a genuinely shippable one. With it, "can you really build this?" 
 fragile ideas down the list, so the top of the ranking is the part you can trust most —
 not the part with the best marketing.
 
+**Adjacent-audience tie-breaker (2026-08).** If you named a target audience, each idea is
+also judged on whether it primarily serves *that* audience or an adjacent one. Ideas judged
+adjacent take a small fixed deduction from their **composite** — enough to break a tie in
+favor of the people you asked about, not enough to bury a genuinely stronger idea. It applies
+only when nearly every idea in the pool carries a verdict (otherwise the untagged ones would
+be quietly promoted), and it never touches a displayed score: market fit and the rest stay
+exactly as judged.
+
 ## How specific metrics are estimated
 
 Most scores are an expert-style 0–1 judgment grounded in the gathered evidence, then held

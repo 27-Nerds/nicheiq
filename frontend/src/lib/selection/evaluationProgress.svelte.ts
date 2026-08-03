@@ -12,6 +12,7 @@
 export type EvaluationPhase = "queued" | "running" | "overdue";
 
 export interface EvaluationOperation {
+  state?: "AUTHORIZED" | "CLAIMED" | "RECOVERING" | string;
   createdAt?: string;
   claimedAt?: string | null;
 }

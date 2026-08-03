@@ -98,14 +98,16 @@ def apply_pool_identities(
     ideas: Iterable[Any],
     identity_map: Iterable[Any],
 ) -> int:
-    """Stamp the backend's authoritative identities onto checkpoint candidates by name.
+    """Stamp backend identities onto selectable checkpoint candidates by name.
 
     Identities are assigned by the BACKEND at /api/workers/ideas-ready, seeded from the
     Phase-1 dispatch id, and persisted only in Postgres — the checkpoint on disk carries no
     idea_id at all. `ensure_legacy_idea_identities` below therefore cannot reproduce them
     (it does not know the dispatch id), and its `legacy_backfill` ids never match the refs
     the backend later sends for Phase 2. The backend closes the gap by shipping its stamped
-    pool in the work payload; this applies it.
+    pool in the work payload; this applies it. Hidden ``demoted`` and ``absorbed``
+    records are historical checkpoint state, not members of that backend pool, so they
+    must never capture a same-name selectable candidate's identity.
 
     Keyed by normalized name rather than position: the checkpoint pool and the backend's
     stored pool need not be the same length (a batch can land in one before the other), and
@@ -132,8 +134,13 @@ def apply_pool_identities(
     for key in ambiguous:
         by_name.pop(key, None)
 
+    # Use the canonical visibility projection rather than re-declaring lifecycle statuses
+    # here. A synthesized winner can legitimately retain an absorbed same-name source record;
+    # only the selectable winner participates in the backend pool identity contract.
+    from nicheiq.models.solution_idea import visible_ideas
+
     applied = 0
-    for idea in ideas:
+    for idea in visible_ideas(list(ideas)):
         identity = by_name.get(
             normalized_solution_name_key(_get(idea, "solution_name"))
         )

@@ -153,7 +153,9 @@ def check_keyword_relevance(
             niche_description=niche_context.niche_description if niche_context else "",
             project_type=project_type,
             threshold=relevance_threshold,
-            validation_cache=validation_cache
+            validation_cache=validation_cache,
+            pain_points_addressed=list(getattr(solution, "pain_points_addressed", None) or []),
+            winning_angle=getattr(solution, "winning_angle", None),
         )
 
         # Extract relevant keywords

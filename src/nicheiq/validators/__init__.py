@@ -14,6 +14,11 @@ from .score_validators import (
     ScoreThresholds,
     VerdictValidator,
 )
+from .unit_economics import (
+    NOT_COMPUTABLE,
+    LtvCacGroundingResult,
+    validate_ltv_cac_grounding,
+)
 
 __all__ = [
     # Report consistency
@@ -25,4 +30,8 @@ __all__ = [
     "ConfidenceThresholds",
     "ScoreThresholds",
     "VerdictValidator",
+    # Unit economics
+    "NOT_COMPUTABLE",
+    "LtvCacGroundingResult",
+    "validate_ltv_cac_grounding",
 ]

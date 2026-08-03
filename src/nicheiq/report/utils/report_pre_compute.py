@@ -38,6 +38,35 @@ def compute_budget_range(pricing_model: str, channel_count: int) -> str:
     return f"${base_min:,}-${base_max:,}/month"
 
 
+# Weekly share of the 30-day visitor total. Monotone ramp summing to 1.0 — it replaces the
+# hardcoded ladder in report_first_30_days_playbook.yaml, whose weeks summed to ~170% of its
+# own stated 30-day total and could not be reconciled with a keyword-calibrated target.
+_WEEKLY_VISITOR_SHARE: tuple[float, ...] = (0.05, 0.20, 0.30, 0.45)
+
+# Email subscribers as a share of 30-day visitors. Set so the no-keyword-data path reproduces
+# the previous static pairing exactly (500 visitors -> 70 subscribers).
+_SUBSCRIBER_CONVERSION = 0.14
+
+
+def _visitor_band(total_keyword_count: int, tier1_keyword_count: int) -> tuple[int, int]:
+    """30-day visitor band: keyword-calibrated, else the no-data conservative default."""
+    if total_keyword_count > 0 and tier1_keyword_count > 0:
+        month1_organic = int(tier1_keyword_count * 50 * 0.02)
+        return (max(50, month1_organic), max(200, month1_organic * 3))
+    return (300, 500)
+
+
+def compute_metric_ceiling(total_keyword_count: int, tier1_keyword_count: int) -> str:
+    """Hard metric cap for the playbook prompt, from the same band as the anchor.
+
+    The prompt used to hardcode this cap, so a keyword-calibrated anchor above the cap told
+    the model to aim at a number it was simultaneously forbidden to reach.
+    """
+    _, visitor_high = _visitor_band(total_keyword_count, tier1_keyword_count)
+    subscriber_high = max(1, round(visitor_high * _SUBSCRIBER_CONVERSION))
+    return f"≤{visitor_high:,} visitors, ≤{subscriber_high:,} email subscribers in 30 days"
+
+
 def compute_metric_calibration(
     total_keyword_count: int, tier1_keyword_count: int
 ) -> str:
@@ -45,16 +74,33 @@ def compute_metric_calibration(
 
     New site Month 1 ~ 5-10% of steady-state organic.
     Floor values: 50 low-end, 200 high-end.
+    Emits the weekly ladder and the subscriber target too, so the prompt carries exactly one
+    set of numbers instead of a static ladder competing with this anchor.
     """
+    visitor_low, visitor_high = _visitor_band(total_keyword_count, tier1_keyword_count)
     if total_keyword_count > 0 and tier1_keyword_count > 0:
-        month1_organic = int(tier1_keyword_count * 50 * 0.02)
-        visitor_low = max(50, month1_organic)
-        visitor_high = max(200, month1_organic * 3)
-        return (
+        header = (
             f"Keyword-Calibrated 30-Day Target: {visitor_low}-{visitor_high} visitors "
             f"(based on {tier1_keyword_count} Tier 1 keywords achievable in Month 1)"
         )
-    return "No keyword data for metric calibration -- use conservative defaults (300-500 visitors)"
+    else:
+        header = (
+            "No keyword data for metric calibration -- use conservative defaults "
+            f"({visitor_low}-{visitor_high} visitors)"
+        )
+
+    ladder = "\n".join(
+        f"- Week {week}: {round(visitor_low * share)}-{round(visitor_high * share)} visitors"
+        for week, share in enumerate(_WEEKLY_VISITOR_SHARE, start=1)
+    )
+    subscriber_low = max(1, round(visitor_low * _SUBSCRIBER_CONVERSION))
+    subscriber_high = max(1, round(visitor_high * _SUBSCRIBER_CONVERSION))
+    return (
+        f"{header}\n\n"
+        f"Weekly visitor ramp (derived from that target -- use these figures, not your own):\n"
+        f"{ladder}\n\n"
+        f"30-Day Email Subscriber Target: {subscriber_low}-{subscriber_high} subscribers"
+    )
 
 
 def format_pain_point_with_scores(pp: PainPoint) -> str:

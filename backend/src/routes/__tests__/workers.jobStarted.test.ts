@@ -11,6 +11,10 @@ const mockJobUpdate = vi.fn();
 const mockDispatchFindUnique = vi.fn();
 const mockDispatchUpdateMany = vi.fn();
 const mockUpdateJobHeartbeat = vi.fn();
+const mockStartPaidPoolRecovery = vi.fn();
+const mockPreparePaidPoolMutation = vi.fn();
+const mockCompletePaidPoolRecovery = vi.fn();
+const mockInvalidatePreviewReportCache = vi.fn();
 
 vi.mock('../../services/db.js', () => ({
   prisma: {
@@ -57,6 +61,16 @@ vi.mock('../../services/jobService.js', () => ({
   getJobAsset: vi.fn(),
 }));
 
+vi.mock('../../services/paidPoolRecoveryService.js', () => ({
+  startPaidPoolRecovery: (...args: any[]) => mockStartPaidPoolRecovery(...args),
+  preparePaidPoolMutation: (...args: any[]) => mockPreparePaidPoolMutation(...args),
+  completePaidPoolRecovery: (...args: any[]) => mockCompletePaidPoolRecovery(...args),
+}));
+
+vi.mock('../../services/assetService.js', () => ({
+  invalidatePreviewReportCache: (...args: any[]) => mockInvalidatePreviewReportCache(...args),
+}));
+
 vi.mock('../../services/progressBroadcastService.js', () => ({
   broadcastProgress: vi.fn(),
 }));
@@ -99,6 +113,9 @@ beforeEach(async () => {
   mockRegisterWorkerHeartbeat.mockResolvedValue(undefined);
   mockUpdateJobHeartbeat.mockResolvedValue('updated');
   mockNotifyJobStart.mockResolvedValue(undefined);
+  mockStartPaidPoolRecovery.mockResolvedValue('started');
+  mockPreparePaidPoolMutation.mockResolvedValue('prepared');
+  mockCompletePaidPoolRecovery.mockResolvedValue('completed');
 
   app = express();
   app.use(express.json());
@@ -175,6 +192,42 @@ describe('POST /api/workers/heartbeat', () => {
 });
 
 describe('POST /api/workers/job-started', () => {
+  it('claims only the exact RECOVERING generation token', async () => {
+    const dispatchId = '00000000-0000-4000-8000-000000000010';
+    const recoveryToken = '00000000-0000-4000-8000-000000000020';
+    mockJobFindUnique.mockResolvedValue({
+      selectedSolutions: [],
+      ideasRegeneratedAt: null,
+    });
+    mockDispatchFindUnique.mockResolvedValue({
+      kind: 'SEED_IDEA',
+      segment: null,
+      state: 'RECOVERING',
+      recoveryToken,
+    });
+
+    const response = await request(app)
+      .post('/api/workers/job-started')
+      .send({
+        worker_id: 'recovery-worker',
+        job_id: jobId,
+        dispatch_id: dispatchId,
+        recovery_token: recoveryToken,
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.shouldCancel).toBe(false);
+    expect(mockStartPaidPoolRecovery).toHaveBeenCalledWith({
+      jobId,
+      dispatchId,
+      recoveryToken,
+      workerId: 'recovery-worker',
+    });
+    expect(mockJobUpdateMany).not.toHaveBeenCalled();
+    expect(mockDispatchUpdateMany).not.toHaveBeenCalled();
+    expect(mockRegisterWorkerHeartbeat).toHaveBeenCalledWith('recovery-worker', jobId);
+  });
+
   describe('cancellation handling', () => {
     it('returns shouldCancel: true when job is already CANCELLED', async () => {
       // Simulate: job was cancelled while in queue, so updateMany finds no rows to update
@@ -419,7 +472,7 @@ describe('POST /api/workers/job-started', () => {
 
       expect(mockDispatchFindUnique).toHaveBeenCalledWith({
         where: { id: dispatchId },
-        select: { kind: true, segment: true },
+        select: { kind: true, segment: true, state: true, recoveryToken: true },
       });
       expect(mockJobUpdateMany).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -580,5 +633,32 @@ describe('POST /api/workers/job-started', () => {
       expect(response.status).toBe(400);
       expect(response.body.error).toBe('Validation error');
     });
+  });
+});
+
+describe('POST /api/workers/paid-pool-recovery-complete', () => {
+  it('invalidates restored preview data before releasing the recovery worker', async () => {
+    const dispatchId = '00000000-0000-4000-8000-000000000010';
+    const recoveryToken = '00000000-0000-4000-8000-000000000020';
+
+    const response = await request(app)
+      .post('/api/workers/paid-pool-recovery-complete')
+      .send({
+        worker_id: 'recovery-worker',
+        job_id: jobId,
+        dispatch_id: dispatchId,
+        recovery_token: recoveryToken,
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ status: 'ok', idempotent: false });
+    expect(mockCompletePaidPoolRecovery).toHaveBeenCalledWith({
+      jobId,
+      dispatchId,
+      recoveryToken,
+      workerId: 'recovery-worker',
+    });
+    expect(mockInvalidatePreviewReportCache).toHaveBeenCalledWith(jobId);
+    expect(mockRegisterWorkerHeartbeat).toHaveBeenCalledWith('recovery-worker', null);
   });
 });

@@ -7,6 +7,7 @@ import type { PreviewReport } from '$lib/types/previewReport';
 import type { CatalogTopPainPoint } from '$lib/types/publicCatalog';
 import type { SelectionMetricExplanationsResponse } from '$lib/types/selectionMetricExplanation';
 import type { DiscoveryVoteRationale } from '$lib/api';
+import type { DiscoveryAnnotationResponse } from '$lib/types/discoveryAnnotations';
 import { normalizeSolutionPreviews } from '$lib/utils/displayGuards';
 
 export const load: PageServerLoad = async ({ params, locals }) => {
@@ -59,6 +60,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   let discoveryDataFetchFailed = false;
   let previewReportFetchFailed = false;
   let metricExplanations: SelectionMetricExplanationsResponse | null = null;
+  let annotationDocument: DiscoveryAnnotationResponse | null = null;
   // Free-preview pain points for the "explore while you wait" list, shown only
   // while Phase 1 (discovery) is generating. Public endpoint; empty array hides
   // the list. Mirrors the parsing in (public)/+page.server.ts.
@@ -66,8 +68,19 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
   const conditionalFetches: Promise<void>[] = [];
 
+  // Annotations are part of the durable research record, not just an editing
+  // tool. Hydrate them on the server for every lifecycle state so running and
+  // completed pages can render saved marks without a background client request.
+  conditionalFetches.push(
+    fetchBackend(`/api/jobs/${params.jobId}/discovery-annotations`, { headers })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { annotationDocument = d; })
+      .catch(() => {})
+  );
+
   if (
-    ['QUEUED', 'PENDING', 'RUNNING', 'RUNNING_PHASE2'].includes(job.status)
+    ['QUEUED', 'PENDING', 'RUNNING'].includes(job.status)
+    && job.activeDispatchKind !== 'DEEP_RESEARCH'
     && !selectionMutationActive
   ) {
     conditionalFetches.push(
@@ -129,11 +142,21 @@ export const load: PageServerLoad = async ({ params, locals }) => {
           if (job.solutionIdeas.length === 0) solutionsFetchFailed = true;
         })
     );
+  }
+
+  // A closed share is still the owner's historical decision input. Load it for
+  // every job that has reached a candidate pool so queued/running Deep Research
+  // and completed runs do not silently lose collaborator feedback.
+  if (
+    job.solutionIdeas.length > 0
+    || (job.selectedSolutions?.length ?? 0) > 0
+    || (job.selectedSolutionIds?.length ?? 0) > 0
+  ) {
     conditionalFetches.push(
       fetchBackend(`/api/jobs/${params.jobId}/discovery-share`, { headers })
         .then(r => r.ok ? r.json() : null)
         .then(d => {
-          if (!d?.isShared) return;
+          if (!d) return;
           solutionVotes = d.solutionVotes ?? {};
           solutionVotesById = d.solutionVotesById ?? {};
           voteRationales = d.voteRationales ?? [];
@@ -147,11 +170,13 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   // compact run overview does not re-fetch or duplicate the Discovery dossier.
   // A 404/204 is a legitimate legacy absence; transport/5xx failures are surfaced
   // separately so the page can offer Retry instead of pretending the dossier is empty.
+  // AWAITING_GATE is intentionally absent: the backend's gate-status guard rejects
+  // these artifact endpoints with a 400 mid-gate, so fetching would only trip the
+  // failure flags and offer a Retry that can never succeed.
   if (
     [
       'AWAITING_SELECTION',
       'REGENERATING',
-      'AWAITING_GATE',
       'FAILED',
       'CANCELLED',
       'RUNNING_PHASE2',
@@ -195,5 +220,6 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     catalogPainPoints,
     // Cast: TS control-flow ignores the closure assignment above and narrows to null.
     metricExplanations: metricExplanations as SelectionMetricExplanationsResponse | null,
+    annotationDocument: annotationDocument as DiscoveryAnnotationResponse | null,
   };
 };

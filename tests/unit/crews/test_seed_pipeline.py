@@ -141,8 +141,8 @@ class TestUserSeedIdentityLock:
             short_description="A Wayback Machine monitor for investigative esports reporting.",
         )
         critique = SimpleNamespace(
-            market_fit=0.5, binding_constraint="market_fit", directive="pivot",
-            meets_bar=False, composite=lambda angle: 0.5,
+            market_fit=0.5, on_anchor_pain=True, binding_constraint="market_fit",
+            directive="pivot", meets_bar=False, composite=lambda angle: 0.5, rationale="",
         )
         grounding = CellGrounding(
             frame_type="user_seed", focus_block=self.seed, user_seed_text=self.seed,

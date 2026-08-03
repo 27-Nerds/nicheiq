@@ -23,8 +23,10 @@
 
 <section class="completed-analyst" class:compact aria-label="Completed report analyst">
   <header>
+    <!-- No "Report analyst" eyebrow here: every host of this component already
+         titles it (the report page mounts it in a Sheet whose title/aria-label
+         is "Report analyst"), and a second copy read as a duplicated header. -->
     <div>
-      <p>Report analyst</p>
       <h2>Ask about any finding</h2>
     </div>
     <span>Read-only report</span>
@@ -47,7 +49,6 @@
   }
   .completed-analyst.compact { width: 100%; margin: 1.5rem 0 0; }
   header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding: 1rem 1.1rem 0; }
-  header p { margin: 0 0 0.2rem; color: var(--color-text-muted); font-family: var(--font-mono); font-size: 0.625rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
   header h2 { margin: 0; color: var(--color-text-primary); font-size: 1rem; }
   header span { padding: 0.28rem 0.5rem; border: 1px solid var(--color-border); border-radius: 999px; color: var(--color-text-muted); font-size: 0.6875rem; white-space: nowrap; }
   .intro { max-width: 72ch; margin: 0.75rem 1.1rem 0; color: var(--color-text-secondary); font-size: 0.8125rem; line-height: 1.55; }

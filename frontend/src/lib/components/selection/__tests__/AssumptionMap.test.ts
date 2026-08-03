@@ -262,6 +262,76 @@ describe("AssumptionMap", () => {
     }));
   });
 
+  it("reconciles the authoritative questions and parent decision state after saving", async () => {
+    const saved = assumption({ experiments: [] });
+    apiMocks.getSelectionAssumptions
+      .mockResolvedValueOnce({ assumptions: [] })
+      .mockResolvedValue({ assumptions: [saved] });
+    apiMocks.getSelectionChallenges.mockResolvedValue({ challenges: [challenge()], stale: [] });
+    apiMocks.createSelectionAssumption.mockResolvedValue({ assumption: saved, cached: false });
+    const onChanged = vi.fn().mockResolvedValue(undefined);
+    const view = render(AssumptionMap, {
+      props: {
+        jobId: "job-1",
+        ideas: [signal],
+        prefill: analystPrefill(),
+        onChanged,
+      },
+    });
+
+    const dialog = await view.findByRole("dialog", { name: "Save a question to resolve" });
+    await fireEvent.click(within(dialog).getByRole("radio", { name: /Decision-changing/ }));
+    await fireEvent.click(within(dialog).getByRole("button", { name: "Save question" }));
+
+    await waitFor(() => expect(apiMocks.getSelectionAssumptions).toHaveBeenCalledTimes(2));
+    expect(apiMocks.getSelectionChallenges).toHaveBeenCalledTimes(2);
+    expect(onChanged).toHaveBeenCalledTimes(1);
+    expect(await view.findByText(saved.statement)).toBeInTheDocument();
+  });
+
+  it("shows a saved-but-stale warning and lets the owner retry reconciliation", async () => {
+    const saved = assumption({ experiments: [] });
+    apiMocks.getSelectionAssumptions
+      .mockResolvedValueOnce({ assumptions: [] })
+      .mockRejectedValueOnce(new Error("network unavailable"))
+      .mockResolvedValue({ assumptions: [saved] });
+    apiMocks.getSelectionChallenges.mockResolvedValue({ challenges: [challenge()], stale: [] });
+    apiMocks.createSelectionAssumption.mockResolvedValue({ assumption: saved, cached: false });
+    const onChanged = vi.fn().mockResolvedValue(undefined);
+    const onTestUnknown = vi.fn();
+    const view = render(AssumptionMap, {
+      props: {
+        jobId: "job-1",
+        ideas: [signal],
+        prefill: analystPrefill(),
+        onChanged,
+        onTestUnknown,
+      },
+    });
+
+    const dialog = await view.findByRole("dialog", { name: "Save a question to resolve" });
+    await fireEvent.click(within(dialog).getByRole("radio", { name: /Decision-changing/ }));
+    await fireEvent.click(within(dialog).getByRole("button", { name: "Save question" }));
+
+    const warning = await view.findByRole("alert");
+    expect(warning).toHaveTextContent("question was saved");
+    expect(onChanged).not.toHaveBeenCalled();
+    expect(view.getByRole("button", { name: /Add a question to resolve/ })).toBeDisabled();
+    expect(view.getByRole("button", { name: "Edit" })).toBeDisabled();
+    expect(view.getByRole("button", { name: "Draft test" })).toBeDisabled();
+    await fireEvent.click(view.getByRole("button", { name: "Draft test" }));
+    expect(onTestUnknown).not.toHaveBeenCalled();
+    await fireEvent.click(within(warning).getByRole("button", { name: "Reload current state" }));
+
+    await waitFor(() => expect(apiMocks.getSelectionAssumptions).toHaveBeenCalledTimes(3));
+    expect(onChanged).toHaveBeenCalledTimes(1);
+    expect(view.queryByText(/current decision state could not be refreshed/i)).not.toBeInTheDocument();
+    expect(await view.findByText(saved.statement)).toBeInTheDocument();
+    expect(view.getByRole("button", { name: /Add a question to resolve/ })).toBeEnabled();
+    expect(view.getByRole("button", { name: "Edit" })).toBeEnabled();
+    expect(view.getByRole("button", { name: "Draft test" })).toBeEnabled();
+  });
+
   it("rejects an analyst edit prepared against an older assumption version", async () => {
     apiMocks.getSelectionAssumptions.mockResolvedValue({ assumptions: [assumption()] });
     const view = render(AssumptionMap, {

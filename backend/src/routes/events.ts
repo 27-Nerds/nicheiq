@@ -31,23 +31,6 @@ eventsRouter.get('/:jobId/events', requireInternalAuth, async (req: Authenticate
     return;
   }
 
-  // If job is already in a terminal state and no landing page is generating, send final state and close
-  const terminalStatuses: string[] = [JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED];
-  const isTerminal = terminalStatuses.includes(job.status);
-  const landingInProgress = (job as any).landingPageStatus === 'QUEUED' || (job as any).landingPageStatus === 'RUNNING';
-  if (isTerminal && !landingInProgress) {
-    res.json({
-      ...formatJobResponse(job, {
-        includeProgress: true,
-        includeAssets: true,
-        includeCreatedAt: true,
-        includeAssetFlags: true,
-      }),
-      message: 'Job already finished',
-    });
-    return;
-  }
-
   // Set SSE headers
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -55,113 +38,115 @@ eventsRouter.get('/:jobId/events', requireInternalAuth, async (req: Authenticate
   res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
   res.flushHeaders();
 
-  // Send initial state with queue position if queued
+  const terminalStatuses: string[] = [JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED];
   const interactiveStatuses = ['AWAITING_SELECTION', 'REGENERATING', 'RUNNING_PHASE2', 'AWAITING_GATE'];
-  const includeSolutions = interactiveStatuses.includes(job.status) ||
-    (job.status === JobStatus.QUEUED && (job.solutionIdeas as any[])?.length > 0) ||
-    (job.status === JobStatus.COMPLETED && (job.selectedSolutions as string[])?.length > 0);
-  const queueStats = job.status === JobStatus.QUEUED ? await getQueueStats(jobId) : null;
-  const initialData = formatJobResponse(job, {
-    includeProgress: true,
-    includeAssets: true,
-    includeCreatedAt: true,
-    includeAssetFlags: true,
-    includeSolutionIdeas: includeSolutions,
-    queueStats,
-  });
-  res.write(`data: ${JSON.stringify(initialData)}\n\n`);
-
-  // Queue position polling interval (only for QUEUED jobs)
-  // This ensures users see updated queue positions as other jobs complete
   let queuePollInterval: NodeJS.Timeout | null = null;
+  let heartbeat: NodeJS.Timeout | null = null;
+  let unsubscribe: (() => void) | null = null;
+  let closed = false;
+  let latestStatus = job.status;
 
-  if (job.status === JobStatus.QUEUED) {
-    queuePollInterval = setInterval(async () => {
-      try {
-        const currentJob = await getJob(jobId);
-        if (currentJob?.status === JobStatus.QUEUED) {
-          const stats = await getQueueStats(jobId);
-          const data = formatJobResponse(currentJob, {
-            includeProgress: true,
-            includeAssets: true,
-            includeCreatedAt: true,
-            includeAssetFlags: true,
-            includeSolutionIdeas: (currentJob.solutionIdeas as any[])?.length > 0,
-            queueStats: stats,
-          });
-          res.write(`data: ${JSON.stringify(data)}\n\n`);
-        } else {
-          // Job no longer queued, stop polling (progress updates will take over)
-          if (queuePollInterval) {
-            clearInterval(queuePollInterval);
-            queuePollInterval = null;
-          }
-        }
-      } catch (error) {
-        console.error('Error polling queue position:', error);
-      }
-    }, 10000); // Poll every 10 seconds
-  }
+  const terminalWithoutLandingPage = (currentJob: typeof job): boolean => {
+    const landingInProgress = currentJob.landingPageStatus === 'QUEUED' || currentJob.landingPageStatus === 'RUNNING';
+    return terminalStatuses.includes(currentJob.status) && !landingInProgress;
+  };
 
-  // Subscribe to progress updates via EventEmitter
-  // Note: progressData is unused because we fetch fresh state from DB
-  const unsubscribe = subscribeToJobProgress(jobId, async (_progressData: ProgressData) => {
-    try {
-      // Fetch updated job state from DB and send to client
-      const updatedJob = await getJob(jobId);
-      if (updatedJob) {
-        // Stop queue polling if job is no longer queued
-        if (updatedJob.status !== JobStatus.QUEUED && queuePollInterval) {
-          clearInterval(queuePollInterval);
-          queuePollInterval = null;
-        }
+  const cleanup = (endResponse: boolean): void => {
+    if (closed) return;
+    closed = true;
 
-        const updatedQueueStats = updatedJob.status === JobStatus.QUEUED ? await getQueueStats(jobId) : null;
-        const updatedIncludeSolutions = interactiveStatuses.includes(updatedJob.status) ||
-          (updatedJob.status === JobStatus.QUEUED && (updatedJob.solutionIdeas as any[])?.length > 0) ||
-          (updatedJob.status === JobStatus.COMPLETED && (updatedJob.selectedSolutions as string[])?.length > 0);
-        const data = formatJobResponse(updatedJob, {
-          includeProgress: true,
-          includeAssets: true,
-          includeCreatedAt: true,
-          includeAssetFlags: true,
-          includeSolutionIdeas: updatedIncludeSolutions,
-          queueStats: updatedQueueStats,
-        });
-        res.write(`data: ${JSON.stringify(data)}\n\n`);
-
-        // Close connection if job is done (and no landing page is generating)
-        const jobTerminalStatuses: string[] = [JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED];
-        const jobTerminal = jobTerminalStatuses.includes(updatedJob.status);
-        const updatedLandingInProgress = (updatedJob as any).landingPageStatus === 'QUEUED' || (updatedJob as any).landingPageStatus === 'RUNNING';
-        if (jobTerminal && !updatedLandingInProgress) {
-          clearInterval(heartbeat);
-          if (queuePollInterval) {
-            clearInterval(queuePollInterval);
-            queuePollInterval = null;
-          }
-          unsubscribe();
-          res.end();
-        }
-      }
-    } catch (error) {
-      console.error('Error processing progress update:', error);
+    if (heartbeat) {
+      clearInterval(heartbeat);
+      heartbeat = null;
     }
-  });
-
-  // Send heartbeat every 30 seconds to keep connection alive
-  const heartbeat = setInterval(() => {
-    res.write(': heartbeat\n\n');
-  }, 30000);
-
-  // Cleanup on client disconnect
-  req.on('close', () => {
-    clearInterval(heartbeat);
     if (queuePollInterval) {
       clearInterval(queuePollInterval);
       queuePollInterval = null;
     }
-    unsubscribe();
+    if (unsubscribe) {
+      const stopListening = unsubscribe;
+      unsubscribe = null;
+      stopListening();
+    }
+    if (endResponse && !res.writableEnded) {
+      res.end();
+    }
+  };
+
+  const sendCurrentState = async (initial = false): Promise<void> => {
+    if (closed) return;
+
+    const currentJob = await getJob(jobId);
+    if (closed) return;
+    if (!currentJob) {
+      cleanup(true);
+      return;
+    }
+
+    latestStatus = currentJob.status;
+    if (currentJob.status !== JobStatus.QUEUED && queuePollInterval) {
+      clearInterval(queuePollInterval);
+      queuePollInterval = null;
+    }
+
+    const queueStats = currentJob.status === JobStatus.QUEUED ? await getQueueStats(jobId) : null;
+    if (closed) return;
+
+    const includeSolutions = interactiveStatuses.includes(currentJob.status) ||
+      (currentJob.status === JobStatus.QUEUED && (currentJob.solutionIdeas as any[])?.length > 0) ||
+      (currentJob.status === JobStatus.COMPLETED && (currentJob.selectedSolutions as string[])?.length > 0);
+    const formatted = formatJobResponse(currentJob, {
+      includeProgress: true,
+      includeAssets: true,
+      includeCreatedAt: true,
+      includeAssetFlags: true,
+      includeSolutionIdeas: includeSolutions,
+      queueStats,
+    });
+    const finished = terminalWithoutLandingPage(currentJob);
+    const data = initial && finished
+      ? { ...formatted, message: 'Job already finished' }
+      : formatted;
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+
+    if (finished) {
+      cleanup(true);
+    }
+  };
+
+  // Subscribe before the authoritative snapshot. Once the first getJob() has
+  // established ownership, there is no await between here and listener registration,
+  // so a terminal transition cannot land in a subscribe-after-snapshot gap.
+  unsubscribe = subscribeToJobProgress(jobId, (_progressData: ProgressData) => {
+    void sendCurrentState().catch(error => {
+      console.error('Error processing progress update:', error);
+    });
+  });
+
+  // Cleanup on client disconnect. cleanup() is idempotent because a terminal write
+  // followed by the socket close event is the normal successful path.
+  req.on('close', () => {
+    cleanup(false);
     console.log(`SSE connection closed for job ${jobId}`);
   });
+
+  // Re-read only after subscribing; this is the authoritative initial snapshot.
+  await sendCurrentState(true);
+  if (closed) return;
+
+  // Poll queue position while queued so users see movement as other jobs complete.
+  if (latestStatus === JobStatus.QUEUED) {
+    queuePollInterval = setInterval(() => {
+      void sendCurrentState().catch(error => {
+        console.error('Error polling queue position:', error);
+      });
+    }, 10000);
+  }
+
+  // Send heartbeat every 30 seconds to keep connection alive
+  heartbeat = setInterval(() => {
+    if (!closed) {
+      res.write(': heartbeat\n\n');
+    }
+  }, 30000);
 });

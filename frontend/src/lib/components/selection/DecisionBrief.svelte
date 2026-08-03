@@ -258,7 +258,18 @@
 {:else if variant === "summary"}
   {#if profile}
     <section class="brief-row" aria-label="Build limits summary" data-annotation-anchor="selection:decision-brief">
-      <p class="brief-row-copy">{FOUNDER_CONTEXT_SAVED}</p>
+      <div class="brief-row-main">
+        <p class="brief-row-copy">{FOUNDER_CONTEXT_SAVED}</p>
+        <p class="brief-row-values" aria-label="Saved build limits">
+          <span>{optionLabel(TIME_OPTIONS, profile.weeklyTime)}</span>
+          <span>{optionLabel(BUDGET_OPTIONS, profile.budget)}</span>
+          <span>{optionLabel(TEAM_OPTIONS, profile.team)}</span>
+          <span>{optionLabel(HORIZON_OPTIONS, profile.revenueHorizon)}</span>
+          {#if profile.distributionAdvantages.length > 0}
+            <span>{profile.distributionAdvantages.map((value) => optionLabel(CHANNEL_OPTIONS, value)).join(", ")}</span>
+          {/if}
+        </p>
+      </div>
       {#if !editing}
         <button type="button" class="edit-action" onclick={beginEditing}>
           {founderContextLabel(Boolean(profile))}
@@ -469,6 +480,29 @@
     color: var(--color-text-primary);
     font-size: var(--text-13);
     font-weight: 600;
+  }
+  .brief-row-main {
+    display: grid;
+    min-width: 0;
+    gap: var(--space-1);
+  }
+  .brief-row-values {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-3);
+    margin: 0;
+    color: var(--color-text-secondary);
+    font-size: var(--text-13);
+    line-height: 1.4;
+  }
+  .brief-row-values span {
+    position: relative;
+  }
+  .brief-row-values span:not(:last-child)::after {
+    position: absolute;
+    left: calc(100% + var(--space-1));
+    color: var(--color-text-muted);
+    content: "\00b7";
   }
   .brief {
     margin: var(--space-5) 0 var(--space-6);

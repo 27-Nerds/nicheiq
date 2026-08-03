@@ -565,8 +565,16 @@ class SeedGenerator:
         """
         Calculate validation metrics from already-expanded keywords (no API call).
 
-        Reuses data from expand_seeds_quick() to produce the same dict structure
-        as validate_seeds_with_dataforseo(), eliminating a redundant DataForSEO call.
+        Reuses data from expand_seeds_quick(), eliminating a redundant DataForSEO call.
+
+        The returned dict is NOT directly model-constructible: it carries
+        ``expansion_pool_count`` (the size of the UNFILTERED expansion pool that merely
+        cleared the volume/single-word filters) where CrewKeywordValidationResult expects
+        ``validated_count`` (the GRADED, on-idea set). The two are not the same number —
+        observed live 2026-08-02: 50 pool keywords, 1 graded. Semantic grading happens
+        after this call, so ``finalize_graded_validation()`` (research_flow) performs the
+        swap. CrewKeywordValidationResult is ``extra='forbid'``, so skipping that step
+        fails loudly instead of silently republishing the pool count as evidence.
 
         Args:
             expanded_keywords: Keywords returned by expand_seeds_quick()
@@ -575,11 +583,12 @@ class SeedGenerator:
                                  (used as denominator for volume_score)
 
         Returns:
-            dict with validation results matching validate_seeds_with_dataforseo() output
+            dict of raw expansion metrics (keyed by ``expansion_pool_count``, not
+            ``validated_count``)
         """
         empty_result = {
             "solution_name": solution_name,
-            "validated_count": 0,
+            "expansion_pool_count": 0,
             "total_volume": 0,
             "avg_competition": 0.0,
             "keyword_demand_score": 0.0,
@@ -677,13 +686,13 @@ class SeedGenerator:
 
             logger.info(
                 f"[Validation from Expansion] {solution_name}: "
-                f"{total_volume:,} total volume, {keyword_count} valid keywords, "
-                f"demand score: {keyword_demand_score:.2f}"
+                f"{total_volume:,} total volume, {keyword_count} expansion-pool keywords "
+                f"(pre-grading), demand score: {keyword_demand_score:.2f}"
             )
 
             return {
                 "solution_name": solution_name,
-                "validated_count": keyword_count,
+                "expansion_pool_count": keyword_count,
                 "total_volume": total_volume,
                 "avg_competition": avg_competition,
                 "keyword_demand_score": keyword_demand_score,
@@ -711,6 +720,11 @@ class SeedGenerator:
     def validate_seeds_with_dataforseo(self, seeds: list[str], solution_name: str) -> dict:
         """
         Validate seed keywords using DataForSEO keyword data.
+
+        NOTE: no production callers remain (the flow uses
+        ``calculate_validation_from_expansion``); only tests exercise this. Its
+        ``validated_count`` is likewise a pre-grading count and feeds the legacy
+        KeywordValidationSummary, not CrewKeywordValidationResult.
 
         Args:
             seeds: List of seed keywords to validate
@@ -761,7 +775,7 @@ class SeedGenerator:
                 reverse=True
             )[:3]
 
-            volume_score = keyword_count / len(seeds) if seeds else 0
+            volume_score = min(keyword_count / len(seeds), 1.0) if seeds else 0
 
             opportunity_scores = []
             for kw in valid_keywords:

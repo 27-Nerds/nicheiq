@@ -1,17 +1,80 @@
+<script module lang="ts">
+  /** Lowercase a leading plain-capitalised word so it reads mid-sentence, while leaving
+   *  acronyms and camel-cased product names ("SOC2", "QuickBooks") untouched. */
+  function decapitalize(text: string): string {
+    const [firstWord] = text.split(/\s/, 1);
+    return /^[A-Z][a-z]*$/.test(firstWord)
+      ? text.charAt(0).toLowerCase() + text.slice(1)
+      : text;
+  }
+
+  /** The backend's ICP copy normally already opens with its own trigger clause
+   *  ("Triggered when a settlement dispute arises…"), so a "Their buying trigger is"
+   *  lead-in produced "…is Triggered when…". Only add the lead-in when the value needs it. */
+  export function formatBuyingTrigger(rawTrigger: string | null | undefined): string {
+    const trigger = (rawTrigger ?? "").trim();
+    if (!trigger) return "";
+    const opensAsTriggerClause =
+      /^(triggered|triggers|trigger|when|whenever|once|after|during|occurs|happens)\b/i.test(
+        trigger,
+      );
+    const sentence = opensAsTriggerClause
+      ? trigger.charAt(0).toUpperCase() + trigger.slice(1)
+      : `Their buying trigger is ${decapitalize(trigger)}`;
+    return /[.!?]$/.test(sentence) ? sentence : `${sentence}.`;
+  }
+
+  /** The plan view is often the reader's first encounter with the persona, so a bare
+   *  name ("Multi-Room Operator Maya") has no referent. Introduce it with the ICP descriptor. */
+  export function formatPersonaIntro(
+    personaName: string | null | undefined,
+    demographics?: string | null,
+  ): string {
+    const name = (personaName ?? "").trim();
+    const descriptor = (demographics ?? "").trim();
+    if (!name) return "";
+    const sentence = descriptor
+      ? `Start with ${name} — ${decapitalize(descriptor)}`
+      : `Start with ${name}`;
+    return /[.!?]$/.test(sentence) ? sentence : `${sentence}.`;
+  }
+</script>
+
 <script lang="ts">
   import { ArrowRight, CircleAlert } from "lucide-svelte";
   import type { Report } from "$lib/types/report";
+  import { normalizeSeoScalabilityNarrative, renderMarkdown } from "$lib/utils/format";
+  import { humanizeTag } from "$lib/utils/ideaTagLabels";
 
   interface Props {
     report: Report;
     topic: "first-30-days" | "product" | "launch";
     fullDetailHref?: string;
+    /** Named when the appendix link lands on a different topic tab than this one. */
+    fullDetailDestination?: string;
+    /** The identity deck already on screen above this view — never repeated here. */
+    deckText?: string;
   }
 
-  let { report, topic, fullDetailHref }: Props = $props();
+  let { report, topic, fullDetailHref, fullDetailDestination, deckText }: Props = $props();
 
   const details = $derived(report.selected_solution_details);
   const snapshot = $derived(report.executive_dashboard?.recommended_solution_snapshot);
+  // The heading here used to restate the page H1 and the paragraph the identity
+  // deck, so the same promise printed three times across the report. Keep the deck
+  // and show only a candidate that says something the reader has not already read.
+  const productPromise = $derived(
+    [
+      snapshot?.core_value_prop,
+      details?.value_proposition,
+      details?.short_description,
+      details?.description,
+      report.executive_summary,
+    ].find((candidate) => {
+      const text = candidate?.trim();
+      return !!text && text !== deckText?.trim();
+    }) ?? null,
+  );
   const gtm = $derived(report.go_to_market_blueprint);
   const pricing = $derived(report.pricing_strategy);
   const seo = $derived(report.seo_strategy_report);
@@ -71,8 +134,30 @@
     return `$${gtm.budget_estimate.monthly_budget_min.toLocaleString()}–$${gtm.budget_estimate.monthly_budget_max.toLocaleString()} / month`;
   });
   const channels = $derived(gtm?.recommended_channels?.slice(0, 3) ?? []);
+  const ideaGrowthChannels = $derived(
+    (details?.tags?.growth_channels ?? []).slice(0, 3).map(humanizeTag).filter(Boolean),
+  );
+  const acquisitionSummary = $derived(
+    normalizeSeoScalabilityNarrative(
+      report.acquisition_strategy_summary ?? "",
+      details?.seo_scalability_score,
+    ),
+  );
   const topKeywords = $derived(
     [...(seo?.tier_0_keywords ?? []), ...(seo?.tier_1_keywords ?? [])].slice(0, 6),
+  );
+  // The aggregate keyword volume is category reach, not validated idea demand — lead with
+  // the idea-intent subset when the backend produced one (null on legacy reports).
+  const ideaIntentVolume = $derived(seo?.idea_intent_monthly_volume ?? null);
+  const categoryReachVolume = $derived(
+    seoMetrics?.total_search_volume || seo?.total_monthly_volume || null,
+  );
+  const icp = $derived(gtm?.ideal_customer_profile);
+  // `solution_implementation_overview` is generated as markdown ("## Implementation
+  // Overview **Phase 1: …**"). The full-detail appendix runs it through renderMarkdown;
+  // this summary printed it as a text node, so the syntax reached the reader verbatim.
+  const buildApproach = $derived(
+    details?.technical_approach ?? report.solution_implementation_overview ?? null,
   );
   const productFeatures = $derived(details?.core_features?.slice(0, 6) ?? []);
   const dataSources = $derived(
@@ -135,17 +220,12 @@
       </span>
     </header>
 
-    <div class="product-promise">
-      <span>Product promise</span>
-      <h4>{snapshot?.tagline ?? details?.headline ?? report.selected_solution_name}</h4>
-      <p>
-        {snapshot?.core_value_prop ??
-          details?.value_proposition ??
-          details?.short_description ??
-          details?.description ??
-          report.executive_summary}
-      </p>
-    </div>
+    {#if productPromise}
+      <div class="product-promise">
+        <span>Product promise</span>
+        <p>{productPromise}</p>
+      </div>
+    {/if}
 
     <div class="plan-grid">
       <article>
@@ -162,11 +242,11 @@
       </article>
       <article>
         <span>Build approach</span>
-        <p>
-          {details?.technical_approach ??
-            report.solution_implementation_overview ??
-            "A technical approach was not retained."}
-        </p>
+        {#if buildApproach}
+          <div class="build-approach">{@html renderMarkdown(buildApproach)}</div>
+        {:else}
+          <p>A technical approach was not retained.</p>
+        {/if}
       </article>
     </div>
 
@@ -188,17 +268,17 @@
         <p>Launch decision</p>
         <h3 id="launch-plan-title">How to reach the first credible customers</h3>
       </div>
-      <span class:caution={!gtm?.budget_estimate}>{budget}</span>
+      <span class:caution={!gtm?.budget_estimate}>Marketing budget · {budget}</span>
     </header>
 
     <div class="positioning">
       <span>Message to lead with</span>
       <h4>{gtm?.core_marketing_message ?? snapshot?.tagline ?? report.selected_solution_name}</h4>
-      {#if gtm?.ideal_customer_profile}
-        <p>
-          Start with {gtm.ideal_customer_profile.persona_name}. Their buying trigger is
-          {gtm.ideal_customer_profile.buying_triggers}
-        </p>
+      {#if icp}
+        <p>{formatPersonaIntro(icp.persona_name, icp.demographics)}</p>
+        {#if icp.buying_triggers?.trim()}
+          <p>{formatBuyingTrigger(icp.buying_triggers)}</p>
+        {/if}
       {/if}
     </div>
 
@@ -216,7 +296,19 @@
             {/each}
           </ol>
         {:else}
-          <p>No channel plan was retained.</p>
+          {#if ideaGrowthChannels.length}
+            <ul class="keyword-list" aria-label="Idea-stage channel hypotheses">
+              {#each ideaGrowthChannels as channel}
+                <li>{channel}</li>
+              {/each}
+            </ul>
+            <p class="hypothesis-note">
+              These are idea-stage channel hypotheses. Deep Research did not generate a channel
+              plan, so test them before committing budget.
+            </p>
+          {:else}
+            <p>No channel plan was retained.</p>
+          {/if}
         {/if}
       </article>
       <article>
@@ -225,9 +317,18 @@
           <p class="metric-copy">
             {seoMetrics?.total_keywords ?? seo?.total_keywords_analyzed ?? topKeywords.length}
             keywords examined
-            {#if seoMetrics?.total_search_volume || seo?.total_monthly_volume}
-              · {(seoMetrics?.total_search_volume ?? seo?.total_monthly_volume)?.toLocaleString()}
-              monthly searches represented
+            {#if ideaIntentVolume != null}
+              · {ideaIntentVolume.toLocaleString()} monthly idea-intent searches
+              {#if categoryReachVolume != null}
+                <span class="reach-qualifier">
+                  ({categoryReachVolume.toLocaleString()} category reach across all keywords)
+                </span>
+              {/if}
+            {:else if categoryReachVolume != null}
+              · {categoryReachVolume.toLocaleString()} monthly searches
+              <span class="reach-qualifier">
+                (category reach, not validated idea demand)
+              </span>
             {/if}
           </p>
           <ul class="keyword-list">
@@ -237,7 +338,7 @@
           </ul>
         {:else}
           <p>
-            {report.acquisition_strategy_summary ??
+            {acquisitionSummary ||
               "A structured organic-acquisition plan was not retained."}
           </p>
         {/if}
@@ -269,6 +370,9 @@
           {remainingFirstMonthSteps
             ? `${remainingFirstMonthSteps} additional ${remainingFirstMonthSteps === 1 ? "action is" : "actions are"} grouped by week in the full playbook.`
             : "See the actions grouped by week with their success metrics."}
+          {#if fullDetailDestination}
+            It is filed under {fullDetailDestination}, so this link changes tab.
+          {/if}
         </p>
       {:else}
         <strong>Need the implementation appendix?</strong>
@@ -277,6 +381,9 @@
     </div>
     <a href={fullDetailHref}>
       {topic === "first-30-days" ? "Open full 30-day playbook" : "Open implementation appendix"}
+      {#if fullDetailDestination}
+        <span class="detail-destination">in {fullDetailDestination}</span>
+      {/if}
       <ArrowRight aria-hidden="true" />
     </a>
   </div>
@@ -311,7 +418,7 @@
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--color-text-muted);
+    color: var(--color-text-secondary);
   }
 
   .plan-heading h3 {
@@ -433,10 +540,9 @@
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: var(--color-text-muted);
+    color: var(--color-text-secondary);
   }
 
-  .product-promise h4,
   .positioning h4 {
     max-width: 42ch;
     margin: 0;
@@ -445,6 +551,12 @@
     font-weight: 700;
     line-height: 1.3;
     color: var(--color-text-primary);
+  }
+
+  /* The promise paragraph now follows its label directly — the duplicate heading
+     that used to sit between them is gone. */
+  .product-promise > span + p {
+    margin-top: 0;
   }
 
   .product-promise p,
@@ -508,6 +620,47 @@
     margin: var(--space-4) 0 0;
   }
 
+  .build-approach {
+    margin-top: var(--space-4);
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+    line-height: 1.6;
+  }
+
+  .build-approach :global(h1),
+  .build-approach :global(h2),
+  .build-approach :global(h3),
+  .build-approach :global(h4) {
+    margin: var(--space-4) 0 var(--space-2);
+    font-family: var(--font-display);
+    font-size: var(--text-base);
+    font-weight: 700;
+    color: var(--color-text-primary);
+  }
+
+  .build-approach :global(p),
+  .build-approach :global(ul),
+  .build-approach :global(ol) {
+    margin: 0 0 var(--space-3);
+  }
+
+  .build-approach :global(ul),
+  .build-approach :global(ol) {
+    padding-left: var(--space-5);
+  }
+
+  .build-approach :global(strong) {
+    color: var(--color-text-primary);
+  }
+
+  .build-approach :global(> :first-child) {
+    margin-top: 0;
+  }
+
+  .build-approach :global(> :last-child) {
+    margin-bottom: 0;
+  }
+
   .channel-list li {
     padding-left: 0;
   }
@@ -542,8 +695,19 @@
     font-weight: 600;
   }
 
+  .reach-qualifier {
+    color: var(--color-text-muted);
+    font-weight: 400;
+  }
+
   .keyword-list {
     margin-top: var(--space-4);
+  }
+
+  .plan-grid .hypothesis-note {
+    margin-top: var(--space-3);
+    color: var(--color-text-muted);
+    font-size: var(--text-xs);
   }
 
   .keyword-list li {
@@ -619,6 +783,12 @@
     transition:
       border-color var(--duration-fast) var(--ease-default),
       background-color var(--duration-fast) var(--ease-default);
+  }
+
+  /* Names the tab this link lands on, so the underline moving is expected. */
+  .detail-destination {
+    font-weight: 500;
+    color: var(--color-text-muted);
   }
 
   .detail-entry a:hover {

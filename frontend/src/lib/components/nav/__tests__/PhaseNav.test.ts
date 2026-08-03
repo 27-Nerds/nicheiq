@@ -111,6 +111,89 @@ describe("PhaseNav without the decision tools grant", () => {
   });
 });
 
+describe("PhaseNav saved decision record", () => {
+  it("uses read-only destinations and removes selection actions after handoff", () => {
+    const view = render(PhaseNav, {
+      props: {
+        jobStatus: "RUNNING_PHASE2",
+        jobId: "job-1",
+        mode: "selection-record",
+        nested: true,
+        activeTool: "risks",
+        selectionQuery: "?idea=idea-a%3A3",
+        decisionTools: true,
+      },
+    });
+
+    expect(view.getAllByRole("link", { name: "Comparison record" })).toHaveLength(2);
+    expect(view.getAllByRole("link", { name: "Evidence & risk record" })).toHaveLength(2);
+    expect(view.getAllByRole("link", { name: "Saved research scope" })).toHaveLength(2);
+    expect(view.getAllByRole("link", { name: "View run" })).toHaveLength(2);
+    expect(view.container.querySelector("nav.selection-mobile-nav--record")).toBeInTheDocument();
+    expect(view.container.querySelector("nav.selection-mobile-nav--record.selection-mobile-nav--journey"))
+      .not.toBeInTheDocument();
+    expect(view.queryByText("Choose ideas")).not.toBeInTheDocument();
+    expect(view.queryByText("Review and start")).not.toBeInTheDocument();
+    for (const link of view.getAllByRole("link", { name: "Evidence & risk record" })) {
+      expect(link).toHaveAttribute("href", "/jobs/job-1/selection/risks?idea=idea-a%3A3");
+      expect(link).toHaveAttribute("aria-current", "page");
+    }
+  });
+});
+
+describe("PhaseNav stopped run", () => {
+  it("shows only the recovery row when a stopped run has no discovery sections", () => {
+    const view = render(PhaseNav, {
+      props: {
+        jobStatus: "CANCELLED",
+        jobId: "job-1",
+        mode: "stopped",
+        recoverLabel: "Start new research",
+        recoverHref: "/new?fromJob=job-1&prefilled=test",
+        availableSectionIds: [],
+      },
+    });
+
+    expect(view.getAllByText("Recover run").length).toBeGreaterThan(0);
+    for (const link of view.getAllByRole("link", { name: "Start new research" })) {
+      expect(link).toHaveAttribute("href", "/new?fromJob=job-1&prefilled=test");
+    }
+    expect(view.queryByText("Discovery context")).toBeNull();
+  });
+
+  it("keeps the discovery context group when a stopped run has sections to read", () => {
+    const view = render(PhaseNav, {
+      props: {
+        jobStatus: "FAILED",
+        jobId: "job-1",
+        mode: "stopped",
+        recoverLabel: "Resume run",
+        availableSectionIds: ["overview", "pain-points"],
+      },
+    });
+
+    expect(view.getAllByText("Discovery context").length).toBeGreaterThan(0);
+    expect(view.getAllByText("Overview").length).toBeGreaterThan(0);
+  });
+
+  it("leaves the selection-mode discovery group untouched by the stopped-mode guard", () => {
+    const view = render(PhaseNav, {
+      props: {
+        jobStatus: "AWAITING_SELECTION",
+        jobId: "job-1",
+        mode: "selection",
+        nested: true,
+        selectedCount: 1,
+        availableSectionIds: [],
+      },
+    });
+
+    // The empty-group guard is scoped to stopped mode only — the selection layout
+    // (second consumer of this component) keeps its group exactly as before.
+    expect(view.getAllByText("Discovery context").length).toBeGreaterThan(0);
+  });
+});
+
 describe("PhaseNav completed-report destinations", () => {
   it.each([
     ["Brief", "/jobs/job-1/report?view=brief"],
@@ -162,6 +245,10 @@ describe("PhaseNav completed-report destinations", () => {
     const desktopOverview = view.getByRole("link", { name: "Run overview" });
     expect(desktopOverview).toHaveAttribute("aria-current", "page");
     expect(desktopOverview).toHaveAttribute("href", "/jobs/job-1");
+    expect(view.getByRole("link", { name: "Decision record" })).toHaveAttribute(
+      "href",
+      "/jobs/job-1/selection/compare",
+    );
     expect(view.getByRole("link", { name: /Landing page Generating/ })).toHaveAttribute(
       "href",
       "/jobs/job-1#optional-deliverables",

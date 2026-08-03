@@ -549,6 +549,36 @@ describe('POST /api/jobs/:jobId/gate-action', () => {
       expect(response.body.error).toContain('unknown pain title');
     });
 
+    it('400s a whole-list market_segments replacement when the gate artifact was truncated', async () => {
+      mockJobFindFirst.mockResolvedValue(makeJob({
+        gateStage: 1,
+        gateArtifact: { type: 'niche_validation', niche_description: 'x', market_segments: ['A'], truncated: true },
+      }));
+
+      const response = await request(app)
+        .post(`/api/jobs/${jobId}/gate-action`)
+        .set(authHeaders)
+        .send({ action: 'continue', gateStage: 1, patch: { market_segments: ['A', 'B'] } });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toContain('truncated');
+      expect(mockDeliverDispatchWork).not.toHaveBeenCalled();
+    });
+
+    it('still accepts a scalar G1 patch at a truncated gate (the guard is list-replacement-shaped)', async () => {
+      mockJobFindFirst.mockResolvedValue(makeJob({
+        gateStage: 1,
+        gateArtifact: { type: 'niche_validation', niche_description: 'x', truncated: true },
+      }));
+
+      const response = await request(app)
+        .post(`/api/jobs/${jobId}/gate-action`)
+        .set(authHeaders)
+        .send({ action: 'continue', gateStage: 1, patch: { niche_description: 'Edited' } });
+
+      expect(response.status).toBe(200);
+    });
+
     it('G1 patch cross-check is a no-op (shape-only) even with an artifact present', async () => {
       mockJobFindFirst.mockResolvedValue(makeJob({ gateStage: 1 }));
 

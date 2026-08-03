@@ -118,6 +118,7 @@ TASK_TYPE_LANDING_PAGE = "landing_page"
 TASK_TYPE_RESEARCH_PHASE2 = "research_phase2"
 TASK_TYPE_REGENERATE_IDEAS = "regenerate_ideas"
 TASK_TYPE_SEED_IDEA = "seed_idea"
+TASK_TYPE_RECOVER_PAID_POOL = "recover_paid_pool_operation"
 TASK_TYPE_CATALOG_PAIN_POINTS = "catalog_pain_points"
 TASK_TYPE_CATALOG_IDEAS = "catalog_ideas"
 TASK_TYPE_CATALOG_PAIN_RESEARCH = "catalog_pain_research"
@@ -130,6 +131,7 @@ STATUS_AWAITING_GATE = "awaiting_gate"
 # Graceful shutdown
 shutdown_requested = False
 current_job_id = None
+current_recovery_token = None
 _signal_count = 0
 
 # Post-job recycle — exit cleanly after N jobs so Docker restart: unless-stopped
@@ -196,12 +198,13 @@ def process_job(job_data: dict) -> None:
     # Clear the systemic-LLM breaker from any previous job in this process.
     from nicheiq.utils.llm_service import LLMService as _LLMSvc
     _LLMSvc.reset_systemic()
-    global current_job_id
+    global current_job_id, current_recovery_token
 
     job_id = job_data.get("job_id")
     task_type = job_data.get("task_type", "research")
 
     current_job_id = job_id
+    current_recovery_token = job_data.get("recovery_token")
     logger.info(f"Processing job {job_id} (task_type={task_type})")
 
     # Register the dispatch id BEFORE anything reports home — notify_job_started is itself a
@@ -220,7 +223,10 @@ def process_job(job_data: dict) -> None:
         set_current_job(job_id)
 
         # Check if job was cancelled while in queue
-        should_proceed = notify_job_started(job_id)
+        should_proceed = notify_job_started(
+            job_id,
+            recovery_token=job_data.get("recovery_token"),
+        )
         if not should_proceed:
             logger.info(f"Job {job_id} was cancelled - skipping processing")
             set_current_job(None)
@@ -275,6 +281,17 @@ def process_job(job_data: dict) -> None:
                 },
                 niche=job_data.get("niche", ""),
                 dispatch_id=job_data.get("dispatch_id"),
+                base_candidate_refs=job_data.get("base_candidate_refs"),
+                pool_identity_map=job_data.get("pool_identity_map"),
+            )
+        elif task_type == TASK_TYPE_RECOVER_PAID_POOL:
+            from .paid_pool_recovery import run_paid_pool_recovery
+
+            result = run_paid_pool_recovery(
+                job_id=job_id,
+                dispatch_id=job_data["dispatch_id"],
+                recovery_token=job_data["recovery_token"],
+                journal=job_data["recovery_journal"],
             )
         elif task_type == TASK_TYPE_CATALOG_PAIN_POINTS:
             from .tasks import run_catalog_pain_points
@@ -388,6 +405,8 @@ def process_job(job_data: dict) -> None:
             logger.info(f"Job {job_id} seed idea settled - worker releasing")
             from .heartbeat import notify_job_completed
             notify_job_completed(job_id)
+        elif task_type == TASK_TYPE_RECOVER_PAID_POOL:
+            logger.info(f"Job {job_id} paid pool operation recovered - worker releasing")
         else:
             # Notify backend that job is done
             from .heartbeat import notify_job_completed
@@ -414,6 +433,25 @@ def process_job(job_data: dict) -> None:
         error_traceback = traceback.format_exc()
         logger.error(f"Job {job_id} failed: {error_msg}\n{error_traceback}")
 
+        from .paid_pool_recovery import (
+            PaidPoolCompletionAmbiguous,
+            PaidPoolOperationFenced,
+            PaidPoolRecoveryRequired,
+        )
+        if isinstance(
+            e,
+            (PaidPoolCompletionAmbiguous, PaidPoolOperationFenced, PaidPoolRecoveryRequired),
+        ):
+            logger.warning(
+                f"Job {job_id} writer was fenced; retained before-image for recovery"
+            )
+            return
+        if task_type == TASK_TYPE_RECOVER_PAID_POOL:
+            logger.error(
+                f"Paid pool recovery for {job_id} did not settle; heartbeat will refence and retry"
+            )
+            return
+
         # Additional-batch failures settle/refund only that dispatch and restore
         # AWAITING_SELECTION; the parent research job and existing pool stay intact.
         # Two distinct outcomes reach here, both settled the same way:
@@ -432,6 +470,12 @@ def process_job(job_data: dict) -> None:
                         f"Regeneration-failed revert not delivered for {job_id}; "
                         "leaving stale recovery to settle the operation without failing "
                         "the parent research job"
+                    )
+                elif dispatch_id:
+                    from .paid_pool_recovery import cleanup_paid_pool_operation
+
+                    cleanup_paid_pool_operation(
+                        job_data["checkpoint_path"], job_id, dispatch_id,
                     )
                 return  # Never fail the parent job for an additional-batch operation
             except Exception as revert_err:
@@ -464,6 +508,12 @@ def process_job(job_data: dict) -> None:
                             f"Seed delivery failure could not be settled for {job_id}; "
                             "the reverted result may remain QUEUED/RUNNING until stale recovery"
                         )
+                    elif dispatch_id:
+                        from .paid_pool_recovery import cleanup_paid_pool_operation
+
+                        cleanup_paid_pool_operation(
+                            job_data["checkpoint_path"], job_id, dispatch_id,
+                        )
                 except Exception as revert_err:
                     logger.error(
                         f"Failed to settle reverted seed delivery for {job_id}: {revert_err}"
@@ -477,6 +527,12 @@ def process_job(job_data: dict) -> None:
                         f"Seed-failed revert not delivered for {job_id} — the job may be stuck "
                         "QUEUED/RUNNING; NOT falling through to notify_job_failed (would "
                         "incorrectly refund/fail the parent job for a seed-only failure)"
+                    )
+                elif dispatch_id:
+                    from .paid_pool_recovery import cleanup_paid_pool_operation
+
+                    cleanup_paid_pool_operation(
+                        job_data["checkpoint_path"], job_id, dispatch_id,
                     )
             except Exception as revert_err:
                 logger.error(f"Failed to revert seed idea for {job_id}: {revert_err}")
@@ -511,6 +567,7 @@ def process_job(job_data: dict) -> None:
 
     finally:
         current_job_id = None
+        current_recovery_token = None
         from .heartbeat import set_current_job
         set_current_job(None)
         # Drop the dispatch id with the job. A worker process handles many jobs in sequence,
@@ -526,8 +583,14 @@ def process_job(job_data: dict) -> None:
         )
 
 
-def _claim_key(job_id: str, dispatch_id: str | None) -> str:
+def _claim_key(
+    job_id: str,
+    dispatch_id: str | None,
+    recovery_token: str | None = None,
+) -> str:
     """Stable Redis field for one delivery attempt; identityless jobs use a fenced legacy key."""
+    if recovery_token and dispatch_id:
+        return f"recovery:{dispatch_id}:{recovery_token}"
     return f"dispatch:{dispatch_id}" if dispatch_id else f"legacy:{job_id}"
 
 
@@ -537,13 +600,14 @@ def _claim_processing_attempt(
     dispatch_id: str | None,
     worker_id: str,
     now: float,
+    recovery_token: str | None = None,
 ) -> bool:
     """Acquire only this attempt; the backend start CAS arbitrates duplicate deliveries."""
     result = redis_conn.eval(
         _CLAIM_ATTEMPT_LUA,
         1,
         CLAIMS_HASH,
-        _claim_key(job_id, dispatch_id),
+        _claim_key(job_id, dispatch_id, recovery_token),
         f"{now}:{worker_id}",
     )
     return result == 1
@@ -555,13 +619,14 @@ def _refresh_processing_claim(
     dispatch_id: str | None,
     worker_id: str,
     now: float,
+    recovery_token: str | None = None,
 ) -> bool:
     """Refresh/create only this attempt's lease, without overwriting another worker's ownership."""
     result = redis_conn.eval(
         _REFRESH_CLAIM_LUA,
         1,
         CLAIMS_HASH,
-        _claim_key(job_id, dispatch_id),
+        _claim_key(job_id, dispatch_id, recovery_token),
         worker_id,
         str(now),
     )
@@ -574,6 +639,7 @@ def _ack_processing(
     job_id: str | None,
     dispatch_id: str | None,
     worker_id: str,
+    recovery_token: str | None = None,
 ) -> None:
     """Remove a finished/poison job from the processing list + its claim. Fail-soft: an ack
     failure only means the sweep requeues it later (at-least-once, never lost)."""
@@ -585,7 +651,7 @@ def _ack_processing(
                 PROCESSING_QUEUE,
                 CLAIMS_HASH,
                 raw_job_json,
-                _claim_key(job_id, dispatch_id),
+                _claim_key(job_id, dispatch_id, recovery_token),
                 worker_id,
             )
         else:
@@ -608,6 +674,7 @@ def requeue_stale_processing(redis_conn) -> int:
                 payload = json.loads(raw)
                 job_id = payload.get("job_id")
                 dispatch_id = payload.get("dispatch_id")
+                recovery_token = payload.get("recovery_token")
             except (json.JSONDecodeError, AttributeError):
                 redis_conn.lrem(PROCESSING_QUEUE, 1, raw)
                 logger.warning("[Requeue] dropped malformed processing entry")
@@ -623,7 +690,7 @@ def requeue_stale_processing(redis_conn) -> int:
                 CLAIMS_HASH,
                 QUEUE_NAME,
                 raw,
-                _claim_key(job_id, dispatch_id),
+                _claim_key(job_id, dispatch_id, recovery_token),
                 str(now - STALE_CLAIM_SECONDS),
                 job_id,
             )
@@ -671,6 +738,7 @@ def run_consumer():
             dispatch_id,
             worker_id,
             _time0.time(),
+            current_recovery_token,
         )
 
     set_claim_refresher(_refresh_claim)
@@ -698,10 +766,12 @@ def run_consumer():
 
             job_id = None
             dispatch_id = None
+            recovery_token = None
             try:
                 job_data = json.loads(job_json)
                 job_id = job_data.get("job_id")
                 dispatch_id = job_data.get("dispatch_id")
+                recovery_token = job_data.get("recovery_token")
                 owns_claim = True
                 if job_id:
                     try:
@@ -711,6 +781,7 @@ def run_consumer():
                             dispatch_id,
                             worker_id,
                             _time.time(),
+                            recovery_token,
                         )
                     except redis.RedisError:
                         pass  # claim is advisory; the sweep treats a missing claim as stale
@@ -735,6 +806,7 @@ def run_consumer():
                     job_id,
                     dispatch_id,
                     worker_id,
+                    recovery_token,
                 )
 
             # Post-job recycle check. process_job() has returned (success,

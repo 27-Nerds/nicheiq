@@ -54,7 +54,9 @@
 
   .state-headline {
     margin: 0 0 0.5rem 0;
-    font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+    /* Token, not a family name — a hardcoded "Plus Jakarta Sans" here rendered in the OS
+       default face after the 2026-08 consolidation to Geist (that family is no longer loaded). */
+    font-family: var(--font-display);
     font-weight: 700;
     font-size: 1.375rem;
     color: var(--color-text-primary);

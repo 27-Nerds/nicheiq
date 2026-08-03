@@ -195,6 +195,7 @@ export interface SelectionExperimentPrefill {
 export interface SelectionExperiment extends SelectionExperimentDraft {
   id: string;
   jobId: string;
+  version: number;
   ideaSnapshot: Record<string, unknown>;
   status: ExperimentStatus;
   lockedAt: string | null;

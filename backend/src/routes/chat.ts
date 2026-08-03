@@ -6,16 +6,21 @@ import type {
   ChatCompletionToolChoiceOption,
 } from 'openai/resources/chat/completions';
 import type { Prisma } from '@prisma/client';
-import { CONFIG } from '../config.js';
 import { prisma } from '../services/db.js';
 import { requireInternalAuth, AuthenticatedRequest } from '../middleware/auth.js';
 import { checkChatRateLimit } from '../middleware/rateLimit.js';
 import { validateJobId } from '../middleware/validation.js';
-import { chatComplete, chatCompleteStream } from '../services/openai.js';
+import { chatComplete, chatCompleteStream, hasApiKeyForModel } from '../services/openai.js';
 import { fenceContent } from '../utils/promptFence.js';
 import { hasAnalystAccess } from '../services/featureAccess.js';
 import { getPreviewReportForJob, getDiscoveryDataForJob } from '../services/assetService.js';
 import { assessPoolHealth, type PoolHealthResult } from '../utils/poolHealth.js';
+import {
+  adversarialReviewLabel,
+  incumbentParityPhrase,
+  presentableFieldValue,
+  presentableRecord,
+} from '../utils/selectionVocabulary.js';
 // Gate patch whitelists — the SAME Zod schemas gate-action (jobs.ts) validates
 // an apply against. Reusing them here (rather than duplicating the shape) keeps
 // the chat tool's proposal schema and the apply-time whitelist in lockstep (R4).
@@ -540,6 +545,14 @@ export interface DossierBundle {
   funnelCounts: Record<string, number>;
   maxVisibleMf: number | null;
   topIdeas: DossierIdeaSummary[];
+  /** Thesis partition of the visible pool (`idea_theses.theses`), the same grouping the
+   *  selection screen renders as one card per product thesis with variants nested. Without
+   *  it the analyst sees a flat list of N candidates and cannot say that four of them are
+   *  one business. `[]` when the run has no non-degraded buyer-job partition. */
+  ideaTheses: Record<string, unknown>[];
+  /** Validated buyer jobs with NO surviving idea (`idea_theses.uncovered_families`). The
+   *  honesty half of the partition: unexamined, not ruled out. */
+  uncoveredFamilies: Record<string, unknown>[];
   /** Canonical pain-point titles from this run's discovery data (quote keys — the same
    *  titles `get_pain_evidence` resolves exact-match against). Defaults empty here;
    *  populated by the G3 chat route handler once it has fetched discovery data anyway
@@ -576,6 +589,8 @@ export function assembleDossierBundle(previewReport: unknown, fallbackSolutionId
     payability: typeof seg.payability_class === 'string' ? seg.payability_class : null,
   }));
 
+  const theses = (pr.idea_theses ?? {}) as Record<string, unknown>;
+
   const difficulty = (pr.niche_difficulty_verdict ?? {}) as Record<string, unknown>;
   const examinedRuledOut = Array.isArray(pr.examined_ruled_out) ? (pr.examined_ruled_out as Record<string, unknown>[]) : [];
   const researchMetadata = (pr.research_metadata ?? {}) as Record<string, unknown>;
@@ -608,6 +623,10 @@ export function assembleDossierBundle(previewReport: unknown, fallbackSolutionId
     funnelCounts,
     maxVisibleMf,
     topIdeas,
+    ideaTheses: Array.isArray(theses.theses) ? (theses.theses as Record<string, unknown>[]) : [],
+    uncoveredFamilies: Array.isArray(theses.uncovered_families)
+      ? (theses.uncovered_families as Record<string, unknown>[])
+      : [],
     painTitles: [],
   };
 }
@@ -714,6 +733,27 @@ export function stripSchemaVocabulary(text: string): string {
   });
 }
 
+/**
+ * The adversarial-review line, using the words the owner's screen shows.
+ *
+ * `killed | weakened | survives` are INTERNAL values. `killed` was already mapped here to
+ * "Premise unproven" (frontend/src/lib/utils/adversarialReview.ts PREMISE_UNPROVEN_LABEL)
+ * because the review only ever tested the PREMISE, not the idea; the other two were left
+ * raw on the argument that they read as ordinary English. A live session then proved the
+ * cost of that argument — the analyst reads a word, and the analyst SAYS that word — and
+ * "Adversarial review: weakened" states a verdict on the idea that the product never
+ * issued and that no screen shows. All three now go through the shared map. An
+ * unrecognised verdict is dropped rather than echoed, but its evidence-cited objections
+ * are still carried, since those are prose the review wrote and the owner needs them.
+ * What the labels MEAN is stated once, in the product-knowledge section, not per idea.
+ */
+function adversarialReviewLine(verdict: string, caveats: string[]): string {
+  const label = adversarialReviewLabel(verdict);
+  const objections = caveats.length ? ` — ${caveats.join('; ')}` : '';
+  if (!label) return caveats.length ? `Adversarial review objections${objections}` : '';
+  return `Adversarial review: ${label}${objections}`;
+}
+
 function buildIdeaSection(idea: Record<string, unknown>, index: number, bodyBudget: number): string {
   // The heading is the analyst's whole vocabulary for this candidate, and whatever it
   // reads it eventually says back. `solution_name` is an internal codename that appears
@@ -736,11 +776,15 @@ function buildIdeaSection(idea: Record<string, unknown>, index: number, bodyBudg
     `Originality: ${scoreBand(idea.novelty_score)}`,
     `SEO potential: ${scoreBand(seoScore)}`,
     `Feasibility: ${scoreBand(idea.technical_feasibility_score)}`,
-    idea.incumbent_parity ? `Competitor findings: ${idea.incumbent_parity}` : '',
-    idea.adjacent_market_parity ? `Adjacent-market competitor findings: ${idea.adjacent_market_parity}` : '',
-    idea.red_team_verdict
-      ? `Adversarial review: ${idea.red_team_verdict}${caveats.length ? ` — ${caveats.join('; ')}` : ''}`
+    // The stored value leads with a closed-vocab CLASS token (`substitute (Notion): …`), and the
+    // analyst repeats whatever it reads — "substitute by Notion" is not a sentence the product
+    // says anywhere. stripSchemaVocabulary only de-underscores; it cannot know these mean.
+    // Read-only field: it is in no patch whitelist and no tool schema, so nothing round-trips it.
+    idea.incumbent_parity ? `Competitor findings: ${incumbentParityPhrase(String(idea.incumbent_parity))}` : '',
+    idea.adjacent_market_parity
+      ? `Adjacent-market competitor findings: ${incumbentParityPhrase(String(idea.adjacent_market_parity))}`
       : '',
+    idea.red_team_verdict ? adversarialReviewLine(String(idea.red_team_verdict), caveats) : '',
     pricingStrategy ? `Pricing: ${pricingStrategy}` : '',
     tags.rationale ? `Why these tags: ${tags.rationale}` : '',
   ]
@@ -890,15 +934,93 @@ function buildRuledOutSection(
       ? `Originality: ${scoreBand(idea.novelty_score)}`
       : '',
     typeof seoScore === 'number' ? `SEO potential: ${scoreBand(seoScore)}` : '',
-    idea.incumbent_parity ? `Competitor findings: ${idea.incumbent_parity}` : '',
-    idea.red_team_verdict
-      ? `Adversarial review: ${idea.red_team_verdict}${caveats.length ? ` — ${caveats.join('; ')}` : ''}`
-      : '',
+    idea.incumbent_parity ? `Competitor findings: ${incumbentParityPhrase(String(idea.incumbent_parity))}` : '',
+    idea.red_team_verdict ? adversarialReviewLine(String(idea.red_team_verdict), caveats) : '',
   ]
     .filter(Boolean)
     .join('\n');
 
   return `### ${name}\n${truncateText(bodyLines, bodyBudget)}`;
+}
+
+const THESIS_INCUMBENT_PHRASE: Record<string, string> = {
+  occupied: 'a named vendor already ships this capability',
+  partial: 'a named vendor partly covers it',
+  open: 'no incumbent found for any variant',
+  unknown: 'competition not established',
+};
+
+const UNCOVERED_REASON_PHRASE: Record<string, string> = {
+  no_cell_allocated: 'no idea was ever generated for it',
+  no_surviving_idea: 'ideas were generated for it and none survived the quality bar',
+  unknown: 'the reason was not recorded',
+};
+
+/**
+ * The pool's thesis partition, in the same terms the selection screen shows it.
+ *
+ * The screen groups the ranked list into one card per product thesis (a buyer job) with
+ * its variants nested, and lists validated buyer jobs that no surviving idea addresses.
+ * The analyst reads a FLAT list of candidates, so without this it cannot answer the
+ * obvious question about that screen ("aren't these four the same business?") and would
+ * describe four variants as four opportunities. Members are printed by their ranked
+ * R-reference and displayed title; the partition's own `name` is the internal codename
+ * and never reaches the model.
+ */
+function buildThesisBlock(bundle: DossierBundle): string {
+  if (!bundle.ideaTheses.length && !bundle.uncoveredFamilies.length) return '';
+  const refByName = new Map<string, string>();
+  bundle.ideas.forEach((idea, index) => {
+    const codename = ideaName(idea);
+    if (codename) refByName.set(codename, `[R${index + 1}] ${ideaDisplayTitle(idea) || codename}`);
+  });
+
+  const thesisLines = bundle.ideaTheses.slice(0, 8).map((thesis) => {
+    const members = Array.isArray(thesis.members) ? (thesis.members as Record<string, unknown>[]) : [];
+    const labels = members
+      .map((member) => refByName.get(String(member.name ?? '')))
+      .filter((label): label is string => Boolean(label));
+    const job = [thesis.buyer, thesis.triggering_job, thesis.economic_outcome]
+      .filter((part) => typeof part === 'string' && part.trim())
+      .join(' / ');
+    const status = THESIS_INCUMBENT_PHRASE[String(thesis.incumbent_status ?? 'unknown')];
+    const vendors = Array.isArray(thesis.incumbent_vendors)
+      ? (thesis.incumbent_vendors as string[]).filter(Boolean).slice(0, 3)
+      : [];
+    const assumptions = (Array.isArray(thesis.fatal_assumptions)
+      ? (thesis.fatal_assumptions as Record<string, unknown>[])
+      : [])
+      .slice(0, 3)
+      .map((entry) => String(entry.assumption ?? '').trim())
+      .filter(Boolean);
+    return [
+      `- ${thesis.display_label ?? 'Unnamed thesis'} (${labels.length || members.length} variant${
+        (labels.length || members.length) === 1 ? '' : 's'
+      }: ${labels.join(', ') || 'none matched to the ranked list'})`,
+      job ? `  Buyer job: ${job}` : '',
+      status ? `  Competition: ${status}${vendors.length ? ` (${vendors.join(', ')})` : ''}` : '',
+      assumptions.length ? `  What has to be true: ${assumptions.join(' | ')}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
+  });
+
+  const uncoveredLines = bundle.uncoveredFamilies.slice(0, 6).map((family) => {
+    const reason = UNCOVERED_REASON_PHRASE[String(family.reason ?? 'unknown')]
+      ?? UNCOVERED_REASON_PHRASE.unknown;
+    return `- ${family.display_label ?? 'Unnamed buyer job'}: ${reason}`;
+  });
+
+  return [
+    thesisLines.length
+      ? `Product theses in this pool (the ranked list groups into these buyer jobs; several candidates under one thesis are variants of ONE business, not separate opportunities):\n${thesisLines.join('\n')}`
+      : '',
+    uncoveredLines.length
+      ? `Validated buyer jobs with no surviving idea (unexamined, NOT ruled out):\n${uncoveredLines.join('\n')}`
+      : '',
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 }
 
 /** Run-level blocks: portfolio summary, wallet/market reality, niche difficulty, the
@@ -907,6 +1029,8 @@ function buildRuledOutSection(
 function buildRunLevelBlock(bundle: DossierBundle): string {
   const lines: string[] = [];
   if (bundle.portfolioSummary) lines.push(`Portfolio summary: ${bundle.portfolioSummary}`);
+  const thesisBlock = buildThesisBlock(bundle);
+  if (thesisBlock) lines.push(thesisBlock);
   if (bundle.segments.length) {
     const segLines = bundle.segments.map((s) => {
       const bits = [
@@ -1344,6 +1468,11 @@ function buildG1Dossier(jobId: string, niche: string, gateArtifact: unknown): st
     `Niche description: ${typeof a.niche_description === 'string' ? a.niche_description : '(not set)'}`,
     '',
     `Market segments:\n${segments.length ? segments.map((s) => `- ${s}`).join('\n') : '(none)'}`,
+    ...(a.truncated === true
+      ? ['', 'Note: the market segment list above was truncated — do not emit a replacement list; edit individual segments instead.']
+      : []),
+    '',
+    `Target audience: ${typeof a.user_target_audience === 'string' && a.user_target_audience.trim() ? a.user_target_audience : '(not set)'}`,
     '',
     `Industry boundaries: ${typeof a.industry_boundaries === 'string' ? a.industry_boundaries : '(not set)'}`,
   ].join('\n');
@@ -1423,7 +1552,7 @@ const G1_PATCH_TOOL: ChatCompletionTool = {
       type: 'object',
       properties: {
         niche_description: { type: 'string', description: 'Revised niche description (max 2000 chars). Omit if unchanged.' },
-        market_segments: { type: 'array', items: { type: 'string' }, description: 'Revised full list of market segments (max 8). Omit if unchanged.' },
+        market_segments: { type: 'array', items: { type: 'string' }, description: 'Revised full list of market segments (max 12). Omit if unchanged.' },
         industry_boundaries: { type: 'string', description: "Revised statement of what counts as in/out of scope. Omit if unchanged." },
         user_target_audience: { type: 'string', description: 'Revised target audience framing. Omit if unchanged.' },
         rationale: { type: 'string', description: 'One sentence explaining why this change fits what the user asked for — shown on the patch card.' },
@@ -1689,6 +1818,7 @@ const EXPORT_IDEA_TOOL: ChatCompletionTool = {
  * against the job's stored ranked pool. */
 interface CompletedDecisionJourney {
   ideas: Record<string, unknown>[];
+  selectionNote: string | null;
   founderProfile: SelectionDecisionProfile | null;
   founderFit: FounderFitArtifact | null;
   challenges: SelectionChallengeArtifact[];
@@ -1757,6 +1887,9 @@ function buildCompletedReportDossier(
 
   if (journey) {
     const journeyBlocks = [
+      journey.selectionNote?.trim()
+        ? `Owner selection note (private workspace context, not research evidence):\n${journey.selectionNote.trim()}`
+        : '',
       buildFounderDecisionBlock(journey.founderProfile, journey.founderFit, journey.ideas),
       buildSelectionChallengeBlock(journey.challenges, journey.ideas),
       buildOwnerEvidenceBlock(journey.ownerEvidence, journey.ideas),
@@ -1928,7 +2061,7 @@ async function executeToolCall(
         const sections = Object.keys(asReportRecord(ctx.report)).sort().join(', ');
         return fail('Report section not found', `available top-level sections: ${sections}`);
       }
-      const result = `Report path: report.${args.data.section}\n${compactReportValue(value)}`;
+      const result = `Report path: report.${args.data.section}\n${compactReportValue(presentableRecord(value))}`;
       return { ok: true, label: `Read report section "${args.data.section}"`, fencedResult: fenceContent(result, 'tool_result', name, 'TOOL RESULT') };
     }
     if (name === 'get_solution_detail' || name === 'compare_solutions') {
@@ -1994,13 +2127,24 @@ async function executeToolCall(
         label: name === 'get_solution_detail'
           ? `Read solution detail for ${exactIdeas[0].idea_ref} revision ${exactIdeas[0].idea_revision}`
           : `Compared ${exactIdeas.length} exact candidate revisions`,
-        fencedResult: fenceContent(compactReportValue(exactIdeas), 'tool_result', name, 'TOOL RESULT'),
+        // The record is exact, its VOCABULARY is not verbatim: `candidate_record` and the
+        // attributed report records carry `red_team_verdict` and the parity fields, whose
+        // stored values lead with closed-vocabulary tokens the product never shows. Handed
+        // raw, the analyst quoted them back — "red-team verdict: killed", "incumbent parity:
+        // partial by Opendate" — off its own tool result. Values are mapped, keys and every
+        // other field are untouched, so the record stays exact and its paths stay quotable.
+        fencedResult: fenceContent(compactReportValue(presentableRecord(exactIdeas)), 'tool_result', name, 'TOOL RESULT'),
       };
     }
     if (name === 'get_evidence') {
       const args = GetReportEvidenceArgsSchema.safeParse(parsedArgs);
       if (!args.success || !ctx.report) return fail('Evidence lookup failed', 'missing query or report');
-      const matches = searchReportEvidence(ctx.report, args.data.query);
+      // Evidence search returns matched LEAVES, so the field name survives only as the last
+      // segment of the path — a search for a vendor hits the parity string itself.
+      const matches = searchReportEvidence(ctx.report, args.data.query).map((match) => ({
+        ...match,
+        value: presentableFieldValue(match.path.split('.').pop() ?? '', match.value),
+      }));
       return {
         ok: true,
         label: `Searched report evidence for "${args.data.query}"`,
@@ -2116,6 +2260,7 @@ chatRouter.post('/:jobId/chat', requireInternalAuth, validateJobId, async (req: 
       selectionDecisionProfile: true,
       selectionDraft: true,
       selectionDraftVersion: true,
+      selectionRationale: true,
       selectionFounderFit: true,
       selectionFinalDecision: {
         select: {
@@ -2192,13 +2337,12 @@ chatRouter.post('/:jobId/chat', requireInternalAuth, validateJobId, async (req: 
     return;
   }
 
-  if (!CONFIG.openaiApiKey) {
-    console.error('OPENAI_API_KEY not configured');
+  const analystModel = await resolveAnalystModel();
+  if (!hasApiKeyForModel(analystModel)) {
+    console.error(`API key not configured for analyst model ${analystModel}`);
     res.status(503).json({ error: 'Chat service unavailable' });
     return;
   }
-
-  const analystModel = await resolveAnalystModel();
 
   // Race-safe turn cap: an advisory lock scoped to the transaction serializes
   // concurrent requests for the SAME job (distinct jobs never contend), so the
@@ -2385,6 +2529,7 @@ chatRouter.post('/:jobId/chat', requireInternalAuth, validateJobId, async (req: 
       decisionTools ? job.selectionFinalDecision : null,
       {
         ideas: completedIdeas,
+        selectionNote: job.selectionRationale,
         // Blanked without the decision-tools grant — same reasoning as the G3 dossier.
         founderProfile: decisionTools && completedProfile.success ? completedProfile.data : null,
         founderFit: decisionTools ? completedFounderFit : null,
@@ -2749,6 +2894,7 @@ chatRouter.post('/:jobId/chat', requireInternalAuth, validateJobId, async (req: 
           maxTokens: 800,
           tools: toolsForGate,
           toolChoice: roundToolChoice,
+          reasoningEffort: 'none',
           signal: controller.signal,
         });
         const roundToolCallsMap = new Map<number, { id?: string; name?: string; args: string }>();
@@ -2782,6 +2928,7 @@ chatRouter.post('/:jobId/chat', requireInternalAuth, validateJobId, async (req: 
           maxTokens: 800,
           tools: toolsForGate,
           toolChoice: roundToolChoice,
+          reasoningEffort: 'none',
         });
         const msg = resp.choices?.[0]?.message;
         roundContent = msg?.content ?? '';

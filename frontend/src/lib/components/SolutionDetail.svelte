@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import { untrack } from "svelte";
+  import { SvelteSet } from "svelte/reactivity";
   import {
     Check,
     ChevronLeft,
@@ -147,12 +148,24 @@
   const origMetric = $derived(originalityMetric(solution));
 
   const individualScores = $derived([
-    { label: "Market", value: solution.market_fit_score, def: SCORE_DEFINITIONS.market_fit, why: scoreRationale(solution, "market_fit") },
-    { label: "Feasible", value: solution.technical_feasibility_score, def: SCORE_DEFINITIONS.technical_feasibility, why: scoreRationale(solution, "technical_feasibility") },
-    { label: "SEO", value: solution.seo_scalability_score, def: SCORE_DEFINITIONS.seo, why: scoreRationale(solution, "seo") },
-    { label: origMetric.short ?? "Distinct", value: origMetric.value, def: SCORE_DEFINITIONS.originality, why: scoreRationale(solution, "novelty") },
-    { label: "Solo", value: solution.solo_dev_feasibility, def: SCORE_DEFINITIONS.solo_dev, why: scoreRationale(solution, "solo_dev") },
-  ]);
+    { key: "market_fit" as const, label: "Market", value: solution.market_fit_score, def: SCORE_DEFINITIONS.market_fit },
+    { key: "technical_feasibility" as const, label: "Feasible", value: solution.technical_feasibility_score, def: SCORE_DEFINITIONS.technical_feasibility },
+    { key: "seo" as const, label: "SEO", value: solution.seo_scalability_score, def: SCORE_DEFINITIONS.seo },
+    { key: "novelty" as const, label: origMetric.short ?? "Distinct", value: origMetric.value, def: SCORE_DEFINITIONS.originality },
+    { key: "solo_dev" as const, label: "Solo", value: solution.solo_dev_feasibility, def: SCORE_DEFINITIONS.solo_dev },
+  ].map((s) => ({
+    ...s,
+    why: scoreRationale(solution, s.key),
+    whyFull: scoreRationale(solution, s.key, { full: true }),
+  })));
+
+  // The popover text is clamped to keep the card scannable; when the clamp actually cut
+  // something, the reader gets a control to see the rest rather than a bare "…".
+  const expandedScoreKeys = new SvelteSet<string>();
+  function toggleScoreWhy(key: string): void {
+    if (expandedScoreKeys.has(key)) expandedScoreKeys.delete(key);
+    else expandedScoreKeys.add(key);
+  }
 
   // Backend-sourced strength badge (tags.primary_strength); legacy fallback for pre-tags data.
   const superpower = $derived(solutionStrengthBadge(solution, true));
@@ -244,7 +257,15 @@
 </script>
 
 <!-- Click-popover content: methodology ("what it measures") + this idea's reasoning. -->
-{#snippet scoreDetail(def: string, why: string | null, value: number | null | undefined)}
+{#snippet scoreDetail(
+  key: string,
+  def: string,
+  why: string | null,
+  whyFull: string | null,
+  value: number | null | undefined,
+)}
+  {@const open = expandedScoreKeys.has(key)}
+  {@const clipped = !!whyFull && whyFull !== why}
   <div class="score-detail">
     <div class="score-detail-section">
       <span class="score-detail-label">What this measures</span>
@@ -252,7 +273,18 @@
     </div>
     <div class="score-detail-section">
       <span class="score-detail-label">Why this idea{value != null ? ` scored ${Math.round(value * 100)}` : ''}</span>
-      <p>{why || 'No idea-specific detail available yet.'}</p>
+      <p id={`score-why-${key}`}>{(open ? whyFull : why) || 'No idea-specific detail available yet.'}</p>
+      {#if clipped}
+        <button
+          type="button"
+          class="score-detail-more"
+          aria-expanded={open}
+          aria-controls={`score-why-${key}`}
+          onclick={() => toggleScoreWhy(key)}
+        >
+          {open ? "Show less" : "Show full reasoning"}
+        </button>
+      {/if}
     </div>
   </div>
 {/snippet}
@@ -298,7 +330,7 @@
                   {/if}
                 </div>
               {/snippet}
-              {@render scoreDetail(SCORE_DEFINITIONS.composite, compositeWhy, compositeScore)}
+              {@render scoreDetail("composite", SCORE_DEFINITIONS.composite, compositeWhy, compositeWhyFull, compositeScore)}
             </Popover>
             {#if superpower}
               <Badge variant={superpower.variant} size="sm">{superpower.label}</Badge>
@@ -428,7 +460,7 @@
                     <span class="score-item-value" style:color={individualScoreColor(s.value)}>{s.value != null ? (s.value * 100).toFixed(0) : '--'}</span>
                   </span>
                 {/snippet}
-                {@render scoreDetail(s.def, s.why, s.value)}
+                {@render scoreDetail(s.key, s.def, s.why, s.whyFull, s.value)}
               </Popover>
             {/each}
           </div>
@@ -656,6 +688,22 @@
     color: var(--color-text-secondary);
     font-size: var(--text-base);
     line-height: var(--leading-normal);
+  }
+
+  .score-detail-more {
+    justify-self: start;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--color-accent-dark);
+    font-family: var(--font-body);
+    font-size: var(--text-sm);
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .score-detail-more:hover {
+    color: var(--color-accent-hover);
   }
 
   .modal-actions {

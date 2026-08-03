@@ -370,7 +370,17 @@ class CrewKeywordValidationResult(BaseModel):
     )
 
     solution_name: str = Field(..., description="Name of the solution")
-    validated_count: int = Field(..., ge=0, description="Number of validated keywords")
+    validated_count: int = Field(
+        ...,
+        ge=0,
+        description=(
+            "Number of GRADED, on-idea keywords — canonically == len(validated_keywords). "
+            "NOT the unfiltered expansion pool size (that is the producer's "
+            "expansion_pool_count, which is never persisted here). Read via "
+            "`graded_keyword_count` so legacy checkpoints written under the old "
+            "pool-count meaning are healed."
+        ),
+    )
     total_volume: int = Field(..., ge=0, description="Total monthly search volume")
     avg_competition: float = Field(..., ge=0.0, le=100.0, description="Average competition index")
     # NEW: Explicit documentation of competition scale
@@ -443,3 +453,17 @@ class CrewKeywordValidationResult(BaseModel):
             "Used in keyword_demand_score calculation: 55% volume + 25% opportunity + 20% rankability."
         )
     )
+
+    @property
+    def graded_keyword_count(self) -> int:
+        """Number of semantically graded, on-idea keywords.
+
+        The canonical count. New checkpoints stamp ``validated_count`` with exactly this
+        value, but checkpoints written before 2026-08 stored the UNFILTERED expansion pool
+        size there (observed live: validated_count=50 with one graded keyword), so prefer
+        the graded list whenever it is present. ``validated_keywords is None`` means the
+        list was never persisted (legacy data) — only then does validated_count stand in.
+        """
+        if self.validated_keywords is not None:
+            return len(self.validated_keywords)
+        return self.validated_count

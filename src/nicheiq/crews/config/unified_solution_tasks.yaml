@@ -516,8 +516,11 @@ solution_refinement:
     **BOLD SLOT (mandatory):** ONE of your final solutions MUST be the genuinely
     novel/original option — the one built on the lowest-obviousness source concept (the
     most non-obvious insight) — and you MUST keep it EVEN IF its market_fit_score is
-    slightly lower than a safer alternative. Give it a real novelty_score ≥ 0.6 with
-    substantive conventional_approach / innovation_angle / why_it_works text. A final set
+    slightly lower than a safer alternative. This is a SELECTION rule (keep the
+    lowest-obviousness concept), not a floor on the score it must receive: write substantive
+    conventional_approach / innovation_angle / why_it_works text for it and then score its
+    novelty by the same rubric and quality gate as every other solution, whatever that
+    yields. Do not embellish the evidence text to lift the score. A final set
     of only "safe" ideas is INVALID — generic ideas fail in crowded markets regardless of
     fit. The bold slot must ALSO serve a DIFFERENT pain than
     your top-scoring solution; if the lowest-obviousness concept shares your #1's pain, pick
@@ -545,6 +548,8 @@ solution_refinement:
     score similarly on market_fit), KEEP the top 2 for that pain and SWAP IN the next-best
     solution that serves a DIFFERENT pain — even if its composite is slightly lower. A
     pain-monotone slate is INVALID regardless of score gap.
+    EXCEPTION: if {high_priority_list} genuinely contains fewer than 2 distinct pains, cover all
+    of them and note it — do not invent a pain to satisfy this rule.
 
     INVALID: 5 solutions all targeting "[Location] + [Service]" pattern, OR all one project_type,
     OR all serving the same pain.
@@ -621,7 +626,10 @@ solution_refinement:
     **SEO Fields:**
     - programmatic_seo_opportunity, content_generation_model
     - organic_discovery_queries (5-10 queries)
-    - estimated_cac_organic, estimated_cac_paid
+    - estimated_cac_organic, estimated_cac_paid — leave BOTH blank/null unless the research above
+      contains an actual acquisition-cost signal for this niche. No CAC input exists at this stage,
+      so any figure you write here would be invented; a grounded organic CAC is established later
+      (estimated_cac_organic_refined). Blank is the correct answer, not a gap to fill.
     - estimated_indexable_pages — your realistic estimate of the number of DISTINCT, indexable, non-thin pages the content corpus yields (an integer). This is the backbone of seo_scalability_score, so estimate it FIRST, then score: a few dozen pages is a low SEO play, a few hundred is moderate, low-thousands+ of genuinely distinct pages is high. Count only real, differentiated pages — exclude near-duplicate combinatorial filler and any pages gated behind a login. Provisional (keyword research refines it later for the chosen idea); estimate honestly, do not inflate.
     - seo_scalability_score
 
@@ -845,7 +853,9 @@ competitive_analysis:
 
     **solution_landscapes** (List[CompetitiveLandscape]): One per solution from Task 1, each containing:
     - solution_name: Matching solution from Task 1
-    - competitors: List[Competitor] (5-8 verified competitors with comprehensive feature profiles - typically 4-8 features each)
+    - competitors: List[Competitor] (every competitor you actually verified — no minimum, no maximum.
+      An empty list is a valid answer. Better to report 2 verified competitors than 10 fabricated ones.
+      Each verified entry carries a comprehensive feature profile - typically 4-8 features each)
     - market_gaps: List[str] (ALL unmet needs or weaknesses identified - be comprehensive, include every gap found from user complaints, missing features, and underserved segments)
     - differentiation_opportunities: List[str] (ALL ways new solution can differentiate - comprehensive list)
     - competitive_intensity: LOW/MEDIUM/HIGH

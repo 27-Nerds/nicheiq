@@ -30,12 +30,17 @@ gather discussions, mine pain points, and map the real audience segments across
 the whole market. We deliberately do **not** filter the evidence down to your
 stated audience.
 
-By default, naming an audience changes only how we **organize** the results, not
-what we look at. (We also offer an optional "audience-aware" mode that, when
-enabled, *adds* some extra audience-specific discussions to the evidence we
-gather — on top of the broad set, never in place of it. It's additive: the wide
-coverage is untouched, and no pain or score is ever inflated to favor your
-audience.)
+By default, naming an audience changes only how we **organize and order** the
+results, not what we look at. (We also offer an optional "audience-aware" mode
+that, when enabled, *adds* some extra audience-specific discussions to the
+evidence we gather — on top of the broad set, never in place of it. It's
+additive: the wide coverage is untouched, and no pain or score is ever inflated
+to favor your audience.)
+
+One ordering nuance, added 2026-08: an idea we judge to serve an **adjacent**
+audience rather than yours carries a small ranking penalty, so the ideas built
+for the people you named surface first. It's a tie-breaker on **rank only** —
+every score we display is the idea's own, unchanged, and nothing is hidden.
 
 Why keep it broad either way: broad evidence makes the analysis better, not
 worse. The pains and segments we surface are more accurate when they're drawn

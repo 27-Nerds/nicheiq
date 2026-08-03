@@ -9,9 +9,11 @@ any catalog page (`/ideas`, `/ideas/[niche]`, `/ideas/[niche]/[sub]`,
 
 - **Action / CTA links**: body (sans) face, `var(--color-accent)` orange.
   Examples: BuildCTA buttons, empty-state CTAs, "Run research now".
-- **Meta / secondary navigation links**: JetBrains Mono + arrow (`→`),
+- **Meta / secondary navigation links**: mono face (`--font-mono`) + arrow (`→`),
   **muted** color (`--color-text-muted` / `--color-text-secondary`), never
   orange. Examples: "+25 more →" card footers, atlas list rows, divider meta.
+  (Named JetBrains Mono until the 2026-08 consolidation to Geist Mono — always
+  reference the token, not the family.)
 - If a mono link is orange, it's either an action (make it sans) or meta
   (make it muted).
 

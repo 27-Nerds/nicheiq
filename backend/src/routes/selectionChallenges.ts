@@ -11,9 +11,11 @@ import { requireDecisionToolsAccess } from '../middleware/featureAccess.js';
 import { getDiscoveryDataForJob, getPreviewReportForJob } from '../services/assetService.js';
 import { prisma } from '../services/db.js';
 import {
+  ChallengeAssessmentError,
   generateSelectionChallenge,
   prepareSelectionChallengeInput,
 } from '../services/selectionChallengeService.js';
+import { hasApiKeyForModel } from '../services/openai.js';
 import {
   SELECTION_CHALLENGE_LENSES,
   SelectionChallengeArtifactSchema,
@@ -226,8 +228,7 @@ selectionChallengesRouter.post(
       }
       if (
         prepared.evidenceSnapshot.length > 0
-        && !CONFIG.openaiApiKey
-        && !CONFIG.openrouterApiKey
+        && !hasApiKeyForModel(CONFIG.challengeModel)
       ) {
         res.status(503).json({ error: 'Evidence stress tests are temporarily unavailable' });
         return;
@@ -294,6 +295,18 @@ selectionChallengesRouter.post(
       }
     } catch (error) {
       console.error('Failed to stress-test selection evidence:', error);
+      // Only assessor failures get a challenge-kind mapping; Prisma/state errors
+      // (the 409s return early above; storage errors rethrow) stay on the
+      // generic 502 without a `code`.
+      if (error instanceof ChallengeAssessmentError) {
+        res.status(error.kind === 'timeout' ? 504 : 502).json({
+          error: error.kind === 'timeout'
+            ? 'The evidence check timed out; no selection data was changed'
+            : 'Evidence stress test failed; no selection data was changed',
+          code: error.kind,
+        });
+        return;
+      }
       res.status(502).json({ error: 'Evidence stress test failed; no selection data was changed' });
     }
   },

@@ -49,6 +49,28 @@ describe("EvaluationActivity — live view", () => {
     expect(running.getByText(/^Scoring /)).toBeInTheDocument();
   });
 
+  it("presents recovery as restoration and never offers scoring or cancellation", () => {
+    const view = render(EvaluationActivity, {
+      props: {
+        jobId: "job-1",
+        activities: [PENDING],
+        view: "live",
+        operation: {
+          state: "RECOVERING",
+          createdAt: new Date().toISOString(),
+          claimedAt: null,
+        },
+        onCancel: () => undefined,
+      },
+    });
+
+    expect(view.getByText(/Restoring your previous candidate set/)).toBeInTheDocument();
+    expect(view.getByText(/any refundable credits are returned; if no refund applies/)).toBeInTheDocument();
+    expect(view.queryByText(/^Scoring /)).not.toBeInTheDocument();
+    expect(view.queryByText(/Waiting for a free worker/)).not.toBeInTheDocument();
+    expect(view.queryByRole("button", { name: "Cancel evaluation" })).not.toBeInTheDocument();
+  });
+
   it("offers a re-check instead of freezing when the poll gives up", () => {
     const rechecked: string[] = [];
     const view = render(EvaluationActivity, {
@@ -64,6 +86,21 @@ describe("EvaluationActivity — live view", () => {
     expect(view.getByText(/We stopped checking automatically/)).toBeInTheDocument();
     view.getByRole("button", { name: "Check for the result" }).click();
     expect(rechecked).toEqual(["recheck"]);
+  });
+
+  it("offers operation-scoped cancellation while an evaluation is pending", () => {
+    const cancelled: string[] = [];
+    const view = render(EvaluationActivity, {
+      props: {
+        jobId: "job-1",
+        activities: [PENDING],
+        view: "live",
+        onCancel: () => cancelled.push("cancel"),
+      },
+    });
+
+    view.getByRole("button", { name: "Cancel evaluation" }).click();
+    expect(cancelled).toEqual(["cancel"]);
   });
 
   it("renders nothing once every evaluation has settled", () => {
@@ -160,9 +197,10 @@ describe("EvaluationActivity — record view", () => {
   });
 
   it.each([
-    ["failed" as const, "Evaluation failed"],
-    ["refunded" as const, "Refunded"],
-  ])("makes the %s terminal outcome explicit", (outcome, label) => {
+    ["failed" as const, "Evaluation failed", "The evaluation failed before producing a candidate."],
+    ["refunded" as const, "Refunded", "The evaluation did not produce a candidate. Eligible credits were returned."],
+    ["cancelled" as const, "Cancelled", "The evaluation was cancelled before work started, so no candidate was produced."],
+  ])("makes the %s terminal outcome explicit", (outcome, label, detail) => {
     // These two produce no candidate and no ruled-out finding, so the record is the
     // ONLY durable place they exist — it must never drop them.
     const view = render(EvaluationActivity, {
@@ -180,7 +218,11 @@ describe("EvaluationActivity — record view", () => {
     });
 
     expect(view.getByText(label)).toBeInTheDocument();
+    expect(view.getByText(detail)).toBeInTheDocument();
     expect(view.getByText("Review evaluation")).toBeInTheDocument();
+    if (outcome !== "refunded") {
+      expect(view.queryByText(/credits were returned/i)).not.toBeInTheDocument();
+    }
   });
 
   it("shows only the latest settled receipt in the post-run handoff", () => {

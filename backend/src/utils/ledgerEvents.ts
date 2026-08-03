@@ -71,14 +71,14 @@ export interface LedgerEventEnvelope {
   operationId?: string;
   /** `seed_settled` only — the seed's terminal outcome. 'failed' means the pipeline never
    *  produced anything (refunded); 'accepted'/'demoted' mean it did (never refunded). */
-  outcome?: 'accepted' | 'demoted' | 'failed' | 'refunded';
+  outcome?: 'accepted' | 'demoted' | 'failed' | 'refunded' | 'cancelled';
   /** Compact evaluated result for the proposal card; full details live elsewhere. */
   idea?: SeedResultSummary;
   /** Additional-batch settlement summary. Existing candidates are never included. */
   batch?: {
     ordinal: number;
     focus?: string;
-    outcome?: 'completed' | 'no_candidates_added' | 'failed' | 'refunded';
+    outcome?: 'completed' | 'no_candidates_added' | 'failed' | 'refunded' | 'cancelled';
     generatedCount?: number;
     addedCount?: number;
     addedIdeaIds?: string[];
@@ -157,7 +157,9 @@ export function buildSeedReceiptContent(
   if (event === 'seed_submitted') return 'Evaluating your idea…';
   if (outcome === 'accepted') return 'Evaluation complete — the result was added to ranked candidates.';
   if (outcome === 'demoted') return "We tested your idea — it didn't clear the market-fit bar.";
-  return 'Your idea could not be evaluated — credits refunded.';
+  if (outcome === 'refunded') return 'Your idea could not be evaluated — eligible credits were returned.';
+  if (outcome === 'cancelled') return 'The evaluation was cancelled before work started.';
+  return 'Your idea could not be evaluated. No candidate was produced.';
 }
 
 /** Builds the seed envelope — always REQUIRES sourceMessageId (unlike buildPatchEnvelope's
@@ -252,6 +254,9 @@ export function buildRegenerationReceiptContent(
   addedCount = 0,
 ): string {
   if (event === 'regeneration_submitted') return 'Adding another idea batch…';
+  if (outcome === 'cancelled') {
+    return 'The additional idea batch was cancelled before work started.';
+  }
   if (outcome === 'refunded' || outcome === 'failed') {
     return 'The additional idea batch failed — existing candidates are unchanged.';
   }

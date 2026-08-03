@@ -6,7 +6,6 @@
     Layers,
     Target,
     Clock,
-    AlertTriangle,
     Code,
     ChevronRight,
     Hash,
@@ -165,6 +164,26 @@
   // View mode for keywords section
   let viewMode = $state<"table" | "insights">("table");
 
+  // Headline volume honesty: total_monthly_volume is category reach, not idea demand.
+  // idea_intent_monthly_volume is the subset of volume whose keywords match the idea; it
+  // is null on legacy reports and whenever the backend intent-grader coverage guard trips.
+  const ideaIntentVolume = $derived(strategy.idea_intent_monthly_volume ?? null);
+  const volumeNote = $derived.by(() => {
+    const reach = `Category reach (${formatNumber(analytics.total_search_volume)}/mo) is every keyword analyzed`;
+    const offtopic = strategy.offtopic_volume_share;
+    const category = strategy.category_volume_share;
+    const split =
+      offtopic != null && category != null
+        ? `: ${Math.round(offtopic * 100)}% of that volume is off-topic, ${Math.round(category * 100)}% is broader category terms.`
+        : offtopic != null
+          ? `: ${Math.round(offtopic * 100)}% of that volume is off-topic.`
+          : ".";
+    if (ideaIntentVolume == null) {
+      return `${reach}${split} Treat it as category reach, not validated idea demand.`;
+    }
+    return `Idea-intent volume counts only the keywords that match this idea. ${reach}${split}`;
+  });
+
   // Helper to get intent badge variant
   function getIntentVariant(
     intent: string | undefined,
@@ -204,10 +223,16 @@
       />
     {/snippet}
     <HeroMetric value={analytics.total_keywords} label="Keywords" />
+    {#if ideaIntentVolume != null}
+      <HeroMetric
+        value={formatNumber(ideaIntentVolume)}
+        label="Idea-intent vol"
+        color="accent"
+      />
+    {/if}
     <HeroMetric
       value={formatNumber(analytics.total_search_volume)}
-      label="Monthly Vol"
-      color="accent"
+      label="Category reach"
     />
     <HeroMetric
       value={analytics.avg_competition.toFixed(0)}
@@ -221,15 +246,14 @@
     />
   </HeroStrip>
 
+  <p class="volume-note">{volumeNote}</p>
+
   <!-- Warning for limited keyword data -->
   {#if hasLimitedKeywords}
     <div class="limited-keywords-warning">
       <EmptyState
-        icon={AlertTriangle}
         title="Limited Keyword Data"
         description="Not enough high-opportunity keywords were found for this niche. SEO results may be limited and require additional investigation."
-        variant="warning"
-        size="sm"
       />
     </div>
   {/if}
@@ -782,6 +806,14 @@
 </Section>
 
 <style>
+  /* Headline volume honesty note (sits under the hero strip) */
+  .volume-note {
+    margin: calc(-1 * var(--space-2)) 0 var(--space-4);
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+    line-height: 1.5;
+  }
+
   /* Limited Keywords Warning */
   .limited-keywords-warning {
     margin-bottom: var(--space-4);

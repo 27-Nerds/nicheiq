@@ -16,6 +16,7 @@
   } from "lucide-svelte";
   import { SECTION_MAP } from "$lib/config/report-sections";
   import type {
+    CorePainPoint,
     DetailedPainPoint,
     PainPointAnalytics,
     SolutionDetails,
@@ -49,13 +50,21 @@
     painPoints: DetailedPainPoint[];
     analytics: PainPointAnalytics;
     solution: SolutionDetails;
+    corePainPoint?: CorePainPoint;
     topPainPointsSummary?: string[];
     previewMode?: boolean;
     onUnlockClick?: () => void;
   }
 
-  let { painPoints, analytics, solution, topPainPointsSummary, previewMode = false, onUnlockClick }: Props =
-    $props();
+  let {
+    painPoints,
+    analytics,
+    solution,
+    corePainPoint,
+    topPainPointsSummary,
+    previewMode = false,
+    onUnlockClick,
+  }: Props = $props();
 
   // commercial_intent (was willingness_to_pay): read with a legacy fallback so reports
   // generated before the rename still show this metric.
@@ -72,17 +81,31 @@
   let selectedOpportunity = $state("");
   let selectedPlatform = $state("");
 
-  // Get top 5 pain points for journey view
-  const topPainPoints = $derived(
+  // The report keeps the full niche pain corpus. Only explicitly linked records belong in the
+  // selected-solution journey; the complete set remains available in Niche Analysis.
+  const topNichePainPoints = $derived(
     [...painPoints]
       .sort((a, b) => b.severity_score - a.severity_score)
       .slice(0, 5),
   );
+  const selectedPainPoints = $derived.by(() => {
+    const selectedTitles = [corePainPoint?.title, ...(solution.pain_points_addressed ?? [])]
+      .map(normalizeTitle)
+      .filter(Boolean);
+    const painByTitle = new Map(painPoints.map((painPoint) => [normalizeTitle(painPoint.title), painPoint]));
+
+    return selectedTitles
+      .map((title) => painByTitle.get(title))
+      .filter((painPoint): painPoint is DetailedPainPoint => painPoint !== undefined)
+      .filter((painPoint, index, matches) => matches.indexOf(painPoint) === index)
+      .slice(0, 5);
+  });
+  const journeyPainPoints = $derived(previewMode ? topNichePainPoints : selectedPainPoints);
 
   const avgWtp = $derived(
-    topPainPoints.length > 0
-      ? topPainPoints.reduce((sum, p) => sum + ciOf(p), 0) /
-          topPainPoints.length
+    journeyPainPoints.length > 0
+      ? journeyPainPoints.reduce((sum, p) => sum + ciOf(p), 0) /
+          journeyPainPoints.length
       : 0,
   );
 
@@ -95,6 +118,10 @@
 
   function toggleQuotes(index: number) {
     expandedQuotes[index] = !expandedQuotes[index];
+  }
+
+  function normalizeTitle(value: string | null | undefined): string {
+    return value?.trim().toLocaleLowerCase().replace(/\s+/g, " ") ?? "";
   }
 
   // Filter options for analysis tab
@@ -158,7 +185,7 @@
       tabindex={activeTab === "journey" ? 0 : -1}
     >
       <TrendingUp class="w-4 h-4" />
-      <span>Journey View</span>
+      <span>Selected Problem</span>
     </button>
     <button
       class="tab-button {activeTab === 'analysis' ? 'tab-active' : ''}"
@@ -169,7 +196,7 @@
       tabindex={activeTab === "analysis" ? 0 : -1}
     >
       <Flame class="w-4 h-4" />
-      <span>Full Analysis</span>
+      <span>Niche Analysis</span>
     </button>
   </div>
 
@@ -179,7 +206,7 @@
       {#snippet primary()}
         <HeroPrimary
           icon={AlertTriangle}
-          label="Pain Points"
+          label="Niche Pain Points"
           sublabel={String(analytics.total_pain_points)}
           color="accent"
         />
@@ -194,7 +221,7 @@
 
       <HeroMetric
         value={analytics.quadrant_distribution.high_severity_high_wtp}
-        label="Best Opportunities"
+        label="Niche Opportunities"
         color={bestOppsColor}
       />
 
@@ -220,19 +247,22 @@
             Through extensive research across social platforms, we identified
             key pain points that users experience daily. Run <strong>Deep Research</strong>
             to see how a solution directly addresses each challenge.
+          {:else if journeyPainPoints.length}
+            The report retained {journeyPainPoints.length}
+            {journeyPainPoints.length === 1 ? "problem" : "problems"} linked to <strong
+              >{solution.solution_name || "the selected idea"}</strong
+            >. A solution bridge appears only where the report saved a direct mapping.
           {:else}
-            Through extensive research across social platforms, we identified
-            key pain points that users experience daily. Here's how <strong
-              >{solution.solution_name || "Solution"}</strong
-            >
-            directly addresses these challenges.
+            This report did not retain a direct link between <strong
+              >{solution.solution_name || "the selected idea"}</strong
+            > and a detailed problem record. Open Niche Analysis for the broader research context.
           {/if}
         </p>
       </div>
 
       <!-- Pain Points Flow -->
       <div class="pain-solution-flow">
-        {#each topPainPoints as painPoint, i}
+        {#each journeyPainPoints as painPoint, i}
           <AnimateOnScroll animation="fade-up" delay={i * 100}>
             <div class="flow-row">
               <!-- Pain Point Card -->
@@ -309,14 +339,21 @@
               </div>
 
               <!-- Solution Card -->
-              <div class="solution-card-enhanced" class:solution-card-locked={previewMode}>
+              <div
+                class="solution-card-enhanced"
+                class:solution-card-locked={previewMode}
+                class:solution-card-unmapped={!previewMode && !painPoint.solution_approach}
+              >
                 <div class="solution-header">
                   {#if previewMode}
                     <Lock class="w-4 h-4 text-muted" />
                     <span class="solution-label solution-label-locked">How We Solve It</span>
-                  {:else}
+                  {:else if painPoint.solution_approach}
                     <CheckCircle class="w-4 h-4 text-success" />
-                    <span class="solution-label">How We Solve It</span>
+                    <span class="solution-label">Saved Solution Mapping</span>
+                  {:else}
+                    <AlertTriangle class="w-4 h-4 text-muted" />
+                    <span class="solution-label solution-label-unmapped">Mapping Unavailable</span>
                   {/if}
                 </div>
                 {#if previewMode}
@@ -333,11 +370,9 @@
                   </div>
                 {:else if painPoint.solution_approach}
                   <p class="solution-text">{painPoint.solution_approach}</p>
-                {:else if solution.core_features && solution.core_features[i]}
-                  <p class="solution-text">{solution.core_features[i]}</p>
                 {:else}
                   <p class="solution-text solution-generic">
-                    {solution.value_proposition || solution.description}
+                    No direct problem-to-solution mapping was retained for this problem.
                   </p>
                 {/if}
               </div>
@@ -355,7 +390,7 @@
       {/if}
 
       <!-- Commercial Intent Insight -->
-      {#if topPainPoints.some((p) => ciOf(p) > 0.5)}
+      {#if journeyPainPoints.some((p) => ciOf(p) > 0.5)}
         <AnimateOnScroll animation="fade-up" delay={600}>
           <div class="wtp-insight">
             <div class="wtp-header">
@@ -363,12 +398,13 @@
               <h4>Monetization Signal</h4>
             </div>
             <p class="wtp-text">
-              {topPainPoints.filter((p) => ciOf(p) > 0.5).length} of
-              {topPainPoints.length} top pain points show strong commercial-intent
-              signals, suggesting strong market demand for a paid solution.
+              {journeyPainPoints.filter((p) => ciOf(p) > 0.5).length} of
+              {journeyPainPoints.length} selected {journeyPainPoints.length === 1
+                ? "problem carries a"
+                : "problems carry"} commercial-intent score above 50/100.
             </p>
             <div class="wtp-scores">
-              {#each topPainPoints
+              {#each journeyPainPoints
                 .filter((p) => ciOf(p) > 0.5)
                 .slice(0, 3) as point}
                 <div class="wtp-item">
@@ -391,14 +427,14 @@
       <AnimateOnScroll animation="fade-up" delay={700}>
         <div class="journey-stats">
           <div class="stat-item">
-            <span class="stat-value">{painPoints.length}</span>
-            <span class="stat-label">Pain Points Identified</span>
+            <span class="stat-value">{journeyPainPoints.length}</span>
+            <span class="stat-label">Selected Problems Matched</span>
           </div>
           <div class="stat-item">
             <span class="stat-value"
-              >{painPoints.filter((p) => p.severity_score >= 0.7).length}</span
+              >{journeyPainPoints.filter((p) => p.severity_score >= 0.7).length}</span
             >
-            <span class="stat-label">High Severity Issues</span>
+            <span class="stat-label">High Severity Selected</span>
           </div>
           {#if !previewMode}
             <div class="stat-item">
@@ -426,6 +462,15 @@
   <!-- ANALYSIS TAB -->
   {#if activeTab === "analysis"}
     <div transition:fade={{ duration: 200 }}>
+      <div class="analysis-context">
+        <span>Broader niche context</span>
+        <h3>All retained pain research</h3>
+        <p>
+          These findings were ranked across the full niche. They are not claims that
+          {solution.solution_name || "the selected idea"} addresses every problem shown here.
+        </p>
+      </div>
+
       <!-- Pain Point Matrix Chart -->
       {#if painPoints.length > 0}
         <AnimateOnScroll animation="fade-in" delay={100}>
@@ -830,6 +875,10 @@
     border-color: var(--color-border-emphasis);
   }
 
+  .solution-card-unmapped {
+    border-left-color: var(--color-border-emphasis);
+  }
+
   .solution-header {
     display: flex;
     align-items: center;
@@ -864,6 +913,47 @@
 
   .solution-label-locked {
     color: var(--color-text-muted);
+  }
+
+  .solution-label-unmapped {
+    color: var(--color-text-muted);
+  }
+
+  .analysis-context {
+    margin-bottom: var(--space-8);
+    padding: var(--space-5);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-bg-surface);
+  }
+
+  .analysis-context > span {
+    display: block;
+    margin-bottom: var(--space-2);
+    color: var(--color-text-muted);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .analysis-context h3,
+  .analysis-context p {
+    margin: 0;
+  }
+
+  .analysis-context h3 {
+    color: var(--color-text-primary);
+    font-size: var(--text-lg);
+  }
+
+  .analysis-context p {
+    max-width: 70ch;
+    margin-top: var(--space-2);
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+    line-height: 1.6;
   }
 
   .solution-skeleton {

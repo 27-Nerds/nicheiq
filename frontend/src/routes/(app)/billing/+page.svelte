@@ -133,7 +133,7 @@
     // A spend/balance is not a warning — keep the numbers neutral (no orange tint).
     { value: availableCredits, label: "Available", tone: "default" },
     { value: monthlyAllowance, label: "Monthly", tone: "go" },
-    { value: purchasedBalance, label: "Purchased", tone: "default" },
+    { value: purchasedBalance, label: "Top-up balance", tone: "default" },
     { value: billing.totalUsed, label: "Used", tone: "default" },
   ]);
 

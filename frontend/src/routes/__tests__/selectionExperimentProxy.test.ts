@@ -9,7 +9,10 @@ import {
   GET as listExperiments,
   POST as createExperiment,
 } from '../api/jobs/[jobId]/selection-experiments/+server';
-import { PUT as updateExperiment } from '../api/jobs/[jobId]/selection-experiments/[experimentId]/+server';
+import {
+  DELETE as deleteExperiment,
+  PUT as updateExperiment,
+} from '../api/jobs/[jobId]/selection-experiments/[experimentId]/+server';
 import { POST as lockExperiment } from '../api/jobs/[jobId]/selection-experiments/[experimentId]/lock/+server';
 import { POST as launchExperiment } from '../api/jobs/[jobId]/selection-experiments/[experimentId]/run/+server';
 import { POST as closeExperiment } from '../api/jobs/[jobId]/selection-experiments/[experimentId]/run/close/+server';
@@ -158,36 +161,66 @@ describe('selection decision and experiment API proxies', () => {
     });
   });
 
-  it('forwards list, create, update, and lock experiment operations', async () => {
+  it('forwards list, create, update, delete, and lock experiment operations', async () => {
     await listExperiments({ params: { jobId }, locals } as never);
 
-    const body = JSON.stringify({ ideaId: 'idea-1' });
+    const createBody = JSON.stringify({ ideaId: 'idea-1' });
+    const updateBody = JSON.stringify({ ideaId: 'idea-1', expectedVersion: 7 });
+    const mutationBody = JSON.stringify({ expectedVersion: 7 });
     await createExperiment({
       params: { jobId },
       locals,
-      request: new Request('http://local', { method: 'POST', body }),
+      request: new Request('http://local', { method: 'POST', body: createBody }),
     } as never);
     await updateExperiment({
       params: { jobId, experimentId },
       locals,
-      request: new Request('http://local', { method: 'PUT', body }),
+      request: new Request('http://local', { method: 'PUT', body: updateBody }),
     } as never);
-    await lockExperiment({ params: { jobId, experimentId }, locals } as never);
+    await deleteExperiment({
+      params: { jobId, experimentId },
+      locals,
+      request: new Request('http://local', { method: 'DELETE', body: mutationBody }),
+    } as never);
+    await lockExperiment({
+      params: { jobId, experimentId },
+      locals,
+      request: new Request('http://local', { method: 'POST', body: mutationBody }),
+    } as never);
 
     expect(mocks.fetchBackend).toHaveBeenNthCalledWith(1, `/api/jobs/${jobId}/selection-experiments`, {
       headers: { 'X-User-ID': 'owner-1' },
     });
     expect(mocks.fetchBackend).toHaveBeenNthCalledWith(2, `/api/jobs/${jobId}/selection-experiments`, expect.objectContaining({
       method: 'POST',
-      body,
+      body: createBody,
     }));
     expect(mocks.fetchBackend).toHaveBeenNthCalledWith(3, `/api/jobs/${jobId}/selection-experiments/${experimentId}`, expect.objectContaining({
       method: 'PUT',
-      body,
+      body: updateBody,
     }));
-    expect(mocks.fetchBackend).toHaveBeenNthCalledWith(4, `/api/jobs/${jobId}/selection-experiments/${experimentId}/lock`, expect.objectContaining({
+    expect(mocks.fetchBackend).toHaveBeenNthCalledWith(4, `/api/jobs/${jobId}/selection-experiments/${experimentId}`, expect.objectContaining({
+      method: 'DELETE',
+      body: mutationBody,
+    }));
+    expect(mocks.fetchBackend).toHaveBeenNthCalledWith(5, `/api/jobs/${jobId}/selection-experiments/${experimentId}/lock`, expect.objectContaining({
       method: 'POST',
+      body: mutationBody,
     }));
+  });
+
+  it('preserves an empty 204 response when deleting an experiment draft', async () => {
+    mocks.fetchBackend.mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const body = JSON.stringify({ expectedVersion: 3 });
+
+    const response = await deleteExperiment({
+      params: { jobId, experimentId },
+      locals,
+      request: new Request('http://local', { method: 'DELETE', body }),
+    } as never);
+
+    expect(response.status).toBe(204);
+    expect(await response.text()).toBe('');
   });
 
 

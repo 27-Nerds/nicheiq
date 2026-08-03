@@ -162,7 +162,7 @@ class LandingPageCrew:
     def html_developer(self) -> Agent:
         """
         Generates complete HTML pages with Tailwind CSS.
-        Uses execution LLM (gpt-5.1-codex-max) for reliable code generation.
+        Uses execution LLM (gpt-5.3-codex) for reliable code generation.
         Uses max_output_tokens=30000 to prevent truncation of large HTML output.
         """
         return Agent(
@@ -179,7 +179,7 @@ class LandingPageCrew:
     def animation_enhancer(self) -> Agent:
         """
         Enhances HTML with premium animations and micro-interactions.
-        Uses execution LLM (gpt-5.1-codex-max) for reliable code generation.
+        Uses execution LLM (gpt-5.3-codex) for reliable code generation.
         Uses max_output_tokens=30000 to prevent truncation of large HTML output.
         """
         return Agent(

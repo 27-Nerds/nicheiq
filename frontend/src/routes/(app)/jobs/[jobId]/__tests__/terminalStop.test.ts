@@ -13,7 +13,13 @@ import { render, cleanup, fireEvent, waitFor } from "@testing-library/svelte";
 import { page } from "$app/state";
 import { goto, invalidateAll } from "$app/navigation";
 import { chatLedger } from "$lib/stores/chatLedger.svelte";
-import { getChatHistory } from "$lib/api";
+import {
+  getChatHistory,
+  getDiscoveryData,
+  getPreviewReport,
+  shouldKeepSSEOpen,
+  subscribeToProgress,
+} from "$lib/api";
 import type { Job } from "$lib/types/job";
 
 vi.mock("$lib/api", async (importOriginal) => {
@@ -90,11 +96,11 @@ describe("+page.svelte — terminal-stop handoff", () => {
   });
 
   it("offers resume and a fresh run as the only next steps on a failed job", async () => {
-    const { findByRole } = render(PageComponent, {
+    const { findAllByRole, findByRole } = render(PageComponent, {
       props: { data: baseData(baseJob()) as never },
     });
 
-    await findByRole("button", { name: /Resume from checkpoint/i });
+    expect(await findAllByRole("button", { name: /Resume from checkpoint/i })).toHaveLength(2);
     await findByRole("link", { name: /Start new research/i });
   });
 
@@ -106,6 +112,31 @@ describe("+page.svelte — terminal-stop handoff", () => {
     await findByText(
       "Resuming picks up from the last checkpoint and may re-charge the refunded stage at its original amount.",
     );
+  });
+
+  it("shows the exact re-charge before resuming a modern refunded dispatch", async () => {
+    const { findAllByRole, findByText } = render(PageComponent, {
+      props: {
+        data: baseData(baseJob({
+          creditRefunded: true,
+          creditRefundedAmount: 99,
+          errorDetails: {
+            code: "PROVIDER_UNAVAILABLE",
+            severity: "error",
+            userMessage: "Research service temporarily unavailable",
+            actionableGuidance: "Try again from the saved checkpoint.",
+          },
+        })) as never,
+      },
+    });
+
+    await findByText(
+      "Try again from the saved checkpoint. Resuming will charge the refunded 99 credits again when the retry is queued.",
+    );
+    const resumeActions = await findAllByRole("button", {
+      name: "Resume from checkpoint · 99 credits",
+    });
+    expect(resumeActions).toHaveLength(2);
   });
 
   it("does not restate the aside's diagnosis — the failure headline appears exactly once", async () => {
@@ -132,11 +163,11 @@ describe("+page.svelte — terminal-stop handoff", () => {
   });
 
   it("keeps the retained-work note off a run that died before discovery produced anything", async () => {
-    const { queryByText, findByRole } = render(PageComponent, {
+    const { queryByText, findAllByRole } = render(PageComponent, {
       props: { data: baseData(baseJob({ solutionIdeas: [] })) as never },
     });
 
-    await findByRole("button", { name: /Resume from checkpoint/i });
+    expect(await findAllByRole("button", { name: /Resume from checkpoint/i })).toHaveLength(2);
     expect(queryByText(/Your discovery work is intact\./)).toBeNull();
   });
 
@@ -241,12 +272,16 @@ describe("+page.svelte — terminal-stop handoff", () => {
       expect(view.queryByText("Review your saved shortlist")).toBeNull();
       expect(view.queryByRole("button", { name: "Review selection" })).toBeNull();
 
-      const retryButton = await view.findByRole("button", {
+      // The stopped-run sidebar mirrors the card's primary action, so the label
+      // legitimately appears twice (rail + card).
+      const retryButtons = await view.findAllByRole("button", {
         name: "Retry Deep Research · 15 credits",
       });
-      await fireEvent.click(retryButton);
+      expect(retryButtons).toHaveLength(2);
+      await fireEvent.click(retryButtons[1]);
 
-      await view.findByRole("button", { name: "Retrying Deep Research..." });
+      const busyButtons = await view.findAllByRole("button", { name: "Retrying Deep Research..." });
+      expect(busyButtons).toHaveLength(2);
       expect(view.queryByText("Opening...")).toBeNull();
       expect(fetchSpy).toHaveBeenCalledWith("/api/jobs/job-1/resume", {
         method: "POST",
@@ -290,9 +325,11 @@ describe("+page.svelte — terminal-stop handoff", () => {
         props: { data: baseData(catalogFailure) as never },
       });
 
-      await fireEvent.click(await view.findByRole("button", {
+      const retryButtons = await view.findAllByRole("button", {
         name: "Retry Deep Research · 15 credits",
-      }));
+      });
+      expect(retryButtons).toHaveLength(2);
+      await fireEvent.click(retryButtons[1]);
 
       await view.findByText(
         "The Deep Research price changed. Review the updated cost and try again.",
@@ -330,26 +367,93 @@ describe("+page.svelte — terminal-stop handoff", () => {
     }
   });
 
-  it("keeps the run-overview shell when the run died before discovery wrote anything", async () => {
-    // Nothing to read means nothing to put in a workbench — the status-first layout is
-    // still the right one here, right-rail status panel included.
+  it("gives even a run that died before discovery wrote anything the workbench stop layout", async () => {
+    // Every terminal stop is a "here is what happened, decide what to do" screen now;
+    // the legacy run-overview shell (right-rail status panel) never renders for one.
     const { findByText, queryByText } = render(PageComponent, {
       props: { data: baseData(baseJob({ solutionIdeas: [] })) as never },
     });
 
-    await findByText("Refunded");
-    expect(queryByText("Recover run")).toBeNull();
+    await findByText("Recover run");
+    expect(queryByText("Refunded")).toBeNull();
+  });
+
+  it("subtitles a no-artifact FAILED run without claiming discovery output survived", async () => {
+    const { findByText, queryByText } = render(PageComponent, {
+      props: { data: baseData(baseJob({ solutionIdeas: [] })) as never },
+    });
+
+    await findByText("This run stopped before discovery finished.");
+    expect(queryByText(/Everything it found is still here/)).toBeNull();
+    expect(queryByText(/Your discovery work is intact/)).toBeNull();
+  });
+
+  it("subtitles a no-artifact CANCELLED run without claiming discovery output survived", async () => {
+    const job = baseJob({ status: "CANCELLED", solutionIdeas: [] } as never);
+    const { findByText, queryByText } = render(PageComponent, {
+      props: { data: baseData(job) as never },
+    });
+
+    await findByText("This run was cancelled before discovery produced anything to keep.");
+    expect(queryByText(/Everything discovery found is still here/)).toBeNull();
+  });
+
+  it("hides the deep-research capped previews on a stopped run", async () => {
+    const { findByText, queryByText } = render(PageComponent, {
+      props: { data: baseData(baseJob(), DISCOVERY) as never },
+    });
+
+    await findByText("Recover run");
+    expect(queryByText("Unlocks with Deep Research")).toBeNull();
+  });
+
+  it("swaps to the stop layout and refetches the artifacts when a cancel arrives live over SSE", async () => {
+    let sseCallback: ((data: unknown) => void) | undefined;
+    vi.mocked(shouldKeepSSEOpen).mockReturnValue(true);
+    vi.mocked(subscribeToProgress).mockImplementation(((_id: string, cb: (d: unknown) => void) => {
+      sseCallback = cb;
+      return () => {};
+    }) as never);
+    const running = baseJob({ status: "RUNNING" } as never);
+    const view = render(PageComponent, {
+      props: { data: baseData(running) as never },
+    });
+
+    expect(view.queryByText("This research was cancelled")).toBeNull();
+    const callsBefore = vi.mocked(getDiscoveryData).mock.calls.length;
+
+    const invalidationsBefore = vi.mocked(invalidateAll).mock.calls.length;
+    sseCallback?.({ id: "job-1", status: "CANCELLED", creditRefunded: true });
+
+    await view.findByText("This research was cancelled");
+    await view.findAllByRole("link", { name: /Start new research/i });
+    await waitFor(() => {
+      // CANCELLED is on the refetch list: the artifacts are re-requested so the page
+      // can prove (or settle the absence of) the discovery work before claiming either.
+      expect(vi.mocked(getDiscoveryData).mock.calls.length).toBeGreaterThan(callsBefore);
+      expect(vi.mocked(getPreviewReport)).toHaveBeenCalled();
+      // The app header owns the credit balance through its layout data. Terminal
+      // settlement must refresh that data so a refund is visible without a reload.
+      expect(vi.mocked(invalidateAll).mock.calls.length).toBeGreaterThan(invalidationsBefore);
+    });
+
+    // vi.clearAllMocks() does not undo mockReturnValue/mockImplementation — restore
+    // the factory behavior so later tests keep the closed-SSE default.
+    vi.mocked(shouldKeepSSEOpen).mockReturnValue(false);
+    vi.mocked(subscribeToProgress).mockImplementation((() => () => {}) as never);
   });
 
   it("frames a cancellation as the user's own decision, with no resume affordance", async () => {
     const job = baseJob({ status: "CANCELLED", creditRefunded: true } as never);
-    const { findByText, findByRole, queryByRole } = render(PageComponent, {
+    const { findByText, findAllByRole, queryByRole } = render(PageComponent, {
       props: { data: baseData(job) as never },
     });
 
     await findByText("This research was cancelled");
     await findByText("Credits refunded");
-    await findByRole("link", { name: /Start new research/i });
+    // Sidebar recovery row + card action carry the same label by design.
+    const newRunLinks = await findAllByRole("link", { name: /Start new research/i });
+    expect(newRunLinks).toHaveLength(2);
     expect(queryByRole("button", { name: /Resume from checkpoint/i })).toBeNull();
   });
 });

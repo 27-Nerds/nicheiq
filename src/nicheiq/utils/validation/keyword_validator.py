@@ -157,7 +157,9 @@ class KeywordRelevanceValidator:
         batch_size: int = 50,
         threshold: float = 0.5,
         skip_single_word_filter: bool = False,
-        validation_cache: dict[str, tuple | None] = None
+        validation_cache: dict[str, tuple | None] = None,
+        pain_points_addressed: list[str] | None = None,
+        winning_angle: str | None = None,
     ) -> list[tuple]:
         """
         Validate keyword relevance in batches using LLM.
@@ -227,7 +229,9 @@ class KeywordRelevanceValidator:
                 niche_description=niche_description,
                 solution_name=solution_name,
                 solution_description=solution_description,
-                project_type=project_type
+                project_type=project_type,
+                pain_points_addressed=pain_points_addressed,
+                winning_angle=winning_angle,
             )
 
             try:
@@ -238,7 +242,7 @@ class KeywordRelevanceValidator:
                     temperature=0,  # Deterministic for consistency (non-reasoning models)
                     timeout=120,  # 2 minute timeout to prevent indefinite hangs
                     model_name=settings.keyword_validation_llm,
-                    reasoning_effort="minimal",  # Fast/cheap binary classification on GPT-5 models
+                    reasoning_effort="none",  # Fast/cheap binary classification on GPT-5 models
                 )
 
                 # Build keyword-to-index mapping for accurate matching
@@ -329,7 +333,9 @@ class KeywordRelevanceValidator:
         threshold: float = 0.5,
         max_retries: int = 1,
         retry_batch_size: int | None = None,
-        fail_open_after_retry: bool = False
+        fail_open_after_retry: bool = False,
+        pain_points_addressed: list[str] | None = None,
+        winning_angle: str | None = None,
     ) -> list[tuple]:
         """
         Validate keyword relevance with automatic retry for missing keywords.
@@ -406,7 +412,9 @@ class KeywordRelevanceValidator:
                 solution_description=solution_description,
                 project_type=project_type,
                 batch_size=batch_size,
-                threshold=threshold
+                threshold=threshold,
+                pain_points_addressed=pain_points_addressed,
+                winning_angle=winning_angle,
             )
         except Exception as e:
             logger.warning(
@@ -458,7 +466,9 @@ class KeywordRelevanceValidator:
                     solution_description=solution_description,
                     project_type=project_type,
                     batch_size=retry_batch_size,
-                    threshold=threshold
+                    threshold=threshold,
+                    pain_points_addressed=pain_points_addressed,
+                    winning_angle=winning_angle,
                 )
             except Exception as e:
                 logger.warning(
@@ -532,7 +542,9 @@ class KeywordRelevanceValidator:
         niche_description: str,
         solution_name: str,
         solution_description: str,
-        project_type: str
+        project_type: str,
+        pain_points_addressed: list[str] | None = None,
+        winning_angle: str | None = None,
     ) -> str:
         """
         Build LLM validation prompt for keyword batch with strict semantic relevance.
@@ -544,16 +556,24 @@ class KeywordRelevanceValidator:
             solution_name: Solution name
             solution_description: Solution description
             project_type: Solution type
+            pain_points_addressed: The solution's addressed pains (idea context for the judge)
+            winning_angle: The solution's GTM angle (idea context for the judge)
 
         Returns:
             Formatted validation prompt
         """
+        # Join lists to plain strings BEFORE passing — safe_format raises KeyError on
+        # unfilled placeholders, so {pains}/{angle} must always receive a string.
+        pains = ", ".join(str(p) for p in (pain_points_addressed or []) if p) or "(not specified)"
+        angle = (winning_angle or "").strip() or "(not specified)"
         return get_prompt(
             "keyword_validation",
             niche_description=niche_description,
             solution_name=solution_name,
             project_type=project_type,
             solution_description=solution_description,
+            pains=pains,
+            angle=angle,
             keywords_text=keywords_text,
             batch_size=batch_size
         )
@@ -569,7 +589,9 @@ class KeywordRelevanceValidator:
         threshold: float = 0.5,
         max_workers: int | None = None,
         skip_single_word_filter: bool = False,
-        validation_cache: dict[str, tuple | None] = None
+        validation_cache: dict[str, tuple | None] = None,
+        pain_points_addressed: list[str] | None = None,
+        winning_angle: str | None = None,
     ) -> list[tuple]:
         """
         Validate keyword relevance in parallel using ThreadPoolExecutor.
@@ -619,7 +641,9 @@ class KeywordRelevanceValidator:
                 batch_size=batch_size,
                 threshold=threshold,
                 skip_single_word_filter=skip_single_word_filter,
-                validation_cache=validation_cache
+                validation_cache=validation_cache,
+                pain_points_addressed=pain_points_addressed,
+                winning_angle=winning_angle,
             )
 
         # Guard against empty input
@@ -674,7 +698,9 @@ class KeywordRelevanceValidator:
                     batch_size,
                     threshold,
                     skip_single_word_filter,
-                    thread_safe_cache
+                    thread_safe_cache,
+                    pain_points_addressed,
+                    winning_angle,
                 ): chunk_num
                 for chunk_num, chunk in enumerate(chunks, 1)
             }
@@ -720,7 +746,9 @@ class KeywordRelevanceValidator:
         batch_size: int,
         threshold: float,
         skip_single_word_filter: bool,
-        thread_safe_cache: ThreadSafeValidationCache | None
+        thread_safe_cache: ThreadSafeValidationCache | None,
+        pain_points_addressed: list[str] | None = None,
+        winning_angle: str | None = None,
     ) -> list[tuple]:
         """
         Worker method for parallel validation of a keyword chunk.
@@ -759,7 +787,9 @@ class KeywordRelevanceValidator:
                 batch_size=batch_size,
                 threshold=threshold,
                 skip_single_word_filter=skip_single_word_filter,
-                validation_cache=cache_dict  # Pass cache for this chunk
+                validation_cache=cache_dict,  # Pass cache for this chunk
+                pain_points_addressed=pain_points_addressed,
+                winning_angle=winning_angle,
             )
 
             # Update thread-safe cache with new results

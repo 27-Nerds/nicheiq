@@ -72,7 +72,11 @@ let app: Express;
 
 beforeEach(async () => {
   vi.clearAllMocks();
-  mockQueryRaw.mockResolvedValue([{ userId, status: 'AWAITING_SELECTION' }]);
+  mockQueryRaw.mockResolvedValue([{
+    userId,
+    status: 'AWAITING_SELECTION',
+    activeDispatchKind: null,
+  }]);
   mockShareFindUnique.mockResolvedValue(null);
   mockShareCreate.mockResolvedValue(activeShare);
   mockShareUpdate.mockResolvedValue(activeShare);
@@ -122,17 +126,36 @@ describe('discovery share lifecycle mutations', () => {
   });
 
   it('rechecks status after the Job lock and cannot reactivate after Deep Research queues', async () => {
-    mockQueryRaw.mockResolvedValue([{ userId, status: 'QUEUED' }]);
+    mockQueryRaw.mockResolvedValue([{
+      userId,
+      status: 'QUEUED',
+      activeDispatchKind: 'DEEP_RESEARCH',
+    }]);
 
     const response = await request(app)
       .post(`/api/jobs/${jobId}/discovery-share`)
       .set(authHeaders);
 
     expect(response.status).toBe(400);
-    expect(response.body.error).toContain('awaiting selection');
+    expect(response.body.error).toContain('selection is open');
     expect(mockShareFindUnique).not.toHaveBeenCalled();
     expect(mockShareCreate).not.toHaveBeenCalled();
     expect(mockShareUpdate).not.toHaveBeenCalled();
+  });
+
+  it('can enable sharing while an append-only seed is queued', async () => {
+    mockQueryRaw.mockResolvedValue([{
+      userId,
+      status: 'QUEUED',
+      activeDispatchKind: 'SEED_IDEA',
+    }]);
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/discovery-share`)
+      .set(authHeaders);
+
+    expect(response.status).toBe(200);
+    expect(mockShareCreate).toHaveBeenCalledTimes(1);
   });
 
   it('checks ownership from the locked Job row', async () => {
@@ -185,7 +208,11 @@ describe('discovery share lifecycle mutations', () => {
   });
 
   it('does not regenerate or clear votes after Deep Research queues', async () => {
-    mockQueryRaw.mockResolvedValue([{ userId, status: 'QUEUED' }]);
+    mockQueryRaw.mockResolvedValue([{
+      userId,
+      status: 'QUEUED',
+      activeDispatchKind: 'DEEP_RESEARCH',
+    }]);
     mockShareFindUnique.mockResolvedValue(activeShare);
 
     const response = await request(app)
@@ -196,6 +223,24 @@ describe('discovery share lifecycle mutations', () => {
     expect(mockShareFindUnique).not.toHaveBeenCalled();
     expect(mockVoteDeleteMany).not.toHaveBeenCalled();
     expect(mockShareUpdate).not.toHaveBeenCalled();
+  });
+
+  it('can rotate the share token while append-only regeneration is running', async () => {
+    mockQueryRaw.mockResolvedValue([{
+      userId,
+      status: 'RUNNING',
+      activeDispatchKind: 'REGENERATE',
+    }]);
+    mockShareFindUnique.mockResolvedValue(activeShare);
+    mockShareUpdate.mockResolvedValue({ ...activeShare, shareToken: 'b'.repeat(22), viewCount: 0 });
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/discovery-share/regenerate`)
+      .set(authHeaders);
+
+    expect(response.status).toBe(200);
+    expect(mockVoteDeleteMany).toHaveBeenCalledTimes(1);
+    expect(mockShareUpdate).toHaveBeenCalledTimes(1);
   });
 
   it('fails the whole token regeneration when its share update fails', async () => {

@@ -125,6 +125,7 @@ const mockChatComplete = vi.fn().mockResolvedValue({
 vi.mock('../../services/openai.js', () => ({
   chatCompleteStream: (...a: any[]) => mockChatCompleteStream(...a),
   chatComplete: (...a: any[]) => mockChatComplete(...a),
+  hasApiKeyForModel: () => true,
 }));
 
 // Preview report asset — defaults to null (no preview report yet) so the G3 dossier
@@ -413,8 +414,9 @@ describe('selection context query gating', () => {
     expect(mockLoadSelectionDecisionState).not.toHaveBeenCalled();
   });
 
-  it('fetches read-only decision-journey relations but never computes live decision state for completed-report chat', async () => {
-    mockJobFindFirst.mockResolvedValue(makeJob({ status: 'COMPLETED' }));
+  it('fetches the private decision journey for completed-report chat without recomputing live decision state', async () => {
+    const privateNote = 'Prefer the workflow that fits our confidential client pipeline.';
+    mockJobFindFirst.mockResolvedValue(makeJob({ status: 'COMPLETED', selectionRationale: privateNote }));
 
     const response = await request(app)
       .post(`/api/jobs/${jobId}/chat`)
@@ -429,6 +431,9 @@ describe('selection context query gating', () => {
     )).toBe(true);
     // ...but the run is frozen, so it never recomputes the live selection decision state.
     expect(mockLoadSelectionDecisionState).not.toHaveBeenCalled();
+    const systemPrompt = mockChatCompleteStream.mock.calls[0][0].messages[0].content as string;
+    expect(systemPrompt).toContain(privateNote);
+    expect(systemPrompt).toContain('private workspace context, not research evidence');
   });
 
   it('fetches challenge, experiment, assumption, owner-evidence, and collaborator context only for G3', async () => {
@@ -1176,6 +1181,42 @@ describe('POST /api/jobs/:jobId/chat — G1 gate (AWAITING_GATE, gateStage=1)', 
     expect(call.tools[0].function.parameters.properties).not.toHaveProperty('pain_scope');
   });
 
+  it('renders ALL market segments plus the target audience in the G1 dossier', async () => {
+    const seven = ['Seg one', 'Seg two', 'Seg three', 'Seg four', 'Seg five', 'Seg six', 'Seg seven'];
+    mockJobFindFirst.mockResolvedValue(makeG1Job({
+      gateArtifact: {
+        type: 'niche_validation',
+        niche_description: 'Freelance devs tracking client invoices',
+        market_segments: seven,
+        industry_boundaries: 'Excludes payroll/HR tooling',
+        user_target_audience: 'Solo freelance developers',
+      },
+    }));
+    await request(app).post(`/api/jobs/${jobId}/chat`).set(authHeaders).send({ message: 'what segments are in scope?' });
+
+    const systemPrompt = mockChatCompleteStream.mock.calls[0][0].messages[0].content as string;
+    for (const seg of seven) {
+      expect(systemPrompt).toContain(`- ${seg}`);
+    }
+    expect(systemPrompt).toContain('Target audience: Solo freelance developers');
+  });
+
+  it('warns the analyst not to emit a replacement list when the G1 artifact is truncated', async () => {
+    mockJobFindFirst.mockResolvedValue(makeG1Job({
+      gateArtifact: {
+        type: 'niche_validation',
+        niche_description: 'Freelance devs tracking client invoices',
+        market_segments: ['Seg one'],
+        industry_boundaries: 'Excludes payroll/HR tooling',
+        truncated: true,
+      },
+    }));
+    await request(app).post(`/api/jobs/${jobId}/chat`).set(authHeaders).send({ message: 'hi' });
+
+    const systemPrompt = mockChatCompleteStream.mock.calls[0][0].messages[0].content as string;
+    expect(systemPrompt).toContain('do not emit a replacement list');
+  });
+
   it('persists user+assistant turns tagged with gateStage=1', async () => {
     mockJobFindFirst.mockResolvedValue(makeG1Job());
     await request(app).post(`/api/jobs/${jobId}/chat`).set(authHeaders).send({ message: 'hi' });
@@ -1298,6 +1339,28 @@ describe('POST /api/jobs/:jobId/chat — G2 gate (AWAITING_GATE, gateStage=4)', 
     expect(call.tools[0].function.parameters.properties).toHaveProperty('pain_scope');
     expect(call.tools[0].function.parameters.properties).toHaveProperty('excluded_segments');
     expect(call.tools[0].function.parameters.properties).not.toHaveProperty('niche_description');
+  });
+
+  it('shows the patched (effective) primary in the G2 dossier when the artifact carries an override', async () => {
+    // 1.2(e): the worker's G2 artifact sets primary_target to the EFFECTIVE primary (a
+    // G2 patch override) with the Stage-4 value under primary_target_stage4 — the
+    // dossier must present the effective one.
+    mockJobFindFirst.mockResolvedValue(makeG2Job({
+      gateArtifact: {
+        type: 'audience_mapping_gate',
+        primary_target: 'Small agencies',
+        primary_target_stage4: 'Solo freelancers',
+        pains: [{ title: 'Chasing late invoices', severity: 0.8, opportunity: 'high' }],
+        segments: [
+          { segment_name: 'Solo freelancers', size_estimate: 'large', payability_class: 'high', payability_score: 0.7 },
+          { segment_name: 'Small agencies', size_estimate: 'medium', payability_class: 'medium', payability_score: 0.5 },
+        ],
+      },
+    }));
+    await request(app).post(`/api/jobs/${jobId}/chat`).set(authHeaders).send({ message: 'who is primary?' });
+
+    const systemPrompt = mockChatCompleteStream.mock.calls[0][0].messages[0].content as string;
+    expect(systemPrompt).toContain('Primary target segment: Small agencies');
   });
 
   it('persists user+assistant turns tagged with gateStage=4', async () => {
@@ -1624,8 +1687,13 @@ describe('POST /api/jobs/:jobId/chat — rich G3 dossier from the preview report
     expect(systemPrompt).toContain('Differentiation: Faster than manual review');
     expect(systemPrompt).toContain('Market fit: strong');
     expect(systemPrompt).toContain('SEO potential: moderate');
-    expect(systemPrompt).toContain('Competitor findings: substitute (free spreadsheet templates)');
-    expect(systemPrompt).toContain('Adversarial review: weakened');
+    // The stored `substitute (…)` class prefix is labelled, never handed over whole.
+    expect(systemPrompt).toContain(
+      'Competitor findings: Buyers already get this outcome from free spreadsheet templates'
+    );
+    // `weakened` is an internal enum value, not a word this product says about an idea.
+    expect(systemPrompt).toContain('Adversarial review: a decision-critical objection');
+    expect(systemPrompt).not.toContain('Adversarial review: weakened');
     expect(systemPrompt).toContain('A free community wiki covers the basics');
     expect(systemPrompt).toContain('Pricing: subscription');
     expect(systemPrompt).toContain('Why these tags: Chosen for its narrow, well-defined workflow');
@@ -1643,6 +1711,134 @@ describe('POST /api/jobs/:jobId/chat — rich G3 dossier from the preview report
     expect(systemPrompt).toContain('pains identified: 12');
 
     // No internal-key leakage anywhere in the assembled dossier/prompt
+    assertNoInternalKeys(systemPrompt);
+  });
+
+  // `incumbent_parity` is stored as "<class> by <vendor>: <evidence>" / "<class> (<vendor>): …"
+  // over the closed vocab shipped|partial|substitute|bundled_free. stripSchemaVocabulary only
+  // de-underscores it, so the analyst could read — and say — "substitute by Notion".
+  it('hands the analyst no bare parity class token in any competitor-findings line', async () => {
+    mockJobFindFirst.mockResolvedValue(makeJob());
+    mockGetPreviewReportForJob.mockResolvedValue(
+      makePreviewReport({
+        alternative_solutions: [
+          {
+            solution_name: 'Sol1',
+            description: 'A tool',
+            incumbent_parity: 'shipped by Aftershoot: culls RAW batches',
+            adjacent_market_parity: 'bundled_free (Notion): included in the free tier',
+          },
+        ],
+      })
+    );
+
+    await request(app).post(`/api/jobs/${jobId}/chat`).set(authHeaders).send({ message: 'who competes?' });
+
+    const systemPrompt = mockChatCompleteStream.mock.calls[0][0].messages[0].content as string;
+
+    expect(systemPrompt).toContain('Competitor findings: Already shipped by Aftershoot: culls RAW batches');
+    expect(systemPrompt).toContain(
+      'Adjacent-market competitor findings: Already included free with Notion: included in the free tier'
+    );
+    // No findings line may still OPEN with a raw class token.
+    expect(systemPrompt).not.toMatch(
+      /findings: (?:shipped|partial|substitute|bundled[_ ]free)\b/i
+    );
+    assertNoInternalKeys(systemPrompt);
+  });
+
+  // The adversarial review used to write into this same field with `evidence` / `red-team` in
+  // the vendor slot. The selection screen keeps those out of its "Incumbent: <name>" chip
+  // because they name an alternative CLASS, not a product; the dossier says the same.
+  it('never lets a red-team parity finding pass as a named competitor', async () => {
+    mockJobFindFirst.mockResolvedValue(makeJob());
+    mockGetPreviewReportForJob.mockResolvedValue(
+      makePreviewReport({
+        alternative_solutions: [
+          {
+            solution_name: 'Sol1',
+            description: 'A tool',
+            incumbent_parity: 'shipped by evidence: the data source misses the buyer',
+          },
+        ],
+      })
+    );
+
+    await request(app).post(`/api/jobs/${jobId}/chat`).set(authHeaders).send({ message: 'who competes?' });
+
+    const systemPrompt = mockChatCompleteStream.mock.calls[0][0].messages[0].content as string;
+    expect(systemPrompt).toContain('the data source misses the buyer');
+    expect(systemPrompt).toContain('an alternative class, no product named');
+    expect(systemPrompt).not.toContain('Competitor findings: shipped by evidence');
+  });
+
+  // The owner's screen calls red_team_verdict === 'killed' "Premise unproven"; the analyst
+  // repeats whatever the dossier gives it, and "killed" reads as a verdict on the whole
+  // idea rather than on the one premise the review actually tested.
+  it('names the killed adversarial verdict the way the owner\'s screen does', async () => {
+    mockJobFindFirst.mockResolvedValue(makeJob());
+    mockGetPreviewReportForJob.mockResolvedValue(
+      makePreviewReport({
+        alternative_solutions: [
+          {
+            solution_name: 'Sol1',
+            description: 'A tool',
+            red_team_verdict: 'killed',
+            red_team_caveats: ['No reachable buyer was found for this workflow.'],
+          },
+        ],
+      })
+    );
+
+    await request(app).post(`/api/jobs/${jobId}/chat`).set(authHeaders).send({ message: 'why not Sol1?' });
+
+    const systemPrompt = mockChatCompleteStream.mock.calls[0][0].messages[0].content as string;
+    expect(systemPrompt).toContain('Adversarial review: Premise unproven');
+    expect(systemPrompt).toContain('No reachable buyer was found for this workflow.');
+    expect(systemPrompt).not.toContain('Adversarial review: killed');
+  });
+
+  // The selection screen groups the ranked list into one card per product thesis. Reading a
+  // flat list, the analyst would describe four variants of one business as four opportunities.
+  it('carries the thesis grouping and the uncovered buyer jobs the selection screen shows', async () => {
+    mockJobFindFirst.mockResolvedValue(makeJob());
+    mockGetPreviewReportForJob.mockResolvedValue(
+      makePreviewReport({
+        idea_theses: {
+          family_source: 'llm',
+          theses: [
+            {
+              family_id: 'fam-1',
+              display_label: 'Controlled-drug ledger',
+              buyer: 'Practice manager',
+              triggering_job: 'monthly reconciliation',
+              economic_outcome: 'avoids a failed inspection',
+              members: [{ name: 'Sol1' }],
+              lead_idea_name: 'Sol1',
+              incumbent_status: 'occupied',
+              incumbent_vendors: ['LedgerCo'],
+              fatal_assumptions: [
+                { idea_name: 'Sol1', source_field: 'audience_fit', assumption: 'Serves an adjacent audience.' },
+              ],
+            },
+          ],
+          uncovered_families: [
+            { family_id: 'fam-2', display_label: 'Inventory reorder', reason: 'no_cell_allocated' },
+          ],
+          unassigned: [],
+        },
+      })
+    );
+
+    await request(app).post(`/api/jobs/${jobId}/chat`).set(authHeaders).send({ message: 'are these the same idea?' });
+
+    const systemPrompt = mockChatCompleteStream.mock.calls[0][0].messages[0].content as string;
+    expect(systemPrompt).toContain('Product theses in this pool');
+    expect(systemPrompt).toContain('Controlled-drug ledger (1 variant: [R1] Sol1)');
+    expect(systemPrompt).toContain('Buyer job: Practice manager / monthly reconciliation / avoids a failed inspection');
+    expect(systemPrompt).toContain('a named vendor already ships this capability (LedgerCo)');
+    expect(systemPrompt).toContain('Validated buyer jobs with no surviving idea (unexamined, NOT ruled out)');
+    expect(systemPrompt).toContain('Inventory reorder: no idea was ever generated for it');
     assertNoInternalKeys(systemPrompt);
   });
 
@@ -2343,6 +2539,203 @@ describe('POST /api/jobs/:jobId/chat — chat agent tools (v1.1)', () => {
     expect(toolMsg.content).not.toContain('"candidate_record"');
   });
 
+  /**
+   * A live session put these on a user's screen, verbatim and across a reload:
+   *   VersusDealCalculator: red-team verdict: "killed".
+   *   [Report: candidate_catalog.R7.candidate_record.red_team_verdict]
+   *   ShowClose Settlement Desk: incumbent parity: "partial by Opendate: …"
+   *
+   * Asked the same question in neutral language, the same analyst said the idea was
+   * "marked 'Premise unproven'" — so both the vocabulary map and the product-knowledge
+   * prompt were working. It was quoting its own TOOL RESULT: `candidate_record` was the
+   * whole stored idea, handed over raw. The dossier had been scrubbed four times over;
+   * the retrieval tools had not. A model repeats what it is FED, not what it is TOLD.
+   */
+  describe('stored vocabulary in retrieval-tool payloads', () => {
+    /** None of the three is product vocabulary — `killed`'s shipped label is
+     *  "Premise unproven" and the other two have never had a user-facing form. */
+    const INTERNAL_VERDICT_TOKENS = /\b(killed|weakened|survives)\b/i;
+    /** The leak shape: a stored parity value still LEADING with its class token. */
+    const BARE_PARITY_CLASS =
+      /"(?:incumbent_parity|adjacent_market_parity)":\s*"(?:shipped|partial|substitute|bundled_free)\b/i;
+
+    const STORED_PARITY = [
+      'shipped by Aftershoot: culls RAW batches',
+      'partial by Opendate: covers the settlement step',
+      'substitute (Forrager): free templates cover it',
+      'bundled_free (Notion): included in the free tier',
+    ];
+
+    async function toolResult(args: {
+      ideas: Record<string, unknown>[];
+      report: unknown;
+      tool: string;
+      toolArgs: string;
+    }): Promise<string> {
+      mockJobFindFirst.mockResolvedValue(
+        makeJob({ status: 'COMPLETED', solutionIdeas: args.ideas }),
+      );
+      mockGetReportJsonForJob.mockResolvedValue(args.report);
+      mockChatCompleteStream.mockResolvedValueOnce([
+        toolCallChunk(0, 'call_vocab', args.tool, args.toolArgs),
+        { choices: [], usage: { prompt_tokens: 15, completion_tokens: 5 } },
+      ]);
+      mockChatComplete.mockResolvedValueOnce({
+        choices: [{ message: { content: 'An answer.' } }],
+        usage: { prompt_tokens: 30, completion_tokens: 20 },
+      });
+
+      const response = await request(app)
+        .post(`/api/jobs/${jobId}/chat`)
+        .set(authHeaders)
+        .send({ message: 'tell me about this candidate' });
+      expect(response.status).toBe(200);
+
+      const round2Messages = mockChatComplete.mock.calls[0][0].messages;
+      return round2Messages.find((message: any) => message.role === 'tool').content as string;
+    }
+
+    it.each(['killed', 'weakened', 'survives'])(
+      'hands get_solution_detail no raw "%s" verdict to parrot',
+      async (verdict) => {
+        const content = await toolResult({
+          ideas: [{ idea_id: 'idea-a', idea_revision: 1, solution_name: 'Versus Deal Calculator', red_team_verdict: verdict }],
+          report: {},
+          tool: 'get_solution_detail',
+          toolArgs: '{"idea_ref":"R1"}',
+        });
+
+        expect(content).not.toMatch(INTERNAL_VERDICT_TOKENS);
+        // Non-destructive: the field is still there, under its own quotable path.
+        expect(content).toContain('"red_team_verdict"');
+      },
+    );
+
+    it('names the killed verdict in get_solution_detail the way the owner\'s screen does', async () => {
+      const content = await toolResult({
+        ideas: [{ idea_id: 'idea-a', idea_revision: 1, solution_name: 'Versus Deal Calculator', red_team_verdict: 'killed' }],
+        report: {},
+        tool: 'get_solution_detail',
+        toolArgs: '{"idea_ref":"R1"}',
+      });
+
+      expect(content).toContain('"red_team_verdict": "Premise unproven"');
+    });
+
+    it.each(STORED_PARITY)(
+      'hands get_solution_detail no bare parity class for "%s"',
+      async (stored) => {
+        const content = await toolResult({
+          ideas: [{
+            idea_id: 'idea-a',
+            idea_revision: 1,
+            solution_name: 'ShowClose Settlement Desk',
+            incumbent_parity: stored,
+            adjacent_market_parity: stored,
+          }],
+          report: {},
+          tool: 'get_solution_detail',
+          toolArgs: '{"idea_ref":"R1"}',
+        });
+
+        expect(content).not.toMatch(BARE_PARITY_CLASS);
+        expect(content).toContain('"incumbent_parity"');
+        expect(content).toContain('"adjacent_market_parity"');
+      },
+    );
+
+    it('labels the same fields inside the attributed completed-report records', async () => {
+      const content = await toolResult({
+        ideas: [{ idea_id: 'idea-a', idea_revision: 1, solution_name: 'ShowClose Settlement Desk' }],
+        report: {
+          selected_solution_details: {
+            idea_id: 'idea-a',
+            idea_revision: 1,
+            solution_name: 'ShowClose Settlement Desk',
+            red_team_verdict: 'killed',
+            incumbent_parity: 'partial by Opendate: covers the settlement step',
+          },
+        },
+        tool: 'get_solution_detail',
+        toolArgs: '{"idea_ref":"R1"}',
+      });
+
+      expect(content).toContain('"identity_matched_records"');
+      expect(content).not.toMatch(INTERNAL_VERDICT_TOKENS);
+      expect(content).not.toMatch(BARE_PARITY_CLASS);
+      expect(content).toContain('Partly covered by Opendate: covers the settlement step');
+    });
+
+    it('sanitizes both sides of a compare_solutions payload', async () => {
+      const content = await toolResult({
+        ideas: [
+          {
+            idea_id: 'idea-a',
+            idea_revision: 1,
+            solution_name: 'Versus Deal Calculator',
+            red_team_verdict: 'killed',
+            incumbent_parity: 'shipped by Aftershoot: culls RAW batches',
+          },
+          {
+            idea_id: 'idea-b',
+            idea_revision: 3,
+            solution_name: 'ShowClose Settlement Desk',
+            red_team_verdict: 'survives',
+            adjacent_market_parity: 'bundled_free (Notion): included in the free tier',
+          },
+        ],
+        report: {},
+        tool: 'compare_solutions',
+        toolArgs: '{"idea_refs":["R1","R2"]}',
+      });
+
+      expect(content).not.toMatch(INTERNAL_VERDICT_TOKENS);
+      expect(content).not.toMatch(BARE_PARITY_CLASS);
+      expect(content).toContain('"red_team_verdict": "Premise unproven"');
+      expect(content).toContain('"red_team_verdict": "no disqualifying objection"');
+      expect(content).toContain('Already shipped by Aftershoot');
+      expect(content).toContain('Already included free with Notion');
+    });
+
+    it('sanitizes a raw report section read through get_report_section', async () => {
+      const content = await toolResult({
+        ideas: [{ idea_id: 'idea-a', idea_revision: 1, solution_name: 'ShowClose Settlement Desk' }],
+        report: {
+          alternative_solutions: [
+            {
+              solution_name: 'ShowClose Settlement Desk',
+              red_team_verdict: 'weakened',
+              incumbent_parity: 'partial by Opendate: covers the settlement step',
+            },
+          ],
+        },
+        tool: 'get_report_section',
+        toolArgs: '{"section":"alternative_solutions"}',
+      });
+
+      expect(content).not.toMatch(INTERNAL_VERDICT_TOKENS);
+      expect(content).not.toMatch(BARE_PARITY_CLASS);
+      expect(content).toContain('"red_team_verdict": "a decision-critical objection"');
+    });
+
+    // Evidence search returns matched LEAVES, so the field name survives only in the path.
+    it('sanitizes a parity leaf matched by get_evidence', async () => {
+      const content = await toolResult({
+        ideas: [{ idea_id: 'idea-a', idea_revision: 1, solution_name: 'ShowClose Settlement Desk' }],
+        report: {
+          alternative_solutions: [
+            { incumbent_parity: 'partial by Opendate: covers the settlement step' },
+          ],
+        },
+        tool: 'get_evidence',
+        toolArgs: '{"query":"Opendate"}',
+      });
+
+      expect(content).toContain('Partly covered by Opendate: covers the settlement step');
+      expect(content).not.toContain('partial by Opendate');
+    });
+  });
+
   it('runs a tool round then an unstreamed resolution round, fencing the result and emitting an SSE tool receipt before done', async () => {
     mockJobFindFirst.mockResolvedValue(makeJob());
     mockGetPreviewReportForJob.mockResolvedValue(makePreviewReport());
@@ -2365,6 +2758,7 @@ describe('POST /api/jobs/:jobId/chat — chat agent tools (v1.1)', () => {
 
     expect(response.status).toBe(200);
     expect(mockChatCompleteStream).toHaveBeenCalledTimes(1);
+    expect(mockChatCompleteStream.mock.calls[0][0].reasoningEffort).toBe('none');
     // One tool-resolution round. (A separate, tool-less chatComplete also runs after the
     // answer is persisted to author the follow-up chips — count the ROUNDS, not the calls.)
     expect(toolRounds()).toHaveLength(1);
@@ -2374,6 +2768,7 @@ describe('POST /api/jobs/:jobId/chat — chat agent tools (v1.1)', () => {
     // collapse the inner fence via the outer call's own anti-forgery guard) and appended as
     // a `tool` message ahead of round 2's call.
     const round2Messages = mockChatComplete.mock.calls[0][0].messages;
+    expect(mockChatComplete.mock.calls[0][0].reasoningEffort).toBe('none');
     const toolMsg = round2Messages.find((m: any) => m.role === 'tool');
     expect(toolMsg.content).toContain('======== TOOL RESULT');
     expect(toolMsg.content).toContain('I spend hours every month chasing late invoices');

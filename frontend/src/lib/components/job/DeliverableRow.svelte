@@ -11,7 +11,6 @@
     RotateCw,
   } from "lucide-svelte";
   import Button from "$lib/components/ui/Button.svelte";
-  import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
   import { creditTopUp } from "$lib/stores/creditTopUp.svelte";
   import { page } from "$app/state";
 
@@ -25,7 +24,9 @@
     priceUnavailableMessage?: string;
     asset?: { url: string } | null;
     generating?: boolean;
+    refundedAmount?: number | null;
     error?: string;
+    notice?: string;
     onGenerate: () => Promise<void>;
   }
 
@@ -39,14 +40,26 @@
     priceUnavailableMessage = "Current price unavailable. Refresh to try again.",
     asset = null,
     generating = false,
+    refundedAmount = null,
     error: errorMsg = "",
+    notice = "",
     onGenerate,
   }: Props = $props();
 
   let confirmPending = $state(false);
+  const canPurchase = $derived(status === 'pending' || status === 'failed');
+  const purchaseVerb = $derived(status === 'failed' ? 'Retry' : 'Generate');
+  const creditLabel = $derived(`${creditCost} ${creditCost === 1 ? 'credit' : 'credits'}`);
+  const confirmationTitleId = $derived(
+    `deliverable-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-confirmation`,
+  );
   const priceReasonId = $derived(
     `deliverable-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-price-unavailable`,
   );
+
+  $effect(() => {
+    if (!canPurchase) confirmPending = false;
+  });
 </script>
 
 <div
@@ -88,8 +101,16 @@
       <span class="dr-hint">Unlocks when research completes</span>
     {:else if status === 'running'}
       <span class="dr-hint dr-hint--info">Generating your page...</span>
-    {:else if (status === 'pending' || status === 'failed') && !priceAvailable}
-      <span id={priceReasonId} class="dr-hint dr-hint--warning">{priceUnavailableMessage}</span>
+    {:else if canPurchase}
+      <span class="dr-hint">Responsive waitlist page · preview and downloadable HTML for self-hosting</span>
+      {#if status === 'failed' && refundedAmount !== null}
+        <span class="dr-hint dr-hint--refund">
+          {refundedAmount} {refundedAmount === 1 ? 'credit was' : 'credits were'} returned from the failed attempt.
+        </span>
+      {/if}
+      {#if !priceAvailable}
+        <span id={priceReasonId} class="dr-hint dr-hint--warning">{priceUnavailableMessage}</span>
+      {/if}
     {/if}
   </div>
 
@@ -103,19 +124,7 @@
         <Loader2 class="dr-spinner" />
         Generating...
       </span>
-    {:else if status === 'failed'}
-      <SubmitButton
-        onclick={onGenerate}
-        disabled={!priceAvailable}
-        loading={generating}
-        loadingText="Retrying..."
-        icon={RotateCw}
-        label={priceAvailable ? "Retry" : "Retry unavailable"}
-        describedBy={!priceAvailable ? priceReasonId : undefined}
-        title={!priceAvailable ? priceUnavailableMessage : undefined}
-        class="btn-secondary btn-sm"
-      />
-    {:else if status === 'pending'}
+    {:else if canPurchase}
       {#if !priceAvailable}
         <button
           disabled
@@ -123,7 +132,7 @@
           title={priceUnavailableMessage}
           class="btn-secondary btn-sm"
         >
-          Generate unavailable
+          {purchaseVerb} unavailable
         </button>
       {:else if !canAfford && creditCost > 0}
         <!-- Insufficient credits strip — opens top-up modal -->
@@ -133,19 +142,11 @@
           <button onclick={() => creditTopUp.show({ balance: (page.data.creditBalance as number) ?? 0, required: creditCost, stageName: label.toLowerCase() })} class="btn-tertiary btn-sm">Add credits</button>
         </div>
       {:else if confirmPending}
-        <div class="dr-confirm-strip">
-          <Coins class="dr-confirm-coins-icon" />
-          <span class="dr-confirm-text">{creditCost} credits &mdash; confirm?</span>
-          <Button onclick={async () => { confirmPending = false; await onGenerate(); }} label="Generate" class="btn-primary btn-sm" />
-          <Button onclick={() => { confirmPending = false; }} label="Cancel" class="btn-secondary btn-sm" />
-        </div>
+        <span class="dr-confirm-open">Review purchase below</span>
       {:else}
         <button onclick={() => { confirmPending = true; }} class="btn-secondary btn-sm">
-          {#if Icon}<Icon class="w-4 h-4" />{/if}
-          Generate
-          {#if creditCost > 0}
-            <span class="dr-cost-inline"><Coins class="w-3 h-3" />{creditCost}</span>
-          {/if}
+          {#if status === 'failed'}<RotateCw class="w-4 h-4" />{:else if Icon}<Icon class="w-4 h-4" />{/if}
+          {purchaseVerb} · {creditLabel}
         </button>
       {/if}
     {:else if status === 'locked'}
@@ -154,10 +155,39 @@
   </div>
 </div>
 
+{#if canPurchase && confirmPending}
+  <section class="dr-purchase-confirmation" aria-labelledby={confirmationTitleId}>
+    <Coins class="dr-confirm-coins-icon" aria-hidden="true" />
+    <div class="dr-confirm-copy">
+      <h4 id={confirmationTitleId}>{status === 'failed' ? 'Retry landing page generation?' : 'Generate a waitlist landing page?'}</h4>
+      <p>Creates one responsive, SEO-informed HTML page from this report. Preview or download it when ready; NicheIQ does not publish or host it.</p>
+      <ul>
+        <li>One generated version per completed research run.</li>
+        <li>If generation fails before delivery, eligible credits are returned automatically.</li>
+      </ul>
+    </div>
+    <div class="dr-confirm-actions">
+      <Button
+        onclick={async () => { confirmPending = false; await onGenerate(); }}
+        label={`${purchaseVerb} page · ${creditLabel}`}
+        class="btn-primary btn-sm"
+      />
+      <Button onclick={() => { confirmPending = false; }} label="Cancel" class="btn-secondary btn-sm" />
+    </div>
+  </section>
+{/if}
+
 {#if errorMsg}
   <div class="dr-error-strip">
     <AlertTriangle class="dr-error-strip-icon" />
     <span>{errorMsg}</span>
+  </div>
+{/if}
+
+{#if notice}
+  <div class="dr-notice-strip" role="status">
+    <CheckCircle class="dr-notice-strip-icon" aria-hidden="true" />
+    <span>{notice}</span>
   </div>
 {/if}
 
@@ -207,7 +237,7 @@
       animation: none;
       background: rgba(59, 130, 246, 0.06);
     }
-    .dr-confirm-strip {
+    .dr-purchase-confirmation {
       animation: none;
     }
   }
@@ -281,6 +311,7 @@
   }
   .dr-hint--info { color: var(--color-info); }
   .dr-hint--warning { color: var(--color-warning); }
+  .dr-hint--refund { color: var(--color-success-text); }
 
   /* ── Actions column ── */
   .dr-actions {
@@ -329,15 +360,21 @@
     flex-shrink: 0;
   }
 
-  /* ── Confirm strip ── */
-  .dr-confirm-strip {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.8125rem;
-    background: rgba(229, 90, 40, 0.06);
-    padding: 0.3125rem 0.75rem;
-    border-radius: 0.375rem;
+  /* ── Paid confirmation ── */
+  .dr-confirm-open {
+    color: var(--color-text-muted);
+    font-size: 0.75rem;
+  }
+  .dr-purchase-confirmation {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 0.75rem;
+    align-items: start;
+    margin: 0.25rem 0 0 calc(1.75rem + 0.75rem);
+    padding: 0.75rem;
+    border: 1px solid var(--color-border-accent);
+    border-radius: 0.5rem;
+    background: var(--color-accent-subtle);
     animation: dr-confirm-enter 0.2s ease-out;
   }
   :global(.dr-confirm-coins-icon) {
@@ -346,24 +383,32 @@
     color: var(--color-accent);
     flex-shrink: 0;
   }
-  .dr-confirm-text {
+  .dr-confirm-copy h4 {
+    margin: 0;
+    color: var(--color-text-primary);
+    font-size: 0.875rem;
+    line-height: 1.3;
+  }
+  .dr-confirm-copy p,
+  .dr-confirm-copy ul {
+    margin: 0.25rem 0 0;
     color: var(--color-text-secondary);
+    font-size: 0.75rem;
+    line-height: 1.45;
+  }
+  .dr-confirm-copy ul {
+    padding-left: 1rem;
+  }
+  .dr-confirm-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
     font-variant-numeric: tabular-nums;
   }
 
   @keyframes dr-confirm-enter {
     from { opacity: 0; transform: translateY(-4px); }
     to { opacity: 1; transform: translateY(0); }
-  }
-
-  /* Cost shown inline inside the button */
-  .dr-cost-inline {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.125rem;
-    font-size: 0.75rem;
-    font-variant-numeric: tabular-nums;
-    opacity: 0.8;
   }
 
   /* ── Error strip ── */
@@ -384,6 +429,23 @@
     height: 0.8125rem;
     flex-shrink: 0;
   }
+  .dr-notice-strip {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    margin-top: 0.25rem;
+    margin-left: calc(1.75rem + 0.75rem);
+    padding: 0.3125rem 0.625rem;
+    border-radius: 0.375rem;
+    background: var(--color-success-subtle);
+    color: var(--color-success-text);
+    font-size: 0.8125rem;
+  }
+  :global(.dr-notice-strip-icon) {
+    width: 0.8125rem;
+    height: 0.8125rem;
+    flex-shrink: 0;
+  }
 
   /* ── Responsive: stack actions on mobile ── */
   @media (max-width: 480px) {
@@ -391,6 +453,15 @@
       margin-left: 0;
       width: 100%;
       padding-left: calc(1.75rem + 0.75rem);
+    }
+    .dr-purchase-confirmation {
+      grid-template-columns: auto minmax(0, 1fr);
+      margin-left: 0;
+    }
+    .dr-confirm-actions {
+      grid-column: 1 / -1;
+      padding-left: calc(0.8125rem + 0.75rem);
+      flex-wrap: wrap;
     }
   }
 </style>

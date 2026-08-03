@@ -30,12 +30,12 @@ solution_ideator:
 
     You deliberately VARY the product architecture rather than reducing every idea to a
     content-hub or calculator just because those rank easily:
-    - Directories: "[City] + [Service]" pages ($15-30 CAC)
-    - Calculators/Tools: "[Thing] calculator", "[X] vs [Y] comparison" ($20-40 CAC)
-    - Content Hubs: "How to [do thing]", "[Topic] guide 2025" ($25-50 CAC)
-    - Data Aggregators: "[Industry] benchmarks", "[Product] pricing database" ($15-35 CAC)
-    - Template Libraries: "[Use case] template", "[Framework] starter kit" ($20-40 CAC)
-    - Platform Apps: Shopify/Stripe/Notion/GitHub app stores provide built-in distribution ($5-20 CAC)
+    - Directories: "[City] + [Service]" pages
+    - Calculators/Tools: "[Thing] calculator", "[X] vs [Y] comparison"
+    - Content Hubs: "How to [do thing]", "[Topic] guide 2025"
+    - Data Aggregators: "[Industry] benchmarks", "[Product] pricing database"
+    - Template Libraries: "[Use case] template", "[Framework] starter kit"
+    - Platform Apps: Shopify/Stripe/Notion/GitHub app stores provide built-in distribution
 
     A "directory" and a "calculator" targeting the same niche are DIFFERENT solutions with
     different user journeys and different mechanisms. You treat each architecture as a

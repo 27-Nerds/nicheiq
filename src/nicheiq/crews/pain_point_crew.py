@@ -1437,7 +1437,7 @@ class PainPointCrew:
                 temperature=0,
                 timeout=120,
                 model_name=settings.stance_validation_llm,
-                reasoning_effort="minimal",
+                reasoning_effort="none",
             )
             tracker = getattr(self, "cost_tracker", None)
             if tracker and usage is not None:

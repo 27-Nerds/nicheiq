@@ -27,14 +27,21 @@ class SolutionRefinement(BaseModel):
     model_config = ConfigDict(extra='ignore')
 
     geographic_priorities: list[str] = Field(
-        ...,
-        min_length=1,
+        default_factory=list,
         description=(
-            "Ranked list of geographic markets to prioritize based on keyword volume and demand (minimum 1). "
-            "Examples: ['Spain', 'Portugal', 'France'], ['United States', 'Canada', 'United Kingdom']. "
-            "Order reflects keyword volume and market opportunity."
+            "Markets to prioritize, ranked, EACH traceable to a location term in the validated "
+            "keywords. An EMPTY LIST is the correct answer when no validated keyword carries a "
+            "location term — most niches have no geographic signal at all. Never rank markets "
+            "from general knowledge or from what sounds plausible for the industry."
         )
     )
+    # `min_length=1` and a worked example (['Spain', 'Portugal', 'France']) used to live here.
+    # Together they guaranteed fabrication: the field was mandatory, most niches have no geo
+    # signal, and the only concrete strings in scope were those countries — so runs shipped a
+    # Spain-first go-to-market plan for US-only niches. Removing the example moved the model to
+    # an honest sentinel ("Not geographically differentiated…"), which then rendered AS a ranked
+    # market (live run 8f35ea6b). The real fix is permitting empty, which every consumer already
+    # handles: the frontend guards on `.length > 0` and omits the section entirely.
 
     category_pivot_recommendation: Optional[str] = Field(
         default=None,

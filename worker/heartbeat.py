@@ -228,7 +228,7 @@ def set_current_job(job_id: Optional[str]) -> None:
         logger.debug("[Heartbeat] Worker now idle")
 
 
-def notify_job_started(job_id: str) -> bool:
+def notify_job_started(job_id: str, recovery_token: Optional[str] = None) -> bool:
     """
     Notify backend that this worker has started processing a job.
 
@@ -255,6 +255,7 @@ def notify_job_started(job_id: str) -> bool:
                 "worker_id": WORKER_ID,
                 "job_id": job_id,
                 **dispatch_payload,
+                **({"recovery_token": recovery_token} if recovery_token else {}),
             },
             headers={"x-internal-service": _get_internal_secret()},
             timeout=HEARTBEAT_TIMEOUT_SECONDS,

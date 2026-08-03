@@ -275,3 +275,71 @@ class TestG2GateArtifactSizeCap:
         assert len(serialized) <= 16384
         # Still usable — at least one pain survives the last-resort floor.
         assert len(artifact["pains"]) >= 1
+        # F-013: the shrink must be MARKED so the backend can reject whole-list
+        # replacement patches built against a partial view (the marker was missing).
+        assert artifact.get("truncated") is True
+
+    def test_small_artifact_carries_no_truncated_marker(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(settings, "checkpoint_dir", tmp_path)
+        monkeypatch.setattr(settings, "checkpoint_enabled", True)
+
+        flow = ResearchFlow(niche_description=NICHE, job_id="job-g2-small")
+        flow.state.pain_point_analysis = _pain_point_analysis()
+        flow.state.audience_mapping = _audience_mapping()
+
+        artifact = flow._build_g2_gate_artifact()
+
+        assert artifact is not None
+        assert "truncated" not in artifact
+
+
+class TestG1GateArtifact:
+    """F-013: the G1 gate delivered `_extract_stage_artifact(1)` — the small SSE/progress
+    artifact capping market_segments at 5 — so a 6+-segment niche rendered a gate card AND
+    a patch cross-check reference that silently hid segments. `_build_g1_gate_artifact`
+    mirrors G2: full lists, 16KB budget, shared shrink helper, `truncated` marker,
+    degraded-never-None."""
+
+    def _flow(self, tmp_path, monkeypatch, job_id):
+        monkeypatch.setattr(settings, "checkpoint_dir", tmp_path)
+        monkeypatch.setattr(settings, "checkpoint_enabled", True)
+        return ResearchFlow(niche_description=NICHE, job_id=job_id)
+
+    def test_seven_segment_niche_full_in_gate_artifact_sse_still_capped(self, tmp_path, monkeypatch):
+        """The Sev1 lock: a 7-segment niche carries all 7 in the GATE artifact, while the
+        small SSE artifact (_build_stage_artifact(1)) keeps its historical [:5] cap."""
+        flow = self._flow(tmp_path, monkeypatch, "job-g1-full")
+        segments = [f"Segment {i}" for i in range(7)]
+        nc = _niche_context()
+        nc.market_segments = segments
+        flow.state.niche_context = nc
+
+        gate = flow._build_g1_gate_artifact()
+        assert gate["type"] == "niche_validation"
+        assert gate["market_segments"] == segments  # all 7
+        assert "truncated" not in gate  # far below the 16KB budget
+
+        sse = flow._build_stage_artifact(1)
+        assert len(sse["market_segments"]) == 5  # SSE/progress artifact unchanged
+
+    def test_never_none_degrades_without_niche_context(self, tmp_path, monkeypatch):
+        flow = self._flow(tmp_path, monkeypatch, "job-g1-degraded")
+        flow.state.niche_context = None
+
+        gate = flow._build_g1_gate_artifact()
+
+        assert gate is not None
+        assert gate.get("degraded")
+
+    def test_size_cap_sets_truncated_and_never_emits_oversized(self, tmp_path, monkeypatch):
+        flow = self._flow(tmp_path, monkeypatch, "job-g1-size")
+        nc = _niche_context()
+        nc.market_segments = [f"{'S' * 200} {i}" for i in range(300)]
+        flow.state.niche_context = nc
+
+        gate = flow._build_g1_gate_artifact()
+
+        assert len(json.dumps(gate)) <= 16384
+        assert gate.get("truncated") is True
+        # Still usable — at least one segment survives the last-resort floor.
+        assert len(gate["market_segments"]) >= 1

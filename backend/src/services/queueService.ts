@@ -67,6 +67,53 @@ export async function deliverDispatchWork(dispatchId: string): Promise<void> {
   }
 }
 
+/** Deliver a fenced paid-pool restoration. Duplicate delivery is safe: recoveryToken is the
+ * ownership generation and the worker must claim it before touching the journal. */
+export async function enqueuePaidPoolRecovery(
+  jobId: string,
+  dispatchId: string,
+  recoveryToken: string,
+  journal: Record<string, unknown>,
+): Promise<void> {
+  const payload = {
+    job_id: jobId,
+    dispatch_id: dispatchId,
+    recovery_token: recoveryToken,
+    recovery_journal: journal,
+    task_type: 'recover_paid_pool_operation',
+    created_at: new Date().toISOString(),
+  };
+  try {
+    await redis.lpush(QUEUE_NAME, JSON.stringify(payload));
+    await prisma.jobDispatch.updateMany({
+      where: {
+        id: dispatchId,
+        state: DispatchState.RECOVERING,
+        recoveryToken,
+      },
+      data: {
+        deliveryAttempts: { increment: 1 },
+        lastDeliveryAt: new Date(),
+        lastDeliveryError: null,
+      },
+    });
+  } catch (error) {
+    await prisma.jobDispatch.updateMany({
+      where: {
+        id: dispatchId,
+        state: DispatchState.RECOVERING,
+        recoveryToken,
+      },
+      data: {
+        deliveryAttempts: { increment: 1 },
+        lastDeliveryAt: new Date(),
+        lastDeliveryError: error instanceof Error ? error.message.slice(0, 2000) : 'Redis delivery failed',
+      },
+    }).catch(() => undefined);
+    throw error;
+  }
+}
+
 export async function redeliverAuthorizedDispatches(limit = 25): Promise<number> {
   const retryBefore = new Date(Date.now() - DISPATCH_RETRY_MIN_AGE_MS);
   const due = await prisma.jobDispatch.findMany({
@@ -75,10 +122,7 @@ export async function redeliverAuthorizedDispatches(limit = 25): Promise<number>
       workPayload: { not: Prisma.JsonNull },
       OR: [
         { lastDeliveryAt: null },
-        {
-          lastDeliveryError: { not: null },
-          lastDeliveryAt: { lte: retryBefore },
-        },
+        { lastDeliveryAt: { lte: retryBefore } },
       ],
     },
     orderBy: { lastDeliveryAt: { sort: 'asc', nulls: 'first' } },

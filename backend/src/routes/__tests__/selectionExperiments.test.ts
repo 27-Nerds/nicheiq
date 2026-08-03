@@ -353,6 +353,60 @@ describe('selection experiment API', () => {
     expect(mockExperimentCreate).not.toHaveBeenCalled();
   });
 
+  it('updates a draft with the supplied compare-and-set version', async () => {
+    mockExperimentFindFirst.mockResolvedValue({
+      ...draft,
+      id: EXPERIMENT_ID,
+      jobId: JOB_ID,
+      ideaId: draft.ideaId,
+      ideaRevision: draft.ideaRevision,
+      originChallengeId: null,
+      originQuestionId: null,
+      status: 'DRAFT',
+      job: { status: 'AWAITING_SELECTION' },
+    });
+    mockExperimentFindUnique.mockResolvedValue({ id: EXPERIMENT_ID, version: 8, status: 'DRAFT' });
+
+    const response = await request(app)
+      .put(`/api/jobs/${JOB_ID}/selection-experiments/${EXPERIMENT_ID}`)
+      .set(headers)
+      .send({ ...draft, expectedVersion: 7 });
+
+    expect(response.status).toBe(200);
+    expect(mockExperimentUpdateMany).toHaveBeenCalledWith({
+      where: { id: EXPERIMENT_ID, status: 'DRAFT', version: 7 },
+      data: expect.objectContaining({
+        assumption: draft.assumption,
+        version: { increment: 1 },
+      }),
+    });
+    expect(response.body.experiment).toEqual({ id: EXPERIMENT_ID, version: 8, status: 'DRAFT' });
+  });
+
+  it('reports a lost update race instead of overwriting the newer draft', async () => {
+    mockExperimentFindFirst.mockResolvedValue({
+      ...draft,
+      id: EXPERIMENT_ID,
+      jobId: JOB_ID,
+      ideaId: draft.ideaId,
+      ideaRevision: draft.ideaRevision,
+      originChallengeId: null,
+      originQuestionId: null,
+      status: 'DRAFT',
+      job: { status: 'AWAITING_SELECTION' },
+    });
+    mockExperimentUpdateMany.mockResolvedValue({ count: 0 });
+
+    const response = await request(app)
+      .put(`/api/jobs/${JOB_ID}/selection-experiments/${EXPERIMENT_ID}`)
+      .set(headers)
+      .send({ ...draft, expectedVersion: 7 });
+
+    expect(response.status).toBe(409);
+    expect(response.body.error).toContain('changed');
+    expect(mockExperimentFindUnique).not.toHaveBeenCalled();
+  });
+
   it('does not allow a locked precommitment to be edited', async () => {
     mockExperimentFindFirst.mockResolvedValue({
       ...draft,
@@ -576,7 +630,11 @@ describe('selection experiment API', () => {
     expect(response.headers['content-type']).toContain('text/markdown');
     expect(response.text).toContain('# Test brief: Signal Desk');
     expect(response.text).toContain(`- Challenge: ${CHALLENGE_ID}`);
-    expect(response.text).toContain('- Question: pain_is_observed');
+    // The owner downloads this brief: question ids, methods and consensus values are
+    // storage tokens and are rendered as words, never as the raw slug.
+    expect(response.text).toContain('- Question: pain is observed');
+    expect(response.text).not.toContain('pain_is_observed');
+    expect(response.text).toContain('- Method: CTA smoke test');
     expect(response.text).toContain('This brief records a precommitted test of one assumption');
   });
 

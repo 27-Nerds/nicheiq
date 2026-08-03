@@ -1,5 +1,5 @@
 import { prisma } from './db.js';
-import { UserRole, CreditTransactionType, Prisma } from '@prisma/client';
+import { AssetType, JobStatus, UserRole, CreditTransactionType, Prisma } from '@prisma/client';
 import path from 'path';
 import { existsSync, readdirSync, statSync, readFileSync } from 'fs';
 import { resolveAssetPath } from '../utils/assetPath.js';
@@ -461,8 +461,8 @@ function ctaJsonValidator(opts?: { requireCountPlaceholder?: boolean }) {
 
 const SETTINGS_VALIDATORS: Record<string, (value: string) => string | null> = {
   sample_report_url: (value) => {
-    if (!/^\/shared\/[A-Za-z0-9_-]{1,100}$/.test(value)) {
-      return 'Value must be a valid share URL (e.g. /shared/abc123)';
+    if (!/^\/shared\/[A-Za-z0-9_-]{22}$/.test(value)) {
+      return 'Value must be a NicheIQ share path with its full 22-character token';
     }
     return null;
   },
@@ -510,6 +510,47 @@ export async function getAppSetting(key: string): Promise<string | null> {
   if (!isValidSettingsKey(key)) throw new Error('Invalid settings key');
   const setting = await prisma.appSettings.findUnique({ where: { key } });
   return setting?.value ?? null;
+}
+
+/**
+ * A configured sample is publishable only while its exact share is active and
+ * still points at a completed job with a report file. Keeping this check on the
+ * backend gives every CTA one authoritative availability contract instead of
+ * advertising a stale admin string that the public route cannot open.
+ */
+export async function isSampleReportUrlAvailable(url: string): Promise<boolean> {
+  const match = /^\/shared\/([A-Za-z0-9_-]{22})$/.exec(url);
+  if (!match) return false;
+
+  const share = await prisma.reportShare.findUnique({
+    where: { shareToken: match[1] },
+    select: {
+      isActive: true,
+      job: {
+        select: {
+          status: true,
+          assets: {
+            where: { assetType: AssetType.REPORT_JSON },
+            take: 1,
+            select: { filePath: true },
+          },
+        },
+      },
+    },
+  });
+  const reportPath = share?.job.assets[0]?.filePath;
+  return Boolean(
+    share?.isActive
+    && share.job.status === JobStatus.COMPLETED
+    && reportPath
+    && existsSync(resolveAssetPath(reportPath)),
+  );
+}
+
+export async function getAvailableSampleReportUrl(): Promise<string | null> {
+  const url = await getAppSetting('sample_report_url');
+  if (!url) return null;
+  return await isSampleReportUrlAvailable(url) ? url : null;
 }
 
 /**

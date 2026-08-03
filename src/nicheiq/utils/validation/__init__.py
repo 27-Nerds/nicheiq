@@ -1,6 +1,7 @@
 """Validation utilities for threads, keywords, checkpoints, social content, and crew guardrails."""
 
 from .checkpoint_validator import CheckpointValidator
+from .competitor_relevance import assess_landscape_relevance, build_niche_vocab_matchers
 from .crew_guardrails import (
     create_diversity_guardrail,
     detect_similarity,
@@ -42,6 +43,9 @@ __all__ = [
     "CheckpointValidator",
     # Social content validation
     "SocialContentValidator",
+    # Competitive landscape off-niche guard
+    "assess_landscape_relevance",
+    "build_niche_vocab_matchers",
     # Crew guardrails (core)
     "validate_diversity",
     "validate_competitive_analysis",

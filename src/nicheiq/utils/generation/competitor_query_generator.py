@@ -15,6 +15,11 @@ from ...config.settings import settings
 from ..llm_service import LLMService
 from ..parsing.json_extractor import extract_json_array_from_text
 from ..prompts import get_prompt
+from ..validation.niche_anchor import (
+    build_anchor_matchers,
+    format_anchor_block,
+    text_has_anchor,
+)
 
 if TYPE_CHECKING:
     from ...models.research_state import NicheContext
@@ -208,9 +213,13 @@ Pain Points Addressed:
 
         current_year = str(datetime.now(timezone.utc).year)
 
+        # Same anchor vocabulary the Reddit/HN query generators see (QueryGenerator):
+        # named entities keep an ambiguous solution name from relocating the search to a
+        # different industry, and disambiguation_exclusions name the adjacent senses.
         prompt = get_prompt(
             "competitor_query",
             context_section=context_section,
+            anchor_block=format_anchor_block(niche_context),
             num_queries=num_queries,
             project_type=sanitized_project_type,
             current_year=current_year,
@@ -250,6 +259,12 @@ Pain Points Addressed:
             # Extract JSON array using robust bracket matching
             queries = self._extract_json_array(content)
             if queries:
+                # Code-level drift enforcement, mirroring QueryGenerator._apply_anchor_drift_guard:
+                # drop any query that lands in an adjacent sense the niche explicitly excludes.
+                exclusion_matchers = build_anchor_matchers(
+                    list(getattr(niche_context, "disambiguation_exclusions", None) or [])
+                )
+
                 # Validate query structure
                 valid_queries = []
                 for i, q in enumerate(queries):
@@ -269,6 +284,13 @@ Pain Points Addressed:
                         logger.warning(
                             f"Skipping query {i}: contains the invented solution name "
                             f"('{q['query'][:80]}')"
+                        )
+                        continue
+
+                    if exclusion_matchers and text_has_anchor(q['query'], exclusion_matchers):
+                        logger.warning(
+                            f"[DRIFT] Dropped off-niche competitor query (exclusion term): "
+                            f"{q['query']}"
                         )
                         continue
 
@@ -364,5 +386,7 @@ Pain Points Addressed:
             logger.debug(f"Raw content: {content[:500]}")
             return []
         except Exception as e:
-            logger.error(f"Unexpected error in competitor query generation: {e}", exc_info=True)
+            logger.opt(exception=True).error(
+                "Unexpected error in competitor query generation: {}", e
+            )
             return []

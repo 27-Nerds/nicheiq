@@ -30,13 +30,13 @@ export interface AnalystTokenUsage {
 export const ANALYST_MODEL_OPTIONS: readonly AnalystModelOption[] = [
   {
     id: 'gpt-5.6-luna',
-    pricing: { input: 1.0, output: 6.0, cacheWrite: 1.25, cacheRead: 0.1 },
+    pricing: { input: 0.2, output: 1.2, cacheWrite: 0.25, cacheRead: 0.02 },
   },
-  { id: 'gpt-5-mini', pricing: { input: 0.25, output: 2.0 } },
-  { id: 'gpt-5-nano', pricing: { input: 0.05, output: 0.4 } },
-  { id: 'gpt-5', pricing: { input: 1.25, output: 10.0 } },
-  { id: 'gpt-4.1-mini', pricing: { input: 0.4, output: 1.6 } },
-  { id: 'gpt-4.1-nano', pricing: { input: 0.1, output: 0.4 } },
+  { id: 'gpt-5-mini', pricing: { input: 0.25, output: 2.0, cacheRead: 0.025 } },
+  { id: 'gpt-5-nano', pricing: { input: 0.05, output: 0.4, cacheRead: 0.005 } },
+  { id: 'gpt-5', pricing: { input: 1.25, output: 10.0, cacheRead: 0.125 } },
+  { id: 'gpt-4.1-mini', pricing: { input: 0.4, output: 1.6, cacheRead: 0.1 } },
+  { id: 'gpt-4.1-nano', pricing: { input: 0.1, output: 0.4, cacheRead: 0.025 } },
   { id: 'gpt-4o-mini', pricing: { input: 0.15, output: 0.6 } },
 ] as const;
 
@@ -105,9 +105,8 @@ export function addAnalystUsage(target: AnalystTokenUsage, usage: AnalystTokenUs
 }
 
 export function estimateAnalystCostUsd(model: string, usage: AnalystTokenUsage): number {
-  const baseModel = model.toLowerCase().startsWith('openrouter/')
-    ? model.slice('openrouter/'.length)
-    : model;
+  const separator = model.lastIndexOf('/');
+  const baseModel = separator >= 0 ? model.slice(separator + 1) : model;
   const pricing = MODEL_BY_ID.get(baseModel)?.pricing ?? MODEL_BY_ID.get('gpt-5-mini')!.pricing;
   return (
     usage.inputTokens * pricing.input +

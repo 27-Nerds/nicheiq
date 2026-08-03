@@ -15,6 +15,8 @@ class _FlowStub:
     so a full ResearchFlow instance can't be stubbed directly."""
 
     _batched_attempt_one_validation = ResearchFlow._batched_attempt_one_validation
+    # 4.2: the thin-slice fallback now prefilters the cross-solution pool
+    _prefilter_fallback_keywords = ResearchFlow._prefilter_fallback_keywords
 
 
 def _make_flow():
@@ -46,6 +48,12 @@ def _patch_collaborators(monkeypatch, seeds_by_solution, expanded, relevance=0.8
     def fake_find_solution(name, _ideas):
         solution = MagicMock()
         solution.name = name
+        # 4.2 prefilter corpus fields must be real strings/lists (MagicMock attrs break
+        # the deterministic token-overlap corpus build)
+        solution.solution_name = name
+        solution.value_proposition = f"{name} invoicing tool for freelancers"
+        solution.pain_points_addressed = []
+        solution.winning_angle = ""
         return solution
 
     monkeypatch.setattr(rf_module, "SeedGenerator", fake_seed_generator)

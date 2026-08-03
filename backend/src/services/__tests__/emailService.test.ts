@@ -272,9 +272,10 @@ describe('emailService', () => {
         guidance: 'Your checkpoint is saved.',
       });
 
+      // The phase label wraps the TRANSLATED message, never the raw stored error.
       expect(mockSendMail).toHaveBeenCalledWith(
         expect.objectContaining({
-          html: expect.stringContaining('During Deep Research Phase: Worker crashed'),
+          html: expect.stringContaining('During Deep Research Phase: Something went wrong'),
           text: expect.stringContaining('Your checkpoint is saved.'),
         })
       );
@@ -288,9 +289,46 @@ describe('emailService', () => {
 
       expect(mockSendMail).toHaveBeenCalledWith(
         expect.objectContaining({
-          html: expect.stringContaining('Something broke'),
+          html: expect.stringContaining('Something went wrong'),
         })
       );
+    });
+
+    // The leak: with no translated details, the raw stored job error WAS the email body.
+    it('never renders the raw stored job error when errorDetails is absent', async () => {
+      const { sendFailureEmail } = await import('../emailService.js');
+      mockSendMail.mockResolvedValue({});
+
+      await sendFailureEmail(
+        'user@example.com',
+        'job-123',
+        'Test Niche',
+        'RESUME_NOT_FAILED:QUEUED',
+        null,
+        null,
+      );
+
+      const email = mockSendMail.mock.calls[0][0];
+      expect(email.html).not.toContain('RESUME_NOT_FAILED');
+      expect(email.text).not.toContain('RESUME_NOT_FAILED');
+      expect(email.text).toContain('Something went wrong');
+      // Guidance comes from the same translator, not a second table.
+      expect(email.text).toContain('Try resuming your research');
+    });
+
+    it('still prefers a caller-supplied translation over the internal fallback', async () => {
+      const { sendFailureEmail } = await import('../emailService.js');
+      mockSendMail.mockResolvedValue({});
+
+      await sendFailureEmail('user@example.com', 'job-123', 'Test Niche', 'RESUME_NOT_FAILED:QUEUED', {
+        userMessage: 'Service temporarily busy',
+        actionableGuidance: 'Please wait a few minutes, then click "Resume".',
+      });
+
+      const email = mockSendMail.mock.calls[0][0];
+      expect(email.text).toContain('Service temporarily busy');
+      expect(email.text).toContain('Please wait a few minutes');
+      expect(email.text).not.toContain('RESUME_NOT_FAILED');
     });
   });
 

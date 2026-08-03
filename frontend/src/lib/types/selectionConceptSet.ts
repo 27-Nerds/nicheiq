@@ -84,7 +84,7 @@ export interface SelectionConceptSetArtifact {
 }
 
 export type ConceptOptionOutcome =
-  "pending" | "accepted" | "demoted" | "failed" | "refunded";
+  "pending" | "accepted" | "demoted" | "failed" | "refunded" | "cancelled";
 
 export interface SelectionConceptSet {
   id: string;

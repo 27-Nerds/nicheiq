@@ -14,7 +14,7 @@ Frontend (SvelteKit) → Backend (Express) → Redis Queue → Worker → Python
 |-----------|------------|-------------|
 | Frontend | SvelteKit 5, Tailwind CSS | Web dashboard for job management |
 | Backend | Express.js, Prisma, PostgreSQL | REST API with job queue |
-| Worker | Python 3.12, RQ | Async job processor |
+| Worker | Python 3.12, Redis | Reliable JSON-list job consumer |
 | Pipeline | CrewAI, GPT-4o | 16-stage research automation |
 
 ---
@@ -78,7 +78,7 @@ Frontend runs at http://localhost:3000
 uv venv
 source .venv/bin/activate
 uv pip install -e .
-python -m worker.run_worker
+python -m worker.queue_consumer
 ```
 
 ### 5. Configure Environment
@@ -120,8 +120,9 @@ nicheiq/
 │   ├── prisma/            # Database schema
 │   └── package.json
 │
-├── worker/                # Python RQ worker
-│   ├── run_worker.py      # Worker entry point
+├── worker/                # Python Redis-list worker
+│   ├── queue_consumer.py  # Worker entry point
+│   ├── run_worker.py      # Deprecated compatibility alias
 │   ├── tasks.py           # Job execution
 │   └── progress.py        # Progress reporting
 │
@@ -169,9 +170,8 @@ nicheiq/
 
 | Command | Description |
 |---------|-------------|
-| `python -m worker.run_worker` | Start single worker |
-| `python -m worker.run_worker --workers 4` | Start multiple workers |
-| `python -m worker.run_worker --burst` | Burst mode (exit when empty) |
+| `python -m worker.queue_consumer` | Start the reliable Redis-list worker |
+| `docker compose --env-file .env -f docker/docker-compose.prod.yml up -d --scale worker=4` | Scale production workers |
 
 ### Python Pipeline (Standalone)
 

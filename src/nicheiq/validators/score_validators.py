@@ -445,10 +445,18 @@ class VerdictValidator:
                 verdict = "Conditional"
             if risk_level == "Low":
                 risk_level = "Medium"
-            trend_context = (
-                f"Downgraded from {original_verdict}/{original_risk} to {verdict}/{risk_level}: "
-                f"Declining trend + Missed Window timing"
-            )
+            # Three-branch prose (F-035): "Downgraded from Conditional/Medium to
+            # Conditional/Medium" was a no-op presented as a downgrade.
+            reason = "Declining trend + Missed Window timing"
+            if verdict != original_verdict:
+                trend_context = (
+                    f"Downgraded from {original_verdict}/{original_risk} to {verdict}/{risk_level}: "
+                    f"{reason}"
+                )
+            elif risk_level != original_risk:
+                trend_context = f"Risk raised {original_risk}→{risk_level}: {reason}"
+            else:
+                trend_context = f"Trend risk noted (already at the Conditional/Medium cap): {reason}"
 
         # Rule 2: Fad longevity → cap at Conditional, risk >= Medium
         elif self.thresholds.trend_fad_caps_conditional and is_fad:
@@ -456,10 +464,16 @@ class VerdictValidator:
                 verdict = "Conditional"
             if risk_level == "Low":
                 risk_level = "Medium"
-            trend_context = (
-                f"Downgraded from {original_verdict}/{original_risk} to {verdict}/{risk_level}: "
-                f"Fad longevity verdict"
-            )
+            reason = "Fad longevity verdict"
+            if verdict != original_verdict:
+                trend_context = (
+                    f"Downgraded from {original_verdict}/{original_risk} to {verdict}/{risk_level}: "
+                    f"{reason}"
+                )
+            elif risk_level != original_risk:
+                trend_context = f"Risk raised {original_risk}→{risk_level}: {reason}"
+            else:
+                trend_context = f"Trend risk noted (already at the Conditional/Medium cap): {reason}"
 
         # Rule 3: Declining trend → Go→Conditional only if momentum confirms weakness
         elif self.thresholds.trend_declining_downgrades_go and is_declining and momentum_score < 0.35:
@@ -468,6 +482,11 @@ class VerdictValidator:
                 trend_context = (
                     f"Downgraded from Go/{original_risk} to Conditional/{risk_level}: "
                     f"Declining market trend ({score_band(momentum_score)} momentum)"
+                )
+            else:
+                trend_context = (
+                    f"Note: Declining market trend ({score_band(momentum_score)} momentum) — "
+                    f"verdict already {verdict}, no further downgrade"
                 )
 
         # Rule 4: Risky longevity → Go→Conditional only if momentum confirms weakness
@@ -478,6 +497,11 @@ class VerdictValidator:
                 trend_context = (
                     f"Downgraded from Go/{original_risk} to Conditional/{risk_level}: "
                     f"Risky longevity verdict ({market_maturity} market)"
+                )
+            else:
+                trend_context = (
+                    f"Note: Risky longevity verdict ({market_maturity} market) — "
+                    f"verdict already {verdict}, no further downgrade"
                 )
 
         # Rule 3b: Barely-Declining — informational only, no downgrade
@@ -500,11 +524,12 @@ class VerdictValidator:
             self.thresholds.trend_monitor_wait_raises_risk
             and timing_recommendation == "Monitor & Wait"
         ):
+            prev_risk = risk_level  # capture BEFORE reassignment (latent "High→High" prose bug)
             new_risk = _raise_risk(risk_level)
             if new_risk != risk_level:
                 risk_raised = True
                 risk_level = new_risk
-                rule5_msg = f"Risk raised {original_risk if not trend_context else risk_level}→{risk_level}: Monitor & Wait timing"
+                rule5_msg = f"Risk raised {prev_risk}→{new_risk}: Monitor & Wait timing"
                 if trend_context:
                     trend_context = f"{trend_context}; {rule5_msg}"
                 else:
@@ -726,15 +751,28 @@ class VerdictValidator:
         caveats = [c for c in (red_team_caveats or []) if isinstance(c, str) and c.strip()]
         first = caveats[0].strip()[:200] if caveats else ""
         cited = f" — {first}" if first else ""
+        # The verdict enum must NOT be interpolated into the sentence. This read
+        # "an adversarial evidence probe killed this idea" in the go/no-go block — the most
+        # prominent prose in the report, and the one word the product deliberately does not
+        # use (the UI says "Premise unproven"). It went unnoticed through a seven-surface
+        # vocabulary sweep because the only artifact to check had `executive_dashboard: null`
+        # from the project_type defect, so this string was computed and discarded. Fixing
+        # that bug put this one on screen (live run 8f35ea6b, 2026-08-03).
+        finding = (
+            "could not find evidence for this idea's premise"
+            if rt == "killed"
+            else "raised a decision-critical objection to this idea"
+        )
         red_team_context = (
-            f"Red-team review: an adversarial evidence probe {rt} this idea{cited}. "
+            f"Red-team review: an adversarial evidence probe {finding}{cited}. "
             "Treat the caveat as a validation task, not a footnote."
         )
         if primary_concern is None:
             primary_concern = (
                 "Adversarial red-team review found this idea's core premise refuted by evidence"
                 if rt == "killed"
-                else "Adversarial red-team review weakened the selected idea"
+                else "Adversarial red-team review raised a decision-critical objection to the "
+                     "selected idea"
             )
         return verdict, risk_level, primary_concern, red_team_context
 

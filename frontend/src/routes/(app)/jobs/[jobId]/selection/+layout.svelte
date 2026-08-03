@@ -55,6 +55,7 @@
     type SelectionWorkspaceLifecycle,
   } from "./selectionWorkspace";
   import {
+    selectionAnalystMode,
     shouldForceCloseToolsOnStatus,
     shouldRefreshForDraftVersion,
   } from "$lib/selection/workspaceLifecycle";
@@ -144,9 +145,35 @@
     ),
   );
   const selectionOperationPending = $derived(seedEvaluationPending || batchGenerationPending);
+  const analystMode = $derived(selectionAnalystMode(currentStatus));
+  const analystBlockedTitle = $derived(
+    seedEvaluationPending
+      ? "Evaluating direction"
+      : batchGenerationPending
+        ? "Adding another batch"
+        : ["QUEUED", "RUNNING_PHASE2"].includes(currentStatus)
+          ? "Deep Research is active"
+          : "Research is active",
+  );
+  const analystBlockedDetail = $derived(
+    selectionOperationPending
+      ? "The transcript remains available. New questions unlock when this operation finishes."
+      : ["QUEUED", "RUNNING_PHASE2"].includes(currentStatus)
+        ? "The transcript remains available. New questions unlock when the report is ready."
+        : "The transcript remains available. New questions unlock at the next checkpoint.",
+  );
   /** Pool operations temporarily lock mutations, but comparison remains useful.
-   * Terminal research states still retire the workspace. */
-  const workspaceReadable = $derived(interactive || selectionOperationPending);
+   * After selection ends, Compare and Review remain inspectable records. */
+  const workspaceReadable = $derived(
+    interactive
+    || selectionOperationPending
+    // Compare and Review contain durable decision records. Keep their tabs,
+    // disclosures, and idea-detail overlays usable after selection locks while
+    // the route-level mutation controls remain disabled.
+    || activeSlug === "compare"
+    || activeSlug === "risks"
+    || activeSlug === "review",
+  );
   /** Admin-granted optional decision tools; resolved server-side in +layout.server.ts. */
   const decisionTools = $derived(data.decisionTools === true);
   const lifecycle = $state<SelectionWorkspaceLifecycle>({ status: "", canMutate: false });
@@ -172,10 +199,10 @@
         : currentStatus === "REGENERATING"
           ? "A new batch is being added. Existing candidate scores and your shortlist stay unchanged."
           : currentStatus === "RUNNING"
-            ? "Research is running. This saved selection is now read-only."
+            ? "Research is running. You can inspect the saved comparison and idea details, but selection changes are unavailable."
         : currentStatus === "COMPLETED"
-          ? "Deep Research is complete. This saved selection is now read-only."
-          : "This research has moved beyond idea selection. The saved scope is now read-only.",
+          ? "Deep Research is complete. You can inspect the saved comparison and idea details here; this view cannot change the saved scope."
+          : "This research has moved beyond idea selection. You can inspect the saved comparison and idea details here; this view cannot change the saved scope.",
   );
   const selectionLoadWarnings = $derived([
     ...(data.selectionLoadState.decisionStateUnavailable
@@ -201,13 +228,21 @@
   // The active tool label drives the breadcrumb tail; the journey drives the
   // sidebar tool statuses — same source the job-page launchpad uses.
   const activeToolLabel = $derived(
-    activeSlug === "review"
+    !interactive && !selectionOperationPending
+      ? activeSlug === "compare"
+        ? "Comparison record"
+        : activeSlug === "risks"
+          ? "Evidence & risk record"
+          : "Saved research scope"
+    : activeSlug === "review"
       ? REVIEW_AND_START_LABEL
       : WORKSPACE_ROUTES.find((route) => route.slug === activeSlug)?.label ?? SHORTLIST_TITLE,
   );
   // Browser-tab title names the active tool (finding #6), not a generic label.
   const tabTool = $derived(
-    activeSlug === "compare"
+    !interactive && !selectionOperationPending
+      ? activeToolLabel
+    : activeSlug === "compare"
       ? TOOL_NAMES.compare
       : activeSlug === "risks"
         ? TOOL_NAMES.challenge
@@ -938,7 +973,8 @@
 
 <AnnotationProvider
   mode="owner"
-  enabled={currentStatus === "AWAITING_SELECTION" || currentStatus === "REGENERATING"}
+  enabled
+  editable={interactive}
   showLauncher={false}
   jobId={data.job.id}
   surfaceKey={`selection:workspace:${activeSlug}`}
@@ -947,7 +983,7 @@
   <PhaseNav
     jobStatus={currentStatus}
     entryMode={data.job.entryMode}
-    mode="selection"
+    mode={interactive || selectionOperationPending ? "selection" : "selection-record"}
     nested
     jobId={data.job.id}
     activeTool={activeJourneyDestination}
@@ -972,7 +1008,7 @@
     titleVariant="research-topic"
   >
     {#snippet actions()}
-      <TourRestartButton />
+      {#if interactive}<TourRestartButton />{/if}
       <button type="button" class="ask-analyst" onclick={() => chatPanel.open()}>
         <MessageSquare aria-hidden="true" />
         {ASK_ANALYST_LABEL}
@@ -1062,7 +1098,7 @@
     jobId={data.job.id}
     activities={synthesisActivities}
     view="handoff"
-    onProposeCandidate={proposeEvaluatedCandidate}
+    onProposeCandidate={interactive ? proposeEvaluatedCandidate : undefined}
   />
 
   {#if activeSlug === "compare"}
@@ -1093,7 +1129,11 @@
           Use this scope
         </button>
       {/if}
-      <a href={`/jobs/${data.job.id}#opportunities`}>Edit on Choose ideas</a>
+      {#if interactive}
+        <a href={`/jobs/${data.job.id}#opportunities`}>Edit on Choose ideas</a>
+      {:else}
+        <span class="scope-locked-label">Saved scope</span>
+      {/if}
     </div>
     {#if !scopeMatchesShortlist}
       <p class="scope-help">Preview only — your saved shortlist has not changed.</p>
@@ -1208,6 +1248,10 @@
     dock="rail"
     selectionContext={analystContext}
     starters={analystStarters}
+    blocked={analystMode === "blocked"}
+    readOnly={analystMode === "read_only"}
+    blockedTitle={analystBlockedTitle}
+    blockedDetail={analystBlockedDetail}
     focused={chatPanel.isExpanded}
     initialDraft={chatPanel.draft(data.job.id)}
     onDraftChange={(text) => chatPanel.setDraft(data.job.id, text)}
@@ -1300,6 +1344,7 @@
   .scope-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; justify-content: flex-end; }
   .scope-actions a, .scope-handoff { min-height: var(--space-9); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); font: inherit; font-size: var(--text-sm); font-weight: 700; text-decoration: none; }
   .scope-actions a { display: inline-flex; align-items: center; color: var(--workspace-muted); }
+  .scope-locked-label { color: var(--workspace-muted); font-size: var(--text-sm); font-weight: 700; }
   .scope-handoff { border: 1px solid var(--color-input-border); color: var(--workspace-ink); background: var(--color-bg-elevated); cursor: pointer; }
   .scope-actions a:hover, .scope-handoff:hover { color: var(--color-accent-dark); background: var(--color-bg-surface); }
   .scope-actions a:focus-visible, .scope-handoff:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }

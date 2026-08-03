@@ -7,6 +7,7 @@
 
 export type ErrorCode =
   | 'RATE_LIMIT'
+  | 'PROVIDER_BILLING_ERROR'
   | 'API_AUTH_ERROR'
   | 'NETWORK_ERROR'
   | 'TIMEOUT'
@@ -39,6 +40,11 @@ const ERROR_TRANSLATIONS: Record<ErrorCode, ErrorTranslation> = {
     userMessage: 'Service temporarily busy',
     actionableGuidance: 'Our research services are experiencing high demand. Please wait a few minutes, then click "Resume" to continue your research.',
     retryDelayMinutes: 5,
+  },
+  PROVIDER_BILLING_ERROR: {
+    severity: 'error',
+    userMessage: 'Research provider account unavailable',
+    actionableGuidance: 'One of our AI research providers cannot accept more work because its service account needs attention. Your progress is saved; contact support or resume after the provider account is restored.',
   },
   API_AUTH_ERROR: {
     severity: 'warning',

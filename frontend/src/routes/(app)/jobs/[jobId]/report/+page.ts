@@ -11,12 +11,21 @@ export const load: PageLoad = async ({ params, fetch }) => {
 
     if (!res.ok) {
       if (res.status === 400) {
-        // Job not completed yet
-        const data = await res.json();
-        throw error(400, data.error || 'Report not ready yet');
+        const data = await res.json().catch(() => ({}));
+        return {
+          report: null,
+          reportState: 'not_ready' as const,
+          message: data.error || 'The Deep Research report is not ready yet.',
+          jobId,
+        };
       }
       if (res.status === 404) {
-        throw error(404, 'Report not found');
+        return {
+          report: null,
+          reportState: 'not_found' as const,
+          message: 'The report could not be found or is no longer available.',
+          jobId,
+        };
       }
       throw error(res.status, 'Failed to load report');
     }
@@ -25,6 +34,7 @@ export const load: PageLoad = async ({ params, fetch }) => {
 
     return {
       report,
+      reportState: 'ready' as const,
       jobId,
     };
   } catch (e) {

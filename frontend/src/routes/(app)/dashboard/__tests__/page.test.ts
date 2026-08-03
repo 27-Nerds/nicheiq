@@ -138,9 +138,56 @@ describe("dashboard awaiting-decision visibility", () => {
     ]);
 
     await fireEvent.click(view.getByRole("button", { name: "Cancel" }));
+    expect(fetch).not.toHaveBeenCalled();
+    expect(view.getByText("Stop this run?")).toBeInTheDocument();
+    await fireEvent.click(view.getByRole("button", { name: "Confirm" }));
 
     expect(await view.findByRole("status")).toHaveTextContent(
       "Research cancelled. 5 credits were refunded.",
     );
+  });
+
+  it("cancels a seed evaluation without presenting the parent research as cancelled", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      status: "cancelled",
+      creditRefunded: 3,
+    }), { status: 200, headers: { "Content-Type": "application/json" } })));
+    const view = renderDashboard([
+      job({
+        status: "QUEUED",
+        activeDispatchKind: "SEED_IDEA",
+        activeOperation: {
+          id: "seed-operation-1",
+          kind: "SEED_IDEA",
+          state: "AUTHORIZED",
+        },
+      }),
+    ]);
+
+    await fireEvent.click(view.getByRole("button", { name: "Cancel" }));
+    expect(view.getByText("Cancel evaluation?")).toBeInTheDocument();
+    await fireEvent.click(view.getByRole("button", { name: "Confirm" }));
+
+    expect(await view.findByRole("status")).toHaveTextContent(
+      "Evaluation cancelled. 3 credits were refunded; the candidate pool is unchanged.",
+    );
+    expect(view.queryByText("Research cancelled.")).toBeNull();
+  });
+
+  it("does not offer cancellation after a seed evaluation has been claimed", () => {
+    const view = renderDashboard([
+      job({
+        status: "RUNNING",
+        activeDispatchKind: "SEED_IDEA",
+        activeOperation: {
+          id: "seed-operation-1",
+          kind: "SEED_IDEA",
+          state: "CLAIMED",
+        },
+      }),
+    ]);
+
+    expect(view.getByText("Evaluating your new direction…")).toBeInTheDocument();
+    expect(view.queryByRole("button", { name: "Cancel" })).toBeNull();
   });
 });

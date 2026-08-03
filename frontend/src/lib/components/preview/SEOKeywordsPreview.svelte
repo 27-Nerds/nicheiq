@@ -47,11 +47,11 @@
       <span class="seo-preview-score-unit">/month</span>
     </div>
     <div class="seo-preview-hero-meta">
-      <span class="seo-preview-hero-label">Search Volume</span>
+      <span class="seo-preview-hero-label">Category reach</span>
       <span class="seo-preview-hero-support">
         across
         <span class="preview-blur preview-locked" aria-hidden="true">{data?.analytics?.total_keywords ?? 60}</span>
-        validated keywords
+        analyzed keywords — category reach, not validated idea demand
       </span>
     </div>
   </div>

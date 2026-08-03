@@ -8,6 +8,7 @@ from already-expanded keywords without making any API calls.
 import pytest
 from unittest.mock import MagicMock, patch
 
+from nicheiq.models.keyword_data import KeywordValidationSummary
 from nicheiq.utils.seed_generation import SeedGenerator
 
 
@@ -38,7 +39,7 @@ class TestCalculateValidationFromExpansion:
             original_seed_count=5,
         )
 
-        assert result["validated_count"] == 0
+        assert result["expansion_pool_count"] == 0
         assert result["total_volume"] == 0
         assert result["keyword_demand_score"] == 0.0
         assert result["demand_signal"] == "weak"
@@ -50,7 +51,12 @@ class TestCalculateValidationFromExpansion:
     # ── 2. Basic metrics ───────────────────────────────────────────
 
     def test_basic_metrics(self):
-        """Verify validated_count, total_volume, avg_competition, demand_signal."""
+        """Verify expansion_pool_count, total_volume, avg_competition, demand_signal.
+
+        The count key is deliberately NOT `validated_count`: nothing here has been
+        graded for on-idea relevance yet, so this producer may not publish a
+        "validated" number (it reported 50 while one keyword was on-idea).
+        """
         gen = _make_generator()
         keywords = [
             _kw("remote work tools", 500, 40),
@@ -64,7 +70,7 @@ class TestCalculateValidationFromExpansion:
             original_seed_count=5,
         )
 
-        assert result["validated_count"] == 3
+        assert result["expansion_pool_count"] == 3
         assert result["total_volume"] == 800
         assert result["avg_competition"] == pytest.approx(50.0)
         # total_volume 800 < 2000 → weak
@@ -86,14 +92,17 @@ class TestCalculateValidationFromExpansion:
 
         assert result["keyword_demand_score"] <= 1.0
 
-    # ── 4. Output structure matches validate_seeds_with_dataforseo ─
+    # ── 4. Output structure (success path == empty path) ───────────
 
     def test_output_structure_matches_validate_seeds(self):
         """Returned dict must have the same keys as the fallback/empty result."""
         gen = _make_generator()
         expected_keys = {
             "solution_name",
-            "validated_count",
+            # NOT "validated_count" — CrewKeywordValidationResult is extra='forbid', so
+            # this key mismatch is what forces every caller through
+            # research_flow.finalize_graded_validation() before the model is built.
+            "expansion_pool_count",
             "total_volume",
             "avg_competition",
             "keyword_demand_score",
@@ -152,7 +161,7 @@ class TestCalculateValidationFromExpansion:
         )
 
         # Only the first two should survive the min-volume filter
-        assert result["validated_count"] == 2
+        assert result["expansion_pool_count"] == 2
         assert result["total_volume"] == 600
 
     # ── 6. Demand signal thresholds ────────────────────────────────
@@ -227,3 +236,36 @@ class TestCalculateValidationFromExpansion:
         assert volumes == sorted(volumes, reverse=True)
         # Highest expected is 900
         assert top[0]["volume"] == 900
+
+
+class TestValidateSeedsWithDataForSEO:
+    """Tests for validate_seeds_with_dataforseo() (S0.2: its volume_score lacked the
+    min(...,1.0) clamp its sibling calculate_validation_from_expansion has, so
+    keyword_demand_score could exceed 1.0 — the value KeywordValidationSummary declares
+    with le=1.0).
+
+    This method has no production callers (the flow uses the expansion sibling) and feeds
+    the legacy KeywordValidationSummary, so its `validated_count` — a pre-grading count
+    like its sibling's — is left as-is rather than renamed."""
+
+    @patch("nicheiq.utils.seed_generation.settings")
+    def test_volume_score_capped_at_one(self, mock_settings):
+        """3 seeds but 8 valid multi-word keywords survive → raw ratio 8/3 > 1;
+        keyword_demand_score must stay <= 1.0 and KeywordValidationSummary must validate."""
+        mock_settings.keyword_min_search_volume = 50
+        mock_settings.target_location = None
+
+        mock_client = MagicMock()
+        mock_client.get_search_volume.return_value = [
+            _kw(f"keyword phrase {i}", 200, 30) for i in range(8)
+        ]
+
+        gen = SeedGenerator(state=MagicMock(), dataforseo_client=mock_client)
+        result = gen.validate_seeds_with_dataforseo(
+            seeds=["seed one", "seed two", "seed three"],
+            solution_name="OverflowTest",
+        )
+
+        assert result["validated_count"] == 8
+        assert result["keyword_demand_score"] <= 1.0
+        KeywordValidationSummary(**result)  # raises ValidationError if score > 1.0

@@ -476,6 +476,32 @@ describe('GET /api/shared/:shareToken', () => {
     expect(response.body).not.toHaveProperty('stage_timing_summary');
   });
 
+  it('keeps the owner selection note private while preserving safe report reasoning', async () => {
+    const privateNote = 'Prefer this because it matches my confidential client pipeline.';
+    mockFindUniqueShare.mockResolvedValue({
+      ...activeShare,
+      job: { ...completedJob, selectionRationale: privateNote },
+    });
+    mockGetJobAsset.mockResolvedValue({ filePath: 'output/report.json' });
+    mockUpdateShare.mockResolvedValue({});
+    mockReadFileSync.mockReturnValueOnce(JSON.stringify({
+      niche: 'Test Niche',
+      selection_rationale: privateNote,
+      original_selection_reasoning: 'Strongest evidence and feasible acquisition path.',
+      executive_summary: `Internal context: ${privateNote}`,
+      nested: { note_copy: privateNote },
+    }));
+
+    const response = await request(app)
+      .get(`/api/shared/${TEST_SHARE_TOKEN}`)
+      .expect(200);
+
+    expect(response.body.selection_rationale).toBe('Strongest evidence and feasible acquisition path.');
+    expect(JSON.stringify(response.body)).not.toContain(privateNote);
+    expect(response.body.executive_summary).toContain('Owner selection note omitted');
+    expect(response.body.nested.note_copy).toBe('Owner selection note omitted from this shared report.');
+  });
+
   it('sets X-Robots-Tag header', async () => {
     mockFindUniqueShare.mockResolvedValue({
       ...activeShare,

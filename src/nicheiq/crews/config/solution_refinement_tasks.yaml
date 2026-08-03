@@ -34,9 +34,17 @@ refine_solution_strategy:
     - Which markets have lower competition (easier entry)?
     - Which markets have higher GDP/market maturity (better monetization)?
 
-    Return ranked list of 3-5 priority markets. Format: ["Spain", "Germany", "United Kingdom"]
+    Return the markets that {top_geographic_keywords} actually evidences, ranked by opportunity
+    (at most 5). Format: a list of country/region names.
 
-    Prioritization logic:
+    NO-GEO BRANCH: if {top_geographic_keywords} is empty, or none of the validated keywords contain
+    a location term, this niche has NO geographic signal. Do NOT rank countries from general
+    knowledge, from the niche's stereotype, or from where the product "feels" like it would sell.
+    Return an EMPTY list and state the reason in one strategic insight. Do not return a
+    placeholder sentence — an empty list is the correct, accepted answer, and the report simply
+    omits the market section.
+
+    Prioritization logic (applies only when location terms ARE present):
     - PRIMARY: Markets with highest keyword volume AND lower competition
     - SECONDARY: Tier-1 markets (US, UK, Canada, Australia, Germany, France) even if moderate competition
     - AVOID: Emerging markets unless they dominate keyword volume (>50%)
@@ -93,19 +101,20 @@ refine_solution_strategy:
 
     Identify 3-8 non-obvious opportunities, risks, or advantages revealed by keyword analysis.
 
-    Examples of valuable insights:
-    - "Tier-2 cities (Austin, Portland) show 30% of volume but zero competitor focus - opportunity for local dominance"
-    - "Seasonal spike in Q1 (tax season) suggests time-limited launch window for maximum impact"
-    - "Long-tail keywords (4-5 words) dominate validated set - indicates educational content gap competitors haven't filled"
-    - "High avg_competition (72) despite moderate volume warns of saturated market - differentiation critical"
-    - "No transactional keywords validated - market is research-stage, not buying-stage yet"
+    Shapes of valuable insights (every figure must be read off the input data, never supplied here):
+    - a concentration of volume in a place/segment that competitors ignore
+    - a seasonal pattern in the keyword trend data that bounds the launch window
+    - a query-length or intent skew that points at an unfilled content gap
+    - the actual avg_competition value read against the actual total volume
+    - an intent class that is ABSENT from the validated set, and what that says about buying stage
 
     Avoid generic insights like "focus on SEO" or "create quality content".
 
     **OUTPUT REQUIREMENTS:**
 
     Return SolutionRefinement Pydantic model with:
-    - geographic_priorities: List[str] with 3-5 markets ranked by opportunity
+    - geographic_priorities: List[str] with the markets the geographic keywords support (at most 5),
+      ranked by opportunity — or an empty list when there is no location signal
     - category_pivot_recommendation: Optional[str] - only if >40% keyword evidence supports pivot
     - feature_priorities: List[FeaturePriority] with top 5-10 features (each has feature_name, priority, keyword_support, rationale)
     - strategic_insights: List[str] - 3-8 actionable, non-obvious insights
@@ -114,9 +123,11 @@ refine_solution_strategy:
     SolutionRefinement model containing:
 
     **geographic_priorities** (List[str]):
-    Ranked list of 3-5 geographic markets to prioritize based on keyword volume, competition, and market maturity.
-    Example: ["Spain", "Germany", "United Kingdom", "France", "Portugal"]
-    Order reflects strategic priority (start with #1, expand to #2-3, consider #4-5 for future).
+    Markets to prioritize (at most 5), based on the location terms actually present in the validated
+    keywords plus their volume, competition, and market maturity. Every entry must trace to a
+    location term in the input — never to general knowledge about the niche.
+    Order reflects strategic priority (start with #1, expand outward).
+    When no location terms exist, this is an empty list (see the NO-GEO BRANCH above).
 
     **category_pivot_recommendation** (Optional[str]):
     Suggested category/vertical positioning shift if keyword data reveals better opportunity.
@@ -147,19 +158,21 @@ refine_solution_strategy:
     - Reference actual keyword data (volume, competition, patterns)
     - Suggest clear action or implication
 
-    Example insights:
+    Insight shapes (fill every bracket from the input data — an insight whose numbers do not
+    appear in the input is a fabrication, not an insight):
     [
-      "Strong demand in tier-2 EU markets (Portugal 18%, Netherlands 12%) overlooked by US-focused competitors - opportunity for early regional dominance before market saturates",
-      "Seasonal spike pattern: 40% higher volume Nov-Jan (tax season) suggests Q4 launch timing critical for maximum organic traction during peak research phase",
-      "Long-tail dominance (15 of 18 validated keywords are 3+ words) indicates educational content gap - competitors focus on broad terms, leaving how-to guides underserved",
-      "High avg competition (68) despite moderate total volume (12k/mo) warns market is competitive - product differentiation and unique positioning critical for ranking",
-      "Geographic concentration: 65% volume in just 3 countries (Spain, Germany, UK) enables focused go-to-market vs dispersed strategy - dominate these markets before expanding"
+      "<geographic or segment concentration read off the keyword set> - <what that enables or forecloses>",
+      "<seasonality or timing pattern visible in the keyword trend data> - <launch-timing implication>",
+      "<query-length or intent distribution across the validated keywords> - <content-gap implication>",
+      "<the actual avg_competition value read against the actual total volume> - <ranking-difficulty implication>",
+      "<an intent class that is absent from the validated set> - <what its absence says about buying stage>"
     ]
 
     ═══ CRITICAL RULES (Read Last - Recency Reminder) ═══
 
     **FIELD REQUIREMENTS:**
-    ✗ Empty geographic_priorities → Guardrail will reject (must have at least 1 market)
+    ✓ Empty geographic_priorities is VALID and expected when no validated keyword carries a
+      location term — do NOT invent markets, and do NOT emit a placeholder sentence, to fill it
     ✗ Empty feature_priorities → Guardrail will reject (must have 1-10 features)
     ✗ strategic_insights with <3 items → Guardrail will reject (minimum 3 insights)
 

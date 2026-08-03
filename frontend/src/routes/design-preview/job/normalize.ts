@@ -14,6 +14,8 @@
  *    flags / wallet reality) instead of inventing strength/risk/unknown.
  */
 
+import { formatPayabilityClass } from "$lib/utils/payability";
+
 export type Band = "Strong" | "Moderate" | "Weak";
 
 export interface Signals {
@@ -166,13 +168,6 @@ const ANGLE_LABELS: Record<string, string> = {
   distribution_seo: "Distribution / SEO",
   novel_differentiation: "Novel differentiation",
   vertical_workflow: "Vertical workflow",
-};
-
-const PAYABILITY_LABELS: Record<string, string> = {
-  "personal-wallet": "Personal wallet",
-  "prosumer-wallet": "Prosumer wallet",
-  "business-wallet": "Business wallet",
-  mixed: "Mixed wallet",
 };
 
 /** slug/enum → readable chip label; upper-cases known acronyms. */
@@ -361,10 +356,7 @@ export function normalizeJob(
           typeof i.solo_dev_feasibility === "number" ? pct(i.solo_dev_feasibility) : null,
         model: buildModel(tags, (i.project_type as string) ?? null),
         monetization: tags?.monetization ? label(tags.monetization as string) : null,
-        payability: i.source_segment_payability_class
-          ? (PAYABILITY_LABELS[i.source_segment_payability_class as string] ??
-            TITLE_CASE(i.source_segment_payability_class as string))
-          : null,
+        payability: formatPayabilityClass(i.source_segment_payability_class as string | null),
         features: ((i.core_features as string[]) ?? []).slice(0, 6),
         signals,
         why: {
@@ -467,10 +459,7 @@ export function normalizeJob(
         priceSensitivity: (s.budget_sensitivity as string) ?? null,
         expertise: (s.expertise_level as string) ?? null,
         motivations: ((s.motivation_drivers as string[]) ?? []).slice(0, 3),
-        payability: s.payability_class
-          ? (PAYABILITY_LABELS[s.payability_class as string] ??
-            TITLE_CASE(s.payability_class as string))
-          : null,
+        payability: formatPayabilityClass(s.payability_class as string | null),
         payabilityRationale: (s.payability_rationale as string) ?? null,
       })),
     communityHubs: ((am.community_hubs as string[]) ?? []).slice(0, 8),

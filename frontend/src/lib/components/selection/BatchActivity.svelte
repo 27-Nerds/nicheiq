@@ -1,5 +1,10 @@
 <script lang="ts">
   import { CheckCircle2, CircleX, Clock, Layers3, Loader2, RotateCcw } from "lucide-svelte";
+  import type { ActiveJobOperation } from "$lib/api";
+  import {
+    elapsedClock,
+    evaluationProgress,
+  } from "$lib/selection/evaluationProgress.svelte";
   import type { BatchActivity as BatchActivityRecord } from "$lib/stores/chatLedger.svelte";
 
   interface Props {
@@ -10,6 +15,10 @@
     onReviewCandidates?: (ideaIds: string[]) => void;
     onReviewRuledOut?: (operationId: string) => void;
     onRetry?: (activity: BatchActivityRecord) => void;
+    cancellableOperationId?: string | null;
+    cancellingOperationId?: string | null;
+    onCancel?: (activity: BatchActivityRecord) => void;
+    operation?: ActiveJobOperation | null;
     reviewCandidatesHref?: (activity: BatchActivityRecord) => string;
     reviewRuledOutHref?: (activity: BatchActivityRecord) => string;
     retryHref?: string;
@@ -23,16 +32,22 @@
     onReviewCandidates,
     onReviewRuledOut,
     onRetry,
+    cancellableOperationId = null,
+    cancellingOperationId = null,
+    onCancel,
+    operation = null,
     reviewCandidatesHref,
     reviewRuledOutHref,
     retryHref,
   }: Props = $props();
 
   function statusLabel(activity: BatchActivityRecord): string {
+    if (isRecovering(activity)) return "Restoring previous candidates";
     if (activity.outcome === "pending") return "Adding another batch";
     if (activity.outcome === "completed") return "Batch added";
     if (activity.outcome === "no_candidates_added") return "No candidates added";
     if (activity.outcome === "refunded") return "Batch refunded";
+    if (activity.outcome === "cancelled") return "Batch cancelled";
     return "Batch failed";
   }
 
@@ -59,6 +74,12 @@
     return activity.outcome === "pending" && activity.operationId === stalledOperationId;
   }
 
+  function isRecovering(activity: BatchActivityRecord): boolean {
+    return activity.outcome === "pending"
+      && activity.operationId === operation?.id
+      && operation.state === "RECOVERING";
+  }
+
   function candidateCount(count: number): string {
     return `${count} ${count === 1 ? "candidate" : "candidates"}`;
   }
@@ -71,8 +92,17 @@
       : ` after generating ${candidateCount(generated)}`;
 
     if (activity.outcome === "pending") {
+      if (isRecovering(activity)) {
+        return "This batch stopped before it settled. We are restoring the candidate set from before it started. After restoration, any refundable credits are returned; if no refund applies, the receipt will say so.";
+      }
       if (isStalled(activity)) {
         return "Automatic checks paused. The batch still settles or refunds on its own; check for the latest result, or return later.";
+      }
+      if (activity.operationId === operation?.id && progress.phase === "queued") {
+        return "Waiting for a free worker. Existing candidate scores and your shortlist stay unchanged.";
+      }
+      if (activity.operationId === operation?.id && progress.phase === "overdue") {
+        return "This is taking longer than usual. The batch still finishes or refunds on its own; you can leave and return later.";
       }
       return view === "live"
         ? "Generating and checking new candidates. Existing scores and shortlist stay unchanged."
@@ -96,6 +126,11 @@
     if (activity.outcome === "refunded") {
       return `The batch could not complete${generatedSuffix}. Charged credits were refunded, and the existing pool was unchanged.`;
     }
+    if (activity.outcome === "cancelled") {
+      return activity.refunded
+        ? "The batch was cancelled before work started. Charged credits were returned, and the existing pool was unchanged."
+        : "The batch was cancelled before work started. The existing pool was unchanged.";
+    }
     return `The batch could not complete${generatedSuffix}. The existing pool and shortlist were unchanged.`;
   }
 
@@ -113,11 +148,20 @@
       ? activities.filter((activity) => !visibleIds.has(activity.operationId))
       : [],
   );
+  const hasPending = $derived(activities.some((activity) => activity.outcome === "pending"));
+  $effect(() => {
+    if (!hasPending) return;
+    elapsedClock.start();
+    return () => elapsedClock.stop();
+  });
+  const progress = $derived(evaluationProgress(operation, elapsedClock.now));
 </script>
 
 {#snippet activityIcon(activity: BatchActivityRecord)}
   <div class="status-icon" aria-hidden="true">
-    {#if isStalled(activity)}
+    {#if isRecovering(activity)}
+      <RotateCcw />
+    {:else if isStalled(activity)}
       <Clock />
     {:else if activity.outcome === "pending"}
       <Loader2 class="spin" />
@@ -125,6 +169,8 @@
       <CheckCircle2 />
     {:else if activity.outcome === "refunded"}
       <RotateCcw />
+    {:else if activity.outcome === "cancelled"}
+      <CircleX />
     {:else if activity.outcome === "no_candidates_added"}
       <Layers3 />
     {:else}
@@ -138,6 +184,9 @@
     <div class="batch-heading">
       <strong>{statusLabel(activity)}</strong>
       <span>Batch {activity.ordinal} · {focusLabel(activity.focus)}</span>
+      {#if activity.outcome === "pending"}
+        <span aria-label={`Elapsed ${progress.elapsedLabel}`}>{progress.elapsedLabel} elapsed</span>
+      {/if}
     </div>
     <p>{activitySummary(activity)}</p>
     {#if activity.outcome === "completed" && activity.refPrecision === "legacy_id_only"}
@@ -154,7 +203,15 @@
 
 {#snippet activityAction(activity: BatchActivityRecord)}
   <div class="batch-action">
-    {#if isStalled(activity) && onRecheck}
+    {#if activity.outcome === "pending" && !isRecovering(activity) && activity.operationId === cancellableOperationId && onCancel}
+      <button
+        type="button"
+        disabled={cancellingOperationId === activity.operationId}
+        onclick={() => onCancel?.(activity)}
+      >
+        {cancellingOperationId === activity.operationId ? "Cancelling…" : "Cancel queued batch"}
+      </button>
+    {:else if isStalled(activity) && onRecheck}
       <button type="button" onclick={() => onRecheck?.(activity)}>Check status</button>
     {:else if activity.outcome === "completed" && canReviewCandidates(activity)}
       {#if onReviewCandidates}
@@ -168,7 +225,7 @@
       {:else if reviewRuledOutHref}
         <a href={reviewRuledOutHref(activity)}>Review ruled-out ideas</a>
       {/if}
-    {:else if activity.outcome === "failed" || activity.outcome === "refunded"}
+    {:else if activity.outcome === "failed" || activity.outcome === "refunded" || activity.outcome === "cancelled"}
       {#if onRetry}
         <button type="button" onclick={() => onRetry(activity)}>Try again</button>
       {:else if retryHref}
@@ -306,6 +363,7 @@
     cursor: pointer;
   }
   button:hover, a:hover { background: var(--color-bg-surface); }
+  button:disabled { opacity: 0.55; cursor: wait; }
   button:active, a:active { transform: scale(0.98); }
   button:focus-visible, a:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
   :global(.spin) { animation: spin var(--duration-slowest) linear infinite; }

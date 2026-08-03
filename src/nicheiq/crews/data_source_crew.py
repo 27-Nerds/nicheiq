@@ -119,7 +119,7 @@ class DataSourceResearchCrew:
             # (a ChatOpenAI instance would have it dropped by CrewAI's create_llm).
             function_calling_llm=build_crew_llm(
                 model=settings.function_calling_llm,
-                reasoning_effort="minimal",  # Fast/cheap tool-arg synthesis
+                reasoning_effort="none",  # Fast/cheap tool-arg synthesis
             ),
         )
 

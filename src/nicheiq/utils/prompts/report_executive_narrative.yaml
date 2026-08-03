@@ -16,7 +16,7 @@ template: |
   Target Personas: {target_personas}
   Niche: {niche_description}
 
-  **Top Pain Point:**
+  **Top Validated Pain Point Addressed by This Solution:**
   Title: {pain_point_title}
   Severity: {pain_point_severity}
   Willingness to pay: {pain_point_wtp}
@@ -65,7 +65,7 @@ template: |
   {{
     "tagline": "{solution_name} simplifies [pain] for {target_personas}",
     "core_value_prop": "Pain point impact... Solution approach... Benefit.",
-    "verdict_rationale": "With strong market fit and good technical feasibility, this solution shows clear potential for the target market. Its good differentiation points to opportunities that warrant further validation."
+    "verdict_rationale": "With [band] [criterion] and [band] [criterion], ... [implication]. [Concern or strength]."
   }}
 
   **CRITICAL ANTI-HALLUCINATION RULES:**

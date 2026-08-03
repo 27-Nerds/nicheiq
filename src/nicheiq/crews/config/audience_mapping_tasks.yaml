@@ -4,7 +4,8 @@ audience_mapping_analysis:
     1. MANDATORY: Identify 3-5 DISTINCT audience segments (not generic demographics)
     2. MANDATORY: Each segment must have different pain points, budget sensitivity, or discovery channels
     3. MANDATORY: Extract 10-15 terms/phrases from ACTUAL user discussions (not assumptions)
-    4. MANDATORY: Identify 5-10 community hubs (subreddits, Discord servers, forums)
+    4. MANDATORY: Community hubs must be named in the digest (verbatim) — list as many as the
+       digest supports, up to 10. Do NOT add hubs from general knowledge.
 
 
     Analyze social media discussions and pain point data to identify distinct audience segments,
@@ -121,7 +122,8 @@ audience_mapping_analysis:
     - **primary_target_segment:** recommended primary segment name
     - **segment_prioritization_rationale:** 2-3 sentences explaining the choice
     - **influencer_focus:** list of {{index, focus}} — one-line focus per numbered influencer
-    - **community_hubs:** 5-10 community names (e.g., "r/SaaS", "Indie Hackers")
+    - **community_hubs:** community names appearing verbatim in the digest, up to 10 (an empty
+      list is valid when the digest names none — do NOT supply hubs from general knowledge)
     - **common_vocabulary:** 10-15 verbatim terms/phrases from the digest
     - **content_preferences:** preferred content types (1-2 sentences)
     - **messaging_frameworks:** 3-5 messaging angles
@@ -142,7 +144,7 @@ audience_mapping_analysis:
     - 3-5 distinct audience segments with full characteristics
     - Primary target segment with prioritization rationale
     - influencer_focus: one-line content focus per numbered influencer (by index)
-    - 5-10 community hubs identified
+    - community hubs named verbatim in the digest (up to 10; empty is valid)
     - 10-15 actual terms from user vocabulary (verbatim from the digest)
     - Content preferences and messaging frameworks
     - Tools used and frustrations identified

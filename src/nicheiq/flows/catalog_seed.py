@@ -10,7 +10,7 @@ with stages skipped:
 - `build_idea_seed_state`  — niche_context + idea_generation + solution_selection
   + minimal pain_point_analysis for "deep research on an idea" (skip 1-5, run 5.5-14).
 
-Pure functions (no flow / RQ dependencies) so they can be unit-tested directly.
+Pure functions (no flow or worker dependencies) so they can be unit-tested directly.
 Catalog-sourced free text is sanitized (injection-pattern stripping) before it
 reaches the LLM, since seeding pre-built objects bypasses the Stage-2 fencing the
 normal pipeline applies.

@@ -3,12 +3,12 @@ import { fetchBackend } from '$lib/backend';
 import type { SubscriptionPlan } from '$lib/types/billing';
 import type { CatalogTopPainPoint, CatalogTotals } from '$lib/types/publicCatalog';
 
-export const load: PageServerLoad = async ({ setHeaders }) => {
+export const load: PageServerLoad = async ({ setHeaders, parent }) => {
   setHeaders({ 'cache-control': 'public, max-age=60' });
+  const { hasSampleReport } = await parent();
 
   let reportsDelivered: number | null = null;
   let activeFounders: number | null = null;
-  let hasSampleReport = false;
   let plans: SubscriptionPlan[] = [];
   let topPainPoints: CatalogTopPainPoint[] = [];
   let commentsAnalyzed: number | null = null;
@@ -17,9 +17,8 @@ export const load: PageServerLoad = async ({ setHeaders }) => {
   let catalogLastUpdated: string | null = null;
 
   try {
-    const [statsRes, settingsRes, plansRes, topPainPointsRes, totalsRes] = await Promise.all([
+    const [statsRes, plansRes, topPainPointsRes, totalsRes] = await Promise.all([
       fetchBackend('/api/stats/public'),
-      fetchBackend('/api/settings/sample-report-url'),
       fetchBackend('/api/billing/plans', {
         signal: AbortSignal.timeout(3000),
       }).catch(() => null),
@@ -43,11 +42,6 @@ export const load: PageServerLoad = async ({ setHeaders }) => {
       const stats = await statsRes.json();
       reportsDelivered = stats.completedJobs;
       activeFounders = stats.activeFounders ?? null;
-    }
-
-    if (settingsRes.ok) {
-      const data = await settingsRes.json();
-      hasSampleReport = !!data.url;
     }
 
     if (plansRes?.ok) {

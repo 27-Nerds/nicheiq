@@ -149,7 +149,11 @@
   };
   const canCancelFromDashboard = (job: Job) =>
     !isDeepResearchProcessing(job)
-    && job.activeDispatchKind !== "REGENERATE";
+    && job.activeDispatchKind !== "REGENERATE"
+    && (
+      job.activeDispatchKind !== "SEED_IDEA"
+      || job.activeOperation?.state === "AUTHORIZED"
+    );
   const archivedShown = $derived(archivedOpen || filter === "archived");
   const hasAnyVisible = $derived(
     fReview.length + fProgress.length + fDone.length + fFailed.length + fArchived.length > 0,
@@ -250,29 +254,41 @@
 
   // ── Cancel an active job ──
   let cancellingJobs = new SvelteSet<string>();
+  let confirmingCancelJobId = $state<string | null>(null);
   let actionNotice = $state<{ tone: "status" | "error"; message: string } | null>(null);
   async function cancelJob(job: Job) {
     if (cancellingJobs.has(job.id)) return;
     cancellingJobs.add(job.id);
     try {
-      const res = await fetch(`/api/jobs/${job.id}/cancel`, { method: "POST" });
+      const cancelPath = job.activeDispatchKind === "SEED_IDEA" && job.activeOperation
+        ? `/api/jobs/${job.id}/operations/${job.activeOperation.id}/cancel`
+        : `/api/jobs/${job.id}/cancel`;
+      const res = await fetch(cancelPath, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         const refunded = Number(data.creditRefunded ?? 0);
+        const cancelledSeed = job.activeDispatchKind === "SEED_IDEA";
         jobUpdates.set(job.id, {
           ...job,
-          status: "CANCELLED",
-          errorMessage: "Cancelled by user",
+          status: cancelledSeed ? "AWAITING_SELECTION" : "CANCELLED",
+          activeDispatchKind: null,
+          activeOperation: null,
+          errorMessage: cancelledSeed ? null : "Cancelled by user",
           creditRefunded: refunded > 0,
         });
         actionNotice = {
           tone: "status",
-          message: refunded > 0
-            ? `Research cancelled. ${refunded} ${refunded === 1 ? "credit was" : "credits were"} refunded.`
-            : "Research cancelled.",
+          message: cancelledSeed
+            ? refunded > 0
+              ? `Evaluation cancelled. ${refunded} ${refunded === 1 ? "credit was" : "credits were"} refunded; the candidate pool is unchanged.`
+              : "Evaluation cancelled; the candidate pool is unchanged."
+            : refunded > 0
+              ? `Research cancelled. ${refunded} ${refunded === 1 ? "credit was" : "credits were"} refunded.`
+              : "Research cancelled.",
         };
         sseUnsubscribers.get(job.id)?.();
         sseUnsubscribers.delete(job.id);
+        await invalidateAll();
       } else {
         actionNotice = {
           tone: "error",
@@ -286,6 +302,7 @@
       };
     } finally {
       cancellingJobs.delete(job.id);
+      confirmingCancelJobId = null;
     }
   }
 
@@ -462,7 +479,7 @@
   <!-- ── MAIN ── -->
   <div class="main">
     <header class="main-head">
-      <h1>Welcome back, {firstName}</h1>
+      <h1>{jobs.length === 0 && savedTotal === 0 ? `Let's get started, ${firstName}` : `Welcome back, ${firstName}`}</h1>
       <p class="sub" aria-live="polite">
         {#if reviewJobs.length}
           <strong class="s-hot"
@@ -544,16 +561,17 @@
         {:else}
           <!-- ══ READY TO REVIEW (positive: ideas ready → pick for deep research) ══ -->
           {#if show("review") && fReview.length}
+            {@const hasGateRows = fReview.some((j) => j.status.toUpperCase() === "AWAITING_GATE")}
             <section class="group">
               <div class="group-head">
                 <h2>Ready to review</h2>
-                <span class="group-meta">pick candidates for deep research</span>
+                <span class="group-meta">{hasGateRows ? "review checkpoints and shortlists" : "pick candidates for deep research"}</span>
               </div>
               <div class="list list--ready">
                 <div class="list-head" aria-hidden="true">
                   <span></span>
                   <span>Study</span>
-                  <span>Ideas</span>
+                  <span>{hasGateRows ? "Status" : "Ideas"}</span>
                   <span>Action</span>
                 </div>
                 {#each fReview as job (job.id)}
@@ -617,9 +635,19 @@
                       <span class="row-actions">
                         <a class="link-cancel link-cancel--view" href={`/jobs/${job.id}`}>View progress</a>
                         {#if canCancelFromDashboard(job)}
-                        <button class="link-cancel" type="button" onclick={() => cancelJob(job)} disabled={cancellingJobs.has(job.id)}>
-                          {cancellingJobs.has(job.id) ? "Cancelling…" : "Cancel"}
-                        </button>
+                          {#if confirmingCancelJobId === job.id}
+                            <span class="cancel-confirm" role="group" aria-label={job.activeDispatchKind === "SEED_IDEA" ? "Confirm evaluation cancellation" : "Confirm research cancellation"}>
+                              <span>{job.activeDispatchKind === "SEED_IDEA" ? "Cancel evaluation?" : "Stop this run?"}</span>
+                              <button class="link-cancel" type="button" onclick={() => (confirmingCancelJobId = null)}>Keep</button>
+                              <button class="link-cancel link-cancel--confirm" type="button" onclick={() => cancelJob(job)} disabled={cancellingJobs.has(job.id)}>
+                                {cancellingJobs.has(job.id) ? "Cancelling…" : "Confirm"}
+                              </button>
+                            </span>
+                          {:else}
+                            <button class="link-cancel" type="button" onclick={() => (confirmingCancelJobId = job.id)}>
+                              Cancel
+                            </button>
+                          {/if}
                         {/if}
                       </span>
                     </div>
@@ -1067,6 +1095,7 @@
     transition: color 0.12s ease, opacity 0.12s ease;
   }
   .link-cancel:hover:not(:disabled) { color: var(--color-error-text); }
+  .link-cancel--confirm { color: var(--color-error-text); }
   .link-cancel--view { text-decoration: none; }
   .link-cancel--view:hover { color: var(--color-accent); }
   .row-actions {
@@ -1075,6 +1104,16 @@
     justify-content: flex-end;
     gap: var(--space-3);
   }
+  .cancel-confirm {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--color-text-secondary);
+    font-family: var(--font-mono);
+    font-size: var(--text-11);
+    white-space: nowrap;
+  }
+  .cancel-confirm .link-cancel { min-width: auto; }
   .link-cancel:active:not(:disabled) { opacity: 0.7; }
   .link-cancel:disabled { opacity: 0.6; cursor: default; }
   .link-cancel:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; border-radius: 3px; }

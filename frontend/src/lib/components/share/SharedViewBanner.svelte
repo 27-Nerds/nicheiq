@@ -16,24 +16,30 @@
     : "Sample report",
   );
 
-  const registerUrl = $derived(
-    `/register?ref=shared-${variant}${shareToken ? `&t=${shareToken}` : ""}`,
+  const accessState = $derived(
+    variant === "discovery" ? "Voting enabled" : "Read-only copy",
   );
+
+  const registerUrl = $derived.by(() => {
+    const params = new URLSearchParams({ ref: `shared-${variant}` });
+    if (shareToken) params.set("t", shareToken);
+    return `/register?${params.toString()}`;
+  });
 </script>
 
-<div class="shared-banner">
+<aside class="shared-banner" aria-label={`${tag}: ${accessState}`}>
   <div class="shared-banner-inner">
     <p class="shared-banner-label">
       <span class="shared-banner-tag">{tag}</span>
       <span class="shared-banner-sep">·</span>
-      <span class="shared-banner-meta">view only</span>
+      <span class="shared-banner-meta">{accessState}</span>
     </p>
     <a href={registerUrl} class="shared-banner-cta">
       Research your own niche
       <ArrowRight class="shared-banner-icon" aria-hidden="true" />
     </a>
   </div>
-</div>
+</aside>
 
 <style>
   .shared-banner {
@@ -81,14 +87,28 @@
     font-family: var(--font-body);
     font-size: 0.875rem;
     font-weight: 600;
-    color: var(--color-accent);
+    min-height: 2rem;
+    padding-inline: 0.25rem;
+    border-radius: var(--radius-sm);
+    color: var(--color-accent-dark);
     text-decoration: none;
-    transition: color 150ms ease;
+    transition:
+      background-color var(--duration-fast) var(--ease-default),
+      transform var(--duration-fast) var(--ease-default);
     white-space: nowrap;
   }
 
   .shared-banner-cta:hover {
-    color: var(--color-accent-dark);
+    background: var(--color-bg-hover);
+  }
+
+  .shared-banner-cta:focus-visible {
+    outline: 2px solid var(--color-accent-dark);
+    outline-offset: 2px;
+  }
+
+  .shared-banner-cta:active {
+    transform: scale(0.98);
   }
 
   :global(.shared-banner-icon) {
@@ -97,7 +117,7 @@
   }
 
   @media (max-width: 640px) {
-    .shared-banner-meta,
+    .shared-banner-tag,
     .shared-banner-sep {
       display: none;
     }

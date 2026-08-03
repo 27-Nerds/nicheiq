@@ -12,7 +12,7 @@ describe("tour chapters", () => {
       "review",
       "risks",
     ]);
-    expect(TOUR_CHAPTERS["job-shortlist"].steps).toHaveLength(5);
+    expect(TOUR_CHAPTERS["job-shortlist"].steps).toHaveLength(7);
     expect(TOUR_CHAPTERS.compare.steps).toHaveLength(4);
     expect(TOUR_CHAPTERS.risks.steps).toHaveLength(4);
     expect(TOUR_CHAPTERS.review.steps).toHaveLength(3);
@@ -95,25 +95,86 @@ describe("tour chapters", () => {
   });
 });
 
-describe("every data-tour anchor a chapter targets exists in the source", () => {
+/**
+ * REGRESSION GUARD. `[data-tour="shortlist-checkbox"]` was targeted by a step for months
+ * while the row it belonged to had moved inside a collapsible thesis card, so the step
+ * silently bottom-pinned itself with no arrow. A dead selector produces no error anywhere
+ * — driver.js skips it — which is exactly why it needs a test.
+ *
+ * This checks every token of every selector against the markup that renders it: the
+ * attribute VALUE has to be one a component actually emits, and an `aria-labelledby`
+ * target has to be an id that exists. It cannot prove a node is on screen at any given
+ * moment (several anchors are deliberately conditional), only that something renders it.
+ */
+describe("every selector a chapter targets resolves against the source", () => {
   const FILES = [
     "src/lib/components/selection/SelectionWorkbench.svelte",
+    "src/lib/components/selection/DecisionRail.svelte",
     "src/lib/components/selection/EvidenceChallenge.svelte",
+    "src/lib/components/selection/AssumptionMap.svelte",
+    "src/lib/components/ui/SegmentControl.svelte",
     "src/routes/(app)/jobs/[jobId]/selection/+layout.svelte",
+    "src/routes/(app)/jobs/[jobId]/selection/compare/+page.svelte",
     "src/routes/(app)/jobs/[jobId]/selection/risks/+page.svelte",
     "src/routes/(app)/jobs/[jobId]/selection/review/+page.svelte",
   ];
   const source = FILES.map((f) => readFileSync(f, "utf8")).join("\n");
 
-  const targeted = chapters
-    .flatMap((c) => c.steps.map((s) => String(s.element)))
-    .map((sel) => sel.match(/\[data-tour="([^"]+)"\]/)?.[1])
-    .filter((name): name is string => Boolean(name));
-
-  it("finds at least one instrumented element per data-tour anchor", () => {
-    expect(targeted.length).toBeGreaterThan(0);
-    for (const name of targeted) {
-      expect(source, `data-tour="${name}" is targeted but never rendered`).toContain(`"${name}"`);
+  /** Every value an attribute is given, whether written flat or through a ternary. */
+  function valuesOf(attribute: string): Set<string> {
+    const found = new Set<string>();
+    const pattern = new RegExp(`${attribute}=(?:"([^"]*)"|\\{([^{}]*)\\})`, "g");
+    for (const [, literal, expression] of source.matchAll(pattern)) {
+      if (literal) found.add(literal);
+      for (const [, quoted] of (expression ?? "").matchAll(/"([^"]*)"/g)) found.add(quoted);
     }
+    return found;
+  }
+
+  const ids = new Set([...source.matchAll(/\bid="([^"{]+)"/g)].map(([, id]) => id));
+  // A wrapper component's `label` prop becomes the rendered aria-label (SegmentControl).
+  const labels = new Set([...valuesOf("aria-label"), ...valuesOf("label")]);
+  const byAttribute: Record<string, Set<string>> = {
+    "data-tour": valuesOf("data-tour"),
+    "data-annotation-anchor": valuesOf("data-annotation-anchor"),
+    "aria-label": labels,
+    "aria-labelledby": ids,
+    role: valuesOf("role"),
+  };
+
+  const targets = chapters.flatMap((chapter) =>
+    chapter.steps.map((step) => ({
+      where: `${chapter.id}: ${step.popover?.title}`,
+      selector: String(step.element),
+    })),
+  );
+
+  it("renders every attribute and id a step selector asks for", () => {
+    expect(targets.length).toBeGreaterThan(0);
+    for (const { where, selector } of targets) {
+      let checked = 0;
+      for (const [, attribute, value] of selector.matchAll(/\[([\w-]+)="([^"]+)"\]/g)) {
+        const known = byAttribute[attribute];
+        expect(known, `${where}: no source rule for [${attribute}]`).toBeDefined();
+        expect([...known!], `${where}: ${attribute}="${value}" is targeted but never rendered`)
+          .toContain(value);
+        checked += 1;
+      }
+      for (const [, id] of selector.matchAll(/#([\w-]+)/g)) {
+        expect([...ids], `${where}: #${id} is targeted but no element carries that id`)
+          .toContain(id);
+        checked += 1;
+      }
+      expect(checked, `${where}: selector "${selector}" asserts nothing`).toBeGreaterThan(0);
+    }
+  });
+
+  it("keeps the single-instance anchors guarded to one row", () => {
+    // These three sit inside `{#each}` bodies. Without a guard the selector would match
+    // once per row, and driver.js would spotlight whichever came first in document order.
+    const workbench = readFileSync("src/lib/components/selection/SelectionWorkbench.svelte", "utf8");
+    expect(workbench).toContain('data-tour={key === tourAnchorKey ? "shortlist-checkbox" : undefined}');
+    expect(workbench).toContain('data-tour={groupIndex === 0 ? "thesis-group" : undefined}');
+    expect(workbench).toContain('data-tour="recommendation-split"');
   });
 });

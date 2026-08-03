@@ -22,6 +22,7 @@ import type { SelectionDecisionHandoffArtifact } from './selectionDecisionHandof
 import { ideaDisplayTitle, ideaName } from '../utils/ideaIdentity.js';
 import type { SelectionDraftResponse } from '../utils/selectionDraft.js';
 import { sanitizeUntrustedContent } from '../utils/promptFence.js';
+import { challengeConsensusLabel, founderFitVerdictLabel } from '../utils/selectionVocabulary.js';
 
 export interface CollaboratorVoteFeedback {
   solutionId: string | null;
@@ -205,7 +206,7 @@ export function buildFounderDecisionBlock(
       ? `[${ref}] ${result.ideaTitle} (revision ${result.ideaRevision})`
       : `${result.ideaTitle} [${result.ideaId} rev ${result.ideaRevision}]`;
     return [
-      `- ${label}: ${result.verdict}`,
+      `- ${label}: ${founderFitVerdictLabel(result.verdict)}`,
       `  Assessment: ${result.summary}`,
       `  Strongest founder advantage: ${result.strongestAdvantage}`,
       `  Blocking conflict: ${result.blockingConflict ?? 'none identified'}`,
@@ -293,7 +294,7 @@ export function buildSelectionChallengeBlock(
         .map(source => source.title)
         .slice(0, 3);
       return [
-        `  - ${humanizeContextKey(question.questionId)}: ${question.consensus}`,
+        `  - ${humanizeContextKey(question.questionId)}: ${challengeConsensusLabel(question.consensus)}`,
         `falsification: ${truncateContextText(question.skeptic.summary, 140)}`,
         `audit: ${truncateContextText(question.auditor.summary, 140)}`,
         `sources: ${sources.join('; ') || 'none captured'}`,

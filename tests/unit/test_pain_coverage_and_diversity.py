@@ -192,3 +192,59 @@ def test_coverage_summary_high_pain_survives_display_truncation():
     assert "MoR fee vs own tax compliance" in caveat          # high pain survives the [:4] cut
     assert caveat.index("MoR fee") < caveat.index("Med one")  # and leads the list
     assert "(+2 more)" in caveat                              # truncation is visible, not silent
+
+
+def test_coverage_summary_uses_the_same_matcher_as_market_scoping():
+    """Live 2026-08 (job 8ef396eb): "Cannot validate production deductions against services
+    actually supplied" was simultaneously one of "the four in-scope pains" in the market
+    section, a "validated pain with no idea" in the research-quality caveats, and the subject
+    of a 30-day action. Two matchers over the same inputs: market sizing scopes pains with the
+    fuzzy token-overlap matcher (utils/pain_matching), coverage used exact title equality.
+    Whatever the report says an idea addresses, it must not also say nothing addresses it."""
+    from nicheiq.crews.unified_solution_crew import UnifiedSolutionCrew
+    from nicheiq.utils.pain_matching import scope_pains_to_addressed
+
+    pain = SimpleNamespace(
+        title="Cannot validate production deductions against services actually supplied",
+        categories=[], description="",
+        severity_score=0.8, opportunity_level=SimpleNamespace(value="high"),
+    )
+    addressed = ["Cannot validate production deductions"]  # the idea's paraphrase
+
+    # Precondition: the market-scoping matcher DOES consider this pain addressed.
+    assert scope_pains_to_addressed([pain], addressed)
+
+    crew = UnifiedSolutionCrew.__new__(UnifiedSolutionCrew)
+    crew.pain_point_analysis = SimpleNamespace(pain_points=[pain])
+    crew.coverage_caveats = []
+    crew._pain_coverage_summary([
+        SimpleNamespace(source_pain="Cannot validate production deductions",
+                        pain_points_addressed=addressed),
+    ])
+    joined = " ".join(crew.coverage_caveats)
+    assert "validated pains with no idea" not in joined
+
+
+def test_coverage_summary_still_flags_a_genuinely_unaddressed_pain():
+    """The looser matcher must not swallow real coverage gaps."""
+    from nicheiq.crews.unified_solution_crew import UnifiedSolutionCrew
+
+    def _p(title):
+        return SimpleNamespace(title=title, categories=[], description="",
+                               severity_score=0.8,
+                               opportunity_level=SimpleNamespace(value="high"))
+
+    crew = UnifiedSolutionCrew.__new__(UnifiedSolutionCrew)
+    crew.pain_point_analysis = SimpleNamespace(pain_points=[
+        _p("Cannot reconcile ticket fees and rebates"),
+        _p("Cannot allocate attendance risk between venue and artist"),
+    ])
+    crew.coverage_caveats = []
+    crew._pain_coverage_summary([
+        SimpleNamespace(source_pain="Cannot reconcile ticket fees and rebates",
+                        pain_points_addressed=["Cannot reconcile ticket fees and rebates"]),
+    ])
+    joined = " ".join(crew.coverage_caveats)
+    assert "validated pains with no idea" in joined
+    assert "Cannot allocate attendance risk between venue and artist" in joined
+    assert "Cannot reconcile ticket fees" not in joined.split("no idea:")[1]

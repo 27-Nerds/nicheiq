@@ -130,6 +130,7 @@
     if (outcome === "accepted") return "Added to candidates";
     if (outcome === "demoted") return "Did not qualify";
     if (outcome === "refunded") return "Refunded";
+    if (outcome === "cancelled") return "Cancelled";
     return "Evaluation failed";
   }
   let actionMessage = $state("");

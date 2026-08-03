@@ -94,6 +94,19 @@ function applyJobData(data: Record<string, any>) {
 function matchesDispatchWhere(where: Record<string, any>): boolean {
   if (!dispatchRow) return false;
   if (where.id !== undefined && where.id !== dispatchRow.id) return false;
+  if (where.jobId !== undefined && where.jobId !== dispatchRow.jobId) return false;
+  if (where.kind !== undefined && where.kind !== dispatchRow.kind) return false;
+  if (
+    where.sourceMessageId !== undefined
+    && where.sourceMessageId !== dispatchRow.sourceMessageId
+  ) return false;
+  if (where.state !== undefined) {
+    if (typeof where.state === 'object' && where.state !== null && 'in' in where.state) {
+      if (!where.state.in.includes(dispatchRow.state)) return false;
+    } else if (where.state !== dispatchRow.state) {
+      return false;
+    }
+  }
   if (where.OR) {
     const ok = (where.OR as Record<string, any>[]).some((cond) => {
       if (cond.state !== undefined && cond.state !== dispatchRow!.state) return false;
@@ -148,6 +161,9 @@ const mockDispatchFindUnique = vi.fn(async ({ where }: any) => {
   if (!dispatchRow || dispatchRow.id !== where.id) return null;
   return { ...dispatchRow };
 });
+const mockDispatchFindFirst = vi.fn(async ({ where }: any) => (
+  matchesDispatchWhere(where) ? { ...dispatchRow! } : null
+));
 const mockDispatchUpdate = vi.fn(async ({ where, data }: any) => {
   if (!dispatchRow || dispatchRow.id !== where.id) throw new Error('Dispatch not found');
   applyDispatchData(data);
@@ -190,6 +206,7 @@ const mockTransaction = vi.fn(async (cb: any) => {
     job: { findFirst: mockJobFindFirst, update: mockJobUpdate, updateMany: mockJobUpdateMany },
     jobDispatch: {
       create: mockDispatchCreate,
+      findFirst: mockDispatchFindFirst,
       findUnique: mockDispatchFindUnique,
       update: mockDispatchUpdate,
       updateMany: mockDispatchUpdateMany,
@@ -214,6 +231,7 @@ vi.mock('../../services/db.js', () => ({
     },
     jobDispatch: {
       create: (args: any) => mockDispatchCreate(args),
+      findFirst: (args: any) => mockDispatchFindFirst(args),
       findUnique: (args: any) => mockDispatchFindUnique(args),
       update: (args: any) => mockDispatchUpdate(args),
       updateMany: (args: any) => mockDispatchUpdateMany(args),
@@ -399,8 +417,8 @@ beforeEach(async () => {
   mockRemoveFromQueue.mockResolvedValue(undefined);
   mockRegisterWorkerHeartbeat.mockResolvedValue(undefined);
   mockChargeForSeedIdeaInTx.mockResolvedValue({ cost: 2, transaction: { id: 'txn-seed-1' } });
-  mockRefundForSeedIdeaStage.mockResolvedValue({ amount: -2 });
-  mockRefundChargeInTx.mockResolvedValue({ id: 'refund-seed-1', amount: -2 });
+  mockRefundForSeedIdeaStage.mockResolvedValue({ amount: 2 });
+  mockRefundChargeInTx.mockResolvedValue({ id: 'refund-seed-1', amount: 2 });
 
   app = express();
   app.use(express.json());
@@ -564,7 +582,7 @@ describe('Seed idea E2E: full lifecycle', () => {
     expect(dispatchRow!.state).toBe('REFUNDED'); // FAILED, then promoted once the credit is back
     const settled = seedSettledReceipts();
     expect(settled).toHaveLength(1);
-    expect(settled[0].patchJson.outcome).toBe('failed');
+    expect(settled[0].patchJson.outcome).toBe('refunded');
   });
 });
 

@@ -7,7 +7,6 @@ import {
   SelectionExperimentOutcome,
 } from '@prisma/client';
 import { z } from 'zod';
-import { CONFIG } from '../config.js';
 import { requireInternalAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { requireDecisionToolsAccess } from '../middleware/featureAccess.js';
 import { prisma } from '../services/db.js';
@@ -87,7 +86,7 @@ async function settlementFor(jobId: string, sourceMessageId: string) {
     const envelope = asRecord(receipt.patchJson);
     if (envelope?.kind !== 'ledger_event' || envelope.sourceMessageId !== sourceMessageId) continue;
     const outcome = typeof envelope.outcome === 'string' ? envelope.outcome : null;
-    if (outcome && ['accepted', 'demoted', 'failed', 'refunded'].includes(outcome)) {
+    if (outcome && ['accepted', 'demoted', 'failed', 'refunded', 'cancelled'].includes(outcome)) {
       return { state: outcome, idea: asRecord(envelope.idea) };
     }
   }
@@ -181,11 +180,6 @@ selectionIdeaNarrowingRouter.post(
         res.json({ ...existing, cached: true });
         return;
       }
-      if (!CONFIG.openaiApiKey) {
-        res.status(503).json({ error: 'Narrowing agent unavailable' });
-        return;
-      }
-
       const parent = currentParent(experiment)!;
       const parentName = ideaName(parent)!;
       const generated = await generateSelectionIdeaNarrowing({
@@ -269,6 +263,10 @@ selectionIdeaNarrowingRouter.post(
       }
       if (error instanceof Error && error.message === 'STALE_CONCLUSION_SNAPSHOT') {
         res.status(409).json({ error: 'The stored conclusion no longer matches this idea revision' });
+        return;
+      }
+      if (error instanceof Error && error.message === 'AI_PROVIDER_UNAVAILABLE') {
+        res.status(503).json({ error: 'Narrowing agent unavailable' });
         return;
       }
       console.error('Failed to generate narrowing proposal:', error);

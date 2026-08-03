@@ -10,6 +10,20 @@ import yaml
 
 PROMPTS_DIR = Path(__file__).parent
 
+# Figures asserted in MORE THAN ONE prompt. A number written as a literal in two templates
+# is a number that will eventually disagree with itself: the live 2026-08-03 report told the
+# reader to "Conduct 10 structured interviews" in the Brief and "Conduct 5" in the Plan,
+# because `report_next_steps.yaml` had no anchor and invented one while the playbook copied
+# its own example. Both templates now interpolate from here, so the value cannot drift and
+# neither file needs prose claiming the other agrees with it.
+#
+# Add a constant here whenever a prompt states a figure that another prompt also states.
+INTERVIEW_COUNT_RANGE = "5-10"
+
+SHARED_PROMPT_CONSTANTS: dict[str, str] = {
+    "interview_count_range": INTERVIEW_COUNT_RANGE,
+}
+
 def load_prompt(name: str) -> str:
     """
     Load a prompt template from YAML file.
@@ -42,10 +56,16 @@ def safe_format(template: str, **kwargs) -> str:
 
     Prevents KeyError/ValueError when user or LLM content contains
     literal { or } characters (e.g., JSON snippets, code blocks).
+
+    `SHARED_PROMPT_CONSTANTS` are always available to every template and never need to be
+    passed by the caller — a cross-prompt figure must not depend on each call site
+    remembering it. An explicit kwarg of the same name still wins, so a caller can
+    override for a one-off without editing the constant.
     """
+    merged = {**SHARED_PROMPT_CONSTANTS, **kwargs}
     escaped = {
         k: v.replace("{", "{{").replace("}", "}}") if isinstance(v, str) else v
-        for k, v in kwargs.items()
+        for k, v in merged.items()
     }
     return template.format(**escaped)
 

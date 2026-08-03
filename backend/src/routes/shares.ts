@@ -28,6 +28,31 @@ const STRIPPED_FIELDS = [
   'stage_timing_summary',
 ];
 
+const PRIVATE_NOTE_REPLACEMENT = 'Owner selection note omitted from this shared report.';
+
+/** Remove the owner's private selection note anywhere an older report may have copied it. */
+function redactPrivateSelectionNote(value: unknown, note: string): unknown {
+  if (typeof value === 'string') {
+    if (value === note) return PRIVATE_NOTE_REPLACEMENT;
+    // Avoid corrupting ordinary report prose when a legacy note was only a few characters.
+    return note.length >= 16 && value.includes(note)
+      ? value.split(note).join(PRIVATE_NOTE_REPLACEMENT)
+      : value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(item => redactPrivateSelectionNote(item, note));
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, item]) => [
+        key,
+        redactPrivateSelectionNote(item, note),
+      ]),
+    );
+  }
+  return value;
+}
+
 // Rate limiter for public share endpoint
 const publicShareLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
@@ -304,9 +329,23 @@ publicShareRouter.get('/:shareToken', publicShareLimiter, async (req: Request, r
     }
 
     // Read and sanitize report
-    const rawReport = JSON.parse(readFileSync(resolvedPath, 'utf-8'));
+    let rawReport = JSON.parse(readFileSync(resolvedPath, 'utf-8'));
     for (const field of STRIPPED_FIELDS) {
       delete rawReport[field];
+    }
+    const privateSelectionNote = share.job.selectionRationale?.trim();
+    if (privateSelectionNote) {
+      // The owner and Analyst retain Job.selectionRationale. Public shares use the
+      // pipeline's pre-selection reasoning when it is safe, then redact exact legacy
+      // copies elsewhere in reports generated before this privacy boundary existed.
+      const originalReasoning = rawReport.original_selection_reasoning;
+      rawReport.selection_rationale = (
+        typeof originalReasoning === 'string'
+        && !originalReasoning.includes(privateSelectionNote)
+      )
+        ? originalReasoning
+        : 'The owner selected this shortlist after reviewing the Discovery evidence.';
+      rawReport = redactPrivateSelectionNote(rawReport, privateSelectionNote);
     }
 
     // Set SEO headers (conditional based on admin indexing toggle)

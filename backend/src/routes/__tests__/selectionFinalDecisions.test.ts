@@ -9,6 +9,7 @@ vi.mock('../../middleware/featureAccess.js', () => ({
 }));
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { prepareSelectionChallengeInput } from '../../services/selectionChallengeService.js';
+import { candidateSnapshotSha256 } from '../../utils/ideaIdentity.js';
 
 const mocks = vi.hoisted(() => ({
   jobFindFirst: vi.fn(),
@@ -59,6 +60,33 @@ const report = {
     },
   },
 };
+
+const frozenFinalists = [
+  { idea_id: 'idea-signal', idea_revision: 3, solution_name: 'Signal Desk', value_proposition: 'Find intent.' },
+  { idea_id: 'idea-risk', idea_revision: 2, solution_name: 'Risk Radar', value_proposition: 'See risk.' },
+];
+
+function exactSelectionRefs(snapshots: Array<Record<string, unknown>> = frozenFinalists) {
+  return snapshots.map(snapshot => ({
+    ideaId: snapshot.idea_id,
+    ideaRevision: snapshot.idea_revision,
+    snapshotSha256: candidateSnapshotSha256(snapshot),
+  }));
+}
+
+function deepResearchDispatch(
+  snapshots: Array<Record<string, unknown>> = frozenFinalists,
+  refs = exactSelectionRefs(snapshots),
+) {
+  return {
+    requestSnapshot: {
+      schemaVersion: 1,
+      kind: 'deep_research',
+      selectedSolutionRefs: refs,
+      selectedSolutionSnapshots: snapshots,
+    },
+  };
+}
 
 function lockedExperiment(overrides: Record<string, unknown> = {}) {
   return {
@@ -111,6 +139,8 @@ function job(overrides: Record<string, unknown> = {}) {
     selectedSolution: 'Signal Desk',
     selectedSolutions: ['Signal Desk', 'Risk Radar'],
     selectedSolutionIds: ['idea-signal', 'idea-risk'],
+    selectedSolutionRefs: exactSelectionRefs(),
+    dispatches: [deepResearchDispatch()],
     deepResearchRecommendedIdeaId: 'idea-signal',
     deepResearchRecommendedIdeaRevision: 3,
     selectionRationale: 'Owner selected two finalists.',
@@ -285,6 +315,47 @@ describe('selection final decisions', () => {
     });
     expect(body.finalists).toHaveLength(2);
     expect(body.lockedTestBriefs).toEqual([]);
+  });
+
+  it('uses frozen finalist snapshots when the current pool contains a newer revision', async () => {
+    mocks.jobFindFirst.mockResolvedValue(job({
+      solutionIdeas: [
+        { idea_id: 'idea-signal', idea_revision: 4, solution_name: 'Signal Desk v4', value_proposition: 'Current pool value.' },
+        { idea_id: 'idea-risk', idea_revision: 2, solution_name: 'Risk Radar', value_proposition: 'See risk.' },
+      ],
+    }));
+
+    const loaded = await sources();
+    expect(loaded.recommendation).toMatchObject({
+      ideaId: 'idea-signal',
+      ideaRevision: 3,
+      solutionName: 'Signal Desk',
+      identityResolution: 'exact',
+    });
+
+    const response = await request(app)
+      .post(`/api/jobs/${JOB_ID}/final-decision`)
+      .send(input({ sourceFingerprint: loaded.sourceFingerprint }));
+    expect(response.status).toBe(201);
+    expect(mocks.decisionCreate.mock.calls[0][0].data.selectedIdeaSnapshot).toMatchObject({
+      idea_id: 'idea-signal',
+      idea_revision: 3,
+      solution_name: 'Signal Desk',
+      value_proposition: 'Find intent.',
+    });
+  });
+
+  it('rejects a frozen finalist whose snapshot does not match its immutable hash', async () => {
+    const refs = exactSelectionRefs();
+    refs[0] = { ...refs[0], snapshotSha256: 'f'.repeat(64) };
+    mocks.jobFindFirst.mockResolvedValue(job({
+      selectedSolutionRefs: refs,
+      dispatches: [deepResearchDispatch(frozenFinalists, refs)],
+    }));
+
+    const response = await request(app).get(`/api/jobs/${JOB_ID}/final-decision`);
+    expect(response.status).toBe(409);
+    expect(response.body.error).toMatch(/finalist identities/i);
   });
 
   it('returns only current unresolved challenge prompts for exact finalist revisions', async () => {
@@ -729,6 +800,8 @@ describe('selection final decisions', () => {
 
   it('does not resolve an ambiguous legacy recommendation name', async () => {
     mocks.jobFindFirst.mockResolvedValue(job({
+      selectedSolutionRefs: null,
+      dispatches: [],
       deepResearchRecommendedIdeaId: null,
       deepResearchRecommendedIdeaRevision: null,
       selectedSolution: 'Signal Desk',
@@ -745,6 +818,8 @@ describe('selection final decisions', () => {
 
   it('recovers exact legacy finalist identities only from unique names', async () => {
     mocks.jobFindFirst.mockResolvedValue(job({
+      selectedSolutionRefs: null,
+      dispatches: [],
       selectedSolutionIds: [],
       deepResearchRecommendedIdeaId: null,
       deepResearchRecommendedIdeaRevision: null,

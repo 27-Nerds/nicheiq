@@ -396,7 +396,10 @@ class TestTrendDowngradeRules:
             )
         )
         assert v == "Conditional"
-        assert tc is None  # Rule 3 entered but inner if verdict=="Go" is False
+        # F-035 three-branch prose: already-Conditional gets an informational Note,
+        # never a fake "Downgraded from" line.
+        assert tc is not None and tc.startswith("Note:")
+        assert "Declining" in tc
 
     def test_rule4_risky_downgrades_go_only(self):
         """Rule 4: Risky longevity + low momentum downgrades Go→Conditional."""
@@ -427,7 +430,9 @@ class TestTrendDowngradeRules:
             )
         )
         assert v == "Conditional"
-        assert tc is None  # Rule 4 entered but inner if verdict=="Go" is False
+        # F-035 three-branch prose: informational Note for already-Conditional.
+        assert tc is not None and tc.startswith("Note:")
+        assert "Risky" in tc
 
     def test_rule5_monitor_wait_disabled_by_default_low(self):
         """Rule 5 disabled by default: Monitor & Wait does NOT raise risk Low→Medium."""
@@ -487,6 +492,72 @@ class TestTrendDowngradeRules:
         assert v == "Conditional"  # Rule 3
         assert r == "Low"  # Rule 5 disabled
         assert tc is not None
+
+    # --- F-035: rules 1/2 three-branch prose (changed / risk-only / no-op) ---
+    def test_rule1_changed_branch_says_downgraded(self):
+        validator = VerdictValidator()
+        v, r, pc, tc = validator.apply_trend_downgrade(
+            **self._base_kwargs(
+                verdict="Go", risk_level="Low",
+                trend_direction="Declining", timing_recommendation="Missed Window",
+            )
+        )
+        assert tc.startswith("Downgraded from Go/Low to Conditional/Medium")
+
+    def test_rule1_risk_only_branch_says_risk_raised(self):
+        """Verdict already Conditional but risk still Low → risk-only prose, no fake downgrade."""
+        validator = VerdictValidator()
+        v, r, pc, tc = validator.apply_trend_downgrade(
+            **self._base_kwargs(
+                verdict="Conditional", risk_level="Low",
+                trend_direction="Declining", timing_recommendation="Missed Window",
+            )
+        )
+        assert v == "Conditional" and r == "Medium"
+        assert tc.startswith("Risk raised Low→Medium")
+        assert "Downgraded" not in tc
+
+    def test_rule1_noop_branch_says_already_at_cap(self):
+        """Already Conditional/Medium → the old prose claimed 'Downgraded from
+        Conditional/Medium to Conditional/Medium'; now an honest no-op note."""
+        validator = VerdictValidator()
+        v, r, pc, tc = validator.apply_trend_downgrade(
+            **self._base_kwargs(
+                verdict="Conditional", risk_level="Medium",
+                trend_direction="Declining", timing_recommendation="Missed Window",
+            )
+        )
+        assert v == "Conditional" and r == "Medium"
+        assert tc.startswith("Trend risk noted (already at the Conditional/Medium cap)")
+        assert "Downgraded" not in tc
+
+    def test_rule2_risk_only_and_noop_branches(self):
+        validator = VerdictValidator()
+        _, _, _, tc_risk_only = validator.apply_trend_downgrade(
+            **self._base_kwargs(verdict="Conditional", risk_level="Low", longevity_verdict="Fad")
+        )
+        assert tc_risk_only.startswith("Risk raised Low→Medium")
+        assert "Fad" in tc_risk_only
+        _, _, _, tc_noop = validator.apply_trend_downgrade(
+            **self._base_kwargs(verdict="Conditional", risk_level="Medium", longevity_verdict="Fad")
+        )
+        assert tc_noop.startswith("Trend risk noted (already at the Conditional/Medium cap)")
+        assert "Fad" in tc_noop
+
+    def test_rule5_prose_names_the_actual_transition(self):
+        """F-035 rule-5 fix: with a rule-1 downgrade already in trend_context, the old
+        message rendered 'High→High'; prev_risk must be captured pre-reassignment."""
+        validator = VerdictValidator(ScoreThresholds(trend_monitor_wait_raises_risk=True))
+        v, r, pc, tc = validator.apply_trend_downgrade(
+            **self._base_kwargs(
+                verdict="Go", risk_level="Low",
+                trend_direction="Declining", timing_recommendation="Monitor & Wait",
+                longevity_verdict="Fad",  # rule 2 fires first -> Conditional/Medium
+            )
+        )
+        assert r == "High"  # Medium (rule 2) raised one level by rule 5
+        assert "Risk raised Medium→High: Monitor & Wait timing" in tc
+        assert "High→High" not in tc
 
     def test_rule1_takes_priority_over_rule2(self):
         """Rule 1 (Declining+Missed Window) takes priority over Rule 2 (Fad)."""

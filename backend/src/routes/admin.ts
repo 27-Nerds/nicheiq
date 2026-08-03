@@ -616,6 +616,13 @@ adminRouter.put('/settings/:key', async (req: AuthenticatedRequest, res: Respons
       return;
     }
 
+    if (key === 'sample_report_url' && !(await adminService.isSampleReportUrlAvailable(input.value))) {
+      res.status(400).json({
+        error: 'Choose an active share from a completed report whose report file is available',
+      });
+      return;
+    }
+
     await adminService.setAppSetting(key, input.value, req.user!.id);
     res.json({ key, value: input.value });
   } catch (error) {

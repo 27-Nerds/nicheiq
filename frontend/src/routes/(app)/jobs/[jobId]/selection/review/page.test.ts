@@ -44,12 +44,20 @@ function data(options: {
   assumptions?: Array<Record<string, unknown>>;
   ownerEvidence?: Array<Record<string, unknown>>;
   decisionTools?: boolean;
+  status?: string;
+  selectionRationale?: string | null;
+  sampleReportAvailable?: boolean;
 } = {}) {
   const ideas = options.ideas ?? [idea];
   return {
-    job: { id: "job-1", status: "AWAITING_SELECTION" },
+    job: {
+      id: "job-1",
+      status: options.status ?? "AWAITING_SELECTION",
+      selectionRationale: options.selectionRationale ?? null,
+    },
     // The risk-check summary inside /review is a decision tool; /review itself is not.
     decisionTools: options.decisionTools ?? true,
+    sampleReportAvailable: options.sampleReportAvailable ?? true,
     workspace: {
       ideas,
       scopeSource: "url",
@@ -232,7 +240,7 @@ describe("selection review page", () => {
     expect(view.getByText(/Typically ready within the hour/)).toBeInTheDocument();
     expect(view.getByText("What you get")).toBeInTheDocument();
     expect(view.getByText(/Demand & pain evidence/)).toBeInTheDocument();
-    expect(view.getByText(/go \/ no-go verdict/)).toBeInTheDocument();
+    expect(view.getByText(/clear recommendation, and decision-changing conditions/)).toBeInTheDocument();
     const sample = view.getByRole("link", { name: /See a sample report/ });
     expect(sample).toHaveAttribute("href", "/sample-report");
     // /sample-report is in the (public) route group: following it in-tab would
@@ -242,6 +250,15 @@ describe("selection review page", () => {
     expect(view.getByText("Starting locks this shortlist — ideas can’t be changed during the run.")).toBeInTheDocument();
     expect(view.getByText("Any active discovery share link closes once Deep Research is successfully queued.")).toBeInTheDocument();
     expect(view.getByText("If the run fails or finds too little data, credits are returned automatically.")).toBeInTheDocument();
+  });
+
+  it("does not offer a dead sample link when no verified sample is published", () => {
+    const view = render(ReviewPage, {
+      props: { data: data({ sampleReportAvailable: false }) },
+    });
+
+    expect(view.queryByRole("link", { name: /See a sample report/ })).not.toBeInTheDocument();
+    expect(view.getByText("Sample report temporarily unavailable.")).toBeInTheDocument();
   });
 
   it("recaps each idea with its Research score and marks bundle-tier ideas", () => {
@@ -346,6 +363,31 @@ describe("selection review page", () => {
     await waitFor(() => expect(view.getAllByRole("dialog").length).toBeGreaterThan(0));
     // Inspection only: the shortlist is edited in Compare, so no select control.
     expect(view.queryByRole("button", { name: /Add to shortlist|Select this idea/ })).toBeNull();
+  });
+
+  it("keeps idea details inspectable but all commit inputs locked after selection ends", async () => {
+    const view = render(ReviewPage, {
+      props: {
+        data: data({
+          status: "COMPLETED",
+          selectionRationale: "Strongest buyer evidence and the clearest repeat workflow.",
+        }),
+      },
+    });
+
+    expect(view.getByText(/View-only record of the exact shortlist/)).toBeInTheDocument();
+    expect(view.getByText("Saved scope")).toBeInTheDocument();
+    expect(view.queryByRole("link", { name: "Choose ideas" })).not.toBeInTheDocument();
+    expect(view.getByRole("link", { name: "Open evidence record" })).toHaveAttribute(
+      "href",
+      "/jobs/job-1/selection/risks?idea=idea-a%3A3",
+    );
+    expect(view.getByRole("heading", { name: "Why these ideas?" })).toBeInTheDocument();
+    expect(view.getByText("Strongest buyer evidence and the clearest repeat workflow.")).toBeInTheDocument();
+    expect(view.queryByLabelText(/Why these ideas\?/)).not.toBeInTheDocument();
+    expect(view.getByRole("button", { name: "Start Deep Research · 100 credits" })).toBeDisabled();
+    await fireEvent.click(view.getByRole("button", { name: /Signal desk/ }));
+    await waitFor(() => expect(view.getAllByRole("dialog").length).toBeGreaterThan(0));
   });
 
   it("does not claim both that no check is saved and that checks were archived", () => {

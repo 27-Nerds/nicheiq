@@ -42,6 +42,16 @@ vi.mock('../progressBroadcastService.js', () => ({
   broadcastProgress: vi.fn(),
 }));
 
+vi.mock('../queueService.js', () => ({
+  enqueuePaidPoolRecovery: vi.fn(),
+}));
+
+vi.mock('../paidPoolRecoveryService.js', () => ({
+  fencePaidPoolMutationForRecovery: vi.fn(),
+  failUnpreparedPaidPoolMutation: vi.fn(),
+  refencePaidPoolRecovery: vi.fn(),
+}));
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockJobUpdateMany.mockResolvedValue({ count: 1 });
@@ -68,6 +78,31 @@ describe('updateJobHeartbeat — exact attempt ownership', () => {
         id: 'job-1',
         activeDispatchId: 'dispatch-1',
         workerId: 'worker-1',
+      },
+      data: { lastHeartbeat: expect.any(Date) },
+    });
+  });
+
+  it('keeps a claimed recovery worker heartbeat alive for the exact fenced dispatch', async () => {
+    mockJobFindUnique.mockResolvedValue({
+      activeDispatchId: 'dispatch-1',
+      workerId: 'recovery-worker',
+    });
+    mockDispatchFindUnique.mockResolvedValue({
+      jobId: 'job-1',
+      state: 'RECOVERING',
+      workerId: 'recovery-worker',
+    });
+
+    const { updateJobHeartbeat } = await import('../heartbeatService.js');
+    const result = await updateJobHeartbeat('job-1', 'recovery-worker', 'dispatch-1');
+
+    expect(result).toBe('updated');
+    expect(mockJobUpdateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'job-1',
+        activeDispatchId: 'dispatch-1',
+        workerId: 'recovery-worker',
       },
       data: { lastHeartbeat: expect.any(Date) },
     });

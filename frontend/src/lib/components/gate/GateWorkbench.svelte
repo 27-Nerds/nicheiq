@@ -16,6 +16,7 @@
   import type { GateArtifact, GateG1Artifact, GateG2Artifact, GateG1PatchFields, GateG2PatchFields } from "$lib/api";
   import ChatThread from "$lib/components/chat/ChatThread.svelte";
   import { GATE_FIELD_LABEL, formatGateFieldValue } from "./gateFields";
+  import { formatPayabilityClass } from "$lib/utils/payability";
   import { chatLedger } from "$lib/stores/chatLedger.svelte";
   import { gateSuggestions } from "$lib/components/chat/suggestions";
 
@@ -378,7 +379,7 @@
                 {#each g2.segments as seg}
                   <li class="gate-segment-row">
                     <span class="gate-segment-name">{seg.segment_name}</span>
-                    <span class="gate-segment-meta">{seg.size_estimate ?? "n/a"} &middot; {seg.payability_class ?? "n/a"} payability</span>
+                    <span class="gate-segment-meta">{seg.size_estimate ?? "n/a"} &middot; Wallet: {formatPayabilityClass(seg.payability_class)}</span>
                   </li>
                 {/each}
               </ul>

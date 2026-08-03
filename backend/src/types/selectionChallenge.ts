@@ -59,6 +59,9 @@ export const SelectionChallengeAgentAssessmentSchema = z.object({
   subjectKeys: z.array(z.string().regex(/^I\d+$/)).max(8),
   evidenceKeys: z.array(z.string().regex(/^S\d+$/)).max(10),
   evidenceClass: SelectionChallengeEvidenceClassSchema,
+  // Server-stamped when the assessor omitted this question and the service
+  // backfilled a deterministic insufficient assessment. Never model-emitted.
+  backfilled: z.boolean().optional(),
 }).strict();
 
 export const SelectionChallengeAgentResponseSchema = z.object({
@@ -177,7 +180,8 @@ export const SelectionChallengeArtifactSchema = z.object({
   questions: z.array(SelectionChallengeQuestionResultSchema).length(3),
   skepticModel: z.string().min(1).max(255),
   auditorModel: z.string().min(1).max(255),
-  promptVersion: z.literal(1),
+  // Widened (1 | 2) BEFORE the PROMPT_VERSION bump so stored v1 artifacts keep parsing.
+  promptVersion: z.union([z.literal(1), z.literal(2)]),
   createdAt: z.string().datetime(),
 }).strict();
 

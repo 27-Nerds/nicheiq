@@ -63,13 +63,16 @@ categorize_content:
     Anchor keywords are SHORT PHRASES (2-6 words) that users use when discussing a theme.
     They are NOT full quotes — they are searchable phrases for the quote-enrichment vector search.
 
-    Examples:
-    - Theme "Setup Complexity" → ["took 3 hours", "no documentation", "gave up configuring"]
-    - Theme "Pricing Confusion" → ["hidden fees", "didn't expect", "way more expensive"]
-    - Theme "Manual Process Pain" → ["hours wasted", "repetitive tasks", "wish automated"]
+    What to pull (structural — do NOT copy a phrase from this list, only phrases from the content):
+    - the duration, count or cost a user actually stated about the task
+    - the user's own words for the thing that was missing or broken
+    - the user's own words for giving up, working around it, or switching away
+    - the user's own words for what it cost them (time, money, a client, a deadline)
 
     **CRITICAL: anchor_keywords must be EXACT PHRASES from content, NOT paraphrased summaries.**
-    Copy user language verbatim: "took 3 hours" not "time-consuming setup process"
+    Copy user language verbatim. A phrase you composed yourself — however accurate a summary —
+    is not an anchor keyword: it is not present in the source, so the quote-enrichment vector
+    search returns nothing for it and the theme silently loses its evidence.
 
     **Pattern Recognition Guide (Cause-Centered):**
     Look for these FUNCTIONAL problem indicators:
@@ -165,7 +168,7 @@ categorize_content:
        - **primary_user_segments**: User types discussing this theme
        - **anchor_keywords**: 3-8 short phrases (2-6 words each) that users say when
          discussing this theme. EXACT phrases from content for the quote-enrichment vector search.
-         Example: ["took 3 hours", "no documentation", "gave up configuring"]
+         Every phrase must be copy-pasteable back into the source discussions verbatim.
 
     **user_segments**: List of all identified UserSegment objects:
        - **segment_name**: From self-descriptions in discussions
@@ -486,7 +489,10 @@ validate_pain_points:
     - severity ≥0.7 AND workflow-blocking, no payment signal → WTP 0.35-0.5 (inferred).
     - productivity/time loss mentioned (hobby/casual context) → WTP 0.25-0.4.
     - Emotional complaint only, no functional/financial impact → WTP 0.1-0.25.
-    - CRITICAL: NEVER assign identical WTP across pain points — use the full range to differentiate.
+    - DIAGNOSTIC (not a quota): if every pain point lands in the same WTP band, re-read the quotes —
+      a flat set usually means you defaulted instead of reading each pain's evidence. Identical
+      scores are CORRECT when the evidence is identical; never spread scores apart to manufacture
+      variety, and never move a score off what its quotes support.
 
     **CRITICAL DATA ACCURACY RULES:**
     - Scores MUST be based on the evidence quotes provided above - NO assumptions
@@ -512,18 +518,21 @@ validate_pain_points:
     ✗ WTP scores ≥0.6 require explicit payment mentions; WTP 0.1-0.55 can be INFERRED from severity/impact
       ✅ Example: High severity (0.8) + workflow blocker → infer WTP 0.45-0.55
       ✅ Example: Time/productivity loss mentioned → infer WTP 0.3-0.4
-    ✗ NEVER assign identical WTP scores to ALL pain points - discriminate using the full 0.0-0.55 range
-      ❌ Example: All 10 pain points with WTP = 0.0 (no discrimination)
-      ✅ Example: WTP scores ranging from 0.15 to 0.55 based on inferred impact
+    ⚠ All WTP scores landing in one band → re-read the quotes before submitting; that pattern
+      usually means the quotes were not consulted. If the evidence really is uniform, identical
+      scores are the correct answer — do not spread them apart to create variety
+      ❌ Example: All 10 pain points at WTP = 0.0 because the quotes were never consulted
+      ✅ Example: Each score traced to its own pain's quotes, whatever spread that produces
 
     **OUTPUT REQUIREMENTS:**
     ✗ pain_point_scores count MUST EXACTLY match the pain points listed above (1:1 mapping)
       ❌ Example: Adding/removing/merging pain points (violates 1:1 constraint)
     ✗ pain_point_title must be EXACT character-by-character match to the listing above
       ❌ Example: Slightly modifying title (must be exact match for Python merging)
-    ✗ Discriminate scores - NOT all 0.8-0.9
-      ❌ Example: Rounding all scores to 0.8-0.9 without differentiation
-      ✅ Example: Range from 0.2 to 0.95 based on actual evidence strength
+    ⚠ Severity scores clustered at 0.8-0.9 → re-read the quotes; that is the default-optimism
+      pattern, not a reading of the evidence
+      ❌ Example: Rounding every score to 0.8-0.9 without consulting the quotes
+      ✅ Example: Each score traced to its own quotes' evidence strength, whatever spread results
     ✗ Scoring rationale must reference specific provided quotes
       ❌ Example: "This seems important" (generic)
       ✅ Example: "Quote from [source: abc123] reports losing 2 clients to invoicing delays"

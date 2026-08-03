@@ -26,6 +26,9 @@ sys.path.insert(0, str(project_root))
 _IDEAS_READY = re.compile(r".+/api/workers/ideas-ready$")
 _REGENERATION_COMPLETE = re.compile(r".+/api/workers/regeneration-complete$")
 _REPORT_READY = re.compile(r".+/api/workers/report-ready$")
+_JOB_FAILED = re.compile(r".+/api/workers/job-failed$")
+_CATALOG_PAIN_POINTS_READY = re.compile(r".+/api/workers/catalog-pain-points-ready$")
+_CATALOG_IDEAS_READY = re.compile(r".+/api/workers/catalog-ideas-ready$")
 
 
 @responses.activate
@@ -54,6 +57,59 @@ def test_report_ready_carries_dispatch_and_exact_winner(_wid, _dispatch):
         "dispatch_id": "dispatch-2",
         "winner_name": "Alpha Hub",
         "winner_ref": winner_ref,
+    }
+
+
+@responses.activate
+@patch("worker.progress._dispatch_payload", return_value={"dispatch_id": "dispatch-2"})
+@patch("worker.progress._get_worker_id", return_value="w1")
+def test_catalog_pain_points_ready_carries_dispatch(_wid, _dispatch):
+    responses.add(responses.POST, _CATALOG_PAIN_POINTS_READY, json={}, status=200)
+    from worker.progress import notify_catalog_pain_points_ready
+
+    notify_catalog_pain_points_ready("job-1", "category-1", [], "niche", "/tmp/p.json")
+
+    assert json.loads(responses.calls[0].request.body)["dispatch_id"] == "dispatch-2"
+
+
+@responses.activate
+@patch("worker.progress._dispatch_payload", return_value={"dispatch_id": "dispatch-2"})
+@patch("worker.progress._get_worker_id", return_value="w1")
+def test_catalog_ideas_ready_carries_dispatch(_wid, _dispatch):
+    responses.add(responses.POST, _CATALOG_IDEAS_READY, json={}, status=200)
+    from worker.progress import notify_catalog_ideas_ready
+
+    notify_catalog_ideas_ready("job-1", "category-1", [], "niche")
+
+    assert json.loads(responses.calls[0].request.body)["dispatch_id"] == "dispatch-2"
+
+
+@responses.activate
+@patch("worker.progress._dispatch_payload", return_value={"dispatch_id": "dispatch-2"})
+@patch("worker.progress._get_worker_id", return_value="w1")
+def test_quality_gate_stop_carries_exact_dispatch_and_structured_reason(_wid, _dispatch):
+    responses.add(responses.POST, _JOB_FAILED, json={"success": True}, status=200)
+    from worker.progress import notify_job_quality_gate_stop
+
+    delivered = notify_job_quality_gate_stop(
+        "job-1",
+        "INSUFFICIENT_DATA",
+        {"recommendation": "Broaden the source window", "quality_tier": "low"},
+        9,
+    )
+
+    assert delivered is True
+    assert json.loads(responses.calls[0].request.body) == {
+        "worker_id": "w1",
+        "job_id": "job-1",
+        "dispatch_id": "dispatch-2",
+        "error_message": "Broaden the source window",
+        "error_stage": 9,
+        "stop_reason": "INSUFFICIENT_DATA",
+        "stop_reason_details": {
+            "recommendation": "Broaden the source window",
+            "quality_tier": "low",
+        },
     }
 
 
@@ -201,8 +257,9 @@ def test_regeneration_complete_exhausted_retries_raise(
             body=requests.exceptions.ConnectionError("backend down"),
         )
     from worker.progress import notify_regeneration_complete
+    from worker.paid_pool_recovery import PaidPoolCompletionAmbiguous
 
-    with pytest.raises(requests.exceptions.RequestException):
+    with pytest.raises(PaidPoolCompletionAmbiguous):
         notify_regeneration_complete("job-1", [])
 
     assert len(responses.calls) == 4

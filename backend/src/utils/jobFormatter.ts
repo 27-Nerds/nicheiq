@@ -34,6 +34,7 @@ export function formatJobResponse(job: JobWithRelations, options: FormatOptions 
     && (
       latestDispatch.state === DispatchState.AUTHORIZED
       || latestDispatch.state === DispatchState.CLAIMED
+      || latestDispatch.state === DispatchState.RECOVERING
     )
       ? latestDispatch
       : null;
@@ -65,6 +66,9 @@ export function formatJobResponse(job: JobWithRelations, options: FormatOptions 
     selectedSolution: job.selectedSolution || null,
     selectedSolutions: job.selectedSolutions?.length ? job.selectedSolutions : null,
     selectedSolutionIds: job.selectedSolutionIds?.length ? job.selectedSolutionIds : null,
+    selectedSolutionRefs: Array.isArray(job.selectedSolutionRefs) ? job.selectedSolutionRefs : null,
+    deepResearchRecommendedIdeaId: job.deepResearchRecommendedIdeaId || null,
+    deepResearchRecommendedIdeaRevision: job.deepResearchRecommendedIdeaRevision ?? null,
     awaitingSelectionAt: job.awaitingSelectionAt?.toISOString() || null,
     ideasShownAt: job.ideasShownAt?.toISOString() || null,
     // Lean count so list payloads can show "N candidates ready" without the full array
@@ -82,6 +86,13 @@ export function formatJobResponse(job: JobWithRelations, options: FormatOptions 
     // The exact durable operation currently owning this job. The selection UI uses this
     // instead of inferring SEED_IDEA vs DEEP_RESEARCH from a separately-loaded chat ledger.
     activeDispatchKind: activeDispatch?.kind ?? null,
+    activeOperation: activeDispatch
+      ? {
+          id: activeDispatch.id,
+          kind: activeDispatch.kind,
+          state: activeDispatch.state,
+        }
+      : null,
   };
 
   // Optional fields based on endpoint needs
@@ -90,9 +101,18 @@ export function formatJobResponse(job: JobWithRelations, options: FormatOptions 
     // A prior refunded seed/batch must not make a later, unrelated terminal failure claim
     // that credits were restored. Modern jobs report against their latest exact dispatch;
     // the broad transaction scan is only a compatibility fallback for legacy jobs.
-    result.creditRefunded = latestDispatch
-      ? (latestDispatch.refundedAmount ?? latestDispatch.refundTransaction?.amount ?? 0) > 0
+    const exactRefundAmount = latestDispatch
+      ? Math.max(latestDispatch.refundedAmount ?? latestDispatch.refundTransaction?.amount ?? 0, 0)
+      : null;
+    result.creditRefunded = exactRefundAmount !== null
+      ? exactRefundAmount > 0
       : job.creditTransactions.some(transaction => transaction.amount > 0);
+    // Resume re-charges the unmatched refund amount, not today's configured stage price.
+    // Expose that exact amount only when a modern dispatch owns it; legacy transaction-only
+    // jobs keep the boolean fallback because their latest unmatched refund is ambiguous here.
+    if (exactRefundAmount !== null) {
+      result.creditRefundedAmount = exactRefundAmount;
+    }
   }
 
   if (options.includeCreatedAt) {

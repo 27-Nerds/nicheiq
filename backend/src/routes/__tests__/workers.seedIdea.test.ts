@@ -120,6 +120,13 @@ beforeEach(async () => {
   mockRefundForSeedIdeaStage.mockResolvedValue({ id: 'refund-seed-3', amount: 2 });
   mockRefundChargeInTx.mockResolvedValue({ id: 'refund-exact', amount: 2 });
   mockChatMessageCreate.mockResolvedValue({ id: 'settled-receipt-1' });
+  mockDispatchFindUnique.mockResolvedValue({
+    jobId,
+    kind: 'SEED_IDEA',
+    state: 'CLAIMED',
+    workerId: 'w1',
+    sourceMessageId: null,
+  });
 
   app = express();
   app.use(express.json());
@@ -154,7 +161,10 @@ describe('POST /api/workers/seed-complete', () => {
     expect(update.data.solutionIdeas.every((idea: any) => /^idea_[a-f0-9]{32}$/.test(idea.idea_id))).toBe(true);
     // The dispatch settlement — same CAS predicate settleDispatch always uses.
     expect(mockDispatchUpdateMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: dispatchId }, data: expect.objectContaining({ state: 'COMPLETED' }) }),
+      expect.objectContaining({
+        where: expect.objectContaining({ id: dispatchId, state: 'CLAIMED', workerId: 'w1' }),
+        data: expect.objectContaining({ state: 'COMPLETED' }),
+      }),
     );
   });
 
@@ -171,7 +181,13 @@ describe('POST /api/workers/seed-complete', () => {
     });
     mockJobUpdateMany.mockResolvedValue({ count: 1 });
     mockDispatchUpdateMany.mockResolvedValue({ count: 1 });
-    mockDispatchFindUnique.mockResolvedValue({ sourceMessageId: 'msg-synthesis' });
+    mockDispatchFindUnique.mockResolvedValue({
+      jobId,
+      kind: 'SEED_IDEA',
+      state: 'CLAIMED',
+      workerId: 'w1',
+      sourceMessageId: 'msg-synthesis',
+    });
     mockChatMessageFindFirst.mockResolvedValue({
       patchJson: {
         kind: 'idea_synthesis',
@@ -228,13 +244,25 @@ describe('POST /api/workers/seed-complete', () => {
     mockJobFindFirst.mockResolvedValue({ solutionIdeas: [], costUsd: 0 });
     mockJobUpdateMany.mockResolvedValue({ count: 1 });
     mockDispatchUpdateMany.mockResolvedValue({ count: 1 });
-    mockDispatchFindUnique.mockResolvedValue({ sourceMessageId: 'msg-abc' });
+    mockDispatchFindUnique.mockResolvedValue({
+      jobId,
+      kind: 'SEED_IDEA',
+      state: 'CLAIMED',
+      workerId: 'w1',
+      sourceMessageId: 'msg-abc',
+    });
 
     await request(app).post('/api/workers/seed-complete').send({ ...validPayload, outcome: 'demoted' });
 
     expect(mockDispatchFindUnique).toHaveBeenCalledWith({
       where: { id: dispatchId },
-      select: { sourceMessageId: true },
+      select: {
+        jobId: true,
+        kind: true,
+        state: true,
+        workerId: true,
+        sourceMessageId: true,
+      },
     });
     expect(mockChatMessageCreate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -266,7 +294,13 @@ describe('POST /api/workers/seed-complete', () => {
     mockJobFindFirst.mockResolvedValue({ solutionIdeas: [], costUsd: 0 });
     mockJobUpdateMany.mockResolvedValue({ count: 1 });
     mockDispatchUpdateMany.mockResolvedValue({ count: 1 });
-    mockDispatchFindUnique.mockResolvedValue({ sourceMessageId: null });
+    mockDispatchFindUnique.mockResolvedValue({
+      jobId,
+      kind: 'SEED_IDEA',
+      state: 'CLAIMED',
+      workerId: 'w1',
+      sourceMessageId: null,
+    });
 
     const response = await request(app).post('/api/workers/seed-complete').send(validPayload);
 
@@ -289,6 +323,25 @@ describe('POST /api/workers/seed-complete', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.stale).toBe(true);
+    expect(mockJobUpdateMany).not.toHaveBeenCalled();
+    expect(mockDispatchUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects a late original worker after its dispatch was fenced for recovery', async () => {
+    mockJobFindFirst.mockResolvedValue({ solutionIdeas: [], costUsd: 0 });
+    mockDispatchFindUnique.mockResolvedValue({
+      jobId,
+      kind: 'SEED_IDEA',
+      state: 'RECOVERING',
+      workerId: 'recovery-worker',
+      sourceMessageId: 'msg-abc',
+    });
+    mockJobFindUnique.mockResolvedValue({ status: 'RUNNING', activeDispatchId: dispatchId });
+
+    const response = await request(app).post('/api/workers/seed-complete').send(validPayload);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ stale: true, shouldCancel: true });
     expect(mockJobUpdateMany).not.toHaveBeenCalled();
     expect(mockDispatchUpdateMany).not.toHaveBeenCalled();
   });
@@ -389,6 +442,7 @@ describe('POST /api/workers/seed-failed', () => {
       expect.objectContaining({ where: { id: dispatchId }, data: expect.objectContaining({ state: 'FAILED' }) }),
     );
     expect(mockRefundForSeedIdeaStage).toHaveBeenCalledWith(jobId, 3);
+    expect(mockInvalidatePreviewReportCache).toHaveBeenCalledWith(jobId);
     // Promoted FAILED -> REFUNDED once the credit is actually back — a SEPARATE call from the
     // settleDispatch one above (mirrors /gate-failed's own two-step settle).
     expect(mockDispatchUpdateMany).toHaveBeenCalledWith({
@@ -414,7 +468,7 @@ describe('POST /api/workers/seed-failed', () => {
     );
   });
 
-  it('writes a seed_settled receipt with outcome=failed keyed on the dispatch sourceMessageId', async () => {
+  it('writes a seed_settled receipt with outcome=refunded only when credits were restored', async () => {
     mockDispatchFindUnique.mockResolvedValue({ seedOrdinal: 1, sourceMessageId: 'msg-xyz' });
     mockJobUpdateMany.mockResolvedValue({ count: 1 });
     mockDispatchUpdateMany.mockResolvedValue({ count: 1 });
@@ -426,10 +480,32 @@ describe('POST /api/workers/seed-failed', () => {
         data: expect.objectContaining({
           jobId, gateStage: 5, role: 'receipt',
           patchJson: expect.objectContaining({
-            kind: 'ledger_event', event: 'seed_settled', sourceMessageId: 'msg-xyz', outcome: 'failed',
+            kind: 'ledger_event', event: 'seed_settled', sourceMessageId: 'msg-xyz', outcome: 'refunded',
           }),
         }),
       }),
+    );
+  });
+
+  it('keeps the seed outcome failed when an expired allowance reversal restores zero credits', async () => {
+    mockDispatchFindUnique.mockResolvedValue({
+      seedOrdinal: 3,
+      sourceMessageId: 'msg-expired',
+      chargeId: 'charge-expired',
+    });
+    mockJobUpdateMany.mockResolvedValue({ count: 1 });
+    mockDispatchUpdateMany.mockResolvedValue({ count: 1 });
+    mockRefundChargeInTx.mockResolvedValue({ id: 'reversal-zero', amount: 0 });
+
+    await request(app).post('/api/workers/seed-failed').send(validPayload);
+
+    expect(mockChatMessageCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        patchJson: expect.objectContaining({ outcome: 'failed' }),
+      }),
+    }));
+    expect(mockDispatchUpdateMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ state: 'REFUNDED' }) }),
     );
   });
 

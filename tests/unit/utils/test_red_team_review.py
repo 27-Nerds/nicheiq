@@ -1,8 +1,7 @@
-"""Tests for the adversarial red-team pass (utils/red_team_review.py): killed-verdict cap
-application via the EXISTING `_validate_idea_caps` rule (e)/bundled_free branch, weakened-
-verdict no-op on scores, per-idea fail-soft on an LLM exception, the red_team_top_k=0
-no-op short-circuit (no LLM call, no searches), and the accept-guarded revision tail
-(`_attempt_red_team_revision`) with its funnel counters.
+"""Tests for the adversarial red-team pass (utils/red_team_review.py): killed- AND weakened-
+verdict no-op on scores and on the parity channel, per-idea fail-soft on an LLM exception,
+the red_team_top_k=0 no-op short-circuit (no LLM call, no searches), and the accept-guarded
+revision tail (`_attempt_red_team_revision`) with its funnel counters.
 """
 
 from types import SimpleNamespace
@@ -97,7 +96,18 @@ def _refined(ideas):
 
 
 class TestRedTeamReview:
-    def test_killed_with_qualifying_caveat_applies_cap(self, monkeypatch):
+    def test_killed_verdict_never_writes_the_parity_channel(self, monkeypatch):
+        """A 'killed' verdict stamps verdict + caveats and NOTHING else.
+
+        This test previously asserted the opposite (the killing caveat became
+        `incumbent_parity = "bundled_free (red-team): ..."` and `_validate_idea_caps`
+        capped market_fit to 0.40). That coupling was deleted 2026-08-02: `_RedTeamVerdict`
+        carries no vendor field, so every such stamp was a vendor-less parity claim by
+        construction, and the sibling probe `_probe_mechanism_parity` already requires a
+        named vendor before any parity class is assigned. The kill's consequence now lives
+        only where it can be attributed — the verdict floor (`apply_red_team_downgrade`)
+        and the auto-pick guard (`score_helpers.choose_auto_pick`).
+        """
         monkeypatch.setattr(settings, "red_team_top_k", 1)
         monkeypatch.setattr(settings, "red_team_searches_per_idea", 3)
         monkeypatch.setattr(settings, "parity_bundled_free_cap", 0.40)
@@ -113,8 +123,8 @@ class TestRedTeamReview:
 
         assert idea.red_team_verdict == "killed"
         assert idea.red_team_caveats == ["free in Truckstop broker portal"]
-        assert idea.incumbent_parity.startswith("bundled_free")
-        assert idea.market_fit_score == 0.40
+        assert idea.incumbent_parity is None
+        assert idea.market_fit_score == 0.8
 
     def test_weakened_verdict_leaves_scores_untouched(self, monkeypatch):
         monkeypatch.setattr(settings, "red_team_top_k", 1)

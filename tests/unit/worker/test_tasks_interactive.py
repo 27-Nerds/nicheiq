@@ -14,6 +14,13 @@ from nicheiq.models.solution_selection import SolutionScores, SolutionSelection
 from nicheiq.utils.idea_identity import selection_fingerprint
 
 
+@pytest.fixture(autouse=True)
+def _isolate_paid_pool_artifact_protocol():
+    """Task behavior tests use synthetic paths; lock/file semantics have their own suite."""
+    with patch("worker.paid_pool_recovery.PaidPoolMutationGuard") as guard_class:
+        yield guard_class.return_value
+
+
 def _identified_idea(name: str, idea_id: str, revision: int = 1) -> BaseSolutionIdea:
     return BaseSolutionIdea(
         solution_name=name,
@@ -241,14 +248,15 @@ class TestRunInteractiveResearchChatMode:
             flow.run_with_resume.return_value = ''
             flow.checkpoint_mgr = MagicMock()
             flow.checkpoint_mgr.checkpoint_folder = '/tmp/checkpoint-g1'
-            flow._extract_stage_artifact.return_value = {"type": "niche_validation"}
+            flow._build_g1_gate_artifact.return_value = {"type": "niche_validation"}
             mock_progress.return_value = MagicMock()
 
             from worker.tasks import run_interactive_research
             result = run_interactive_research(job_id='job-1', niche='test niche', chat_mode=True)
 
             flow.run_with_resume.assert_called_once_with(auto_resume=False, stop_after_stage=1)
-            flow._extract_stage_artifact.assert_called_once_with(1)
+            # F-013: the gate uses the composite full-list builder, not the small SSE artifact.
+            flow._build_g1_gate_artifact.assert_called_once_with()
             mock_notify_gate.assert_called_once()
             args, kwargs = mock_notify_gate.call_args
             assert args[0] == 'job-1'
@@ -458,7 +466,7 @@ class TestContinueFromGate:
             flow.cleanup_collections = MagicMock()
             flow.checkpoint_mgr = MagicMock()
             flow.checkpoint_mgr.checkpoint_folder = '/tmp/cp'
-            flow._extract_stage_artifact.return_value = {"type": "niche_validation"}
+            flow._build_g1_gate_artifact.return_value = {"type": "niche_validation"}
             mock_progress.return_value = MagicMock()
 
             from worker.tasks import continue_from_gate
@@ -616,6 +624,7 @@ class TestRunResearchPhase2:
             )
             flow.cleanup_collections = MagicMock()
             mock_progress.return_value = MagicMock()
+            mock_quality_gate.return_value = True
 
             from worker.tasks import run_research_phase2
             result = run_research_phase2(
@@ -623,7 +632,44 @@ class TestRunResearchPhase2:
                 selected_solutions=['Sol1'],
             )
             assert result is None
-            mock_quality_gate.assert_called_once()
+            mock_quality_gate.assert_called_once_with(
+                "job-1", "INSUFFICIENT_DATA", {}, 9
+            )
+
+    @patch('worker.tasks.notify_job_quality_gate_stop')
+    @patch('worker.tasks.mark_job_running')
+    @patch('worker.tasks.create_progress_callback')
+    def test_quality_gate_stop_not_delivered_reraises(
+        self, mock_progress, mock_mark, mock_quality_gate
+    ):
+        with patch('nicheiq.flows.research_flow.ResearchFlow') as MockFlow:
+            from nicheiq.flows.research_flow import QualityGateStopException
+            flow = MockFlow.return_value
+            flow.resume_from_checkpoint.side_effect = QualityGateStopException(
+                stage=9,
+                reason='INSUFFICIENT_DATA',
+                details={'recommendation': 'Broaden the source window'},
+            )
+            flow.state = MagicMock(current_stage=9)
+            flow.cleanup_collections = MagicMock()
+            mock_progress.return_value = MagicMock()
+            mock_quality_gate.return_value = False
+
+            from worker.tasks import run_research_phase2
+
+            with pytest.raises(QualityGateStopException) as exc_info:
+                run_research_phase2(
+                    job_id='job-1', checkpoint_path='/tmp/cp',
+                    selected_solutions=['Sol1'],
+                )
+
+            assert exc_info.value.failed_stage == 9
+            mock_quality_gate.assert_called_once_with(
+                "job-1",
+                "INSUFFICIENT_DATA",
+                {'recommendation': 'Broaden the source window'},
+                9,
+            )
 
     @patch('worker.tasks.mark_job_running')
     @patch('worker.tasks.create_progress_callback')
@@ -734,6 +780,39 @@ class TestResolvePhase2Selection:
         assert canonical == [
             {"idea_id": "idea-b", "idea_revision": 3, "solution_name": "Beta Hub"}
         ]
+
+    def test_hidden_duplicate_name_does_not_block_visible_phase2_candidate(self):
+        """Absorbed history may retain a different id for the visible candidate's name."""
+        hidden = _identified_idea("Appliance Ledger", "idea-hidden", 1)
+        hidden.candidate_status = "absorbed"
+        visible = _unidentified_idea("Appliance Ledger")
+        retired = _identified_idea("Retired", "idea-retired", 1)
+        retired.candidate_status = "absorbed"
+        state = SimpleNamespace(
+            idea_generation=IdeaGenerationResult(
+                solution_ideas=[hidden, visible, retired]
+            )
+        )
+        refs = [{
+            "idea_id": "idea-visible",
+            "idea_revision": 1,
+            "solution_name": "Appliance Ledger",
+        }]
+
+        from worker.tasks import _resolve_phase2_selection
+
+        names, canonical = _resolve_phase2_selection(
+            state,
+            "job-1",
+            selected_solution_refs=refs,
+            provided_selection_fingerprint=selection_fingerprint(refs),
+            pool_identity_map=refs,
+        )
+
+        assert names == ["Appliance Ledger"]
+        assert canonical == refs
+        assert hidden.idea_id == "idea-hidden"
+        assert visible.idea_id == "idea-visible"
 
     def test_identityless_checkpoint_without_the_map_cannot_resolve(self):
         """The regression itself: legacy backfill derives ids the backend never issued."""
@@ -936,6 +1015,35 @@ class TestRegenerationBaseCandidateRefs:
             ],
         )
 
+    def test_hidden_duplicate_name_does_not_block_paid_pool_validation(self):
+        """This exact-pool validator gates both additional batches and seed evaluations."""
+        hidden = _identified_idea("Appliance Ledger", "idea-hidden", 1)
+        hidden.candidate_status = "absorbed"
+        visible = _unidentified_idea("Appliance Ledger")
+        retired = _identified_idea("Retired", "idea-retired", 1)
+        retired.candidate_status = "absorbed"
+        state = SimpleNamespace(
+            idea_generation=IdeaGenerationResult(
+                solution_ideas=[hidden, visible, retired]
+            )
+        )
+
+        from worker.tasks import _validate_regeneration_base_candidate_refs
+
+        _validate_regeneration_base_candidate_refs(
+            state,
+            "job-1",
+            [{"idea_id": "idea-visible", "idea_revision": 1}],
+            [{
+                "idea_id": "idea-visible",
+                "idea_revision": 1,
+                "solution_name": "Appliance Ledger",
+            }],
+        )
+
+        assert hidden.idea_id == "idea-hidden"
+        assert visible.idea_id == "idea-visible"
+
     def test_stale_revision_or_pool_membership_is_rejected(self):
         from worker.tasks import _validate_regeneration_base_candidate_refs
 
@@ -999,6 +1107,110 @@ class TestRunRegenerateIdeas:
 
     @patch('worker.tasks.notify_regeneration_complete')
     @patch('worker.tasks.create_progress_callback')
+    def test_checkpoint_failure_prevents_regeneration_completion(
+        self, mock_progress, mock_notify_regen
+    ):
+        with patch('nicheiq.flows.research_flow.ResearchFlow') as MockFlow:
+            with patch('nicheiq.crews.unified_solution_crew.UnifiedSolutionCrew') as MockCrew:
+                flow = MockFlow.return_value
+                flow.resume_from_checkpoint.return_value = True
+                flow.cleanup_collections = MagicMock()
+                flow.allowed_project_types = None
+
+                old_sol = MagicMock(
+                    solution_name="OldSol", name="OldSol", candidate_status="active",
+                )
+                new_sol = MagicMock(
+                    solution_name="NewSol", name="NewSol",
+                    candidate_status="active", source_frame=None,
+                )
+                new_sol.model_dump.return_value = {"solution_name": "NewSol"}
+                state = MagicMock()
+                state.idea_generation = MagicMock(solution_ideas=[old_sol])
+                state.idea_ruled_out = [{"idea_name": "PriorFinding"}]
+                flow.state = state
+                flow.checkpoint_mgr = MagicMock()
+                flow.checkpoint_mgr.save_stage.return_value = False
+                mock_progress.return_value = MagicMock()
+                MockCrew.return_value.execute_pipeline.return_value = [
+                    MagicMock(solution_ideas=[new_sol])
+                ]
+
+                from worker.tasks import run_regenerate_ideas
+
+                with pytest.raises(RuntimeError, match="authoritative checkpoint"):
+                    run_regenerate_ideas(
+                        job_id="job-1",
+                        checkpoint_path="/tmp/cp",
+                        existing_solution_names=["OldSol"],
+                        niche="test niche",
+                        dispatch_id="dispatch-1",
+                        batch_ordinal=2,
+                    )
+
+                assert state.idea_generation.solution_ideas == [old_sol]
+                assert state.idea_ruled_out == [{"idea_name": "PriorFinding"}]
+                flow._materialize_preview_report.assert_not_called()
+                mock_notify_regen.assert_not_called()
+
+    @patch('worker.tasks.notify_regeneration_complete')
+    @patch('worker.tasks.create_progress_callback')
+    def test_preview_failure_restores_regeneration_before_settlement(
+        self, mock_progress, mock_notify_regen
+    ):
+        with patch('nicheiq.flows.research_flow.ResearchFlow') as MockFlow:
+            with patch('nicheiq.crews.unified_solution_crew.UnifiedSolutionCrew') as MockCrew:
+                flow = MockFlow.return_value
+                flow.resume_from_checkpoint.return_value = True
+                flow.cleanup_collections = MagicMock()
+                flow.allowed_project_types = None
+                old_sol = MagicMock(
+                    solution_name="OldSol", name="OldSol", candidate_status="active",
+                )
+                new_sol = MagicMock(
+                    solution_name="NewSol", name="NewSol",
+                    candidate_status="active", source_frame=None,
+                )
+                new_sol.model_dump.return_value = {"solution_name": "NewSol"}
+                state = MagicMock()
+                state.idea_generation = MagicMock(solution_ideas=[old_sol])
+                state.idea_ruled_out = [{"idea_name": "PriorFinding"}]
+                flow.state = state
+                flow.checkpoint_mgr = MagicMock()
+                flow.checkpoint_mgr.save_stage.side_effect = [True, True]
+                flow._materialize_preview_report.side_effect = [
+                    None,
+                    "/tmp/preview_report_job-1.json",
+                ]
+                mock_progress.return_value = MagicMock()
+                MockCrew.return_value.execute_pipeline.return_value = [
+                    MagicMock(solution_ideas=[new_sol])
+                ]
+
+                from worker.tasks import run_regenerate_ideas
+
+                with patch(
+                    'worker.tasks._solution_to_preview_dict',
+                    return_value={"solution_name": "NewSol"},
+                ):
+                    with pytest.raises(RuntimeError, match="batch preview"):
+                        run_regenerate_ideas(
+                            job_id="job-1",
+                            checkpoint_path="/tmp/cp",
+                            existing_solution_names=["OldSol"],
+                            niche="test niche",
+                            dispatch_id="dispatch-1",
+                            batch_ordinal=2,
+                        )
+
+                assert state.idea_generation.solution_ideas == [old_sol]
+                assert state.idea_ruled_out == [{"idea_name": "PriorFinding"}]
+                assert flow.checkpoint_mgr.save_stage.call_count == 2
+                assert flow._materialize_preview_report.call_count == 2
+                mock_notify_regen.assert_not_called()
+
+    @patch('worker.tasks.notify_regeneration_complete')
+    @patch('worker.tasks.create_progress_callback')
     def test_loads_checkpoint_and_regenerates(
         self, mock_progress, mock_notify_regen
     ):
@@ -1032,7 +1244,8 @@ class TestRunRegenerateIdeas:
                 from worker.tasks import run_regenerate_ideas
                 with patch(
                     'worker.tasks._solution_to_preview_dict',
-                    side_effect=lambda solution: {
+                    # 2nd arg = the pool's audience_fit coverage (PR 10 / S4.1).
+                    side_effect=lambda solution, audience_fit_coverage=None: {
                         "solution_name": solution.solution_name,
                         "idea_id": solution.idea_id,
                         "idea_revision": solution.idea_revision,
@@ -1177,15 +1390,24 @@ class TestRunRegenerateIdeas:
                 state.idea_ruled_out = [{"idea_name": "PriorFinding"}]
                 flow.state = state
                 flow.checkpoint_mgr = MagicMock()
+                # Forward commit succeeds; the first compensation write fails; the second
+                # succeeds. The delivery exception must not escape to queue_consumer (and
+                # therefore cannot trigger a refund) between those rollback attempts.
+                flow.checkpoint_mgr.save_stage.side_effect = [True, False, True]
                 mock_progress.return_value = MagicMock()
                 MockCrew.return_value.execute_pipeline.return_value = [
                     MagicMock(solution_ideas=[new_sol])
                 ]
 
                 materialized = []
-                flow._materialize_preview_report.side_effect = lambda _dir: materialized.append(
-                    [idea.solution_name for idea in state.idea_generation.solution_ideas]
-                )
+
+                def capture_materialized_names(_dir):
+                    materialized.append(
+                        [idea.solution_name for idea in state.idea_generation.solution_ideas]
+                    )
+                    return "/tmp/preview_report_job-1.json"
+
+                flow._materialize_preview_report.side_effect = capture_materialized_names
                 mock_notify_regen.side_effect = ConnectionError("backend unreachable")
 
                 from worker.tasks import run_regenerate_ideas
@@ -1211,7 +1433,68 @@ class TestRunRegenerateIdeas:
                 assert materialized == [["OldSol", "NewSol"], ["OldSol"]]
                 assert state.idea_generation.solution_ideas == [old_sol]
                 assert state.idea_ruled_out == [{"idea_name": "PriorFinding"}]
-                assert flow.checkpoint_mgr.save_stage.call_count == 2
+                assert flow.checkpoint_mgr.save_stage.call_count == 3
+
+    @patch('worker.tasks.notify_regeneration_complete')
+    @patch('worker.tasks.create_progress_callback')
+    def test_lost_completion_response_preserves_forward_batch_for_backend_arbitration(
+        self, mock_progress, mock_notify_regen
+    ):
+        from worker.paid_pool_recovery import PaidPoolCompletionAmbiguous
+
+        with patch('nicheiq.flows.research_flow.ResearchFlow') as MockFlow, \
+                patch('nicheiq.crews.unified_solution_crew.UnifiedSolutionCrew') as MockCrew:
+            flow = MockFlow.return_value
+            flow.resume_from_checkpoint.return_value = True
+            flow.cleanup_collections = MagicMock()
+            flow.allowed_project_types = None
+            old_sol = MagicMock(
+                solution_name="OldSol", name="OldSol", candidate_status="active",
+            )
+            new_sol = MagicMock(
+                solution_name="NewSol", name="NewSol",
+                candidate_status="active", source_frame=None,
+            )
+            new_sol.model_dump.return_value = {"solution_name": "NewSol"}
+            state = MagicMock()
+            state.idea_generation = MagicMock(solution_ideas=[old_sol])
+            state.idea_ruled_out = []
+            flow.state = state
+            flow.checkpoint_mgr = MagicMock()
+            flow.checkpoint_mgr.save_stage.return_value = True
+            flow._materialize_preview_report.return_value = "/tmp/preview_report_job-1.json"
+            mock_progress.return_value = MagicMock()
+            MockCrew.return_value.execute_pipeline.return_value = [
+                MagicMock(solution_ideas=[new_sol])
+            ]
+            guard = MagicMock()
+            mock_notify_regen.side_effect = PaidPoolCompletionAmbiguous("response lost")
+
+            from worker.tasks import run_regenerate_ideas
+
+            with patch(
+                'worker.paid_pool_recovery.PaidPoolMutationGuard', return_value=guard,
+            ), patch(
+                'worker.tasks._solution_to_preview_dict',
+                return_value={"solution_name": "NewSol"},
+            ):
+                with pytest.raises(PaidPoolCompletionAmbiguous) as excinfo:
+                    run_regenerate_ideas(
+                        job_id="job-1",
+                        checkpoint_path="/tmp/cp",
+                        existing_solution_names=["OldSol"],
+                        niche="test niche",
+                        dispatch_id="dispatch-1",
+                        batch_ordinal=2,
+                    )
+
+            assert not hasattr(excinfo.value, "regeneration_delivery_only")
+            assert state.idea_generation.solution_ideas == [old_sol, new_sol]
+            assert flow.checkpoint_mgr.save_stage.call_count == 1
+            assert flow._materialize_preview_report.call_count == 1
+            guard.restore.assert_not_called()
+            guard.commit_and_cleanup.assert_not_called()
+            guard.close.assert_called_once()
 
     @patch('worker.tasks.notify_regeneration_complete')
     @patch('worker.tasks.create_progress_callback')
@@ -1384,6 +1667,35 @@ class TestRunSeedIdea:
 
     @patch('worker.tasks.notify_seed_complete')
     @patch('worker.tasks.create_progress_callback')
+    def test_seed_is_stamped_with_the_next_batch_ordinal(
+        self, mock_progress, mock_notify_seed
+    ):
+        """D5 inverse bug: a chat-born idea is the most obviously NEW thing in the pool, but
+        the seed path never stamped batch provenance — so the UI's "new in this batch" marker
+        (max ordinal in the pool) skipped it entirely."""
+        with patch('nicheiq.flows.research_flow.ResearchFlow') as MockFlow:
+            with patch('nicheiq.crews.unified_solution_crew.UnifiedSolutionCrew') as MockCrew:
+                old = [MagicMock(solution_name="First", generation_batch_ordinal=None),
+                       MagicMock(solution_name="Batch2", generation_batch_ordinal=2)]
+                idea = MagicMock(solution_name="Seed Idea", candidate_status="active",
+                                 generation_batch_ordinal=None,
+                                 generation_operation_id=None)
+                idea.model_dump.return_value = {"solution_name": "Seed Idea"}
+                self._mock_flow_and_crew(MockFlow, MockCrew, idea, old_solutions=old)
+                mock_progress.return_value = MagicMock()
+
+                from worker.tasks import run_seed_idea
+                run_seed_idea(
+                    job_id='job-1', checkpoint_path='/tmp/cp',
+                    seed={"seed_text": "an idea"}, niche='test niche',
+                    dispatch_id='dispatch-9',
+                )
+
+                assert idea.generation_batch_ordinal == 3   # strictly above the pool's max
+                assert idea.generation_operation_id == 'dispatch-9'
+
+    @patch('worker.tasks.notify_seed_complete')
+    @patch('worker.tasks.create_progress_callback')
     def test_demoted_seed_is_still_merged_saved_and_notified(
         self, mock_progress, mock_notify_seed
     ):
@@ -1481,6 +1793,99 @@ class TestRunSeedIdea:
                 # landing) must be honest — no unpaid ghost idea survives in the checkpoint.
                 assert flow.checkpoint_mgr.save_stage.call_count == 2
                 assert idea not in state.idea_generation.solution_ideas
+
+    @patch('worker.tasks.create_progress_callback')
+    def test_lost_completion_response_preserves_forward_seed_for_backend_arbitration(
+        self, mock_progress
+    ):
+        from worker.paid_pool_recovery import PaidPoolCompletionAmbiguous
+
+        with patch('nicheiq.flows.research_flow.ResearchFlow') as MockFlow, \
+                patch('nicheiq.crews.unified_solution_crew.UnifiedSolutionCrew') as MockCrew:
+            old_sol = MagicMock(solution_name="OldSol")
+            idea = MagicMock(solution_name="Seed Idea", candidate_status="active")
+            idea.model_dump.return_value = {"solution_name": "Seed Idea"}
+            flow, crew, state = self._mock_flow_and_crew(
+                MockFlow, MockCrew, idea, old_solutions=[old_sol],
+            )
+            state.idea_ruled_out = []
+            flow.checkpoint_mgr.save_stage.return_value = True
+            flow._materialize_preview_report.return_value = "/tmp/preview_report_job-1.json"
+            mock_progress.return_value = MagicMock()
+            guard = MagicMock()
+
+            from worker.tasks import run_seed_idea
+
+            with patch(
+                'worker.paid_pool_recovery.PaidPoolMutationGuard', return_value=guard,
+            ), patch(
+                'worker.tasks.notify_seed_complete',
+                side_effect=PaidPoolCompletionAmbiguous("response lost"),
+            ), patch(
+                'worker.tasks._solution_to_preview_dict',
+                return_value={"solution_name": "Seed Idea"},
+            ):
+                with pytest.raises(PaidPoolCompletionAmbiguous) as excinfo:
+                    run_seed_idea(
+                        job_id="job-1",
+                        checkpoint_path="/tmp/cp",
+                        seed={"seed_text": "an idea"},
+                        niche="test niche",
+                        dispatch_id="dispatch-1",
+                    )
+
+            assert not hasattr(excinfo.value, "seed_delivery_only")
+            assert state.idea_generation.solution_ideas == [old_sol, idea]
+            assert flow.checkpoint_mgr.save_stage.call_count == 1
+            assert flow._materialize_preview_report.call_count == 1
+            guard.restore.assert_not_called()
+            guard.commit_and_cleanup.assert_not_called()
+            guard.close.assert_called_once()
+
+    @patch('worker.tasks.create_progress_callback')
+    def test_cancelled_completion_restores_seed_before_image_instead_of_committing(
+        self, mock_progress
+    ):
+        from worker.paid_pool_recovery import PaidPoolOperationFenced
+
+        with patch('nicheiq.flows.research_flow.ResearchFlow') as MockFlow, \
+                patch('nicheiq.crews.unified_solution_crew.UnifiedSolutionCrew') as MockCrew:
+            old_sol = MagicMock(solution_name="OldSol")
+            idea = MagicMock(solution_name="Seed Idea", candidate_status="active")
+            idea.model_dump.return_value = {"solution_name": "Seed Idea"}
+            flow, _crew, state = self._mock_flow_and_crew(
+                MockFlow, MockCrew, idea, old_solutions=[old_sol],
+            )
+            state.idea_ruled_out = []
+            flow.checkpoint_mgr.save_stage.return_value = True
+            flow._materialize_preview_report.return_value = "/tmp/preview_report_job-1.json"
+            mock_progress.return_value = MagicMock()
+            guard = MagicMock()
+
+            from worker.tasks import run_seed_idea
+
+            with patch(
+                'worker.paid_pool_recovery.PaidPoolMutationGuard', return_value=guard,
+            ), patch(
+                'worker.tasks.notify_seed_complete',
+                side_effect=PaidPoolOperationFenced("cancelled before completion"),
+            ), patch(
+                'worker.tasks._solution_to_preview_dict',
+                return_value={"solution_name": "Seed Idea"},
+            ):
+                with pytest.raises(PaidPoolOperationFenced) as excinfo:
+                    run_seed_idea(
+                        job_id="job-1",
+                        checkpoint_path="/tmp/cp",
+                        seed={"seed_text": "an idea"},
+                        niche="test niche",
+                        dispatch_id="dispatch-1",
+                    )
+
+            assert not hasattr(excinfo.value, "seed_delivery_only")
+            guard.restore.assert_called_once()
+            guard.commit_and_cleanup.assert_not_called()
+            guard.close.assert_called_once()
 
 
 def _make_score(name, composite, rank=1):

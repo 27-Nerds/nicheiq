@@ -406,3 +406,203 @@ class TestNicheRelevantVolume:
         dumped = result.model_dump()
         assert "niche_relevant_volume" in dumped
         assert dumped["niche_relevant_volume"] == 8000
+
+
+class TestDifficultyAdjustedScore:
+    """Demand rescale (flow-weakness fix plan 2026-08, Step 2): the Stage 6-KV
+    difficulty-adjusted recompute mirrors the producer formula in
+    seed_generation.calculate_validation_from_expansion, and emits None (not the
+    stale scalar) on an empty validated set."""
+
+    def _make_result(self, **overrides):
+        defaults = dict(
+            solution_name="Test Solution",
+            validated_count=10,
+            total_volume=10000,
+            avg_competition=40.0,
+            keyword_demand_score=0.61,
+            demand_signal="moderate",
+            validation_signals={"has_search_demand": True},
+            attempts_made=1,
+            best_relevance_score=0.7,
+        )
+        defaults.update(overrides)
+        return CrewKeywordValidationResult(**defaults)
+
+    def test_producer_formula_recompute_from_validated_keywords(self):
+        """Case (a): per-keyword producer formula — volume_factor × competition_factor
+        × saturation_check, averaged — plus volume_score = min(validated_count/20, 1)."""
+        from nicheiq.flows.research_flow import _calculate_difficulty_adjusted_score
+
+        result = self._make_result(
+            validated_count=10,
+            validated_keywords=[
+                # vf=0.5, cf=0.7, sat=1.0 (competition 30 <= 60) -> 0.35
+                {"keyword": "a", "search_volume": 500, "competition_index": 30, "keyword_difficulty": 20},
+                # vf=1.0 (capped), cf=0.3, sat=0.7 (competition 70 > 60) -> 0.21
+                {"keyword": "b", "search_volume": 2000, "competition_index": 70, "keyword_difficulty": 40},
+            ],
+        )
+        score, avg_diff, rankability = _calculate_difficulty_adjusted_score(result)
+        # volume_score = len(validated_keywords)/20 = 2/20 = 0.1 — the numerator is
+        # the GRADED set, not validated_count (=10, the unfiltered expansion pool).
+        # avg_opportunity = (0.35+0.21)/2 = 0.28; rankability = 1 - 30/100 = 0.7
+        # score = 0.55*0.1 + 0.25*0.28 + 0.20*0.7 = 0.265
+        assert score == pytest.approx(0.265)
+        assert avg_diff == pytest.approx(30.0)
+        assert rankability == pytest.approx(0.7)
+
+    def test_no_difficulty_data_falls_back_to_60_40(self):
+        """Without any keyword_difficulty, the producer's 60/40 weights apply."""
+        from nicheiq.flows.research_flow import _calculate_difficulty_adjusted_score
+
+        # volume_score uses len(validated_keywords) (the graded, on-idea set) —
+        # NOT validated_count, which counts the unfiltered expansion pool.
+        result = self._make_result(
+            validated_count=40,  # deliberately large: must NOT influence the score
+            validated_keywords=[
+                {"keyword": f"kw{i}", "search_volume": 1000, "competition_index": 0}
+                for i in range(20)  # 20 graded keywords -> volume_score caps at 1.0
+            ],
+        )
+        score, avg_diff, rankability = _calculate_difficulty_adjusted_score(result)
+        assert score == pytest.approx(0.60 * 1.0 + 0.40 * 1.0)
+        assert avg_diff is None
+        assert rankability is None
+
+    def test_empty_validated_keywords_emits_none(self):
+        """Case (b) producer side: graded-and-empty emits None, never the stale scalar."""
+        from nicheiq.flows.research_flow import _calculate_difficulty_adjusted_score
+
+        result = self._make_result(validated_count=0, validated_keywords=[])
+        assert _calculate_difficulty_adjusted_score(result) == (None, None, None)
+
+    def test_legacy_record_missing_validated_keywords_no_crash(self):
+        """Case (c): legacy checkpoints have validated_keywords=None — treated the
+        same as empty (None emitted), no crash."""
+        from nicheiq.flows.research_flow import _calculate_difficulty_adjusted_score
+
+        result = self._make_result()  # validated_keywords defaults to None
+        assert result.validated_keywords is None
+        assert _calculate_difficulty_adjusted_score(result) == (None, None, None)
+
+    def test_missing_metric_keys_treated_as_zero(self):
+        """Keywords lacking search_volume/competition_index (or carrying None) are
+        None-safe: volume 0 -> vf 0; competition 0 -> cf 1.0, sat 1.0."""
+        from nicheiq.flows.research_flow import _calculate_difficulty_adjusted_score
+
+        result = self._make_result(
+            validated_count=4,
+            validated_keywords=[
+                {"keyword": "bare"},
+                {"keyword": "nulls", "search_volume": None, "competition_index": None},
+            ],
+        )
+        score, avg_diff, rankability = _calculate_difficulty_adjusted_score(result)
+        # volume_score = len(validated_keywords)/20 = 2/20 = 0.1 (validated_count=4
+        # is the unfiltered pool count and must not be used); avg_opportunity = 0.0;
+        # no difficulty -> 60/40
+        assert score == pytest.approx(0.60 * 0.1)
+        assert avg_diff is None
+        assert rankability is None
+
+
+class TestValidatedCountContract:
+    """`validated_count` means the GRADED, on-idea keyword set — never the unfiltered
+    expansion pool (Codex review 2026-08 §4b). Measured live 2026-08-02:
+    validated_count=50 while len(validated_keywords)=1, and every consumer
+    (selection rationale, progress payload, report table, market-sizing prompt)
+    republished the 50 as validated evidence."""
+
+    def _make_result(self, **overrides):
+        defaults = dict(
+            solution_name="Test Solution",
+            validated_count=3,
+            total_volume=10000,
+            avg_competition=40.0,
+            keyword_demand_score=0.61,
+            demand_signal="moderate",
+            validation_signals={"has_search_demand": True},
+            attempts_made=1,
+            best_relevance_score=0.7,
+        )
+        defaults.update(overrides)
+        return CrewKeywordValidationResult(**defaults)
+
+    def test_graded_count_uses_validated_keywords(self):
+        result = self._make_result(
+            validated_count=3,
+            validated_keywords=[{"keyword": "a"}, {"keyword": "b"}, {"keyword": "c"}],
+        )
+        assert result.graded_keyword_count == 3
+
+    def test_graded_count_heals_legacy_pool_count(self):
+        """Legacy checkpoint shape: pool count stored in validated_count. The graded
+        list wins, so old checkpoints stop inflating the reports they feed."""
+        result = self._make_result(
+            validated_count=50,
+            validated_keywords=[{"keyword": "the one on-idea keyword"}],
+        )
+        assert result.graded_keyword_count == 1
+
+    def test_graded_count_zero_for_graded_and_empty(self):
+        """Graded-and-empty is 0 evidence, not the stale pre-grading count."""
+        result = self._make_result(validated_count=50, validated_keywords=[])
+        assert result.graded_keyword_count == 0
+
+    def test_graded_count_falls_back_when_list_never_persisted(self):
+        """validated_keywords=None means the list predates the field — only then may
+        validated_count stand in."""
+        result = self._make_result(validated_count=7)
+        assert result.validated_keywords is None
+        assert result.graded_keyword_count == 7
+
+
+class TestFinalizeGradedValidation:
+    """research_flow.finalize_graded_validation() is the single place the producer's
+    expansion-pool count is swapped for the graded count."""
+
+    def _raw_metrics(self, pool_count=50):
+        return {
+            "solution_name": "Test Solution",
+            "expansion_pool_count": pool_count,
+            "total_volume": 10000,
+            "avg_competition": 40.0,
+            "keyword_demand_score": 0.61,
+            "top_keywords": [],
+            "top_geographic_keywords": [],
+            "demand_signal": "moderate",
+            "validation_signals": {"has_search_demand": True},
+            "attempts_made": 1,
+            "best_relevance_score": 0.7,
+        }
+
+    def test_stamps_graded_count_and_drops_pool_count(self):
+        from nicheiq.flows.research_flow import finalize_graded_validation
+
+        graded = [{"keyword": "vet medication audit", "search_volume": 90}]
+        out = finalize_graded_validation(self._raw_metrics(pool_count=50), graded)
+
+        assert out["validated_count"] == 1
+        assert out["accumulated_keywords_count"] == 1
+        assert out["validated_keywords"] == graded
+        assert "expansion_pool_count" not in out
+
+    def test_result_is_model_constructible(self):
+        from nicheiq.flows.research_flow import finalize_graded_validation
+
+        out = finalize_graded_validation(self._raw_metrics(), [{"keyword": "a"}])
+        model = CrewKeywordValidationResult(**out)
+        assert model.validated_count == model.graded_keyword_count == 1
+
+    def test_raw_producer_dict_cannot_build_the_model(self):
+        """extra='forbid' is the enforcement: skipping the swap fails loudly instead
+        of silently republishing the pool count as validated evidence."""
+        with pytest.raises(Exception):
+            CrewKeywordValidationResult(**self._raw_metrics())
+
+    def test_empty_graded_set_stamps_zero(self):
+        from nicheiq.flows.research_flow import finalize_graded_validation
+
+        out = finalize_graded_validation(self._raw_metrics(pool_count=50), [])
+        assert out["validated_count"] == 0

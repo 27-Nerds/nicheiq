@@ -23,7 +23,7 @@ describe('analyst model configuration', () => {
   it('exposes gpt-5.6-luna with the configured cache-aware rates', () => {
     expect(ANALYST_MODEL_OPTIONS.find((option) => option.id === 'gpt-5.6-luna')).toEqual({
       id: 'gpt-5.6-luna',
-      pricing: { input: 1, output: 6, cacheWrite: 1.25, cacheRead: 0.1 },
+      pricing: { input: 0.2, output: 1.2, cacheWrite: 0.25, cacheRead: 0.02 },
     });
   });
 
@@ -52,6 +52,7 @@ describe('analyst model configuration', () => {
       cacheWriteTokens: 100_000,
       cacheReadTokens: 200_000,
     });
-    expect(estimateAnalystCostUsd('gpt-5.6-luna', usage)).toBeCloseTo(6.845, 8);
+    expect(estimateAnalystCostUsd('gpt-5.6-luna', usage)).toBeCloseTo(1.369, 8);
+    expect(estimateAnalystCostUsd('openrouter/openai/gpt-5.6-luna', usage)).toBeCloseTo(1.369, 8);
   });
 });

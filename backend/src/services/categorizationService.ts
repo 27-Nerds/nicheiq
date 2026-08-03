@@ -1,6 +1,6 @@
 import { CONFIG } from '../config.js';
 import { prisma } from './db.js';
-import { chatComplete } from './openai.js';
+import { chatComplete, hasApiKeyForModel } from './openai.js';
 
 interface CategorizeItem {
   id: string;
@@ -517,8 +517,8 @@ export async function categorizeBatch(
   items: CategorizeItem[],
   itemType: 'idea' | 'painPoint',
 ): Promise<CategorizeResult> {
-  if (!CONFIG.openaiApiKey) {
-    throw new Error('OpenAI API key not configured');
+  if (!hasApiKeyForModel(CONFIG.categorizeModel)) {
+    throw new Error('AI provider key not configured');
   }
 
   const deadline = Date.now() + 120_000; // 120s overall timeout

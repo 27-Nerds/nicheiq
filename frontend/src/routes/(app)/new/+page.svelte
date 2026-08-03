@@ -793,8 +793,12 @@
           <p class="text-[11px] text-text-muted text-center mt-1">
             Credits auto-refund if a run can't complete.
           </p>
-          <p class="text-center mt-1">
-            <a href="/sample-report" class="font-mono text-[11px] text-text-muted hover:text-text-secondary">See a sample report &rarr;</a>
+          <p class="text-center mt-1 font-mono text-[11px] text-text-muted">
+            {#if data.sampleReportAvailable}
+              <a href="/sample-report" class="hover:text-text-secondary">See a sample report &rarr;</a>
+            {:else}
+              Sample report temporarily unavailable
+            {/if}
           </p>
 
           <div bind:this={ctaEndEl}></div>

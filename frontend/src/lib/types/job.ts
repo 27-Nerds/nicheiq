@@ -200,7 +200,10 @@ export interface SolutionPreview {
   // Competitive parity — set only by the web-verified parity probe (top ideas only); null otherwise.
   incumbent_parity?: string | null;
   adjacent_market_parity?: string | null;
-  // Adversarial review — a killed idea can remain visible and selectable with a capped score.
+  // Adversarial review. A killed idea stays visible, selectable and ranked, and its scores
+  // are NOT capped for it (that coupling was removed 2026-08-02) — the verdict says the
+  // premise is unproven, while the scores describe the idea if the premise holds. The UI
+  // renders `killed` as "Premise unproven" (see utils/adversarialReview.ts).
   red_team_verdict?: string | null; // survives | weakened | killed
   red_team_caveats?: string[] | null;
   // Buyer-segment payability (0-1) stamped from the segment map; drives the market_fit
@@ -225,6 +228,9 @@ export interface SolutionPreview {
   // (via extract_criterion_reason) to one user-facing note. NOT the raw
   // calibration_notes. Emitted in the same preview payload as the parity fields.
   critic_concern?: string | null;
+  // Refinement tournament judge's binding constraint + directive on the winning
+  // revision — the second bear case. Null when the v4 refinement loop didn't run.
+  refine_binding_constraint?: string | null;
   // Grounded generation provenance — the (pain × segment) cell that produced this idea.
   source_pain?: string | null;
   source_segment?: string | null;
@@ -354,6 +360,10 @@ export interface SelectionDraft {
   items: SelectionDraftItem[];
 }
 
+export interface SelectedSolutionRef extends SelectionDraftItem {
+  snapshotSha256: string;
+}
+
 export interface Job {
   id: string;
   email?: string;
@@ -374,6 +384,8 @@ export interface Job {
   hasReport?: boolean;
   hasLandingPage?: boolean;
   creditRefunded?: boolean;
+  /** Exact positive amount restored by the latest dispatch; zero means no spendable refund. */
+  creditRefundedAmount?: number;
   queuePosition?: number | null;
   aheadCount?: number;
   totalQueued?: number;
@@ -395,6 +407,10 @@ export interface Job {
   selectedSolution?: string | null;
   selectedSolutions?: string[] | null;
   selectedSolutionIds?: string[] | null;
+  /** Immutable ordered Phase-2 scope; authoritative after Deep Research is purchased. */
+  selectedSolutionRefs?: SelectedSolutionRef[] | null;
+  deepResearchRecommendedIdeaId?: string | null;
+  deepResearchRecommendedIdeaRevision?: number | null;
   selectionRationale?: string | null;
   selectionDecisionProfile?: SelectionDecisionProfile | null;
   selectionDraft?: SelectionDraft | null;
@@ -416,4 +432,10 @@ export interface Job {
   gateApplyCount?: number | null;
   /** Exact durable operation currently owning the job; null when no dispatch is active. */
   activeDispatchKind?: 'CONTINUE' | 'APPLY_STAY' | 'REGENERATE' | 'SEED_IDEA' | 'DEEP_RESEARCH' | null;
+  /** Operation identity/state used for exact cancellation; never infer it from job status. */
+  activeOperation?: {
+    id: string;
+    kind: 'CONTINUE' | 'APPLY_STAY' | 'REGENERATE' | 'SEED_IDEA' | 'DEEP_RESEARCH';
+    state: 'AUTHORIZED' | 'CLAIMED' | 'RECOVERING';
+  } | null;
 }

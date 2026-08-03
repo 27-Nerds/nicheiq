@@ -153,7 +153,7 @@ def score_segment_payability(segments, pain_points, incumbent_rows, niche_descri
         )
         r, usage = LLMService.invoke_structured(
             prompt=prompt, output_model=_PayabilityBatch, temperature=0, timeout=120,
-            model_name=settings.report_structured_llm, reasoning_effort="minimal")
+            model_name=settings.report_structured_llm, reasoning_effort="none")
 
         by_seg = {norm_segment_name(getattr(s, "segment_name", "")): s for s in segments}
         out: dict[str, SegmentPayability] = {}

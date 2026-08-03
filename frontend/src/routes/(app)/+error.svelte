@@ -1,6 +1,5 @@
 <script lang="ts">
   import { page } from "$app/state";
-  import { AlertTriangle } from "lucide-svelte";
   import Button from "$lib/components/ui/Button.svelte";
   import EmptyState from "$lib/components/ui/EmptyState.svelte";
 
@@ -21,13 +20,7 @@
   >
     Error {status}
   </p>
-  <EmptyState
-    icon={AlertTriangle}
-    title={message}
-    {description}
-    variant="warning"
-    size="lg"
-  />
+  <EmptyState title={message} {description} />
   <div class="mt-8 flex flex-wrap justify-center gap-3">
     <Button
       href="/dashboard"

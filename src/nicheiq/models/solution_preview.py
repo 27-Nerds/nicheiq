@@ -25,7 +25,8 @@ class SolutionValidationData(BaseModel):
         default=None, description="Total keyword search volume"
     )
     validated_count: Optional[int] = Field(
-        default=None, description="Number of keywords validated"
+        default=None,
+        description="Number of semantically graded, on-idea keywords (not the raw expansion pool size)",
     )
     avg_keyword_difficulty: Optional[float] = Field(
         default=None, description="Average keyword difficulty"

@@ -9,23 +9,41 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
 class SolutionSnapshot(BaseModel):
-    """Quick snapshot of the recommended solution."""
+    """Quick snapshot of the recommended solution.
+
+    Every field here is DESCRIPTIVE. Each is Optional because each is sourced from an
+    upstream field that is itself optional (or reconstructed by an LLM path that may drop
+    it — e.g. UnifiedSolutionCrew._generate_pivot_revision rebuilds an idea from a narrow
+    schema that carries no project_type). A required-but-nullable field here would let a
+    missing label raise inside dashboard assembly and delete the Go/No-Go verdict with it,
+    which is exactly the Sev-1 this shape prevents.
+
+    None means "the pipeline never recorded this", and the defined rendering is OMISSION —
+    the report UI already guards each of these (e.g. SolutionHero's
+    ``{#if snapshot.project_type}`` badge). Never substitute a placeholder label: an absent
+    project type is not a project type.
+    """
 
     model_config = ConfigDict(extra='forbid')
 
-    name: str = Field(
-        description="Solution name"
+    name: Optional[str] = Field(
+        default=None,
+        description="Solution name. None = not recorded."
     )
-    tagline: str = Field(
-        description="One-sentence value proposition (10-15 words)"
+    tagline: Optional[str] = Field(
+        default=None,
+        description="One-sentence value proposition (10-15 words). None = not recorded."
     )
-    core_value_prop: str = Field(
-        description="Core value proposition explaining what problem it solves and for whom (2-3 sentences)"
+    core_value_prop: Optional[str] = Field(
+        default=None,
+        description="Core value proposition explaining what problem it solves and for whom "
+                    "(2-3 sentences). None = not recorded."
     )
-    project_type: str = Field(
-        description="Solution type (e.g., 'directory', 'aggregator', 'marketplace', 'tool')"
+    project_type: Optional[str] = Field(
+        default=None,
+        description="Solution type (e.g., 'directory', 'aggregator', 'marketplace', 'tool'). "
+                    "None = the pipeline never recorded a type for this idea."
     )
 
 class GoNoGoVerdict(BaseModel):
@@ -194,20 +212,34 @@ class ExecutiveDashboard(BaseModel):
 
     model_config = ConfigDict(extra='forbid')
 
-    recommended_solution_snapshot: SolutionSnapshot = Field(
-        description="Quick overview of the recommended SaaS solution"
-    )
-
+    # go_no_go_verdict is the ONLY required section: it is what the buyer paid for and what
+    # the report exists to state. The three supporting sections are Optional so that a
+    # failure to build any one of them degrades that section alone instead of discarding
+    # the verdict. Anything listed in `unavailable_sections` is None here by construction.
     go_no_go_verdict: GoNoGoVerdict = Field(
         description="Strategic recommendation on pursuing this opportunity"
     )
 
-    core_pain_point: CorePainPoint = Field(
-        description="The #1 pain point driving this opportunity"
+    recommended_solution_snapshot: Optional[SolutionSnapshot] = Field(
+        default=None,
+        description="Quick overview of the recommended SaaS solution. None = could not be built."
     )
 
-    key_metrics: KeyMetrics = Field(
-        description="Top-line metrics for opportunity assessment"
+    core_pain_point: Optional[CorePainPoint] = Field(
+        default=None,
+        description="The #1 pain point driving this opportunity. None = could not be built."
+    )
+
+    key_metrics: Optional[KeyMetrics] = Field(
+        default=None,
+        description="Top-line metrics for opportunity assessment. None = could not be built."
+    )
+
+    unavailable_sections: list[str] = Field(
+        default_factory=list,
+        description="Names of dashboard sections that could not be produced for this run. "
+                    "Empty = complete dashboard. Non-empty means the verdict is still valid "
+                    "but the listed supporting detail is missing and must be shown as such."
     )
 
     confidence_score: Optional[float] = Field(

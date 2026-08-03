@@ -154,7 +154,7 @@
       Configure which shared report is displayed on the public <code
         class="text-xs bg-bg-elevated px-1.5 py-0.5 rounded"
         >/sample-report</code
-      > page.
+      > page. The share must remain active and its Deep Research report must be complete.
     </p>
 
     {#if feedback}
@@ -192,13 +192,13 @@
         oninput={(e) => {
           userUrl = (e.target as HTMLInputElement).value;
         }}
-        placeholder="/shared/AbCdEf123..."
+        placeholder="/shared/AbCdEfGhIjKlMnOpQrStUv"
         class="input"
       />
       <p class="text-xs text-text-muted mt-1.5">
-        Paste the share URL path from a completed report (e.g. <code
-          class="bg-bg-elevated px-1 py-0.5 rounded">/shared/abc123</code
-        >).
+        Paste the full path from an active report share, including its 22-character token (e.g. <code
+          class="bg-bg-elevated px-1 py-0.5 rounded">/shared/AbCdEfGhIjKlMnOpQrStUv</code
+        >). Saving verifies the share and report file now; public links disappear automatically if it later becomes unavailable.
       </p>
 
       <div class="flex gap-2 mt-4">

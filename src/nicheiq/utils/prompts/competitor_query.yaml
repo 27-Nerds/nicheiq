@@ -1,12 +1,12 @@
 # Competitor Query Generation Prompt
 # Used by: CompetitorQueryGenerator.generate_competitor_queries()
-# Variables: context_section (pre-built), num_queries, project_type
+# Variables: context_section (pre-built), anchor_block (pre-built), num_queries, project_type
 
 template: |
   You are an expert competitive intelligence researcher specializing in discovering and validating market competitors. Your goal is to generate semantically valid, highly specific search queries that discover actual named competitors for a specific solution.
 
   {context_section}
-
+  {anchor_block}
   ---
 
   **TASK: Generate {num_queries} strategic competitor search queries**
@@ -105,7 +105,13 @@ template: |
 
   **Step C.5: Analyze Solution Name for Vertical Signals (CRITICAL)**
 
-  Before defaulting to generic incumbents, scan the solution name and pain points for vertical-specific keywords:
+  The VERTICAL IS ALREADY FIXED by the Niche Description, Market Segments and Industry
+  Boundaries above. The solution name is an invented label that may reuse a word from a
+  different industry ("HouseNut" is a live-music venue's fixed operating cost, not household
+  budgeting) — it may only SHARPEN the vertical, never move it. If a keyword below points
+  somewhere the niche context does not, the niche context wins and you ignore the keyword.
+
+  Within that vertical, scan the solution name and pain points for product-category keywords:
 
   | Keyword Pattern | Vertical | Correct Incumbents |
   |-----------------|----------|-------------------|
@@ -116,10 +122,13 @@ template: |
   | "template", "boilerplate", "starter" | Project Templates | Vercel Templates, Create React App, Cookiecutter |
   | "library", "package", "module" | Package Registries | npm, PyPI, RubyGems, Maven Central |
 
-  **Example applications:**
-  - "DevToolPaymentSnippets" → contains "payment" + "snippets" → FinTech + Developer Resources → Stripe Docs, GitHub payment repos, StackOverflow payment tags
-  - "APIDocAggregator" → contains "api" + "aggregator" → API Resources → Postman, RapidAPI, DevDocs.io
-  - "TemplateMarketplace" → contains "template" + "marketplace" → Project Templates → ThemeForest, Vercel Templates, GitHub Templates
+  **Example applications (niche context FIRST — the solution name only sharpens it):**
+  - Niche context = developer payment integrations; name also contains "payment" + "snippets" → FinTech + Developer Resources → Stripe Docs, GitHub payment repos, StackOverflow payment tags
+  - Niche context = API documentation tooling; name also contains "api" + "aggregator" → API Resources → Postman, RapidAPI, DevDocs.io
+  - Niche context = website project templates; name also contains "template" + "marketplace" → Project Templates → ThemeForest, Vercel Templates, GitHub Templates
+
+  If the niche context does NOT already place the solution in the vertical a name keyword
+  suggests, the keyword tells you nothing — ignore it.
 
   **Step D: Extract incumbents from context clues:**
   - Pain points may mention existing tools/platforms by name
@@ -287,7 +296,13 @@ template: |
   Before outputting, validate ALL queries:
 
   ### Verification Checklist:
-  1. **Named competitors**: ≥50% of queries mention specific product names (from your Step 1 inference)
+  1. **Named competitors**: ≥50% of queries mention specific product names — REQUIRED ONLY
+     when incumbents were EXTRACTED from the context above (named in the pain points, market
+     segments, industry boundaries, or anchor block). If the context names none, "no
+     nameable incumbent" is a PASSING outcome: return fewer named queries and rely on
+     discovery intent + specificity instead. NEVER mint a plausible-sounding product name to
+     reach the 50% figure — invented names get searched and can come back as fabricated
+     competitors.
   2. **Discovery intent**: Every query has comparison/evaluation/alternative language
   3. **Specificity**: Every query has ≥1 specificity marker from Step 2
   4. **Diversity**: No more than 2 queries share same template structure
@@ -300,7 +315,9 @@ template: |
     FIX: "[inferred incumbent] alternatives for [segment] [niche]"
 
   - No named competitor: "[niche] comparison sites for [segment]"
-    FIX: "[incumbent A] vs [incumbent B] for [segment] [niche]"
+    FIX (only when the context named incumbents): "[incumbent A] vs [incumbent B] for [segment] [niche]"
+    FIX (when it named none): keep the query unnamed and add discovery intent instead —
+    "best [niche] [category] for [segment] compared {current_year}". Do not invent a name.
 
   - Pattern repetition: Multiple "[X] for [segment]" queries
     FIX: Vary structure - use "vs", "alternatives to", "top 10", "reviews of"
@@ -319,14 +336,15 @@ template: |
   ]
 
   **Final Quality Checklist:**
-  - [ ] ≥50% of queries contain named competitors from your Step 1 inference?
+  - [ ] ≥50% of queries contain named competitors — OR the context named no incumbent, in which case zero named queries is fine?
   - [ ] Every query has discovery intent (vs, alternatives, comparing, top N)?
   - [ ] Every query has ≥1 specificity marker?
   - [ ] No more than 2 queries share same template structure?
   - [ ] Rationale cites the inferred incumbent and specificity markers used?
 
   <brief_explanation>
-  First, state the solution category and 2-3 likely incumbents you'll reference in queries.
+  First, state the solution category and the 2-3 incumbents the context actually names that
+  you'll reference in queries — or state "none named in context" and use unnamed queries.
   </brief_explanation>
 
   Generate {num_queries} queries now, following Steps 1-4 in order. Remember: named competitors + discovery intent > generic categories.
@@ -334,7 +352,8 @@ template: |
   <verification>
   Before returning, verify:
   - Array has exactly {num_queries} queries
-  - ≥50% of queries name specific competitors
+  - ≥50% of queries name specific competitors, OR the context named no incumbent and you
+    named none (do not invent product names to satisfy this line)
   - Every query has discovery intent (vs, alternatives, top N)
   - No more than 2 queries share same template structure
   - You completed ALL {num_queries} queries before returning

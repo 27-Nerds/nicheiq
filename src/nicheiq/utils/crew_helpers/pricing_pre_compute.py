@@ -131,6 +131,33 @@ def format_solution_rank_context(
     return " | ".join(parts)
 
 
+def format_idea_cac(solution) -> str:
+    """Render THIS idea's own CAC estimate for the pricing prompt.
+
+    Distinct from `compute_cac_range`, which is a market_fit_score heuristic describing the
+    market. These are the fields the report actually publishes in its CAC breakdown table,
+    and the only values `ltv_to_cac_ratio` may divide by. A rebuilt idea ships without them
+    on purpose (`crews/unified_solution_crew.py:_UNGROUNDABLE_ON_REBUILD`), so "no estimate"
+    is an expected answer, not a failure.
+    """
+    from ..validation.numeric_parsers import parse_dollar_amount
+
+    lines = []
+    for label, field in (("Organic", "estimated_cac_organic"), ("Paid", "estimated_cac_paid")):
+        value = (getattr(solution, field, None) or "").strip()
+        # "N/A" carries no number; parse_dollar_amount rejects it along with empty prose.
+        if value and parse_dollar_amount(value) is not None:
+            lines.append(f"  - {label} CAC: {value}")
+
+    if not lines:
+        return (
+            "No CAC estimate is available for this idea (neither estimated_cac_organic nor "
+            "estimated_cac_paid was established). LTV/CAC is NOT COMPUTABLE — do not "
+            "substitute a benchmark or assumed figure."
+        )
+    return "\n" + "\n".join(lines)
+
+
 def compute_cac_range(market_fit_score: float | None) -> str:
     """Pre-compute suggested CAC range from market fit score.
 

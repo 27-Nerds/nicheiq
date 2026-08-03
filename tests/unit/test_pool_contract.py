@@ -166,6 +166,49 @@ class TestDataAccessAndCompleteness:
         assert crew.coverage_caveats == []
 
 
+class TestBatchProvenanceReset:
+    """D5 (live audit 2026-08): a first-run job with zero regenerations rendered "1 new idea
+    from your last request". `generation_batch_ordinal` lives on BaseSolutionIdea — the model
+    handed to generator LLMs as structured output — so they fill it in. Only the worker may
+    stamp it, and it does so AFTER this contract."""
+
+    def _llm_emitted_idea(self, **kw):
+        # Exactly what a generator returns through structured output: a full model payload
+        # with the batch-provenance fields fabricated.
+        from nicheiq.models.solution_idea import BaseSolutionIdea
+        base = dict(
+            solution_name="Fabricated", description="d", value_proposition="v",
+            pain_points_addressed=["Pain"], core_features=["Feature"],
+            target_personas=["Persona"], market_fit_score=0.7,
+            technical_feasibility_score=0.8,
+            generation_operation_id="op-the-llm-invented",
+            generation_batch_ordinal=1,
+        )
+        base.update(kw)
+        return BaseSolutionIdea.model_validate(base)
+
+    def test_first_run_pool_is_null_even_when_the_llm_emits_a_value(self):
+        ideas = [self._llm_emitted_idea(),
+                 self._llm_emitted_idea(solution_name="Second", generation_batch_ordinal=3)]
+        # sanity: the model accepts the fabricated values (ge=1 passes) — the reset is the
+        # only thing standing between them and the "NEW IN THIS BATCH" chip.
+        assert ideas[0].generation_batch_ordinal == 1
+        _crew()._finalize_idea_pool(ideas)
+        assert all(i.generation_batch_ordinal is None for i in ideas)
+        assert all(i.generation_operation_id is None for i in ideas)
+
+    def test_reset_precedes_the_worker_stamp_in_both_paid_paths(self):
+        # Order pin: the worker owns these fields, and both paid paths must stamp AFTER the
+        # crew ran (execute_pipeline / execute_seed_pipeline both call the pool contract).
+        # Read as text — importing worker.tasks drags the whole runtime into a unit test.
+        from pathlib import Path
+        src = (Path(__file__).resolve().parents[2] / "worker" / "tasks.py").read_text()
+        for name in ("\ndef run_regenerate_ideas", "\ndef run_seed_idea"):
+            start = src.index(name)
+            body = src[start:src.index("\ndef ", start + 1)]
+            assert body.index("execute_") < body.index("generation_batch_ordinal =")
+
+
 def test_contract_runs_after_reinjection():
     # order pin: the contract must cover coverage-net re-injections (they join LAST)
     src = inspect.getsource(UnifiedSolutionCrew.execute_pipeline)

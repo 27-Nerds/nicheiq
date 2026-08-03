@@ -3,6 +3,11 @@
 The ratio-based keyword_demand_score ignores magnitude, so a thin-but-clean beachhead scores ~1.0
 (observed live: MountLimit demand 0.98 vs beachhead 720/mo). demand_with_beachhead_magnitude blends in
 a log-scaled niche-relevant volume so demand tracks real magnitude, floored (not zeroed) for thin ideas.
+
+Note (flow-weakness fix plan 2026-08, correction 1): graded-and-empty solutions (empty
+validated_keywords) no longer reach this function at all — the flow emits demand=None,
+stamps demand_unmeasured, and skips the blend. The nrv==0 no-op below remains the guard
+for the residual case of a NON-empty validated set whose relevant volume sums to zero.
 """
 
 import pytest

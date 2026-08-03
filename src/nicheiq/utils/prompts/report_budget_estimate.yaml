@@ -16,7 +16,8 @@
 #   - pro_price: Recommended pro tier price
 #   - estimated_arpu: Average revenue per user
 #   - estimated_ltv: Customer lifetime value
-#   - ltv_to_cac_ratio: Target LTV:CAC ratio
+#   - ltv_to_cac_ratio: LTV:CAC ratio as analysed ("Not established" when none exists —
+#     never a fabricated target; see report_generator._generate_budget_estimate)
 #   - som_y1: Year 1 serviceable obtainable market
 #   - som_y3: Year 3 serviceable obtainable market
 #   - tam: Total addressable market
@@ -32,7 +33,8 @@ template: |
   **═══ CRITICAL RULES ═══**
   ✓ Budget MUST be calibrated to the pricing model and market size
   ✓ Budget MUST consider channel mix (paid vs organic)
-  ✓ Budget MUST respect LTV:CAC economics (sustainable CAC < LTV/3)
+  ✓ Budget MUST respect LTV:CAC economics WHEN the LTV:CAC line below states an established
+    ratio; when it does not, size from market and channel mix instead (see ECONOMICS below)
   ✓ Budget ranges MUST vary by business context - no one-size-fits-all
   ✗ NO generic "$500-1500/month" estimates without justification
 
@@ -45,12 +47,17 @@ template: |
   **Pro Price:** {pro_price}
   **Estimated ARPU:** {estimated_arpu}
   **Estimated LTV:** {estimated_ltv}
-  **LTV:CAC Ratio Target:** {ltv_to_cac_ratio}
+  **LTV:CAC Ratio (as analysed, may be "Not established" or "Not computable"):** {ltv_to_cac_ratio}
 
   **ECONOMICS CALCULATION:**
-  - If LTV is {estimated_ltv}, sustainable CAC should be ~1/3 of that
-  - Example: LTV $600 → max CAC ~$200 per customer
-  - Budget = target_customers × CAC
+  - If the LTV:CAC line above is "Not established"/"Not computable", or Estimated LTV is
+    "N/A", this idea has no verified acquisition economics. Size the budget from the market
+    and channel mix, and say in the rationale that the budget is not backed by a CAC
+    estimate. Do NOT invent a ratio, an LTV, or a CAC to work back from — skip the two
+    steps below entirely.
+  - ONLY when the LTV:CAC line states an established ratio: derive a sustainable CAC from
+    the stated LTV and that stated ratio.
+  - ONLY in that case: Budget = target_customers × CAC
 
   **═════════════════════════════════════════════════════════════════════════**
   **MARKET SIZE CONTEXT**
@@ -127,7 +134,8 @@ template: |
   **═══ VERIFICATION ═══**
   Before returning, verify:
   - Budget range reflects the pricing model (not generic)
-  - Budget respects LTV:CAC economics
+  - Budget respects LTV:CAC economics IF a ratio was established; otherwise the rationale
+    says the budget is not backed by a CAC estimate and no CAC/LTV figure was invented
   - Allocation percentages sum to 100
   - Rationale references specific inputs (pricing, channels, market size)
   - monthly_budget_min and monthly_budget_max are integers (no decimals)

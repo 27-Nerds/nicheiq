@@ -86,6 +86,18 @@ class SolutionScores(BaseModel):
         )
     )
 
+    demand_unmeasured: bool = Field(
+        default=False,
+        description=(
+            "True when keyword validation GRADED this solution's keywords and none "
+            "individually passed (empty validated_keywords) — demand is unmeasured, "
+            "keyword_demand_score stays None and adjusted_composite_score equals the "
+            "raw composite (no blend). Two-tier ranking places these below "
+            "validated-with-keywords solutions. Code-computed in the keyword-validation "
+            "stage, never LLM output (flow-weakness fix plan 2026-08, correction 1)."
+        ),
+    )
+
 class SolutionSelection(BaseModel):
     """
     Results of solution selection process (Stage 5).

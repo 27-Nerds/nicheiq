@@ -9,6 +9,7 @@ The prompt now forbids it; the deterministic post-filter enforces it.
 import json
 from unittest.mock import patch
 
+from nicheiq.models.research_state import NicheContext
 from nicheiq.utils.generation.competitor_query_generator import CompetitorQueryGenerator
 
 
@@ -52,3 +53,66 @@ class TestInventedNameFilter:
         # A <4-char head must not filter common words out of every query.
         out = _generate(["best crm for dispatchers"], name="Api: Load Board Helper")
         assert [q["query"] for q in out] == ["best crm for dispatchers"]
+
+
+# --- Niche anchoring -------------------------------------------------------------------
+# The solution name is invented and can carry a word that belongs to another industry
+# ("HouseNut" is a live-music venue's fixed operating cost, not household budgeting).
+# The competitor prompt now carries the same anchor block the Reddit/HN query generators
+# get, and off-niche queries are dropped in code (live-caught 2026-08-03, run 8ef396eb).
+
+LIVE_MUSIC_CTX = NicheContext(
+    niche_input="Independent live music venues coordinating artist settlements",
+    niche_description="Independent live music venue management.",
+    market_segments=["Independent venue owners"],
+    industry_boundaries="Operational management of physical performance spaces.",
+    anchor_entities=["Prism.fm", "VenuePilot", "Eventbrite Music", "DICE"],
+    disambiguation_exclusions=["Music-streaming royalty accounting"],
+    audience_jargon=["artist settlement", "house nut"],
+)
+
+
+def _generate_with_ctx(queries, ctx, name="HouseNutIndex"):
+    captured = {}
+
+    def _fake_invoke(prompt, **kwargs):
+        captured["prompt"] = prompt
+        return (_fake_response(queries), None)
+
+    with patch(
+        "nicheiq.utils.generation.competitor_query_generator.LLMService.invoke_plain",
+        side_effect=_fake_invoke,
+    ):
+        out = CompetitorQueryGenerator().generate_competitor_queries(
+            solution_name=name, project_type="saas", niche_context=ctx,
+            num_queries=len(queries),
+        )
+    return out, captured.get("prompt", "")
+
+
+class TestNicheAnchoring:
+    def test_anchor_entities_and_exclusions_reach_the_prompt(self):
+        _, prompt = _generate_with_ctx(["Prism.fm alternatives"], LIVE_MUSIC_CTX)
+        assert "ANCHOR ENTITIES" in prompt
+        assert "Prism.fm" in prompt
+        assert "OUT-OF-SCOPE — DO NOT TARGET" in prompt
+        assert "Music-streaming royalty accounting" in prompt
+
+    def test_prompt_pins_the_vertical_to_the_niche_not_the_name(self):
+        _, prompt = _generate_with_ctx(["Prism.fm alternatives"], LIVE_MUSIC_CTX)
+        assert "VERTICAL IS ALREADY FIXED" in prompt
+
+    def test_query_matching_an_excluded_sense_is_dropped(self):
+        out, _ = _generate_with_ctx(
+            [
+                "Prism.fm alternatives for independent venues",
+                "best music-streaming royalty accounting software 2026",
+            ],
+            LIVE_MUSIC_CTX,
+        )
+        texts = [q["query"] for q in out]
+        assert texts == ["Prism.fm alternatives for independent venues"]
+
+    def test_no_anchor_block_without_niche_context(self):
+        _, prompt = _generate_with_ctx(["freight broker credit check tools"], None)
+        assert "ANCHOR ENTITIES" not in prompt

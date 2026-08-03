@@ -47,6 +47,24 @@ class TestCriterionReason:
     def test_full_reason_kept_when_short(self):
         assert extract_criterion_reason("market_fit: crowded market") == "crowded market"
 
+    def test_cut_never_dangles_on_a_function_word(self):
+        # live audit 2026-08: the rendered critic_concern ended "…the".
+        from nicheiq.utils.calibration_notes import truncate_at_word
+        assert truncate_at_word("alpha beta gamma the delta epsilon", 22) == "alpha beta gamma…"
+
+    def test_sentence_boundary_wins_over_a_mid_clause_cut(self):
+        notes = ("market_fit: Buyers in this niche already own a tool. The second sentence is "
+                 "long enough that it cannot fit inside the budget we hand the extractor.")
+        assert extract_criterion_reason(notes, max_len=60) == (
+            "Buyers in this niche already own a tool.")
+
+    def test_markdown_emphasis_never_reaches_the_ui(self):
+        from nicheiq.utils.calibration_notes import strip_markdown_emphasis
+        assert strip_markdown_emphasis("it is *structurally* generic") == "it is structurally generic"
+        assert strip_markdown_emphasis("**bold** and `code`") == "bold and code"
+        # snake_case identifiers are not italics
+        assert strip_markdown_emphasis("market_fit_score fell") == "market_fit_score fell"
+
 
 class TestAlternativeSolutionFields:
     def test_model_accepts_and_defaults(self):

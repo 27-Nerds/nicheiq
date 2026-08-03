@@ -381,6 +381,23 @@ class SeoKillQuestion(BaseModel):
     serp_sampled: int = Field(0, description="Number of representative queries sampled in the SERP")
     penalty_risk_flag: bool = Field(
         False, description="High page count + thin (tail-heavy) universe -> scaled-content-abuse penalty risk")
+    # On-idea slice (Q-049 batch-1, display + telemetry only — never feeds the verdict):
+    # the page universe restricted to idea-intent keywords (grade >= keyword_relevance_min_grade).
+    on_idea_page_ceiling: Optional[int] = Field(
+        default=None, ge=0,
+        description=(
+            "Distinct non-zero-volume intents whose idea_intent_grade >= keyword_relevance_min_grade "
+            "— the ON-IDEA slice of indexable_page_ceiling. None when the intent grader covered "
+            "<80% of the keyword set (coverage guard)."
+        ),
+    )
+    on_idea_winnable: Optional[int] = Field(
+        default=None, ge=0,
+        description=(
+            "On-idea pages (grade >= min_grade) with KD below the new-domain-rankable threshold. "
+            "None under the coverage guard."
+        ),
+    )
     verdict: str = Field("", description="One-line human read of whether the SEO thesis holds")
     rationale: str = Field("", description="The evidence behind the verdict")
 
@@ -403,6 +420,32 @@ class SEOStrategyReport(BaseModel):
     )
     total_monthly_volume: int = Field(
         ..., description="Total monthly search volume across all keywords"
+    )
+    # Three-band idea-intent volume honesty (Q-049 batch-1). Computed in code from the
+    # idea_intent_grade stamps on the enriched keyword set, ONLY when graded coverage >= 80%;
+    # otherwise all three stay None and consumers keep exactly today's behavior.
+    offtopic_volume_share: Optional[float] = Field(
+        default=None, ge=0.0, le=1.0,
+        description=(
+            "Share of total_monthly_volume carried by grade-0 (OFFTOPIC) keywords. None when "
+            "the intent grader did not cover >=80% of the keyword set."
+        ),
+    )
+    category_volume_share: Optional[float] = Field(
+        default=None, ge=0.0, le=1.0,
+        description=(
+            "Share of total_monthly_volume carried by grade-1 (category-reach) plus ungraded "
+            "keywords (ungraded rows are RETAINED fail-open and counted as category reach per "
+            "the grader's caller contract). None under the coverage guard."
+        ),
+    )
+    idea_intent_monthly_volume: Optional[int] = Field(
+        default=None, ge=0,
+        description=(
+            "Monthly search volume carried by idea-intent keywords (grade >= "
+            "keyword_relevance_min_grade). None under the coverage guard. total_monthly_volume "
+            "is deliberately UNCHANGED — this is the honest subset, not a replacement."
+        ),
     )
 
     # ========================================

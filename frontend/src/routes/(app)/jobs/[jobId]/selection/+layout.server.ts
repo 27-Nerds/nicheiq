@@ -65,6 +65,7 @@ export const load: LayoutServerLoad = async ({ params, locals, url, parent }) =>
   // round trip, and don't log a failure that isn't one.
   const shouldPrefetchConceptSets = decisionTools && url.pathname.endsWith("/selection/compare");
   const shouldFetchFounderFit = decisionTools;
+  const shouldFetchSampleReport = url.pathname.endsWith("/selection/review");
 
   // stageCosts + creditBalance are inherited from the (app) layout load — no need
   // to re-fetch them on every selection navigation.
@@ -76,6 +77,7 @@ export const load: LayoutServerLoad = async ({ params, locals, url, parent }) =>
     discoveryDataArtifact,
     previewReportArtifact,
     conceptSetsArtifact,
+    sampleReportResponse,
   ] = await Promise.all([
     fetchBackend(`/api/jobs/${params.jobId}/solutions`, { headers }).catch(() => null),
     fetchBackend(`/api/jobs/${params.jobId}/selection-decision-state`, { headers }).catch(() => null),
@@ -94,6 +96,9 @@ export const load: LayoutServerLoad = async ({ params, locals, url, parent }) =>
           fetchBackend(`/api/jobs/${params.jobId}/selection-concept-sets`, { headers }),
         )
       : Promise.resolve({ known: false, value: null }),
+    shouldFetchSampleReport
+      ? fetchBackend("/api/settings/sample-report-url").catch(() => null)
+      : Promise.resolve(null),
   ]);
   if (solutionsResponse?.ok) {
     const payload = await solutionsResponse.json().catch(() => null);
@@ -112,6 +117,9 @@ export const load: LayoutServerLoad = async ({ params, locals, url, parent }) =>
   const founderFit = founderFitResponse?.ok
     ? await founderFitResponse.json().catch(() => null) as FounderFitLoadResponse | null
     : null;
+  const sampleReportAvailable = sampleReportResponse?.ok
+    ? Boolean((await sampleReportResponse.json().catch(() => null))?.url)
+    : false;
   const conceptSets = Array.isArray(conceptSetsArtifact.value?.sets)
     ? conceptSetsArtifact.value.sets
     : null;
@@ -139,6 +147,7 @@ export const load: LayoutServerLoad = async ({ params, locals, url, parent }) =>
     overlapGroups: previewReportArtifact.value?.overlap_groups ?? [],
     availableSectionIds,
     decisionTools,
+    sampleReportAvailable,
     selectionLoadState: {
       decisionStateUnavailable: !decisionStateResponse?.ok || decisionState === null,
       metricExplanationsUnavailable: !metricResponse?.ok || metricExplanations === null,

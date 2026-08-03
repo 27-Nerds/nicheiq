@@ -114,6 +114,21 @@ class SolutionRefinementCrew:
         total_volume = seo_strategy_report.total_monthly_volume or 0
         keyword_count = seo_strategy_report.total_keywords_analyzed or 0
 
+        # Demand is scored on IDEA-INTENT volume, not the whole analyzed pool. The pool
+        # includes category-reach and off-topic terms: the 2026-08-03 coffee run analyzed
+        # 325,010/mo of which only 11,370 carried idea intent, the rest being generic head
+        # terms ('food safety' 90,500, 'quality control' 74,000, 'green coffee' 74,000 —
+        # that last one mostly weight-loss supplement searches). Scoring the pool put the
+        # run at 0.92 = "exceptional"; scoring idea intent puts it at 0.68 = "strong",
+        # which is the honest reading. The venue run scored 1.00 on a pool that was 52%
+        # off-topic. The tiers already render idea-intent volume — this makes the SCORE
+        # agree with them instead of handing the LLM an inflated adjective to repeat.
+        # Falls back to the pool when the three-band fields were not computed (graded
+        # coverage < 80%), which is the pre-2026-08 behaviour.
+        demand_volume = getattr(seo_strategy_report, 'idea_intent_monthly_volume', None)
+        if not demand_volume or demand_volume <= 0:
+            demand_volume = total_volume
+
         # Demand signal based on total volume
         if total_volume >= 5000:
             demand_signal = "strong"
@@ -144,9 +159,9 @@ class SolutionRefinementCrew:
                 competitions.append(int(kd))
         avg_competition = sum(competitions) / len(competitions) if competitions else 50.0
 
-        # keyword_demand_score: logarithmic scale
-        if total_volume > 0:
-            keyword_demand_score = min(math.log10(total_volume) / 6.0, 1.0)
+        # keyword_demand_score: logarithmic scale, on idea-intent volume (see above)
+        if demand_volume > 0:
+            keyword_demand_score = min(math.log10(demand_volume) / 6.0, 1.0)
         else:
             keyword_demand_score = 0.0
 

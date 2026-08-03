@@ -257,9 +257,9 @@ def publish_report_ready(
         logger.info(f"[Progress] Report ready notification sent for job {job_id}")
 
     except requests.exceptions.RequestException as e:
-        # Phase 5.4: re-raise so the RQ task fails and retries. /report-ready
-        # is now idempotent (asset upsert + first-delivery email gate +
-        # extraction with downgrade guard), so retries are safe.
+        # Re-raise so queue_consumer reports a terminal attempt failure instead
+        # of publishing false completion. /report-ready is idempotent, so a
+        # later explicit retry can safely deliver the same asset.
         logger.error(f"[Progress] Failed to publish report-ready: {e}")
         raise
 
@@ -446,6 +446,13 @@ def notify_regeneration_complete(
                 timeout=30,
             )
             response.raise_for_status()
+            body = response.json()
+            if body.get("stale"):
+                from .paid_pool_recovery import PaidPoolOperationFenced
+
+                raise PaidPoolOperationFenced(
+                    f"Regeneration dispatch for {job_id} was fenced before completion"
+                )
             logger.info(f"[Progress] Regeneration complete notification sent for job {job_id}")
             return
         except requests.exceptions.RequestException as e:
@@ -461,7 +468,9 @@ def notify_regeneration_complete(
         f"[Progress] Failed to notify regeneration complete for job {job_id} "
         f"after {attempt} attempts"
     )
-    raise last_error
+    from .paid_pool_recovery import PaidPoolCompletionAmbiguous
+
+    raise PaidPoolCompletionAmbiguous(str(last_error)) from last_error
 
 
 
@@ -490,6 +499,11 @@ def notify_regeneration_failed(job_id: str, error_message: str) -> bool:
                 timeout=30,
             )
             response.raise_for_status()
+            if response.json().get("stale"):
+                logger.warning(
+                    f"[Progress] Regeneration failure for {job_id} belongs to a fenced writer"
+                )
+                return False
             logger.info(f"[Progress] Regeneration failed notification sent for job {job_id}")
             return True
         except requests.exceptions.RequestException as e:
@@ -561,11 +575,15 @@ def notify_seed_complete(
                 except ValueError:
                     state = ""
                 if response.status_code == 409 and state == "CANCELLED":
+                    from .paid_pool_recovery import PaidPoolOperationFenced
+
                     logger.warning(
                         f"[Progress] Seed-complete for job {job_id}: job was cancelled — "
-                        "nothing to deliver, not retrying"
+                        "restoring the fenced operation before returning"
                     )
-                    return
+                    raise PaidPoolOperationFenced(
+                        f"Seed dispatch for {job_id} was cancelled before completion"
+                    )
                 msg = (
                     f"Seed-complete rejected for job {job_id}: HTTP {response.status_code}"
                     + (f", job state {state}" if state else "")
@@ -574,6 +592,12 @@ def notify_seed_complete(
                 logger.error(f"[Progress] {msg}")
                 raise RuntimeError(msg)
             response.raise_for_status()
+            if response.json().get("stale"):
+                from .paid_pool_recovery import PaidPoolOperationFenced
+
+                raise PaidPoolOperationFenced(
+                    f"Seed dispatch for {job_id} was fenced before completion"
+                )
             logger.info(f"[Progress] Seed-complete notification sent for job {job_id} (outcome={outcome})")
             return
         except requests.exceptions.RequestException as e:
@@ -587,7 +611,9 @@ def notify_seed_complete(
             time.sleep(delay)
 
     logger.error(f"[Progress] Failed to notify seed complete for job {job_id} after {attempt} attempts")
-    raise last_error
+    from .paid_pool_recovery import PaidPoolCompletionAmbiguous
+
+    raise PaidPoolCompletionAmbiguous(str(last_error)) from last_error
 
 
 def notify_seed_failed(job_id: str, error_message: str) -> bool:
@@ -618,6 +644,9 @@ def notify_seed_failed(job_id: str, error_message: str) -> bool:
             timeout=30,
         )
         response.raise_for_status()
+        if response.json().get("stale"):
+            logger.warning(f"[Progress] Seed failure for {job_id} belongs to a fenced writer")
+            return False
         logger.info(f"[Progress] Seed-failed notification sent for job {job_id}")
         return True
 
@@ -636,9 +665,9 @@ def notify_catalog_pain_points_ready(
     """
     Notify backend that catalog pain points are ready for merge/insert.
 
-    Phase 5.4: re-raises POST failures so the RQ task fails and gets retried.
-    The backend handler is idempotent (status guard + transactional mutation),
-    so retry is safe.
+    Re-raises POST failures so queue_consumer reports the catalog run as FAILED
+    instead of publishing false completion. The admin may trigger a fresh run;
+    the backend handler remains idempotent for ambiguous callback delivery.
 
     Args:
         job_id: The job UUID
@@ -655,6 +684,7 @@ def notify_catalog_pain_points_ready(
             "category_id": category_id,
             "pain_points": pain_points,
             "niche": niche,
+            **_dispatch_payload(job_id),
         }
         if preview_report_path:
             payload["preview_report_path"] = preview_report_path
@@ -683,7 +713,8 @@ def notify_catalog_ideas_ready(
     """
     Notify backend that catalog ideas are ready for insert.
 
-    Phase 5.4: re-raises POST failures so the RQ task fails and gets retried.
+    Re-raises POST failures so queue_consumer reports the catalog run as FAILED.
+    A fresh admin-triggered run is the supported retry path.
 
     Args:
         job_id: The job UUID
@@ -701,6 +732,7 @@ def notify_catalog_ideas_ready(
             "category_id": category_id,
             "ideas": ideas,
             "niche": niche,
+            **_dispatch_payload(job_id),
         }
         if parent_source_job_id:
             payload["parent_source_job_id"] = parent_source_job_id
@@ -877,6 +909,7 @@ def notify_job_quality_gate_stop(
             "error_stage": stage,
             "stop_reason": reason,
             "stop_reason_details": details,
+            **_dispatch_payload(job_id),
         }
 
         response = requests.post(

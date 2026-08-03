@@ -24,6 +24,38 @@ describe("BatchActivity", () => {
     expect(view.getByText(/Existing candidate scores and your shortlist stay unchanged/)).toBeInTheDocument();
   });
 
+  it("presents a fenced batch as restoration with no generation or cancel affordance", () => {
+    const activity = {
+      operationId: "batch-recovering",
+      ordinal: 2,
+      focus: "auto" as const,
+      outcome: "pending" as const,
+      addedIdeas: [],
+      refPrecision: "exact" as const,
+      addedIdeaIds: [],
+    };
+    const view = render(BatchActivity, {
+      props: {
+        activities: [activity],
+        operation: {
+          id: activity.operationId,
+          kind: "REGENERATE",
+          state: "RECOVERING",
+          createdAt: new Date().toISOString(),
+          claimedAt: null,
+        },
+        cancellableOperationId: activity.operationId,
+        onCancel: () => undefined,
+      },
+    });
+
+    expect(view.getByText("Restoring previous candidates")).toBeInTheDocument();
+    expect(view.getByText(/any refundable credits are returned; if no refund applies/)).toBeInTheDocument();
+    expect(view.queryByText(/Generating and checking/)).not.toBeInTheDocument();
+    expect(view.queryByText(/Waiting for a free worker/)).not.toBeInTheDocument();
+    expect(view.queryByRole("button", { name: "Cancel queued batch" })).not.toBeInTheDocument();
+  });
+
   it("reviews exactly the durable IDs added by a completed batch", async () => {
     const onReviewCandidates = vi.fn();
     const view = render(BatchActivity, {
@@ -70,6 +102,7 @@ describe("BatchActivity", () => {
   it.each([
     ["failed" as const, "Batch failed"],
     ["refunded" as const, "Batch refunded"],
+    ["cancelled" as const, "Batch cancelled"],
   ])("offers a retry after a %s batch", async (outcome, label) => {
     const onRetry = vi.fn();
     const view = render(BatchActivity, {
@@ -78,7 +111,7 @@ describe("BatchActivity", () => {
           operationId: `batch-${outcome}`,
           ordinal: 4,
           outcome,
-          refunded: outcome === "refunded",
+          refunded: outcome === "refunded" || outcome === "cancelled",
           focus: "novelty",
           addedIdeas: [],
           refPrecision: "exact",
@@ -94,6 +127,28 @@ describe("BatchActivity", () => {
       operationId: `batch-${outcome}`,
       focus: "novelty",
     }));
+  });
+
+  it("offers exact cancellation only for the matching queued operation", async () => {
+    const onCancel = vi.fn();
+    const activity = {
+      operationId: "batch-authorized",
+      ordinal: 5,
+      outcome: "pending" as const,
+      addedIdeas: [],
+      refPrecision: "exact" as const,
+      addedIdeaIds: [],
+    };
+    const view = render(BatchActivity, {
+      props: {
+        activities: [activity],
+        cancellableOperationId: activity.operationId,
+        onCancel,
+      },
+    });
+
+    await fireEvent.click(view.getByRole("button", { name: "Cancel queued batch" }));
+    expect(onCancel).toHaveBeenCalledWith(activity);
   });
 
   it("keeps all pending runs and only the latest settled run above history", () => {

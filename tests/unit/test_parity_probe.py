@@ -452,6 +452,219 @@ class TestAdjacentMarketProbe:
         assert getattr(crew, "coverage_caveats", []) == []   # suppressed by adjacent coverage
 
 
+# ── 2026-08 parity fix (plan Step 1, corrections 2+3): verify_text split, bundled_free
+# evidence conditions, wallet reclassify, downgrade-not-drop, reset-then-stamp ────────────
+
+def _toolbelt_crew(res_for_query, tools=("VetSnap",), incumbent_rows=None):
+    """Crew stub for `_probe_toolbelt_free_bundle`: `res_for_query(q)` -> result text."""
+    crew = UnifiedSolutionCrew.__new__(UnifiedSolutionCrew)
+    crew.niche_context = SimpleNamespace(niche_description="veterinary clinics")
+    crew.search_tool = SimpleNamespace()   # probe only checks truthiness
+    crew.cost_tracker = None
+    crew.audience_mapping = SimpleNamespace(tools_currently_used=list(tools))
+    crew._incumbent_rows = list(incumbent_rows or [])
+    crew._ma_search_batch = lambda queries: {q: res_for_query(q) for q in queries}
+    return crew
+
+
+def _tb_finding(idea_name, route="VetSnap", evidence="controlled drug logs",
+                outcome="bundled_free"):
+    return SimpleNamespace(idea_name=idea_name, tool_or_route=route,
+                           evidence=evidence, outcome=outcome)
+
+
+def _tb_idea(name, kw_word):
+    """Idea whose _mechanism_keywords output starts with `kw_word` — used to key which
+    queries the res stub answers, i.e. which idea 'owns' the evidencing snippet."""
+    return SimpleNamespace(
+        solution_name=name, value_proposition=f"{kw_word} reconciliation for clinics",
+        mechanism_tag=kw_word, incumbent_parity=None)
+
+
+class TestToolbeltFreeBundleProbe:
+    def test_route_only_in_query_never_verifies(self):
+        # THE dead-guard bug: the old check ran against snippets that embedded the query
+        # text, so a toolbelt vendor named in the QUERY always "verified". Route absent
+        # from all RESULT text -> finding dropped, no stamp.
+        crew = _toolbelt_crew(lambda q: "generic results, free tools mentioned, no vendor")
+        issued: list[str] = []
+        inner = crew._ma_search_batch
+        crew._ma_search_batch = lambda queries: issued.extend(queries) or inner(queries)
+        idea = _tb_idea("A", "alphasync")
+        fake = SimpleNamespace(findings=[_tb_finding("A")])
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   return_value=(fake, None)):
+            lines, covered = crew._probe_toolbelt_free_bundle([idea])
+        assert (lines, covered) == ([], 0)
+        assert idea.incumbent_parity is None
+        # sanity: the vendor name really WAS embedded in the issued queries — under the old
+        # query-embedding snippets this finding would have (wrongly) verified
+        assert any("VetSnap" in q for q in issued)
+
+    def test_priced_wallet_vendor_reclassified_to_shipped(self):
+        # correction 2: incumbent map prices VetSnap at $300/mo with no free tier -> the
+        # "free" claim contradicts wallet data; parity stands as `shipped`, never voided.
+        crew = _toolbelt_crew(
+            lambda q: "VetSnap ships controlled drug logging free with every plan",
+            incumbent_rows=[{"name": "VetSnap", "pricing": "$300/mo",
+                             "focus": "vet practice mgmt", "gap": ""}])
+        idea = _tb_idea("A", "alphasync")
+        fake = SimpleNamespace(findings=[_tb_finding("A")])
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   return_value=(fake, None)):
+            lines, covered = crew._probe_toolbelt_free_bundle([idea])
+        assert idea.incumbent_parity == "shipped by VetSnap: controlled drug logs"
+        assert covered == 1 and lines == ["- A: shipped by VetSnap: controlled drug logs"]
+
+    def test_free_priced_vendor_keeps_bundled_free(self):
+        # Liquipedia-shaped row (pricing contains "free") stays eligible for bundled_free.
+        crew = _toolbelt_crew(
+            lambda q: "Liquipedia offers live brackets free for every tournament",
+            tools=("Liquipedia",),
+            incumbent_rows=[{"name": "Liquipedia", "pricing": "free",
+                             "focus": "esports wiki", "gap": ""}])
+        idea = _tb_idea("A", "alphasync")
+        fake = SimpleNamespace(findings=[_tb_finding("A", route="Liquipedia",
+                                                     evidence="live brackets")])
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   return_value=(fake, None)):
+            crew._probe_toolbelt_free_bundle([idea])
+        assert idea.incumbent_parity == "bundled_free (Liquipedia): live brackets"
+
+    def test_no_free_token_colocated_downgrades_not_drops(self):
+        # Vendor verified in results but no free/included/no-cost token co-located with it
+        # -> DOWNGRADE (unpriced vendor -> partial), never emit bundled_free, never drop.
+        crew = _toolbelt_crew(lambda q: "VetSnap ships a controlled drug logging module")
+        idea = _tb_idea("A", "alphasync")
+        fake = SimpleNamespace(findings=[_tb_finding("A")])
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   return_value=(fake, None)):
+            lines, covered = crew._probe_toolbelt_free_bundle([idea])
+        assert idea.incumbent_parity == "partial by VetSnap: controlled drug logs"
+        assert covered == 1
+
+    def test_other_ideas_evidence_downgrades(self):
+        # correction 3: the evidencing snippet's query must derive from THIS idea's own
+        # keyword. B's finding is evidenced only by A's query result -> downgraded class.
+        def res(q):
+            return ("Liquipedia offers live brackets free for everyone"
+                    if "alphasync" in q else "nothing relevant here")
+        crew = _toolbelt_crew(res, tools=("Liquipedia",))
+        a, b = _tb_idea("A", "alphasync"), _tb_idea("B", "betametrics")
+        fake = SimpleNamespace(findings=[
+            _tb_finding("B", route="Liquipedia", evidence="live brackets")])
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   return_value=(fake, None)):
+            crew._probe_toolbelt_free_bundle([a, b])
+        assert b.incumbent_parity == "partial by Liquipedia: live brackets"
+        assert a.incumbent_parity is None
+
+    def test_other_ideas_evidence_with_priced_vendor_downgrades_to_shipped(self):
+        # downgrade target rule: vendor named AND priced in the wallet -> shipped (0.45),
+        # not partial (0.55).
+        def res(q):
+            return ("VetSnap logging is included free on all plans"
+                    if "alphasync" in q else "nothing relevant here")
+        crew = _toolbelt_crew(
+            res, incumbent_rows=[{"name": "VetSnap", "pricing": "$300/mo",
+                                  "focus": "", "gap": ""}])
+        a, b = _tb_idea("A", "alphasync"), _tb_idea("B", "betametrics")
+        fake = SimpleNamespace(findings=[_tb_finding("B")])
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   return_value=(fake, None)):
+            crew._probe_toolbelt_free_bundle([a, b])
+        assert b.incumbent_parity == "shipped by VetSnap: controlled drug logs"
+
+    def test_downgraded_finding_never_loosens_existing_cap(self, monkeypatch):
+        # strictness-upgrade-only guard applies to the DOWNGRADED class: a partial (0.55)
+        # downgrade must not overwrite an existing shipped (0.45) finding.
+        monkeypatch.setattr(settings, "parity_shipped_market_fit_cap", 0.45)
+        monkeypatch.setattr(settings, "parity_partial_market_fit_cap", 0.55)
+        crew = _toolbelt_crew(lambda q: "VetSnap ships a logging module")   # no free token
+        idea = _tb_idea("A", "alphasync")
+        idea.incumbent_parity = "shipped by Acme: already ships it"
+        fake = SimpleNamespace(findings=[_tb_finding("A")])
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   return_value=(fake, None)):
+            lines, covered = crew._probe_toolbelt_free_bundle([idea])
+        assert idea.incumbent_parity == "shipped by Acme: already ships it"
+        assert (lines, covered) == ([], 0)
+
+    def test_stamp_string_shapes_preserved(self):
+        # >=7 consumers parse the prefix — the three shapes this probe can emit must stay
+        # byte-compatible: "bundled_free (V): e" / "shipped by V: e" / "partial by V: e".
+        crew = _toolbelt_crew(
+            lambda q: "Liquipedia offers live brackets free for everyone",
+            tools=("Liquipedia",))
+        idea = _tb_idea("A", "alphasync")
+        fake = SimpleNamespace(findings=[_tb_finding("A", route="Liquipedia",
+                                                     evidence="live brackets")])
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   return_value=(fake, None)):
+            crew._probe_toolbelt_free_bundle([idea])
+        from nicheiq.validators.report_consistency import parse_stamp_vendor
+        assert parse_stamp_vendor(idea.incumbent_parity) == ("bundled_free", "Liquipedia")
+
+
+class TestResetThenStamp:
+    def test_reprobe_weaker_finding_wins(self):
+        # RESET-FIRST: a second probe's weaker finding replaces the first probe's stronger
+        # one for the probed idea — the probe is evidence-of-record, not a ratchet.
+        crew = _crew()
+        a, b = _idea("A", 0.7), _idea("B", 0.6)
+        first = SimpleNamespace(findings=[_finding("A"), _finding("B")])
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   return_value=(first, None)):
+            crew._probe_mechanism_parity([a, b])
+        assert a.incumbent_parity == "shipped by MoeGo: Smart Schedule route optimization"
+        second = SimpleNamespace(findings=[_finding(
+            "A", parity="partial", covered_by="NewCo", evidence="limited overlap")])
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   return_value=(second, None)):
+            crew._probe_mechanism_parity([a])
+        assert a.incumbent_parity == "partial by NewCo: limited overlap"
+        # B was NOT in the second probed set — its wave-1 finding must survive the reset
+        assert b.incumbent_parity == "shipped by MoeGo: Smart Schedule route optimization"
+
+    def test_reset_scoped_to_probed_set_only(self):
+        crew = _crew()
+        a, b, c = _idea("A", 0.7), _idea("B", 0.6), _idea("C", 0.5)
+        first = SimpleNamespace(findings=[_finding("A"), _finding("B")])
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   return_value=(first, None)):
+            crew._probe_mechanism_parity([a, b])
+        # second wave probes A + C; the judge returns a finding only for C
+        second = SimpleNamespace(findings=[_finding("C")])
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   return_value=(second, None)):
+            crew._probe_mechanism_parity([a, c])
+        assert a.incumbent_parity is None            # probed, no finding -> reset stands
+        assert b.incumbent_parity == "shipped by MoeGo: Smart Schedule route optimization"
+        assert c.incumbent_parity == "shipped by MoeGo: Smart Schedule route optimization"
+
+    def test_fabricated_birth_stamp_cleared(self):
+        # incumbent_parity sits on BaseSolutionIdea — generator LLMs can fabricate it
+        # (same disease _stamp_payability's RESET-FIRST fixes). A probe pass must clear it.
+        crew = _crew()
+        idea = _idea("A", 0.7)
+        idea.incumbent_parity = "bundled_free (MadeUpCo): fabricated at birth"
+        fake = SimpleNamespace(findings=[_finding("A", parity="none", covered_by="")])
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   return_value=(fake, None)):
+            crew._probe_mechanism_parity([idea])
+        assert idea.incumbent_parity == "none found"
+
+    def test_fail_soft_keeps_prior_findings(self):
+        # an LLM failure precedes the per-idea loop — prior stamps survive (fail-soft).
+        crew = _crew()
+        idea = _idea("A", 0.7)
+        idea.incumbent_parity = "shipped by Acme: prior wave finding"
+        with patch("nicheiq.crews.unified_solution_crew.LLMService.invoke_structured",
+                   side_effect=RuntimeError("down")):
+            crew._probe_mechanism_parity([idea])
+        assert idea.incumbent_parity == "shipped by Acme: prior wave finding"
+
+
 class TestExtraContextByteIdentity:
     def test_default_prompt_unchanged(self):
         # extra_context='' must not alter the calibration prompt (regression anchor)

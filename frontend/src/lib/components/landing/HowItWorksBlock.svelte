@@ -1,3 +1,7 @@
+<script lang="ts">
+	let { hasSampleReport = false }: { hasSampleReport?: boolean } = $props();
+</script>
+
 <section class="relative section" id="how-it-works">
 	<div class="landing-container">
 		<div class="landing-section-header-wrap">
@@ -57,9 +61,11 @@
 			</div>
 		</div>
 
-		<div style="text-align:center; margin-top:var(--space-12);">
-			<a href="/sample-report" class="landing-btn-pill-secondary">See a real report</a>
-		</div>
+			{#if hasSampleReport}
+				<div style="text-align:center; margin-top:var(--space-12);">
+					<a href="/sample-report" class="landing-btn-pill-secondary">See a real report</a>
+				</div>
+			{/if}
 	</div>
 </section>
 

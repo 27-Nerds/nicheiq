@@ -40,18 +40,21 @@ vi.mock('../../middleware/auth.js', () => ({
   },
 }));
 vi.mock('../../config.js', () => ({
-  CONFIG: { openaiApiKey: 'test-key', openrouterApiKey: '', chatModel: 'gpt-test' },
+  CONFIG: { openaiApiKey: 'test-key', openrouterApiKey: '', chatModel: 'gpt-test', challengeModel: 'gpt-challenge-test' },
 }));
 vi.mock('../../services/assetService.js', () => ({
   getPreviewReportForJob: mocks.preview,
   getDiscoveryDataForJob: mocks.discovery,
 }));
-vi.mock('../../services/selectionChallengeService.js', () => ({
+// Keep the REAL ChallengeAssessmentError so the route's instanceof mapping works.
+vi.mock('../../services/selectionChallengeService.js', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   generateSelectionChallenge: mocks.generate,
   prepareSelectionChallengeInput: mocks.prepare,
 }));
 
 import { selectionChallengesRouter } from '../selectionChallenges.js';
+import { ChallengeAssessmentError } from '../../services/selectionChallengeService.js';
 
 const jobId = '11111111-1111-4111-8111-111111111111';
 const idea = {
@@ -345,5 +348,77 @@ describe('selection challenge owner API', () => {
 
     expect(response.status).toBe(404);
     expect(mocks.challengeFindMany).not.toHaveBeenCalled();
+  });
+
+  it('maps a challenge timeout to 504 with a machine-readable code', async () => {
+    mocks.generate.mockRejectedValue(
+      new ChallengeAssessmentError('timeout', 'Challenge skeptic timed out for lens demand'),
+    );
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/selection-challenges`)
+      .send({ ideaId: idea.idea_id, ideaRevision: 2, lens: 'demand' });
+
+    expect(response.status).toBe(504);
+    expect(response.body.code).toBe('timeout');
+    expect(response.body.error).toContain('timed out');
+    expect(mocks.challengeCreate).not.toHaveBeenCalled();
+  });
+
+  it.each(['no_content', 'bad_json', 'schema_mismatch', 'upstream'] as const)(
+    'maps a %s challenge failure to 502 with its code',
+    async (kind) => {
+      mocks.generate.mockRejectedValue(new ChallengeAssessmentError(kind, `boom (${kind})`));
+
+      const response = await request(app)
+        .post(`/api/jobs/${jobId}/selection-challenges`)
+        .send({ ideaId: idea.idea_id, ideaRevision: 2, lens: 'demand' });
+
+      expect(response.status).toBe(502);
+      expect(response.body.code).toBe(kind);
+      expect(mocks.challengeCreate).not.toHaveBeenCalled();
+    },
+  );
+
+  it('keeps non-challenge failures on the generic 502 without a challenge code', async () => {
+    mocks.generate.mockRejectedValue(new Error('db exploded'));
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/selection-challenges`)
+      .send({ ideaId: idea.idea_id, ideaRevision: 2, lens: 'demand' });
+
+    expect(response.status).toBe(502);
+    expect(response.body.code).toBeUndefined();
+    expect(response.body.error).toContain('no selection data was changed');
+  });
+
+  it('buckets a v1-promptVersion row with an outdated fingerprint as stale instead of dropping it', async () => {
+    // After the PROMPT_VERSION bump every stored v1 row carries a stale fingerprint.
+    // The widened schema (promptVersion 1|2) must keep parsing it so the list route
+    // reports it as stale (recheck) rather than silently dropping the row or 500ing.
+    mocks.challengeFindMany.mockResolvedValue([
+      { ...row, id: 'v1-row', inputFingerprint: '0'.repeat(64), promptVersion: 1 },
+    ]);
+
+    const response = await request(app).get(`/api/jobs/${jobId}/selection-challenges`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.challenges).toHaveLength(0);
+    expect(response.body.stale).toContainEqual({
+      ideaId: idea.idea_id,
+      ideaRevision: 2,
+      lens: 'demand',
+    });
+  });
+
+  it('still serves a stored v1 artifact whose fingerprint is current (widened promptVersion parse)', async () => {
+    // artifact fixture carries promptVersion: 1 — parse must succeed post-widening.
+    mocks.challengeFindMany.mockResolvedValue([row]);
+
+    const response = await request(app).get(`/api/jobs/${jobId}/selection-challenges`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.challenges).toHaveLength(1);
+    expect(response.body.challenges[0].promptVersion).toBe(1);
   });
 });

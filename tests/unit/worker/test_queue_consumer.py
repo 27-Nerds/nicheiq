@@ -1,5 +1,6 @@
 """Tests for queue_consumer job routing and completion handling."""
 
+import json
 import sys
 from pathlib import Path
 
@@ -484,6 +485,52 @@ class TestRegenerationFailureHandling:
     @patch('worker.heartbeat.notify_job_completed')
     @patch('worker.heartbeat.set_current_job')
     @patch('worker.heartbeat.notify_job_started', return_value=True)
+    def test_restore_failure_keeps_dispatch_closed_for_recovery(
+        self, mock_started, mock_set_job, mock_completed, mock_job_failed
+    ):
+        from worker.paid_pool_recovery import PaidPoolRecoveryRequired
+
+        with patch('worker.tasks.run_regenerate_ideas') as mock_task, \
+             patch('worker.progress.notify_regeneration_failed') as mock_regen_failed:
+            mock_task.side_effect = PaidPoolRecoveryRequired("restore failed")
+            from worker.queue_consumer import process_job
+            process_job({
+                "job_id": "job-1",
+                "dispatch_id": "dispatch-1",
+                "task_type": "regenerate_ideas",
+                "checkpoint_path": "/tmp/cp",
+                "niche": "test",
+            })
+            mock_regen_failed.assert_not_called()
+            mock_job_failed.assert_not_called()
+
+    @patch('worker.heartbeat.notify_job_failed')
+    @patch('worker.heartbeat.notify_job_completed')
+    @patch('worker.heartbeat.set_current_job')
+    @patch('worker.heartbeat.notify_job_started', return_value=True)
+    def test_ambiguous_completion_keeps_forward_state_for_backend_arbitration(
+        self, mock_started, mock_set_job, mock_completed, mock_job_failed
+    ):
+        from worker.paid_pool_recovery import PaidPoolCompletionAmbiguous
+
+        with patch('worker.tasks.run_regenerate_ideas') as mock_task, \
+             patch('worker.progress.notify_regeneration_failed') as mock_regen_failed:
+            mock_task.side_effect = PaidPoolCompletionAmbiguous("response lost")
+            from worker.queue_consumer import process_job
+            process_job({
+                "job_id": "job-1",
+                "dispatch_id": "dispatch-1",
+                "task_type": "regenerate_ideas",
+                "checkpoint_path": "/tmp/cp",
+                "niche": "test",
+            })
+            mock_regen_failed.assert_not_called()
+            mock_job_failed.assert_not_called()
+
+    @patch('worker.heartbeat.notify_job_failed')
+    @patch('worker.heartbeat.notify_job_completed')
+    @patch('worker.heartbeat.set_current_job')
+    @patch('worker.heartbeat.notify_job_started', return_value=True)
     def test_non_regeneration_failure_uses_normal_job_failed(
         self, mock_started, mock_set_job, mock_completed, mock_job_failed
     ):
@@ -497,6 +544,36 @@ class TestRegenerationFailureHandling:
                 "niche": "test",
             })
             mock_job_failed.assert_called_once()
+
+
+class TestCatalogFailureHandling:
+    """Catalog runs are terminal attempts; retry is a fresh admin action."""
+
+    @patch('worker.heartbeat.notify_job_failed')
+    @patch('worker.heartbeat.notify_job_completed')
+    @patch('worker.heartbeat.set_current_job')
+    @patch('worker.heartbeat.notify_job_started', return_value=True)
+    def test_catalog_failure_uses_terminal_job_failed_path(
+        self, mock_started, mock_set_job, mock_completed, mock_job_failed
+    ):
+        error = RuntimeError("Preview report materialization failed")
+        error.failed_stage = 5
+        with patch('worker.tasks.run_catalog_pain_points', side_effect=error):
+            from worker.queue_consumer import process_job
+
+            process_job({
+                "job_id": "catalog-job-1",
+                "dispatch_id": "catalog-dispatch-1",
+                "task_type": "catalog_pain_points",
+                "category_id": "category-1",
+                "category_name": "Bookkeeping",
+                "category_description": "Month-end close",
+            })
+
+        mock_job_failed.assert_called_once_with(
+            "catalog-job-1", "Preview report materialization failed", 5,
+        )
+        mock_completed.assert_not_called()
 
 
 class TestGateFailureHandling:
@@ -595,6 +672,38 @@ class TestGateFailureHandling:
                 })
                 mock_gate_failed.assert_called_once_with("job-1", 1, "LLM error")
                 mock_job_failed.assert_called_once_with("job-1", "LLM error", None)
+
+
+class TestPhase2QualityStopFailureHandling:
+    @patch('worker.heartbeat.notify_job_failed')
+    @patch('worker.heartbeat.notify_job_completed')
+    @patch('worker.heartbeat.set_current_job')
+    @patch('worker.heartbeat.notify_job_started', return_value=True)
+    def test_undelivered_structured_stop_uses_generic_exact_dispatch_failure_path(
+        self, mock_started, mock_set_job, mock_completed, mock_job_failed
+    ):
+        """run_research_phase2 re-raises only when its structured stop callback failed."""
+        from nicheiq.flows.research_flow import QualityGateStopException
+
+        error = QualityGateStopException(
+            stage=9,
+            reason="INSUFFICIENT_DATA",
+            details={"recommendation": "Broaden the source window"},
+        )
+        error.failed_stage = 9
+        with patch('worker.tasks.run_research_phase2', side_effect=error):
+            from worker.queue_consumer import process_job
+
+            process_job({
+                "job_id": "job-1",
+                "dispatch_id": "dispatch-1",
+                "task_type": "research_phase2",
+                "checkpoint_path": "/tmp/cp",
+                "selected_solutions": ["Sol1"],
+            })
+
+        mock_job_failed.assert_called_once_with("job-1", str(error), 9)
+        mock_completed.assert_not_called()
 
 
 class TestSeedIdeaFailureHandling:
@@ -698,6 +807,31 @@ class TestSeedIdeaFailureHandling:
                     "Evaluation completed but its result could not be delivered: backend unreachable after retries",
                 )
                 mock_job_failed.assert_not_called()
+
+    @patch('worker.heartbeat.notify_job_failed')
+    @patch('worker.heartbeat.notify_job_completed')
+    @patch('worker.heartbeat.set_current_job')
+    @patch('worker.heartbeat.notify_job_started', return_value=True)
+    def test_ambiguous_seed_completion_never_compensates_or_fails_parent(
+        self, mock_started, mock_set_job, mock_completed, mock_job_failed
+    ):
+        from worker.paid_pool_recovery import PaidPoolCompletionAmbiguous
+
+        with patch('worker.tasks.run_seed_idea') as mock_task, \
+                patch('worker.progress.notify_seed_failed') as mock_seed_failed:
+            mock_task.side_effect = PaidPoolCompletionAmbiguous("response lost")
+            from worker.queue_consumer import process_job
+            process_job({
+                "job_id": "job-1",
+                "dispatch_id": "dispatch-1",
+                "task_type": "seed_idea",
+                "checkpoint_path": "/tmp/cp",
+                "niche": "test",
+                "seed_text": "an idea",
+            })
+
+            mock_seed_failed.assert_not_called()
+            mock_job_failed.assert_not_called()
 
 
 # ── Reliable queue (2026-07-02 infra review): BLMOVE + processing ack + stale requeue ──
@@ -869,16 +1003,31 @@ class TestReliableQueue:
         r.lrange.side_effect = redis_lib.RedisError("down")
         assert requeue_stale_processing(r) == 0   # must not raise
 
-    def test_consume_loop_uses_blmove_and_acks(self):
-        # drive ONE loop iteration: blmove returns a job, then shutdown
+    def test_consume_loop_routes_backend_json_and_acks(self):
+        # Drive one loop iteration with the shape queueService.ts LPUSHes.
         import worker.queue_consumer as qc
         from unittest.mock import MagicMock, patch
 
         r = self._redis()
-        job = '{"job_id": "j9", "task_type": "research"}'
+        payload = {
+            "job_id": "j9",
+            "niche": "Freelance bookkeeping",
+            "user_id": "u9",
+            "allowed_project_types": ["saas"],
+            "resume": False,
+            "job_mode": "interactive",
+            "entry_mode": "new_niche",
+            "idea_focus": "auto",
+            "chat_mode": False,
+            "dispatch_id": "dispatch-9",
+            "created_at": "2026-08-02T10:00:00.000Z",
+        }
+        job = json.dumps(payload)
         r.blmove.side_effect = [job]
+        received = []
 
         def _stop(job_data):
+            received.append(job_data)
             qc.shutdown_requested = True
 
         with patch.object(qc, "get_redis_connection", return_value=r), \
@@ -896,6 +1045,7 @@ class TestReliableQueue:
                 qc.shutdown_requested = False
         r.blmove.assert_called_once_with(
             qc.QUEUE_NAME, qc.PROCESSING_QUEUE, timeout=5, src="RIGHT", dest="LEFT")
+        assert received == [payload]
         r.lrem.assert_any_call(qc.PROCESSING_QUEUE, 1, job)   # acked after process_job
         claim_calls = [
             call for call in r.eval.call_args_list
@@ -903,7 +1053,7 @@ class TestReliableQueue:
         ]
         assert len(claim_calls) == 1
         assert claim_calls[0].args[1:4] == (
-            1, qc.CLAIMS_HASH, "legacy:j9",
+            1, qc.CLAIMS_HASH, "dispatch:dispatch-9",
         )
         assert claim_calls[0].args[4].endswith(":w1")
 

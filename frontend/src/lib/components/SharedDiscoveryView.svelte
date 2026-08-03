@@ -16,6 +16,7 @@
   import AudienceSnapshot from "$lib/components/preview/AudienceSnapshot.svelte";
   import NicheRealityCheck from "$lib/components/sections/NicheRealityCheck.svelte";
 
+  import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
   import { getDiscoveryVotes, submitDiscoveryVote } from "$lib/api";
   import type { DiscoveryShareData, VoteSummary } from "$lib/api";
   import {
@@ -158,6 +159,9 @@
   // Workbench mirrors (same fields the owner's SelectionWorkbench receives).
   const examinedRuledOut = $derived(previewReport?.examined_ruled_out ?? []);
   const marketReality = $derived(previewReport?.market_reality ?? null);
+  // Same buyer-job partition the owner sees; absent on reports that predate it.
+  const ideaTheses = $derived(readIdeaTheses(previewReport));
+  const uncoveredFamilies = $derived(readUncoveredFamilies(previewReport));
 
   // Software-fit verdict — mirror of the owner's Overview NicheRealityCheck.
   const nicheVerdict = $derived(previewReport?.niche_difficulty_verdict ?? null);
@@ -177,11 +181,12 @@
   <PageHeader
     title={data.niche}
     titleVariant="research-topic"
-    subtitle="Discovery is complete. Review the strongest opportunities before moving to Deep Research."
+    subtitle="Discovery is complete. Review the ranked opportunities and vote for the direction you would back."
   />
   </div>
 
   <!-- Ranked candidates — the same workbench the owner sees, in visitor (vote) mode. -->
+  <section aria-label="Ranked opportunities and voting">
   <SelectionWorkbench
     jobId=""
     solutions={data.solutions}
@@ -191,13 +196,16 @@
     {coverageNotes}
     {examinedRuledOut}
     overlapGroups={previewReport?.overlap_groups ?? []}
+    {ideaTheses}
+    {uncoveredFamilies}
     {marketReality}
     ideaPortfolioSummary={previewReport?.idea_portfolio_summary ?? null}
     {segmentCount}
     solutionVotes={voteSummary.solutionVotes}
   >
-    {#snippet actionSlot({ solution }: { solution: SolutionPreview; index: number })}
+    {#snippet actionSlot({ solution, index }: { solution: SolutionPreview; index: number })}
       <VoteButton
+        label={`ranked idea ${index + 1}: ${solution.solution_name}`}
         count={solution.idea_id && voteSummary.solutionVotesById
           ? voteSummary.solutionVotesById[solution.idea_id] ?? 0
           : voteSummary.solutionVotes[solution.solution_name] ?? 0}
@@ -209,6 +217,7 @@
       />
     {/snippet}
   </SelectionWorkbench>
+  </section>
   {#if voteError}
     <p class="vote-error" role="alert">{voteError}</p>
   {/if}
@@ -216,7 +225,7 @@
   {#if viewerVotedSolutionId}
     <section class="comment-card" aria-label="Vote rationale">
       {#if commentSubmitted}
-        <div class="comment-success">
+        <div class="comment-success" role="status">
           <div class="comment-success-copy">
             <CheckCircle class="w-4 h-4" aria-hidden="true" />
             <span>Your rationale is saved for the report owner.</span>

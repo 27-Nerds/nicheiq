@@ -59,9 +59,15 @@
     isSubscriber && monthlyAllowance === 0,
   );
 
-  // Show max 3 packages, sorted by credits ascending
+  // Show max 3 packages, sorted by credits ascending. Shortfall-aware: the window
+  // always includes the smallest package that covers the need, even when that
+  // package sits beyond the first three.
   const displayPackages = $derived.by(() => {
     const sorted = [...packages].sort((a, b) => a.credits - b.credits);
+    const coverIdx = sorted.findIndex((p) => p.credits >= creditsNeeded);
+    // Nothing covers — show the largest packages so "Best value" is the true largest.
+    if (coverIdx === -1) return sorted.slice(-3);
+    if (coverIdx >= 3) return sorted.slice(coverIdx - 2, coverIdx + 1);
     return sorted.slice(0, 3);
   });
 
@@ -310,7 +316,7 @@
 
             <div class="pkg-line">
               <span class="pkg-credits">
-                {pkg.credits} credits{#if isRecommended}<span class="pkg-recommended"> · Recommended</span>{/if}
+                {pkg.credits} credits{#if isRecommended}<span class="pkg-recommended"> · {recommended?.label}</span>{/if}
               </span>
               {#if isRecommended}
                 <SubmitButton
@@ -340,6 +346,9 @@
                 </button>
               {/if}
             </div>
+            {#if isRecommended && pkg.credits < creditsNeeded}
+              <p class="pkg-shortfall">Covers {pkg.credits} of {creditsNeeded} needed</p>
+            {/if}
           </div>
         {/each}
       {/if}
@@ -489,6 +498,13 @@
   .pkg-recommended {
     font-weight: 600;
     color: var(--color-accent-dark);
+  }
+
+  /* Honesty sub-line when no package covers the shortfall — information, not a fault. */
+  .pkg-shortfall {
+    margin: 0;
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
   }
 
   .pkg-btn {

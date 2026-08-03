@@ -479,10 +479,11 @@ class TestOlderLoopReviewerFrameDirective:
 
 
 class TestReviewerModalCaseInstruction:
-    """The v4 reviewer's `_reviewer_system` prompt includes a MODAL CASE bullet (2026-07-10)
-    telling the reviewer to state the most common concrete instance of the source pain and
-    score market_fit ≤ 0.4 (flag NEEDS-VERIFY: modal-case) when the specced mechanism wouldn't
-    handle it."""
+    """The v4 reviewer's `_reviewer_system` prompt keeps the modal-case rule (2026-07-10), now
+    folded INTO the market_fit bullet (S3.3 mentor redirect): state the most common concrete
+    instance of the source pain and, when the specced mechanism wouldn't handle it, set
+    on_anchor_pain=false and score market_fit ≤ 0.4. The old un-schematized
+    `NEEDS-VERIFY: modal-case` emission is gone."""
 
     def test_modal_case_instruction_present(self):
         g = CellGrounding(
@@ -491,8 +492,9 @@ class TestReviewerModalCaseInstruction:
             competitor_mentions="", wallet_norm="",
         )
         content = _reviewer_system(g)["content"]
-        assert "MODAL CASE" in content
-        assert "NEEDS-VERIFY: modal-case" in content
+        assert "MODAL-CASE CHECK" in content
+        assert "on_anchor_pain=false" in content
+        assert "NEEDS-VERIFY: modal-case" not in content
 
 
 # ---------------------------------------------------------------------------

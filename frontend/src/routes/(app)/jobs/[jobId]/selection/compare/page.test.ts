@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render } from "@testing-library/svelte";
+import { cleanup, fireEvent, render, within } from "@testing-library/svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import ComparePage from "./+page.svelte";
 
@@ -96,7 +96,7 @@ describe("compare page distinctiveness row", () => {
   });
 });
 
-describe("compare page known concern", () => {
+describe("compare page evidence note", () => {
   it("prioritizes a killed adversarial finding over a softer critic concern", () => {
     const view = render(ComparePage, {
       props: {
@@ -114,10 +114,59 @@ describe("compare page known concern", () => {
       },
     });
 
-    expect(view.getByText(/Adversarial review: Killed/)).toHaveTextContent(
+    expect(view.getByText(/Adversarial review: Premise unproven/)).toHaveTextContent(
       "Private-company records are unavailable.",
     );
     expect(view.queryByText("The moat may be thin.")).toBeNull();
+  });
+
+  // The finding only reached the evidence-note row far below the fold, so a candidate the
+  // review could not confirm read as a peer of the survivors in its own column head.
+  it("marks a premise-unproven candidate in its column head and leaves survivors unmarked", () => {
+    const view = render(ComparePage, {
+      props: {
+        data: data([
+          idea({
+            idea_id: "idea-a",
+            solution_name: "Candidate A",
+            red_team_verdict: "killed",
+            red_team_caveats: ["FDA already publishes this data."],
+          }),
+          idea({
+            idea_id: "idea-b",
+            solution_name: "Candidate B",
+            red_team_verdict: "survives",
+          }),
+        ]),
+      },
+    });
+
+    const headings = view.container.querySelectorAll(".candidate-heading");
+    expect(headings).toHaveLength(2);
+    // The shipped user-facing name, never the raw `killed` enum.
+    expect(within(headings[0] as HTMLElement).getByText("Premise unproven")).toBeInTheDocument();
+    expect(within(headings[1] as HTMLElement).queryByText("Premise unproven")).toBeNull();
+    expect(view.container.textContent).not.toMatch(/\bkilled\b/i);
+  });
+
+  it("does not label positive calibration prose as a known concern", () => {
+    const positiveCalibration = "Addresses high-severity delay pain with a focused mechanism and avoids broad competition.";
+    const view = render(ComparePage, {
+      props: {
+        data: data([
+          idea({
+            idea_id: "idea-a",
+            solution_name: "PartLimboBoard",
+            critic_concern: positiveCalibration,
+          }),
+          idea({ idea_id: "idea-b", solution_name: "Candidate B" }),
+        ]),
+      },
+    });
+
+    expect(view.getByText("Evidence note")).toBeInTheDocument();
+    expect(view.getByText(positiveCalibration)).toBeInTheDocument();
+    expect(view.queryByText("Known concern")).toBeNull();
   });
 });
 
@@ -150,6 +199,35 @@ describe("compare page branch escape hatch", () => {
 
     await fireEvent.click(view.getByRole("button", { name: "None of these fit? Branch a new direction →" }));
     expect(workspaceMocks.openVariants).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the saved comparison readable without offering mutations after selection ends", () => {
+    const completedData = data([
+      idea({ idea_id: "idea-a", solution_name: "Candidate A", novelty_score: 0.66 }),
+      idea({ idea_id: "idea-b", solution_name: "Candidate B", novelty_score: 0.5 }),
+    ]) as any;
+    completedData.job.status = "COMPLETED";
+
+    const view = render(ComparePage, { props: { data: completedData } });
+
+    expect(view.getByRole("status")).toHaveTextContent("View only — idea selection has ended");
+    expect(view.getByRole("heading", { name: "Candidate A" })).toBeInTheDocument();
+    expect(view.getByRole("heading", { name: "Candidate B" })).toBeInTheDocument();
+    expect(view.queryByRole("button", { name: /Branch a new direction/ })).not.toBeInTheDocument();
+  });
+
+  it("describes a one-idea post-selection record without telling the user to add another", () => {
+    const completedData = data([
+      idea({ idea_id: "idea-a", solution_name: "Candidate A" }),
+    ]) as any;
+    completedData.job.status = "COMPLETED";
+
+    const view = render(ComparePage, { props: { data: completedData } });
+
+    expect(view.getByRole("heading", { name: "One idea in the saved comparison" })).toBeInTheDocument();
+    expect(view.getByText("A side-by-side comparison was not saved for this run.")).toBeInTheDocument();
+    expect(view.getByRole("link", { name: "View run" })).toHaveAttribute("href", "/jobs/job-1");
+    expect(view.queryByText(/Add a second idea/)).not.toBeInTheDocument();
   });
 });
 

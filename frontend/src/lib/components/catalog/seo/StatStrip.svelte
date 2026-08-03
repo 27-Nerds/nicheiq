@@ -87,7 +87,7 @@
   .stat:last-child {
     border-right: none;
   }
-  /* Mono numerals — JetBrains Mono via --font-mono — give the strip its
+  /* Mono numerals — via --font-mono — give the strip its
      "almanac" voice. tabular-nums guarantees lining figures align between
      tiles regardless of digit shape. */
   .n {

@@ -9,6 +9,11 @@ import pytest
 from unittest.mock import Mock, patch, MagicMock
 from pydantic import BaseModel, Field
 
+from nicheiq.models.seo_strategy import (
+    ConceptualKeyword,
+    ConceptualTopicCluster,
+    ExpandedKeywordList,
+)
 from nicheiq.utils import llm_service
 from nicheiq.utils.llm_service import LLMService, TokenUsage
 
@@ -35,6 +40,18 @@ def _make_structured_response(parsed_result, response_metadata: dict | None = No
         'parsed': parsed_result,
         'raw': _make_raw_response(response_metadata)
     }
+
+
+def _expanded_keyword_result() -> ExpandedKeywordList:
+    return ExpandedKeywordList(
+        keywords=[ConceptualKeyword(keyword="inventory", cluster="Core", priority=1)],
+        topic_clusters=[
+            ConceptualTopicCluster(
+                name="Core", description="Core inventory terms", strategic_importance=1
+            )
+        ],
+        expansion_rationale="Cover the primary workflow.",
+    )
 
 
 class TestInvokeStructured:
@@ -183,6 +200,116 @@ class TestInvokeStructured:
         assert 'reasoning_effort' not in call_kwargs
         assert call_kwargs['temperature'] == 0
 
+    @pytest.mark.parametrize("reasoning_effort", [None, "", "none"])
+    def test_keyword_schema_forces_none_on_chat_completions(self, reasoning_effort):
+        """Unset/none effort must not inherit GPT-5.6 reasoning with function tools."""
+        structured = Mock()
+        structured.invoke.return_value = _make_structured_response(_expanded_keyword_result())
+
+        with patch('nicheiq.utils.llm_service.ChatOpenAI') as mock_chat_openai:
+            mock_chat_openai.return_value.with_structured_output.return_value = structured
+            LLMService.invoke_structured(
+                "Test",
+                ExpandedKeywordList,
+                model_name="gpt-5.6-luna",
+                reasoning_effort=reasoning_effort,
+            )
+
+        call_kwargs = mock_chat_openai.call_args.kwargs
+        assert call_kwargs['reasoning_effort'] == "none"
+        assert 'use_responses_api' not in call_kwargs
+        mock_chat_openai.return_value.with_structured_output.assert_called_once_with(
+            ExpandedKeywordList, method="function_calling", include_raw=True
+        )
+
+    @pytest.mark.parametrize("reasoning_effort", ["minimal", "high"])
+    def test_keyword_schema_uses_responses_for_requested_reasoning(self, reasoning_effort):
+        """Function tools retain a real requested effort by switching transports."""
+        structured = Mock()
+        structured.invoke.return_value = _make_structured_response(_expanded_keyword_result())
+
+        with patch('nicheiq.utils.llm_service.ChatOpenAI') as mock_chat_openai:
+            mock_chat_openai.return_value.with_structured_output.return_value = structured
+            LLMService.invoke_structured(
+                "Test",
+                ExpandedKeywordList,
+                model_name="gpt-5.6-luna",
+                reasoning_effort=reasoning_effort,
+            )
+
+        call_kwargs = mock_chat_openai.call_args.kwargs
+        assert call_kwargs['reasoning_effort'] == reasoning_effort
+        assert call_kwargs['use_responses_api'] is True
+
+    def test_keyword_responses_usage_metadata_reaches_cost_tracking(self):
+        """Responses API token counts live on usage_metadata, not token_usage."""
+        raw_response = Mock()
+        raw_response.response_metadata = {}
+        raw_response.usage_metadata = {"input_tokens": 123, "output_tokens": 45}
+        structured = Mock()
+        structured.invoke.return_value = {
+            "parsed": _expanded_keyword_result(),
+            "raw": raw_response,
+        }
+
+        with patch('nicheiq.utils.llm_service.ChatOpenAI') as mock_chat_openai:
+            mock_chat_openai.return_value.with_structured_output.return_value = structured
+            _, usage = LLMService.invoke_structured(
+                "Test",
+                ExpandedKeywordList,
+                model_name="gpt-5.6-luna",
+                reasoning_effort="minimal",
+            )
+
+        assert usage.prompt_tokens == 123
+        assert usage.completion_tokens == 45
+
+    @pytest.mark.parametrize(
+        ("reasoning_effort", "uses_responses"),
+        [(None, False), ("", False), ("none", False), ("minimal", True)],
+    )
+    def test_json_schema_fallback_applies_function_tool_transport_invariant(
+        self, reasoning_effort, uses_responses
+    ):
+        """A runtime json_schema rejection must apply the same function-tool rule."""
+        primary_structured = Mock()
+        primary_structured.invoke.side_effect = ValueError(
+            "Invalid schema for response_format: additionalProperties"
+        )
+        primary = Mock()
+        primary.with_structured_output.return_value = primary_structured
+
+        fallback_structured = Mock()
+        fallback_structured.invoke.return_value = _make_structured_response(
+            TestModel(name="test", value=1)
+        )
+        fallback = Mock()
+        fallback.with_structured_output.return_value = fallback_structured
+
+        with patch(
+            'nicheiq.utils.llm_service.ChatOpenAI', side_effect=[primary, fallback]
+        ) as mock_chat_openai:
+            LLMService.invoke_structured(
+                "Test",
+                TestModel,
+                model_name="gpt-5.6-luna",
+                reasoning_effort=reasoning_effort,
+            )
+
+        fallback_kwargs = mock_chat_openai.call_args_list[1].kwargs
+        if uses_responses:
+            assert fallback_kwargs['reasoning_effort'] == reasoning_effort
+            assert fallback_kwargs['use_responses_api'] is True
+        else:
+            assert fallback_kwargs['reasoning_effort'] == "none"
+            assert 'use_responses_api' not in fallback_kwargs
+        primary.with_structured_output.assert_called_once_with(
+            TestModel, method="json_schema", include_raw=True
+        )
+        fallback.with_structured_output.assert_called_once_with(
+            TestModel, method="function_calling", include_raw=True
+        )
+
     @patch('nicheiq.utils.llm_service.ChatOpenAI')
     @patch('nicheiq.utils.llm_service.settings')
     def test_uses_settings_model_by_default(self, mock_settings, mock_chat_openai):
@@ -279,8 +406,69 @@ class TestInvokeStructured:
         assert usage_dict['completion_tokens'] == 75
 
 
+class TestLostStructuredOutputDiagnostic:
+    """The 'structured output lost' error must describe what was ACTUALLY sent instead of
+    recommending a setting the call already applied. Live 2026-08-03: this path told the
+    operator to set `*_REASONING_EFFORT=none` for gpt-5.6-luna while
+    IDEATION_REFINE_REASONING_EFFORT=none was already in .env — and the OpenRouter
+    'reasoning channel' cause it named cannot occur here (OpenRouter returns earlier)."""
+
+    class _OptModel(BaseModel):
+        name: str
+        note: str | None = None   # anyOf => function_calling transport, as BaseSolutionIdea
+
+    @pytest.fixture(autouse=True)
+    def _pin_model(self, monkeypatch):
+        monkeypatch.setattr(llm_service.settings, "openai_model_name", "gpt-4o", raising=False)
+
+    def _fail(self, *, finish_reason="tool_calls", parsing_error=None,
+              tool_calls=(), invalid_tool_calls=()) -> str:
+        raw = Mock()
+        raw.response_metadata = {"finish_reason": finish_reason}
+        raw.content = ""
+        raw.tool_calls = list(tool_calls)
+        raw.invalid_tool_calls = list(invalid_tool_calls)
+        structured = Mock()
+        structured.invoke.return_value = {
+            "parsed": None, "raw": raw, "parsing_error": parsing_error,
+        }
+        llm = Mock()
+        llm.with_structured_output.return_value = structured
+        with patch('nicheiq.utils.llm_service.ChatOpenAI', return_value=llm):
+            with pytest.raises(ValueError) as excinfo:
+                LLMService.invoke_structured(
+                    "Test", self._OptModel,
+                    model_name="gpt-5.6-luna", reasoning_effort="none",
+                )
+        return str(excinfo.value)
+
+    def test_parse_failure_reports_the_real_cause(self):
+        msg = self._fail(parsing_error=ValueError("note: Input should be a valid string"))
+        assert "could not be parsed" in msg
+        assert "note: Input should be a valid string" in msg   # the failing field
+        assert "reasoning settings are not the lever" in msg
+
+    def test_empty_response_states_what_was_tried(self):
+        msg = self._fail()
+        assert "was empty" in msg
+        assert "transport=function_calling" in msg
+        assert "reasoning_effort='none'" in msg   # already applied — not a fix to suggest
+
+    def test_never_recommends_an_already_applied_effort_setting(self):
+        for msg in (self._fail(), self._fail(parsing_error=RuntimeError("bad args")),
+                    self._fail(invalid_tool_calls=[{"name": "x", "args": "{"}])):
+            assert "REASONING_EFFORT" not in msg
+            assert "reasoning' channel" not in msg
+
+
 class TestInvokePlain:
     """Test LLMService.invoke_plain() method."""
+
+    @pytest.fixture(autouse=True)
+    def _default_openai_model(self, monkeypatch):
+        # Plain-call assertions must not depend on the ambient .env model, which may
+        # be a reasoning model and therefore intentionally omit temperature.
+        monkeypatch.setattr(llm_service.settings, "openai_model_name", "gpt-4o", raising=False)
 
     @patch('nicheiq.utils.llm_service.ChatOpenAI')
     @patch('nicheiq.utils.llm_service.logger')

@@ -113,7 +113,7 @@
   {open}
   eyebrow="Sharing"
   title="Share report"
-  description="Anyone with the link can view report findings and sources. Analyst conversations, Decision Lab records, and annotations stay private."
+  description="Anyone with the link can view report findings and sources. Your selection note, Analyst conversations, Decision Lab records, and annotations stay private."
   {restoreFocusTo}
   onRequestClose={() => (open = false)}
 >

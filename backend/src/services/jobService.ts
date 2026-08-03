@@ -7,7 +7,6 @@ import {
   refundForStage,
   refundForStageInTx,
   refundForRegenerationStage,
-  refundForSeedIdeaStage,
   isGuidedSegment,
   type StageName,
 } from './creditService.js';
@@ -384,10 +383,35 @@ export async function cancelJob(jobId: string): Promise<CancelOutcome> {
   if (existing.activeDispatchId) {
     const dispatch = await prisma.jobDispatch.findUnique({
       where: { id: existing.activeDispatchId },
-      select: { id: true, kind: true, seedOrdinal: true, sourceMessageId: true, chargeId: true },
+      select: {
+        id: true,
+        kind: true,
+        state: true,
+        seedOrdinal: true,
+        sourceMessageId: true,
+        chargeId: true,
+      },
     });
     if (dispatch?.kind === DispatchKind.SEED_IDEA) {
-      return cancelSeedIdeaDispatch(jobId, dispatch, existing.status, 'CANCELLED_BY_USER');
+      // Once a worker owns the attempt, freeing the parent selection state would let a
+      // second paid pool mutation start while the first worker can still commit or
+      // compensate the same checkpoint. User cancellation is therefore exact and safe
+      // only before AUTHORIZED -> CLAIMED.
+      if (dispatch.state !== DispatchState.AUTHORIZED) {
+        return {
+          cancelled: false,
+          reason: 'not_cancellable',
+          status: existing.status,
+        };
+      }
+      return cancelSeedIdeaDispatch(
+        jobId,
+        dispatch,
+        existing.status,
+        'CANCELLED_BY_USER',
+        undefined,
+        true,
+      );
     }
   }
 
@@ -432,16 +456,17 @@ export async function cancelJob(jobId: string): Promise<CancelOutcome> {
       dispatchId: string,
       refund: NonNullable<Awaited<ReturnType<typeof refundChargeInTx>>>,
     ) => {
-      creditRefunded += Math.abs(refund.amount);
+      const refundedAmount = Math.max(refund.amount, 0);
+      creditRefunded += refundedAmount;
       await tx.jobDispatch.updateMany({
         where: {
           id: dispatchId,
           state: { in: [DispatchState.AUTHORIZED, DispatchState.CLAIMED] },
         },
         data: {
-          state: DispatchState.REFUNDED,
+          state: refundedAmount > 0 ? DispatchState.REFUNDED : DispatchState.FAILED,
           refundTransactionId: refund.id,
-          refundedAt: new Date(),
+          refundedAt: refundedAmount > 0 ? new Date() : undefined,
           refundedAmount: refund.amount,
           settledAt: new Date(),
           failureKind: 'CANCELLED_BY_USER',
@@ -491,7 +516,7 @@ export async function cancelJob(jobId: string): Promise<CancelOutcome> {
         if (active) {
           await markRefunded(active.id, refund);
         } else {
-          creditRefunded += Math.abs(refund.amount);
+          creditRefunded += Math.max(refund.amount, 0);
         }
       }
     }
@@ -545,12 +570,15 @@ export async function cancelSeedIdeaDispatch(
   currentStatus: JobStatus,
   failureKind: string,
   recoveryFence?: HeartbeatRecoveryFence,
+  authorizedOnly = false,
 ): Promise<CancelOutcome> {
   const reverted = await prisma.$transaction(async (tx) => {
     const result = await tx.job.updateMany({
       where: {
         id: jobId,
-        status: recoveryFence?.status ?? { in: [JobStatus.QUEUED, JobStatus.RUNNING] },
+        status: authorizedOnly
+          ? JobStatus.QUEUED
+          : recoveryFence?.status ?? { in: [JobStatus.QUEUED, JobStatus.RUNNING] },
         activeDispatchId: dispatch.id,
         ...(recoveryFence ? { lastHeartbeat: recoveryFence.lastHeartbeat } : {}),
       },
@@ -558,18 +586,27 @@ export async function cancelSeedIdeaDispatch(
     });
     if (result.count === 0) return { count: 0, creditRefunded: 0 };
 
-    await tx.jobDispatch.updateMany({
-      where: { id: dispatch.id },
+    const dispatchSettled = await tx.jobDispatch.updateMany({
+      where: {
+        id: dispatch.id,
+        ...(authorizedOnly ? { state: DispatchState.AUTHORIZED } : {}),
+      },
       data: { state: DispatchState.FAILED, failureKind, settledAt: new Date() },
     });
+    if (authorizedOnly && dispatchSettled.count !== 1) {
+      throw new Error('SEED_CANCEL_RACE');
+    }
 
     // Modern seed dispatches own the exact charge that bought this attempt. Refund it in the
     // same transaction as restoring the parent Job so a process crash cannot leave the user
     // back at selection while their credits remain captured.
     const refund = dispatch.chargeId
       ? await refundChargeInTx(tx, dispatch.chargeId)
-      : null;
-    if (refund) {
+      : dispatch.seedOrdinal != null
+        ? await refundForStageInTx(tx, jobId, `seed_idea_${dispatch.seedOrdinal}`)
+        : null;
+    const refundedAmount = Math.max(refund?.amount ?? 0, 0);
+    if (refund && refundedAmount > 0) {
       await tx.jobDispatch.updateMany({
         where: { id: dispatch.id, state: DispatchState.FAILED },
         data: {
@@ -581,20 +618,21 @@ export async function cancelSeedIdeaDispatch(
       });
     }
 
-    // Durable 'seed_settled' receipt with outcome='refunded' — without this the durable
+    // Durable terminal receipt — without this the durable
     // 'seed_submitted' receipt (written by POST /:jobId/seed-idea) stays 'pending' forever,
     // which pins the frontend's hasPendingSeed lock open permanently (mirrors /seed-failed's
     // own receipt write in workers.ts). Guard: if this dispatch predates sourceMessageId
     // (shouldn't happen, but be safe), skip the receipt — never throw over a missing id.
     if (dispatch.sourceMessageId) {
+      const outcome = refundedAmount > 0 ? 'refunded' : 'cancelled';
       await tx.chatMessage.create({
         data: {
           jobId,
           gateStage: 5,
           role: 'receipt',
-          content: buildSeedReceiptContent('seed_settled', 'refunded'),
+          content: buildSeedReceiptContent('seed_settled', outcome),
           patchJson: buildSeedEnvelope(
-            'seed_settled', dispatch.sourceMessageId, 'refunded', undefined,
+            'seed_settled', dispatch.sourceMessageId, outcome, undefined,
             dispatch.id,
           ) as unknown as object,
         },
@@ -605,7 +643,7 @@ export async function cancelSeedIdeaDispatch(
 
     return {
       count: result.count,
-      creditRefunded: refund ? Math.abs(refund.amount) : 0,
+      creditRefunded: refundedAmount,
     };
   });
 
@@ -623,23 +661,7 @@ export async function cancelSeedIdeaDispatch(
     );
   }
 
-  let creditRefunded = reverted.creditRefunded;
-  if (!dispatch.chargeId && dispatch.seedOrdinal != null) {
-    try {
-      const refund = await refundForSeedIdeaStage(jobId, dispatch.seedOrdinal);
-      if (refund) {
-        creditRefunded = Math.abs(refund.amount);
-        await prisma.jobDispatch.updateMany({
-          where: { id: dispatch.id },
-          data: { state: DispatchState.REFUNDED },
-        });
-      }
-    } catch (refundError) {
-      console.error(`[JobService] Failed to refund seed idea credit for job ${jobId}:`, refundError);
-    }
-  }
-
-  return { cancelled: true, creditRefunded };
+  return { cancelled: true, creditRefunded: reverted.creditRefunded };
 }
 
 function regenerationOrdinal(segment: string | null | undefined): number | null {
@@ -684,7 +706,8 @@ export async function cancelRegenerationDispatch(
     const refund = dispatch.chargeId
       ? await refundChargeInTx(tx, dispatch.chargeId)
       : null;
-    if (refund) {
+    const refundedAmount = Math.max(refund?.amount ?? 0, 0);
+    if (refund && refundedAmount > 0) {
       await tx.jobDispatch.update({
         where: { id: dispatch.id },
         data: {
@@ -711,20 +734,20 @@ export async function cancelRegenerationDispatch(
         role: 'receipt',
         content: buildRegenerationReceiptContent(
           'regeneration_settled',
-          refund ? 'refunded' : 'failed',
+          refundedAmount > 0 ? 'refunded' : 'failed',
         ),
         operationId: `regeneration:${dispatch.id}:settled`,
         patchJson: buildRegenerationEnvelope({
           event: 'regeneration_settled',
           operationId: dispatch.id,
           ordinal: ordinal ?? counted?.regenerationCount ?? 0,
-          outcome: refund ? 'refunded' : 'failed',
-          refunded: Boolean(refund),
+          outcome: refundedAmount > 0 ? 'refunded' : 'failed',
+          refunded: refundedAmount > 0,
         }) as unknown as object,
       },
       update: {},
     });
-    return { count: result.count, creditRefunded: refund?.amount ?? 0 };
+    return { count: result.count, creditRefunded: refundedAmount };
   });
 
   if (reverted.count === 0) {
@@ -747,26 +770,28 @@ export async function cancelRegenerationDispatch(
     try {
       const refund = await refundForRegenerationStage(jobId, ordinal);
       if (refund) {
-        creditRefunded = Math.abs(refund.amount);
-        await prisma.$transaction(async (tx) => {
-          await tx.jobDispatch.updateMany({
-            where: { id: dispatch.id },
-            data: { state: DispatchState.REFUNDED },
+        creditRefunded = Math.max(refund.amount, 0);
+        if (creditRefunded > 0) {
+          await prisma.$transaction(async (tx) => {
+            await tx.jobDispatch.updateMany({
+              where: { id: dispatch.id },
+              data: { state: DispatchState.REFUNDED },
+            });
+            await tx.chatMessage.update({
+              where: { operationId: `regeneration:${dispatch.id}:settled` },
+              data: {
+                content: buildRegenerationReceiptContent('regeneration_settled', 'refunded'),
+                patchJson: buildRegenerationEnvelope({
+                  event: 'regeneration_settled',
+                  operationId: dispatch.id,
+                  ordinal,
+                  outcome: 'refunded',
+                  refunded: true,
+                }) as unknown as object,
+              },
+            });
           });
-          await tx.chatMessage.update({
-            where: { operationId: `regeneration:${dispatch.id}:settled` },
-            data: {
-              content: buildRegenerationReceiptContent('regeneration_settled', 'refunded'),
-              patchJson: buildRegenerationEnvelope({
-                event: 'regeneration_settled',
-                operationId: dispatch.id,
-                ordinal,
-                outcome: 'refunded',
-                refunded: true,
-              }) as unknown as object,
-            },
-          });
-        });
+        }
       }
     } catch (error) {
       console.error(`[JobService] Failed to refund idea batch ${dispatch.id}:`, error);
@@ -898,7 +923,7 @@ export async function failJob(
       let refund = null;
       if (dispatch.chargeId) {
         refund = await refundChargeInTx(tx, dispatch.chargeId);
-        if (refund) {
+        if (refund && refund.amount > 0) {
           await tx.jobDispatch.update({
             where: { id: dispatchId },
             data: {
@@ -925,7 +950,7 @@ export async function failJob(
       );
       return { applied: false, job: current };
     }
-    if (settled.refund) {
+    if (settled.refund && settled.refund.amount > 0) {
       console.log(
         `[JobService] Refunded ${Math.abs(settled.refund.amount)} credits for failed job ${jobId} ` +
         `dispatch ${dispatchId}`,
@@ -1011,15 +1036,19 @@ export async function failJob(
 
         if (stage) {
           const refund = await refundForStage(jobId, stage);
-          if (refund) {
+          const refundedAmount = Math.max(refund?.amount ?? 0, 0);
+          if (refundedAmount > 0) {
             console.log(
-              `[JobService] Refunded ${Math.abs(refund.amount)} credits for failed guided job ${jobId} ` +
+              `[JobService] Refunded ${refundedAmount} credits for failed guided job ${jobId} ` +
               `(stage ${stage})`
             );
           }
           await prisma.jobDispatch.updateMany({
             where: { id: inFlight.id },
-            data: { state: DispatchState.REFUNDED, settledAt: new Date() },
+            data: {
+              state: refundedAmount > 0 ? DispatchState.REFUNDED : DispatchState.FAILED,
+              settledAt: new Date(),
+            },
           });
         }
       }
@@ -1035,15 +1064,15 @@ export async function failJob(
     const failedStage = determineFailedStage(errorStage, existingJob.status);
     if (failedStage) {
       const refund = await refundForStage(jobId, failedStage);
-      if (refund) {
-        console.log(`[JobService] Auto-refunded ${Math.abs(refund.amount)} credits for failed job ${jobId} stage ${failedStage}`);
+      if (refund && refund.amount > 0) {
+        console.log(`[JobService] Auto-refunded ${refund.amount} credits for failed job ${jobId} stage ${failedStage}`);
       }
     } else if (existingJob.status === JobStatus.REGENERATING) {
       // Numbered regeneration stage — use count from initial SELECT
       if (existingJob.regenerationCount) {
         const refund = await refundForRegenerationStage(jobId, existingJob.regenerationCount);
-        if (refund) {
-          console.log(`[JobService] Auto-refunded ${Math.abs(refund.amount)} credits for crashed regen job ${jobId}`);
+        if (refund && refund.amount > 0) {
+          console.log(`[JobService] Auto-refunded ${refund.amount} credits for crashed regen job ${jobId}`);
         }
       }
     }

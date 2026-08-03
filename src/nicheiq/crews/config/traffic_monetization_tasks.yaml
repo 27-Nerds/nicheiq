@@ -37,15 +37,18 @@ traffic_monetization_analysis:
 
     MONETIZATION DECISION RULES (evaluate top-to-bottom, first match is PRIMARY):
     Rule 1 — IF commercial intent >= 40%:
-      → Primary: Affiliate marketing (3-5% click rate, 2-4% purchase CVR, avg $100-500 commission for SaaS)
+      → Primary: Affiliate marketing (take click rate, purchase CVR and commission from the real
+        programs you identify for THIS niche in Step 3)
       → Secondary: Display ads
     Rule 2 — IF informational intent >= 60%:
-      → Primary: Display advertising ($8-25 RPM for SaaS/Tech vertical)
+      → Primary: Display advertising (RPM from the Niche CPM Benchmarks table in Step 2, matched
+        to this niche's vertical)
       → Secondary: Email list building → digital products
     Rule 3 — IF neither rule above matched, default:
       → Primary: Hybrid (display ads + affiliate)
     ADDITIONALLY, IF transactional intent >= 25%:
-      → Include: Lead generation channel (5-8% click rate, 3-5% CVR) alongside primary
+      → Include: Lead generation channel alongside primary (price it from the Lead Gen row of the
+        Step 2 table, narrowed to this niche)
     State which rules triggered and why.
 
     PHASED RAMP-UP:
@@ -115,11 +118,12 @@ traffic_monetization_analysis:
 
     ### Step 4: B2B Monetization (if applicable)
 
-    If the directory lists businesses/services:
-    - Sponsored listings: $50-500/month
-    - Featured placements: $100-1000/month
-    - Lead generation: $15-100 per qualified lead
-    - Premium verified badges: $25-100/month
+    If the directory lists businesses/services, price each of these from what comparable directories
+    in THIS niche actually charge (the Step 2 table gives the outer bands to stay inside):
+    - Sponsored listings
+    - Featured placements
+    - Lead generation (per qualified lead)
+    - Premium verified badges
 
     ### Step 5: Revenue Projection
 
@@ -145,11 +149,12 @@ traffic_monetization_analysis:
 
     ### Step 6: Scaling Strategy
 
-    How revenue scales with traffic growth:
-    - At 100k pageviews → Mediavine eligible → 2-3x RPM increase
-    - At 500k pageviews → Premium ad deals → 4-5x revenue potential
-    - Affiliate optimization → 50-100% uplift through A/B testing
-    - B2B sponsored tier → adds predictable recurring revenue
+    How revenue scales with traffic growth — quantify each step from THIS niche's CPM band and its
+    projected pageviews, never from a round illustration:
+    - Crossing an ad-network traffic threshold (Step 2 table) moves RPM into that network's band
+    - Higher traffic unlocks premium/direct ad deals
+    - Affiliate placement optimization and A/B testing
+    - A B2B sponsored tier adds predictable recurring revenue
 
     ### Step 7: SaaS Alternative Assessment
 

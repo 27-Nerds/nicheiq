@@ -20,6 +20,7 @@ from ..models.research_state import PricingStrategyResult
 from ..utils.crew_helpers import (
     compute_wtp_summary,
     compute_cac_range,
+    format_idea_cac,
     format_market_sizing_summary,
     format_audience_budget_sensitivity,
     format_solution_rank_context,
@@ -296,6 +297,12 @@ class PricingStrategyCrew:
         suggested_cac_range = compute_cac_range(mfs)
         self._suggested_cac_range = suggested_cac_range  # for the guardrail's ratio cross-check
 
+        # The idea's OWN CAC — the only value ltv_to_cac_ratio may divide by. Blank on a
+        # rebuilt idea by design (unified_solution_crew._UNGROUNDABLE_ON_REBUILD); the task
+        # YAML then requires "Not computable" rather than a ratio built on the market-fit
+        # benchmark band above (the 2026-08 8ef396eb defect).
+        idea_cac_estimate = format_idea_cac(selected_solution)
+
         # New data formatting
         project_type = getattr(selected_solution, "project_type", None) or "Not specified"
         value_proposition = getattr(selected_solution, "value_proposition", None) or "Not specified"
@@ -318,6 +325,7 @@ class PricingStrategyCrew:
             "wtp_summary": wtp_summary,
             "avg_wtp": avg_wtp,
             "suggested_cac_range": suggested_cac_range,
+            "idea_cac_estimate": idea_cac_estimate,
             # New template variables
             "project_type": project_type,
             "value_proposition": value_proposition,

@@ -192,7 +192,7 @@ class ThreadRelevanceValidator:
             temperature=0,  # Deterministic for consistency (non-reasoning models)
             timeout=120,
             model_name=settings.thread_validation_llm,
-            reasoning_effort="minimal",  # Fast/cheap binary classification on GPT-5 models
+            reasoning_effort="none",  # Fast/cheap binary classification on GPT-5 models
         )
         return result
 

@@ -87,7 +87,7 @@ function saveDismissedIds(jobId: string, ids: Set<string>): void {
  *  'pending' comes from a durable `seed_submitted` receipt (evaluation in flight —
  *  survives a reload so a submitted card never re-arms Evaluate/Dismiss); the terminal
  *  states come from `seed_settled`. */
-export type SeedOutcome = 'pending' | 'accepted' | 'demoted' | 'failed' | 'refunded';
+export type SeedOutcome = 'pending' | 'accepted' | 'demoted' | 'failed' | 'refunded' | 'cancelled';
 
 export interface SeedActivity {
   sourceMessageId: string;
@@ -99,7 +99,7 @@ export interface SeedActivity {
   createdAt?: string;
 }
 
-export type BatchOutcome = 'pending' | 'completed' | 'no_candidates_added' | 'failed' | 'refunded';
+export type BatchOutcome = 'pending' | 'completed' | 'no_candidates_added' | 'failed' | 'refunded' | 'cancelled';
 
 export interface BatchActivity {
   operationId: string;

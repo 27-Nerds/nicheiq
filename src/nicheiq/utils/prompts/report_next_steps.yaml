@@ -27,6 +27,12 @@ template: |
   - Steps must be sequenced logically (validation before building, building before scaling)
   - Reference the actual project_type, core_features, and pricing_strategy above
   - Include steps for: concept validation, MVP development, SEO implementation, and early traction
+  - Use only pain point titles listed above. If no validated pain matched, do not invent or borrow one; make pain validation the first step.
+  - When a step calls for customer interviews, the count is **{interview_count_range}**.
+    The 30-day playbook elsewhere in this report plans the same number in Weeks 3-4;
+    picking your own here makes the report contradict itself on the reader's very first
+    action. (Interpolated from prompts.INTERVIEW_COUNT_RANGE — both templates read the same
+    constant, so this figure cannot drift between them.)
 
   Tailor steps to the project type:
   - directory: prioritize data sourcing, listing pages, local SEO

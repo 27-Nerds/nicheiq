@@ -107,10 +107,10 @@ class TestG1Whitelist:
         with pytest.raises(GatePatchError):
             apply_gate_patch(state, 1, {"niche_description": "x" * 2001})
 
-    def test_rejects_too_many_market_segments(self):
+    def test_rejects_more_than_twelve_market_segments(self):
         state = _state_with_niche_context()
         with pytest.raises(GatePatchError):
-            apply_gate_patch(state, 1, {"market_segments": [f"seg{i}" for i in range(9)]})
+            apply_gate_patch(state, 1, {"market_segments": [f"seg{i}" for i in range(13)]})
 
     def test_rejects_when_niche_context_missing(self):
         state = ResearchState()

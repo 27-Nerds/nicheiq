@@ -45,15 +45,6 @@
   const newActive = $derived(page.url.pathname === "/new");
   const billingActive = $derived(page.url.pathname === "/billing");
 
-  // Sidebar-shell routes have a left sidebar at the viewport edge, so the header
-  // goes full-width to line the logo up with the sidebar and match the body.
-  // (Centered-content full-bleed pages like /new & /report keep the max-w header.)
-  const fullBleedHeader = $derived(
-    !!page.route.id &&
-      (/\/(dashboard|billing|settings)$/.test(page.route.id) ||
-        /\/jobs\/[^/]+$/.test(page.route.id)),
-  );
-
   let showUserMenu = $state(false);
   let imageError = $state(false);
   let userMenuEl = $state<HTMLElement | null>(null);
@@ -112,7 +103,7 @@
 {/snippet}
 
 <header class="app-header bg-bg-surface border-b border-border">
-  <div class="{fullBleedHeader ? 'w-full' : 'max-w-7xl mx-auto'} px-4 sm:px-6 lg:px-8">
+  <div class="w-full px-4 sm:px-6 lg:px-8">
     <div class="flex justify-between h-14 items-center">
       <!-- Left group: logo + primary wayfinding nav -->
       <div class="flex items-center gap-6">

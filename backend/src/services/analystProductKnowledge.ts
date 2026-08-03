@@ -20,6 +20,23 @@ WHAT NICHEIQ DOES
 - After Discovery, the owner may choose one to three exact candidate revisions for one Deep Research run. Deep Research pressure-tests the selected scope: exact buyers, competitors and free substitutes, distribution and keyword demand, pricing signals, serviceable market, trend durability, data access, build feasibility, and a conservative Go / Conditional / No-Go verdict.
 - Public discussion is a self-selected, time-sensitive sample. Scores are directional estimates, not guarantees or measured willingness to pay.`;
 
+/**
+ * Always composed in. The three things a user is most likely to ask about the scores,
+ * where the honest answer is counter-intuitive and a plausible-sounding guess is a
+ * falsehood: why the top score is not the recommendation, why several ideas look like
+ * one business, and why demand numbers tie or go missing. Kept in step with
+ * frontend/src/lib/content/help/methodology.md and the shipped "Premise unproven" label
+ * in frontend/src/lib/utils/adversarialReview.ts.
+ */
+const SCORING_AND_RECOMMENDATION = `HOW THE SCORES AND THE RECOMMENDATION RELATE
+- Every idea score answers a conditional question: how well would this work IF its premise holds. Market fit, feasibility, distinctiveness and the rest all reason inside that "if".
+- The adversarial review is the one step that tests the "if" itself. When it cannot find evidence for an idea's core premise, usually that a reachable buyer wants this at all, the idea is labelled "Premise unproven". Always use that exact phrase. Never say an idea was killed, rejected, dead, or bad, whatever word the underlying data uses.
+- A premise-unproven idea keeps its rank, stays selectable, and can legitimately hold the highest score in the list. Only the automatic recommendation is withheld from it, and it moves to the strongest idea that came through the review intact. So the highest score and the recommendation can sit on different ideas, and that is the system working, not a mistake. A high score beside that label means promising but unproven, which is the best possible argument for a cheap test (a landing page, ten conversations, a pre-sale) before any build time.
+- Discovery ideas are also grouped into product theses: one buyer job per thesis, with its variants nested beneath it. Several similar ideas under one thesis are renderings of ONE business, not separate opportunities, and it is honest to say so. Validated buyer jobs with no surviving idea are listed separately; those are unexamined, not ruled out.
+- A competition finding names a vendor and comes from a search run for that specific idea. Objections raised by the adversarial review are reported under that review as objections, never as a competitor.
+- Search demand is measured only from keywords graded as being about the idea itself rather than the broad category it sits in, so the keyword count beside an idea is usually a small number, and that is the filter working. When no keyword survives grading, demand is UNMEASURED rather than zero: no number is invented, and the idea ranks below the ideas whose demand was measured. It can still be worth building; it just cannot lean on search volume as proof.
+- In narrow or technical niches several ideas commonly land on the same demand value. Say plainly that demand could not separate them and that the other scores are doing the work. Never present a tie or a near tie as evidence that one idea is more wanted than another.`;
+
 /** The always-available selection path. Never gated. */
 const SELECTION_WORKSPACE_CORE = `THE SELECTION WORKSPACE (choosing what to send to Deep Research)
 - The selection workspace sits between Discovery and Deep Research. Its persistent path is Choose ideas, Compare trade-offs, then Review and start.
@@ -77,7 +94,7 @@ const CONTROL_BOUNDARY_TAIL = `- Explain what is available now and what would re
  *   names a tool the owner cannot open.
  */
 export function buildAnalystProductKnowledge(decisionTools: boolean): string {
-  const sections = [KNOWLEDGE_HEAD, SELECTION_WORKSPACE_CORE];
+  const sections = [KNOWLEDGE_HEAD, SCORING_AND_RECOMMENDATION, SELECTION_WORKSPACE_CORE];
   if (decisionTools) {
     sections.push(SELECTION_DECISION_TOOLS_SECTION, POST_RESEARCH_DECISION_LAB_SECTION);
   }

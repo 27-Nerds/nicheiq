@@ -389,7 +389,7 @@ describe("EvidenceChallenge", () => {
     });
 
     await waitFor(() => expect(view.getByText("Needs recheck")).toBeInTheDocument());
-    expect(view.getByText("The evidence changed since this review")).toBeInTheDocument();
+    expect(view.getByText("This review predates the current check method or evidence")).toBeInTheDocument();
     expect(view.getByRole("button", { name: "Recheck demand" })).toBeEnabled();
   });
 
@@ -551,9 +551,9 @@ describe("EvidenceChallenge", () => {
     const chip = await view.findByText("Recheck");
     expect(chip.closest(".issue-badge")).toHaveAttribute(
       "title",
-      "Needs recheck — the evidence used by this review changed.",
+      "Needs recheck — this review predates the current check method or evidence.",
     );
-    const demandTab = view.getByRole("tab", { name: /evidence used by this review changed/ });
+    const demandTab = view.getByRole("tab", { name: /predates the current check method/ });
     expect(demandTab).toBeInTheDocument();
     // The dead in-result stale note is gone; the server never serializes
     // stale artifacts.

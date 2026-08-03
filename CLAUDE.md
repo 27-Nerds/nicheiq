@@ -260,7 +260,7 @@ backend/
 
 ## Worker (`/worker/`)
 
-**Tech Stack:** Python 3.12, RQ (Redis Queue)
+**Tech Stack:** Python 3.12, reliable Redis-list consumer
 
 **Run Worker:**
 
@@ -269,21 +269,18 @@ backend/
 source .venv/bin/activate
 
 # From project root
-python -m worker.run_worker
+python -m worker.queue_consumer
 
-# Multiple workers
-python -m worker.run_worker --workers 4
-
-# Burst mode (exit when queue empty)
-python -m worker.run_worker --burst
+# Multiple production workers (from project root)
+docker compose --env-file .env -f docker/docker-compose.prod.yml up -d --scale worker=4
 ```
 
 **Folder Structure:**
 
 ```
 worker/
-├── run_worker.py        # RQ worker entry point
-├── queue_consumer.py    # Redis queue consumer
+├── queue_consumer.py    # Reliable Redis-list worker entry point
+├── run_worker.py        # Deprecated compatibility alias
 ├── tasks.py             # Job execution (runs research pipeline)
 ├── progress.py          # Progress reporting to backend
 ├── heartbeat.py         # Worker health monitoring

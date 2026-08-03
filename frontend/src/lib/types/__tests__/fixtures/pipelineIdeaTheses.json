@@ -1,0 +1,109 @@
+{
+  "family_source": "llm",
+  "theses": [
+    {
+      "family_id": "inventory-accuracy",
+      "display_label": "Inventory Accuracy",
+      "buyer": "Inventory Manager",
+      "triggering_job": "Maintain accurate medication counts and reorder levels",
+      "economic_outcome": "Clinic operations budget buys reliable inventory software",
+      "members": [
+        {
+          "name": "CountPad Vet",
+          "winning_angle": "novel_differentiation",
+          "idea_tier": "salvaged",
+          "source_frame": "pain"
+        }
+      ],
+      "lead_idea_name": "CountPad Vet",
+      "incumbent_status": "partial",
+      "incumbent_vendors": [
+        "VetSnap"
+      ],
+      "fatal_assumptions": [
+        {
+          "idea_name": "CountPad Vet",
+          "source_field": "data_access_model",
+          "assumption": "Required data route is not confirmed ('unverified') — the product assumes access it has not demonstrated."
+        },
+        {
+          "idea_name": "CountPad Vet",
+          "source_field": "audience_fit",
+          "assumption": "Serves an adjacent audience, not the stated target audience."
+        }
+      ]
+    },
+    {
+      "family_id": "controlled-drug-compliance",
+      "display_label": "Controlled-Drug Compliance",
+      "buyer": "Controlled Substance Compliance Officer",
+      "triggering_job": "Keep controlled-drug logs complete and audit-ready",
+      "economic_outcome": "Regulatory compliance budget buys access-control and logging tools",
+      "members": [
+        {
+          "name": "Controlled Medication Dispense Closeout Ledger",
+          "winning_angle": "vertical_workflow",
+          "idea_tier": "bundle",
+          "source_frame": "pain"
+        },
+        {
+          "name": "VetControlled Ledger",
+          "winning_angle": "vertical_workflow",
+          "idea_tier": "merged",
+          "source_frame": "workflow"
+        },
+        {
+          "name": "WitnessWire",
+          "winning_angle": "novel_differentiation",
+          "idea_tier": "single",
+          "source_frame": "pain"
+        }
+      ],
+      "lead_idea_name": "Controlled Medication Dispense Closeout Ledger",
+      "incumbent_status": "occupied",
+      "incumbent_vendors": [
+        "VetSnap"
+      ],
+      "fatal_assumptions": [
+        {
+          "idea_name": "Controlled Medication Dispense Closeout Ledger",
+          "source_field": "data_sources",
+          "assumption": "Cold start: the product has no data until a customer supplies it — Authenticated staff-entered dispense, witness, administration, return, and wastage events"
+        },
+        {
+          "idea_name": "VetControlled Ledger",
+          "source_field": "data_sources",
+          "assumption": "Cold start: the product has no data until a customer supplies it — Clinic-maintained formulary and bottle records; User-entered medication movement events"
+        },
+        {
+          "idea_name": "WitnessWire",
+          "source_field": "data_sources",
+          "assumption": "Cold start: the product has no data until a customer supplies it — Clinic-supplied dispensing records"
+        },
+        {
+          "idea_name": "WitnessWire",
+          "source_field": "refine_binding_constraint",
+          "assumption": "novelty: The anomaly detection is now the headline, but the core witness workflow still requires TWO people physically present at the tablet — which means the modal case (busy shift, only one other pe"
+        }
+      ]
+    }
+  ],
+  "uncovered_families": [
+    {
+      "family_id": "system-integration",
+      "display_label": "System Integration",
+      "member_pain_ids": [
+        "Broken IDEXX integrations fragment laboratory and inventory workflows",
+        "Steep PIMS learning curves leave staff with inconsistent workflows"
+      ],
+      "reason": "no_surviving_idea",
+      "reason_detail": "we drafted at least one idea for this job, but no concept survived the review bar"
+    }
+  ],
+  "unassigned": [
+    {
+      "idea_name": "CS Log Reconciliation Audit Kit",
+      "reason": "no validated pain matched (source_pain, merged_from, pain_points_addressed)"
+    }
+  ]
+}

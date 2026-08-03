@@ -1,5 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+const mockConfig = vi.hoisted(() => ({
+  openaiApiKey: 'sk-openai',
+  openrouterApiKey: 'sk-openrouter',
+  openrouterBaseUrl: 'https://openrouter.ai/api/v1',
+  openrouterSiteUrl: 'https://nicheiq.test',
+  openrouterAppName: 'NicheIQ',
+}));
+
 // Capture OpenAI constructor args + a create() spy. The constructor returns a
 // client whose chat.completions.create records its params.
 const constructorCalls: any[] = [];
@@ -14,13 +22,7 @@ vi.mock('openai', () => {
 });
 
 vi.mock('../../config.js', () => ({
-  CONFIG: {
-    openaiApiKey: 'sk-openai',
-    openrouterApiKey: 'sk-openrouter',
-    openrouterBaseUrl: 'https://openrouter.ai/api/v1',
-    openrouterSiteUrl: 'https://nicheiq.test',
-    openrouterAppName: 'NicheIQ',
-  },
+  CONFIG: mockConfig,
 }));
 
 // Fresh module (and fresh client cache) per test.
@@ -38,6 +40,8 @@ describe('chatComplete provider routing', () => {
   beforeEach(() => {
     constructorCalls.length = 0;
     createSpy.mockClear();
+    mockConfig.openaiApiKey = 'sk-openai';
+    mockConfig.openrouterApiKey = 'sk-openrouter';
   });
 
   it('routes openrouter/* to OpenRouter client with stripped model', async () => {
@@ -73,7 +77,7 @@ describe('chatComplete provider routing', () => {
     expect(createSpy.mock.calls[0][0].model).toBe('gpt-4.1-mini');
   });
 
-  it('detects reasoning on the stripped model (openrouter/gpt-5-*)', async () => {
+  it('detects reasoning from the final segment without truncating the OpenRouter model id', async () => {
     const { chatComplete } = await freshChatComplete();
     await chatComplete({
       model: 'openrouter/openai/gpt-5-nano',
@@ -82,10 +86,37 @@ describe('chatComplete provider routing', () => {
       maxTokens: 500,
     });
     const params = createSpy.mock.calls[0][0];
-    // baseModel 'openai/gpt-5-nano' is not gpt-5-prefixed, so this stays non-reasoning;
-    // assert the model sent is stripped and routing went to OpenRouter.
     expect(params.model).toBe('openai/gpt-5-nano');
     expect(constructorCalls[0].baseURL).toBe('https://openrouter.ai/api/v1');
+    expect(params.temperature).toBeUndefined();
+    expect(params.max_tokens).toBeUndefined();
+    expect(params.max_completion_tokens).toBe(500);
+    expect(params.reasoning_effort).toBe('minimal');
+  });
+
+  it('requires the API key for the provider selected by the model id', async () => {
+    const { hasApiKeyForModel } = await freshChatComplete();
+
+    mockConfig.openrouterApiKey = '';
+    expect(hasApiKeyForModel('openrouter/openai/gpt-5-mini')).toBe(false);
+    expect(hasApiKeyForModel('gpt-5-mini')).toBe(true);
+
+    mockConfig.openrouterApiKey = 'sk-openrouter';
+    mockConfig.openaiApiKey = '';
+    expect(hasApiKeyForModel('openrouter/openai/gpt-5-mini')).toBe(true);
+    expect(hasApiKeyForModel('gpt-5-mini')).toBe(false);
+  });
+
+  it('preserves the explicit-none guard for provider-qualified GPT-5 tool calls', async () => {
+    const { chatComplete } = await freshChatComplete();
+
+    await expect(chatComplete({
+      model: 'openrouter/openai/gpt-5-mini',
+      messages,
+      tools: [{ type: 'function', function: { name: 'noop', parameters: {} } }],
+      reasoningEffort: 'high',
+    })).rejects.toThrow('require reasoningEffort="none"');
+    expect(createSpy).not.toHaveBeenCalled();
   });
 
   it('reuses one client per provider (connection pooling)', async () => {
@@ -129,6 +160,29 @@ describe('chatCompleteStream', () => {
     expect(params.reasoning_effort).toBe('minimal');
   });
 
+  it('normalizes GPT-5 function tools to reasoning_effort none', async () => {
+    const { chatCompleteStream } = await freshChatComplete();
+    await chatCompleteStream({
+      model: 'gpt-5.6-luna',
+      messages,
+      tools: [{ type: 'function', function: { name: 'noop', parameters: {} } }],
+    });
+
+    expect(createSpy.mock.calls[0][0].reasoning_effort).toBe('none');
+  });
+
+  it('rejects an explicit reasoning budget for streamed GPT-5 function tools', async () => {
+    const { chatCompleteStream } = await freshChatComplete();
+
+    await expect(chatCompleteStream({
+      model: 'gpt-5.6-luna',
+      messages,
+      tools: [{ type: 'function', function: { name: 'noop', parameters: {} } }],
+      reasoningEffort: 'minimal',
+    })).rejects.toThrow('require reasoningEffort="none"');
+    expect(createSpy).not.toHaveBeenCalled();
+  });
+
   it('passes an AbortSignal through as request options (second create() arg)', async () => {
     const { chatCompleteStream } = await freshChatComplete();
     const controller = new AbortController();
@@ -163,6 +217,29 @@ describe('reasoning-model parameters', () => {
       reasoningEffort: 'high',
     });
     expect(createSpy.mock.calls[0][0].reasoning_effort).toBe('high');
+  });
+
+  it('normalizes GPT-5 function tools to reasoning_effort none', async () => {
+    const { chatComplete } = await freshChatComplete();
+    await chatComplete({
+      model: 'gpt-5.6-luna',
+      messages: [{ role: 'user', content: 'x' }],
+      tools: [{ type: 'function', function: { name: 'noop', parameters: {} } }],
+    });
+
+    expect(createSpy.mock.calls[0][0].reasoning_effort).toBe('none');
+  });
+
+  it('rejects an explicit reasoning budget for unstreamed GPT-5 function tools', async () => {
+    const { chatComplete } = await freshChatComplete();
+
+    await expect(chatComplete({
+      model: 'gpt-5.6-luna',
+      messages: [{ role: 'user', content: 'x' }],
+      tools: [{ type: 'function', function: { name: 'noop', parameters: {} } }],
+      reasoningEffort: 'high',
+    })).rejects.toThrow('require reasoningEffort="none"');
+    expect(createSpy).not.toHaveBeenCalled();
   });
 
   it('passes verbosity only when asked for', async () => {

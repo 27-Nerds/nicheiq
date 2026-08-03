@@ -233,13 +233,137 @@ def ranking_seo(seo: float | None, idea) -> float | None:
     return ceiling
 
 
-def angle_ranked_composite(idea) -> float:
+AUDIENCE_FIT_COVERAGE_MIN = 0.90
+"""Minimum fraction of a pool that must carry an ``audience_fit`` verdict before the
+adjacent-audience penalty may be applied. Below this, tagging was partial (fail-open LLM
+judgment, a batch appended after the last tagging pass, legacy checkpoints) and penalising
+only the tagged ideas would stealth-PROMOTE the untagged ones."""
+
+
+def red_team_killed(idea) -> bool:
+    """True when the adversarial red-team pass returned a 'killed' verdict for this idea.
+
+    Reads defensively from models OR dicts (the worker/queue boundary hands the same idea
+    across as a plain dict).
+    """
+    v = idea.get("red_team_verdict") if isinstance(idea, dict) else getattr(
+        idea, "red_team_verdict", None)
+    return (v or "").strip().lower() == "killed"
+
+
+def choose_auto_pick(ranked, ideas):
+    """Highest-ranked candidate ELIGIBLE for the automatic #1 recommendation, plus an
+    attributable note when the leader was skipped.
+
+    ``ranked`` is any rank-ordered sequence carrying ``.solution_name`` (SolutionScores or
+    ideas); ``ideas`` is the idea pool the red-team verdicts live on. Returns
+    ``(pick, note)`` — ``note`` is None when nothing was skipped.
+
+    An idea the red team KILLED stays visible, stays selectable, and keeps its rank in the
+    list; only the automatic "this is our pick" designation is withheld, because the caps
+    that used to hold a killed idea down were removed with the red-team parity coupling
+    (2026-08-02) and `apply_red_team_downgrade` runs at FINAL REPORT ASSEMBLY, after
+    selection — so nothing else stops a killed idea from becoming a stronger automatic #1
+    than before it was killed. The note cites the kill caveat so the withholding is
+    attributable, never a silent reorder.
+
+    Degrades honestly: when EVERY candidate is killed the top-ranked one is still returned
+    (the pipeline needs a subject) with a note saying no candidate survived adversarial
+    review — a stated non-endorsement, not a silent pick.
+    """
+    items = list(ranked or [])
+    if not items:
+        return None, None
+    killed: dict[str, str] = {}
+    for idea in ideas or []:
+        if not red_team_killed(idea):
+            continue
+        name = (idea.get("solution_name") if isinstance(idea, dict)
+                else getattr(idea, "solution_name", None)) or ""
+        caveats = (idea.get("red_team_caveats") if isinstance(idea, dict)
+                   else getattr(idea, "red_team_caveats", None)) or []
+        first = next((c.strip() for c in caveats if isinstance(c, str) and c.strip()), "")
+        killed[name] = f"{first[:200].rstrip()}…" if len(first) > 200 else first
+    if not killed:
+        return items[0], None
+
+    skipped = []
+    for item in items:
+        name = getattr(item, "solution_name", None) or ""
+        if name in killed:
+            skipped.append(name)
+            continue
+        if not skipped:
+            return item, None
+        cited = killed[skipped[0]]
+        note = (
+            f"**Automatic recommendation withheld from {skipped[0]}:** an adversarial "
+            f"red-team review killed it"
+            + (f" — {cited}" if cited else "")
+            + f". It stays in the ranked list and remains selectable; {name} is the "
+            "highest-ranked idea that survived the review."
+        )
+        return item, note
+
+    cited = killed[skipped[0]]
+    note = (
+        "**No automatic recommendation:** an adversarial red-team review killed every "
+        f"candidate, including the top-ranked {skipped[0]}"
+        + (f" — {cited}" if cited else "")
+        + ". The leader is shown for reference only; treat resolving the caveats as the "
+        "next step, not the build."
+    )
+    return items[0], note
+
+
+def audience_fit_coverage(ideas) -> float:
+    """Fraction of ``ideas`` carrying a non-None ``audience_fit`` verdict (0.0 for an empty pool).
+
+    Pure helper — reads defensively from models OR dicts. Gates
+    :func:`apply_audience_fit_penalty`; see ``AUDIENCE_FIT_COVERAGE_MIN``.
+    """
+    items = list(ideas or [])
+    if not items:
+        return 0.0
+    tagged = 0
+    for it in items:
+        fit = it.get("audience_fit") if isinstance(it, dict) else getattr(it, "audience_fit", None)
+        if fit is not None:
+            tagged += 1
+    return tagged / len(items)
+
+
+def apply_audience_fit_penalty(composite: float, idea, coverage: float | None) -> float:
+    """Subtract ``settings.audience_fit_penalty`` from a COMPOSITE when this idea serves an
+    ADJACENT audience (``audience_fit is False``).
+
+    Composite-only and downgrade-only: the stored ``market_fit_score`` is never touched, so the
+    displayed sub-scores stay the model's own judgment while the RANKING reflects that the idea
+    doesn't serve the audience the user asked for. ``audience_fit is None`` (untagged /
+    fail-open / no stated audience) is never penalised.
+
+    ``coverage`` None or below ``AUDIENCE_FIT_COVERAGE_MIN`` → no-op (see that constant).
+    """
+    penalty = settings.audience_fit_penalty
+    if penalty <= 0.0 or coverage is None or coverage < AUDIENCE_FIT_COVERAGE_MIN:
+        return composite
+    fit = idea.get("audience_fit") if isinstance(idea, dict) else getattr(idea, "audience_fit", None)
+    if fit is not False:
+        return composite
+    return round(max(0.0, composite - penalty), 3)
+
+
+def angle_ranked_composite(idea, audience_fit_coverage: float | None = None) -> float:
     """The angle-weighted, feasibility-adjusted composite for ONE idea, by its winning_angle.
 
     Used to STAMP ``adjusted_composite_score`` on preview dicts so the interactive selection grid
     ranks by the same angle-aware composite the report uses (the grid short-circuits to
     adjusted_composite_score when present). Reads sub-scores defensively from a model OR a dict.
     An idea whose winning_angle is None (classify fail-soft) falls back to an equal-weight 4-dim mean.
+
+    ``audience_fit_coverage`` is this idea's POOL coverage (from :func:`audience_fit_coverage`) —
+    a single-idea signature can't compute it. Default None = no adjacent-audience penalty, which
+    preserves every call site that doesn't know its pool.
     """
     def _g(field):
         return idea.get(field) if isinstance(idea, dict) else getattr(idea, field, None)
@@ -252,9 +376,10 @@ def angle_ranked_composite(idea) -> float:
     seo = ranking_seo(_g("seo_scalability_score"), idea)
     bf = _g("build_feasibility_score")
     angle = _g("winning_angle")
-    return feasibility_adjusted_composite(
+    composite = feasibility_adjusted_composite(
         _composite_for_angle(mf, tf, ca, seo, angle), mf, tf, ca, seo, bf, angle
     )
+    return apply_audience_fit_penalty(composite, idea, audience_fit_coverage)
 
 
 def apply_feasibility_to_scores(
@@ -316,6 +441,7 @@ def compute_solution_scores(solution_ideas: list[BaseSolutionIdea]) -> list[Solu
     Returns a ranked list sorted by composite_score descending.
     """
     scores: list[SolutionScores] = []
+    coverage = audience_fit_coverage(solution_ideas)
     for idea in solution_ideas:
         mf = _extract_score(idea, "market_fit_score")
         tf = _extract_score(idea, "technical_feasibility_score")
@@ -330,6 +456,8 @@ def compute_solution_scores(solution_ideas: list[BaseSolutionIdea]) -> list[Solu
         composite = feasibility_adjusted_composite(
             _composite_for_angle(mf, tf, ca, rseo, angle), mf, tf, ca, rseo, bf, angle
         )
+        # Adjacent-audience penalty: composite ONLY — the stored market_fit_score below stays raw.
+        composite = apply_audience_fit_penalty(composite, idea, coverage)
         scores.append(
             SolutionScores(
                 solution_name=idea.solution_name,
@@ -363,6 +491,7 @@ def backfill_solution_scores(
     entries use the same mapping as :func:`compute_solution_scores`.
     """
     result = list(existing_scores) if existing_scores else []
+    coverage = audience_fit_coverage(solution_ideas)
     scores_by_name: dict[str, list[SolutionScores]] = {}
     for score in result:
         scores_by_name.setdefault(score.solution_name, []).append(score)
@@ -386,6 +515,10 @@ def backfill_solution_scores(
             composite = feasibility_adjusted_composite(
                 _composite_for_angle(mf, tf, ca, rseo, angle), mf, tf, ca, rseo, bf, angle
             )
+            # Same composite-only adjacent-audience penalty as compute_solution_scores — an idea
+            # first scored down THIS branch would otherwise escape it entirely. Existing entries
+            # above keep the selector's own composite (only sub-scores are synchronized).
+            composite = apply_audience_fit_penalty(composite, idea, coverage)
             result.append(
                 SolutionScores(
                     solution_name=idea.solution_name,
@@ -462,7 +595,10 @@ def build_pivot_rationale(
         evidence = (
             f"Keyword research shows {new_validation.demand_signal} demand "
             f"with {new_validation.total_volume:,} monthly searches "
-            f"across {new_validation.validated_count} validated keywords."
+            # graded_keyword_count, not validated_count: this sentence claims the keywords
+            # were validated, so it must count the graded set, never the expansion pool
+            # (pre-2026-08 checkpoints stored the pool size in validated_count).
+            f"across {new_validation.graded_keyword_count} validated keywords."
         )
         if kw_names:
             evidence += f" Top keywords: {', '.join(kw_names)}."
@@ -535,6 +671,13 @@ def rerank_solutions_by_adjusted_score(
     - Validated solutions are sorted by adjusted_composite_score and take
       ranks 1..N (only they can win — non-validated entries kept their raw
       composite as adjusted, which would be an unfair advantage).
+    - Two-tier (flow-weakness fix plan 2026-08, correction 1): within the
+      validated set, graded-and-empty solutions (``demand_unmeasured`` — their
+      keywords were graded and NONE passed) rank strictly BELOW
+      validated-with-keywords solutions regardless of adjusted score. Their
+      adjusted equals the raw composite (no demand blend), which would
+      otherwise be an unfair advantage over ideas that paid the 0.3-demand
+      toll. Within each tier, adjusted-score order.
     - Novelty tiebreaker (mirrors the Task 4 prompt rule in code): adjacent
       solutions within `tiebreak_margin` adjusted score are ordered by higher
       competitive_advantage_score. Bubbles until stable (n ≤ 6).
@@ -542,11 +685,21 @@ def rerank_solutions_by_adjusted_score(
 
     Returns the ranked validated solutions (position 0 = winner).
     """
-    ranked = sorted(
-        [s for s in all_scores if s.solution_name in validated_names],
+    validated = [s for s in all_scores if s.solution_name in validated_names]
+    measured = sorted(
+        [s for s in validated if not getattr(s, "demand_unmeasured", False)],
         key=lambda s: s.adjusted_composite_score or 0.0,
         reverse=True,
     )
+    unmeasured = sorted(
+        [s for s in validated if getattr(s, "demand_unmeasured", False)],
+        key=lambda s: s.adjusted_composite_score or 0.0,
+        reverse=True,
+    )
+    # The novelty tiebreak operates on the TOP tier only — an unmeasured
+    # solution must never be promoted to rank 1 over a measured one via the
+    # leader cluster. (All-unmeasured runs degrade to the plain tier order.)
+    ranked = measured if measured else unmeasured
 
     # Leader-anchored novelty tiebreak (order-independent; mirrors the Task-4 prompt rule).
     # Among solutions within `tiebreak_margin` of the TOP adjusted score, the one with the
@@ -581,6 +734,9 @@ def rerank_solutions_by_adjusted_score(
                 )
                 ranked.remove(winner)
                 ranked.insert(0, winner)
+
+    if measured:
+        ranked = ranked + unmeasured  # unmeasured tier trails the measured tier
 
     for i, score in enumerate(ranked, start=1):
         score.rank = i

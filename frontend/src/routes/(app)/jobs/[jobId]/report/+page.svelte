@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Report } from "$lib/types/report";
-  import { AlertTriangle, Download, MessageSquare, Share2 } from "lucide-svelte";
+  import { Download, MessageSquare, Share2 } from "lucide-svelte";
   import { page } from "$app/state";
 
   import ReportContent from "$lib/components/ReportContent.svelte";
@@ -12,8 +12,10 @@
 
   interface Props {
     data: {
-      report: Report;
+      report: Report | null;
       jobId: string;
+      reportState?: "ready" | "not_ready" | "not_found";
+      message?: string;
     };
   }
 
@@ -39,19 +41,20 @@
       name="description"
       content={report.executive_summary?.slice(0, 160)}
     />
-  {:else}
-    <title>Report Not Found - NicheIQ</title>
+{:else}
+    <title>{data.reportState === "not_ready" ? "Report in progress" : "Report unavailable"} - NicheIQ</title>
   {/if}
 </svelte:head>
 
 {#if !report}
   <div class="min-h-screen flex items-center justify-center">
     <EmptyState
-      icon={AlertTriangle}
-      title="Report Not Found"
-      description="The requested report could not be loaded. It may have been deleted or you may not have permission to view it."
+      title={data.reportState === "not_ready" ? "Deep Research report is not ready" : "Report unavailable"}
+      description={data.message ?? "The requested report could not be loaded. It may have been deleted or you may not have permission to view it."}
     >
-      <a href="/jobs/{jobId}" class="btn-primary">Back to Job Status</a>
+      <a href="/jobs/{jobId}" class="btn-primary">
+        {data.reportState === "not_ready" ? "View research progress" : "Back to job"}
+      </a>
     </EmptyState>
   </div>
 {:else}
@@ -62,9 +65,11 @@
           href="/api/jobs/{jobId}/reportjson"
           download
           class="report-action"
+          title="Downloads the complete report data as a JSON file"
         >
           <Download class="w-4 h-4" aria-hidden="true" />
-          <span>Download JSON</span>
+          <span>Export data</span>
+          <span class="report-action-format" aria-hidden="true">JSON</span>
         </a>
         {#if analyst}
           <button
@@ -142,6 +147,19 @@
 
   .report-action:active {
     background: var(--color-bg-subtle);
+  }
+
+  .report-action:focus-visible {
+    outline: 2px solid var(--color-accent-dark);
+    outline-offset: 2px;
+  }
+
+  .report-action-format {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--color-text-secondary);
   }
 
   @media (max-width: 640px) {

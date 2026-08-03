@@ -24,7 +24,9 @@ create_landing_strategy:
     2. Key Messaging Angle: emotional trigger
     3. Pain Points: 2-3 with quotes/numbers from research
     4. Differentiation: what competitors cannot claim
-    5. Memorable Element: ONE specific visual (e.g., "Oversized statistic: 5 advertisers = 50% revenue")
+    5. Memorable Element: ONE specific visual, built only from figures already present in the input
+       data above (e.g. an oversized statistic lifted from a pain point, a side-by-side the
+       competitive summary supports). No figure of your own.
     6. Sections: from [hero, problem, solution, how_it_works, social_proof, pricing, comparison, cta]
     7. CTAs: 3 action-specific options (NOT "Get Started")
 

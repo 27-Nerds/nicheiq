@@ -1,6 +1,6 @@
 /**
  * Compact relative-time formatter for the saved page (e.g. "2d", "5h", "1w").
- * Pure function — no external dep, JetBrains-Mono-friendly output.
+ * Pure function — no external dep, mono-friendly output (--font-mono).
  */
 export function formatDistanceToNow(iso: string): string {
   const t = new Date(iso).getTime();

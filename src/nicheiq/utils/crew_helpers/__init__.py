@@ -17,6 +17,7 @@ from .market_sizing_pre_compute import (
 from .pricing_pre_compute import (
     compute_wtp_summary,
     compute_cac_range,
+    format_idea_cac,
     format_market_sizing_summary,
     format_audience_budget_sensitivity,
     format_solution_rank_context,
@@ -45,6 +46,7 @@ __all__ = [
     "compute_wtp_stats",
     "compute_wtp_summary",
     "compute_cac_range",
+    "format_idea_cac",
     "format_market_sizing_summary",
     "format_audience_budget_sensitivity",
     "format_solution_rank_context",

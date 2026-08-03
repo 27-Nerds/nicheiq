@@ -1,5 +1,6 @@
 <script lang="ts">
   import { goto, invalidateAll } from "$app/navigation";
+  import { getContext } from "svelte";
   import type { PageData } from "./$types";
   import Tooltip from "$lib/components/ui/Tooltip.svelte";
   import SegmentControl from "$lib/components/ui/SegmentControl.svelte";
@@ -34,11 +35,32 @@
     founderFitResultFor,
   } from "$lib/selection/founderFitScope";
   import { finiteUnitScore } from "$lib/utils/displayGuards";
-  import { adversarialReviewFinding } from "$lib/utils/adversarialReview";
+  import {
+    adversarialReviewFinding,
+    adversarialReviewSummary,
+    isPremiseUnproven,
+    PREMISE_UNPROVEN_LABEL,
+  } from "$lib/utils/adversarialReview";
+  import { humanizeInternalJargon } from "$lib/utils/format";
+  import {
+    SELECTION_LIFECYCLE_CONTEXT,
+    type SelectionWorkspaceLifecycle,
+  } from "../selectionWorkspace";
 
   let { data }: { data: PageData } = $props();
 
   const tools = getWorkspaceTools();
+  const lifecycle = getContext<SelectionWorkspaceLifecycle | undefined>(SELECTION_LIFECYCLE_CONTEXT);
+  const currentStatus = $derived(lifecycle?.status || data.job.status);
+  const canMutate = $derived(lifecycle?.status ? lifecycle.canMutate : currentStatus === "AWAITING_SELECTION");
+  const poolOperationPending = $derived(
+    data.job.activeDispatchKind === "SEED_IDEA"
+      ? ["QUEUED", "RUNNING"].includes(currentStatus)
+      : data.job.activeDispatchKind === "REGENERATE"
+        ? ["QUEUED", "REGENERATING"].includes(currentStatus)
+        : false,
+  );
+  const viewOnly = $derived(!canMutate && !poolOperationPending);
 
   function viewHref(view: "market" | "founder"): string {
     const params = new URLSearchParams(data.workspace.canonicalQuery.slice(1));
@@ -158,6 +180,10 @@
   }
 
   async function analyzeFit(): Promise<void> {
+    if (!canMutate) {
+      fitError = "This comparison is view-only because idea selection has ended.";
+      return;
+    }
     if (!data.decisionState?.profile) {
       tools.openConstraints();
       return;
@@ -254,15 +280,16 @@
     return valid !== null ? Math.round(valid * 100) : 0;
   }
 
-  function knownConcern(idea: (typeof data.workspace.ideas)[number]): string {
+  function evidenceNote(idea: (typeof data.workspace.ideas)[number]): string {
     const adversarial = adversarialReviewFinding(idea);
     if (adversarial && idea.red_team_verdict?.trim().toLowerCase() !== "survives") {
       return [adversarial.label, ...adversarial.details].join(" — ");
     }
-    return idea.critic_concern
-      ?? idea.incumbent_parity
-      ?? idea.data_acquisition_notes
-      ?? "No concern is recorded.";
+    // Pipeline prose carries internal gate names and raw field names; strip
+    // those before they reach the comparison table.
+    return humanizeInternalJargon(
+      idea.critic_concern ?? idea.incumbent_parity ?? idea.data_acquisition_notes,
+    ) || "No additional evidence note is recorded.";
   }
 
   type RowKind = "score" | "text" | "narrative";
@@ -279,7 +306,9 @@
       { key: "evidence_anchor", fallback: "Evidence anchor", kind: "narrative", values: col((i) => i.source_pain ?? i.pain_points_addressed?.[0] ?? "No direct pain anchor is available.") },
       { key: "audience", fallback: "Audience", kind: "narrative", values: col((i) => i.source_segment ?? i.target_personas?.[0] ?? "No audience anchor is available.") },
       { key: "distinctive_wedge", fallback: "Distinctive wedge", kind: "narrative", values: col((i) => i.differentiation_locus ?? i.innovation_angle ?? i.differentiation_factors?.[0] ?? i.value_proposition) },
-      { key: "known_concern", fallback: "Known concern", kind: "narrative", values: col(knownConcern) },
+      // `critic_concern` is a durable calibration note and can be positive or
+      // mixed. Real red-team objections still take precedence in the cell.
+      { key: "evidence_note", fallback: "Evidence note", kind: "narrative", values: col(evidenceNote) },
     ];
     return rows.map((row) => ({
       ...row,
@@ -344,15 +373,35 @@
     {/if}
   </header>
 
+  {#if viewOnly}
+    <p class="selection-page__view-only" role="status">
+      View only — idea selection has ended. You can inspect this comparison and saved fit reasoning, but cannot change the shortlist or run another fit analysis here.
+    </p>
+  {/if}
+
   {#if data.workspace.ideas.length < 2}
     <div class="selection-page__panel">
       <EmptyState
-        title={data.workspace.ideas.length === 0 ? "No candidate is available to compare" : "Add a second idea to compare"}
-        description={data.workspace.ideas.length === 0
-          ? "Return to the ranked ideas and choose a current idea revision."
-          : "Comparing trade-offs needs at least two ideas. Add a second idea to your shortlist, then compare them side by side."}
+        title={viewOnly
+          ? data.workspace.ideas.length === 0
+            ? "No saved candidate is available to compare"
+            : "One idea in the saved comparison"
+          : data.workspace.ideas.length === 0
+            ? "No candidate is available to compare"
+            : "Add a second idea to compare"}
+        description={viewOnly
+          ? data.workspace.ideas.length === 0
+            ? "This run has no current candidate revision in its saved comparison record."
+            : "A side-by-side comparison was not saved for this run."
+          : data.workspace.ideas.length === 0
+            ? "Return to the ranked ideas and choose a current idea revision."
+            : "Comparing trade-offs needs at least two ideas. Add a second idea to your shortlist, then compare them side by side."}
       >
-        <Button href={`/jobs/${data.job.id}`} class="btn-ghost" label={`Review ${RANKED_LIST_HEADING.toLowerCase()}`} />
+        <Button
+          href={`/jobs/${data.job.id}`}
+          class="btn-ghost"
+          label={viewOnly ? "View run" : `Review ${RANKED_LIST_HEADING.toLowerCase()}`}
+        />
       </EmptyState>
     </div>
   {:else}
@@ -369,6 +418,20 @@
             Candidate {index + 1} · revision {idea.idea_revision ?? 1}
           </small>
           <h3>{solutionDisplayTitle(idea)}</h3>
+          <!-- Without this the review's finding only reached the evidence-note row far
+               below, so a candidate whose premise the review could not confirm read as a
+               peer of the survivors at the top of its own column. -->
+          {#if isPremiseUnproven(idea)}
+            {@const finding = adversarialReviewFinding(idea)}
+            <Tooltip
+              content={finding ? adversarialReviewSummary(finding) : PREMISE_UNPROVEN_LABEL}
+              position="bottom"
+            >
+              {#snippet children()}
+                <span class="premise-flag">{PREMISE_UNPROVEN_LABEL}</span>
+              {/snippet}
+            </Tooltip>
+          {/if}
           <p>{idea.short_description ?? idea.description}</p>
         </article>
       {/each}
@@ -425,7 +488,7 @@
     <!-- Quiet escape hatch: the branch tool was otherwise unreachable from compare.
          Gated — without the grant openVariants() is a no-op, so this would render as a
          permanently dead button. -->
-    {#if decisionTools}
+    {#if decisionTools && canMutate}
       <p class="branch-escape">
         <button type="button" class="branch-escape__action" onclick={() => tools.openVariants()}>
           None of these fit? Branch a new direction →
@@ -467,7 +530,7 @@
           label={fitButtonLabel}
           loadingText="Analyzing…"
           loading={fitRunning}
-          disabled={fitRunning || (Boolean(data.decisionState?.profile) && !hasExactScope)}
+          disabled={!canMutate || fitRunning || (Boolean(data.decisionState?.profile) && !hasExactScope)}
           minWidth="11rem"
           class=""
           title={!hasExactScope && data.decisionState?.profile ? "Reload the shortlist to restore exact idea revision references." : undefined}
@@ -537,15 +600,17 @@
                         <h4>{result.suggestedExperiment.assumption}</h4>
                         <p>{result.suggestedExperiment.whyCritical}</p>
                       </div>
-                      <button
-                        type="button"
-                        onclick={() => tools.openTestPlanner({
-                          ideaId: result.ideaId,
-                          ideaRevision: result.ideaRevision,
-                          assumptionId: result.suggestedExperiment.assumptionId ?? undefined,
-                          draft: result.suggestedExperiment,
-                        })}
-                      >Plan a test</button>
+                      {#if canMutate}
+                        <button
+                          type="button"
+                          onclick={() => tools.openTestPlanner({
+                            ideaId: result.ideaId,
+                            ideaRevision: result.ideaRevision,
+                            assumptionId: result.suggestedExperiment.assumptionId ?? undefined,
+                            draft: result.suggestedExperiment,
+                          })}
+                        >Plan a test</button>
+                      {/if}
                     </div>
                   </div>
                 </details>
@@ -559,6 +624,17 @@
 </section>
 
 <style>
+  .selection-page__view-only {
+    max-width: 72ch;
+    margin: 0;
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-surface);
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+    line-height: var(--leading-normal);
+  }
   .comparison {
     display: grid;
     grid-template-columns: minmax(var(--space-30), 0.48fr) repeat(var(--candidate-count, 2), minmax(0, 1fr));
@@ -600,6 +676,20 @@
     line-height: var(--leading-snug);
     letter-spacing: var(--tracking-tight);
     text-wrap: pretty;
+  }
+  /* Matches the risk chip SelectionWorkbench already uses for this same finding. */
+  .premise-flag {
+    display: inline-flex;
+    align-items: center;
+    margin-top: var(--space-2);
+    padding: 0.09rem 0.34rem;
+    border: 1px solid color-mix(in srgb, var(--color-error) 30%, transparent);
+    border-radius: var(--radius-md);
+    background: var(--color-error-subtle);
+    color: var(--color-error-text);
+    font-family: var(--font-body);
+    font-size: var(--text-xs);
+    font-weight: 700;
   }
   .candidate-heading p {
     display: -webkit-box;

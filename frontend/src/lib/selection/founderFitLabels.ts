@@ -29,7 +29,7 @@ const IDEA_FIELD_LABELS: Record<FounderFitIdeaField, string> = {
   seo_scalability_score: "SEO opportunity",
   programmatic_seo_opportunity: "programmatic SEO opportunity",
   pricing_strategy: "pricing strategy",
-  critic_concern: "known concern",
+  critic_concern: "independent critic's take",
   data_acquisition_notes: "data sourcing notes",
   "tags.build_complexity": "build complexity",
   "tags.data_access": "data access",

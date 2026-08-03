@@ -2,6 +2,7 @@
 
 import json
 import random
+import re
 import time
 from typing import Any, Type, TypeVar
 
@@ -158,6 +159,59 @@ _REASONING_MANDATORY_PREFIXES = (
     "google/gemini-3.5-flash",   # -lite too
     "google/gemini-3.6-flash",
 )
+
+
+# Effort ladder from "think as little as possible" upward. Vendors disagree on the name of
+# the bottom rung — OpenAI's gpt-5.x generation calls it `minimal`, gpt-5.6-luna calls it
+# `none` and 400s on `minimal` — so a tier asking for the floor must not be pinned to one
+# spelling. Used to pick the nearest ACCEPTED value from what an endpoint reports it
+# supports; ordering is semantic, so a downgrade never silently buys MORE reasoning than
+# the caller asked for.
+_EFFORT_LADDER = ("none", "minimal", "low", "medium", "high", "xhigh", "max")
+
+# "Unsupported value: 'minimal' is not supported with the 'gpt-5.6-luna' model.
+#  Supported values are: 'none', 'low', 'medium', 'high', 'xhigh', and 'max'."
+_UNSUPPORTED_EFFORT_RE = re.compile(
+    r"'(?P<bad>[a-z]+)'\s+is not supported.*?"
+    r"supported values are:\s*(?P<supported>[^.]+)",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def nearest_supported_effort(requested: str, supported: set[str]) -> str | None:
+    """The closest ACCEPTED effort to ``requested``, searching down the ladder then up.
+
+    Down first: a caller asking for `minimal` wants the cheapest possible reasoning, so
+    `none` is a better substitute than `low`. Returns None when nothing matches.
+    """
+    req = (requested or "").lower()
+    if req in supported:
+        return req
+    if req not in _EFFORT_LADDER:
+        return None
+    idx = _EFFORT_LADDER.index(req)
+    for step in [*range(idx - 1, -1, -1), *range(idx + 1, len(_EFFORT_LADDER))]:
+        if _EFFORT_LADDER[step] in supported:
+            return _EFFORT_LADDER[step]
+    return None
+
+
+def parse_unsupported_effort(error: Exception) -> tuple[str, set[str]] | None:
+    """(rejected_value, supported_values) parsed from a provider's 400, else None.
+
+    The API names exactly what it accepts, so the retry needs no per-model capability
+    table — the one thing guaranteed to stay correct as models are added or renamed.
+    """
+    text = str(error)
+    if "reasoning" not in text.lower() and "effort" not in text.lower():
+        return None
+    m = _UNSUPPORTED_EFFORT_RE.search(text)
+    if not m or not m.group("supported"):
+        return None
+    supported = {v.strip().strip("'\"") for v in
+                 m.group("supported").replace(" and ", ", ").split(",")}
+    supported = {v for v in supported if v}
+    return ((m.group("bad") or "").lower(), supported) if supported else None
 
 
 def _rejects_reasoning_disable(model: str) -> bool:
@@ -353,6 +407,62 @@ def validate_openrouter_tier_compatibility() -> None:
                 "is forwarded to OpenRouter (ignored by non-reasoning models); quality may "
                 "degrade if the model lacks the needed capability."
             )
+
+
+def validate_model_available(model_id: str) -> bool:
+    """Preflight check that ``model_id`` exists on the OpenAI API.
+
+    The landing execution tier is pinned to gpt-5.3-codex (probed working on the
+    Responses API, 2026-07); this preflight guards its eventual retirement — the
+    predecessor gpt-5.1-codex-max was retired and silently broke landing jobs.
+
+    Fail-OPEN: any error other than an explicit 404/model_not_found (network blip,
+    auth scoping, SDK drift) returns True — availability checking must never be the
+    reason a job fails. A confirmed-missing model raises ValueError with actionable
+    guidance instead of letting the crew fail deep inside generation.
+
+    Only meaningful for direct-OpenAI model ids (openrouter/* and kimi* tiers are
+    not served by the OpenAI /models endpoint); skips those with True.
+    """
+    lowered = (model_id or "").lower()
+    if not lowered or is_openrouter_model(lowered) or is_kimi_model(lowered):
+        return True
+    try:
+        from openai import OpenAI
+
+        client = OpenAI(api_key=settings.openai_api_key)
+        # A metadata retrieve is NOT sufficient: retired ids (e.g. gpt-5.1-codex-max)
+        # can remain listed in /models while every invocation 404s. Probe with a
+        # minimal real invocation on the API surface the tier actually uses.
+        if is_codex_model(lowered):
+            client.responses.create(model=model_id, input="ping", max_output_tokens=16)
+        else:
+            client.chat.completions.create(
+                model=model_id,
+                messages=[{"role": "user", "content": "ping"}],
+                max_completion_tokens=16,
+            )
+        return True
+    except Exception as e:  # noqa: BLE001 — fail-open by design, except confirmed 404
+        status = getattr(e, "status_code", None)
+        body = getattr(e, "body", None)
+        code = ""
+        if isinstance(body, dict):
+            err = body.get("error")
+            code = (err.get("code") if isinstance(err, dict) else body.get("code")) or ""
+        if status == 404 or code == "model_not_found":
+            raise ValueError(
+                f"Model '{model_id}' is not available on the OpenAI API "
+                "(404/model_not_found) — it has likely been retired. Update the "
+                "corresponding setting (e.g. LANDING_PAGE_LLM / "
+                "LANDING_PAGE_EXECUTION_LLM) to a live model id, or set "
+                "LANDING_PREFLIGHT_MODEL_CHECK=false to bypass this preflight."
+            ) from e
+        logger.warning(
+            f"Model preflight for '{model_id}' inconclusive "
+            f"({type(e).__name__}: {e}) — proceeding (fail-open)."
+        )
+        return True
 
 
 def build_llm_kwargs(
@@ -745,6 +855,17 @@ class TokenUsage:
         }
 
 
+def _schema_has_anyof(model) -> bool:
+    """Check if a Pydantic model's JSON schema uses anyOf/oneOf (union types).
+    OpenAI's strict json_schema mode rejects these — must use function_calling."""
+    try:
+        schema = model.model_json_schema()
+    except Exception:
+        return False
+    text = json.dumps(schema)
+    return "anyOf" in text or "oneOf" in text
+
+
 class LLMService:
     """
     Centralized LLM invocation service for both structured and plain text output.
@@ -758,14 +879,27 @@ class LLMService:
     """
 
     @staticmethod
-    def _extract_usage(response_metadata: dict, model: str) -> TokenUsage:
+    def _extract_usage(
+        response_metadata: dict, model: str, usage_metadata: dict | None = None
+    ) -> TokenUsage:
         """Extract token usage from LangChain response metadata.
 
         OpenRouter returns an actual ``cost`` (USD-equivalent) inside the usage
         object, which langchain passes through unfiltered into
         ``response_metadata['token_usage']``. OpenAI omits it (-> None -> estimate).
+
+        Responses-API results (use_responses_api=True) carry NO ``token_usage`` in
+        response_metadata — langchain puts usage on ``message.usage_metadata`` as
+        ``input_tokens``/``output_tokens``. Pass that dict as ``usage_metadata`` so
+        those calls don't silently report zero tokens.
         """
         usage = response_metadata.get('token_usage', {})
+        if not usage and usage_metadata:
+            return TokenUsage(
+                prompt_tokens=usage_metadata.get('input_tokens', 0),
+                completion_tokens=usage_metadata.get('output_tokens', 0),
+                model=model,
+            )
         return TokenUsage(
             prompt_tokens=usage.get('prompt_tokens', 0),
             completion_tokens=usage.get('completion_tokens', 0),
@@ -1054,6 +1188,7 @@ class LLMService:
         max_tokens: int | None = None,
         creative: bool = False,
         messages: list[dict] | None = None,
+        _effort_retry: bool = False,
     ) -> tuple[T, TokenUsage]:
         """
         Invoke LLM with structured Pydantic output.
@@ -1132,17 +1267,66 @@ class LLMService:
                 llm_kwargs["temperature"] = temperature
                 llm_kwargs["max_tokens"] = _resolve_max_tokens(max_tokens, reasoning_enabled=False)
 
+            # OpenRouter + creative: use function_calling to opt out of json_schema
+            # provider allowlist pin (forward-prefixed models don't support it).
+            # Direct OpenAI: default to json_schema (faster, supports reasoning_effort).
+            # Complex schemas with anyOf/oneOf must use function_calling directly —
+            # json_schema rejects them at the client before reaching the API.
+            use_func_calling = is_openrouter and creative
+            if not is_openrouter and _schema_has_anyof(output_model):
+                use_func_calling = True
+            method = "function_calling" if use_func_calling else "json_schema"
+            # Direct-OpenAI gpt-5.6 rejects function tools + non-none reasoning on
+            # /v1/chat/completions. Preserve an explicitly requested effort by using
+            # Responses; otherwise force ``none`` on Chat Completions so an omitted
+            # effort cannot silently inherit the model's reasoning default.
+            if use_func_calling and is_reasoning_model(clean_model):
+                normalized_effort = (reasoning_effort or "").strip().lower()
+                if normalized_effort and normalized_effort != "none":
+                    llm_kwargs["use_responses_api"] = True
+                else:
+                    llm_kwargs["reasoning_effort"] = "none"
             llm = ChatOpenAI(**llm_kwargs)
             structured_llm = llm.with_structured_output(
                 output_model,
-                # OpenAI: strict json_schema constrained decoding. OpenRouter models
-                # often don't support strict json_schema, so use function_calling
-                # (broadly supported but still model-dependent).
-                method="function_calling" if is_openrouter else "json_schema",
+                method=method,
                 include_raw=True
             )
 
-            raw_result = structured_llm.invoke(messages if messages else prompt)
+            raw_result = None
+            try:
+                raw_result = structured_llm.invoke(messages if messages else prompt)
+            except Exception as schema_err:
+                if is_openrouter or use_func_calling:
+                    raise
+                err_msg = str(schema_err)
+                if "Invalid schema" in err_msg or "additionalProperties" in err_msg:
+                    logger.debug(
+                        f"json_schema rejected {output_model.__name__} "
+                        f"(likely anyOf/union); retrying with function_calling"
+                    )
+                    # Function tools + non-none reasoning_effort → 400 on chat
+                    # completions. Reasoning models with a real effort requested go
+                    # through the Responses API (keeps the effort); otherwise force
+                    # 'none' explicitly — gpt-5.6 defaults to medium at the API level.
+                    # Non-reasoning models must not receive reasoning_effort or the
+                    # API 400s with an unsupported-param error.
+                    fb_kwargs = dict(llm_kwargs)
+                    if is_reasoning_model(clean_model):
+                        normalized_effort = (reasoning_effort or "").strip().lower()
+                        if normalized_effort and normalized_effort != "none":
+                            fb_kwargs["use_responses_api"] = True
+                        else:
+                            fb_kwargs["reasoning_effort"] = "none"
+                    fb_llm = ChatOpenAI(**fb_kwargs)
+                    structured_llm = fb_llm.with_structured_output(
+                        output_model, method="function_calling", include_raw=True,
+                    )
+                    # Keep the diagnostic honest about what was actually sent on the wire.
+                    method, llm_kwargs = "function_calling", fb_kwargs
+                    raw_result = structured_llm.invoke(messages if messages else prompt)
+                else:
+                    raise
             parsed = raw_result['parsed']
             raw_response = raw_result['raw']
 
@@ -1157,33 +1341,55 @@ class LLMService:
                         f"(model={clean_model}; native structured parse returned None)"
                     )
 
-            # Genuinely empty/unparseable output. Distinguish the two real causes so
-            # the error is actionable (the caller's retry/except path handles either):
-            #   * finish_reason == 'tool_calls' but no tool_call/content reached us:
-            #     the model emitted the call into a channel langchain drops (e.g.
-            #     OpenRouter's 'reasoning' field). Proven for DeepSeek under reasoning
-            #     ON + forced tool_choice. Fix = run that tier with reasoning OFF.
-            #   * otherwise: truncated/empty before any visible output.
+            # Genuinely empty/unparseable output. This branch is DIRECT-endpoint only
+            # (OpenRouter returned above), so the OpenRouter-specific 'reasoning channel'
+            # theory cannot apply here — the message must not send an operator to a
+            # *_REASONING_EFFORT setting this path has already applied (live 2026-08-03:
+            # gpt-5.6-luna failing with IDEATION_REFINE_REASONING_EFFORT=none already set).
+            # Report what was actually sent, plus the one fact that discriminates the two
+            # real causes: langchain's `parsing_error` (include_raw=True).
+            #   * parsing_error / invalid_tool_calls -> the tool call DID arrive; its
+            #     arguments failed schema validation or were malformed/truncated JSON.
+            #   * neither -> nothing usable arrived at all.
             if parsed is None:
                 meta = raw_response.response_metadata if hasattr(raw_response, "response_metadata") else {}
                 finish = (meta or {}).get("finish_reason")
-                if finish == "tool_calls":
+                perr = raw_result.get("parsing_error") if isinstance(raw_result, dict) else None
+                _tcs = getattr(raw_response, "tool_calls", None)
+                _bad = getattr(raw_response, "invalid_tool_calls", None)
+                tool_calls = _tcs if isinstance(_tcs, list) else []
+                bad_tool_calls = _bad if isinstance(_bad, list) else []
+                sent = (
+                    f"model={clean_model}, transport={method}, "
+                    f"reasoning_effort={llm_kwargs.get('reasoning_effort', 'not-sent')!r}"
+                    f"{', responses_api' if llm_kwargs.get('use_responses_api') else ''}, "
+                    f"finish_reason={finish}"
+                )
+                if perr is not None or bad_tool_calls:
+                    detail = f"{type(perr).__name__}: {str(perr)[:400]}" if perr is not None \
+                        else f"{len(bad_tool_calls)} malformed tool call(s)"
                     raise ValueError(
-                        f"Structured output for {output_model.__name__} was lost "
-                        f"(model={clean_model}, finish_reason=tool_calls but no tool "
-                        f"call/content reached the client). This model likely emitted "
-                        f"the tool call into a 'reasoning' channel under forced "
-                        f"tool_choice — disable reasoning for this tier "
-                        f"(set its *_REASONING_EFFORT=none)."
+                        f"Structured output for {output_model.__name__} arrived but could "
+                        f"not be parsed into the model ({sent}; tool_calls={len(tool_calls)}, "
+                        f"invalid_tool_calls={len(bad_tool_calls)}). {detail}. The model DID "
+                        f"answer — the payload violated the schema or its JSON arguments were "
+                        f"malformed/truncated, so reasoning settings are not the lever: check "
+                        f"the named field(s) above, the output cap, and the schema's "
+                        f"required/enum constraints."
                     )
                 raise ValueError(
-                    f"Structured output for {output_model.__name__} was empty "
-                    f"(model={clean_model}); likely truncated before visible output."
+                    f"Structured output for {output_model.__name__} was empty ({sent}): no "
+                    f"tool call, no content and no parser error reached the client. Nothing "
+                    f"further was tried; the request already used the settings above, so an "
+                    f"effort change is not the fix — check the endpoint/model tier for empty "
+                    f"tool-call responses and whether the output was truncated before any "
+                    f"visible token."
                 )
 
             usage = LLMService._extract_usage(
                 raw_response.response_metadata if hasattr(raw_response, 'response_metadata') else {},
-                clean_model
+                clean_model,
+                usage_metadata=getattr(raw_response, 'usage_metadata', None),
             )
 
             logger.debug(
@@ -1193,6 +1399,31 @@ class LLMService:
             return parsed, usage
 
         except Exception as e:
+            # A rejected reasoning_effort is a NAMING mismatch, not a capability gap: the
+            # bottom rung is `minimal` on gpt-5.x and `none` on gpt-5.6-luna. Left unhandled
+            # it makes a model look unusable for a whole class of task — on 2026-08-03 it
+            # would have silently 400'd all nine Stage-7 parity/incumbent probes, which cap
+            # idea scores, had the tier been repointed. Retry ONCE at the nearest effort the
+            # endpoint says it accepts (searching down first, so a retry never buys more
+            # reasoning than asked for). Parsed from the error, so no per-model table exists
+            # to go stale as models are renamed.
+            hint = parse_unsupported_effort(e)
+            if hint and not _effort_retry:
+                _bad, supported = hint
+                fallback = nearest_supported_effort(reasoning_effort or "", supported)
+                if fallback and fallback != reasoning_effort:
+                    logger.warning(
+                        f"[Effort] {clean_model} rejected reasoning_effort="
+                        f"{reasoning_effort!r}; retrying at {fallback!r} "
+                        f"(accepts: {', '.join(sorted(supported))})"
+                    )
+                    return LLMService.invoke_structured(
+                        prompt=prompt, output_model=output_model,
+                        temperature=temperature, timeout=timeout,
+                        model_name=model_name, reasoning_effort=fallback,
+                        max_tokens=max_tokens, creative=creative,
+                        messages=messages, _effort_retry=True,
+                    )
             _detect_systemic(e)
             logger.error(f"LLM invocation failed for {output_model.__name__}: {e}")
             raise

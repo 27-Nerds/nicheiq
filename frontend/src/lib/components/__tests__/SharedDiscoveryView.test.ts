@@ -29,7 +29,9 @@ describe("SharedDiscoveryView research topic header", () => {
     const heading = getByRole("heading", { level: 1, name: topic });
     expect(heading).toHaveClass("page-header-title--research-topic", "page-header-title--long");
     expect(heading).toHaveAttribute("title", topic);
-    expect(getByText("Discovery is complete. Review the strongest opportunities before moving to Deep Research.")).toBeInTheDocument();
+    expect(getByText("Discovery is complete. Review the ranked opportunities and vote for the direction you would back.")).toBeInTheDocument();
+    expect(getByText("Voting enabled")).toBeInTheDocument();
+    expect(queryByText("Read-only copy")).not.toBeInTheDocument();
     expect(queryByText(/Ask the analyst/i)).not.toBeInTheDocument();
     expect(queryByText(/Send to GitHub/i)).not.toBeInTheDocument();
 
@@ -85,7 +87,10 @@ describe("SharedDiscoveryView research topic header", () => {
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalled();
     });
-    const voteButtons = getAllByRole("button", { name: "Vote for this solution" });
+    const voteButtons = getAllByRole("button", { name: /Vote for ranked idea/ });
+    expect(voteButtons[0]).toHaveAccessibleName("Vote for ranked idea 1: Duplicate. 0 votes");
+    expect(voteButtons[0]).toHaveAttribute("aria-pressed", "false");
+    expect(voteButtons[1]).toHaveAccessibleName("Vote for ranked idea 2: Duplicate. 0 votes");
     await fireEvent.click(voteButtons[1]);
 
     await waitFor(() => {
@@ -97,12 +102,13 @@ describe("SharedDiscoveryView research topic header", () => {
       });
     });
     await waitFor(() => {
-      const changedVote = getAllByRole("button", { name: "Change vote" });
-      const remainingVote = getAllByRole("button", { name: "Vote for this solution" });
+      const changedVote = getAllByRole("button", { name: /Your vote:/ });
+      const remainingVote = getAllByRole("button", { name: /Vote for ranked idea/ });
       expect(changedVote).toHaveLength(1);
-      expect(changedVote[0]).toHaveTextContent("1");
+      expect(changedVote[0]).toHaveAccessibleName("Your vote: ranked idea 2: Duplicate. 1 vote");
+      expect(changedVote[0]).toHaveAttribute("aria-pressed", "true");
       expect(remainingVote).toHaveLength(1);
-      expect(remainingVote[0]).toHaveTextContent("0");
+      expect(remainingVote[0]).toHaveAccessibleName("Vote for ranked idea 1: Duplicate. 0 votes");
     });
   });
 

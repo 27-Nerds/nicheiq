@@ -883,6 +883,38 @@ describe("ChatThread — priced idea-seed card", () => {
 
     expect(await view.findByText("This action is available only in the owner workspace.")).toBeInTheDocument();
     expect(view.queryByRole("button", { name: "Open candidate" })).not.toBeInTheDocument();
+    expect(view.queryByLabelText("Message the analyst")).not.toBeInTheDocument();
+  });
+
+  it("keeps the transcript visible but blocks the composer during an active operation", async () => {
+    vi.mocked(getChatHistory).mockResolvedValue({
+      messages: [{
+        id: "operation-history",
+        gateStage: 5,
+        role: "assistant",
+        content: "Your saved comparison is still available.",
+        patchJson: null,
+        suggestionsJson: null,
+        truncated: false,
+        createdAt: "2026-07-16T00:00:00.000Z",
+      }],
+      weakPool: false,
+    } as never);
+
+    const view = render(ChatThread, {
+      props: {
+        jobId: "job-operation-active",
+        dock: "rail",
+        blocked: true,
+        blockedTitle: "Adding another batch",
+        blockedDetail: "The transcript remains available. New questions unlock when this operation finishes.",
+      },
+    });
+
+    expect(await view.findByText("Your saved comparison is still available.")).toBeInTheDocument();
+    expect(view.getByText("Adding another batch")).toBeInTheDocument();
+    expect(view.getByText(/New questions unlock when this operation finishes/)).toBeInTheDocument();
+    expect(view.queryByLabelText("Message the analyst")).not.toBeInTheDocument();
   });
 
   it("exposes exact source comparison and adoption for an accepted combined variant", async () => {

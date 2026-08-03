@@ -7,6 +7,12 @@ import {
 } from '@prisma/client';
 import { z } from 'zod';
 import { SelectionExperimentOriginSnapshotSchema } from '../types/selectionExperiment.js';
+import {
+  challengeConsensusLabel,
+  challengeQuestionLabel,
+  evidenceSignalLabel,
+  experimentMethodLabel,
+} from '../utils/selectionVocabulary.js';
 
 export const SelectionExperimentBriefArtifactSchema = z.object({
   version: z.literal(1),
@@ -107,9 +113,9 @@ export function renderSelectionExperimentBriefMarkdown(
       '## Evidence-check origin',
       '',
       `- Challenge: ${brief.origin.challengeId}`,
-      `- Question: ${brief.origin.questionId}`,
+      `- Question: ${challengeQuestionLabel(brief.origin.questionId)}`,
       `- Lens: ${brief.origin.lens}`,
-      `- Consensus at draft time: ${brief.origin.consensus}`,
+      `- Consensus at draft time: ${challengeConsensusLabel(brief.origin.consensus)}`,
       `- Evidence packet: ${brief.origin.challengeInputFingerprint}`,
       `- Cited sources: ${brief.origin.citedSources.map(source => source.title).join('; ') || 'None'}`,
       '',
@@ -133,8 +139,8 @@ export function renderSelectionExperimentBriefMarkdown(
     '',
     '## Test design',
     '',
-    `- Method: ${brief.testDesign.method}`,
-    `- Signal: ${brief.testDesign.evidenceSignal}`,
+    `- Method: ${experimentMethodLabel(brief.testDesign.method)}`,
+    `- Signal: ${evidenceSignalLabel(brief.testDesign.evidenceSignal)}`,
     `- Audience: ${brief.testDesign.audience}`,
     `- Channel: ${brief.testDesign.channel}`,
     `- Stimulus: ${brief.testDesign.stimulus}`,

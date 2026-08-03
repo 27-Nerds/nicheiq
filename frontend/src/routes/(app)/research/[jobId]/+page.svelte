@@ -6,6 +6,7 @@
   // Selection still deep-links to the production workbench (its candidate
   // table + tray + votes are a page of their own); everything else lives here.
   import { page } from "$app/state";
+  import { goto } from "$app/navigation";
   import { getJob, subscribeToProgress, type Job } from "$lib/api";
   import { chatLedger } from "$lib/stores/chatLedger.svelte";
   import SegmentedLedger from "$lib/components/chat/SegmentedLedger.svelte";
@@ -35,9 +36,32 @@
   );
   const isTerminal = $derived(TERMINAL.includes(job?.status ?? ""));
   const isWorking = $derived(!!job && !isGatePhase && !isSelectionPhase && !isTerminal);
-  const workingPhase = $derived(job?.status === "RUNNING_PHASE2" ? "deep_research" : "discovery");
+  const workingPhase = $derived(
+    job?.status === "RUNNING_PHASE2" || job?.activeDispatchKind === "DEEP_RESEARCH"
+      ? "deep_research"
+      : "discovery",
+  );
+
+  function belongsOnCanonicalJobPage(value: Job): boolean {
+    return ["AWAITING_SELECTION", "REGENERATING", "RUNNING_PHASE2", ...TERMINAL].includes(value.status)
+      || (
+        ["QUEUED", "RUNNING"].includes(value.status)
+        && (
+          value.activeDispatchKind === "DEEP_RESEARCH"
+          || value.activeDispatchKind === "REGENERATE"
+          || value.activeDispatchKind === "SEED_IDEA"
+          || Boolean(value.awaitingSelectionAt)
+        )
+      );
+  }
 
   function handleUpdate(next: Job) {
+    if (belongsOnCanonicalJobPage(next)) {
+      closeSSE?.();
+      closeSSE = null;
+      void goto(`/jobs/${next.id}`, { replaceState: true });
+      return;
+    }
     const prev = job?.status;
     job = next;
     if (next.status !== prev && next.status !== lastHandledStatus) {
@@ -62,6 +86,10 @@
     void chatLedger.init(id);
     getJob(id)
       .then((j) => {
+        if (belongsOnCanonicalJobPage(j)) {
+          void goto(`/jobs/${j.id}`, { replaceState: true });
+          return;
+        }
         job = j;
         lastHandledStatus = j.status;
         if (!TERMINAL.includes(j.status)) {

@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 from nicheiq.utils.crew_helpers.pricing_pre_compute import (
     compute_wtp_summary,
     compute_cac_range,
+    format_idea_cac,
     format_market_sizing_summary,
     format_audience_budget_sensitivity,
     format_solution_rank_context,
@@ -220,3 +221,69 @@ class TestFormatSolutionRankContext:
         assert "Rank: #1 of 1" in result
         assert "Composite: 0.70" in result
         assert "Keyword" not in result
+
+    def test_demand_unmeasured_solution_omits_keyword_demand(self):
+        """Graded-and-empty solutions (correction 1, 2026-08) carry
+        keyword_demand_score=None + demand_unmeasured=True — the pricing context
+        must omit the Keyword Demand part rather than print a fabricated scalar."""
+        from nicheiq.models.solution_selection import SolutionScores
+
+        s = SolutionScores(
+            solution_name="GradedEmpty",
+            market_fit_score=0.7,
+            technical_feasibility_score=0.7,
+            composite_score=0.70,
+            rank=2,
+            keyword_demand_score=None,
+            adjusted_composite_score=0.70,  # = composite (blend skipped)
+            demand_unmeasured=True,
+        )
+        result = format_solution_rank_context([s], "GradedEmpty")
+        assert "Rank: #2 of 1" in result or "Rank: #2" in result
+        assert "Keyword Demand" not in result
+
+
+class TestFormatIdeaCac:
+    """The idea's OWN CAC — the only value ltv_to_cac_ratio may divide by.
+
+    Regression for the 2026-08 Sev-1 (job 8ef396eb): the pricing prompt received only
+    `compute_cac_range`, a market_fit_score heuristic, so the model divided LTV by its
+    midpoint ($45) and published a ratio grounded in a number the report never states.
+    """
+
+    def _idea(self, organic=None, paid=None):
+        idea = MagicMock()
+        idea.estimated_cac_organic = organic
+        idea.estimated_cac_paid = paid
+        return idea
+
+    @pytest.mark.parametrize("organic,paid", [
+        (None, None),
+        ("N/A", None),
+        ("N/A", "N/A"),
+        ("", ""),
+        ("Requires technical analysis", None),
+    ])
+    def test_absent_cac_says_not_computable(self, organic, paid):
+        result = format_idea_cac(self._idea(organic, paid))
+        assert "NOT COMPUTABLE" in result
+        assert "do not substitute" in result.lower()
+        assert "$" not in result
+
+    def test_both_channels_rendered(self):
+        result = format_idea_cac(self._idea(
+            "$15-45 per customer (high-intent guides)", "$100-250 per customer"
+        ))
+        assert "Organic CAC: $15-45 per customer (high-intent guides)" in result
+        assert "Paid CAC: $100-250 per customer" in result
+        assert "NOT COMPUTABLE" not in result
+
+    def test_one_absent_channel_is_omitted_not_faked(self):
+        result = format_idea_cac(self._idea("$20-60 per customer", "N/A"))
+        assert "Organic CAC" in result
+        assert "Paid CAC" not in result
+
+    def test_market_fit_band_is_not_used_as_the_idea_cac(self):
+        """format_idea_cac must never fall back to compute_cac_range."""
+        assert format_idea_cac(self._idea()) != compute_cac_range(0.65)
+        assert "$30-60" not in format_idea_cac(self._idea())

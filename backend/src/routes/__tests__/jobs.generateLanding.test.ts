@@ -201,6 +201,7 @@ describe('POST /api/jobs/:jobId/generate-landing', () => {
     const mockTx = {
       job: {
         findFirst: vi.fn().mockResolvedValue(job),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         update: vi.fn().mockResolvedValue({ ...job, landingPageStatus: 'QUEUED' }),
       },
       jobProgress: {
@@ -258,8 +259,13 @@ describe('POST /api/jobs/:jobId/generate-landing', () => {
     });
 
     // Transaction should have updated job with QUEUED status and incremented totalStages
-    expect(mockTx.job.update).toHaveBeenCalledWith({
-      where: { id: JOB_ID },
+    expect(mockTx.job.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: JOB_ID,
+        userId: USER_ID,
+        status: JobStatus.COMPLETED,
+        OR: [{ landingPageStatus: null }, { landingPageStatus: 'FAILED' }],
+      },
       data: expect.objectContaining({
         generateLandingPage: true,
         landingPageStatus: 'QUEUED',
@@ -323,13 +329,47 @@ describe('POST /api/jobs/:jobId/generate-landing', () => {
       'test niche',
       5,
     );
-    expect(mockTx.job.update).toHaveBeenCalledWith({
-      where: { id: JOB_ID },
+    expect(mockTx.job.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: JOB_ID,
+        userId: USER_ID,
+        status: JobStatus.COMPLETED,
+        OR: [{ landingPageStatus: null }, { landingPageStatus: 'FAILED' }],
+      },
       data: {
         generateLandingPage: true,
         landingPageStatus: 'QUEUED',
       },
     });
+  });
+
+  it('uses a job CAS so concurrent requests cannot both charge', async () => {
+    const job = {
+      id: JOB_ID,
+      userId: USER_ID,
+      niche: 'test niche',
+      status: JobStatus.COMPLETED,
+      landingPageStatus: null,
+      assets: [{ assetType: 'REPORT_JSON', filePath: 'outputs/job-1/report.json' }],
+      progress: [],
+    };
+    const mockTx = setupTransaction(job);
+    mockTx.job.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    const res = await request(app)
+      .post(`/api/jobs/${JOB_ID}/generate-landing`)
+      .set(validUserHeaders)
+      .send({ expectedCost: 5 });
+
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({
+      error: 'Landing page generation was already started in another request',
+      code: 'LANDING_PAGE_START_CONFLICT',
+    });
+    expect(mockChargeForStageWithPriceCasInTx).not.toHaveBeenCalled();
+    expect(mockTx.jobProgress.upsert).not.toHaveBeenCalled();
+    expect(mockTx.jobDispatch.create).not.toHaveBeenCalled();
+    expect(mockDeliverDispatchWork).not.toHaveBeenCalled();
   });
 
   it('requires the displayed landing-page price to be confirmed', async () => {

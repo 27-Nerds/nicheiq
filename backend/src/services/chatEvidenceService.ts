@@ -1,6 +1,7 @@
 import { getDiscoveryDataForJob } from './assetService.js';
 import { ideaDisplayTitle } from '../utils/ideaIdentity.js';
 import { sanitizeUntrustedContent } from '../utils/promptFence.js';
+import { incumbentParityPhrase } from '../utils/selectionVocabulary.js';
 
 interface DiscoveryQuote {
   text?: string;
@@ -144,8 +145,10 @@ export async function executeGetCompetitorDetail(
     const ideaTitle = ideaDisplayTitle(idea) || 'Unnamed idea';
     for (const field of ['incumbent_parity', 'adjacent_market_parity'] as const) {
       const text = idea[field];
+      // Match on the STORED text (the vendor name lives there verbatim); render the labelled
+      // form, so this tool result carries no bare parity class either.
       if (typeof text === 'string' && text.toLowerCase().includes(matchedName.toLowerCase())) {
-        mentionLines.push(`- ${ideaTitle}: ${text}`);
+        mentionLines.push(`- ${ideaTitle}: ${incumbentParityPhrase(text)}`);
       }
     }
   }

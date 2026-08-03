@@ -155,10 +155,21 @@ class TestPricingGuardrail:
         ok, _ = self._validate(_pricing_output())
         assert ok
 
-    def test_ratio_below_mandatory_floor_fails(self):
-        ok, msg = self._validate(_pricing_output(ratio="1.5:1"))
-        assert not ok
-        assert "2:1" in msg
+    def test_ratio_below_floor_is_preserved_not_rejected(self):
+        """The 2:1 floor used to be a hard reject, which made it unfailable: the model
+        simply invented a CAC that cleared it (live 2026-08 job 8ef396eb shipped
+        '7.2:1 ... exceeds the mandatory 2:1 threshold' above a CAC table reading N/A).
+        "These unit economics do not work" is a finding, so it ships."""
+        ok, _ = self._validate(_pricing_output(ratio="1.5:1"))
+        assert ok
+
+    def test_not_computable_ratio_accepted_for_subscription_models(self):
+        """A rebuilt idea has no CAC on purpose; declaring the ratio uncomputable is the
+        honest output and must not cost the run its whole pricing analysis."""
+        ok, _ = self._validate(_pricing_output(
+            ratio="Not computable - no CAC estimate established for this idea",
+        ))
+        assert ok
 
     def test_ltv_below_arpu_fails(self):
         """LTV = retention × ARPU, so LTV < ARPU is arithmetic nonsense."""
@@ -223,11 +234,38 @@ class TestPricingGuardrail:
         assert "estimated_monthly_ad_revenue" in msg
         assert "estimated_monthly_affiliate_revenue" in msg
 
-    def test_subscription_with_na_ltv_still_fails(self):
-        """The N/A escape hatch is for ad/affiliate models only."""
-        ok, msg = self._validate(_pricing_output(ltv="N/A - traffic-based model"))
+    def test_subscription_with_na_ltv_is_accepted(self):
+        """Rejecting an honest "not established" left an ungrounded model exactly one
+        accepted answer — a number it had to invent — and the rejection message handed it
+        one to copy. Mirrors the ltv_to_cac_ratio escape."""
+        ok, _ = self._validate(_pricing_output(ltv="N/A - no retention basis established"))
+        assert ok
+
+    def test_subscription_with_na_arpu_is_accepted(self):
+        ok, _ = self._validate(_pricing_output(arpu="Not established - no grounded tier mix"))
+        assert ok
+
+    def test_unparseable_ltv_prose_still_fails(self):
+        """The escape is for an explicit declaration, not for prose that fails to parse."""
+        ok, msg = self._validate(_pricing_output(ltv="healthy for the category"))
         assert not ok
         assert "estimated_ltv" in msg
+
+    def test_rejection_messages_carry_no_example_values(self):
+        """A rejection message naming a dollar figure is itself an anchor to copy."""
+        for kwargs in ({"arpu": "healthy"}, {"ltv": "healthy for the category"}):
+            _, msg = self._validate(_pricing_output(**kwargs))
+            assert "$" not in msg
+
+    def test_ad_model_rejection_carries_no_example_value(self):
+        """The ad/affiliate branch was the last message handing the model a figure
+        ("e.g., '$350-700/month'") — a retry prompt telling it what to invent."""
+        _, msg = self._validate(_pricing_output(
+            pricing_model="Ad-Supported-Free",
+            ltv="N/A - traffic-based model",
+            ratio="N/A",
+        ))
+        assert "$" not in msg
 
     def test_ad_model_skips_cac_cross_check(self):
         """The CAC anchor must not apply to models with no LTV to cross-check."""
@@ -420,3 +458,33 @@ class TestCompetitionScaleContract:
         avg_opportunity = 1 - (avg_competition / 100)
         assert 0.0 <= avg_opportunity <= 1.0
         assert avg_opportunity == 0.5
+
+
+class TestAdModelNotEstablishedEscape:
+    """Ad revenue is pageviews x RPM, and a pre-launch product has no pageviews.
+
+    Requiring a number while the rejection message said "do not invent a figure" left the
+    model exactly one accepted answer, and it was a fabricated one — the same shape as the
+    ARPU/LTV defect one branch deeper.
+    """
+
+    def _validate(self, ad_revenue):
+        from nicheiq.utils.validation.crew_guardrails import validate_pricing_strategy
+        return validate_pricing_strategy(_pricing_output(
+            pricing_model="Ad-Supported-Free", ad_revenue=ad_revenue,
+            ltv="N/A - traffic model", ratio="N/A - traffic model",
+        ))
+
+    def test_explicit_not_established_is_accepted(self):
+        ok, _ = self._validate("Not established - no traffic basis pre-launch")
+        assert ok
+
+    def test_unparseable_prose_still_fails(self):
+        """The escape is for an explicit declaration, not prose that fails to parse."""
+        ok, msg = self._validate("healthy once traffic ramps")
+        assert not ok
+        assert "$" not in msg, "a rejection message must never hand the model a figure"
+
+    def test_real_figure_still_accepted(self):
+        ok, _ = self._validate("$600-1200/month")
+        assert ok

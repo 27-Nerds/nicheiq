@@ -317,6 +317,7 @@ def _no_live_llm(request, monkeypatch):
     import openai.resources.beta.chat.completions as _bcc   # json_schema structured path uses .parse
     import openai.resources.embeddings as _emb
     import openai.resources.responses as _resp               # codex_llm Responses API (latent)
+    import openai.resources.models as _mod                   # validate_model_available preflight
 
     for cls, meth, name in [
         (_cc.Completions, "create", "chat.completions.create"),
@@ -327,6 +328,10 @@ def _no_live_llm(request, monkeypatch):
         (_emb.AsyncEmbeddings, "create", "embeddings.acreate"),
         (_resp.Responses, "create", "responses.create"),
         (_resp.AsyncResponses, "create", "responses.acreate"),
+        (_mod.Models, "retrieve", "models.retrieve"),
+        (_mod.Models, "list", "models.list"),
+        (_mod.AsyncModels, "retrieve", "models.aretrieve"),
+        (_mod.AsyncModels, "list", "models.alist"),
     ]:
         monkeypatch.setattr(cls, meth, _blocker(name), raising=False)
 

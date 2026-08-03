@@ -604,7 +604,11 @@ jobsRouter.post('/:jobId/cancel', requireInternalAuth, validateJobId, async (req
       if (
         active
         && (active.kind === DispatchKind.DEEP_RESEARCH || active.kind === DispatchKind.REGENERATE)
-        && (active.state === DispatchState.AUTHORIZED || active.state === DispatchState.CLAIMED)
+        && (
+          active.state === DispatchState.AUTHORIZED
+          || active.state === DispatchState.CLAIMED
+          || active.state === DispatchState.RECOVERING
+        )
       ) {
         res.status(409).json({
           error: 'Cancel the active research operation explicitly',
@@ -967,6 +971,29 @@ jobsRouter.post('/:jobId/generate-landing', requireInternalAuth, jobCreationLimi
         throw new Error('Report not found');
       }
 
+      const hasLandingProgress = job.progress.some(progress => progress.stageNumber === 15);
+
+      // Reserve this exact paid attempt before charging. The earlier read guards explain
+      // common states, while this CAS closes the two-tab race where both requests read
+      // PENDING/FAILED before either one wrote QUEUED.
+      const reserved = await tx.job.updateMany({
+        where: {
+          id: jobId,
+          userId,
+          status: JobStatus.COMPLETED,
+          OR: [
+            { landingPageStatus: null },
+            { landingPageStatus: 'FAILED' },
+          ],
+        },
+        data: {
+          generateLandingPage: true,
+          landingPageStatus: 'QUEUED',
+          ...(!hasLandingProgress ? { totalStages: { increment: 1 } } : {}),
+        },
+      });
+      if (reserved.count !== 1) throw new Error('LANDING_PAGE_START_CONFLICT');
+
       // Charge for landing page generation
       const charge = await chargeForStageWithPriceCasInTx(
         tx,
@@ -979,21 +1006,10 @@ jobsRouter.post('/:jobId/generate-landing', requireInternalAuth, jobCreationLimi
       );
 
       // Create or reset stage 15 progress entry (upsert handles retry after monitor-triggered failure)
-      const hasLandingProgress = job.progress.some(progress => progress.stageNumber === 15);
       await tx.jobProgress.upsert({
         where: { jobId_stageNumber: { jobId, stageNumber: 15 } },
         create: { jobId, stageNumber: 15, stageName: 'Landing Page Generation', status: StageStatus.PENDING },
         update: { status: StageStatus.PENDING, errorMessage: null, startedAt: null, completedAt: null },
-      });
-
-      // Update job
-      await tx.job.update({
-        where: { id: jobId },
-        data: {
-          generateLandingPage: true,
-          landingPageStatus: 'QUEUED',
-          ...(!hasLandingProgress ? { totalStages: { increment: 1 } } : {}),
-        },
       });
 
       // Same transaction as the charge and the status change — the dispatch is the durable record
@@ -1055,6 +1071,13 @@ jobsRouter.post('/:jobId/generate-landing', requireInternalAuth, jobCreationLimi
     if (error instanceof Error) {
       if (error.message === 'Job not found') {
         res.status(404).json({ error: error.message });
+        return;
+      }
+      if (error.message === 'LANDING_PAGE_START_CONFLICT') {
+        res.status(409).json({
+          error: 'Landing page generation was already started in another request',
+          code: 'LANDING_PAGE_START_CONFLICT',
+        });
         return;
       }
       if (error.message.includes('already exists') || error.message.includes('must be completed') || error.message === 'Report not found') {
@@ -1282,7 +1305,10 @@ jobsRouter.post('/:jobId/select-solution', requireInternalAuth, validateJobId, a
           selected_solution_refs: workerSelectionRefs,
           selected_solution_snapshots: selected.map(item => item.idea),
           selection_fingerprint: workFingerprint,
-          selection_rationale: input.rationale ?? '',
+          // The owner's note is private workspace context, stored on Job and the
+          // request snapshot for the Analyst. Do not inject it into the generated
+          // report, because report JSON can later be published through a share link.
+          selection_rationale: '',
           // Identity is OURS: stamped at /api/workers/ideas-ready and seeded from the Phase-1
           // dispatch id, so it lives only in Postgres — the checkpoint on disk has no idea_id.
           // Without this map the worker falls back to its legacy_backfill scheme, derives
@@ -1635,6 +1661,55 @@ jobsRouter.post('/:jobId/seed-idea', requireInternalAuth, validateJobId, async (
       return;
     }
 
+    // `sourceMessageId` is this paid operation's idempotency key. Check it before
+    // status so a lost successful response can recover the exact dispatch while the
+    // parent job is already QUEUED/RUNNING.
+    const priorDispatch = await prisma.jobDispatch.findFirst({
+      where: {
+        jobId,
+        kind: DispatchKind.SEED_IDEA,
+        sourceMessageId: input.sourceMessageId,
+      },
+      select: { id: true, state: true },
+    });
+    const priorOutcome = await settledSeedOutcome(jobId, input.sourceMessageId);
+    if (priorOutcome) {
+      res.json({
+        status: 'settled',
+        outcome: priorOutcome,
+        ...(priorDispatch
+          ? {
+              evaluationId: priorDispatch.id,
+              dispatchId: priorDispatch.id,
+              operationId: priorDispatch.id,
+            }
+          : {}),
+        sourceMessageId: input.sourceMessageId,
+        idempotent: true,
+        message: 'This proposal has already been evaluated.',
+      });
+      return;
+    }
+    if (priorDispatch) {
+      if (
+        priorDispatch.state === DispatchState.AUTHORIZED
+        || priorDispatch.state === DispatchState.CLAIMED
+        || priorDispatch.state === DispatchState.RECOVERING
+      ) {
+        res.json({
+          status: 'queued',
+          evaluationId: priorDispatch.id,
+          dispatchId: priorDispatch.id,
+          operationId: priorDispatch.id,
+          sourceMessageId: input.sourceMessageId,
+          operationState: priorDispatch.state,
+          idempotent: true,
+          message: 'This proposal is already being evaluated.',
+        });
+        return;
+      }
+    }
+
     if (job.status !== JobStatus.AWAITING_SELECTION) {
       res.status(400).json({
         error: 'Can only generate an idea from your own idea while awaiting selection',
@@ -1648,15 +1723,29 @@ jobsRouter.post('/:jobId/seed-idea', requireInternalAuth, validateJobId, async (
       return;
     }
 
-    const priorOutcome = await settledSeedOutcome(jobId, input.sourceMessageId);
-    if (priorOutcome) {
-      res.json({
-        status: 'settled',
-        outcome: priorOutcome,
-        message: 'This proposal has already been evaluated.',
-      });
-      return;
-    }
+    const currentIdeas = ensureIdeaIdentities(jobId, job.solutionIdeas);
+    const baseCandidateRefs = currentIdeas.flatMap((solution) =>
+      typeof solution.idea_id === 'string' && typeof solution.idea_revision === 'number'
+        ? [{
+            ideaId: solution.idea_id,
+            ideaRevision: solution.idea_revision,
+            snapshotSha256: candidateSnapshotSha256(solution),
+          }]
+        : []
+    );
+    const basePoolFingerprint = canonicalJsonSha256(baseCandidateRefs);
+    const poolIdentityMap = currentIdeas.flatMap((solution) => {
+      const poolName = ideaName(solution);
+      return poolName
+        && typeof solution.idea_id === 'string'
+        && typeof solution.idea_revision === 'number'
+        ? [{
+            idea_id: solution.idea_id,
+            idea_revision: solution.idea_revision,
+            solution_name: poolName,
+          }]
+        : [];
+    });
 
     let seedText: string;
     let painRef: string | undefined;
@@ -1681,7 +1770,6 @@ jobsRouter.post('/:jobId/seed-idea', requireInternalAuth, validateJobId, async (
         return;
       }
 
-      const currentIdeas = ensureIdeaIdentities(jobId, job.solutionIdeas);
       const fitRef = parsedProposal.data.evidence.founderFitRef;
       if (fitRef) {
         const currentFit = parseCurrentFounderFitArtifact(
@@ -1749,7 +1837,9 @@ jobsRouter.post('/:jobId/seed-idea', requireInternalAuth, validateJobId, async (
     // 'seed_submitted' receipt (continuous-analyst-ledger idiom — mirrors gate-action's
     // 'gate_patch_submitted' receipt) so the seed card survives a reload as "evaluating",
     // keyed on the SAME sourceMessageId the dispatch itself carries.
-    const seedDispatch = await prisma.$transaction(async (tx) => {
+    let seedDispatch: string;
+    try {
+      seedDispatch = await prisma.$transaction(async (tx) => {
       const charge = await chargeForSeedIdeaInTx(
         tx, userId, jobId, nextSeedOrdinal, job.niche, input.expectedCost,
       );
@@ -1793,6 +1883,16 @@ jobsRouter.post('/:jobId/seed-idea', requireInternalAuth, validateJobId, async (
       await tx.jobDispatch.update({
         where: { id: dispatchId },
         data: {
+          requestSnapshot: {
+            schemaVersion: 1,
+            kind: 'seed_idea',
+            sourceMessageId: input.sourceMessageId,
+            ordinal: nextSeedOrdinal,
+            baseCandidateRefs,
+            basePoolFingerprint,
+            expectedCost: input.expectedCost,
+          } as unknown as Prisma.InputJsonValue,
+          requestFingerprint: basePoolFingerprint,
           workPayload: {
             job_id: jobId,
             checkpoint_path: job.phase1CheckpointPath,
@@ -1801,6 +1901,13 @@ jobsRouter.post('/:jobId/seed-idea', requireInternalAuth, validateJobId, async (
             pain_ref: painRef ?? null,
             tool_ref: toolRef ?? null,
             synthesis_evaluation: synthesisEvaluation,
+            base_candidate_refs: baseCandidateRefs.map(ref => ({
+              idea_id: ref.ideaId,
+              idea_revision: ref.ideaRevision,
+              snapshot_sha256: ref.snapshotSha256,
+            })),
+            pool_identity_map: poolIdentityMap,
+            base_pool_fingerprint: basePoolFingerprint,
             task_type: 'seed_idea',
             created_at: new Date().toISOString(),
           } as unknown as Prisma.InputJsonValue,
@@ -1819,8 +1926,40 @@ jobsRouter.post('/:jobId/seed-idea', requireInternalAuth, validateJobId, async (
         },
       });
 
-      return dispatchId;
-    });
+        return dispatchId;
+      });
+    } catch (error) {
+      if (
+        (error instanceof Error && error.message === 'CONFLICT')
+        || (error as { code?: string })?.code === 'P2002'
+      ) {
+        // A concurrent request with the same proposal identity may have committed
+        // while this transaction was waiting on the Job row. Return its exact
+        // operation rather than a generic conflict that would re-arm the UI.
+        const winner = await prisma.jobDispatch.findFirst({
+          where: {
+            jobId,
+            kind: DispatchKind.SEED_IDEA,
+            sourceMessageId: input.sourceMessageId,
+          },
+          select: { id: true, state: true },
+        });
+        if (winner) {
+          res.json({
+            status: 'queued',
+            evaluationId: winner.id,
+            dispatchId: winner.id,
+            operationId: winner.id,
+            sourceMessageId: input.sourceMessageId,
+            operationState: winner.state,
+            idempotent: true,
+            message: 'This proposal is already being evaluated.',
+          });
+          return;
+        }
+      }
+      throw error;
+    }
 
     // Redis delivery is outside the authorization transaction. A transport failure is ambiguous:
     // the message may have landed, so keep the paid AUTHORIZED attempt and its receipt durable for
@@ -1893,9 +2032,15 @@ function crossCheckGatePatch(
   patch: Record<string, any>,
   gateArtifact: unknown
 ): string | null {
+  const artifact = (gateArtifact as any) || {};
+  // Truncated-artifact guard (F-013): when the worker had to shrink the gate artifact's
+  // lists to fit the size budget, a whole-list market_segments replacement was built
+  // against a partial view — applying it would silently drop the hidden segments.
+  if (artifact.truncated === true && Array.isArray(patch.market_segments)) {
+    return 'The segment list shown at this gate was truncated; edit individual segments instead of replacing the whole list.';
+  }
   if (gateStage !== 4) return null;
 
-  const artifact = (gateArtifact as any) || {};
   const segmentNames = new Set<string>((artifact.segments || []).map((s: any) => s.segment_name));
   const painTitles = new Set<string>((artifact.pains || []).map((p: any) => p.title));
 

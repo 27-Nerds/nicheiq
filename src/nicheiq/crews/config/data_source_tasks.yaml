@@ -30,7 +30,8 @@ discover_data_sources:
     4. **Documentation** → Provider, URL, access model, limits, coverage per discovery protocol
     5. **Alternatives** → Find 3-5 fallbacks per data need (APIs change/shut down)
 
-    **DELIVERABLES**: 10-15 verified sources minimum with URLs. If no public API exists for
+    **DELIVERABLES**: every source you actually verified, each with its URL. There is no minimum —
+    better to report 2 verified sources than 10 fabricated ones. If no public API exists for
     a data type: "No public API found - alternatives: [web scraping, partnerships, manual curation]"
 
     **SEO PRIORITY FOCUS**: {seo_priorities}
@@ -109,8 +110,8 @@ evaluate_data_sources:
         - quality_assessment: Reliability notes and known issues
     - access_model: one of free | freemium | paid | unofficial | application-required | restricted | partner-only
       ('unofficial' = reachable via an unofficial API / scraping library / reverse-engineered endpoint — ToS-gray but obtainable)
-    - mvp_cost_estimate: "$0-100/mo" or similar (Optional)
-    - scale_cost_estimate: "$500-1000/mo" or similar (Optional)
+    - mvp_cost_estimate: format "$<low>-<high>/mo", from the provider's published pricing (Optional)
+    - scale_cost_estimate: format "$<low>-<high>/mo", from the provider's published pricing (Optional)
     - identified_risks: List of 2-4 specific risks
     - mitigation_strategies: List of mitigation approaches (Optional)
 
@@ -185,8 +186,9 @@ create_data_roadmap:
     **SEO Alignment:**
 
     Connect data capabilities to SEO priorities:
-    - "Real-time job listings enable 'remote jobs' content (15k searches/mo)"
-    - "Salary data supports 'developer salary' keywords (8k searches/mo)"
+    Format: "<data capability> enables '<keyword from the SEO priorities above>' content
+    (<that keyword's volume, as given above>)". Cite only keywords and volumes present in
+    {seo_priorities}; if none carry a volume, name the keyword without one.
 
     **Competitive Insights:**
 

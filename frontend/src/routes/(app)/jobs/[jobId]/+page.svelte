@@ -5,9 +5,11 @@
   import {
     subscribeToProgress,
     shouldKeepSSEOpen,
+    getJob,
     getReportSummary,
     getDiscoveryShareStatus,
     regenerateIdeas,
+    cancelSelectionOperation,
     ApiError,
   } from "$lib/api";
   import type { DiscoveryVoteRationale } from "$lib/api";
@@ -46,6 +48,7 @@
   import AudienceSnapshot from "$lib/components/preview/AudienceSnapshot.svelte";
   import CommunitySourcesSection from "$lib/components/preview/CommunitySourcesSection.svelte";
   import SelectionWorkbench from "$lib/components/selection/SelectionWorkbench.svelte";
+  import SelectionDecisionRecord from "$lib/components/selection/SelectionDecisionRecord.svelte";
   import type { SelectionJourneyTask } from "$lib/selection/decisionJourney";
   import { SHORTLIST_TITLE } from "$lib/selection/labels";
   import GateWorkbench from "$lib/components/gate/GateWorkbench.svelte";
@@ -70,6 +73,7 @@
   import ShareDiscoveryModal from "$lib/components/ShareDiscoveryModal.svelte";
   import type { DiscoveryData } from "$lib/types/discovery";
   import type { PreviewReport } from "$lib/types/previewReport";
+import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
   import { getDiscoveryData, getPreviewReport } from "$lib/api";
   import { createDiscoveryDisplayModel } from "$lib/discovery/discoveryDisplay";
   import { normalizeSolutionPreviews } from "$lib/utils/displayGuards";
@@ -119,10 +123,17 @@
   const job = $derived(clientJob ?? serverJob);
 
   // Human-readable run timestamp (drops seconds; month name over machine locale).
+  // The zone is named because the report's own dateline is stamped in UTC — near
+  // midnight the two land on different calendar days, and an unlabelled local
+  // stamp reads as a contradiction rather than a different clock.
   function formatRunDate(iso: string): string {
     const d = new Date(iso);
     return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-      + " at " + d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+      + " at " + d.toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        timeZoneName: "short",
+      });
   }
   const runTimeline = $derived.by(() => {
     // startedAt/completedAt track the MOST RECENT operation, not the whole job.
@@ -192,12 +203,16 @@
   let loading = $state(false);
   let error = $state("");
   let unsubscribeSSE: (() => void) | null = null;
+  let fallbackPoll: ReturnType<typeof setInterval> | null = null;
+  let connectionState = $state<"live" | "reconnecting" | "paused">("live");
+  let lifecycleAnnouncement = $state("");
   let cancelling = $state(false);
   let cancelError = $state("");
   let isResuming = $state(false);
   let resumeError = $state("");
   let generatingLanding = $state(false);
   let landingError = $state("");
+  let landingNotice = $state("");
   let summaryFetched = false;
   let discoveryShareOpen = $state(false);
   let discoveryShareTrigger = $state<HTMLButtonElement>();
@@ -207,6 +222,7 @@
   // AWAITING_GATE the whole time) — gateReachedAt is the only signal that a
   // fresh artifact landed, so the chat-reload effect below tracks it too.
   let lastGateReachedAt = $state<string | null>(null);
+  let lastHandledLandingStatus = $state<string | null>(null);
   // Solutions fetch state for the AWAITING_SELECTION empty state (0 candidates) —
   // distinguishes "still loading" from "fetch failed" from "genuinely zero".
   let solutionsLoading = $state(false);
@@ -322,6 +338,37 @@
     localSolutions ?? job?.solutionIdeas ?? [],
   );
 
+  function stopFallbackPolling(): void {
+    if (fallbackPoll) clearInterval(fallbackPoll);
+    fallbackPoll = null;
+  }
+
+  async function refreshJobStatus(): Promise<void> {
+    if (!jobId) return;
+    try {
+      const refreshed = await getJob(jobId);
+      clientJob = { ...(clientJob ?? serverJob), ...refreshed } as Job;
+      if (!shouldKeepSSEOpen(refreshed)) {
+        stopFallbackPolling();
+        void invalidateAll();
+      }
+    } catch {
+      // Keep the explicit paused state; the next scheduled poll can recover.
+    }
+  }
+
+  function startFallbackPolling(): void {
+    stopFallbackPolling();
+    void refreshJobStatus();
+    fallbackPoll = setInterval(() => void refreshJobStatus(), 15_000);
+  }
+
+  function retryLiveUpdates(): void {
+    connectionState = "reconnecting";
+    void refreshJobStatus();
+    connectSSE();
+  }
+
   function connectSSE() {
     unsubscribeSSE?.();
     if (!jobId) return;
@@ -331,6 +378,8 @@
     unsubscribeSSE = subscribeToProgress(
       jobId,
       (sseData) => {
+        connectionState = "live";
+        stopFallbackPolling();
         // Another tab saved the shortlist: refresh before an edit here 409s. Own
         // saves are excluded — SelectionWorkbench reports its bumped version up
         // (onShortlistVersionChange) before this callback sees the broadcast.
@@ -351,16 +400,26 @@
         }
       },
       (err) => console.warn("SSE error:", err.message),
-      {},
+      {
+        onReconnecting: () => {
+          connectionState = "reconnecting";
+        },
+        onMaxReconnectsReached: () => {
+          connectionState = "paused";
+          startFallbackPolling();
+        },
+      },
     );
   }
 
   async function pollVotes(id: string) {
     try {
       const info = await getDiscoveryShareStatus(id);
-      clientSolutionVotes = info.isShared ? info.solutionVotes ?? {} : {};
-      clientSolutionVotesById = info.isShared ? info.solutionVotesById ?? {} : {};
-      clientVoteRationales = info.isShared ? info.voteRationales ?? [] : [];
+      // Closing the public link stops new votes; it does not erase the owner's
+      // already-collected collaborator feedback.
+      clientSolutionVotes = info.solutionVotes ?? {};
+      clientSolutionVotesById = info.solutionVotesById ?? {};
+      clientVoteRationales = info.voteRationales ?? [];
     } catch {}
   }
 
@@ -534,6 +593,7 @@
     if (!job || generatingLanding || costsUnavailable) return;
     generatingLanding = true;
     landingError = "";
+    landingNotice = "";
     try {
       const res = await fetch(`/api/jobs/${jobId}/generate-landing`, {
         method: "POST",
@@ -554,6 +614,13 @@
         if (res.status === 409 && data.code === "PRICE_CHANGED") {
           await invalidateAll();
           throw new Error("The landing page price changed. Review the updated cost and try again.");
+        }
+        if (res.status === 409 && data.code === "LANDING_PAGE_START_CONFLICT") {
+          await invalidateAll();
+          await refreshJob();
+          connectSSE();
+          landingNotice = "Landing page generation already started in another tab. Current status refreshed.";
+          return;
         }
         throw new Error(data.error || "Failed to generate landing page");
       }
@@ -591,6 +658,28 @@
     }
   }
 
+  async function cancelQueuedSelectionOperation() {
+    const operation = job?.activeOperation;
+    if (!job || !jobId || !operation || operation.state !== "AUTHORIZED" || cancelling) return;
+    cancelling = true;
+    cancelError = "";
+    try {
+      await cancelSelectionOperation(jobId, operation.id);
+      unsubscribeSSE?.();
+      await chatLedger.reload();
+      await invalidateAll();
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409) {
+        cancelError = "This operation has already started and can no longer be cancelled. It will finish or refund automatically.";
+        await invalidateAll();
+      } else {
+        cancelError = e instanceof Error ? e.message : "Failed to cancel the queued operation";
+      }
+    } finally {
+      cancelling = false;
+    }
+  }
+
   // Clear client overrides + set up SSE when server data changes (navigation / invalidateAll)
   $effect(() => {
     const d = data;
@@ -610,9 +699,13 @@
     error = "";
     discoveryLoading = false;
     gateApplyPending = false;
+    connectionState = "live";
+    lifecycleAnnouncement = "";
+    stopFallbackPolling();
     summaryFetched = !!d.reportSummary;
     lastHandledStatus = d.job?.status ?? '';
     lastGateReachedAt = d.job?.gateReachedAt ?? null;
+    lastHandledLandingStatus = d.job?.landingPageStatus ?? null;
     solutionsLoading = false;
     solutionsFetchFailed = Boolean(d.solutionsFetchFailed);
     solutionsFetchAttempted =
@@ -635,7 +728,10 @@
       connectSSE();
     }
 
-    return () => { unsubscribeSSE?.(); };
+    return () => {
+      unsubscribeSSE?.();
+      stopFallbackPolling();
+    };
   });
 
   // SSE transition handler: when job.status changes via SSE, fetch status-specific data
@@ -643,12 +739,20 @@
     const currentJob = job;
     if (!currentJob || !jobId) return;
     const status = currentJob.status;
+    const landingStatus = currentJob.landingPageStatus ?? null;
     const gateReachedAt = currentJob.gateReachedAt ?? null;
     const statusChanged = status !== lastHandledStatus;
+    const landingStatusChanged = landingStatus !== lastHandledLandingStatus;
     const gateReArrived = status === 'AWAITING_GATE' && gateReachedAt !== lastGateReachedAt;
-    if (!statusChanged && !gateReArrived) return;
+    if (!statusChanged && !landingStatusChanged && !gateReArrived) return;
     lastHandledStatus = status;
+    lastHandledLandingStatus = landingStatus;
     lastGateReachedAt = gateReachedAt;
+
+    if (landingStatusChanged && (landingStatus === 'COMPLETED' || landingStatus === 'FAILED')) {
+      landingNotice = "";
+      void invalidateAll();
+    }
 
     if (statusChanged && ['AWAITING_SELECTION', 'REGENERATING'].includes(status)) {
       if (!localSolutions || localSolutions.length === 0) {
@@ -659,9 +763,26 @@
       loadPreviewReport(jobId);
     }
 
-    if (statusChanged && ['COMPLETED', 'FAILED', 'RUNNING_PHASE2'].includes(status)) {
+    if (statusChanged && ['COMPLETED', 'FAILED', 'CANCELLED', 'RUNNING_PHASE2'].includes(status)) {
       loadDiscoveryData(jobId);
       loadPreviewReport(jobId);
+    }
+
+    // Terminal settlement can change the account balance (for example, an automatic
+    // refund after a failed run). The progress event updates this page's job state,
+    // but the global header reads its balance from the app layout load. Refresh that
+    // authoritative layout snapshot so "Credits refunded" and the displayed balance
+    // cannot disagree until the user manually reloads.
+    if (statusChanged && ['COMPLETED', 'FAILED', 'CANCELLED'].includes(status)) {
+      lifecycleAnnouncement = status === 'COMPLETED'
+        ? 'Deep Research complete. The report is ready to review.'
+        : status === 'FAILED'
+          ? 'Research stopped. Review the recovery options.'
+          : 'Research cancelled. Review the retained work and next steps.';
+      requestAnimationFrame(() => {
+        document.querySelector<HTMLElement>('[data-lifecycle-heading]')?.focus();
+      });
+      void invalidateAll();
     }
 
     // apply_stay round-trip complete — the gate re-arrived (possibly at the same
@@ -707,7 +828,7 @@
       case "AWAITING_GATE": return "Checkpoint reached";
       case "QUEUED": return "Queued";
       case "REGENERATING": return "Adding another batch";
-      case "RUNNING_PHASE2": return "Deep Analysis";
+      case "RUNNING_PHASE2": return "Deep Research";
       case "RUNNING": return "Running";
       case "COMPLETED": return "Completed";
       case "FAILED": return "Failed";
@@ -755,10 +876,12 @@
     job?.status === 'FAILED' || job?.status === 'CANCELLED',
   );
   // A run that stops AFTER discovery still owns everything Phase 1 produced, and the owner
-  // paid for it. Status alone cannot tell that apart from a run that died mid-discovery, so
-  // key on the artifacts: the dossier only exists once Phase 1 got far enough to write it.
+  // paid for it. The artifacts (dossier/preview) only exist once Phase 1 got far enough to
+  // write them — hasPhase1Work drives the copy, but every terminal stop uses the workbench
+  // layout so a no-artifact stop gets the same stop-card handoff instead of the legacy
+  // run-overview shell.
   const hasPhase1Work = $derived(Boolean(previewReport || discoveryData));
-  const isStoppedWorkbench = $derived(isTerminalStop && hasPhase1Work);
+  const isStoppedWorkbench = $derived(isTerminalStop);
   // Selection (G3) and guided-gate (G1/G2) phases share the same full-width,
   // aside-less hero/layout treatment — they're both "here's a checkpoint, review
   // it" screens rather than the running-research editorial hero.
@@ -790,6 +913,19 @@
   );
   const isGeneratingP2 = $derived(job?.status === 'RUNNING_PHASE2' || isQueuedPhase2);
   const isGenerating = $derived(isGeneratingP1 || isGeneratingP2);
+  const exactSelectedItems = $derived(
+    job?.selectedSolutionRefs?.length
+      ? job.selectedSolutionRefs
+      : job?.selectionDraft?.items ?? [],
+  );
+  const exactWinnerRef = $derived(
+    job?.deepResearchRecommendedIdeaId && job.deepResearchRecommendedIdeaRevision
+      ? {
+          ideaId: job.deepResearchRecommendedIdeaId,
+          ideaRevision: job.deepResearchRecommendedIdeaRevision,
+        }
+      : null,
+  );
 
   // Reset key: increments on major status transitions to clear user toggle state
   const sectionResetKey = $derived(
@@ -839,6 +975,11 @@
   // backfill candidates) + groups of surviving ideas that are variants of one product.
   const examinedRuledOut = $derived(previewReport?.examined_ruled_out ?? []);
   const overlapGroups = $derived(previewReport?.overlap_groups ?? []);
+  // Buyer-job partition over the visible pool. Read defensively: reports generated
+  // before the contract shipped simply have no partition, and the workbench falls
+  // back to the flat ranked list.
+  const ideaTheses = $derived(readIdeaTheses(previewReport));
+  const uncoveredFamilies = $derived(readUncoveredFamilies(previewReport));
   const marketReality = $derived(previewReport?.market_reality ?? null);
 
   // A settled seed or batch changes several authoritative surfaces at once: candidates,
@@ -914,6 +1055,16 @@
       ? 'Retry Deep Research · price unavailable'
       : `Retry Deep Research · ${deepResearchStageCost} ${deepResearchStageCost === 1 ? 'credit' : 'credits'}`,
   );
+  const refundedResumeAmount = $derived(
+    typeof job?.creditRefundedAmount === 'number' && job.creditRefundedAmount > 0
+      ? job.creditRefundedAmount
+      : null,
+  );
+  const checkpointResumeLabel = $derived(
+    refundedResumeAmount === null
+      ? 'Resume from checkpoint'
+      : `Resume from checkpoint · ${refundedResumeAmount} ${refundedResumeAmount === 1 ? 'credit' : 'credits'}`,
+  );
   // The sidebar's single recovery row must name the same action as the card's primary
   // button; two different "next steps" on one screen is worse than none.
   const stopRecoverLabel = $derived(
@@ -923,14 +1074,24 @@
         ? catalogRetryLabel
         : failedDuringDeepResearch
           ? 'Review selection'
-          : 'Resume run',
+          : checkpointResumeLabel,
+  );
+  // Absence only counts once the artifact fetches (including the CANCELLED/FAILED
+  // refetch above) have settled — mid-flight we keep the artifact-neutral copy rather
+  // than claiming discovery produced nothing.
+  const settledNoPhase1Work = $derived(
+    !hasPhase1Work && !discoveryLoading && !previewReportLoading,
   );
   const stopSubtitle = $derived(
     job?.status === 'CANCELLED'
-      ? 'This run was cancelled. Everything discovery found is still here.'
+      ? settledNoPhase1Work
+        ? 'This run was cancelled before discovery produced anything to keep.'
+        : 'This run was cancelled. Everything discovery found is still here.'
       : failedCatalogDeepResearch
         ? 'Deep Research stopped before it finished. Retry the same catalog idea below.'
-        : 'This run stopped after discovery. Everything it found is still here.',
+        : settledNoPhase1Work
+          ? 'This run stopped before discovery finished.'
+          : 'This run stopped after discovery. Everything it found is still here.',
   );
   const stopHandoffTitle = $derived(
     job?.status === 'CANCELLED'
@@ -941,9 +1102,13 @@
           ? 'Not enough discussion data to continue'
           : failedDuringDeepResearch
             ? 'Review your saved shortlist'
-            : hasPhase1Work
-              ? 'The run stopped after discovery'
-              : 'The run stopped before it finished',
+            // Pinned precedence: catalogRetry > INSUFFICIENT_DATA recommendation >
+            // failedDuringDeepResearch > errorDetails > generic.
+            : job?.errorDetails?.userMessage?.trim()
+              ? job.errorDetails.userMessage.trim()
+              : hasPhase1Work
+                ? 'The run stopped after discovery'
+                : 'The run stopped before it finished',
   );
   const stopHandoffCopy = $derived(
     job?.status === 'CANCELLED'
@@ -955,31 +1120,35 @@
         : stopIsQuality
           ? (job?.stopReasonDetails?.recommendation
               ?? 'Too few relevant discussions were found to produce a trustworthy result. A broader or differently-worded niche usually helps.')
-          : failedDuringDeepResearch
-            ? 'Return to selection and confirm Deep Research again. You will review the current price before any charge.'
-            : job?.creditRefunded
-              ? 'Resuming picks up from the last checkpoint and may re-charge the refunded stage at its original amount.'
-              : 'Resuming picks up from the last checkpoint rather than re-running the whole pipeline.',
+            : failedDuringDeepResearch
+              ? 'Return to selection and confirm Deep Research again. You will review the current price before any charge.'
+            : refundedResumeAmount !== null
+              ? `${job?.errorDetails?.actionableGuidance?.trim() ?? 'Retry from the last saved checkpoint.'} Resuming will charge the refunded ${refundedResumeAmount} ${refundedResumeAmount === 1 ? 'credit' : 'credits'} again when the retry is queued.`
+            // errorDetails: the diagnosis is the card title; the guidance rides here as
+            // body text — no separate severity panel (V4, the eyebrow carries severity).
+            : job?.errorDetails?.userMessage?.trim() && job?.errorDetails?.actionableGuidance?.trim()
+              ? job.errorDetails.actionableGuidance.trim()
+              : job?.creditRefunded
+                ? 'Resuming picks up from the last checkpoint and may re-charge the refunded stage at its original amount.'
+                : 'Resuming picks up from the last checkpoint rather than re-running the whole pipeline.',
   );
 
   // Aside state for the editorial hero. Maps the live job status into one of
   // the JobHeroAside variants. Defaults to "running" while data is loading.
+  // Terminal stops (FAILED/CANCELLED) never reach the aside: they always render
+  // the workbench layout with the stop-handoff card instead.
   const asideState = $derived<
-    "running" | "queued" | "awaiting" | "regenerating" | "failed" | "cancelled"
+    "running" | "queued" | "awaiting" | "regenerating"
   >(
     !job
       ? "running"
-      : job.status === "FAILED"
-          ? "failed"
-          : job.status === "CANCELLED"
-            ? "cancelled"
-            : job.status === "AWAITING_SELECTION"
-              ? "awaiting"
-              : job.status === "REGENERATING" || isRegenQueued
-                ? "regenerating"
-                : job.status === "QUEUED" || job.status === "PENDING"
-                  ? "queued"
-                  : "running",
+      : job.status === "AWAITING_SELECTION"
+        ? "awaiting"
+        : job.status === "REGENERATING" || isRegenQueued
+          ? "regenerating"
+          : job.status === "QUEUED" || job.status === "PENDING"
+            ? "queued"
+            : "running",
   );
 
   const reportAsset = $derived((job?.assets ?? []).find((a) => a.type === "REPORT_JSON"));
@@ -1036,11 +1205,14 @@
 </svelte:head>
 
   <div class="job-page-shell">
-  {#if job && !isGenerating}
+  {#if lifecycleAnnouncement}
+    <p class="sr-only" role="status" aria-live="polite">{lifecycleAnnouncement}</p>
+  {/if}
+  {#if job && (!isGenerating || isGeneratingP2)}
     <PhaseNav
       jobStatus={job.status}
       entryMode={job.entryMode}
-      mode={isSelectionPhase ? 'selection' : isGatePhase ? 'gate' : isStoppedWorkbench ? 'stopped' : 'default'}
+      mode={isGeneratingP2 ? 'selection-record' : isSelectionPhase ? 'selection' : isGatePhase ? 'gate' : isStoppedWorkbench ? 'stopped' : 'default'}
       jobId={jobId ?? undefined}
       toolTasks={selectionToolTasks}
       selectedCount={sidebarSelectedCount}
@@ -1052,6 +1224,9 @@
               : 'Resuming...')
         : stopRecoverLabel}
       recoverOnclick={job.status === 'FAILED' ? resumeJob : undefined}
+      recoverHref={job.status === 'CANCELLED'
+        ? `/new?fromJob=${job.id}&prefilled=${encodeURIComponent(job.niche)}`
+        : undefined}
       recoverDisabled={isResuming || (failedCatalogDeepResearch && costsUnavailable)}
       availableSectionIds={showDossierChrome ? dossier.availableSectionIds : undefined}
       chatMode={job.chatMode ?? false}
@@ -1069,9 +1244,11 @@
   >
     <AnnotationProvider
       mode="owner"
-      enabled={['AWAITING_SELECTION', 'REGENERATING'].includes(job?.status ?? '')}
+      enabled={Boolean(jobId) && data.annotationDocument !== undefined}
+      editable={isSelectionPhase}
       showLauncher={false}
       jobId={jobId ?? undefined}
+      initialDocument={data.annotationDocument ?? null}
     >
     {#if loading}
       <div class="text-center py-12">
@@ -1103,14 +1280,39 @@
           currentStage={job.currentStage}
           currentStageName={job.currentStageName}
           queuePosition={job.queuePosition ?? undefined}
-          catalogPainPoints={data.catalogPainPoints ?? []}
+          catalogPainPoints={isGeneratingP1 ? (data.catalogPainPoints ?? []) : []}
           selectedNames={job.selectedSolutions ?? []}
-          selectedItems={job.selectionDraft?.items ?? []}
+          selectedItems={exactSelectedItems}
           solutionIdeas={job.solutionIdeas ?? []}
           primaryWinner={job.selectedSolution}
-          onCancel={isGeneratingP1 ? cancelJob : undefined}
+          primaryWinnerRef={exactWinnerRef}
+          onCancel={isGeneratingP1
+            ? cancelJob
+            : job.activeOperation?.kind === 'DEEP_RESEARCH'
+                && job.activeOperation.state === 'AUTHORIZED'
+              ? cancelQueuedSelectionOperation
+              : undefined}
           {cancelling}
+          cancelLabel={isGeneratingP1 ? "Cancel research" : "Cancel queued Deep Research"}
+          cancelConfirmLabel={isGeneratingP1 ? "Stop this run" : "Return to selection"}
+          cancelConsequence={isGeneratingP1
+            ? "RUN STOPS · ELIGIBLE CREDITS REFUNDED"
+            : "RETURN TO SELECTION · ELIGIBLE CREDITS REFUNDED"}
+          {cancelError}
+          {connectionState}
+          onRefresh={retryLiveUpdates}
         />
+        {#if isGeneratingP2}
+          <SelectionDecisionRecord
+            jobId={job.id}
+            solutions={displaySolutions}
+            selectedNames={job.selectedSolutions ?? []}
+            selectionRationale={job.selectionRationale}
+            {solutionVotes}
+            {solutionVotesById}
+            {voteRationales}
+          />
+        {/if}
       {:else}
       <!-- ═══ EDITORIAL HERO (1fr | 320px grid) ═══ -->
       <div
@@ -1173,7 +1375,7 @@
               <div>
                 <p class="completed-handoff__eyebrow">Report ready</p>
                 <div class="completed-handoff__title">
-                  <h2 id="completed-handoff-title">Review the final recommendation</h2>
+                  <h2 id="completed-handoff-title" data-lifecycle-heading tabindex="-1">Review the final recommendation</h2>
                   {#if completedVerdict}
                     <span class="completed-verdict {completedVerdict.tone}">
                       {completedVerdict.label}
@@ -1202,7 +1404,7 @@
               <div>
                 <p class="completed-handoff__eyebrow">Report unavailable</p>
                 <div class="completed-handoff__title">
-                  <h2 id="completed-handoff-title">The report file has not arrived</h2>
+                  <h2 id="completed-handoff-title" data-lifecycle-heading tabindex="-1">The report file has not arrived</h2>
                 </div>
                 <p class="completed-handoff__copy">
                   This run is marked complete, but there is no report to open yet. Refresh the
@@ -1227,11 +1429,6 @@
               totalStages={jobStageCounts.total}
               startedAt={job.startedAt}
               selectionCount={displaySolutions.length}
-              errorDetails={job.errorDetails}
-              errorMessage={job.errorMessage}
-              stopReason={job.stopReason}
-              stopReasonDetails={job.stopReasonDetails}
-              creditRefunded={job.creditRefunded}
             />
           </div>
         {/if}
@@ -1259,7 +1456,7 @@
               {job.status === 'CANCELLED' ? 'Cancelled' : stopIsQuality ? 'Stopped early' : 'Run failed'}
             </p>
             <div class="stop-handoff__title">
-              <h2 id="stop-handoff-title">{stopHandoffTitle}</h2>
+              <h2 id="stop-handoff-title" data-lifecycle-heading tabindex="-1">{stopHandoffTitle}</h2>
               {#if job.creditRefunded}
                 <span class="stop-refund">Credits refunded</span>
               {/if}
@@ -1298,7 +1495,7 @@
                   ? catalogRetryLabel
                   : failedDuringDeepResearch
                     ? "Review selection"
-                    : "Resume from checkpoint"}
+                    : checkpointResumeLabel}
                 class="btn-primary"
               />
             {/if}
@@ -1346,7 +1543,10 @@
             coverageNotes={previewReport?.data_quality_summary?.quality_caveats ?? []}
             {examinedRuledOut}
             {overlapGroups}
+            {ideaTheses}
+            {uncoveredFamilies}
             {marketReality}
+            nicheDifficultyVerdict={previewReport?.niche_difficulty_verdict ?? null}
             ideaPortfolioSummary={previewReport?.idea_portfolio_summary ?? null}
             userAdjustments={previewReport?.user_adjustments ?? []}
             {discussionCount}
@@ -1373,6 +1573,7 @@
             onShortlistChange={(count) => liveShortlist = { jobId: jobId ?? '', count }}
             onShortlistVersionChange={(version) => draftRefreshGuard.reportLocalVersion(version)}
             onSeedSettled={handleSeedSettled}
+            onSeedStart={() => void invalidateAll()}
             {solutionVotesById}
             {voteRationales}
             {decisionTools}
@@ -1555,9 +1756,10 @@
                 {#if showSelectedSummary && !isGeneratingP2}
                   <SelectedSolutionsSummary
                     selectedNames={job.selectedSolutions ?? []}
-                    selectedItems={job.selectionDraft?.items ?? []}
+                    selectedItems={exactSelectedItems}
                     solutionIdeas={job.solutionIdeas ?? []}
                     primaryWinner={job.selectedSolution}
+                    primaryWinnerRef={exactWinnerRef}
                     status={job.status}
                     jobId={jobId ?? undefined}
                   />
@@ -1665,7 +1867,7 @@
         <!-- Suppressed at guided-gate checkpoints: mid-Phase-1 there is no real data
              behind the funnel/SEO/competitor previews, and the checkpoint ledger is
              the page's single job. -->
-        {#if !isCompleted && !isSelectionPhase && !isGatePhase}
+        {#if !isCompleted && !isSelectionPhase && !isGatePhase && !isTerminalStop}
           <!-- Capped preview: UnifiedHero with real blurred content -->
           <div class="preview-capped">
             <div aria-hidden="true" inert>
@@ -1709,6 +1911,16 @@
 
         <!-- ═══ OPTIONAL DELIVERABLES ═══ -->
         {#if isCompleted}
+          <SelectionDecisionRecord
+            jobId={job.id}
+            completed
+            solutions={displaySolutions}
+            selectedNames={job.selectedSolutions ?? []}
+            selectionRationale={job.selectionRationale}
+            {solutionVotes}
+            {solutionVotesById}
+            {voteRationales}
+          />
           <section class="extras-card" id="optional-deliverables" aria-labelledby="optional-deliverables-title">
             <div class="extras-header">
               <div class="extras-header-left">
@@ -1734,6 +1946,8 @@
                 asset={landingAsset}
                 generating={generatingLanding}
                 error={landingError}
+                notice={landingNotice}
+                refundedAmount={lpStatus === 'failed' ? (job.creditRefundedAmount ?? null) : null}
                 onGenerate={generateLanding}
               />
             </div>
@@ -1782,7 +1996,7 @@
 <!-- First-run tutorial. `selectionToolTasks !== undefined` is the signal that the
      CLIENT-side decision-state fetch landed: until it does, the shortlist dock has not
      mounted and the guide card still reads "Updating your next useful step…", so two of
-     the five steps would have nothing to point at. -->
+     the seven steps would have nothing to point at. -->
 {#if isSelectionPhase}
   <TourHost
     chapter="job-shortlist"
@@ -1990,7 +2204,8 @@
 
   @media (max-width: 1279px) {
     .job-page-content {
-      padding: 1rem;
+      /* Keep the final actions clear of PhaseNav's fixed mobile progress control. */
+      padding: 1rem 1rem calc(6rem + env(safe-area-inset-bottom));
       width: 100%;
     }
   }

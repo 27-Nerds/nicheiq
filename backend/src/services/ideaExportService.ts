@@ -1,10 +1,19 @@
 import { ideaName, type IdeaRecord } from '../utils/ideaIdentity.js';
+import { presentableRecord } from '../utils/selectionVocabulary.js';
 
 /**
  * Owner-facing export of one exact stored candidate (idea_id + idea_revision).
- * The record is exported verbatim (JSON) or rendered field-by-field (Markdown)
- * so the file always matches what the candidate view shows — no curated subset
- * that can silently drift from the stored schema.
+ * Both formats carry every stored field — no curated subset that can silently
+ * drift from the schema — but they serve different readers:
+ *
+ * - **JSON** is the data artifact: verbatim stored values, so it round-trips.
+ * - **Markdown** is the reading copy, and matches what the candidate view shows.
+ *   It already humanized field NAMES (`red_team_verdict` -> "Red team verdict")
+ *   while printing closed-vocabulary VALUES raw, so an owner's downloaded file
+ *   said "## Red team verdict / killed" about an idea the UI calls "Premise
+ *   unproven" (live audit 2026-08-03 — the last reader-facing instance of that
+ *   token). Values from the closed vocabularies are now humanized on the same
+ *   principle as the keys.
  */
 
 /** Find the candidate to export. An explicit revision requires an exact match;
@@ -53,7 +62,10 @@ function renderValue(value: unknown): string {
 export function renderIdeaMarkdown(idea: IdeaRecord): string {
   const name = ideaName(idea) ?? 'Candidate export';
   const revision = Number.isInteger(idea.idea_revision) ? Number(idea.idea_revision) : null;
-  const sections = Object.entries(idea)
+  // Reading copy: humanize the closed-vocabulary values the same way keys are
+  // humanized below. Non-destructive and returns a new tree, so the caller's
+  // record — and `serializeIdeaJson`'s verbatim output — are untouched.
+  const sections = Object.entries(presentableRecord(idea))
     .filter(([key, value]) => key !== 'solution_name' && key !== 'name' && !isEmpty(value))
     .map(([key, value]) => `## ${humanizeKey(key)}\n\n${renderValue(value)}`);
   return [

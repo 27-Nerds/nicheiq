@@ -202,6 +202,7 @@ enum DispatchKind {
 enum DispatchState {
   AUTHORIZED // charged and queued; no worker has taken it
   CLAIMED // a worker started it — the user is now paying for work that ran
+  RECOVERING // paid pool writer fenced; before-image restoration owns the dispatch
   COMPLETED
   FAILED
   CANCELLED // user cancelled before CLAIMED; refund linkage is recorded separately
@@ -876,6 +877,14 @@ model JobDispatch {
   state    DispatchState @default(AUTHORIZED)
   workerId String?       @db.VarChar(100)
 
+  // SEED_IDEA / REGENERATE only. The worker creates an operation-scoped before-image and
+  // registers its canonical/backup paths before it may replace the shared checkpoint or preview.
+  // A dead writer is fenced into RECOVERING; another worker restores this journal under the
+  // same filesystem lock before the exact charge is refunded and selection reopens.
+  recoveryJournal    Json?
+  recoveryPreparedAt DateTime?
+  recoveryToken      String?   @db.Uuid
+
   // Why it failed, when it did. /gate-failed currently conflates a rejected user patch with a
   // genuine system fault; only the latter gives the money back, so the distinction is recorded.
   failureKind String? @db.VarChar(30) // SYSTEM_FAULT | USER_PATCH_REJECTED | STALE_CHECKPOINT
@@ -885,6 +894,7 @@ model JobDispatch {
   settledAt DateTime?
 
   @@unique([jobId, clientRequestId])
+  @@unique([jobId, sourceMessageId])
   @@index([jobId, state])
   @@index([state, createdAt]) // outbox sweep: AUTHORIZED rows whose delivery needs retrying
 }

@@ -15,6 +15,13 @@ import { getPhaseContext } from '../utils/phaseContext.js';
 import { refundForStage } from './creditService.js';
 import { failLandingPageDispatch } from './dispatchService.js';
 import { broadcastProgress } from './progressBroadcastService.js';
+import { enqueuePaidPoolRecovery } from './queueService.js';
+import {
+  fencePaidPoolMutationForRecovery,
+  failUnpreparedPaidPoolMutation,
+  refencePaidPoolRecovery,
+  type PaidPoolRecoveryJournal,
+} from './paidPoolRecoveryService.js';
 
 // Configuration
 const STALE_THRESHOLD_MS = 90 * 1000; // 90 seconds - detect stale jobs within this window
@@ -76,7 +83,10 @@ export async function updateJobHeartbeat(
       // claim the job through this weaker endpoint.
       if (dispatch.state === DispatchState.AUTHORIZED) return 'pending';
       if (
-        dispatch.state !== DispatchState.CLAIMED
+        (
+          dispatch.state !== DispatchState.CLAIMED
+          && dispatch.state !== DispatchState.RECOVERING
+        )
         || dispatch.workerId !== workerId
         || job.workerId !== workerId
       ) {
@@ -183,6 +193,7 @@ async function findStaleJobs(): Promise<Array<{
   selectedSolutions: string[];
   activeDispatchId: string | null;
   status: JobStatus;
+  workerId: string | null;
   exceededMaxRuntime: boolean;
 }>> {
   const staleThreshold = new Date(Date.now() - STALE_THRESHOLD_MS);
@@ -231,6 +242,7 @@ async function findStaleJobs(): Promise<Array<{
       selectedSolutions: true,
       activeDispatchId: true,
       status: true,
+      workerId: true,
     },
   });
 
@@ -306,7 +318,8 @@ async function markJobFailed(job: {
   activeDispatchId: string | null;
   status: JobStatus;
   lastHeartbeat: Date | null;
-}, reason: string): Promise<void> {
+  workerId: string | null;
+}, reason: string): Promise<boolean> {
   const recoveryFence = {
     status: job.status,
     lastHeartbeat: job.lastHeartbeat,
@@ -322,25 +335,155 @@ async function markJobFailed(job: {
       select: {
         id: true,
         kind: true,
+        state: true,
         seedOrdinal: true,
         sourceMessageId: true,
         segment: true,
         chargeId: true,
+        workerId: true,
+        recoveryPreparedAt: true,
+        recoveryJournal: true,
+        recoveryToken: true,
+        lastDeliveryAt: true,
+        claimedAt: true,
+        createdAt: true,
       },
     });
+    const isPaidPoolKind =
+      dispatch?.kind === DispatchKind.SEED_IDEA
+      || dispatch?.kind === DispatchKind.REGENERATE;
+    if (
+      dispatch
+      && isPaidPoolKind
+      && (
+        dispatch.state === DispatchState.CLAIMED
+        || dispatch.state === DispatchState.RECOVERING
+      )
+    ) {
+      const staleBefore = new Date(Date.now() - STALE_THRESHOLD_MS);
+      const workerLease = dispatch.workerId
+        ? await prisma.workerHeartbeat.findUnique({
+            where: { workerId: dispatch.workerId },
+            select: { currentJobId: true, status: true, lastHeartbeat: true },
+          })
+        : null;
+      const jobHeartbeatFresh = Boolean(
+        job.lastHeartbeat && job.lastHeartbeat >= staleBefore,
+      );
+      const workerLeaseFresh = Boolean(
+        workerLease
+        && workerLease.status !== 'shutdown'
+        && workerLease.currentJobId === job.id
+        && workerLease.lastHeartbeat >= staleBefore,
+      );
+      // Job.startedAt belongs to the original research run and may be days old when a user
+      // later buys a seed/batch. Apply the hard deadline to this dispatch generation instead.
+      // Crossing it deliberately fences even a heartbeating writer: completion and fencing
+      // both CAS the same Job ownership, and the losing callback restores under the shared
+      // artifact lock before any refund/reopen can complete.
+      const operationStartedAt = dispatch.claimedAt ?? dispatch.createdAt;
+      const operationExceededMaxRuntime = Boolean(
+        operationStartedAt
+        && operationStartedAt < new Date(Date.now() - MAX_RUNTIME_MS),
+      );
+      if ((jobHeartbeatFresh || workerLeaseFresh) && !operationExceededMaxRuntime) {
+        console.warn(
+          `[Heartbeat] ${dispatch.kind} dispatch ${dispatch.id} still owns a fresh worker ` +
+          'lease; deferring recovery',
+        );
+        return false;
+      }
+      if ((jobHeartbeatFresh || workerLeaseFresh) && operationExceededMaxRuntime) {
+        console.warn(
+          `[Heartbeat] ${dispatch.kind} dispatch ${dispatch.id} crossed its hard operation ` +
+          'runtime; fencing the exact generation despite fresh heartbeats',
+        );
+      }
+
+      if (dispatch.state === DispatchState.CLAIMED && dispatch.recoveryPreparedAt) {
+        const recovery = await fencePaidPoolMutationForRecovery(
+          job.id,
+          dispatch.id,
+          {
+            status: job.status,
+            workerId: job.workerId,
+            lastHeartbeat: job.lastHeartbeat,
+          },
+        );
+        if (!recovery) return false;
+        await enqueuePaidPoolRecovery(
+          job.id,
+          dispatch.id,
+          recovery.recoveryToken,
+          recovery.journal as unknown as Record<string, unknown>,
+        ).catch((error) => {
+          console.error(`[Heartbeat] Failed to enqueue paid-pool recovery ${dispatch.id}:`, error);
+        });
+        return true;
+      }
+
+      if (dispatch.state === DispatchState.CLAIMED) {
+        // The worker is not allowed to replace a canonical artifact until prepare is durable.
+        // Re-check that boundary after locking Job; a concurrent prepare must roll this
+        // settlement back instead of reopening/refunding underneath an acknowledged writer.
+        return failUnpreparedPaidPoolMutation(job.id, dispatch.id, {
+          status: job.status,
+          workerId: job.workerId,
+          lastHeartbeat: job.lastHeartbeat,
+        });
+      }
+
+      if (dispatch.state === DispatchState.RECOVERING) {
+        let recoveryToken = dispatch.recoveryToken;
+        let journal = dispatch.recoveryJournal as unknown as PaidPoolRecoveryJournal | null;
+        if (dispatch.workerId && recoveryToken) {
+          const recovery = await refencePaidPoolRecovery(
+            job.id,
+            dispatch.id,
+            recoveryToken,
+            {
+              status: job.status,
+              workerId: job.workerId,
+              lastHeartbeat: job.lastHeartbeat,
+            },
+          );
+          if (!recovery) return false;
+          recoveryToken = recovery.recoveryToken;
+          journal = recovery.journal;
+        } else if (
+          dispatch.lastDeliveryAt
+          && dispatch.lastDeliveryAt >= staleBefore
+        ) {
+          return false;
+        }
+        if (!recoveryToken || !journal) {
+          console.error(`[Heartbeat] Recovery dispatch ${dispatch.id} has no durable journal/token`);
+          return false;
+        }
+        await enqueuePaidPoolRecovery(
+          job.id,
+          dispatch.id,
+          recoveryToken,
+          journal as unknown as Record<string, unknown>,
+        ).catch((error) => {
+          console.error(`[Heartbeat] Failed to redeliver paid-pool recovery ${dispatch.id}:`, error);
+        });
+        return true;
+      }
+    }
     if (dispatch?.kind === DispatchKind.SEED_IDEA) {
       console.log(
         `[Heartbeat] Job ${job.id} seed-idea dispatch ${dispatch.id} stale — restoring ` +
         `AWAITING_SELECTION (parent job left alive): ${reason}`
       );
-      await cancelSeedIdeaDispatch(
+      const outcome = await cancelSeedIdeaDispatch(
         job.id,
         dispatch,
         job.status,
         'SYSTEM_FAULT',
         recoveryFence,
       );
-      return;
+      return outcome.cancelled;
     }
     if (dispatch?.kind === DispatchKind.REGENERATE) {
       console.log(
@@ -350,14 +493,14 @@ async function markJobFailed(job: {
       // Pass the job's ACTUAL status: cancelRegenerationDispatch only drops the Redis
       // queue entry when the batch was still QUEUED. Hardcoding REGENERATING here would
       // orphan the entry, letting a worker later claim and run an already-refunded batch.
-      await cancelRegenerationDispatch(
+      const outcome = await cancelRegenerationDispatch(
         job.id,
         { id: dispatch.id, segment: dispatch.segment, chargeId: dispatch.chargeId },
         job.status,
         'SYSTEM_FAULT',
         recoveryFence,
       );
-      return;
+      return outcome.cancelled;
     }
   }
 
@@ -382,7 +525,7 @@ async function markJobFailed(job: {
       `[Heartbeat] Stale recovery ignored for job ${job.id} ` +
       `(dispatch ${job.activeDispatchId ?? 'missing'})`,
     );
-    return;
+    return false;
   }
 
   // Send failure notification with phase context
@@ -395,6 +538,7 @@ async function markJobFailed(job: {
       console.error(`[Heartbeat] Failed to send failure notification for job ${job.id}:`, emailError);
     }
   }
+  return true;
 }
 
 /**
@@ -422,11 +566,17 @@ export async function checkAndRecoverStaleJobs(): Promise<{
       try {
         if (job.exceededMaxRuntime) {
           const runtimeHours = MAX_RUNTIME_MS / (60 * 60 * 1000);
-          await markJobFailed(job, `Job exceeded maximum runtime of ${runtimeHours} hours`);
-          stats.timedOut++;
+          const recovered = await markJobFailed(
+            job,
+            `Job exceeded maximum runtime of ${runtimeHours} hours`,
+          );
+          if (recovered) stats.timedOut++;
         } else {
-          await markJobFailed(job, 'Worker stopped sending heartbeats - job marked as failed. Use checkpoint resume to continue.');
-          stats.failed++;
+          const recovered = await markJobFailed(
+            job,
+            'Worker stopped sending heartbeats - job marked as failed. Use checkpoint resume to continue.',
+          );
+          if (recovered) stats.failed++;
         }
       } catch (jobError) {
         console.error(`[Heartbeat] Error processing stale job ${job.id}:`, jobError);

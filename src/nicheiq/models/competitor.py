@@ -78,6 +78,14 @@ class CompetitiveLandscape(BaseModel):
     pricing_insights: str = Field(
         ..., description="Market pricing analysis and recommended pricing approach"
     )
+    # Stamped by the flow when the deterministic on-niche check fails twice
+    # (utils/validation/competitor_relevance.py). Downgrade-only: the landscape is kept
+    # verbatim, but every count/saturation/gap claim derived from it is unverified.
+    # None on every healthy landscape and on all legacy reports.
+    off_niche_caveat: Optional[str] = Field(
+        default=None,
+        description="Set when the returned competitors share no vocabulary with the niche",
+    )
 
 class CompetitiveAnalysisResult(BaseModel):
     """Complete result of competitive analysis for all solution ideas."""

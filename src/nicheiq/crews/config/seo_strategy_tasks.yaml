@@ -138,7 +138,8 @@ analyze_premium_tiers:
        - Rule 1: Context Match (relates to {niche} + {selected_solution_description})
        - Rule 2: Ambiguity Filter (generic terms need niche context)
        - Rule 3: Cross-Domain Exclusion (exclude unrelated domains)
-       - Target: Filter only 10-20% as truly irrelevant
+       - Filtering is evidence-driven: exclude every keyword that fails a rule and keep every
+         keyword that passes. There is no target and no ceiling on the filtered share.
 
     2. **Select Premium Keywords:**
        - Tier 0: ALL keywords with opp_score > 200
@@ -162,7 +163,9 @@ analyze_premium_tiers:
 
     **ANTI-PATTERNS:**
     ❌ Limiting Tier 1 to exactly 5 keywords when 18 qualify
-    ❌ Filtering >30% of keywords as irrelevant (too aggressive)
+    ❌ Tiering a keyword that failed a relevance rule in order to keep the filtered share low.
+       Filtering much above ~30% usually means the keyword EXPANSION drifted off-niche — say so
+       in the tier strategy narrative rather than forcing drifted keywords into a tier.
     ❌ Returning JSON Schema instead of actual data
     ❌ Rounding search volumes (use EXACT values from CSV)
 
@@ -264,7 +267,8 @@ analyze_category_tier:
     **CRITICAL: ONLY USE KEYWORDS FROM CSV**
     - Most keywords should end up in Tier 4 — this is NOT a "reject pile"
     - Tier 4 is the foundation of programmatic SEO
-    - Target: 80%+ utilization of remaining keywords
+    - Categorize every remaining keyword that is on-niche; a genuinely off-niche keyword stays out
+      rather than being stretched into a category to hit a utilization number
     - Do NOT create empty categories (keywords: [] is forbidden)
     - Do NOT fabricate keywords that aren't in the input
 

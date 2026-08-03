@@ -119,6 +119,7 @@ const founderFitSource: ReshapeSource = {
 const experiment: SelectionExperiment = {
   id: "experiment-1",
   jobId: "job-1",
+  version: 2,
   ideaId: "idea-parent",
   ideaRevision: 3,
   ideaSnapshot: {

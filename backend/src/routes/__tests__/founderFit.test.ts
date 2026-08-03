@@ -2,18 +2,33 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 
+const routeConfig = vi.hoisted(() => ({
+  openaiApiKey: 'test-key',
+  openrouterApiKey: '',
+  founderFitModel: 'gpt-founder-fit-test',
+}));
+
 // These suites exercise route logic, not the decision-tools grant. The grant itself is
 // covered in middleware/__tests__/featureAccess.test.ts.
 vi.mock('../../middleware/featureAccess.js', () => ({
   requireDecisionToolsAccess: (_req: any, _res: any, next: any) => next(),
 }));
 
-const mocks = vi.hoisted(() => ({
-  findFirst: vi.fn(),
-  updateMany: vi.fn(),
-  generate: vi.fn(),
-  parseCurrent: vi.fn(),
-}));
+const mocks = vi.hoisted(() => {
+  class FounderFitGenerationError extends Error {
+    constructor(public readonly failureCause: string) {
+      super(`Founder-fit generation failed (${failureCause})`);
+      this.name = 'FounderFitGenerationError';
+    }
+  }
+  return {
+    findFirst: vi.fn(),
+    updateMany: vi.fn(),
+    generate: vi.fn(),
+    parseCurrent: vi.fn(),
+    FounderFitGenerationError,
+  };
+});
 
 vi.mock('../../services/db.js', () => ({
   prisma: {
@@ -30,9 +45,10 @@ vi.mock('../../middleware/auth.js', () => ({
   },
 }));
 vi.mock('../../config.js', () => ({
-  CONFIG: { openaiApiKey: 'test-key', openrouterApiKey: '', chatModel: 'gpt-test' },
+  CONFIG: routeConfig,
 }));
 vi.mock('../../services/founderFitService.js', () => ({
+  FounderFitGenerationError: mocks.FounderFitGenerationError,
   founderFitFingerprint: () => 'f'.repeat(64),
   founderFitIdeaSnapshot: (idea: any) => ({
     idea_id: idea.idea_id,
@@ -93,6 +109,9 @@ function job(overrides: Record<string, unknown> = {}) {
 describe('founder fit owner API', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    routeConfig.openaiApiKey = 'test-key';
+    routeConfig.openrouterApiKey = '';
+    routeConfig.founderFitModel = 'gpt-founder-fit-test';
     mocks.updateMany.mockResolvedValue({ count: 1 });
     mocks.generate.mockResolvedValue(artifact);
     mocks.parseCurrent.mockReturnValue(null);
@@ -107,6 +126,27 @@ describe('founder fit owner API', () => {
 
     expect(response.status).toBe(409);
     expect(response.body.error).toContain('Save your decision context');
+    expect(mocks.generate).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['openrouter/openai/gpt-5-mini', 'test-key', ''],
+    ['gpt-5-mini', '', 'test-openrouter-key'],
+  ])('requires the API key selected by founder-fit model %s', async (
+    founderFitModel,
+    openaiApiKey,
+    openrouterApiKey,
+  ) => {
+    routeConfig.founderFitModel = founderFitModel;
+    routeConfig.openaiApiKey = openaiApiKey;
+    routeConfig.openrouterApiKey = openrouterApiKey;
+    mocks.findFirst.mockResolvedValue(job());
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/founder-fit`)
+      .send({ ideas: [{ ideaId: idea.idea_id, ideaRevision: 2 }] });
+
+    expect(response.status).toBe(503);
     expect(mocks.generate).not.toHaveBeenCalled();
   });
 
@@ -164,5 +204,27 @@ describe('founder fit owner API', () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ analysis: null, stale: true });
+  });
+
+  it.each([
+    ['timeout', 504, 'FOUNDER_FIT_TIMEOUT'],
+    ['upstream', 502, 'FOUNDER_FIT_UPSTREAM'],
+    ['no_content', 502, 'FOUNDER_FIT_NO_CONTENT'],
+    ['bad_json', 502, 'FOUNDER_FIT_BAD_JSON'],
+    ['schema_mismatch', 502, 'FOUNDER_FIT_SCHEMA_MISMATCH'],
+    ['coverage_mismatch', 502, 'FOUNDER_FIT_COVERAGE_MISMATCH'],
+  ])('maps %s generation failures to a safe classified response', async (cause, status, code) => {
+    mocks.findFirst.mockResolvedValue(job());
+    mocks.generate.mockRejectedValue(new mocks.FounderFitGenerationError(cause));
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/founder-fit`)
+      .send({ ideas: [{ ideaId: idea.idea_id, ideaRevision: 2 }] });
+
+    expect(response.status).toBe(status);
+    expect(response.body.code).toBe(code);
+    expect(response.body.error).toContain('no selection data was changed');
+    expect(response.body.error).not.toContain(cause);
+    expect(mocks.updateMany).not.toHaveBeenCalled();
   });
 });

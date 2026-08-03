@@ -121,4 +121,19 @@ describe("risks page", () => {
     expect(view.queryByRole("button", { name: /Show questions to resolve/ })).not.toBeInTheDocument();
     expect(view.getByRole("button", { name: /Add a question to resolve/ })).toBeInTheDocument();
   });
+
+  it("renders the post-selection evidence record while disabling every write entry", async () => {
+    apiMocks.getSelectionOwnerEvidence.mockResolvedValue({ evidence: [], editable: false });
+    const lockedData = data() as any;
+    lockedData.job = { ...lockedData.job, status: "RUNNING_PHASE2" };
+    const view = render(RisksPage, { props: { data: lockedData } });
+
+    expect(view.getByRole("heading", { name: "Evidence and risk record" })).toBeInTheDocument();
+    expect(await view.findByRole("button", { name: "Check demand" })).toBeDisabled();
+    expect(view.getByRole("button", { name: "Add your evidence" })).toBeDisabled();
+    expect(view.getByRole("button", { name: /Add a question to resolve/ })).toBeDisabled();
+    expect(view.queryByText("Branch a direction")).not.toBeInTheDocument();
+    expect(apiMocks.runSelectionChallenge).not.toHaveBeenCalled();
+    expect(apiMocks.createSelectionOwnerEvidence).not.toHaveBeenCalled();
+  });
 });

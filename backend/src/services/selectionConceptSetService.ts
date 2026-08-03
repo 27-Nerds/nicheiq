@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { CONFIG } from '../config.js';
 import {
   buildBuyerRealityDigest,
   hasProvenBuyerProblem,
@@ -26,6 +25,7 @@ import {
   type IdeaRecord,
 } from '../utils/ideaIdentity.js';
 import { fenceContent } from '../utils/promptFence.js';
+import { presentableRecord } from '../utils/selectionVocabulary.js';
 import { canonicalJsonSha256 } from '../utils/canonicalFingerprint.js';
 import {
   estimateAnalystCostUsd,
@@ -33,7 +33,7 @@ import {
   resolveAnalystModel,
   type AnalystTokenUsage,
 } from './analystModelService.js';
-import { chatComplete } from './openai.js';
+import { chatComplete, hasApiKeyForModel } from './openai.js';
 import { checkSuggestedTest } from './selectionTestThresholds.js';
 import {
   conceptSetJsonSchema,
@@ -325,7 +325,14 @@ export function prepareSelectionConceptSetInput(
     inputFingerprint,
     parents,
     context,
-    promptPayload: {
+    // ORDER MATTERS. `inputFingerprint` is computed ABOVE, from `parents` (whose
+    // `candidateSnapshotSha256` hashes the raw stored candidate) and `context.reportSha256`
+    // — never from `promptPayload`. So mapping the payload's closed-vocabulary values here
+    // leaves the fingerprint byte-identical, and the row it keys (`{jobId, inputFingerprint,
+    // archivedAt: null}`) plus the staleness re-derivation in routes/selectionConceptSets.ts
+    // keep matching every artifact generated before this. Sanitizing `input.parents` or
+    // `input.report` instead would move both hashes and orphan every stored concept set.
+    promptPayload: presentableRecord({
       task: 'Create exactly three intentionally different, unevaluated concept options from the supplied exact candidate revisions.',
       purpose: input.purpose,
       targetTradeoff: input.targetTradeoff?.trim() || null,
@@ -366,7 +373,7 @@ export function prepareSelectionConceptSetInput(
         parentsSitInAProvenUnpayingSegment: parentsSitInThinSegment,
       },
       reportFingerprint: context.reportSha256,
-    },
+    }),
     buyerReality,
     requireBuyerMove,
   };
@@ -590,9 +597,9 @@ function parseModelResponse(
 export async function generateSelectionConceptSet(
   input: SelectionConceptSetInput,
 ): Promise<GeneratedSelectionConceptSet> {
-  if (!CONFIG.openaiApiKey && !CONFIG.openrouterApiKey) throw new Error('AI_PROVIDER_UNAVAILABLE');
   const prepared = prepareSelectionConceptSetInput(input);
   const model = await resolveAnalystModel();
+  if (!hasApiKeyForModel(model)) throw new Error('AI_PROVIDER_UNAVAILABLE');
   const parentCount = prepared.parents.length;
   const availableSourceIndexes = Array.from({ length: parentCount }, (_, i) => i).join(', ');
   const availableKeyLine = `Available source indexes (0-based): ${availableSourceIndexes}. Every sourceIndexes value in your response must contain only numbers from this list.`;

@@ -76,6 +76,11 @@ import { StageStatus } from '@prisma/client';
 import { PIPELINE_STAGES } from '../types/job.js';
 import { buildErrorDetails } from '../utils/errorTranslator.js';
 import { getPhaseContext } from '../utils/phaseContext.js';
+import {
+  completePaidPoolRecovery,
+  preparePaidPoolMutation,
+  startPaidPoolRecovery,
+} from '../services/paidPoolRecoveryService.js';
 
 export const workersRouter = Router();
 
@@ -405,6 +410,7 @@ const JobStartedSchema = z.object({
   // The claim. This callback is where AUTHORIZED becomes CLAIMED — the boundary that decides
   // whether a later cancel owes the user a refund (nothing ran) or not (work started).
   dispatch_id: z.string().uuid().optional(),
+  recovery_token: z.string().uuid().optional(),
 });
 
 /**
@@ -437,7 +443,7 @@ workersRouter.post('/job-started', async (req: Request, res: Response) => {
     const dispatch = data.dispatch_id
       ? await prisma.jobDispatch.findUnique({
           where: { id: data.dispatch_id },
-          select: { kind: true, segment: true },
+          select: { kind: true, segment: true, state: true, recoveryToken: true },
         })
       : null;
     const dispatchKind = dispatch?.kind;
@@ -457,19 +463,29 @@ workersRouter.post('/job-started', async (req: Request, res: Response) => {
     let result: { count: number };
     let didStart = false;
     if (data.dispatch_id) {
-      const outcome = isLandingPageDispatch
-        ? await startLandingPageDispatch(data.dispatch_id, data.worker_id, data.job_id)
-        : await startDispatchedJob(data.dispatch_id, data.worker_id, {
+      const isPaidPoolRecovery =
+        dispatch?.state === DispatchState.RECOVERING
+        && dispatch.recoveryToken === data.recovery_token;
+      const outcome = isPaidPoolRecovery
+        ? await startPaidPoolRecovery({
+            dispatchId: data.dispatch_id,
             jobId: data.job_id,
-            runningStatus,
-          });
+            workerId: data.worker_id,
+            recoveryToken: data.recovery_token!,
+          })
+        : isLandingPageDispatch
+          ? await startLandingPageDispatch(data.dispatch_id, data.worker_id, data.job_id)
+          : await startDispatchedJob(data.dispatch_id, data.worker_id, {
+              jobId: data.job_id,
+              runningStatus,
+            });
       if (!outcome) {
         console.warn(
           `[Workers] Job ${data.job_id} dispatch ${data.dispatch_id} could not start — telling ${data.worker_id} to skip`
         );
         return res.json({ status: 'ok', shouldCancel: true, stale: true });
       }
-      didStart = outcome === 'started';
+      didStart = outcome === 'started' && !isPaidPoolRecovery;
       result = { count: 1 };
     } else {
       // Narrow legacy path: a worker without a dispatch id may only start a job that has no
@@ -572,6 +588,71 @@ workersRouter.post('/job-started', async (req: Request, res: Response) => {
       return;
     }
     console.error('Job started error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+const PaidPoolPreparedSchema = z.object({
+  worker_id: z.string().min(1).max(100),
+  job_id: z.string().uuid(),
+  dispatch_id: z.string().uuid(),
+  checkpoint_path: z.string().min(1).max(500),
+  preview_path: z.string().min(1).max(500),
+});
+
+/** Worker has durably copied the pool artifacts and may now replace the canonical files. */
+workersRouter.post('/paid-pool-operation-prepared', async (req: Request, res: Response) => {
+  try {
+    const data = PaidPoolPreparedSchema.parse(req.body);
+    const outcome = await preparePaidPoolMutation({
+      jobId: data.job_id,
+      dispatchId: data.dispatch_id,
+      workerId: data.worker_id,
+      checkpointPath: data.checkpoint_path,
+      previewPath: data.preview_path,
+    });
+    res.json({ status: 'ok', prepared: outcome !== 'stale', stale: outcome === 'stale' });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation error', details: error.errors });
+      return;
+    }
+    console.error('Paid pool preparation error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+const PaidPoolRecoveryCompleteSchema = z.object({
+  worker_id: z.string().min(1).max(100),
+  job_id: z.string().uuid(),
+  dispatch_id: z.string().uuid(),
+  recovery_token: z.string().uuid(),
+});
+
+/** Before-image is restored under the operation lock; now refund and reopen selection. */
+workersRouter.post('/paid-pool-recovery-complete', async (req: Request, res: Response) => {
+  try {
+    const data = PaidPoolRecoveryCompleteSchema.parse(req.body);
+    const outcome = await completePaidPoolRecovery({
+      jobId: data.job_id,
+      dispatchId: data.dispatch_id,
+      recoveryToken: data.recovery_token,
+      workerId: data.worker_id,
+    });
+    if (outcome === 'stale') {
+      res.json({ status: 'ok', stale: true, shouldCancel: true });
+      return;
+    }
+    const { invalidatePreviewReportCache } = await import('../services/assetService.js');
+    invalidatePreviewReportCache(data.job_id);
+    await registerWorkerHeartbeat(data.worker_id, null);
+    res.json({ status: 'ok', idempotent: outcome === 'idempotent' });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation error', details: error.errors });
+      return;
+    }
+    console.error('Paid pool recovery completion error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1765,6 +1846,7 @@ workersRouter.post('/regeneration-complete', async (req: Request, res: Response)
             jobId: true,
             kind: true,
             state: true,
+            workerId: true,
             requestFingerprint: true,
             batchOrdinal: true,
           },
@@ -1775,10 +1857,8 @@ workersRouter.post('/regeneration-complete', async (req: Request, res: Response)
       && (
         dispatch?.jobId !== data.job_id
         || dispatch.kind !== DispatchKind.REGENERATE
-        || (
-          dispatch.state !== DispatchState.AUTHORIZED
-          && dispatch.state !== DispatchState.CLAIMED
-        )
+        || dispatch.state !== DispatchState.CLAIMED
+        || dispatch.workerId !== data.worker_id
       )
     ) {
       res.json({ status: 'ok', stale: true, reason: 'stale_dispatch' });
@@ -1834,6 +1914,7 @@ workersRouter.post('/regeneration-complete', async (req: Request, res: Response)
           status: JobStatus.AWAITING_SELECTION,
           solutionIdeas: mergedSolutions as any,
           ideaBatchCompletedCount: { increment: 1 },
+          activeDispatchId: data.dispatch_id ? null : undefined,
           ...costData,
         },
       });
@@ -1856,14 +1937,23 @@ workersRouter.post('/regeneration-complete', async (req: Request, res: Response)
           ruledOutCount: data.ruled_out_count ?? 0,
           ruledOutRefs: data.ruled_out_refs ?? [],
         };
-        await tx.jobDispatch.updateMany({
-          where: { id: data.dispatch_id, resultSnapshot: { equals: Prisma.AnyNull } },
+        const settled = await tx.jobDispatch.updateMany({
+          where: {
+            id: data.dispatch_id,
+            jobId: data.job_id,
+            kind: DispatchKind.REGENERATE,
+            state: DispatchState.CLAIMED,
+            workerId: data.worker_id,
+            resultSnapshot: { equals: Prisma.AnyNull },
+          },
           data: {
+            state: DispatchState.COMPLETED,
+            settledAt: new Date(),
             resultSnapshot: resultSnapshot as unknown as Prisma.InputJsonValue,
             resultFingerprint: canonicalJsonSha256(resultSnapshot),
           },
         });
-        await settleDispatch(tx, data.dispatch_id, DispatchState.COMPLETED);
+        if (settled.count !== 1) throw new Error('STALE_REGENERATION_WRITER');
         const addedIdeaIds = stampedSolutions.flatMap((idea) =>
           typeof idea.idea_id === 'string' ? [idea.idea_id] : []
         );
@@ -2043,6 +2133,11 @@ workersRouter.post('/regeneration-failed', async (req: Request, res: Response) =
       }
     }
 
+    // The worker compensates the preview file before reporting failure. Drop any
+    // forward-state parse cached while that file briefly contained the new batch.
+    const { invalidatePreviewReportCache } = await import('../services/assetService.js');
+    invalidatePreviewReportCache(data.job_id);
+
     // Clear worker's current job
     await registerWorkerHeartbeat(data.worker_id, null);
 
@@ -2100,9 +2195,26 @@ workersRouter.post('/seed-complete', async (req: Request, res: Response) => {
       const dispatch = data.dispatch_id
         ? await tx.jobDispatch.findUnique({
             where: { id: data.dispatch_id },
-            select: { sourceMessageId: true },
+            select: {
+              jobId: true,
+              kind: true,
+              state: true,
+              workerId: true,
+              sourceMessageId: true,
+            },
           })
         : null;
+      if (
+        data.dispatch_id
+        && (
+          dispatch?.jobId !== data.job_id
+          || dispatch.kind !== DispatchKind.SEED_IDEA
+          || dispatch.state !== DispatchState.CLAIMED
+          || dispatch.workerId !== data.worker_id
+        )
+      ) {
+        return { count: 0 };
+      }
       const sourceMessage = dispatch?.sourceMessageId
         ? await tx.chatMessage.findFirst({
             where: {
@@ -2157,13 +2269,24 @@ workersRouter.post('/seed-complete', async (req: Request, res: Response) => {
         data: {
           status: JobStatus.AWAITING_SELECTION,
           solutionIdeas: mergedSolutions as any,
+          activeDispatchId: data.dispatch_id ? null : undefined,
           ...costData,
         },
       });
       if (flipped.count === 0) return { count: 0 };
 
       if (data.dispatch_id) {
-        await settleDispatch(tx, data.dispatch_id, DispatchState.COMPLETED);
+        const settled = await tx.jobDispatch.updateMany({
+          where: {
+            id: data.dispatch_id,
+            jobId: data.job_id,
+            kind: DispatchKind.SEED_IDEA,
+            state: DispatchState.CLAIMED,
+            workerId: data.worker_id,
+          },
+          data: { state: DispatchState.COMPLETED, settledAt: new Date() },
+        });
+        if (settled.count !== 1) throw new Error('STALE_SEED_WRITER');
 
         // Durable 'seed_settled' receipt (continuous-analyst-ledger idiom) — a SEPARATE row
         // from the 'seed_submitted' one written at admission, keyed on the SAME
@@ -2195,6 +2318,21 @@ workersRouter.post('/seed-complete', async (req: Request, res: Response) => {
       if (!current) {
         res.status(404).json({ error: 'Job not found' });
         return;
+      }
+      if (data.dispatch_id) {
+        const owner = await prisma.jobDispatch.findUnique({
+          where: { id: data.dispatch_id },
+          select: { jobId: true, kind: true, state: true, workerId: true },
+        });
+        if (
+          owner?.jobId !== data.job_id
+          || owner.kind !== DispatchKind.SEED_IDEA
+          || owner.state === DispatchState.RECOVERING
+          || (owner.state === DispatchState.CLAIMED && owner.workerId !== data.worker_id)
+        ) {
+          res.json({ status: 'ok', stale: true, shouldCancel: true });
+          return;
+        }
       }
       // Superseded attempt — checked before the idempotency/cancellation reads below, which
       // would otherwise mistake another attempt's arrival for "my own, already landed".
@@ -2299,30 +2437,12 @@ workersRouter.post('/seed-failed', async (req: Request, res: Response) => {
       if (data.dispatch_id) {
         await settleDispatch(tx, data.dispatch_id, DispatchState.FAILED, 'SYSTEM_FAULT');
 
-        // Durable 'seed_settled' receipt with outcome='failed' — the birth produced nothing,
-        // so the seed card resolves to its terminal failed state on reload instead of
-        // staying stuck on the 'seed_submitted' (evaluating) receipt forever.
-        if (dispatch?.sourceMessageId) {
-          await tx.chatMessage.create({
-            data: {
-              jobId: data.job_id,
-              gateStage: 5,
-              role: 'receipt',
-              content: buildSeedReceiptContent('seed_settled', 'failed'),
-              patchJson: buildSeedEnvelope(
-                'seed_settled', dispatch.sourceMessageId, 'failed', undefined,
-                data.dispatch_id,
-              ) as unknown as object,
-            },
-          });
-        }
-
         refund = dispatch?.chargeId
           ? await refundChargeInTx(tx, dispatch.chargeId)
           : dispatch?.seedOrdinal != null
             ? await refundForStageInTx(tx, data.job_id, `seed_idea_${dispatch.seedOrdinal}`)
             : null;
-        if (refund) {
+        if (refund && refund.amount > 0) {
           await tx.jobDispatch.updateMany({
             where: { id: data.dispatch_id, state: DispatchState.FAILED },
             data: {
@@ -2330,6 +2450,25 @@ workersRouter.post('/seed-failed', async (req: Request, res: Response) => {
               refundTransactionId: refund.id,
               refundedAt: new Date(),
               refundedAmount: refund.amount,
+            },
+          });
+        }
+
+        // Resolve the durable pending card after refund truth is known. A reversal can
+        // restore zero after an allowance expires, so only a positive amount is called
+        // refunded; otherwise this remains an evaluation failure.
+        if (dispatch?.sourceMessageId) {
+          const outcome = Math.max(refund?.amount ?? 0, 0) > 0 ? 'refunded' : 'failed';
+          await tx.chatMessage.create({
+            data: {
+              jobId: data.job_id,
+              gateStage: 5,
+              role: 'receipt',
+              content: buildSeedReceiptContent('seed_settled', outcome),
+              patchJson: buildSeedEnvelope(
+                'seed_settled', dispatch.sourceMessageId, outcome, undefined,
+                data.dispatch_id,
+              ) as unknown as object,
             },
           });
         }
@@ -2358,11 +2497,16 @@ workersRouter.post('/seed-failed', async (req: Request, res: Response) => {
       return;
     }
 
-    if (result.refund) {
+    if (result.refund && result.refund.amount > 0) {
       console.log(
         `[Workers] Refunded ${Math.abs(result.refund.amount)} credits for job ${data.job_id} — seed idea failed`
       );
     }
+
+    // The worker compensates the preview file before reporting failure. Drop any
+    // forward-state parse cached while that file briefly contained the seed result.
+    const { invalidatePreviewReportCache } = await import('../services/assetService.js');
+    invalidatePreviewReportCache(data.job_id);
 
     // Clear worker's current job
     await registerWorkerHeartbeat(data.worker_id, null);
@@ -2663,7 +2807,7 @@ workersRouter.post('/gate-failed', async (req: Request, res: Response) => {
           refund = dispatch?.chargeId
             ? await refundChargeInTx(tx, dispatch.chargeId)
             : await refundForStageInTx(tx, data.job_id, refundableSegment);
-          if (refund) {
+          if (refund && refund.amount > 0) {
             await tx.jobDispatch.updateMany({
               where: { id: data.dispatch_id, state: DispatchState.FAILED },
               data: {
@@ -2680,7 +2824,7 @@ workersRouter.post('/gate-failed', async (req: Request, res: Response) => {
       return { count: reverted.count, refund };
     });
 
-    if (result.refund && refundableSegment) {
+    if (result.refund && result.refund.amount > 0 && refundableSegment) {
       console.log(
         `[Workers] Refunded ${Math.abs(result.refund.amount)} credits for job ${data.job_id} — ` +
         `system fault on segment ${refundableSegment}`
@@ -2759,9 +2903,46 @@ workersRouter.post('/gate-failed', async (req: Request, res: Response) => {
 
 const OPPORTUNITY_RANK: Record<string, number> = { high: 3, medium: 2, low: 1 };
 
+async function completeCatalogAttempt(
+  tx: Prisma.TransactionClient,
+  args: { jobId: string; dispatchId?: string; workerId: string },
+): Promise<void> {
+  const job = await tx.job.updateMany({
+    where: {
+      id: args.jobId,
+      status: { in: [JobStatus.RUNNING, JobStatus.QUEUED] },
+      activeDispatchId: args.dispatchId ?? null,
+    },
+    data: {
+      status: JobStatus.COMPLETED,
+      completedAt: new Date(),
+      activeDispatchId: null,
+    },
+  });
+  if (job.count !== 1) throw new Error('STALE_CATALOG_COMPLETION');
+
+  if (args.dispatchId) {
+    const dispatch = await tx.jobDispatch.updateMany({
+      where: {
+        id: args.dispatchId,
+        jobId: args.jobId,
+        kind: DispatchKind.CONTINUE,
+        state: DispatchState.CLAIMED,
+        workerId: args.workerId,
+      },
+      data: {
+        state: DispatchState.COMPLETED,
+        settledAt: new Date(),
+      },
+    });
+    if (dispatch.count !== 1) throw new Error('STALE_CATALOG_COMPLETION');
+  }
+}
+
 const CatalogPainPointsReadySchema = z.object({
   worker_id: z.string().min(1),
   job_id: z.string().uuid(),
+  dispatch_id: z.string().uuid().optional(),
   category_id: z.string().uuid(),
   pain_points: z.array(z.record(z.unknown())),
   niche: z.string(),
@@ -2795,7 +2976,7 @@ workersRouter.post('/catalog-pain-points-ready', async (req: Request, res: Respo
     // ─── Three-tier status guard ─────────────────────────────────────────
     const job = await prisma.job.findUnique({
       where: { id: data.job_id },
-      select: { status: true },
+      select: { status: true, activeDispatchId: true },
     });
     if (!job) {
       res.status(404).json({ error: 'Job not found' });
@@ -2809,6 +2990,10 @@ workersRouter.post('/catalog-pain-points-ready', async (req: Request, res: Respo
     if (job.status !== JobStatus.RUNNING && job.status !== JobStatus.QUEUED) {
       console.warn(`[Workers] catalog-pain-points-ready: job ${data.job_id} in status ${job.status} — refusing to mutate`);
       res.status(409).json({ error: `Job not in RUNNING/QUEUED state (current: ${job.status})` });
+      return;
+    }
+    if ((job.activeDispatchId ?? null) !== (data.dispatch_id ?? null)) {
+      res.status(409).json({ error: 'Stale catalog completion dispatch' });
       return;
     }
 
@@ -2834,12 +3019,12 @@ workersRouter.post('/catalog-pain-points-ready', async (req: Request, res: Respo
 
     // Meaningfulness gate. Applies to both pain-points-present and -empty
     // paths: the preview must yield renderable content for the catalog row
-    // to be useful. Otherwise fail → RQ retry.
+    // to be useful. Otherwise fail this run; an admin can trigger a fresh one.
     if (!hasMeaningfulResearchContext(ctx)) {
       console.error(
-        `[Workers] Catalog research context for ${data.job_id} has no meaningful data; aborting for RQ retry`,
+        `[Workers] Catalog research context for ${data.job_id} has no meaningful data; failing this run`,
       );
-      res.status(500).json({ error: 'Research context not meaningful; will retry' });
+      res.status(500).json({ error: 'Research context not meaningful; trigger a new catalog run' });
       return;
     }
 
@@ -2886,8 +3071,8 @@ workersRouter.post('/catalog-pain-points-ready', async (req: Request, res: Respo
     const result = await prisma.$transaction(async (tx) => {
       // Row-level lock serializes concurrent duplicate callbacks. Second
       // caller waits; when it gets through, status check below short-circuits.
-      const lockedJob = await tx.$queryRaw<{ id: string; status: JobStatusType }[]>`
-        SELECT id, status FROM "Job" WHERE id = ${data.job_id} FOR UPDATE
+      const lockedJob = await tx.$queryRaw<{ id: string; status: JobStatusType; activeDispatchId: string | null }[]>`
+        SELECT id, status, "activeDispatchId" FROM "Job" WHERE id = ${data.job_id} FOR UPDATE
       `;
       if (lockedJob.length === 0) {
         throw new Error(`Job ${data.job_id} not found inside tx`);
@@ -2897,6 +3082,9 @@ workersRouter.post('/catalog-pain-points-ready', async (req: Request, res: Respo
       }
       if (lockedJob[0].status !== JobStatus.RUNNING && lockedJob[0].status !== JobStatus.QUEUED) {
         throw new Error(`Job ${data.job_id} in status ${lockedJob[0].status} inside tx`);
+      }
+      if ((lockedJob[0].activeDispatchId ?? null) !== (data.dispatch_id ?? null)) {
+        throw new Error('STALE_CATALOG_COMPLETION');
       }
 
       const existing = await tx.catalogPainPoint.findMany({
@@ -3065,10 +3253,11 @@ workersRouter.post('/catalog-pain-points-ready', async (req: Request, res: Respo
         }
       }
 
-      // Status flip inside tx — atomic with merge/insert/sweep.
-      await tx.job.updateMany({
-        where: { id: data.job_id, status: { in: [JobStatus.RUNNING, JobStatus.QUEUED] } },
-        data: { status: JobStatus.COMPLETED, completedAt: new Date() },
+      // Job + dispatch settlement stays atomic with merge/insert/sweep.
+      await completeCatalogAttempt(tx, {
+        jobId: data.job_id,
+        dispatchId: data.dispatch_id,
+        workerId: data.worker_id,
       });
 
       return {
@@ -3121,6 +3310,10 @@ workersRouter.post('/catalog-pain-points-ready', async (req: Request, res: Respo
       res.status(400).json({ error: 'Validation error', details: error.errors });
       return;
     }
+    if (error instanceof Error && error.message === 'STALE_CATALOG_COMPLETION') {
+      res.status(409).json({ error: 'Stale catalog completion dispatch' });
+      return;
+    }
     console.error('[Workers] Catalog pain points ready error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -3129,6 +3322,7 @@ workersRouter.post('/catalog-pain-points-ready', async (req: Request, res: Respo
 const CatalogIdeasReadySchema = z.object({
   worker_id: z.string().min(1),
   job_id: z.string().uuid(),
+  dispatch_id: z.string().uuid().optional(),
   category_id: z.string().uuid(),
   ideas: z.array(z.record(z.unknown())),
   niche: z.string(),
@@ -3156,7 +3350,7 @@ workersRouter.post('/catalog-ideas-ready', async (req: Request, res: Response) =
     // ─── Three-tier status guard ─────────────────────────────────────────
     const job = await prisma.job.findUnique({
       where: { id: data.job_id },
-      select: { status: true },
+      select: { status: true, activeDispatchId: true },
     });
     if (!job) {
       res.status(404).json({ error: 'Job not found' });
@@ -3170,6 +3364,10 @@ workersRouter.post('/catalog-ideas-ready', async (req: Request, res: Response) =
     if (job.status !== JobStatus.RUNNING && job.status !== JobStatus.QUEUED) {
       console.warn(`[Workers] catalog-ideas-ready: job ${data.job_id} in status ${job.status} — refusing to mutate`);
       res.status(409).json({ error: `Job not in RUNNING/QUEUED state (current: ${job.status})` });
+      return;
+    }
+    if ((job.activeDispatchId ?? null) !== (data.dispatch_id ?? null)) {
+      res.status(409).json({ error: 'Stale catalog completion dispatch' });
       return;
     }
 
@@ -3192,14 +3390,14 @@ workersRouter.post('/catalog-ideas-ready', async (req: Request, res: Response) =
       console.error(
         `[Workers] Ideas job ${data.job_id} parent context ${effectiveSourceJobId} is not meaningful; aborting`,
       );
-      res.status(500).json({ error: 'Parent research context not meaningful; will retry' });
+      res.status(500).json({ error: 'Parent research context not meaningful; trigger a new catalog run' });
       return;
     }
 
     // ─── Transactional mutation block ────────────────────────────────────
     const result = await prisma.$transaction(async (tx) => {
-      const lockedJob = await tx.$queryRaw<{ id: string; status: JobStatusType }[]>`
-        SELECT id, status FROM "Job" WHERE id = ${data.job_id} FOR UPDATE
+      const lockedJob = await tx.$queryRaw<{ id: string; status: JobStatusType; activeDispatchId: string | null }[]>`
+        SELECT id, status, "activeDispatchId" FROM "Job" WHERE id = ${data.job_id} FOR UPDATE
       `;
       if (lockedJob.length === 0) {
         throw new Error(`Job ${data.job_id} not found inside tx`);
@@ -3209,6 +3407,9 @@ workersRouter.post('/catalog-ideas-ready', async (req: Request, res: Response) =
       }
       if (lockedJob[0].status !== JobStatus.RUNNING && lockedJob[0].status !== JobStatus.QUEUED) {
         throw new Error(`Job ${data.job_id} in status ${lockedJob[0].status} inside tx`);
+      }
+      if ((lockedJob[0].activeDispatchId ?? null) !== (data.dispatch_id ?? null)) {
+        throw new Error('STALE_CATALOG_COMPLETION');
       }
 
       const existingIdeas = await tx.catalogIdea.findMany({
@@ -3325,9 +3526,10 @@ workersRouter.post('/catalog-ideas-ready', async (req: Request, res: Response) =
         }
       }
 
-      await tx.job.updateMany({
-        where: { id: data.job_id, status: { in: [JobStatus.RUNNING, JobStatus.QUEUED] } },
-        data: { status: JobStatus.COMPLETED, completedAt: new Date() },
+      await completeCatalogAttempt(tx, {
+        jobId: data.job_id,
+        dispatchId: data.dispatch_id,
+        workerId: data.worker_id,
       });
 
       return { alreadyProcessed: false as const, created, skipped, totalExisting: existingNames.size };
@@ -3355,6 +3557,10 @@ workersRouter.post('/catalog-ideas-ready', async (req: Request, res: Response) =
   } catch (error) {
     if (error instanceof z.ZodError) {
       res.status(400).json({ error: 'Validation error', details: error.errors });
+      return;
+    }
+    if (error instanceof Error && error.message === 'STALE_CATALOG_COMPLETION') {
+      res.status(409).json({ error: 'Stale catalog completion dispatch' });
       return;
     }
     console.error('[Workers] Catalog ideas ready error:', error);

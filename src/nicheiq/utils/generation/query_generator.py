@@ -559,7 +559,7 @@ Industry Boundaries: [Not provided - use general heuristics]
             logger.debug(f"Raw content: {content[:500]}")
             return []
         except Exception as e:
-            logger.error(f"Unexpected error in query generation: {e}", exc_info=True)
+            logger.opt(exception=True).error("Unexpected error in query generation: {}", e)
             return []
 
     def generate_all_platform_queries(

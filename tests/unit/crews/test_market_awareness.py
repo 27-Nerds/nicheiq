@@ -374,6 +374,33 @@ class TestProbeSerpComposition:
         crew._ma_search_batch.assert_not_called()
         assert getattr(idea, "_serp_owned", False) is False
 
+    def test_search_is_budget_exempt(self, monkeypatch):
+        """Regression (2026-07-30): this probe runs LAST, so a drained shared budget silently
+        returned '' for every query, `_serp_owned` was never stamped, and Rule D's provisional-SEO
+        cap never fired — making an idea's SEO score depend on earlier probes' spend."""
+        monkeypatch.setattr(settings, "serp_probe_queries_per_idea", 2)
+        crew = _crew()
+        crew._ma_search_batch = MagicMock(return_value={})
+        crew._probe_serp_composition([self._serp_idea()])
+        crew._ma_search_batch.assert_called_once()
+        assert crew._ma_search_batch.call_args.kwargs.get("budget_exempt") is True
+
+    def test_starvation_is_logged_not_silent(self, monkeypatch):
+        """Empty results must be visible — 'budget starved' and 'no owned SERPs' were previously
+        indistinguishable because the probe only logged on a POSITIVE finding."""
+        from loguru import logger
+        monkeypatch.setattr(settings, "serp_probe_queries_per_idea", 2)
+        crew = _crew()
+        crew._ma_search_batch = MagicMock(return_value={})
+        messages = []
+        capture_id = logger.add(lambda msg: messages.append(str(msg)), level="WARNING")
+        try:
+            crew._probe_serp_composition([self._serp_idea()])
+        finally:
+            logger.remove(capture_id)
+        blob = " ".join(messages)
+        assert "SerpProbe" in blob and "Rule D cannot fire" in blob, messages
+
     def test_owned_serp_stamps_true(self, monkeypatch):
         monkeypatch.setattr(settings, "serp_probe_queries_per_idea", 2)
         monkeypatch.setattr(settings, "serp_owned_domain_threshold", 7)

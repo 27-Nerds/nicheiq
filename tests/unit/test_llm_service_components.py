@@ -184,6 +184,26 @@ class TestKeywordSeedGeneratorIntegration:
         call_kwargs = mock_invoke_structured.call_args[1]
         assert call_kwargs['output_model'] == ExpandedKeywordList
 
+    @patch('nicheiq.utils.generation.keyword_seed_generator.LLMService.invoke_structured')
+    def test_json_brace_provider_error_is_not_masked(self, mock_invoke_structured):
+        """Loguru must not reinterpret braces in an upstream provider error."""
+        mock_invoke_structured.side_effect = RuntimeError(
+            "upstream {'error': {'code': 'bad_request'}}"
+        )
+        generator = KeywordSeedGenerator()
+        solution = SolutionIdea(
+            solution_name="Test",
+            description="Descr. More. Again. Final.",
+            value_proposition="V",
+            pain_points_addressed=["p"],
+            core_features=["f"],
+            target_personas=["t"],
+            project_type="saas",
+            market_fit_score=0.8,
+        )
+
+        assert generator.generate_seeds(solution) is None
+
 
 class TestValidatorsIntegration:
     """Verify validators use LLMService correctly."""

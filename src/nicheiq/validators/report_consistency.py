@@ -22,6 +22,40 @@ def _strip_numbering_prefix(text: str) -> str:
     return re.sub(r'^\d+[\.\)]\s*', '', text)
 
 
+# Shared vendor parser for CLASS-PREFIXED parity stamps (2026-08 parity fix, plan Step 1):
+#   "bundled_free (Vendor): evidence" / "substitute (Vendor): evidence"
+#   "shipped by Vendor: evidence"     / "partial by Vendor: evidence"
+# The colon-anchored non-greedy paren alternative is tried first so nested parens survive
+# ("bundled_free (Peptide Calculator (pepdose.com)): ..."). Shared: also imported by
+# scripts/parity_cap_ab.py's label replay. Stamp string shape is parsed by >=7 consumers —
+# never change the shape, only parse it.
+_STAMP_VENDOR_RE = re.compile(
+    r"^(?P<klass>bundled_free|shipped|partial|substitute)"
+    r"(?:\s*\((?P<vendor_paren>.+?)\)\s*:"
+    r"|\s*\((?P<vendor_paren_nc>[^)]+)\)"
+    r"|\s+by\s+(?P<vendor_by>[^:]+):)",
+    re.IGNORECASE,
+)
+
+# Currency amount inside an incumbent-map pricing string ("$300/mo", "€15", "35 USD").
+_PRICING_CURRENCY_RE = re.compile(
+    r"[$€£]\s*\d|\b\d+(?:\.\d+)?\s*(?:USD|EUR|GBP)\b", re.IGNORECASE)
+
+
+def parse_stamp_vendor(stamp) -> Optional[tuple[str, str]]:
+    """(class, vendor) from a class-prefixed parity stamp, or None ('none found', free text)."""
+    if not isinstance(stamp, str):
+        return None
+    m = _STAMP_VENDOR_RE.match(stamp.strip())
+    if not m:
+        return None
+    vendor = (m.group("vendor_paren") or m.group("vendor_paren_nc")
+              or m.group("vendor_by") or "").strip()
+    if not vendor:
+        return None
+    return m.group("klass").lower(), vendor
+
+
 class ConsistencyWarning(BaseModel):
     """A single cross-section inconsistency detected in a report."""
 
@@ -72,6 +106,7 @@ class ReportConsistencyValidator:
         warnings.extend(self._check_verdict_vs_recommendation(report))
         warnings.extend(self._check_verdict_vs_viability(report, state))
         warnings.extend(self._check_core_pain_point_coverage(report))
+        warnings.extend(self._check_parity_wallet_contradiction(report, state))
 
         return warnings
 
@@ -421,7 +456,7 @@ class ReportConsistencyValidator:
     # ------------------------------------------------------------------
 
     def _check_core_pain_point_coverage(self, report) -> list[ConsistencyWarning]:
-        """Check that the #1 core pain point appears in the selected solution's pain_points_addressed."""
+        """Check that the solution-scoped core pain resolves to pain_points_addressed."""
         warnings: list[ConsistencyWarning] = []
 
         dashboard = getattr(report, 'executive_dashboard', None)
@@ -455,7 +490,7 @@ class ReportConsistencyValidator:
             ))
             return warnings
 
-        # 3-level match hierarchy
+        # 4-level match hierarchy
         addressed_titles = [str(t).strip() for t in addressed]
         stripped_titles = [_strip_numbering_prefix(t) for t in addressed_titles]
         core_title = core_title.strip()
@@ -498,6 +533,23 @@ class ReportConsistencyValidator:
                 ))
                 return warnings
 
+        # Level 4: the same deterministic token-overlap rule used to choose the report's
+        # solution-scoped core pain. A paraphrased addressed-pain string must not be flagged as
+        # contradictory after the shared resolver accepted it.
+        from ..utils.pain_matching import scope_pains_to_addressed
+        if scope_pains_to_addressed([core_pain_point], addressed_titles):
+            warnings.append(ConsistencyWarning(
+                field_path="selected_solution_details.pain_points_addressed",
+                severity="INFO",
+                message=(
+                    f"Core pain point '{core_title}' found via token-overlap match in "
+                    "pain_points_addressed."
+                ),
+                expected_value=core_title,
+                actual_value=", ".join(addressed_titles),
+            ))
+            return warnings
+
         # No match at any level
         truncated = ", ".join(addressed_titles)
         if len(truncated) > 200:
@@ -507,13 +559,73 @@ class ReportConsistencyValidator:
             field_path="selected_solution_details.pain_points_addressed",
             severity="WARNING",
             message=(
-                f"Core pain point '{core_title}' (the #1 pain point by severity+WTP) "
+                f"Core pain point '{core_title}' (the highest-priority validated pain matched "
+                f"to this solution) "
                 f"is not in the selected solution's pain_points_addressed list. "
                 f"The recommended solution does not claim to address the top problem."
             ),
             expected_value=core_title,
             actual_value=truncated,
         ))
+
+        return warnings
+
+    # ------------------------------------------------------------------
+    # Check: bundled_free parity stamp vs priced wallet-brief vendor
+    # ------------------------------------------------------------------
+
+    def _check_parity_wallet_contradiction(self, report, state=None) -> list[ConsistencyWarning]:
+        """2026-08 parity fix (plan Step 1): a `bundled_free` parity stamp claims the vendor
+        gives the capability away free — if the wallet brief (state.niche_incumbent_map)
+        prices that same vendor with a currency amount and no free marker, the stamp
+        contradicts the run's own wallet data. Report-side safety net behind the crew's
+        wallet-reclassify pass: appends a quality caveat, never mutates the stamp."""
+        warnings: list[ConsistencyWarning] = []
+
+        if not state:
+            return warnings
+
+        rows = [r for r in (getattr(state, 'niche_incumbent_map', None) or [])
+                if isinstance(r, dict)]
+        priced: dict[str, tuple[str, str]] = {}
+        for r in rows:
+            name = (r.get("name") or "").strip()
+            pricing = (r.get("pricing") or "").strip()
+            if (name and _PRICING_CURRENCY_RE.search(pricing)
+                    and not re.search(r"\bfree\b", pricing, re.IGNORECASE)):
+                priced.setdefault(name.casefold(), (name, pricing))
+        if not priced:
+            return warnings
+
+        candidates: list[tuple[str, object]] = []
+        selected = getattr(report, 'selected_solution_details', None)
+        if selected is not None:
+            candidates.append(("selected_solution_details", selected))
+        for i, alt in enumerate(getattr(report, 'alternative_solutions', None) or []):
+            candidates.append((f"alternative_solutions[{i}]", alt))
+
+        for path, solution in candidates:
+            stamp = getattr(solution, 'incumbent_parity', None)
+            parsed = parse_stamp_vendor(stamp)
+            if not parsed or parsed[0] != "bundled_free":
+                continue
+            vendor_name, pricing = priced.get(parsed[1].casefold(), (None, None))
+            if vendor_name is None:
+                continue
+            sol_name = getattr(solution, 'solution_name', None) or "?"
+            warnings.append(ConsistencyWarning(
+                field_path=f"{path}.incumbent_parity",
+                severity="WARNING",
+                message=(
+                    f"Parity/wallet contradiction: '{sol_name}' carries a bundled_free "
+                    f"parity stamp citing '{vendor_name}', but the incumbent map prices "
+                    f"'{vendor_name}' at '{pricing}' with no free tier. The 'free' claim "
+                    f"contradicts the run's own wallet data — treat the capability as "
+                    f"shipped (paid), not bundled free."
+                ),
+                expected_value=f"shipped by {vendor_name}",
+                actual_value=str(stamp)[:120],
+            ))
 
         return warnings
 

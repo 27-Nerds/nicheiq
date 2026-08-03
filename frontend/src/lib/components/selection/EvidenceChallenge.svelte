@@ -56,6 +56,8 @@
     ownerEvidencePrefill?: SelectionOwnerEvidencePrefill | null;
     onLensChange?: (lens: SelectionChallengeLens) => void;
     onChanged?: () => void;
+    /** Read-only decision-record mode: load and render saved checks, block writes. */
+    disabled?: boolean;
     onReturnToEvidenceDraft?: (target: {
       jobId: string;
       ideaId: string;
@@ -75,6 +77,7 @@
     onLensChange,
     onChanged,
     onReturnToEvidenceDraft,
+    disabled = false,
   }: Props = $props();
   let challenges = $state<SelectionChallenge[]>([]);
   let stale = $state<SelectionChallengeStaleReference[]>([]);
@@ -115,7 +118,7 @@
       empty: "See what your saved evidence says about building it",
     },
   };
-  const STALE_TAB_MESSAGE = "Needs recheck — the evidence used by this review changed.";
+  const STALE_TAB_MESSAGE = "Needs recheck — this review predates the current check method or evidence.";
   const validatedOwnerEvidencePrefill = $derived.by(() => {
     const request = ownerEvidencePrefill;
     if (!request) return { prefill: null, error: "" };
@@ -349,7 +352,7 @@
   }
 
   async function run() {
-    if (!jobId || running) return;
+    if (disabled || !jobId || running) return;
     const idea = selectedIdea();
     const identity = idea ? ideaIdentity(idea) : null;
     if (!identity) {
@@ -503,7 +506,7 @@
             <h4>{LENS_COPY[result.lens].label}</h4>
           </div>
           <div class="recheck-action">
-            <button type="button" class="add-evidence-action" data-tour="add-evidence" onclick={() => evidenceLedger?.openAddEvidence()}>
+            <button type="button" class="add-evidence-action" data-tour="add-evidence" disabled={disabled} onclick={() => evidenceLedger?.openAddEvidence()}>
               Add your evidence
             </button>
             <SubmitButton
@@ -512,6 +515,7 @@
               label="Check again"
               loadingText="Checking…"
               loading={running}
+              disabled={disabled}
               icon={RefreshCw}
               minWidth="0"
               onclick={() => void run()}
@@ -571,7 +575,7 @@
                 <section class="finding finding--next">
                   <h6>Next action</h6>
                   <p>{nextActionCopy(question)}</p>
-                  {#if gap?.questionId === question.questionId && !isStale(result.ideaId, result.lens) && onTrackRisk}
+                  {#if !disabled && gap?.questionId === question.questionId && !isStale(result.ideaId, result.lens) && onTrackRisk}
                     <div class="gap-actions">
                       <button type="button" class="gap-action" onclick={() => onTrackRisk?.(riskPrefill(result, question))}>
                         Save as a question to resolve
@@ -617,7 +621,7 @@
           {/each}
         </div>
 
-        {#if onBranchDirection && gap && !isStale(result.ideaId, result.lens) && (result.lens === "demand" || result.lens === "competition")}
+        {#if !disabled && onBranchDirection && gap && !isStale(result.ideaId, result.lens) && (result.lens === "demand" || result.lens === "competition")}
           <button type="button" class="shape-adjacent" onclick={onBranchDirection}>
             {BRANCH_DIRECTION_LABEL} <span aria-hidden="true">&rarr;</span>
           </button>
@@ -632,24 +636,26 @@
         <div class="empty">
           <p class="empty-label">{staleReview ? "Needs recheck" : "Not checked yet"}</p>
           <EmptyState
-            title={staleReview ? "The evidence changed since this review" : LENS_COPY[selectedLens].empty}
-            description={staleReview
-              ? "Run this risk area again to include the current Discovery sources, evidence you added, and completed test results."
-              : "Run this check to separate what the saved evidence supports, contradicts, or leaves unanswered."}
+            title={staleReview ? "This review predates the current check method or evidence" : LENS_COPY[selectedLens].empty}
+            description={disabled
+              ? "No saved check is available for this risk area in the selection record."
+              : staleReview
+                ? "Run this risk area again to use the current check method and include the current Discovery sources, evidence you added, and completed test results."
+                : "Run this check to separate what the saved evidence supports, contradicts, or leaves unanswered."}
           >
             <SubmitButton
               type="button"
               label={staleReview ? LENS_COPY[selectedLens].action.replace("Check", "Recheck") : LENS_COPY[selectedLens].action}
               loadingText="Checking…"
               loading={running}
-              disabled={!jobId}
+              disabled={disabled || !jobId}
               minWidth="0"
               onclick={() => void run()}
             />
             <div class="empty-supporting-actions">
               <p class="run-cost-note">Free · reviews saved evidence only</p>
               {#if focusedIdentity}
-                <button type="button" class="add-evidence-action" data-tour="add-evidence" onclick={() => evidenceLedger?.openAddEvidence()}>
+                <button type="button" class="add-evidence-action" data-tour="add-evidence" disabled={disabled} onclick={() => evidenceLedger?.openAddEvidence()}>
                   Add your evidence
                 </button>
               {/if}
@@ -667,7 +673,7 @@
           ideaTitle={solutionDisplayTitle(focusedIdea!)}
           ideaRevision={focusedIdentity.revision}
           lens={selectedLens}
-          prefill={validatedOwnerEvidencePrefill.prefill}
+          prefill={disabled ? null : validatedOwnerEvidencePrefill.prefill}
           showAddAction={false}
           onReturnToDraft={onReturnToEvidenceDraft}
           onChanged={() => { void load(); onChanged?.(); }}
@@ -993,8 +999,9 @@
     cursor: pointer;
     transition: color var(--duration-fast) var(--ease-default);
   }
-  .add-evidence-action:hover { color: var(--color-accent-hover); text-decoration: underline; }
-  .add-evidence-action:active { transform: scale(0.98); }
+  .add-evidence-action:hover:not(:disabled) { color: var(--color-accent-hover); text-decoration: underline; }
+  .add-evidence-action:active:not(:disabled) { transform: scale(0.98); }
+  .add-evidence-action:disabled { color: var(--color-text-muted); cursor: not-allowed; }
   button:focus-visible, summary:focus-visible, a:focus-visible, [role="tabpanel"]:focus-visible {
     outline: 2px solid var(--color-accent);
     outline-offset: 2px;
@@ -1033,7 +1040,7 @@
     :global(.run-action:hover:not(:disabled)),
     :global(.run-action:active:not(:disabled)),
     .gap-action:active,
-    .add-evidence-action:active,
+    .add-evidence-action:active:not(:disabled),
     .shape-adjacent:active { transform: none; }
   }
 </style>

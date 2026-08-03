@@ -49,11 +49,13 @@ trend_longevity_analysis:
        5+ years stable → Sustainable.
 
     3. **longevity_rationale**: 2-3 sentences with SPECIFIC data citations.
-       Reference the pre-computed signals AND raw data. Example: "Sustainable
-       because momentum score of 0.72 indicates 72% of search volume is in
-       growing keywords, with Increasing keyword volume, and
-       Recent discussion activity. Competitive data shows N
-       active competitors validating market demand..."
+       Reference the pre-computed signals AND raw data. Cite the momentum score
+       as a score on its 0-1 banded scale and nothing more — it is NOT a
+       percentage of anything, so never restate it as "N% of search volume" or
+       any other reinterpretation. Shape: "<verdict> because the momentum score
+       of <score> sits in the <band> band, with <keyword volume trend> keyword
+       volume and <discussion recency> discussion activity. Competitive data
+       shows <N> active competitors validating market demand..."
 
     NOTE: new_entrants_trend, competitive_activity_level, and
     volume_growth_rate are now computed deterministically in Python from the

@@ -8,11 +8,12 @@
 
   interface Props {
     groups: FeedbackGroup[];
-    onOpen: (key: string) => void;
-    onAskAnalyst: () => void;
+    onOpen?: (key: string) => void;
+    onAskAnalyst?: () => void;
+    readOnly?: boolean;
   }
 
-  let { groups, onOpen, onAskAnalyst }: Props = $props();
+  let { groups, onOpen, onAskAnalyst, readOnly = false }: Props = $props();
 
   const rationaleCount = $derived(
     groups.reduce((total, group) => total + group.comments.length, 0),
@@ -23,7 +24,7 @@
   // from opening the analyst prompt twice.
   let synthesizing = $state(false);
   function handleAskAnalyst() {
-    if (synthesizing) return;
+    if (readOnly || !onAskAnalyst || synthesizing) return;
     synthesizing = true;
     onAskAnalyst();
     setTimeout(() => {
@@ -36,20 +37,22 @@
   <summary>
     <span>
       <strong>Collaborator feedback</strong>
-      <small>Anonymous preference input, not market evidence</small>
+      <small>{readOnly ? "Saved anonymous input from selection" : "Anonymous preference input, not market evidence"}</small>
     </span>
     <b aria-label={`${rationaleCount} rationale${rationaleCount === 1 ? "" : "s"}`}>{rationaleCount}</b>
   </summary>
   <div class="body">
     <div class="toolbar">
       <p>{rationaleCount} rationale{rationaleCount === 1 ? "" : "s"} from shared-report voting.</p>
-      <button type="button" disabled={synthesizing} onclick={handleAskAnalyst}>Ask analyst to synthesize</button>
+      {#if !readOnly && onAskAnalyst}
+        <button type="button" disabled={synthesizing} onclick={handleAskAnalyst}>Ask analyst to synthesize</button>
+      {/if}
     </div>
     <div class="groups">
       {#each groups as group (group.key)}
         <article class="group">
           <header>
-            {#if group.linked}
+            {#if group.linked && onOpen}
               <h4><button type="button" onclick={() => onOpen(group.key)}>
                 {group.solutionName}
               </button></h4>

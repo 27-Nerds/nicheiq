@@ -44,7 +44,9 @@
     ideas: SolutionPreview[];
     onTestUnknown?: (draft: SelectionExperimentDraftSeed) => void;
     prefill?: SelectionAssumptionPrefill | null;
-    onChanged?: () => void;
+    onChanged?: () => void | Promise<void>;
+    /** Keeps the saved decision record readable while blocking every write path. */
+    disabled?: boolean;
     /** When set, "Linked test" renders as a button that reveals the saved plan. */
     onOpenLinkedTest?: () => void;
   }
@@ -73,6 +75,7 @@
     prefill = null,
     onChanged,
     onOpenLinkedTest,
+    disabled = false,
   }: Props = $props();
   let assumptions = $state<SelectionAssumption[]>([]);
   let challenges = $state<SelectionChallenge[]>([]);
@@ -81,6 +84,8 @@
   let saveError = $state("");
   let saveConflict = $state(false);
   let saving = $state(false);
+  let reconciling = $state(false);
+  let reconcileError = $state("");
   let loadedKey = "";
   let editor = $state<Editor | null>(null);
   let editorBaseline = $state("");
@@ -111,8 +116,13 @@
   ] as const;
 
   const editorDirty = $derived(Boolean(editor) && JSON.stringify(editor) !== editorBaseline);
+  // A successful mutation followed by a failed authoritative refresh leaves the
+  // local rows useful for reading, but unsafe as the basis for another write.
+  // Keep every mutation closed until the retry has reloaded both collections.
+  const mutationsBlocked = $derived(disabled || Boolean(reconcileError) || reconciling);
   const canSave = $derived(Boolean(
-    editor
+    !mutationsBlocked
+      && editor
       && editor.statement.trim().length >= 3
       && editor.impactIfFalse.trim().length >= 3
       && editor.falsificationQuestion.trim().length >= 3
@@ -257,18 +267,24 @@
     return `Risk check · ${lensLabel(assumption.lens)} · ${SELECTION_CHALLENGE_QUESTION_LABELS[assumption.originQuestionId] ?? assumption.originQuestionId}`;
   }
 
+  async function refreshAuthoritativeState(): Promise<void> {
+    if (!jobId) return;
+    const [assumptionResponse, challengeResponse] = await Promise.all([
+      getSelectionAssumptions(jobId),
+      getSelectionChallenges(jobId),
+    ]);
+    assumptions = assumptionResponse.assumptions;
+    challenges = challengeResponse.challenges;
+  }
+
   async function load() {
     if (!jobId) return;
     loading = true;
     loadError = "";
     loadAnnouncement = "Loading questions to resolve…";
     try {
-      const [assumptionResponse, challengeResponse] = await Promise.all([
-        getSelectionAssumptions(jobId),
-        getSelectionChallenges(jobId),
-      ]);
-      assumptions = assumptionResponse.assumptions;
-      challenges = challengeResponse.challenges;
+      await refreshAuthoritativeState();
+      reconcileError = "";
       loadAnnouncement = "Questions to resolve loaded.";
     } catch (cause) {
       loadError = cause instanceof Error ? cause.message : "Could not load questions to resolve.";
@@ -288,6 +304,13 @@
 
   function reviewCopilotPrefill(request: SelectionAssumptionPrefill): void {
     if (request.requestId === appliedPrefillId) return;
+    if (mutationsBlocked) {
+      prefillFeedback = {
+        failed: true,
+        message: "Reload the current decision state before reviewing another suggested draft.",
+      };
+      return;
+    }
     if (saving) {
       prefillFeedback = { failed: true, message: "Wait for the current save to finish." };
       return;
@@ -418,6 +441,7 @@
   });
 
   function openManualCreate(idea: SolutionPreview) {
+    if (mutationsBlocked) return;
     const current = identity(idea);
     if (!current) return;
     activeCopilotDraft = null;
@@ -444,7 +468,7 @@
   }
 
   function openEdit(assumption: SelectionAssumption, idea: SolutionPreview) {
-    if (assumption.stale) return;
+    if (mutationsBlocked || assumption.stale) return;
     activeCopilotDraft = null;
     editor = {
       mode: "edit",
@@ -482,6 +506,7 @@
   /** Submit-attempt entry point: reveals every missing required field instead
    *  of relying on a silently disabled button, then focuses the first one. */
   async function attemptSaveEditor() {
+    if (mutationsBlocked) return;
     if (!canSave) {
       editorSaveAttempted = true;
       await tick();
@@ -498,7 +523,7 @@
   }
 
   async function saveEditor() {
-    if (!jobId || !editor || !canSave || saving || !editor.impact) return;
+    if (!jobId || !editor || !canSave || mutationsBlocked || saving || !editor.impact) return;
     const editorMode = editor.mode;
     saving = true;
     saveError = "";
@@ -533,17 +558,29 @@
         });
         assumptions = assumptions.map((item) => item.id === response.assumption.id ? response.assumption : item);
       }
+
+      // The mutation response is enough for an optimistic row, but not for the
+      // derived decision state (counts, staleness, linked evidence). Re-read both
+      // authoritative collections before announcing a fully reconciled save.
+      try {
+        await refreshAuthoritativeState();
+        await onChanged?.();
+        reconcileError = "";
+        saveAnnouncement = "Question to resolve saved and current decision state loaded.";
+      } catch {
+        reconcileError = "The question was saved, but the current decision state could not be refreshed. Reload it before editing another question.";
+        saveAnnouncement = "Question saved. Current decision state needs to be reloaded.";
+      }
       editor = null;
       activeCopilotDraft = null;
+      prefillFeedback = null;
       editorBaseline = "";
-      saveAnnouncement = "Question to resolve saved.";
-      onChanged?.();
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 409) {
         saveConflict = true;
         saveError = editorMode === "create"
-          ? "This question is already saved or its idea revision changed. Reload before continuing."
-          : "This item changed or its idea revision is no longer current. Reload before editing it again.";
+          ? `This question is already saved or its idea revision changed. ${cause.message} Reload the current map before continuing.`
+          : `This item changed or its idea revision is no longer current. ${cause.message} Reload the current map before editing it again.`;
       } else {
         saveError = cause instanceof Error ? cause.message : "Could not save this item.";
       }
@@ -552,13 +589,28 @@
     }
   }
 
+  async function retryReconciliation() {
+    if (reconciling) return;
+    reconciling = true;
+    try {
+      await refreshAuthoritativeState();
+      await onChanged?.();
+      reconcileError = "";
+      saveAnnouncement = "Current questions and decision state loaded.";
+    } catch {
+      reconcileError = "The current questions and decision state still could not be loaded. Check your connection and try again.";
+    } finally {
+      reconciling = false;
+    }
+  }
+
   function reloadAfterConflict() {
     closeEditor();
-    void load();
+    void retryReconciliation();
   }
 
   function draftTest(assumption: SelectionAssumption) {
-    if (!onTestUnknown || assumption.stale || assumption.experiments.length) return;
+    if (mutationsBlocked || !onTestUnknown || assumption.stale || assumption.experiments.length) return;
     onTestUnknown({
       ideaId: assumption.ideaId,
       ideaRevision: assumption.ideaRevision,
@@ -580,7 +632,9 @@
           <p>You choose how much each belief matters. Evidence signals update from linked risk checks and completed tests, but they never become a confidence score. Start with decision-changing beliefs that still rely on inference.</p>
         </DecisionHelp>
       </div>
-      <p>Keep only questions whose answer would change what you research or build.</p>
+      <p>{disabled
+        ? "Saved questions and evidence signals from the selection decision."
+        : "Keep only questions whose answer would change what you research or build."}</p>
     </div>
     {#if !loading && !loadError}
       <div class="map-actions">
@@ -592,7 +646,7 @@
             type="button"
             class="add-action"
             aria-label={`Add a question to resolve for ${solutionDisplayTitle(ideas[0])}`}
-            disabled={!identity(ideas[0]) || !jobId}
+            disabled={!identity(ideas[0]) || !jobId || mutationsBlocked}
             onclick={() => openManualCreate(ideas[0])}
           >
             <Plus aria-hidden="true" /> Add question
@@ -605,8 +659,21 @@
   <p class="sr-only" role="status">{loadAnnouncement}</p>
   <p class="sr-only" role="status">{saveAnnouncement}</p>
 
+  {#if reconcileError}
+    <div class="reconcile-error" role="alert">
+      <span>{reconcileError}</span>
+      <button type="button" disabled={reconciling} onclick={() => void retryReconciliation()}>
+        <RefreshCw aria-hidden="true" /> {reconciling ? "Reloading…" : "Reload current state"}
+      </button>
+    </div>
+  {/if}
+
   {#if prefillFeedback && !editor}
-    <p class="prefill-feedback" class:is-error={prefillFeedback.failed} role="alert">
+    <p
+      class="prefill-feedback"
+      class:is-error={prefillFeedback.failed}
+      role={prefillFeedback.failed ? "alert" : "status"}
+    >
       {prefillFeedback.message}
     </p>
   {/if}
@@ -634,7 +701,7 @@
                 <span>Idea {ideaIndex + 1}{current ? ` · rev ${current.revision}` : ""}</span>
                 <h4 id={`assumption-idea-${ideaIndex}`}>{solutionDisplayTitle(idea)}</h4>
               </div>
-              <button type="button" class="add-action" aria-label={`Add a question to resolve for ${solutionDisplayTitle(idea)}`} disabled={!current || !jobId} onclick={() => openManualCreate(idea)}>
+              <button type="button" class="add-action" aria-label={`Add a question to resolve for ${solutionDisplayTitle(idea)}`} disabled={!current || !jobId || mutationsBlocked} onclick={() => openManualCreate(idea)}>
                 <Plus aria-hidden="true" /> Add question
               </button>
             </header>
@@ -677,9 +744,9 @@
                   </dl>
                   <footer class="assumption-actions">
                     {#if !assumption.stale}
-                      <button type="button" class="text-action" onclick={() => openEdit(assumption, idea)}><Pencil aria-hidden="true" /> Edit</button>
+                      <button type="button" class="text-action" disabled={mutationsBlocked} onclick={() => openEdit(assumption, idea)}><Pencil aria-hidden="true" /> Edit</button>
                       {#if onTestUnknown && !assumption.experiments.length && assumption.ownerState === "OPEN"}
-                        <button type="button" class="test-action" onclick={() => draftTest(assumption)}><FlaskConical aria-hidden="true" /> Draft test</button>
+                        <button type="button" class="test-action" disabled={mutationsBlocked} onclick={() => draftTest(assumption)}><FlaskConical aria-hidden="true" /> Draft test</button>
                       {/if}
                     {:else}
                       <span><AlertTriangle aria-hidden="true" /> Kept for history; create a current-revision assumption to act on it.</span>
@@ -852,6 +919,7 @@
       label={editor?.mode === "edit" ? "Save changes" : "Save question"}
       loadingText="Saving…"
       loading={saving}
+      disabled={mutationsBlocked}
       onclick={attemptSaveEditor}
       class="submit-btn"
     />
@@ -870,6 +938,11 @@
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
   .prefill-feedback { margin: var(--space-3) 0 0; color: var(--color-text-secondary); font-size: var(--text-sm); line-height: var(--leading-normal); }
   .prefill-feedback.is-error { color: var(--color-error-text); }
+  .reconcile-error { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); margin-top: var(--space-3); padding: var(--space-3); border: 1px solid var(--color-border-emphasis); border-radius: var(--radius-md); background: var(--color-error-subtle); color: var(--color-error-text); font-size: var(--text-sm); line-height: var(--leading-normal); }
+  .reconcile-error button { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; gap: var(--space-1-5); min-height: var(--space-10); padding: var(--space-2) var(--space-3); border: 1px solid var(--color-input-border); border-radius: var(--radius-md); background: var(--color-bg-elevated); color: var(--color-text-primary); font: inherit; font-size: var(--text-sm); font-weight: 700; cursor: pointer; }
+  .reconcile-error button:disabled { color: var(--color-text-muted); cursor: wait; }
+  .reconcile-error button:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+  .reconcile-error button :global(svg) { width: var(--space-4); height: var(--space-4); }
   .map-state { display: flex; align-items: center; justify-content: center; gap: var(--space-2); min-height: calc(var(--space-16) * 4); color: var(--color-text-secondary); font-size: var(--text-13); }
   .map-state :global(svg) { width: var(--space-4); height: var(--space-4); }
   .map-error { flex-direction: column; color: var(--color-error-text); }
@@ -884,13 +957,14 @@
   .idea-head span { color: var(--color-text-secondary); font-family: var(--font-mono); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: var(--tracking-wide); }
   .idea-head h4 { max-width: 34ch; margin-top: var(--space-1); font-size: var(--text-md); line-height: var(--leading-snug); letter-spacing: var(--tracking-tight); text-wrap: pretty; }
   .add-action, .test-action, .text-action { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-1-5); min-height: var(--space-10); border: 0; background: transparent; color: var(--color-accent-dark); font: inherit; font-size: var(--text-13); font-weight: 700; white-space: nowrap; cursor: pointer; transition: transform var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default); }
-  .add-action:hover:not(:disabled), .test-action:hover, .text-action:hover:not(:disabled) { color: var(--color-accent-hover); }
+  .add-action:hover:not(:disabled), .test-action:hover:not(:disabled), .text-action:hover:not(:disabled) { color: var(--color-accent-hover); }
   .linked-test-action { border: 0; background: transparent; padding: 0; font: inherit; color: var(--color-accent-dark); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
   .linked-test-action:hover { color: var(--color-accent-hover); }
   .linked-test-action:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; border-radius: var(--radius-sm); }
-  .add-action:active:not(:disabled), .test-action:active, .text-action:active:not(:disabled) { transform: scale(0.98); }
+  .add-action:active:not(:disabled), .test-action:active:not(:disabled), .text-action:active:not(:disabled) { transform: scale(0.98); }
   .add-action :global(svg), .test-action :global(svg), .text-action :global(svg) { width: var(--text-base); height: var(--text-base); }
-  .add-action:disabled { background: var(--color-bg-hover); color: var(--color-text-muted); cursor: not-allowed; }
+  .add-action:disabled { background: var(--color-bg-hover); }
+  .add-action:disabled, .test-action:disabled, .text-action:disabled { color: var(--color-text-muted); cursor: not-allowed; }
   .add-action { min-height: var(--space-8); padding: var(--space-1-5) var(--space-3); border: 1px solid var(--color-border-accent); border-radius: var(--radius-md); background: var(--color-bg-surface); }
   .add-action:hover:not(:disabled) { border-color: var(--color-input-border-hover); background: var(--color-bg-surface); }
   .idea-empty { max-width: 65ch; padding: var(--space-4) 0 var(--space-2); color: var(--color-text-secondary); font-size: var(--text-base); line-height: var(--leading-normal); text-wrap: pretty; }
@@ -962,10 +1036,10 @@
     }
     .map-error button:active,
     .add-action:hover:not(:disabled),
-    .test-action:hover,
+    .test-action:hover:not(:disabled),
     .text-action:hover:not(:disabled),
     .add-action:active:not(:disabled),
-    .test-action:active,
+    .test-action:active:not(:disabled),
     .text-action:active:not(:disabled),
     .reload-action:active,
     .cancel-btn:active:not(:disabled) {
@@ -979,6 +1053,7 @@
 
   @media (max-width: 720px) {
     .assumption-map { padding: 0; }
+    .reconcile-error { align-items: stretch; flex-direction: column; }
     .map-head { display: block; }
     .map-actions { justify-content: flex-start; margin-top: var(--space-3); }
     .idea-head { grid-template-columns: 1fr; }

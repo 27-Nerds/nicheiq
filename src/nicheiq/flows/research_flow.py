@@ -60,25 +60,221 @@ class QualityGateStopException(Exception):
         super().__init__(f"Quality gate at stage {stage}: {reason}")
 
 
-def _best_segment_match(audience: str, names: list[str], threshold: float = 0.40) -> str | None:
+def _best_segment_match(audience: str, names: list[str], threshold: float = 0.40, *,
+                        preferred: str | None = None) -> str | None:
     """Fuzzy-match an audience string to the best segment name (stem-token overlap,
     reusing crew_guardrails._fuzzy_set_overlap). Returns the matched name when it clears
     `threshold`, else None.
+
+    `preferred` (keyword-only) is a TIE-BREAK only — it never overrides a strictly higher
+    score. Candidates within eps=1e-9 of the running best tie-break in order: the
+    preferred name wins, then higher raw stem-token intersection, then stable-first
+    (the earlier entry in `names` keeps its spot).
 
     Module-level (NOT a ResearchFlow method) on purpose: the CrewAI Flow metaclass wraps
     class methods as flow steps, which breaks a plain @staticmethod helper.
     """
     if not audience or not names:
         return None
+    from ..utils.text_stemmer import stem_tokens
     from ..utils.validation.crew_guardrails import _fuzzy_set_overlap
-    best_name, best_score = None, 0.0
+
+    eps = 1e-9
+    pref = (preferred or "").strip()
+    audience_tokens = stem_tokens({t for t in str(audience).lower().split()})
+    best_name, best_score, best_inter, best_is_pref = None, 0.0, -1, False
     for name in names:
         if not name:
             continue
         score = _fuzzy_set_overlap([audience], [name])
-        if score > best_score:
-            best_name, best_score = name, score
+        if score <= 0.0 or score < best_score - eps:
+            continue
+        inter = len(audience_tokens & stem_tokens({t for t in str(name).lower().split()}))
+        is_pref = bool(pref) and name == pref
+        if best_name is None or score > best_score + eps:
+            take = True
+        elif is_pref and not best_is_pref:
+            take = True  # tie within eps: preferred name wins
+        elif is_pref == best_is_pref and inter > best_inter:
+            take = True  # tie within eps: higher raw intersection wins
+        else:
+            take = False  # stable-first: keep the earlier candidate
+        if take:
+            best_name, best_score, best_inter, best_is_pref = name, score, inter, is_pref
     return best_name if (best_name is not None and best_score >= threshold) else None
+
+
+def _shrink_gate_artifact(artifact: dict, list_fields: dict[str, str | None],
+                          initial_caps: dict[str, int] | None = None,
+                          max_size: int = 16384, label: str = "gate artifact") -> None:
+    """Shared size guard for the composite G1/G2 gate artifacts (16KB budget each).
+
+    `list_fields` maps artifact list keys -> the per-item string field to truncate as a
+    last resort (None = the list items are plain strings). Sets
+    `artifact["truncated"] = True` whenever ANY shrink fires, so the backend can reject a
+    whole-list replacement patch built against a partial view (crossCheckGatePatch,
+    jobs.ts) and the dossier can warn the analyst. Mutates in place; never raises.
+
+    Module-level (NOT a ResearchFlow method) on purpose — see _best_segment_match.
+    """
+    try:
+        if len(json.dumps(artifact)) <= max_size:
+            return
+        logger.warning(f"{label} exceeds {max_size}B, truncating lists")
+        artifact["truncated"] = True
+        for key, cap in (initial_caps or {}).items():
+            artifact[key] = artifact[key][:cap]
+
+        # Hard second check (Codex review finding 3, AMEND): the first truncation only
+        # caps LIST LENGTH, not per-item field length — a run with unusually long titles
+        # or names could still exceed the budget. Progressively shrink further (halving
+        # list lengths, then truncating long string fields) until it fits; never emit an
+        # oversized artifact.
+        attempts = 0
+        while len(json.dumps(artifact)) > max_size and attempts < 6:
+            attempts += 1
+            shrank = False
+            for key in list_fields:
+                if len(artifact[key]) > 1:
+                    artifact[key] = artifact[key][: max(1, len(artifact[key]) // 2)]
+                    shrank = True
+            if not shrank:
+                # Lists are already at their floor (<=1 item each) — truncate long
+                # string fields as the last resort.
+                for key, item_field in list_fields.items():
+                    if item_field is None:
+                        artifact[key] = [
+                            (s[:117] + "...") if isinstance(s, str) and len(s) > 120 else s
+                            for s in artifact[key]
+                        ]
+                    else:
+                        for item in artifact[key]:
+                            value = item.get(item_field)
+                            if isinstance(value, str) and len(value) > 120:
+                                item[item_field] = value[:117] + "..."
+
+        if len(json.dumps(artifact)) > max_size:
+            # Absolute last resort — never return an oversized artifact.
+            logger.error(f"{label} still exceeds {max_size}B after truncation, dropping lists")
+            keys = list(list_fields)
+            for key in keys[1:]:
+                artifact[key] = []
+            if keys:
+                artifact[keys[0]] = artifact[keys[0]][:1]
+    except Exception as e:
+        logger.warning(f"Failed to size-check {label}: {e}")
+
+
+def finalize_graded_validation(
+    validation_result: dict,
+    graded_keywords: list[dict],
+) -> dict:
+    """Turn raw expansion metrics into a model-ready validation dict.
+
+    ``seed_generation.calculate_validation_from_expansion`` reports
+    ``expansion_pool_count`` — how many keywords the UNFILTERED expansion pool
+    contributed. Semantic grading runs afterwards, and ``validated_count`` on
+    CrewKeywordValidationResult means the GRADED, on-idea set, so the swap happens
+    here and nowhere else. Measured live 2026-08-02: pool 50, graded 1 — publishing
+    the pool count as "validated keywords" inflated demand in the selection
+    rationale, the progress payload, the report table and the market-sizing prompt.
+
+    The pool count is dropped rather than persisted: no consumer reads it, and adding
+    a field to the ``extra='forbid'`` model would make a rollback reject the new
+    checkpoints (checkpoint_manager clears the stage and silently re-spends DataForSEO).
+
+    Mutates and returns ``validation_result``.
+    """
+    validation_result.pop("expansion_pool_count", None)
+    validation_result["validated_keywords"] = graded_keywords
+    validation_result["validated_count"] = len(graded_keywords)
+    validation_result["accumulated_keywords_count"] = len(graded_keywords)
+    return validation_result
+
+
+def _calculate_difficulty_adjusted_score(
+    validation: "CrewKeywordValidationResult",
+) -> tuple[float | None, float | None, float | None]:
+    """Recalculate keyword_demand_score including the difficulty factor (Stage 6-KV
+    batched difficulty enrichment). Module-level so the formula is unit-testable.
+
+    Demand-rescale fix (flow-weakness fix plan 2026-08, Step 2): both non-difficulty
+    components now mirror the producer formula in
+    ``seed_generation.calculate_validation_from_expansion`` instead of the old
+    saturating approximations (volume_score used len(top_keywords) — capped at 5 —
+    as denominator; avg_opportunity ignored per-keyword volume and saturation).
+
+    Returns:
+        (adjusted_score, avg_difficulty, rankability_factor).
+        ``adjusted_score`` is ``None`` when ``validated_keywords`` is empty —
+        graded-and-empty (correction 1): the keywords were graded and NONE
+        individually passed, so demand is UNMEASURED. Returning the stale
+        pre-grading ``keyword_demand_score`` here rewarded validation failure.
+    """
+    validated_keywords = validation.validated_keywords or []
+    if not validated_keywords:
+        # Graded-and-empty (or legacy checkpoint missing validated_keywords):
+        # no per-keyword evidence — emit None, never a fabricated scalar.
+        # Downstream skips the composite blend and two-tier ranks these below
+        # validated-with-keywords solutions.
+        return None, None, None
+
+    # Extract difficulty values (may be None for some keywords)
+    difficulties = [
+        kw.get('keyword_difficulty')
+        for kw in validated_keywords
+        if kw.get('keyword_difficulty') is not None
+    ]
+
+    # Calculate average difficulty and rankability factor
+    if difficulties:
+        avg_difficulty = sum(difficulties) / len(difficulties)
+        # Rankability factor: 1.0 for easy (0), 0.0 for hard (100)
+        rankability_factor = 1 - (avg_difficulty / 100)
+    else:
+        avg_difficulty = None
+        rankability_factor = None
+
+    # volume_score: RELEVANCE-FILTERED keyword yield against the 20 seeds each
+    # strategy attempt feeds into expansion. The denominator names the `count=20`
+    # literal at the `generate_seeds_with_strategy(..., count=20)` call sites in
+    # this file (the producer's own denominator, original_seed_count, is not
+    # persisted).
+    #
+    # The numerator MUST be len(validated_keywords) — the graded, on-idea set.
+    # `validated_count` now carries exactly that (finalize_graded_validation), but
+    # checkpoints written before 2026-08 stored the UNFILTERED expansion pool there
+    # (capped at keyword_quick_expansion_size=50). Measured live 2026-08-02:
+    # validated_count=50 while len(validated_keywords)=1, so reading validated_count
+    # saturated volume_score to 1.0 and reproduced the exact pre-fix inflation
+    # (demand 0.9095 on a single on-idea keyword). Reading the list is resume-safe.
+    volume_score = min(len(validation.validated_keywords or []) / 20, 1.0)
+
+    # avg_opportunity: per-keyword producer formula (mirrors
+    # seed_generation.calculate_validation_from_expansion exactly) — the old
+    # aggregate `1 - avg_competition/100` ignored volume and saturation.
+    opportunity_scores = []
+    for kw in validated_keywords:
+        volume = kw.get('search_volume') or 0
+        competition = kw.get('competition_index') or 0
+        volume_factor = min(volume / 1000, 1.0)
+        competition_factor = 1 - (competition / 100)
+        saturation_check = 1.0 if competition <= 60 else 0.7
+        opportunity_scores.append(volume_factor * competition_factor * saturation_check)
+    avg_opportunity = sum(opportunity_scores) / len(opportunity_scores)
+
+    # New formula with difficulty: 55% volume + 25% opportunity + 20% rankability
+    if rankability_factor is not None:
+        adjusted_score = (
+            (0.55 * volume_score) +
+            (0.25 * avg_opportunity) +
+            (0.20 * rankability_factor)
+        )
+    else:
+        # Fall back to the producer's 60/40 weights when no difficulty data
+        adjusted_score = (0.60 * volume_score) + (0.40 * avg_opportunity)
+
+    return adjusted_score, avg_difficulty, rankability_factor
 
 
 @dataclass
@@ -428,6 +624,14 @@ class ResearchFlow(Flow[ResearchState]):
         # Market-data handoff (mirrors angle_directive): the Phase-1 incumbent/wallet probes
         # already web-verified this idea's parity + the niche's real incumbents — hand them to
         # Stage-2 competitor research once instead of letting it re-discover them from scratch.
+        # Niche anchor vocabulary (same block the Reddit/HN query generators get). The
+        # solution name is INVENTED and can carry a word that belongs to another industry
+        # ("HouseNut" = a venue's fixed cost, not household budgeting); without the niche's
+        # named entities and excluded senses in front of it the researcher can profile the
+        # wrong market entirely (live-caught 2026-08-03: Mint/YNAB for a live-music niche).
+        from ..utils.validation.niche_anchor import format_anchor_block
+        anchor_directive = format_anchor_block(self.state.niche_context)
+
         market_directive = ""
         from ..utils.market_brief import build_market_brief
         _mb = build_market_brief(self.state, solution)
@@ -444,7 +648,7 @@ class ResearchFlow(Flow[ResearchState]):
 **Core Features:** {features_str}
 **Target Personas:** {personas_str}
 **Niche:** {niche_desc}
-{angle_directive}{audience_directive}{market_directive}
+{anchor_directive}{angle_directive}{audience_directive}{market_directive}
 
 WORKFLOW:
 1. Generate search queries for this solution's competitive space
@@ -460,6 +664,9 @@ differentiation_opportunities, competitive_intensity, recommended_positioning, p
 RULES:
 - Every competitor must have a verifiable source (URL or mention)
 - Features must be from actual websites (not assumed)
+- Every competitor must serve the **Niche** above. A product from another industry is not
+  a competitor no matter how well its name matches this solution's name — run step 2 and
+  report what the searches return, never what the solution's name suggests
 - If no competitors found, report honestly
 - Be comprehensive with market gaps — list ALL gaps found
 """
@@ -497,6 +704,10 @@ RULES:
         landscape = crew_output.pydantic
         if landscape is None:
             raise ValueError(f"Competitive analysis returned None for {solution_name}")
+
+        landscape = self._guard_landscape_on_niche(
+            landscape, solution_name, mini_crew, analysis_task, task_description
+        )
 
         # Ensure solution_name matches
         landscape.solution_name = solution_name
@@ -550,29 +761,81 @@ RULES:
             "competitive_landscape": result_data,
         }
 
+    def _guard_landscape_on_niche(
+        self,
+        landscape: "CompetitiveLandscape",
+        solution_name: str,
+        mini_crew,
+        analysis_task,
+        task_description: str,
+    ) -> "CompetitiveLandscape":
+        """Reject an off-niche competitive landscape once, then caveat it.
+
+        The researcher can skip its searches entirely and answer from the solution name's
+        prior, returning a landscape from a different industry (live-caught 2026-08-03:
+        "HouseNutIndex" → Mint + YNAB, zero searches). The check is deterministic — the
+        landscape must share at least one niche vocabulary term — and DOWNGRADE-ONLY: a
+        landscape that fails twice is kept verbatim and stamped, never rewritten, so the
+        report can mark its counts/saturation/gaps as unverified instead of reading them
+        as "the space is uncrowded".
+        """
+        from ..utils.validation.competitor_relevance import assess_landscape_relevance
+
+        verdict = assess_landscape_relevance(landscape, self.state.niche_context)
+        if not verdict["off_niche"]:
+            return landscape
+
+        logger.warning(
+            f"[Competitive] '{solution_name}' landscape is off-niche "
+            f"(no niche vocabulary in any competitor or gap) — re-running once"
+        )
+        analysis_task.description = task_description + """
+
+**RETRY — YOUR PREVIOUS ANSWER WAS REJECTED.**
+Not one competitor, market gap or positioning line you returned mentioned this niche. You
+profiled a different industry, most likely because the solution's invented name reuses a
+word from it. Start from the searches this time: call generate_competitor_queries, run the
+returned queries with the search tool, and profile ONLY products the results show serving
+the **Niche** above. If the searches surface nothing, return an empty competitors list and
+say so — an honest empty landscape is correct, a foreign one is not.
+"""
+        try:
+            retry_landscape = mini_crew.kickoff().pydantic
+        except Exception as e:  # noqa: BLE001 — a failed retry must not lose the first result
+            logger.warning(f"[Competitive] off-niche retry failed for '{solution_name}': {e}")
+            retry_landscape = None
+
+        if retry_landscape is not None:
+            retry_verdict = assess_landscape_relevance(retry_landscape, self.state.niche_context)
+            if not retry_verdict["off_niche"]:
+                logger.info(f"[Competitive] '{solution_name}' retry returned an on-niche landscape")
+                return retry_landscape
+            landscape = retry_landscape
+            verdict = retry_verdict
+
+        landscape.off_niche_caveat = verdict["caveat"]
+        # pipeline_degradations is the run-wide degradation ledger; it is surfaced verbatim
+        # in data_quality_summary.quality_caveats.
+        degradation = f"{solution_name}: {verdict['caveat']}"
+        if degradation not in self.state.pipeline_degradations:
+            self.state.pipeline_degradations.append(degradation)
+        logger.warning(
+            f"[Competitive] '{solution_name}' still off-niche after retry — landscape kept "
+            "with an off_niche_caveat; its competitor/saturation/gap claims are unverified"
+        )
+        return landscape
+
     def _generate_strategic_recommendations(self, landscape: "CompetitiveLandscape") -> str:
-        """Generate strategic recommendations text from a competitive landscape (min 50 chars)."""
-        parts = []
-        parts.append(f"Competitive intensity for {landscape.solution_name}: {landscape.competitive_intensity}.")
+        """Generate strategic recommendations text from a competitive landscape (min 50 chars).
 
-        comp_count = len(landscape.competitors) if landscape.competitors else 0
-        parts.append(f"Identified {comp_count} competitor{'s' if comp_count != 1 else ''} in this space.")
+        Shared with the report (utils/competitive_summary), which rebuilds this for the
+        SELECTED solution — the state field this writes to is a single scalar that every
+        landscape in the top-N overwrites, so it ends the run describing whichever idea
+        happened to be analysed last.
+        """
+        from ..utils.competitive_summary import build_strategic_recommendations
 
-        if landscape.market_gaps:
-            gaps_preview = ", ".join(landscape.market_gaps[:3])
-            parts.append(f"Key market gaps: {gaps_preview}.")
-
-        if landscape.differentiation_opportunities:
-            opps_preview = ", ".join(landscape.differentiation_opportunities[:3])
-            parts.append(f"Differentiation opportunities: {opps_preview}.")
-
-        parts.append(f"Recommended positioning: {landscape.recommended_positioning}")
-
-        text = " ".join(parts)
-        # Ensure min_length=50 for CompetitiveAnalysisResult.strategic_recommendations
-        if len(text) < 50:
-            text += " Further analysis recommended for detailed competitive strategy."
-        return text
+        return build_strategic_recommendations(landscape)
 
     def _validate_stage_prerequisites(self, stage_num: float) -> bool:
         """
@@ -1203,7 +1466,16 @@ RULES:
 
         if am:
             self._warm_gate_segment_payability(am, ppa)
-            artifact["primary_target"] = am.primary_target_segment
+            # Effective primary (1.2e): a G2 patch's primary_target_segment override is
+            # recorded on user_audience_scope (audience_mapping is never mutated) — the
+            # gate card must reflect it, or an applied "make X primary" patch refreshes
+            # the card byte-identically. The raw Stage-4 value rides along under its own
+            # key; the patch cross-check reads artifact.segments only, so this is neutral.
+            user_scope = getattr(self.state, "user_audience_scope", None)
+            g2_primary = ((getattr(user_scope, "primary_target_segment", None) or "").strip()
+                          if user_scope else "")
+            artifact["primary_target"] = g2_primary or am.primary_target_segment
+            artifact["primary_target_stage4"] = am.primary_target_segment
             artifact["segments"] = [
                 {
                     "segment_name": s.segment_name,
@@ -1216,48 +1488,50 @@ RULES:
         else:
             artifact["segments"] = []
 
-        try:
-            max_size = 16384  # own (larger) allowance — lists every pain/segment, not top-N
-            if len(json.dumps(artifact)) > max_size:
-                logger.warning("G2 gate artifact exceeds 16KB, truncating pain/segment lists")
-                artifact["pains"] = artifact["pains"][:40]
-                artifact["segments"] = artifact["segments"][:10]
+        # Own (larger) 16KB allowance — lists every pain/segment, not top-N. Shared
+        # shrink helper with G1; also stamps `truncated` (the marker was missing here).
+        _shrink_gate_artifact(
+            artifact,
+            list_fields={"pains": "title", "segments": "segment_name"},
+            initial_caps={"pains": 40, "segments": 10},
+            label="G2 gate artifact",
+        )
 
-            # Hard second check (Codex review finding 3, AMEND): the first truncation only
-            # caps LIST LENGTH, not per-item field length — a run with unusually long pain
-            # titles or segment names could still exceed the budget. Progressively shrink
-            # further (halving list lengths, then truncating long string fields) until it
-            # fits; never emit an oversized artifact.
-            attempts = 0
-            while len(json.dumps(artifact)) > max_size and attempts < 6:
-                attempts += 1
-                shrank = False
-                if len(artifact["pains"]) > 1:
-                    artifact["pains"] = artifact["pains"][: max(1, len(artifact["pains"]) // 2)]
-                    shrank = True
-                if len(artifact["segments"]) > 1:
-                    artifact["segments"] = artifact["segments"][: max(1, len(artifact["segments"]) // 2)]
-                    shrank = True
-                if not shrank:
-                    # Lists are already at their floor (<=1 item each) — truncate long
-                    # string fields as the last resort.
-                    for pain in artifact["pains"]:
-                        title = pain.get("title")
-                        if isinstance(title, str) and len(title) > 120:
-                            pain["title"] = title[:117] + "..."
-                    for seg in artifact["segments"]:
-                        name = seg.get("segment_name")
-                        if isinstance(name, str) and len(name) > 120:
-                            seg["segment_name"] = name[:117] + "..."
+        return artifact
 
-            if len(json.dumps(artifact)) > max_size:
-                # Absolute last resort — never return an oversized artifact.
-                logger.error("G2 gate artifact still exceeds 16KB after truncation, dropping lists")
-                artifact["pains"] = artifact["pains"][:1]
-                artifact["segments"] = []
-        except Exception as e:
-            logger.warning(f"Failed to size-check G2 gate artifact: {e}")
+    def _build_g1_gate_artifact(self) -> dict:
+        """Dedicated composite gate artifact for the guided-mode G1 stop (after Stage 1).
 
+        `_build_stage_artifact(1)` is the small SSE/progress artifact — it caps
+        market_segments at 5 (and anchors at 8/4), so a 6+-segment niche rendered a gate
+        card AND a patch cross-check reference that silently hid segments (F-013). This
+        mirrors `_build_g2_gate_artifact`: FULL lists, its own 16KB allowance, and the
+        shared shrink helper stamping `truncated` when it fires. The small SSE artifact
+        stays as-is for progress events.
+
+        Never returns None (a G1 gate must not dead-end): a missing niche_context
+        degrades to a `{"degraded": ...}` marker instead.
+        """
+        ctx = self.state.niche_context
+        if not ctx:
+            return {"type": "niche_validation", "degraded": "niche_context_unavailable"}
+
+        artifact: dict = {
+            "type": "niche_validation",
+            "niche_description": ctx.niche_description,
+            "market_segments": list(ctx.market_segments or []),
+            "industry_boundaries": ctx.industry_boundaries,
+            "user_target_audience": getattr(ctx, "user_target_audience", None),
+            "audience_scope": getattr(ctx, "audience_scope", None),
+            "anchor_entities": list(getattr(ctx, "anchor_entities", None) or []),
+            "disambiguation_exclusions": list(getattr(ctx, "disambiguation_exclusions", None) or []),
+        }
+        _shrink_gate_artifact(
+            artifact,
+            list_fields={"market_segments": None, "anchor_entities": None,
+                         "disambiguation_exclusions": None},
+            label="G1 gate artifact",
+        )
         return artifact
 
     def _rederive_niche_context_dependents(self, niche_context: "NicheContext") -> None:
@@ -1376,7 +1650,9 @@ RULES:
                 primary_name = sel.selected_solution_name if sel else None
                 k = next((v for v in kvr if getattr(v, 'solution_name', None) == primary_name), kvr[0])
                 result.update({
-                    "validated_keywords": k.validated_count,
+                    # graded_keyword_count, not validated_count: legacy checkpoints stored
+                    # the unfiltered expansion pool there and this payload is user-facing.
+                    "validated_keywords": k.graded_keyword_count,
                     "total_volume": k.total_volume,
                     "demand_signal": getattr(k, 'demand_signal', None),
                     "avg_difficulty": getattr(k, 'avg_keyword_difficulty', None),
@@ -2181,6 +2457,7 @@ RULES:
                             "critic_concern": extract_criterion_reason(
                                 getattr(solution, "calibration_notes", None),
                                 "market_fit", max_len=280) or None,
+                            "refine_binding_constraint": getattr(solution, "refine_binding_constraint", None),
                             "incumbent_parity": getattr(solution, "incumbent_parity", None),
                             "adjacent_market_parity": getattr(solution, "adjacent_market_parity", None),
                             # Adversarial red-team pass (Stage 5, post-demote) — survives/weakened/
@@ -2347,6 +2624,31 @@ RULES:
                         finding["idea"] = idea.model_dump(mode="json")
                 report["examined_ruled_out"] = ruled_out
                 report["overlap_groups"] = list(getattr(state, "idea_overlap_groups", None) or [])
+                # Thesis partition (utils/idea_theses.py) — the complete grouping the discovery
+                # screen renders as one card per product thesis. {} on runs without a non-degraded
+                # buyer-job partition; the UI then falls back to the flat candidate list.
+                # RE-DERIVED here rather than projected from `state.idea_theses`: this projection
+                # also runs after a regenerate/seed batch has merged NEW ideas into the pool, and
+                # a stale Stage-5 rollup would leave those ideas in no thesis at all — a silent
+                # drop the partition contract forbids. Pure + deterministic (no LLM, no probe),
+                # and it reuses the PERSISTED partition so family ids stay stable across batches.
+                report["idea_theses"] = dict(getattr(state, "idea_theses", None) or {})
+                try:
+                    from ..utils.buyer_jobs import partition_from_dict
+                    from ..utils.idea_theses import build_idea_theses
+
+                    _p = partition_from_dict(getattr(state, "buyer_job_partition", None))
+                    if _p is not None:
+                        _fresh = build_idea_theses(
+                            getattr(getattr(state, "idea_generation", None),
+                                    "solution_ideas", None) or [],
+                            partition=_p,
+                            cell_allocation=dict(getattr(state, "idea_cell_allocation", None) or {}),
+                        )
+                        if _fresh:
+                            report["idea_theses"] = _fresh
+                except Exception as e:
+                    logger.debug(f"[Preview Report] thesis re-derivation skipped: {e}")
                 # Market-data handoff: same web-verified facts the final report's market_reality
                 # carries — shown once here so Phase-2 deep research (utils/market_brief.py)
                 # never re-discovers them.
@@ -2385,7 +2687,16 @@ RULES:
                 return None
             out_path = Path(output_dir) / f"preview_report_{job_id}.json"
             out_path.parent.mkdir(parents=True, exist_ok=True)
-            out_path.write_text(json.dumps(report, indent=2, default=str))
+            # Keep readers on either the previous complete preview or the new complete
+            # preview. Paid follow-up operations treat a None return as a failed commit and
+            # compensate both this projection and the authoritative checkpoint.
+            temp_path = out_path.with_suffix(".json.tmp")
+            try:
+                temp_path.write_text(json.dumps(report, indent=2, default=str))
+                temp_path.replace(out_path)
+            except Exception:
+                temp_path.unlink(missing_ok=True)
+                raise
             logger.info(f"[Preview Report] Materialized to {out_path} ({out_path.stat().st_size} bytes)")
             return str(out_path)
 
@@ -4186,7 +4497,31 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
         ig = getattr(self.state, "idea_generation", None)
         ideas = (getattr(ig, "solution_ideas", None) or []) if ig else []
         segs = sorted({(getattr(i, "source_segment", None) or "").strip() for i in ideas} - {""})
-        matched = _best_segment_match(audience, segs)
+        # 1.2(c): resolve the PREFERRED idea segment through the effective primary label —
+        # the G2 override when present, else the Stage-4-resolved label — mapped into the
+        # idea-segment namespace via _best_segment_match.
+        user_scope = getattr(self.state, "user_audience_scope", None)
+        g2_primary = ((getattr(user_scope, "primary_target_segment", None) or "").strip()
+                      if user_scope else "")
+        primary_label = g2_primary or (getattr(nc, "resolved_primary_audience", None) or "").strip()
+        preferred = _best_segment_match(primary_label, segs) if primary_label else None
+        if g2_primary:
+            # The override redirects the label — but ONLY onto a real idea segment.
+            # No match: keep the current label (never overwrite with an unmatchable name),
+            # log, and surface an idea_coverage_caveat.
+            if preferred is None:
+                logger.info(f"[Audience] G2 override {g2_primary!r} has no matching idea segment")
+                caveat = (f'Your chosen primary segment "{g2_primary}" does not match any '
+                          "generated idea's segment label, so idea framing keeps the run's "
+                          "resolved audience label.")
+                existing = list(getattr(self.state, "idea_coverage_caveats", None) or [])
+                if caveat not in existing:
+                    existing.append(caveat)
+                self.state.idea_coverage_caveats = existing
+                return
+            matched = preferred
+        else:
+            matched = _best_segment_match(audience, segs, preferred=preferred)
         if matched and matched != getattr(nc, "resolved_primary_audience", None):
             nc.resolved_primary_audience = matched
             logger.info(
@@ -4196,17 +4531,25 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             except Exception as e:
                 logger.warning(f"Re-checkpoint of niche_context (idea refine) skipped: {e}")
 
-    def _tag_audience_fit(self) -> None:
-        """Part A (OUTPUT framing only): tag each generated idea with audience_fit — does it
-        primarily serve the user's stated audience? A single FAIL-OPEN structured LLM judgment
-        over the ideas' personas (token overlap can't tell that "Bodybuilders & Performance
-        Athletes" serves "gym-goers"). PURE post-processing: never changes scores or which
-        pains/segments were researched.
+    def _tag_audience_fit(self, persist: bool = True) -> None:
+        """Part A: tag each generated idea with audience_fit — does it primarily serve the user's
+        stated audience? A single FAIL-OPEN structured LLM judgment over the ideas' personas
+        (token overlap can't tell that "Bodybuilders & Performance Athletes" serves "gym-goers").
+        Post-processing only: never changes which pains/segments were researched, and never
+        mutates a stored score. It DOES feed ranking — an idea tagged False takes a
+        composite-only penalty (settings.audience_fit_penalty) once pool coverage is >=90%.
+
+        Idempotent over the FULL pool: always re-tags every idea, so it can be re-run after a
+        batch/seed appends late-born ideas without leaving stale partials.
 
         Only runs for segment_of_niche. On any failure it leaves audience_fit=None, so the
         frontend falls back to the source_segment match (_refine_audience_against_ideas). If the
         judgment returns an empty set it is treated as inconclusive (left None) rather than
-        marking every idea non-fit."""
+        marking every idea non-fit.
+
+        ``persist=False`` skips the re-checkpoint — for callers (worker batch/seed paths) that
+        own the single authoritative save of the merged pool and whose refund/rollback path
+        depends on nothing else writing stage_5_3_refinement first."""
         nc = getattr(self.state, "niche_context", None)
         if nc is None or (getattr(nc, "audience_scope", None) or "").strip().lower() != "segment_of_niche":
             return
@@ -4215,6 +4558,16 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
         ideas = (getattr(ig, "solution_ideas", None) or []) if ig else []
         if not audience or not ideas:
             return
+
+        # RESET-FIRST (mirrors _stamp_payability): audience_fit is CODE-OWNED but sits on
+        # BaseSolutionIdea — the same model generator LLMs emit through structured output, so a
+        # fabricated value must never survive. It is now score-bearing, so a stale/invented True
+        # would silently buy an idea 0.05 of composite. Reset the whole pool, then stamp.
+        for it in ideas:
+            try:
+                it.audience_fit = None
+            except Exception:
+                pass
 
         digest = []
         for it in ideas:
@@ -4251,6 +4604,8 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                 pass
             tagged += int(fit)
         logger.info(f"[Audience] audience_fit: {tagged}/{len(ideas)} ideas serve {audience!r}")
+        if not persist:
+            return
         try:
             self.checkpoint_mgr.save_stage("stage_5_3_refinement", self.state.idea_generation)
         except Exception as e:
@@ -4289,12 +4644,22 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
         if scope == "segment_of_niche":
             am = getattr(self.state, "audience_mapping", None)
             segs = (getattr(am, "audience_segments", None) or []) if am else []
-            names = [getattr(s, "segment_name", None) for s in segs]
-            # First guess from audience-mapping segments; raw fallback when none clears (the
-            # frontend renders a single "For {audience}" eyebrow when nothing matches). This is
-            # re-resolved post-generation against the real idea source_segments — see
-            # _refine_audience_against_ideas (the namespace the frontend actually matches).
-            resolved = _best_segment_match(audience, [n for n in names if n]) or audience
+            names = [n for n in (getattr(s, "segment_name", None) for s in segs) if n]
+            # Precedence (1.2b): a G2 gate patch's primary_target_segment override wins
+            # EXACTLY when it names an existing segment; else fuzzy-match the stated
+            # audience with the Stage-4 primary as tie-break preference; raw fallback
+            # when nothing clears (the frontend renders a single "For {audience}" eyebrow
+            # when nothing matches). This is re-resolved post-generation against the real
+            # idea source_segments — see _refine_audience_against_ideas (the namespace
+            # the frontend actually matches).
+            user_scope = getattr(self.state, "user_audience_scope", None)
+            g2_primary = ((getattr(user_scope, "primary_target_segment", None) or "").strip()
+                          if user_scope else "")
+            if g2_primary and g2_primary in names:
+                resolved = g2_primary
+            else:
+                preferred = getattr(am, "primary_target_segment", None) if am else None
+                resolved = _best_segment_match(audience, names, preferred=preferred) or audience
             nc.resolved_primary_audience = resolved
             logger.info(f"[Audience] segment framing -> resolved_primary_audience={resolved!r}")
         else:
@@ -4321,28 +4686,95 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
         The tournament returns no SolutionSelection (there is no LLM Task-4 selector), so a
         non-interactive run must pick a winner itself. Ranks the final, calibrated ideas with
         the same helper the skipped-selector path uses (compute_solution_scores → composite,
-        rank, score_source='interactive') and takes rank 1. Interactive runs never reach here
-        (skip_selection=True keeps solution_selection=None so the user picks in the UI).
+        rank, score_source='interactive') and takes the top-ranked idea ELIGIBLE for the
+        automatic recommendation (`choose_auto_pick` — a red-team-killed idea keeps its rank
+        but never gets the automatic pick; the skip is cited in the rationale). Interactive
+        runs never reach here (skip_selection=True keeps solution_selection=None so the user
+        picks in the UI).
         """
-        from nicheiq.utils.score_helpers import compute_solution_scores
+        from nicheiq.utils.score_helpers import choose_auto_pick, compute_solution_scores
         from nicheiq.models.solution_selection import SolutionSelection
         from nicheiq.models.solution_idea import visible_ideas
         ideas = visible_ideas(refined_solutions.solution_ideas) or refined_solutions.solution_ideas
         scores = compute_solution_scores(ideas)
-        winner_name = scores[0].solution_name
+        winner_score, withheld_note = choose_auto_pick(scores, ideas)
+        winner_name = winner_score.solution_name
         winner_idea = next((i for i in ideas if i.solution_name == winner_name), ideas[0])
         rationale = (
-            f"{winner_name} was auto-selected as the top-ranked concept from the per-cell "
-            f"tournament, scoring highest on the blended market-fit, feasibility, novelty and "
-            f"SEO composite ({(scores[0].composite_score or 0.0):.2f}) across {len(scores)} "
-            f"candidate ideas. Runner-up concepts are retained for comparison in all_solution_scores."
+            f"{winner_name} was auto-selected as the top-ranked eligible concept from the "
+            f"per-cell tournament, scoring highest on the blended market-fit, feasibility, "
+            f"novelty and SEO composite ({(winner_score.composite_score or 0.0):.2f}) across "
+            f"{len(scores)} candidate ideas. Runner-up concepts are retained for comparison "
+            f"in all_solution_scores."
         )
+        if withheld_note:
+            rationale = f"{rationale}\n\n{withheld_note}"
+            logger.info(f"[Stage 5] Auto-pick guard: {withheld_note}")
         return SolutionSelection(
             selected_solution_name=winner_name,
             selection_rationale=rationale,
             recommended_focus=self._build_recommended_focus(solution=winner_idea, keyword_validation=None),
             all_solution_scores=scores,
-            runner_up_solutions=[s.solution_name for s in scores[1:]],
+            # Everything but the winner stays a runner-up IN RANK ORDER — a skipped
+            # (red-team-killed) leader keeps rank 1 in all_solution_scores and heads the
+            # runner-ups; only the automatic pick is withheld from it.
+            runner_up_solutions=[s.solution_name for s in scores if s.solution_name != winner_name],
+        )
+
+    def _withhold_killed_auto_pick(self) -> None:
+        """Re-point an AUTOMATIC selection off a red-team-killed idea (paired with the
+        2026-08-02 removal of the red-team parity coupling).
+
+        The Task-4 strategic selector runs BEFORE the red-team pass, so its winner can be
+        killed after the fact — and `apply_red_team_downgrade` (the only other consequence
+        of a kill) runs at final report assembly, AFTER selection, and explicitly permits a
+        killed idea to remain selected. With the parity cap gone, a killed idea's score
+        REBOUNDS, so without this guard the fix would make a killed idea an even stronger
+        automatic #1.
+
+        No-op unless the current selection is itself killed, so a healthy LLM pick is never
+        overridden by the composite leader. USER selections are exempt (`_user_selected_
+        solutions` — same guard as the keyword pivot): a human may pick a killed idea, the
+        pipeline may not pick one for them. When EVERY candidate is killed the selection
+        stands and only the stated non-endorsement is appended (degrade loudly, not
+        silently). The dethroned idea keeps its rank and heads the runner-ups.
+        """
+        from nicheiq.utils.score_helpers import choose_auto_pick, red_team_killed
+
+        sel = self.state.solution_selection
+        ideas = (self.state.idea_generation.solution_ideas
+                 if self.state.idea_generation else None) or []
+        if not sel or not ideas:
+            return
+        current = sel.selected_solution_name
+        if current in (getattr(self.state, "_user_selected_solutions", None) or set()):
+            return
+        if not red_team_killed(find_solution_by_name(current, ideas)):
+            return
+
+        pick, note = choose_auto_pick(sel.all_solution_scores or [], ideas)
+        if pick is None or note is None:
+            return
+        if red_team_killed(find_solution_by_name(pick.solution_name, ideas)):
+            # Whole pool killed — keep the selection, state the non-endorsement.
+            sel.selection_rationale = f"{sel.selection_rationale or ''}\n\n{note}".strip()
+            logger.warning(f"[Stage 5] Auto-pick guard: {note}")
+            return
+
+        sel.original_selection_reasoning = sel.selection_rationale
+        sel.selection_rationale = f"{sel.selection_rationale or ''}\n\n{note}".strip()
+        sel.selected_solution_name = pick.solution_name
+        runner_ups = [n for n in (sel.runner_up_solutions or []) if n != pick.solution_name]
+        if current and current not in runner_ups:
+            runner_ups.insert(0, current)
+        sel.runner_up_solutions = runner_ups
+        new_winner = find_solution_by_name(pick.solution_name, ideas)
+        if new_winner:
+            sel.recommended_focus = self._build_recommended_focus(
+                solution=new_winner, keyword_validation=None)
+        logger.warning(
+            f"[Stage 5] Auto-pick guard: '{current}' was red-team killed — automatic "
+            f"recommendation moved to '{pick.solution_name}' (killed idea kept in the list)"
         )
 
     def stage_5_unified_solution_pipeline(self, skip_selection: bool = False):
@@ -4548,8 +4980,34 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             )
             if getattr(unified_crew, "funnel_counts", None):
                 self.state.idea_funnel_counts = dict(unified_crew.funnel_counts)
+            if getattr(unified_crew, "cell_allocation_telemetry", None):
+                self.state.idea_cell_allocation = dict(unified_crew.cell_allocation_telemetry)
             if getattr(unified_crew, "overlap_groups", None):
                 self.state.idea_overlap_groups = list(unified_crew.overlap_groups)
+            # Thesis-level portfolio partition (docs/DIVERSITY_DECISION_2026-08.md): group the
+            # VISIBLE pool by the run's buyer-job family so the UI can show one card per product
+            # thesis with its variants nested, plus the validated families no concept covers.
+            # Deterministic rollup of signals already on the ideas — no LLM call, no new probe.
+            try:
+                from ..utils.idea_theses import build_idea_theses
+
+                _partition = getattr(unified_crew, "_buyer_job_partition", None)
+                # Persist the partition itself, not just the theses derived from it: later
+                # regenerate/seed batches REUSE it (see _ensure_buyer_job_partition) so their
+                # ideas carry the same family ids instead of a fresh, incompatible labeling.
+                # Degraded (theme-fallback) partitions are not stored — a later batch should get
+                # a real labeler attempt rather than inherit the degradation.
+                if _partition is not None and not _partition.degraded:
+                    self.state.buyer_job_partition = _partition.to_telemetry()
+                _theses = build_idea_theses(
+                    refined_solutions.solution_ideas if refined_solutions else [],
+                    partition=_partition,
+                    cell_allocation=self.state.idea_cell_allocation,
+                )
+                if _theses:
+                    self.state.idea_theses = _theses
+            except Exception as e:  # noqa: BLE001 — presentation must never block the pipeline
+                logger.warning(f"[IdeaTheses] step skipped: {e}")
             # Market-data handoff: the Phase-1 incumbent/wallet probes are web-verified facts —
             # shown to the user once (preview/report market_reality) and handed to Phase-2 once
             # (utils/market_brief.py), never re-discovered independently per crew.
@@ -4699,9 +5157,18 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                         self.state.idea_generation.solution_ideas,
                     )
 
-                # Persist the selection reflecting backfill/feasibility — and the headless
-                # tournament build, which UnifiedSolutionCrew did not checkpoint (it returned
-                # None). save_stage also flushes checkpoint metadata.
+                # Auto-pick guard: the Task-4 selector ran BEFORE the red-team pass, so its
+                # winner may have been killed since. Runs on the FINAL ranking (post-backfill,
+                # post-feasibility) so the replacement is the real top eligible idea. No-op
+                # for a surviving winner and for user selections. Fail-soft.
+                try:
+                    self._withhold_killed_auto_pick()
+                except Exception as e:
+                    logger.warning(f"[Stage 5] Auto-pick guard skipped: {e}")
+
+                # Persist the selection reflecting backfill/feasibility/auto-pick guard — and
+                # the headless tournament build, which UnifiedSolutionCrew did not checkpoint
+                # (it returned None). save_stage also flushes checkpoint metadata.
                 self.checkpoint_mgr.save_stage(
                     "stage_5_6_selection",
                     self.state.solution_selection.model_dump(),
@@ -4918,7 +5385,7 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                     f"contain (like the examples above, or 'partial rent', 'cost per token'). Avoid "
                     f"conceptual phrases like 'reproducible model tests'. Return JSON."),
                 output_model=_Seeds, temperature=0.3,
-                model_name=settings.report_structured_llm, reasoning_effort="minimal")
+                model_name=settings.report_structured_llm, reasoning_effort="none")
             out = []
             for s in (getattr(resp, "seeds", None) or []):
                 s = (s or "").strip()
@@ -4940,6 +5407,9 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
         never removes an existing keyword. Fail-soft: any error returns the input unchanged.
         """
         if not selected_solution or not enriched_keywords:
+            logger.info(
+                "[SEO-RELEVANCE] guard inactive (no selected solution or empty keyword set) "
+                "— keywords ship ungraded")
             return enriched_keywords
         try:
             from ..utils.validation.keyword_intent_validator import (
@@ -4957,6 +5427,16 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             existing = {(k.get("keyword", "") or "").lower() for k in enriched_keywords}
             # 1) grade the existing set -> grounded seeds (idea-intent, <=3 words = real, expandable)
             grades = validator.grade_keywords(ctx, [k.get("keyword", "") for k in enriched_keywords if k.get("keyword")])
+            # Q-049: stamp the grade on every keyword row NOW — before any early return below —
+            # so the three-band volume accounting downstream always sees the full graded set.
+            # Ungraded rows keep None (RETAINED fail-open, counted as category reach downstream).
+            for k in enriched_keywords:
+                k["idea_intent_grade"] = grades.get(k.get("keyword", ""))
+            ungraded = sum(1 for k in enriched_keywords if k.get("idea_intent_grade") is None)
+            if ungraded / len(enriched_keywords) > 0.2:
+                logger.warning(
+                    f"[SEO-RELEVANCE] guard degraded ({ungraded}/{len(enriched_keywords)} keywords "
+                    f"ungraded, >20%) — idea-intent volume bands will be withheld")
             broad_seeds = list(dict.fromkeys(
                 k.get("keyword") for k in enriched_keywords
                 if (grades.get(k.get("keyword", "")) or 0) >= ming and 1 <= len((k.get("keyword", "") or "").split()) <= 3
@@ -5013,7 +5493,8 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                 kl = kw.lower()
                 if (new_grades.get(kw) or 0) >= merge_min and kl not in seen:
                     seen.add(kl)
-                    merged.append({"keyword": kw, "search_volume": vol.get(kl, 0), "competition": comp.get(kl)})
+                    merged.append({"keyword": kw, "search_volume": vol.get(kl, 0), "competition": comp.get(kl),
+                                   "idea_intent_grade": new_grades.get(kw)})
             logger.info(
                 f"[Stage 6][ContainsSeed] {len(seeds)} grounded seeds -> {len(suggestions)} suggestions -> "
                 f"+{len(merged)} idea-intent keywords merged (was {len(enriched_keywords)})"
@@ -5021,7 +5502,47 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             return enriched_keywords + merged
         except Exception as e:
             logger.warning(f"[Stage 6][ContainsSeed] augmentation failed, using base set: {str(e)[:120]}")
+            logger.info(
+                f"[SEO-RELEVANCE] guard degraded (augmentation/grading failed: {str(e)[:80]}) "
+                f"— keywords may ship ungraded")
             return enriched_keywords
+
+    def _regrade_resumed_keywords(self, enriched_keywords: list[dict], selected_solution=None) -> None:
+        """6c-resume grade backfill (Q-049): checkpointed keyword sets can predate the
+        idea_intent_grade stamping. Re-grades IN PLACE, only when no row carries a grade yet
+        (a graded checkpoint is never re-graded). Fail-soft: any failure leaves the set
+        ungraded — the coverage guard then keeps the volume-band fields None."""
+        if not enriched_keywords:
+            return
+        if any(isinstance(k, dict) and "idea_intent_grade" in k for k in enriched_keywords):
+            logger.info("[SEO-RELEVANCE] resume: grades already present — re-grade skipped")
+            return
+        if not selected_solution:
+            logger.info(
+                "[SEO-RELEVANCE] guard inactive (resume without selected solution) "
+                "— keywords ship ungraded")
+            return
+        try:
+            from ..utils.validation.keyword_intent_validator import (
+                KeywordIntentRelevanceValidator, IdeaContext,
+            )
+            ctx = IdeaContext(
+                value_proposition=getattr(selected_solution, "value_proposition", "") or "",
+                pains=getattr(selected_solution, "pain_points_addressed", None) or [],
+                angle=getattr(selected_solution, "winning_angle", "") or "",
+                niche=self.niche_description or "",
+            )
+            grades = KeywordIntentRelevanceValidator().grade_keywords(
+                ctx, [k.get("keyword", "") for k in enriched_keywords if k.get("keyword")])
+            for k in enriched_keywords:
+                k["idea_intent_grade"] = grades.get(k.get("keyword", ""))
+            graded = sum(1 for k in enriched_keywords if k.get("idea_intent_grade") is not None)
+            logger.info(
+                f"[SEO-RELEVANCE] resume re-grade: {graded}/{len(enriched_keywords)} keywords graded")
+        except Exception as e:
+            logger.warning(
+                f"[SEO-RELEVANCE] guard degraded (resume re-grade failed: {str(e)[:100]}) "
+                f"— keywords ship ungraded")
 
     def _enrich_anchor_keywords(
         self,
@@ -5384,6 +5905,7 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
         """
         import statistics
         from ..models.seo_strategy import SeoKillQuestion
+        from ..utils.intent_volume_bands import MIN_GRADED_COVERAGE, graded_coverage, keyword_grade
 
         def _vol(k):
             return k.get("search_volume", 0) or 0 if isinstance(k, dict) else (getattr(k, "search_volume", 0) or 0)
@@ -5395,8 +5917,21 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
         def _kw(k):
             return (k.get("keyword", "") if isinstance(k, dict) else getattr(k, "keyword", "")) or ""
 
+        # 0. Off-topic exclusion (Q-049): keywords the intent grader marked grade-0 (OFFTOPIC)
+        # are not this idea's page universe — drop them from ALL kill-question inputs. Ungraded
+        # rows are RETAINED (fail-open). Kill-switched by seo_offtopic_volume_guard.
+        all_rows = list(enriched_keywords or [])
+        if settings.seo_offtopic_volume_guard:
+            rows = [k for k in all_rows if keyword_grade(k) != 0]
+            if len(rows) != len(all_rows):
+                logger.info(
+                    f"[SEO-KILL] grade-0 (off-topic) keywords excluded from inputs: "
+                    f"{len(all_rows)} -> {len(rows)}")
+        else:
+            rows = all_rows
+
         # 1. Page universe — distinct non-zero-volume intents (each = one indexable programmatic page).
-        with_vol = [k for k in (enriched_keywords or []) if _vol(k) > 0]
+        with_vol = [k for k in rows if _vol(k) > 0]
         ceiling = len(with_vol)
         head = sum(1 for k in with_vol if _vol(k) >= 1000)
         mid = sum(1 for k in with_vol if 100 <= _vol(k) < 1000)
@@ -5486,12 +6021,78 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
         rationale = (f"Page ceiling {ceiling} (head {head} / mid {mid} / tail {tail}); KD on {kd_n}/{ceiling} "
                      f"intents; median KD {median_kd}; winnable<{rankable_kd:.0f} = {winnable}{soft_clause}{inst_clause}.")
 
+        # 6. On-idea slice (display + telemetry only — never feeds the verdict): the page universe
+        # restricted to idea-intent keywords (grade >= min_grade). None when the grader covered
+        # <80% of the input set (same coverage guard as the volume bands).
+        on_idea_ceiling, on_idea_winnable = None, None
+        if all_rows and graded_coverage(all_rows) >= MIN_GRADED_COVERAGE:
+            ming = settings.keyword_relevance_min_grade
+            on_rows = [k for k in with_vol
+                       if keyword_grade(k) is not None and keyword_grade(k) >= ming]
+            on_idea_ceiling = len(on_rows)
+            on_idea_winnable = sum(
+                1 for k in on_rows if _kd(k) is not None and _kd(k) < rankable_kd)
+
         return SeoKillQuestion(
             indexable_page_ceiling=ceiling, head_count=head, mid_count=mid, tail_count=tail,
             median_keyword_difficulty=median_kd, winnable_pages=winnable, kd_sample_size=kd_n,
             forum_soft_serp_share=forum_soft, institutional_serp_share=institutional, serp_sampled=serp_n,
-            penalty_risk_flag=penalty_risk, verdict=verdict, rationale=rationale,
+            penalty_risk_flag=penalty_risk,
+            on_idea_page_ceiling=on_idea_ceiling, on_idea_winnable=on_idea_winnable,
+            verdict=verdict, rationale=rationale,
         )
+
+    def _append_seo_intent_caveat(self, seo_strategy, enriched_keywords) -> None:
+        """Q-049 volume-honesty degradation caveat (Stage 6). Fires when the analyzed keyword
+        volume is dominated by category / off-topic reach: idea-intent share < 10%, OR off-topic
+        share > 30%, OR a single dominant (>50%) head term whose grade is missing or below
+        keyword_relevance_min_grade. Suppressed entirely when the band fields are None (graded
+        coverage < 80%) or seo_offtopic_volume_guard is off. Fail-soft; appends at most one
+        deduplicated entry to state.pipeline_degradations."""
+        try:
+            if not settings.seo_offtopic_volume_guard or seo_strategy is None:
+                return
+            iiv = getattr(seo_strategy, "idea_intent_monthly_volume", None)
+            off = getattr(seo_strategy, "offtopic_volume_share", None)
+            cat = getattr(seo_strategy, "category_volume_share", None)
+            total = getattr(seo_strategy, "total_monthly_volume", 0) or 0
+            if iiv is None or off is None or cat is None or total <= 0:
+                return
+            from ..utils.intent_volume_bands import keyword_grade
+
+            def _vol(k):
+                if isinstance(k, dict):
+                    return k.get("search_volume", 0) or 0
+                return getattr(k, "search_volume", 0) or 0
+
+            intent_share = iiv / total
+            reasons = []
+            if intent_share < 0.10:
+                reasons.append(
+                    f"idea-intent keywords carry only {intent_share:.0%} of the analyzed volume")
+            if off > 0.30:
+                reasons.append(f"{off:.0%} of the analyzed volume is off-topic (grade 0)")
+            rows = list(enriched_keywords or [])
+            if rows:
+                top1 = max(rows, key=_vol)
+                t1v = _vol(top1)
+                g = keyword_grade(top1)
+                if t1v / total > 0.5 and (g is None or g < settings.keyword_relevance_min_grade):
+                    kw_s = (top1.get("keyword", "") if isinstance(top1, dict)
+                            else getattr(top1, "keyword", "")) or "?"
+                    reasons.append(
+                        f"a single non-idea-intent keyword ('{kw_s[:60]}') carries "
+                        f"{t1v / total:.0%} of the analyzed volume")
+            if not reasons:
+                return
+            msg = (f"SEO volume honesty: {'; '.join(reasons)} — idea-intent demand is {iiv:,}/mo "
+                   f"of the {total:,}/mo analyzed keyword set; treat the headline keyword volume "
+                   f"as category reach, not validated idea demand.")
+            if msg not in self.state.pipeline_degradations:
+                self.state.pipeline_degradations.append(msg)
+            logger.info(f"[SEO-RELEVANCE] degradation caveat appended: {msg[:160]}")
+        except Exception as e:
+            logger.warning(f"[SEO-RELEVANCE] caveat computation failed: {str(e)[:100]}")
 
     def _validate_solution_pricing(self, solution_name: str) -> dict:
         """
@@ -5873,6 +6474,11 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                 else:
                     logger.warning(f"Phase 6c checkpoint has insufficient keywords ({len(enriched_keywords) if enriched_keywords else 0}). Re-running enrichment...")
 
+            if resume_9_5c:
+                # Q-049: checkpointed keywords may predate idea-intent grade stamping —
+                # backfill grades (skipped when the checkpoint already carries them).
+                self._regrade_resumed_keywords(enriched_keywords, selected_solution)
+
             if not resume_9_5c:
                 enriched_keywords = self._iterative_keyword_enrichment(
                     conceptual_keywords=expanded_keywords.keywords,
@@ -6020,6 +6626,9 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                     logger.warning(f"[SEO-KILL] skipped: {str(e)[:120]}")
 
             self.state.seo_strategy_report = seo_strategy
+            # Q-049: volume-honesty degradation caveat (fires only when the band fields were
+            # computed and the analyzed volume is dominated by category/off-topic reach).
+            self._append_seo_intent_caveat(seo_strategy, enriched_keywords)
 
             logger.info(
                 f"[OK] SEO strategy complete for {selected_solution_name}: "
@@ -6347,9 +6956,9 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
         if best_validation_result:
             best_validation_result["attempts_made"] = final_attempt
             best_validation_result["best_relevance_score"] = best_relevance_score
-            best_validation_result["accumulated_keywords_count"] = len(accumulated_good_keywords)
             best_validation_result["niche_relevant_volume"] = niche_relevant_volume
-            best_validation_result["validated_keywords"] = accumulated_good_keywords
+            # Swaps the unfiltered expansion-pool count for the graded set.
+            finalize_graded_validation(best_validation_result, accumulated_good_keywords)
 
             # Log filter ratio when both volumes are available
             if niche_relevant_volume is not None:
@@ -6372,6 +6981,39 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             "best_relevance_score": best_relevance_score,
             "accumulated_keywords_count": len(accumulated_good_keywords)
         }
+
+    def _prefilter_fallback_keywords(self, keywords: list[dict], solution, niche_context) -> list[dict]:
+        """Deterministic prefilter for the batched-attempt-1 generic fallback (4.2): before a
+        thin-seed solution adopts the CROSS-SOLUTION expansion pool, keep only keywords whose
+        tokens overlap this solution's own corpus (value-prop + pains + winning angle +
+        jargon-expanded audience vocabulary). Survivors are volume-sorted; the survivors are
+        used even when <20 remain (fail-closed — never the raw cross-solution pool). An empty
+        corpus token set fails open (returns the volume-sorted input unchanged)."""
+        from ..utils.jargon_glossary import build_jargon_glossary, expand_jargon
+        from ..utils.validation.thread_validator import _tokenize_for_prefilter
+
+        pool = list(keywords or [])
+        pool.sort(key=lambda k: k.get("search_volume", 0) or 0, reverse=True)
+        glossary = build_jargon_glossary(niche_context)
+        corpus_parts = [
+            getattr(solution, "value_proposition", "") or "",
+            " ".join(str(p) for p in (getattr(solution, "pain_points_addressed", None) or [])),
+            getattr(solution, "winning_angle", "") or "",
+            " ".join(str(j) for j in (getattr(niche_context, "audience_jargon", None) or [])),
+        ]
+        corpus = expand_jargon(" ".join(p for p in corpus_parts if p), glossary)
+        corpus_tokens = _tokenize_for_prefilter(corpus)
+        if not corpus_tokens:
+            return pool  # fail-open: no corpus to filter against
+        survivors = []
+        for k in pool:
+            kw_text = expand_jargon(k.get("keyword", "") or "", glossary)
+            if _tokenize_for_prefilter(kw_text) & corpus_tokens:
+                survivors.append(k)
+        logger.info(
+            f"[Stage 6-KV] fallback prefilter: {len(pool)} -> {len(survivors)} keywords "
+            f"({getattr(solution, 'solution_name', '?')})")
+        return survivors
 
     def _batched_attempt_one_validation(
         self,
@@ -6462,7 +7104,14 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                 if any(term in kw.get('keyword', '').lower() for term in seed_terms)
             ]
             if len(solution_keywords) < 20:
-                solution_keywords = list(all_expanded)
+                if settings.seo_fallback_prefilter:
+                    # 4.2: never hand a thin-seed solution the RAW cross-solution pool —
+                    # prefilter it against this solution's own corpus first (fail-closed:
+                    # the survivors are used even when <20 remain).
+                    solution_keywords = self._prefilter_fallback_keywords(
+                        all_expanded, solution, niche_context)
+                else:
+                    solution_keywords = list(all_expanded)
             if len(solution_keywords) > quick_size:
                 solution_keywords = sorted(
                     solution_keywords,
@@ -6603,12 +7252,12 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                     good_keywords = state["good_keywords"] or []
                     vr["attempts_made"] = 1
                     vr["best_relevance_score"] = state["relevance_score"]
-                    vr["accumulated_keywords_count"] = len(good_keywords)
                     vr["niche_relevant_volume"] = (
                         sum(kw.get('search_volume', 0) for kw in good_keywords)
                         if state["relevance_score"] >= 0.3 else None
                     )
-                    vr["validated_keywords"] = good_keywords
+                    # Swaps the unfiltered expansion-pool count for the graded set.
+                    finalize_graded_validation(vr, good_keywords)
                     _record_validation(
                         {
                             "validation_result": vr,
@@ -6665,57 +7314,7 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                             return True
             return False
 
-        def _calculate_difficulty_adjusted_score(
-            validation: "CrewKeywordValidationResult"
-        ) -> tuple[float, float | None, float | None]:
-            """
-            Recalculate keyword_demand_score including difficulty factor.
-
-            Returns:
-                (adjusted_score, avg_difficulty, rankability_factor)
-            """
-            validated_keywords = validation.validated_keywords or []
-            if not validated_keywords:
-                # No keywords - return original score
-                return validation.keyword_demand_score, None, None
-
-            # Extract difficulty values (may be None for some keywords)
-            difficulties = [
-                kw.get('keyword_difficulty')
-                for kw in validated_keywords
-                if kw.get('keyword_difficulty') is not None
-            ]
-
-            # Calculate average difficulty and rankability factor
-            if difficulties:
-                avg_difficulty = sum(difficulties) / len(difficulties)
-                # Rankability factor: 1.0 for easy (0), 0.0 for hard (100)
-                rankability_factor = 1 - (avg_difficulty / 100)
-            else:
-                avg_difficulty = None
-                rankability_factor = None
-
-            # Get original components from validation result
-            # volume_score = validated_count / total seeds (approximated by len of top_keywords)
-            top_kw_count = len(validation.top_keywords) if validation.top_keywords else 20
-            volume_score = validation.validated_count / max(top_kw_count, 1)
-            volume_score = min(volume_score, 1.0)  # Cap at 1.0
-
-            # avg_opportunity from competition index (1 - avg_competition/100)
-            avg_opportunity = 1 - (validation.avg_competition / 100) if validation.avg_competition else 0.5
-
-            # New formula with difficulty: 55% volume + 25% opportunity + 20% rankability
-            if rankability_factor is not None:
-                adjusted_score = (
-                    (0.55 * volume_score) +
-                    (0.25 * avg_opportunity) +
-                    (0.20 * rankability_factor)
-                )
-            else:
-                # Fall back to original formula when no difficulty data
-                adjusted_score = (0.60 * volume_score) + (0.40 * avg_opportunity)
-
-            return adjusted_score, avg_difficulty, rankability_factor
+        # _calculate_difficulty_adjusted_score is a module-level helper (unit-testable).
 
         # Check if difficulty data already present (resume case)
         if _has_difficulty_data(validation_results):
@@ -6763,6 +7362,19 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                     for validation in validation_results:
                         old_score = validation.keyword_demand_score
                         new_score, avg_diff, rank_factor = _calculate_difficulty_adjusted_score(validation)
+
+                        if new_score is None:
+                            # Graded-and-empty (correction 1): no validated keywords —
+                            # demand is unmeasured. Keep the model's scalar untouched
+                            # (keyword_demand_score is a required float; writing None
+                            # would poison the checkpoint round-trip). The None-demand
+                            # handling lives at the scoring loop below, keyed off the
+                            # empty validated set so resume/API-failure paths get it too.
+                            logger.info(
+                                f"[Stage 6-KV] {validation.solution_name}: empty validated "
+                                "set — demand unmeasured, difficulty recalc skipped"
+                            )
+                            continue
 
                         # Update validation object (CrewKeywordValidationResult)
                         # Need to mutate the object since it's a Pydantic model
@@ -6817,6 +7429,7 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
         logger.info("[Stage 6-KV] Re-scoring solutions with keyword demand data")
         from nicheiq.utils.score_helpers import (
             blend_adjusted_composite,
+            choose_auto_pick,
             demand_with_beachhead_magnitude,
             rerank_solutions_by_adjusted_score,
         )
@@ -6825,6 +7438,26 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             # Find corresponding solution score
             for solution_score in all_scores:
                 if solution_score.solution_name == validation.solution_name:
+                    if not validation.validated_keywords:
+                        # Graded-and-empty (flow-weakness fix plan 2026-08, correction 1):
+                        # the keywords were graded and NONE individually passed — demand is
+                        # UNMEASURED, not the stale pre-grading scalar. No fabricated demand,
+                        # no blend (adjusted = composite); rerank_solutions_by_adjusted_score
+                        # two-tiers these below validated-with-keywords solutions. Keyed off
+                        # the validated set itself so all three difficulty paths (normal /
+                        # resume-skip / API-failure) land here uniformly.
+                        solution_score.keyword_demand_score = None
+                        solution_score.demand_unmeasured = True
+                        solution_score.adjusted_composite_score = solution_score.composite_score
+                        logger.info(
+                            f"[Stage 6-KV] {solution_score.solution_name}: graded-and-empty "
+                            f"validated set — demand unmeasured, adjusted = composite "
+                            f"({solution_score.composite_score:.2f})"
+                        )
+                        break
+                    # Reset-then-stamp: a measured solution must never carry a stale
+                    # demand_unmeasured=True from an earlier pass/checkpoint.
+                    solution_score.demand_unmeasured = False
                     # P3b (A/B-validated 2026-07-01, always on): fold beachhead MAGNITUDE into the
                     # ratio-based demand so a thin-but-clean beachhead can't out-rank a truly higher-demand
                     # idea (live: MountLimit demand 0.98 on a 720/mo beachhead → selection A/B picked the
@@ -6862,15 +7495,29 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
         ranked_solutions = rerank_solutions_by_adjusted_score(all_scores, validated_names)
 
         if ranked_solutions:
-            new_winner = ranked_solutions[0].solution_name
+            # Auto-pick guard: the keyword rerank is a second automatic #1 derivation, so a
+            # red-team-killed idea must not win it either. `choose_auto_pick` keeps the
+            # ranked list (and the killed idea's rank) untouched — it only walks past
+            # ineligible leaders and returns an attributable note.
+            ideas_pool = (self.state.idea_generation.solution_ideas
+                          if self.state.idea_generation else None) or []
+            winner_score, withheld_note = choose_auto_pick(ranked_solutions, ideas_pool)
+            new_winner = winner_score.solution_name
             original_winner = self.state.solution_selection.selected_solution_name
 
             if new_winner != original_winner:
                 self._apply_keyword_pivot(
-                    ranked_solutions, all_scores, validation_results, validated_names
+                    ranked_solutions, all_scores, validation_results, validated_names,
+                    winner_score=winner_score, withheld_note=withheld_note,
                 )
             else:
                 logger.info(f"[Stage 6-KV] Winner confirmed by keyword validation: {new_winner}")
+                if withheld_note:
+                    self.state.solution_selection.selection_rationale = (
+                        f"{self.state.solution_selection.selection_rationale or ''}"
+                        f"\n\n{withheld_note}".strip()
+                    )
+                    logger.warning(f"[Stage 6-KV] Auto-pick guard: {withheld_note}")
 
         # Save keyword validation results (stage completion handled by stage_6_seo_strategy)
         self.checkpoint_mgr.save_stage("stage_6_keyword_validation", validation_results)
@@ -6887,7 +7534,8 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
         logger.info(f"[Stage 6-KV] Keyword validation complete - {len(validation_results)} solutions validated")
 
     def _apply_keyword_pivot(
-        self, ranked_solutions, all_scores, validation_results, validated_names
+        self, ranked_solutions, all_scores, validation_results, validated_names,
+        winner_score=None, withheld_note: str | None = None,
     ) -> None:
         """Winner change after keyword validation (extracted from
         `_run_integrated_keyword_validation` — run-quality fixes §3, 2026-07-30, so the
@@ -6905,12 +7553,18 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
         Rationale honesty: `build_pivot_rationale` computes the actual composite-vs-
         demand attribution instead of the old unconditional "overtaken due to weaker
         keyword demand evidence" claim (false whenever the composite term or the novelty
-        tiebreak drove the flip)."""
+        tiebreak drove the flip).
+
+        `winner_score` is the auto-pick-eligible leader (`choose_auto_pick`), which is
+        `ranked_solutions[0]` unless the rerank leader was red-team killed; `withheld_note`
+        carries the citable reason and is appended so the flip is never misattributed to
+        keyword demand. Defaults preserve the plain rerank-leader behaviour for callers that
+        pass neither."""
         from ..utils.score_helpers import build_keyword_advisory_note, build_pivot_rationale
 
-        new_winner = ranked_solutions[0].solution_name
+        new_winner_score = winner_score if winner_score is not None else ranked_solutions[0]
+        new_winner = new_winner_score.solution_name
         original_winner = self.state.solution_selection.selected_solution_name
-        new_winner_score = ranked_solutions[0]
         original_winner_score = next(
             (s for s in all_scores if s.solution_name == original_winner), None
         )
@@ -6967,6 +7621,13 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             orig_name=original_winner,
             orig_validated=original_winner in (validated_names or set()),
         )
+        if withheld_note:
+            # Honest attribution: the flip was (also) the auto-pick guard walking past a
+            # red-team-killed leader, not purely keyword demand.
+            self.state.solution_selection.selection_rationale = (
+                f"{self.state.solution_selection.selection_rationale}\n\n{withheld_note}"
+            )
+            logger.warning(f"[Stage 6-KV] Auto-pick guard: {withheld_note}")
 
         # Refresh selection_criteria_scores to describe the NEW winner
         # (they previously kept describing the dethroned original).
@@ -6999,7 +7660,9 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
 
         # Update runner_up_solutions to reflect new ranking after pivot
         new_runner_ups = []
-        for score in ranked_solutions[1:]:  # Skip position 0 (new winner)
+        for score in ranked_solutions:  # rank order, minus the new winner itself
+            if score.solution_name == new_winner:
+                continue
             if score.solution_name not in new_runner_ups:
                 new_runner_ups.append(score.solution_name)
             if len(new_runner_ups) >= 3:  # Keep top 3 runner-ups

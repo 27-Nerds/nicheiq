@@ -92,8 +92,8 @@ describe("+page.svelte — landing-page purchase", () => {
     });
 
     await fireEvent.click(await view.findByRole("button", { name: /Generate.*5/ }));
-    await view.findByText("5 credits — confirm?");
-    await fireEvent.click(await view.findByRole("button", { name: "Generate" }));
+    await view.findByRole("heading", { name: "Generate a waitlist landing page?" });
+    await fireEvent.click(await view.findByRole("button", { name: "Generate page · 5 credits" }));
 
     expect(fetchSpy).toHaveBeenCalledWith("/api/jobs/job-1/generate-landing", {
       method: "POST",

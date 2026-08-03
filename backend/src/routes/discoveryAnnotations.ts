@@ -1,18 +1,17 @@
 import { Router, Request, Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
-import { JobStatus } from '@prisma/client';
 import { CONFIG } from '../config.js';
 import { requireInternalAuth, verifyOwnership, AuthenticatedRequest } from '../middleware/auth.js';
 import { prisma } from '../services/db.js';
 import { getJob } from '../services/jobService.js';
+import {
+  DISCOVERY_SHARE_LIFECYCLE_JOB_SELECT,
+  isDiscoveryShareLifecycleOpenForJob,
+} from '../services/discoveryShareLifecycle.js';
 
 const MAX_DOCUMENT_BYTES = 512 * 1024;
 const MAX_TOTAL_POINTS = 50_000;
-const EDITABLE_STATUSES = new Set<JobStatus>([
-  JobStatus.AWAITING_SELECTION,
-  JobStatus.REGENERATING,
-]);
 const ALLOWED_SECTION_KEYS = new Set([
   'section:overview',
   'section:market-snapshot',
@@ -152,8 +151,8 @@ discoveryAnnotationsRouter.put('/:jobId/discovery-annotations', requireInternalA
     res.status(403).json({ error: 'Not authorized' });
     return;
   }
-  if (!EDITABLE_STATUSES.has(job.status)) {
-    res.status(400).json({ error: 'Annotations can only be edited after Discovery completes' });
+  if (!isDiscoveryShareLifecycleOpenForJob(job)) {
+    res.status(400).json({ error: 'Annotations can only be edited while selection is open' });
     return;
   }
   if (Buffer.byteLength(JSON.stringify(req.body), 'utf8') > MAX_DOCUMENT_BYTES) {
@@ -188,9 +187,17 @@ publicDiscoveryAnnotationsRouter.get('/:shareToken/annotations', annotationPolli
 
   const share = await prisma.discoveryShare.findUnique({
     where: { shareToken: params.data.shareToken },
-    select: { jobId: true, isActive: true },
+    select: {
+      jobId: true,
+      isActive: true,
+      job: { select: DISCOVERY_SHARE_LIFECYCLE_JOB_SELECT },
+    },
   });
-  if (!share || !share.isActive) {
+  if (
+    !share
+    || !share.isActive
+    || !isDiscoveryShareLifecycleOpenForJob(share.job)
+  ) {
     res.status(404).json({ error: 'Not found' });
     return;
   }

@@ -10,10 +10,19 @@ verdict then gets ONE accept-guarded revision attempt (`_attempt_red_team_revisi
 tries to escape the finding, mirroring `_parity_pivot_revisions`.
 
 Fail-soft PER IDEA: one idea's LLM/search failure never blocks the others or the pipeline.
-A 'killed' verdict whose evidence names a shipped/bundled-free alternative applies the
-EXISTING downgrade-only parity cap (`_validate_idea_caps` rule (e)) — there is no parallel
-capping mechanism here. 'survives'/'weakened' verdicts stamp verdict+caveats only, never
-touch scores. No-op (no LLM call, no searches) when `settings.red_team_top_k == 0`.
+NO verdict touches scores — every verdict stamps `red_team_verdict`/`red_team_caveats` and
+nothing else. The consequences live where they can be attributed: `apply_red_team_downgrade`
+(verdict floor + report caveat) and the auto-pick guard (`score_helpers.choose_auto_pick`).
+No-op (no LLM call, no searches) when `settings.red_team_top_k == 0`.
+
+A 'killed' verdict USED to write its first caveat into `incumbent_parity` as
+"shipped by evidence: <caveat>" and then call `_validate_idea_caps` (rule (e), a 0.45
+market_fit ceiling). That coupling is deleted (2026-08-02). `_RedTeamVerdict` has no vendor
+field, so 100% of those stamps were vendor-less BY CONSTRUCTION, and the sibling probe
+`_probe_mechanism_parity` already enforces the rule this path never adopted: no named vendor
+=> no parity finding. An audit of all 8 vendor-less stamps found 0 valid parity claims of any
+class — a finding of an EMPTY competitive field was being stamped as the harshest parity
+class and charged a second time on top of the kill itself.
 """
 
 from __future__ import annotations
@@ -24,6 +33,7 @@ from loguru import logger
 from pydantic import BaseModel, Field
 
 from .data_access import DATA_ACCESS_VOCAB, normalize_data_access, note_route_label
+from .idea_carryover import carry_forward_idea_fields
 from .validation.niche_anchor import anchor_coverage
 
 # Minimum anchor_entities for the off-category guard to activate — below this the
@@ -38,14 +48,12 @@ class _RedTeamVerdict(BaseModel):
     uplift: Optional[str] = Field(None, description="up to 1 pro-idea note")
 
 
-# Keywords that mark a killing caveat as a FREE/BUNDLED alternative rather than a plain shipped
-# commercial competitor — routes the finding to the bundled_free parity shape vs. the generic
-# "shipped by evidence" shape.
+# Keywords that mark a caveat as naming a FREE/BUNDLED alternative rather than a plain shipped
+# commercial competitor — an escapable finding, so it is worth a revision attempt.
 _KILL_ALTERNATIVE_WORDS = ("free", "bundled", "included in", "built into", "built-in", "loss-leader")
 
 # A caveat is "actionable" (worth attempting a revision for) when it names a free/bundled
-# alternative (the kill-alternative words) OR flags a modal-case miss. Mirrors the killed+cap
-# heuristic, extended to catch modal-case language.
+# alternative (the kill-alternative words) OR flags a modal-case miss.
 _ACTIONABLE_WORDS = _KILL_ALTERNATIVE_WORDS + (
     "modal", "common form", "most common", "doesn't handle", "does not handle", "edge case",
 )
@@ -208,6 +216,10 @@ def _attempt_red_team_revision(crew, refined_solutions, orig, result, evidence) 
         d["target_personas"] = list(
             getattr(orig, "target_personas", None) or ["primary audience member"])
         rev = BaseSolutionIdea.model_validate(d)
+        # Same reset-then-stamp gap as the parity pivot (utils/idea_carryover.py): `_Revision`
+        # names a fraction of BaseSolutionIdea, so everything else used to reset to default —
+        # red-team revisions shipped with `project_type: None` in three audited runs.
+        carry_forward_idea_fields(orig, rev)
         rev.source_pain = getattr(orig, "source_pain", None)
         rev.source_segment = getattr(orig, "source_segment", None)
         rev.source_frame = getattr(orig, "source_frame", None) or "pain"
@@ -238,6 +250,16 @@ def _attempt_red_team_revision(crew, refined_solutions, orig, result, evidence) 
             ideas = refined_solutions.solution_ideas
             idx = ideas.index(orig)
             rev.red_team_revised = True
+            rev.rebuild_origin = "red_team_revision"
+            # A revision changes the product, so the summary/positioning fields the
+            # `_Revision` schema does not rewrite are deliberately NOT carried
+            # (idea_carryover rules 2 and 4) and must be re-derived against the new
+            # description. Fill-only, and no LLM call when nothing is blank. Runs after
+            # `_score_wave` so scoring still sees the revision's own prose, not repaired text.
+            crew._repair_blank_idea_fields(
+                rev, escaped_parity=getattr(orig, "incumbent_parity", None),
+                rebuild=True,
+            )
             ideas[idx] = rev
             logger.info(f"[RedTeamRevision] accepted '{rev.solution_name}' "
                         f"(composite {_comp(orig):.3f} -> {_comp(rev):.3f})")
@@ -256,11 +278,11 @@ def run_red_team_review(crew, refined_solutions) -> None:
     axes — angle-composite leader, best shippability (min(build, solo) >= 0.70), then
     market_fit / shippability alternation — so the likely selection AND the most
     shippable ideas both get reviewed (a pure market_fit sort excluded whatever the
-    payability/parity caps had compressed). Mutates ideas in place (`red_team_verdict`, `red_team_caveats`, and —
-    on a qualifying 'killed' verdict — `incumbent_parity` plus a `_validate_idea_caps` call
-    that applies the existing downgrade-only cap). An actionable killed/weakened verdict then
-    gets one accept-guarded revision attempt via `_attempt_red_team_revision`. Fail-soft per
-    idea; never raises."""
+    payability/parity caps had compressed). Mutates ideas in place — `red_team_verdict` and
+    `red_team_caveats` ONLY; no verdict writes a score or a parity class (see the module
+    docstring for the deleted killed->`incumbent_parity` coupling). An actionable
+    killed/weakened verdict then gets one accept-guarded revision attempt via
+    `_attempt_red_team_revision`. Fail-soft per idea; never raises."""
     from ..config.settings import settings
     from ..models.solution_idea import visible_ideas
     from ..utils.content_security import fence_content
@@ -426,16 +448,8 @@ def run_red_team_review(crew, refined_solutions) -> None:
             idea.red_team_caveats = result.caveats or None
             reviewed += 1
 
-            if result.verdict == "killed" and result.caveats:
-                caveat = result.caveats[0]
-                low = caveat.lower()
-                if any(w in low for w in _KILL_ALTERNATIVE_WORDS):
-                    note = f"bundled_free (red-team): {caveat}"
-                else:
-                    note = f"shipped by evidence: {caveat}"
-                idea.incumbent_parity = note
-                crew._validate_idea_caps(idea)
-                logger.info(f"[RedTeam] '{name}' killed -> {note[:80]}")
+            if result.verdict == "killed":
+                logger.info(f"[RedTeam] '{name}' killed: {result.caveats[:1]}")
             elif result.verdict == "weakened":
                 logger.info(f"[RedTeam] '{name}' weakened: {result.caveats[:1]}")
 

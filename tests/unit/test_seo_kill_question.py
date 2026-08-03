@@ -112,6 +112,33 @@ class TestSeoKillQuestion:
         assert r.institutional_serp_share == 0.0
         assert "authority-heavy" not in r.rationale.lower()
 
+    def test_grade0_keywords_excluded_from_inputs(self, monkeypatch):
+        """Q-049: grade-0 (OFFTOPIC) rows never count toward the page universe; ungraded and
+        grade>=1 rows are retained (fail-open)."""
+        monkeypatch.setattr(settings, "seo_kill_question_serp_sample", 0)
+        monkeypatch.setattr(settings, "seo_offtopic_volume_guard", True)
+        kws = ([dict(_kw(f"k{i}", 500, 20), idea_intent_grade=2) for i in range(35)]
+               + [dict(_kw(f"z{i}", 500, 20), idea_intent_grade=0) for i in range(15)]
+               + [_kw(f"u{i}", 500, 20) for i in range(5)])  # ungraded, retained
+        r = _flow()._compute_seo_kill_question(kws, _SOL)
+        assert r.indexable_page_ceiling == 40  # 35 graded>=1 + 5 ungraded; 15 grade-0 excluded
+
+    def test_grade0_exclusion_crosses_30_boundary(self, monkeypatch):
+        """Off-topic volume was propping up the page ceiling: 35 raw intents but only 25 on/
+        near-topic — the grade-0 exclusion drops the ceiling below 30 and flips the verdict."""
+        monkeypatch.setattr(settings, "seo_kill_question_serp_sample", 0)
+        monkeypatch.setattr(settings, "seo_offtopic_volume_guard", True)
+        kws = ([dict(_kw(f"k{i}", 500, 20), idea_intent_grade=2) for i in range(25)]
+               + [dict(_kw(f"z{i}", 2000, 20), idea_intent_grade=0) for i in range(10)])
+        r = _flow()._compute_seo_kill_question(kws, _SOL)
+        assert r.indexable_page_ceiling == 25
+        assert "weak seo thesis" in r.verdict.lower()
+
+    def test_on_idea_fields_none_when_ungraded(self, monkeypatch):
+        monkeypatch.setattr(settings, "seo_kill_question_serp_sample", 0)
+        r = _flow()._compute_seo_kill_question([_kw(f"k{i}", 500, 20) for i in range(40)], _SOL)
+        assert r.on_idea_page_ceiling is None and r.on_idea_winnable is None
+
     def test_institutional_host_matching_precision(self, monkeypatch):
         """govtech.com / edutoys.com are NOT institutional (host ends .com); *.gov.uk IS."""
         monkeypatch.setattr(settings, "seo_kill_question_serp_sample", 2)

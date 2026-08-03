@@ -1,21 +1,21 @@
-"""
-RQ Task definitions for NicheIQ research jobs.
+"""Task implementations dispatched by :mod:`worker.queue_consumer`.
 
-These tasks are enqueued by the Node.js backend and processed by RQ workers.
+The Node.js backend publishes JSON payloads to the reliable Redis list; the
+consumer validates the delivery attempt and invokes the matching function here.
 """
 
 import hmac
 import json
 import os
 import re
+import time
 import traceback
 from pathlib import Path
 from typing import Optional
 
 from loguru import logger
-from rq import get_current_job
-
 from nicheiq.config.settings import settings
+from nicheiq.utils.score_helpers import audience_fit_coverage
 
 from .progress import (
     create_progress_callback,
@@ -56,6 +56,50 @@ def _canonical_solution_snapshot(solutions: list) -> str:
         else:
             rows.append(str(solution))
     return json.dumps(rows, sort_keys=True, separators=(",", ":"), default=str)
+
+
+def _restore_paid_idea_state_before_refund(flow, job_id: str) -> None:
+    """Durably restore the current in-memory idea state before a paid-op refund.
+
+    A failed completion callback is compensatable only after both the authoritative
+    checkpoint and its preview projection contain the pre-operation state. A single
+    best-effort ``save_stage`` is unsafe: its False return used to be ignored, after which
+    queue_consumer immediately requested a refund. Retry here while this worker keeps its
+    heartbeat lease; the failure/refund callback is not reached until compensation lands.
+    """
+    attempt = 0
+    while True:
+        attempt += 1
+        save_error: Exception | None = None
+        saved = True
+        try:
+            if flow.checkpoint_mgr and flow.state.idea_generation:
+                saved = flow.checkpoint_mgr.save_stage(
+                    "stage_5_3_refinement", flow.state.idea_generation
+                )
+        except Exception as error:
+            saved = False
+            save_error = error
+
+        if saved:
+            try:
+                preview_path = flow._materialize_preview_report(
+                    str(settings.checkpoint_dir)
+                )
+                if not preview_path:
+                    raise RuntimeError("preview materialization returned no path")
+                return
+            except Exception as error:
+                save_error = error
+
+        delay = (0.0, 1.0, 2.0, 5.0, 10.0, 30.0)[min(attempt - 1, 5)]
+        logger.critical(
+            f"[Worker] Paid idea rollback for job {job_id} did not persist on attempt "
+            f"{attempt}: {save_error or 'save_stage returned False'}. Holding the dispatch "
+            f"without a refund and retrying in {delay:.0f}s."
+        )
+        if delay:
+            time.sleep(delay)
 
 
 def _ensure_phase1_identities(flow, job_id: str) -> None:
@@ -157,16 +201,18 @@ def _resolve_phase2_selection(
     pool = list(
         getattr(getattr(state, "idea_generation", None), "solution_ideas", None) or []
     )
+    visible = visible_ideas(pool)
     # The backend owns idea identity (stamped at /ideas-ready, seeded from the Phase-1
     # dispatch id) and ships its stamped pool alongside the selection. Apply it before the
-    # legacy backfill, which only fills whatever this leaves unowned.
+    # legacy backfill, which only fills whatever this leaves unowned. The map represents
+    # this selectable projection; absorbed/demoted checkpoint history is not a pool member.
     if pool_identity_map:
-        applied = apply_pool_identities(pool, pool_identity_map)
+        applied = apply_pool_identities(visible, pool_identity_map)
         logger.info(
-            f"[Worker] Applied {applied}/{len(pool)} backend pool identities for job {job_id}"
+            f"[Worker] Applied {applied}/{len(visible)} selectable backend pool "
+            f"identities for job {job_id}"
         )
     ensure_legacy_idea_identities(job_id, pool)
-    visible = visible_ideas(pool)
     by_ref: dict[tuple[str, int], object] = {}
     for idea in visible:
         key = (
@@ -374,10 +420,11 @@ def _validate_regeneration_base_candidate_refs(
     pool = list(
         getattr(getattr(state, "idea_generation", None), "solution_ideas", None) or []
     )
-    apply_pool_identities(pool, pool_identity_map or [])
+    selectable_pool = visible_ideas(pool)
+    apply_pool_identities(selectable_pool, pool_identity_map or [])
     ensure_legacy_idea_identities(job_id, pool)
     current_refs: set[tuple[str, int]] = set()
-    for idea in visible_ideas(pool):
+    for idea in selectable_pool:
         idea_id = str(getattr(idea, "idea_id", "") or "").strip()
         revision = getattr(idea, "idea_revision", None)
         if (
@@ -433,7 +480,7 @@ def run_research_job(
     resume: bool = False,
 ) -> dict:
     """
-    Main RQ task - runs the complete research pipeline + landing page generation.
+    Run the complete research pipeline and report generation.
 
     This task is enqueued by the Node.js backend when a user submits a job.
     Progress updates are published to Redis pub/sub for real-time SSE updates.
@@ -448,7 +495,6 @@ def run_research_job(
     Returns:
         Dict with status, report_path, and optional landing_path
     """
-    rq_job = get_current_job()
     logger.info(f"[Worker] Starting job {job_id} for user {user_id or 'anonymous'}, niche: {niche[:100]}...")
 
     # Set up output directory for this job
@@ -552,6 +598,21 @@ def run_research_job(
             logger.debug(f"Knowledge cleanup error (non-fatal): {cleanup_err}")
 
 
+def _preflight_landing_models() -> None:
+    """Fail fast when a landing-tier model id no longer exists on the OpenAI API.
+
+    Guards model retirement (gpt-5.1-codex-max retired and broke landing jobs
+    mid-generation). Behind settings.landing_preflight_model_check; the check
+    itself is fail-open — it only raises on an explicit 404/model_not_found.
+    """
+    if not settings.landing_preflight_model_check:
+        return
+    from nicheiq.utils.llm_service import validate_model_available
+
+    for model_id in (settings.landing_page_llm, settings.landing_page_execution_llm):
+        validate_model_available(model_id)
+
+
 def run_landing_page_only(
     job_id: str,
     report_path: str,
@@ -585,6 +646,10 @@ def run_landing_page_only(
         # Create progress callback
         progress_callback = create_progress_callback(job_id)
         progress_callback(15, "Landing Page Generation", "running")
+
+        # Preflight both landing model tiers before constructing the crew
+        # (raises with actionable guidance if a pinned model id was retired)
+        _preflight_landing_models()
 
         # Generate landing page
         crew = LandingPageCrew()
@@ -626,8 +691,13 @@ def run_landing_page_only(
         raise
 
 
-def _solution_to_preview_dict(solution) -> dict:
-    """Convert a BaseSolutionIdea or dict to a preview dict for the frontend."""
+def _solution_to_preview_dict(solution, audience_fit_coverage: float | None = None) -> dict:
+    """Convert a BaseSolutionIdea or dict to a preview dict for the frontend.
+
+    ``audience_fit_coverage`` is the audience-fit coverage of the POOL this solution belongs to
+    (``score_helpers.audience_fit_coverage``). It gates the adjacent-audience ranking penalty
+    stamped into ``adjusted_composite_score``; None (the default) = no penalty.
+    """
     if hasattr(solution, "model_dump"):
         d = solution.model_dump()
         from nicheiq.models.solution_idea import BaseSolutionIdea
@@ -665,7 +735,7 @@ def _solution_to_preview_dict(solution) -> dict:
     # short-circuits to adjusted_composite_score when present, so stamp the angle-weighted composite
     # (each idea by its own winning_angle; angle=None ideas fall back to an equal-weight mean).
     from nicheiq.utils.score_helpers import angle_ranked_composite
-    d["adjusted_composite_score"] = angle_ranked_composite(d)
+    d["adjusted_composite_score"] = angle_ranked_composite(d, audience_fit_coverage)
 
     # Distill the calibration critic's market_fit reason into ONE user-facing note
     # (mirrors the alternatives path in research_flow) and DROP the raw
@@ -746,7 +816,7 @@ def run_interactive_research(
             checkpoint_path = ""
             if flow.checkpoint_mgr and flow.checkpoint_mgr.checkpoint_folder:
                 checkpoint_path = str(flow.checkpoint_mgr.checkpoint_folder)
-            gate_artifact = flow._extract_stage_artifact(1) or {}
+            gate_artifact = flow._build_g1_gate_artifact() or {}
             notify_gate_reached(
                 job_id, gate_stage=1, checkpoint_path=checkpoint_path,
                 gate_artifact=gate_artifact, cost_summary=_resolve_cost_summary(flow),
@@ -771,7 +841,8 @@ def run_interactive_research(
         from nicheiq.models.solution_idea import visible_ideas
 
         solutions = visible_ideas(idea_gen.solution_ideas)
-        solution_previews = [_solution_to_preview_dict(s) for s in solutions]
+        af_coverage = audience_fit_coverage(solutions)
+        solution_previews = [_solution_to_preview_dict(s, af_coverage) for s in solutions]
 
         # Get checkpoint path
         checkpoint_path = ""
@@ -862,7 +933,8 @@ def _notify_phase1_complete_from_gate(job_id: str, flow) -> dict:
     from nicheiq.models.solution_idea import visible_ideas
 
     solutions = visible_ideas(idea_gen.solution_ideas)
-    solution_previews = [_solution_to_preview_dict(s) for s in solutions]
+    af_coverage = audience_fit_coverage(solutions)
+    solution_previews = [_solution_to_preview_dict(s, af_coverage) for s in solutions]
     final_checkpoint_path = str(flow.checkpoint_mgr.checkpoint_folder)
 
     discovery_data_path = ""
@@ -956,7 +1028,7 @@ def continue_from_gate(
 
         if mode == "apply_stay":
             if gate_stage == 1:
-                gate_artifact = flow._extract_stage_artifact(1) or {}
+                gate_artifact = flow._build_g1_gate_artifact() or {}
             elif gate_stage == 4:
                 gate_artifact = flow._build_g2_gate_artifact()
                 if gate_artifact is None:
@@ -1270,8 +1342,20 @@ def run_research_phase2(
             raise
 
         if isinstance(e, QualityGateStopException):
-            notify_job_quality_gate_stop(job_id, e.reason, e.details, e.stage)
-            return None
+            delivered = notify_job_quality_gate_stop(
+                job_id, e.reason, e.details, e.stage
+            )
+            if delivered:
+                return None
+            # Do not release this paid dispatch as a successful task when its structured
+            # terminal stop never reached the backend. Re-raise so queue_consumer's exact-
+            # dispatch generic failure callback can settle/refund it instead.
+            logger.error(
+                f"[Worker] Phase-2 quality-gate-stop not delivered for {job_id}; "
+                "re-raising to the job-failure safety net"
+            )
+            e.failed_stage = e.stage  # type: ignore
+            raise
 
         logger.error(f"[Worker] Phase 2 failed for job {job_id}: {e}\n{traceback.format_exc()}")
         failed_stage = None
@@ -1384,7 +1468,8 @@ def run_catalog_pain_research(
         from nicheiq.models.solution_idea import visible_ideas
 
         solutions = visible_ideas(idea_gen.solution_ideas)
-        solution_previews = [_solution_to_preview_dict(s) for s in solutions]
+        af_coverage = audience_fit_coverage(solutions)
+        solution_previews = [_solution_to_preview_dict(s, af_coverage) for s in solutions]
 
         checkpoint_path = ""
         if flow.checkpoint_mgr and flow.checkpoint_mgr.checkpoint_folder:
@@ -1607,6 +1692,7 @@ def run_regenerate_ideas(
     )
 
     flow = None
+    mutation_guard = None
     try:
         from nicheiq.flows.research_flow import ResearchFlow
 
@@ -1632,6 +1718,11 @@ def run_regenerate_ideas(
             base_candidate_refs,
             pool_identity_map,
         )
+        if dispatch_id:
+            from .paid_pool_recovery import PaidPoolMutationGuard
+
+            mutation_guard = PaidPoolMutationGuard(job_id, dispatch_id, checkpoint_path)
+            mutation_guard.prepare()
         progress_callback(5, "Solution Pipeline", "running")
 
         from nicheiq.crews.unified_solution_crew import UnifiedSolutionCrew
@@ -1808,6 +1899,12 @@ def run_regenerate_ideas(
         # Update state in-place and re-save checkpoint
         if state.idea_generation and hasattr(state.idea_generation, "solution_ideas"):
             state.idea_generation.solution_ideas = merged_solutions
+            # Batch ideas are born AFTER the main flow's audience-fit pass, so without this they
+            # stay untagged forever — which (a) denies them the adjacent-audience chip and (b)
+            # drops pool coverage below the 90% gate, disabling the ranking penalty for EVERYONE.
+            # Re-tags the FULL merged pool (idempotent, one fail-open LLM call). persist=False:
+            # the guarded save_stage below is the authoritative write this refund path rolls back.
+            flow._tag_audience_fit(persist=False)
         # Empty names are excluded: a blank entry would otherwise match every finding whose
         # idea_name is missing, sweeping unrelated rows into this batch's receipt.
         batch_names = {
@@ -1872,19 +1969,43 @@ def run_regenerate_ideas(
         )
         state.idea_ruled_out = pre_batch_findings + batch_findings
         if flow.checkpoint_mgr and state.idea_generation:
-            flow.checkpoint_mgr.save_stage("stage_5_3_refinement", state.idea_generation)
+            saved = flow.checkpoint_mgr.save_stage(
+                "stage_5_3_refinement", state.idea_generation
+            )
+            if not saved:
+                state.idea_generation.solution_ideas = old_solutions
+                state.idea_ruled_out = pre_batch_findings
+                # CheckpointManager normally restores the previous stage bytes itself. If
+                # even that compensation failed, hold this paid dispatch until an explicit
+                # old-state write succeeds; otherwise queue_consumer would refund a batch
+                # that may still exist on disk.
+                if getattr(
+                    flow.checkpoint_mgr,
+                    "last_save_failure_rollback_safe",
+                    True,
+                ) is False:
+                    _restore_paid_idea_state_before_refund(flow, job_id)
+                raise RuntimeError(
+                    "Failed to persist the regenerated idea batch in the authoritative checkpoint"
+                )
 
         # Regeneration updates the same preview-report asset used by the selection UI,
         # analyst chat, and decision tools. Rewrite it from the merged state before
         # notifying the backend; otherwise those readers keep the pre-regeneration
         # candidate pool even though Job.solutionIdeas already contains the new batch.
         try:
-            flow._materialize_preview_report(str(settings.checkpoint_dir))
-        except Exception as e:
-            logger.warning(
-                f"[Worker] Failed to re-materialize preview report after regeneration "
-                f"for job {job_id}: {e}"
+            preview_path = flow._materialize_preview_report(
+                str(settings.checkpoint_dir)
             )
+            if not preview_path:
+                raise RuntimeError("preview materialization returned no path")
+        except Exception as preview_error:
+            state.idea_generation.solution_ideas = old_solutions
+            state.idea_ruled_out = pre_batch_findings
+            _restore_paid_idea_state_before_refund(flow, job_id)
+            raise RuntimeError(
+                "Failed to persist the regenerated idea batch preview"
+            ) from preview_error
 
         # Send only NEW previews — backend appends to existing list. Filter through the
         # visibility projection (regenerated ideas default candidate_status='active' so this
@@ -1892,7 +2013,11 @@ def run_regenerate_ideas(
         from nicheiq.models.solution_idea import visible_ideas
 
         visible_new_solutions = visible_ideas(new_solutions)
-        new_previews = [_solution_to_preview_dict(s) for s in visible_new_solutions]
+        # Coverage is a property of the POOL the grid ranks (merged), not of this batch slice.
+        af_coverage = audience_fit_coverage(visible_ideas(merged_solutions))
+        new_previews = [
+            _solution_to_preview_dict(s, af_coverage) for s in visible_new_solutions
+        ]
 
         if not new_previews:
             logger.warning(f"[Worker] Regenerate produced 0 visible ideas for job {job_id}")
@@ -1912,9 +2037,24 @@ def run_regenerate_ideas(
                 ruled_out_count=len(batch_findings),
             )
         except Exception as delivery_err:
-            delivery_err.regeneration_delivery_only = True  # type: ignore
+            from .paid_pool_recovery import (
+                PaidPoolCompletionAmbiguous,
+                PaidPoolOperationFenced,
+            )
+
+            # A lost completion response is not proof that delivery failed: the backend may
+            # already have committed the new pool. Preserve the forward artifacts and let the
+            # backend's durable dispatch state arbitrate; compensating here could roll a paid,
+            # accepted batch back out of the checkpoint.
+            if not isinstance(
+                delivery_err,
+                (PaidPoolCompletionAmbiguous, PaidPoolOperationFenced),
+            ):
+                delivery_err.regeneration_delivery_only = True  # type: ignore
             raise
 
+        if mutation_guard:
+            mutation_guard.commit_and_cleanup()
         return {
             "status": "regenerated",
             "job_id": job_id,
@@ -1925,6 +2065,22 @@ def run_regenerate_ideas(
 
     except Exception as e:
         from .heartbeat import JobCancelledException
+        from .paid_pool_recovery import PaidPoolCompletionAmbiguous
+
+        if isinstance(e, PaidPoolCompletionAmbiguous):
+            raise
+
+        if mutation_guard:
+            try:
+                mutation_guard.restore()
+            except Exception as restore_error:
+                from .paid_pool_recovery import PaidPoolRecoveryRequired
+
+                logger.critical(
+                    f"[Worker] Paid batch before-image restore failed for {job_id}: "
+                    f"{restore_error}. Recovery must retain the dispatch and retry."
+                )
+                raise PaidPoolRecoveryRequired(str(restore_error)) from e
 
         if isinstance(e, JobCancelledException):
             raise
@@ -1939,19 +2095,13 @@ def run_regenerate_ideas(
             # selections from this checkpoint, so a batch the backend never accepted — and
             # which queue_consumer is about to have refunded — must not survive there or in
             # the separately materialized preview asset.
-            try:
-                if flow.checkpoint_mgr and state.idea_generation:
-                    state.idea_generation.solution_ideas = old_solutions
-                    state.idea_ruled_out = pre_batch_findings
-                    flow.checkpoint_mgr.save_stage("stage_5_3_refinement", state.idea_generation)
-                    flow._materialize_preview_report(str(settings.checkpoint_dir))
-                    logger.info(
-                        f"[Worker] Reverted unpaid idea batch for job {job_id} pending refund "
-                        "(delivery never landed)"
-                    )
-            except Exception as revert_err:
-                logger.error(
-                    f"[Worker] Failed to revert idea-batch checkpoint for {job_id}: {revert_err}"
+            if flow.checkpoint_mgr and state.idea_generation:
+                state.idea_generation.solution_ideas = old_solutions
+                state.idea_ruled_out = pre_batch_findings
+                _restore_paid_idea_state_before_refund(flow, job_id)
+                logger.info(
+                    f"[Worker] Reverted unpaid idea batch for job {job_id} pending refund "
+                    "(delivery never landed)"
                 )
             raise
 
@@ -1960,6 +2110,8 @@ def run_regenerate_ideas(
         raise
 
     finally:
+        if mutation_guard:
+            mutation_guard.close()
         try:
             if flow is not None:
                 flow.cleanup_collections()
@@ -1973,6 +2125,8 @@ def run_seed_idea(
     seed: dict,
     niche: str,
     dispatch_id: Optional[str] = None,
+    base_candidate_refs: Optional[list[dict]] = None,
+    pool_identity_map: Optional[list[dict]] = None,
 ) -> dict:
     """
     User-seed pipeline (eager-meandering-feather.md Phase 5): birth + score exactly ONE
@@ -2007,6 +2161,7 @@ def run_seed_idea(
     logger.info(f"[Worker] Seed idea for job {job_id}: {(seed.get('seed_text') or '')[:80]!r}")
 
     flow = None
+    mutation_guard = None
     try:
         from nicheiq.flows.research_flow import ResearchFlow
 
@@ -2020,6 +2175,17 @@ def run_seed_idea(
             raise RuntimeError(f"Failed to load checkpoint from {checkpoint_path}")
 
         state = flow.state
+        _validate_regeneration_base_candidate_refs(
+            state,
+            job_id,
+            base_candidate_refs,
+            pool_identity_map,
+        )
+        if dispatch_id:
+            from .paid_pool_recovery import PaidPoolMutationGuard
+
+            mutation_guard = PaidPoolMutationGuard(job_id, dispatch_id, checkpoint_path)
+            mutation_guard.prepare()
         progress_callback(5, "Solution Pipeline", "running")
 
         from nicheiq.crews.unified_solution_crew import SeedRequest, UnifiedSolutionCrew
@@ -2063,14 +2229,34 @@ def run_seed_idea(
             stamp_ruled_out_findings,
         )
 
+        # Exact Concept Forge evaluations are persisted by the backend through
+        # stampSynthesizedIdeaIdentity(), which uses the synthesis namespace and this
+        # dispatch id. Stamp the checkpoint with the same identity up front so the
+        # backend pool and Phase-2 checkpoint cannot diverge after an accepted branch.
+        identity_origin = "synthesis" if seed.get("synthesis_evaluation") else "seed"
         stamp_new_idea_identities(
             job_id,
             [idea],
-            origin="seed",
+            origin=identity_origin,
             operation_key=seed_operation_key,
             force=True,
         )
         old_solutions = list(getattr(state.idea_generation, "solution_ideas", None) or [])
+
+        # Batch provenance for a SEED. `run_regenerate_ideas` stamps these on every batch idea,
+        # but the seed path never did — so a chat-born idea (the most obviously "new" thing in
+        # the pool) arrived with a null ordinal and the UI's "new in this batch" marker, which
+        # keys off the MAX ordinal in the pool, skipped it entirely. A seed is its own paid
+        # append-only operation: give it the next ordinal after everything already in the pool
+        # so it — and only it — reads as new. The crew's pool contract reset both fields to
+        # null moments ago, so this is the same reset-then-stamp order the batch path uses.
+        seed_batch_ordinal = 1 + max(
+            (o for o in (getattr(s, "generation_batch_ordinal", None) for s in old_solutions)
+             if isinstance(o, int)),  # Optional[int]: None on every first-run idea
+            default=0,
+        )
+        idea.generation_operation_id = seed_operation_key
+        idea.generation_batch_ordinal = seed_batch_ordinal
 
         # Dedup: keep-with-caveat, NEVER drop. A paid seed is merged regardless of whether it
         # structurally duplicates an existing pool idea — only stamped, mirroring
@@ -2100,6 +2286,10 @@ def run_seed_idea(
         merged_solutions = old_solutions + [idea]
         if state.idea_generation:
             state.idea_generation.solution_ideas = merged_solutions
+            # Same coverage hole as run_regenerate_ideas: a seed is born after the main flow's
+            # audience-fit pass. Re-tag the FULL merged pool (idempotent, one fail-open LLM call).
+            # persist=False keeps the worker's save_stage below the ONLY write of the merged pool.
+            flow._tag_audience_fit(persist=False)
 
         # A DEMOTED seed must land in "Examined & ruled out", not the selectable pool —
         # merge this dispatch's ruled-out record(s) into the state ledger (mirrors
@@ -2117,25 +2307,45 @@ def run_seed_idea(
             finding["idea_revision"] = idea.idea_revision
             finding["identity_origin"] = idea.identity_origin
             finding["identity_operation_id"] = idea.identity_operation_id
+            # `_record_ruled_out` copies batch provenance off the idea, but it runs inside
+            # `execute_seed_pipeline` — before the stamp above — so mirror it here (same
+            # thing run_regenerate_ideas does for a demoted batch idea).
+            finding["generation_operation_id"] = seed_operation_key
+            finding["generation_batch_ordinal"] = seed_batch_ordinal
             nested = finding.get("idea")
             if isinstance(nested, dict):
                 nested["idea_id"] = idea.idea_id
                 nested["idea_revision"] = idea.idea_revision
                 nested["identity_origin"] = idea.identity_origin
                 nested["identity_operation_id"] = idea.identity_operation_id
+                nested["generation_operation_id"] = seed_operation_key
+                nested["generation_batch_ordinal"] = seed_batch_ordinal
         stamp_ruled_out_findings(
             job_id,
             seed_findings,
             operation_key=f"seed:{seed_operation_key}",
         )
-        state.idea_ruled_out = (
-            list(getattr(state, "idea_ruled_out", None) or []) + seed_findings
-        )
+        pre_seed_findings = list(getattr(state, "idea_ruled_out", None) or [])
+        state.idea_ruled_out = pre_seed_findings + seed_findings
 
         # The WORKER's own authoritative save — execute_seed_pipeline/_finalize_seed_tail
         # deliberately never saves, so this is the ONLY write of the merged pool.
         if flow.checkpoint_mgr and state.idea_generation:
-            flow.checkpoint_mgr.save_stage("stage_5_3_refinement", state.idea_generation)
+            saved = flow.checkpoint_mgr.save_stage(
+                "stage_5_3_refinement", state.idea_generation
+            )
+            if not saved:
+                state.idea_generation.solution_ideas = old_solutions
+                state.idea_ruled_out = pre_seed_findings
+                if getattr(
+                    flow.checkpoint_mgr,
+                    "last_save_failure_rollback_safe",
+                    True,
+                ) is False:
+                    _restore_paid_idea_state_before_refund(flow, job_id)
+                raise RuntimeError(
+                    "Failed to persist the evaluated idea in the authoritative checkpoint"
+                )
 
         # Re-materialize the preview report so the SAME asset the UI reads
         # (assetService.ts / AssetType.PREVIEW_REPORT) reflects the new ruled-out record —
@@ -2143,14 +2353,28 @@ def run_seed_idea(
         # file the earlier Phase-1 materialization wrote (research_flow.py's
         # `_materialize_preview_report` call sites at ~:474/968 use the same output_dir).
         try:
-            flow._materialize_preview_report(str(settings.checkpoint_dir))
-        except Exception as e:
-            logger.warning(f"[Seed] Failed to re-materialize preview report for job {job_id}: {e}")
+            preview_path = flow._materialize_preview_report(
+                str(settings.checkpoint_dir)
+            )
+            if not preview_path:
+                raise RuntimeError("preview materialization returned no path")
+        except Exception as preview_error:
+            state.idea_generation.solution_ideas = old_solutions
+            state.idea_ruled_out = pre_seed_findings
+            _restore_paid_idea_state_before_refund(flow, job_id)
+            raise RuntimeError(
+                "Failed to persist the evaluated idea preview"
+            ) from preview_error
 
         progress_callback(5, "Solution Pipeline", "completed")
 
         outcome = "accepted" if getattr(idea, "candidate_status", "active") == "active" else "demoted"
-        preview = _solution_to_preview_dict(idea)
+        # Coverage over the merged pool this seed now belongs to (not the seed alone).
+        from nicheiq.models.solution_idea import visible_ideas
+
+        preview = _solution_to_preview_dict(
+            idea, audience_fit_coverage(visible_ideas(merged_solutions))
+        )
         if outcome == "demoted":
             finding = next(
                 (
@@ -2168,13 +2392,43 @@ def run_seed_idea(
         try:
             notify_seed_complete(job_id, preview, outcome, cost_summary=_resolve_cost_summary(flow))
         except Exception as delivery_err:
-            delivery_err.seed_delivery_only = True  # type: ignore
+            from .paid_pool_recovery import (
+                PaidPoolCompletionAmbiguous,
+                PaidPoolOperationFenced,
+            )
+
+            # A lost completion response may mean the backend already accepted this result.
+            # Do not tag it as a known delivery failure: the forward checkpoint and preview
+            # must survive until the dispatch's durable state decides the outcome.
+            if not isinstance(
+                delivery_err,
+                (PaidPoolCompletionAmbiguous, PaidPoolOperationFenced),
+            ):
+                delivery_err.seed_delivery_only = True  # type: ignore
             raise
 
+        if mutation_guard:
+            mutation_guard.commit_and_cleanup()
         return {"status": "seed_settled", "job_id": job_id, "outcome": outcome}
 
     except Exception as e:
         from .heartbeat import JobCancelledException
+        from .paid_pool_recovery import PaidPoolCompletionAmbiguous
+
+        if isinstance(e, PaidPoolCompletionAmbiguous):
+            raise
+
+        if mutation_guard:
+            try:
+                mutation_guard.restore()
+            except Exception as restore_error:
+                from .paid_pool_recovery import PaidPoolRecoveryRequired
+
+                logger.critical(
+                    f"[Worker] Paid seed before-image restore failed for {job_id}: "
+                    f"{restore_error}. Recovery must retain the dispatch and retry."
+                )
+                raise PaidPoolRecoveryRequired(str(restore_error)) from e
 
         if isinstance(e, JobCancelledException):
             raise
@@ -2188,24 +2442,14 @@ def run_seed_idea(
             # Revert the merge and ruled-out record before queue_consumer reports seed-failed.
             # Phase 2 resolves selections from this checkpoint, so an undelivered/unpaid result
             # must not survive there or in the separately materialized preview asset.
-            try:
-                if flow.checkpoint_mgr and state.idea_generation:
-                    state.idea_generation.solution_ideas = old_solutions
-                    state.idea_ruled_out = [
-                        r for r in (getattr(state, "idea_ruled_out", None) or [])
-                        if r.get("dispatch_id") != seed_operation_key
-                    ]
-                    flow.checkpoint_mgr.save_stage("stage_5_3_refinement", state.idea_generation)
-                    # The preview asset was materialized with the now-reverted idea before
-                    # delivery was attempted. Rewrite it from the reverted state too, or the
-                    # backend can invalidate its cache and still reload a ghost candidate.
-                    flow._materialize_preview_report(str(settings.checkpoint_dir))
-                    logger.info(
-                        f"[Worker] Reverted unpaid seed merge for job {job_id} pending refund "
-                        "(delivery never landed)"
-                    )
-            except Exception as revert_err:
-                logger.error(f"[Worker] Failed to revert seed checkpoint for {job_id}: {revert_err}")
+            if flow.checkpoint_mgr and state.idea_generation:
+                state.idea_generation.solution_ideas = old_solutions
+                state.idea_ruled_out = pre_seed_findings
+                _restore_paid_idea_state_before_refund(flow, job_id)
+                logger.info(
+                    f"[Worker] Reverted unpaid seed merge for job {job_id} pending refund "
+                    "(delivery never landed)"
+                )
             raise
 
         logger.error(f"[Worker] Seed idea failed for job {job_id}: {e}\n{traceback.format_exc()}")
@@ -2213,6 +2457,8 @@ def run_seed_idea(
         raise
 
     finally:
+        if mutation_guard:
+            mutation_guard.close()
         try:
             if flow is not None:
                 flow.cleanup_collections()
@@ -2275,8 +2521,9 @@ def run_catalog_pain_points(
 
         # Phase 5.4 — materialize preview report BEFORE the no-pain-points
         # early-return. Backend projection layer reads this asset to populate
-        # CatalogResearchContext. Load-bearing: if materialization fails, we
-        # raise so RQ retries the job.
+        # CatalogResearchContext. Load-bearing: if materialization fails, raise
+        # so queue_consumer reports this admin-triggered run as FAILED. A new
+        # catalog run can then be triggered explicitly; this delivery is ACKed.
         output_dir = os.path.join("output", "jobs", job_id)
         os.makedirs(output_dir, exist_ok=True)
         try:
@@ -2288,12 +2535,12 @@ def run_catalog_pain_points(
             )
             raise RuntimeError(
                 f"[Worker] Preview report materialization failed for job {job_id}; "
-                f"aborting so RQ retries"
+                "aborting catalog generation"
             ) from mat_err
         if not preview_path:
             raise RuntimeError(
                 f"[Worker] Preview report materialization returned None for job {job_id}; "
-                f"aborting so RQ retries"
+                "aborting catalog generation"
             )
 
         # Extract pain points
@@ -2514,7 +2761,10 @@ def run_catalog_ideas(
             idea_gen.solution_ideas = filtered
 
         # Serialize ideas
-        idea_previews = [_solution_to_preview_dict(s) for s in idea_gen.solution_ideas]
+        af_coverage = audience_fit_coverage(idea_gen.solution_ideas)
+        idea_previews = [
+            _solution_to_preview_dict(s, af_coverage) for s in idea_gen.solution_ideas
+        ]
 
         progress_callback(5, "Solution Pipeline", "completed")
 

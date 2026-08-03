@@ -1,7 +1,8 @@
 <script lang="ts">
   import { ArrowRight, CircleAlert } from "lucide-svelte";
   import type { Report } from "$lib/types/report";
-  import { stripMarkdown } from "$lib/utils/format";
+  import { formatMoneyRange, humanizeInternalJargon, stripMarkdown } from "$lib/utils/format";
+  import { humanizeTag } from "$lib/utils/ideaTagLabels";
 
   interface Props {
     report: Report;
@@ -32,21 +33,48 @@
     return report.evidence_appendix?.top_reddit_threads.length ?? null;
   });
   const primaryBuyer = $derived(
-    report.audience_mapping?.primary_target_segment ??
+    report.niche_context?.resolved_primary_audience ??
+      report.audience_mapping?.primary_target_segment ??
       details?.target_personas?.[0] ??
       "Not identified",
   );
-  const painPoints = $derived(report.detailed_pain_points?.slice(0, 3) ?? []);
-  const socialEvidenceLabel = $derived.by(() => {
-    if (sourceCount === null) return "Social evidence unavailable";
-    if (sourceCount === 0) return "No social evidence";
-    return `${sourceCount} social evidence ${sourceCount === 1 ? "item" : "items"}`;
-  });
-  const painPointGroupLabel = $derived(
-    sourceCount && sourceCount > 0
-      ? "What the social evidence supports"
-      : "Problems identified in this report",
+  const detailedPainPoints = $derived(report.detailed_pain_points ?? []);
+  const selectedPainTitle = $derived.by(
+    () =>
+      dashboard?.core_pain_point?.title?.trim() ||
+      details?.pain_points_addressed?.[0]?.trim() ||
+      null,
   );
+  const selectedDetailedPain = $derived.by(() => {
+    if (!selectedPainTitle) return null;
+    const normalizedSelectedTitle = normalizeTitle(selectedPainTitle);
+    return (
+      detailedPainPoints.find(
+        (painPoint) => normalizeTitle(painPoint.title) === normalizedSelectedTitle,
+      ) ?? null
+    );
+  });
+  const broaderPainPoints = $derived.by(() => {
+    const normalizedSelectedTitle = normalizeTitle(selectedPainTitle);
+    return detailedPainPoints
+      .filter((painPoint) => normalizeTitle(painPoint.title) !== normalizedSelectedTitle)
+      .slice(0, 3);
+  });
+  const selectedSeverity = $derived(
+    dashboard?.core_pain_point?.severity_score ?? selectedDetailedPain?.severity_score,
+  );
+  const selectedCommercialIntent = $derived(
+    dashboard?.core_pain_point?.commercial_intent_score ?? selectedDetailedPain?.commercial_intent,
+  );
+  const selectedQuote = $derived(
+    dashboard?.core_pain_point?.representative_quote ??
+      selectedDetailedPain?.representative_quotes?.[0],
+  );
+  const socialEvidenceLabel = $derived.by(() => {
+    if (sourceCount === null) return "Niche source coverage unavailable";
+    if (sourceCount === 0) return "No niche social records";
+    return `${sourceCount} niche social ${sourceCount === 1 ? "record" : "records"} reviewed`;
+  });
   const market = $derived(report.market_sizing);
   const pricing = $derived(report.pricing_strategy);
   const trend = $derived(report.trend_longevity);
@@ -75,8 +103,13 @@
       pricing?.recommended_pro_price ??
       pricing?.recommended_enterprise_price ??
       traffic?.estimated_monthly_revenue_range ??
-      "Price unavailable",
+      (details?.pricing_strategy ? "Idea-stage hypothesis" : "Price unavailable"),
   );
+  const ideaBusinessModel = $derived(humanizeTag(details?.tags?.monetization));
+  const hasIdeaMonetizationHypothesis = $derived(
+    Boolean(details?.pricing_strategy?.trim() || ideaBusinessModel),
+  );
+  const hasStructuredMonetizationResearch = $derived(Boolean(pricing || traffic));
   const marketVerdict = $derived(market?.market_viability_verdict ?? "Not graded");
   const competitionVerdict = $derived(
     competitionMetrics?.differentiation_strength ??
@@ -104,7 +137,6 @@
     return "caution";
   }
 
-  const demandTone = $derived(sourceCount !== null && sourceCount > 0 ? "positive" : "caution");
   const marketTone = $derived(verdictTone(marketVerdict));
   const competitionTone = $derived(
     competitionMetrics?.differentiation_strength
@@ -117,6 +149,10 @@
     const normalized = value <= 1 ? value * 100 : value;
     return `${Math.round(normalized)}/100`;
   }
+
+  function normalizeTitle(value: string | null | undefined): string {
+    return value?.trim().toLocaleLowerCase().replace(/\s+/g, " ") ?? "";
+  }
 </script>
 
 {#if topic === "demand"}
@@ -124,20 +160,20 @@
     <header class="summary-heading">
       <div>
         <p>Demand case</p>
-        <h3 id="demand-summary-title">Is the problem real enough to pay to solve?</h3>
+        <h3 id="demand-summary-title">What evidence supports the selected problem?</h3>
       </div>
-      <span class:positive={demandTone === "positive"} class:caution={demandTone === "caution"}>
+      <span class:caution={sourceCount === null || sourceCount === 0}>
         {socialEvidenceLabel}
       </span>
     </header>
 
     <dl class="summary-facts">
       <div>
-        <dt>Primary buyer</dt>
+        <dt>Target buyer</dt>
         <dd>{primaryBuyer}</dd>
       </div>
       <div>
-        <dt>Problems examined</dt>
+        <dt>Niche problems examined</dt>
         <dd>
           {report.pain_point_analytics?.total_pain_points ??
             report.detailed_pain_points?.length ??
@@ -145,27 +181,68 @@
         </dd>
       </div>
       <div>
-        <dt>Strongest problem</dt>
+        <dt>Selected problem signals</dt>
         <dd>
-          {report.pain_point_analytics?.top_pain_point_title ??
-            dashboard?.core_pain_point?.title ??
-            painPoints[0]?.title ??
-            "Not identified"}
+          {#if scoreLabel(selectedSeverity) || scoreLabel(selectedCommercialIntent)}
+            {#if scoreLabel(selectedSeverity)}Severity {scoreLabel(selectedSeverity)}{/if}
+            {#if scoreLabel(selectedSeverity) && scoreLabel(selectedCommercialIntent)} · {/if}
+            {#if scoreLabel(selectedCommercialIntent)}Buying signal {scoreLabel(selectedCommercialIntent)}{/if}
+          {:else}
+            Not available
+          {/if}
         </dd>
       </div>
     </dl>
 
-    {#if painPoints.length}
-      <div class="finding-group">
-        <h4>{painPointGroupLabel}</h4>
-        {#if !sourceCount}
-          <p class="provenance-note">
-            This artifact has no saved social-evidence records attached to these problem
-            statements.
-          </p>
-        {/if}
+    <div class="finding-group">
+      <h4>Problem this idea addresses</h4>
+      {#if !sourceCount}
+        <p class="provenance-note">
+          This artifact has no saved social-evidence records attached to the selected problem.
+        </p>
+      {/if}
+      {#if selectedPainTitle}
         <ol class="finding-list">
-          {#each painPoints as painPoint, index}
+          <li>
+            <span class="finding-number">01</span>
+            <div>
+              <div class="finding-title">
+                <strong>{selectedPainTitle}</strong>
+                <span>
+                  {#if scoreLabel(selectedSeverity)}
+                    Severity {scoreLabel(selectedSeverity)}
+                  {/if}
+                  {#if scoreLabel(selectedCommercialIntent)}
+                    {#if scoreLabel(selectedSeverity)} · {/if}Buying signal {scoreLabel(selectedCommercialIntent)}
+                  {/if}
+                </span>
+              </div>
+              {#if selectedDetailedPain?.description}
+                <p>{selectedDetailedPain.description}</p>
+              {/if}
+              {#if selectedQuote}
+                <blockquote>“{selectedQuote}”</blockquote>
+              {/if}
+            </div>
+          </li>
+        </ol>
+      {:else}
+        <div class="empty-note empty-note--nested">
+          <CircleAlert aria-hidden="true" />
+          <p>No selected-solution pain match was retained in this report.</p>
+        </div>
+      {/if}
+    </div>
+
+    {#if broaderPainPoints.length}
+      <div class="supporting-section">
+        <h4>Broader niche context</h4>
+        <p class="provenance-note">
+          These problems ranked across the full niche. They are context, not claims about what the
+          selected idea addresses.
+        </p>
+        <ol class="finding-list">
+          {#each broaderPainPoints as painPoint, index}
             <li>
               <span class="finding-number">{String(index + 1).padStart(2, "0")}</span>
               <div>
@@ -181,27 +258,16 @@
                   </span>
                 </div>
                 <p>{painPoint.description}</p>
-                {#if painPoint.representative_quotes?.[0]}
-                  <blockquote>“{painPoint.representative_quotes[0]}”</blockquote>
-                {/if}
               </div>
             </li>
           {/each}
         </ol>
       </div>
-    {:else}
-      <div class="empty-note">
-        <CircleAlert aria-hidden="true" />
-        <p>
-          The report retained only an aggregate demand read. Individual problem records are not
-          available.
-        </p>
-      </div>
     {/if}
 
     {#if report.audience_mapping?.audience_segments?.length}
       <div class="supporting-section">
-        <h4>Who appears closest to the problem</h4>
+        <h4>Broader niche audiences observed</h4>
         <ul class="compact-list">
           {#each report.audience_mapping.audience_segments.slice(0, 3) as segment}
             <li>
@@ -234,15 +300,15 @@
     <dl class="summary-facts summary-facts--four">
       <div>
         <dt>Total market</dt>
-        <dd>{market?.total_addressable_market ?? "Not estimated"}</dd>
+        <dd>{formatMoneyRange(market?.total_addressable_market) || "Not estimated"}</dd>
       </div>
       <div>
         <dt>Reachable market</dt>
-        <dd>{market?.serviceable_available_market ?? "Not estimated"}</dd>
+        <dd>{formatMoneyRange(market?.serviceable_available_market) || "Not estimated"}</dd>
       </div>
       <div>
         <dt>First-year target</dt>
-        <dd>{market?.serviceable_obtainable_market_y1 ?? "Not estimated"}</dd>
+        <dd>{formatMoneyRange(market?.serviceable_obtainable_market_y1) || "Not estimated"}</dd>
       </div>
       <div>
         <dt>Entry price</dt>
@@ -260,20 +326,36 @@
             "Not assessed"}
         </h4>
         <p>
-          {trend?.timing_recommendation ??
-            trend?.longevity_rationale ??
-            market?.viability_rationale ??
-            "The report did not retain a timing rationale."}
+          {humanizeInternalJargon(
+            trend?.timing_recommendation ??
+              trend?.longevity_rationale ??
+              market?.viability_rationale ??
+              "The report did not retain a timing rationale.",
+          )}
         </p>
       </article>
       <article>
         <span>Business model</span>
-        <h4>{pricing?.pricing_model ?? traffic?.monetization_model ?? "Not assessed"}</h4>
+        <h4>
+          {pricing?.pricing_model ??
+            traffic?.monetization_model ??
+            (ideaBusinessModel ? `${ideaBusinessModel} hypothesis` : "Not assessed")}
+        </h4>
         <p>
-          {pricing?.pricing_rationale ??
-            traffic?.monetization_rationale ??
-            "The report did not retain a monetization rationale."}
+          {humanizeInternalJargon(
+            pricing?.pricing_rationale ??
+              traffic?.monetization_rationale ??
+              details?.pricing_strategy ??
+              "The report did not retain a monetization rationale.",
+          )}
         </p>
+        {#if !hasStructuredMonetizationResearch && hasIdeaMonetizationHypothesis}
+          <p class="provenance-note">
+            This is the selected idea’s pre-research pricing hypothesis. Structured pricing and
+            monetization research was not generated, so validate willingness to pay before using it
+            as a plan.
+          </p>
+        {/if}
       </article>
     </div>
 
@@ -283,7 +365,7 @@
           <h4>What supports the case</h4>
           <ul>
             {#each market.growth_drivers?.slice(0, 4) ?? [] as driver}
-              <li>{driver}</li>
+              <li>{humanizeInternalJargon(driver)}</li>
             {/each}
           </ul>
         </div>
@@ -291,7 +373,7 @@
           <h4>What could weaken it</h4>
           <ul>
             {#each market.risk_factors?.slice(0, 4) ?? [] as risk}
-              <li>{risk}</li>
+              <li>{humanizeInternalJargon(risk)}</li>
             {/each}
           </ul>
         </div>
@@ -750,6 +832,10 @@
     margin: 0;
     font-size: var(--text-sm);
     line-height: 1.55;
+  }
+
+  .empty-note--nested {
+    margin: var(--space-4) 0 0;
   }
 
   .detail-entry {

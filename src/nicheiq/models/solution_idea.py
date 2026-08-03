@@ -9,10 +9,13 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class AudienceFitResult(BaseModel):
-    """Output of the post-generation audience-fit judgment (output framing only).
+    """Output of the post-generation audience-fit judgment.
 
     `serves_audience` holds the solution_name values the LLM judged to primarily serve the
-    user's stated audience. Used to set SolutionIdea.audience_fit; never affects scores.
+    user's stated audience. Used to set SolutionIdea.audience_fit. Never affects GENERATION
+    (which pains/segments were researched) and never mutates a stored score, but it IS
+    score-bearing at ranking time: an idea tagged False takes a composite-only penalty
+    (`settings.audience_fit_penalty`) once pool coverage clears 90%.
     """
 
     model_config = ConfigDict(extra='ignore')
@@ -351,15 +354,25 @@ class BaseSolutionIdea(BaseModel):
         description="CODE-FILLED complete structured Concept Forge evaluation payload",
     )
     # Append-only additional-batch provenance. These fields identify the exact paid
-    # operation without changing the candidate's evidence or score semantics.
+    # operation without changing the candidate's evidence or score semantics. Only the
+    # WORKER stamps them (run_regenerate_ideas / run_seed_idea) — a first-run pool must
+    # carry null on every idea, which is what makes the "new in this batch" chip mean
+    # something. Generator LLMs read "batch ordinal" as a field to fill and emit 1
+    # (live audit 2026-08), so `_finalize_idea_pool` resets both before the worker stamps.
     generation_operation_id: Optional[str] = Field(
         default=None,
-        description="CODE-FILLED dispatch identity for an additional idea batch",
+        description=(
+            "CODE-FILLED dispatch identity for an additional idea batch — ALWAYS leave "
+            "null/omit this field"
+        ),
     )
     generation_batch_ordinal: Optional[int] = Field(
         default=None,
         ge=1,
-        description="CODE-FILLED one-based additional-batch ordinal",
+        description=(
+            "CODE-FILLED one-based additional-batch ordinal — ALWAYS leave null/omit this "
+            "field; it is never known at generation time"
+        ),
     )
     # Payability inherited from source_segment (permanent buyer-wallet signal): stamped in code so
     # the pure cap in _validate_idea_caps can read it off the idea. None = flag off / unscored.
@@ -374,9 +387,11 @@ class BaseSolutionIdea(BaseModel):
     audience_fit: Optional[bool] = Field(
         default=None,
         description=(
-            "OUTPUT-framing only: True when this idea serves the user's stated target audience "
-            "(set post-generation by ResearchFlow._tag_audience_fit; None when no audience). "
-            "Never influences generation or scores; drives the frontend primary/adjacent split."
+            "CODE-FILLED after generation — ALWAYS leave null/omit this field. True when this "
+            "idea serves the user's stated target audience (set by ResearchFlow._tag_audience_fit; "
+            "None when there is no stated audience or tagging was inconclusive). Never influences "
+            "generation and never mutates a stored score, but False costs a composite-only ranking "
+            "penalty (settings.audience_fit_penalty) and drives the frontend primary/adjacent split."
         ),
     )
     core_features: list[str] = Field(
@@ -465,6 +480,16 @@ class BaseSolutionIdea(BaseModel):
         description=(
             "Short note: what data the idea needs, the source/route, access model + rough "
             "cost; for 'unofficial'/'paywalled' name the tool + the ToS/cost risk."
+        ),
+    )
+    # Q-030/Q-035 route reconcile: the data route the calibration critic's market_fit reason
+    # relies on. Populated in CODE only (reset-then-stamp in _calibrate_batch; guarded reset in
+    # _finalize_idea_pool clears generator fabrication on never-calibrated ideas).
+    market_fit_claimed_route: Optional[str] = Field(
+        default=None,
+        description=(
+            "Data route the independent calibration critic cited as market-fit support "
+            "(None = no route claimed). Code-populated; never trusted from generator output."
         ),
     )
     # Independent build-feasibility estimate from the critic. Carried for the downgrade-only
@@ -715,6 +740,14 @@ class BaseSolutionIdea(BaseModel):
             "None when the probe didn't run for this idea."
         ),
     )
+    refine_binding_constraint: Optional[str] = Field(
+        default=None,
+        description=(
+            "CODE-FILLED by tournament_refine_cell_v4 — the tournament judge's directive on "
+            "the winning revision (the 'bear case'), user-facing prose with no internal "
+            "criterion token; never a score input. ALWAYS leave null at generation."
+        ),
+    )
     adjacent_market_parity: Optional[str] = Field(
         default=None,
         description=(
@@ -744,6 +777,18 @@ class BaseSolutionIdea(BaseModel):
             "CODE-FILLED by the red-team revision tail — ALWAYS leave null/omit this field. "
             "True when the adversarial pass produced a revision that BEAT the original and "
             "cleared its own parity re-probe (the shown idea IS the revision); None otherwise."
+        ),
+    )
+    rebuild_origin: Optional[str] = Field(
+        default=None,
+        description=(
+            "CODE-FILLED when this idea REPLACED an earlier one that was rebuilt from a "
+            "narrow schema — ALWAYS leave null/omit this field. One of 'parity_pivot' | "
+            "'variant_merge' | 'red_team_revision'. A rebuild rewrites the product, so "
+            "fields describing how the OLD product was priced and sold are cleared rather "
+            "than carried, and the ones that cannot be re-grounded from the idea's own spec "
+            "(acquisition cost) are left blank. This field is what lets a reader be told "
+            "WHY a figure is missing instead of seeing it silently disappear."
         ),
     )
     red_team_vocab_mismatch: Optional[str] = Field(

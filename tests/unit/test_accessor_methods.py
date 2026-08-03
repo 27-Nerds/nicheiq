@@ -84,13 +84,33 @@ def mock_state_with_competitors(mock_competitive_landscape):
 
 @pytest.fixture
 def mock_reddit_posts():
-    """Create mock Reddit posts."""
+    """Create mock Reddit posts, each with a post_id so it can be cited as evidence."""
     posts = []
     for i in range(5):
         post = Mock()
+        post.post_id = f"p{i}"
         post.subreddit = "testsubreddit" if i < 3 else "othersubreddit"
         posts.append(post)
     return posts
+
+
+@pytest.fixture
+def mock_state_with_cited_posts(mock_reddit_posts):
+    """State whose pain points CITE the r/testsubreddit posts.
+
+    The channel recommendation is evidence-backed, not scrape-volume-backed, so a
+    Reddit corpus alone is no longer enough to produce a channel — a pain point has
+    to actually cite the posts (live audit 2026-08-03: r/DublinConcerts was the
+    largest raw bucket, cited nothing, and became the High-Priority launch channel).
+    """
+    state = Mock()
+    state.social_content = Mock()
+    state.social_content.reddit_posts = mock_reddit_posts
+    pain = Mock()
+    pain.source_post_ids = ["p0", "p1", "p2"]  # the three r/testsubreddit posts
+    state.pain_point_analysis = Mock()
+    state.pain_point_analysis.pain_points = [pain]
+    return state
 
 
 @pytest.fixture
@@ -354,13 +374,9 @@ class TestStateAccessorCompetitorCount:
 class TestRedditChannelIdentification:
     """Test suite for _identify_reddit_channel()."""
 
-    def test_with_valid_reddit_data_returns_channel(self, mock_reddit_posts):
-        """Test Reddit channel identification with valid data."""
-        state = Mock()
-        state.social_content = Mock()
-        state.social_content.reddit_posts = mock_reddit_posts
-
-        generator = ReportGenerator(state)
+    def test_with_valid_reddit_data_returns_channel(self, mock_state_with_cited_posts):
+        """Test Reddit channel identification when pain points cite the posts."""
+        generator = ReportGenerator(mock_state_with_cited_posts)
         result = generator._identify_reddit_channel()
 
         assert result is not None, "Should return MarketingChannel"
@@ -368,7 +384,27 @@ class TestRedditChannelIdentification:
         assert result.channel_name == "Reddit r/testsubreddit"
         assert result.channel_type == "Community"
         assert result.priority == "High"
-        assert "3 relevant discussions" in result.target_audience_size
+        assert "3 discussions cited as evidence" in result.target_audience_size
+
+    def test_high_volume_subreddit_that_cited_nothing_is_not_recommended(
+        self, mock_reddit_posts
+    ):
+        """The r/DublinConcerts case: biggest raw bucket, zero evidence, no channel.
+
+        Ranking by collection volume made a Dublin gig-goer sub the High-Priority
+        launch channel of a US-metro run. With no cited posts there is no
+        evidence-backed community, and the correct answer is no recommendation --
+        never a fallback to raw volume.
+        """
+        state = Mock()
+        state.social_content = Mock()
+        state.social_content.reddit_posts = mock_reddit_posts
+        pain = Mock()
+        pain.source_post_ids = []  # collected plenty, cited none
+        state.pain_point_analysis = Mock()
+        state.pain_point_analysis.pain_points = [pain]
+
+        assert ReportGenerator(state)._identify_reddit_channel() is None
 
     def test_with_no_social_content_returns_none(self):
         """Test Reddit channel when no social_content."""
@@ -512,6 +548,11 @@ class TestMarketingChannelOrchestration:
         state.seo_strategy_report = Mock()
         state.seo_strategy_report.tier_1_keywords = mock_enriched_keywords
         state.sources_searched = None  # No source coverage tracking in this test
+        # The Reddit channel is evidence-backed: a pain point must cite the posts.
+        _pain = Mock()
+        _pain.source_post_ids = ["p0", "p1", "p2"]
+        state.pain_point_analysis = Mock()
+        state.pain_point_analysis.pain_points = [_pain]
 
         generator = ReportGenerator(state)
         result = generator._identify_marketing_channels()
@@ -529,6 +570,10 @@ class TestMarketingChannelOrchestration:
         state.social_content.twitter_threads = None
         state.seo_strategy_report = None
         state.sources_searched = None
+        _pain = Mock()
+        _pain.source_post_ids = ["p0", "p1", "p2"]
+        state.pain_point_analysis = Mock()
+        state.pain_point_analysis.pain_points = [_pain]
 
         generator = ReportGenerator(state)
         result = generator._identify_marketing_channels()

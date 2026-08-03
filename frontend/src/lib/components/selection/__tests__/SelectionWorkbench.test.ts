@@ -3,12 +3,20 @@ import { render, fireEvent, cleanup, waitFor, within } from "@testing-library/sv
 import { page } from "$app/state";
 import { goto, pushState, replaceState } from "$app/navigation";
 import SelectionWorkbench from "../SelectionWorkbench.svelte";
-import { seedIdea, regenerateIdeas, getStageCosts, ApiError, createSelectionIdeaNarrowingProposal, getChatHistory, getSelectionChallenges, getSelectionConceptSets, getSelectionDecisionState, getSelectionExperiments, saveSelectionDecisionProfile, saveSelectionDraft, streamChat } from "$lib/api";
+import { seedIdea, regenerateIdeas, cancelSelectionOperation, getStageCosts, ApiError, createSelectionIdeaNarrowingProposal, getChatHistory, getSelectionChallenges, getSelectionConceptSets, getSelectionDecisionState, getSelectionExperiments, saveSelectionDecisionProfile, saveSelectionDraft, streamChat } from "$lib/api";
 import { chatLedger } from "$lib/stores/chatLedger.svelte";
 import { chatPanel } from "$lib/stores/chatPanel.svelte";
 import { creditTopUp } from "$lib/stores/creditTopUp.svelte";
 import type { SelectionDecisionProfile, SolutionPreview } from "$lib/types/job";
 import type { RuledOutFinding } from "$lib/types/report";
+import {
+  readIdeaTheses,
+  readUncoveredFamilies,
+  type IdeaThesis,
+  type ThesisMember,
+  type UncoveredFamily,
+} from "$lib/types/ideaThesis";
+import pipelineIdeaTheses from "$lib/types/__tests__/fixtures/pipelineIdeaTheses.json";
 import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
 
 // SelectionWorkbench embeds a REAL ChatThread (the seed card lives there), which loads
@@ -19,6 +27,8 @@ vi.mock("$lib/api", async (importOriginal) => {
   return {
     ...actual,
     seedIdea: vi.fn(),
+    cancelActiveJobOperation: vi.fn(),
+    cancelSelectionOperation: vi.fn(),
     getStageCosts: vi.fn(),
     getChatHistory: vi.fn(() => Promise.resolve({ messages: [], weakPool: false })),
     streamChat: vi.fn(),
@@ -219,6 +229,66 @@ describe("SelectionWorkbench — idea seed submit (402/409 CAS)", () => {
         expectedCost: 3,
       }),
     );
+  });
+
+  it("settles cancellation against the current seed instead of an older terminal evaluation", async () => {
+    const receipt = (
+      id: string,
+      sourceMessageId: string,
+      event: "seed_submitted" | "seed_settled",
+      outcome?: "accepted" | "cancelled",
+    ) => ({
+      id,
+      gateStage: 5,
+      role: "receipt" as const,
+      content: "",
+      patchJson: {
+        kind: "ledger_event" as const,
+        version: 1,
+        event,
+        ...(outcome ? { outcome } : {}),
+        patch: {},
+        rows: [],
+        sourceMessageId,
+      },
+      truncated: false,
+      createdAt: `2026-07-13T00:00:0${id.endsWith("current") ? 4 : 2}.000Z`,
+    });
+    const initial = {
+      messages: [
+        seedHistoryMessage("seed-old"),
+        receipt("submitted-old", "seed-old", "seed_submitted"),
+        receipt("settled-old", "seed-old", "seed_settled", "accepted"),
+        seedHistoryMessage("seed-current"),
+        receipt("submitted-current", "seed-current", "seed_submitted"),
+      ],
+      weakPool: false,
+      activeOperation: { id: "dispatch-current", kind: "SEED_IDEA" as const, state: "AUTHORIZED" as const },
+    };
+    const settled = {
+      ...initial,
+      messages: [
+        ...initial.messages,
+        receipt("settled-current", "seed-current", "seed_settled", "cancelled"),
+      ],
+      activeOperation: null,
+    };
+    vi.mocked(getChatHistory)
+      .mockResolvedValueOnce(initial as never)
+      .mockResolvedValue(settled as never);
+    vi.mocked(cancelSelectionOperation).mockResolvedValue({
+      status: "cancelled",
+      operationId: "dispatch-current",
+      operationState: "CANCELLED",
+      creditRefunded: 3,
+    });
+    const onSeedSettled = vi.fn();
+    const view = render(SelectionWorkbench, { props: { ...baseProps, onSeedSettled } });
+
+    await fireEvent.click(await view.findByRole("button", { name: "Cancel evaluation" }));
+
+    await waitFor(() => expect(onSeedSettled).toHaveBeenCalledWith("cancelled"));
+    expect(onSeedSettled).not.toHaveBeenCalledWith("accepted");
   });
 
   it("settlement (detected by polling the ledger) fires onSeedSettled — the parent's hook to force both refreshes", async () => {
@@ -721,6 +791,88 @@ describe("SelectionWorkbench — ruled-out panel: idea name primary + 'Your idea
     expect(document.querySelectorAll(".analyst-pick")).toHaveLength(1);
   });
 
+  it("uses the explicit Discovery recommendation for order, Suggested next, and display titles", async () => {
+    vi.mocked(getSelectionDecisionState).mockResolvedValueOnce({
+      schemaVersion: 1,
+      jobId: "job-1",
+      status: "AWAITING_SELECTION",
+      shortlist: { version: 0, items: [] },
+      profile: null,
+      founderFit: null,
+      challenges: [],
+      ownerEvidence: [],
+      assumptions: [],
+      experiments: [],
+      conclusions: [],
+      staleCounts: { shortlist: 0, profile: 0, founderFit: 0, challenges: 0, ownerEvidence: 0, assumptions: 0, experiments: 0, conclusions: 0, total: 0 },
+      deepResearch: { eligible: false, optionalWorkRequired: false, blockers: ["NO_CURRENT_SHORTLIST"] },
+      nextAction: {
+        kind: "select_candidate",
+        target: "shortlist",
+        reason: "Review the first stored candidate.",
+        required: true,
+        ideas: [{ ideaId: "idea-matchboard", ideaRevision: 1, title: "Parts-Ready Matchboard" }],
+        lens: null,
+        records: [],
+      },
+    } as never);
+    const ideas = [
+      solution("Parts-Ready Matchboard", {
+        idea_id: "idea-matchboard",
+        idea_revision: 1,
+        headline: "Find Tomorrow’s Best Appliance Callback",
+        adjusted_composite_score: 0.48,
+      }),
+      solution("Parts-Ready Dispatch Control", {
+        idea_id: "idea-dispatch",
+        idea_revision: 1,
+        headline: "Parts-Ready Dispatch Control for Appliance Repair",
+        adjusted_composite_score: 0.9,
+        red_team_verdict: "killed",
+      }),
+      solution("Appliance Ledger", {
+        idea_id: "idea-ledger",
+        idea_revision: 1,
+        headline: "Auditable Appliance Service History Reconciliation",
+        adjusted_composite_score: 0.5,
+      }),
+      solution("Model-to-Repair Decision Desk", {
+        idea_id: "idea-model",
+        idea_revision: 1,
+        headline: "Model-to-Serial Repair Decision Workspace",
+        adjusted_composite_score: 0.49,
+      }),
+    ];
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: ideas,
+        ideaPortfolioSummary: "Appliance Ledger and Model-to-Repair Decision Desk are the only candidates that deserve further validation.",
+      },
+    });
+
+    const table = view.getByRole("table", { name: "Ranked ideas" });
+    await waitFor(() => expect(table.querySelectorAll("[data-solution-name]")).toHaveLength(4));
+    const orderedNames = [...table.querySelectorAll<HTMLElement>("[data-solution-name]")]
+      .map((row) => row.dataset.solutionName);
+    expect(orderedNames.slice(0, 2)).toEqual([
+      "Appliance Ledger",
+      "Model-to-Repair Decision Desk",
+    ]);
+    expect(table.querySelector('[data-solution-name="Appliance Ledger"]')).toHaveTextContent("Recommended");
+    expect(table.querySelector('[data-solution-name="Model-to-Repair Decision Desk"]')).toHaveTextContent("Recommended");
+    expect(table.querySelector('[data-solution-name="Parts-Ready Dispatch Control"]')).not.toHaveTextContent("Recommended");
+
+    const suggested = await view.findByRole("button", {
+      name: "Review Auditable Appliance Service History Reconciliation",
+    });
+    expect(suggested).not.toHaveTextContent("Parts-Ready Matchboard");
+    await fireEvent.click(suggested);
+    expect(await view.findByRole("dialog", {
+      name: "Solution details: Auditable Appliance Service History Reconciliation",
+    })).toBeInTheDocument();
+  });
+
   it("opens a ruled-out idea directly from the analyst summary", async () => {
     chatPanel.close();
     const { findByRole } = render(SelectionWorkbench, {
@@ -992,6 +1144,96 @@ describe("SelectionWorkbench — stable selection identity", () => {
     expect(within(detail).queryByText("Earlier-revision description")).not.toBeInTheDocument();
   });
 
+  it("opens a deep-linked idea whose ranked pool arrives after mount", async () => {
+    // REGRESSION: the link resolved once, against an empty pool, reported itself dead
+    // and consumed the query — so it stayed dead when the ideas landed a tick later.
+    page.url = new URL(
+      "http://localhost/jobs/job-1?detailTab=detail&ideaId=idea-beta&ideaRevision=1",
+    ) as typeof page.url;
+    const view = render(SelectionWorkbench, {
+      props: { ...baseProps, solutions: [] },
+    });
+    expect(view.queryByRole("dialog")).toBeNull();
+
+    await view.rerender({
+      ...baseProps,
+      solutions: [
+        solution("Alpha Idea", { idea_id: "idea-alpha", headline: "Alpha headline" }),
+        solution("Beta Idea", { idea_id: "idea-beta", headline: "Beta headline" }),
+      ],
+    });
+
+    await view.findByRole("dialog", { name: "Solution details: Beta headline" });
+  });
+
+  it("keeps a clicked idea open when the URL still names a different one", async () => {
+    // SHIP BLOCKER: shallow navigation does not always land (it throws before the router
+    // initialises), leaving the previous idea's ideaId in the address bar. The URL-sync
+    // effect then re-resolved it on the next pool change and swapped one idea's body in
+    // under another's title — on the screen whose next click spends 100 credits.
+    page.url = new URL(
+      "http://localhost/jobs/job-1?detailTab=overview&ideaId=idea-alpha&ideaRevision=1",
+    ) as typeof page.url;
+    const solutions = [
+      solution("Alpha Idea", { idea_id: "idea-alpha", headline: "Alpha headline" }),
+      solution("Beta Idea", { idea_id: "idea-beta", headline: "Beta headline" }),
+      solution("Gamma Idea", { idea_id: "idea-gamma", headline: "Gamma headline" }),
+    ];
+    const view = render(SelectionWorkbench, { props: { ...baseProps, solutions } });
+
+    // The deep link opens Alpha, as asked.
+    await view.findByRole("dialog", { name: "Solution details: Alpha headline" });
+    await fireEvent.click(view.getByRole("button", { name: "Close details" }));
+
+    // pushState is mocked here, so `page.url` keeps the stale ideaId — exactly the state
+    // the failed-navigation path leaves behind in the browser.
+    vi.mocked(pushState).mockImplementationOnce(() => {
+      throw new Error("Cannot call pushState(...) before router is initialized");
+    });
+    await fireEvent.click(
+      view.getByRole("button", { name: /^Review details for Gamma headline/ }),
+    );
+    await view.findByRole("dialog", { name: "Solution details: Gamma headline" });
+
+    // A batch lands: the pool changes under an unchanged (stale) URL.
+    await view.rerender({
+      ...baseProps,
+      solutions: [
+        ...solutions,
+        solution("Delta Idea", { idea_id: "idea-delta", headline: "Delta headline" }),
+      ],
+    });
+
+    // Still the idea the user clicked, not the one the address bar names.
+    await view.findByRole("dialog", { name: "Solution details: Gamma headline" });
+    expect(view.queryByRole("dialog", { name: "Solution details: Alpha headline" }))
+      .toBeNull();
+  });
+
+  it("returns focus to the last paged candidate when URL-driven details close", async () => {
+    page.url = new URL(
+      "http://localhost/jobs/job-1?detailTab=overview&ideaId=idea-beta&ideaRevision=2",
+    ) as typeof page.url;
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: [
+          solution("Alpha Idea", { idea_id: "idea-alpha", idea_revision: 1 }),
+          solution("Beta Idea", { idea_id: "idea-beta", idea_revision: 2 }),
+          solution("Gamma Idea", { idea_id: "idea-gamma", idea_revision: 3 }),
+        ],
+      },
+    });
+
+    await view.findByRole("dialog", { name: "Solution details: Beta Idea" });
+    await fireEvent.click(view.getByRole("button", { name: "Next idea" }));
+    await view.findByRole("dialog", { name: "Solution details: Gamma Idea" });
+    await fireEvent.click(view.getByRole("button", { name: "Close details" }));
+
+    const gammaTrigger = view.getByRole("button", { name: /^Review details for Gamma Idea/ });
+    await waitFor(() => expect(gammaTrigger).toHaveFocus());
+  });
+
   it("preserves unrelated query state while opening and closing exact details", async () => {
     page.url = new URL("http://localhost/jobs/job-1?keep=1#opportunities") as typeof page.url;
     const back = vi.spyOn(window.history, "back").mockImplementation(() => undefined);
@@ -1205,6 +1447,35 @@ describe("SelectionWorkbench — durable shortlist draft", () => {
       [{ ideaId: "idea-alpha", ideaRevision: 3 }],
     ));
     expect(await view.findByText("Shortlist saved")).toBeInTheDocument();
+  });
+
+  it("blocks paid pool mutations until shortlist autosave settles", async () => {
+    let settleSave: (() => void) | undefined;
+    const identified = [solution("Alpha Idea", { idea_id: "idea-alpha", idea_revision: 3 })];
+    vi.mocked(saveSelectionDraft).mockImplementationOnce((_jobId, expectedVersion, items) => (
+      new Promise((resolve) => {
+        settleSave = () => resolve({ version: expectedVersion + 1, items });
+      })
+    ));
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: identified,
+        selectionDraft: { version: 7, items: [] },
+      },
+    });
+
+    await fireEvent.click(view.getByLabelText("Select Alpha Idea"));
+    await waitFor(() => expect(saveSelectionDraft).toHaveBeenCalledTimes(1));
+
+    expect(view.getByRole("button", { name: "Add another batch" })).toBeDisabled();
+    expect(view.getByRole("button", { name: /Branch a new direction/ })).toBeDisabled();
+
+    settleSave?.();
+    await waitFor(() => {
+      expect(view.getByRole("button", { name: "Add another batch" })).not.toBeDisabled();
+      expect(view.getByRole("button", { name: /Branch a new direction/ })).not.toBeDisabled();
+    });
   });
 
   it("consumes an exact routed proposal without mutating until the owner applies it", async () => {
@@ -1849,6 +2120,36 @@ describe("SelectionWorkbench — decision profile synchronization", () => {
     await fireEvent.click(view.getByRole("button", { name: "Edit build limits" }));
     expect(view.getByRole("radio", { name: "Full time" })).toHaveAttribute("aria-checked", "true");
   });
+
+  it("keeps a dirty build-limits draft mounted but disables saving during a pool mutation", async () => {
+    const view = render(SelectionWorkbench, {
+      props: { ...baseProps, decisionProfile: OLD_DECISION_PROFILE },
+    });
+
+    await fireEvent.click(view.getByRole("button", { name: "Edit build limits" }));
+    await fireEvent.click(view.getByRole("radio", { name: "Full time" }));
+
+    await view.rerender({
+      ...baseProps,
+      decisionProfile: OLD_DECISION_PROFILE,
+      isRegenerating: true,
+    });
+
+    expect(view.getByRole("dialog", { name: "Your build limits" })).toBeInTheDocument();
+    expect(view.getByRole("radio", { name: "Full time" })).toHaveAttribute("aria-checked", "true");
+    expect(view.getByRole("button", { name: "Save build limits" })).toBeDisabled();
+
+    await fireEvent.click(view.getByRole("button", { name: "Save build limits" }));
+    expect(saveSelectionDecisionProfile).not.toHaveBeenCalled();
+
+    await view.rerender({
+      ...baseProps,
+      decisionProfile: OLD_DECISION_PROFILE,
+      isRegenerating: false,
+    });
+    expect(view.getByRole("button", { name: "Save build limits" })).toBeEnabled();
+    expect(view.getByRole("radio", { name: "Full time" })).toHaveAttribute("aria-checked", "true");
+  });
 });
 
 describe("SelectionWorkbench — collaborator feedback", () => {
@@ -2211,6 +2512,11 @@ describe("SelectionWorkbench — below-table IA (Phase 1b)", () => {
     await view.findByRole("complementary", { name: "Ideas for Deep Research" });
     const row = view.getByLabelText("Build limits summary");
     expect(row).toHaveTextContent("Build limits saved");
+    expect(row).toHaveTextContent("Under 10 hrs / week");
+    expect(row).toHaveTextContent("Under $1k");
+    expect(row).toHaveTextContent("Solo");
+    expect(row).toHaveTextContent("Revenue within 90 days");
+    expect(row).toHaveTextContent("SEO");
     // The row owns exactly one edit button; nothing else on the page duplicates it
     // (DecisionGuide no longer renders a founder-context entry of its own).
     expect(row.querySelectorAll("button")).toHaveLength(1);
@@ -2394,8 +2700,114 @@ describe("SelectionWorkbench — ranked candidates table semantics", () => {
       .getAllByRole("row")
       .find((entry) => entry.textContent?.includes("Evidence-challenged idea")) as HTMLElement;
 
-    expect(row).toHaveTextContent("Adversarial review: Killed");
+    expect(row).toHaveTextContent("Premise unproven");
     expect(row).not.toHaveTextContent("Incumbent: Evidence");
+  });
+
+  it("says what a premise-unproven chip means, and cites the objection behind it", () => {
+    const candidate = solution("FaxCorrectionCache", {
+      adjusted_composite_score: 0.71,
+      red_team_verdict: "killed",
+      red_team_caveats: ["No reachable buyer owns the fax queue."],
+    });
+    const view = render(SelectionWorkbench, {
+      props: { ...baseProps, solutions: [candidate] },
+    });
+    const row = within(view.getByRole("table", { name: "Ranked ideas" }))
+      .getAllByRole("row")
+      .find((entry) => entry.textContent?.includes("FaxCorrectionCache")) as HTMLElement;
+
+    // The chip names the state; the description carries the meaning, the cited caveat,
+    // and why the score next to it is still high.
+    expect(row).toHaveTextContent("Premise unproven");
+    expect(row).not.toHaveTextContent("Killed");
+    expect(row).toHaveTextContent(/could not find evidence for this idea's premise/);
+    expect(row).toHaveTextContent("No reachable buyer owns the fax queue.");
+    expect(row).toHaveTextContent(/other scores describe how well it would work if the premise holds/);
+  });
+
+  it("explains why the highest-scoring idea is not the recommended one", () => {
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: [
+          solution("FaxCorrectionCache", {
+            adjusted_composite_score: 0.71,
+            red_team_verdict: "killed",
+            red_team_caveats: ["No reachable buyer owns the fax queue."],
+          }),
+          solution("CountPad Vet", { adjusted_composite_score: 0.6 }),
+        ],
+        ideaPortfolioSummary: "CountPad Vet is the strongest candidate to validate first.",
+      },
+    });
+
+    const note = view.getByRole("note", {
+      name: "Why the top-scoring idea is not the recommendation",
+    });
+    expect(note).toHaveTextContent("FaxCorrectionCache scores highest");
+    expect(note).toHaveTextContent("could not confirm its premise");
+    expect(note).toHaveTextContent("the recommendation goes to CountPad Vet");
+    expect(note).toHaveTextContent("keeps its rank and you can still shortlist it");
+    // The tutorial step about the split spotlights this note, and only this note.
+    expect(view.container.querySelectorAll('[data-tour="recommendation-split"]')).toHaveLength(1);
+    expect(note).toHaveAttribute("data-tour", "recommendation-split");
+
+    // The withheld recommendation costs the leader nothing else: it keeps its row and
+    // its select control.
+    const row = within(view.getByRole("table", { name: "Ranked ideas" }))
+      .getAllByRole("row")
+      .find((entry) => entry.textContent?.includes("FaxCorrectionCache")) as HTMLElement;
+    expect(within(row).getByRole("checkbox", { name: "Select FaxCorrectionCache" })).toBeEnabled();
+  });
+
+  it("stays silent about the split when the top-scoring idea IS the recommendation", () => {
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: [
+          solution("CountPad Vet", { adjusted_composite_score: 0.71 }),
+          solution("FaxCorrectionCache", { adjusted_composite_score: 0.6 }),
+        ],
+        ideaPortfolioSummary: "CountPad Vet is the strongest candidate to validate first.",
+      },
+    });
+
+    expect(view.queryByRole("note", {
+      name: "Why the top-scoring idea is not the recommendation",
+    })).toBeNull();
+    expect(view.queryByText(/Premise unproven/)).toBeNull();
+    expect(view.getByText("Recommended")).toBeInTheDocument();
+  });
+
+  it("chips an idea that serves an adjacent audience, and only when it was judged so", () => {
+    const rowFor = (candidate: ReturnType<typeof solution>, title: string) => {
+      const view = render(SelectionWorkbench, {
+        props: { ...baseProps, solutions: [candidate] },
+      });
+      const row = within(view.getByRole("table", { name: "Ranked ideas" }))
+        .getAllByRole("row")
+        .find((entry) => entry.textContent?.includes(title)) as HTMLElement;
+      return { row, view };
+    };
+
+    const adjacent = rowFor(
+      solution("Adjacent idea", { audience_fit: false }),
+      "Adjacent idea",
+    );
+    expect(adjacent.row).toHaveTextContent("Adjacent audience");
+    adjacent.view.unmount();
+
+    // True and "not judged" (null / absent) must NOT chip — only an explicit false is a watch-out.
+    for (const [fit, title] of [
+      [true, "Primary idea"],
+      [null, "Untagged idea"],
+      [undefined, "Absent idea"],
+    ] as const) {
+      const view = rowFor(solution(title, { audience_fit: fit }), title);
+      expect(view.row).not.toHaveTextContent("Adjacent audience");
+      view.view.unmount();
+    }
   });
 
   it("does not re-state column names as aria-labels on non-interactive cells", () => {
@@ -2407,48 +2819,20 @@ describe("SelectionWorkbench — ranked candidates table semantics", () => {
     }
   });
 
-  it("reports aria-sort on the active column and 'none' on the others", () => {
+  it("offers no column sorting on either the grouped or the flat board", () => {
+    // Sorting was a leaderboard control on a screen that is now a portfolio of buyer-job
+    // cards. It could only reorder cards (breaking the "a card you have read stays put"
+    // promise) or renumber rows inside them, which is what made the rank column look
+    // broken. The columns are labels; the Discovery ranking is the only order.
     const view = render(SelectionWorkbench, { props: baseProps });
     const table = view.getByRole("table", { name: "Ranked ideas" });
 
-    // Default sort is Score, descending.
-    expect(
-      within(table).getByRole("columnheader", { name: "Score /100" }),
-    ).toHaveAttribute("aria-sort", "descending");
-
-    for (const label of ["Market fit", "Feasibility", "Build time"]) {
-      expect(
-        within(table).getByRole("columnheader", { name: label }),
-      ).toHaveAttribute("aria-sort", "none");
+    for (const label of ["Score /100", "Market fit", "Feasibility", "Build time"]) {
+      const header = within(table).getByRole("columnheader", { name: label });
+      expect(header).not.toHaveAttribute("aria-sort");
+      expect(within(header).queryByRole("button", { name: label })).toBeNull();
     }
-  });
-
-  it("flips aria-sort between descending and ascending when a column is re-activated", async () => {
-    const view = render(SelectionWorkbench, { props: baseProps });
-    const table = view.getByRole("table", { name: "Ranked ideas" });
-    const header = () => within(table).getByRole("columnheader", { name: "Market fit" });
-
-    // Activating an inactive column sorts it descending...
-    await fireEvent.click(view.getByRole("button", { name: "Sort by Market fit" }));
-    await waitFor(() => expect(header()).toHaveAttribute("aria-sort", "descending"));
-
-    // ...and the button's name now announces what the next press will do.
-    await fireEvent.click(
-      view.getByRole("button", { name: "Sort by Market fit, ascending" }),
-    );
-    await waitFor(() => expect(header()).toHaveAttribute("aria-sort", "ascending"));
-
-    await fireEvent.click(
-      view.getByRole("button", { name: "Sort by Market fit, descending" }),
-    );
-    await waitFor(() => expect(header()).toHaveAttribute("aria-sort", "descending"));
-  });
-
-  it("uses aria-sort rather than aria-pressed to convey sort state", () => {
-    const view = render(SelectionWorkbench, { props: baseProps });
-    expect(view.getByRole("button", { name: "Sort by Score /100, ascending" })).not.toHaveAttribute(
-      "aria-pressed",
-    );
+    expect(view.queryByRole("button", { name: /^Sort by / })).toBeNull();
   });
 
   it("exposes metric definitions through native, keyboard-focusable help buttons", async () => {
@@ -2538,5 +2922,810 @@ describe("SelectionWorkbench without the decision tools grant", () => {
       expect(view.getAllByText("Alpha Idea").length).toBeGreaterThan(0),
     );
     expect(view.queryByText("Optional next check")).toBeNull();
+  });
+});
+
+describe("SelectionWorkbench — thesis partition", () => {
+  const THESIS_SOLUTIONS = [
+    solution("Alpha Idea", { idea_id: "idea-alpha", headline: "Order desk lead" }),
+    solution("Beta Idea", { idea_id: "idea-beta", headline: "Order desk variant" }),
+    solution("Gamma Idea", { idea_id: "idea-gamma", headline: "Billing capture" }),
+  ];
+
+  const members = (...names: string[]): ThesisMember[] => names.map((name) => ({ name }));
+
+  const THESES: IdeaThesis[] = [
+    {
+      family_id: "fam-order",
+      display_label: "Controlled-order desk",
+      buyer: "Practice manager",
+      triggering_job: "File a Form 222 order",
+      economic_outcome: "Avoids a compliance write-up",
+      members: members("Alpha Idea", "Beta Idea"),
+      lead_idea_name: "Alpha Idea",
+      incumbent_status: "occupied",
+      incumbent_vendors: ["McKesson CSOS"],
+      fatal_assumptions: [{
+        idea_name: "Alpha Idea",
+        source_field: "incumbent_parity",
+        assumption: "Buyers will leave their wholesaler portal",
+      }],
+    },
+    {
+      family_id: "fam-billing",
+      display_label: "Consumption-to-billing capture",
+      buyer: "Practice owner",
+      triggering_job: "Bill medication actually used",
+      economic_outcome: "Recovers leaked revenue",
+      members: members("Gamma Idea"),
+      lead_idea_name: "Gamma Idea",
+      incumbent_status: "open",
+      incumbent_vendors: [],
+      fatal_assumptions: [],
+    },
+  ];
+
+  const UNCOVERED: UncoveredFamily[] = [
+    {
+      family_id: "fam-csos",
+      display_label: "Teams manage DEA Form 222 and CSOS orders manually",
+      member_pain_ids: ["pain-3", "pain-7"],
+      reason: "no_cell_allocated",
+      reason_detail: "no generator cell was ever allocated to this family",
+    },
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    chatLedger.reset();
+    chatPanel.close();
+    vi.mocked(getChatHistory).mockResolvedValue({ messages: [], weakPool: false } as never);
+  });
+
+  afterEach(cleanup);
+
+  it("nests variants under one card per thesis, collapsed to the lead idea", async () => {
+    const view = render(SelectionWorkbench, {
+      props: { ...baseProps, solutions: THESIS_SOLUTIONS, ideaTheses: THESES },
+    });
+
+    await waitFor(() => expect(view.getByText("Controlled-order desk")).toBeInTheDocument());
+    expect(view.getByText("Consumption-to-billing capture")).toBeInTheDocument();
+    // Thesis-level context: buyer/job/outcome, incumbent status, fatal assumption.
+    expect(view.getByText("Practice manager · File a Form 222 order · Avoids a compliance write-up"))
+      .toBeInTheDocument();
+    expect(view.getByText("Incumbent: occupied")).toBeInTheDocument();
+    expect(view.getByText("Incumbent: no direct tool found")).toBeInTheDocument();
+    // Flags are a COUNT, not a sentence in a chip; the text lives in the disclosure the
+    // count opens, attributed to the one variant that carries it.
+    const flagToggle = view.getByRole("button", { name: "1 flagged assumption" });
+    expect(view.getByText("Buyers will leave their wholesaler portal")).not.toBeVisible();
+    await fireEvent.click(flagToggle);
+    expect(view.getByText("Buyers will leave their wholesaler portal")).toBeVisible();
+    expect(view.getByText("Fatal assumption")).toBeVisible();
+    // Attributed to the ONE variant that carries it, not asserted of the thesis.
+    expect(view.getByText("Alpha Idea")).toBeVisible();
+
+    // Lead visible, variant collapsed.
+    expect(view.getByLabelText("Select Order desk lead")).toBeInTheDocument();
+    expect(view.getByLabelText("Select Billing capture")).toBeInTheDocument();
+    expect(view.queryByLabelText("Select Order desk variant")).toBeNull();
+
+    // ...and still reachable, so nothing selectable before is unselectable now.
+    await fireEvent.click(view.getByRole("button", { name: "Show 1 variant" }));
+    const variant = view.getByLabelText("Select Order desk variant") as HTMLInputElement;
+    await fireEvent.click(variant);
+    expect((view.getByLabelText("Deselect Order desk variant") as HTMLInputElement).checked)
+      .toBe(true);
+  });
+
+  it("keeps a shortlisted variant visible even while its thesis is collapsed", async () => {
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: THESIS_SOLUTIONS,
+        ideaTheses: THESES,
+        selectedSolutionIds: ["idea-beta"],
+      },
+    });
+
+    await waitFor(() => expect(
+      (view.getByLabelText("Deselect Order desk variant") as HTMLInputElement).checked,
+    ).toBe(true));
+  });
+
+  it("leaves the tutorial exactly one checkbox to point at, whatever the sort", async () => {
+    // REGRESSION: the anchor used to ride the row with global rank 0. Beta outscores
+    // everything AND is a variant of the first thesis, so it renders only when that card
+    // is expanded — the tutorial step had nothing to point at and driver.js pinned it to
+    // the bottom of the screen with no arrow.
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: [
+          solution("Alpha Idea", {
+            idea_id: "idea-alpha",
+            headline: "Order desk lead",
+            adjusted_composite_score: 0.5,
+          }),
+          solution("Beta Idea", {
+            idea_id: "idea-beta",
+            headline: "Order desk variant",
+            adjusted_composite_score: 0.9,
+          }),
+          solution("Gamma Idea", {
+            idea_id: "idea-gamma",
+            headline: "Billing capture",
+            adjusted_composite_score: 0.6,
+          }),
+        ],
+        ideaTheses: THESES,
+      },
+    });
+
+    await waitFor(() => expect(view.getByText("Controlled-order desk")).toBeInTheDocument());
+    expect(view.queryByLabelText("Select Order desk variant")).toBeNull();
+
+    const anchors = view.container.querySelectorAll('[data-tour="shortlist-checkbox"]');
+    expect(anchors).toHaveLength(1);
+    expect(anchors[0].querySelector("input")).toHaveAttribute(
+      "aria-label",
+      "Select Order desk lead",
+    );
+
+    // One card head and one column head, so neither of those steps can pick a row at
+    // random either.
+    expect(view.container.querySelectorAll('[data-tour="thesis-group"]')).toHaveLength(1);
+    expect(view.container.querySelectorAll('[data-tour="ranked-list"]')).toHaveLength(1);
+  });
+
+  it("keeps the tutorial anchor unique on a flat, ungrouped list", async () => {
+    const view = render(SelectionWorkbench, {
+      props: { ...baseProps, solutions: THESIS_SOLUTIONS },
+    });
+
+    await waitFor(() => expect(view.getByText("Order desk lead")).toBeInTheDocument());
+    expect(view.container.querySelectorAll('[data-tour="shortlist-checkbox"]')).toHaveLength(1);
+    expect(view.container.querySelectorAll('[data-tour="thesis-group"]')).toHaveLength(0);
+  });
+
+  it("names the validated jobs that no surviving idea addresses", async () => {
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: THESIS_SOLUTIONS,
+        ideaTheses: THESES,
+        uncoveredFamilies: UNCOVERED,
+      },
+    });
+
+    const section = await view.findByLabelText("Buyer-job coverage");
+    expect(section).toHaveTextContent("3 buyer jobs examined · 2 theses · 1 with no idea in this pool");
+    expect(view.getByText("1 validated buyer job above has no idea in this pool"))
+      .toBeInTheDocument();
+    expect(view.getByText("Teams manage DEA Form 222 and CSOS orders manually"))
+      .toBeInTheDocument();
+    // The pipeline's own sentence, not the `reason` enum token.
+    expect(view.getByText("no generator cell was ever allocated to this family"))
+      .toBeInTheDocument();
+    expect(view.getByText("Evidence: 2 validated pain points")).toBeInTheDocument();
+  });
+
+  it("falls back to the flat ranked list when no partition is present", async () => {
+    const view = render(SelectionWorkbench, {
+      props: { ...baseProps, solutions: THESIS_SOLUTIONS },
+    });
+
+    await waitFor(() => expect(view.getByLabelText("Select Order desk lead")).toBeInTheDocument());
+    expect(view.getByLabelText("Select Order desk variant")).toBeInTheDocument();
+    expect(view.getByLabelText("Select Billing capture")).toBeInTheDocument();
+    expect(view.queryByText("Product thesis · 2 ideas")).toBeNull();
+    expect(view.queryByLabelText("Buyer-job coverage")).toBeNull();
+    expect(view.queryByLabelText("Ranked ideas")).toBeInTheDocument();
+  });
+
+  it("renders flat when a single thesis wraps every visible idea (no band, no coverage, no uncovered card)", async () => {
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: THESIS_SOLUTIONS,
+        ideaTheses: [{
+          ...THESES[0],
+          members: members("Alpha Idea", "Beta Idea", "Gamma Idea"),
+        }],
+        uncoveredFamilies: UNCOVERED,
+      },
+    });
+
+    await waitFor(() => expect(view.getByLabelText("Select Order desk lead")).toBeInTheDocument());
+    expect(view.getByLabelText("Select Order desk variant")).toBeInTheDocument();
+    expect(view.getByLabelText("Select Billing capture")).toBeInTheDocument();
+    expect(view.queryByText("Controlled-order desk")).toBeNull();
+    expect(view.queryByText("Product thesis · 3 ideas")).toBeNull();
+    expect(view.queryByLabelText("Buyer-job coverage")).toBeNull();
+    expect(view.queryByText(/validated buyer job/)).toBeNull();
+    expect(view.queryByLabelText("Ranked ideas")).toBeInTheDocument();
+  });
+
+  it("still shows the thesis view when a single thesis leaves ideas ungrouped beside it", async () => {
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: THESIS_SOLUTIONS,
+        ideaTheses: [THESES[0]],
+      },
+    });
+
+    await waitFor(() => expect(view.getByText("Controlled-order desk")).toBeInTheDocument());
+    expect(view.getByText("Not yet grouped")).toBeInTheDocument();
+    const coverage = await view.findByLabelText("Buyer-job coverage");
+    expect(coverage).toHaveTextContent("1 buyer job examined · 1 thesis");
+  });
+
+  it("hides the uncovered-jobs card when there are zero theses, even with uncovered families", async () => {
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: THESIS_SOLUTIONS,
+        uncoveredFamilies: UNCOVERED,
+      },
+    });
+
+    await waitFor(() => expect(view.getByLabelText("Select Order desk lead")).toBeInTheDocument());
+    expect(view.queryByText(/validated buyer job/)).toBeNull();
+    expect(view.queryByLabelText("Buyer-job coverage")).toBeNull();
+    expect(view.queryByText("Teams manage DEA Form 222 and CSOS orders manually")).toBeNull();
+  });
+
+  it("survives a malformed partition without losing a candidate", async () => {
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: THESIS_SOLUTIONS,
+        // A family whose ideas are all gone, and a live family that names an idea
+        // twice — neither may drop or duplicate a selectable row.
+        ideaTheses: [
+          { ...THESES[0], members: members("Alpha Idea", "Alpha Idea") },
+          { ...THESES[1], members: members("Deleted Idea") },
+        ],
+      },
+    });
+
+    await waitFor(() => expect(view.getByText("Controlled-order desk")).toBeInTheDocument());
+    expect(view.queryByText("Consumption-to-billing capture")).toBeNull();
+    expect(view.getByText("Not yet grouped")).toBeInTheDocument();
+    expect(view.getAllByLabelText("Select Order desk lead")).toHaveLength(1);
+    // The ungrouped bucket never collapses — every leftover idea stays selectable.
+    expect(view.getByLabelText("Select Billing capture")).toBeInTheDocument();
+    expect(view.getByLabelText("Select Order desk variant")).toBeInTheDocument();
+  });
+
+  it("shows ideas the partition does not reference, without a toggle to expand", async () => {
+    // What a user sees straight after "Add another batch"/a seeded idea settles: the
+    // pool grew but the partition is stale, so the new ideas land in "Not yet grouped".
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: [
+          ...THESIS_SOLUTIONS,
+          solution("Fresh Batch Idea", { idea_id: "idea-fresh", headline: "Just generated" }),
+          solution("Seeded Idea", { idea_id: "idea-seeded", headline: "Your own idea" }),
+        ],
+        ideaTheses: [
+          ...THESES,
+          // A backend "unassigned" bucket is not a thesis — its members fall through.
+          {
+            family_id: "unassigned",
+            display_label: "Unassigned",
+            buyer: "",
+            triggering_job: "",
+            economic_outcome: "",
+            members: members("Seeded Idea"),
+            lead_idea_name: "",
+            incumbent_status: "unknown",
+            incumbent_vendors: [],
+            fatal_assumptions: [],
+          },
+        ],
+      },
+    });
+
+    await waitFor(() => expect(view.getByText("Not yet grouped")).toBeInTheDocument());
+    expect(view.getByText("Added after grouping · 2 ideas")).toBeInTheDocument();
+    expect(view.getByLabelText("Select Just generated")).toBeInTheDocument();
+    expect(view.getByLabelText("Select Your own idea")).toBeInTheDocument();
+    // Only the real thesis with a variant offers a toggle.
+    expect(view.getAllByRole("button", { name: /variant/ })).toHaveLength(1);
+  });
+
+  it("tallies the GTM angles of a thesis's variants without claiming one for the job", async () => {
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: [
+          solution("Alpha Idea", {
+            idea_id: "idea-alpha",
+            headline: "Order desk lead",
+            winning_angle: "vertical_workflow",
+          }),
+          solution("Beta Idea", {
+            idea_id: "idea-beta",
+            headline: "Order desk variant",
+            winning_angle: "vertical_workflow",
+          }),
+          solution("Gamma Idea", {
+            idea_id: "idea-gamma",
+            headline: "Order desk SEO play",
+            winning_angle: "distribution_seo",
+          }),
+          // A row outside the thesis, so the thesis view stays meaningful (a single
+          // thesis wrapping every visible idea is now suppressed as pure chrome).
+          solution("Delta Idea", { idea_id: "idea-delta", headline: "Unrelated idea" }),
+        ],
+        ideaTheses: [{
+          ...THESES[0],
+          members: members("Alpha Idea", "Beta Idea", "Gamma Idea"),
+        }],
+      },
+    });
+
+    await waitFor(() => expect(view.getByText("Controlled-order desk")).toBeInTheDocument());
+    expect(view.getByText("Angles across variants: Workflow ×2 · Distribution / SEO"))
+      .toBeInTheDocument();
+    // Per-variant chips stay in the rows (existing generation-lens chip), not the header.
+    expect(view.getAllByText("Workflow")).toHaveLength(1);
+    await fireEvent.click(view.getByRole("button", { name: "Show 2 variants" }));
+    expect(view.getAllByText("Workflow")).toHaveLength(2);
+    expect(view.getByText("Distribution / SEO")).toBeInTheDocument();
+  });
+
+  // The dispatch id of a batch this job actually ran. "New" is keyed on this and on
+  // nothing else — see `newIdeaKeys`.
+  const BATCH_OP_ID = "6823e26f-1b4d-4f0c-9a2c-000000000001";
+
+  /** Put ONE settled batch in the ledger, the way a completed "Add another batch" does. */
+  async function seedSettledBatch(operationId = BATCH_OP_ID, ordinal = 1) {
+    vi.mocked(getChatHistory).mockResolvedValue({
+      messages: [{
+        id: `batch-receipt-${operationId}`,
+        gateStage: 5,
+        role: "receipt",
+        content: "Batch settled",
+        patchJson: {
+          kind: "ledger_event",
+          version: 1,
+          event: "regeneration_settled",
+          patch: {},
+          rows: [],
+          operationId,
+          batch: { ordinal, outcome: "completed", generatedCount: 2, addedCount: 2 },
+        },
+        createdAt: "2026-07-27T00:00:00.000Z",
+      }],
+      weakPool: false,
+    } as never);
+    await chatLedger.init("job-1");
+  }
+
+  /** Row titles of one card, lead first — the lead slot is the first row after the head. */
+  const cardRowTitles = (view: { container: HTMLElement }, label: string) => {
+    const card = [...view.container.querySelectorAll(".thesis-group")].find((node) =>
+      node.querySelector(".thesis-label")?.textContent === label);
+    return [...(card?.querySelectorAll(".opp-title") ?? [])].map((node) => node.textContent);
+  };
+
+  it("annotates a new batch inside the theses it joined, family first", async () => {
+    await seedSettledBatch();
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: [
+          ...THESIS_SOLUTIONS,
+          solution("Delta Idea", {
+            idea_id: "idea-delta",
+            headline: "Order desk retry",
+            generation_batch_ordinal: 1,
+            generation_operation_id: BATCH_OP_ID,
+          }),
+          solution("Epsilon Idea", {
+            idea_id: "idea-epsilon",
+            headline: "Records retention",
+            generation_batch_ordinal: 1,
+            generation_operation_id: BATCH_OP_ID,
+          }),
+        ],
+        ideaTheses: [
+          { ...THESES[0], members: members("Alpha Idea", "Beta Idea", "Delta Idea") },
+          THESES[1],
+          {
+            ...THESES[1],
+            family_id: "fam-records",
+            display_label: "Records retention desk",
+            members: members("Epsilon Idea"),
+            lead_idea_name: "Epsilon Idea",
+          },
+        ],
+      },
+    });
+
+    await waitFor(() => expect(view.getByText("Records retention desk")).toBeInTheDocument());
+    expect(view.getByText(
+      "2 new ideas from your last request — 1 joined existing theses, 1 opened a new thesis.",
+    )).toBeInTheDocument();
+    // A batch that only added a variant to a standing thesis is NOT a new bet.
+    expect(view.getAllByText("New thesis this batch")).toHaveLength(1);
+    // The joiner is nested under its thesis, marked, and — since the user just paid for
+    // it — visible without a click. The toggle is replaced by the reason it cannot close.
+    expect(view.getByLabelText("Select Order desk retry")).toBeInTheDocument();
+    expect(view.getByText("Expanded · 1 new in this batch")).toBeInTheDocument();
+    expect(view.queryByRole("button", { name: /variants?$/ })).toBeNull();
+    expect(view.getAllByText("New in this batch")).toHaveLength(2);
+  });
+
+  it("counts new ideas by the batch's dispatch id, never by a stamped ordinal", async () => {
+    // REGRESSION: pools generated before the worker stamp was fixed carry FABRICATED
+    // provenance (`generation_batch_ordinal: 1` with `generation_operation_id:
+    // "expansion"`), and there is no backfill. Keying "new" on the ordinal counted that
+    // idea as part of the batch — six chips over five real arrivals, one line above a
+    // 100-credit commit, contradicting the analyst panel on the same screen.
+    await seedSettledBatch();
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: [
+          solution("Alpha Idea", {
+            idea_id: "idea-alpha",
+            headline: "Order desk lead",
+            generation_batch_ordinal: 1,
+            generation_operation_id: "expansion",
+          }),
+          solution("Beta Idea", { idea_id: "idea-beta", headline: "Order desk variant" }),
+          solution("Gamma Idea", { idea_id: "idea-gamma", headline: "Billing capture" }),
+          solution("Delta Idea", {
+            idea_id: "idea-delta",
+            headline: "Order desk retry",
+            generation_batch_ordinal: 1,
+            generation_operation_id: BATCH_OP_ID,
+          }),
+        ],
+        ideaTheses: [
+          { ...THESES[0], members: members("Alpha Idea", "Beta Idea", "Delta Idea") },
+          THESES[1],
+        ],
+      },
+    });
+
+    await waitFor(() => expect(view.getByText("Controlled-order desk")).toBeInTheDocument());
+    // One real arrival, one summary, one chip — the headline and the markers under it
+    // read the same set, so they cannot disagree.
+    expect(view.getByText("1 new idea from your last request — 1 joined existing theses."))
+      .toBeInTheDocument();
+    expect(view.getAllByText("New in this batch")).toHaveLength(1);
+    expect(view.getByLabelText("Select Order desk retry")).toBeInTheDocument();
+  });
+
+  it("marks nothing new when no batch dispatch is known for the job", async () => {
+    // Ledger empty (visitor view, a failed history load, a legacy pool): an ordinal on
+    // its own is not evidence that this job ever ran a batch.
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: [
+          ...THESIS_SOLUTIONS,
+          solution("Delta Idea", {
+            idea_id: "idea-delta",
+            headline: "Order desk retry",
+            generation_batch_ordinal: 1,
+            generation_operation_id: "expansion",
+          }),
+        ],
+        ideaTheses: [
+          { ...THESES[0], members: members("Alpha Idea", "Beta Idea", "Delta Idea") },
+          THESES[1],
+        ],
+      },
+    });
+
+    await waitFor(() => expect(view.getByText("Controlled-order desk")).toBeInTheDocument());
+    expect(view.queryByText("New in this batch")).toBeNull();
+    expect(view.queryByText(/new idea.? from your last request/)).toBeNull();
+  });
+
+  it("keeps the lead slot of a card a fresh arrival joins, however strong the arrival", async () => {
+    // REGRESSION: the partition recomputes `lead_idea_name` after a batch, so a newcomer
+    // that outscored the incumbent took the lead and pushed an already-reviewed idea into
+    // a collapsed "Show 1 variant". Card order is frozen; the lead slot now is too — and
+    // this holds on a cold mount, not just within one session.
+    await seedSettledBatch();
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: [
+          ...THESIS_SOLUTIONS,
+          solution("Delta Idea", {
+            idea_id: "idea-delta",
+            headline: "Top scoring newcomer",
+            market_fit_score: 0.99,
+            technical_feasibility_score: 0.99,
+            generation_batch_ordinal: 1,
+            generation_operation_id: BATCH_OP_ID,
+          }),
+        ],
+        ideaTheses: [
+          THESES[0],
+          {
+            ...THESES[1],
+            members: members("Delta Idea", "Gamma Idea"),
+            lead_idea_name: "Delta Idea",
+          },
+        ],
+      },
+    });
+
+    await waitFor(() =>
+      expect(view.getByText("Consumption-to-billing capture")).toBeInTheDocument());
+    // The idea the user already read still leads; the newcomer is the variant.
+    expect(cardRowTitles(view, "Consumption-to-billing capture"))
+      .toEqual(["Billing capture", "Top scoring newcomer"]);
+    // And a variant nobody has seen yet is not hidden behind a toggle.
+    expect(view.getByLabelText("Select Top scoring newcomer")).toBeInTheDocument();
+  });
+
+  it("keeps the lead slot when a batch lands into a card the user is already reading", async () => {
+    const view = render(SelectionWorkbench, {
+      props: { ...baseProps, solutions: THESIS_SOLUTIONS, ideaTheses: THESES },
+    });
+    await waitFor(() => expect(view.getByText("Controlled-order desk")).toBeInTheDocument());
+    expect(cardRowTitles(view, "Consumption-to-billing capture")).toEqual(["Billing capture"]);
+
+    await seedSettledBatch();
+    // Rerender the LIVE component — that is how a batch actually arrives.
+    await view.rerender({
+      ...baseProps,
+      solutions: [
+        ...THESIS_SOLUTIONS,
+        solution("Delta Idea", {
+          idea_id: "idea-delta",
+          headline: "Top scoring newcomer",
+          market_fit_score: 0.99,
+          technical_feasibility_score: 0.99,
+          generation_batch_ordinal: 1,
+          generation_operation_id: BATCH_OP_ID,
+        }),
+      ],
+      ideaTheses: [
+        THESES[0],
+        {
+          ...THESES[1],
+          members: members("Delta Idea", "Gamma Idea"),
+          lead_idea_name: "Delta Idea",
+        },
+      ],
+    });
+
+    await waitFor(() =>
+      expect(view.getByLabelText("Select Top scoring newcomer")).toBeInTheDocument());
+    expect(cardRowTitles(view, "Consumption-to-billing capture"))
+      .toEqual(["Billing capture", "Top scoring newcomer"]);
+  });
+
+  it("states why a held-open card cannot collapse instead of leaving a dead toggle", async () => {
+    // REGRESSION: a card with a shortlisted variant is forced open, but the control still
+    // read "Hide 1 variant" and clicking it did nothing at all.
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: THESIS_SOLUTIONS,
+        ideaTheses: THESES,
+        selectedSolutionIds: ["idea-beta"],
+      },
+    });
+
+    await waitFor(() => expect(
+      (view.getByLabelText("Deselect Order desk variant") as HTMLInputElement).checked,
+    ).toBe(true));
+    expect(view.queryByRole("button", { name: /variants?$/ })).toBeNull();
+    expect(view.getByText("Expanded · 1 shortlisted here")).toBeInTheDocument();
+  });
+
+  const cardOrder = (view: { container: HTMLElement }) =>
+    [...view.container.querySelectorAll(".thesis-label")].map((node) => node.textContent);
+
+  it("opens with the strongest thesis first, not in payload order", async () => {
+    // Payload order used to decide the board, so the first card a user saw could be the
+    // weakest bet on the page. The card carrying the best idea leads.
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: [
+          solution("Alpha Idea", { idea_id: "idea-alpha", headline: "Order desk lead" }),
+          solution("Beta Idea", { idea_id: "idea-beta", headline: "Order desk variant" }),
+          solution("Gamma Idea", {
+            idea_id: "idea-gamma",
+            headline: "Billing capture",
+            market_fit_score: 0.99,
+            technical_feasibility_score: 0.99,
+          }),
+        ],
+        ideaTheses: THESES,
+      },
+    });
+
+    await waitFor(() => expect(view.getByText("Controlled-order desk")).toBeInTheDocument());
+    expect(cardOrder(view)).toEqual(["Consumption-to-billing capture", "Controlled-order desk"]);
+  });
+
+  it("keeps thesis order and nesting stable when a batch lands", async () => {
+    const view = render(SelectionWorkbench, {
+      props: { ...baseProps, solutions: THESIS_SOLUTIONS, ideaTheses: THESES },
+    });
+    await waitFor(() => expect(view.getByText("Controlled-order desk")).toBeInTheDocument());
+    expect(cardOrder(view)).toEqual(["Controlled-order desk", "Consumption-to-billing capture"]);
+
+    // The batch idea outranks every original (score 0.99) — the board must not re-sort
+    // around it, and the standing theses must keep their labels and their leads. This
+    // rerenders the LIVE component, which is how a batch actually arrives; remounting
+    // would test a fresh first-paint instead of the stability guarantee.
+    await view.rerender({
+      ...baseProps,
+      solutions: [
+        ...THESIS_SOLUTIONS,
+        solution("Delta Idea", {
+          idea_id: "idea-delta",
+          headline: "Top scoring newcomer",
+          market_fit_score: 0.99,
+          technical_feasibility_score: 0.99,
+          generation_batch_ordinal: 1,
+        }),
+      ],
+      ideaTheses: [
+        THESES[0],
+        { ...THESES[1], members: members("Gamma Idea", "Delta Idea") },
+      ],
+    });
+    await waitFor(() => expect(view.getByText("Controlled-order desk")).toBeInTheDocument());
+    expect(cardOrder(view)).toEqual(["Controlled-order desk", "Consumption-to-billing capture"]);
+    // Lead unchanged: the newcomer is a variant of the standing thesis, not its new face.
+    expect(view.getByLabelText("Select Billing capture")).toBeInTheDocument();
+    expect(view.queryByLabelText("Select Top scoring newcomer")).toBeNull();
+  });
+
+  it("appends a thesis that arrives with a later batch, however strong it is", async () => {
+    const view = render(SelectionWorkbench, {
+      props: { ...baseProps, solutions: THESIS_SOLUTIONS, ideaTheses: THESES },
+    });
+    await waitFor(() => expect(view.getByText("Controlled-order desk")).toBeInTheDocument());
+
+    await view.rerender({
+      ...baseProps,
+      solutions: [
+        ...THESIS_SOLUTIONS,
+        solution("Delta Idea", {
+          idea_id: "idea-delta",
+          headline: "Top scoring newcomer",
+          market_fit_score: 0.99,
+          technical_feasibility_score: 0.99,
+          generation_batch_ordinal: 1,
+        }),
+      ],
+      ideaTheses: [
+        ...THESES,
+        {
+          ...THESES[1],
+          family_id: "fam-new",
+          display_label: "Newly opened thesis",
+          members: members("Delta Idea"),
+          lead_idea_name: "Delta Idea",
+        },
+      ],
+    });
+    await waitFor(() => expect(view.getByText("Newly opened thesis")).toBeInTheDocument());
+    // Last, even though its only member outscores everything already on the board.
+    expect(cardOrder(view)).toEqual([
+      "Controlled-order desk",
+      "Consumption-to-billing capture",
+      "Newly opened thesis",
+    ]);
+  });
+
+  it("drops the rank column on the grouped board and keeps it on the flat list", async () => {
+    // Grouping replaced ranking as the organizing principle: a strong idea can sit in a
+    // weak card, so a global "#" column reads 1, 7, 2, 3 whatever the card order is.
+    const grouped = render(SelectionWorkbench, {
+      props: { ...baseProps, solutions: THESIS_SOLUTIONS, ideaTheses: THESES },
+    });
+    await waitFor(() => expect(grouped.getByText("Controlled-order desk")).toBeInTheDocument());
+    expect(grouped.container.querySelectorAll(".cell-rank")).toHaveLength(0);
+    cleanup();
+
+    // The flat fallback IS a ranking — with no sorting anywhere, "#" there is strictly
+    // sequential and worth keeping.
+    const flat = render(SelectionWorkbench, {
+      props: { ...baseProps, solutions: THESIS_SOLUTIONS },
+    });
+    await waitFor(() => expect(flat.getByText("Order desk lead")).toBeInTheDocument());
+    expect([...flat.container.querySelectorAll(".opp-row:not(.opp-row-head) .cell-rank")]
+      .map((node) => node.textContent)).toEqual(["1", "2", "3"]);
+  });
+
+  it("omits the batch summary when no idea carries batch provenance", async () => {
+    const view = render(SelectionWorkbench, {
+      props: { ...baseProps, solutions: THESIS_SOLUTIONS, ideaTheses: THESES },
+    });
+
+    await waitFor(() => expect(view.getByText("Controlled-order desk")).toBeInTheDocument());
+    expect(view.queryByText(/new ideas from your last request/)).toBeNull();
+    expect(view.queryByText("New in this batch")).toBeNull();
+    expect(view.queryByText("New thesis this batch")).toBeNull();
+  });
+
+  it("omits the angle tally when ideas carry no angle", async () => {
+    const view = render(SelectionWorkbench, {
+      props: { ...baseProps, solutions: THESIS_SOLUTIONS, ideaTheses: THESES },
+    });
+
+    await waitFor(() => expect(view.getByText("Controlled-order desk")).toBeInTheDocument());
+    expect(view.queryByText(/^Angle/)).toBeNull();
+  });
+
+  // END-TO-END CONTRACT PROOF. Every other test in this block hands the component
+  // fixtures typed by the frontend — which is exactly how the feature shipped dead.
+  // This one runs the real captured pipeline payload through the real reader, so a
+  // producer-side rename puts the bands back on the floor here and nowhere else.
+  it("renders thesis bands from the REAL pipeline payload, read off the report", async () => {
+    const report = { idea_theses: pipelineIdeaTheses };
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: [
+          solution("CountPad Vet", { idea_id: "i-1", headline: "Counts that reconcile" }),
+          solution("Controlled Medication Dispense Closeout Ledger", {
+            idea_id: "i-2",
+            headline: "Dispense closeout ledger",
+          }),
+          solution("VetControlled Ledger", { idea_id: "i-3", headline: "Controlled ledger" }),
+          solution("WitnessWire", { idea_id: "i-4", headline: "Witness capture" }),
+          solution("CS Log Reconciliation Audit Kit", { idea_id: "i-5", headline: "Audit kit" }),
+        ],
+        ideaTheses: readIdeaTheses(report),
+        uncoveredFamilies: readUncoveredFamilies(report),
+      },
+    });
+
+    // One band per thesis, labelled and subtitled from the real buyer job.
+    await waitFor(() => expect(view.getByText("Inventory Accuracy")).toBeInTheDocument());
+    expect(view.getByText("Controlled-Drug Compliance")).toBeInTheDocument();
+    expect(view.getByText(
+      "Controlled Substance Compliance Officer · Keep controlled-drug logs complete and audit-ready · Regulatory compliance budget buys access-control and logging tools",
+    )).toBeInTheDocument();
+    expect(view.getByText("Product thesis · 3 ideas")).toBeInTheDocument();
+    expect(view.getByText("Incumbent: occupied")).toBeInTheDocument();
+    // Counts, not sentences-in-chips. The four flags on Controlled-Drug Compliance
+    // belong to three different variants, so they are attributed rather than asserted
+    // of the thesis — and the tournament's improvement directive is NOT called fatal.
+    expect(view.getByRole("button", { name: "2 flagged assumptions" })).toBeInTheDocument();
+    const compliance = view.getByRole("button", { name: "4 flagged assumptions" });
+    await fireEvent.click(compliance);
+    expect(view.getByText(
+      "novelty: The anomaly detection is now the headline, but the core witness workflow still requires TWO people physically present at the tablet — which means the modal case (busy shift, only one other pe",
+    )).toBeVisible();
+    expect(view.getByText("Weak point")).toBeVisible();
+    expect(view.getAllByText("WitnessWire").length).toBeGreaterThan(0);
+
+    // Leads come from `lead_idea_name`; the other members nest as collapsed variants.
+    expect(view.getByLabelText("Select Dispense closeout ledger")).toBeInTheDocument();
+    expect(view.queryByLabelText("Select Controlled ledger")).toBeNull();
+
+    // The partition's `unassigned` idea is not silently dropped.
+    expect(view.getByText("Not yet grouped")).toBeInTheDocument();
+    expect(view.getByLabelText("Select Audit kit")).toBeInTheDocument();
+
+    // Coverage line and uncovered-jobs card, both of which never rendered before.
+    expect(await view.findByLabelText("Buyer-job coverage"))
+      .toHaveTextContent("3 buyer jobs examined · 2 theses · 1 with no idea in this pool");
+    expect(view.getByText("System Integration")).toBeInTheDocument();
+    expect(view.getByText(
+      "we drafted at least one idea for this job, but no concept survived the review bar",
+    )).toBeInTheDocument();
   });
 });

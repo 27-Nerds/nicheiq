@@ -186,6 +186,37 @@ describe('failJob — dispatch-scoped settlement', () => {
     expect(mockRefundForStage).not.toHaveBeenCalled();
   });
 
+  it('keeps an expired-allowance zero reversal FAILED', async () => {
+    mockJobFindUnique.mockResolvedValue({
+      status: 'RUNNING_PHASE2',
+      regenerationCount: 0,
+      activeDispatchId: MINE,
+    });
+    mockTxJobFindUnique.mockResolvedValue({
+      id: JOB,
+      status: 'FAILED',
+      activeDispatchId: null,
+    });
+    mockRefundChargeInTx.mockResolvedValue({ id: 'reversal-zero', amount: 0 });
+
+    const result = await failJob(
+      JOB,
+      'Phase-2 provider failed',
+      8,
+      undefined,
+      undefined,
+      'SYSTEM_FAULT',
+      undefined,
+      MINE,
+    );
+
+    expect(result.applied).toBe(true);
+    expect(mockTxDispatchUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ state: 'FAILED' }) }),
+    );
+    expect(mockTxDispatchUpdate).not.toHaveBeenCalled();
+  });
+
   it('loses stale-heartbeat recovery when the worker refreshed after the monitor read', async () => {
     const observedHeartbeat = new Date('2026-07-30T00:00:00.000Z');
     mockJobFindUnique

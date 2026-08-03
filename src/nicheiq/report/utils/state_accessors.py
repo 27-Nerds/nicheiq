@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Optional
 from loguru import logger
 
 from ...models.competitor import find_landscape_for_solution
+from .number_formatters import format_percent, format_share
 
 if TYPE_CHECKING:
     from ...models.competitor import CompetitiveAnalysisResult
@@ -29,6 +30,23 @@ if TYPE_CHECKING:
     from ...models.solution_refinement import SolutionRefinement
     from ...models.solution_selection import SolutionSelection
     from ...models.social_content import SocialContentCollection
+
+
+def graded_keyword_count(result) -> int:
+    """Number of semantically graded, on-idea keywords for one keyword-validation result.
+
+    Dict-tolerant twin of ``CrewKeywordValidationResult.graded_keyword_count`` — report
+    inputs arrive as raw checkpoint dicts as often as models. ``validated_count`` alone is
+    not trustworthy: checkpoints written before 2026-08 stored the UNFILTERED expansion
+    pool size there (observed live: 50 with a single graded keyword), which rendered as
+    "50/20 keywords validated" in the report.
+    """
+    from .model_helpers import safe_get_attr
+
+    graded = safe_get_attr(result, 'validated_keywords')
+    if graded is not None:
+        return len(graded)
+    return safe_get_attr(result, 'validated_count', 0) or 0
 
 
 def build_user_adjustments_summary(state: "ResearchState") -> list[str]:
@@ -181,46 +199,31 @@ class StateAccessor:
             for pp in sorted_pps
         ]
 
-    def get_solution_pain_points(self, solution: "SolutionIdea") -> list:
+    def get_solution_pain_points(self, solution: "SolutionIdea", *, limit: int | None = None) -> list:
         """
         Get pain points specific to a solution, sorted by priority.
 
-        Matches pain point titles from solution.pain_points_addressed against
-        the full PainPoint objects to get detailed scores and metadata.
+        Resolves ``pain_points_addressed`` and ``source_pain`` against the full validated
+        PainPoint objects using the shared exact/token-overlap matcher.
 
         Args:
             solution: SolutionIdea with pain_points_addressed field
 
         Returns:
-            List of top 3 PainPoint objects for this solution, sorted by priority.
-            Falls back to top 3 overall pain points if no matches found.
+            PainPoint objects for this solution, sorted by priority and optionally limited.
+            Returns an empty list when no relationship can be proven; it never substitutes
+            unrelated niche-wide pains.
         """
         if not self.state.pain_point_analysis:
             return []
 
-        # Get all pain points
-        all_pain_points = self.state.pain_point_analysis.pain_points
+        from ...utils.pain_matching import resolve_solution_pain_points
 
-        # Filter to solution-specific pain points
-        if solution.pain_points_addressed:
-            solution_pain_points = [
-                pp for pp in all_pain_points
-                if pp.title in solution.pain_points_addressed
-            ]
-        else:
-            solution_pain_points = []
-
-        # If we found solution-specific pain points, sort and return top 3
-        if solution_pain_points:
-            sorted_pps = sorted(
-                solution_pain_points,
-                key=lambda x: (x.severity_score + x.commercial_intent) / 2,
-                reverse=True,
-            )
-            return sorted_pps[:3]
-
-        # Fallback: return top 3 overall pain points
-        return self.get_sorted_pain_points()[:3]
+        resolved = resolve_solution_pain_points(
+            self.state.pain_point_analysis.pain_points,
+            solution,
+        )
+        return resolved[:limit] if limit is not None else resolved
 
     def get_pain_points_summary(self) -> str:
         """
@@ -274,11 +277,24 @@ class StateAccessor:
 
     def get_competitive_summary(self) -> str:
         """
-        Get competitive analysis summary.
+        Get competitive analysis summary for the SELECTED solution.
+
+        `competitive_analysis.strategic_recommendations` is a single scalar that every
+        landscape overwrites as Stage 5.5 walks the top-N, so at report time it describes
+        whichever idea was analysed LAST. In the 2026-08 8ef396eb report that shipped
+        "Identified 7 competitors" (a runner-up's landscape) beside an "Alternatives
+        reviewed: 2" tile counting the selected idea — one number about a different
+        product. Rebuild from the selected landscape so the prose and the tile count the
+        same set; fall back to the stored text only when there is no selected landscape.
 
         Returns:
             Summary text or default message if unavailable
         """
+        landscape = self.get_selected_landscape()
+        if landscape:
+            from ...utils.competitive_summary import build_strategic_recommendations
+
+            return build_strategic_recommendations(landscape)
         if self.state.competitive_analysis:
             return self.state.competitive_analysis.strategic_recommendations
         return "No competitive analysis available."
@@ -375,6 +391,19 @@ class StateAccessor:
                 subreddit = post.subreddit
                 breakdown[subreddit] = breakdown.get(subreddit, 0) + 1
         return breakdown
+
+    def get_evidence_subreddit_breakdown(self) -> dict[str, int]:
+        """Subreddit breakdown counting ONLY posts a pain point actually cites.
+
+        `get_subreddit_breakdown` answers "how much did we read", which is the wrong basis
+        for a channel recommendation: run 8ef396eb read 16 posts from r/DublinConcerts (its
+        largest bucket) and used none of them, yet that subreddit became the High-Priority
+        launch channel and a KPI. Recommendation copy should use this instead. Empty means
+        "no evidence-backed community" — never fall back to raw collection volume.
+        """
+        from ...utils.evidence_sources import evidence_subreddit_breakdown
+
+        return evidence_subreddit_breakdown(self.state)
 
     def get_generic_posts_count(self) -> int:
         """Get count of generic source posts (HN, YouTube, etc.)."""
@@ -795,8 +824,21 @@ class StateAccessor:
                 f"## SEO Keyword Analysis Overview\n\n"
                 f"Analyzed {total_keywords} keywords with {total_volume:,} total monthly search volume "
                 f"across tiered strategy groups.\n\n"
-                f"## Keyword Tier Breakdown\n\n"
             ]
+
+            # Q-049 (additive): labeled idea-intent share of the analyzed volume, only when the
+            # three-band fields were computed (graded coverage >= 80%).
+            _iiv = getattr(seo, 'idea_intent_monthly_volume', None)
+            _off = getattr(seo, 'offtopic_volume_share', None)
+            _cat = getattr(seo, 'category_volume_share', None)
+            if _iiv is not None and _off is not None and _cat is not None and total_volume > 0:
+                overview_parts.append(
+                    f"**Idea-intent volume**: {_iiv:,}/mo of the {total_volume:,}/mo analyzed "
+                    f"keyword set ({format_share(_iiv, total_volume)}); the remainder is category "
+                    f"({format_percent(_cat)}) or off-topic ({format_percent(_off)}) reach.\n\n"
+                )
+
+            overview_parts.append("## Keyword Tier Breakdown\n\n")
 
             # Tier 0-2 stats
             for tier_num, tier_attr, tier_label in [
@@ -866,7 +908,7 @@ class StateAccessor:
 
         for result in self.state.keyword_validation_results:
             sol_name = safe_get_attr(result, 'solution_name')
-            validated = safe_get_attr(result, 'validated_count')
+            validated = graded_keyword_count(result)
             total_vol = safe_get_attr(result, 'total_volume')
             niche_vol = safe_get_attr(result, 'niche_relevant_volume')
             demand_score = safe_get_attr(result, 'keyword_demand_score')
@@ -876,8 +918,10 @@ class StateAccessor:
             if niche_vol is not None:
                 vol_text = f"{niche_vol:,} niche-relevant volume ({total_vol:,} total)"
 
+            # No "/20": the denominator was the seed count, so the old "50/20 keywords
+            # validated" was both an inflated numerator and a meaningless ratio.
             overview_parts.append(
-                f"**{sol_name}**: {validated}/20 keywords validated, "
+                f"**{sol_name}**: {validated} keywords validated, "
                 f"{vol_text}, "
                 f"demand score: {demand_score:.2f} ({demand_signal})\n"
             )
@@ -962,7 +1006,7 @@ class StateAccessor:
 
         for result in self.state.keyword_validation_results:
             sol_name = safe_get_attr(result, 'solution_name')
-            validated = safe_get_attr(result, 'validated_count')
+            validated = graded_keyword_count(result)
             total_vol = safe_get_attr(result, 'total_volume')
             niche_vol = safe_get_attr(result, 'niche_relevant_volume')
             avg_comp = safe_get_attr(result, 'avg_competition')

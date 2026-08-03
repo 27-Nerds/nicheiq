@@ -8,6 +8,7 @@
  */
 import type { SolutionPreview } from "$lib/types/job";
 import type { SelectionCapThresholds } from "$lib/types/selectionMetricExplanation";
+import { humanizeInternalJargon } from "$lib/utils/format";
 
 export type ScoreKey =
   | "composite"
@@ -104,6 +105,12 @@ function marketFitCapHint(
   if (payLow) {
     candidates.push({ cap: caps.payabilityMarketFitCap, clause: "the fit signal was reduced because this buyer segment shows weak evidence of paying for tools" });
   }
+  // LEGACY ONLY. A killed red-team verdict used to write its caveat into `incumbent_parity`
+  // as "shipped by evidence: …" and charge the 0.45 cap for it; that coupling was deleted
+  // 2026-08-02, so no new run produces this stamp. Reports generated before then still
+  // carry it AND the cap it really applied, so the clause stays accurate for them. The
+  // premise finding itself is now explained where it belongs — see adversarialReview.ts
+  // (PREMISE_UNPROVEN_CODA), which no longer depends on a parity stamp existing.
   if (parity.startsWith("shipped by evidence:")) {
     candidates.push({
       cap: caps.parityShippedMarketFitCap,
@@ -219,7 +226,9 @@ export function scoreRationale(
       break;
   }
 
-  why = clean(why);
+  // The grounded fields are backend prose, so strip internal field names / renamed
+  // metrics BEFORE clamping — the clamp must measure what the reader actually sees.
+  why = humanizeInternalJargon(clean(why));
   if (!opts.full) why = clamp(why);
   return why || null;
 }

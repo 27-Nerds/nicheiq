@@ -51,6 +51,25 @@ class TestPositives:
     def test_case_insensitive(self):
         assert match_known_public_source("sam.gov daily export") == "SAM.gov"
 
+    def test_regulated_industry_sources(self):
+        # 2026-08 (S4.4) additions — domain + full-phrase variants for each entry
+        assert match_known_public_source("full text search of ecfr.gov") == "eCFR"
+        assert match_known_public_source(
+            "pull the Electronic Code of Federal Regulations for Title 21") == "eCFR"
+        assert match_known_public_source("query dailymed.nlm.nih.gov for label data") == "DailyMed"
+        assert match_known_public_source("pull data from the DailyMed API") == "DailyMed"
+        assert match_known_public_source("cross-check against open.fda.gov listings") == \
+            "FDA National Drug Code Directory"
+        assert match_known_public_source("the FDA NDC Directory export") == \
+            "FDA National Drug Code Directory"
+        assert match_known_public_source("filed with deadiversion.usdoj.gov") == \
+            "DEA Diversion Control Division"
+        assert match_known_public_source("DEA Diversion Control Division registrant data") == \
+            "DEA Diversion Control Division"
+        assert match_known_public_source("listed on animaldrugsatfda.fda.gov") == "FDA Green Book"
+        assert match_known_public_source("the FDA Green Book of approved animal drug products") == \
+            "FDA Green Book"
+
 
 class TestNegatives:
     def test_generic_category_phrases_do_not_match(self):

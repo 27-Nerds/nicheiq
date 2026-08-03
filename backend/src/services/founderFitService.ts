@@ -1,5 +1,5 @@
 import { CONFIG } from '../config.js';
-import { chatComplete } from './openai.js';
+import { chatComplete, hasApiKeyForModel } from './openai.js';
 import { SelectionDecisionProfileSchema, type SelectionDecisionProfile } from '../types/job.js';
 import {
   FOUNDER_FIT_DIMENSIONS,
@@ -12,6 +12,30 @@ import {
 } from '../types/founderFit.js';
 import { ideaDisplayTitle, ideaName, type IdeaRecord } from '../utils/ideaIdentity.js';
 import { stableJsonSha256 } from '../utils/stableJsonFingerprint.js';
+
+export type FounderFitFailureCause =
+  | 'timeout'
+  | 'upstream'
+  | 'no_content'
+  | 'bad_json'
+  | 'schema_mismatch'
+  | 'coverage_mismatch';
+
+export class FounderFitGenerationError extends Error {
+  constructor(public readonly failureCause: FounderFitFailureCause) {
+    super(`Founder-fit generation failed (${failureCause})`);
+    this.name = 'FounderFitGenerationError';
+  }
+}
+
+function isTimeoutError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const candidate = error as { name?: unknown; code?: unknown; message?: unknown };
+  return candidate.name === 'TimeoutError'
+    || candidate.name === 'AbortError'
+    || candidate.code === 'ETIMEDOUT'
+    || (typeof candidate.message === 'string' && /timed?\s*out/i.test(candidate.message));
+}
 
 function value<T>(input: unknown, fallback: T): T {
   return input == null ? fallback : input as T;
@@ -326,72 +350,94 @@ export async function generateFounderFitArtifact(
   ideas: IdeaRecord[],
 ): Promise<FounderFitArtifact> {
   const profile = SelectionDecisionProfileSchema.parse(profileInput);
+  if (!hasApiKeyForModel(CONFIG.founderFitModel)) {
+    throw new FounderFitGenerationError('upstream');
+  }
   const snapshots = ideas.map(founderFitIdeaSnapshot);
   const ideaRefs = ideas.map((_, index) => `R${index + 1}`);
-  const completion = await chatComplete({
-    model: CONFIG.chatModel,
-    messages: [
-      { role: 'system', content: systemPrompt(ideaRefs) },
-      { role: 'user', content: userPrompt(profile, snapshots) },
-    ],
-    temperature: 0.1,
-    maxTokens: 6_000,
-    responseFormat: { type: 'json_object' },
-    signal: AbortSignal.timeout(45_000),
-  });
+  let completion;
+  try {
+    completion = await chatComplete({
+      model: CONFIG.founderFitModel,
+      messages: [
+        { role: 'system', content: systemPrompt(ideaRefs) },
+        { role: 'user', content: userPrompt(profile, snapshots) },
+      ],
+      temperature: 0.1,
+      maxTokens: 6_000,
+      responseFormat: { type: 'json_object' },
+      signal: AbortSignal.timeout(45_000),
+    });
+  } catch (error) {
+    const failureCause = isTimeoutError(error) ? 'timeout' : 'upstream';
+    console.error(`Founder-fit specialist ${failureCause} failure`, error);
+    throw new FounderFitGenerationError(failureCause);
+  }
   const content = completion.choices[0]?.message?.content;
-  if (!content) throw new Error('Founder-fit specialist returned no result');
+  if (!content) throw new FounderFitGenerationError('no_content');
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(content);
+  } catch {
+    throw new FounderFitGenerationError('bad_json');
+  }
 
   let parsed;
   try {
-    parsed = FounderFitRawResponseSchema.parse(normalizeRawResponse(JSON.parse(content), profile));
+    parsed = FounderFitRawResponseSchema.parse(normalizeRawResponse(raw, profile));
   } catch (error) {
-    console.error('Founder-fit specialist validation failed', {
-      rawContent: content,
+    console.error('Founder-fit specialist schema validation failed', {
       error: error instanceof Error ? error.message : String(error),
     });
-    throw error;
+    throw new FounderFitGenerationError('schema_mismatch');
   }
   const expectedRefs = ideas.map((_, index) => `R${index + 1}`);
   const actualRefs = parsed.results.map(result => result.ideaRef).sort();
   if (actualRefs.join(',') !== [...expectedRefs].sort().join(',')) {
-    throw new Error('Founder-fit specialist did not return every requested idea exactly once');
+    throw new FounderFitGenerationError('coverage_mismatch');
   }
 
-  const ordered = expectedRefs.map((ideaRef, index) => {
-    const result = parsed.results.find(candidate => candidate.ideaRef === ideaRef)!;
-    const hardConstraints = result.dimensions.find(item => item.dimension === 'hard_constraints')!;
-    if (!profile.hardConstraints.trim() && hardConstraints.status !== 'irrelevant') {
-      throw new Error('Founder-fit specialist treated an empty hard constraint as evidence');
-    }
-    if (profile.hardConstraints.trim() && hardConstraints.status === 'conflict' && result.verdict !== 'blocked') {
-      throw new Error('Founder-fit specialist softened a hard-constraint conflict');
-    }
-    const idea = ideas[index];
-    const { ideaRef: _ideaRef, suggestedExperiment, ...rest } = result;
-    return {
-      ...rest,
-      ideaId: String(idea.idea_id),
-      ideaRevision: Number(idea.idea_revision),
-      // Display title, not the internal codename: this string is what the analyst
-      // dossier's founder-fit block labels the candidate with, so it is what the analyst
-      // repeats back to the owner ("run the draft test for ConsolidatorAI").
-      ideaTitle: ideaDisplayTitle(idea),
-      suggestedExperiment: {
-        ...suggestedExperiment,
+  try {
+    const ordered = expectedRefs.map((ideaRef, index) => {
+      const result = parsed.results.find(candidate => candidate.ideaRef === ideaRef)!;
+      const hardConstraints = result.dimensions.find(item => item.dimension === 'hard_constraints')!;
+      if (!profile.hardConstraints.trim() && hardConstraints.status !== 'irrelevant') {
+        throw new Error('Founder-fit specialist treated an empty hard constraint as evidence');
+      }
+      if (profile.hardConstraints.trim() && hardConstraints.status === 'conflict' && result.verdict !== 'blocked') {
+        throw new Error('Founder-fit specialist softened a hard-constraint conflict');
+      }
+      const idea = ideas[index];
+      const { ideaRef: _ideaRef, suggestedExperiment, ...rest } = result;
+      return {
+        ...rest,
         ideaId: String(idea.idea_id),
         ideaRevision: Number(idea.idea_revision),
-      },
-    };
-  });
+        // Display title, not the internal codename: this string is what the analyst
+        // dossier's founder-fit block labels the candidate with, so it is what the analyst
+        // repeats back to the owner ("run the draft test for ConsolidatorAI").
+        ideaTitle: ideaDisplayTitle(idea),
+        suggestedExperiment: {
+          ...suggestedExperiment,
+          ideaId: String(idea.idea_id),
+          ideaRevision: Number(idea.idea_revision),
+        },
+      };
+    });
 
-  return FounderFitArtifactSchema.parse({
-    version: 1,
-    inputFingerprint: founderFitFingerprint(profile, snapshots),
-    profileSnapshot: profile,
-    ideaSnapshots: snapshots,
-    model: CONFIG.chatModel,
-    createdAt: new Date().toISOString(),
-    results: ordered,
-  });
+    return FounderFitArtifactSchema.parse({
+      version: 1,
+      inputFingerprint: founderFitFingerprint(profile, snapshots),
+      profileSnapshot: profile,
+      ideaSnapshots: snapshots,
+      model: CONFIG.founderFitModel,
+      createdAt: new Date().toISOString(),
+      results: ordered,
+    });
+  } catch (error) {
+    if (error instanceof FounderFitGenerationError) throw error;
+    console.error('Founder-fit specialist semantic validation failed', error);
+    throw new FounderFitGenerationError('schema_mismatch');
+  }
 }

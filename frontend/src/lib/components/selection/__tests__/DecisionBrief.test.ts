@@ -70,6 +70,27 @@ describe("DecisionBrief", () => {
     expect(view.getByRole("button", { name: "Edit build limits" })).toBeInTheDocument();
   });
 
+  it("keeps the saved constraints readable in the compact owner summary", () => {
+    const view = render(DecisionBrief, {
+      props: {
+        jobId: "job-1",
+        profile: SAVED_PROFILE,
+        variant: "summary",
+        onSaved: vi.fn(),
+      },
+    });
+
+    const row = view.getByLabelText("Build limits summary");
+    const limits = view.getByLabelText("Saved build limits");
+    expect(row).toHaveTextContent("Build limits saved");
+    expect(limits).toHaveTextContent("Under 10 hrs / week");
+    expect(limits).toHaveTextContent("Under $1k");
+    expect(limits).toHaveTextContent("Solo");
+    expect(limits).toHaveTextContent("Revenue within 90 days");
+    expect(limits).toHaveTextContent("SEO, Communities, Existing audience");
+    expect(row.querySelectorAll("button")).toHaveLength(1);
+  });
+
   it("keeps the worksheet open and reports a save failure", async () => {
     mocks.saveSelectionDecisionProfile.mockRejectedValue(new Error("Founder context could not be saved"));
     const view = render(DecisionBrief, {

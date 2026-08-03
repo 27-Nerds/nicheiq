@@ -22,6 +22,13 @@ import pytest
 from nicheiq.config.settings import settings
 
 
+@pytest.fixture(autouse=True)
+def _isolate_paid_pool_artifact_protocol():
+    """These task fixtures have no real checkpoint files; recovery I/O is tested separately."""
+    with patch("worker.paid_pool_recovery.PaidPoolMutationGuard") as guard_class:
+        yield guard_class.return_value
+
+
 def _make_flow():
     flow = MagicMock()
     flow.progress_callback = None
@@ -49,10 +56,201 @@ def _make_idea(candidate_status="active", solution_name="Seed Idea"):
     idea.mechanism_tag = None
     idea.data_source_tag = None
     idea.journey_tag = None
+    idea.idea_id = None
+    idea.idea_revision = None
+    idea.identity_origin = None
+    idea.identity_operation_id = None
     return idea
 
 
 class TestRunSeedIdeaRuledOutMerge:
+    @patch("worker.tasks.create_progress_callback")
+    def test_seed_rejects_a_checkpoint_pool_that_no_longer_matches_admission(
+        self, mock_progress
+    ):
+        mock_progress.return_value = MagicMock()
+        with patch("nicheiq.flows.research_flow.ResearchFlow") as MockFlow, \
+                patch("nicheiq.crews.unified_solution_crew.UnifiedSolutionCrew") as MockCrew:
+            flow = _make_flow()
+            flow.state.idea_generation.solution_ideas = [
+                _make_idea(solution_name="Existing")
+            ]
+            MockFlow.return_value = flow
+
+            from worker.tasks import run_seed_idea
+
+            with pytest.raises(RuntimeError, match="base candidate refs do not match"):
+                run_seed_idea(
+                    job_id="job-1",
+                    checkpoint_path="/tmp/cp",
+                    seed={"seed_text": "my idea"},
+                    niche="test niche",
+                    dispatch_id="dispatch-1",
+                    base_candidate_refs=[{
+                        "idea_id": "idea_wrong",
+                        "idea_revision": 1,
+                    }],
+                    pool_identity_map=[{
+                        "idea_id": "idea_expected",
+                        "idea_revision": 1,
+                        "solution_name": "Existing",
+                    }],
+                )
+
+            MockCrew.assert_not_called()
+
+    @patch("worker.tasks._solution_to_preview_dict", return_value={"solution_name": "Seed Idea"})
+    @patch("worker.tasks.notify_seed_complete")
+    @patch("worker.tasks.create_progress_callback")
+    def test_seed_admission_ignores_absorbed_duplicate_name(
+        self, mock_progress, mock_notify, mock_preview
+    ):
+        mock_progress.return_value = MagicMock()
+        with patch("nicheiq.flows.research_flow.ResearchFlow") as MockFlow, \
+                patch("nicheiq.crews.unified_solution_crew.UnifiedSolutionCrew") as MockCrew:
+            flow = _make_flow()
+            hidden = _make_idea(candidate_status="absorbed", solution_name="Appliance Ledger")
+            hidden.idea_id = "idea-hidden"
+            hidden.idea_revision = 1
+            hidden.identity_origin = "phase1"
+            hidden.identity_operation_id = "initial"
+            visible = _make_idea(solution_name="Appliance Ledger")
+            flow.state.idea_generation.solution_ideas = [hidden, visible]
+            MockFlow.return_value = flow
+            MockCrew.return_value.execute_seed_pipeline.return_value = _make_idea()
+            MockCrew.return_value.ruled_out_pains = []
+
+            from worker.tasks import run_seed_idea
+
+            result = run_seed_idea(
+                job_id="job-1",
+                checkpoint_path="/tmp/cp",
+                seed={"seed_text": "my idea"},
+                niche="test niche",
+                dispatch_id="dispatch-1",
+                base_candidate_refs=[{
+                    "idea_id": "idea-visible",
+                    "idea_revision": 1,
+                }],
+                pool_identity_map=[{
+                    "idea_id": "idea-visible",
+                    "idea_revision": 1,
+                    "solution_name": "Appliance Ledger",
+                }],
+            )
+
+            assert result["outcome"] == "accepted"
+            assert hidden.idea_id == "idea-hidden"
+            assert visible.idea_id == "idea-visible"
+            mock_notify.assert_called_once()
+
+    @patch("worker.tasks._solution_to_preview_dict", return_value={"solution_name": "Synthesized Idea"})
+    @patch("worker.tasks.notify_seed_complete")
+    @patch("worker.tasks.create_progress_callback")
+    def test_exact_synthesis_uses_backend_identity_namespace(
+        self, mock_progress, mock_notify, mock_preview
+    ):
+        mock_progress.return_value = MagicMock()
+        with patch("nicheiq.flows.research_flow.ResearchFlow") as MockFlow, \
+                patch("nicheiq.crews.unified_solution_crew.UnifiedSolutionCrew") as MockCrew:
+            flow = _make_flow()
+            MockFlow.return_value = flow
+            idea = _make_idea(solution_name="Synthesized Idea")
+            MockCrew.return_value.execute_seed_pipeline.return_value = idea
+            MockCrew.return_value.ruled_out_pains = []
+
+            from nicheiq.utils.idea_identity import deterministic_idea_id
+            from worker.tasks import run_seed_idea
+
+            result = run_seed_idea(
+                job_id="job-1",
+                checkpoint_path="/tmp/cp",
+                seed={
+                    "seed_text": "exact direction",
+                    "synthesis_evaluation": {"evaluation_id": "dispatch-synth"},
+                },
+                niche="test niche",
+                dispatch_id="dispatch-synth",
+            )
+
+            assert result["outcome"] == "accepted"
+            assert idea.idea_id == deterministic_idea_id(
+                "job-1", "synthesis", "dispatch-synth", 0
+            )
+            assert idea.identity_origin == "synthesis"
+            assert idea.identity_operation_id == "dispatch-synth"
+            mock_notify.assert_called_once()
+
+    @patch("worker.tasks._solution_to_preview_dict", return_value={"solution_name": "Seed Idea"})
+    @patch("worker.tasks.notify_seed_complete")
+    @patch("worker.tasks.create_progress_callback")
+    def test_checkpoint_failure_prevents_seed_completion(
+        self, mock_progress, mock_notify, mock_preview
+    ):
+        mock_progress.return_value = MagicMock()
+        with patch("nicheiq.flows.research_flow.ResearchFlow") as MockFlow, \
+                patch("nicheiq.crews.unified_solution_crew.UnifiedSolutionCrew") as MockCrew:
+            flow = _make_flow()
+            flow.checkpoint_mgr.save_stage.return_value = False
+            MockFlow.return_value = flow
+            idea = _make_idea()
+            MockCrew.return_value.execute_seed_pipeline.return_value = idea
+            MockCrew.return_value.ruled_out_pains = []
+
+            from worker.tasks import run_seed_idea
+
+            with pytest.raises(RuntimeError, match="authoritative checkpoint"):
+                run_seed_idea(
+                    job_id="job-1",
+                    checkpoint_path="/tmp/cp",
+                    seed={"seed_text": "my idea"},
+                    niche="test niche",
+                    dispatch_id="dispatch-1",
+                )
+
+            mock_notify.assert_not_called()
+            flow._materialize_preview_report.assert_not_called()
+            assert flow.state.idea_generation.solution_ideas == []
+            assert flow.state.idea_ruled_out == []
+
+    @patch("worker.tasks._solution_to_preview_dict", return_value={"solution_name": "Seed Idea"})
+    @patch("worker.tasks.notify_seed_complete")
+    @patch("worker.tasks.create_progress_callback")
+    def test_preview_failure_restores_seed_before_settlement(
+        self, mock_progress, mock_notify, mock_preview
+    ):
+        mock_progress.return_value = MagicMock()
+        with patch("nicheiq.flows.research_flow.ResearchFlow") as MockFlow, \
+                patch("nicheiq.crews.unified_solution_crew.UnifiedSolutionCrew") as MockCrew:
+            flow = _make_flow()
+            existing = _make_idea(solution_name="Existing")
+            flow.state.idea_generation.solution_ideas = [existing]
+            flow.checkpoint_mgr.save_stage.side_effect = [True, True]
+            flow._materialize_preview_report.side_effect = [
+                None,
+                "/tmp/preview_report_job-1.json",
+            ]
+            MockFlow.return_value = flow
+            MockCrew.return_value.execute_seed_pipeline.return_value = _make_idea()
+            MockCrew.return_value.ruled_out_pains = []
+
+            from worker.tasks import run_seed_idea
+
+            with pytest.raises(RuntimeError, match="idea preview"):
+                run_seed_idea(
+                    job_id="job-1",
+                    checkpoint_path="/tmp/cp",
+                    seed={"seed_text": "my idea"},
+                    niche="test niche",
+                    dispatch_id="dispatch-1",
+                )
+
+            assert flow.state.idea_generation.solution_ideas == [existing]
+            assert flow.state.idea_ruled_out == []
+            assert flow.checkpoint_mgr.save_stage.call_count == 2
+            assert flow._materialize_preview_report.call_count == 2
+            mock_notify.assert_not_called()
+
     @patch("worker.tasks._solution_to_preview_dict", return_value={"solution_name": "Seed Idea"})
     @patch("worker.tasks.notify_seed_complete")
     @patch("worker.tasks.create_progress_callback")
@@ -173,6 +371,9 @@ class TestRunSeedIdeaDeliveryFailureRevert:
             flow = _make_flow()
             existing = _make_idea(candidate_status="active", solution_name="Existing")
             flow.state.idea_generation.solution_ideas = [existing]
+            # Forward commit succeeds; a fault on the first rollback write must be retried
+            # before the tagged exception reaches queue_consumer's refund path.
+            flow.checkpoint_mgr.save_stage.side_effect = [True, False, True]
             MockFlow.return_value = flow
 
             crew = MockCrew.return_value
@@ -196,8 +397,8 @@ class TestRunSeedIdeaDeliveryFailureRevert:
             # unpaid ghost idea survives in the checkpoint.
             assert flow.state.idea_generation.solution_ideas == [existing]
             assert flow.state.idea_ruled_out == []
-            # Saved at least twice: once with the merge, once with the revert.
-            assert flow.checkpoint_mgr.save_stage.call_count >= 2
+            # Saved once with the merge, then rollback was retried after one injected fault.
+            assert flow.checkpoint_mgr.save_stage.call_count == 3
             # Materialized once with the evaluated result and again after reverting,
             # so an asset-cache refresh cannot resurrect a ghost candidate.
             assert flow._materialize_preview_report.call_count == 2
@@ -231,3 +432,134 @@ class TestRunSeedIdeaDeliveryFailureRevert:
             # Never reached the merge/save/notify block at all.
             flow.checkpoint_mgr.save_stage.assert_not_called()
             mock_notify.assert_not_called()
+
+
+class TestSeedBatchProvenance:
+    """A seed is its own paid append-only operation, so it must carry batch provenance —
+    the UI's "new in this batch" marker reads these two fields and skipped chat-born ideas
+    entirely while they were null. Live run 8ef396eb (2026-08-02) persisted a seed with
+    both fields null; these tests pin the stamp so the next null is a code failure rather
+    than an unfalsifiable one."""
+
+    @patch("worker.tasks._solution_to_preview_dict", return_value={"solution_name": "Seed Idea"})
+    @patch("worker.tasks.notify_seed_complete")
+    @patch("worker.tasks.create_progress_callback")
+    def test_seed_takes_the_next_ordinal_after_the_pool(
+        self, mock_progress, mock_notify, mock_preview
+    ):
+        mock_progress.return_value = MagicMock()
+        with patch("nicheiq.flows.research_flow.ResearchFlow") as MockFlow, \
+                patch("nicheiq.crews.unified_solution_crew.UnifiedSolutionCrew") as MockCrew:
+            flow = _make_flow()
+            # A realistic pool: original-run ideas (null ordinal) plus one added batch.
+            pool = []
+            for name, ordinal in (
+                ("Phase One A", None), ("Phase One B", None),
+                ("Batch One A", 1), ("Batch One B", 1),
+            ):
+                existing = _make_idea(solution_name=name)
+                existing.generation_batch_ordinal = ordinal
+                existing.generation_operation_id = "batch-dispatch" if ordinal else None
+                pool.append(existing)
+            flow.state.idea_generation.solution_ideas = pool
+            MockFlow.return_value = flow
+
+            crew = MockCrew.return_value
+            idea = _make_idea()
+            idea.generation_batch_ordinal = None
+            idea.generation_operation_id = None
+            crew.execute_seed_pipeline.return_value = idea
+            crew.ruled_out_pains = []
+
+            from worker.tasks import run_seed_idea
+
+            run_seed_idea(
+                job_id="job-1",
+                checkpoint_path="/tmp/cp",
+                seed={"seed_text": "my idea"},
+                niche="test niche",
+                dispatch_id="d-seed",
+            )
+
+            # Its own ordinal, after everything already in the pool — so it, and only it,
+            # reads as new.
+            assert idea.generation_batch_ordinal == 2
+            assert idea.generation_operation_id == "d-seed"
+            # Nothing already in the pool was re-stamped as part of this operation.
+            assert [p.generation_batch_ordinal for p in pool] == [None, None, 1, 1]
+
+    @patch("worker.tasks._solution_to_preview_dict", return_value={"solution_name": "Seed Idea"})
+    @patch("worker.tasks.notify_seed_complete")
+    @patch("worker.tasks.create_progress_callback")
+    def test_first_seed_into_an_unbatched_pool_is_ordinal_one(
+        self, mock_progress, mock_notify, mock_preview
+    ):
+        mock_progress.return_value = MagicMock()
+        with patch("nicheiq.flows.research_flow.ResearchFlow") as MockFlow, \
+                patch("nicheiq.crews.unified_solution_crew.UnifiedSolutionCrew") as MockCrew:
+            flow = _make_flow()
+            existing = _make_idea(solution_name="Phase One A")
+            existing.generation_batch_ordinal = None
+            existing.generation_operation_id = None
+            flow.state.idea_generation.solution_ideas = [existing]
+            MockFlow.return_value = flow
+
+            crew = MockCrew.return_value
+            idea = _make_idea()
+            idea.generation_batch_ordinal = None
+            idea.generation_operation_id = None
+            crew.execute_seed_pipeline.return_value = idea
+            crew.ruled_out_pains = []
+
+            from worker.tasks import run_seed_idea
+
+            run_seed_idea(
+                job_id="job-1",
+                checkpoint_path="/tmp/cp",
+                seed={"seed_text": "my idea"},
+                niche="test niche",
+                dispatch_id="d-seed",
+            )
+
+            assert idea.generation_batch_ordinal == 1
+            assert idea.generation_operation_id == "d-seed"
+
+    @patch("worker.tasks._solution_to_preview_dict", return_value={"solution_name": "Seed Idea"})
+    @patch("worker.tasks.notify_seed_complete")
+    @patch("worker.tasks.create_progress_callback")
+    def test_demoted_seeds_ruled_out_record_carries_the_same_provenance(
+        self, mock_progress, mock_notify, mock_preview
+    ):
+        """`_record_ruled_out` copies provenance off the idea, but it runs inside
+        execute_seed_pipeline — before the stamp — so the worker mirrors it onto the
+        finding. A demoted seed that lost its provenance would be unattributable in
+        "Examined & ruled out"."""
+        mock_progress.return_value = MagicMock()
+        with patch("nicheiq.flows.research_flow.ResearchFlow") as MockFlow, \
+                patch("nicheiq.crews.unified_solution_crew.UnifiedSolutionCrew") as MockCrew:
+            flow = _make_flow()
+            MockFlow.return_value = flow
+
+            crew = MockCrew.return_value
+            idea = _make_idea(candidate_status="demoted")
+            idea.generation_batch_ordinal = None
+            idea.generation_operation_id = None
+            crew.execute_seed_pipeline.return_value = idea
+            crew.ruled_out_pains = [
+                {"pain_title": "P1", "dispatch_id": "d-seed", "idea": {"solution_name": "Seed Idea"}},
+            ]
+
+            from worker.tasks import run_seed_idea
+
+            run_seed_idea(
+                job_id="job-1",
+                checkpoint_path="/tmp/cp",
+                seed={"seed_text": "my idea"},
+                niche="test niche",
+                dispatch_id="d-seed",
+            )
+
+            finding = flow.state.idea_ruled_out[0]
+            assert finding["generation_operation_id"] == "d-seed"
+            assert finding["generation_batch_ordinal"] == idea.generation_batch_ordinal
+            assert finding["idea"]["generation_operation_id"] == "d-seed"

@@ -2,16 +2,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { mockChatComplete } = vi.hoisted(() => ({ mockChatComplete: vi.fn() }));
 
-vi.mock('../openai.js', () => ({ chatComplete: mockChatComplete }));
+vi.mock('../openai.js', () => ({
+  chatComplete: mockChatComplete,
+  hasApiKeyForModel: () => true,
+}));
 vi.mock('../../config.js', () => ({
-  CONFIG: { chatModel: 'gpt-test' },
+  CONFIG: { chatModel: 'gpt-test', challengeModel: 'gpt-challenge-test' },
 }));
 
 import {
+  ChallengeAssessmentError,
   generateSelectionChallenge,
   prepareSelectionChallengeInput,
   reduceSelectionChallenge,
 } from '../selectionChallengeService.js';
+import { challengeAssessmentsJsonSchema } from '../selectionChallengeJsonSchema.js';
+import { SelectionChallengeArtifactSchema } from '../../types/selectionChallenge.js';
 
 const idea = {
   idea_id: 'idea_signal',
@@ -523,5 +529,209 @@ describe('selectionChallengeService', () => {
       { ...base, position: 'supports' },
       { ...base, position: 'contradicts' },
     )).toBe('disputed');
+  });
+
+  it('sends the assessor model and a strict per-lens response schema instead of restating shape in prose', async () => {
+    const questions = ['pain_is_observed', 'urgency_is_behavioral', 'buyer_will_pay'] as const;
+    mockChatComplete
+      .mockResolvedValueOnce(response(questions, ['supports', 'supports', 'supports']))
+      .mockResolvedValueOnce(response(questions, ['supports', 'supports', 'supports']));
+
+    const artifact = await generateSelectionChallenge({
+      lens: 'demand',
+      idea,
+      previewReport,
+      discoveryData,
+    });
+
+    const call = mockChatComplete.mock.calls[0][0];
+    expect(call.model).toBe('gpt-challenge-test');
+    expect(call.maxTokens).toBe(12_000);
+    expect(call.reasoningEffort).toBe('low');
+    expect(call.signal).toBeInstanceOf(AbortSignal);
+    expect(call.responseFormat.type).toBe('json_schema');
+    const { json_schema: jsonSchema } = call.responseFormat;
+    expect(jsonSchema.strict).toBe(true);
+    // {first,second,third} object — strict mode cannot pin an array to length 3.
+    expect(Object.keys(jsonSchema.schema.properties.assessments.properties))
+      .toEqual(['first', 'second', 'third']);
+    const assessment = jsonSchema.schema.$defs.assessment;
+    expect(assessment.properties.questionId.enum).toEqual([...questions]);
+    expect(assessment.properties.subjectKeys.items.enum).toContain('I1');
+    expect(assessment.properties.evidenceKeys.items.enum).toContain('S1');
+    // Strict mode requires every property listed and no extras, at every level.
+    expect(assessment.required).toEqual(Object.keys(assessment.properties));
+    expect(call.messages[1].content).not.toContain('Return this shape');
+    expect(artifact.promptVersion).toBe(2);
+    expect(artifact.skepticModel).toBe('gpt-challenge-test');
+  });
+
+  it('falls back to a plain string-array schema when a key set is empty (never enum: [])', () => {
+    const schema = challengeAssessmentsJsonSchema({
+      lens: 'demand',
+      subjectKeys: [],
+      evidenceKeys: ['S1'],
+    });
+    const assessment = (schema.schema.$defs as Record<string, any>).assessment;
+    expect(assessment.properties.subjectKeys.items).toEqual({ type: 'string' });
+    expect(assessment.properties.subjectKeys.items.enum).toBeUndefined();
+    expect(assessment.properties.evidenceKeys.items.enum).toEqual(['S1']);
+  });
+
+  it('accepts the {first,second,third} wire shape and flattens it back to an array', async () => {
+    const questions = ['pain_is_observed', 'urgency_is_behavioral', 'buyer_will_pay'] as const;
+    const slot = (questionId: string) => ({
+      questionId,
+      position: 'supports',
+      summary: 'Assessment from captured evidence.',
+      subjectKeys: ['I1'],
+      evidenceKeys: ['S1'],
+      evidenceClass: 'observed',
+    });
+    const wire = {
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            assessments: { first: slot(questions[0]), second: slot(questions[1]), third: slot(questions[2]) },
+          }),
+        },
+      }],
+    };
+    mockChatComplete.mockResolvedValueOnce(wire).mockResolvedValueOnce(wire);
+
+    const artifact = await generateSelectionChallenge({
+      lens: 'demand',
+      idea,
+      previewReport,
+      discoveryData,
+    });
+
+    expect(artifact.questions.map(question => question.questionId)).toEqual([...questions]);
+    expect(artifact.questions[0].consensus).toBe('supported');
+  });
+
+  it('reconciles reordered assessments by questionId instead of rejecting the response', async () => {
+    const questions = ['pain_is_observed', 'urgency_is_behavioral', 'buyer_will_pay'] as const;
+    const reordered = [questions[2], questions[0], questions[1]] as const;
+    mockChatComplete
+      .mockResolvedValueOnce(response(reordered, ['contradicts', 'supports', 'mixed']))
+      .mockResolvedValueOnce(response(reordered, ['contradicts', 'supports', 'mixed']));
+
+    const artifact = await generateSelectionChallenge({
+      lens: 'demand',
+      idea,
+      previewReport,
+      discoveryData,
+    });
+
+    expect(artifact.questions.map(question => question.questionId)).toEqual([...questions]);
+    // The 'supports' assessment travelled with pain_is_observed, not with slot 1.
+    expect(artifact.questions[0].skeptic.position).toBe('supports');
+    expect(artifact.questions[2].skeptic.position).toBe('contradicts');
+    expect(artifact.questions.every(question => !question.skeptic.backfilled)).toBe(true);
+  });
+
+  it('backfills a missing question as insufficient with backfilled: true instead of failing', async () => {
+    const questions = ['pain_is_observed', 'urgency_is_behavioral', 'buyer_will_pay'] as const;
+    const short = [questions[0], questions[2]] as const;
+    mockChatComplete
+      .mockResolvedValueOnce(response(short, ['supports', 'supports']))
+      .mockResolvedValueOnce(response(short, ['supports', 'supports']));
+
+    const artifact = await generateSelectionChallenge({
+      lens: 'demand',
+      idea,
+      previewReport,
+      discoveryData,
+    });
+
+    expect(artifact.questions.map(question => question.questionId)).toEqual([...questions]);
+    expect(artifact.questions[1].skeptic.position).toBe('insufficient');
+    expect(artifact.questions[1].skeptic.backfilled).toBe(true);
+    expect(artifact.questions[1].skeptic.evidenceKeys).toEqual([]);
+    expect(artifact.questions[0].skeptic.backfilled).toBeUndefined();
+  });
+
+  it('drops duplicate and off-lens extra assessments during reconcile', async () => {
+    const questions = ['pain_is_observed', 'urgency_is_behavioral', 'buyer_will_pay'] as const;
+    const extra = [...questions, 'wedge_is_defensible', questions[0]] as const;
+    mockChatComplete
+      .mockResolvedValueOnce(response(extra, ['supports', 'mixed', 'supports', 'supports', 'contradicts']))
+      .mockResolvedValueOnce(response(extra, ['supports', 'mixed', 'supports', 'supports', 'contradicts']));
+
+    const artifact = await generateSelectionChallenge({
+      lens: 'demand',
+      idea,
+      previewReport,
+      discoveryData,
+    });
+
+    expect(artifact.questions).toHaveLength(3);
+    expect(artifact.questions.map(question => question.questionId)).toEqual([...questions]);
+    // First occurrence wins over the duplicate.
+    expect(artifact.questions[0].skeptic.position).toBe('supports');
+  });
+
+  async function expectChallengeErrorKind(kind: string) {
+    let caught: unknown;
+    try {
+      await generateSelectionChallenge({ lens: 'demand', idea, previewReport, discoveryData });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(ChallengeAssessmentError);
+    expect((caught as ChallengeAssessmentError).kind).toBe(kind);
+  }
+
+  it('throws a typed no_content error when the assessor returns nothing', async () => {
+    mockChatComplete.mockResolvedValue({ choices: [{ message: { content: null } }] });
+    await expectChallengeErrorKind('no_content');
+  });
+
+  it('throws a typed bad_json error on unparseable output', async () => {
+    mockChatComplete.mockResolvedValue({ choices: [{ message: { content: 'not json' } }] });
+    await expectChallengeErrorKind('bad_json');
+  });
+
+  // The rejection-path tests fail ONE assessor and resolve the other: rejecting both
+  // parallel spy calls trips vitest 4's unhandled-rejection tracker on the second
+  // (Promise.all only consumes the first), which fails the test with the raw error.
+  const questions = ['pain_is_observed', 'urgency_is_behavioral', 'buyer_will_pay'] as const;
+
+  it('throws a typed timeout error when the upstream call is aborted by the deadline', async () => {
+    const timeout = new Error('The operation was aborted due to timeout');
+    timeout.name = 'TimeoutError';
+    mockChatComplete
+      .mockRejectedValueOnce(timeout)
+      .mockResolvedValueOnce(response(questions, ['supports', 'supports', 'supports']));
+    await expectChallengeErrorKind('timeout');
+  });
+
+  it('throws a typed upstream error for any other provider failure', async () => {
+    mockChatComplete
+      .mockRejectedValueOnce(new Error('502 upstream'))
+      .mockResolvedValueOnce(response(questions, ['supports', 'supports', 'supports']));
+    await expectChallengeErrorKind('upstream');
+  });
+
+  it('still parses a stored v1 artifact after the promptVersion widening (regression)', async () => {
+    const questions = ['pain_is_observed', 'urgency_is_behavioral', 'buyer_will_pay'] as const;
+    mockChatComplete
+      .mockResolvedValueOnce(response(questions, ['supports', 'supports', 'supports']))
+      .mockResolvedValueOnce(response(questions, ['supports', 'supports', 'supports']));
+
+    const artifact = await generateSelectionChallenge({
+      lens: 'demand',
+      idea,
+      previewReport,
+      discoveryData,
+    });
+
+    // A v1 row persisted before the bump must keep parsing (list route safeParses it
+    // into the stale bucket rather than dropping the row).
+    const v1Artifact = { ...artifact, promptVersion: 1 };
+    expect(SelectionChallengeArtifactSchema.safeParse(v1Artifact).success).toBe(true);
+    expect(SelectionChallengeArtifactSchema.safeParse(artifact).success).toBe(true);
+    expect(SelectionChallengeArtifactSchema.safeParse({ ...artifact, promptVersion: 3 }).success).toBe(false);
   });
 });

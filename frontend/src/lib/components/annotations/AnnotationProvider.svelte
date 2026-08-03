@@ -19,6 +19,7 @@
     EMPTY_DISCOVERY_ANNOTATIONS,
     type AnnotationStroke,
     type DiscoveryAnnotationDocument,
+    type DiscoveryAnnotationResponse,
   } from '$lib/types/discoveryAnnotations';
   import {
     provideAnnotationContext,
@@ -31,22 +32,29 @@
 
   interface Props {
     mode: 'owner' | 'viewer';
+    /** Loads and renders annotations when true. */
     enabled?: boolean;
+    /** Owner mutation capability. Defaults to enabled for backward compatibility. */
+    editable?: boolean;
     /** Keeps annotation support available without forcing the floating entry point onto every workspace. */
     showLauncher?: boolean;
     jobId?: string;
     shareToken?: string;
     surfaceKey?: string;
+    /** SSR snapshot. When supplied, owner mode renders without a second client fetch. */
+    initialDocument?: DiscoveryAnnotationResponse | null;
     children: Snippet;
   }
 
   let {
     mode,
     enabled = true,
+    editable: editEnabled = true,
     showLauncher = true,
     jobId,
     shareToken,
     surfaceKey = 'research:page',
+    initialDocument = null,
     children,
   }: Props = $props();
 
@@ -59,11 +67,19 @@
   let color = $state('#dc2626');
   let strokeWidth = $state(4);
   let loadedOwnerJobId = $state<string | null>(null);
+  let hydratedInitialKey = '';
   let saveStatus = $state<AnnotationSaveStatus>('idle');
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
   let saveSequence = 0;
 
-  const editable = $derived(mode === 'owner' && enabled && !!jobId);
+  const ownerReadable = $derived(mode === 'owner' && enabled && !!jobId);
+  const editable = $derived(ownerReadable && editEnabled);
+
+  $effect(() => {
+    if (editable || !active) return;
+    active = false;
+    tool = 'navigate';
+  });
 
   function getStrokes(surfaceKey: string): AnnotationStroke[] {
     return document?.surfaces?.[surfaceKey]?.strokes ?? [];
@@ -142,7 +158,7 @@
   provideAnnotationContext(context);
 
   async function loadOwnerDocument() {
-    if (!editable || !jobId) return;
+    if (!ownerReadable || !jobId) return;
     saveStatus = 'loading';
     try {
       const response = await getDiscoveryAnnotations(jobId);
@@ -168,7 +184,17 @@
   }
 
   $effect(() => {
-    if (mode !== 'owner' || !editable || !jobId || loadedOwnerJobId === jobId) return;
+    if (!ownerReadable || !jobId || !initialDocument) return;
+    const key = `${jobId}:${initialDocument.revision}`;
+    if (hydratedInitialKey === key) return;
+    hydratedInitialKey = key;
+    revision = initialDocument.revision;
+    document = structuredClone(initialDocument.document);
+    loadedOwnerJobId = jobId;
+  });
+
+  $effect(() => {
+    if (!ownerReadable || !jobId || loadedOwnerJobId === jobId) return;
     loadedOwnerJobId = jobId;
     void loadOwnerDocument();
   });

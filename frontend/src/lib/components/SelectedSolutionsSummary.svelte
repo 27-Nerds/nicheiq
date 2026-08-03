@@ -14,6 +14,8 @@
     selectedItems?: SelectionDraftItem[];
     solutionIdeas: SolutionPreview[];
     primaryWinner?: string | null;
+    primaryWinnerRef?: Pick<SelectionDraftItem, "ideaId" | "ideaRevision"> | null;
+    showIdentity?: boolean;
     status: string;
     jobId?: string;
   }
@@ -23,6 +25,8 @@
     selectedItems = [],
     solutionIdeas,
     primaryWinner = null,
+    primaryWinnerRef = null,
+    showIdentity = false,
     status,
     jobId,
   }: Props = $props();
@@ -61,7 +65,34 @@
         ? "running"
         : "reference",
   );
+
+  function shortIdeaId(ideaId: string): string {
+    return ideaId.length <= 16 ? ideaId : `${ideaId.slice(0, 12)}…`;
+  }
+
+  function isPrimaryWinner(solution: SolutionPreview): boolean {
+    if (primaryWinnerRef) {
+      return solution.idea_id === primaryWinnerRef.ideaId
+        && (solution.idea_revision ?? 1) === primaryWinnerRef.ideaRevision;
+    }
+    if (!primaryWinner) return false;
+    const matches = solutionIdeas.filter((candidate) => candidate.solution_name === primaryWinner);
+    return matches.length === 1 && matches[0] === solution;
+  }
 </script>
+
+{#if showIdentity && selectedItems.length > 0}
+  <div class="selection-identity-receipt" aria-label="Exact Deep Research selection">
+    <span>Exact selection</span>
+    <ul>
+      {#each selectedItems as item (`${item.ideaId}:${item.ideaRevision}`)}
+        <li title={`${item.ideaId} · revision ${item.ideaRevision}`}>
+          Idea {shortIdeaId(item.ideaId)} · rev {item.ideaRevision}
+        </li>
+      {/each}
+    </ul>
+  </div>
+{/if}
 
 {#if selectedSolutions.length > 0}
   {#if isCollapsible}
@@ -101,7 +132,7 @@
       <button
         type="button"
         class="flex items-center gap-3 p-3 rounded-lg border border-border text-left cursor-pointer transition-colors hover:border-border-hover
-          {solution.solution_name === primaryWinner ? 'bg-accent/5 border-accent/20' : ''}"
+          {isPrimaryWinner(solution) ? 'bg-accent/5 border-accent/20' : ''}"
         onclick={() => modalIndex = i}
       >
         <span class="inline-flex cursor-help" title={SCORE_DEFINITIONS.composite}>
@@ -115,7 +146,7 @@
           <h4 class="text-base font-semibold text-text-primary leading-snug truncate">{solution.solution_name}</h4>
           <p class="mt-1 text-xs text-text-muted italic truncate">{solution.value_proposition}</p>
           <div class="flex items-center flex-wrap gap-1.5 mt-1.5">
-            {#if solution.solution_name === primaryWinner}
+            {#if isPrimaryWinner(solution)}
               <Badge variant="accent" size="sm">Top Recommended</Badge>
             {:else if superpower}
               <Badge variant={superpower.variant} size="sm">{superpower.label}</Badge>
@@ -154,6 +185,38 @@
 {/if}
 
 <style>
+  .selection-identity-receipt {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-3);
+    align-items: center;
+    margin: 0 0 var(--space-3);
+    color: var(--color-text-muted);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+  }
+
+  .selection-identity-receipt > span {
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .selection-identity-receipt ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .selection-identity-receipt li + li::before {
+    margin-right: var(--space-2);
+    color: var(--color-border-emphasis);
+    content: "·";
+  }
+
   .score-unavailable {
     display: inline-grid;
     width: var(--space-10);

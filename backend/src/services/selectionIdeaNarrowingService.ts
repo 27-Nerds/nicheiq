@@ -1,6 +1,5 @@
 import { z } from 'zod';
-import { CONFIG } from '../config.js';
-import { chatComplete } from './openai.js';
+import { chatComplete, hasApiKeyForModel } from './openai.js';
 import {
   estimateAnalystCostUsd,
   normalizeAnalystUsage,
@@ -16,6 +15,7 @@ import {
   type SelectionExperimentConclusionSnapshot,
 } from '../types/selectionExperiment.js';
 import { fenceContent } from '../utils/promptFence.js';
+import { presentableRecord } from '../utils/selectionVocabulary.js';
 import { canonicalJsonSha256 } from '../utils/canonicalFingerprint.js';
 import { candidateSnapshotSha256 } from '../utils/ideaIdentity.js';
 
@@ -33,6 +33,13 @@ const NarrowingOutputSchema = z.object({
 
 type NarrowingOutcome = 'FAIL' | 'AMBIGUOUS';
 type NarrowingEvidenceSource = 'HOSTED_RUN' | 'MANUAL';
+
+/** `outcome` is a storage token. Lowercased into a sentence it read as "grounded in the
+ *  recorded fail conclusion"; these are words instead. */
+const OUTCOME_PHRASE: Record<NarrowingOutcome, string> = {
+  FAIL: 'the test that did not pass',
+  AMBIGUOUS: 'the test that came back inconclusive',
+};
 
 export interface SelectionIdeaNarrowingInput {
   jobId: string;
@@ -111,8 +118,14 @@ function userPrompt(input: SelectionIdeaNarrowingInput, snapshot: SelectionExper
     conclusion: snapshot,
     founderConstraints: input.decisionProfile ?? null,
   };
+  // The prompt copy only. `parent.snapshot` carries the closed-vocabulary fields
+  // (`red_team_verdict`, `incumbent_parity`, `adjacent_market_parity`) and this model's
+  // `changeSummary` / `rationale` are shown to the owner verbatim, so the raw tokens are
+  // one paraphrase away from the screen. `presentableRecord` returns a new tree, leaving
+  // `input.parent.snapshot` — what `candidateSnapshotSha256` anchors the patch to —
+  // byte-identical.
   return fenceContent(
-    JSON.stringify(payload),
+    JSON.stringify(presentableRecord(payload)),
     'selection-experiment-conclusion',
     input.conclusionId,
     'UNTRUSTED SELECTION EVIDENCE',
@@ -122,7 +135,6 @@ function userPrompt(input: SelectionIdeaNarrowingInput, snapshot: SelectionExper
 export async function generateSelectionIdeaNarrowing(
   input: SelectionIdeaNarrowingInput,
 ): Promise<SelectionIdeaNarrowingResult> {
-  if (!CONFIG.openaiApiKey) throw new Error('AI_PROVIDER_UNAVAILABLE');
   const conclusionSnapshot = SelectionExperimentConclusionSnapshotSchema.parse(input.conclusionSnapshot);
   if (
     conclusionSnapshot.experiment.experimentId !== input.experimentId
@@ -135,6 +147,7 @@ export async function generateSelectionIdeaNarrowing(
   }
 
   const model = await resolveAnalystModel();
+  if (!hasApiKeyForModel(model)) throw new Error('AI_PROVIDER_UNAVAILABLE');
   const completion = await chatComplete({
     model,
     messages: [
@@ -214,7 +227,7 @@ export async function generateSelectionIdeaNarrowing(
 
   return {
     patch,
-    content: `A narrowed, unevaluated variant of ${input.parent.solutionName}, grounded in the recorded ${input.outcome.toLowerCase()} conclusion.`,
+    content: `A narrowed, unevaluated variant of ${input.parent.solutionName}, grounded in ${OUTCOME_PHRASE[input.outcome]}.`,
     model,
     promptVersion: PROMPT_VERSION,
     usage,

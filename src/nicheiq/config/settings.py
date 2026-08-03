@@ -21,6 +21,20 @@ def _patch_tiktoken_models():
 
         # Models not yet in tiktoken 0.12.0 - all use o200k_base encoding
         new_models = {
+            # GPT-5.6 series
+            "gpt-5.6-luna": "o200k_base",
+            "gpt-5.6-terra": "o200k_base",
+            "gpt-5.6-sol": "o200k_base",
+            # GPT-5.5 series
+            "gpt-5.5": "o200k_base",
+            "gpt-5.5-pro": "o200k_base",
+            # GPT-5.4 series
+            "gpt-5.4": "o200k_base",
+            # GPT-5.3 series
+            "gpt-5.3-codex": "o200k_base",
+            "gpt-5.4-mini": "o200k_base",
+            "gpt-5.4-nano": "o200k_base",
+            "gpt-5.4-pro": "o200k_base",
             # GPT-5.2 series
             "gpt-5.2": "o200k_base",
             "gpt-5.2-chat-latest": "o200k_base",
@@ -69,10 +83,11 @@ class Settings(BaseSettings):
     # OpenAI Configuration
     openai_api_key: str = Field(..., description="OpenAI API key")
     openai_model_name: str = Field(
-        default="openrouter/google/gemini-3.1-flash-lite",
+        default="gpt-5.6-luna",
         description=(
-            "Workhorse model for ~23 agents + structured tiers. First-party (Google) via "
-            "OpenRouter = reliable tool calls, 1M ctx, cheap. Was gpt-4.1-mini."
+            "Workhorse model for ~23 agents + structured tiers. gpt-5.6-luna (2026-07-31): "
+            "direct OpenAI = no OpenRouter overhead, reliable tool calls, cheaper than Gemini "
+            "via OpenRouter. Was openrouter/google/gemini-3.1-flash-lite."
         )
     )
     function_calling_llm: str = Field(
@@ -80,8 +95,8 @@ class Settings(BaseSettings):
         description="Model to use for function/tool calling (first-party reliable tool calls, matches the workhorse). Was gpt-4o-mini."
     )
     content_analysis_llm: str = Field(
-        default="openrouter/deepseek/deepseek-v4-flash",
-        description="Model for content analysis (needs ~1M context for large Reddit content; cheap input). Was gpt-4.1-mini."
+        default="gpt-5.6-luna",
+        description="Model for content analysis (needs ~1M context for large Reddit content). gpt-5.6-luna (2026-07-31): direct OpenAI, 2.6x faster, more niche-specific themes. Was openrouter/deepseek/deepseek-v4-flash:nitro."
     )
     content_analysis_reasoning_effort: str = Field(
         default="none",
@@ -166,6 +181,25 @@ class Settings(BaseSettings):
             "thin-case trigger. env CONTAINS_SEED_THIN_SEED_THRESHOLD."
         ),
     )
+    seo_offtopic_volume_guard: bool = Field(
+        default=True,
+        description=(
+            "Kill-switch for the Stage-6 off-topic-volume guard consumers (Q-049 batch-1): the "
+            "grade-0 exclusion in the SEO kill-question inputs and the idea-intent-share pipeline "
+            "degradation caveat. Does NOT gate the idea_intent_grade stamping itself (grades are "
+            "always stamped when the grader runs). env SEO_OFFTOPIC_VOLUME_GUARD."
+        ),
+    )
+    seo_fallback_prefilter: bool = Field(
+        default=True,
+        description=(
+            "Stage 6-KV batched attempt-1: when a solution's seed-overlap keyword slice is too thin "
+            "(<20) and the code falls back to the cross-solution expansion pool, run a deterministic "
+            "token-overlap prefilter (solution value-prop + pains + angle + jargon-expanded audience "
+            "vocabulary) over that pool first, so a 0-seed solution never inherits the raw "
+            "cross-solution keyword pool. env SEO_FALLBACK_PREFILTER."
+        ),
+    )
     related_keywords_depth: int = Field(
         default=1, ge=1, le=3,
         description=(
@@ -197,12 +231,12 @@ class Settings(BaseSettings):
         ),
     )
     brainstorm_llm: str = Field(
-        default="openrouter/openai/gpt-5.2",
+        default="gpt-5.6-terra",
         description=(
             "Model for solution brainstorming/ideation AND the Stage-7 probe/synthesis helpers "
             "(Niche Anchors, Data Menu, Workflow Frame, Synthesis, Parity Pivot, Variant Merge, "
-            "Red Team Revision). Same gpt-5.2 as before, routed via OpenRouter so costs are "
-            "provider-reported (actual) and every tier shares one API path."
+            "Red Team Revision). gpt-5.6-terra (2026-07-31): direct OpenAI, cheaper output than "
+            "gpt-5.2 ($12 vs $14/M), no OpenRouter overhead. Was openrouter/openai/gpt-5.2."
         )
     )
     brainstorm_llms: str = Field(
@@ -417,6 +451,16 @@ class Settings(BaseSettings):
             "carries the heaviest angle weight (distribution_seo: 0.40) and can put a weaker idea at "
             "rank 1 before any keyword data exists. Display/verdict fields keep the uncapped value. "
             "1.0 disables."
+        ),
+    )
+    audience_fit_penalty: float = Field(
+        default=0.05, ge=0.0, le=1.0,
+        description=(
+            "RANKING-only penalty subtracted from an idea's COMPOSITE when audience_fit is False "
+            "(the idea serves an audience ADJACENT to the user's stated one). Applied only when "
+            "audience-fit coverage of the pool is >=90% — below that, untagged ideas would be "
+            "stealth-promoted. The stored market_fit_score is never mutated (downgrade-only "
+            "discipline). 0.0 disables."
         ),
     )
     divergent_target_pool: int = Field(
@@ -732,35 +776,33 @@ class Settings(BaseSettings):
     #   REFINE = final-idea refiner + single-concept (re-injected) refiner (structured
     #            enhancement; writes user-facing copy, so keeps the full model by default).
     ideation_judge_llm: str = Field(
-        default="openrouter/z-ai/glm-4.7-20251222:nitro",
+        default="gpt-5.6-luna",
         description=(
             "Model for convergent JUDGE steps (novelty critic + concept evaluator/filter). "
-            "Scoring/classification tasks, not creative generation. glm-4.7 emits clean complete "
-            "JSON on the forced-tool path (model_ab_pain_pipeline.py) and is nitro-fast. "
-            "Was gpt-5.4-mini."
+            "gpt-5.6-luna (2026-07-31): direct OpenAI, comparable speed, lower hallucination "
+            "risk on existing-equivalent claims. Was openrouter/z-ai/glm-4.7-20251222:nitro."
         )
     )
     ideation_judge_reasoning_effort: str = Field(
         default="none",
         description=(
-            "Reasoning effort for the JUDGE tier (novelty critic + evaluator). 'none' required "
-            "for glm-4.7: reasoning-ON dumps unbounded CoT and truncates the tool call; "
-            "forced-tool reasoning-off fills the schema in ~2s (judge_model_ab.py)."
+            "Reasoning effort for the JUDGE tier (novelty critic + evaluator). 'none' = "
+            "reasoning off (keeps output clean/complete). env: IDEATION_JUDGE_REASONING_EFFORT."
         )
     )
     ideation_refine_llm: str = Field(
-        default="openrouter/z-ai/glm-4.7-20251222:nitro",
+        default="gpt-5.6-luna",
         description=(
             "Model for the REFINE tier (final solution refiner + single-concept/re-injected "
-            "refiner). Writes the user-facing idea copy. glm-4.7: clean complete JSON, 100% "
-            "field coverage in the A/B, good copy quality. Was gpt-5.2."
+            "refiner). gpt-5.6-luna (2026-07-31): direct OpenAI, uses function_calling transport "
+            "for complex schemas, 100% field coverage. Was openrouter/z-ai/glm-4.7-20251222:nitro."
         )
     )
     ideation_refine_reasoning_effort: str = Field(
         default="none",
         description=(
-            "Reasoning effort for the REFINE tier. 'none' keeps glm-4.7 output clean/complete "
-            "(reasoning-ON truncates the tool call). If copy quality is thin, try 'low'."
+            "Reasoning effort for the REFINE tier. 'none' = reasoning off. env: "
+            "IDEATION_REFINE_REASONING_EFFORT."
         )
     )
     ideation_mentor_llm: str = Field(
@@ -844,15 +886,12 @@ class Settings(BaseSettings):
         description="Reasoning effort for the angle classifier (reasoning-ON path), mirroring the calibration critic.",
     )
     novelty_enhance_llm: str = Field(
-        default="openrouter/deepseek/deepseek-v4-pro:nitro",
+        default="gpt-5.6-luna",
         description=(
-            "Refiner model for the novelty-enhance pass (separate from the main ideator, "
-            "ideation_refine_llm). Called reasoning-off + creative=True (tool transport). Default "
-            "deepseek-v4-pro: in the A/B (refiner_multi.py, 3 niches) it was the quality winner — "
-            "4/4 Opus-audited GENUINE accepts (vs glm-4.7 ~78%), highest novelty reach, often lifts "
-            "feasibility, reaching for real ML/DSP techniques rather than rewording. Trade-off: "
-            "slower than glm-4.7. Note: creative=True sidesteps deepseek's structured-output "
-            "field-drop class (the reason it is NOT the main ideator)."
+            "Refiner model for the novelty-enhance pass (separate from the main ideator). "
+            "gpt-5.6-luna (2026-07-31): YC-partner prompt framing, 2x faster than deepseek, "
+            "comparable creativity with better reliability (no empty-field bugs). "
+            "Was openrouter/deepseek/deepseek-v4-pro:nitro."
         )
     )
     score_calibration_llm: str = Field(
@@ -889,13 +928,23 @@ class Settings(BaseSettings):
             "N=1 restores the single-call path. env SCORE_CALIBRATION_SAMPLES."
         )
     )
+    score_calibration_route_reconcile: bool = Field(
+        default=True,
+        description=(
+            "Q-030/Q-035 honesty reconcile: ask the calibration critic to NAME the data route its "
+            "market_fit reason relies on (market_fit_claimed_route), and when that claimed route was "
+            "NOT confirmed by the route verifier (data_access_model unverified/blocked/restricted) "
+            "append an honest '(route not confirmed: ...)' qualifier to the market_fit calibration "
+            "note plus a coverage caveat. Annotation-only — never mutates scores. "
+            "env SCORE_CALIBRATION_ROUTE_RECONCILE."
+        ),
+    )
     red_team_review_llm: str = Field(
-        default="openrouter/qwen/qwen3.7-max",
+        default="gpt-5.6-luna",
         description=(
             "Model for the adversarial red-team pass over the top visible ideas (post-demote, "
-            "pre-portfolio-summary). Same class as score_calibration_llm — must be a reasoning "
-            "model so reasoning_effort='high' is honored. Independent of the brainstorm pool "
-            "(attacker ≠ generator)."
+            "pre-portfolio-summary). gpt-5.6-luna (2026-07-31): same cost as qwen, 28/28 factual "
+            "claims grounded in evidence, richer analysis avoids false kills. Was openrouter/qwen/qwen3.7-max."
         ),
     )
     red_team_top_k: int = Field(
@@ -936,11 +985,11 @@ class Settings(BaseSettings):
         description="Model to use for keyword relevance validation in Phase 6c (gpt-5-nano at minimal reasoning effort for cost efficiency)"
     )
     pain_point_validation_llm: str = Field(
-        default="openrouter/deepseek/deepseek-v4-flash:nitro",
+        default="gpt-5.6-luna",
         description=(
-            "Model for pain point analysis/validation in Stage 6. A/B winner "
-            "(model_ab_pain_pipeline.py): 12 pains 100% grounded + valid scoring, nitro-fast "
-            "on the crew path. Was gpt-4.1-mini (non-reasoning to allow max_tokens)."
+            "Model for pain point analysis/validation in Stage 6. gpt-5.6-luna (2026-07-31): "
+            "2x faster, 100% grounded, honest about incomplete data, better framing/actionability. "
+            "~4x cost vs deepseek but quality justifies. Was deepseek-v4-flash:nitro."
         )
     )
     # Deterministic grounding gate on Stage-3 quote enrichment: permanent —
@@ -981,22 +1030,46 @@ class Settings(BaseSettings):
     report_structured_llm: str = Field(
         default="openrouter/x-ai/grok-4.3",
         description=(
-            "Model for LIST-HEAVY report invoke_structured schemas (FeatureComparison, "
-            "First30DaysPlaybook, MarketingNarrative, IdealCustomerProfile) AND the Stage-7 "
-            "structured probes (Incumbent, Parity, Adjacent Market, Toolbelt, Segment "
-            "Payability, Niche Wallet, Overlap Note, Dissatisfaction Gate). gemini-2.5-"
-            "flash-lite truncates ~25% on long list outputs; grok-4.3 is reliable + cheap "
-            "(3/3 @ 3-6s, report_schema_model_test.py). Was gpt-4.1-mini. "
-            "Single-object narratives stay on OPENAI_MODEL_NAME (gemini)."
+            "Model for the Stage-7 per-idea structured PROBES (Incumbent, Parity, Adjacent "
+            "Market, Toolbelt, Segment Payability, Niche Wallet, Overlap Note, "
+            "Dissatisfaction Gate). These pass reasoning_effort='none' and run once per "
+            "idea, so latency compounds. Kept on grok-4.3 for SPEED, not compatibility: it "
+            "abstains correctly on the no-incumbent case (3/3, zero fabricated vendors) at "
+            "~1.7-2.1s vs gpt-5.6-luna's ~2.3-2.5s. Luna is NO LONGER blocked here — it "
+            "used to 400 on reasoning_effort='minimal' (its floor is spelled 'none'), which "
+            "made a capable model look unusable for this entire workload; LLMService now "
+            "retries once at the nearest accepted effort, so any tier may be repointed "
+            "without a hard failure (probe_model_ab.py: Luna 0/6 before, 6/6 after). "
+            "The list-heavy REPORT schemas were split out to `report_schema_llm` — this "
+            "setting used to drive both, which is how one model choice could break two "
+            "unrelated workloads. Single-object narratives stay on OPENAI_MODEL_NAME."
+        ),
+    )
+    report_schema_llm: str = Field(
+        default="gpt-5.6-luna",
+        description=(
+            "Model for the four LIST-HEAVY report invoke_structured schemas only "
+            "(FeatureComparison, First30DaysPlaybook, MarketingNarrative, "
+            "IdealCustomerProfile). A/B 2026-08-03 (scripts/report_model_ab.py, 24 calls) vs "
+            "grok-4.3: both 12/12 reliable with ZERO truncation or blank fields — the "
+            "failure mode grok was adopted for (gemini-2.5-flash-lite truncated ~25% on long "
+            "lists) does not appear in either. Luna is more complete on 3 of 4 schemas "
+            "(167/142/142% vs 149/100/117% fill); grok's only win is FeatureComparison at "
+            "125% vs Luna's exactly-100%, i.e. overshoot rather than depth. Calls measure "
+            "~300 in / ~900 out, so the OUTPUT price dominates: ~$0.00115 vs $0.00266 per "
+            "call, ~2.3x cheaper. Costs ~11s per report (10.3s vs 7.5s avg), acceptable for "
+            "background generation. SEPARATE from report_structured_llm, which drives the "
+            "per-idea probes — kept apart because those favour latency over completeness, "
+            "not because of any compatibility limit."
         ),
     )
     pain_solution_mapping_llm: str = Field(
-        default="gpt-4.1-mini",
-        description="Model for pain-to-solution mapping in Stage 10 report generation (gpt-4.1-mini: non-reasoning, good instruction-following)"
+        default="gpt-5.6-luna",
+        description="Model for pain-to-solution mapping in Stage 10 report generation (gpt-4.1-mini replaced 2026-07-31 for gpt-5.6-luna: ~2x cheaper, faster, richer explanations)"
     )
     landing_page_llm: str = Field(
-        default="gpt-5.2",
-        description="Model to use for landing page generation (gpt-5.2 recommended for high-quality creative output)"
+        default="gpt-5.6-terra",
+        description="Model to use for landing page generation (gpt-5.6-terra: direct OpenAI, cheaper output than gpt-5.2, same generation quality)."
     )
     # 3-tier reasoning effort for landing page agents
     landing_page_creative_reasoning_effort: str = Field(
@@ -1012,8 +1085,12 @@ class Settings(BaseSettings):
         description="Reasoning effort for validation agents (QA Reviewer). 'low' recommended for structured validation tasks."
     )
     landing_page_execution_llm: str = Field(
-        default="gpt-5.1-codex-max",
-        description="Model for execution agents (HTML Developer, Animation Enhancer, QA Reviewer). Codex models recommended for reliable code generation."
+        default="gpt-5.3-codex",
+        description="Model for execution agents (HTML Developer, Animation Enhancer, QA Reviewer). Codex models recommended for reliable code generation. gpt-5.3-codex verified live on the Responses API (2026-07); the landing preflight check guards its eventual retirement. Was gpt-5.1-codex-max (retired)."
+    )
+    landing_preflight_model_check: bool = Field(
+        default=True,
+        description="Preflight-validate that landing_page_llm and landing_page_execution_llm exist on the OpenAI API before starting a landing-page job (fail-open on transient errors; hard-fails only on explicit 404/model_not_found, i.e. a retired model id)."
     )
 
     # Moonshot AI (Kimi) Configuration
@@ -1769,6 +1846,18 @@ class Settings(BaseSettings):
             "verified/trust seal/authenticity) with no third-party verification language — "
             "self-issued trust signaling is a liability hazard, killed twice by web judgment "
             "2026-07-10. 0 disables."
+        ),
+    )
+    unverified_route_claim_market_fit_cap: float = Field(
+        default=0.0, ge=0.0, le=1.0,
+        description=(
+            "Rule (g): market_fit ceiling for ideas whose calibration critic CLAIMED a data route "
+            "as market-fit support (market_fit_claimed_route set) while the route verifier left "
+            "data_access_model 'unverified' — a market-fit argument resting on an unconfirmed route "
+            "is unverified support. Ships 0.0 (DISABLED) this batch; enable only after BOTH "
+            "prerequisites land: (i) the frontend cap-hint mirror (scoreRationale marketFitCapHint + "
+            "SelectionCapThresholds), and (ii) the Phase-5.5 route-claim census shows hits are "
+            "dominated by genuine contradictions. Downgrade-only, min-composes with caps (b)/(d)/(e)/(f)."
         ),
     )
     enable_regulatory_risk_downgrade: bool = Field(

@@ -150,7 +150,10 @@
 		   (code/pre below), where 0/O disambiguation earns its keep. Prose contexts can
 		   opt into oldstyle figures via .prose-body. */
 		font-feature-settings: "calt" 1, "zero" 0;
-		overflow-x: hidden;
+		/* Clip accidental horizontal paint without turning <body> into a second
+		   scroll container. `hidden` makes the untouched Y axis compute to `auto`,
+		   adding an unnecessary scroll boundary around body-level fixed portals. */
+		overflow-x: clip;
 	}
 
 	h1, h2, h3, h4, h5, h6 {
@@ -1087,7 +1090,10 @@
 	--cc-btn-secondary-text: #18181B;
 	--cc-btn-secondary-hover-bg: #EBEBEB;
 	--cc-toggle-bg-on: #EA580C;
-	--cc-font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+	/* Token, not a family name: hardcoding "Plus Jakarta Sans" here survived the 2026-08
+	   consolidation to Geist and silently rendered the consent banner in the OS default
+	   face, since that family is no longer loaded (app.html loads Geist + Geist Mono only). */
+	--cc-font-family: var(--font-body);
 	--cc-border-radius: 0.75rem;
 }
 

@@ -22,15 +22,17 @@
       : { primary: "You saw one niche analyzed.", secondary: "Now do the same for yours." },
   );
 
+  const headingId = $derived(`shared-${variant}-end-title`);
+
   const registerUrl = $derived(
     `/register?ref=shared-${variant}-end${shareToken ? `&t=${shareToken}` : ""}`,
   );
 </script>
 
-<section class="end-cta">
+<section class="end-cta" aria-labelledby={headingId}>
   <div class="end-cta-inner">
     <span class="end-cta-eyebrow">{eyebrow}</span>
-    <h2 class="end-cta-title">
+    <h2 id={headingId} class="end-cta-title">
       {headline.primary}<br />{headline.secondary}
     </h2>
     <div class="end-cta-row">
@@ -39,7 +41,7 @@
         <ArrowRight class="end-cta-arrow" aria-hidden="true" />
       </a>
       <p class="end-cta-trust">
-        Monthly plans or one-time credit packs · Credits auto-refund if a run can't complete
+        Create an account to start a private Discovery run.
       </p>
     </div>
   </div>
@@ -93,8 +95,8 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0.875rem 1.5rem;
-    background: var(--color-accent);
-    color: white;
+    background: var(--color-accent-hover);
+    color: var(--color-text-on-accent);
     border: none;
     border-radius: var(--radius-md);
     font-family: var(--font-body);
@@ -111,6 +113,11 @@
 
   .end-cta-primary:active {
     transform: scale(0.98);
+  }
+
+  .end-cta-primary:focus-visible {
+    outline: 2px solid var(--color-accent-dark);
+    outline-offset: 3px;
   }
 
   :global(.end-cta-arrow) {

@@ -114,6 +114,17 @@ CURATED_SOURCES: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
                                                   "zcta to county relationship file",
                                                   "census zip code tabulation areas"),
      ("census.gov",)),
+    # 2026-08 (S4.4): regulated-industries data routes missed their allowlist entries too.
+    # "ecfr" alone is excluded from aliases — a bare 4-char token is too easy to false-positive
+    # via the exact-name sub-token pass; the domain + full phrase are unambiguous on their own.
+    ("eCFR", ("electronic code of federal regulations",), ("ecfr.gov",)),
+    ("DailyMed", ("dailymed",), ("dailymed.nlm.nih.gov",)),
+    ("FDA National Drug Code Directory", ("ndc directory", "national drug code directory",
+                                          "fda ndc"), ("fda.gov", "open.fda.gov")),
+    ("DEA Diversion Control Division", ("dea diversion", "diversion control division"),
+     ("deadiversion.usdoj.gov",)),
+    ("FDA Green Book", ("fda green book", "approved animal drug products"),
+     ("animaldrugsatfda.fda.gov",)),
 )
 
 _TOKEN_CUES = r"(?:rest\s+|graphql\s+|public\s+|open\s+|v\d+\s+)?(?:api|apis|dataset|datasets|database|registry|data)"

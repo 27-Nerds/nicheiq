@@ -24,15 +24,36 @@ you need has no token, add the token first.
 
 | Role | Family | Token | Use |
 |---|---|---|---|
-| Display | Space Grotesk | `--font-display` | H1/H2, the page's few display moments, verdict pull-quotes |
-| Body | Plus Jakarta Sans | `--font-body` | all prose, labels, buttons, inputs |
-| Mono | JetBrains Mono | `--font-mono` | record lines, eyebrows, counts, costs, timestamps, IDs, code |
+| Display | Geist | `--font-display` | H1/H2, the page's few display moments, verdict pull-quotes |
+| Body | Geist | `--font-body` | all prose, labels, buttons, inputs |
+| Mono | Geist Mono | `--font-mono` | record lines, eyebrows, counts, costs, timestamps, IDs, code |
+
+**Display and body are the same face on purpose** — one product family keeps dense
+decision screens coherent (`app.css`: "one legible product family…"). The tokens stay
+separate so the roles remain addressable, but do not expect a family switch to create
+hierarchy. **Hierarchy now comes from size, weight and letter-spacing alone**: headings
+are 700 at `letter-spacing -0.02em`, line-height 1.15; mono carries the record-line
+identity move. If a heading is not reading as a heading, the fix is weight/size/tracking
+or space around it — never a second sans family.
+
+*(Was Space Grotesk / Plus Jakarta Sans / JetBrains Mono; consolidated to Geist in
+`1a11936`. Doc reconciled to shipped CSS 2026-08-03 after an audit found the two had
+diverged.)*
 
 ### Zeros (foot-gun)
-JetBrains Mono defaults to **slashed** zeros. Display/data numbers use plain zeros —
-set via `font-feature-settings: "zero" 0` (already global for display/data contexts in
-`app.css`). Slashed zeros stay ON only in `code, pre`. Every mono data recipe below
-includes `"zero" 0` + `font-variant-numeric: tabular-nums` — don't drop either.
+**Never rely on the family's default** — every context sets the numeral features
+explicitly in `app.css`, so behaviour does not change if the family changes again:
+
+| Context | `font-feature-settings` | Zero |
+|---|---|---|
+| `body` (display/data numbers) | `"calt" 1, "zero" 0` | plain |
+| `code, pre` | `"calt" 1, "zero" 1, "ss01" 1, "ss02" 1, "tnum" 1` | **slashed** |
+| `.font-mono`, `.tabular-nums` | `"calt" 1, "zero" 0, "ss01" 1, "ss02" 1, "tnum" 1` | plain |
+| `.prose-body` | `"calt" 1, "onum" 1` | oldstyle figures |
+
+Slashed zeros are reserved for `code, pre`, where 0/O disambiguation earns its keep;
+stat tiles read cleaner without them. Every mono data recipe below includes `"zero" 0`
+plus `font-variant-numeric: tabular-nums` — don't drop either.
 
 ### Ramp
 `--text-xs 0.625rem/10px` · **`--text-11 0.6875rem/11px`** · `--text-sm 0.75rem/12px` ·

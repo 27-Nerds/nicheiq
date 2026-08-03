@@ -8,12 +8,20 @@ import type { UserSubscription } from '$lib/types/billing';
 
 export const load: LayoutServerLoad = async (event) => {
   let ctaTexts: Record<string, CtaConfig | null> = {};
+  let hasSampleReport = false;
   try {
-    const res = await fetchBackend('/api/settings/cta-texts');
-    const data = res.ok ? await res.json() : { ctas: {} };
-    ctaTexts = data.ctas ?? {};
+    const [ctaRes, sampleRes] = await Promise.all([
+      fetchBackend('/api/settings/cta-texts').catch(() => null),
+      fetchBackend('/api/settings/sample-report-url').catch(() => null),
+    ]);
+    const ctaData = ctaRes?.ok ? await ctaRes.json() : { ctas: {} };
+    ctaTexts = ctaData.ctas ?? {};
+    if (sampleRes?.ok) {
+      const sampleData = await sampleRes.json();
+      hasSampleReport = typeof sampleData.url === 'string' && sampleData.url.length > 0;
+    }
   } catch (error) {
-    console.error('Failed to fetch CTA texts:', error);
+    console.error('Failed to fetch public settings:', error);
   }
 
   // Logged-in users browsing the catalog see the dashboard chrome (AppHeader),
@@ -63,6 +71,7 @@ export const load: LayoutServerLoad = async (event) => {
 
   return {
     ctaTexts,
+    hasSampleReport,
     creditBalance,
     monthlyAllowance,
     purchasedBalance,

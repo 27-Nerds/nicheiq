@@ -13,7 +13,7 @@
  * turned expiring allowance into permanent purchased credit — exploitable by burning a lapsing
  * allowance at month-end and cancelling the jobs next month to collect credits that never expire.
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { afterEach, describe, it, expect, beforeEach, vi } from 'vitest';
 import { CreditTransactionType } from '@prisma/client';
 
 const mockJobFindUnique = vi.fn();
@@ -42,6 +42,8 @@ const USER = 'user-1';
 let charges: Array<Record<string, unknown>> = [];
 
 beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-07-15T12:00:00Z'));
   vi.clearAllMocks();
   charges = [];
   mockJobFindUnique.mockResolvedValue({ userId: USER, niche: 'Test Niche' });
@@ -52,6 +54,10 @@ beforeEach(() => {
   });
   mockUserCreditsUpdate.mockResolvedValue({});
   mockCreditTransactionCreate.mockImplementation(async (a: any) => ({ id: 'refund-1', ...a.data }));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe('refundForStage — bucket rules', () => {

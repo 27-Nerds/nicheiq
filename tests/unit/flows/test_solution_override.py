@@ -250,6 +250,33 @@ class TestStage85RationaleOverride:
             new=_score("A"), orig=_score("SoloClientQueue"), orig_validated=False)
         assert "not keyword-validated" in rationale2
 
+    def test_rationale_counts_graded_keywords_not_expansion_pool(self):
+        """"across N validated keywords" must count the graded set (Codex review §4b).
+
+        Live 2026-08-02 shape: validated_count carried the 50-keyword unfiltered
+        expansion pool while a single keyword survived relevance grading, so the
+        rationale advertised 50 pieces of evidence the run did not have.
+        """
+        from nicheiq.models.keyword_data import CrewKeywordValidationResult
+
+        validation = CrewKeywordValidationResult(
+            solution_name="PricingValueCalc",
+            validated_count=50,
+            total_volume=12500,
+            avg_competition=42.0,
+            keyword_demand_score=0.37,
+            demand_signal="moderate",
+            validation_signals={"has_search_demand": True},
+            attempts_made=1,
+            best_relevance_score=0.72,
+            validated_keywords=[{"keyword": "value based pricing calculator"}],
+        )
+        rationale = self._rationale(
+            orig=_score("SoloClientQueue", composite=0.19, demand=0.22, adjusted=0.19),
+            validation=validation)
+        assert "across 1 validated keywords" in rationale
+        assert "50 validated keywords" not in rationale
+
     def test_rationale_without_validation_data(self):
         rationale = self._rationale(
             orig=_score("SoloClientQueue", composite=0.19, demand=0.22, adjusted=0.19))

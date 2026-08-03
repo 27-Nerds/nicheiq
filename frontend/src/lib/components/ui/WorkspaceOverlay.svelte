@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tourState } from "$lib/tour/tourState.svelte";
-	import type { Snippet } from "svelte";
+	import { onMount, type Snippet } from "svelte";
 	import { portal } from "$lib/actions/portal";
 	import { isolateModalBackground } from "$lib/utils/modalIsolation";
 	import { lockScroll } from "$lib/utils/scrollLock";
@@ -32,6 +32,13 @@
 
 	let frameEl = $state<HTMLElement>();
 	let layerEl = $state<HTMLDivElement>();
+	let mounted = $state(false);
+
+	// The open state may come from browser storage. Rendering the server default
+	// would flash one overlay geometry before hydration applies that preference.
+	onMount(() => {
+		mounted = true;
+	});
 
 	const FOCUSABLE =
 		'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [contenteditable="true"], [tabindex]:not([tabindex="-1"])';
@@ -111,7 +118,7 @@
 	}
 </script>
 
-{#if open}
+{#if mounted && open}
 	<div
 		bind:this={layerEl}
 		use:portal
@@ -189,9 +196,18 @@
 
 	.workspace-overlay--docked .workspace-overlay__frame {
 		right: max(var(--space-4), env(safe-area-inset-right));
-		bottom: max(var(--space-4), env(safe-area-inset-bottom));
+		/* DecisionRail publishes its measured height on the document root. Because
+		   both surfaces are body-portaled and bottom-anchored, reserve that height
+		   here and in the viewport-bounded height instead of covering the commit CTA. */
+		bottom: max(
+			calc(var(--decision-rail-height, 0px) + var(--space-4)),
+			env(safe-area-inset-bottom)
+		);
 		width: min(26rem, calc(100vw - var(--space-8)));
-		height: min(34rem, calc(100dvh - var(--space-8)));
+		height: min(
+			34rem,
+			calc(100dvh - var(--decision-rail-height, 0px) - var(--space-8))
+		);
 		animation: workspace-overlay-in var(--duration-fast) var(--ease-out) both;
 	}
 
@@ -259,10 +275,16 @@
 	@media (max-width: 639px) {
 		.workspace-overlay--docked .workspace-overlay__frame {
 			right: max(var(--space-3), env(safe-area-inset-right));
-			bottom: max(var(--space-3), env(safe-area-inset-bottom));
+			bottom: max(
+				calc(var(--decision-rail-height, 0px) + var(--space-3)),
+				env(safe-area-inset-bottom)
+			);
 			left: max(var(--space-3), env(safe-area-inset-left));
 			width: auto;
-			height: min(36rem, calc(100dvh - var(--space-6)));
+			height: min(
+				36rem,
+				calc(100dvh - var(--decision-rail-height, 0px) - var(--space-6))
+			);
 		}
 
 		.workspace-overlay--modal .workspace-overlay__frame {

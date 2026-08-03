@@ -483,7 +483,7 @@ class AlternativeSolution(BaseModel):
 
     # NEW: Economic indicators
     estimated_development_time: Optional[str] = Field(default=None, description="Estimated development time")
-    estimated_cac_organic: Optional[str] = Field(default=None, description="Estimated organic customer acquisition cost (e.g. '$15-30')")
+    estimated_cac_organic: Optional[str] = Field(default=None, description="Estimated organic customer acquisition cost, as a dollar figure or range derived from this idea's own channels; leave unset when none can be grounded")
     pricing_model: Optional[str] = Field(default=None, description="Recommended pricing model")
 
     # Phase 8 of detail-page IA rework — same field as BaseSolutionIdea so
@@ -501,6 +501,12 @@ class AlternativeSolution(BaseModel):
     critic_concern: Optional[str] = Field(
         default=None,
         description="The calibration critic's market_fit reason, verbatim — the bear case")
+    refine_binding_constraint: Optional[str] = Field(
+        default=None,
+        description="The refinement tournament judge's directive on the winning revision — "
+        "user-facing prose, no internal criterion token (mirrors "
+        "BaseSolutionIdea.refine_binding_constraint); None when the v4 refinement loop didn't "
+        "run for this idea")
     incumbent_parity: Optional[str] = Field(
         default=None,
         description="Web-verified mechanism-parity finding for top ideas (mirrors "
@@ -517,6 +523,13 @@ class AlternativeSolution(BaseModel):
         default=None,
         description="Up to 3 evidence-cited red-team caveats (mirrors "
         "BaseSolutionIdea.red_team_caveats); None = idea not red-teamed")
+    rebuild_origin: Optional[str] = Field(
+        default=None,
+        description="'parity_pivot' | 'variant_merge' | 'red_team_revision' when this idea "
+        "replaced an earlier one that was rebuilt (mirrors BaseSolutionIdea.rebuild_origin). "
+        "Declared here because this model is extra='ignore' — an undeclared field is dropped "
+        "silently, which is how the red-team fields above were lost once already. The UI uses "
+        "it to explain why a rebuilt idea has no acquisition-cost figure.")
     source_segment_payability: Optional[float] = Field(
         default=None, ge=0.0, le=1.0,
         description="0-1 payability of the source segment (permanent buyer-wallet signal)")
@@ -760,6 +773,16 @@ class FinalReport(BaseModel):
         default=None,
         description="Research Reality Check: candid verdict on how hard this niche is to solve with software"
     )
+    scoring_version: Optional[str] = Field(
+        default=None,
+        description=(
+            "Version of the scoring formulas that produced this report's scores "
+            "(report_generator.SCORING_VERSION, e.g. '2026.08'; bumped when critic rubric, "
+            "caps/floors, verdict thresholds, or composite weights change). None on reports "
+            "generated before the 2026.08 cutover — scores across different versions are "
+            "not comparable."
+        ),
+    )
     market_reality: Optional[dict] = Field(
         default=None,
         description=(
@@ -901,7 +924,7 @@ class FinalReport(BaseModel):
             "(3) CAC advantage ratio (X:1), "
             "(4) Scalability assessment. "
             "Should reference programmatic SEO page count, keyword search volumes, "
-            "and project type benchmarks (directories $15-30, aggregators $20-40, etc.)."
+            "and project type benchmarks for this run's project type."
         )
     )
 
@@ -1093,10 +1116,10 @@ class PricingStrategyResult(BaseModel):
 
     # Recommended Pricing (optional for Ad-Supported-Free/Affiliate-Only models)
     recommended_starter_price: Optional[str] = Field(
-        default=None, description="Starter tier price (e.g., '$19/month') - null for ad/affiliate models"
+        default=None, description="Starter tier price as a dollar amount per billing period - null for ad/affiliate models"
     )
     recommended_pro_price: Optional[str] = Field(
-        default=None, description="Pro tier price (e.g., '$49/month') - null for ad/affiliate models"
+        default=None, description="Pro tier price as a dollar amount per billing period - null for ad/affiliate models"
     )
     recommended_enterprise_price: Optional[str] = Field(
         default=None, description="Enterprise tier price if applicable"
@@ -1129,25 +1152,25 @@ class PricingStrategyResult(BaseModel):
 
     # Ad/Affiliate Revenue Fields (for Ad-Supported-Free/Affiliate-Only models)
     estimated_monthly_ad_revenue: Optional[str] = Field(
-        default=None, description="Estimated monthly ad revenue (e.g., '$400-800') - for ad-supported models"
+        default=None, description="Estimated monthly ad revenue as a dollar range - for ad-supported models"
     )
     estimated_monthly_affiliate_revenue: Optional[str] = Field(
-        default=None, description="Estimated monthly affiliate revenue (e.g., '$200-400') - for affiliate models"
+        default=None, description="Estimated monthly affiliate revenue as a dollar range - for affiliate models"
     )
     estimated_cpm_rate: Optional[str] = Field(
-        default=None, description="Estimated CPM rate (e.g., '$5-15 CPM') - for ad-supported models"
+        default=None, description="Estimated CPM rate as a dollar range labelled 'CPM' - for ad-supported models"
     )
     recommended_ad_networks: Optional[list[str]] = Field(
         default=None, description="Recommended ad networks (e.g., ['AdSense', 'Mediavine']) - for ad-supported models"
     )
 
     # Economics
-    estimated_arpu: str = Field(..., description="Estimated average revenue per user (e.g., '$32/month')")
+    estimated_arpu: str = Field(..., description="Estimated average revenue per user per month, computed from this run's own tier prices and tier mix; or a statement that it is not established")
     estimated_ltv: str = Field(
-        ..., description="Estimated lifetime value range (e.g., '$384 - $960 (12-30mo retention)')"
+        ..., description="Estimated lifetime value as a dollar range with the retention assumption stated; or a statement that it is not established"
     )
     ltv_to_cac_ratio: str = Field(
-        ..., description="LTV to CAC ratio estimate (e.g., '12:1 to 48:1')"
+        ..., description="LTV to CAC ratio in X:1 form, computed from this idea's own LTV and CAC; or a statement that it is not computable when no CAC exists"
     )
 
     # Competitive Positioning
@@ -1842,12 +1865,46 @@ class ResearchState(BaseModel):
             "variants_absorbed, backfill_run, backfill_accepted, candidates_shown)."
         ),
     )
+    idea_cell_allocation: dict = Field(
+        default_factory=dict,
+        description=(
+            "Stage-5 ALLOCATION-stage telemetry (docs/DIVERSITY_DECISION_2026-08.md): buyer-job "
+            "family partition source + whether it degraded to the theme fallback, families "
+            "available/covered, uncovered families with reasons, per-cell intended family, "
+            "pain-vs-frame cell counts, the reserve-carve budget, and the final product-family "
+            "count. Deliberately separate from idea_funnel_counts, which mixes generation- and "
+            "idea-stage tallies."
+        ),
+    )
     idea_overlap_groups: list[dict] = Field(
         default_factory=list,
         description=(
             "Variant-overlap groups a buyer would see as one product: {idea_names, "
             "shared_product}. Groups whose merge was accepted are absorbed into an "
             "idea_tier='merged' idea; the rest drive the UI's grouped-variant display."
+        ),
+    )
+    buyer_job_partition: dict = Field(
+        default_factory=dict,
+        description=(
+            "The run's buyer-job family partition over validated pain ids (utils/buyer_jobs.py "
+            "`BuyerJobPartition.to_telemetry()`): {source, degraded, degradation_reason, "
+            "families[]}. Persisted because the partition is a per-JOB fact: regenerate/seed "
+            "batches and resumed runs REUSE it (extended for new pains, never re-partitioned) so "
+            "family_id — the thesis identity in idea_theses — stays stable across batches. Only "
+            "non-degraded partitions are stored."
+        ),
+    )
+    idea_theses: dict = Field(
+        default_factory=dict,
+        description=(
+            "Thesis-level portfolio partition (docs/DIVERSITY_DECISION_2026-08.md, see "
+            "utils/idea_theses.py): {family_source, theses[], uncovered_families[], "
+            "unassigned[]}. Every VISIBLE idea lands in exactly one thesis (grouped by the run's "
+            "buyer-job family) or in the explicit `unassigned` bucket; `uncovered_families` are "
+            "validated families no surviving concept represents. Distinct from "
+            "idea_overlap_groups, which is NOT a partition (2+ groups only, accepted merges "
+            "removed). Empty {} when the run has no non-degraded buyer-job partition."
         ),
     )
     niche_incumbent_map: list[dict] = Field(

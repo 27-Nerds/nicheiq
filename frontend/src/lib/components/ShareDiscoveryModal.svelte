@@ -189,6 +189,11 @@
           onConfirm={handleRegenerate}
         />
       </div>
+    {:else if shareInfo?.voteCount && shareInfo.voteCount > 0}
+      <p class="share-history" role="status">
+        Sharing is off. {shareInfo.voteCount} earlier {shareInfo.voteCount === 1 ? "vote remains" : "votes remain"}
+        available in Collaborator feedback.
+      </p>
     {/if}
 
     {#if errorMessage}
@@ -330,6 +335,13 @@
 
   .share-stats {
     margin: 0;
+  }
+
+  .share-history {
+    margin: 0;
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+    line-height: var(--leading-normal);
   }
 
   .share-regenerate {

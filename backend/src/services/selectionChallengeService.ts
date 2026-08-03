@@ -12,7 +12,11 @@ import {
   type SelectionChallengeSource,
   type SelectionChallengeSubject,
 } from '../types/selectionChallenge.js';
-import { chatComplete } from './openai.js';
+import { chatComplete, hasApiKeyForModel } from './openai.js';
+import {
+  challengeAssessmentsJsonSchema,
+  flattenChallengeAssessments,
+} from './selectionChallengeJsonSchema.js';
 import {
   buildSelectionChallengeEvidence,
   selectionChallengeIdeaSnapshot,
@@ -21,7 +25,38 @@ import {
   type SelectionChallengeOwnerEvidence,
 } from './selectionChallengeEvidence.js';
 
-const PROMPT_VERSION = 1 as const;
+// v2: strict json_schema response format + reconcile-by-questionId + backfill.
+// Bumping this changes every input fingerprint, so all v1 rows become stale
+// (list route buckets them; promptVersion stays widened to 1|2 so they parse).
+const PROMPT_VERSION = 2 as const;
+
+export type ChallengeAssessmentErrorKind =
+  | 'no_content'
+  | 'bad_json'
+  | 'schema_mismatch'
+  | 'timeout'
+  | 'upstream';
+
+export class ChallengeAssessmentError extends Error {
+  readonly kind: ChallengeAssessmentErrorKind;
+
+  constructor(kind: ChallengeAssessmentErrorKind, message: string, cause?: unknown) {
+    super(message);
+    this.name = 'ChallengeAssessmentError';
+    this.kind = kind;
+    if (cause !== undefined) (this as { cause?: unknown }).cause = cause;
+  }
+}
+
+function isTimeoutError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  // AbortSignal.timeout() aborts with a DOMException named 'TimeoutError'; the
+  // OpenAI SDK surfaces it as APIUserAbortError (name contains 'Abort').
+  return error.name === 'TimeoutError'
+    || error.name === 'AbortError'
+    || error.name.includes('Abort')
+    || (error as { code?: unknown }).code === 'ETIMEDOUT';
+}
 
 export function selectionChallengeFingerprint(
   lens: SelectionChallengeLens,
@@ -80,23 +115,14 @@ function userPrompt(
     `${role}:${lens}`,
     'SELECTION CHALLENGE DATA',
   );
-  const exampleShape = JSON.stringify({
-    assessments: questions.map(questionId => ({
-      questionId,
-      position: 'supports | contradicts | mixed | insufficient',
-      summary: 'plain-language assessment tied to cited evidence or the explicit evidence gap',
-      subjectKeys: subjectKeys.slice(0, 1).length > 0 ? [subjectKeys[0]] : ['I1'],
-      evidenceKeys: evidenceKeys.slice(0, 1).length > 0 ? [evidenceKeys[0]] : [],
-      evidenceClass: 'observed | proxy | inference',
-    })),
-  });
+  // The response shape is enforced by the strict json_schema response format
+  // (challengeAssessmentsJsonSchema) — no prose restatement of the shape here.
   return [
     availableKeys,
     '',
     context,
     '',
-    'Return this shape, once for every question in the supplied order:',
-    exampleShape,
+    'Assess each of the three supplied questions exactly once.',
   ].join('\n');
 }
 
@@ -193,34 +219,113 @@ function validateAssessments(
   });
 }
 
+/**
+ * Order-insensitive reconcile: rekey the raw assessments by questionId onto the
+ * lens's fixed question order, backfilling any missing question with a
+ * deterministic insufficient assessment (stamped `backfilled: true`) and
+ * dropping duplicates/off-lens extras. Runs BEFORE schema parse — on the same
+ * raw-object stage as normalizeAgentResponseKeys — so a reordered or short
+ * response is repaired instead of rejected.
+ */
+function reconcileAssessments(
+  lens: SelectionChallengeLens,
+  raw: unknown,
+  subjects: SelectionChallengeSubject[],
+): unknown {
+  if (!raw || typeof raw !== 'object') return raw;
+  const obj = raw as Record<string, unknown>;
+  if (!Array.isArray(obj.assessments)) return raw;
+  const byQuestionId = new Map<string, unknown>();
+  for (const item of obj.assessments) {
+    if (!item || typeof item !== 'object') continue;
+    const questionId = String((item as Record<string, unknown>).questionId ?? '').trim();
+    if (questionId && !byQuestionId.has(questionId)) byQuestionId.set(questionId, item);
+  }
+  return {
+    ...obj,
+    assessments: SELECTION_CHALLENGE_QUESTIONS[lens].map(questionId =>
+      byQuestionId.get(questionId)
+      ?? { ...emptyAssessmentFor(questionId, subjects), backfilled: true },
+    ),
+  };
+}
+
 async function runAssessment(
   role: 'skeptic' | 'auditor',
   lens: SelectionChallengeLens,
   subjects: SelectionChallengeSubject[],
   evidence: SelectionChallengeSource[],
 ): Promise<SelectionChallengeAgentAssessment[]> {
-  const completion = await chatComplete({
-    model: CONFIG.chatModel,
-    messages: [
-      { role: 'system', content: systemPrompt(role) },
-      { role: 'user', content: userPrompt(role, lens, subjects, evidence) },
-    ],
-    temperature: 0.1,
-    maxTokens: 2_500,
-    responseFormat: { type: 'json_object' },
-    signal: AbortSignal.timeout(45_000),
-  });
-  const content = completion.choices[0]?.message?.content;
-  if (!content) throw new Error(`Challenge ${role} returned no result`);
-  const parsed = JSON.parse(content);
+  let completion;
   try {
-    return validateAssessments(lens, normalizeAgentResponseKeys(parsed), subjects, evidence);
+    completion = await chatComplete({
+      model: CONFIG.challengeModel,
+      messages: [
+        { role: 'system', content: systemPrompt(role) },
+        { role: 'user', content: userPrompt(role, lens, subjects, evidence) },
+      ],
+      temperature: 0.1,
+      // max_completion_tokens covers reasoning tokens too on reasoning models;
+      // 2.5k starved the visible JSON once reasoningEffort left 'minimal'.
+      maxTokens: 12_000,
+      reasoningEffort: 'low',
+      // Strict Structured Outputs: the decoder cannot emit a wrong shape, an
+      // off-lens question, or a hallucinated subject/evidence key.
+      responseFormat: {
+        type: 'json_schema',
+        json_schema: challengeAssessmentsJsonSchema({
+          lens,
+          subjectKeys: subjects.map(subject => subject.key),
+          evidenceKeys: evidence.map(source => source.key),
+        }),
+      },
+      signal: AbortSignal.timeout(90_000),
+    });
+  } catch (error) {
+    if (isTimeoutError(error)) {
+      throw new ChallengeAssessmentError(
+        'timeout',
+        `Challenge ${role} timed out for lens ${lens}`,
+        error,
+      );
+    }
+    throw new ChallengeAssessmentError(
+      'upstream',
+      `Challenge ${role} upstream call failed for lens ${lens}`,
+      error,
+    );
+  }
+  const content = completion.choices[0]?.message?.content;
+  if (!content) {
+    throw new ChallengeAssessmentError('no_content', `Challenge ${role} returned no result`);
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch (error) {
+    throw new ChallengeAssessmentError(
+      'bad_json',
+      `Challenge ${role} returned invalid JSON for lens ${lens}`,
+      error,
+    );
+  }
+  const reconciled = reconcileAssessments(
+    lens,
+    flattenChallengeAssessments(parsed),
+    subjects,
+  );
+  try {
+    return validateAssessments(lens, normalizeAgentResponseKeys(reconciled), subjects, evidence);
   } catch (error) {
     console.error(`Challenge ${role} assessment validation failed for lens ${lens}`, {
       rawContent: content,
       error: error instanceof Error ? error.message : String(error),
     });
-    throw error;
+    throw new ChallengeAssessmentError(
+      'schema_mismatch',
+      `Challenge ${role} assessment failed validation for lens ${lens}`,
+      error,
+    );
   }
 }
 
@@ -256,19 +361,25 @@ function overallFrom(consensus: Array<ReturnType<typeof reduceSelectionChallenge
   return 'weakened';
 }
 
+function emptyAssessmentFor(
+  questionId: string,
+  subjects: SelectionChallengeSubject[],
+): SelectionChallengeAgentAssessment {
+  return {
+    questionId,
+    position: 'insufficient',
+    summary: 'The captured research packet contains no source evidence that can answer this question.',
+    subjectKeys: [subjects[0]?.key ?? 'I1'],
+    evidenceKeys: [],
+    evidenceClass: 'inference',
+  };
+}
+
 function emptyAssessment(
   lens: SelectionChallengeLens,
   subjects: SelectionChallengeSubject[],
 ): SelectionChallengeAgentAssessment[] {
-  const subjectKey = subjects[0]?.key ?? 'I1';
-  return SELECTION_CHALLENGE_QUESTIONS[lens].map(questionId => ({
-    questionId,
-    position: 'insufficient',
-    summary: 'The captured research packet contains no source evidence that can answer this question.',
-    subjectKeys: [subjectKey],
-    evidenceKeys: [],
-    evidenceClass: 'inference',
-  }));
+  return SELECTION_CHALLENGE_QUESTIONS[lens].map(questionId => emptyAssessmentFor(questionId, subjects));
 }
 
 export interface SelectionChallengeInput {
@@ -308,6 +419,9 @@ export async function generateSelectionChallenge(
   input: SelectionChallengeInput,
 ): Promise<SelectionChallengeArtifact> {
   const prepared = prepareSelectionChallengeInput(input);
+  if (prepared.evidenceSnapshot.length && !hasApiKeyForModel(CONFIG.challengeModel)) {
+    throw new Error('AI_PROVIDER_UNAVAILABLE');
+  }
   const assessments = prepared.evidenceSnapshot.length === 0
     ? [emptyAssessment(input.lens, prepared.subjectSnapshot), emptyAssessment(input.lens, prepared.subjectSnapshot)]
     : await Promise.all([
@@ -336,8 +450,8 @@ export async function generateSelectionChallenge(
     subjectSnapshot: prepared.subjectSnapshot,
     evidenceSnapshot: prepared.evidenceSnapshot,
     questions,
-    skepticModel: prepared.evidenceSnapshot.length ? CONFIG.chatModel : 'deterministic-empty-evidence',
-    auditorModel: prepared.evidenceSnapshot.length ? CONFIG.chatModel : 'deterministic-empty-evidence',
+    skepticModel: prepared.evidenceSnapshot.length ? CONFIG.challengeModel : 'deterministic-empty-evidence',
+    auditorModel: prepared.evidenceSnapshot.length ? CONFIG.challengeModel : 'deterministic-empty-evidence',
     promptVersion: PROMPT_VERSION,
     createdAt: new Date().toISOString(),
   });

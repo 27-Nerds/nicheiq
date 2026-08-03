@@ -4,7 +4,7 @@ import OpenAI from 'openai';
 import { CONFIG } from '../config.js';
 import { requireInternalAuth, AuthenticatedRequest } from '../middleware/auth.js';
 import { checkSuggestRateLimit } from '../middleware/rateLimit.js';
-import { chatComplete } from '../services/openai.js';
+import { chatComplete, hasApiKeyForModel } from '../services/openai.js';
 
 export const suggestRouter = Router();
 
@@ -342,9 +342,9 @@ suggestRouter.post('/', requireInternalAuth, async (req: AuthenticatedRequest, r
       return;
     }
 
-    // Check if OpenAI API key is configured
-    if (!CONFIG.openaiApiKey) {
-      console.error('OPENAI_API_KEY not configured');
+    // Check the provider selected by this model, not an unrelated fallback key.
+    if (!hasApiKeyForModel(CONFIG.suggestModel)) {
+      console.error(`API key not configured for suggestion model ${CONFIG.suggestModel}`);
       res.status(503).json({
         error: 'Suggestion service unavailable',
       });

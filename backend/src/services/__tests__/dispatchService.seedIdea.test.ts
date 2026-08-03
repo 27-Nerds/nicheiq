@@ -20,6 +20,7 @@ const mockJobUpdate = vi.fn();
 const mockJobUpdateMany = vi.fn();
 const mockJobFindUnique = vi.fn();
 const mockRefundChargeInTx = vi.fn();
+const mockChatMessageUpsert = vi.fn();
 
 const transactionClient = {
   jobDispatch: {
@@ -29,6 +30,10 @@ const transactionClient = {
   },
   job: {
     updateMany: (...args: any[]) => mockJobUpdateMany(...args),
+    findUnique: (...args: any[]) => mockJobFindUnique(...args),
+  },
+  chatMessage: {
+    upsert: (...args: any[]) => mockChatMessageUpsert(...args),
   },
 };
 
@@ -70,6 +75,7 @@ beforeEach(() => {
   };
   mockDispatchUpdate.mockResolvedValue({});
   mockRefundChargeInTx.mockResolvedValue(null);
+  mockChatMessageUpsert.mockResolvedValue({});
 });
 
 describe('DispatchKind.SEED_IDEA — open/claim/guard/settle round-trip', () => {
@@ -229,5 +235,95 @@ describe('DispatchKind.SEED_IDEA — open/claim/guard/settle round-trip', () => 
         refundedAmount: 5,
       }),
     });
+  });
+
+  it('settles the durable batch receipt when an authorized regeneration is cancelled', async () => {
+    mockDispatchFindFirst.mockResolvedValue({
+      id: MINE,
+      kind: DispatchKind.REGENERATE,
+      state: DispatchState.AUTHORIZED,
+      chargeId: 'charge-batch-1',
+      batchOrdinal: 4,
+    });
+    mockJobUpdateMany.mockResolvedValue({ count: 1 });
+    mockDispatchUpdateMany.mockResolvedValue({ count: 1 });
+    mockRefundChargeInTx.mockResolvedValue({ id: 'refund-batch-1', amount: 2 });
+
+    const { cancelAuthorizedSelectionDispatch } = await import('../dispatchService.js');
+    const result = await cancelAuthorizedSelectionDispatch(JOB_ID, MINE);
+
+    expect(result).toBe('cancelled');
+    expect(mockChatMessageUpsert).toHaveBeenCalledWith({
+      where: { operationId: `regeneration:${MINE}:settled` },
+      create: expect.objectContaining({
+        jobId: JOB_ID,
+        role: 'receipt',
+        operationId: `regeneration:${MINE}:settled`,
+        patchJson: expect.objectContaining({
+          event: 'regeneration_settled',
+          operationId: MINE,
+          batch: expect.objectContaining({
+            ordinal: 4,
+            outcome: 'cancelled',
+            refunded: true,
+          }),
+        }),
+      }),
+      update: {},
+    });
+  });
+
+  it('cancels an authorized seed by exact dispatch and settles its current proposal receipt', async () => {
+    mockDispatchFindFirst.mockResolvedValue({
+      id: MINE,
+      kind: DispatchKind.SEED_IDEA,
+      state: DispatchState.AUTHORIZED,
+      chargeId: 'charge-seed-1',
+      sourceMessageId: 'message-seed-1',
+    });
+    mockJobUpdateMany.mockResolvedValue({ count: 1 });
+    mockDispatchUpdateMany.mockResolvedValue({ count: 1 });
+    mockRefundChargeInTx.mockResolvedValue({ id: 'refund-seed-1', amount: 2 });
+
+    const { cancelAuthorizedSelectionDispatch } = await import('../dispatchService.js');
+    const result = await cancelAuthorizedSelectionDispatch(JOB_ID, MINE);
+
+    expect(result).toBe('cancelled');
+    expect(mockChatMessageUpsert).toHaveBeenCalledWith({
+      where: { operationId: `seed:${MINE}:settled` },
+      create: expect.objectContaining({
+        jobId: JOB_ID,
+        role: 'receipt',
+        operationId: `seed:${MINE}:settled`,
+        patchJson: expect.objectContaining({
+          event: 'seed_settled',
+          sourceMessageId: 'message-seed-1',
+          outcome: 'refunded',
+        }),
+      }),
+      update: {},
+    });
+  });
+
+  it('records cancellation without claiming a refund when an expired allowance restores zero', async () => {
+    mockDispatchFindFirst.mockResolvedValue({
+      id: MINE,
+      kind: DispatchKind.SEED_IDEA,
+      state: DispatchState.AUTHORIZED,
+      chargeId: 'charge-seed-expired',
+      sourceMessageId: 'message-seed-expired',
+    });
+    mockJobUpdateMany.mockResolvedValue({ count: 1 });
+    mockDispatchUpdateMany.mockResolvedValue({ count: 1 });
+    mockRefundChargeInTx.mockResolvedValue({ id: 'reversal-zero', amount: 0 });
+
+    const { cancelAuthorizedSelectionDispatch } = await import('../dispatchService.js');
+    await cancelAuthorizedSelectionDispatch(JOB_ID, MINE);
+
+    expect(mockChatMessageUpsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({
+        patchJson: expect.objectContaining({ outcome: 'cancelled' }),
+      }),
+    }));
   });
 });

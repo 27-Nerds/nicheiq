@@ -174,7 +174,7 @@ class TrafficMonetizationCrew:
             if validation.solution_name == solution_name:
                 lines = [
                     f"**Total Search Volume:** {validation.total_volume:,} searches/month",
-                    f"**Validated Keywords:** {validation.validated_count}",
+                    f"**Validated Keywords:** {validation.graded_keyword_count}",
                     f"**Demand Signal:** {validation.demand_signal}",
                     "",
                     "**Top Keywords by Volume:**"

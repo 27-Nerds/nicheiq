@@ -46,6 +46,22 @@ describe("ShareDiscoveryModal", () => {
     );
   });
 
+  it("separates an inactive link from feedback already collected", async () => {
+    mocks.getDiscoveryShareStatus.mockResolvedValue({
+      isShared: false,
+      viewCount: 7,
+      voteCount: 2,
+      solutionVotesById: { "idea-1": 2 },
+    });
+
+    render(ShareDiscoveryModal, { props: { open: true, jobId: "job-1" } });
+
+    expect(await screen.findByText(
+      "Sharing is off. 2 earlier votes remain available in Collaborator feedback.",
+    )).toHaveAttribute("role", "status");
+    expect(screen.queryByLabelText("Share link")).not.toBeInTheDocument();
+  });
+
   it("announces successful link copying", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {

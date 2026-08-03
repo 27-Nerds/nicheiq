@@ -52,7 +52,7 @@
     /** 'stopped' = a FAILED/CANCELLED run that still completed discovery. It keeps the
      *  workbench shell (the discovery context is real and paid for) but swaps the idea
      *  tools — none of which can be acted on — for the one recovery step. */
-    mode?: "default" | "selection" | "gate" | "stopped";
+    mode?: "default" | "selection" | "selection-record" | "gate" | "stopped";
     /** 'stopped' mode: label + href for the single recovery action, mirroring the
      *  handoff card's primary button so the sidebar never offers a different next step. */
     recoverLabel?: string;
@@ -124,6 +124,19 @@
   const reviewHref = $derived(
     jobId ? `/jobs/${jobId}/selection/review` : undefined,
   );
+  const compareRecordHref = $derived(
+    jobId ? `/jobs/${jobId}/selection/compare${selectionQuery}` : undefined,
+  );
+  const evidenceRecordHref = $derived(
+    jobId ? `/jobs/${jobId}/selection/risks${selectionQuery}` : undefined,
+  );
+  const runRecordHref = $derived(
+    jobId
+      ? jobStatus === "COMPLETED" && reportAvailable
+        ? `/jobs/${jobId}/report`
+        : `/jobs/${jobId}`
+      : undefined,
+  );
   const hubSectionHref = (sectionId: string): string | undefined =>
     nested && jobId ? `/jobs/${jobId}#${sectionId}` : undefined;
 
@@ -144,11 +157,12 @@
   let isOpen = $state(false);
 
   const isSelectionMode = $derived(mode === "selection");
+  const isSelectionRecordMode = $derived(mode === "selection-record");
   const isGateMode = $derived(mode === "gate");
   const isStoppedMode = $derived(mode === "stopped");
   // Both shells are the full-width, aside-less workbench treatment; they differ only in
   // which group sits above the discovery context.
-  const isWorkbenchMode = $derived(isSelectionMode || isStoppedMode);
+  const isWorkbenchMode = $derived(isSelectionMode || isSelectionRecordMode || isStoppedMode);
   const isCompletedMode = $derived(jobStatus === "COMPLETED" && Boolean(jobId));
   const currentSection = $derived(activeSection || trackedSection || (isWorkbenchMode ? "opportunities" : ""));
 
@@ -382,7 +396,7 @@
   desktopOnly
   width="300px"
   background={isWorkbenchMode ? "var(--color-bg-base)" : "var(--color-bg-elevated)"}
-  label="Research phases"
+  label={isSelectionRecordMode ? "Decision record navigation" : "Research phases"}
 >
   {#if isGateMode}
     <!-- Checkpoint page: nothing to scroll to — orient instead of navigate.
@@ -480,6 +494,39 @@
         </SidebarNavItem>
       {/each}
     </SidebarGroup>
+  {:else if isSelectionRecordMode}
+    <SidebarGroup label="Decision record">
+      <SidebarNavItem
+        active={activeTool === "compare"}
+        href={compareRecordHref}
+        aria-current={activeTool === "compare" ? "page" : undefined}
+      >
+        Comparison record
+      </SidebarNavItem>
+      {#if decisionTools}
+        <SidebarNavItem
+          active={activeTool === "risks"}
+          href={evidenceRecordHref}
+          aria-current={activeTool === "risks" ? "page" : undefined}
+        >
+          Evidence &amp; risk record
+        </SidebarNavItem>
+      {/if}
+      <SidebarNavItem
+        active={activeTool === "review"}
+        href={reviewHref}
+        aria-current={activeTool === "review" ? "page" : undefined}
+      >
+        Saved research scope
+      </SidebarNavItem>
+    </SidebarGroup>
+
+    <SidebarDivider />
+    <SidebarGroup label="Research run">
+      <SidebarNavItem href={runRecordHref}>
+        {jobStatus === "COMPLETED" && reportAvailable ? "Open report" : "View run"}
+      </SidebarNavItem>
+    </SidebarGroup>
   {:else if isStoppedMode}
     <SidebarGroup label="Recover run">
       <SidebarNavItem
@@ -494,23 +541,25 @@
       </SidebarNavItem>
     </SidebarGroup>
 
-    <SidebarDivider />
-    <SidebarGroup label="Discovery context">
-      <!-- Opportunities stays in this group rather than being promoted to its own
-           "Choose ideas" row: on a stopped run it is evidence to read, not a task to do. -->
-      {#each [opportunitySection, ...contextSections].filter(Boolean) as section}
-        {@const isActive = !nested && currentSection === section!.id}
-        {@const Icon = section!.icon}
-        <SidebarNavItem
-          active={isActive}
-          href={hubSectionHref(section!.id)}
-          onclick={nested ? undefined : () => handleSectionClick(discoveryPhase, section!)}
-        >
-          {#snippet leading()}{#if Icon}<Icon class="sidebar-nav-ic" />{/if}{/snippet}
-          {section!.label}
-        </SidebarNavItem>
-      {/each}
-    </SidebarGroup>
+    {#if contextSections.length > 0}
+      <SidebarDivider />
+      <SidebarGroup label="Discovery context">
+        <!-- Opportunities stays in this group rather than being promoted to its own
+             "Choose ideas" row: on a stopped run it is evidence to read, not a task to do. -->
+        {#each [opportunitySection, ...contextSections].filter(Boolean) as section}
+          {@const isActive = !nested && currentSection === section!.id}
+          {@const Icon = section!.icon}
+          <SidebarNavItem
+            active={isActive}
+            href={hubSectionHref(section!.id)}
+            onclick={nested ? undefined : () => handleSectionClick(discoveryPhase, section!)}
+          >
+            {#snippet leading()}{#if Icon}<Icon class="sidebar-nav-ic" />{/if}{/snippet}
+            {section!.label}
+          </SidebarNavItem>
+        {/each}
+      </SidebarGroup>
+    {/if}
   {:else if isCompletedMode}
     <SidebarGroup label="Completed run">
       <SidebarNavItem
@@ -520,6 +569,9 @@
       >
         {#snippet leading()}<LayoutDashboard class="sidebar-nav-ic" />{/snippet}
         Run overview
+      </SidebarNavItem>
+      <SidebarNavItem href={compareRecordHref}>
+        Decision record
       </SidebarNavItem>
       <span class="report-nav-description">
         {reportAvailable ? "Report and deliverables" : "Report unavailable"}
@@ -677,7 +729,41 @@
   {/if}
 </SidebarNav>
 
-{#if isSelectionMode}
+{#if isSelectionRecordMode}
+<div class="selection-mobile-navigation">
+  <nav class="selection-mobile-nav selection-mobile-nav--record" aria-label="Saved decision record">
+    {#if compareRecordHref}
+      <a
+        class="selection-mobile-item tool"
+        class:active={activeTool === "compare"}
+        href={compareRecordHref}
+        aria-current={activeTool === "compare" ? "page" : undefined}
+      >Comparison record</a>
+    {/if}
+    {#if decisionTools && evidenceRecordHref}
+      <a
+        class="selection-mobile-item tool"
+        class:active={activeTool === "risks"}
+        href={evidenceRecordHref}
+        aria-current={activeTool === "risks" ? "page" : undefined}
+      >Evidence &amp; risk record</a>
+    {/if}
+    {#if reviewHref}
+      <a
+        class="selection-mobile-item tool"
+        class:active={activeTool === "review"}
+        href={reviewHref}
+        aria-current={activeTool === "review" ? "page" : undefined}
+      >Saved research scope</a>
+    {/if}
+    {#if runRecordHref}
+      <a class="selection-mobile-item tool" href={runRecordHref}>
+        {jobStatus === "COMPLETED" && reportAvailable ? "Open report" : "View run"}
+      </a>
+    {/if}
+  </nav>
+</div>
+{:else if isSelectionMode}
 <div class="selection-mobile-navigation">
 <button
   type="button"
@@ -796,7 +882,7 @@
 
 <!-- ═══ MOBILE BOTTOM BAR ═══ -->
 <!-- Suppressed in gate mode: a checkpoint page has no sections to jump between. -->
-{#if !isSelectionMode && !isGateMode}
+{#if !isSelectionMode && !isSelectionRecordMode && !isGateMode}
 <nav class="sidebar-mobile" class:open={isOpen}>
   <button
     class="mobile-toggle"
@@ -828,6 +914,13 @@
           onclick={() => (isOpen = false)}
         >
           <span>Run overview</span>
+        </a>
+        <a
+          class="mobile-item"
+          href={compareRecordHref}
+          onclick={() => (isOpen = false)}
+        >
+          <span>Decision record</span>
         </a>
 
         <div class="mobile-divider"></div>
@@ -1378,7 +1471,7 @@
      ═══════════════════════════════════ */
   .sidebar-mobile {
     position: fixed;
-    bottom: calc(1rem + 60px);
+    bottom: max(var(--space-4), env(safe-area-inset-bottom));
     left: 50%;
     transform: translateX(-50%);
     z-index: var(--z-overlay, 50);

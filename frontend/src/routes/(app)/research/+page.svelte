@@ -11,17 +11,27 @@
   // run will fill — the three checkpoints, empty, waiting to be stamped — so the
   // product's actual promise (it stops and asks you before spending) is visible
   // before you commit, and the artifact you'll live in is the artifact you start in.
-  import { goto } from "$app/navigation";
+  import { goto, invalidateAll } from "$app/navigation";
   import { page } from "$app/state";
   import Composer from "$lib/components/chat/Composer.svelte";
   import PageHeader from "$lib/components/ui/PageHeader.svelte";
+  import { creditTopUp } from "$lib/stores/creditTopUp.svelte";
+  import type { StageCosts } from "$lib/types/job";
 
   let input = $state("");
   let submitting = $state(false);
   let error = $state("");
   let composerRef: Composer | undefined = $state();
 
-  const discoveryCost = $derived((page.data.stageCosts as { discovery?: number })?.discovery ?? 5);
+  // Guided runs charge the S1 (discovery-segment) checkpoint price, not the flat
+  // legacy discovery cost. Null = the price is unknown; the run cannot start.
+  const guidedCost = $derived.by(() => {
+    const s1 = (page.data.stageCosts as StageCosts | undefined)?.guided?.s1;
+    return Number.isInteger(s1) && (s1 as number) >= 0 ? (s1 as number) : null;
+  });
+  const priceUnavailable = $derived(
+    Boolean(page.data.billingLoadState?.guidedCostsUnavailable) || guidedCost === null,
+  );
 
   // Deliberately spread across KINDS of subject — a trade, a studio, a back office —
   // so the SET says "name anything", which no single example can.
@@ -48,22 +58,37 @@
 
   async function start() {
     const text = input.trim();
-    if (!text || submitting) return;
+    if (!text || submitting || priceUnavailable || guidedCost === null) return;
     submitting = true;
     error = "";
     try {
       const res = await fetch("/api/jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ niche: text, chatMode: true, entryMode: "idea" }),
+        body: JSON.stringify({
+          niche: text,
+          chatMode: true,
+          entryMode: "idea",
+          expectedCost: guidedCost,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
         submitting = false;
-        error =
-          res.status === 402
-            ? "Not enough credits for a discovery run. Top up on the billing page, then try again."
-            : data.error || "Couldn't start the research. Try again.";
+        if (res.status === 402 && data.code === "INSUFFICIENT_CREDITS") {
+          creditTopUp.show({
+            balance: data.balance ?? 0,
+            required: data.required ?? guidedCost,
+            stageName: "guided research",
+          });
+          return;
+        }
+        if (res.status === 409 && data.code === "PRICE_CHANGED") {
+          await invalidateAll();
+          error = "The research price changed. Review the updated cost and start again.";
+          return;
+        }
+        error = data.error || "Couldn't start the research. Try again.";
         return;
       }
       await goto(`/research/${data.id}`);
@@ -97,9 +122,12 @@
           placeholder="Who are they, and what are they struggling with?"
           label="What should we research?"
           busy={submitting}
+          disabled={priceUnavailable}
           size="roomy"
           onSubmit={start}
-          submitLabel="Start the run · {discoveryCost} credits"
+          submitLabel={priceUnavailable
+            ? "Pricing unavailable"
+            : `Start the run · ${guidedCost} ${guidedCost === 1 ? "credit" : "credits"}`}
           busyLabel="Starting the run…"
           hint=""
         />
@@ -108,6 +136,11 @@
 
     {#if error}
       <p class="intake-error" role="alert">{error}</p>
+    {/if}
+    {#if priceUnavailable}
+      <p class="intake-error" role="alert">
+        Pricing is temporarily unavailable, so the run can't start. Reload the page to try again.
+      </p>
     {/if}
 
     <div class="examples">

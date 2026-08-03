@@ -10,7 +10,7 @@
   } from "lucide-svelte";
   import { SECTION_MAP } from "$lib/config/report-sections";
   import type { AlternativeSolution } from "$lib/types/report";
-  import { renderMarkdown, formatScorePercent } from "$lib/utils/format";
+  import { renderMarkdown, formatScorePercent, humanizeInternalJargon } from "$lib/utils/format";
   import Badge from "$lib/components/ui/Badge.svelte";
 import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
   import AnimateOnScroll from "$lib/components/ui/AnimateOnScroll.svelte";
@@ -24,6 +24,7 @@ import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
     adversarialReviewFinding,
     directIncumbentParity,
     noDirectIncumbentFound,
+    PREMISE_UNPROVEN_CODA,
   } from "$lib/utils/adversarialReview";
 
   interface Props {
@@ -437,22 +438,33 @@ import { SCORE_DEFINITIONS } from "$lib/utils/scoreDefinitions";
                 Independent critic's take
               </div>
               <p class="text-sm text-text-secondary">
-                {solution.critic_concern}
+                {humanizeInternalJargon(solution.critic_concern)}
               </p>
             </div>
           {/if}
           {#if adversarial}
-            <div class="mt-4 p-3 rounded border border-error/30 bg-error/5">
-              <div class="text-xs text-error font-medium mb-1">
+            <div
+              class="mt-4 p-3 rounded border {adversarial.severity === 'weakened'
+                ? 'border-warning/30 bg-warning/5'
+                : 'border-error/30 bg-error/5'}"
+            >
+              <div
+                class="text-xs font-medium mb-1 {adversarial.severity === 'weakened'
+                  ? 'text-warning'
+                  : 'text-error'}"
+              >
                 {adversarial.label}
               </div>
               {#each adversarial.details as detail}
                 <p class="text-sm text-text-secondary">{detail}</p>
               {/each}
-              <p class="text-sm text-text-muted mt-1">
-                This candidate remains visible for comparison, but the objection should be
-                resolved before treating it as a strong direction.
-              </p>
+              {#if adversarial.severity === "weakened"}
+                <p class="text-sm text-text-muted mt-1">
+                  This candidate remains available — review these concerns before committing to it.
+                </p>
+              {:else}
+                <p class="text-sm text-text-muted mt-1">{PREMISE_UNPROVEN_CODA}</p>
+              {/if}
             </div>
           {/if}
           {#if directParity || noIncumbentFound}

@@ -682,6 +682,7 @@ describe('POST /api/workers/regeneration-complete', () => {
       jobId,
       kind: 'REGENERATE',
       state: 'CLAIMED',
+      workerId: 'w1',
       requestFingerprint: null,
       batchOrdinal: 2,
     });
@@ -803,6 +804,7 @@ describe('POST /api/workers/regeneration-failed', () => {
         }),
       })
     );
+    expect(mockInvalidatePreviewReportCache).toHaveBeenCalledWith(jobId);
   });
 
   it('settles only the matching dispatched batch failure', async () => {

@@ -14,30 +14,33 @@
 
   let { tam, sam, somY1, somY3, class: className = "" }: Props = $props();
 
+  // Plain-English labels lead — the same words the summary card uses ("Total
+  // market", "Reachable market", "First-year target") — with the acronym kept as
+  // the secondary line so the glossary tooltip still has something to attach to.
   const stages = $derived([
     {
       id: "tam",
-      label: "TAM",
+      label: "Total market",
       value: tam,
-      fullName: getTermFullName("TAM"),
+      fullName: `TAM · ${getTermFullName("TAM")}`,
       tooltip: getTermTooltip("TAM"),
       width: "100%",
       delay: 0,
     },
     {
       id: "sam",
-      label: "SAM",
+      label: "Reachable market",
       value: sam,
-      fullName: getTermFullName("SAM"),
+      fullName: `SAM · ${getTermFullName("SAM")}`,
       tooltip: getTermTooltip("SAM"),
       width: "80%",
       delay: 100,
     },
     {
       id: "som-y1",
-      label: "SOM Y1",
+      label: "First-year target",
       value: somY1,
-      fullName: "Year 1 " + getTermFullName("SOM"),
+      fullName: `SOM · Year 1 ${getTermFullName("SOM")}`,
       tooltip: getTermTooltip("SOM") + " (Year 1 target)",
       width: "55%",
       delay: 200,
@@ -46,9 +49,9 @@
       ? [
           {
             id: "som-y3",
-            label: "SOM Y3",
+            label: "Year-3 target",
             value: somY3,
-            fullName: "Year 3 " + getTermFullName("SOM"),
+            fullName: `SOM · Year 3 ${getTermFullName("SOM")}`,
             tooltip: getTermTooltip("SOM") + " (Year 3 projection)",
             width: "35%",
             delay: 300,

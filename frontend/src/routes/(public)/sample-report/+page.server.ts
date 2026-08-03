@@ -13,7 +13,7 @@ export const load: PageServerLoad = async () => {
     if (!data.url) return { report: null };
 
     // 2. Extract share token from URL like "/shared/AbCdEf..."
-    const match = data.url.match(/\/shared\/([A-Za-z0-9_-]+)$/);
+    const match = data.url.match(/^\/shared\/([A-Za-z0-9_-]{22})$/);
     const token = match?.[1];
     if (!token) return { report: null };
 

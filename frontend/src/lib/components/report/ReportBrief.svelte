@@ -2,6 +2,8 @@
   import { ArrowRight, CheckCircle2, CircleAlert, Database, Users } from "lucide-svelte";
   import type { Report } from "$lib/types/report";
   import { stripMarkdown } from "$lib/utils/format";
+  import { unavailableSectionLabels } from "$lib/utils/unavailableSections";
+  import { narrativeVerdictQualifier, verdictBlocker } from "$lib/utils/verdictGate";
   import type { Snippet } from "svelte";
 
   interface Props {
@@ -9,17 +11,22 @@
     evidenceHref: string;
     planHref: string;
     decisionSlot?: Snippet;
+    /** The identity deck already on screen above this view — never repeated here. */
+    deckText?: string;
+    /** The page H1, so a section heading cannot restate it. */
+    reportTitle?: string;
   }
 
-  let { report, evidenceHref, planHref, decisionSlot }: Props = $props();
+  let { report, evidenceHref, planHref, decisionSlot, deckText, reportTitle }: Props =
+    $props();
 
   const dashboard = $derived(report.executive_dashboard);
   const solution = $derived(dashboard?.recommended_solution_snapshot);
   const details = $derived(report.selected_solution_details);
   const verdict = $derived(dashboard?.go_no_go_verdict);
   const pain = $derived(
-    dashboard?.core_pain_point?.title ??
-      details?.pain_points_addressed?.[0] ??
+    details?.pain_points_addressed?.[0] ??
+      dashboard?.core_pain_point?.title ??
       "The primary customer problem was not available.",
   );
   const buyer = $derived(
@@ -27,29 +34,57 @@
       details?.target_personas?.[0] ??
       "The primary buyer was not identified.",
   );
+  // The deck above already carries the shortest promise the report stored. Take the
+  // next distinct field rather than reprinting it 400px lower; when every candidate
+  // is the deck, the card is dropped instead of duplicating it.
   const productPromise = $derived(
-    details?.short_description ??
-      solution?.core_value_prop ??
-      details?.value_proposition ??
-      details?.description ??
+    [
+      details?.short_description,
+      solution?.core_value_prop,
+      details?.value_proposition,
+      details?.description,
       report.executive_summary,
+    ].find((candidate) => {
+      const text = candidate?.trim();
+      return !!text && text !== deckText?.trim();
+    }) ?? null,
   );
+  // Shown only when it adds something the grid above does not already say — a summary
+  // that merely repeats the product promise would be a second wall of the same text.
+  const overviewSummary = $derived.by(() => {
+    const summary = report.executive_summary?.trim();
+    if (!summary) return null;
+    return summary === productPromise?.trim() ? null : summary;
+  });
   const strategicEdge = $derived(
     details?.differentiation_factors?.[0] ??
       report.market_sizing?.recommended_entry_strategy ??
       report.competitive_analysis?.top_opportunities?.[0] ??
       "No defensible edge was identified.",
   );
-  // Safe to read as risks: key_challenges is frictions-only as of the key_strengths split.
-  // Reports generated before it carry a mixed list and will show a strength here — that is
-  // fixed by regenerating, not by pattern-matching the strings back out.
+  const difficultyRisks = $derived(
+    report.niche_difficulty_verdict?.key_strengths !== undefined
+      ? (report.niche_difficulty_verdict.key_challenges ?? [])
+      : [],
+  );
   const primaryConcern = $derived(
     verdict?.primary_concern ??
-      report.niche_difficulty_verdict?.key_challenges?.[0] ??
+      difficultyRisks[0] ??
       "No primary concern was recorded.",
   );
+  // What actually decided the verdict — the red-team refutation when there is one,
+  // otherwise the score-derived concern. Stating the score artifact as the blocker while
+  // the real objection sat in a collapsed accordion was the defect.
+  const decisiveBlocker = $derived(verdictBlocker(verdict) ?? "");
+  const narrativeQualifier = $derived(narrativeVerdictQualifier(verdict));
+  /** The blocker text the conclusion prints, or "" when this verdict does not print one. */
+  const blockerStated = $derived(
+    verdict?.verdict === "No-Go" || verdict?.verdict === "Conditional"
+      ? decisiveBlocker
+      : "",
+  );
   const additionalRisks = $derived(
-    (report.niche_difficulty_verdict?.key_challenges ?? [])
+    difficultyRisks
       .filter((item) => item !== primaryConcern)
       .slice(0, 2),
   );
@@ -112,14 +147,20 @@
       }
       return "The research supports advancing this direction.";
     }
+    // The score-derived concern is kept as a second line when the red-team finding
+    // displaced it, so nothing the verdict recorded is dropped.
+    const secondary =
+      hasConcern && decisiveBlocker && concern !== decisiveBlocker
+        ? ` Also unresolved: ${asSentence(concern)}`
+        : "";
     if (verdict?.verdict === "Conditional") {
-      return hasConcern
-        ? `The opportunity is promising, but this condition remains unresolved: ${asSentence(concern)}`
+      return decisiveBlocker
+        ? `The opportunity is promising, but this condition remains unresolved: ${asSentence(decisiveBlocker)}${secondary}`
         : "The opportunity is promising, but a decision-changing risk still needs validation.";
     }
     if (verdict?.verdict === "No-Go") {
-      return hasConcern
-        ? `The current evidence does not support moving forward. Main blocker: ${asSentence(concern)}`
+      return decisiveBlocker
+        ? `The current evidence does not support moving forward. Main blocker: ${asSentence(decisiveBlocker)}${secondary}`
         : "The current evidence does not support moving forward with this direction.";
     }
     return "The report did not produce a clear decision. Review the evidence and unresolved risks before acting.";
@@ -133,6 +174,11 @@
     report.competitive_analytics?.competitor_count ??
       report.competitor_profiles?.length ??
       null,
+  );
+  // Sections the pipeline could not generate. Named plainly so a reader can tell
+  // a missing section from a section that had nothing to report.
+  const unavailableSections = $derived(
+    unavailableSectionLabels(dashboard?.unavailable_sections),
   );
   const quality = $derived(
     report.data_quality_summary?.overall_data_quality
@@ -156,7 +202,13 @@
       : (verdict?.verdict ?? "Not available"),
   );
   const qualityCaveatCount = $derived(
-    report.data_quality_summary?.quality_caveats?.length ?? 0,
+    new Set(
+      (report.data_quality_summary?.quality_caveats ?? []).map((note) =>
+        /^fallback data used in:/i.test(note)
+          ? "Fallback data was used for part of this run, so some findings have reduced depth."
+          : note,
+      ),
+    ).size,
   );
   const recommendationChanged = $derived(
     !!report.original_selection_reasoning &&
@@ -165,17 +217,41 @@
   const reviewEvidenceFirst = $derived(
     verdict?.verdict !== "Go" || evidenceLimited,
   );
+  function normalizedAdjustment(value: string | null | undefined): string {
+    const text = value ? stripMarkdown(value).trim() : "";
+    const change = text.match(/\b(?:downgraded|adjusted|changed)\s+from\s+(.+?)\s+to\s+(.+?)(?:[.;]|$)/i);
+    if (!change) return text;
+    const normalize = (part: string) => part.toLowerCase().replace(/[^a-z0-9]+/g, "");
+    return normalize(change[1]) === normalize(change[2]) ? "" : text;
+  }
+  // With no stored tagline this heading fell back to the idea name, which is already
+  // the page H1 — the same string as an H1 and an H2 on one screen. Only a line that
+  // says something new earns the slot.
+  const conclusionHeading = $derived.by(() => {
+    const candidate =
+      solution?.tagline?.trim() ||
+      details?.headline?.trim() ||
+      report.selected_solution_name?.trim();
+    return candidate && candidate !== reportTitle?.trim()
+      ? candidate
+      : "What the research concludes";
+  });
   const verdictAdjustments = $derived.by(() => {
     const adjustments: Array<{ label: string; text: string }> = [];
     const add = (label: string, value: string | null | undefined) => {
-      const text = value ? stripMarkdown(value).trim() : "";
+      const text = normalizedAdjustment(value);
       if (text) adjustments.push({ label, text });
     };
 
     add("Trend context", verdict?.trend_context);
     add("Market viability", verdict?.market_viability_context);
     add("Buyer payability", verdict?.payability_context);
-    add("Red-team review", verdict?.red_team_context);
+    // `verdictBlocker` prefers the red-team finding, so a stated blocker alongside a
+    // recorded red-team context means the conclusion above already carries it — printing
+    // the row too would put the same sentence on screen twice.
+    if (!(blockerStated && verdict?.red_team_context?.trim())) {
+      add("Red-team review", verdict?.red_team_context);
+    }
     return adjustments;
   });
 </script>
@@ -195,9 +271,7 @@
     </div>
     <div class="conclusion-copy">
       <p class="eyebrow">The recommendation</p>
-      <h2 id="research-conclusion-title">
-        {solution?.tagline ?? details?.headline ?? report.selected_solution_name}
-      </h2>
+      <h2 id="research-conclusion-title">{conclusionHeading}</h2>
       <p>{conclusion}</p>
       <div class="conclusion-qualifiers" aria-label="Conclusion qualifiers">
         {#if verdict?.risk_level}
@@ -211,6 +285,13 @@
           </span>
         {/if}
       </div>
+      {#if unavailableSections.length}
+        <p class="missing-sections">
+          Not generated for this report: {unavailableSections.join(", ")}. Anything below that
+          depends on {unavailableSections.length === 1 ? "it" : "them"} is shown as unavailable
+          rather than estimated.
+        </p>
+      {/if}
       {#if recommendationChanged}
         <details class="decision-trace">
           <summary>How the recommendation changed</summary>
@@ -249,12 +330,26 @@
         <span>Problem to solve</span>
         <strong>{pain}</strong>
       </article>
-      <article class="promise">
-        <Database aria-hidden="true" />
-        <span>Product promise</span>
-        <strong>{productPromise}</strong>
-      </article>
+      {#if productPromise}
+        <article class="promise">
+          <Database aria-hidden="true" />
+          <span>Product promise</span>
+          <strong>{productPromise}</strong>
+        </article>
+      {/if}
     </div>
+    {#if overviewSummary}
+      <!-- The full executive summary. It used to be the page's deck, which put ~1,100
+           characters of prose in front of the reader before any finding. A passage this
+           long is a section, not a headline — the deck now carries a one-line promise. -->
+      <div class="opportunity-summary">
+        <p class="eyebrow">In full</p>
+        {#if narrativeQualifier}
+          <p class="summary-qualifier">{narrativeQualifier}</p>
+        {/if}
+        <p>{overviewSummary}</p>
+      </div>
+    {/if}
   </section>
 
   <div class="brief-columns">
@@ -308,13 +403,11 @@
           </li>
         {/each}
       </ol>
-      {#if report.data_quality_summary?.quality_caveats?.length}
+      {#if qualityCaveatCount}
         <p class="caveat-count">
-          {report.data_quality_summary.quality_caveats.length}
-          {report.data_quality_summary.quality_caveats.length === 1
-            ? "coverage caveat"
-            : "coverage caveats"}
-          are documented with the sources.
+          {qualityCaveatCount}
+          {qualityCaveatCount === 1 ? "research caveat" : "research caveats"}
+          {qualityCaveatCount === 1 ? "is" : "are"} documented with the sources.
         </p>
       {/if}
     </section>
@@ -472,6 +565,17 @@
     color: var(--color-text-secondary);
   }
 
+  /* Coverage statement, not an alert — muted meta, no accent. */
+  .missing-sections {
+    max-width: 72ch;
+    margin: var(--space-4) 0 0;
+    padding-left: var(--space-3);
+    border-left: 2px solid var(--color-border-emphasis);
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+    line-height: 1.5;
+  }
+
   .conclusion-qualifiers span + span::before {
     content: "·";
     margin-right: var(--space-4);
@@ -553,6 +657,30 @@
     gap: var(--space-3);
     min-width: 0;
     padding: var(--space-6);
+  }
+
+  .opportunity-summary {
+    padding: var(--space-6);
+    border-block-end: 1px solid var(--color-border);
+  }
+
+  .opportunity-summary p:last-child {
+    margin-block-start: var(--space-2);
+    max-width: 68ch;
+    color: var(--color-text-secondary);
+    line-height: 1.65;
+  }
+
+  /* Names the frame the generated summary was written in, before the reader starts it. */
+  .summary-qualifier {
+    max-width: 68ch;
+    margin-block: var(--space-3) 0;
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-surface);
+    color: var(--color-text-primary);
+    font-size: var(--text-sm);
+    line-height: 1.6;
   }
 
   .opportunity-grid article + article {
@@ -747,6 +875,10 @@
 
   .next-move h2 {
     color: inherit;
+  }
+
+  .next-move .eyebrow {
+    color: var(--color-text-secondary);
   }
 
   .next-move p:not(.eyebrow) {

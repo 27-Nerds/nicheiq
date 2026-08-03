@@ -516,6 +516,7 @@
     const {
       id: _id,
       jobId: _jobId,
+      version: _version,
       ideaSnapshot: _snapshot,
       status: _status,
       lockedAt: _lockedAt,
@@ -756,8 +757,14 @@
     saving = true;
     error = "";
     try {
-      const experiment = editingId
-        ? await updateSelectionExperiment(jobId, editingId, draft)
+      const existing = editingId
+        ? experiments.find((item) => item.id === editingId)
+        : null;
+      if (editingId && !existing) {
+        throw new Error("This experiment draft is no longer available. Refresh and try again.");
+      }
+      const experiment = editingId && existing
+        ? await updateSelectionExperiment(jobId, editingId, existing.version, draft)
         : await createSelectionExperiment(jobId, draft);
       experiments = [experiment, ...experiments.filter((item) => item.id !== experiment.id)];
       editing = false;
@@ -771,12 +778,12 @@
     }
   }
 
-  async function lock(experimentId: string) {
+  async function lock(experiment: SelectionExperiment) {
     if (disabled) return;
-    lockingId = experimentId;
+    lockingId = experiment.id;
     error = "";
     try {
-      const locked = await lockSelectionExperiment(jobId, experimentId);
+      const locked = await lockSelectionExperiment(jobId, experiment.id, experiment.version);
       experiments = experiments.map((item) => item.id === locked.id ? locked : item);
       onChanged();
     } catch (cause) {
@@ -788,13 +795,13 @@
 
   /** Hard-deletes a DRAFT plan (locked briefs stay immutable server-side).
    *  Focus lands on the workspace heading because the row it sat in is gone. */
-  async function removeDraft(experimentId: string) {
+  async function removeDraft(experiment: SelectionExperiment) {
     if (disabled) return;
-    deletingId = experimentId;
+    deletingId = experiment.id;
     error = "";
     try {
-      await deleteSelectionExperiment(jobId, experimentId);
-      experiments = experiments.filter((item) => item.id !== experimentId);
+      await deleteSelectionExperiment(jobId, experiment.id, experiment.version);
+      experiments = experiments.filter((item) => item.id !== experiment.id);
       onChanged();
       await tick();
       listHeadingEl?.focus();
@@ -1102,7 +1109,7 @@
     </div>
     <div class="workspace-actions">
       {#if !editing && !loading && experiments.length > 0}
-        <button type="button" class="new-action" onclick={beginNew} disabled={!ideas.length}>{DRAFT_TEST_BRIEF_LABEL}</button>
+        <button type="button" class="new-action" onclick={beginNew} disabled={disabled || !ideas.length}>{DRAFT_TEST_BRIEF_LABEL}</button>
       {/if}
     </div>
   </header>
@@ -1131,7 +1138,7 @@
         : "Check the saved evidence first. If an unanswered question could change your choice, turn it into a small test."}
     >
       {#if hasTrackedAssumption || !onOpenChallenge}
-        <button type="button" class="empty-primary" onclick={beginNew} disabled={!ideas.length}>{DRAFT_TEST_BRIEF_LABEL}</button>
+        <button type="button" class="empty-primary" onclick={beginNew} disabled={disabled || !ideas.length}>{DRAFT_TEST_BRIEF_LABEL}</button>
       {:else}
         <button type="button" class="empty-primary" onclick={onOpenChallenge}>{STRESS_TEST_EVIDENCE_LABEL}</button>
       {/if}
@@ -1155,19 +1162,20 @@
               <span>Revision {experiment.ideaRevision}</span>
               {#if experiment.originChallengeId}<span>From evidence check</span>{/if}
             </div>
-            <h4>{experimentTitle(experiment)}</h4>
+            <h3>{experimentTitle(experiment)}</h3>
             <p>{experiment.assumption}</p>
           </div>
           <dl class="experiment-rule">
             <div><dt>Signal</dt><dd>{labelFor(SIGNALS, experiment.evidenceSignal)}</dd></div>
             <div><dt>Pass</dt><dd>{experiment.passThreshold}</dd></div>
-            <div><dt>Stop</dt><dd>{experiment.measurementWindow}</dd></div>
+            <div><dt>Fail</dt><dd>{experiment.failThreshold}</dd></div>
+            <div><dt>Stop / window</dt><dd>{experiment.measurementWindow}</dd></div>
           </dl>
           <div class="row-actions">
             {#if experiment.conclusion}
               <span class="locked-note">Read-only owner record</span>
             {:else if experiment.status === "DRAFT"}
-              <button type="button" class="text-action" onclick={() => edit(experiment)}>Edit</button>
+              <button type="button" class="text-action" disabled={disabled} onclick={() => edit(experiment)}>Edit</button>
               <ConfirmGate
                 variant="free"
                 label="Delete draft"
@@ -1175,7 +1183,7 @@
                 consequence="DRAFT IS REMOVED · NOTHING WAS COLLECTING"
                 busy={deletingId === experiment.id}
                 disabled={disabled || lockingId === experiment.id}
-                onConfirm={() => void removeDraft(experiment.id)}
+                onConfirm={() => void removeDraft(experiment)}
               />
               <ConfirmGate
                 variant="free"
@@ -1184,13 +1192,13 @@
                 consequence="BECOMES IMMUTABLE"
                 busy={lockingId === experiment.id}
                 disabled={disabled || deletingId === experiment.id}
-                onConfirm={() => void lock(experiment.id)}
+                onConfirm={() => void lock(experiment)}
               />
             {:else if !experiment.run}
               {#if canHost(experiment)}
-                <button type="button" onclick={() => beginLaunch(experiment)}>Set up public test</button>
+                <button type="button" disabled={disabled} onclick={() => beginLaunch(experiment)}>Set up public test</button>
               {/if}
-              <button type="button" onclick={() => void beginConclusion(experiment)}>Record external result</button>
+              <button type="button" disabled={disabled} onclick={() => void beginConclusion(experiment)}>Record external result</button>
             {:else}
               {#if experiment.run.status === "ACTIVE"}
                 <a class="text-action action-link" href={`/validate/${experiment.run.publicToken}`} target="_blank" rel="noreferrer">Open test<span class="sr-only"> (opens in new tab)</span></a>
@@ -1211,10 +1219,11 @@
                   confirmLabel="Close run"
                   consequence="COLLECTION ENDS"
                   busy={closingId === experiment.id}
+                  disabled={disabled}
                   onConfirm={() => void closeRun(experiment)}
                 />
               {:else}
-                <button type="button" onclick={() => void beginConclusion(experiment)}>Review and record outcome</button>
+                <button type="button" disabled={disabled} onclick={() => void beginConclusion(experiment)}>Review and record outcome</button>
               {/if}
             {/if}
           </div>
@@ -1269,7 +1278,7 @@
               <div class="conclusion-heading">
                 <div>
                   <p class="kicker">Your conclusion</p>
-                  <h5>{conclusionLabel(experiment.conclusion.outcome)}</h5>
+                  <h4>{conclusionLabel(experiment.conclusion.outcome)}</h4>
                 </div>
                 <span>Idea revision {experiment.conclusion.ideaRevision} · {new Date(experiment.conclusion.createdAt).toLocaleDateString()}</span>
               </div>
@@ -1288,7 +1297,7 @@
                 <ReshapeProposalPanel
                   source={{ kind: "experiment", experiment }}
                   {seedCost}
-                  disabled={narrowingDisabled}
+                  disabled={disabled || narrowingDisabled}
                   createProposal={() => createSelectionIdeaNarrowingProposal(jobId, experiment.id)}
                   fetchProposal={() => getSelectionIdeaNarrowingProposal(jobId, experiment.id)}
                   onEvaluate={onEvaluateNarrowing}
@@ -1883,7 +1892,7 @@
   .row-meta span:first-child { color: var(--color-text-muted); }
   .row-meta span.locked { color: var(--color-success-text); }
   .row-meta span.active { color: var(--color-info-dark); }
-  h4 { font-size: var(--text-base); color: var(--color-text-primary); }
+  .experiment-main h3 { font-size: var(--text-base); color: var(--color-text-primary); }
   .experiment-main > p { margin-top: var(--space-1); font-size: var(--text-sm); line-height: var(--leading-normal); color: var(--color-text-secondary); }
   .experiment-rule { display: grid; gap: var(--space-1); margin: 0; }
   .experiment-rule div { display: grid; grid-template-columns: var(--space-12) minmax(0, 1fr); gap: var(--space-2); }
@@ -1914,7 +1923,7 @@
   .result-ledger dd { margin: var(--space-1) 0 0; font-family: var(--font-mono); font-size: var(--text-13); color: var(--color-text-primary); font-variant-numeric: tabular-nums; }
   .result-status { margin-top: var(--space-4); font-size: var(--text-sm); line-height: var(--leading-normal); color: var(--color-text-secondary); }
   .conclusion-heading { display: grid; grid-template-columns: minmax(16rem, 0.8fr) minmax(18rem, 1.2fr); gap: var(--space-6); align-items: start; }
-  .conclusion-heading h5 { margin: 0; font-size: var(--text-base); color: var(--color-text-primary); }
+  .conclusion-heading h4 { margin: 0; font-size: var(--text-base); color: var(--color-text-primary); }
   .conclusion-heading > span { font-size: var(--text-sm); line-height: var(--leading-normal); color: var(--color-text-secondary); }
   .conclusion-heading > span { justify-self: end; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-secondary); }
   .conclusion-sheet fieldset { padding-inline: 0; }

@@ -176,6 +176,10 @@
     return `${finalist.ideaId}:${finalist.ideaRevision}`;
   }
 
+  function shortIdeaId(ideaId: string): string {
+    return ideaId.length <= 16 ? ideaId : `${ideaId.slice(0, 12)}…`;
+  }
+
   function emptyPreMortemEntry(id: number): PreMortemDraft {
     return {
       id,
@@ -341,10 +345,31 @@
     requestAnimationFrame(() => confirmationHeadingEl?.focus());
   }
 
+  function firstInvalidDecision(): { id: string; message: string } | null {
+    if (targetRequired && !selectedFinalist) {
+      return { id: "decision-idea", message: "Choose the idea this decision applies to." };
+    }
+    if (disposition === "TEST_FIRST" && !selectedTestBrief) {
+      return { id: "decision-test-brief", message: "Choose a locked test brief for this idea revision." };
+    }
+    if (isOverride && overrideReason.trim().length < 10) {
+      return { id: "override-reason", message: "Explain the override in at least 10 characters." };
+    }
+    if (rationale.trim().length < 10) {
+      return { id: "decision-rationale", message: "Explain why this is the right next move in at least 10 characters." };
+    }
+    if (changeCriterion.trim().length < 10) {
+      return { id: "change-criterion", message: "Write an observable change or stop condition in at least 10 characters." };
+    }
+    return null;
+  }
+
   function submitDecisionStep(): void {
     error = "";
-    if (!decisionStepValid) {
-      error = "Complete the required direction, rationale, and change criterion before continuing.";
+    const invalid = firstInvalidDecision();
+    if (invalid) {
+      error = invalid.message;
+      requestAnimationFrame(() => document.getElementById(invalid.id)?.focus());
       return;
     }
     stage = targetRequired ? "premortem" : "review";
@@ -508,6 +533,12 @@
       <h3>Research recommendation</h3>
       <div class="row-content">
         <p class="idea-name">{sources.recommendation.solutionName}</p>
+        <p
+          class="identity-line"
+          title={`${sources.recommendation.ideaId} · revision ${sources.recommendation.ideaRevision}`}
+        >
+          Idea {shortIdeaId(sources.recommendation.ideaId)} · revision {sources.recommendation.ideaRevision}
+        </p>
         {#if sources.recommendation.verdict}
           <p class="verdict-line">
             <span>{sources.recommendation.verdict.verdict ?? "Research verdict"}</span>
@@ -533,7 +564,9 @@
               {#each otherFinalists as finalist}
                 <li>
                   <strong>{finalist.solutionName}</strong>
-                  <span>Idea revision {finalist.ideaRevision}</span>
+                  <span title={`${finalist.ideaId} · revision ${finalist.ideaRevision}`}>
+                    Idea {shortIdeaId(finalist.ideaId)} · revision {finalist.ideaRevision}
+                  </span>
                 </li>
               {/each}
             </ul>
@@ -590,6 +623,14 @@
               · {selectedDecisionName(sources.decision)}
             {/if}
           </p>
+          {#if sources.decision.selectedIdeaId && sources.decision.selectedIdeaRevision}
+            <p
+              class="identity-line"
+              title={`${sources.decision.selectedIdeaId} · revision ${sources.decision.selectedIdeaRevision}`}
+            >
+              Idea {shortIdeaId(sources.decision.selectedIdeaId)} · revision {sources.decision.selectedIdeaRevision}
+            </p>
+          {/if}
           <dl>
             <div><dt>Why now</dt><dd>{sources.decision.rationale}</dd></div>
             {#if sources.decision.acceptedRisks}
@@ -654,7 +695,7 @@
           </nav>
 
           {#if stage === "decision"}
-          <form id="owner-decision-step" class="decision-step-form" onsubmit={(event) => { event.preventDefault(); submitDecisionStep(); }}>
+          <form id="owner-decision-step" class="decision-step-form" novalidate onsubmit={(event) => { event.preventDefault(); submitDecisionStep(); }}>
           <DecisionHelp title="Your call, on the record" label="About the owner decision">
             Commit to a next move and name the evidence that would change it, while the reasoning is fresh. NicheIQ writes the decision once, permanently, beside a snapshot of the research it rests on. The report recommendation stays intact, and the call stays yours.
           </DecisionHelp>
@@ -681,7 +722,7 @@
             }}>
               {#each sources.finalists as finalist}
                 <option value={finalistKey(finalist)}>
-                  {finalist.solutionName}{finalistKey(finalist) === finalistKey(sources.recommendation) ? " (recommended)" : ""}
+                  {finalist.solutionName} — rev {finalist.ideaRevision} — {shortIdeaId(finalist.ideaId)}{finalistKey(finalist) === finalistKey(sources.recommendation) ? " (recommended)" : ""}
                 </option>
               {/each}
             </select>
@@ -694,7 +735,7 @@
                 Choose the exact precommitted test this decision will carry forward.
               </p>
               {#if matchingTestBriefs.length === 0}
-                <div class="test-brief-empty" role="status">
+                <div id="decision-test-brief" class="test-brief-empty" role="status" tabindex="-1">
                   <strong>No locked test brief matches {selectedFinalist.solutionName} · revision {selectedFinalist.ideaRevision}.</strong>
                   <span>Test first cannot be recorded without one. Choose another finalist with a locked brief, or choose Proceed, Park, or Stop.</span>
                 </div>
@@ -736,11 +777,13 @@
 
           {#if isOverride}
             <label for="override-reason">Why are you overriding the research recommendation?</label>
-            <textarea id="override-reason" bind:value={overrideReason} rows="3" required minlength="10" oninput={markDirty}></textarea>
+            <p id="override-reason-help" class="field-help">At least 10 characters. State the evidence or constraint behind your call.</p>
+            <textarea id="override-reason" bind:value={overrideReason} rows="3" required minlength="10" aria-describedby="override-reason-help" oninput={markDirty}></textarea>
           {/if}
 
           <label for="decision-rationale">Why is this the right next move now?</label>
-          <textarea id="decision-rationale" bind:value={rationale} rows="4" required minlength="10" oninput={markDirty}></textarea>
+          <p id="decision-rationale-help" class="field-help">At least 10 characters. Record the reason you would want to remember later.</p>
+          <textarea id="decision-rationale" bind:value={rationale} rows="4" required minlength="10" aria-describedby="decision-rationale-help" oninput={markDirty}></textarea>
 
           <label for="accepted-risks">Residual risk or context <span class="optional-label">Optional</span></label>
           <textarea
@@ -752,12 +795,14 @@
           ></textarea>
 
           <label for="change-criterion">I will change or stop this decision if…</label>
+          <p id="change-criterion-help" class="field-help">At least 10 characters. Use an observable threshold, event, or deadline.</p>
           <textarea
             id="change-criterion"
             bind:value={changeCriterion}
             rows="3"
             required
             minlength="10"
+            aria-describedby="change-criterion-help"
             placeholder="Write an observable condition, not a feeling."
             oninput={markDirty}
           ></textarea>
@@ -768,7 +813,7 @@
           </form>
 
           {:else if stage === "premortem" && targetRequired && selectedFinalist}
-            <form id="owner-premortem-step" class="decision-step-form" onsubmit={(event) => { event.preventDefault(); review(); }}>
+            <form id="owner-premortem-step" class="decision-step-form" novalidate onsubmit={(event) => { event.preventDefault(); review(); }}>
             <fieldset class="pre-mortem" aria-describedby="pre-mortem-help">
               <legend>Pre-mortem</legend>
               <p id="pre-mortem-help" class="pre-mortem-intro">
@@ -879,6 +924,11 @@
                 {/if}
                 Future changes will need a separate amendment.
               </p>
+              {#if selectedFinalist}
+                <p class="identity-line" title={`${selectedFinalist.ideaId} · revision ${selectedFinalist.ideaRevision}`}>
+                  Idea {shortIdeaId(selectedFinalist.ideaId)} · revision {selectedFinalist.ideaRevision}
+                </p>
+              {/if}
               {#if targetRequired}
                 <ol class="confirmation-risks">
                   {#each activePreMortemEntries as entry, index}
@@ -919,7 +969,6 @@
           form="owner-decision-step"
           class=""
           minWidth="11rem"
-          disabled={!decisionStepValid}
           loadingText=""
           label={targetRequired ? "Continue to pre-mortem" : "Review decision"}
         />
@@ -931,7 +980,6 @@
           form="owner-premortem-step"
           class=""
           minWidth="11rem"
-          disabled={!preMortemValid}
           loadingText=""
           label="Review decision"
         />
@@ -1150,6 +1198,14 @@
   .meta-line, .neutral-copy, .receipt-note {
     color: var(--color-text-muted);
     font-size: var(--text-base);
+  }
+
+  .identity-line {
+    margin: 0.2rem 0 0.65rem;
+    color: var(--color-text-muted);
+    font-family: var(--font-mono);
+    font-size: var(--text-13);
+    overflow-wrap: anywhere;
   }
 
   a {

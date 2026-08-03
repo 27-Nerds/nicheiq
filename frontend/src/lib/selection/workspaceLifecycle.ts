@@ -1,5 +1,19 @@
 import type { Job } from "$lib/types/job";
 
+export type SelectionAnalystMode = "interactive" | "blocked" | "read_only";
+
+/**
+ * Keep the saved analyst transcript available throughout the run, while matching
+ * the chat endpoint's lifecycle boundary for new turns on selection routes.
+ * Completed-report chat is intentionally interactive; failed terminal runs are
+ * history only, and every in-flight/non-selection state blocks the composer.
+ */
+export function selectionAnalystMode(status: Job["status"] | ""): SelectionAnalystMode {
+  if (status === "AWAITING_SELECTION" || status === "COMPLETED") return "interactive";
+  if (status === "FAILED" || status === "CANCELLED") return "read_only";
+  return "blocked";
+}
+
 /**
  * Whether a status flip observed mid-session must force-close the open
  * selection tools (discarding any in-progress drafts).

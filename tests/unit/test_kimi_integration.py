@@ -27,7 +27,7 @@ class TestIsKimiModel:
     def test_rejects_openai_models(self):
         assert is_kimi_model("gpt-4o") is False
         assert is_kimi_model("gpt-5.2") is False
-        assert is_kimi_model("gpt-5.1-codex-max") is False
+        assert is_kimi_model("gpt-5.3-codex") is False
 
     def test_rejects_other_models(self):
         assert is_kimi_model("claude-3-opus") is False

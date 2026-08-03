@@ -179,8 +179,10 @@ class TestCatalogICP:
         pp.title = "Benchmark data is anecdotal"
         generator.accessor.get_sorted_pain_points.return_value = [pp]
         solution = MagicMock()
+        solution.pain_points_addressed = [pp.title]
         solution.core_features = ["Searchable benchmarks", "GPU cost calculator"]
         generator.accessor.get_selected_solution_details.return_value = solution
+        generator.accessor.get_solution_pain_points.return_value = [pp]
 
     def test_catalog_run_gets_python_icp(self, generator):
         self._catalog_state(generator, ["Platform engineers", "ML researchers"])

@@ -89,6 +89,130 @@ describe("job selection candidate load state", () => {
     expect(result.solutionsFetchFailed).toBe(false);
   });
 
+  it("loads historical collaborator feedback when the public share is inactive", async () => {
+    mocks.fetchBackend.mockImplementation((path: string) => {
+      if (path === "/api/jobs/job-1") return Promise.resolve(response(job([{
+        idea_id: "idea-chosen",
+        idea_revision: 1,
+        solution_name: "Chosen idea",
+        description: "Valid candidate",
+        value_proposition: "Chosen value",
+      }])));
+      if (path === "/api/jobs/job-1/solutions") {
+        return Promise.resolve(response({ solutionIdeas: [] }));
+      }
+      if (path === "/api/jobs/job-1/discovery-share") {
+        return Promise.resolve(response({
+          isShared: false,
+          solutionVotes: { "Chosen idea": 2 },
+          solutionVotesById: { "idea-chosen": 2 },
+          voteRationales: [{
+            solutionId: "idea-chosen",
+            solutionName: "Chosen idea",
+            comment: "This fits the workflow.",
+          }],
+        }));
+      }
+      return Promise.resolve(response({}, 404));
+    });
+
+    const result = await load(event()) as Record<string, any>;
+
+    expect(result.solutionVotes).toEqual({ "Chosen idea": 2 });
+    expect(result.solutionVotesById).toEqual({ "idea-chosen": 2 });
+    expect(result.voteRationales).toEqual([{
+      solutionId: "idea-chosen",
+      solutionName: "Chosen idea",
+      comment: "This fits the workflow.",
+    }]);
+  });
+
+  it.each(["RUNNING_PHASE2", "COMPLETED"])(
+    "retains collaborator feedback after selection while the job is %s",
+    async (status) => {
+      const selectedJob = {
+        ...job([{
+          idea_id: "idea-chosen",
+          idea_revision: 1,
+          solution_name: "Chosen idea",
+          description: "Valid candidate",
+          value_proposition: "Chosen value",
+        }]),
+        status,
+        selectedSolutions: ["Chosen idea"],
+      };
+      mocks.fetchBackend.mockImplementation((path: string) => {
+        if (path === "/api/jobs/job-1") return Promise.resolve(response(selectedJob));
+        if (path === "/api/jobs/job-1/discovery-share") {
+          return Promise.resolve(response({
+            isShared: false,
+            solutionVotes: { "Chosen idea": 1 },
+            solutionVotesById: { "idea-chosen": 1 },
+            voteRationales: [{
+              solutionId: "idea-chosen",
+              solutionName: "Chosen idea",
+              comment: "Keep this one.",
+            }],
+          }));
+        }
+        return Promise.resolve(response({}, 404));
+      });
+
+      const result = await load(event()) as Record<string, any>;
+
+      expect(result.solutionVotesById).toEqual({ "idea-chosen": 1 });
+      expect(result.voteRationales).toHaveLength(1);
+      expect(mocks.fetchBackend).toHaveBeenCalledWith(
+        "/api/jobs/job-1/discovery-share",
+        expect.anything(),
+      );
+    },
+  );
+
+  it.each(["RUNNING_PHASE2", "COMPLETED"])(
+    "hydrates saved annotations as a read-only record while the job is %s",
+    async (status) => {
+      const selectedJob = {
+        ...job([]),
+        status,
+        selectedSolutions: ["Chosen idea"],
+      };
+      const savedAnnotations = {
+        revision: 3,
+        document: {
+          version: 1,
+          surfaces: {
+            "research:page": {
+              strokes: [{
+                id: "stroke-1",
+                color: "#dc2626",
+                width: 4,
+                createdAt: 1,
+                points: [[0, 0], [10, 10]],
+              }],
+            },
+          },
+        },
+        updatedAt: "2026-08-02T09:00:00.000Z",
+      };
+      mocks.fetchBackend.mockImplementation((path: string) => {
+        if (path === "/api/jobs/job-1") return Promise.resolve(response(selectedJob));
+        if (path === "/api/jobs/job-1/discovery-annotations") {
+          return Promise.resolve(response(savedAnnotations));
+        }
+        return Promise.resolve(response({}, 404));
+      });
+
+      const result = await load(event()) as Record<string, any>;
+
+      expect(result.annotationDocument).toEqual(savedAnnotations);
+      expect(mocks.fetchBackend).toHaveBeenCalledWith(
+        "/api/jobs/job-1/discovery-annotations",
+        expect.anything(),
+      );
+    },
+  );
+
   it.each([
     ["QUEUED", "SEED_IDEA"],
     ["RUNNING", "SEED_IDEA"],
@@ -135,6 +259,33 @@ describe("job selection candidate load state", () => {
     },
   );
 
+  it("skips the Discovery-dossier fetches at AWAITING_GATE without tripping failure flags", async () => {
+    mocks.fetchBackend.mockImplementation((path: string) => {
+      if (path === "/api/jobs/job-1") {
+        return Promise.resolve(response({
+          ...job([]),
+          status: "AWAITING_GATE",
+          activeDispatchKind: null,
+        }));
+      }
+      // The backend's gate-status guard 400s the artifact endpoints mid-gate.
+      return Promise.resolve(response({}, 400));
+    });
+
+    const result = await load(event()) as Record<string, unknown>;
+
+    expect(mocks.fetchBackend).not.toHaveBeenCalledWith(
+      "/api/jobs/job-1/discovery-data",
+      expect.anything(),
+    );
+    expect(mocks.fetchBackend).not.toHaveBeenCalledWith(
+      "/api/jobs/job-1/preview-report",
+      expect.anything(),
+    );
+    expect(result.discoveryDataFetchFailed).toBe(false);
+    expect(result.previewReportFetchFailed).toBe(false);
+  });
+
   it("keeps initial queued discovery on the lightweight progress data contract", async () => {
     mocks.fetchBackend.mockImplementation((path: string) => {
       if (path === "/api/jobs/job-1") {
@@ -158,6 +309,28 @@ describe("job selection candidate load state", () => {
     );
     expect(mocks.fetchBackend).not.toHaveBeenCalledWith(
       "/api/jobs/job-1/preview-report",
+      expect.anything(),
+    );
+  });
+
+  it("does not fetch Discovery catalog detours for queued Deep Research", async () => {
+    mocks.fetchBackend.mockImplementation((path: string) => {
+      if (path === "/api/jobs/job-1") {
+        return Promise.resolve(response({
+          ...job([]),
+          status: "QUEUED",
+          activeDispatchKind: "DEEP_RESEARCH",
+          selectedSolutions: ["Chosen idea"],
+        }));
+      }
+      return Promise.resolve(response({}, 404));
+    });
+
+    const result = await load(event()) as Record<string, unknown>;
+
+    expect(result.catalogPainPoints).toEqual([]);
+    expect(mocks.fetchBackend).not.toHaveBeenCalledWith(
+      "/api/public/catalog/top-pain-points?limit=8&freePreview=true",
       expect.anything(),
     );
   });

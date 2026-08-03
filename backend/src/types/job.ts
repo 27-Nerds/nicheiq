@@ -317,7 +317,7 @@ export type GateFailedInput = z.infer<typeof GateFailedSchema>;
 // gate-action), not here — this schema only enforces SHAPE.
 export const GateG1PatchSchema = z.object({
   niche_description: z.string().max(2000).optional(),
-  market_segments: z.array(z.string().max(120)).max(8).optional(),
+  market_segments: z.array(z.string().max(120)).max(12).optional(),
   industry_boundaries: z.string().max(2000).optional(),
   user_target_audience: z.string().max(500).optional(),
 }).strict();

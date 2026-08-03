@@ -9,9 +9,10 @@
 		session?: { user?: { name?: string | null; email?: string | null } } | null;
 		ctaTexts?: Record<string, CtaConfig | null>;
 		plans?: SubscriptionPlan[];
+		hasSampleReport?: boolean;
 	}
 
-	let { session = null, ctaTexts, plans = [] }: Props = $props();
+	let { session = null, ctaTexts, plans = [], hasSampleReport = false }: Props = $props();
 
 	const fallbackTiers: Array<{
 		name: string;
@@ -70,7 +71,11 @@
 	}
 
 	const renderedPlans = $derived(
-		useDynamic ? plans : fallbackTiers.map(fallbackToPlan),
+		(useDynamic ? plans : fallbackTiers.map(fallbackToPlan)).map((plan) => (
+			!hasSampleReport && plan.ctaSubUrl?.split(/[?#]/, 1)[0] === '/sample-report'
+				? { ...plan, ctaSubText: null, ctaSubUrl: null }
+				: plan
+		)),
 	);
 
 	let subscribeLoading = $state<string | null>(null);

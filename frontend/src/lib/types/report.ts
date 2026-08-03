@@ -99,12 +99,22 @@ export interface Report {
 	// (a merge was proposed but rejected, so they remain separate entries).
 	overlap_groups?: OverlapGroup[];
 
+	// Complete thesis-level partition of the visible pool (one entry per buyer-job family)
+	// plus the validated families no surviving concept represents. Absent/empty on runs
+	// without a non-degraded buyer-job partition — render the flat candidate list instead.
+	idea_theses?: IdeaThesisPartition;
+
 	// Web-verified incumbent landscape + niche wallet read, gathered alongside the parity
 	// probe (see incumbent_parity on solutions). Absent on legacy/older reports.
 	market_reality?: MarketReality;
 
 	// Research Reality Check — candid software-fit verdict
 	niche_difficulty_verdict?: NicheDifficultyVerdict;
+
+	/** Version of the scoring formulas that produced this report's scores (e.g. "2026.08").
+	 * Absent/null on reports generated before the 2026.08 scoring cutover — scores across
+	 * different versions are not comparable. */
+	scoring_version?: string;
 
 	// LLM-narrated honest assessment of the visible idea pool (strengths/weaknesses across
 	// all candidates), computed once in Stage 5. null when the pool was empty or the
@@ -203,12 +213,23 @@ export interface SEOCalculationTransparency {
 }
 
 export interface ExecutiveDashboard {
-	recommended_solution_snapshot: SolutionSnapshot;
+	/**
+	 * The only guaranteed section: the pipeline now raises rather than returning a
+	 * null verdict, so a completed report cannot ship without one.
+	 */
 	go_no_go_verdict: GoNoGoVerdict;
-	core_pain_point: CorePainPoint;
-	key_metrics: KeyMetrics;
-	confidence_score: number | null;
+	/**
+	 * Supporting sections. Any of these may be absent when its generation step
+	 * degraded — the section is then named in `unavailable_sections`. Render the
+	 * absence explicitly; never substitute a placeholder value.
+	 */
+	recommended_solution_snapshot?: SolutionSnapshot | null;
+	core_pain_point?: CorePainPoint | null;
+	key_metrics?: KeyMetrics | null;
+	confidence_score?: number | null;
 	research_depth_label?: string;
+	/** Raw keys of any dashboard section that degraded during generation. */
+	unavailable_sections?: string[] | null;
 	// niche_description removed - use root report.niche instead
 }
 
@@ -426,7 +447,15 @@ export interface SeoKillQuestion {
 
 export interface SEOStrategy {
 	total_keywords_analyzed: number;
+	/** Combined volume of every analyzed keyword — category reach, NOT validated idea demand. */
 	total_monthly_volume: number;
+	/** Volume carried by keywords that actually match the idea. Null on legacy reports and
+	 *  whenever the backend's intent-grader coverage guard trips. */
+	idea_intent_monthly_volume?: number | null;
+	/** Share of total_monthly_volume carried by off-topic (grade-0) keywords. */
+	offtopic_volume_share?: number | null;
+	/** Share of total_monthly_volume carried by broader category (grade-1 + ungraded) keywords. */
+	category_volume_share?: number | null;
 	key_findings?: string[];
 	tier_0_keywords: Keyword[];
 	tier_0_strategy?: string;
@@ -766,6 +795,76 @@ export interface OverlapGroup {
 	shared_product: string;
 }
 
+// ── Thesis-level portfolio partition (docs/DIVERSITY_DECISION_2026-08.md) ──
+// The pool of N ideas collapses into a handful of buyer-job families; this is the COMPLETE
+// partition of it (unlike OverlapGroup, which only reports rejected 2+ variant merges).
+
+/** One deterministic kill-signal already stamped on a member idea, attributed to the field it
+ *  came from so the UI can cite it instead of asserting it in NicheIQ's own voice. */
+export interface ThesisFatalAssumption {
+	/** Which member idea carries the signal. */
+	idea_name: string;
+	/** Source field: 'red_team_verdict' | 'data_access_model' | 'audience_fit' |
+	 *  'demand_unmeasured' | 'data_sources' | 'refine_binding_constraint'. */
+	source_field: string;
+	assumption: string;
+}
+
+/** One variant nested under a thesis. `name` joins back to the full idea the detail overlay
+ *  renders. `winning_angle` stays at VARIANT level on purpose — the GTM lens is orthogonal to
+ *  the buyer job, so there is no thesis-level angle to render. */
+export interface ThesisMember {
+	name: string;
+	/** 'vertical_workflow' | 'distribution_seo' | 'novel_differentiation'; null when angle
+	 *  evaluation was off or the classifier abstained. */
+	winning_angle?: string | null;
+	/** Birth provenance: 'single' | 'salvaged' | 'bundle' | 'merged'. */
+	idea_tier?: string;
+	/** Generation frame: 'pain' | 'gap' | 'data_asset' | 'workflow' | 'user_seed'. */
+	source_frame?: string;
+}
+
+/** One product thesis: a buyer-job family with every visible idea that renders it. */
+export interface IdeaThesis {
+	family_id: string;
+	display_label: string;
+	/** The role who pays. Empty string on a family the labeler left unlabeled. */
+	buyer: string;
+	triggering_job: string;
+	economic_outcome: string;
+	/** Every visible idea in this thesis, best-first by the same composite the grid ranks on. */
+	members: ThesisMember[];
+	lead_idea_name: string;
+	/** Rolled up from members' incumbent_parity stamps. 'unknown' = vendor-less stamps or no
+	 *  parity data — NOT evidence of an open market. */
+	incumbent_status: 'occupied' | 'partial' | 'open' | 'unknown';
+	/** Named vendors from the members' parity stamps (vendor-less adversarial
+	 *  "shipped by evidence" findings are excluded — they are not parity claims). */
+	incumbent_vendors: string[];
+	fatal_assumptions: ThesisFatalAssumption[];
+}
+
+/** A validated buyer-job family with no surviving concept — shown so the run cannot claim it
+ *  examined an opportunity space it never covered. */
+export interface UncoveredFamily {
+	family_id: string;
+	display_label: string;
+	member_pain_ids: string[];
+	/** 'no_cell_allocated' (the allocator never spent a generator cell here) |
+	 *  'no_surviving_idea' (a cell ran, nothing survived) | 'unknown' (no telemetry). */
+	reason: 'no_cell_allocated' | 'no_surviving_idea' | 'unknown';
+	reason_detail?: string;
+}
+
+export interface IdeaThesisPartition {
+	/** 'llm' — the only source a thesis IA is built on (a degraded partition yields no theses). */
+	family_source?: string;
+	theses: IdeaThesis[];
+	uncovered_families: UncoveredFamily[];
+	/** Visible ideas that could not be mapped to any family. Never silently dropped. */
+	unassigned: { idea_name: string; reason: string }[];
+}
+
 // A single web-verified incumbent tool found while probing the niche's competitive
 // landscape (distinct from the per-idea incumbent_parity/adjacent_market_parity strings —
 // this is the aggregated niche-level tool list shown in the "Market reality" disclosure).
@@ -795,6 +894,8 @@ export interface MarketReality {
 
 export interface SolutionDetails {
 	// Basic info
+	idea_id?: string;
+	idea_revision?: number;
 	solution_name?: string;
 	headline?: string;
 	short_description?: string;
@@ -821,6 +922,11 @@ export interface SolutionDetails {
 	estimated_cac_organic?: string;
 	estimated_cac_organic_refined?: string;
 	estimated_cac_paid?: string;
+	/** 'parity_pivot' | 'variant_merge' | 'red_team_revision' when this idea replaced an
+	 *  earlier one that was rebuilt mid-run. A rebuild does not carry acquisition cost
+	 *  forward — the old figure priced the product it replaced — so the CAC fields above
+	 *  are deliberately absent, and this is what lets the UI say so. */
+	rebuild_origin?: string | null;
 	seo_scalability_score?: number;
 	seo_scalability_score_refined?: number;
 	estimated_indexable_pages?: number;
@@ -856,6 +962,8 @@ export interface SolutionDetails {
 	keyword_feature_priorities?: string[];
 	keyword_strategic_insights?: string;
 	category_pivot_suggestion?: string | null;
+	// Closed-vocabulary idea-stage facets carried into the selected solution record.
+	tags?: IdeaTags | null;
 	seo_refinement_metadata?: {
 		baseline_volume_used?: number;
 		volume_multiplier?: number;
@@ -979,6 +1087,10 @@ export interface AlternativeSolution {
 	adjacent_market_parity?: string | null; // audience-independent incumbent where the mechanism monetizes ("HigherGov (govcon intel): …"), null = none found
 	red_team_verdict?: string | null; // adversarial pass verdict: survives | weakened | killed
 	red_team_caveats?: string[] | null; // evidence-cited caveats from the red-team pass
+	/** 'parity_pivot' | 'variant_merge' | 'red_team_revision' when this idea replaced an
+	 *  earlier one that was rebuilt mid-run. Used to explain a missing CAC figure rather
+	 *  than hiding the tile — the old estimate priced a product that no longer exists. */
+	rebuild_origin?: string | null;
 	source_segment_payability?: number | null; // 0-1 buyer-wallet strength of the source segment (permanent signal; null = segment map failed)
 	source_segment_payability_class?: string | null; // corporate-budget | smb-budget | prosumer-wallet | personal-wallet | mixed
 	// Multi-Frame Idea Generation Portfolio: which generation frame minted this idea's cell.
@@ -1050,7 +1162,10 @@ export interface PainPointQuoteSource {
 export interface QuoteWithSource {
 	quote: string;
 	post_id: string;
-	subreddit: string;
+	/** Current reports serialize the platform-neutral model field by name. */
+	source_label?: string;
+	/** Legacy reports serialized the same field through its Reddit-era alias. */
+	subreddit?: string;
 	score: string;
 }
 

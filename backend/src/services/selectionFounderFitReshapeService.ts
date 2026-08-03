@@ -1,16 +1,16 @@
 import { z } from 'zod';
-import { CONFIG } from '../config.js';
 import { FounderFitArtifactSchema, type FounderFitArtifact } from '../types/founderFit.js';
 import { IdeaSynthesisPatchSchema, type IdeaSynthesisPatch } from '../types/ideaSynthesis.js';
 import { candidateSnapshotSha256, type IdeaRecord } from '../utils/ideaIdentity.js';
 import { fenceContent } from '../utils/promptFence.js';
+import { presentableRecord } from '../utils/selectionVocabulary.js';
 import {
   estimateAnalystCostUsd,
   normalizeAnalystUsage,
   resolveAnalystModel,
   type AnalystTokenUsage,
 } from './analystModelService.js';
-import { chatComplete } from './openai.js';
+import { chatComplete, hasApiKeyForModel } from './openai.js';
 
 const PROMPT_VERSION = 'founder-fit-reshape-v1';
 const UnsupportedClaim = /\b(?:validated|proven|confirmed|guaranteed)\b/i;
@@ -83,8 +83,15 @@ function userPrompt(
 ): string {
   const result = currentResult(artifact, parent)!;
   const conflicts = result.dimensions.filter((dimension) => dimension.status === 'conflict');
+  // `presentableRecord` maps the closed-vocabulary values inside `parent.snapshot`
+  // (`red_team_verdict`, `incumbent_parity`, `adjacent_market_parity`) to the words the
+  // product ships. This model's `changeSummary` and `rationale` land verbatim on a review
+  // card, so a raw "killed" or "partial by Opendate: …" in the fenced payload is a verdict
+  // the owner reads back. Applied to the PROMPT COPY only: it returns a new tree, so the
+  // caller's `input.parent.snapshot` — the exact bytes `candidateSnapshotSha256` anchors
+  // the patch to — is untouched.
   return fenceContent(
-    JSON.stringify({
+    JSON.stringify(presentableRecord({
       task: 'Narrow this parent into one candidate that is designed around the exact founder constraints.',
       constraints: {
         operation: 'narrow',
@@ -101,7 +108,7 @@ function userPrompt(
         sensitivity: result.sensitivity,
         conflicts,
       },
-    }),
+    })),
     'founder-fit-reshape',
     artifact.inputFingerprint,
     'UNTRUSTED FOUNDER FIT CONTEXT',
@@ -142,7 +149,6 @@ function truncateReshapeOutput(raw: unknown): unknown {
 export async function generateSelectionFounderFitReshape(
   input: SelectionFounderFitReshapeInput,
 ): Promise<SelectionFounderFitReshapeResult> {
-  if (!CONFIG.openaiApiKey) throw new Error('AI_PROVIDER_UNAVAILABLE');
   const artifact = FounderFitArtifactSchema.parse(input.artifact);
   const result = currentResult(artifact, input.parent);
   if (!result) throw new Error('STALE_FOUNDER_FIT_RESULT');
@@ -155,6 +161,7 @@ export async function generateSelectionFounderFitReshape(
   if (conflicts.length === 0) throw new Error('RESHAPE_CONFLICT_REQUIRED');
 
   const model = await resolveAnalystModel();
+  if (!hasApiKeyForModel(model)) throw new Error('AI_PROVIDER_UNAVAILABLE');
   const completion = await chatComplete({
     model,
     messages: [

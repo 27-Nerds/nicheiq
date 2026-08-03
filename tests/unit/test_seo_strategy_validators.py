@@ -554,3 +554,57 @@ class TestContentStrategyResultValidator:
             "keyword_based_page_types": None,
         })
         assert result.keyword_based_page_types is None
+
+
+class TestIntentVolumeBandFields:
+    """Q-049: three-band idea-intent fields on SEOStrategyReport + on-idea SeoKillQuestion
+    fields — all optional, defaulting to None (exactly today's behavior when absent)."""
+
+    def _minimal_report(self, **extra):
+        from nicheiq.models.seo_strategy import SEOStrategyReport
+        return SEOStrategyReport(
+            total_keywords_analyzed=0,
+            total_monthly_volume=0,
+            key_findings=["x"],
+            tier_1_keywords=[],
+            tier_1_quick_win_strategy="s",
+            content_strategy="c",
+            technical_seo_recommendations="t",
+            competitive_positioning="p",
+            implementation_roadmap="r",
+            **extra,
+        )
+
+    def test_band_fields_default_none(self):
+        rep = self._minimal_report()
+        assert rep.offtopic_volume_share is None
+        assert rep.category_volume_share is None
+        assert rep.idea_intent_monthly_volume is None
+
+    def test_band_fields_round_trip(self):
+        from nicheiq.models.seo_strategy import SEOStrategyReport
+        rep = self._minimal_report(
+            offtopic_volume_share=0.25,
+            category_volume_share=0.55,
+            idea_intent_monthly_volume=1200,
+        )
+        reloaded = SEOStrategyReport.model_validate(rep.model_dump())
+        assert reloaded.offtopic_volume_share == 0.25
+        assert reloaded.category_volume_share == 0.55
+        assert reloaded.idea_intent_monthly_volume == 1200
+
+    def test_legacy_payload_without_band_fields_parses(self):
+        """Old checkpoints/reports (no band keys at all) must still validate → None."""
+        from nicheiq.models.seo_strategy import SEOStrategyReport
+        payload = self._minimal_report().model_dump()
+        for k in ("offtopic_volume_share", "category_volume_share", "idea_intent_monthly_volume"):
+            payload.pop(k)
+        rep = SEOStrategyReport.model_validate(payload)
+        assert rep.idea_intent_monthly_volume is None
+
+    def test_seo_kill_question_on_idea_fields_default_none(self):
+        from nicheiq.models.seo_strategy import SeoKillQuestion
+        q = SeoKillQuestion(indexable_page_ceiling=10)
+        assert q.on_idea_page_ceiling is None and q.on_idea_winnable is None
+        q2 = SeoKillQuestion(indexable_page_ceiling=10, on_idea_page_ceiling=4, on_idea_winnable=2)
+        assert (q2.on_idea_page_ceiling, q2.on_idea_winnable) == (4, 2)

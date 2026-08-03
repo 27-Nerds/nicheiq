@@ -191,7 +191,7 @@ class KeywordSeedGenerator:
             return result
 
         except Exception as e:
-            logger.error(f"Seed keyword generation failed: {e}", exc_info=True)
+            logger.opt(exception=True).error("Seed keyword generation failed: {}", e)
             return None
 
     def _sanitize_for_prompt(self, text: str | None, max_length: int = 1000) -> str:

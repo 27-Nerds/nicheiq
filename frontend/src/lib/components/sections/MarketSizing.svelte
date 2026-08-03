@@ -11,7 +11,7 @@
   } from "lucide-svelte";
   import { SECTION_MAP } from "$lib/config/report-sections";
   import type { MarketSizing } from "$lib/types/report";
-  import { renderMarkdown } from "$lib/utils/format";
+  import { formatMoneyRange, humanizeInternalJargon, renderMarkdown } from "$lib/utils/format";
   import Badge from "$lib/components/ui/Badge.svelte";
   import Section from "$lib/components/ui/Section.svelte";
   import SubsectionHeader from "$lib/components/ui/SubsectionHeader.svelte";
@@ -188,7 +188,7 @@
             <div class="item-list">
               {#each data.growth_drivers as driver}
                 <IconListItem icon={Plus} iconVariant="success"
-                  >{driver}</IconListItem
+                  >{humanizeInternalJargon(driver)}</IconListItem
                 >
               {/each}
             </div>
@@ -207,7 +207,7 @@
             <div class="item-list">
               {#each data.risk_factors as risk}
                 <IconListItem icon={AlertCircle} iconVariant="error"
-                  >{risk}</IconListItem
+                  >{humanizeInternalJargon(risk)}</IconListItem
                 >
               {/each}
             </div>
@@ -244,21 +244,21 @@
             <div class="segment-metrics">
               <div class="metric">
                 <span class="metric-label">
-                  TAM <Tooltip content={getTermTooltip("TAM")} position="top" />
+                  Total market <Tooltip content={getTermTooltip("TAM")} position="top" />
                 </span>
-                <span class="metric-value">{segment.tam_estimate}</span>
+                <span class="metric-value">{formatMoneyRange(segment.tam_estimate)}</span>
               </div>
               <div class="metric">
                 <span class="metric-label">
-                  SAM <Tooltip content={getTermTooltip("SAM")} position="top" />
+                  Reachable <Tooltip content={getTermTooltip("SAM")} position="top" />
                 </span>
-                <span class="metric-value">{segment.sam_estimate}</span>
+                <span class="metric-value">{formatMoneyRange(segment.sam_estimate)}</span>
               </div>
               <div class="metric highlight">
                 <span class="metric-label">
-                  SOM <Tooltip content={getTermTooltip("SOM")} position="top" />
+                  Obtainable <Tooltip content={getTermTooltip("SOM")} position="top" />
                 </span>
-                <span class="metric-value accent">{segment.som_estimate}</span>
+                <span class="metric-value accent">{formatMoneyRange(segment.som_estimate)}</span>
               </div>
             </div>
             {#if segment.sizing_methodology}
@@ -282,7 +282,7 @@
       >
         <InsightCard variant="muted" border="left" padding="md">
           <div class="methodology-content">
-            {@html renderMarkdown(data.methodology_explanation)}
+            {@html renderMarkdown(humanizeInternalJargon(data.methodology_explanation))}
           </div>
           {#if data.data_sources_used && data.data_sources_used.length > 0}
             <div class="sources-row">
@@ -310,7 +310,7 @@
       >
         <InsightCard variant="success" border="left" padding="md">
           <div class="rationale-content">
-            {@html renderMarkdown(data.viability_rationale)}
+            {@html renderMarkdown(humanizeInternalJargon(data.viability_rationale))}
           </div>
         </InsightCard>
       </ExpandableSection>

@@ -72,6 +72,10 @@ class CheckpointManager:
         self.entry_mode = entry_mode
         self.checkpoint_folder: Path | None = None
         self.validator = CheckpointValidator()
+        # Paid follow-up operations inspect this after a failed save. ``True`` means the
+        # stage file is still exactly the pre-save version; ``False`` means even the local
+        # compensation write failed, so the operation must not be refunded yet.
+        self.last_save_failure_rollback_safe = True
 
     def _get_niche_slug(self) -> str:
         """Generate filesystem-safe slug from niche description."""
@@ -124,6 +128,12 @@ class CheckpointManager:
         if not settings.checkpoint_enabled:
             return True
 
+        self.last_save_failure_rollback_safe = True
+        stage_file: Path | None = None
+        previous_stage_bytes: bytes | None = None
+        stage_existed = False
+        stage_replaced = False
+        stage_temp: Path | None = None
         try:
             if stage_name == "stage_5_3_refinement" and self.job_id:
                 from ..utils.idea_identity import (
@@ -178,10 +188,20 @@ class CheckpointManager:
             else:
                 data_json = {"data": str(stage_data)}
 
-            # Save stage file
+            # Save the stage through an atomic replacement. More importantly, retain the
+            # exact previous bytes until metadata also lands: metadata serialization can
+            # fail after the stage write, and returning False while leaving the new paid
+            # candidate on disk would let the caller refund an operation whose result
+            # survived in the Phase-2 checkpoint.
             stage_file = checkpoint_folder / f"{stage_name}.json"
-            with open(stage_file, "w", encoding="utf-8") as f:
+            stage_existed = stage_file.exists()
+            if stage_existed:
+                previous_stage_bytes = stage_file.read_bytes()
+            stage_temp = stage_file.with_suffix(".json.tmp")
+            with open(stage_temp, "w", encoding="utf-8") as f:
                 json.dump(data_json, f, indent=2, ensure_ascii=False, default=str)
+            stage_temp.replace(stage_file)
+            stage_replaced = True
 
             # Update metadata
             self._update_checkpoint_metadata(stage_name)
@@ -190,6 +210,27 @@ class CheckpointManager:
             return True
 
         except Exception as e:
+            if stage_temp is not None:
+                try:
+                    stage_temp.unlink(missing_ok=True)
+                except OSError as cleanup_error:
+                    logger.debug(
+                        f"Failed to clean checkpoint temp file {stage_temp}: {cleanup_error}"
+                    )
+            if stage_replaced and stage_file is not None:
+                try:
+                    if stage_existed:
+                        restore_temp = stage_file.with_suffix(".json.restore.tmp")
+                        restore_temp.write_bytes(previous_stage_bytes or b"")
+                        restore_temp.replace(stage_file)
+                    else:
+                        stage_file.unlink(missing_ok=True)
+                except Exception as restore_error:
+                    self.last_save_failure_rollback_safe = False
+                    logger.critical(
+                        f"Failed to restore checkpoint {stage_name} after a partial save: "
+                        f"{restore_error}. A paid caller must hold settlement and retry."
+                    )
             logger.warning(f"Failed to save checkpoint for {stage_name}: {e}")
             # Don't fail the pipeline for checkpoint errors
             return False
@@ -308,8 +349,14 @@ class CheckpointManager:
             metadata["idea_ruled_out"] = self.state.idea_ruled_out
         if getattr(self.state, "idea_funnel_counts", None):
             metadata["idea_funnel_counts"] = self.state.idea_funnel_counts
+        if getattr(self.state, "idea_cell_allocation", None):
+            metadata["idea_cell_allocation"] = self.state.idea_cell_allocation
         if getattr(self.state, "idea_overlap_groups", None):
             metadata["idea_overlap_groups"] = self.state.idea_overlap_groups
+        if getattr(self.state, "buyer_job_partition", None):
+            metadata["buyer_job_partition"] = self.state.buyer_job_partition
+        if getattr(self.state, "idea_theses", None):
+            metadata["idea_theses"] = self.state.idea_theses
         if getattr(self.state, "niche_incumbent_map", None):
             metadata["niche_incumbent_map"] = self.state.niche_incumbent_map
         if getattr(self.state, "niche_wallet_brief", None):
@@ -668,8 +715,14 @@ class CheckpointManager:
             self.state.idea_ruled_out = metadata["idea_ruled_out"]
         if metadata.get("idea_funnel_counts"):
             self.state.idea_funnel_counts = metadata["idea_funnel_counts"]
+        if metadata.get("idea_cell_allocation"):
+            self.state.idea_cell_allocation = metadata["idea_cell_allocation"]
         if metadata.get("idea_overlap_groups"):
             self.state.idea_overlap_groups = metadata["idea_overlap_groups"]
+        if metadata.get("buyer_job_partition"):
+            self.state.buyer_job_partition = metadata["buyer_job_partition"]
+        if metadata.get("idea_theses"):
+            self.state.idea_theses = metadata["idea_theses"]
         if metadata.get("niche_incumbent_map"):
             self.state.niche_incumbent_map = metadata["niche_incumbent_map"]
         if metadata.get("niche_wallet_brief"):

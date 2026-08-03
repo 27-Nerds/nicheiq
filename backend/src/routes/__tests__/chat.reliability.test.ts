@@ -135,6 +135,7 @@ const mockChatComplete = vi.fn().mockResolvedValue({
 vi.mock('../../services/openai.js', () => ({
   chatCompleteStream: (...a: any[]) => mockChatCompleteStream(...a),
   chatComplete: (...a: any[]) => mockChatComplete(...a),
+  hasApiKeyForModel: () => true,
 }));
 
 const mockGetPreviewReportForJob = vi.fn().mockResolvedValue(null);

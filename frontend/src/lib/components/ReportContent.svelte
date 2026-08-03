@@ -20,8 +20,19 @@
   import AlternativesSection from "$lib/components/sections/AlternativesSection.svelte";
   import EvidenceAppendix from "$lib/components/sections/EvidenceAppendix.svelte";
   import CoverageNotes from "$lib/components/CoverageNotes.svelte";
-  import { renderMarkdown } from "$lib/utils/format";
-  import type { ComponentType, Snippet } from "svelte";
+  import {
+    humanizeReportProse,
+    leadSentence,
+    normalizeSeoScalabilityNarrative,
+    renderMarkdown,
+  } from "$lib/utils/format";
+  import { afterNavigate, replaceState } from "$app/navigation";
+  import { localReportDate, utcReportDate } from "$lib/utils/reportDates";
+  import { unavailableSectionNotes } from "$lib/utils/unavailableSections";
+  import { planVerdictGate } from "$lib/utils/verdictGate";
+  import { humanizeTag } from "$lib/utils/ideaTagLabels";
+  import { solutionDisplayTitle } from "$lib/utils/solution-utils";
+  import { tick, type ComponentType, type Snippet } from "svelte";
 
   type ReportView = "brief" | "evidence" | "plan";
   type EvidenceTopicId = "demand" | "market" | "competition" | "sources";
@@ -42,7 +53,20 @@
     decisionSlot?: Snippet;
   }
 
-  let { report, showBackLink = true, jobId, headerSlot, decisionSlot }: Props = $props();
+  let {
+    report: sourceReport,
+    showBackLink = true,
+    jobId,
+    headerSlot,
+    decisionSlot,
+  }: Props = $props();
+  // The single seam every report view shares. `detail=full` and the
+  // Research-quality tab hand raw report fields to the older section components,
+  // which never picked up the summary layer's per-call-site humanising — so the
+  // page was honest at a glance and reverted to internal names one click deeper.
+  // Rewriting once here covers both branches and anything added to either later.
+  const report = $derived(humanizeReportProse(sourceReport));
+  let reportShell = $state<HTMLDivElement>();
 
   const solutionDetails = $derived<SolutionDetails>(
     report.selected_solution_details ?? {
@@ -56,16 +80,80 @@
   const nicheName = $derived(
     report.niche_context?.niche_input ?? report.niche?.slice(0, 80) ?? "Research report",
   );
-  const generatedDate = $derived.by(() => {
-    if (!report.generated_at) return "Date unavailable";
-    const date = new Date(report.generated_at);
-    if (Number.isNaN(date.getTime())) return "Date unavailable";
-    return new Intl.DateTimeFormat("en", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    }).format(date);
+  // SSR has no reader timezone, so the server emits the UTC label and the local
+  // one is swapped in after mount — the initial markup stays byte-identical and
+  // the reader ends up on the same calendar day the job page shows them.
+  let viewerTimezoneReady = $state(false);
+  $effect(() => {
+    viewerTimezoneReady = true;
   });
+  function readerDate(value: string | null | undefined): string | null {
+    return (viewerTimezoneReady ? localReportDate(value) : null) ?? utcReportDate(value);
+  }
+  const generatedDate = $derived(readerDate(report.generated_at) ?? "Date unavailable");
+  // Same treatment as generatedDate; a date-only or non-date string passes through raw.
+  const collectionDate = $derived(
+    readerDate(report.research_metadata?.collection_date)
+      ?? report.research_metadata?.collection_date
+      ?? "Not available",
+  );
+  const reportTitle = $derived(
+    solutionDisplayTitle({
+      headline: solutionDetails?.headline,
+      solution_name: report.selected_solution_name,
+    }),
+  );
+  // The slug-like working name rides as a mono record-line eyebrow only when the
+  // headline actually replaced it as the H1.
+  const workingName = $derived(
+    reportTitle === report.selected_solution_name ? null : report.selected_solution_name,
+  );
+  const selectedIdeaIdentity = $derived.by(() => {
+    const ideaId = solutionDetails.idea_id?.trim();
+    const ideaRevision = solutionDetails.idea_revision;
+    return ideaId && Number.isInteger(ideaRevision) && Number(ideaRevision) >= 1
+      ? { ideaId, ideaRevision: Number(ideaRevision) }
+      : null;
+  });
+  const qualityCaveatCount = $derived(
+    new Set(report.data_quality_summary?.quality_caveats ?? []).size,
+  );
+  const researchQualityLabel = $derived.by(() => {
+    const quality = report.data_quality_summary?.overall_data_quality?.trim();
+    if (!quality) return "Not graded";
+    const label = `${quality.slice(0, 1).toUpperCase()}${quality.slice(1).toLowerCase()}`;
+    return qualityCaveatCount
+      ? `${label} · ${qualityCaveatCount} ${qualityCaveatCount === 1 ? "caveat" : "caveats"}`
+      : label;
+  });
+  const socialSourceRecordCount = $derived.by<number | null>(() => {
+    const dashboardCount = report.executive_dashboard?.key_metrics?.social_evidence_threads;
+    if (typeof dashboardCount === "number") return dashboardCount;
+    const metadata = report.research_metadata;
+    if (
+      metadata?.reddit_posts_analyzed === undefined &&
+      metadata?.twitter_threads_analyzed === undefined &&
+      metadata?.generic_posts_analyzed === undefined
+    ) {
+      return null;
+    }
+    return (
+      (metadata.reddit_posts_analyzed ?? 0) +
+      (metadata.twitter_threads_analyzed ?? 0) +
+      (metadata.generic_posts_analyzed ?? 0)
+    );
+  });
+  const ideaPricingHypothesis = $derived(solutionDetails.pricing_strategy?.trim() ?? "");
+  const ideaBusinessModel = $derived(humanizeTag(solutionDetails.tags?.monetization));
+  const ideaGrowthChannels = $derived(
+    (solutionDetails.tags?.growth_channels ?? []).slice(0, 4).map(humanizeTag).filter(Boolean),
+  );
+  const acquisitionSummary = $derived(
+    normalizeSeoScalabilityNarrative(
+      report.acquisition_strategy_summary ?? "",
+      solutionDetails.seo_scalability_score,
+    ),
+  );
 
   const evidenceTopics = $derived.by<Topic<EvidenceTopicId>[]>(() => [
     {
@@ -88,7 +176,9 @@
         !!report.traffic_monetization ||
         !!report.trend_longevity ||
         !!report.market_validation ||
-        !!report.estimated_cac_breakdown,
+        !!report.estimated_cac_breakdown ||
+        !!ideaPricingHypothesis ||
+        !!ideaBusinessModel,
     },
     {
       id: "competition",
@@ -115,6 +205,12 @@
   ]);
 
   const hasDatedPlaybook = $derived(Boolean(report.go_to_market_blueprint?.first_30_days_playbook));
+  // The verdict is computed last and never flowed back into the plan, so a No-Go idea
+  // shipped a dated go-to-market with no gate. The gate reframes the view; it never
+  // decides anything itself.
+  const planGate = $derived(
+    planVerdictGate(report.executive_dashboard?.go_no_go_verdict),
+  );
   const planTopics = $derived.by<Topic<PlanTopicId>[]>(() => [
     {
       id: "first-30-days",
@@ -186,9 +282,90 @@
       : (availablePlanTopics[0]?.id ?? "first-30-days"),
   );
   const currentPlanTopicInfo = $derived(planTopics.find((topic) => topic.id === currentPlanTopic));
+  const activeTopic = $derived(
+    currentView === "evidence"
+      ? currentEvidenceTopic
+      : currentView === "plan"
+        ? currentPlanTopic
+        : "",
+  );
+  // The full identity block — deck, context strip, provenance receipt — answers
+  // "what is this report?", which is the Brief's own job. Repeating it above
+  // Evidence and Plan pushed every view's content off the first screen and made
+  // the three views repaint an identical header, so those views get a one-line
+  // identity instead.
+  const compactIdentity = $derived(currentView !== "brief");
+
+  // The deck is a one-line answer to "what is this?", so it takes the shortest stored
+  // field available. It used to fall through to the whole `executive_summary` — 1,093
+  // characters as the page's first paint on the audited run, where `tagline` and
+  // `short_description` were both empty and a 230-char `value_proposition` sat unused.
+  // The full summary is not dropped: ReportBrief renders it under "What this idea is
+  // built around", which is where a passage of that length belongs.
+  const deckText = $derived(
+    snapshot?.tagline?.trim()
+      || solutionDetails?.short_description?.trim()
+      || solutionDetails?.value_proposition?.trim()
+      || leadSentence(report.executive_summary),
+  );
+
+  // Switching views is a query-param navigation: SvelteKit repaints the same
+  // header and parks the reader at scrollY 0, so the click produces no visible
+  // change. Land the viewport on the incoming view's own content instead. This
+  // also carries the anchor-style links ("Review methods & limitations",
+  // "Open research appendix"), which target content screens below the fold.
+  let viewAnchor = $state<HTMLElement>();
+  // Plain `let`, not `$state`: this is a dedupe guard the effect writes on every
+  // run, and tracking it would re-enter the effect.
+  let lastNavKey: string | null = null;
+  $effect(() => {
+    const navKey = `${currentView}|${activeTopic}|${isFullDetail}`;
+    const anchor = viewAnchor;
+    // First render establishes the baseline: arriving at a URL still starts at
+    // the top of the report, where the identity block belongs.
+    if (lastNavKey === null) {
+      lastNavKey = navKey;
+      return;
+    }
+    if (lastNavKey === navKey || !anchor) return;
+    lastNavKey = navKey;
+    tick().then(() => {
+      requestAnimationFrame(() => {
+        const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        anchor.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+      });
+    });
+  });
+
+  $effect(() => {
+    currentView;
+    currentEvidenceTopic;
+    currentPlanTopic;
+    if (!reportShell) return;
+
+    requestAnimationFrame(() => {
+      for (const nav of reportShell?.querySelectorAll<HTMLElement>(".mobile-view-nav, .topic-nav") ?? []) {
+        const active = nav.querySelector<HTMLElement>('[aria-current]');
+        if (!active || nav.scrollWidth <= nav.clientWidth) continue;
+        const left = active.offsetLeft - (nav.clientWidth - active.offsetWidth) / 2;
+        nav.scrollLeft = Math.max(0, left);
+      }
+    });
+  });
+  const coverageNotes = $derived.by(() => [
+    ...new Set([
+      ...(report.data_quality_summary?.quality_caveats ?? []).map((note) =>
+        /^fallback data used in:/i.test(note)
+          ? "Fallback data was used for part of this run, so some findings have reduced depth."
+          : note,
+      ),
+      // A degraded dashboard section is stated here rather than silently omitted.
+      ...unavailableSectionNotes(report.executive_dashboard?.unavailable_sections),
+    ]),
+  ]);
   const researchQualityLimited = $derived.by(() => {
     const quality = report.data_quality_summary?.overall_data_quality?.trim().toLowerCase();
-    return !quality || quality.includes("low");
+    return !quality || quality.includes("low") || coverageNotes.length > 0;
   });
   const researchQualitySummary = $derived.by(() => {
     const quality = report.data_quality_summary?.overall_data_quality?.trim();
@@ -198,15 +375,11 @@
     if (quality.toLowerCase().includes("low")) {
       return "Coverage is limited. Use this report to choose what to verify next, not as proof that the market is validated.";
     }
-    return `${quality} data quality was recorded for this run. Review the limitations below before acting on consequential claims.`;
+    if (coverageNotes.length) {
+      return `Recorded data quality: ${quality}. ${coverageNotes.length} ${coverageNotes.length === 1 ? "caveat requires" : "caveats require"} review before acting on consequential claims.`;
+    }
+    return `Recorded data quality: ${quality}. No additional quality caveats were retained.`;
   });
-  const coverageNotes = $derived(
-    (report.data_quality_summary?.quality_caveats ?? []).map((note) =>
-      /^fallback data used in:/i.test(note)
-        ? "Fallback data was used for part of this run, so some findings have reduced depth."
-        : note,
-    ),
-  );
 
   const views: Array<{
     id: ReportView;
@@ -234,9 +407,37 @@
       ? `${reportHref("plan", "launch", "full")}#first-30-days-playbook`
       : undefined,
   );
+  // The dated playbook lives in the launch appendix, so this link crosses tabs and
+  // moves the underline. Name the destination rather than letting it jump silently.
+  const firstMonthDestination = $derived(
+    hasDatedPlaybook ? planTopics.find((topic) => topic.id === "launch")?.label : undefined,
+  );
+
+  // An unrecognised slug (?topic=quality) used to render the first available topic
+  // while the address bar kept the bad value, so the page disagreed with its own
+  // URL and the reader could bookmark or share a link that never resolves. Rewrite
+  // the URL to the view and topic actually shown.
+  //
+  // afterNavigate, not $effect, because effects flush inside the hydration render.
+  // The rewrite itself waits a microtask on top of that: on the first load
+  // SvelteKit runs the afterNavigate callbacks a few statements before it marks
+  // the router started, and replaceState throws until it has.
+  afterNavigate(() => {
+    const requestedViewParam = page.url.searchParams.get("view");
+    const requestedTopicParam = page.url.searchParams.get("topic");
+    const viewUnknown = requestedViewParam !== null && requestedViewParam !== currentView;
+    const topicUnknown = requestedTopicParam !== null && requestedTopicParam !== activeTopic;
+    if (!viewUnknown && !topicUnknown) return;
+    const canonical = reportHref(
+      currentView,
+      activeTopic || undefined,
+      isFullDetail ? "full" : undefined,
+    );
+    tick().then(() => replaceState(canonical, page.state));
+  });
 </script>
 
-<div class="report-shell">
+<div bind:this={reportShell} class="report-shell">
   <aside class="report-index">
     <nav aria-label="Report views">
       <p class="index-title">Research report</p>
@@ -246,6 +447,7 @@
           <li>
             <a
               href={reportHref(item.id)}
+              data-sveltekit-noscroll
               class:active={currentView === item.id}
               aria-current={currentView === item.id ? "page" : undefined}
             >
@@ -260,16 +462,11 @@
         {/each}
       </ol>
     </nav>
-    <div class="index-context">
-      <span>Selected opportunity</span>
-      <strong>{report.selected_solution_name}</strong>
-      <small>Generated {generatedDate}</small>
-    </div>
   </aside>
 
   <!-- The app/public layouts already provide the page's single main landmark. -->
   <div class="report-main">
-    <header class="report-header">
+    <header class="report-header" class:compact={compactIdentity}>
       <div class="report-header-top">
         {#if showBackLink && jobId}
           <a href="/jobs/{jobId}" class="back-link">
@@ -284,45 +481,77 @@
         {/if}
       </div>
 
-      <div class="report-identity">
+      <div class="report-identity" class:compact={compactIdentity}>
         <p>Deep Research report · {generatedDate}</p>
-        <h1>{report.selected_solution_name}</h1>
-        <div class="report-deck">
-          {snapshot?.tagline ??
-            solutionDetails?.headline ??
-            solutionDetails?.short_description ??
-            report.executive_summary}
-        </div>
-        <div class="report-meta" aria-label="Report context">
-          <span>{nicheName}</span>
-          {#if report.executive_dashboard?.research_depth_label}
-            <span>{report.executive_dashboard.research_depth_label}</span>
-          {/if}
-          {#if report.seeded_from_catalog}
-            <span>Catalog-seeded research</span>
-          {/if}
-          {#if report.user_adjusted}
-            <span>User-adjusted research</span>
-          {/if}
-        </div>
+        {#if workingName}
+          <p class="working-name">{workingName}</p>
+        {/if}
+        <h1>{reportTitle}</h1>
+        {#if !compactIdentity}
+          <div class="report-deck">{deckText}</div>
+          <div class="report-meta" aria-label="Report context">
+            <span>{nicheName}</span>
+            {#if report.executive_dashboard?.research_depth_label}
+              <span>{report.executive_dashboard.research_depth_label}</span>
+            {/if}
+            {#if report.seeded_from_catalog}
+              <span>Catalog-seeded research</span>
+            {/if}
+            {#if report.user_adjusted}
+              <span>User-adjusted research</span>
+            {/if}
+          </div>
+          <div class="research-receipt" aria-label="Research provenance summary">
+            <dl>
+              <div>
+                <dt>Recorded data quality</dt>
+                <dd class:limited={researchQualityLimited}>{researchQualityLabel}</dd>
+              </div>
+              <div>
+                <dt>Social source records</dt>
+                <dd>{socialSourceRecordCount ?? "Not available"}</dd>
+              </div>
+              <div>
+                <dt>Collected</dt>
+                <dd>{collectionDate}</dd>
+              </div>
+              {#if selectedIdeaIdentity}
+                <div>
+                  <dt>Selected revision</dt>
+                  <dd title={`${selectedIdeaIdentity.ideaId} · revision ${selectedIdeaIdentity.ideaRevision}`}>
+                    Revision {selectedIdeaIdentity.ideaRevision}
+                  </dd>
+                </div>
+              {/if}
+            </dl>
+            <a href={reportHref("evidence", "sources")} data-sveltekit-noscroll>
+              Review methods &amp; limitations
+            </a>
+          </div>
+        {/if}
       </div>
 
-      <nav class="mobile-view-nav" aria-label="Report views">
-        {#each views as item}
-          <a
-            href={reportHref(item.id)}
-            class:active={currentView === item.id}
-            aria-current={currentView === item.id ? "page" : undefined}
-          >
-            {item.label}
-          </a>
-        {/each}
-      </nav>
     </header>
+
+    <div class="report-views" bind:this={viewAnchor}>
+    <nav class="mobile-view-nav" aria-label="Report views">
+      {#each views as item}
+        <a
+          href={reportHref(item.id)}
+          data-sveltekit-noscroll
+          class:active={currentView === item.id}
+          aria-current={currentView === item.id ? "page" : undefined}
+        >
+          {item.label}
+        </a>
+      {/each}
+    </nav>
 
     {#if currentView === "brief"}
       <ReportBrief
         {report}
+        {deckText}
+        {reportTitle}
         evidenceHref={reportHref("evidence", availableEvidenceTopics[0]?.id)}
         planHref={reportHref("plan", availablePlanTopics[0]?.id)}
         {decisionSlot}
@@ -341,6 +570,7 @@
           {#each evidenceTopics as topic}
             <a
               href={reportHref("evidence", topic.id)}
+              data-sveltekit-noscroll
               class:active={currentEvidenceTopic === topic.id}
               class:unavailable={!topic.available}
               aria-current={currentEvidenceTopic === topic.id ? "location" : undefined}
@@ -388,6 +618,7 @@
               painPoints={report.detailed_pain_points}
               analytics={report.pain_point_analytics}
               solution={solutionDetails}
+              corePainPoint={report.executive_dashboard?.core_pain_point ?? undefined}
             />
           {:else if report.detailed_pain_points?.length}
             <section class="fallback-section" aria-labelledby="captured-problems-title">
@@ -498,6 +729,29 @@
                 </div>
               </dl>
               <p class="narrative-copy">{report.traffic_monetization.monetization_rationale}</p>
+            </section>
+          {:else if ideaPricingHypothesis || ideaBusinessModel}
+            <section class="fallback-section" aria-labelledby="pricing-hypothesis-title">
+              <div class="fallback-heading">
+                <p>Idea-stage hypothesis</p>
+                <h3 id="pricing-hypothesis-title">Pricing direction to validate</h3>
+              </div>
+              {#if ideaBusinessModel}
+                <dl class="compact-metrics">
+                  <div>
+                    <dt>Proposed model</dt>
+                    <dd>{ideaBusinessModel}</dd>
+                  </div>
+                </dl>
+              {/if}
+              {#if ideaPricingHypothesis}
+                <p class="narrative-copy">{ideaPricingHypothesis}</p>
+              {/if}
+              <p class="availability-note">
+                This direction was carried forward from the selected idea. Structured pricing and
+                monetization research was not generated; validate willingness to pay before using
+                it as a plan.
+              </p>
             </section>
           {/if}
           {#if report.trend_longevity}
@@ -626,16 +880,12 @@
             </p>
             <dl>
               <div>
-                <dt>Overall data quality</dt>
+                <dt>Recorded data quality</dt>
                 <dd>{report.data_quality_summary?.overall_data_quality ?? "Not graded"}</dd>
               </div>
               <div>
-                <dt>Social evidence</dt>
-                <dd>
-                  {report.executive_dashboard?.key_metrics?.social_evidence_threads ??
-                    report.evidence_appendix?.top_reddit_threads?.length ??
-                    "Not available"}
-                </dd>
+                <dt>Social source records</dt>
+                <dd>{socialSourceRecordCount ?? "Not available"}</dd>
               </div>
               <div>
                 <dt>Generated</dt>
@@ -651,14 +901,19 @@
               </div>
               <div>
                 <dt>Collection date</dt>
-                <dd>{report.research_metadata?.collection_date ?? "Not available"}</dd>
+                <dd>{collectionDate}</dd>
               </div>
             </dl>
             {#if report.idea_portfolio_summary}
-              <div class="portfolio-note">
-                <strong>Idea-pool read</strong>
+              <details class="portfolio-note historical-note">
+                <summary>Earlier idea-pool assessment</summary>
+                <p class="historical-context">
+                  This snapshot was written before the shortlist was selected and before Deep
+                  Research. It records the earlier pool-level assessment, not the final verdict for
+                  {report.selected_solution_name}. Use the Brief for the current recommendation.
+                </p>
                 <p>{report.idea_portfolio_summary}</p>
-              </div>
+              </details>
             {/if}
             {#if report.market_reality}
               <div class="portfolio-note market-reality-note">
@@ -667,7 +922,18 @@
                   <p>{report.market_reality.wallet.evidence}</p>
                 {/if}
                 {#if report.market_reality.incumbents.length}
-                  <ul class="named-list" aria-label="Verified incumbents">
+                  <!-- A third, wider population than either competitor count on the
+                       Competition tab: web-verified incumbents across the whole niche,
+                       shown as a capped list. Named and counted so the three numbers
+                       read as different scopes rather than as disagreeing answers. -->
+                  <p class="incumbent-scope">
+                    Web-verified incumbents across the niche —
+                    {report.market_reality.incumbents.length > 8
+                      ? `first 8 of ${report.market_reality.incumbents.length}`
+                      : `all ${report.market_reality.incumbents.length}`}. This is
+                    the whole niche, not the direct competitors for the selected idea.
+                  </p>
+                  <ul class="named-list" aria-label="Web-verified niche incumbents">
                     {#each report.market_reality.incumbents.slice(0, 8) as incumbent}
                       <li>
                         <strong>{incumbent.name}</strong>
@@ -735,30 +1001,53 @@
               </div>
             {/if}
           </section>
-          {#if report.evidence_appendix}
-            <EvidenceAppendix data={report.evidence_appendix} />
-          {/if}
           {#if coverageNotes.length}
             <CoverageNotes notes={coverageNotes} />
+          {/if}
+          {#if report.evidence_appendix}
+            <EvidenceAppendix
+              data={report.evidence_appendix}
+              selectedPainTitle={report.executive_dashboard?.core_pain_point?.title}
+            />
           {/if}
         {/if}
         {/if}
       </div>
     {:else}
       <section class="view-heading" aria-labelledby="plan-view-title">
-        <p>Act on the research</p>
-        <h2 id="plan-view-title">Turn the recommendation into an executable plan</h2>
+        <p>{planGate?.eyebrow ?? "Act on the research"}</p>
+        <h2 id="plan-view-title">
+          {planGate?.heading ?? "Turn the recommendation into an executable plan"}
+        </h2>
         <div>
-          {hasDatedPlaybook
-            ? "Start with the dated 30-day playbook, then open product or launch detail when you need it."
-            : "Start with the recommended sequence, then open product or launch detail when you need it."}
+          {#if planGate}
+            {planGate.lead}
+          {:else if hasDatedPlaybook}
+            Start with the dated 30-day playbook, then open product or launch detail when you
+            need it.
+          {:else}
+            Start with the recommended sequence, then open product or launch detail when you
+            need it.
+          {/if}
         </div>
       </section>
+
+      {#if planGate}
+        <aside class="plan-gate {planGate.tone}" aria-labelledby="plan-gate-title">
+          <CircleAlert aria-hidden="true" />
+          <div>
+            <h3 id="plan-gate-title">{planGate.title}</h3>
+            <p class="plan-gate-spend">{planGate.spendNote}</p>
+            <a href={reportHref("brief")}>See how the verdict was reached</a>
+          </div>
+        </aside>
+      {/if}
 
       <nav class="topic-nav" aria-label="Plan topics">
           {#each planTopics as topic}
             <a
               href={reportHref("plan", topic.id)}
+              data-sveltekit-noscroll
               class:active={currentPlanTopic === topic.id}
               class:unavailable={!topic.available}
               aria-current={currentPlanTopic === topic.id ? "location" : undefined}
@@ -787,10 +1076,14 @@
         {:else if !isFullDetail}
           <ReportPlanSummary
             {report}
+            {deckText}
             topic={currentPlanTopic}
             fullDetailHref={currentPlanTopic === "first-30-days"
               ? fullFirstMonthHref
               : reportHref("plan", currentPlanTopic, "full")}
+            fullDetailDestination={currentPlanTopic === "first-30-days"
+              ? firstMonthDestination
+              : undefined}
           />
         {:else}
           <div class="detail-mode">
@@ -880,15 +1173,32 @@
               gtmData={report.go_to_market_blueprint}
               nextSteps={report.next_steps}
             />
-          {:else if report.acquisition_strategy_summary}
+          {:else if acquisitionSummary}
             <section class="fallback-section" aria-labelledby="acquisition-summary-title">
               <div class="fallback-heading">
                 <p>Acquisition summary</p>
                 <h3 id="acquisition-summary-title">How to reach the first customers</h3>
               </div>
               <div class="legacy-narrative">
-                {@html renderMarkdown(report.acquisition_strategy_summary)}
+                {@html renderMarkdown(acquisitionSummary)}
               </div>
+            </section>
+          {/if}
+          {#if !report.go_to_market_blueprint && ideaGrowthChannels.length}
+            <section class="fallback-section" aria-labelledby="channel-hypothesis-title">
+              <div class="fallback-heading">
+                <p>Idea-stage hypothesis</p>
+                <h3 id="channel-hypothesis-title">Channels to test</h3>
+              </div>
+              <ul class="plain-list">
+                {#each ideaGrowthChannels as channel}
+                  <li>{channel}</li>
+                {/each}
+              </ul>
+              <p class="availability-note">
+                These directions were carried forward from the selected idea. Deep Research did
+                not generate a channel plan, so test them before committing budget.
+              </p>
             </section>
           {/if}
           {#if report.seo_strategy_report && report.seo_analytics}
@@ -921,7 +1231,10 @@
                     <dd>{report.seo_analytics.total_keywords}</dd>
                   </div>
                   <div>
-                    <dt>Monthly search volume</dt>
+                    <!-- Aggregate volume across every analyzed keyword, most of
+                         which sit outside this idea's intent — category reach,
+                         not validated demand for the idea. -->
+                    <dt>Category reach (monthly)</dt>
                     <dd>{report.seo_analytics.total_search_volume.toLocaleString()}</dd>
                   </div>
                   <div>
@@ -939,6 +1252,7 @@
         {/if}
       </div>
     {/if}
+    </div>
   </div>
 </div>
 
@@ -1048,34 +1362,7 @@
     margin-top: var(--space-1);
     font-size: var(--text-sm);
     line-height: 1.4;
-    color: var(--color-text-muted);
-  }
-
-  .index-context {
-    display: grid;
-    gap: var(--space-2);
-    padding-top: var(--space-5);
-    border-top: 1px solid var(--color-border);
-  }
-
-  .index-context span {
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--color-text-muted);
-  }
-
-  .index-context strong {
-    font-size: var(--text-sm);
-    line-height: 1.45;
-    color: var(--color-text-primary);
-  }
-
-  .index-context small {
-    font-size: var(--text-sm);
-    color: var(--color-text-muted);
+    color: var(--color-text-secondary);
   }
 
   .report-main {
@@ -1088,6 +1375,21 @@
     margin-bottom: var(--space-8);
     padding-bottom: var(--space-6);
     border-bottom: 1px solid var(--color-border);
+  }
+
+  .report-header.compact {
+    margin-bottom: var(--space-6);
+    padding-bottom: var(--space-4);
+  }
+
+  .report-header.compact .report-header-top {
+    margin-bottom: var(--space-4);
+  }
+
+  /* Scroll target for view switches. The margin keeps the incoming view's
+     heading off the very top edge of the viewport once it lands. */
+  .report-views {
+    scroll-margin-top: var(--space-6);
   }
 
   .report-header-top {
@@ -1135,6 +1437,15 @@
     color: var(--color-text-muted);
   }
 
+  /* Working-name eyebrow — record-line recipe (DESIGN_SYSTEM §2): the run's slug
+     identity sits directly above the headline H1 that replaced it. */
+  .report-identity > p.working-name {
+    margin: 0 0 var(--space-1-5);
+    letter-spacing: 0.07em;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "zero" 0;
+  }
+
   .report-identity h1 {
     max-width: 24ch;
     margin: 0;
@@ -1145,6 +1456,18 @@
     letter-spacing: -0.02em;
     color: var(--color-text-primary);
     text-wrap: balance;
+  }
+
+  /* Evidence and Plan keep only the dateline and the title, so the view's own
+     heading and its content start above the fold. */
+  .report-identity.compact > p {
+    margin-bottom: var(--space-2);
+  }
+
+  .report-identity.compact h1 {
+    max-width: 52ch;
+    font-size: var(--text-2xl);
+    line-height: 1.2;
   }
 
   .report-deck {
@@ -1172,6 +1495,65 @@
     content: "·";
     margin-right: var(--space-4);
     color: var(--color-border-emphasis);
+  }
+
+  .research-receipt {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--space-4);
+    align-items: center;
+    margin-top: var(--space-5);
+    padding-block: var(--space-4);
+    border-block: 1px solid var(--color-border);
+  }
+
+  .research-receipt dl {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+    gap: var(--space-3) var(--space-5);
+    margin: 0;
+  }
+
+  .research-receipt dt {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+  }
+
+  .research-receipt dd {
+    margin: var(--space-1) 0 0;
+    color: var(--color-text-primary);
+    font-size: var(--text-sm);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .research-receipt dd.limited {
+    color: var(--color-warning-text);
+  }
+
+  .research-receipt a {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--space-8);
+    padding-inline: var(--space-2);
+    border-radius: var(--radius-md);
+    color: var(--color-accent-dark);
+    font-size: var(--text-sm);
+    font-weight: 700;
+    text-underline-offset: 0.2em;
+  }
+
+  .research-receipt a:hover {
+    background: var(--color-bg-hover);
+  }
+
+  .research-receipt a:focus-visible {
+    outline: 2px solid var(--color-accent-dark);
+    outline-offset: 2px;
   }
 
   .mobile-view-nav {
@@ -1212,6 +1594,56 @@
     color: var(--color-text-secondary);
     font-size: var(--text-md);
     line-height: 1.6;
+  }
+
+  .plan-gate {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: var(--space-4);
+    align-items: start;
+    margin-bottom: var(--space-6);
+    padding: var(--space-5) var(--space-6);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-warning-subtle);
+  }
+
+  .plan-gate.negative {
+    background: var(--color-error-subtle);
+  }
+
+  .plan-gate :global(svg) {
+    width: var(--space-6);
+    height: var(--space-6);
+    color: var(--color-warning-text);
+  }
+
+  .plan-gate.negative :global(svg) {
+    color: var(--color-error-text);
+  }
+
+  .plan-gate h3 {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: var(--text-xl);
+    font-weight: 700;
+    color: var(--color-text-primary);
+  }
+
+  .plan-gate-spend {
+    max-width: 72ch;
+    margin: var(--space-2) 0 0;
+    color: var(--color-text-secondary);
+    font-size: var(--text-base);
+    line-height: 1.6;
+  }
+
+  .plan-gate a {
+    display: inline-block;
+    margin-top: var(--space-3);
+    color: var(--color-text-primary);
+    font-size: var(--text-sm);
+    font-weight: 700;
   }
 
   .topic-nav {
@@ -1417,6 +1849,12 @@
     line-height: 1.6;
   }
 
+  /* Scope caption for the incumbent list — meta, not body copy. */
+  .portfolio-note p.incumbent-scope {
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+  }
+
   .fallback-heading > p {
     margin: 0;
     font-family: var(--font-mono);
@@ -1577,12 +2015,18 @@
     line-height: 1.65;
   }
 
-  .ruled-out-note summary {
+  .ruled-out-note summary,
+  .historical-note summary {
     min-height: var(--space-8);
     color: var(--color-text-primary);
     font-size: var(--text-base);
     font-weight: 700;
     cursor: pointer;
+  }
+
+  .historical-note .historical-context {
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
   }
 
   .ruled-out-list {
@@ -1737,9 +2181,13 @@
 
     .mobile-view-nav {
       display: grid;
+      position: sticky;
+      top: 0;
+      z-index: 10;
       grid-template-columns: repeat(3, 1fr);
-      margin-top: var(--space-8);
+      margin-bottom: var(--space-6);
       border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-base);
     }
 
     .mobile-view-nav a {
@@ -1770,7 +2218,11 @@
       background: var(--color-accent);
     }
 
-    .report-header {
+    /* The sticky mobile view nav supplies the separation here, so the header
+       closes flush on every view — including the compact ones. */
+    .report-header,
+    .report-header.compact {
+      margin-bottom: 0;
       padding-bottom: 0;
     }
   }
@@ -1812,19 +2264,54 @@
       content: none;
     }
 
+    /* The context strip and the provenance receipt are both restated below — in
+       the Brief's own coverage list and on Evidence → Research quality — and
+       together they ran the whole first screen, so the narrow Brief opened on
+       identity with no finding in view. The methods link stays. */
+    .report-meta,
+    .research-receipt dl {
+      display: none;
+    }
+
+    .research-receipt {
+      grid-template-columns: 1fr;
+      align-items: start;
+      margin-top: var(--space-4);
+      padding-block: var(--space-3);
+    }
+
+    .research-receipt a {
+      justify-self: start;
+    }
+
     .view-heading h2 {
       font-size: var(--text-2xl);
     }
 
+    /* A horizontal scroller hid the last topic behind a hairline track — on
+       Evidence that is "Research quality", which carries every caveat. Wrap the
+       strip instead so nothing depends on discovering a swipe. */
     .topic-nav {
-      display: flex;
-      overflow-x: auto;
-      scroll-snap-type: x mandatory;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .topic-nav a {
-      flex: 0 0 11rem;
-      scroll-snap-align: start;
+      min-height: var(--space-14);
+      padding: var(--space-3);
+    }
+
+    .topic-nav a:nth-child(odd) {
+      border-right: 1px solid var(--color-border);
+    }
+
+    .topic-nav a:nth-child(n + 3) {
+      border-top: 1px solid var(--color-border);
+    }
+
+    /* An odd final topic takes the full row rather than leaving a torn edge. */
+    .topic-nav a:last-child:nth-child(odd) {
+      grid-column: 1 / -1;
+      border-right: 0;
     }
 
     .methods-summary,

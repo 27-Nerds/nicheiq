@@ -33,6 +33,8 @@ class ContentTokenMonitor:
         "gpt-5.2": {"input": 1.75, "output": 14.00},
         "gpt-5.2-chat-latest": {"input": 1.75, "output": 14.00},
         "gpt-5.2-pro": {"input": 21.00, "output": 168.00},
+        # GPT-5.3 series (gpt-5.3-codex priced as gpt-5.1-codex-max; verified live 2026-07)
+        "gpt-5.3-codex": {"input": 1.25, "output": 10.00},
         # GPT-5.1 series
         "gpt-5.1": {"input": 1.25, "output": 10.00},
         "gpt-5.1-chat-latest": {"input": 1.25, "output": 10.00},
@@ -47,6 +49,18 @@ class ContentTokenMonitor:
         "gpt-5-nano": {"input": 0.05, "output": 0.40},
         "gpt-5-pro": {"input": 15.00, "output": 120.00},
         "gpt-5-search-api": {"input": 1.25, "output": 10.00},
+        "gpt-5.6-luna": {"input": 0.20, "output": 1.20},
+        # GPT-5.6 series
+        "gpt-5.6-sol": {"input": 5.00, "output": 30.00},
+        "gpt-5.6-terra": {"input": 2.00, "output": 12.00},
+        # GPT-5.5 series
+        "gpt-5.5": {"input": 5.00, "output": 30.00},
+        "gpt-5.5-pro": {"input": 30.00, "output": 180.00},
+        # GPT-5.4 series
+        "gpt-5.4": {"input": 2.50, "output": 15.00},
+        "gpt-5.4-mini": {"input": 0.75, "output": 4.50},
+        "gpt-5.4-nano": {"input": 0.20, "output": 1.25},
+        "gpt-5.4-pro": {"input": 30.00, "output": 180.00},
         # GPT-4.1 series
         "gpt-4.1": {"input": 2.00, "output": 8.00},
         "gpt-4.1-mini": {"input": 0.40, "output": 1.60},

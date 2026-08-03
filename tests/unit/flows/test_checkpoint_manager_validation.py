@@ -158,6 +158,32 @@ class TestCheckpointManagerValidatorIntegration:
         )
         assert manager.validator is not None
         assert isinstance(manager.validator, CheckpointValidator)
+    def test_metadata_failure_restores_previous_stage_bytes(
+        self, checkpoint_temp_dir, sample_research_state
+    ):
+        """A False save must not leave the new paid result in the stage file."""
+        manager = CheckpointManager(
+            niche_description="Test niche",
+            state=sample_research_state,
+        )
+        with patch("nicheiq.flows.checkpoint_manager.settings") as mock_settings:
+            mock_settings.checkpoint_enabled = True
+            mock_settings.checkpoint_dir = checkpoint_temp_dir
+            assert manager.save_stage("stage_5_3_refinement", {"pool": ["old"]}) is True
+
+            stage_file = manager.checkpoint_folder / "stage_5_3_refinement.json"
+            previous_bytes = stage_file.read_bytes()
+            with patch.object(
+                manager,
+                "_update_checkpoint_metadata",
+                side_effect=OSError("metadata disk fault"),
+            ):
+                assert manager.save_stage(
+                    "stage_5_3_refinement", {"pool": ["unpaid-new"]}
+                ) is False
+
+        assert stage_file.read_bytes() == previous_bytes
+        assert manager.last_save_failure_rollback_safe is True
 
     def test_load_checkpoint_uses_validator_for_metadata(
         self, checkpoint_temp_dir, populated_checkpoint_folder, sample_research_state

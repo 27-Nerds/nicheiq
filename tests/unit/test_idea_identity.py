@@ -154,6 +154,33 @@ def test_backend_pool_identity_rejects_conflicting_native_identity():
     assert idea.identity_operation_id == "initial"
 
 
+def test_backend_pool_identity_ignores_hidden_duplicate_name():
+    """The backend map describes the selectable pool, not absorbed checkpoint history."""
+    hidden = _idea("Shared Name")
+    hidden.candidate_status = "absorbed"
+    hidden.idea_id = "idea_hidden"
+    hidden.idea_revision = 1
+    hidden.identity_origin = "phase1"
+    hidden.identity_operation_id = "initial"
+    visible = _idea("Shared Name")
+
+    applied = apply_pool_identities(
+        [hidden, visible],
+        [{
+            "idea_id": "idea_visible",
+            "idea_revision": 3,
+            "solution_name": "Shared Name",
+        }],
+    )
+
+    assert applied == 1
+    assert hidden.idea_id == "idea_hidden"
+    assert hidden.identity_origin == "phase1"
+    assert visible.idea_id == "idea_visible"
+    assert visible.idea_revision == 3
+    assert visible.identity_origin == "backend_pool"
+
+
 def test_ruled_out_finding_and_nested_idea_share_identity():
     finding = {
         "idea_name": "Demoted",

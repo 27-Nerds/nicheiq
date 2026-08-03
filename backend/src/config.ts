@@ -65,11 +65,19 @@ export const CONFIG = {
 
   // Guided chat (Phase A — plans/eager-meandering-feather.md). Must be a
   // strict-tool-capable, OpenAI-direct model (the `propose_modification` tool call
-  // is reassembled from streamed deltas and Zod-validated) — gpt-5-mini is the
-  // cheapest model in the GPT-5 family that reliably honors tool schemas.
-  chatModel: process.env.CHAT_LLM_MODEL || 'gpt-5-mini',
+  // is reassembled from streamed deltas and Zod-validated). gpt-5.6-luna is the
+  // default; override with CHAT_LLM_MODEL for cost-sensitive deployments.
+  chatModel: process.env.CHAT_LLM_MODEL || 'gpt-5.6-luna',
   chatRateHourly: parseInt(process.env.CHAT_RATE_HOURLY || '20', 10),
   chatRateDaily: parseInt(process.env.CHAT_RATE_DAILY || '80', 10),
+
+  // Evidence stress-test (selection challenge) assessors. Falls back to the
+  // guided-chat model, then a cheap strict-Structured-Outputs-capable default.
+  challengeModel: process.env.CHALLENGE_LLM_MODEL || process.env.CHAT_LLM_MODEL || 'gpt-5-mini',
+
+  // Founder-fit is a bounded JSON analysis, not an analyst-chat turn. Keep its
+  // model independently deployable so a chat-model migration cannot break it.
+  founderFitModel: process.env.FOUNDER_FIT_LLM_MODEL || 'gpt-5-mini',
 
   // Stripe
   stripe: {
@@ -98,7 +106,7 @@ export const CONFIG = {
   // plans/pure-giggling-beacon.md Phase B). Production deploys should set
   // OPENAI_FAQ_MODEL explicitly so SEO/ops can swap models without a code
   // release. Code-level fallback `gpt-4o-mini` keeps dev/local startup smooth.
-  faqGenerationModel: process.env.OPENAI_FAQ_MODEL || 'gpt-4.1-mini',
+  faqGenerationModel: process.env.OPENAI_FAQ_MODEL || 'gpt-5.6-luna',
   faqGenerateRateHourly: parseInt(process.env.FAQ_GENERATE_RATE_HOURLY || '30', 10),
   faqSaveRateHourly: parseInt(process.env.FAQ_SAVE_RATE_HOURLY || '60', 10),
 

@@ -1,10 +1,10 @@
 pricing_strategy_analysis:
   description: >
     **CRITICAL RULES:**
-    1. MANDATORY: All pricing fields (starter_price, pro_price, arpu, ltv) must be specific dollar amounts, NOT ranges
-    2. MANDATORY: LTV/CAC ratio must be >=2:1 for subscription models (viable business model requirement)
-    3. MANDATORY: Pricing must NOT contradict pain point WTP signals
-    4. MANDATORY: Include ALL fields in PricingStrategyResult - no null values except enterprise_price and free_tier_features
+    1. MANDATORY: Tier price fields (starter_price, pro_price) must be a single dollar amount, NOT a range;
+       arpu and ltv follow their own formats specified below
+    2. MANDATORY: Pricing must NOT contradict pain point WTP signals
+    3. MANDATORY: Include ALL fields in PricingStrategyResult - no null values except enterprise_price and free_tier_features
 
 
     Analyze competitor pricing, pain point willingness-to-pay scores, and solution positioning
@@ -63,7 +63,13 @@ pricing_strategy_analysis:
     **PRE-COMPUTED WTP ANALYSIS (from Python -- treat as facts):**
     - {wtp_summary}
     - Average WTP Score: {avg_wtp}
-    - Suggested CAC Range: {suggested_cac_range}
+    - Benchmark CAC band for this market-fit tier: {suggested_cac_range}
+      (a heuristic derived from the market_fit_score alone. It is a sanity benchmark for
+      the MARKET, not a measurement of THIS idea. Never treat it as this idea's CAC and
+      never divide LTV by it.)
+    - THIS IDEA'S ESTIMATED CAC: {idea_cac_estimate}
+      (this is the ONLY CAC you may divide LTV by. If it says no estimate is available,
+      then this idea has no CAC and LTV/CAC is not computable — say so.)
 
 
     **YOUR TASK:**
@@ -131,7 +137,8 @@ pricing_strategy_analysis:
     - Estimate ARPU (Average Revenue Per User) based on tier mix
     - Calculate LTV estimate (12-30 month retention scenarios)
     - Estimate organic CAC from market_fit_score (higher fit = lower CAC)
-    - Validate LTV/CAC ratio is healthy (target 3:1; mandatory minimum 2:1)
+    - Compute the LTV/CAC ratio and read it against the bands in "LTV/CAC Ratio -- how to READ the
+      number you compute" below; report where it lands, including below 2:1
 
     **For Traffic-Based Models (Ad-Supported-Free, Affiliate-Only):**
     - Estimate monthly pageviews needed for target revenue
@@ -147,7 +154,8 @@ pricing_strategy_analysis:
 
     ### 5. Competitive Positioning
     - Position pricing relative to competitors (premium/value/discount)
-    - Quantify value proposition delta (e.g., "15% more features at 20% lower price")
+    - Quantify value proposition delta against the real competitor set (feature-coverage delta and
+      price delta, both derived from the competitive landscape data above)
     - Determine confidence level (High/Medium/Low) based on data quality
 
     ### 6. WTP Validation (CRITICAL)
@@ -244,21 +252,40 @@ pricing_strategy_analysis:
     - Optimistic: 30 months retention x ARPU
     - Express as range: "$XXX - $XXX"
 
-    **CAC Estimation:**
-    - Organic/SEO-focused: $15-30 (market_fit_score > 0.75)
-    - Mixed: $30-60 (market_fit_score 0.60-0.75)
-    - Paid-heavy: $60-120 (market_fit_score < 0.60)
+    **CAC — WHERE IT COMES FROM (read before computing any ratio):**
+    You do NOT estimate CAC in this task. CAC is established upstream, per idea, and is
+    handed to you above as "THIS IDEA'S ESTIMATED CAC". The market-fit bands
+    ($15-30 organic / $30-60 mixed / $60-120 paid-heavy) are what produced the benchmark
+    line; they describe the market, not this product, and picking a number out of them is
+    fabrication. If this idea has no CAC estimate, that is a real and expected state — a
+    rebuilt idea deliberately ships without one rather than inventing one.
 
-    **LTV/CAC Ratio (subscription models):**
+    **LTV/CAC Ratio (subscription models) — how to READ the number you compute:**
     - Excellent: 10:1 or higher
     - Good: 3:1 to 10:1
-    - Acceptable: 2:1 to 3:1 (the 2:1 floor is MANDATORY — below it, change pricing or acquisition strategy)
-    - Target 3:1 or better
+    - Thin: 2:1 to 3:1
+    - Does not work: below 2:1 — the economics fail at this price and acquisition mix
 
-    SELF-VERIFICATION (required, internal): compute LTV (retention months × ARPU) and
-    CAC, then ensure the `ltv_to_cac_ratio` you output equals LTV ÷ CAC and is >= 2:1.
+    2:1 is a threshold you EVALUATE the ratio AGAINST. It is NOT a constraint on what you
+    are allowed to output, and no ratio is rejected for being too low. If the honest
+    arithmetic lands below 2:1, output the low ratio and say plainly in `pricing_rationale`
+    that the unit economics do not work at this price — that is one of the most valuable
+    findings this report can carry, and inflating it to clear the bar destroys it. Do not
+    back-solve a CAC, a retention period or an ARPU to make the ratio pass.
+
+    SELF-VERIFICATION (required, internal), in this order:
+    1. If "THIS IDEA'S ESTIMATED CAC" reports no estimate, set
+       `ltv_to_cac_ratio: "Not computable - no CAC estimate established for this idea"`
+       and STOP here. Do not substitute the benchmark band, an industry figure, or any
+       assumed number, and do not mention an assumed CAC in `pricing_rationale`. A missing
+       input means the ratio is unknown, not that it should be filled in.
+    2. Otherwise compute LTV (retention months × ARPU) ÷ THIS IDEA'S ESTIMATED CAC. The
+       CAC dollar figure you print inside `ltv_to_cac_ratio` MUST be a value taken from
+       "THIS IDEA'S ESTIMATED CAC" — a downstream check compares it against the CAC the
+       report publishes and labels the ratio unverified if they disagree.
+    3. Report the resulting ratio whatever it is, including below 2:1.
     Do this silently — output ONLY the structured result (no reasoning text before the
-    JSON); the ratio field must be consistent with the ltv and cac fields you emit.
+    JSON).
 
 
     **WARNING — EXAMPLE NUMBERS ARE FABRICATED:** Every dollar amount, ratio,
@@ -286,9 +313,11 @@ pricing_strategy_analysis:
     - **pro_tier_features:** Array of 5-8 advanced features (null for ad/affiliate models)
     - **estimated_arpu:** format "$<arpu>/month"
     - **estimated_ltv:** format "$<low> - $<high> (<N>-<M>mo retention)"
-    - **ltv_to_cac_ratio:** format "<ratio>:1 (LTV $<ltv> ÷ CAC $<cac>)"
+    - **ltv_to_cac_ratio:** format "<ratio>:1 (LTV $<ltv> ÷ CAC $<cac>)" where <cac> is taken
+      from "THIS IDEA'S ESTIMATED CAC"; or the literal
+      "Not computable - no CAC estimate established for this idea" when there is none
     - **price_vs_competitors:** e.g., "10% below median"
-    - **value_proposition_delta:** e.g., "15% more features at 20% lower price"
+    - **value_proposition_delta:** format "<feature-coverage delta> at <price delta> vs the competitor median"
     - **pricing_confidence:** "High", "Medium", or "Low"
     - **wtp_validation:** 1-2 sentences on how WTP scores support this pricing
     - **market_segment_pricing:** Dict of segment-specific pricing or null
@@ -363,9 +392,9 @@ pricing_strategy_analysis:
 
     **CRITICAL REQUIREMENTS:**
 
-    1. **Be specific with numbers:** Use exact dollar amounts, not ranges in price fields
+    1. **Be specific with numbers:** Tier prices are single dollar amounts; ARPU and LTV follow the formats above (LTV is a range)
     2. **Justify with data:** Reference competitor pricing, WTP scores, market size, and audience sensitivity in rationale
-    3. **Ensure viability:** LTV/CAC ratio must be at least 2:1 for subscription; traffic projections must be realistic for ad models
+    3. **Be realistic:** Traffic projections for ad models must be achievable from the keyword demand and market size above
     4. **Consider market standards:** Don't deviate drastically from competitor norms without strong justification
     5. **Validate against WTP:** Ensure monetization model aligns with customer willingness to pay
     6. **Feature tier logic:** Higher tiers should include ALL lower tier features plus additional ones
@@ -377,7 +406,6 @@ pricing_strategy_analysis:
 
     **CRITICAL RULES (REMINDER - RECENCY BIAS):**
     - For subscription models: All prices must be exact dollar amounts (a single "$<price>/month", NOT a "$<low>-<high>/month" range)
-    - For subscription models: LTV/CAC ratio >=2:1 is MANDATORY
     - For ad/affiliate models: Set tier prices to null, provide ad/affiliate revenue estimates instead
     - Monetization model must align with WTP signals AND project type (low WTP + directory = ad/affiliate)
     - DO NOT default to 3-tier Freemium - evaluate all models based on full context

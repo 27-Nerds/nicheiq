@@ -123,7 +123,7 @@ describe('buildSeedEnvelope', () => {
     });
   });
 
-  it.each(['accepted', 'demoted', 'failed'] as const)('threads outcome=%s through unchanged', (outcome) => {
+  it.each(['accepted', 'demoted', 'failed', 'refunded', 'cancelled'] as const)('threads outcome=%s through unchanged', (outcome) => {
     expect(buildSeedEnvelope('seed_settled', 'msg-abc', outcome).outcome).toBe(outcome);
   });
 });
@@ -133,6 +133,8 @@ describe('buildSeedReceiptContent', () => {
     expect(buildSeedReceiptContent('seed_submitted')).toMatch(/evaluat/i);
     expect(buildSeedReceiptContent('seed_settled', 'accepted')).toMatch(/ranked candidates/i);
     expect(buildSeedReceiptContent('seed_settled', 'demoted')).toMatch(/market-fit/i);
-    expect(buildSeedReceiptContent('seed_settled', 'failed')).toMatch(/refund/i);
+    expect(buildSeedReceiptContent('seed_settled', 'refunded')).toMatch(/credits/i);
+    expect(buildSeedReceiptContent('seed_settled', 'failed')).not.toMatch(/refund/i);
+    expect(buildSeedReceiptContent('seed_settled', 'cancelled')).toMatch(/cancel/i);
   });
 });

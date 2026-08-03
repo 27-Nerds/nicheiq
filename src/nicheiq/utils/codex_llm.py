@@ -20,6 +20,9 @@ from pydantic import BaseModel
 
 # Context window sizes for Codex models
 CODEX_CONTEXT_WINDOWS = {
+    # gpt-5.3-codex verified live on the Responses API (2026-07); mirrors the
+    # gpt-5.1-codex-max window. The landing preflight check guards its retirement.
+    "gpt-5.3-codex": 200_000,
     "gpt-5.1-codex-max": 200_000,
     "gpt-5.1-codex": 128_000,
     "gpt-5.1-codex-mini": 128_000,
@@ -55,7 +58,7 @@ class CodexLLM(BaseLLM):
 
     def __init__(
         self,
-        model: str = "gpt-5.1-codex-max",
+        model: str = "gpt-5.3-codex",
         api_key: str | None = None,
         reasoning_effort: str = "medium",
         max_output_tokens: int = 16384,

@@ -6,7 +6,6 @@ import {
 } from '@prisma/client';
 import { Router, type Response } from 'express';
 import { z } from 'zod';
-import { CONFIG } from '../config.js';
 import { requireInternalAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { requireDecisionToolsAccess } from '../middleware/featureAccess.js';
 import { prisma } from '../services/db.js';
@@ -58,7 +57,7 @@ async function settlementFor(jobId: string, sourceMessageId: string) {
     const envelope = asRecord(receipt.patchJson);
     if (envelope?.kind !== 'ledger_event' || envelope.sourceMessageId !== sourceMessageId) continue;
     const outcome = typeof envelope.outcome === 'string' ? envelope.outcome : null;
-    if (outcome && ['accepted', 'demoted', 'failed', 'refunded'].includes(outcome)) {
+    if (outcome && ['accepted', 'demoted', 'failed', 'refunded', 'cancelled'].includes(outcome)) {
       return { state: outcome, idea: asRecord(envelope.idea) };
     }
   }
@@ -175,11 +174,6 @@ selectionFounderFitReshapeRouter.post(
         res.json({ ...existing, cached: true });
         return;
       }
-      if (!CONFIG.openaiApiKey) {
-        res.status(503).json({ error: 'Founder-fit reshape agent unavailable' });
-        return;
-      }
-
       const generated = await generateSelectionFounderFitReshape({
         artifact: context.artifact,
         parent: {
@@ -254,6 +248,10 @@ selectionFounderFitReshapeRouter.post(
         'UNSUPPORTED_FOUNDER_FIT_RESHAPE_CLAIM',
       ].includes(error.message)) {
         res.status(502).json({ error: 'The founder-fit reshape agent returned an unsupported proposal' });
+        return;
+      }
+      if (error instanceof Error && error.message === 'AI_PROVIDER_UNAVAILABLE') {
+        res.status(503).json({ error: 'Founder-fit reshape agent unavailable' });
         return;
       }
       console.error('Failed to generate founder-fit reshape proposal:', error);

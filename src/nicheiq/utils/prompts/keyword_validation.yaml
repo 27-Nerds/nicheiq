@@ -1,6 +1,6 @@
 # Keyword Relevance Validation Prompt
 # Used by: KeywordRelevanceValidator._build_validation_prompt()
-# Variables: niche_description, solution_name, project_type, solution_description, keywords_text, batch_size
+# Variables: niche_description, solution_name, project_type, solution_description, pains, angle, keywords_text, batch_size
 
 template: |
   You are a strict keyword relevance classifier. Your job is to filter OUT keywords that do not LITERALLY and SEMANTICALLY match this specific niche and solution.
@@ -15,6 +15,8 @@ template: |
   - Name: {solution_name}
   - Type: {project_type}
   - Description: {solution_description}
+  - Problems it solves: {pains}
+  - Go-to-market angle: {angle}
 
   ═══════════════════════════════════════════════════════════════════════════
   KEYWORDS TO EVALUATE
@@ -44,8 +46,6 @@ template: |
   - Is the keyword targeting the same user persona/market segment?
 
   **AUTOMATIC REJECTION RULES (Mark as NOT RELEVANT immediately if ANY apply):**
-
-  **IMPORTANT EXCEPTION**: If the niche/solution is related to software, SaaS, tech tools, or developer tools, then technical/developer keywords (e.g., npm, react, terraform, docker, validation, API, SDK) ARE RELEVANT and should NOT be rejected. These are core industry terms for software niches.
 
   1. **Wrong Industry**: Medical/health terms for tech niches (UNLESS metaphorical like "pain point"), consumer goods for B2B SaaS, academic terms for business tools (UNLESS educational SaaS)
   2. **Physical Products**: Hardware, appliances, vehicles, food, clothing (unless niche explicitly targets these)

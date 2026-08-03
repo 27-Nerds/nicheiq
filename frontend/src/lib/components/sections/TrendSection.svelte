@@ -200,17 +200,17 @@
     </ExpandableSection>
   {/if}
 
-  <!-- Expandable: Growth Indicators -->
+  <!-- Community signals can indicate growth, durability, or decline. -->
   {#if data.community_growth_indicators && data.community_growth_indicators.length > 0}
     <ExpandableSection
-      title="Growth Indicators"
-      icon={TrendingUp}
+      title="Community and durability signals"
+      icon={BarChart3}
       count={data.community_growth_indicators.length}
-      variant="success"
+      variant="default"
     >
       <div class="item-list">
         {#each data.community_growth_indicators as indicator}
-          <IconListItem icon={ChevronRight} iconVariant="success"
+          <IconListItem icon={ChevronRight} iconVariant="muted"
             >{indicator}</IconListItem
           >
         {/each}

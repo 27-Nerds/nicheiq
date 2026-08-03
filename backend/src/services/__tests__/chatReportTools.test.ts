@@ -37,3 +37,31 @@ describe('chat report tools', () => {
     expect(metricExplanation('invented score')).toBeNull();
   });
 });
+
+// The two answers the analyst gets WRONG by guessing: a tie in demand reads as "equally
+// wanted", and a premise-unproven idea reads as "bad". Both are falsehoods now, so the
+// glossary has to state the limit next to the formula.
+describe('score glossary — the 2026-08 scoring changes', () => {
+  it('scopes demand to the graded, on-idea keyword set and warns that ties carry no signal', () => {
+    const demand = metricExplanation('keyword_demand_score')!;
+    expect(demand).toContain('RELEVANCE-GRADED');
+    expect(demand).toContain('len(validated_keywords)');
+    expect(demand).toContain('never evidence that they are equally wanted');
+    expect(metricExplanation('demand unmeasured')).toContain('NOT zero and not low');
+    expect(metricExplanation('validated_count')).toContain('not the unfiltered expansion pool');
+  });
+
+  it('states the premise-unproven reading and never hands back the internal word', () => {
+    const verdict = metricExplanation('red_team_verdict')!;
+    expect(verdict).toContain('"Premise unproven"');
+    expect(verdict).toContain('never say killed');
+    expect(verdict).toContain('keeps its rank and stays selectable');
+  });
+
+  it('records the named-vendor competition bar and the ranking-only audience penalty', () => {
+    expect(metricExplanation('incumbent_parity')).toContain('NAMED vendor');
+    expect(metricExplanation('incumbent_parity')).toContain('no longer writes into this channel');
+    expect(metricExplanation('audience_fit')).toContain('RANKING composite only');
+    expect(metricExplanation('idea_theses')).toContain('ONE business');
+  });
+});

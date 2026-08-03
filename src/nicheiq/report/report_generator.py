@@ -76,11 +76,143 @@ from ..utils.prompts import safe_format
 from .templates import ReportTemplates
 from ..utils.llm_service import LLMService
 from .utils import ScoreAccessor, StateAccessor
+from .utils.number_formatters import format_percent, format_share
 
 # The base Conditional verdict's generic concern. Named so the red-team floor (Phase 5.5)
 # can recognize and null it on a 'killed' finding — every downgrade floor sets
 # primary_concern only-if-None, and this generic would otherwise always win.
 _GENERIC_CONDITIONAL_CONCERN = "Monitor market validation closely during MVP phase"
+
+# Scoring-formula version stamped at the report root (S0.4). Bump when scoring formulas
+# change (critic rubric, caps/floors, verdict thresholds, composite weights) so scores from
+# different report vintages are never compared as if produced by the same formulas.
+SCORING_VERSION = "2026.08"
+
+
+class ExecutiveDashboardError(RuntimeError):
+    """Raised when the executive dashboard cannot be produced with its verdict intact.
+
+    Deliberately fatal. The dashboard carries the Go/No-Go verdict — the single answer a
+    paid report exists to give. Shipping a completed report with `executive_dashboard: null`
+    (the pre-2026-08 fail-soft) silently discarded computed NEGATIVE verdicts while the rest
+    of the report kept recommending the build. A failed job is visible and retryable; a
+    confidently wrong report is not.
+    """
+
+
+def _clean_text(value: Any) -> str | None:
+    """Normalize an optional free-text field to a non-blank str, or None.
+
+    Used at every descriptive-field boundary of the executive dashboard so an upstream None
+    or "" becomes an explicit, renderable absence instead of a validation error.
+    """
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+# Shared with report/utils/state_accessors.py, which renders the same figures into the same
+# report — the live 2026-08-03 audit found "0%" emitted independently by both modules.
+_format_percent = format_percent
+_format_share = format_share
+
+
+# Unit ladder for money rendering, largest first.
+_MONEY_UNITS: tuple[tuple[float, str], ...] = ((1e9, "B"), (1e6, "M"), (1e3, "K"))
+_MONEY_SUFFIX_MULT = {"": 1.0, "K": 1e3, "M": 1e6, "B": 1e9}
+# "$0.000227-$0.000454M" / "$50-80M" / "$2.5B" / "$300". Ranges first (a suffix on either end
+# applies to both, matching utils.validation.numeric_parsers.parse_dollar_amount).
+# The suffix is optional but, when present, must not swallow the space before an ordinary
+# word ("$9M in Year 1") nor match the first letter of one ("$5 million").
+_MONEY_SUFFIX = r"(?:\s*([KMB])(?![A-Za-z]))?"
+_MONEY_RANGE_RE = re.compile(
+    r"\$\s*([\d,]+(?:\.\d+)?)" + _MONEY_SUFFIX
+    + r"\s*(-|–|—|\s+to\s+)\s*\$?\s*([\d,]+(?:\.\d+)?)" + _MONEY_SUFFIX,
+    re.IGNORECASE,
+)
+_MONEY_SINGLE_RE = re.compile(r"\$\s*([\d,]+(?:\.\d+)?)" + _MONEY_SUFFIX, re.IGNORECASE)
+
+
+def _render_money(value: float) -> str:
+    """Render absolute dollars with the largest unit whose displayed number is >= 1."""
+    magnitude = abs(value)
+    for size, suffix in _MONEY_UNITS:
+        if magnitude >= size:
+            scaled = value / size
+            # Trim a trailing ".0" so 800.0M renders as "$800M".
+            text = f"{scaled:.2f}".rstrip("0").rstrip(".")
+            return f"${text}{suffix}"
+    text = f"{value:,.2f}".rstrip("0").rstrip(".")
+    return f"${text}"
+
+
+def _rescale_money_text(text: str | None) -> str | None:
+    """Rewrite every "$N[unit]" token in `text` so its unit matches its magnitude.
+
+    Stage 9 emits TAM/SAM/SOM as free-form strings and the LLM sometimes keeps the "M" unit
+    while shrinking the number, producing "$0.000227-$0.000454M" for what the same section's
+    prose calls "$227-$454" (≈$1-$9/yr for the Y1 SOM). The numbers are right; the unit is
+    absurd. Rescaling is lossless — it only re-expresses the same dollar value.
+    """
+    if not text or "$" not in text:
+        return text
+
+    def _abs(raw: str, suffix: str | None) -> float:
+        return float(raw.replace(",", "")) * _MONEY_SUFFIX_MULT[(suffix or "").upper()]
+
+    def _range_sub(m: re.Match) -> str:
+        low_raw, low_suf, sep, high_raw, high_suf = m.groups()
+        # A suffix on only one end applies to both ends of the range.
+        low_suf = low_suf or high_suf
+        high_suf = high_suf or low_suf
+        low, high = _abs(low_raw, low_suf), _abs(high_raw, high_suf)
+        separator = "-" if sep.strip() in {"-", "–", "—"} else " to "
+        return f"{_render_money(low)}{separator}{_render_money(high)}"
+
+    def _single_sub(m: re.Match) -> str:
+        return _render_money(_abs(m.group(1), m.group(2)))
+
+    try:
+        return _MONEY_SINGLE_RE.sub(_single_sub, _MONEY_RANGE_RE.sub(_range_sub, text))
+    except (ValueError, KeyError):  # unparseable token — leave the original text alone
+        return text
+
+
+# Money-bearing string fields on MarketSizingResult / MarketSegmentSizing.
+_MARKET_SIZING_MONEY_FIELDS = (
+    "total_addressable_market",
+    "serviceable_available_market",
+    "serviceable_obtainable_market_y1",
+    "serviceable_obtainable_market_y3",
+)
+_SEGMENT_SIZING_MONEY_FIELDS = ("tam_estimate", "sam_estimate", "som_estimate")
+
+# Pipeline stage names, for naming a SKIPPED stage in a caveat. Mirrors the map in
+# flows/research_flow.py:_mark_stage_complete (only the numbers that can be skipped matter).
+_STAGE_NAMES: dict[float, str] = {
+    1: "Niche Context",
+    2: "Social Content Collection",
+    3: "Pain Point Analysis",
+    4: "Audience Mapping",
+    5: "Solution Ideation",
+    5.5: "Competitive Analysis",
+    6: "SEO & Keyword Strategy",
+    7: "Pricing Validation",
+    8: "Traffic Monetization",
+    9: "Market Sizing",
+    10: "Solution Refinement",
+    11: "Trend Analysis",
+    12: "SEO Score Refinement",
+    13: "Data Source Research",
+    14: "Report Generation",
+}
+
+
+def _stage_label(stage: float) -> str:
+    name = _STAGE_NAMES.get(stage)
+    number = int(stage) if float(stage).is_integer() else stage
+    return f"Stage {number} ({name})" if name else f"Stage {number}"
 
 
 class ReportGenerator:
@@ -113,6 +245,10 @@ class ReportGenerator:
         self.accessor = StateAccessor(state)
         self.score_accessor = ScoreAccessor(state.solution_selection)
         self.cost_tracker = cost_tracker
+        # Reader-facing caveats raised while assembling the executive dashboard; folded into
+        # data_quality_summary.quality_caveats so a degraded dashboard is never silent.
+        self._dashboard_caveats: list[str] = []
+        self._normalized_ms_cache = None
 
     def _record_cost(self, stage: str, usage) -> None:
         """Record a direct-LLM TokenUsage into the cost tracker (no-op if absent)."""
@@ -153,10 +289,20 @@ class ReportGenerator:
         logger.info("Step 2: Enhancing with LLM for strategic synthesis (optional)...")
         final_report = self._enhance_report_with_llm(final_report)
 
-        # Step 2.5: Generate pain-solution mappings (LLM-based)
+        # Step 2.5: Generate pain-solution mappings only for validated pains the selected
+        # solution actually references. The full niche pain corpus remains in the Evidence
+        # section, but must never acquire a fabricated solution bridge.
         if final_report.detailed_pain_points and final_report.selected_solution_details:
+            solution_pain_points = self.accessor.get_solution_pain_points(
+                final_report.selected_solution_details,
+                limit=10,
+            )
+            solution_pain_titles = {pain.title for pain in solution_pain_points}
+            for pain_point in final_report.detailed_pain_points:
+                if pain_point.title not in solution_pain_titles:
+                    pain_point.solution_approach = None
             pain_solution_mappings = self._generate_pain_solution_mappings(
-                pain_points=final_report.detailed_pain_points,
+                pain_points=solution_pain_points,
                 solution=final_report.selected_solution_details
             )
             # Apply mappings to pain points
@@ -177,11 +323,13 @@ class ReportGenerator:
             enriched_solution=final_report.selected_solution_details
         )
         if final_report.executive_dashboard:
+            _dash = final_report.executive_dashboard
+            _conf = f"{_dash.confidence_score:.2f}" if _dash.confidence_score is not None else "N/A"
+            _kw = _dash.key_metrics.total_keyword_count if _dash.key_metrics else "unknown"
             logger.info(
                 f"[OK] Executive dashboard generated: "
-                f"{final_report.executive_dashboard.go_no_go_verdict.verdict} verdict, "
-                f"confidence {final_report.executive_dashboard.confidence_score:.2f}, "
-                f"{final_report.executive_dashboard.key_metrics.total_keyword_count} keywords analyzed"
+                f"{_dash.go_no_go_verdict.verdict} verdict, "
+                f"confidence {_conf}, {_kw} keywords analyzed"
             )
 
         # Go-to-Market Blueprint (Phase 2 Enhancement) - ACTIONABLE GTM STRATEGY
@@ -302,6 +450,10 @@ class ReportGenerator:
 
         # Research Reality Check — computed end of Phase 1, carried on state (no re-generation).
         final_report.niche_difficulty_verdict = getattr(self.state, "niche_difficulty_verdict", None)
+
+        # S0.4: scoring-formula version at the report root (sibling of data_quality_summary).
+        # Reports generated before the 2026.08 cutover carry None here.
+        final_report.scoring_version = SCORING_VERSION
 
         # Market-data handoff: same Phase-1 web-verified incumbent/wallet facts already shown on
         # the preview report's top-level market_reality (see research_flow._materialize_preview_report)
@@ -427,6 +579,28 @@ class ReportGenerator:
                 if p.solution_name == selected_solution_name:
                     pricing_strategy = p
                     break
+
+        # Unit-economics grounding (downgrade-only). The pricing crew divides LTV by the
+        # market-fit-derived *suggested* CAC band, not by this idea's CAC — and a rebuilt
+        # idea publishes no CAC at all (unified_solution_crew._UNGROUNDABLE_ON_REBUILD).
+        # Left alone, the report prints a headline ratio straight above a CAC table reading
+        # "N/A". Compare against the exact fields that table renders and clear or label the
+        # ratio; never rewrite the numeral, and never touch a ratio that honestly fails 2:1.
+        if pricing_strategy is not None and selected_solution_details is not None:
+            from ..validators.unit_economics import apply_ltv_cac_grounding
+
+            pricing_strategy, grounding = apply_ltv_cac_grounding(
+                pricing_strategy, selected_solution_details, selected_solution_name
+            )
+            if grounding.changed:
+                logger.warning(
+                    f"[UnitEconomics] {grounding.status} for '{selected_solution_name}': "
+                    f"{grounding.degradation}"
+                )
+                if grounding.degradation and grounding.degradation not in (
+                    self.state.pipeline_degradations
+                ):
+                    self.state.pipeline_degradations.append(grounding.degradation)
 
         # Extract traffic monetization for selected solution from list (Stage 8)
         traffic_monetization = None
@@ -683,10 +857,27 @@ class ReportGenerator:
             demand_line = (f"Category search volume: {headline_vol:,} monthly searches "
                            f"(no solution-specific beachhead demand was validated — treat as reach ceiling, "
                            f"not addressable demand). ")
+        # Q-049 (additive only — the demand headline above comes from a DIFFERENT keyword
+        # universe and must not be substituted): when the three-band idea-intent fields were
+        # computed, append the honest idea-intent share of the ANALYZED keyword set.
+        intent_note = ""
+        seo_rep = self.state.seo_strategy_report
+        if seo_rep is not None:
+            _iiv = getattr(seo_rep, "idea_intent_monthly_volume", None)
+            _off = getattr(seo_rep, "offtopic_volume_share", None)
+            _cat = getattr(seo_rep, "category_volume_share", None)
+            _tot = getattr(seo_rep, "total_monthly_volume", 0) or 0
+            if _iiv is not None and _off is not None and _cat is not None and _tot > 0:
+                intent_note = (
+                    f"Idea-intent keywords account for {_iiv:,}/mo of the {_tot:,}/mo analyzed "
+                    f"keyword set ({_format_share(_iiv, _tot)}); the remainder is category or "
+                    f"off-topic reach. "
+                )
         market_validation = (
             f"{validation_level} market validation. "
             f"{demand_line}"
             f"{reach_note}"
+            f"{intent_note}"
             f"Validated pain points: {pain_point_count}. "
             f"Competitive landscape shows existing market demand."
         )
@@ -710,6 +901,10 @@ class ReportGenerator:
             seo_strategy = SEOStrategyReport(
                 total_keywords_analyzed=0,
                 total_monthly_volume=0,
+                # Q-049 band fields: no keyword set to grade — explicitly None (today's behavior)
+                offtopic_volume_share=None,
+                category_volume_share=None,
+                idea_intent_monthly_volume=None,
                 key_findings=["SEO strategy generation failed - manual keyword research required"],
                 tier_1_keywords=[],
                 tier_1_quick_win_strategy="Complete keyword research to identify quick win opportunities.",
@@ -839,8 +1034,8 @@ class ReportGenerator:
             # Stage 6.5: Audience Intelligence (full object)
             audience_mapping=self.state.audience_mapping,
 
-            # Stage 9: Market Sizing (full object)
-            market_sizing=self.state.market_sizing,
+            # Stage 9: Market Sizing (full object, money strings unit-normalized)
+            market_sizing=self._normalized_market_sizing(),
 
             # Stage 12: Trend Longevity (full object)
             trend_longevity=self.state.trend_longevity,
@@ -865,6 +1060,62 @@ class ReportGenerator:
             # Metadata
             generated_at=datetime.utcnow(),
         )
+
+    def _normalized_market_sizing(self):
+        """Stage-9 market sizing with every money string rendered in a unit that matches its
+        magnitude (see `_rescale_money_text`).
+
+        Stage 9 hands TAM/SAM/SOM over as free-form strings; the 2026-08-02 run shipped
+        "$0.000227-$0.000454M" for a SAM the same section's prose called "$227-$454", and
+        "$0.000001-$0.000009M" (≈$1-$9/yr) for the Year-1 SOM. Only the rendering changes —
+        the dollar values are identical. Cached so the report and the GTM budget agree.
+        """
+        if getattr(self, "_normalized_ms_cache", None) is not None:
+            return self._normalized_ms_cache
+
+        market_sizing = self.state.market_sizing
+        if market_sizing is None:
+            return None
+
+        try:
+            updates = {}
+            for field in _MARKET_SIZING_MONEY_FIELDS:
+                original = getattr(market_sizing, field, None)
+                rescaled = _rescale_money_text(original)
+                if rescaled != original:
+                    updates[field] = rescaled
+
+            segments = getattr(market_sizing, "segment_sizing", None)
+            if segments:
+                new_segments = []
+                segment_changed = False
+                for segment in segments:
+                    seg_updates = {}
+                    for field in _SEGMENT_SIZING_MONEY_FIELDS:
+                        original = getattr(segment, field, None)
+                        rescaled = _rescale_money_text(original)
+                        if rescaled != original:
+                            seg_updates[field] = rescaled
+                    if seg_updates:
+                        segment_changed = True
+                        new_segments.append(segment.model_copy(update=seg_updates))
+                    else:
+                        new_segments.append(segment)
+                if segment_changed:
+                    updates["segment_sizing"] = new_segments
+
+            if updates:
+                logger.info(
+                    f"Market sizing: rescaled {len(updates)} money field(s) to units matching "
+                    f"their magnitude"
+                )
+                market_sizing = market_sizing.model_copy(update=updates)
+        except Exception as e:  # never let a formatting pass drop the section
+            logger.warning(f"Market-sizing money normalization skipped (non-fatal): {e}")
+            market_sizing = self.state.market_sizing
+
+        self._normalized_ms_cache = market_sizing
+        return market_sizing
 
     def _merge_solution_enrichments(
         self,
@@ -1105,16 +1356,23 @@ class ReportGenerator:
             )
 
         template = load_prompt("report_strategic_synthesis")
-        pain_points = base_report.detailed_pain_points or []
+        pain_points = self.accessor.get_solution_pain_points(details) if details else []
         pain_point_titles = [pp.title for pp in pain_points[:3]]
         prompt = safe_format(template,
             niche=base_report.niche,
             selected_solution_name=base_report.selected_solution_name,
             pain_points_count=len(pain_points),
             market_validation=base_report.market_validation,
-            seo_scalability=details.seo_scalability_score if details else 'N/A',
+            seo_scalability=(
+                details.seo_scalability_score * 10
+                if details and details.seo_scalability_score is not None
+                else 'N/A'
+            ),
             selection_rationale=base_report.selection_rationale,
-            top_pain_points=', '.join(pain_point_titles),
+            top_pain_points=(
+                ', '.join(pain_point_titles)
+                or 'No validated pain point matched the selected solution.'
+            ),
             project_type=details.project_type if details else 'N/A',
             indexable_pages=details.estimated_indexable_pages if details else 'N/A',
             cac_organic=details.estimated_cac_organic if details else 'N/A',
@@ -1146,14 +1404,17 @@ class ReportGenerator:
             )
 
         template = load_prompt("report_next_steps")
-        pain_points = base_report.detailed_pain_points or []
+        pain_points = self.accessor.get_solution_pain_points(details) if details else []
         pain_point_titles = [pp.title for pp in pain_points[:3]]
         prompt = safe_format(template,
             niche=base_report.niche,
             selected_solution_name=base_report.selected_solution_name,
             project_type=(details.project_type if details else None) or 'SaaS',
             core_features=', '.join((details.core_features if details else None) or [])[:200] or 'N/A',
-            top_pain_points=', '.join(pain_point_titles),
+            top_pain_points=(
+                ', '.join(pain_point_titles)
+                or 'No validated pain point matched the selected solution.'
+            ),
             pricing_strategy=(details.pricing_strategy if details else None) or 'freemium',
             requires_data_aggregation=(details.requires_data_aggregation if details else None) or False,
             indexable_pages=(details.estimated_indexable_pages if details else None) or 'N/A',
@@ -1289,8 +1550,14 @@ class ReportGenerator:
             )
             self._record_cost("Stage 14 - Pain-Solution Mapping", _usage)
 
-            # Convert list to dict
-            mappings_dict = {item.pain_point_title: item.solution_approach for item in result.mappings}
+            # Accept only exact titles supplied to the model. A hallucinated extra title must not
+            # create a relationship the selected solution never claimed.
+            allowed_titles = {pain.title for pain in pain_points_to_map}
+            mappings_dict = {
+                item.pain_point_title: item.solution_approach
+                for item in result.mappings
+                if item.pain_point_title in allowed_titles
+            }
             logger.info(f"[OK] Generated {len(mappings_dict)} pain-solution mappings")
             return mappings_dict
 
@@ -1335,6 +1602,16 @@ class ReportGenerator:
 
             generic_posts_analyzed = len(social_content.generic_posts) if social_content.generic_posts else 0
 
+            # A skipped stage is NOT a completed stage. research_flow._skip_stage appends to
+            # BOTH completed_stages and skipped_stages (so resume doesn't re-run it), which
+            # made the report claim stages 8 and 13 ran when they never did — and left the
+            # reader trusting outputs (e.g. data_feasibility_score) that no stage produced.
+            # The skip is surfaced as a caveat in _generate_data_quality_summary.
+            skipped_stages = set(getattr(self.state, "skipped_stages", None) or [])
+            completed_stages = [
+                s for s in (self.state.completed_stages or []) if s not in skipped_stages
+            ]
+
             return ResearchMetadata(
                 reddit_posts_analyzed=reddit_posts_analyzed,
                 reddit_comments_analyzed=reddit_comments_analyzed,
@@ -1344,7 +1621,7 @@ class ReportGenerator:
                 collection_date=social_content.collection_timestamp,
                 data_size_mb=round(data_size_mb, 2),
                 # Phase 4: Include stage tracking data for diagnostic visibility
-                completed_stages=self.state.completed_stages if self.state.completed_stages else None,
+                completed_stages=completed_stages or None,
                 fallback_stages=self.state.fallback_stages if self.state.fallback_stages else None,
                 filtering_stats=self.state.filtering_stats,
                 # Pipeline timing metadata
@@ -1423,7 +1700,7 @@ class ReportGenerator:
                 niche = self.accessor.get_primary_search_volume()
                 total = self.accessor.get_total_keyword_search_volume()
                 quality_caveats.append(
-                    f"Keyword volume filter ratio is {volume_filter_ratio:.0%} — "
+                    f"Keyword volume filter ratio is {_format_percent(volume_filter_ratio)} — "
                     f"niche-relevant volume ({niche:,}) is significantly less than "
                     f"total SEO volume ({total:,}). Market validation uses the filtered volume."
                 )
@@ -1431,6 +1708,36 @@ class ReportGenerator:
             if self.state.fallback_stages:
                 fallback_names = [f"Stage {s}" for s in self.state.fallback_stages]
                 quality_caveats.append(f"Fallback data used in: {', '.join(fallback_names)}")
+
+            # Skipped stages: say so, by name. These are excluded from
+            # research_metadata.completed_stages, but the reader also needs to know the
+            # sections they would have produced are missing rather than empty.
+            skipped_stages = sorted(set(getattr(self.state, "skipped_stages", None) or []))
+            if skipped_stages:
+                quality_caveats.append(
+                    "Stages not run for this solution: "
+                    f"{', '.join(_stage_label(s) for s in skipped_stages)}. "
+                    "Sections that depend on them are absent from this report."
+                )
+                # Stage 13 produces the data-source research that a data-feasibility claim
+                # rests on. When it never ran, the score and its calibration note are the
+                # idea generator's own unverified assertion — say so rather than trust it.
+                if 13 in skipped_stages:
+                    _sol = (getattr(self, "_enriched_solution", None)
+                            or self.accessor.get_selected_solution_details())
+                    _dfs = getattr(_sol, "data_feasibility_score", None) if _sol else None
+                    if _dfs is not None:
+                        quality_caveats.append(
+                            "Data feasibility was not independently researched: "
+                            f"{_stage_label(13)} was skipped, so the data-feasibility score "
+                            "and any named data sources come from the idea evaluation itself, "
+                            "not from a verified sourcing pass. Treat them as unconfirmed."
+                        )
+
+            # Executive-dashboard degradations (see _generate_executive_dashboard). Recorded
+            # there, surfaced here — a dashboard missing a section must not be silent.
+            quality_caveats.extend(self._dashboard_caveats)
+
             if self.state.filtering_stats:
                 filter_rate = self.state.filtering_stats.get("overall_filtering_rate", 0)
                 if filter_rate > 0.7:
@@ -1453,13 +1760,13 @@ class ReportGenerator:
             ev_cov = drift.get("pain_evidence_anchor_coverage")
             if ev_cov is not None and ev_cov < 0.15:
                 quality_caveats.append(
-                    f"Niche-fidelity: only {ev_cov:.0%} of supporting evidence mentions "
+                    f"Niche-fidelity: only {_format_percent(ev_cov)} of supporting evidence mentions "
                     f"niche-specific terms — review for possible off-topic drift."
                 )
             q_pct = drift.get("query_anchor_pct")
             if q_pct is not None and q_pct < 0.4:
                 quality_caveats.append(
-                    f"Only {q_pct:.0%} of search queries were niche-anchored — "
+                    f"Only {_format_percent(q_pct)} of search queries were niche-anchored — "
                     f"collected content may include adjacent topics."
                 )
             # Coverage gaps from idea generation (high-severity pains left uncovered).
@@ -1542,6 +1849,14 @@ class ReportGenerator:
         Generate pipeline execution timing summary from stage completion timestamps.
         """
         try:
+            # Interactive research pauses between Discovery and Deep Research while the
+            # user chooses a shortlist. Completion-to-completion timestamps include that
+            # human wait in the next stage, so presenting them as execution durations
+            # would be materially misleading. Keep timing unavailable until split runs
+            # record active per-stage durations directly.
+            if getattr(self.state, "_user_selected_solutions", None):
+                return None
+
             timestamps = self.state.stage_completion_timestamps
             if not timestamps or len(timestamps) < 2:
                 return None
@@ -2020,6 +2335,7 @@ It differentiates through {diff_text}.
                     # so legacy reports and quote-less pains render unchanged)
                     demand_quotes=demand_quotes or None,
                     critic_concern=critic_concern or None,
+                    refine_binding_constraint=getattr(solution, 'refine_binding_constraint', None),
                     incumbent_parity=getattr(solution, 'incumbent_parity', None),
                     adjacent_market_parity=getattr(solution, 'adjacent_market_parity', None),
                     # Adversarial red-team pass (mirrors the preview-report threading in
@@ -2027,6 +2343,10 @@ It differentiates through {diff_text}.
                     # silently dropping these via AlternativeSolution's extra='ignore').
                     red_team_verdict=getattr(solution, 'red_team_verdict', None),
                     red_team_caveats=list(getattr(solution, 'red_team_caveats', None) or []) or None,
+                    # Lets the UI explain a missing acquisition-cost figure instead of
+                    # hiding the row: a rebuilt product's old CAC describes a product that
+                    # no longer exists, and the rebuild cannot re-ground a new one.
+                    rebuild_origin=getattr(solution, 'rebuild_origin', None),
                     source_segment_payability=getattr(solution, 'source_segment_payability', None),
                     source_segment_payability_class=getattr(solution, 'source_segment_payability_class', None),
                     # Multi-Frame Idea Generation Portfolio: which frame minted this idea's cell
@@ -2065,7 +2385,25 @@ It differentiates through {diff_text}.
             competitor_appearances: dict[str, dict[str, Any]] = {}
             competitive_intensity_list: list[CompetitiveIntensityEntry] = []
 
+            # A landscape the relevance guard stamped `off_niche_caveat` is retained verbatim
+            # upstream (downgrade-only, never rewritten) but must not be treated as a MEASUREMENT
+            # here. Live audit 2026-08-03: the winner's landscape came back as Mint + YNAB —
+            # personal-finance apps, produced with zero web searches — and because it was counted
+            # like any other, it drove competitor_count=2 -> market_saturation_score=0.2 ->
+            # competitive_intensity "Low" -> 5 market gaps, i.e. the report told the reader the
+            # space was uncrowded on the strength of the fabrication.
+            off_niche = [
+                ls.solution_name for ls in self.state.competitive_analysis.solution_landscapes
+                if getattr(ls, "off_niche_caveat", None)
+            ]
             for landscape in self.state.competitive_analysis.solution_landscapes:
+                if getattr(landscape, "off_niche_caveat", None):
+                    logger.warning(
+                        f"[CompetitiveMatrix] excluding off-niche landscape from saturation "
+                        f"math: '{landscape.solution_name}' — {landscape.off_niche_caveat}"
+                    )
+                    continue
+
                 # Track competitive intensity
                 competitive_intensity_list.append(
                     CompetitiveIntensityEntry(
@@ -2113,10 +2451,27 @@ It differentiates through {diff_text}.
                 top_competitor = competitor_overlap[0]
                 market_insight += f"Most versatile competitor: {top_competitor.competitor_name} (competes in {len(top_competitor.solutions_competed)} solution categories)."
 
-            # Extract selected solution's direct competitors for executive summary
+            # Say it in the report, not only in the log: a reader who sees a thin competitor
+            # set must be told it is thin because a landscape was rejected, not because the
+            # market is empty.
+            if off_niche:
+                market_insight += (
+                    f" Competitive coverage is incomplete: the landscape for "
+                    f"{', '.join(off_niche)} did not match this niche and was excluded from "
+                    f"these counts, so treat competitor coverage here as unverified rather "
+                    f"than as evidence of an empty market."
+                )
+
+            # Extract selected solution's direct competitors for executive summary. Suppressed
+            # when the selected landscape itself was flagged — naming fabricated competitors in
+            # the executive summary is the most load-bearing place they could appear.
             selected_competitors: list[str] = []
             selected_landscape = self.accessor.get_selected_landscape()
-            if selected_landscape and selected_landscape.competitors:
+            if (
+                selected_landscape
+                and selected_landscape.competitors
+                and not getattr(selected_landscape, "off_niche_caveat", None)
+            ):
                 selected_competitors = [c.name for c in selected_landscape.competitors]
 
             return CompetitiveLandscapeMatrix(
@@ -2554,72 +2909,116 @@ It differentiates through {diff_text}.
                                to accessor which returns raw BaseSolutionIdea.
 
         Returns:
-            ExecutiveDashboard object with go/no-go verdict, core pain point, and metrics
+            ExecutiveDashboard carrying the go/no-go verdict. Supporting sections that could
+            not be produced are None and named in `unavailable_sections`.
+
+            None ONLY when there is no selected solution — i.e. there is no subject to reach
+            a verdict about, so there is no verdict to lose.
+
+        Raises:
+            ExecutiveDashboardError: the verdict itself could not be computed or carried.
+                Fatal on purpose — see the class docstring. Do not re-introduce a
+                `return None` fallback here.
         """
+        from ..models.executive_summary import (
+            ExecutiveDashboard,
+            SolutionSnapshot,
+        )
+
+        # Use enriched solution if provided, otherwise fall back to accessor (raw BaseSolutionIdea)
+        selected_solution = enriched_solution or self.accessor.get_selected_solution_details()
+
+        if not selected_solution:
+            logger.warning("No selected solution found - cannot generate executive dashboard")
+            return None
+
+        # The verdict is the load-bearing output and is computed FIRST, before any of the
+        # descriptive sections that historically aborted the whole dashboard. It is also
+        # total: _compute_go_no_go_verdict always returns a GoNoGoVerdict (an unscorable
+        # idea yields Conditional/High with the missing-data concern named).
         try:
-            from ..models.executive_summary import (
-                ExecutiveDashboard,
-                SolutionSnapshot,
-            )
+            go_no_go_verdict = self._compute_go_no_go_verdict(selected_solution=selected_solution)
+        except Exception as e:
+            logger.exception("Go/No-Go verdict computation failed - report cannot be shipped")
+            raise ExecutiveDashboardError(
+                f"Go/No-Go verdict could not be computed: {e}"
+            ) from e
 
-            # Use enriched solution if provided, otherwise fall back to accessor (raw BaseSolutionIdea)
-            selected_solution = enriched_solution or self.accessor.get_selected_solution_details()
+        # Everything below is SUPPORTING DETAIL. Each part degrades on its own and is named
+        # in `unavailable_sections`; none of it may discard the verdict above.
+        unavailable: list[str] = []
 
-            if not selected_solution:
-                logger.warning("No selected solution found - cannot generate executive dashboard")
-                return None
+        # Step 1: Compute metrics (Python)
+        # Pass the enriched solution to ensure we have access to Stage 12 refined fields
+        key_metrics = self._compute_executive_metrics(enriched_solution=selected_solution)
+        if not key_metrics:
+            logger.error("Executive dashboard: key_metrics unavailable (verdict retained)")
+            unavailable.append("key_metrics")
 
-            # Step 1: Compute metrics (Python - 60% of work)
-            # Pass the enriched solution to ensure we have access to Stage 12 refined fields
-            key_metrics = self._compute_executive_metrics(enriched_solution=selected_solution)
-            if not key_metrics:
-                logger.warning("Failed to compute executive metrics")
-                return None
+        # Step 2: Extract core pain point (Python)
+        core_pain_point = self._extract_core_pain_point(selected_solution)
+        if not core_pain_point:
+            logger.error("Executive dashboard: core_pain_point unavailable (verdict retained)")
+            unavailable.append("core_pain_point")
 
-            # Step 2: Extract core pain point (Python - 20% of work)
-            core_pain_point = self._extract_core_pain_point()
-            if not core_pain_point:
-                logger.warning("Failed to extract core pain point")
-                return None
-
-            # Step 3: Generate narrative components (LLM - 10% of work)
+        # Step 3: Generate narrative components (LLM, already fail-soft)
+        try:
             narrative = self._generate_executive_narrative(
                 selected_solution=selected_solution,
                 core_pain_point=core_pain_point,
-                key_metrics=key_metrics
+                key_metrics=key_metrics,
             )
+        except Exception as e:
+            logger.warning(f"Executive narrative unavailable (non-fatal): {e}")
+            narrative = None
 
-            # Step 4: Assemble dashboard (Python - 10% of work)
+        # Step 4: Assemble the snapshot. Every field is normalized to a str-or-None here
+        # rather than trusted: `project_type` is Optional on BaseSolutionIdea and is dropped
+        # outright by the pivot/merge reconstruction paths in UnifiedSolutionCrew, and the
+        # 2026-08-02 Sev-1 was exactly that None reaching a required field.
+        try:
+            _personas = getattr(selected_solution, "target_personas", None) or []
+            _fallback_tagline = (
+                getattr(selected_solution, "headline", None)
+                or f"{selected_solution.solution_name} for {_personas[0] if _personas else 'target users'}"
+            )
             solution_snapshot = SolutionSnapshot(
-                name=selected_solution.solution_name,
-                tagline=narrative.tagline if narrative else (getattr(selected_solution, 'headline', None) or f"{selected_solution.solution_name} for {selected_solution.target_personas[0] if selected_solution.target_personas else 'target users'}"),
-                core_value_prop=narrative.core_value_prop if narrative else selected_solution.description,
-                project_type=selected_solution.project_type
+                name=_clean_text(getattr(selected_solution, "solution_name", None)),
+                tagline=_clean_text(narrative.tagline if narrative else _fallback_tagline),
+                core_value_prop=_clean_text(
+                    narrative.core_value_prop if narrative
+                    else getattr(selected_solution, "description", None)
+                ),
+                project_type=_clean_text(getattr(selected_solution, "project_type", None)),
             )
+            if solution_snapshot.project_type is None:
+                logger.warning(
+                    f"Executive dashboard: '{getattr(selected_solution, 'solution_name', '?')}' "
+                    f"has no project_type — the type label is omitted (verdict unaffected)"
+                )
+        except Exception as e:
+            logger.error(f"Executive dashboard: solution snapshot unavailable ({e}) - verdict retained")
+            solution_snapshot = None
+            unavailable.append("recommended_solution_snapshot")
 
-            # Compute go/no-go verdict
-            go_no_go_verdict = self._compute_go_no_go_verdict(
-                selected_solution=selected_solution,
-                narrative_rationale=narrative.verdict_rationale if narrative else None
-            )
+        # Compute confidence score as average of available scores
+        _scores = [
+            self.score_accessor.get_market_fit(selected_solution),
+            self.score_accessor.get_competitive_advantage(selected_solution),
+            self.score_accessor.get_technical_feasibility(selected_solution),
+            self.score_accessor.get_seo_score_canonical(selected_solution),
+        ]
+        _valid_scores = [s for s in _scores if s is not None]
+        confidence_score = sum(_valid_scores) / len(_valid_scores) if _valid_scores else None
 
-            # Compute confidence score as average of available scores
-            _scores = [
-                self.score_accessor.get_market_fit(selected_solution),
-                self.score_accessor.get_competitive_advantage(selected_solution),
-                self.score_accessor.get_technical_feasibility(selected_solution),
-                self.score_accessor.get_seo_score_canonical(selected_solution),
-            ]
-            _valid_scores = [s for s in _scores if s is not None]
-            confidence_score = sum(_valid_scores) / len(_valid_scores) if _valid_scores else None
+        # Compute research depth label from pain point quality tier
+        pp_tier = getattr(self.state, 'pain_point_quality_tier', None) or "BRONZE"
+        research_depth_label = {
+            "GOLD": "Premium Research",
+            "SILVER": "Standard Research",
+        }.get(pp_tier, "Basic Research")
 
-            # Compute research depth label from pain point quality tier
-            pp_tier = getattr(self.state, 'pain_point_quality_tier', None) or "BRONZE"
-            research_depth_label = {
-                "GOLD": "Premium Research",
-                "SILVER": "Standard Research",
-            }.get(pp_tier, "Basic Research")
-
+        try:
             executive_dashboard = ExecutiveDashboard(
                 recommended_solution_snapshot=solution_snapshot,
                 go_no_go_verdict=go_no_go_verdict,
@@ -2627,15 +3026,31 @@ It differentiates through {diff_text}.
                 key_metrics=key_metrics,
                 confidence_score=confidence_score,
                 research_depth_label=research_depth_label,
+                unavailable_sections=unavailable,
                 # niche_description removed - use root report.niche
             )
-
-            logger.info(f"[OK] Executive dashboard generated: {go_no_go_verdict.verdict} verdict, opportunity score {confidence_score:.2f}" if confidence_score is not None else f"[OK] Executive dashboard generated: {go_no_go_verdict.verdict} verdict, opportunity score N/A")
-            return executive_dashboard
-
         except Exception as e:
-            logger.warning(f"Failed to generate executive dashboard: {e}")
-            return None
+            logger.exception("Executive dashboard assembly failed - report cannot be shipped")
+            raise ExecutiveDashboardError(
+                f"Executive dashboard carrying verdict '{go_no_go_verdict.verdict}' "
+                f"could not be assembled: {e}"
+            ) from e
+
+        if unavailable:
+            # Surfaced to the reader via _generate_data_quality_summary, not just the log.
+            self._dashboard_caveats.append(
+                "Executive dashboard incomplete: "
+                f"{', '.join(unavailable)} could not be produced for this run. "
+                "The Go/No-Go verdict is unaffected; the missing sections are absent, not empty."
+            )
+
+        _conf = f"{confidence_score:.2f}" if confidence_score is not None else "N/A"
+        logger.info(
+            f"[OK] Executive dashboard generated: {go_no_go_verdict.verdict} verdict, "
+            f"opportunity score {_conf}"
+            + (f" (unavailable: {', '.join(unavailable)})" if unavailable else "")
+        )
+        return executive_dashboard
 
     def _compute_executive_metrics(
         self,
@@ -2738,7 +3153,7 @@ It differentiates through {diff_text}.
             logger.warning(f"Failed to compute executive metrics: {e}")
             return None
 
-    def _extract_core_pain_point(self) -> "CorePainPoint | None":
+    def _extract_core_pain_point(self, selected_solution=None) -> "CorePainPoint | None":
         """
         Extract the #1 pain point for executive dashboard (Python-only).
 
@@ -2752,10 +3167,13 @@ It differentiates through {diff_text}.
                 logger.warning("No pain points available")
                 return None
 
-            # Sort by priority (severity + WTP) - defensive null coalescing
-            sorted_pps = self.accessor.get_sorted_pain_points()
+            selected_solution = selected_solution or self.accessor.get_selected_solution_details()
+            scoped_pains = self.accessor.get_solution_pain_points(selected_solution, limit=1)
+            if not scoped_pains:
+                logger.warning("No validated pain point could be matched to the selected solution")
+                return None
 
-            top_pp = sorted_pps[0]
+            top_pp = scoped_pains[0]
 
             # Extract representative quote (use first quote if available)
             representative_quote = "No specific quote available"
@@ -2826,8 +3244,11 @@ It differentiates through {diff_text}.
             from ..models.executive_summary import ExecutiveNarrative
 
             # Stop condition: Validate required data exists
-            if not core_pain_point or not selected_solution:
-                raise ValueError("Missing core_pain_point or selected_solution - cannot generate executive narrative")
+            if not core_pain_point or not selected_solution or not key_metrics:
+                raise ValueError(
+                    "Missing core_pain_point, selected_solution or key_metrics - "
+                    "cannot generate executive narrative"
+                )
 
             # Prepare target personas string
             target_personas_str = ', '.join(selected_solution.target_personas) if selected_solution.target_personas else "target users"
@@ -3524,13 +3945,16 @@ It differentiates through {diff_text}.
             return None
 
         pain_points = []
-        sorted_pps = self.accessor.get_sorted_pain_points()
-        if sorted_pps:
-            pain_points = [pp.title for pp in sorted_pps[:5]]
+        selected_solution = self.accessor.get_selected_solution_details()
+        scoped_pains = (
+            self.accessor.get_solution_pain_points(selected_solution, limit=5)
+            if selected_solution else []
+        )
+        if scoped_pains:
+            pain_points = [pp.title for pp in scoped_pains]
         if not pain_points:
             pain_points = ["No specific pain points identified"]
 
-        selected_solution = self.accessor.get_selected_solution_details()
         goals = []
         if selected_solution and selected_solution.core_features:
             goals = [f"Achieve {feature.lower()}" for feature in selected_solution.core_features[:5]]
@@ -3593,12 +4017,6 @@ It differentiates through {diff_text}.
 
             primary_segment = categorization.user_segments[0]
 
-            # === Gather pain points ===
-            pain_points = []
-            sorted_pps = self.accessor.get_sorted_pain_points()
-            if sorted_pps:
-                pain_points = [pp.title for pp in sorted_pps[:5]]
-
             # === Gather solution context ===
             selected_solution = self.accessor.get_selected_solution_details()
             solution_name = selected_solution.solution_name if selected_solution else "the solution"
@@ -3606,6 +4024,15 @@ It differentiates through {diff_text}.
             value_proposition = selected_solution.value_proposition if selected_solution else ""
             project_type = (selected_solution.project_type or "SaaS Tool") if selected_solution else "SaaS Tool"
             target_personas = ", ".join(selected_solution.target_personas) if selected_solution and selected_solution.target_personas else "Not specified"
+
+            # === Gather only validated pain points addressed by this solution ===
+            pain_points = []
+            scoped_pains = (
+                self.accessor.get_solution_pain_points(selected_solution, limit=5)
+                if selected_solution else []
+            )
+            if scoped_pains:
+                pain_points = [pp.title for pp in scoped_pains]
 
             # === Infer goals from core features ===
             goals = []
@@ -3699,9 +4126,16 @@ It differentiates through {diff_text}.
                 prompt=prompt,
                 output_model=IdealCustomerProfile,
                 temperature=0.2,
-                model_name=settings.report_structured_llm,  # list-heavy (pain_points, goals)
+                model_name=settings.report_schema_llm,  # list-heavy (pain_points, goals)
             )
             self._record_cost("Stage 14 - Ideal Customer Profile", _usage)
+            allowed_pain_titles = set(pain_points)
+            result = result.model_copy(update={
+                "pain_points": [
+                    title for title in result.pain_points
+                    if title in allowed_pain_titles
+                ],
+            })
             logger.info(f"[OK] LLM ICP generation successful: persona={result.persona_name}")
             return result
 
@@ -3736,7 +4170,15 @@ It differentiates through {diff_text}.
         if not self.state.social_content or not self.state.social_content.reddit_posts:
             return None
 
-        subreddit_counts = self.accessor.get_subreddit_breakdown()
+        # EVIDENCE-backed, not scrape-volume backed. Ranking by raw collection volume made
+        # r/DublinConcerts the recommended launch channel of a US-metro run (live audit
+        # 2026-08-03): it was the largest raw bucket, 16 of 133 posts, and contributed
+        # ZERO posts to any validated pain. The claim "Found N highly relevant discussions"
+        # is a relevance claim, so it has to count posts that actually became evidence.
+        # No fallback to the raw breakdown — no evidence means no recommended channel.
+        # (`research_metadata.top_subreddits` keeps the raw counts; that one honestly means
+        # "how much did we read".)
+        subreddit_counts = self.accessor.get_evidence_subreddit_breakdown()
         if not subreddit_counts:
             return None
 
@@ -3746,8 +4188,8 @@ It differentiates through {diff_text}.
         return MarketingChannel(
             channel_name=f"Reddit r/{top_subreddit}",
             channel_type="Community",
-            target_audience_size=f"{post_count} relevant discussions found",
-            rationale=f"Found {post_count} highly relevant discussions in r/{top_subreddit} during research. This subreddit shows active engagement with target pain points.",
+            target_audience_size=f"{post_count} discussions cited as evidence",
+            rationale=f"{post_count} discussion(s) in r/{top_subreddit} were cited as evidence for this run's validated pain points, so the audience is demonstrably present there.",
             strategy="Share valuable insights and case studies. Participate authentically in discussions. Avoid direct promotion - focus on helping users solve problems.",
             priority="High"
         )
@@ -3899,7 +4341,7 @@ It differentiates through {diff_text}.
                 prompt=prompt,
                 output_model=MarketingNarrative,
                 temperature=0.6,
-                model_name=settings.report_structured_llm,  # list-heavy (content_angles)
+                model_name=settings.report_schema_llm,  # list-heavy (content_angles)
             )
             self._record_cost("Stage 14 - Marketing Narrative", _usage)
             logger.info("[OK] LLM marketing narrative generation successful")
@@ -3928,13 +4370,27 @@ It differentiates through {diff_text}.
             format_channels_for_prompt,
             format_icp_for_prompt
         )
-        from .utils.report_pre_compute import compute_metric_calibration
+        from .utils.report_pre_compute import compute_metric_calibration, compute_metric_ceiling
 
-        # Get top research-discovered pain points (not solution assumptions)
-        top_pain_points = self.accessor.get_sorted_pain_points()[:3]
+        # Use only research-discovered pains that resolve to this solution. Empty is honest:
+        # substituting the niche's highest-ranked pain would fabricate product scope.
+        top_pain_points = self.accessor.get_solution_pain_points(
+            selected_solution,
+            limit=3,
+        )
 
         # Format data for prompt
         pain_points_list = format_pain_points_for_prompt(top_pain_points)
+        if top_pain_points:
+            pain_scope_requirement = (
+                "At least 50% of action items must explicitly mention one of the provided "
+                "pain point titles."
+            )
+        else:
+            pain_scope_requirement = (
+                "No validated pain matched this solution. Do not invent or borrow pain titles; "
+                "prioritize testing the solution's claimed problem before building."
+            )
         channels_summary = format_channels_for_prompt(channels)
         icp_summary = format_icp_for_prompt(icp)
 
@@ -3948,6 +4404,7 @@ It differentiates through {diff_text}.
 
         # Pre-compute metric calibration
         metric_calibration = compute_metric_calibration(total_keyword_count, tier1_keyword_count)
+        metric_ceiling = compute_metric_ceiling(total_keyword_count, tier1_keyword_count)
 
         # Load template and generate prompt
         template = load_prompt("report_first_30_days_playbook")
@@ -3960,6 +4417,7 @@ It differentiates through {diff_text}.
             estimated_development_time=selected_solution.estimated_development_time or "Development timeline not estimated",
             niche=self.state.niche_context.niche_description,
             top_pain_points_list=pain_points_list,
+            pain_scope_requirement=pain_scope_requirement,
             icp_summary=icp_summary,
             channels_summary=channels_summary,
             total_keyword_count=total_keyword_count,
@@ -3967,6 +4425,7 @@ It differentiates through {diff_text}.
             tier1_keyword_count=tier1_keyword_count,
             competitor_count=competitor_count,
             metric_calibration=metric_calibration,
+            metric_ceiling=metric_ceiling,
         )
 
         # Use LLMService for structured output
@@ -3975,7 +4434,7 @@ It differentiates through {diff_text}.
                 prompt=prompt,
                 output_model=First30DaysPlaybook,
                 temperature=0.6,
-                model_name=settings.report_structured_llm,  # list-heavy (week_1-4_actions, success_metrics)
+                model_name=settings.report_schema_llm,  # list-heavy (week_1-4_actions, success_metrics)
             )
             self._record_cost("Stage 14 - First 30 Days Playbook", _usage)
             logger.info("Successfully generated 30-day playbook via LLM")
@@ -4016,7 +4475,11 @@ It differentiates through {diff_text}.
             pro_price = "N/A"
             estimated_arpu = "N/A"
             estimated_ltv = "N/A"
-            ltv_to_cac_ratio = "3:1"
+            # NOT "3:1". Every sibling default here is an honest "N/A", but this one used to
+            # hand the budget LLM a concrete ratio target invented by this line — the same
+            # failure mode as the fabricated CAC: an unsourced number that reads as a finding
+            # and anchors everything computed after it. Absent is the correct value.
+            ltv_to_cac_ratio = "Not established"
 
             # Find pricing strategy for the selected solution from the list
             if hasattr(self.state, 'pricing_strategies') and self.state.pricing_strategies:
@@ -4027,7 +4490,7 @@ It differentiates through {diff_text}.
                         pro_price = ps.recommended_pro_price or "N/A"
                         estimated_arpu = ps.estimated_arpu or "N/A"
                         estimated_ltv = ps.estimated_ltv or "N/A"
-                        ltv_to_cac_ratio = ps.ltv_to_cac_ratio or "3:1"
+                        ltv_to_cac_ratio = ps.ltv_to_cac_ratio or "Not established"
                         break
 
             # Extract market sizing data
@@ -4035,8 +4498,8 @@ It differentiates through {diff_text}.
             som_y3 = "Not calculated"
             tam = "Not calculated"
 
-            if self.state.market_sizing:
-                ms = self.state.market_sizing
+            ms = self._normalized_market_sizing()
+            if ms:
                 som_y1 = ms.serviceable_obtainable_market_y1 or "Not calculated"
                 som_y3 = ms.serviceable_obtainable_market_y3 or "Not calculated"
                 tam = ms.total_addressable_market or "Not calculated"
@@ -4371,7 +4834,7 @@ Return valid JSON with this structure:
                 output_model=FeatureComparison,
                 temperature=0.1,
                 timeout=60,
-                model_name=settings.report_structured_llm,  # list-heavy (feature_groups) — gemini truncates here
+                model_name=settings.report_schema_llm,  # list-heavy (feature_groups) — gemini truncates here
             )
             self._record_cost("Stage 14 - Feature Comparison", usage)
 

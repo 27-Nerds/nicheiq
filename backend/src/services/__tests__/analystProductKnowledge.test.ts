@@ -30,6 +30,15 @@ describe('ANALYST_PRODUCT_KNOWLEDGE', () => {
     expect(ANALYST_PRODUCT_KNOWLEDGE).not.toContain('Concept Forge');
   });
 
+  it('explains why the top score and the recommendation can sit on different ideas', () => {
+    expect(ANALYST_PRODUCT_KNOWLEDGE).toContain('HOW THE SCORES AND THE RECOMMENDATION RELATE');
+    expect(ANALYST_PRODUCT_KNOWLEDGE).toContain('"Premise unproven"');
+    expect(ANALYST_PRODUCT_KNOWLEDGE).toContain('Never say an idea was killed');
+    expect(ANALYST_PRODUCT_KNOWLEDGE).toContain('renderings of ONE business');
+    expect(ANALYST_PRODUCT_KNOWLEDGE).toContain('UNMEASURED rather than zero');
+    expect(ANALYST_PRODUCT_KNOWLEDGE).toContain('Never present a tie or a near tie');
+  });
+
   it('keeps the Decision Lab copy free of em and en dashes', () => {
     expect(ANALYST_PRODUCT_KNOWLEDGE).not.toMatch(/[–—]/);
   });
@@ -53,6 +62,9 @@ describe('buildAnalystProductKnowledge(false)', () => {
     expect(trimmed).toContain('Choosing one to three candidates is the ONLY required step');
     expect(trimmed).toContain('One confirmed run covers the exact selected shortlist');
     expect(trimmed).toContain('Dozens of narrow specialist roles');
+    // Ungated: the scoring/recommendation reading is not a decision-tools feature.
+    expect(trimmed).toContain('HOW THE SCORES AND THE RECOMMENDATION RELATE');
+    expect(trimmed).toContain('"Premise unproven"');
     expect(trimmed).toContain('Self-Consistency');
     expect(trimmed).toContain('captured research findings and report artifacts are read-only');
     expect(trimmed).toContain('Never imply that chat can bypass those boundaries');

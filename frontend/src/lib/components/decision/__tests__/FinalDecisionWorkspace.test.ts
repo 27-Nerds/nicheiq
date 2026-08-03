@@ -324,6 +324,10 @@ describe("FinalDecisionWorkspace", () => {
     const view = render(FinalDecisionWorkspace, { props: { jobId: "job-1", open: true } });
 
     expect(await view.findByText("Signal Desk")).toBeInTheDocument();
+    expect(view.getByText("Idea idea-signal · revision 3")).toBeInTheDocument();
+    expect(view.getByRole("option", {
+      name: "Signal Desk — rev 3 — idea-signal (recommended)",
+    })).toBeInTheDocument();
     expect(view.getByText("Distribution remains unproven.")).toBeInTheDocument();
     expect(view.getByText("No test conclusion was recorded. This does not mean the idea was tested.")).toBeInTheDocument();
     expect(view.queryByText(/idea validated/i)).not.toBeInTheDocument();
@@ -335,7 +339,11 @@ describe("FinalDecisionWorkspace", () => {
     await view.findByText("Signal Desk");
     await completeDecisionBasis();
     await continueToPreMortem();
-    expect(view.getByRole("button", { name: "Review decision" })).toBeDisabled();
+    const reviewButton = view.getByRole("button", { name: "Review decision" });
+    expect(reviewButton).toBeEnabled();
+    await fireEvent.click(reviewButton);
+    expect(view.getByRole("alert")).toHaveTextContent("Describe the failure");
+    await waitFor(() => expect(document.activeElement).toBe(view.getByLabelText("It failed because…")));
   });
 
   it("uses a current saved risk as exact editable provenance", async () => {
@@ -401,6 +409,7 @@ describe("FinalDecisionWorkspace", () => {
     await completePreMortem();
     await reviewDecision();
     expect(mocks.recordFinalDecision).not.toHaveBeenCalled();
+    expect(view.getAllByText("Idea idea-signal · revision 3").length).toBeGreaterThanOrEqual(2);
 
     await fireEvent.click(view.getByRole("button", { name: "Record decision" }));
     await waitFor(() => expect(mocks.recordFinalDecision).toHaveBeenCalledWith(
@@ -494,7 +503,11 @@ describe("FinalDecisionWorkspace", () => {
     await view.findByText("Signal Desk");
     await fireEvent.click(view.getByRole("radio", { name: /^Test first/ }));
     expect(await view.findByText(/No locked test brief matches Signal Desk/)).toBeInTheDocument();
-    expect(view.getByRole("button", { name: "Continue to pre-mortem" })).toBeDisabled();
+    const continueButton = view.getByRole("button", { name: "Continue to pre-mortem" });
+    expect(continueButton).toBeEnabled();
+    await fireEvent.click(continueButton);
+    expect(view.getByRole("alert")).toHaveTextContent("Choose a locked test brief");
+    await waitFor(() => expect(document.activeElement).toBe(view.getByText(/No locked test brief matches Signal Desk/).closest("div")));
   });
 
   it("does not attach a pre-mortem to Park", async () => {
@@ -530,6 +543,7 @@ describe("FinalDecisionWorkspace", () => {
     const view = render(FinalDecisionWorkspace, { props: { jobId: "job-1", open: true } });
 
     expect(await view.findByText("Read-only")).toBeInTheDocument();
+    expect(view.getAllByText("Idea idea-signal · revision 3").length).toBeGreaterThanOrEqual(2);
     expect(view.getAllByText(/Test first/).length).toBeGreaterThan(0);
     expect(view.getByText("This is the clearest next move for the current audience.")).toBeInTheDocument();
     expect(view.getByText("Earliest warning: Fewer than three of ten trial users return within fourteen days.")).toBeInTheDocument();

@@ -5,11 +5,16 @@ import { prisma } from '../services/db.js';
 import { getJob } from '../services/jobService.js';
 import { getDiscoveryDataForJob, getPreviewReportForJob } from '../services/assetService.js';
 import { sanitizeDiscoveryData, sanitizePreviewReport } from './schemas/sharedDiscoveryPayload.js';
-import { JobStatus, Prisma } from '@prisma/client';
+import { DispatchKind, JobStatus, Prisma } from '@prisma/client';
 import { requireInternalAuth, verifyOwnership, AuthenticatedRequest } from '../middleware/auth.js';
 import rateLimit from 'express-rate-limit';
 import { CONFIG } from '../config.js';
 import { ensureIdeaIdentities, ideaName, type IdeaRecord } from '../utils/ideaIdentity.js';
+import {
+  DISCOVERY_SHARE_LIFECYCLE_JOB_SELECT,
+  isDiscoveryShareLifecycleOpen,
+  isDiscoveryShareLifecycleOpenForJob,
+} from '../services/discoveryShareLifecycle.js';
 
 // Zod schemas
 const JobIdParamSchema = z.object({
@@ -68,19 +73,32 @@ function hashIp(ip: string): string {
 async function lockJobForShareMutation(
   tx: Prisma.TransactionClient,
   jobId: string,
-): Promise<{ userId: string | null; status: JobStatus } | null> {
-  const rows = await tx.$queryRaw<Array<{ userId: string | null; status: JobStatus }>>(Prisma.sql`
-    SELECT "userId", "status"
-    FROM "Job"
-    WHERE "id" = ${jobId}
-    FOR UPDATE
+): Promise<{
+  userId: string | null;
+  status: JobStatus;
+  activeDispatchKind: DispatchKind | null;
+} | null> {
+  const rows = await tx.$queryRaw<Array<{
+    userId: string | null;
+    status: JobStatus;
+    activeDispatchKind: DispatchKind | null;
+  }>>(Prisma.sql`
+    SELECT j."userId", j."status", d."kind" AS "activeDispatchKind"
+    FROM "Job" AS j
+    LEFT JOIN "JobDispatch" AS d ON d."id" = j."activeDispatchId"
+    WHERE j."id" = ${jobId}
+    FOR UPDATE OF j
   `);
   return rows[0] ?? null;
 }
 
 // Helper: build vote summary for a share
-async function buildVoteSummary(shareId: string, solutions: IdeaRecord[] = []) {
-  const votes = await prisma.discoveryVote.groupBy({
+async function buildVoteSummary(
+  shareId: string,
+  solutions: IdeaRecord[] = [],
+  db: Pick<Prisma.TransactionClient, 'discoveryVote'> = prisma,
+) {
+  const votes = await db.discoveryVote.groupBy({
     by: ['solutionId', 'solutionName'],
     where: { shareId },
     _count: { id: true },
@@ -109,8 +127,12 @@ async function buildVoteSummary(shareId: string, solutions: IdeaRecord[] = []) {
   return { totalVotes, solutionVotes, solutionVotesById };
 }
 
-async function buildVoteRationales(shareId: string, solutions: IdeaRecord[] = []) {
-  const votes = await prisma.discoveryVote.findMany({
+async function buildVoteRationales(
+  shareId: string,
+  solutions: IdeaRecord[] = [],
+  db: Pick<Prisma.TransactionClient, 'discoveryVote'> = prisma,
+) {
+  const votes = await db.discoveryVote.findMany({
     where: { shareId, comment: { not: null } },
     select: { solutionId: true, solutionName: true, comment: true },
     orderBy: { createdAt: 'desc' },
@@ -214,7 +236,7 @@ discoverySharesRouter.get('/:jobId/discovery-share', requireInternalAuth, async 
       where: { jobId: parsed.data.jobId },
     });
 
-    if (!share || !share.isActive) {
+    if (!share) {
       res.json({ isShared: false });
       return;
     }
@@ -225,9 +247,10 @@ discoverySharesRouter.get('/:jobId/discovery-share', requireInternalAuth, async 
       buildVoteRationales(share.id, solutions),
     ]);
 
+    const isShared = share.isActive && isDiscoveryShareLifecycleOpenForJob(job);
     res.json({
-      isShared: true,
-      shareToken: share.shareToken,
+      isShared,
+      ...(isShared ? { shareToken: share.shareToken } : {}),
       viewCount: share.viewCount,
       voteCount: summary.totalVotes,
       solutionVotes: summary.solutionVotes,
@@ -257,7 +280,7 @@ discoverySharesRouter.post('/:jobId/discovery-share', requireInternalAuth, async
       const job = await lockJobForShareMutation(tx, parsed.data.jobId);
       if (!job) return { outcome: 'not_found' as const };
       if (!verifyOwnership(req, job.userId)) return { outcome: 'forbidden' as const };
-      if (job.status !== JobStatus.AWAITING_SELECTION && job.status !== JobStatus.REGENERATING) {
+      if (!isDiscoveryShareLifecycleOpen(job)) {
         return { outcome: 'invalid_status' as const };
       }
 
@@ -289,7 +312,7 @@ discoverySharesRouter.post('/:jobId/discovery-share', requireInternalAuth, async
       return;
     }
     if (result.outcome === 'invalid_status') {
-      res.status(400).json({ error: 'Discovery can only be shared when awaiting selection' });
+      res.status(400).json({ error: 'Discovery can only be shared while selection is open' });
       return;
     }
     res.json({
@@ -315,29 +338,58 @@ discoverySharesRouter.delete('/:jobId/discovery-share', requireInternalAuth, asy
       return;
     }
 
-    const job = await getJob(parsed.data.jobId);
-    if (!job) {
-      res.status(404).json({ error: 'Job not found' });
-      return;
-    }
+    const result = await prisma.$transaction(async (tx) => {
+      // Match every share lifecycle mutation and Deep Research authorization: once this
+      // lock is held, no vote can enter behind a stale active-link read.
+      const lockedJob = await lockJobForShareMutation(tx, parsed.data.jobId);
+      if (!lockedJob) return { outcome: 'not_found' as const };
+      if (!verifyOwnership(req, lockedJob.userId)) return { outcome: 'forbidden' as const };
 
-    if (!verifyOwnership(req, job.userId)) {
-      res.status(403).json({ error: 'Not authorized' });
-      return;
-    }
+      const [job, existing] = await Promise.all([
+        tx.job.findUnique({
+          where: { id: parsed.data.jobId },
+          select: { solutionIdeas: true },
+        }),
+        tx.discoveryShare.findUnique({
+          where: { jobId: parsed.data.jobId },
+        }),
+      ]);
+      if (!job) return { outcome: 'not_found' as const };
+      if (!existing) return { outcome: 'no_share' as const };
 
-    const existing = await prisma.discoveryShare.findUnique({
-      where: { jobId: parsed.data.jobId },
-    });
-
-    if (existing) {
-      await prisma.discoveryShare.update({
+      await tx.discoveryShare.update({
         where: { jobId: parsed.data.jobId },
         data: { isActive: false },
       });
-    }
 
-    res.json({ isShared: false });
+      const solutions = ensureIdeaIdentities(parsed.data.jobId, job.solutionIdeas);
+      const [summary, voteRationales] = await Promise.all([
+        buildVoteSummary(existing.id, solutions, tx),
+        buildVoteRationales(existing.id, solutions, tx),
+      ]);
+      return { outcome: 'ok' as const, existing, summary, voteRationales };
+    });
+
+    if (result.outcome === 'not_found') {
+      res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+    if (result.outcome === 'forbidden') {
+      res.status(403).json({ error: 'Not authorized' });
+      return;
+    }
+    if (result.outcome === 'no_share') {
+      res.json({ isShared: false });
+      return;
+    }
+    res.json({
+      isShared: false,
+      viewCount: result.existing.viewCount,
+      voteCount: result.summary.totalVotes,
+      solutionVotes: result.summary.solutionVotes,
+      solutionVotesById: result.summary.solutionVotesById,
+      voteRationales: result.voteRationales,
+    });
   } catch (error) {
     console.error('Failed to disable discovery sharing:', error);
     res.status(500).json({ error: 'Failed to disable sharing' });
@@ -361,7 +413,7 @@ discoverySharesRouter.post('/:jobId/discovery-share/regenerate', requireInternal
       const job = await lockJobForShareMutation(tx, parsed.data.jobId);
       if (!job) return { outcome: 'not_found' as const };
       if (!verifyOwnership(req, job.userId)) return { outcome: 'forbidden' as const };
-      if (job.status !== JobStatus.AWAITING_SELECTION && job.status !== JobStatus.REGENERATING) {
+      if (!isDiscoveryShareLifecycleOpen(job)) {
         return { outcome: 'invalid_status' as const };
       }
 
@@ -392,7 +444,7 @@ discoverySharesRouter.post('/:jobId/discovery-share/regenerate', requireInternal
       return;
     }
     if (result.outcome === 'invalid_status') {
-      res.status(400).json({ error: 'Discovery can only be shared when awaiting selection' });
+      res.status(400).json({ error: 'Discovery can only be shared while selection is open' });
       return;
     }
     if (result.outcome === 'share_not_found') {
@@ -436,14 +488,18 @@ publicDiscoveryShareRouter.get('/:shareToken', publicDiscoveryLimiter, async (re
             id: true,
             niche: true,
             solutionIdeas: true,
-            status: true,
+            ...DISCOVERY_SHARE_LIFECYCLE_JOB_SELECT,
           },
         },
       },
     });
 
     // Identical 404 for all failure modes
-    if (!share || !share.isActive) {
+    if (
+      !share
+      || !share.isActive
+      || !isDiscoveryShareLifecycleOpenForJob(share.job)
+    ) {
       res.status(404).json({ error: 'Not found' });
       return;
     }
@@ -510,94 +566,119 @@ publicDiscoveryShareRouter.post('/:shareToken/vote', voteLimiter, async (req: Re
       return;
     }
 
-    const { solutionId, solutionName, viewerToken, comment } = bodyParsed.data;
-
-    const share = await prisma.discoveryShare.findUnique({
+    const shareHint = await prisma.discoveryShare.findUnique({
       where: { shareToken: paramsParsed.data.shareToken },
-      include: {
-        job: {
-          select: { solutionIdeas: true },
-        },
-      },
+      select: { jobId: true },
     });
-
-    if (!share || !share.isActive) {
+    if (!shareHint) {
       res.status(404).json({ error: 'Not found' });
       return;
     }
 
-    const solutions = ensureIdeaIdentities(share.jobId, share.job.solutionIdeas);
-    const selectedById = solutionId
-      ? solutions.find(solution => solution.idea_id === solutionId)
-      : undefined;
-    const matchingNames = solutionName
-      ? solutions.filter(solution => ideaName(solution) === solutionName)
-      : [];
-
-    if (solutionId && !selectedById) {
-      res.status(400).json({ error: 'Invalid solution identity' });
-      return;
-    }
-    if (selectedById && solutionName && ideaName(selectedById) !== solutionName) {
-      res.status(400).json({ error: 'solutionId and solutionName refer to different ideas' });
-      return;
-    }
-    if (!solutionId && matchingNames.length !== 1) {
-      res.status(400).json({
-        error: matchingNames.length > 1
-          ? 'solutionName is ambiguous; solutionId is required'
-          : 'Invalid solution identity',
-      });
-      return;
-    }
-
-    const selectedSolution = selectedById ?? matchingNames[0];
-    const resolvedSolutionId = selectedSolution?.idea_id;
-    const resolvedSolutionName = selectedSolution ? ideaName(selectedSolution) : undefined;
-    if (!resolvedSolutionId || !resolvedSolutionName) {
-      res.status(400).json({ error: 'Invalid solution identity' });
-      return;
-    }
-
-    // IP-based Sybil prevention
-    const ipHash = hashIp(req.ip || 'unknown');
-
-    const existingVote = await prisma.discoveryVote.findUnique({
-      where: { shareId_viewerToken: { shareId: share.id, viewerToken } },
-    });
-
-    if (!existingVote) {
-      const existingTokensFromIp = await prisma.discoveryVote.count({
-        where: { shareId: share.id, ipHash },
-      });
-
-      if (existingTokensFromIp >= MAX_TOKENS_PER_IP) {
-        res.status(429).json({ error: 'Vote limit reached' });
-        return;
+    const result = await prisma.$transaction(async (tx) => {
+      // The token lookup above is only a routing hint. The locked Job row is the
+      // serialization point shared with disable, rotate, and Deep Research start.
+      const job = await lockJobForShareMutation(tx, shareHint.jobId);
+      if (!job || !isDiscoveryShareLifecycleOpen(job)) {
+        return { outcome: 'not_found' as const };
       }
-    }
 
-    // Upsert vote
-    await prisma.discoveryVote.upsert({
-      where: { shareId_viewerToken: { shareId: share.id, viewerToken } },
-      create: {
-        shareId: share.id,
-        solutionId: resolvedSolutionId,
-        solutionName: resolvedSolutionName,
-        viewerToken,
-        ipHash,
-        comment: comment || null,
-      },
-      update: {
-        solutionId: resolvedSolutionId,
-        solutionName: resolvedSolutionName,
-        ...(comment === undefined ? {} : { comment: comment || null }),
-      },
+      // Re-read the exact token and active flag after the lock. An old token must not vote
+      // if disable/rotation/Deep Research won the race while this request was waiting.
+      const share = await tx.discoveryShare.findUnique({
+        where: { shareToken: paramsParsed.data.shareToken },
+        include: {
+          job: {
+            select: { solutionIdeas: true },
+          },
+        },
+      });
+      if (!share || !share.isActive || share.jobId !== shareHint.jobId) {
+        return { outcome: 'not_found' as const };
+      }
+
+      const { solutionId, solutionName, viewerToken, comment } = bodyParsed.data;
+      const solutions = ensureIdeaIdentities(share.jobId, share.job.solutionIdeas);
+      const selectedById = solutionId
+        ? solutions.find(solution => solution.idea_id === solutionId)
+        : undefined;
+      const matchingNames = solutionName
+        ? solutions.filter(solution => ideaName(solution) === solutionName)
+        : [];
+
+      if (solutionId && !selectedById) {
+        return { outcome: 'invalid_identity' as const, reason: 'Invalid solution identity' };
+      }
+      if (selectedById && solutionName && ideaName(selectedById) !== solutionName) {
+        return {
+          outcome: 'invalid_identity' as const,
+          reason: 'solutionId and solutionName refer to different ideas',
+        };
+      }
+      if (!solutionId && matchingNames.length !== 1) {
+        return {
+          outcome: 'invalid_identity' as const,
+          reason: matchingNames.length > 1
+            ? 'solutionName is ambiguous; solutionId is required'
+            : 'Invalid solution identity',
+        };
+      }
+
+      const selectedSolution = selectedById ?? matchingNames[0];
+      const resolvedSolutionId = selectedSolution?.idea_id;
+      const resolvedSolutionName = selectedSolution ? ideaName(selectedSolution) : undefined;
+      if (!resolvedSolutionId || !resolvedSolutionName) {
+        return { outcome: 'invalid_identity' as const, reason: 'Invalid solution identity' };
+      }
+
+      const ipHash = hashIp(req.ip || 'unknown');
+      const existingVote = await tx.discoveryVote.findUnique({
+        where: { shareId_viewerToken: { shareId: share.id, viewerToken } },
+      });
+
+      if (!existingVote) {
+        const existingTokensFromIp = await tx.discoveryVote.count({
+          where: { shareId: share.id, ipHash },
+        });
+        if (existingTokensFromIp >= MAX_TOKENS_PER_IP) {
+          return { outcome: 'vote_limit' as const };
+        }
+      }
+
+      await tx.discoveryVote.upsert({
+        where: { shareId_viewerToken: { shareId: share.id, viewerToken } },
+        create: {
+          shareId: share.id,
+          solutionId: resolvedSolutionId,
+          solutionName: resolvedSolutionName,
+          viewerToken,
+          ipHash,
+          comment: comment || null,
+        },
+        update: {
+          solutionId: resolvedSolutionId,
+          solutionName: resolvedSolutionName,
+          ...(comment === undefined ? {} : { comment: comment || null }),
+        },
+      });
+
+      const voteSummary = await buildVoteSummary(share.id, solutions, tx);
+      return { outcome: 'ok' as const, voteSummary };
     });
 
-    const voteSummary = await buildVoteSummary(share.id, solutions);
-
-    res.json(voteSummary);
+    if (result.outcome === 'not_found') {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+    if (result.outcome === 'invalid_identity') {
+      res.status(400).json({ error: result.reason });
+      return;
+    }
+    if (result.outcome === 'vote_limit') {
+      res.status(429).json({ error: 'Vote limit reached' });
+      return;
+    }
+    res.json(result.voteSummary);
   } catch (error) {
     console.error('Failed to submit vote:', error);
     res.status(500).json({ error: 'Failed to submit vote' });
@@ -622,12 +703,19 @@ publicDiscoveryShareRouter.get('/:shareToken/votes', publicDiscoveryLimiter, asy
       where: { shareToken: paramsParsed.data.shareToken },
       include: {
         job: {
-          select: { solutionIdeas: true },
+          select: {
+            solutionIdeas: true,
+            ...DISCOVERY_SHARE_LIFECYCLE_JOB_SELECT,
+          },
         },
       },
     });
 
-    if (!share || !share.isActive) {
+    if (
+      !share
+      || !share.isActive
+      || !isDiscoveryShareLifecycleOpenForJob(share.job)
+    ) {
       res.status(404).json({ error: 'Not found' });
       return;
     }

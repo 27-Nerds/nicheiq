@@ -1980,16 +1980,23 @@ def validate_pricing_strategy(task_output, suggested_cac_range: str | None = Non
        affiliate revenue fields parses to a positive dollar amount. The
        subscription checks below are SKIPPED — the task YAML mandates
        "N/A - ..." for estimated_ltv and ltv_to_cac_ratio on these models.
-    5. estimated_arpu / estimated_ltv parse to positive dollar amounts
+    5. estimated_arpu / estimated_ltv either parse to positive dollar amounts OR declare
+       themselves not established (the honest answer when the idea has no grounded revenue
+       basis) — see the comment at the check for why there is no number-only path
     6. Unit-economics sanity: LTV >= ARPU (at least one month of retention)
-    7. ltv_to_cac_ratio parses and meets the mandatory 2:1 floor
+    7. ltv_to_cac_ratio either states a parseable ratio OR declares itself not
+       computable (the honest answer when the idea has no CAC estimate). There is
+       deliberately NO 2:1 floor here — see the comment at the check.
     8. When the pre-computed CAC anchor is supplied: the stated ratio must be
        within 2x of LTV ÷ CAC (catches fabricated ratios while tolerating the
-       range formats both fields use)
+       range formats both fields use). This is an arithmetic sanity band, not a
+       grounding check — grounding is enforced against the idea's published CAC
+       by validators/unit_economics.validate_ltv_cac_grounding.
 
     The previous version only checked these fields were non-empty strings —
     internally inconsistent dollar math shipped verbatim into the report.
     """
+    from ...validators.unit_economics import declares_not_computable, has_numeric_ratio
     from .numeric_parsers import parse_dollar_amount, parse_ratio
 
     result, error = _parse_pydantic_from_task_output(
@@ -2037,7 +2044,8 @@ def validate_pricing_strategy(task_output, suggested_cac_range: str | None = Non
             "(1) tier prices from the competitor pricing data and WTP scores, "
             "(2) ARPU from YOUR tier prices with a stated tier mix, "
             "(3) LTV = ARPU × 12-30 months, "
-            "(4) ltv_to_cac_ratio = LTV ÷ the suggested CAC range provided.",
+            "(4) ltv_to_cac_ratio = LTV ÷ THIS idea's estimated CAC — or "
+            "'Not computable' when the idea has no CAC estimate.",
         )
 
     # Ad/affiliate models have no subscription unit economics — the task YAML
@@ -2049,12 +2057,32 @@ def validate_pricing_strategy(task_output, suggested_cac_range: str | None = Non
         ad_rev = parse_dollar_amount(result.estimated_monthly_ad_revenue)
         affiliate_rev = parse_dollar_amount(result.estimated_monthly_affiliate_revenue)
         if not ((ad_rev and ad_rev > 0) or (affiliate_rev and affiliate_rev > 0)):
+            # Same escape as ARPU/LTV, and this branch needs it MORE: ad revenue is
+            # pageviews x RPM, and a pre-launch product has no pageviews. "Not established"
+            # is frequently the true answer here, not a cop-out. Requiring a number while
+            # the message says "do not invent a figure" was an unsatisfiable instruction —
+            # the model had exactly one accepted answer and it was a fabricated one.
+            declared = [
+                v for v in (result.estimated_monthly_ad_revenue,
+                            result.estimated_monthly_affiliate_revenue)
+                if declares_not_computable(v)
+            ]
+            if declared:
+                logger.info(
+                    f"Pricing: '{result.solution_name}' ({result.pricing_model}) reports "
+                    f"ad/affiliate revenue as not established ({declared[0]!r}) — accepted, "
+                    "no traffic basis exists pre-launch."
+                )
+                return (True, _guardrail_success_payload(task_output, result))
             return _reject(
                 "estimated_monthly_ad_revenue / estimated_monthly_affiliate_revenue",
                 (result.estimated_monthly_ad_revenue, result.estimated_monthly_affiliate_revenue),
                 f"{result.pricing_model} model requires at least one of "
                 "estimated_monthly_ad_revenue or estimated_monthly_affiliate_revenue "
-                "to contain a positive dollar amount (e.g., '$350-700/month').",
+                "to state a positive dollar amount per month (a single figure or a "
+                "range), computed from THIS idea's own traffic and rate assumptions — "
+                "or to state that it is not established when there is no traffic basis "
+                "to compute it from. Do not invent a figure to satisfy this field.",
             )
         logger.info(
             f"✓ Pricing strategy guardrail passed: '{result.solution_name}' "
@@ -2062,20 +2090,41 @@ def validate_pricing_strategy(task_output, suggested_cac_range: str | None = Non
         )
         return (True, _guardrail_success_payload(task_output, result))
 
+    # Demanding a parseable dollar amount with no escape leaves an ungrounded model exactly
+    # one accepted answer — a number it has to invent. Mirror the ltv_to_cac_ratio escape
+    # below: accept an explicit "not established" declaration, reject only unparseable prose.
+    # The rejection messages describe the required FORMAT and never name a value, so a retry
+    # has nothing to copy.
     arpu = parse_dollar_amount(result.estimated_arpu)
     if arpu is None or arpu <= 0:
+        if declares_not_computable(result.estimated_arpu):
+            logger.info(
+                f"Pricing: '{result.solution_name}' reports ARPU as not established "
+                f"({result.estimated_arpu!r}) — accepted, no grounded revenue basis."
+            )
+            return (True, _guardrail_success_payload(task_output, result))
         return _reject(
             "estimated_arpu",
             result.estimated_arpu,
-            "estimated_arpu must contain a positive dollar amount (e.g., '$24/month').",
+            "estimated_arpu must state a positive dollar amount per user per month, or "
+            "state that it is not established when this idea has no grounded revenue "
+            "basis. Do not invent a figure to satisfy this field.",
         )
 
     ltv = parse_dollar_amount(result.estimated_ltv)
     if ltv is None or ltv <= 0:
+        if declares_not_computable(result.estimated_ltv):
+            logger.info(
+                f"Pricing: '{result.solution_name}' reports LTV as not established "
+                f"({result.estimated_ltv!r}) — accepted, no retention basis to multiply by."
+            )
+            return (True, _guardrail_success_payload(task_output, result))
         return _reject(
             "estimated_ltv",
             result.estimated_ltv,
-            "estimated_ltv must contain a positive dollar amount (e.g., '$420 - $1,050').",
+            "estimated_ltv must state a positive dollar amount (a single figure or a "
+            "range), or state that it is not established when no retention assumption "
+            "can be grounded. Do not invent a figure to satisfy this field.",
         )
 
     if ltv < arpu:
@@ -2088,23 +2137,42 @@ def validate_pricing_strategy(task_output, suggested_cac_range: str | None = Non
             "explicitly and recompute.",
         )
 
+    # A ratio the model could not ground is a legitimate output: a rebuild leaves
+    # estimated_cac_organic / estimated_cac_paid blank on purpose, and there is nothing
+    # honest to divide LTV by. Accept the declaration; reject only unparseable prose.
+    if not has_numeric_ratio(result.ltv_to_cac_ratio):
+        if declares_not_computable(result.ltv_to_cac_ratio):
+            logger.info(
+                f"Pricing: '{result.solution_name}' reports LTV:CAC as not computable "
+                f"({result.ltv_to_cac_ratio!r}) — accepted, no CAC to divide by."
+            )
+            return (True, _guardrail_success_payload(task_output, result))
+        return _reject(
+            "ltv_to_cac_ratio",
+            result.ltv_to_cac_ratio,
+            "ltv_to_cac_ratio must contain a numeric ratio (e.g., '3:1'), or state that "
+            "it is not computable when no CAC has been established for this idea.",
+        )
+
     stated_ratio = parse_ratio(result.ltv_to_cac_ratio)
-    if stated_ratio is None:
-        return _reject(
-            "ltv_to_cac_ratio",
-            result.ltv_to_cac_ratio,
-            "ltv_to_cac_ratio must contain a numeric ratio (e.g., '3:1').",
-        )
 
+    # NO FLOOR CHECK. A ratio below 2:1 was previously rejected, which taught the model
+    # that the only accepted answer was one that cleared the threshold — so when it had no
+    # real CAC it invented one that did (live 2026-08 job 8ef396eb: "7.2:1 ... exceeds the
+    # mandatory 2:1 threshold" above a CAC table reading N/A). A check that can only pass is
+    # not a check. "This idea's unit economics do not work at this price" is a finding the
+    # reader needs, so a failing ratio ships as-is; the 2:1 rule of thumb is applied by the
+    # reader, and the ratio's grounding is enforced after the fact by
+    # validators/unit_economics.validate_ltv_cac_grounding.
     if stated_ratio < 2.0:
-        return _reject(
-            "ltv_to_cac_ratio",
-            result.ltv_to_cac_ratio,
-            f"ltv_to_cac_ratio ({result.ltv_to_cac_ratio}) is below the MANDATORY 2:1 minimum. "
-            "Adjust pricing, retention assumptions, or acquisition strategy and recompute — "
-            "state your LTV and CAC calculations explicitly before the final numbers.",
+        logger.info(
+            f"Pricing: '{result.solution_name}' reports LTV:CAC {result.ltv_to_cac_ratio} "
+            "— below the 2:1 rule of thumb. Preserved as a finding, not rejected."
         )
 
+    # Arithmetic sanity band only. This anchor is derived from market_fit_score, NOT from
+    # the idea's own CAC, so passing it does not make the ratio grounded — it only catches
+    # order-of-magnitude fabrication.
     if suggested_cac_range:
         cac = parse_dollar_amount(suggested_cac_range)
         if cac and cac > 0:
@@ -2130,18 +2198,25 @@ def validate_solution_refinement(task_output) -> tuple[bool, Any]:
 
     Validates:
     1. JSON parses into SolutionRefinement
-    2. geographic_priorities >= 1 entry
-    3. feature_priorities >= 1 entry
-    4. strategic_insights >= 3 entries
+    2. feature_priorities >= 1 entry
+    3. strategic_insights >= 3 entries
+
+    NOT validated: geographic_priorities. Most niches have no location terms in their
+    validated keywords, and an empty list is the correct answer for those — the field
+    is a ranked list of target markets, so the only honest content is markets the
+    keyword data actually supports. Requiring >= 1 entry left the model two options,
+    both wrong: invent countries (it emitted 'Spain / Germany / United Kingdom' copied
+    from the task YAML's own example for niches with zero geo data), or emit a sentence
+    as a sentinel ('Not geographically differentiated - no location terms in validated
+    keywords', live run 8f35ea6b), which then renders as ranked market P1 in
+    TechnicalBlueprint.svelte. An empty list degrades cleanly through every consumer,
+    so the renderer gets nothing instead of a sentence.
     """
     result, error = _parse_pydantic_from_task_output(
         task_output, SolutionRefinement, "Solution refinement"
     )
     if error:
         return (False, error)
-
-    if not result.geographic_priorities:
-        return (False, "geographic_priorities must contain at least 1 entry.")
 
     if not result.feature_priorities:
         return (False, "feature_priorities must contain at least 1 entry.")

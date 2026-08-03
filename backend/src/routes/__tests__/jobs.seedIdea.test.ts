@@ -15,6 +15,7 @@ const mockJobFindFirst = vi.fn();
 const mockJobUpdateMany = vi.fn();
 const mockJobUpdate = vi.fn();
 const mockDispatchCreate = vi.fn();
+const mockDispatchFindFirst = vi.fn();
 const mockDispatchUpdate = vi.fn();
 const mockDispatchUpdateMany = vi.fn();
 const mockChatMessageCreate = vi.fn();
@@ -27,6 +28,7 @@ const mockParseCurrentFounderFit = vi.fn();
 vi.mock('../../services/db.js', () => ({
   prisma: {
     job: { findFirst: (...a: any[]) => mockJobFindFirst(...a) },
+    jobDispatch: { findFirst: (...a: any[]) => mockDispatchFindFirst(...a) },
     chatMessage: {
       delete: (...a: any[]) => mockChatMessageDelete(...a),
       findFirst: (...a: any[]) => mockChatMessageFindFirst(...a),
@@ -170,6 +172,7 @@ beforeEach(async () => {
   mockJobUpdateMany.mockResolvedValue({ count: 1 });
   mockJobUpdate.mockResolvedValue({});
   mockDispatchCreate.mockResolvedValue({ id: 'dispatch-seed-1' });
+  mockDispatchFindFirst.mockResolvedValue(null);
   mockDispatchUpdate.mockResolvedValue({});
   mockDispatchUpdateMany.mockResolvedValue({ count: 1 });
   mockChatMessageCreate.mockResolvedValue({ id: 'receipt-1' });
@@ -356,7 +359,17 @@ describe('POST /api/jobs/:jobId/seed-idea', () => {
     expect(response.status).toBe(200);
     expect(mockDispatchUpdate).toHaveBeenCalledWith({
       where: { id: 'dispatch-seed-1' },
-      data: {
+      data: expect.objectContaining({
+        requestSnapshot: expect.objectContaining({
+          kind: 'seed_idea',
+          sourceMessageId: 'msg-synthesis',
+          baseCandidateRefs: [{
+            ideaId: 'idea-parent',
+            ideaRevision: 2,
+            snapshotSha256: candidateSnapshotSha256(parent),
+          }],
+        }),
+        requestFingerprint: expect.any(String),
         workPayload: expect.objectContaining({
           job_id: jobId,
           checkpoint_path: '/cp/path',
@@ -365,6 +378,17 @@ describe('POST /api/jobs/:jobId/seed-idea', () => {
           pain_ref: 'Missed workflow changes',
           tool_ref: null,
           task_type: 'seed_idea',
+          base_candidate_refs: [{
+            idea_id: 'idea-parent',
+            idea_revision: 2,
+            snapshot_sha256: candidateSnapshotSha256(parent),
+          }],
+          pool_identity_map: [{
+            idea_id: 'idea-parent',
+            idea_revision: 2,
+            solution_name: 'Broad monitor',
+          }],
+          base_pool_fingerprint: expect.any(String),
           synthesis_evaluation: expect.objectContaining({
             evaluation_id: 'dispatch-seed-1',
             dispatch_id: 'dispatch-seed-1',
@@ -378,7 +402,7 @@ describe('POST /api/jobs/:jobId/seed-idea', () => {
             }),
           }),
         }),
-      },
+      }),
     });
     expect(mockDeliverDispatchWork).toHaveBeenCalledWith('dispatch-seed-1');
     expect(response.body).toMatchObject({
@@ -616,7 +640,7 @@ describe('POST /api/jobs/:jobId/seed-idea', () => {
 
     expect(mockDispatchUpdate).toHaveBeenCalledWith({
       where: { id: 'dispatch-seed-1' },
-      data: {
+      data: expect.objectContaining({
         workPayload: expect.objectContaining({
           job_id: jobId,
           checkpoint_path: '/cp/path',
@@ -625,9 +649,12 @@ describe('POST /api/jobs/:jobId/seed-idea', () => {
           pain_ref: 'Pain A',
           tool_ref: 'Spreadsheets',
           synthesis_evaluation: null,
+          base_candidate_refs: [],
+          pool_identity_map: [],
+          base_pool_fingerprint: expect.any(String),
           task_type: 'seed_idea',
         }),
-      },
+      }),
     });
     expect(mockDeliverDispatchWork).toHaveBeenCalledWith('dispatch-seed-1');
     expect(response.body).toMatchObject({
@@ -647,6 +674,47 @@ describe('POST /api/jobs/:jobId/seed-idea', () => {
     expect(mockChargeForSeedIdeaInTx).toHaveBeenCalledWith(
       expect.anything(), 'user-123', jobId, 2, 'test niche', 2,
     );
+  });
+
+  it('returns the original queued operation when the first response was lost', async () => {
+    mockJobFindFirst.mockResolvedValue(makeJob({ status: 'QUEUED' }));
+    mockDispatchFindFirst.mockResolvedValue({ id: 'dispatch-existing', state: 'AUTHORIZED' });
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/seed-idea`)
+      .set(authHeaders)
+      .send(validBody);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      status: 'queued',
+      evaluationId: 'dispatch-existing',
+      operationState: 'AUTHORIZED',
+      idempotent: true,
+    });
+    expect(mockChargeForSeedIdeaInTx).not.toHaveBeenCalled();
+    expect(mockDeliverDispatchWork).not.toHaveBeenCalled();
+  });
+
+  it('returns the concurrent winner for the same proposal identity without a second operation', async () => {
+    mockJobFindFirst.mockResolvedValue(makeJob());
+    mockDispatchFindFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'dispatch-winner', state: 'AUTHORIZED' });
+    mockTransaction.mockRejectedValueOnce(new Error('CONFLICT'));
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/seed-idea`)
+      .set(authHeaders)
+      .send(validBody);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      status: 'queued',
+      evaluationId: 'dispatch-winner',
+      idempotent: true,
+    });
+    expect(mockDeliverDispatchWork).not.toHaveBeenCalled();
   });
 
   it('returns 409 CONFLICT when the optimistic seedIdeaCount lock loses the race', async () => {

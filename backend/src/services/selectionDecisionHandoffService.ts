@@ -12,6 +12,14 @@ import {
   type FrozenSelectionPreMortem,
 } from '../types/selectionPreMortem.js';
 import { canonicalizeJson, canonicalJsonSha256 } from '../utils/canonicalFingerprint.js';
+import {
+  challengeConsensusLabel,
+  challengeQuestionLabel,
+  evidenceSignalLabel,
+  experimentMethodLabel,
+  handoffActionLabel,
+  hostedRunStateLabel,
+} from '../utils/selectionVocabulary.js';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -323,7 +331,7 @@ function testBriefMarkdown(brief: FrozenSelectionExperimentBrief): string[] {
     '',
     `**Why it changes the decision:** ${brief.assumption.whyCritical}`,
     '',
-    `**Method and signal:** ${brief.testDesign.method} · ${brief.testDesign.evidenceSignal}`,
+    `**Method and signal:** ${experimentMethodLabel(brief.testDesign.method)} · ${evidenceSignalLabel(brief.testDesign.evidenceSignal)}`,
     '',
     `**Audience and channel:** ${brief.testDesign.audience} · ${brief.testDesign.channel}`,
     '',
@@ -347,7 +355,7 @@ function testBriefMarkdown(brief: FrozenSelectionExperimentBrief): string[] {
     '',
     `**If invalid:** ${brief.decisionRules.invalid}`,
     '',
-    `**Run state at decision:** ${brief.runStatusAtDecision ?? 'Ready to run'}`,
+    `**Run state at decision:** ${hostedRunStateLabel(brief.runStatusAtDecision) || 'Ready to run'}`,
     '',
     `**Test brief fingerprint:** \`${brief.briefFingerprint}\``,
     '',
@@ -372,7 +380,7 @@ function preMortemMarkdown(preMortem: FrozenSelectionPreMortem): string[] {
     );
     if (entry.origin) {
       lines.push(
-        `**Evidence anchor:** ${entry.origin.lens} · ${entry.origin.consensus} · ${entry.origin.questionId}`,
+        `**Evidence anchor:** ${entry.origin.lens} · ${challengeQuestionLabel(entry.origin.questionId)} · ${challengeConsensusLabel(entry.origin.consensus)}`,
         '',
       );
     }
@@ -387,7 +395,7 @@ export function renderDecisionHandoffMarkdown(
   const lines = [
     `# ${markdownTitle(artifact.action)}`,
     '',
-    ...markdownField('Action', artifact.action),
+    ...markdownField('Action', handoffActionLabel(artifact.action)),
   ];
   if (artifact.target) {
     lines.push(

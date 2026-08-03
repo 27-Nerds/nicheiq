@@ -16,6 +16,8 @@ export interface SelectionChallengeAgentAssessment {
   subjectKeys: string[];
   evidenceKeys: string[];
   evidenceClass: SelectionChallengeEvidenceClass;
+  /** Server-stamped when the assessor omitted this question and it was backfilled as insufficient. */
+  backfilled?: boolean;
 }
 
 export interface SelectionChallengeSource {
@@ -99,7 +101,7 @@ export interface SelectionChallenge {
   questions: SelectionChallengeQuestion[];
   skepticModel: string;
   auditorModel: string;
-  promptVersion: 1;
+  promptVersion: 1 | 2;
   createdAt: string;
 }
 

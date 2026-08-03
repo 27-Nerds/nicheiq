@@ -1,5 +1,6 @@
 <script lang="ts">
   import { X } from "lucide-svelte";
+  import { portal } from "$lib/actions/portal";
   import { REVIEW_AND_START_LABEL } from "$lib/selection/labels";
   import type { SelectionJourney } from "$lib/selection/decisionJourney";
 
@@ -65,7 +66,10 @@
     const root = document.documentElement;
     const previousScrollPaddingBottom = root.style.scrollPaddingBottom;
     root.style.setProperty("--decision-rail-height", `${dockHeight}px`);
-    root.style.scrollPaddingBottom = `calc(${dockHeight}px + var(--space-4))`;
+    // The dock is itself inset --space-4 from the viewport bottom, so reserving only its
+    // height parks scrolled-to content exactly ON its top edge — a row's pain line ended
+    // up flush under it. Clear the inset too, and leave a gap.
+    root.style.scrollPaddingBottom = `calc(${dockHeight}px + var(--space-8))`;
     return () => {
       root.style.removeProperty("--decision-rail-height");
       if (previousScrollPaddingBottom) {
@@ -78,6 +82,7 @@
 </script>
 
 <aside
+  use:portal
   class="decision-dock"
   aria-label="Ideas for Deep Research"
   bind:offsetHeight={dockHeight}

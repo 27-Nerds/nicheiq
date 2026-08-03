@@ -3,10 +3,9 @@
 
 notify_seed_complete mirrors notify_gate_reached's contract exactly (it is likewise the seed
 op's ONLY transition out of QUEUED/RUNNING): transient failures retry; a 409 with
-state=CANCELLED returns quietly; any other 404/409 raises (a saved-but-undelivered outcome is a
-real loss); exhausted transient retries raise so the caller (run_seed_idea) can tag the
-exception `seed_delivery_only` and the task's failure path never mistakes it for a pipeline
-failure.
+state=CANCELLED fences the writer so its before-image is restored; any other 404/409 raises
+(a saved-but-undelivered outcome is a real loss); exhausted transient retries are ambiguous
+because the backend may have committed before the response was lost.
 
 notify_seed_failed mirrors notify_gate_failed: never raises (it is itself called from an
 exception handler) but RETURNS success/failure so the caller (queue_consumer) can tell a
@@ -59,12 +58,14 @@ def test_seed_complete_idempotent_200_treated_as_delivered(mock_sleep, _wid):
 @responses.activate
 @patch("worker.progress._get_worker_id", return_value="w1")
 @patch("worker.progress.time.sleep")
-def test_seed_complete_409_cancelled_returns_quietly(mock_sleep, _wid):
+def test_seed_complete_409_cancelled_fences_writer_for_restore(mock_sleep, _wid):
     responses.add(responses.POST, _SEED_COMPLETE,
                   json={"error": "Job cancelled", "state": "CANCELLED"}, status=409)
     from worker.progress import notify_seed_complete
+    from worker.paid_pool_recovery import PaidPoolOperationFenced
 
-    notify_seed_complete("job-1", {"solution_name": "S"}, "accepted")  # must not raise
+    with pytest.raises(PaidPoolOperationFenced, match="cancelled before completion"):
+        notify_seed_complete("job-1", {"solution_name": "S"}, "accepted")
     assert len(responses.calls) == 1
     mock_sleep.assert_not_called()
 
@@ -113,14 +114,13 @@ def test_seed_complete_transient_failure_retries_then_succeeds(mock_sleep, _wid)
 @patch("worker.progress._get_worker_id", return_value="w1")
 @patch("worker.progress.time.sleep")
 def test_seed_complete_exhausted_retries_raise(mock_sleep, _wid):
-    """This is the exact scenario run_seed_idea tags `seed_delivery_only` — the merge is
-    already saved by the time this is called, so exhausting retries must raise (not swallow)
-    so the caller can distinguish it from a genuine pipeline failure."""
+    """The backend may have committed before the response was lost, so do not compensate."""
     for _ in range(4):
         responses.add(responses.POST, _SEED_COMPLETE, body=requests.exceptions.ConnectionError("down"))
     from worker.progress import notify_seed_complete
+    from worker.paid_pool_recovery import PaidPoolCompletionAmbiguous
 
-    with pytest.raises(requests.exceptions.RequestException):
+    with pytest.raises(PaidPoolCompletionAmbiguous):
         notify_seed_complete("job-1", {"solution_name": "S"}, "accepted")
     assert len(responses.calls) == 4
     assert mock_sleep.call_count == 3

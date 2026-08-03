@@ -236,16 +236,50 @@
     throw new Error(`Unhandled ChatPatch: ${JSON.stringify(x)}`);
   }
 
+  /** Item-level diff chip for array-valued gate fields (V7): the proposal renders
+   *  the AFTER list with added items highlighted, plus struck-through removed items. */
+  type ProposalDiffItem = { text: string; kind: "added" | "removed" | "kept" };
+
+  /** Raw "before" list for an array-valued gate field. Fields not tracked on the
+   *  artifact (e.g. excluded_segments) start empty, so the diff reads as additions. */
+  function gateFieldBeforeArray(field: string, artifact: GateArtifact | null | undefined): string[] {
+    if (field === "market_segments" && artifact && typeof artifact === "object") {
+      const segments = (artifact as { market_segments?: unknown }).market_segments;
+      if (Array.isArray(segments)) return segments.filter((s): s is string => typeof s === "string");
+    }
+    return [];
+  }
+
   /** The before→after rows a proposal card shows. Built here rather than inline so
    *  the gate-vs-idea-focus narrowing happens in TypeScript, not in template consts
    *  (where the union doesn't narrow across `{@const}` boundaries). */
-  function proposalRows(patch: ChatPatch): { label: string; before: string; after: string }[] {
+  function proposalRows(
+    patch: ChatPatch,
+  ): { label: string; before: string; after: string; items?: ProposalDiffItem[] }[] {
     if (isGatePatch(patch)) {
-      return Object.entries(patch.patch).map(([field, value]) => ({
-        label: GATE_FIELD_LABEL[field] ?? field,
-        before: gateFieldBefore(field, gateArtifact),
-        after: formatGateFieldValue(field, value),
-      }));
+      return Object.entries(patch.patch).map(([field, value]) => {
+        const row: { label: string; before: string; after: string; items?: ProposalDiffItem[] } = {
+          label: GATE_FIELD_LABEL[field] ?? field,
+          before: gateFieldBefore(field, gateArtifact),
+          after: formatGateFieldValue(field, value),
+        };
+        // Array-valued fields render as per-item chips instead of one joined line.
+        if (Array.isArray(value) && value.every((v) => typeof v === "string")) {
+          const beforeItems = gateFieldBeforeArray(field, gateArtifact);
+          const afterSet = new Set(value as string[]);
+          const beforeSet = new Set(beforeItems);
+          row.items = [
+            ...(value as string[]).map((v) => ({
+              text: v,
+              kind: (beforeSet.has(v) ? "kept" : "added") as ProposalDiffItem["kind"],
+            })),
+            ...beforeItems
+              .filter((v) => !afterSet.has(v))
+              .map((v) => ({ text: v, kind: "removed" as const })),
+          ];
+        }
+        return row;
+      });
     }
     if (isLedgerEvent(patch)) return [];
     // Rendered by dedicated cards below, never the generic diff table.
@@ -1169,9 +1203,17 @@
                     <div class="ledger-field">
                       <dt>{row.label}</dt>
                       <dd>
-                        <span class="proposal-before">{row.before}</span>
-                        <ArrowRight class="proposal-arrow" aria-hidden="true" />
-                        <span class="proposal-after">{row.after}</span>
+                        {#if row.items}
+                          <span class="proposal-items">
+                            {#each row.items as item (item.kind + item.text)}
+                              <span class="proposal-item proposal-item--{item.kind}">{item.text}</span>
+                            {/each}
+                          </span>
+                        {:else}
+                          <span class="proposal-before">{row.before}</span>
+                          <ArrowRight class="proposal-arrow" aria-hidden="true" />
+                          <span class="proposal-after">{row.after}</span>
+                        {/if}
                       </dd>
                     </div>
                   {/each}
@@ -1433,6 +1475,10 @@
   .chat-head {
     display: flex;
     align-items: center;
+    /* Wraps rather than overflows: in narrow hosts (the 24rem "Ask analyst"
+       sheet) the identity block and the question counter cannot share a line,
+       and without wrapping the grounding chip overran the counter's digit. */
+    flex-wrap: wrap;
     gap: var(--space-3);
     min-height: 3.5rem;
     padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4);
@@ -1441,6 +1487,7 @@
   }
   .chat-head-count {
     display: inline-flex;
+    flex-shrink: 0;
     align-items: baseline;
     gap: 0.3rem;
     white-space: nowrap;
@@ -2057,6 +2104,33 @@
     font-weight: 600;
     color: var(--color-text-primary);
     word-break: break-word;
+  }
+  /* Array-valued gate fields render per-item chips (V7): added = success ramp,
+     removed = error ramp + strikethrough, unchanged = neutral. Status-ramp only. */
+  .proposal-items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+  }
+  .proposal-item {
+    padding: 0.1rem 0.5rem;
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    background: var(--color-bg-surface);
+    font-size: var(--text-xs);
+    color: var(--color-text-secondary);
+    word-break: break-word;
+  }
+  .proposal-item--added {
+    background: var(--color-success-subtle);
+    border-color: color-mix(in srgb, var(--color-success) 30%, transparent);
+    color: var(--color-success-text);
+  }
+  .proposal-item--removed {
+    background: var(--color-error-subtle);
+    border-color: color-mix(in srgb, var(--color-error) 30%, transparent);
+    color: var(--color-error-text);
+    text-decoration: line-through;
   }
 
   .proposal-why {

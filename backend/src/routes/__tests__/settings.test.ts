@@ -5,10 +5,11 @@ import request from 'supertest';
 // ============================================
 // Mock adminService
 // ============================================
-const mockGetAppSetting = vi.fn();
+const mockGetAvailableSampleReportUrl = vi.fn();
 
 vi.mock('../../services/adminService.js', () => ({
-  getAppSetting: (...args: any[]) => mockGetAppSetting(...args),
+  getAvailableSampleReportUrl: (...args: any[]) => mockGetAvailableSampleReportUrl(...args),
+  getAppSettingsByPrefix: vi.fn().mockResolvedValue({}),
 }));
 
 // Mock auth middleware
@@ -49,19 +50,19 @@ beforeEach(async () => {
 // ============================================
 describe('GET /api/settings/sample-report-url', () => {
   it('returns URL when setting exists', async () => {
-    mockGetAppSetting.mockResolvedValue('/shared/abc123');
+    mockGetAvailableSampleReportUrl.mockResolvedValue('/shared/abcdefghijklmnopqrstuv');
 
     const response = await request(app)
       .get('/api/settings/sample-report-url')
       .set(internalHeaders)
       .expect(200);
 
-    expect(response.body).toEqual({ url: '/shared/abc123' });
-    expect(mockGetAppSetting).toHaveBeenCalledWith('sample_report_url');
+    expect(response.body).toEqual({ url: '/shared/abcdefghijklmnopqrstuv' });
+    expect(mockGetAvailableSampleReportUrl).toHaveBeenCalledOnce();
   });
 
   it('returns { url: null } when no setting exists', async () => {
-    mockGetAppSetting.mockResolvedValue(null);
+    mockGetAvailableSampleReportUrl.mockResolvedValue(null);
 
     const response = await request(app)
       .get('/api/settings/sample-report-url')
@@ -78,7 +79,7 @@ describe('GET /api/settings/sample-report-url', () => {
   });
 
   it('returns { url: null } on DB error', async () => {
-    mockGetAppSetting.mockRejectedValue(new Error('DB error'));
+    mockGetAvailableSampleReportUrl.mockRejectedValue(new Error('DB error'));
 
     const response = await request(app)
       .get('/api/settings/sample-report-url')

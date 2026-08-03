@@ -26,9 +26,13 @@ describe("SelectedSolutionsSummary exact identity", () => {
         solutionIdeas: [candidate(1), candidate(2)],
         status: "COMPLETED",
         jobId: "job-1",
+        showIdentity: true,
       },
     });
 
+    expect(view.getByLabelText("Exact Deep Research selection")).toHaveTextContent(
+      "Idea idea-1 · rev 2",
+    );
     await fireEvent.click(view.getByRole("button", { name: "Your Selections (1)" }));
     await fireEvent.click(view.getByRole("button", { name: /Same display name/ }));
 
@@ -52,5 +56,23 @@ describe("SelectedSolutionsSummary exact identity", () => {
 
     expect(view.getByText(/1 selected candidate is no longer available at the saved revision/)).toBeInTheDocument();
     expect(view.queryByRole("button", { name: /Same display name/ })).not.toBeInTheDocument();
+  });
+
+  it("marks the exact recommended revision when finalists share a name", () => {
+    const view = render(SelectedSolutionsSummary, {
+      props: {
+        selectedNames: ["Same display name", "Same display name"],
+        selectedItems: [
+          { ideaId: "idea-1", ideaRevision: 1 },
+          { ideaId: "idea-1", ideaRevision: 2 },
+        ],
+        solutionIdeas: [candidate(1), candidate(2)],
+        primaryWinner: "Same display name",
+        primaryWinnerRef: { ideaId: "idea-1", ideaRevision: 2 },
+        status: "RUNNING_PHASE2",
+      },
+    });
+
+    expect(view.getAllByText("Top Recommended")).toHaveLength(1);
   });
 });

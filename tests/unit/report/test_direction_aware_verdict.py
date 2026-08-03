@@ -117,7 +117,8 @@ class TestRedTeamPhase55:
                             red_team_caveats=["search maps to AI agent security, not video post"]),
             narrative_rationale="ok")
         assert v.verdict == "Conditional"
-        assert v.red_team_context and "weakened" in v.red_team_context
+        assert v.red_team_context and "decision-critical objection" in v.red_team_context
+        assert "weakened" not in v.red_team_context.lower()
         assert "Red-team review" in v.rationale
         assert "AI agent security" in v.rationale
 

@@ -174,7 +174,12 @@ describe('queueService — dispatch outbox retry', () => {
     mockDispatchUpdateMany.mockResolvedValue({ count: 1 });
   });
 
-  it('redelivers only never-attempted or failed AUTHORIZED payloads after the minimum age', async () => {
+  it('redelivers every due AUTHORIZED payload, including an enqueue whose success was later lost', async () => {
+    mockDispatchFindMany.mockResolvedValue([{
+      id: 'dispatch-1',
+      deliveryAttempts: 1,
+      lastDeliveryAt: new Date(Date.now() - 20_000),
+    }]);
     const { redeliverAuthorizedDispatches } = await import('../queueService.js');
 
     await expect(redeliverAuthorizedDispatches(5)).resolves.toBe(1);
@@ -184,10 +189,7 @@ describe('queueService — dispatch outbox retry', () => {
         state: 'AUTHORIZED',
         OR: [
           { lastDeliveryAt: null },
-          {
-            lastDeliveryError: { not: null },
-            lastDeliveryAt: { lte: expect.any(Date) },
-          },
+          { lastDeliveryAt: { lte: expect.any(Date) } },
         ],
       }),
       take: 5,
@@ -207,5 +209,19 @@ describe('queueService — dispatch outbox retry', () => {
         lastDeliveryError: null,
       }),
     }));
+  });
+
+  it('does not redeliver a recent AUTHORIZED attempt before its backoff expires', async () => {
+    mockDispatchFindMany.mockResolvedValue([{
+      id: 'dispatch-recent',
+      deliveryAttempts: 1,
+      lastDeliveryAt: new Date(),
+    }]);
+    const { redeliverAuthorizedDispatches } = await import('../queueService.js');
+
+    await expect(redeliverAuthorizedDispatches()).resolves.toBe(0);
+
+    expect(mockDispatchFindUnique).not.toHaveBeenCalled();
+    expect(mockLpush).not.toHaveBeenCalled();
   });
 });

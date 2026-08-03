@@ -19,6 +19,7 @@
     EvidenceAppendix,
     RedditThread,
     PainPointQuoteSource,
+    QuoteWithSource,
   } from "$lib/types/report";
   import Badge from "$lib/components/ui/Badge.svelte";
   import ProgressRing from "$lib/components/ui/ProgressRing.svelte";
@@ -31,9 +32,10 @@
 
   interface Props {
     data: EvidenceAppendix;
+    selectedPainTitle?: string | null;
   }
 
-  let { data }: Props = $props();
+  let { data, selectedPainTitle = null }: Props = $props();
 
   // Format number with K/M suffix
   const formatNumber = (num?: number) => {
@@ -72,27 +74,46 @@
     return [...data.top_reddit_threads];
   });
 
-  // Group threads by subreddit
-  const threadsBySubreddit = $derived.by(() => {
+  const selectedQuoteGroup = $derived.by(() => {
+    const selectedTitle = normalizePainTitle(selectedPainTitle);
+    if (!selectedTitle) return null;
+    return (
+      data.pain_point_quote_sources?.find(
+        (source) => normalizePainTitle(source.pain_point_title) === selectedTitle,
+      ) ?? null
+    );
+  });
+  const selectedSourceIds = $derived(
+    new Set(selectedQuoteGroup?.quotes_with_sources.map((quote) => quote.post_id) ?? []),
+  );
+  const selectedThreads = $derived(
+    sortedThreads.filter((thread) => selectedSourceIds.has(thread.post_id)),
+  );
+  const broaderThreads = $derived(
+    sortedThreads.filter((thread) => !selectedSourceIds.has(thread.post_id)),
+  );
+  const broaderQuoteGroups = $derived(
+    selectedQuoteGroup
+      ? (data.pain_point_quote_sources ?? []).filter((source) => source !== selectedQuoteGroup)
+      : (data.pain_point_quote_sources ?? []),
+  );
+  const selectedSourceCount = $derived(
+    new Set([
+      ...selectedThreads.map((thread) => thread.post_id),
+      ...(selectedQuoteGroup?.quotes_with_sources.map((quote) => quote.post_id) ?? []),
+    ]).size,
+  );
+
+  // Group the mixed-platform corpus by its saved source label.
+  const threadsBySource = $derived.by(() => {
     if (!data.top_reddit_threads) return {};
     const groups: Record<string, RedditThread[]> = {};
     for (const thread of data.top_reddit_threads) {
-      const subreddit = thread.subreddit || "Unknown";
-      if (!groups[subreddit]) groups[subreddit] = [];
-      groups[subreddit].push(thread);
+      const source = threadSourceLabel(thread);
+      if (!groups[source]) groups[source] = [];
+      groups[source].push(thread);
     }
     return groups;
-  });
-
-  // Calculate total evidence items
-  const totalEvidenceItems = $derived.by(() => {
-    const threadsCount = data.top_reddit_threads?.length || 0;
-    const quotesCount =
-      data.pain_point_quote_sources?.reduce(
-        (acc, source) => acc + source.quotes_with_sources.length,
-        0,
-      ) || 0;
-    return threadsCount + quotesCount;
   });
 
   // Get top score
@@ -121,27 +142,32 @@
     );
   });
 
-  // Subreddit count
-  const subredditCount = $derived(Object.keys(threadsBySubreddit).length);
+  // Zero quotes is an absence of evidence, not a count of nothing — say so.
+  const quoteCountLabel = (count: number): string =>
+    count === 0 ? "No quotes" : `${count} ${count === 1 ? "quote" : "quotes"}`;
+
+  // Distinct source labels across the retained mixed-platform corpus.
+  const sourceGroupCount = $derived(Object.keys(threadsBySource).length);
 
   // Coverage score (how well-sourced the data is)
   const coverageScore = $derived.by(() => {
     const hasThreads = sortedThreads.length > 5;
     const hasQuotes = totalQuotes > 10;
-    const hasMultipleSubreddits = subredditCount > 3;
+    const hasMultipleSources = sourceGroupCount > 3;
     const hasHighEngagement = totalEngagement > 1000;
 
     let score = 0;
     if (hasThreads) score += 0.25;
     if (hasQuotes) score += 0.25;
-    if (hasMultipleSubreddits) score += 0.25;
+    if (hasMultipleSources) score += 0.25;
     if (hasHighEngagement) score += 0.25;
 
     return score;
   });
 
   // Expandable sections state
-  let showTopThreads = $state(true); // Show by default - primary evidence
+  let showSelectedEvidence = $state(true);
+  let showTopThreads = $state(false);
   let showQuotes = $state(false);
   let showAllThreads = $state(false);
 
@@ -151,7 +177,115 @@
   const toggleQuoteGroup = (title: string) => {
     expandedQuoteGroups[title] = !expandedQuoteGroups[title];
   };
+
+  function normalizePainTitle(value: string | null | undefined): string {
+    return value?.trim().toLocaleLowerCase().replace(/\s+/g, " ") ?? "";
+  }
+
+  function redditLabel(value: string): string {
+    const label = value.replace(/^reddit\s*[:/]?\s*/i, "").replace(/^r\//i, "");
+    return label ? `r/${label}` : "Reddit";
+  }
+
+  function threadSourceLabel(thread: RedditThread): string {
+    const rawLabel = thread.subreddit?.trim() ?? "";
+    const platform = thread.platform?.trim().toLocaleLowerCase() ?? "";
+    if (platform === "reddit" || (!platform && !nonRedditLabel(rawLabel))) {
+      return redditLabel(rawLabel);
+    }
+    if (platform === "hackernews" || platform === "hacker news" || platform === "hn") {
+      return rawLabel && !/^hackernews$/i.test(rawLabel) ? rawLabel : "Hacker News";
+    }
+    if (platform === "twitter" || platform === "x") return rawLabel || "X / Twitter";
+    if (platform === "youtube") return rawLabel || "YouTube";
+    return rawLabel || thread.platform || "Unknown source";
+  }
+
+  function quoteSourceLabel(quote: QuoteWithSource): string {
+    const rawLabel = (quote.source_label ?? quote.subreddit ?? "").trim();
+    return nonRedditLabel(rawLabel) ? rawLabel : redditLabel(rawLabel);
+  }
+
+  function nonRedditLabel(value: string): boolean {
+    return /^(hacker\s*news|hn\b|news\.ycombinator\.com|@|x\b|twitter\b|youtube\b)/i.test(
+      value,
+    );
+  }
 </script>
+
+{#snippet threadCards(threads: RedditThread[], showRank: boolean)}
+  <div class="threads-list">
+    {#each threads as thread, i}
+      <div class="thread-card">
+        {#if showRank}
+          <div class="thread-rank" class:top-3={i < 3}>
+            {i + 1}
+          </div>
+        {/if}
+        <div class="thread-content">
+          <div class="thread-header">
+            <Badge variant="muted" size="sm">{threadSourceLabel(thread)}</Badge>
+            <div class="thread-actions">
+              <div class="thread-stat highlight">
+                <ThumbsUp class="stat-icon" />
+                {formatNumber(thread.score)}
+              </div>
+              {#if thread.url}
+                <a
+                  href={thread.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="thread-link"
+                  aria-label={`Open source: ${thread.title}`}
+                >
+                  <ExternalLink class="link-icon" />
+                </a>
+              {/if}
+            </div>
+          </div>
+          <p class="thread-title">{thread.title}</p>
+          {#if thread.key_insight}
+            <p class="thread-insight">{thread.key_insight}</p>
+          {/if}
+          <div class="thread-meta">
+            <div class="thread-stat">
+              <MessageCircle class="stat-icon" />
+              {formatNumber(thread.num_comments)} comments
+            </div>
+            {#if thread.created_utc}
+              <div class="thread-stat">
+                <Clock class="stat-icon" />
+                {formatRelativeTime(thread.created_utc)}
+              </div>
+            {/if}
+            <div class="thread-stat">
+              <Hash class="stat-icon" />
+              <code class="thread-id">{thread.post_id}</code>
+            </div>
+          </div>
+        </div>
+      </div>
+    {/each}
+  </div>
+{/snippet}
+
+{#snippet quoteItems(source: PainPointQuoteSource)}
+  <div class="quote-group-content">
+    {#each source.quotes_with_sources as quote}
+      <div class="quote-item">
+        <QuoteBlock text={quote.quote} variant="card" class="evidence-quote" />
+        <div class="quote-meta">
+          <span class="quote-source">{quoteSourceLabel(quote)}</span>
+          <span class="quote-score">
+            <ThumbsUp class="quote-score-icon" />
+            {quote.score}
+          </span>
+          <code class="quote-id">{quote.post_id}</code>
+        </div>
+      </div>
+    {/each}
+  </div>
+{/snippet}
 
 <Section
   id="evidence-appendix"
@@ -179,32 +313,36 @@
         color="auto"
       />
     {/snippet}
-    <HeroMetric value={totalEvidenceItems} label="Sources" icon={Database} />
+    <!-- Each metric counts one population. "Sources" used to add threads to quotes,
+         two different units, and print the sum as a single corpus size. The thread
+         figure is the retained top slice, not the whole corpus — the report header
+         carries the full social-record count. -->
     <HeroMetric
       value={sortedThreads.length}
-      label="Threads"
+      label="Top threads"
       icon={MessageCircle}
     />
+    <HeroMetric value={totalQuotes} label="Quotes" icon={Database} />
     <HeroMetric
       value={formatNumber(totalEngagement)}
       label="Engagement"
       icon={ThumbsUp}
       color="success"
     />
-    <HeroMetric value={subredditCount} label="Subreddits" icon={Layers} />
+    <HeroMetric value={sourceGroupCount} label="Source groups" icon={Layers} />
   </HeroStrip>
 
-  <!-- Subreddit Summary - Always Visible -->
-  {#if subredditCount > 0}
+  <!-- Niche-wide source summary. This is corpus coverage, not selected-problem proof. -->
+  {#if sourceGroupCount > 0}
     <div class="subreddits-card">
       <div class="subreddits-header">
         <Layers class="subreddits-icon" />
-        <span class="subreddits-label">Data Sources</span>
+        <span class="subreddits-label">Niche Source Groups</span>
       </div>
       <div class="subreddits-strip">
-        {#each Object.entries(threadsBySubreddit) as [subreddit, threads]}
+        {#each Object.entries(threadsBySource) as [source, threads]}
           <div class="subreddit-tag">
-            <span class="subreddit-name">r/{subreddit}</span>
+            <span class="subreddit-name">{source}</span>
             <span class="subreddit-count">{threads.length}</span>
           </div>
         {/each}
@@ -221,8 +359,12 @@
     </div>
     <div class="stats-pill">
       <Quote class="pill-icon" />
-      <span class="pill-value">{totalQuotes}</span>
-      <span class="pill-label">quotes</span>
+      {#if totalQuotes === 0}
+        <span class="pill-label">No quotes</span>
+      {:else}
+        <span class="pill-value">{totalQuotes}</span>
+        <span class="pill-label">{totalQuotes === 1 ? "quote" : "quotes"}</span>
+      {/if}
     </div>
     <div class="stats-pill">
       <ThumbsUp class="pill-icon success" />
@@ -238,18 +380,65 @@
 
   <!-- Expandable Sections -->
   <div class="expandable-sections">
-    <!-- Top Reddit Threads -->
-    {#if sortedThreads.length > 0}
+    <!-- Selected-problem evidence is the only evidence group open by default. -->
+    {#if selectedPainTitle}
+      <div class="expandable-section accent-section">
+        <button
+          type="button"
+          class="expandable-header"
+          onclick={() => (showSelectedEvidence = !showSelectedEvidence)}
+          aria-expanded={showSelectedEvidence}
+          aria-controls="selected-problem-evidence"
+        >
+          <div class="expandable-title">
+            <Quote class="expandable-icon accent" />
+            <span>Selected-Problem Evidence</span>
+            <Badge variant="accent" size="sm">
+              {selectedSourceCount} {selectedSourceCount === 1 ? "source" : "sources"}
+            </Badge>
+          </div>
+          <ChevronDown class="chevron-icon {showSelectedEvidence ? 'expanded' : ''}" />
+        </button>
+        {#if showSelectedEvidence}
+          <div id="selected-problem-evidence" class="expandable-content">
+            <div class="scope-note">
+              <strong>{selectedPainTitle}</strong>
+              <span>Only records explicitly saved against this problem appear here.</span>
+            </div>
+            {#if selectedQuoteGroup}
+              {@render quoteItems(selectedQuoteGroup)}
+              {#if selectedThreads.length}
+                <div class="matched-threads">
+                  <h4>Matching retained threads</h4>
+                  {@render threadCards(selectedThreads, false)}
+                </div>
+              {/if}
+            {:else}
+              <p class="empty-evidence-note">
+                No source group was retained for the selected problem. The niche-wide corpus remains
+                available below.
+              </p>
+            {/if}
+          </div>
+        {/if}
+      </div>
+    {/if}
+
+    <!-- Engagement is niche-wide context, so it stays collapsed by default. -->
+    {#if broaderThreads.length > 0}
       <div class="expandable-section">
         <button
+          type="button"
           class="expandable-header"
           onclick={() => (showTopThreads = !showTopThreads)}
+          aria-expanded={showTopThreads}
+          aria-controls="engagement-ranked-corpus"
         >
           <div class="expandable-title">
             <Star class="expandable-icon warning" />
-            <span>Top Reddit Threads</span>
+            <span>Engagement-Ranked Niche Corpus</span>
             <Badge variant="warning" size="sm"
-              >{Math.min(sortedThreads.length, 10)} featured</Badge
+              >{Math.min(broaderThreads.length, 10)} threads</Badge
             >
           </div>
           <ChevronDown
@@ -257,95 +446,53 @@
           />
         </button>
         {#if showTopThreads}
-          <div class="expandable-content">
-            <div class="threads-list">
-              {#each sortedThreads.slice(0, 10) as thread, i}
-                <div class="thread-card">
-                  <div class="thread-rank" class:top-3={i < 3}>
-                    {i + 1}
-                  </div>
-                  <div class="thread-content">
-                    <div class="thread-header">
-                      <Badge variant="muted" size="sm"
-                        >r/{thread.subreddit}</Badge
-                      >
-                      <div class="thread-actions">
-                        <div class="thread-stat highlight">
-                          <ThumbsUp class="stat-icon" />
-                          {formatNumber(thread.score)}
-                        </div>
-                        {#if thread.url}
-                          <a
-                            href={thread.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            class="thread-link"
-                          >
-                            <ExternalLink class="link-icon" />
-                          </a>
-                        {/if}
-                      </div>
-                    </div>
-                    <p class="thread-title">{thread.title}</p>
-                    {#if thread.key_insight}
-                      <p class="thread-insight">{thread.key_insight}</p>
-                    {/if}
-                    <div class="thread-meta">
-                      <div class="thread-stat">
-                        <MessageCircle class="stat-icon" />
-                        {formatNumber(thread.num_comments)} comments
-                      </div>
-                      {#if thread.created_utc}
-                        <div class="thread-stat">
-                          <Clock class="stat-icon" />
-                          {formatRelativeTime(thread.created_utc)}
-                        </div>
-                      {/if}
-                      <div class="thread-stat">
-                        <Hash class="stat-icon" />
-                        <code class="thread-id">{thread.post_id}</code>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              {/each}
-            </div>
+          <div id="engagement-ranked-corpus" class="expandable-content">
+            <p class="corpus-note">
+              Ranked across the full niche by saved engagement order. High engagement does not mean
+              a thread supports the selected problem.
+            </p>
+            {@render threadCards(broaderThreads.slice(0, 10), true)}
           </div>
         {/if}
       </div>
     {/if}
 
-    <!-- Pain Point Quote Sources -->
-    {#if data.pain_point_quote_sources && data.pain_point_quote_sources.length > 0}
-      <div class="expandable-section accent-section">
+    <!-- Remaining pain-point quote groups preserve the broader niche corpus. -->
+    {#if broaderQuoteGroups.length > 0}
+      <div class="expandable-section">
         <button
+          type="button"
           class="expandable-header"
           onclick={() => (showQuotes = !showQuotes)}
+          aria-expanded={showQuotes}
+          aria-controls="broader-pain-evidence"
         >
           <div class="expandable-title">
-            <Quote class="expandable-icon accent" />
-            <span>Pain Point Evidence</span>
-            <Badge variant="accent" size="sm"
-              >{data.pain_point_quote_sources.length} pain points</Badge
+            <Quote class="expandable-icon" />
+            <span>{selectedQuoteGroup ? "Other Niche Pain Evidence" : "Pain Point Evidence"}</span>
+            <Badge variant="muted" size="sm"
+              >{broaderQuoteGroups.length} pain points</Badge
             >
           </div>
           <ChevronDown class="chevron-icon {showQuotes ? 'expanded' : ''}" />
         </button>
         {#if showQuotes}
-          <div class="expandable-content">
+          <div id="broader-pain-evidence" class="expandable-content">
             <div class="quotes-list">
-              {#each data.pain_point_quote_sources as source}
+              {#each broaderQuoteGroups as source}
                 <div class="quote-group">
                   <button
+                    type="button"
                     class="quote-group-header"
                     onclick={() => toggleQuoteGroup(source.pain_point_title)}
+                    aria-expanded={Boolean(expandedQuoteGroups[source.pain_point_title])}
                   >
                     <div class="quote-group-title">
                       <span class="quote-pain-point"
                         >{source.pain_point_title}</span
                       >
                       <Badge variant="muted" size="sm"
-                        >{source.quotes_with_sources.length} quotes</Badge
+                        >{quoteCountLabel(source.quotes_with_sources.length)}</Badge
                       >
                     </div>
                     <ChevronDown
@@ -357,26 +504,7 @@
                     />
                   </button>
                   {#if expandedQuoteGroups[source.pain_point_title]}
-                    <div class="quote-group-content">
-                      {#each source.quotes_with_sources as quote}
-                        <div class="quote-item">
-                          <QuoteBlock
-                            text={quote.quote}
-                            variant="card"
-                            class="evidence-quote"
-                          />
-                          <div class="quote-meta">
-                            <span class="quote-source">r/{quote.subreddit}</span
-                            >
-                            <span class="quote-score">
-                              <ThumbsUp class="quote-score-icon" />
-                              {quote.score}
-                            </span>
-                            <code class="quote-id">{quote.post_id}</code>
-                          </div>
-                        </div>
-                      {/each}
-                    </div>
+                    {@render quoteItems(source)}
                   {/if}
                 </div>
               {/each}
@@ -386,16 +514,19 @@
       </div>
     {/if}
 
-    <!-- View All Threads by Subreddit -->
+    <!-- View all retained threads grouped by their saved source label. -->
     {#if sortedThreads.length > 10}
       <div class="expandable-section">
         <button
+          type="button"
           class="expandable-header"
           onclick={() => (showAllThreads = !showAllThreads)}
+          aria-expanded={showAllThreads}
+          aria-controls="all-threads-by-source"
         >
           <div class="expandable-title">
             <Database class="expandable-icon" />
-            <span>All Threads by Subreddit</span>
+            <span>All Threads by Source</span>
             <Badge variant="muted" size="sm">{sortedThreads.length} total</Badge
             >
           </div>
@@ -404,11 +535,11 @@
           />
         </button>
         {#if showAllThreads}
-          <div class="expandable-content">
-            {#each Object.entries(threadsBySubreddit) as [subreddit, threads]}
+          <div id="all-threads-by-source" class="expandable-content">
+            {#each Object.entries(threadsBySource) as [source, threads]}
               <div class="subreddit-group">
                 <div class="subreddit-group-header">
-                  <span class="subreddit-group-name">r/{subreddit}</span>
+                  <span class="subreddit-group-name">{source}</span>
                   <Badge variant="muted" size="sm">{threads.length}</Badge>
                 </div>
                 <div class="subreddit-threads-grid">
@@ -633,6 +764,41 @@
     padding: 0 var(--space-5) var(--space-5);
     border-top: 1px solid var(--color-border);
     padding-top: var(--space-5);
+  }
+
+  .scope-note {
+    display: grid;
+    gap: var(--space-1);
+    margin-bottom: var(--space-4);
+  }
+
+  .scope-note strong,
+  .matched-threads h4 {
+    color: var(--color-text-primary);
+    font-size: var(--text-sm);
+  }
+
+  .scope-note span,
+  .corpus-note,
+  .empty-evidence-note {
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    line-height: 1.55;
+  }
+
+  .corpus-note,
+  .empty-evidence-note {
+    margin: 0 0 var(--space-4);
+  }
+
+  .matched-threads {
+    margin-top: var(--space-5);
+    padding-top: var(--space-5);
+    border-top: 1px solid var(--color-border);
+  }
+
+  .matched-threads h4 {
+    margin: 0 0 var(--space-3);
   }
 
   /* Threads List */

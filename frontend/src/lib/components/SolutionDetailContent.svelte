@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Telescope, TriangleAlert } from "lucide-svelte";
-  import { renderTechnicalContent } from "$lib/utils/format";
+  import { humanizeInternalJargon, renderTechnicalContent } from "$lib/utils/format";
   import type { SolutionPreview } from "$lib/types/job";
   import type { OverlapGroup } from "$lib/types/report";
   import FacetChips from "$lib/components/FacetChips.svelte";
@@ -9,11 +9,16 @@
   import { angleLabel } from "$lib/utils/ideaAngleLabels";
   import { sourceFrameLabel } from "$lib/utils/sourceFrameLabels";
   import { strengthEntry, SUPERPOWERS_DETAILED } from "$lib/utils/superpower";
-  import { scoreRationale } from "$lib/utils/scoreRationale";
+  import { scoreRationale, type ScoreKey } from "$lib/utils/scoreRationale";
+  import { SvelteSet } from "svelte/reactivity";
   import {
     adversarialReviewFinding,
+    adversarialReviewSummary,
     directIncumbentParity,
+    incumbentParityPhrase,
     noDirectIncumbentFound,
+    PREMISE_UNPROVEN_CODA,
+    PREMISE_UNPROVEN_SCORE_NOTE,
   } from "$lib/utils/adversarialReview";
   import {
     originalityMetric,
@@ -207,25 +212,54 @@
   // the pipeline can encode a mechanism objection as "shipped by evidence: ...".
   const journeyTag = $derived(solution.journey_tag ? humanizeTag(solution.journey_tag) : null);
   const mechanismTag = $derived(solution.mechanism_tag ? humanizeTag(solution.mechanism_tag) : null);
-  const overviewIncumbentNote = $derived(directIncumbentParity(solution));
+  // Rendered as prose in three places, so the stored class prefix is turned into words here
+  // rather than at each site (matches the analyst's wording — see adversarialReview.ts).
+  const overviewIncumbentNote = $derived(
+    incumbentParityPhrase(directIncumbentParity(solution)) || null,
+  );
+  const adjacentParityNote = $derived(
+    incumbentParityPhrase(solution.adjacent_market_parity) || null,
+  );
   const noIncumbentFound = $derived(noDirectIncumbentFound(solution));
   const adversarialReview = $derived(adversarialReviewFinding(solution));
+
+  // Red-team caveats arrive as "Short label: long evidence prose". Split on the first
+  // colon only when the prefix reads like a label, so each finding gets a bold lead-in.
+  function splitAdversarialDetail(detail: string): { label: string | null; body: string } {
+    const idx = detail.indexOf(": ");
+    if (idx > 0 && idx < 60 && !detail.slice(0, idx).includes(".")) {
+      return { label: detail.slice(0, idx + 1), body: detail.slice(idx + 2) };
+    }
+    return { label: null, body: detail };
+  }
   const hasParity = $derived(
-    !!(overviewIncumbentNote || noIncumbentFound || solution.adjacent_market_parity?.trim()),
+    !!(overviewIncumbentNote || noIncumbentFound || adjacentParityNote),
   );
 
   // Final card — the per-criterion scoring rationale (same user-facing text as the Overview
   // score-detail popovers; NOT the not-user-facing calibration_notes).
+  // `scoreRationale` clamps to 240 chars for popovers, so every reason on this list
+  // ended in "…" with no way to read the rest — the reasoning behind each number was
+  // simply unavailable. Carry the full text too and let each row expand to it.
   const scoreCriteria = $derived.by(() => {
     const om = originalityMetric(solution);
     return [
-      { label: "Market fit", value: solution.market_fit_score, why: scoreRationale(solution, "market_fit") },
-      { label: "Feasibility", value: solution.technical_feasibility_score, why: scoreRationale(solution, "technical_feasibility") },
-      { label: "SEO", value: solution.seo_scalability_score, why: scoreRationale(solution, "seo") },
-      { label: om.short ?? "Distinct", value: om.value, why: scoreRationale(solution, "novelty") },
-      { label: "Solo-dev", value: solution.solo_dev_feasibility, why: scoreRationale(solution, "solo_dev") },
-    ].filter((c) => c.value != null);
+      { key: "market_fit", label: "Market fit", value: solution.market_fit_score },
+      { key: "technical_feasibility", label: "Feasibility", value: solution.technical_feasibility_score },
+      { key: "seo", label: "SEO", value: solution.seo_scalability_score },
+      { key: "novelty", label: om.short ?? "Distinct", value: om.value },
+      { key: "solo_dev", label: "Solo-dev", value: solution.solo_dev_feasibility },
+    ].map((c) => ({
+      ...c,
+      why: scoreRationale(solution, c.key as ScoreKey),
+      whyFull: scoreRationale(solution, c.key as ScoreKey, { full: true }),
+    })).filter((c) => c.value != null);
   });
+  const expandedScoreKeys = new SvelteSet<string>();
+  function toggleScoreWhy(key: string): void {
+    if (expandedScoreKeys.has(key)) expandedScoreKeys.delete(key);
+    else expandedScoreKeys.add(key);
+  }
 
   function critColor(v: number | null | undefined): string {
     if (v == null) return "var(--color-text-muted)";
@@ -311,7 +345,7 @@
       </nav>
     {/if}
 
-    {#if strengthChips.length > 0 || modelItems.length > 0 || watchOutItems.length > 0}
+    {#if strengthChips.length > 0 || modelItems.length > 0 || watchOutItems.length > 0 || adversarialReview}
       <div class="facet-panel">
         {#if strengthChips.length > 0}
           <div class="facet-group">
@@ -328,6 +362,18 @@
           </div>
         {/if}
         <FacetChips label="Model" items={modelItems} tone="neutral" />
+        {#if adversarialReview}
+          <FacetChips
+            label="Adversarial review"
+            items={[
+              {
+                label: adversarialReview.chipLabel,
+                description: adversarialReviewSummary(adversarialReview, { inIdeaDetail: true }),
+              },
+            ]}
+            tone={adversarialReview.severity === "weakened" ? "warning" : "risk"}
+          />
+        {/if}
         <FacetChips label="Watch-outs" items={watchOutItems} tone="risk" />
       </div>
     {/if}
@@ -369,17 +415,20 @@
     {/if}
 
     {#if adversarialReview}
-      <div class="weak-note weak-note--critical">
+      <div class="weak-note {adversarialReview.severity === 'weakened' ? 'weak-note--caution' : 'weak-note--critical'}">
         <TriangleAlert class="weak-note-icon" aria-hidden="true" />
         <div class="weak-note-body">
           <span class="weak-note-title">{adversarialReview.label}</span>
           {#each adversarialReview.details as detail}
             <p>{detail}</p>
           {/each}
-          <p>
-            This candidate remains available for comparison, but resolve this objection before
-            treating it as a shortlist-safe direction.
-          </p>
+          {#if adversarialReview.severity === "weakened"}
+            <p>
+              This candidate remains available — review these concerns before committing to it.
+            </p>
+          {:else}
+            <p>{PREMISE_UNPROVEN_CODA}</p>
+          {/if}
         </div>
       </div>
     {/if}
@@ -590,15 +639,25 @@
     {/if}
 
     {#if adversarialReview}
-      <section class="fd-card fd-card--critical">
+      <section class="fd-card {adversarialReview.severity === 'weakened' ? 'fd-card--caution' : 'fd-card--critical'}">
         <h3 class="fd-card-title">{adversarialReview.label}</h3>
-        {#each adversarialReview.details as detail}
-          <p class="fd-lead">{detail}</p>
-        {/each}
-        <p class="fd-muted">
-          The score reflects this finding. The candidate stays available so you can compare it or
-          investigate the disputed assumption.
-        </p>
+        {#if adversarialReview.details.length > 0}
+          <ul class="fd-finding-list">
+            {#each adversarialReview.details as detail}
+              {@const finding = splitAdversarialDetail(detail)}
+              <li class="fd-finding">
+                {#if finding.label}<strong>{finding.label}</strong> {finding.body}{:else}{finding.body}{/if}
+              </li>
+            {/each}
+          </ul>
+        {/if}
+        {#if adversarialReview.severity === "weakened"}
+          <p class="fd-finding-coda">
+            This candidate remains available — review these concerns before committing to it.
+          </p>
+        {:else}
+          <p class="fd-finding-coda">{PREMISE_UNPROVEN_CODA}</p>
+        {/if}
       </section>
     {/if}
 
@@ -622,11 +681,11 @@
               </dd>
             </div>
           {/if}
-          {#if solution.adjacent_market_parity?.trim()}
+          {#if adjacentParityNote}
             <div class="fd-ledger-row">
               <dt class="mini-label">Adjacent players</dt>
               <dd class="fd-ledger-value">
-                <p>{solution.adjacent_market_parity}</p>
+                <p>{adjacentParityNote}</p>
               </dd>
             </div>
           {/if}
@@ -643,26 +702,51 @@
     {#if scoreCriteria.length > 0}
       <section class="fd-card">
         <h3 class="fd-card-title">How we scored it</h3>
+        <!-- Every criterion below is conditional on the premise. Say so here, where the
+             numbers are, rather than leaving a high score next to an unproven premise. -->
+        {#if adversarialReview?.severity === "killed"}
+          <p class="fd-finding-coda">{PREMISE_UNPROVEN_SCORE_NOTE}</p>
+        {/if}
         <dl class="fd-score-list">
           {#each scoreCriteria as c}
+            {@const open = expandedScoreKeys.has(c.key)}
+            {@const clipped = !!c.whyFull && c.whyFull !== c.why}
             <div class="fd-score-row">
               <dt>
                 <span class="fd-score-name">{c.label}</span>
                 <span class="fd-score-val" style:color={critColor(c.value)}>{Math.round((c.value ?? 0) * 100)}</span>
               </dt>
               {#if c.why}
-                <dd>{c.why}</dd>
+                <dd>
+                  <span id={`score-why-${c.key}`}>{open ? c.whyFull : c.why}</span>
+                  {#if clipped}
+                    <button
+                      type="button"
+                      class="fd-score-more"
+                      aria-expanded={open}
+                      aria-controls={`score-why-${c.key}`}
+                      onclick={() => toggleScoreWhy(c.key)}
+                    >
+                      {open ? "Show less" : "Show full reasoning"}
+                    </button>
+                  {/if}
+                </dd>
               {/if}
             </div>
           {/each}
         </dl>
-        <!-- Distilled bear case — the counterpoint to the per-criterion rationale
-             above. Uses the pre-distilled critic_concern (one note), never the raw
-             calibration_notes. None-safe: most ideas without a critique show nothing. -->
+        <!-- Independent calibration note — this durable field can be positive,
+             mixed, or critical. Never relabel it as a guaranteed bear case. -->
         {#if solution.critic_concern?.trim()}
           <div class="fd-critic">
             <span class="mini-label">Independent critic's take</span>
-            <p>{solution.critic_concern}</p>
+            <p>{humanizeInternalJargon(solution.critic_concern)}</p>
+          </div>
+        {/if}
+        {#if solution.refine_binding_constraint?.trim()}
+          <div class="fd-critic">
+            <span class="mini-label">Tournament bear case</span>
+            <p>{solution.refine_binding_constraint}</p>
           </div>
         {/if}
       </section>
@@ -1012,8 +1096,7 @@
     text-wrap: pretty;
   }
 
-  .weak-note--critical,
-  .fd-card--critical {
+  .weak-note--critical {
     border-color: color-mix(in srgb, var(--color-error) 32%, var(--color-border));
     background: color-mix(in srgb, var(--color-error) 5%, var(--color-bg-surface));
   }
@@ -1021,6 +1104,16 @@
   .weak-note--critical :global(.weak-note-icon),
   .weak-note--critical .weak-note-title {
     color: var(--color-error-text);
+  }
+
+  .weak-note--caution {
+    border-color: color-mix(in srgb, var(--color-warning) 32%, var(--color-border));
+    background: color-mix(in srgb, var(--color-warning) 5%, var(--color-bg-surface));
+  }
+
+  .weak-note--caution :global(.weak-note-icon),
+  .weak-note--caution .weak-note-title {
+    color: var(--color-warning-text);
   }
 
   /* ── Full detail cards ── */
@@ -1035,6 +1128,18 @@
     border: 1px solid color-mix(in srgb, var(--color-border-emphasis) 46%, transparent);
     border-radius: 0.75rem;
     background: color-mix(in srgb, var(--color-bg-surface) 40%, var(--color-bg-elevated));
+  }
+
+  /* Severity variants must follow the base .fd-card rule — equal specificity,
+     source order decides which border/background wins. */
+  .fd-card--critical {
+    border-color: color-mix(in srgb, var(--color-error) 32%, var(--color-border));
+    background: color-mix(in srgb, var(--color-error) 5%, var(--color-bg-surface));
+  }
+
+  .fd-card--caution {
+    border-color: color-mix(in srgb, var(--color-warning) 32%, var(--color-border));
+    background: color-mix(in srgb, var(--color-warning) 5%, var(--color-bg-surface));
   }
 
   .fd-card-head {
@@ -1273,6 +1378,47 @@
     overflow-wrap: anywhere;
   }
 
+  .fd-finding-list {
+    display: grid;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .fd-finding {
+    max-width: 74ch;
+    padding: var(--space-3) 0;
+    border-top: 1px solid var(--color-border);
+    color: var(--color-text-secondary);
+    font-size: var(--text-13);
+    line-height: 1.5;
+    text-wrap: pretty;
+    overflow-wrap: anywhere;
+  }
+
+  .fd-finding:first-child {
+    padding-top: 0;
+    border-top: 0;
+  }
+
+  .fd-finding:last-child {
+    padding-bottom: 0;
+  }
+
+  .fd-finding strong {
+    color: var(--color-text-primary);
+    font-weight: 600;
+  }
+
+  .fd-finding-coda {
+    margin: 0;
+    max-width: 74ch;
+    color: var(--color-text-muted);
+    font-size: var(--text-13);
+    line-height: 1.5;
+    text-wrap: pretty;
+  }
+
   .fd-subnote {
     color: var(--color-text-muted) !important;
     font-size: var(--text-sm) !important;
@@ -1380,6 +1526,22 @@
     font-size: var(--text-13);
     line-height: 1.45;
     text-wrap: pretty;
+  }
+
+  .fd-score-more {
+    margin-left: 0.35rem;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--color-accent-dark);
+    font-family: var(--font-body);
+    font-size: var(--text-sm);
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .fd-score-more:hover {
+    color: var(--color-accent-hover);
   }
 
   /* Distilled bear case — hairline-separated counterpoint under the score list. */

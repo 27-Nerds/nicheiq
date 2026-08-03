@@ -40,8 +40,7 @@ dependencies = [
     "tiktoken>=0.5.0",
     "youtube-transcript-api>=1.0.0,<2.0",
     "PyStemmer>=2.2.0",
-    # Web worker dependencies
-    "rq>=1.16.0",
+    # Web worker dependency
     "redis>=5.0.0",
 ]
 

@@ -21,6 +21,14 @@ class ClassifiedError:
 # Error patterns mapped to error codes
 # Order matters - more specific patterns should come first
 ERROR_PATTERNS: list[tuple[str, str]] = [
+    # Upstream provider account exhaustion is not a product-credit error and is not fixed by
+    # retrying immediately. Keep it ahead of generic auth/internal patterns so HTTP 402 remains
+    # actionable all the way through the backend error translator.
+    (
+        r"\b402\b|payment.?required|openrouter.*(?:credit|billing)|provider.*(?:credit|billing)",
+        "PROVIDER_BILLING_ERROR",
+    ),
+
     # Rate limiting (check first as it's common)
     (r"rate.?limit|429|quota.?exceeded|too.?many.?requests|throttl", "RATE_LIMIT"),
 

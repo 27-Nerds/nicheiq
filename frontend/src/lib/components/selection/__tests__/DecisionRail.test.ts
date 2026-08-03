@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render } from "@testing-library/svelte";
+import { cleanup, fireEvent, render, screen } from "@testing-library/svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import DecisionRail from "../DecisionRail.svelte";
 import type { SelectionJourney } from "$lib/selection/decisionJourney";
@@ -51,6 +51,27 @@ describe("DecisionRail", () => {
     expect(view.getByText("Evidence map").closest("li")).toHaveAttribute("data-idea-revision", "4");
     expect(view.getByText("100 credits total")).toBeInTheDocument();
     expect(view.getByRole("button", { name: "Review and start" })).toBeEnabled();
+  });
+
+  it("portals the fixed dock outside scroll and annotation stacking contexts", () => {
+    const host = document.createElement("div");
+    host.style.isolation = "isolate";
+    document.body.appendChild(host);
+
+    const view = render(DecisionRail, {
+      target: host,
+      props: { journey: journey(), ...callbacks() },
+    });
+
+    const dock = screen.getByRole("complementary", { name: "Ideas for Deep Research" });
+    expect(dock.parentElement).toBe(document.body);
+    expect(host).not.toContainElement(dock);
+    expect(document.documentElement.style.getPropertyValue("--decision-rail-height")).toBe("0px");
+
+    view.unmount();
+    expect(document.body).not.toContainElement(dock);
+    expect(document.documentElement.style.getPropertyValue("--decision-rail-height")).toBe("");
+    host.remove();
   });
 
   it("removes an exact revision and opens the routed review through explicit callbacks", async () => {

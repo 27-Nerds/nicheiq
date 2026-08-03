@@ -25,18 +25,20 @@
   <div class="min-h-[60vh] flex items-center justify-center px-6">
     <div class="text-center max-w-md">
       <h1 class="font-display text-2xl font-bold text-text-primary mb-4">
-        Sample Report Coming Soon
+        No sample report is published right now
       </h1>
       <p class="text-text-secondary mb-6">
-        We're preparing a sample report for you. Check back soon!
+        The previous sample may have been unpublished. You can still explore real market evidence in the idea catalog.
       </p>
-      <a href="/" class="btn-primary inline-flex items-center gap-2">
-        Discover NicheIQ <ArrowRight class="w-4 h-4" />
+      <a href="/ideas" class="btn-primary inline-flex items-center gap-2">
+        Browse the idea catalog <ArrowRight class="w-4 h-4" aria-hidden="true" />
       </a>
     </div>
   </div>
 {:else}
   <SharedViewBanner variant="sample" />
-  <ReportContent {report} showBackLink={false} showShareButton={false} />
+  <article aria-label="Sample Deep Research report">
+    <ReportContent {report} showBackLink={false} showShareButton={false} />
+  </article>
   <SharedViewEndCTA variant="sample" />
 {/if}

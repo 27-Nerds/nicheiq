@@ -19,6 +19,12 @@ import {
 } from '@prisma/client';
 import { prisma } from './db.js';
 import { refundChargeInTx } from './creditService.js';
+import {
+  buildRegenerationEnvelope,
+  buildRegenerationReceiptContent,
+  buildSeedEnvelope,
+  buildSeedReceiptContent,
+} from '../utils/ledgerEvents.js';
 
 /**
  * The CAS predicate, as a `where` fragment that `updateMany` can satisfy from the Job row alone
@@ -141,13 +147,26 @@ export async function cancelAuthorizedSelectionDispatch(
   return prisma.$transaction(async (tx) => {
     const dispatch = await tx.jobDispatch.findFirst({
       where: { id: dispatchId, jobId },
-      select: { id: true, kind: true, state: true, chargeId: true },
+      select: {
+        id: true,
+        kind: true,
+        state: true,
+        chargeId: true,
+        batchOrdinal: true,
+        sourceMessageId: true,
+      },
     });
     if (!dispatch) return 'not_found';
     if (dispatch.state !== DispatchState.AUTHORIZED) {
-      return dispatch.state === DispatchState.CLAIMED ? 'started' : 'stale';
+      return dispatch.state === DispatchState.CLAIMED || dispatch.state === DispatchState.RECOVERING
+        ? 'started'
+        : 'stale';
     }
-    if (dispatch.kind !== DispatchKind.DEEP_RESEARCH && dispatch.kind !== DispatchKind.REGENERATE) {
+    if (
+      dispatch.kind !== DispatchKind.DEEP_RESEARCH
+      && dispatch.kind !== DispatchKind.REGENERATE
+      && dispatch.kind !== DispatchKind.SEED_IDEA
+    ) {
       return 'stale';
     }
 
@@ -181,18 +200,69 @@ export async function cancelAuthorizedSelectionDispatch(
       throw new Error('DISPATCH_CANCEL_RACE');
     }
 
-    if (dispatch.chargeId) {
-      const refund = await refundChargeInTx(tx, dispatch.chargeId);
-      if (refund) {
-        await tx.jobDispatch.update({
-          where: { id: dispatchId },
-          data: {
-            refundTransactionId: refund.id,
-            refundedAt: new Date(),
-            refundedAmount: refund.amount,
-          },
-        });
-      }
+    const refund = dispatch.chargeId
+      ? await refundChargeInTx(tx, dispatch.chargeId)
+      : null;
+    const refundedAmount = Math.max(refund?.amount ?? 0, 0);
+    if (refund) {
+      await tx.jobDispatch.update({
+        where: { id: dispatchId },
+        data: {
+          refundTransactionId: refund.id,
+          refundedAt: refundedAmount > 0 ? new Date() : undefined,
+          refundedAmount: refund.amount,
+        },
+      });
+    }
+
+    // `regeneration_submitted` is a durable client lock. Exact cancellation must
+    // settle that same operation in the same transaction or every reload will keep
+    // showing the batch as pending even though its dispatch and refund are terminal.
+    if (dispatch.kind === DispatchKind.REGENERATE) {
+      const job = await tx.job.findUnique({
+        where: { id: jobId },
+        select: { regenerationCount: true },
+      });
+      const ordinal = dispatch.batchOrdinal ?? job?.regenerationCount ?? 0;
+      await tx.chatMessage.upsert({
+        where: { operationId: `regeneration:${dispatch.id}:settled` },
+        create: {
+          jobId,
+          gateStage: 5,
+          role: 'receipt',
+          content: buildRegenerationReceiptContent('regeneration_settled', 'cancelled'),
+          operationId: `regeneration:${dispatch.id}:settled`,
+          patchJson: buildRegenerationEnvelope({
+            event: 'regeneration_settled',
+            operationId: dispatch.id,
+            ordinal,
+            outcome: 'cancelled',
+            refunded: refundedAmount > 0,
+          }) as unknown as Prisma.InputJsonValue,
+        },
+        update: {},
+      });
+    }
+    if (dispatch.kind === DispatchKind.SEED_IDEA && dispatch.sourceMessageId) {
+      const outcome = refundedAmount > 0 ? 'refunded' : 'cancelled';
+      await tx.chatMessage.upsert({
+        where: { operationId: `seed:${dispatch.id}:settled` },
+        create: {
+          jobId,
+          gateStage: 5,
+          role: 'receipt',
+          content: buildSeedReceiptContent('seed_settled', outcome),
+          operationId: `seed:${dispatch.id}:settled`,
+          patchJson: buildSeedEnvelope(
+            'seed_settled',
+            dispatch.sourceMessageId,
+            outcome,
+            undefined,
+            dispatch.id,
+          ) as unknown as Prisma.InputJsonValue,
+        },
+        update: {},
+      });
     }
     return 'cancelled';
   });
@@ -601,6 +671,7 @@ export async function failLandingPageDispatch(
       const refund = dispatch.chargeId
         ? await refundChargeInTx(tx, dispatch.chargeId)
         : null;
+      const actuallyRefunded = Boolean(refund && refund.amount > 0);
       const settled = await tx.jobDispatch.updateMany({
         where: {
           id: dispatchId,
@@ -608,11 +679,11 @@ export async function failLandingPageDispatch(
           state: { in: [DispatchState.AUTHORIZED, DispatchState.CLAIMED] },
         },
         data: {
-          state: refund ? DispatchState.REFUNDED : DispatchState.FAILED,
+          state: actuallyRefunded ? DispatchState.REFUNDED : DispatchState.FAILED,
           failureKind: 'SYSTEM_FAULT',
           settledAt: new Date(),
           refundTransactionId: refund?.id,
-          refundedAt: refund ? new Date() : undefined,
+          refundedAt: actuallyRefunded ? new Date() : undefined,
           refundedAmount: refund?.amount,
         },
       });

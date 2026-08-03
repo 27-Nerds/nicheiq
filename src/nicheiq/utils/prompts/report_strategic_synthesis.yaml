@@ -10,7 +10,7 @@ template: |
   **Research Context:**
   Niche: {niche}
   Selected Solution: {selected_solution_name}
-  Pain Points Identified: {pain_points_count}
+  Validated Pain Points Addressed by the Selected Solution: {pain_points_count}
   Market Validation: {market_validation}
   SEO Scalability: {seo_scalability}/10
 
@@ -29,7 +29,7 @@ template: |
 
   **Key Data for Context:**
   - Selection Rationale: {selection_rationale}
-  - Top 3 Pain Points: {top_pain_points}
+  - Top Addressed Pain Points: {top_pain_points}
   - Project Type: {project_type}
   - Indexable Pages: {indexable_pages}
   - CAC Organic: ${cac_organic}
@@ -46,4 +46,5 @@ template: |
   - executive_summary is 4-6 sentences
   - acquisition_strategy_summary is 2-3 paragraphs
   - All content references actual data provided (no invented metrics)
+  - Pain claims use only the addressed pain titles above; if none matched, state that validation gap instead of borrowing a niche-wide pain
   </verification>

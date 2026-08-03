@@ -127,6 +127,28 @@ class TestThreadingAndStamp:
         # provisional seo rank-capped 0.9 -> 0.7 in the stamp (stored score stays 0.9)
         assert stamped["adjusted_composite_score"] == _composite_for_angle(0.6, 0.6, 0.3, 0.7, "distribution_seo")
 
+    def test_audience_fit_coverage_kwarg_defaults_to_no_penalty(self):
+        """PR 10 / S4.1: the new optional kwarg must leave every existing call site (which
+        passes nothing) byte-identical, even for an idea explicitly tagged adjacent."""
+        adjacent = self._idea("Seo", "distribution_seo", audience_fit=False)
+        expected = _composite_for_angle(0.6, 0.6, 0.3, 0.7, "distribution_seo")
+        assert angle_ranked_composite(adjacent) == expected
+        assert angle_ranked_composite(adjacent, None) == expected
+        # and the preview stamp path, whose default is likewise None
+        from worker.tasks import _solution_to_preview_dict
+        assert _solution_to_preview_dict(adjacent)["adjusted_composite_score"] == expected
+
+    def test_audience_fit_coverage_kwarg_applies_penalty_at_full_coverage(self):
+        adjacent = self._idea("Seo", "distribution_seo", audience_fit=False)
+        expected = _composite_for_angle(0.6, 0.6, 0.3, 0.7, "distribution_seo")
+        assert angle_ranked_composite(adjacent, 1.0) == pytest.approx(
+            round(expected - settings.audience_fit_penalty, 3)
+        )
+        from worker.tasks import _solution_to_preview_dict
+        assert _solution_to_preview_dict(adjacent, 1.0)["adjusted_composite_score"] == pytest.approx(
+            round(expected - settings.audience_fit_penalty, 3)
+        )
+
 
 class TestProvisionalSeoCeiling:
     """RANKING-only cap on provisional (not keyword-grounded) seo scores. Observed live

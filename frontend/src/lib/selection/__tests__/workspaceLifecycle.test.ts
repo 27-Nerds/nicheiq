@@ -1,8 +1,27 @@
 import { describe, expect, it } from "vitest";
 import {
+  selectionAnalystMode,
   shouldForceCloseToolsOnStatus,
   shouldRefreshForDraftVersion,
 } from "$lib/selection/workspaceLifecycle";
+
+describe("selectionAnalystMode", () => {
+  it("keeps selection and completed-report chat interactive", () => {
+    expect(selectionAnalystMode("AWAITING_SELECTION")).toBe("interactive");
+    expect(selectionAnalystMode("COMPLETED")).toBe("interactive");
+  });
+
+  it("keeps failed terminal transcripts read-only", () => {
+    expect(selectionAnalystMode("FAILED")).toBe("read_only");
+    expect(selectionAnalystMode("CANCELLED")).toBe("read_only");
+  });
+
+  it("blocks new turns while research or a selection operation is in flight", () => {
+    for (const status of ["PENDING", "QUEUED", "RUNNING", "RUNNING_PHASE2", "REGENERATING", "AWAITING_GATE", ""] as const) {
+      expect(selectionAnalystMode(status)).toBe("blocked");
+    }
+  });
+});
 
 describe("shouldForceCloseToolsOnStatus", () => {
   it("keeps tools (and their dirty drafts) open through a transient REGENERATING flip", () => {

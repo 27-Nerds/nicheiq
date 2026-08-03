@@ -201,7 +201,10 @@ def generate_idea_portfolio_summary(
         "never a decimal). If the whole pool looks weak, say so plainly and make clear "
         "that's the market's verdict, not a failure of the idea-generation process. End the "
         "summary by naming the 1-2 ideas that most deserve deep validation next, and why — "
-        "reasoned from the evidence above only, no new facts."
+        "reasoned from the evidence above only, no new facts. NEVER nominate an idea whose "
+        "red-team verdict is 'killed' for that step (its core premise was refuted by "
+        "evidence); if every idea was killed, say plainly that none of them is ready and "
+        "name the caveat that has to be resolved first."
     )
 
     usage = None

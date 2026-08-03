@@ -288,6 +288,35 @@ describe('worker callbacks are dispatch-addressed', () => {
     });
   });
 
+  it('keeps a gate dispatch FAILED when an expired allowance reversal restores zero', async () => {
+    mockDispatchFindUnique.mockResolvedValue({
+      id: MINE,
+      kind: 'CONTINUE',
+      gateStage: 1,
+      segment: 'guided_s2_4',
+      chargeId: 'charge-gate-expired',
+    });
+    mockJobUpdateMany.mockResolvedValue({ count: 1 });
+    mockRefundChargeInTx.mockResolvedValue({ id: 'reversal-zero', amount: 0 });
+
+    const res = await request(app).post('/api/workers/gate-failed').send({
+      worker_id: 'worker-1',
+      job_id: JOB,
+      gate_stage: 1,
+      error_message: 'provider failed',
+      dispatch_id: MINE,
+      failure_kind: 'SYSTEM_FAULT',
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockDispatchUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ state: 'FAILED' }) }),
+    );
+    expect(mockDispatchUpdateMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ state: 'REFUNDED' }) }),
+    );
+  });
+
   it('ideas-ready is guarded too — it is where a guided G2 continue actually lands', async () => {
     // Guarding only the two gate endpoints would have left the entire G2 continuation open,
     // because a G2 Continue runs on to stage 5 and terminates at /ideas-ready, not /gate-reached.

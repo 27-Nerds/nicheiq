@@ -35,6 +35,7 @@ This document provides a comprehensive reference for the NicheIQ research report
 |-------|------|-------------|
 | `niche` | `string` | The niche being researched |
 | `generated_at` | `string` (ISO datetime) | Report generation timestamp |
+| `scoring_version` | `string \| null` | Version of the scoring formulas that produced this report's scores (`report_generator.SCORING_VERSION`, e.g. `"2026.08"`; bumped when critic rubric, caps/floors, verdict thresholds, or composite weights change). `null`/absent on reports generated before the 2026.08 cutover — scores across different versions are **not comparable**. |
 | `seeded_from_catalog` | `boolean` | `true` when the run was seeded from a catalog pain/idea (entry mode `pain_research` / `deep_idea`) instead of a fresh discovery scrape. Such reports have thinner community evidence; the UI shows a "seeded from catalog" badge. Defaults to `false`. |
 | `user_adjusted` | `boolean` | Guided-research honesty block: `true` once any gate patch (Gate 1 niche context, or Gate 2 audience/pain scope) was applied by the user during this run via chat. Stamped by `apply_gate_patch` (`flows/gate_patches.py`). Defaults to `false`. |
 | `user_adjustments` | `string[]` | Compact, human-readable notes describing which gate(s) were user-adjusted and what changed (e.g. excluded/pinned pain titles, excluded segments, segment emphasis, primary segment override). Derived from `user_pain_scope`/`user_audience_scope`; a Gate-1-only edit degrades to a generic note since G1 patches overwrite `niche_context` in place with no before/after record. Empty when `user_adjusted` is `false`. |
@@ -439,8 +440,8 @@ scale (recalibrated from the legacy pad-to-12 scale of 8/5/3).
 | `evaluation_source_message_id` | `string \| null` | Durable analyst-ledger proposal message used to reconcile submitted and settled states |
 | `proposed_title` | `string \| null` | Exact Concept Forge title selected by the owner before evaluation |
 | `synthesis_evaluation` | `object \| null` | Full exact option, including changed axes, assumption reasoning, retained/recheck evidence, disqualifiers, suggested test, parent revisions, and snapshot hashes |
-| `generation_operation_id` | `uuid \| null` | Dispatch identity for an appended additional batch |
-| `generation_batch_ordinal` | `integer \| null` | One-based additional-batch ordinal |
+| `generation_operation_id` | `uuid \| null` | Dispatch identity for an appended additional batch or seed; `null` on every first-run idea |
+| `generation_batch_ordinal` | `integer \| null` | One-based append-only operation ordinal; `null` on every first-run idea. Worker-stamped only (`run_regenerate_ideas` / `run_seed_idea`) — the crew's pool contract resets it first, because generator LLMs otherwise fabricate `1` and the UI reads the pool's max ordinal as "new in this batch" |
 | `idea` | `SolutionPreview \| null` | Full read-only evaluated payload when available, allowing a generated or submitted concept to remain inspectable after demotion; absent on older findings that cannot be recovered from the checkpoint |
 
 Populated by the post-parity demotion/backfill block in `unified_solution_crew.py`. In the
@@ -1680,10 +1681,13 @@ payload. The frontend renders it as a neutral "generation lens" chip
 
 Exact Concept Forge evaluations additionally carry `evaluation_id`,
 `evaluation_source_message_id`, `proposed_title`, and `synthesis_evaluation` on both accepted
-candidate payloads and demoted `RuledOutFinding` records. Additional batches carry
-`generation_operation_id` and `generation_batch_ordinal`. These fields are declared in the
-Pydantic model and carried into final-report alternatives so checkpoint or report validation
-cannot discard operation provenance.
+candidate payloads and demoted `RuledOutFinding` records. Additional batches — and user seeds,
+which are their own append-only paid operation — carry `generation_operation_id` and
+`generation_batch_ordinal`. These fields are declared in the Pydantic model and carried into
+final-report alternatives so checkpoint or report validation cannot discard operation
+provenance. They are stamped ONLY by the worker, after the crew's pool contract resets them:
+they sit on `BaseSolutionIdea`, the model generator LLMs emit through structured output, so a
+first-run pool would otherwise ship a fabricated ordinal and render a "new in this batch" chip.
 
 Every selectable candidate also carries `idea_id`, `idea_revision`, `identity_origin`, and
 `identity_operation_id`. These values are code-owned: the pipeline stamps them before the
@@ -1943,10 +1947,20 @@ report (computed once, read from state). Null when there are no pains and no ide
 | 55 | `generated_at` | `string` |
 | 56 | `market_reality` | `object \| null` |
 | 57 | `idea_portfolio_summary` | `string \| null` |
+| 58 | `scoring_version` | `string \| null` |
 
 ---
 
 ## Version History
+
+- **v2.18** - Scoring-version stamp (2026-08-02)
+  - New top-level `scoring_version` (`string | null`) — the version of the scoring formulas
+    that produced the report's scores (`report_generator.SCORING_VERSION`, currently
+    `"2026.08"`). Bumped whenever scoring formulas change (critic rubric, caps/floors,
+    verdict thresholds, composite weights). Reports generated before the cutover carry
+    `null`/no field; scores from different scoring versions are not comparable. Mirrored as
+    optional `scoring_version?: string` in `frontend/src/lib/types/report.ts` (a pre-cutover
+    annotation banner is deferred; copy staged in `docs/drafts/help-scoring-updates.md`).
 
 - **v2.17** - Red-team surfacing + pivot honesty + payability de-dup (2026-07-30)
   - **Alternatives**: `alternative_solutions[*]` gain `red_team_verdict`

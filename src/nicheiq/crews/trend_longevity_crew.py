@@ -180,7 +180,9 @@ class TrendLongevityCrew:
         # Derive volume/count from SEO report when keyword_validation is None
         if keyword_validation:
             total_kw_volume = keyword_validation.total_volume or 0
-            validated_kw_count = keyword_validation.validated_count or 0
+            # graded_keyword_count, not validated_count (pre-2026-08 checkpoints stored
+            # the unfiltered expansion pool size there).
+            validated_kw_count = keyword_validation.graded_keyword_count
         elif seo_strategy_report:
             total_kw_volume = seo_strategy_report.total_monthly_volume or 0
             validated_kw_count = seo_strategy_report.total_keywords_analyzed or 0
@@ -317,7 +319,7 @@ class TrendLongevityCrew:
         # Derive volume/count from best available source
         if keyword_validation:
             total_volume = keyword_validation.total_volume or 0
-            validated_count = keyword_validation.validated_count or 0
+            validated_count = keyword_validation.graded_keyword_count
             demand_signal = keyword_validation.demand_signal or "unknown"
             top_kw_lines = []
             if keyword_validation.top_keywords:

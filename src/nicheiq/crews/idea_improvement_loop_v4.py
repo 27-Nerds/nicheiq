@@ -38,7 +38,6 @@ from ..utils.public_data_sources import (
 )
 from ..utils.seed_fidelity import is_seed_faithful
 from .idea_improvement_loop import (
-    _ONPAIN_SLACK,
     CellGrounding,
     _carry_forward_fields,
     _idea_to_text,
@@ -47,6 +46,11 @@ from .idea_improvement_loop import (
 _DEFAULT_ROUNDS = 2
 _HARD_CAP = 3
 _QUALITY_BAR = 0.72
+# S3.3 mentor redirect: on-pain drift slack, defined HERE (do not reuse/mutate the v3 module's
+# _ONPAIN_SLACK). Widened 0.05→0.10 because mf is no longer mentor-managed — the boolean
+# `on_anchor_pain` is the primary drift detector and the slack is only a numeric backstop.
+# Revert to 0.05 if the A/B shows off-pain leakage.
+_ONPAIN_SLACK_V4 = 0.10
 # Soft-only composite: no data/technical feasibility (those are verified, not judged-in-the-loop).
 _WEIGHTS = {"market_fit": 0.45, "novelty": 0.30, "clarity": 0.25}
 # P1b: angle-aware loop weights (behind enable_direction_aware_eval) — a distribution_seo idea is
@@ -88,6 +92,13 @@ def _relocate_needs_verify_flags(idea) -> None:
     idea.data_acquisition_notes = note
 
 
+#: Display budget for the persisted bear case (`refine_binding_constraint`). Matches the
+#: 400-char cap `utils/idea_theses._fatal_assumptions` re-applies where the same string is
+#: rendered, so the storage cap is never the binding one — a directive is 2-3 sentences and
+#: should arrive whole rather than as a severed clause.
+MAX_BEAR_CASE_LEN = 400
+
+
 class IdeaCritiqueV4(BaseModel):
     """One reviewer turn — SOFT dimensions only (no data/API judgement; that's verified separately)."""
     market_fit: float = Field(..., ge=0, le=1, description="Does it solve the SOURCE pain for the TARGET audience?")
@@ -97,9 +108,17 @@ class IdeaCritiqueV4(BaseModel):
     # pages? Judge the shape, NEVER search demand/volume (the loop has no keyword data). Default 0.5 so the
     # legacy/flag-off path (reviewer not asked for it) is unaffected.
     seo_surface: float = Field(0.5, ge=0, le=1, description="Structural: does the idea shape yield an enumerable corpus of many indexable pages? SHAPE only, NOT search demand/volume.")
-    binding_constraint: str = Field(..., description="The ONE lowest, most-actionable dimension")
+    # S3.3: modal-case-anchored drift detector — the PRIMARY on-pain signal (the mf-slack check is
+    # only a numeric backstop now that market_fit is no longer mentor-managed).
+    on_anchor_pain: bool = Field(..., description=(
+        "True only if the idea, as specced, still solves the SOURCE pain's modal (most common) "
+        "concrete case for this audience. False on drift to a different problem OR a modal-case miss."))
+    binding_constraint: Literal["market_fit", "novelty", "clarity", "seo_surface"] = Field(
+        ..., description="The ONE dimension your directive targets (see the CHOOSING rules)")
     directive: str = Field(..., description="A specific, actionable fix for the binding constraint — staying ON the source pain")
-    meets_bar: bool = Field(..., description="True only if strong on all scored dimensions")
+    meets_bar: bool = Field(..., description=(
+        "CONVERGENCE, not perfection: True only when another round would NOT materially improve the "
+        "idea — my only remaining directive would repeat or merely polish an earlier one."))
     rationale: str = Field("", description="≤200 chars grounding the call")
 
     def composite(self, angle: str | None = None) -> float:
@@ -108,6 +127,7 @@ class IdeaCritiqueV4(BaseModel):
         return round(sum(wt * getattr(self, k) for k, wt in w.items()), 4)
 
 
+# TODO(dead): self_sourced is judged but never persisted — see docs/FLOW_WEAKNESS_FIX_PLAN_2026-08.md
 class DataRouteVerdict(BaseModel):
     """Separate, tool-grounded resolution of ONE data claim (never judged inside the loop).
 
@@ -223,20 +243,31 @@ def _reviewer_system(g: CellGrounding) -> dict:
         "You are a CREATIVE PRODUCT MENTOR for a solo developer — not a grader. Your job is to GUIDE the "
         "ideator toward a sharper, more ORIGINAL, genuinely BUILDABLE product that nails the source pain "
         "below. Every turn you give ONE concrete creative direction that moves the idea forward, plus "
-        "scores so we can track progress.\n\n"
-        "Score three dimensions 0-1 (for tracking):\n"
+        "scores so we can track progress. Ignore the idea's own SELF-SCORES line — judge ONLY against "
+        "the grounded evidence below.\n\n"
+        "Score the dimensions 0-1 (for tracking):\n"
         "• market_fit — does it solve THE SOURCE PAIN BELOW for THIS audience? A drift to a DIFFERENT "
-        "problem scores ≤ 0.3, however clever.\n"
-        "• MODAL CASE — State in one sentence the most COMMON concrete real-world instance of "
-        "the source pain (the modal case, not an edge case). If the mechanism as specced would "
-        "NOT handle that modal instance, say so explicitly in your rationale and score market_fit "
-        "≤ 0.4 — flag it NEEDS-VERIFY: modal-case. (Live: an exact-row duplicate-grant matcher "
-        "misses the modal form of the pain, which is PARTIAL over-allocation across funders.)\n"
-        "• novelty — a genuinely non-obvious angle/mechanism vs the named competitors (not relabeling).\n"
-        "• clarity — coherent, specific, complete spec.\n\n"
+        "problem scores ≤ 0.3, however clever. MODAL-CASE CHECK: state in one sentence the most COMMON "
+        "concrete real-world instance of the source pain (the modal case, not an edge case); if the "
+        "mechanism as specced would NOT handle that modal instance, say so explicitly in your rationale, "
+        "set on_anchor_pain=false, and score market_fit ≤ 0.4.\n"
+        "• novelty — a genuinely non-obvious angle/mechanism vs the named competitors. MECHANISM DELTA: "
+        "before scoring novelty higher than your previous turn, identify the mechanism change that earns "
+        "it — if only the pitch changed, hold novelty flat and write 'relabeling' in your rationale.\n"
+        "• clarity — coherent, specific, complete spec.\n"
+        "• seo_surface — score it only when a DIRECTION block above briefs it; otherwise leave the "
+        "default.\n"
+        "Also set `on_anchor_pain`: true only if the idea, as specced, still solves the source pain's "
+        "modal case for this audience; false on drift or a modal-case miss.\n\n"
         "Then give the GUIDANCE (the part that matters most) as `directive`: a SPECIFIC, imaginative next "
         "move — a sharper mechanism, an unexpected recombination, a clever data angle, a tighter wedge "
         "into the pain. Push for creativity AND doability together.\n"
+        "CHOOSING binding_constraint: the pain, the audience, and their demand are FIXED INPUTS to this "
+        "exercise — never pick market_fit because 'the pain feels small' or 'demand is unproven'; the "
+        "ideator cannot change the pain. Pick market_fit ONLY to RE-ANCHOR — the idea has drifted off "
+        "the pain or misses its modal case — and then your directive must re-aim the EXISTING mechanism "
+        "back onto the pain, not invent a new product. Otherwise, when the idea is on-pain and clearly "
+        "specced, default to novelty — that is where a directive can still move the idea.\n"
         "HARD RULES for your guidance:\n"
         "  – Stay ON the source pain and KEEP the idea's working core. Creativity means a sharper, smaller, "
         "    more surprising idea — NOT bolting on more features, platforms, or 'pro/enterprise' scope "
@@ -245,9 +276,11 @@ def _reviewer_system(g: CellGrounding) -> dict:
         "    user-submitted data, computed/static values). You do NOT verify specific APIs — that's done "
         "    separately — but you DO push the ideator away from data that obviously can't be obtained and "
         "    toward an angle that needs only gettable data. Treat `[NEEDS-VERIFY: ...]` tags as honest, not "
-        "    a flaw.\n"
-        "  – Name the single binding_constraint (lowest dimension) so the ideator knows the priority.\n"
-        "meets_bar=true only when it's original, clearly on-pain, AND plausibly buildable on gettable data.\n\n"
+        "    a flaw — but price each one as a COST the novelty gain must justify: never push a directive "
+        "    whose main effect is new unverified data claims.\n"
+        "meets_bar is CONVERGENCE, not perfection: set meets_bar=true when another round would NOT "
+        "materially improve the idea — when your only remaining directive would repeat an earlier one or "
+        "merely polish.\n\n"
         "==== GROUNDED EVIDENCE ====\n" + g.as_block()
     )}
 
@@ -261,7 +294,9 @@ def _ideator_system(g: CellGrounding) -> dict:
         "mentor's creative direction and running with it. HARD RULES:\n"
         "(1) Keep solving the SAME source pain, and KEEP the idea's working core — evolve it into something "
         "sharper and more original, don't pivot to a different problem and don't 'professionalize' it by "
-        "piling on features/platforms/enterprise scope. A smaller, more surprising idea beats a bigger one.\n"
+        "piling on features/platforms/enterprise scope. A smaller, more surprising idea beats a bigger one. "
+        "When the mentor names novelty as the binding constraint, change what the product DOES — a new "
+        "name or repositioned pitch for the same mechanism is not a revision.\n"
         "(2) DATA HONESTY: you are NOT rewarded for naming an official API. Prefer angles that need only "
         "gettable data (public datasets, official APIs, first-party / user-submitted data, computed/static "
         "values). For ANY data route you are not CERTAIN a public/official source exposes, write the flag "
@@ -284,9 +319,12 @@ def _review(idea, thread, *, invoke, model, effort):
         "Review on the scored dimensions. Name the binding constraint + one directive.\n\n"
         + _idea_to_text(idea)})
     crit, usage = invoke(thread, IdeaCritiqueV4, temperature=0.2, model_name=model, reasoning_effort=effort)
+    # S3.3 echo fix: retain on_anchor_pain, binding, directive AND rationale — a compressed echo
+    # destroys the judge's memory of its own reasoning, making the anti-relabel rule unenforceable.
     thread.append({"role": "assistant", "content":
-        f"mf={crit.market_fit} nov={crit.novelty} clarity={crit.clarity}; "
-        f"binding={crit.binding_constraint}; directive={crit.directive}"})
+        f"mf={crit.market_fit} nov={crit.novelty} clarity={crit.clarity} "
+        f"on_anchor_pain={crit.on_anchor_pain}; binding={crit.binding_constraint}; "
+        f"directive={crit.directive}; rationale={crit.rationale}"})
     return crit, usage
 
 
@@ -512,6 +550,7 @@ def tournament_refine_cell_v4(
     ideator_thread = [_ideator_system(grounding), {"role": "assistant", "content": _idea_to_text(current)}]
     reviewer_thread = [_reviewer_system(grounding)]
     best, best_score, start_mf = current, -1.0, None
+    best_crit = None  # critique of `best` — PR9 stamps this onto the idea (refine_binding_constraint)
 
     for r in range(max(1, rounds)):
         try:
@@ -522,13 +561,14 @@ def tournament_refine_cell_v4(
         score = crit.composite(grounding.winning_angle)  # P1b: angle-weighted (flag-gated)
         if start_mf is None:
             start_mf = crit.market_fit
-        on_pain = crit.market_fit >= start_mf - _ONPAIN_SLACK
+        # S3.3 gate: boolean modal-case anchor is PRIMARY; the widened mf slack is a numeric backstop.
+        on_pain = crit.on_anchor_pain and crit.market_fit >= start_mf - _ONPAIN_SLACK_V4
         if score > best_score and on_pain:
-            best, best_score = current, score
+            best, best_score, best_crit = current, score, crit
         logger.info(f"[v4] '{getattr(current,'solution_name','?')}' r{r}: comp={score:.2f} mf={crit.market_fit:.2f} "
                     f"on_pain={on_pain} binding={crit.binding_constraint} meets_bar={crit.meets_bar}")
         if (crit.meets_bar or score >= bar) and on_pain:
-            best, best_score = current, max(best_score, score); break
+            best, best_score, best_crit = current, max(best_score, score), crit; break
         if r == max(1, rounds) - 1:
             break
         try:
@@ -551,4 +591,16 @@ def tournament_refine_cell_v4(
 
     # SEPARATE verification stage (decoupled from the loop) — resolves the data routes the loop ignored.
     verify_data_routes(best, grounding, search=search, invoke=invoke)
+    # S4.2: persist the judge's bear case on the WINNING revision. The DIRECTIVE alone is the
+    # concern; `binding_constraint` is a bare internal Literal ("novelty", "seo_surface") that
+    # was being prefixed onto the user-facing string and rendered verbatim (live audit 2026-08),
+    # so it stays out of the text. Cleaned through `truncate_for_display`: markdown emphasis the
+    # judge sometimes emits ("*structurally*") is stripped, and the cap lands on a sentence — the
+    # old bare `[:200]` slice cut mid-clause with no ellipsis. Follows the `critic_concern`
+    # redaction precedent: ships in the payload, rendered only in the full-detail card. Never a
+    # score input.
+    if best_crit is not None:
+        from ..utils.calibration_notes import truncate_for_display
+        best.refine_binding_constraint = truncate_for_display(
+            best_crit.directive, MAX_BEAR_CASE_LEN) or None
     return best

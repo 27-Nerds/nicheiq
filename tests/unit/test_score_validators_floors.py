@@ -153,15 +153,21 @@ class TestRedTeamFloor:
             "Go", "Low", None, red_team_verdict="weakened",
             red_team_caveats=["Krock.io ships this identically"])
         assert v == "Conditional" and r == "Medium"
-        assert ctx and "weakened" in ctx and "Krock.io" in ctx
-        assert c and "weakened" in c
+        # The finding must reach the reader; the ENUM must not. This block is the go/no-go
+        # prose — the most prominent text in the report — and it read "an adversarial
+        # evidence probe weakened this idea" until 2026-08-03.
+        assert ctx and "decision-critical objection" in ctx and "Krock.io" in ctx
+        assert "weakened" not in ctx.lower()
+        assert c and "decision-critical objection" in c
+        assert "weakened" not in c.lower()
 
     def test_killed_floors_risk_to_high(self):
         v, r, c, ctx = self._t().apply_red_team_downgrade(
             "Conditional", "Medium", None, red_team_verdict="killed",
             red_team_caveats=["deterministic COA checks cannot detect fabricated certificates"])
         assert v == "Conditional" and r == "High"
-        assert ctx and "killed" in ctx
+        assert ctx and "could not find evidence for this idea's premise" in ctx
+        assert "killed" not in ctx.lower()
         assert c and "refuted" in c
 
     def test_survives_and_none_abstain(self):
@@ -192,3 +198,51 @@ class TestRedTeamFloor:
         v = GoNoGoVerdict(verdict="Conditional", rationale="r", risk_level="High",
                           red_team_context="Red-team review: …")
         assert v.red_team_context.startswith("Red-team review")
+
+
+class TestGeographicPrioritiesMayBeEmpty:
+    """Most niches have no geographic signal, and forcing an entry guaranteed fabrication.
+
+    The field was `min_length=1` with `Examples: ['Spain', 'Portugal', 'France']` in its
+    description — mandatory, plus the only concrete strings in scope — so runs shipped a
+    Spain-first go-to-market plan for US-only niches. Removing the example moved the model
+    to an honest sentinel ("Not geographically differentiated..."), which then rendered AS a
+    ranked market (live run 8f35ea6b). Empty is the correct answer; the frontend guards on
+    `.length > 0` and omits the section.
+    """
+
+    def _payload(self, **over):
+        base = {
+            "geographic_priorities": [],
+            "feature_priorities": [{
+                "feature_name": "Lot intake check", "priority": 1,
+                "keyword_support": 0.5, "rationale": "traced to validated keywords",
+            }],
+            "strategic_insights": ["insight one", "insight two", "insight three"],
+        }
+        base.update(over)
+        return base
+
+    def test_empty_list_is_accepted(self):
+        from nicheiq.models.solution_refinement import SolutionRefinement
+        r = SolutionRefinement.model_validate(self._payload())
+        assert r.geographic_priorities == []
+
+    def test_field_is_not_required(self):
+        from nicheiq.models.solution_refinement import SolutionRefinement
+        f = SolutionRefinement.model_fields["geographic_priorities"]
+        assert not f.is_required()
+        assert f.get_default(call_default_factory=True) == []
+
+    def test_description_names_no_country(self):
+        """A worked example here is a fabrication anchor — the model copies it verbatim."""
+        from nicheiq.models.solution_refinement import SolutionRefinement
+        desc = SolutionRefinement.model_fields["geographic_priorities"].description or ""
+        for country in ("Spain", "Portugal", "France", "Germany", "United Kingdom"):
+            assert country not in desc, f"{country!r} is an anchor the model will copy"
+
+    def test_real_markets_still_accepted(self):
+        from nicheiq.models.solution_refinement import SolutionRefinement
+        r = SolutionRefinement.model_validate(
+            self._payload(geographic_priorities=["United States", "Canada"]))
+        assert r.geographic_priorities == ["United States", "Canada"]
