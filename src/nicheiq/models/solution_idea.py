@@ -3,7 +3,7 @@ Pydantic models for solution ideas (Stage 7).
 """
 
 
-from typing import Literal, Optional
+from typing import Literal, Optional, get_args, get_origin
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -184,6 +184,29 @@ StrengthTag = Literal[
 UsageCadenceTag = Literal["continuous", "periodic", "episodic", "one-shot"]
 
 
+def _tag_vocabulary(model: type[BaseModel], field_name: str) -> Optional[frozenset]:
+    """Allowed values for a closed-vocabulary tag field, read off its own annotation.
+
+    Derived from the model rather than hand-listed so the tolerant validators below
+    can never drift out of sync with the Literal aliases above — adding a value to a
+    Literal is enough, nothing else to update.
+    """
+    field = model.model_fields.get(field_name)
+    if field is None or field.annotation is None:
+        return None
+    found: set = set()
+
+    def _walk(tp) -> None:
+        if get_origin(tp) is Literal:
+            found.update(get_args(tp))
+            return
+        for arg in get_args(tp):
+            _walk(arg)
+
+    _walk(field.annotation)
+    return frozenset(found) or None
+
+
 class IdeaTags(BaseModel):
     """
     Closed-vocabulary filter facets for an idea, displayed as chips (now) and used
@@ -225,6 +248,44 @@ class IdeaTags(BaseModel):
 
     # LLM's one-sentence justification of the non-obvious (semantic) tag calls — "Why these tags".
     rationale: Optional[str] = Field(default=None)
+
+    # A bad tag must degrade THAT TAG, never the whole idea. These facets are display
+    # and filter metadata hanging off an ~80-field BaseSolutionIdea, but because they
+    # are closed Literals a single out-of-vocabulary string used to fail the entire
+    # parse — and callers treat that as "refinement failed", substituting a stub idea.
+    # Observed in prod 2026-08-04: the LLM put "integrations" (a real GrowthChannelTag)
+    # into `strengths`, two same-shaped hyphenated list fields in one model, and lost a
+    # complete refinement of 'CancelProofLedger' to a stub over it.
+    # Doubly wasteful for the code-derived facets (strengths, primary_strength,
+    # build_complexity, novelty_level): `utils.idea_tags.derive_tag_facets()` recomputes
+    # and overwrites them from the idea's scores, so the LLM's value never survives
+    # anyway. Drop unknown list entries, null unknown scalars, and let the LLM's
+    # contribution be the semantic facets it is actually asked for.
+    @field_validator(
+        'growth_channels', 'risk_flags', 'strengths', mode='before'
+    )
+    @classmethod
+    def _drop_unknown_tags(cls, v, info):
+        if not isinstance(v, list):
+            return v
+        allowed = _tag_vocabulary(cls, info.field_name)
+        if allowed is None:
+            return v
+        return [x for x in v if x in allowed]
+
+    @field_validator(
+        'project_type', 'data_access', 'target_market', 'monetization',
+        'monetization_secondary', 'usage_cadence', 'build_complexity',
+        'novelty_level', 'primary_strength', mode='before',
+    )
+    @classmethod
+    def _null_unknown_tag(cls, v, info):
+        if v is None:
+            return v
+        allowed = _tag_vocabulary(cls, info.field_name)
+        if allowed is None or v in allowed:
+            return v
+        return None
 
 
 class BaseSolutionIdea(BaseModel):

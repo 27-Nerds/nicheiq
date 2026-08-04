@@ -123,3 +123,42 @@ def test_alternative_tags_follow_the_authoritative_scores():
     assert alternative.tags.primary_strength == "solo-friendly"
     assert alternative.tags.target_market == "b2b"
     assert alternative.tags.monetization == "subscription"
+
+
+def test_out_of_vocabulary_tag_degrades_that_tag_not_the_whole_idea():
+    """A bad tag value must not fail the parse of the ~80-field idea around it.
+
+    Regression for a prod failure on 2026-08-04: the LLM emitted "integrations" —
+    a real GrowthChannelTag — inside `strengths`, two same-shaped hyphenated list
+    fields on the same model. The Literal rejected it, the whole BaseSolutionIdea
+    parse failed, and the caller substituted a stub for a full idea refinement.
+    Tags are display/filter metadata; they degrade individually now.
+    """
+    tags = IdeaTags(
+        strengths=["market-fit", "seo-power", "integrations"],
+        growth_channels=["content", "not-a-real-channel"],
+        build_complexity="enormous",
+        monetization="subscription",
+    )
+
+    # Unknown list entries dropped, valid ones kept and ordered as given.
+    assert tags.strengths == ["market-fit", "seo-power"]
+    assert tags.growth_channels == ["content"]
+    # Unknown scalar nulled rather than raising.
+    assert tags.build_complexity is None
+    # Valid values are untouched.
+    assert tags.monetization == "subscription"
+
+
+def test_tag_vocabulary_is_read_from_the_literal_not_hand_listed():
+    """The tolerant validators must not drift from the Literal aliases.
+
+    Vocabulary is derived from each field's own annotation, so adding a value to a
+    Literal is sufficient — there is no second list to keep in sync.
+    """
+    from nicheiq.models.solution_idea import GrowthChannelTag, _tag_vocabulary
+    from typing import get_args
+
+    assert _tag_vocabulary(IdeaTags, "growth_channels") == frozenset(get_args(GrowthChannelTag))
+    # Optional[...] scalars unwrap to the same vocabulary as their list counterparts.
+    assert _tag_vocabulary(IdeaTags, "primary_strength") == _tag_vocabulary(IdeaTags, "strengths")
