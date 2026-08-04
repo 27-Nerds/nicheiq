@@ -67,7 +67,7 @@ class QuoteSearchTool(BaseTool):
             # Results are TypedDict with: id, content, metadata, score
             results = self._knowledge.query(
                 query=[query.strip()],
-                results_limit=25,
+                results_limit=100,
                 # 0.60 (the chromadb default), widened from 0.75. The 0.75 cutoff was
                 # added as the ONLY quality control back when quotes were topic-matched
                 # with no validation — but it starves abstractly-phrased pains (e.g.
@@ -76,6 +76,12 @@ class QuoteSearchTool(BaseTool):
                 # despite 14 relevant threads in-corpus). Quality control now lives in
                 # the relevance floor + per-post cap + stance gate downstream, so we cast
                 # a wider net here and let those enforce precision.
+                #
+                # NOTE (2026-08-04): this threshold is currently INERT and is kept only as
+                # a backstop. Sweeping it 0.60 -> 0.30 against the recall oracle changed
+                # nothing at any results_limit: the top-N results returned already clear
+                # 0.60, so results_limit — not this value — is what bounds retrieval.
+                # Do not "tune" this expecting an effect; raise results_limit instead.
                 score_threshold=0.60,
             )
 

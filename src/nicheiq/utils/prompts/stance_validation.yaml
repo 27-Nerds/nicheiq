@@ -12,15 +12,33 @@ template: |
   {claim}
 
   Classify each quote as exactly one of:
-  - SUPPORTS: the speaker experiences, reports, or describes THIS problem (a
-    complaint, side effect, failure, frustration, or first-hand account of it).
-  - NEUTRAL: on the same topic but states no instance of this problem (dosing
-    how-to, neutral description, a question, general discussion).
-  - CONTRADICTS: the quote is positive about the thing, denies the problem, or
+  - SUPPORTS: the speaker is experiencing, reporting, or directly observing THIS
+    problem — a first-hand account, a complaint, a failure, a cost they absorbed, a
+    frustration. Someone recounting it happening to them or to a business they run
+    or work in.
+  - NEUTRAL: on the same topic but not an instance of this problem — explaining how
+    the domain works, giving advice to someone else, asking a question, stating
+    general facts, or describing the problem in the abstract without anyone
+    experiencing it.
+  - CONTRADICTS: the quote denies the problem, reports the thing working fine, or
     describes a DIFFERENT problem than the one in the claim.
 
-  Be strict. A quote that praises the product, reports success, or is about a
-  different symptom than the claim is NOT support — mark it CONTRADICTS or NEUTRAL.
+  THE MOST COMMON ERROR IS MARKING EXPLANATION AS SUPPORT. Much of this corpus is
+  advice and teaching, not complaint. A sentence can name every term in the claim
+  and still be NEUTRAL. Ask: is a specific person telling us this happened to them?
+  If no one is, it is NEUTRAL.
+
+  - "Traditional cupping is primarily geared towards green coffee purchasing."
+    -> NEUTRAL. Explains how a practice works. Nobody is harmed here.
+  - "I've never made more than minimum wage owning my own coffee business."
+    -> SUPPORTS a claim about unprofitability. First-hand, lived, costly.
+
+  A first-hand account still counts as SUPPORTS when it appears mid-way through an
+  otherwise instructional answer — people admit real problems while giving advice.
+  Judge the sentence, not the tone of the thread around it.
+
+  Be strict. A quote that reports success, or is about a different problem than the
+  claim, is NOT support — mark it CONTRADICTS or NEUTRAL.
 
   Quotes to classify ({quote_count} total, 1-based index):
   {quotes_text}
@@ -29,7 +47,6 @@ template: |
   objects, each with:
   - index: the 1-based number of the quote
   - stance: "SUPPORTS" | "NEUTRAL" | "CONTRADICTS"
-  - reason: brief explanation (one short clause)
 
   <verification>
   Before returning, verify:

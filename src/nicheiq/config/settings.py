@@ -223,11 +223,54 @@ class Settings(BaseSettings):
         )
     )
     stance_validation_llm: str = Field(
-        default="openrouter/inception/mercury-2-20260304:nitro",
+        default="openrouter/deepseek/deepseek-v4-flash:nitro",
         description=(
             "Model for pain-point quote stance verification (does a retrieved quote "
-            "genuinely express the pain). Cheap classifier; mercury-2 6/6 @ ~0.7s with "
-            "perfect stance quality. Was gpt-4o-mini."
+            "genuinely express the pain). Was mercury-2, whose selection rested on a "
+            "6-example check called 'perfect stance quality' — that claim did NOT survive "
+            "measurement. A/B over the 123-case labeled oracle "
+            "(tests/fixtures/quote_stance_precision_v1.json, scripts/stance_prompt_ab.py), "
+            "combined P/R/F1 and coffee-niche F1: mercury-2 .52/.80/.63 coffee .39 | "
+            "grok-4.3 .66/.60/.63 coffee .45 | gpt-5.6-terra .78/.60/.68 coffee .76 | "
+            "gpt-5.6-luna .67/.74/.71 coffee .68 | deepseek-v4-flash .69/.70/.69 coffee .67. "
+            "deepseek CHOSEN FOR COST: combined F1 essentially ties terra at a fraction of "
+            "the price. The tradeoff is real and deliberate — coffee precision .54 vs terra's "
+            ".80, partly offset by better coffee recall (.86 vs .73). Repoint to gpt-5.6-terra "
+            "if evidence precision matters more than gate spend. "
+            "This is NOT a cheap-classifier slot in the old sense: the gate is the primary "
+            "evidence selector, and the stance_validation prompt's explanation-vs-first-hand "
+            "instruction only pays off in a model that can follow it (the rewrite moved terra "
+            "+23pt precision, deepseek +12, luna +9, mercury +5, grok 0 — do NOT use grok here). "
+            "Runs at reasoning_effort='none' (deepseek requires it). One call per pain, "
+            "~18-21 calls per run. "
+            "Do NOT repoint thread_validation_llm to match; that is a different task "
+            "mercury-2 genuinely won."
+        ),
+    )
+    enable_firstperson_queries: bool = Field(
+        default=True,
+        description=(
+            "Rewrite each pain into first-person retrieval queries before quote search, "
+            "instead of embedding the analyst-voice title/description. Queries are embedded "
+            "against real forum text, so register matters: measured on the 58-passage recall "
+            "oracle (scripts/query_variant_sweep.py), analyst voice retrieves 70% of "
+            "known-missing evidence and first-person retrieves 84% at the SAME query count. "
+            "A duplicate-query control gained +0pp, so this is voice, not volume. "
+            "First-person REPLACES analyst voice — mixing both scored worse end-to-end than "
+            "first-person alone, because analyst queries flood the pool with near-duplicates "
+            "that outrank real evidence in the combined_score ranking. "
+            "VALIDATED ON ONE NICHE (coffee roasting) — the recall oracle is coffee-only. "
+            "Set false to revert to analyst-voice queries. Fail-soft either way: if variant "
+            "generation errors, retrieval falls back to analyst voice per pain."
+        ),
+    )
+    query_variant_llm: str = Field(
+        default="openrouter/deepseek/deepseek-v4-flash:nitro",
+        description=(
+            "Model that rewrites pains into first-person retrieval queries "
+            "(enable_firstperson_queries). ONE batched call per run covering all pains, so "
+            "cost is negligible. Runs at reasoning_effort='none' (deepseek requires it). "
+            "Output is never shown to a user — it exists only to be embedded."
         ),
     )
     brainstorm_llm: str = Field(

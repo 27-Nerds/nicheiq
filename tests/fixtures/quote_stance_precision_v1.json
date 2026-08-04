@@ -1,0 +1,1001 @@
+{
+  "description": "Stance-gate label precision: 123 stage_3 representative_quotes from two runs (coffee roasters, live music venues) hand-labeled SUPPORTS/TOPICAL/OFFTOPIC/PROMO against each pain's own title+description; non-SUPPORTS quotes carry a one-line reason.",
+  "created": "2026-08-04",
+  "source_runs": {
+    "coffee": "checkpoint_small_batch_coffee_roasters_managing_green_coffee_8f35ea6b-0321-41fd-b747-e4d76605f50f_20260803_163640",
+    "music": "checkpoint_independent_live_music_venues_coordinating_artist_8ef396eb-c63d-4641-889e-1db6dfc9dfde_20260802_182518"
+  },
+  "totals": {
+    "quotes": 123,
+    "supports": 54,
+    "topical": 63,
+    "offtopic": 4,
+    "promo": 2
+  },
+  "cases": [
+    {
+      "run": "coffee",
+      "pain_title": "Cannot maintain café and subscription supply when spot coffee disappears",
+      "pain_description": "Café-based roasters and subscription businesses need dependable recurring supply, but spot coffee can become unavailable or expensive. This blocks reliable café roast schedules and recurring shipments when the same bean is no longer available.",
+      "quote": "Yeah I had spent a couple grand on green coffee from them over a couple years and went elsewhere after that debacle.",
+      "label": "TOPICAL",
+      "reason": "Supplier-relationship complaint, not a supply-continuity/substitution failure."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot maintain café and subscription supply when spot coffee disappears",
+      "pain_description": "Café-based roasters and subscription businesses need dependable recurring supply, but spot coffee can become unavailable or expensive. This blocks reliable café roast schedules and recurring shipments when the same bean is no longer available.",
+      "quote": "But because of the poor state of the spot market it’s a bad time to try to find a coffee for the gap.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot reject defective green coffee reliably before committing to a lot",
+      "pain_description": "Green coffee buyers and quality-control staff struggle to identify whether bad beans, moldy sour insect damage, or defects present originated in the crop, transport, storage, or supplier selection. A lot may become unusable before roasting.",
+      "quote": "Will just touch on green freshness - temperature matters, how they’re stored matters, what happened before they arrived matters but fundamentally you don’t want to be in the habit of punting coffee which is over a year past harvest, sometimes you get lucky but mostly it’ll be past its best.",
+      "label": "TOPICAL",
+      "reason": "Generic freshness/storage advice, not about rejecting a defective lot before commit."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot reject defective green coffee reliably before committing to a lot",
+      "pain_description": "Green coffee buyers and quality-control staff struggle to identify whether bad beans, moldy sour insect damage, or defects present originated in the crop, transport, storage, or supplier selection. A lot may become unusable before roasting.",
+      "quote": "In specialty we often have lot separation for different farms, processes or even pick dates.",
+      "label": "TOPICAL",
+      "reason": "Neutral explanation of lot-separation practice, not defect rejection."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot verify storage and water activity before green coffee production",
+      "pain_description": "Roasters cannot consistently confirm that green coffee was stored properly or that an old crop retained stable moisture. GrainPro bag condition and water activity are difficult to connect to later roast performance.",
+      "quote": "Will just touch on green freshness - temperature matters, how they’re stored matters, what happened before they arrived matters but fundamentally you don’t want to be in the habit of punting coffee which is over a year past harvest, sometimes you get lucky but mostly it’ll be past its best.",
+      "label": "TOPICAL",
+      "reason": "Generic advice, not a person unable to verify storage/water activity."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot verify storage and water activity before green coffee production",
+      "pain_description": "Roasters cannot consistently confirm that green coffee was stored properly or that an old crop retained stable moisture. GrainPro bag condition and water activity are difficult to connect to later roast performance.",
+      "quote": "Unfortunately the coffee supply chain is a bit of a mess right now so when really good coffees are available I suggest you get as much as you can use and store well for about a year, really good coffees last at least a year coffee that wasn't so good to begin with may have a sweet spot of a few months.",
+      "label": "TOPICAL",
+      "reason": "Advice on stockpiling/aging, not verification failure."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot transfer roast curves from sample equipment to production machines",
+      "pain_description": "Roasters struggle to reproduce a target roast when moving from sample equipment to production equipment or between different machines. The same roast curves and drop temperatures do not reliably produce the same color or flavor.",
+      "quote": "But recording the roast profile and entering your fan, heat, and drum speed changes make it easy to manually duplicate that BT curve given the same environmental conditions, bean choice and amount, and electrical supply consistency.",
+      "label": "TOPICAL",
+      "reason": "States the problem IS solvable with recording discipline; solved-problem framing."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot transfer roast curves from sample equipment to production machines",
+      "pain_description": "Roasters struggle to reproduce a target roast when moving from sample equipment to production equipment or between different machines. The same roast curves and drop temperatures do not reliably produce the same color or flavor.",
+      "quote": "Play with it and slowly learn the ropes but you cant replicate easily what Rogue Wave has been producing or other roasters out there like Parlor Coffee or Onyx Coffe Lab.",
+      "label": "TOPICAL",
+      "reason": "About matching other roasters' quality generally, not sample→production equipment transfer."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot scale sample roast settings to café production volume",
+      "pain_description": "Café-based and wholesale roasters struggle to scale sample roast settings to larger production batches. Different batch sizes and drop temperatures require profile changes that reduce repeatability and increase production waste.",
+      "quote": "Roasters sample roast and creat a profile on a small roaster (usually 1kg drum size) with a batch size of 200-1000g.",
+      "label": "TOPICAL",
+      "reason": "Neutral explanation of how sample roasting works."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot scale sample roast settings to café production volume",
+      "pain_description": "Café-based and wholesale roasters struggle to scale sample roast settings to larger production batches. Different batch sizes and drop temperatures require profile changes that reduce repeatability and increase production waste.",
+      "quote": "This profile is then “copied” and used on a larger batch with the goal being the same results as the sample roast.",
+      "label": "TOPICAL",
+      "reason": "Neutral process description, no expressed failure."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot predict café brew performance from traditional cupping",
+      "pain_description": "Traditional cupping and comparative tasting help compare green coffee and identify roast defects, but they do not reliably predict brewed coffee performance in espresso, pour-over, batch brew, or café equipment.",
+      "quote": "In my experience (as a barista for 7 years and a working at a roaster for another 3), traditional cupping is primarily geared towards green coffee purchasing.",
+      "label": "TOPICAL",
+      "reason": "States cupping's purpose, doesn't assert prediction failure."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot predict café brew performance from traditional cupping",
+      "pain_description": "Traditional cupping and comparative tasting help compare green coffee and identify roast defects, but they do not reliably predict brewed coffee performance in espresso, pour-over, batch brew, or café equipment.",
+      "quote": "ta for 7 years and a working at a roaster for another 3), traditional cupping is primarily geared towards green coffee purchasing.",
+      "label": "TOPICAL",
+      "reason": "Same content (truncated duplicate)."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot predict café brew performance from traditional cupping",
+      "pain_description": "Traditional cupping and comparative tasting help compare green coffee and identify roast defects, but they do not reliably predict brewed coffee performance in espresso, pour-over, batch brew, or café equipment.",
+      "quote": "When buying green coffee as a home roaster I sometimes catch myself comparing the scores but I have to remind myself that even if I roast it perfectly I'm not going to taste a quality difference between a coffee reported as 85 vs one as 88.",
+      "label": "TOPICAL",
+      "reason": "About SCA score meaning, not cupping-vs-brew prediction (belongs to Pain 19/20 subject)."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot predict café brew performance from traditional cupping",
+      "pain_description": "Traditional cupping and comparative tasting help compare green coffee and identify roast defects, but they do not reliably predict brewed coffee performance in espresso, pour-over, batch brew, or café equipment.",
+      "quote": "After years of doing monthly cuppings, they really do allow you to taste the bean's true nature, but another thing I've learned is that tasting notes aren't always accurate, and coffee roasting itself is not very consistent.",
+      "label": "TOPICAL",
+      "reason": "About cupping/roasting consistency generally, not brew-performance prediction specifically."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot predict café brew performance from traditional cupping",
+      "pain_description": "Traditional cupping and comparative tasting help compare green coffee and identify roast defects, but they do not reliably predict brewed coffee performance in espresso, pour-over, batch brew, or café equipment.",
+      "quote": "But extracting the coffee in the form you drink (espresso, filter, aeropress, etc) will inform you more accurately and will more immediately suggest things you need to change in your roast.",
+      "label": "TOPICAL",
+      "reason": "Generic advice recommending extraction over cupping."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot predict café brew performance from traditional cupping",
+      "pain_description": "Traditional cupping and comparative tasting help compare green coffee and identify roast defects, but they do not reliably predict brewed coffee performance in espresso, pour-over, batch brew, or café equipment.",
+      "quote": "I don’t agree at all - this is about improving your roasts and identifying mistakes, not finding out which coffee you like.",
+      "label": "TOPICAL",
+      "reason": "Debate rebuttal defending cupping's utility, not expressing prediction failure."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot predict café brew performance from traditional cupping",
+      "pain_description": "Traditional cupping and comparative tasting help compare green coffee and identify roast defects, but they do not reliably predict brewed coffee performance in espresso, pour-over, batch brew, or café equipment.",
+      "quote": "It's not exactly normal for coffee to taste \"better\" through cupping given that the point of cupping isn't to make a good cup of coffee.",
+      "label": "TOPICAL",
+      "reason": "Explains cupping's purpose, not a prediction-failure complaint."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot connect green coffee purchasing decisions to customer brew outcomes",
+      "pain_description": "Quality-control staff lack a consistent workflow connecting green coffee purchasing, same grind comparisons, roast defects, and customer brew performance. This makes it difficult to validate coffees for café and wholesale use.",
+      "quote": "Communication is also part of this as green coffees were likely selected for a specific purpose and product development needs to have that context and know how to work within it.",
+      "label": "TOPICAL",
+      "reason": "Vague advisory statement, not an expressed failure to connect purchasing to outcomes."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot connect green coffee purchasing decisions to customer brew outcomes",
+      "pain_description": "Quality-control staff lack a consistent workflow connecting green coffee purchasing, same grind comparisons, roast defects, and customer brew performance. This makes it difficult to validate coffees for café and wholesale use.",
+      "quote": "that I see with using SCA/Q Grading for ANYTHING other than green coffee purchasing is that once the coffee gets into the hands of the roaster the score is almost meaningless.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot schedule roast to order for retail and wholesale freshness windows",
+      "pain_description": "Roasteries cannot use one policy for retail coffee that should ship within 24h of roast and wholesale espresso that needs degassing for 5-7 days. Café schedules, retail backstock, and subscription shipping require different production timing.",
+      "quote": "It seems to be a dying business model to advertise roast to order anyway since it has become more and more well-known that resting most coffees for at least a few days, and in many cases, a week or two, makes them taste better.",
+      "label": "TOPICAL",
+      "reason": "Industry opinion/commentary, not a scheduling-conflict complaint."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot schedule roast to order for retail and wholesale freshness windows",
+      "pain_description": "Roasteries cannot use one policy for retail coffee that should ship within 24h of roast and wholesale espresso that needs degassing for 5-7 days. Café schedules, retail backstock, and subscription shipping require different production timing.",
+      "quote": "We roast to order and send out within 48 hours so it is essential for us.",
+      "label": "TOPICAL",
+      "reason": "Describes one business's own practice, not a conflict between retail/wholesale windows."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot schedule roast to order for retail and wholesale freshness windows",
+      "pain_description": "Roasteries cannot use one policy for retail coffee that should ship within 24h of roast and wholesale espresso that needs degassing for 5-7 days. Café schedules, retail backstock, and subscription shipping require different production timing.",
+      "quote": "I have hands on experience helping a few of our wholesale accounts and the bloom from fresh dark roasts are insane on their batch brewers, so degassing for 5-7 days seems to be a must.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot align roast date with subscription shipping and wholesale delivery",
+      "pain_description": "Subscription partnerships and wholesale deliveries require roast date planning around shipping delays and customer use. One week par and retail backstock policies do not consistently align with when coffee is received or brewed.",
+      "quote": "I run a mid-size roastery & we work on a one week par, so we're on average seven days from roast to ship (sometimes sooner, rarely later than that).",
+      "label": "TOPICAL",
+      "reason": "Describes their own par practice, not an expressed alignment failure."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot meet café volume without excessive roasting time",
+      "pain_description": "Café-based roasters and small production teams find their equipment too small for coffee-shop volume. Too many batches and handoffs consume roasting time and limit the finished inventory available for café service and wholesale commitments.",
+      "quote": "Also, larger roasters are built with the intent to be used for production whereas the Bullit has a disclaimer on it (at least the one I saw a long time ago) that specifies a very rigid and limited duty cycle.",
+      "label": "TOPICAL",
+      "reason": "Explanatory equipment-spec statement, not first-person experience of excessive time."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot meet café volume without excessive roasting time",
+      "pain_description": "Café-based roasters and small production teams find their equipment too small for coffee-shop volume. Too many batches and handoffs consume roasting time and limit the finished inventory available for café service and wholesale commitments.",
+      "quote": "Start too small, and you'll never be able to produce and sell enough coffee fast enough to save up for a larger machine.",
+      "label": "TOPICAL",
+      "reason": "Generic advice/warning."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot meet café volume without excessive roasting time",
+      "pain_description": "Café-based roasters and small production teams find their equipment too small for coffee-shop volume. Too many batches and handoffs consume roasting time and limit the finished inventory available for café service and wholesale commitments.",
+      "quote": "I used to get my coffee from a place called Rodak's, he would also roast by the order on a smaller machine that could do a pound at a time and the larger machine got 5 pounds at a time.",
+      "label": "TOPICAL",
+      "reason": "Anecdote about a third party's machine sizes, not the speaker's own volume/time struggle."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot meet café volume without excessive roasting time",
+      "pain_description": "Café-based roasters and small production teams find their equipment too small for coffee-shop volume. Too many batches and handoffs consume roasting time and limit the finished inventory available for café service and wholesale commitments.",
+      "quote": "I roast 12-16 consecutive batches, shut down the roaster and take a lunch break, then come back after lunch for a few more batches if necessary, or help my team with production, shipping, ordering, etc.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot determine whether roasted coffee remains profitable after roast loss",
+      "pain_description": "Roast loss, green coffee cost, packaging, energy, shipping, and fixed costs can eliminate the apparent profit margin on roasted coffee. Small operators struggle to determine whether additional volume or a larger roaster would improve economics.",
+      "quote": "I'm still super in the negative on the roaster, cooling tray, exhaust fan, and other supplies, but selling to friends/coworkers does pay for my coffee and gets me drinking all sorts of green.",
+      "label": "TOPICAL",
+      "reason": "General equipment-investment payback status, not roast-loss-driven margin calculation."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot determine whether roasted coffee remains profitable after roast loss",
+      "pain_description": "Roast loss, green coffee cost, packaging, energy, shipping, and fixed costs can eliminate the apparent profit margin on roasted coffee. Small operators struggle to determine whether additional volume or a larger roaster would improve economics.",
+      "quote": "I would seriously question how deep you get yourself invested before you’ve actually done some roasting, looked realistically at your market and after that, plan for how long you can hang it out making a loss before you have some customers…there’s a metric ton of shit to consider.",
+      "label": "TOPICAL",
+      "reason": "Generic advice to a beginner."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot determine whether roasted coffee remains profitable after roast loss",
+      "pain_description": "Roast loss, green coffee cost, packaging, energy, shipping, and fixed costs can eliminate the apparent profit margin on roasted coffee. Small operators struggle to determine whether additional volume or a larger roaster would improve economics.",
+      "quote": "if you're roasting commercial grade coffee you pay sightly less for greens but you can't charge much for the end product.",
+      "label": "TOPICAL",
+      "reason": "General economics statement."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot determine whether roasted coffee remains profitable after roast loss",
+      "pain_description": "Roast loss, green coffee cost, packaging, energy, shipping, and fixed costs can eliminate the apparent profit margin on roasted coffee. Small operators struggle to determine whether additional volume or a larger roaster would improve economics.",
+      "quote": "That healthy margin doesn't take into account overhead, labor, waste, packaging etc but a multi-roaster shop is still paying all of those costs plus the profit margin when they buy wholesale.",
+      "label": "TOPICAL",
+      "reason": "Analytical/argumentative statement in a discussion, not a first-person expression of the calculation problem."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot determine whether roasted coffee remains profitable after roast loss",
+      "pain_description": "Roast loss, green coffee cost, packaging, energy, shipping, and fixed costs can eliminate the apparent profit margin on roasted coffee. Small operators struggle to determine whether additional volume or a larger roaster would improve economics.",
+      "quote": "Either you're inefficient with production or (more likely) you're not doing enough volume to get past your fixed costs.",
+      "label": "TOPICAL",
+      "reason": "Diagnostic/advice statement."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot determine whether roasted coffee remains profitable after roast loss",
+      "pain_description": "Roast loss, green coffee cost, packaging, energy, shipping, and fixed costs can eliminate the apparent profit margin on roasted coffee. Small operators struggle to determine whether additional volume or a larger roaster would improve economics.",
+      "quote": "Roasting on these small roasters is a lot of work and then you probably might break even or get some money to buy some nice green beans.",
+      "label": "TOPICAL",
+      "reason": "General opinion about thin margins, not roast-loss-specific."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot calculate true cost per pound for each green coffee lot",
+      "pain_description": "Roasters need to connect green weight, roasted weight, roast loss, packaging, lot separation, and finished inventory to true cost per pound. Informal accounting obscures cost of goods sold and the profitability of individual coffees and blends.",
+      "quote": "However, that doesn't give me great information to work with, as I might only purchase green coffee once every 2 months, and take 3 months to sell it.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot reconcile lot separation with café production stock",
+      "pain_description": "Visual stock checks make it difficult to reconcile lot separation with stock on hand after roasting and café production. Roasters lack reliable inventory tracking for reorder timing, inventory value, and remaining green coffee.",
+      "quote": "Eg: you roast say 10lb of Guatemala Coban and the inventory app updates taking into account the original inventory weight, charge weight and weight loss and instantly updates.",
+      "label": "TOPICAL",
+      "reason": "Describes a solved case (app updates automatically); solved-problem framing."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot reconcile lot separation with café production stock",
+      "pain_description": "Visual stock checks make it difficult to reconcile lot separation with stock on hand after roasting and café production. Roasters lack reliable inventory tracking for reorder timing, inventory value, and remaining green coffee.",
+      "quote": "Hey guys, I recently received a job as head roaster for a nearby coffee shop (Roasting hundreds of lbs a day.) They currently have no inventory tracking except a visual inspection.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot connect roast logs to green inventory and customer orders",
+      "pain_description": "Roasteries maintain separate tools for roast logging, green inventory, café and wholesale orders, subscription fulfillment, and accounting. Not connected systems require manual processing and create duplicated records, operator errors, and unclear production requirements.",
+      "quote": "Quick disclosure: I’m one of the people building Rostoc, a roasting app focused on connecting roast logs with green coffee inventory, roast plans, batches, cupping notes, and decisions.",
+      "label": "PROMO",
+      "reason": "Explicit vendor/founder disclosure of own product."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot connect roast logs to green inventory and customer orders",
+      "pain_description": "Roasteries maintain separate tools for roast logging, green inventory, café and wholesale orders, subscription fulfillment, and accounting. Not connected systems require manual processing and create duplicated records, operator errors, and unclear production requirements.",
+      "quote": "Eg: you roast say 10lb of Guatemala Coban and the inventory app updates taking into account the original inventory weight, charge weight and weight loss and instantly updates.",
+      "label": "TOPICAL",
+      "reason": "Illustrative example of an app functioning correctly (solved-problem framing)."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot connect roast logs to green inventory and customer orders",
+      "pain_description": "Roasteries maintain separate tools for roast logging, green inventory, café and wholesale orders, subscription fulfillment, and accounting. Not connected systems require manual processing and create duplicated records, operator errors, and unclear production requirements.",
+      "quote": "You can log roasts, compare curves, tie batches back to green inventory, keep notes, and make sample roasting less dependent on a spreadsheet living beside your roasting software.",
+      "label": "PROMO",
+      "reason": "Product feature pitch (second-person marketing copy), same promotional context as the disclosure quote."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot choose software that fits a small roastery workflow",
+      "pain_description": "Roasteries compare Google sheets with Cropster inventory, Roaster Tools, and Artisan while trying to connect roasting, inventory, orders, and fulfillment. The lack of a clear fit makes software selection expensive and operationally uncertain.",
+      "quote": "The piece that I didn’t love was things like “roasters choice” all needed to be the same coffee, so rather than having an option to say … I will roast 10x of Guatemala and 10x of Ethiopia to fulfill 8x to shop one and 8x to shop 2 … conveniently have 4X worth of roasters choice left … RoasterTools will be like ..",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot choose software that fits a small roastery workflow",
+      "pain_description": "Roasteries compare Google sheets with Cropster inventory, Roaster Tools, and Artisan while trying to connect roasting, inventory, orders, and fulfillment. The lack of a clear fit makes software selection expensive and operationally uncertain.",
+      "quote": "Sure it’ll log the amount and type of bean but if you’re roasting over a dozen kinds a day roaster tools is best for just tracking that.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot choose software that fits a small roastery workflow",
+      "pain_description": "Roasteries compare Google sheets with Cropster inventory, Roaster Tools, and Artisan while trying to connect roasting, inventory, orders, and fulfillment. The lack of a clear fit makes software selection expensive and operationally uncertain.",
+      "quote": "I have 8 bags of different coffees, is there any inventory software that I can use to help me.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot train operators to translate roast data into production actions",
+      "pain_description": "New operators need to connect roast data with sensory outcomes, recognize first crack and development behavior, perform cupping, and adapt profiles to café production conditions. Businesses lack a standardized progression from supervised work to independent roasting.",
+      "quote": "You'll have to dedicate time to cup samples, sample roast new beans until you find the roast profile you like and be able to remain consistent across batches.",
+      "label": "TOPICAL",
+      "reason": "Generic training advice."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot train operators to translate roast data into production actions",
+      "pain_description": "New operators need to connect roast data with sensory outcomes, recognize first crack and development behavior, perform cupping, and adapt profiles to café production conditions. Businesses lack a standardized progression from supervised work to independent roasting.",
+      "quote": "Finding washed or simple natural processed coffees that can help you train your roasting skills as well as your palate will give you the tools and experience you need to really harness some of these \"higher-tier\" coffees later (if that's a path you even want to go down), in a way that you would struggle with without extensive training/experience.",
+      "label": "TOPICAL",
+      "reason": "Generic training advice."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot train operators to translate roast data into production actions",
+      "pain_description": "New operators need to connect roast data with sensory outcomes, recognize first crack and development behavior, perform cupping, and adapt profiles to café production conditions. Businesses lack a standardized progression from supervised work to independent roasting.",
+      "quote": "you probably have all the vocab you'll need for training and probably have a lot of theory as well - but it doesn't mean you get to skip training, and that's often what people are hiring for: someone that only needs very minimal training before they're a valuable asset.",
+      "label": "TOPICAL",
+      "reason": "About hiring expectations, not translating data into production actions."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot train operators to translate roast data into production actions",
+      "pain_description": "New operators need to connect roast data with sensory outcomes, recognize first crack and development behavior, perform cupping, and adapt profiles to café production conditions. Businesses lack a standardized progression from supervised work to independent roasting.",
+      "quote": ">Because its hard to get the experience to get hired, but hard to get hired without the experience, you essentially need to plan on working proximal to a roaster (like, you're the dude moving cans and weighing out next batch, or packing bags) where you can kinda osmosis some of their experience and knowledge.",
+      "label": "TOPICAL",
+      "reason": "About the apprenticeship catch-22 generally (closer to Pain 18's subject), not data-to-action translation."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot standardize training from machine operation to green sourcing",
+      "pain_description": "Businesses lack a consistent progression covering hours on machine, sample roasting, cupping, green sourcing, and machine maintenance. This slows the transition from support work to independent production and green coffee decisions.",
+      "quote": "The biggest challenge in sourcing green is to find something you like :) there are so many options around, and frankly you’ll just need to keep sampling, roasting and cupping consistently.",
+      "label": "TOPICAL",
+      "reason": "About personal taste discovery when sourcing, not training standardization."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot standardize training from machine operation to green sourcing",
+      "pain_description": "Businesses lack a consistent progression covering hours on machine, sample roasting, cupping, green sourcing, and machine maintenance. This slows the transition from support work to independent production and green coffee decisions.",
+      "quote": "You'll have to dedicate time to cup samples, sample roast new beans until you find the roast profile you like and be able to remain consistent across batches.",
+      "label": "TOPICAL",
+      "reason": "Generic advice, not about standardizing a training progression."
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot distinguish green coffee potential from finished roasted quality",
+      "pain_description": "Roasters and buyers struggle to interpret an SCA score and 100 point scale without confusing green coffee potential with finished roasted quality. Score inflation and inconsistent third-party scoring can distort purchasing decisions.",
+      "quote": "When buying green coffee as a home roaster I sometimes catch myself comparing the scores but I have to remind myself that even if I roast it perfectly I'm not going to taste a quality difference between a coffee reported as 85 vs one as 88.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot distinguish green coffee potential from finished roasted quality",
+      "pain_description": "Roasters and buyers struggle to interpret an SCA score and 100 point scale without confusing green coffee potential with finished roasted quality. Score inflation and inconsistent third-party scoring can distort purchasing decisions.",
+      "quote": "that I see with using SCA/Q Grading for ANYTHING other than green coffee purchasing is that once the coffee gets into the hands of the roaster the score is almost meaningless.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "coffee",
+      "pain_title": "Cannot use quality scores without confusing coffee buyers",
+      "pain_description": "Roasters using Q scores and quality scores in product marketing face consumer misunderstanding and score inflation. The Q grader or third-party score may become the marketing focus instead of actual cup performance.",
+      "quote": "Also companies that go out of their way to score all their coffee line-up generally can charge more as they can prove to the consumer that a Q Grader has scored the coffee to help the consumer make a more informed choice.",
+      "label": "TOPICAL",
+      "reason": "Argues scores HELP inform consumers (opposite framing of \"confusing\"), not an expression of buyer confusion."
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot verify house-nut deductions before the show",
+      "pain_description": "Venues, artists, and promoters cannot clearly review room fees, production fees, staffing, security, and other expenses before the event. Settlement sheets may show deductions without breaking out the underlying costs.",
+      "quote": "If you ever play a venue that offers \"catering,\" for example, *decline*; it's just an excuse to put a handle (or two) of alcohol in the green room and charge you (the artist) the standard 400% mark-up.",
+      "label": "TOPICAL",
+      "reason": "A specific catering-markup scam, not pre-show verification of the house-nut breakdown."
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot verify house-nut deductions before the show",
+      "pain_description": "Venues, artists, and promoters cannot clearly review room fees, production fees, staffing, security, and other expenses before the event. Settlement sheets may show deductions without breaking out the underlying costs.",
+      "quote": "In the last two years I have not looked a paycheck stub because it makes my stomach ache seeing the line deduction.",
+      "label": "TOPICAL",
+      "reason": "About avoidance of reviewing deductions after the fact, not verification before the show."
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot audit duplicated settlement deductions",
+      "pain_description": "Settlement participants struggle to determine whether expenses were legitimate, duplicated, or deducted from the artist share more than once. Disputes arise when charges such as lighting or other production items are not documented clearly.",
+      "quote": "most bands will be fine with a room fee/door split but the costs they're claiming here are ludicrous compared to what the majority of other venues take.",
+      "label": "TOPICAL",
+      "reason": "About excessive cost size, not duplication."
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot audit duplicated settlement deductions",
+      "pain_description": "Settlement participants struggle to determine whether expenses were legitimate, duplicated, or deducted from the artist share more than once. Disputes arise when charges such as lighting or other production items are not documented clearly.",
+      "quote": "If you ever play a venue that offers \"catering,\" for example, *decline*; it's just an excuse to put a handle (or two) of alcohol in the green room and charge you (the artist) the standard 400% mark-up.",
+      "label": "TOPICAL",
+      "reason": "Catering markup scam, not deduction duplication."
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot audit duplicated settlement deductions",
+      "pain_description": "Settlement participants struggle to determine whether expenses were legitimate, duplicated, or deducted from the artist share more than once. Disputes arise when charges such as lighting or other production items are not documented clearly.",
+      "quote": "The artist is the last person a lot of venues and promoters want to pay these days, and they have a bag of excuses to keep from paying.",
+      "label": "TOPICAL",
+      "reason": "General non-payment complaint, not duplication."
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot audit duplicated settlement deductions",
+      "pain_description": "Settlement participants struggle to determine whether expenses were legitimate, duplicated, or deducted from the artist share more than once. Disputes arise when charges such as lighting or other production items are not documented clearly.",
+      "quote": "If the venue wants the bands to pay for sound, they charge them and pay you.",
+      "label": "TOPICAL",
+      "reason": "Neutral explanation of sound-cost billing, not duplication."
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot audit duplicated settlement deductions",
+      "pain_description": "Settlement participants struggle to determine whether expenses were legitimate, duplicated, or deducted from the artist share more than once. Disputes arise when charges such as lighting or other production items are not documented clearly.",
+      "quote": "That way they are able to collect fees from the initial sale as well as when the scalper resales it through their platform, doubling their already ridiculous fee structure.",
+      "label": "OFFTOPIC",
+      "reason": "About ticket-resale platform fee stacking (ticketing subject), unrelated to settlement deduction auditing."
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot audit duplicated settlement deductions",
+      "pain_description": "Settlement participants struggle to determine whether expenses were legitimate, duplicated, or deducted from the artist share more than once. Disputes arise when charges such as lighting or other production items are not documented clearly.",
+      "quote": "The $400 house nut is definitely not a fee that most independent venues in Brooklyn would charge - more typically, it's one or the other: a room rental fee or a production cost fee - but this double fee should have been transparent before the show was booked, and it probably was TBH.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot audit duplicated settlement deductions",
+      "pain_description": "Settlement participants struggle to determine whether expenses were legitimate, duplicated, or deducted from the artist share more than once. Disputes arise when charges such as lighting or other production items are not documented clearly.",
+      "quote": "rging you for the services of the venue, and an extra fee \"just for the lulz\".",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot calculate artist payouts under a versus deal",
+      "pain_description": "Venue operators, promoters, and artists struggle to determine whether the payout is a flat guarantee, a percentage after expenses, or a door split. The calculation becomes unclear when deal terms are not recorded in writing.",
+      "quote": "We can’t take the risk of losing up to $2000 in one night by giving them a guarantee, so the only way we’d let them into the venue is with a door deal.",
+      "label": "TOPICAL",
+      "reason": "About deal-type risk selection (Pain 3's subject), not calculating a versus-deal payout."
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot calculate artist payouts under a versus deal",
+      "pain_description": "Venue operators, promoters, and artists struggle to determine whether the payout is a flat guarantee, a percentage after expenses, or a door split. The calculation becomes unclear when deal terms are not recorded in writing.",
+      "quote": "for venues to take the sound crew’s pay out of settlements, it’s just typically phrased something like “80% backend after expenses” in the contract and then there’s a whole expenses chart to fill out for the management company.",
+      "label": "TOPICAL",
+      "reason": "Neutral explanation of contract mechanics, not an expressed calculation failure."
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot calculate artist payouts under a versus deal",
+      "pain_description": "Venue operators, promoters, and artists struggle to determine whether the payout is a flat guarantee, a percentage after expenses, or a door split. The calculation becomes unclear when deal terms are not recorded in writing.",
+      "quote": "Versus or Net deals are much more complicated because they depend on verifying box office receipts and venue expenses as these impact the payment to the artist.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot allocate attendance risk between venue and artist",
+      "pain_description": "Venues and artists may accept a door deal, zero guarantee, or room-rental arrangement without a shared view of who absorbs weak ticket sales. When attendance misses the threshold, the parties may disagree over whether the artist receives anything.",
+      "quote": "20-30 years ago there were tons of venues where the bands got 100% of the door, and a modest bar tab; the venues were satisfied with (hopefully increased) drink sales; now venues want down-payments from bands, for bands to buy their own tickets, and to generally treat artists like they're being done a favor.",
+      "label": "TOPICAL",
+      "reason": "Broad industry-shift commentary, not a specific risk-allocation disagreement."
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot allocate attendance risk between venue and artist",
+      "pain_description": "Venues and artists may accept a door deal, zero guarantee, or room-rental arrangement without a shared view of who absorbs weak ticket sales. When attendance misses the threshold, the parties may disagree over whether the artist receives anything.",
+      "quote": "> You can see how in some situations, we would have been better off taking a Versus or a Door Deal instead of a guarantee, while in others our Guarantee was more than the venue earned in ticket sales.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot allocate attendance risk between venue and artist",
+      "pain_description": "Venues and artists may accept a door deal, zero guarantee, or room-rental arrangement without a shared view of who absorbs weak ticket sales. When attendance misses the threshold, the parties may disagree over whether the artist receives anything.",
+      "quote": "We can’t take the risk of losing up to $2000 in one night by giving them a guarantee, so the only way we’d let them into the venue is with a door deal.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot sell tickets across preferred sales channels",
+      "pain_description": "Independent venues may be unable to add direct sales or competing ticketing channels when an exclusive seller controls online inventory, box-office POS, and the only permitted purchase path.",
+      "quote": "Yes, if a band wants to take on the risk of selling tickets directly and acting as the promoter of their own shows, they can find smaller, independent venues that they can book directly for a fee (say $750 for an evening) and sell tickets directly using a 3rd party ticketing app.",
+      "label": "TOPICAL",
+      "reason": "Describes a workaround/solved path, not an expressed channel-blocking failure."
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot sell tickets across preferred sales channels",
+      "pain_description": "Independent venues may be unable to add direct sales or competing ticketing channels when an exclusive seller controls online inventory, box-office POS, and the only permitted purchase path.",
+      "quote": "The problem comes with the exclusionary nature of ticket master contracts that prevent artists from choosing venues freely.",
+      "label": "TOPICAL",
+      "reason": "About artists' venue choice, a different pain than venues' channel choice."
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot sell tickets across preferred sales channels",
+      "pain_description": "Independent venues may be unable to add direct sales or competing ticketing channels when an exclusive seller controls online inventory, box-office POS, and the only permitted purchase path.",
+      "quote": "The catch is it only applies to venues that still have independent box offices, which is fewer than people think.",
+      "label": "TOPICAL",
+      "reason": "Scoping/context statement, not an expressed failure."
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot sell tickets across preferred sales channels",
+      "pain_description": "Independent venues may be unable to add direct sales or competing ticketing channels when an exclusive seller controls online inventory, box-office POS, and the only permitted purchase path.",
+      "quote": "So, if you have a LiveNation artist, they will only book at a LiveNation venue (unless it’s through a booking agency that has an affiliation with LiveNation) in which tickets will be sold by TicketMaster.",
+      "label": "TOPICAL",
+      "reason": "About artist/venue booking match, not venue channel choice."
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot sell tickets across preferred sales channels",
+      "pain_description": "Independent venues may be unable to add direct sales or competing ticketing channels when an exclusive seller controls online inventory, box-office POS, and the only permitted purchase path.",
+      "quote": "I would love it if 50% of tickets are at the venue’s box office or other verified sellers and that was the only place you could get them.",
+      "label": "TOPICAL",
+      "reason": "Aspirational wish, not an expressed present-tense blocking."
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot sell tickets across preferred sales channels",
+      "pain_description": "Independent venues may be unable to add direct sales or competing ticketing channels when an exclusive seller controls online inventory, box-office POS, and the only permitted purchase path.",
+      "quote": "For other venues, including arenas and stadiums, they often have an exclusivity agreement OR it's very much not worth it for those venues to have more than one ticketing partner as it would require significant investment and setup.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot sell tickets across preferred sales channels",
+      "pain_description": "Independent venues may be unable to add direct sales or competing ticketing channels when an exclusive seller controls online inventory, box-office POS, and the only permitted purchase path.",
+      "quote": "A lot of venues now route even their box office sales through Ticketmaster's system, so you're paying the fees either way just without the online convenience.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot sell tickets across preferred sales channels",
+      "pain_description": "Independent venues may be unable to add direct sales or competing ticketing channels when an exclusive seller controls online inventory, box-office POS, and the only permitted purchase path.",
+      "quote": "It's a shame that venues sign contacts with these companies so that you HAVE To sell tickets through them to play at legacy venues.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot reconcile ticket fees and rebates by sales channel",
+      "pain_description": "Venues and promoters lack a consistent way to determine how box-office fees, rebates, advances, and other ticket charges are allocated across online, venue, and partner sales channels.",
+      "quote": "A lot of venues now route even their box office sales through Ticketmaster's system, so you're paying the fees either way just without the online convenience.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot reconcile ticket fees and rebates by sales channel",
+      "pain_description": "Venues and promoters lack a consistent way to determine how box-office fees, rebates, advances, and other ticket charges are allocated across online, venue, and partner sales channels.",
+      "quote": "They told me that if a venue is contracted with ticketmaster, they have to charge the fees everywhere.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot reconcile ticket fees and rebates by sales channel",
+      "pain_description": "Venues and promoters lack a consistent way to determine how box-office fees, rebates, advances, and other ticket charges are allocated across online, venue, and partner sales channels.",
+      "quote": "Yeah came here to say this… you are absolutely still paying live nation and/or Ticketmaster if they are the concert promoter / ticketing partner.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot reconcile ticket fees and rebates by sales channel",
+      "pain_description": "Venues and promoters lack a consistent way to determine how box-office fees, rebates, advances, and other ticket charges are allocated across online, venue, and partner sales channels.",
+      "quote": "CCCs and facility fees are production costs but promoters like live nation and AEG make venues roll them into the service charge to keep the appearance of low ticket prices.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot reconcile ticket fees and rebates by sales channel",
+      "pain_description": "Venues and promoters lack a consistent way to determine how box-office fees, rebates, advances, and other ticket charges are allocated across online, venue, and partner sales channels.",
+      "quote": "It feels like most venues want a flat fee from us, some venues don't want any money from us, but then we keep running into venues that want a flat fee(or us to pay for their employees) and want a % of ticket sales.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot protect primary ticket inventory from bot purchases",
+      "pain_description": "Venues and promoters struggle to keep primary inventory available to genuine customers when bots purchase large quantities immediately. This distorts demand signals and creates customer backlash around apparent sellouts.",
+      "quote": "I tried to buy tickets for multiple events the second they came out and immediately they were sold out and available on other ticket sites.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot protect primary ticket inventory from bot purchases",
+      "pain_description": "Venues and promoters struggle to keep primary inventory available to genuine customers when bots purchase large quantities immediately. This distorts demand signals and creates customer backlash around apparent sellouts.",
+      "quote": "If people keep buying the resold tickets those companies will just keep buying more and more tickets with their bots, and at some point it will become near-impssible to get reasonably priced tickets from official sellers.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot protect primary ticket inventory from bot purchases",
+      "pain_description": "Venues and promoters struggle to keep primary inventory available to genuine customers when bots purchase large quantities immediately. This distorts demand signals and creates customer backlash around apparent sellouts.",
+      "quote": "Yungblud did the presale code thing & the tickets to Red Rocks still got sold to bots.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot protect primary ticket inventory from bot purchases",
+      "pain_description": "Venues and promoters struggle to keep primary inventory available to genuine customers when bots purchase large quantities immediately. This distorts demand signals and creates customer backlash around apparent sellouts.",
+      "quote": "This agreement doesn't even seem to address the biggest problem which is that it seems like these companies use bots to buy up most or all of the tickets for a concert and then drop them back on their site at huge markups.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot protect primary ticket inventory from bot purchases",
+      "pain_description": "Venues and promoters struggle to keep primary inventory available to genuine customers when bots purchase large quantities immediately. This distorts demand signals and creates customer backlash around apparent sellouts.",
+      "quote": "I have seen events in the past where all of the tickets were bot up by bots in seconds and then they end up back on these sites at 10x markup.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot protect primary ticket inventory from bot purchases",
+      "pain_description": "Venues and promoters struggle to keep primary inventory available to genuine customers when bots purchase large quantities immediately. This distorts demand signals and creates customer backlash around apparent sellouts.",
+      "quote": "Tickets to every date sold out to scalper bots *before they were even publicly available*.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot protect primary ticket inventory from bot purchases",
+      "pain_description": "Venues and promoters struggle to keep primary inventory available to genuine customers when bots purchase large quantities immediately. This distorts demand signals and creates customer backlash around apparent sellouts.",
+      "quote": "I became aware of this recently when it became nearly impossible for my wife to get tickets to any concerts she wanted to attend because of various lotteries and wait lists, which Ticketmaster has allowed to be overtaken by bots and scalpers.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot explain resale availability after a primary sellout",
+      "pain_description": "Box-office teams and promoters cannot reliably explain why tickets appear unavailable in primary sales but become immediately available through resale. Unclear resale controls create disputes over availability, transferability, and pricing.",
+      "quote": "I went to a concert last october that was supposed to be sold-out 2hours after the ticket sales opened.",
+      "label": "TOPICAL",
+      "reason": "Questions the sold-out claim generally; doesn't mention resale availability specifically."
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot explain resale availability after a primary sellout",
+      "pain_description": "Box-office teams and promoters cannot reliably explain why tickets appear unavailable in primary sales but become immediately available through resale. Unclear resale controls create disputes over availability, transferability, and pricing.",
+      "quote": "How the F is it that when Springsteen went onsale, there were immediately \"verified resale\" seats available?",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot explain resale availability after a primary sellout",
+      "pain_description": "Box-office teams and promoters cannot reliably explain why tickets appear unavailable in primary sales but become immediately available through resale. Unclear resale controls create disputes over availability, transferability, and pricing.",
+      "quote": "Prices were insane, and almost nothing was available - they made it seem like all the shows were completely and totally sold out in seconds, but then when the presale was over, there were tons more tickets available for way cheaper than what I paid.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot explain resale availability after a primary sellout",
+      "pain_description": "Box-office teams and promoters cannot reliably explain why tickets appear unavailable in primary sales but become immediately available through resale. Unclear resale controls create disputes over availability, transferability, and pricing.",
+      "quote": "Because there are like 10 different presale where you have to have a code from a certain thing, and then finally once ticket sales open to the public they're all resales, or if you're lucky and will actually have one of the presales they're still all resale tickets.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot explain resale availability after a primary sellout",
+      "pain_description": "Box-office teams and promoters cannot reliably explain why tickets appear unavailable in primary sales but become immediately available through resale. Unclear resale controls create disputes over availability, transferability, and pricing.",
+      "quote": "I tried to buy tickets for multiple events the second they came out and immediately they were sold out and available on other ticket sites.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot reconcile comps, walk-ups, and ticket counts at closeout",
+      "pain_description": "Venue box-office and touring teams manually compare ticket counts, comps, walk-ups, corporate seating, and box-office receipts. Missing or inconsistent records can produce incorrect attendance figures and settlement disputes.",
+      "quote": "After subtracting the comps from the total tickets, that leaves 180 tickets that were sold at $20 per head so the actual gross box office total may be closer to $3600 before any expenses are deducted.",
+      "label": "TOPICAL",
+      "reason": "Worked example showing the calculation being done, not an expressed reconciliation failure."
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot reconcile comps, walk-ups, and ticket counts at closeout",
+      "pain_description": "Venue box-office and touring teams manually compare ticket counts, comps, walk-ups, corporate seating, and box-office receipts. Missing or inconsistent records can produce incorrect attendance figures and settlement disputes.",
+      "quote": "For the 200 in attendance, let's say that 20 of those may be on the guest list for either of the artists plus a few tickets given away as part of a radio promotion or social media contest etc.",
+      "label": "TOPICAL",
+      "reason": "Illustrative breakdown of comp composition, not a reconciliation failure."
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot explain cash variances before artist departure",
+      "pain_description": "Venues and tour teams rely on manual cash drops and payment checks during or after the show. Unexplained differences between cash, card sales, and settlement amounts can delay closeout or trigger disputes.",
+      "quote": "I've had venues start to hand me a check, and then say: \"Oh, wait, this is what you *would* have made, but we have to keep this to cover our insurance and liability payments.\" I've had contracts with specific amounts, and then \"payments\" (offered after the show) in fractional amounts when compared to the contracted agreement, featuring laundry-lists of deductions which have *nothing* to do with the band.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot track deposits and final artist balances reliably",
+      "pain_description": "Artists, tour managers, and venue finance teams lack a dependable workflow for tracking when deposits are paid, when the remaining balance is due, and whether payment occurs within the agreed timeframe.",
+      "quote": "I've had venues start to hand me a check, and then say: \"Oh, wait, this is what you *would* have made, but we have to keep this to cover our insurance and liability payments.\" I've had contracts with specific amounts, and then \"payments\" (offered after the show) in fractional amounts when compared to the contracted agreement, featuring laundry-lists of deductions which have *nothing* to do with the band.",
+      "label": "TOPICAL",
+      "reason": "About final-payment deduction disputes, not deposit/balance tracking timing."
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot track deposits and final artist balances reliably",
+      "pain_description": "Artists, tour managers, and venue finance teams lack a dependable workflow for tracking when deposits are paid, when the remaining balance is due, and whether payment occurs within the agreed timeframe.",
+      "quote": "20-30 years ago there were tons of venues where the bands got 100% of the door, and a modest bar tab; the venues were satisfied with (hopefully increased) drink sales; now venues want down-payments from bands, for bands to buy their own tickets, and to generally treat artists like they're being done a favor.",
+      "label": "TOPICAL",
+      "reason": "Mentions down-payments in passing within a broader industry-shift complaint, not deposit-tracking reliability."
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot keep booking and settlement records in one workflow",
+      "pain_description": "Venue operators spread booking information across Dropbox folders, Google sheets, emails, calendars, ticketing systems, and settlement records. This makes it difficult to maintain one reliable source for event terms, staffing, ticketing, and financial data.",
+      "quote": "Despite getting it all in writing, be prepared for venues to do things like forget to charge a door fee they were going to pay you with, claim you didn't draw a big enough crowd and want to only pay you half, say the guy who can write a check isn't there, so they'll send payment next week, double book you, etc.",
+      "label": "TOPICAL",
+      "reason": "About venue payment disputes/dishonesty, not fragmented record-keeping tooling."
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot keep booking and settlement records in one workflow",
+      "pain_description": "Venue operators spread booking information across Dropbox folders, Google sheets, emails, calendars, ticketing systems, and settlement records. This makes it difficult to maintain one reliable source for event terms, staffing, ticketing, and financial data.",
+      "quote": "Currently we book events through one main venue in town (but expanding to more next year), hold a yearly festival and use Tixr for ticketing but it’s probably time for us to upgrade and start using something to help us manage everything.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot keep booking and settlement records in one workflow",
+      "pain_description": "Venue operators spread booking information across Dropbox folders, Google sheets, emails, calendars, ticketing systems, and settlement records. This makes it difficult to maintain one reliable source for event terms, staffing, ticketing, and financial data.",
+      "quote": "I am looking for staff management, a calendar showing when a production has booked a theatre and when their performances are scheduled.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot keep booking and settlement records in one workflow",
+      "pain_description": "Venue operators spread booking information across Dropbox folders, Google sheets, emails, calendars, ticketing systems, and settlement records. This makes it difficult to maintain one reliable source for event terms, staffing, ticketing, and financial data.",
+      "quote": "Sure it's my full time gig, but my inbox gets hit with roughly 20-30 inquiries a day and I'm also scheduling production staff, maintaining the venue, fixing broken stuff, coordinating with BNF staff, coordinating with private events, navigating the cubs schedule, navigating co-promotors schedules, and the list goes on.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot coordinate calendars, staffing, and ticketing across venues",
+      "pain_description": "Multi-room and multi-venue operators lack a shared operational layer connecting calendar management, staff management, ticketing, and settlement data. Comparisons involving Prism, VenuePilot, and Tixr reflect the need to coordinate these workflows.",
+      "quote": "Currently we book events through one main venue in town (but expanding to more next year), hold a yearly festival and use Tixr for ticketing but it’s probably time for us to upgrade and start using something to help us manage everything.",
+      "label": "TOPICAL",
+      "reason": "Single-venue operator anticipating future expansion; not yet evidencing actual multi-venue coordination."
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot coordinate calendars, staffing, and ticketing across venues",
+      "pain_description": "Multi-room and multi-venue operators lack a shared operational layer connecting calendar management, staff management, ticketing, and settlement data. Comparisons involving Prism, VenuePilot, and Tixr reflect the need to coordinate these workflows.",
+      "quote": "Sure it's my full time gig, but my inbox gets hit with roughly 20-30 inquiries a day and I'm also scheduling production staff, maintaining the venue, fixing broken stuff, coordinating with BNF staff, coordinating with private events, navigating the cubs schedule, navigating co-promotors schedules, and the list goes on.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot coordinate calendars, staffing, and ticketing across venues",
+      "pain_description": "Multi-room and multi-venue operators lack a shared operational layer connecting calendar management, staff management, ticketing, and settlement data. Comparisons involving Prism, VenuePilot, and Tixr reflect the need to coordinate these workflows.",
+      "quote": "It’s so ridiculous that they double book these things, like this persons only job is to put bookings into a calendar and they messed it up",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot confirm which production costs belong in the house nut",
+      "pain_description": "Venues and artists struggle to determine whether sound, lighting, stagehand labor, security, and other production costs belong in the house nut or should be absorbed as venue operating costs.",
+      "quote": "The $400 house nut is definitely not a fee that most independent venues in Brooklyn would charge - more typically, it's one or the other: a room rental fee or a production cost fee - but this double fee should have been transparent before the show was booked, and it probably was TBH.",
+      "label": "TOPICAL",
+      "reason": "About duplication/transparency (Pain 1's subject), not classification of which costs belong in the house nut."
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot confirm which production costs belong in the house nut",
+      "pain_description": "Venues and artists struggle to determine whether sound, lighting, stagehand labor, security, and other production costs belong in the house nut or should be absorbed as venue operating costs.",
+      "quote": "Stuff like front of house security, ushers, clean-up, staffing are costs that as a venue, you're expected to eat.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot confirm which production costs belong in the house nut",
+      "pain_description": "Venues and artists struggle to determine whether sound, lighting, stagehand labor, security, and other production costs belong in the house nut or should be absorbed as venue operating costs.",
+      "quote": "Because if it includes sound and light techs, security, door personel, a venue manager, PA and such, then it's fair - but still you'd have to sell it out at around $15 to earn something.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot validate production deductions against services actually supplied",
+      "pain_description": "Artists and promoters may receive deductions for sound, lighting, staffing, or security without being able to verify whether the venue supplied the service, what labor was performed, or whether the amount matches the agreed terms.",
+      "quote": "The artist is the last person a lot of venues and promoters want to pay these days, and they have a bag of excuses to keep from paying.",
+      "label": "TOPICAL",
+      "reason": "General non-payment complaint, not about validating a specific deduction against services."
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot validate production deductions against services actually supplied",
+      "pain_description": "Artists and promoters may receive deductions for sound, lighting, staffing, or security without being able to verify whether the venue supplied the service, what labor was performed, or whether the amount matches the agreed terms.",
+      "quote": "most bands will be fine with a room fee/door split but the costs they're claiming here are ludicrous compared to what the majority of other venues take.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot validate production deductions against services actually supplied",
+      "pain_description": "Artists and promoters may receive deductions for sound, lighting, staffing, or security without being able to verify whether the venue supplied the service, what labor was performed, or whether the amount matches the agreed terms.",
+      "quote": "The $400 house nut is definitely not a fee that most independent venues in Brooklyn would charge - more typically, it's one or the other: a room rental fee or a production cost fee - but this double fee should have been transparent before the show was booked, and it probably was TBH.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot validate production deductions against services actually supplied",
+      "pain_description": "Artists and promoters may receive deductions for sound, lighting, staffing, or security without being able to verify whether the venue supplied the service, what labor was performed, or whether the amount matches the agreed terms.",
+      "quote": "The bar talking a percentage of the ticket sales would be normal if they had told you up front what percentage they take, but they essentially took 5/6 of the ticket sales since they paid THEIR sound guy out of that money.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot validate production deductions against services actually supplied",
+      "pain_description": "Artists and promoters may receive deductions for sound, lighting, staffing, or security without being able to verify whether the venue supplied the service, what labor was performed, or whether the amount matches the agreed terms.",
+      "quote": "Is the venue keeping an allotted amount of the door money to make sure their “rental” fee is paid?",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot validate production deductions against services actually supplied",
+      "pain_description": "Artists and promoters may receive deductions for sound, lighting, staffing, or security without being able to verify whether the venue supplied the service, what labor was performed, or whether the amount matches the agreed terms.",
+      "quote": "My band played a gig this past Friday with 3 other bands and the venue took $160 right off the top of the $10 cover.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot determine responsibility for live-performance licensing",
+      "pain_description": "Bars, venues, promoters, and performers struggle to determine who must obtain and pay for a live performance license when music includes bands, DJs, karaoke, background music, or original performances.",
+      "quote": "You'd see a line item something like \"Live Performance Domestic\" with an aggregate amount, not 800 individual entries.",
+      "label": "TOPICAL",
+      "reason": "About settlement-statement line-item aggregation (closer to Pain 17's setlist-submission subject), not licensing responsibility."
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot determine responsibility for live-performance licensing",
+      "pain_description": "Bars, venues, promoters, and performers struggle to determine who must obtain and pay for a live performance license when music includes bands, DJs, karaoke, background music, or original performances.",
+      "quote": "The artist is the last person a lot of venues and promoters want to pay these days, and they have a bag of excuses to keep from paying.",
+      "label": "OFFTOPIC",
+      "reason": "General non-payment complaint, unrelated to licensing responsibility."
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot determine responsibility for live-performance licensing",
+      "pain_description": "Bars, venues, promoters, and performers struggle to determine who must obtain and pay for a live performance license when music includes bands, DJs, karaoke, background music, or original performances.",
+      "quote": "If the venue wants the bands to pay for sound, they charge them and pay you.",
+      "label": "OFFTOPIC",
+      "reason": "About sound-cost billing, unrelated to licensing."
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot determine responsibility for live-performance licensing",
+      "pain_description": "Bars, venues, promoters, and performers struggle to determine who must obtain and pay for a live performance license when music includes bands, DJs, karaoke, background music, or original performances.",
+      "quote": "Before Covid my friend's acapella group booked a venue that hosted a lot of punk shows and they tried to get them to pay for 8 security guards in an \\~800 seat venue.",
+      "label": "OFFTOPIC",
+      "reason": "About security-staffing cost disputes, unrelated to licensing."
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot determine responsibility for live-performance licensing",
+      "pain_description": "Bars, venues, promoters, and performers struggle to determine who must obtain and pay for a live performance license when music includes bands, DJs, karaoke, background music, or original performances.",
+      "quote": "They had just received a letter from ASCAP because I, as their FB admin, posted upcoming events that included DJs and bands (like they wanted me to when they hired me).",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot determine responsibility for live-performance licensing",
+      "pain_description": "Bars, venues, promoters, and performers struggle to determine who must obtain and pay for a live performance license when music includes bands, DJs, karaoke, background music, or original performances.",
+      "quote": "We are a very small bar (less than 50 occu) we've been paying BMI for 2 years once they started harassing us for our live music.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot determine responsibility for live-performance licensing",
+      "pain_description": "Bars, venues, promoters, and performers struggle to determine who must obtain and pay for a live performance license when music includes bands, DJs, karaoke, background music, or original performances.",
+      "quote": "Place I was DJing for is putting the responsibility for me to have a music license (ASCAP/BMI) on a new contract.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot determine responsibility for live-performance licensing",
+      "pain_description": "Bars, venues, promoters, and performers struggle to determine who must obtain and pay for a live performance license when music includes bands, DJs, karaoke, background music, or original performances.",
+      "quote": "However, and it’s big however, we still have to pay BMI and ASCAP because we have DJs.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot determine responsibility for live-performance licensing",
+      "pain_description": "Bars, venues, promoters, and performers struggle to determine who must obtain and pay for a live performance license when music includes bands, DJs, karaoke, background music, or original performances.",
+      "quote": "Around 2008 ASCAP threatened the bar and the owner printed out public domain songbooks and forbid licensed songs.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot determine responsibility for live-performance licensing",
+      "pain_description": "Bars, venues, promoters, and performers struggle to determine who must obtain and pay for a live performance license when music includes bands, DJs, karaoke, background music, or original performances.",
+      "quote": "Surprise surprise when ASCAP and others started harassing us this past year, which is when I learned how predatory these people are.",
+      "label": "SUPPORTS",
+      "reason": ""
+    },
+    {
+      "run": "music",
+      "pain_title": "Cannot submit complete setlists to PROs after shows",
+      "pain_description": "Venues and performers lack a consistent workflow for collecting setlists and reporting live performances to ASCAP, BMI, and SESAC. Responsibility for submitting performance information remains unclear.",
+      "quote": "How PROs track live performances Venues above a certain size report setlists to PROs either directly or via services like [Setlist.fm](http://Setlist.fm) (which PROs increasingly use as a data source).",
+      "label": "TOPICAL",
+      "reason": "Neutral explanatory description of how PRO tracking works, not an expressed submission failure."
+    }
+  ]
+}

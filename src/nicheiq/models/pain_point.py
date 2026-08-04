@@ -302,7 +302,34 @@ class StanceVerdict(BaseModel):
             "CONTRADICTS: positive or denies the pain."
         ),
     )
-    reason: str = Field(default="", description="Short justification for the stance")
+    # `reason` was removed 2026-08-04. Nothing ever read it — the gate uses only index
+    # and stance. Measured before removing: no accuracy cost (F1 0.685 -> 0.682 over the
+    # 123-case oracle, inside rep-to-rep noise), and no token cost either (identical
+    # completion_tokens at batch 300, twice), so this is a dead-field cleanup rather
+    # than the latency win it first looked like. Do not re-add expecting either effect.
+
+
+class PainQueryVariants(BaseModel):
+    """First-person search-query rewrites for one pain point."""
+
+    model_config = ConfigDict(extra='ignore')
+
+    index: int = Field(..., description="1-based index of the pain in the prompt list")
+    queries: list[str] = Field(
+        default_factory=list,
+        description="Short first-person phrasings of this pain, used as retrieval queries",
+    )
+
+
+class BatchQueryVariantResponse(BaseModel):
+    """First-person query variants for every pain point (single LLM call)."""
+
+    model_config = ConfigDict(extra='ignore')
+
+    variants: list[PainQueryVariants] = Field(
+        default_factory=list,
+        description="One entry per pain point, by 1-based index",
+    )
 
 
 class BatchStanceResponse(BaseModel):

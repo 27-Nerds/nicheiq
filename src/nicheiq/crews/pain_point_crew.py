@@ -17,6 +17,7 @@ from loguru import logger
 from ..config.settings import settings
 from ..models.keyword_data import OpportunityLevel
 from ..models.pain_point import (
+    BatchQueryVariantResponse,
     BatchStanceResponse,
     ContentCategorizationReport,
     EnrichedPainPointQuotes,
@@ -1375,15 +1376,48 @@ class PainPointCrew:
     # stance gate, so the lexical floor only needs to drop near-zero-overlap noise.
     # Relevance is still used for RANKING (which candidates reach the cap/stance gate).
     _MIN_RELEVANCE = 0.03
-    # Max quotes kept per source post, so one comment cannot be sentence-shredded
-    # into many "independent" quotes and fake corroboration.
-    _PER_POST_CAP = 2
+    # Max quotes kept per source post BEFORE the stance gate. Set to None (disabled)
+    # 2026-08-04: pre-gate truncation is what was destroying recall. Measured on the
+    # 58-passage recall oracle (scripts/gate_judges_all.py, 18/18 pains): ranking
+    # candidates and handing the gate a top-300 shortlist recovered 34.9% of
+    # known-missing evidence, while letting the gate judge EVERY candidate recovered
+    # 55.8% (+21pp) — and precision barely moved (23.8% -> 19.8%) despite keeping 2.7x
+    # more quotes. If the ranker were selecting well, removing it would have collapsed
+    # precision; it didn't, because `combined_score` is only 1.27x better than random
+    # at this job.
+    # The per-post fairness concern this cap existed for (one long thread supplying all
+    # the "evidence") is now handled AFTER the gate, on validated quotes only, by
+    # _POST_DIVERSITY_CAP below — capping junk was never the point.
+    _PER_POST_CAP = None
     # How many top-ranked candidates the stance gate JUDGES (its input). Wider than
     # the display cap: with the loose relevance floor, the top candidates by vector
     # similarity are the most TOPICALLY similar, which for some pains are off-stance
     # (e.g. injection-technique quotes under "needle phobia"). Judging more gives the
     # gate a real chance to find the genuinely-supporting quotes deeper in the pool.
-    _STANCE_INPUT_CAP = 24
+    # Hard ceiling on candidates handed to the gate. Set to None (disabled) 2026-08-04
+    # for the same measured reason as _PER_POST_CAP: every pre-gate truncation was
+    # discarding real evidence. Progressively raising it told the same story —
+    # recall on the known-missing set went 28% @100, 37% @200, 42% @300, 42% @400
+    # (saturating only because _PER_POST_CAP=10 was the binding constraint underneath),
+    # then 55.8% once BOTH caps came off. Kept as a settable knob purely as an
+    # emergency brake if a corpus ever produces a pathological candidate count.
+    _STANCE_INPUT_CAP = None
+    # The gate judges candidates in concurrent chunks of this size. 300 is the largest
+    # batch verified to return exactly N indexed verdicts on deepseek-v4-flash
+    # (checked at 100/200/400, 0 fail-opens). Do NOT raise without re-running that check:
+    # a chunk that fails to parse is admitted UNFILTERED, so batch size is a correctness
+    # parameter. ~40s per 300-quote call, so concurrency (below) is what holds the
+    # wall-clock down now that there is no shortlist.
+    _STANCE_CHUNK_SIZE = 300
+    # Concurrent gate chunks per pain. Stage-3 enrichment already runs 4 pains in
+    # parallel, so effective peak concurrency is ~4x this — kept modest to stay inside
+    # provider rate limits. Raise only alongside a check for 429s in the run log.
+    _STANCE_CHUNK_WORKERS = 4
+    # Max VALIDATED quotes one source post may contribute to a single pain. Runs AFTER
+    # the stance gate, so it shapes corroboration without discarding unjudged evidence
+    # (see _PER_POST_CAP). 3 lets a genuinely rich thread contribute real weight while
+    # keeping one person from filling a 12-quote display on their own.
+    _POST_DIVERSITY_CAP = 3
     # Max quotes DISPLAYED per pain (after the stance gate keeps only SUPPORTS).
     _DISPLAY_CAP = 12
     # Below this many stance-verified quotes, a pain point is flagged low_evidence
@@ -1402,13 +1436,54 @@ class PainPointCrew:
 
         Topical vector search retrieves quotes that share vocabulary with the pain
         but may be off-stance (positive about the thing), neutral how-to, or about a
-        different symptom. A single cheap structured-output LLM call classifies each
-        quote SUPPORTS / NEUTRAL / CONTRADICTS against the claim; only SUPPORTS are
-        kept, preserving the input order.
+        different symptom. Structured-output LLM calls classify each quote
+        SUPPORTS / NEUTRAL / CONTRADICTS against the claim; only SUPPORTS are kept,
+        preserving the input order.
 
-        Fail-open: any error (timeout, parse, network) returns the input quotes
-        unfiltered — a fail-closed default would wrongly zero out a pain's evidence.
+        The gate is now the PRIMARY evidence selector, not a final polish step — the
+        upstream `combined_score` blend was measured at only 1.27x better than random
+        at picking genuine evidence, so candidates are no longer pre-truncated to a
+        ranked shortlist. That means batches are large, so the input is split into
+        chunks of `_STANCE_CHUNK_SIZE` judged CONCURRENTLY (they are independent) and
+        the SUPPORTS unioned. Concurrency is what keeps the wall-clock near the old
+        single-call cost despite ~3x the calls.
+
+        Fail-open, PER CHUNK: a failed chunk keeps its own quotes unfiltered rather
+        than zeroing a pain's evidence. Only the affected chunk degrades. Chunk size
+        matters for correctness, not just cost: a response that fails to return one
+        indexed verdict per quote admits that whole chunk. Verified at 100/200/400
+        on deepseek-v4-flash (exactly N verdicts, 0 failures); re-verify if
+        `stance_validation_llm` is repointed.
         """
+        if not quotes:
+            return quotes
+
+        from concurrent.futures import ThreadPoolExecutor
+
+        chunk = self._STANCE_CHUNK_SIZE
+        batches = [quotes[i:i + chunk] for i in range(0, len(quotes), chunk)]
+        if len(batches) == 1:
+            kept = self._stance_judge_batch(pain_point, batches[0])
+        else:
+            workers = min(self._STANCE_CHUNK_WORKERS, len(batches))
+            with ThreadPoolExecutor(max_workers=workers) as ex:
+                results = list(ex.map(
+                    lambda b: self._stance_judge_batch(pain_point, b), batches
+                ))
+            kept = [q for part in results for q in part]
+
+        logger.info(
+            f"[Stance] '{pain_point.title[:40]}': kept {len(kept)}/{len(quotes)} "
+            f"stance-verified quotes ({len(batches)} chunk(s))"
+        )
+        return kept
+
+    def _stance_judge_batch(
+        self,
+        pain_point: UnvalidatedPainPoint,
+        quotes: list[ExtractedQuote],
+    ) -> list[ExtractedQuote]:
+        """Judge ONE chunk of candidate quotes. Fail-open returns the chunk unfiltered."""
         if not quotes:
             return quotes
 
@@ -1435,7 +1510,7 @@ class PainPointCrew:
                 prompt=prompt,
                 output_model=BatchStanceResponse,
                 temperature=0,
-                timeout=120,
+                timeout=300,
                 model_name=settings.stance_validation_llm,
                 reasoning_effort="none",
             )
@@ -1446,7 +1521,7 @@ class PainPointCrew:
             # summarized into degradation_events at end of analyze()
             self._stance_gate_failures = getattr(self, "_stance_gate_failures", 0) + 1
             logger.warning(
-                f"[Stance] gate failed for '{pain_point.title[:40]}', keeping "
+                f"[Stance] chunk failed for '{pain_point.title[:40]}', keeping "
                 f"{len(quotes)} unfiltered quotes (fail-open): {e}"
             )
             return quotes
@@ -1454,12 +1529,7 @@ class PainPointCrew:
         supported_idx = {
             v.index for v in result.verdicts if v.stance == "SUPPORTS"
         }
-        kept = [q for i, q in enumerate(quotes, start=1) if i in supported_idx]
-        logger.info(
-            f"[Stance] '{pain_point.title[:40]}': kept {len(kept)}/{len(quotes)} "
-            f"stance-verified quotes"
-        )
-        return kept
+        return [q for i, q in enumerate(quotes, start=1) if i in supported_idx]
 
     def _enrich_single_pain_point(
         self,
@@ -1494,13 +1564,34 @@ class PainPointCrew:
         # Precompute relevance terms once for this pain point
         relevance_terms = self._build_relevance_terms(pain_point)
 
-        # Build contextual queries: description first (max context), then keywords with title
-        description_query = f"{pain_point.title} - {pain_point.description}"
-        keyword_queries = [
-            f"{pain_point.title}: {kw}"
-            for kw in pain_point.anchor_keywords[:3]
-        ]
-        all_queries = [description_query] + keyword_queries
+        # Query construction. The analyst-voice queries below ("Cannot determine whether
+        # roasted coffee remains profitable after roast loss - Roasters need to connect
+        # green weight...") are written in a different REGISTER than the evidence they
+        # must match ("I've never made more than minimum wage owning my own coffee
+        # business"). Same meaning, disjoint vocabulary — and the embedding sees the
+        # difference. Measured on the 58-passage recall oracle (scripts/query_variant_sweep.py):
+        # analyst-voice queries retrieve 70% of known-missing evidence; first-person
+        # queries retrieve 84% with the SAME query count. A duplicate-query control gained
+        # +0pp, so this is a voice effect, not a "more shots on goal" effect.
+        #
+        # First-person REPLACES analyst voice rather than adding to it: mixing both scored
+        # WORSE end-to-end than first-person alone (S3-43 lenient 28% vs 37%), because the
+        # analyst queries flood the pool with near-duplicates that outrank real evidence in
+        # the combined_score ranking. More queries, worse outcome.
+        #
+        # Falls back to analyst voice when variants are unavailable (generation failed, or
+        # the flag is off). Validated on the coffee-roasting niche only — see
+        # tests/fixtures/quote_recall_coffee_v1.json.
+        variants = (getattr(self, "_query_variants", None) or {}).get(pain_point.title) or []
+        if variants:
+            all_queries = list(variants)
+        else:
+            description_query = f"{pain_point.title} - {pain_point.description}"
+            keyword_queries = [
+                f"{pain_point.title}: {kw}"
+                for kw in pain_point.anchor_keywords[:3]
+            ]
+            all_queries = [description_query] + keyword_queries
 
         for query in all_queries:
             try:
@@ -1550,27 +1641,56 @@ class PainPointCrew:
         else:
             scored_quotes.sort(key=lambda x: x[0], reverse=True)
 
-        # Per-post cap: iterate in sort order (anchor-first, then score) and keep at
-        # most _PER_POST_CAP quotes per source post, up to 12. A high-scoring quote
-        # whose post is already at cap is skipped for the next under-cap quote —
-        # intended, prevents one comment from dominating via sentence-shredding.
-        # No backfill: a pain with little real evidence ends up with few quotes.
-        post_counts: dict[str, int] = {}
+        # Pre-gate truncation is DISABLED by default (both caps None) — it was measured
+        # to be the single largest source of lost evidence. The sort above still runs,
+        # because gate output preserves input order and that order is what _DISPLAY_CAP
+        # picks from; ranking is now used to ORDER validated quotes, never to DECIDE
+        # which candidates get seen. Both caps remain as emergency brakes only.
         capped_quotes: list[ExtractedQuote] = []
-        for _, quote in scored_quotes:
-            if post_counts.get(quote.post_id, 0) < self._PER_POST_CAP:
+        if self._PER_POST_CAP is None and self._STANCE_INPUT_CAP is None:
+            capped_quotes = [quote for _, quote in scored_quotes]
+        else:
+            post_counts: dict[str, int] = {}
+            for _, quote in scored_quotes:
+                if (
+                    self._PER_POST_CAP is not None
+                    and post_counts.get(quote.post_id, 0) >= self._PER_POST_CAP
+                ):
+                    continue
                 capped_quotes.append(quote)
                 post_counts[quote.post_id] = post_counts.get(quote.post_id, 0) + 1
-                if len(capped_quotes) == self._STANCE_INPUT_CAP:
+                if (
+                    self._STANCE_INPUT_CAP is not None
+                    and len(capped_quotes) >= self._STANCE_INPUT_CAP
+                ):
                     break
 
         # Stance gate: keep only quotes that genuinely express the pain (drops
-        # off-stance/positive and on-topic-but-no-complaint quotes). Fail-open.
-        # Judge up to _STANCE_INPUT_CAP candidates, then DISPLAY at most _DISPLAY_CAP
-        # of the survivors (stance gate preserves rank order). Note: matched_post_ids
-        # stays the WIDE relevance-passing set (drives the discussion-volume
-        # mention_count); the stance gate only narrows DISPLAY.
-        final_quotes = self._stance_filter_quotes(pain_point, capped_quotes)[:self._DISPLAY_CAP]
+        # off-stance/positive and on-topic-but-no-complaint quotes). Fail-open per chunk.
+        # Note: matched_post_ids stays the WIDE relevance-passing set (drives the
+        # discussion-volume mention_count); the gate only narrows DISPLAY.
+        stance_kept = self._stance_filter_quotes(pain_point, capped_quotes)
+
+        # Post-gate diversity cap. This is the fairness role _PER_POST_CAP used to play,
+        # moved AFTER validation: limiting how many VALIDATED quotes one thread may
+        # contribute stops a single talkative person reading as corroboration, without
+        # discarding evidence before anything has judged it. Applied in rank order.
+        if self._POST_DIVERSITY_CAP is not None:
+            div_counts: dict[str, int] = {}
+            diverse: list[ExtractedQuote] = []
+            for q in stance_kept:
+                if div_counts.get(q.post_id, 0) < self._POST_DIVERSITY_CAP:
+                    diverse.append(q)
+                    div_counts[q.post_id] = div_counts.get(q.post_id, 0) + 1
+            if len(diverse) < len(stance_kept):
+                logger.info(
+                    f"[Diversity] '{pain_point.title[:40]}': {len(stance_kept)} -> "
+                    f"{len(diverse)} validated quotes after per-post cap "
+                    f"{self._POST_DIVERSITY_CAP}"
+                )
+            stance_kept = diverse
+
+        final_quotes = stance_kept[:self._DISPLAY_CAP]
 
         # Deterministic grounding gate: every DISPLAYED quote must be a verbatim/fuzzy substring
         # of its cited source post (the fail-open stance gate can let off-source/mis-attributed
@@ -1620,6 +1740,71 @@ class PainPointCrew:
             ),
         )
 
+    def _generate_query_variants(
+        self,
+        extracted_pain_points: list[UnvalidatedPainPoint],
+    ) -> dict[str, list[str]]:
+        """Rewrite each pain into first-person retrieval queries. ONE batched LLM call.
+
+        Retrieval embeds the query against real forum text, so the query's REGISTER
+        matters as much as its meaning. Analyst phrasing and lived phrasing share meaning
+        but not vocabulary; matching the latter lifted retrieval of known-missing evidence
+        from 70% to 84% at identical query count (scripts/query_variant_sweep.py against
+        tests/fixtures/quote_recall_coffee_v1.json).
+
+        Fail-soft: any error returns {} and _enrich_single_pain_point falls back to the
+        analyst-voice queries. Retrieval degrades, it does not break.
+        """
+        if not settings.enable_firstperson_queries or not extracted_pain_points:
+            return {}
+
+        from ..utils.llm_service import LLMService
+        from ..utils.prompts import get_prompt
+        from ..utils.validation.thread_validator import _sanitize_text
+
+        pains_text = "\n".join(
+            f"{i}. {_sanitize_text(pp.title)} - {_sanitize_text(pp.description)}"
+            for i, pp in enumerate(extracted_pain_points, start=1)
+        )
+        prompt = get_prompt(
+            "query_voice_variants",
+            niche=_sanitize_text(self.niche_description),
+            pains_text=pains_text,
+            pain_count=len(extracted_pain_points),
+        )
+        try:
+            result, usage = LLMService.invoke_structured(
+                prompt=prompt,
+                output_model=BatchQueryVariantResponse,
+                temperature=0,
+                timeout=180,
+                model_name=settings.query_variant_llm,
+                reasoning_effort="none",
+            )
+            tracker = getattr(self, "cost_tracker", None)
+            if tracker and usage is not None:
+                tracker.record_llm_usage("Stage 6 - Query Variants", usage.to_dict())
+        except Exception as e:
+            logger.warning(
+                f"[QueryVoice] variant generation failed, falling back to analyst-voice "
+                f"queries for all {len(extracted_pain_points)} pains: {e}"
+            )
+            return {}
+
+        out: dict[str, list[str]] = {}
+        for v in result.variants:
+            if not 1 <= v.index <= len(extracted_pain_points):
+                continue
+            queries = [q.strip() for q in v.queries if q and q.strip()]
+            if queries:
+                out[extracted_pain_points[v.index - 1].title] = queries
+        missing = len(extracted_pain_points) - len(out)
+        logger.info(
+            f"[QueryVoice] first-person queries for {len(out)}/{len(extracted_pain_points)} "
+            f"pains" + (f" ({missing} fell back to analyst voice)" if missing else "")
+        )
+        return out
+
     def _run_parallel_quote_enrichment(
         self,
         extracted_pain_points: list[UnvalidatedPainPoint],
@@ -1659,6 +1844,10 @@ class PainPointCrew:
                 total_quotes_found=0,
                 enrichment_summary="No pain points to enrich"
             )
+
+        # Rewrite pains into first-person retrieval queries before fanning out. One
+        # batched call for all pains; read per-pain inside _enrich_single_pain_point.
+        self._query_variants = self._generate_query_variants(extracted_pain_points)
 
         # Create search tool (thread-safe for read-only queries)
         search_tool = QuoteSearchTool(knowledge=self._enrichment_knowledge)

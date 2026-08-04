@@ -1,0 +1,1174 @@
+{
+  "description": "Corpus recall audit: 116 coffee-roaster Reddit posts (title+selftext+comments, flattened recursively) hand-labeled for discourse shape and genuine pain-expression, then cross-checked against stage_3 representative_quotes to find pain passages the pipeline never surfaced (misses) vs. ones it already had (already_surfaced).",
+  "created": "2026-08-04",
+  "source_run": "checkpoint_small_batch_coffee_roasters_managing_green_coffee_8f35ea6b-0321-41fd-b747-e4d76605f50f_20260803_163640",
+  "corpus": {
+    "posts": 116,
+    "posts_with_pain_expression": 38
+  },
+  "discourse_shape": {
+    "ADVISORY": 72,
+    "GRIEVANCE": 24,
+    "SOCIAL": 13,
+    "COMMERCIAL": 7
+  },
+  "totals": {
+    "passages": 58,
+    "already_surfaced": 15,
+    "missed": 43
+  },
+  "passages": [
+    {
+      "pain_title": "Cannot calculate true cost per pound for each green coffee lot",
+      "post_id": "ggo86o",
+      "passage": "However, that doesn't give me great information to work with, as I might only purchase green coffee once every 2 months, and take 3 months to sell it.",
+      "already_surfaced": true,
+      "segments": [
+        "However, that doesn't give me great information to work with, as I might only purchase green coffee once every  2 months, and take 3 months to sell it."
+      ]
+    },
+    {
+      "pain_title": "Cannot reject defective green coffee reliably before committing to a lot",
+      "post_id": "1v0s4fg",
+      "passage": "Will just touch on green freshness - temperature matters, how they’re stored matters, what happened before they arrived matters but fundamentally you don’t want to be in the habit of punting coffee which is over a year past harvest, sometimes you get lucky but mostly it’ll be past its best.",
+      "already_surfaced": true,
+      "segments": [
+        "Will just touch on green freshness -  temperature matters, how they’re stored matters, what happened before they arrived matters but fundamentally you don’t want to be in the habit of punting coffee which is over a year past harvest, sometimes you get lucky but mostly it’ll be past its best."
+      ]
+    },
+    {
+      "pain_title": "Cannot verify storage and water activity before green coffee production",
+      "post_id": "1v0s4fg",
+      "passage": "Will just touch on green freshness - temperature matters, how they’re stored matters, what happened before they arrived matters but fundamentally you don’t want to be in the habit of punting coffee which is over a year past harvest, sometimes you get lucky but mostly it’ll be past its best.",
+      "already_surfaced": true,
+      "segments": [
+        "Will just touch on green freshness -  temperature matters, how they’re stored matters, what happened before they arrived matters but fundamentally you don’t want to be in the habit of punting coffee which is over a year past harvest, sometimes you get lucky but mostly it’ll be past its best."
+      ]
+    },
+    {
+      "pain_title": "Cannot determine whether roasted coffee remains profitable after roast loss",
+      "post_id": "1v0s4fg",
+      "passage": "I would seriously question how deep you get yourself invested before you’ve actually done some roasting, looked realistically at your market and after that, plan for how long you can hang it out making a loss before you have some customers…there’s a metric ton of shit to consider.",
+      "already_surfaced": true,
+      "segments": [
+        "I would seriously question how deep you get yourself invested before you’ve actually done some roasting, looked realistically at your market and after that, plan for how long you can hang it out making a loss before you have some customers",
+        "there’s a metric ton of shit to consider."
+      ]
+    },
+    {
+      "pain_title": "Cannot reconcile lot separation with café production stock",
+      "post_id": "9hb0ct",
+      "passage": "Hey guys, I recently received a job as head roaster for a nearby coffee shop (Roasting hundreds of lbs a day.) They currently have no inventory tracking except a visual inspection.",
+      "already_surfaced": true,
+      "segments": [
+        "Hey guys, I recently received a job as head roaster for a nearby coffee shop (Roasting hundreds of lbs a day.) They currently have no inventory tracking except a visual inspection."
+      ]
+    },
+    {
+      "pain_title": "Cannot schedule roast to order for retail and wholesale freshness windows",
+      "post_id": "9hb0ct",
+      "passage": "We roast to order and send out within 48 hours so it is essential for us.",
+      "already_surfaced": true,
+      "segments": [
+        "We roast to order and send out within 48 hours so it is essential for us."
+      ]
+    },
+    {
+      "pain_title": "Cannot choose software that fits a small roastery workflow",
+      "post_id": "1o69aw6",
+      "passage": "I have 8 bags of different coffees, is there any inventory software that I can use to help me.",
+      "already_surfaced": true,
+      "segments": [
+        "I have 8 bags of different coffees, is there any inventory software that I can use to help me."
+      ]
+    },
+    {
+      "pain_title": "Cannot predict café brew performance from traditional cupping",
+      "post_id": "ef6357",
+      "passage": "In my experience (as a barista for 7 years and a working at a roaster for another 3), traditional cupping is primarily geared towards green coffee purchasing.",
+      "already_surfaced": true,
+      "segments": [
+        "In my experience (as a barista for 7 years and a working at a roaster for another 3), traditional cupping is primarily geared towards green coffee purchasing."
+      ]
+    },
+    {
+      "pain_title": "Cannot maintain café and subscription supply when spot coffee disappears",
+      "post_id": "18hrweo",
+      "passage": "Yeah I had spent a couple grand on green coffee from them over a couple years and went elsewhere after that debacle.",
+      "already_surfaced": true,
+      "segments": [
+        "Yeah I had spent a couple grand on green coffee from them over a couple years and went elsewhere after that debacle."
+      ]
+    },
+    {
+      "pain_title": "Cannot transfer roast curves from sample equipment to production machines",
+      "post_id": "1299w6e",
+      "passage": "But recording the roast profile and entering your fan, heat, and drum speed changes make it easy to manually duplicate that BT curve given the same environmental conditions, bean choice and amount, and electrical supply consistency.",
+      "already_surfaced": true,
+      "segments": [
+        "But recording the roast profile and entering your fan, heat, and drum speed changes make it easy to manually duplicate that BT curve given the same environmental conditions, bean choice and amount, and electrical supply consistency."
+      ]
+    },
+    {
+      "pain_title": "Cannot scale sample roast settings to café production volume",
+      "post_id": "1bc0e3p",
+      "passage": "Roasters sample roast and creat a profile on a small roaster (usually 1kg drum size) with a batch size of 200-1000g.",
+      "already_surfaced": true,
+      "segments": [
+        "Roasters sample roast and creat a profile on a small roaster (usually 1kg drum size) with a batch size of 200-1000g."
+      ]
+    },
+    {
+      "pain_title": "Cannot meet café volume without excessive roasting time",
+      "post_id": "1bc0e3p",
+      "passage": "Also, larger roasters are built with the intent to be used for production whereas the Bullit has a disclaimer on it (at least the one I saw a long time ago) that specifies a very rigid and limited duty cycle.",
+      "already_surfaced": true,
+      "segments": [
+        "Also, larger roasters are built with the intent to be used for production whereas the Bullit has a disclaimer on it (at least the one I saw a long time ago) that specifies a very rigid and limited duty cycle."
+      ]
+    },
+    {
+      "pain_title": "Cannot verify storage and water activity before green coffee production",
+      "post_id": "1uvexvg",
+      "passage": "Unfortunately the coffee supply chain is a bit of a mess right now so when really good coffees are available I suggest you get as much as you can use and store well for about a year, really good coffees last at least a year coffee that wasn't so good to begin with may have a sweet spot of a few months.",
+      "already_surfaced": true,
+      "segments": [
+        "Unfortunately the coffee supply chain is a bit of a mess right now so when really good coffees are available I suggest you get as much as you can use and store well for about a year, really good coffees last at least a year coffee that wasn't so good to begin with may have a sweet spot of a few months."
+      ]
+    },
+    {
+      "pain_title": "Cannot meet café volume without excessive roasting time",
+      "post_id": "1nfwn9k",
+      "passage": "I roast 12-16 consecutive batches, shut down the roaster and take a lunch break, then come back after lunch for a few more batches if necessary, or help my team with production, shipping, ordering, etc.",
+      "already_surfaced": true,
+      "segments": [
+        "I roast 12-16 consecutive batches, shut down the roaster and take a lunch break, then come back after lunch for a few more batches if necessary, or help my team with production, shipping, ordering, etc."
+      ]
+    },
+    {
+      "pain_title": "Cannot maintain café and subscription supply when spot coffee disappears",
+      "post_id": "1jrni73",
+      "passage": "But because of the poor state of the spot market it’s a bad time to try to find a coffee for the gap.",
+      "already_surfaced": true,
+      "segments": [
+        "But because of the poor state of the spot market it’s a bad time to try to find a coffee for the gap."
+      ]
+    },
+    {
+      "pain_title": "Cannot approve substitute green coffee without changing the expected cup profile",
+      "post_id": "1b82k44",
+      "passage": "We plan our purchase so that our 'essential' origins are available year round. We cup and cup and cup and cup looking for replace qualities year round. I'm not going to approve something unless it's as close to the original profile as we can find.",
+      "segments": [
+        "We plan our purchase so that our ‘essential’ origins are available year round.  We cup and cup and cup and cup looking for replace qualities year round. I’m not going to approve something unless it’s as close to the original profile as we can find."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot approve substitute green coffee without changing the expected cup profile",
+      "post_id": "1jrni73",
+      "passage": "I know I need to start planning for changes in blend composition as lots run out but I don't always know what will be the next lot we are using, and sometimes we don't have something lined up because there is a gap before the next contract lands.",
+      "segments": [
+        "I know I need to start planning for changes in blend composition as lots run out but I don’t always know what will be the next lot we are using, and sometimes we don’t have something lined up because there is a gap before the next contract lands."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot maintain café and subscription supply when spot coffee disappears",
+      "post_id": "3pxbvc",
+      "passage": "When you grow, buying green coffee will become one of the most difficult parts of the business. You have to buy contracts 3,6 or more months out... your costs go way up... you may have inventory of up to 5% of your gross sales (just for coffee).",
+      "segments": [
+        "When you grow, buying green coffee will become one of the most difficult parts of the business. You have to buy contracts 3,6 or more months out",
+        "your costs go way up",
+        "you may have inventory of up to 5% of your gross sales (just for coffee)."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot maintain café and subscription supply when spot coffee disappears",
+      "post_id": "1uvexvg",
+      "passage": "Each time I find a varietal that I'd like to roast a bunch of and possibly sell, it's out of stock... little to no expectation of long-term availability.",
+      "segments": [
+        "Each time I find a varietal that I'd like to roast a bunch of and possibly sell, it's out of stock",
+        "little to no expectation of long-term availability."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot maintain café and subscription supply when spot coffee disappears",
+      "post_id": "1jrni73",
+      "passage": "This is a perfect storm scenario as we're (a) in an era of historically high coffee prices, (b) experiencing critically low domestic inventories... coffees we contracted months ago... will suddenly cost us an additional 10-28% of their value... there is nothing we could have done to plan for this scenario.",
+      "segments": [
+        "This is a perfect storm scenario as we're (a) in an era of historically high coffee prices, (b) experiencing critically low domestic inventories",
+        "coffees we contracted months ago",
+        "will suddenly cost us an additional 10-28% of their value",
+        "there is nothing we could have done to plan for this scenario."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot maintain café and subscription supply when spot coffee disappears",
+      "post_id": "2ekog1",
+      "passage": "We had a supplier who was breaking us off coffee at 50 pounds... for only $1.00 above his cost... They stopped... prices are now $6.00/lb or more. We can't do that.",
+      "segments": [
+        "We had a supplier who was breaking us off coffee at 50 pounds",
+        "for only $1.00 above his cost",
+        "prices are now $6.00/lb or more. We can't do that."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot reject defective green coffee reliably before committing to a lot",
+      "post_id": "10tmtbw",
+      "passage": "Have any of you noticed a reduction in the quality of green beans and the quality of the cup as a result? ...the beans are moldy, sour, insect damaged etc. ...my roasts are not as good as they use to be... tried different roasting techniques to try and compensate, but to no avail.",
+      "segments": [
+        "Have any of you noticed a reduction in the quality of green beans and the quality of the cup as a result?",
+        "the beans are moldy, sour, insect damaged etc.",
+        "my roasts are not as good as they use to be",
+        "tried different roasting techniques to try and compensate, but to no avail."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot reject defective green coffee reliably before committing to a lot",
+      "post_id": "10tmtbw",
+      "passage": "Three years into roasting and I have had one batch of beans that were off. I tried to roast multiple times, and always not drinkable.",
+      "segments": [
+        "Three years into roasting and I have had one batch of beans that were off. I tried to roast multiple times, and always not drinkable."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot reject defective green coffee reliably before committing to a lot",
+      "post_id": "1qr4hbb",
+      "passage": "The last time I bought a coffee for less than $5/lb... it turned out the bag was infested with moth larvae and almost every bean had nibble holes and there were pounds of sawdust and larvae poop all throughout the bag.",
+      "segments": [
+        "The last time I bought a coffee for less than $5/lb",
+        "it turned out the bag was infested with moth larvae and almost every bean had nibble holes and there were pounds of sawdust and larvae poop all throughout the bag."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot transfer roast curves from sample equipment to production machines",
+      "post_id": "1t5tpji",
+      "passage": "My boss and I have been burning through a lot of greens trying to understand air roasting... We struggled keeping our drop temp below 400 and having an extended devo.",
+      "segments": [
+        "My boss and I have been burning through a lot of greens trying to understand air roasting",
+        "We struggled keeping our drop temp below 400 and having an extended devo."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot keep first crack and development time ratio stable across crop changes",
+      "post_id": "ktwm90",
+      "passage": "starting in November everything I roast has turned out sour... I've tried everything I can think of to troubleshoot the problem... I cannot figure out what it is",
+      "segments": [
+        "starting in November everything I roast has turned out sour",
+        "I’ve tried everything I can think of to troubleshoot the problem",
+        "I cannot figure out what it is"
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot scale sample roast settings to café production volume",
+      "post_id": "1kkz1of",
+      "passage": "I think that it is foolish to try this with an sr800. I tried it and failed miserably... more than struggled to keep up with very little demand.",
+      "segments": [
+        "I think that it is foolish to try this with an sr800. I tried it and failed miserably",
+        "more than struggled to keep up with very little demand."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot predict café brew performance from traditional cupping",
+      "post_id": "gxs1df",
+      "passage": "Anytime I get a new coffee, I generally do a quick cupping... typically taste a lot of great notes... Then I brew a normal cup... its never even close... incredibly bland. I can't even tell if it's over or under extracted... kinda like shooting in the dark.",
+      "segments": [
+        "Anytime I get a new coffee, I generally do a quick cupping",
+        "typically taste a lot of great notes",
+        "Then I brew a normal cup",
+        "its never even close",
+        "incredibly bland. I can’t even tell if it’s over or under extracted",
+        "kinda like shooting in the dark trying to figure out what I did wrong."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot predict café brew performance from traditional cupping",
+      "post_id": "10ltz2d",
+      "passage": "I recently purchased a bag of washed Ethiopian light roast beans. All my brews... fantastic aroma... yet the flavor has been severely underwhelming. Each brew I've been changing a variable at a time to no avail.",
+      "segments": [
+        "I recently purchased a bag of washed Ethiopian light roast beans. All my brews",
+        "yet the flavor has been severely underwhelming.\n\nEach brew I've been changing a variable at a time to no avail."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot predict café brew performance from traditional cupping",
+      "post_id": "kbmqy3",
+      "passage": "We learned this the hard way. You can't replace traditional cupping, but it's not necessarily the best way to dial in your roasting.",
+      "segments": [
+        "We learned this the hard way. You can't replace traditional cupping, but it's not necessarily the best way to dial in your roasting."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot schedule roast to order for retail and wholesale freshness windows",
+      "post_id": "s000ud",
+      "passage": "We do 32lbs per batch and are roasting anywhere from probably 10 to 22 batches per day 5 days a week... It's become a beast to handle! Trying to get things in order so it's just not so chaotic.",
+      "segments": [
+        "We do 32lbs per batch and are roasting anywhere from probably 10 to 22 batches per day 5 days a week",
+        "It's become a beast to handle! Trying to get things in order so it's just not so chaotic."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot schedule roast to order for retail and wholesale freshness windows",
+      "post_id": "s000ud",
+      "passage": "I ran a roastery that would do about 2,000lbs/month... The owners insisted that we only roast two days each week, and we never got it done without going into overtime... None of us were paid enough to handle the sheer amount of stress.",
+      "segments": [
+        "I ran a roastery that would do about 2,000lbs/month",
+        "The owners insisted that we only roast two days each week, and we never got it done without going into overtime",
+        "None of us were paid enough to handle the sheer amount of stress of getting it done."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot meet café volume without excessive roasting time",
+      "post_id": "1v3o3td",
+      "passage": "It's hard to make good money roasting coffee... roasting a pound or so at a time - you just can't produce enough coffee fast enough to compensate your own time at any price that's realistic.",
+      "segments": [
+        "It's hard to make good money roasting coffee",
+        "roasting a pound or so at a time - you just can't produce enough coffee fast enough to compensate your own time at any price that's realistic in the marketplace."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot meet café volume without excessive roasting time",
+      "post_id": "1om0khp",
+      "passage": "Afterglow had reached the point where 'we just can't roast any more coffee'... 'We were doing 24 hours of work just to meet one single day of production ... [the new machine] was an absolute necessity.'",
+      "segments": [
+        "Afterglow had reached the point where “we just can’t roast any more coffee",
+        "We were doing 24 hours of work just to meet one single day of production",
+        "[The new machine\\] was an absolute necessity."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot meet café volume without excessive roasting time",
+      "post_id": "1kkz1of",
+      "passage": "I ran the wheels off my Kaleido M10 for the past 2 years and now I'm renting time on larger machines to keep up. Running that many batches through a 1kg roaster becomes a part then full time job pretty fast.",
+      "segments": [
+        "I ran the wheels off my Kaleido M10 for the past 2 years and now I'm renting time on larger machines to keep up. Running that many batches through a 1kg roaster becomes a part then full time job pretty fast."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot meet café volume without excessive roasting time",
+      "post_id": "1sh955p",
+      "passage": "Currently roasting on an Aillio Bullet R1 and quickly approaching its limits... We're definitely reaching the point where this model won't scale much further, which is a good problem to have.",
+      "segments": [
+        "Currently roasting on an Aillio Bullet R1 and quickly approaching its limits",
+        "We’re definitely reaching the point where this model won’t scale much further, which is a good problem to have."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot determine whether roasted coffee remains profitable after roast loss",
+      "post_id": "1v3o3td",
+      "passage": "I did roughly $8000 in revenue a year and netted ~$2000 a year in profit... I was making about $4-$5 an hour.",
+      "segments": [
+        "I did roughly $8000 in revenue a year and netted ~$2000 a year in profit",
+        "I was making about $4-$5 an hour."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot determine whether roasted coffee remains profitable after roast loss",
+      "post_id": "1v3o3td",
+      "passage": "The profit margin on a bag of beans is maybe $5-10... even if you are selling every bag made you are still capping out at $50-100 an hour... quickly gets taken down closer to $20-50 an hour.",
+      "segments": [
+        "The profit margin on a bag of beans is maybe $5-10",
+        "even if you are selling every bag made you are still capping out at $50-100 an hour",
+        "quickly gets taken down closer to $20-50 an hour."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot determine whether roasted coffee remains profitable after roast loss",
+      "post_id": "1v3o3td",
+      "passage": "the income still wasn't even close to replacing one of our salaries... a lot of late nights, early mornings, and time away from my kid.",
+      "segments": [
+        "the income still wasn’t even close to replacing one of our salaries",
+        "a lot of late nights, early mornings, and time away from my kid."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot determine whether roasted coffee remains profitable after roast loss",
+      "post_id": "7c0hhn",
+      "passage": "it's not typically as cheap as you think it would be. Green waste can be an issue, and the time and effort it takes can be pretty massive.",
+      "segments": [
+        "it's not typically as cheap as you think it would be.  Green waste can be an issue, and the time and effort it takes can be pretty massive."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot determine whether roasted coffee remains profitable after roast loss",
+      "post_id": "d5mq1i",
+      "passage": "It's been unprofitable for a year... I haven't paid myself anything... yet... Single bags won't pay your rent.",
+      "segments": [
+        "It’s been unprofitable for a year",
+        "I haven’t paid myself anything",
+        "Single bags won’t pay your rent."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot determine whether roasted coffee remains profitable after roast loss",
+      "post_id": "xj9ai3",
+      "passage": "Electricity, overhead, your web site and card processor, marketing, bags, labels, boxes, postage, insurance, gas for the roaster... 18% of the weight... I've never made more than minimum wage owning my own coffee business.",
+      "segments": [
+        "Electricity,  overhead, your web site and card processor, marketing, bags, labels, boxes, postage, insurance, gas for the roaster",
+        "I've never made more than minimum wage owning my own coffee business."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot determine whether roasted coffee remains profitable after roast loss",
+      "post_id": "xj9ai3",
+      "passage": "Good quality beans in small quantities are going to set you back $5-$10... You lose 20-ish percent of weight during roasting... It's not a real profitable business as a side hustle.",
+      "segments": [
+        "Good quality beans in small quantities are going to set you back $5-$10",
+        "You lose 20-ish percent of weight during roasting",
+        "It's not a real profitable business as a side hustle."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot determine whether roasted coffee remains profitable after roast loss",
+      "post_id": "xj9ai3",
+      "passage": "I net $12 per pound... four or more pounds I'm pulling in about $35-$45 per hour... a bigger roaster means I'm going to need a loan and the profit goes to zero until I can pay the roaster off.",
+      "segments": [
+        "four or more pounds I'm pulling in about $35-$45 per hour",
+        "a bigger roaster means I'm going to need a loan and the profit goes to zero until I can pay the roaster off."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot determine whether roasted coffee remains profitable after roast loss",
+      "post_id": "cz591v",
+      "passage": "I'm still working 60+hrs a week at my security job, and roasting in the evenings, while slowly working on a business plan... Next step: make it actually profitable.",
+      "segments": [
+        "I'm still working 60+hrs a week at my security job, and roasting in the evenings, while slowly working on a business plan",
+        "Next step: make it actually profitable, and segue from security to coffee full time."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot determine whether roasted coffee remains profitable after roast loss",
+      "post_id": "cz591v",
+      "passage": "I made pretty much zero for the first couple of years, ~$50/week by the end of that period (still living with parents).",
+      "segments": [
+        "I made pretty much zero for the first couple of years, ~$50/week by the end of that period (still living with parents)."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot determine whether roasted coffee remains profitable after roast loss",
+      "post_id": "2usnab",
+      "passage": "It is by no means glamorous. We both still work our full-time jobs in addition to the roasting business... Now I work mainly for other people's enjoyment, not my own.",
+      "segments": [
+        "It is by no means glamorous.  We both still work our full-time jobs in addition to the roasting business",
+        "Now I work mainly for other people's enjoyment, not my own."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot determine whether roasted coffee remains profitable after roast loss",
+      "post_id": "196sul0",
+      "passage": "We are over 15%, under 30% profit... We can't buy OR sell in that kind of bulk, which massively squishes margins down... I would close and move roasting into my garage if that could be done legally in my area.",
+      "segments": [
+        "We are over 15%, under 30% profit",
+        "We can’t buy OR sell in that kind of bulk, which massively squishes margins down",
+        "I would close and move roasting into my garage if that could be done legally in my area."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot calculate true cost per pound for each green coffee lot",
+      "post_id": "1t3v09u",
+      "passage": "green bean inventory requires serious capital or a good credit line with your importer. I underestimated this badly at the start and lost a lot of time.",
+      "segments": [
+        "green bean inventory requires serious capital or a good credit line with your importer. I underestimated this badly at the start and lost a lot of time."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot calculate true cost per pound for each green coffee lot",
+      "post_id": "1pzhpnx",
+      "passage": "What I underestimated was how expensive the design and manufacturing of packaging is... 1 year worth of doybags is easily as expensive as a small roaster.",
+      "segments": [
+        "What I underestimated was how expensive the design and and manufacturing of packaging is",
+        "1 year worth of doybags is easily as expensive as a small roaster."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot connect roast logs to green inventory and customer orders",
+      "post_id": "19eiuiw",
+      "passage": "Everything isn't connected and there was a lot of manual processing going on in the production/fulfillment room. More automation/connection between softwares would've helped a lot.",
+      "segments": [
+        "Everything isn't connected and there was a lot of manual processing going on in the production/fulfillment room. More automation/connection between softwares would've helped a lot."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot choose software that fits a small roastery workflow",
+      "post_id": "17omxdz",
+      "passage": "One of the pain points I have with my roastery is tracking inventory in an intuitive way. Using excel or google sheets always feels clunky.",
+      "segments": [
+        "One of the pain points I have with my roastery is tracking inventory in an intuitive way. Using excel or google sheets always feels clunky."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot choose software that fits a small roastery workflow",
+      "post_id": "19eiuiw",
+      "passage": "it's also VERY opinionated and the workflow isn't crystal clear. You're required to do a lot of syncing... Adding new coffee requires a LOT of additional steps.",
+      "segments": [
+        "it’s also VERY opinionated and the workflow isn’t crystal clear. You’re required to do a lot of syncing",
+        "Adding new coffee requires a LOT of additional steps."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot choose software that fits a small roastery workflow",
+      "post_id": "19eiuiw",
+      "passage": "I tried it for both a small scale operation (140,000#/year) and a large operation (600,000#/year), and using spreadsheets was both quicker and cleaner. RoasterTools tries to do too much.",
+      "segments": [
+        "I tried it for both a small scale operation (140,000# / year) and a large operation (600,000# / year), and using spreadsheets was both quicker and cleaner. \n\nRoasterTools tries to do too much."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot train operators to translate roast data into production actions",
+      "post_id": "1fefrl3",
+      "passage": "I have promoted my fulfillment assistant to be a production roaster. I have never trained anyone on how to roast before... I am wondering what ways other roasters are approaching their training.",
+      "segments": [
+        "I have promoted my fulfillment assistant to be a production roaster. I have never trained anyone on how to roast before",
+        "I am wondering what ways other roasters are approaching their training."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot distinguish green coffee potential from finished roasted quality",
+      "post_id": "16un5lr",
+      "passage": "I'd love to call out JBC for their bullshit ratings. I swear they boast most of their coffees are between 91 and 94... but they're not 90+ rated coffees by any stretch.",
+      "segments": [
+        "I'd love to call out JBC for their bullshit ratings. I swear they boast most of their coffees are between 91 and 94",
+        "but they're not 90+ rated coffees by any stretch."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot distinguish green coffee potential from finished roasted quality",
+      "post_id": "16un5lr",
+      "passage": "Everything's a 90 when you're trying to sell it. Seriously, I've had so many run-ins with brokers and reps trying to sell me some 93 for $20/lb and I'd have barely given them 83.",
+      "segments": [
+        "Everything’s a 90 when you’re trying to sell it. \nSeriously, I’ve had so many run-ins with brokers and reps trying to sell me some 93 for $20/lb and I’d have barely given them 83."
+      ],
+      "already_surfaced": false
+    },
+    {
+      "pain_title": "Cannot use quality scores without confusing coffee buyers",
+      "post_id": "12h7mn1",
+      "passage": "I bought a small box of coffee in a supermarket because it says it was specialty with sca score, origin info, tasting notes etc. It was the worst coffee I have tasted in the last 10 years. So, basically, wtf?",
+      "segments": [
+        "I bought a small box of coffee in a supermarket because it says it was specialty with sca score, origin info, tasting notes etc. It was the worst coffee I have tasted in the last 10 years. So, basically, wtf?"
+      ],
+      "already_surfaced": false
+    }
+  ],
+  "post_shapes": [
+    {
+      "post_id": "1c6nx7n",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "16ooddo",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "lgzo2e",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "18yhrco",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "fciu38",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "ggo86o",
+      "shape": "GRIEVANCE",
+      "has_pain_expression": true
+    },
+    {
+      "post_id": "1dp0cj2",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "uo47nu",
+      "shape": "SOCIAL",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "10tmtbw",
+      "shape": "GRIEVANCE",
+      "has_pain_expression": true
+    },
+    {
+      "post_id": "zz6rpm",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "zxbywf",
+      "shape": "GRIEVANCE",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "12h7mn1",
+      "shape": "ADVISORY",
+      "has_pain_expression": true
+    },
+    {
+      "post_id": "16un5lr",
+      "shape": "ADVISORY",
+      "has_pain_expression": true
+    },
+    {
+      "post_id": "17r1b4d",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "13f7mbz",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1qr4hbb",
+      "shape": "GRIEVANCE",
+      "has_pain_expression": true
+    },
+    {
+      "post_id": "18xjxc3",
+      "shape": "SOCIAL",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "d46jd7",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1qpx78i",
+      "shape": "SOCIAL",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "5i0k23",
+      "shape": "SOCIAL",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1qugxne",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1v3o3td",
+      "shape": "GRIEVANCE",
+      "has_pain_expression": true
+    },
+    {
+      "post_id": "1s7tt4w",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1v5irie",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1nso3ea",
+      "shape": "COMMERCIAL",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1o6wweq",
+      "shape": "COMMERCIAL",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1q9cn2m",
+      "shape": "SOCIAL",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1pjgiyf",
+      "shape": "GRIEVANCE",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1t5tpji",
+      "shape": "GRIEVANCE",
+      "has_pain_expression": true
+    },
+    {
+      "post_id": "1p723gh",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1t75tae",
+      "shape": "GRIEVANCE",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1qvynmm",
+      "shape": "SOCIAL",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1om0khp",
+      "shape": "ADVISORY",
+      "has_pain_expression": true
+    },
+    {
+      "post_id": "1v0s4fg",
+      "shape": "ADVISORY",
+      "has_pain_expression": true
+    },
+    {
+      "post_id": "1uz9qla",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1u84kr7",
+      "shape": "SOCIAL",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1u84bjj",
+      "shape": "SOCIAL",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1u0cw6f",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1txewg8",
+      "shape": "SOCIAL",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1twlfqh",
+      "shape": "SOCIAL",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "11d7ata",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "o0zd9i",
+      "shape": "COMMERCIAL",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "7mxlzc",
+      "shape": "SOCIAL",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "17omxdz",
+      "shape": "COMMERCIAL",
+      "has_pain_expression": true
+    },
+    {
+      "post_id": "9hb0ct",
+      "shape": "GRIEVANCE",
+      "has_pain_expression": true
+    },
+    {
+      "post_id": "1o69aw6",
+      "shape": "GRIEVANCE",
+      "has_pain_expression": true
+    },
+    {
+      "post_id": "1ryzvi9",
+      "shape": "COMMERCIAL",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1064hke",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1njo7hk",
+      "shape": "SOCIAL",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1uejzj3",
+      "shape": "COMMERCIAL",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "19eiuiw",
+      "shape": "ADVISORY",
+      "has_pain_expression": true
+    },
+    {
+      "post_id": "22490c",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1r51361",
+      "shape": "GRIEVANCE",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1jac7vl",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "gxs1df",
+      "shape": "GRIEVANCE",
+      "has_pain_expression": true
+    },
+    {
+      "post_id": "10ltz2d",
+      "shape": "GRIEVANCE",
+      "has_pain_expression": true
+    },
+    {
+      "post_id": "ef6357",
+      "shape": "ADVISORY",
+      "has_pain_expression": true
+    },
+    {
+      "post_id": "kbmqy3",
+      "shape": "ADVISORY",
+      "has_pain_expression": true
+    },
+    {
+      "post_id": "1ky788e",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "xj9ai3",
+      "shape": "GRIEVANCE",
+      "has_pain_expression": true
+    },
+    {
+      "post_id": "1sgsxmu",
+      "shape": "GRIEVANCE",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "7c0hhn",
+      "shape": "GRIEVANCE",
+      "has_pain_expression": true
+    },
+    {
+      "post_id": "1sejuph",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "18hrweo",
+      "shape": "ADVISORY",
+      "has_pain_expression": true
+    },
+    {
+      "post_id": "1fefrl3",
+      "shape": "ADVISORY",
+      "has_pain_expression": true
+    },
+    {
+      "post_id": "bopfj6",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "d5mq1i",
+      "shape": "GRIEVANCE",
+      "has_pain_expression": true
+    },
+    {
+      "post_id": "1t3v09u",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1jt8mle",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "4swd6p",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "yoxhf4",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1kkz1of",
+      "shape": "ADVISORY",
+      "has_pain_expression": true
+    },
+    {
+      "post_id": "ivddlu",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "a1acvr",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1c7zre1",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "a45amv",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "3o96zs",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "s000ud",
+      "shape": "ADVISORY",
+      "has_pain_expression": true
+    },
+    {
+      "post_id": "gr983v",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1299w6e",
+      "shape": "ADVISORY",
+      "has_pain_expression": true
+    },
+    {
+      "post_id": "12jjntr",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "v1qyw1",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1sgktat",
+      "shape": "GRIEVANCE",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1ov9y3u",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1ro8u5r",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "cz591v",
+      "shape": "GRIEVANCE",
+      "has_pain_expression": true
+    },
+    {
+      "post_id": "15gm00z",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1bi73r7",
+      "shape": "SOCIAL",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1bc0e3p",
+      "shape": "ADVISORY",
+      "has_pain_expression": true
+    },
+    {
+      "post_id": "ktwm90",
+      "shape": "GRIEVANCE",
+      "has_pain_expression": true
+    },
+    {
+      "post_id": "1pwtj8t",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1k4rpo7",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1kzzlqm",
+      "shape": "GRIEVANCE",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "2usnab",
+      "shape": "ADVISORY",
+      "has_pain_expression": true
+    },
+    {
+      "post_id": "e6jyxn",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "afp3mw",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "3pxbvc",
+      "shape": "ADVISORY",
+      "has_pain_expression": true
+    },
+    {
+      "post_id": "1b82k44",
+      "shape": "ADVISORY",
+      "has_pain_expression": true
+    },
+    {
+      "post_id": "a31115",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1g92dnz",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1azl3k9",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "7l2jun",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1nja78y",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "161wgkl",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1oea7y0",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "zxly0u",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1pzhpnx",
+      "shape": "ADVISORY",
+      "has_pain_expression": true
+    },
+    {
+      "post_id": "1uvexvg",
+      "shape": "GRIEVANCE",
+      "has_pain_expression": true
+    },
+    {
+      "post_id": "16cezbh",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1nfwn9k",
+      "shape": "ADVISORY",
+      "has_pain_expression": true
+    },
+    {
+      "post_id": "y3nw2g",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1sh955p",
+      "shape": "COMMERCIAL",
+      "has_pain_expression": true
+    },
+    {
+      "post_id": "196sul0",
+      "shape": "ADVISORY",
+      "has_pain_expression": true
+    },
+    {
+      "post_id": "kxkrvz",
+      "shape": "ADVISORY",
+      "has_pain_expression": false
+    },
+    {
+      "post_id": "1jrni73",
+      "shape": "GRIEVANCE",
+      "has_pain_expression": true
+    },
+    {
+      "post_id": "2ekog1",
+      "shape": "GRIEVANCE",
+      "has_pain_expression": true
+    }
+  ]
+}

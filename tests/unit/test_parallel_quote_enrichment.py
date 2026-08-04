@@ -555,8 +555,15 @@ This is quote number {i} about manual invoicing with enough words to pass the fi
         assert len(result.quotes) <= 12
 
     def test_enrich_per_post_cap_enforced(self, mock_pain_point):
-        """At most _PER_POST_CAP quotes may come from a single source post, so one
-        comment cannot be sentence-shredded into many 'independent' quotes."""
+        """At most _POST_DIVERSITY_CAP quotes may come from a single source post, so one
+        comment cannot be sentence-shredded into many 'independent' quotes.
+
+        This invariant used to be enforced BEFORE the stance gate via _PER_POST_CAP.
+        That pre-gate truncation was measured to be the largest single source of lost
+        evidence (recall on known-missing passages 34.9% -> 55.8% once it was removed),
+        so the cap now runs AFTER validation as _POST_DIVERSITY_CAP: it still stops one
+        talkative thread from reading as corroboration, but it no longer discards
+        candidates before anything has judged them."""
         crew = create_minimal_crew(enrichment_knowledge=MagicMock())
 
         # 10 distinct, on-topic sentences ALL from the same post_id.
@@ -571,7 +578,7 @@ Manual invoicing sentence number {i} that is wordy enough to clear the fifteen w
         result = crew._enrich_single_pain_point(mock_pain_point, mock_tool)
 
         from_one_post = [q for q in result.quotes if q.post_id == "onepost"]
-        assert len(from_one_post) <= PainPointCrew._PER_POST_CAP
+        assert len(from_one_post) <= PainPointCrew._POST_DIVERSITY_CAP
         # matched_post_ids (the volume set) is unaffected by the display cap — the
         # post still counts as one discussion.
         assert result.matched_post_ids == ["onepost"]

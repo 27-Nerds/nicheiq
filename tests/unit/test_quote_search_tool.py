@@ -130,7 +130,9 @@ class TestQuoteSearchToolQueryParameters:
         assert call_args[1]["query"] == ["manual invoicing"]
         # Widened retrieval: more candidates at a lower similarity floor, with quality
         # enforced downstream (relevance floor + per-post cap + stance gate).
-        assert call_args[1]["results_limit"] == 25
+        # 100 (was 25) — results_limit, not score_threshold, is what bounds retrieval;
+        # must move together with _PER_POST_CAP / _STANCE_INPUT_CAP in pain_point_crew.
+        assert call_args[1]["results_limit"] == 100
         assert call_args[1]["score_threshold"] == 0.60
 
     def test_run_strips_query_whitespace(self, mock_knowledge):

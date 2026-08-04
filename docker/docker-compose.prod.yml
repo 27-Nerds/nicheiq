@@ -125,6 +125,8 @@ services:
       SUGGEST_LLM_MODEL: ${SUGGEST_LLM_MODEL:-gpt-4.1-nano}
       SUGGEST_RATE_HOURLY: ${SUGGEST_RATE_HOURLY:-40}
       SUGGEST_RATE_DAILY: ${SUGGEST_RATE_DAILY:-50}
+      CHAT_LLM_MODEL: ${CHAT_LLM_MODEL:-gpt-5.6-luna}
+      FOUNDER_FIT_LLM_MODEL: ${FOUNDER_FIT_LLM_MODEL:-gpt-5-mini}
       # Other backend LLM features (niche categorization, FAQ generation)
       CATEGORIZE_LLM_MODEL: ${CATEGORIZE_LLM_MODEL:-gpt-5-nano}
       OPENAI_FAQ_MODEL: ${OPENAI_FAQ_MODEL:-gpt-4.1-mini}
@@ -189,7 +191,7 @@ services:
       CONTENT_ANALYSIS_REASONING_EFFORT: ${CONTENT_ANALYSIS_REASONING_EFFORT:-none}
       PAIN_POINT_REASONING_EFFORT: ${PAIN_POINT_REASONING_EFFORT:-none}
       THREAD_VALIDATION_LLM: ${THREAD_VALIDATION_LLM:-openrouter/inception/mercury-2-20260304:nitro}
-      STANCE_VALIDATION_LLM: ${STANCE_VALIDATION_LLM:-openrouter/inception/mercury-2-20260304:nitro}
+      STANCE_VALIDATION_LLM: ${STANCE_VALIDATION_LLM:-openrouter/deepseek/deepseek-v4-flash:nitro}
       COMPETITOR_EXTRACTION_LLM: ${COMPETITOR_EXTRACTION_LLM:-openrouter/google/gemini-2.5-flash-lite}
       BRAINSTORM_LLM: ${BRAINSTORM_LLM:-openrouter/openai/gpt-5.2}
       KEYWORD_VALIDATION_LLM: ${KEYWORD_VALIDATION_LLM:-gpt-5-nano}
@@ -208,19 +210,23 @@ services:
       NUM_DIVERGENT_SAMPLES: ${NUM_DIVERGENT_SAMPLES:-2}
       DIVERGENT_SAMPLE_DEADLINE_SECONDS: ${DIVERGENT_SAMPLE_DEADLINE_SECONDS:-360}
       DIVERGENT_POOL_CAP: ${DIVERGENT_POOL_CAP:-15}
-      DIVERGENT_TARGET_GENERATORS: ${DIVERGENT_TARGET_GENERATORS:-6}
+      DIVERGENT_TARGET_GENERATORS: ${DIVERGENT_TARGET_GENERATORS:-9}
       DIVERGENT_TARGET_POOL: ${DIVERGENT_TARGET_POOL:-15}
       DIVERGENT_KEEP_FRACTION: ${DIVERGENT_KEEP_FRACTION:-0.5}
       DIVERGENT_DEDUP_SIMILARITY_THRESHOLD: ${DIVERGENT_DEDUP_SIMILARITY_THRESHOLD:-0.85}
       # Pain-partitioned divergent ideation (one narrow generator per selected pain)
-      DIVERGENT_MAX_GENERATORS: ${DIVERGENT_MAX_GENERATORS:-8}
-      DIVERGENT_MAX_WORKERS: ${DIVERGENT_MAX_WORKERS:-8}
+      DIVERGENT_MAX_GENERATORS: ${DIVERGENT_MAX_GENERATORS:-11}
+      DIVERGENT_MAX_WORKERS: ${DIVERGENT_MAX_WORKERS:-9}
       DIVERGENT_PARTITIONED_KEEP_FRACTION: ${DIVERGENT_PARTITIONED_KEEP_FRACTION:-0.67}
+      # Per-cell tournament architecture (Stage-5 default): each (pain x segment) cell
+      # runs its own ideator<->reviewer tournament; rounds = keep-best across rounds.
+      ENABLE_PER_CELL_TOURNAMENT: ${ENABLE_PER_CELL_TOURNAMENT:-true}
+      TOURNAMENT_ROUNDS: ${TOURNAMENT_ROUNDS:-2}
       # Ideation convergent tiers: judge = novelty critic + evaluator; refine = idea refiner
       # (glm-4.7 MUST run reasoning-off: reasoning-ON dumps CoT and truncates the tool call)
-      IDEATION_JUDGE_LLM: ${IDEATION_JUDGE_LLM:-openrouter/z-ai/glm-4.7-20251222:nitro}
+      IDEATION_JUDGE_LLM: ${IDEATION_JUDGE_LLM:-gpt-5.6-luna}
       IDEATION_JUDGE_REASONING_EFFORT: ${IDEATION_JUDGE_REASONING_EFFORT:-none}
-      IDEATION_REFINE_LLM: ${IDEATION_REFINE_LLM:-openrouter/z-ai/glm-4.7-20251222:nitro}
+      IDEATION_REFINE_LLM: ${IDEATION_REFINE_LLM:-gpt-5.6-luna}
       IDEATION_REFINE_REASONING_EFFORT: ${IDEATION_REFINE_REASONING_EFFORT:-none}
       IDEATION_REFINE_MAX_TOKENS: ${IDEATION_REFINE_MAX_TOKENS:-32768}
       # Creative MENTOR in the idea-improvement loop (post-calibration); guides weak ideas to sharper/buildable/on-pain revisions. Different family than the ideator so it doesn't self-judge.
@@ -232,15 +238,46 @@ services:
       SCORE_CALIBRATION_LLM: ${SCORE_CALIBRATION_LLM:-openrouter/qwen/qwen3.7-max}
       # (reasoning MUST stay off: medium intermittently empties the tool-call → calibration silently skipped)
       SCORE_CALIBRATION_REASONING_EFFORT: ${SCORE_CALIBRATION_REASONING_EFFORT:-none}
+      # First-person retrieval queries for quote search (register-matched to forum text;
+      # 70% -> 84% recall of known-missing evidence). Fail-soft to analyst voice.
+      ENABLE_FIRSTPERSON_QUERIES: ${ENABLE_FIRSTPERSON_QUERIES:-true}
+      QUERY_VARIANT_LLM: ${QUERY_VARIANT_LLM:-openrouter/deepseek/deepseek-v4-flash:nitro}
+      # Diversity-aware final selection + pain-source dedup (drop-only, floor-protected)
+      ENABLE_DIVERSITY_CAPS: ${ENABLE_DIVERSITY_CAPS:-true}
+      ENABLE_PAIN_SOURCE_DEDUP: ${ENABLE_PAIN_SOURCE_DEDUP:-true}
+      # Weak-winner demotion bar on final calibrated market_fit (downgrade-only)
+      DEMOTION_MARKET_FIT_MAX: ${DEMOTION_MARKET_FIT_MAX:-0.4}
+      # Novelty/feasibility critic ceiling for 'restricted' data-access ideas
+      FEASIBILITY_RESTRICTED_DATA_CAP: ${FEASIBILITY_RESTRICTED_DATA_CAP:-0.45}
       # In-cell winning-angle classifier + adversarial red-team + novelty-enhance refiner
       IDEA_ANGLE_LLM: ${IDEA_ANGLE_LLM:-openrouter/qwen/qwen3.7-max}
       IDEA_ANGLE_REASONING_EFFORT: ${IDEA_ANGLE_REASONING_EFFORT:-medium}
-      RED_TEAM_REVIEW_LLM: ${RED_TEAM_REVIEW_LLM:-openrouter/qwen/qwen3.7-max}
-      NOVELTY_ENHANCE_LLM: ${NOVELTY_ENHANCE_LLM:-openrouter/deepseek/deepseek-v4-pro:nitro}
-      LANDING_PAGE_EXECUTION_LLM: ${LANDING_PAGE_EXECUTION_LLM:-gpt-5.1-codex-max}
+      RED_TEAM_REVIEW_LLM: ${RED_TEAM_REVIEW_LLM:-gpt-5.6-luna}
+      NOVELTY_ENHANCE_LLM: ${NOVELTY_ENHANCE_LLM:-gpt-5.6-luna}
+      # Market-awareness parity caps (downgrade-only market_fit ceilings on web-verified incumbents)
+      PARITY_SHIPPED_MARKET_FIT_CAP: ${PARITY_SHIPPED_MARKET_FIT_CAP:-0.45}
+      PARITY_PARTIAL_MARKET_FIT_CAP: ${PARITY_PARTIAL_MARKET_FIT_CAP:-0.55}
+      PARITY_SUBSTITUTE_MARKET_FIT_CAP: ${PARITY_SUBSTITUTE_MARKET_FIT_CAP:-0.50}
+      PARITY_SUBSTITUTE_WEAK_WALLET_CAP: ${PARITY_SUBSTITUTE_WEAK_WALLET_CAP:-0.35}
+      PARITY_BUNDLED_FREE_CAP: ${PARITY_BUNDLED_FREE_CAP:-0.40}
+      MARKET_AWARENESS_SERPER_BUDGET: ${MARKET_AWARENESS_SERPER_BUDGET:-60}
+      # Segment payability (downgrade-only market_fit cap/floor trigger) + self-issued-trust
+      # and unverified-route-claim caps (the latter ships DISABLED at 0.0 per settings.py)
+      PAYABILITY_LOW_THRESHOLD: ${PAYABILITY_LOW_THRESHOLD:-0.35}
+      PAYABILITY_MARKET_FIT_CAP: ${PAYABILITY_MARKET_FIT_CAP:-0.55}
+      SELFISSUED_TRUST_MARKET_FIT_CAP: ${SELFISSUED_TRUST_MARKET_FIT_CAP:-0.35}
+      UNVERIFIED_ROUTE_CLAIM_MARKET_FIT_CAP: ${UNVERIFIED_ROUTE_CLAIM_MARKET_FIT_CAP:-0.0}
+      # gpt-5.3-codex: gpt-5.1-codex-max was RETIRED (404s on the Responses API); prod host .env must not pin the old id
+      LANDING_PAGE_EXECUTION_LLM: ${LANDING_PAGE_EXECUTION_LLM:-gpt-5.3-codex}
+      # Kill switch for the landing-tier model-availability preflight (2.2)
+      LANDING_PREFLIGHT_MODEL_CHECK: ${LANDING_PREFLIGHT_MODEL_CHECK:-true}
       LANDING_PAGE_CREATIVE_REASONING_EFFORT: ${LANDING_PAGE_CREATIVE_REASONING_EFFORT:-high}
       LANDING_PAGE_EXECUTION_REASONING_EFFORT: ${LANDING_PAGE_EXECUTION_REASONING_EFFORT:-medium}
       LANDING_PAGE_VALIDATION_REASONING_EFFORT: ${LANDING_PAGE_VALIDATION_REASONING_EFFORT:-low}
+      # Go/No-Go verdict flags (downgrade-only / dark-by-default experiments)
+      ENABLE_DIRECTION_AWARE_EVAL: ${ENABLE_DIRECTION_AWARE_EVAL:-false}
+      ENABLE_REGULATORY_RISK_DOWNGRADE: ${ENABLE_REGULATORY_RISK_DOWNGRADE:-false}
+      ENABLE_LLM_VERDICT_EXPLANATION: ${ENABLE_LLM_VERDICT_EXPLANATION:-true}
       # Final solution refinement pass (turns surviving concepts into full scored ideas)
       SOLUTION_REFINEMENT_ENABLED: ${SOLUTION_REFINEMENT_ENABLED:-true}
       # SEO realism caps (downgrade-only, always on) + page-count ceilings
@@ -251,6 +288,10 @@ services:
       SEO_CAP_REQUIRE_SAAS_FOR_GATING: ${SEO_CAP_REQUIRE_SAAS_FOR_GATING:-true}
       SEO_CAP_THIN_PAGES_CEILING: ${SEO_CAP_THIN_PAGES_CEILING:-0.4}
       SEO_CAP_THIN_PAGES_THRESHOLD: ${SEO_CAP_THIN_PAGES_THRESHOLD:-50}
+      # Provisional (pre-Stage-12) SEO rank ceiling + owned-SERP ceiling + fallback-pool prefilter
+      PROVISIONAL_SEO_RANK_CEILING: ${PROVISIONAL_SEO_RANK_CEILING:-0.7}
+      SERP_OWNED_SEO_CEILING: ${SERP_OWNED_SEO_CEILING:-0.5}
+      SEO_FALLBACK_PREFILTER: ${SEO_FALLBACK_PREFILTER:-true}
       # SEO keyword-grounded refinement (Phase-2 recount for the chosen idea)
       SEO_REFINEMENT_ENABLED: ${SEO_REFINEMENT_ENABLED:-true}
       SEO_REFINEMENT_KEYWORD_EVIDENCE_ENABLED: ${SEO_REFINEMENT_KEYWORD_EVIDENCE_ENABLED:-true}
@@ -304,12 +345,18 @@ services:
       NUM_SEARCH_QUERIES: ${NUM_SEARCH_QUERIES:-40}
       # Part C: soft, additive audience bias on queries + pain mining (broad set preserved).
       AUDIENCE_QUERY_ALLOTMENT: ${AUDIENCE_QUERY_ALLOTMENT:-6}
+      # Product-lock-in ceiling: max fraction of generated search queries naming a specific product
+      QUERY_NAMED_ENTITY_CAP: ${QUERY_NAMED_ENTITY_CAP:-0.4}
       MAX_REDDIT_CONTENT_TOKENS: ${MAX_REDDIT_CONTENT_TOKENS:-150000}
       # Reddit Quality Filters
       MIN_REDDIT_UPVOTES: ${MIN_REDDIT_UPVOTES:-10}
       MIN_REDDIT_COMMENTS: ${MIN_REDDIT_COMMENTS:-5}
       MIN_COMMENT_LENGTH: ${MIN_COMMENT_LENGTH:-50}
       MIN_COMMENT_SCORE: ${MIN_COMMENT_SCORE:-2}
+      # Comment-level pain-point evidence units (vs whole-thread) + severity clamp for
+      # low-evidence pains (heuristic prior, not outcome-calibrated)
+      ENABLE_COMMENT_LEVEL_PAIN_CONTENT: ${ENABLE_COMMENT_LEVEL_PAIN_CONTENT:-true}
+      LOW_EVIDENCE_SEVERITY_CLAMP: ${LOW_EVIDENCE_SEVERITY_CLAMP:-0.45}
       # REDDIT_COMMENT_LIMIT: omitted = None (all comments). Set to 32 for most, 0 for top-level only.
       # Reddit Freshness Search
       REDDIT_FRESHNESS_SEARCH_ENABLED: ${REDDIT_FRESHNESS_SEARCH_ENABLED:-true}

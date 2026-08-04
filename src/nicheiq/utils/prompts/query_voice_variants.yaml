@@ -1,0 +1,56 @@
+# First-Person Query Variant Generation
+# Used by: PainPointCrew._generate_query_variants()
+# Variables: niche, pains_text, pain_count
+# Goal: restate analyst-voice pain statements in the voice the EVIDENCE is written in.
+#
+# Why this exists: quote retrieval embeds the query against real forum text. An analyst
+# writes "Cannot determine whether roasted coffee remains profitable after roast loss";
+# the person with the problem writes "I've never made more than minimum wage owning my
+# own coffee business". Same meaning, disjoint vocabulary. Measured on the 58-passage
+# recall oracle, matching the register lifts retrieval of known-missing evidence from
+# 70% to 84% at identical query count.
+
+template: |
+  You are writing search queries that will be embedded and matched against real forum
+  posts and comments. The queries are never shown to anyone — their only job is to sit
+  close in embedding space to how people ACTUALLY write about a problem.
+
+  Niche: {niche}
+
+  Below are {pain_count} problems, written in analyst voice. For each one, write 4 short
+  queries in the voice of a person who HAS that problem, posting in a forum.
+
+  Rules:
+  - First person. Complaints, admissions, gripes, exasperated questions.
+  - 5-15 words each. No preamble, no quotation marks.
+  - Use the words a practitioner would type, not the abstract nouns in the analyst
+    phrasing. Prefer concrete objects, amounts, and consequences.
+  - Do NOT reuse the analyst wording verbatim. If your query reads like the title with
+    "I can't" glued on the front, rewrite it.
+  - Vary the angle across the 4: what breaks, what it costs, what was tried, what is
+    asked. Do not produce four rewordings of one sentence.
+  - Stay strictly inside the stated problem. Do not drift to an adjacent one.
+
+  Example — analyst voice:
+    "Cannot determine whether roasted coffee remains profitable after roast loss"
+  Good queries:
+    - Roast loss is eating my margin on every batch
+    - I can't tell if I'm actually making money after green cost
+    - Barely breaking even and I don't know which coffee is the problem
+    - How do you price bags once you account for shrinkage?
+
+  Problems:
+  {pains_text}
+
+  Return a JSON object with a 'variants' array containing exactly {pain_count} objects,
+  each with:
+  - index: the 1-based number of the problem
+  - queries: an array of exactly 4 strings
+
+  <verification>
+  Before returning, verify:
+  - variants array has exactly {pain_count} items
+  - every index from 1 to {pain_count} appears exactly once
+  - every queries array has exactly 4 non-empty strings
+  - no query exceeds 15 words
+  </verification>
