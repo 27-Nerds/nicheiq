@@ -1426,6 +1426,20 @@ class PainPointCrew:
     # evidenced; only 0-1 is genuinely thin. A higher floor would gut real pains whose
     # displayed quotes were (correctly) trimmed by the stance gate.
     _MIN_QUOTES = 2
+    # Companion floor for CORROBORATION BREADTH — distinct source posts behind the
+    # displayed quotes, not raw quote count. Exists because _MIN_QUOTES alone went
+    # silently dead when pre-gate truncation was removed (2026-08-03): the gate now
+    # validates hundreds of quotes/pain, so DISPLAY always saturates at _DISPLAY_CAP=12
+    # and `12 < _MIN_QUOTES` can never be true again. A pain can look fully evidenced
+    # (12/12 displayed) while really resting on a handful of threads restating the same
+    # complaint — this constant catches that. Niche-independent by design, unlike raw
+    # quote counts (which vary ~3x by niche). Set to 5: with _POST_DIVERSITY_CAP=3, the
+    # mathematical floor for 12 displayed quotes is ceil(12/3)=4 distinct posts (worst
+    # possible concentration) — any threshold ≤4 could NEVER fire on a fully-capped
+    # pain, reproducing the exact dead-gate bug this constant exists to fix. 5 is the
+    # smallest value that still catches that worst case. Do NOT re-simplify this back
+    # to a bare quote-count check.
+    _MIN_EVIDENCE_POSTS = 5
 
     def _stance_filter_quotes(
         self,
@@ -2120,6 +2134,7 @@ class PainPointCrew:
         quotes: list[str],
         matching_enrichment: EnrichedPainPointQuotes | None,
         theme_mentions: dict[str, int],
+        quote_post_ids: list[str | None] | None = None,
     ) -> tuple[int, float, OpportunityLevel, str | None, bool, float]:
         """Resolve the code-governed fields for one merged PainPoint.
 
@@ -2132,9 +2147,16 @@ class PainPointCrew:
           displayed quotes; the LLM estimate is the fallback when enrichment was
           unavailable. Bounded by the parent theme's mention_count.
         - severity: clamped to ≤0.45 when the pain point has zero evidence quotes OR
-          is flagged low_evidence (fewer than _MIN_QUOTES survived) — mirrors the
-          Task 3 rubric's rule in code.
-        - low_evidence: True when fewer than _MIN_QUOTES stance-verified quotes survived.
+          is flagged low_evidence (fewer than _MIN_QUOTES survived, OR the displayed
+          quotes are too concentrated in too few source posts — see low_evidence below)
+          — mirrors the Task 3 rubric's rule in code.
+        - low_evidence: True when EITHER fewer than _MIN_QUOTES stance-verified quotes
+          survived, OR (quote_post_ids given) fewer than _MIN_EVIDENCE_POSTS distinct
+          source posts back the displayed quotes. The quote-count floor alone is not
+          sufficient once display saturates at _DISPLAY_CAP (12): a pain can show 12/12
+          quotes while resting on a handful of threads — see _MIN_EVIDENCE_POSTS.
+          quote_post_ids is optional and parallel to `quotes`; when omitted the breadth
+          check is skipped (only the quote-count floor applies).
         - opportunity_level: code-computed formula; the LLM value is honored only
           when BELOW the formula AND accompanied by a ≥20-char downgrade_reason
           (preserves universal-theme / niche-specificity cap semantics).
@@ -2165,7 +2187,22 @@ class PainPointCrew:
             )
             mention_count = theme_cap
 
-        low_evidence = len(quotes) < PainPointCrew._MIN_QUOTES
+        count_low_evidence = len(quotes) < PainPointCrew._MIN_QUOTES
+        breadth_low_evidence = False
+        distinct_evidence_posts: set[str] | None = None
+        if quote_post_ids is not None:
+            # Filter out empty/None post_id — a missing source must never count as
+            # a distinct one (would silently understate concentration).
+            distinct_evidence_posts = {pid for pid in quote_post_ids if pid}
+            breadth_low_evidence = len(distinct_evidence_posts) < PainPointCrew._MIN_EVIDENCE_POSTS
+            if breadth_low_evidence:
+                logger.warning(
+                    f"Low-evidence corroboration breadth: '{unvalidated.title}' "
+                    f"{len(quotes)} displayed quote(s) from only "
+                    f"{len(distinct_evidence_posts)} distinct source post(s) "
+                    f"(min {PainPointCrew._MIN_EVIDENCE_POSTS})"
+                )
+        low_evidence = count_low_evidence or breadth_low_evidence
         severity = matching_score.severity_score
         _clamp = settings.low_evidence_severity_clamp
         if (not quotes or low_evidence) and severity > _clamp:
@@ -2772,6 +2809,7 @@ class PainPointCrew:
                         quotes=quotes,
                         matching_enrichment=matching_enrichment,
                         theme_mentions=theme_mentions,
+                        quote_post_ids=source_ids,
                     )
                 )
 

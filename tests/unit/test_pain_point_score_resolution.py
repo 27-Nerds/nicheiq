@@ -253,6 +253,67 @@ class TestLowEvidenceAndStanceCounting:
         # All 5 discussing posts, not the 1 displayed quote and not the LLM's 42.
         assert mention_count == 5
 
+    def test_display_cap_saturated_but_thin_corroboration_is_low_evidence(self):
+        # 12/12 displayed quotes (the _DISPLAY_CAP) — passes the old _MIN_QUOTES=2
+        # floor easily — but only 4 distinct source posts behind them. This is the
+        # exact case _MIN_QUOTES alone can no longer catch now that display always
+        # saturates at 12: it "looks" fully evidenced but rests on a handful of threads.
+        quotes = [f"q{i}" for i in range(12)]
+        post_ids = ["p1", "p1", "p1", "p2", "p2", "p2", "p3", "p3", "p3", "p4", "p4", "p4"]
+        _, severity, _, _, low_evidence, _ = PainPointCrew.resolve_pain_point_scores(
+            unvalidated=_make_unvalidated(),
+            matching_score=_make_scoring(severity=0.9),
+            quotes=quotes,
+            matching_enrichment=None,
+            theme_mentions={},
+            quote_post_ids=post_ids,
+        )
+        assert low_evidence is True
+        assert severity == 0.45
+
+    def test_display_cap_saturated_with_broad_corroboration_not_low_evidence(self):
+        # Same 12/12 displayed quotes, but spread across enough distinct posts —
+        # genuinely well-corroborated, must not be flagged.
+        quotes = [f"q{i}" for i in range(12)]
+        post_ids = [f"p{i}" for i in range(12)]
+        _, severity, _, _, low_evidence, _ = PainPointCrew.resolve_pain_point_scores(
+            unvalidated=_make_unvalidated(),
+            matching_score=_make_scoring(severity=0.9),
+            quotes=quotes,
+            matching_enrichment=None,
+            theme_mentions={},
+            quote_post_ids=post_ids,
+        )
+        assert low_evidence is False
+        assert severity == 0.9
+
+    def test_missing_post_id_not_counted_as_distinct_source(self):
+        # None/empty post_id must never count toward corroboration breadth.
+        quotes = [f"q{i}" for i in range(12)]
+        post_ids = ["p1", None, "", "p1", None, "", "p1", None, "", "p1", None, ""]
+        _, _, _, _, low_evidence, _ = PainPointCrew.resolve_pain_point_scores(
+            unvalidated=_make_unvalidated(),
+            matching_score=_make_scoring(severity=0.9),
+            quotes=quotes,
+            matching_enrichment=None,
+            theme_mentions={},
+            quote_post_ids=post_ids,
+        )
+        assert low_evidence is True  # only 1 real distinct post ("p1")
+
+    def test_no_post_ids_given_skips_breadth_check(self):
+        # quote_post_ids omitted (legacy caller) -> only the old quote-count floor
+        # applies; 12 displayed quotes never trips low_evidence on count alone.
+        quotes = [f"q{i}" for i in range(12)]
+        _, _, _, _, low_evidence, _ = PainPointCrew.resolve_pain_point_scores(
+            unvalidated=_make_unvalidated(),
+            matching_score=_make_scoring(severity=0.9),
+            quotes=quotes,
+            matching_enrichment=None,
+            theme_mentions={},
+        )
+        assert low_evidence is False
+
 
 class TestValidateThemeLinkage:
     """Fuzzy remap, orphan clearing, and High/Medium coverage computation."""
