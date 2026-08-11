@@ -1,6 +1,6 @@
 import { error, redirect } from "@sveltejs/kit";
 import { fetchBackend } from "$lib/backend";
-import type { Job, SolutionPreview } from "$lib/types/job";
+import type { Job, SelectionDraft, SolutionPreview } from "$lib/types/job";
 import type { SelectionDecisionState } from "$lib/types/selectionDecisionState";
 import type { SelectionMetricExplanationsResponse } from "$lib/types/selectionMetricExplanation";
 import type { FounderFitLoadResponse } from "$lib/types/founderFit";
@@ -28,7 +28,25 @@ function objectRecord(value: unknown): Record<string, unknown> | null {
 }
 
 function isInteger(value: unknown, minimum = 0): value is number {
-  return typeof value === "number" && Number.isInteger(value) && value >= minimum;
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= minimum;
+}
+
+function parseSelectionDraft(value: unknown): SelectionDraft | null {
+  const draft = objectRecord(value);
+  if (!draft || !isInteger(draft.version) || !Array.isArray(draft.items)) return null;
+
+  const items = draft.items.flatMap((candidate) => {
+    const item = objectRecord(candidate);
+    return item
+      && typeof item.ideaId === "string"
+      && item.ideaId.trim().length > 0
+      && item.ideaId === item.ideaId.trim()
+      && isInteger(item.ideaRevision, 1)
+      ? [{ ideaId: item.ideaId, ideaRevision: item.ideaRevision }]
+      : [];
+  });
+  if (items.length !== draft.items.length || items.length > 3) return null;
+  return { version: draft.version, items };
 }
 
 function isStringArray(value: unknown): value is string[] {
@@ -49,6 +67,41 @@ function isIdeaReference(value: unknown): boolean {
     && typeof record?.ideaId === "string"
     && isInteger(record.ideaRevision, 1)
     && typeof record.title === "string";
+}
+
+function uniqueIdeaReferenceKeys(value: unknown): string[] | null {
+  if (!Array.isArray(value)) return null;
+  const keys = value.flatMap((candidate) => {
+    const record = objectRecord(candidate);
+    return record
+      && typeof record.ideaId === "string"
+      && record.ideaId.length > 0
+      && record.ideaId === record.ideaId.trim()
+      && isInteger(record.ideaRevision, 1)
+      ? [`${record.ideaId}:${record.ideaRevision}`]
+      : [];
+  });
+  return keys.length === value.length && new Set(keys).size === keys.length ? keys : null;
+}
+
+function reviewHandoffIsConsistent(
+  state: DecisionStateWithReceipt,
+  job: Job,
+  draft: SelectionDraft | null,
+): boolean {
+  if (!draft || draft.items.length === 0) return false;
+  const draftKeys = draft.items.map((item) => `${item.ideaId}:${item.ideaRevision}`);
+  const shortlistKeys = state.shortlist.items.map(
+    (item) => `${item.ideaId}:${item.ideaRevision}`,
+  );
+  return state.jobId === job.id
+    && state.status === job.status
+    && state.shortlist.version === draft.version
+    && draftKeys.length === shortlistKeys.length
+    && draftKeys.every((key, index) => key === shortlistKeys[index])
+    && (state.shortlist.staleItems?.length ?? 0) === 0
+    && state.staleCounts.shortlist === 0
+    && state.deepResearch.blockers.length === 0;
 }
 
 const challengeLenses = ["demand", "competition", "distribution", "dependencies"] as const;
@@ -178,6 +231,8 @@ function isDecisionStateWithReceipt(value: unknown): value is DecisionStateWithR
     || (shortlist.fingerprint !== undefined && typeof shortlist.fingerprint !== "string")
     || !Array.isArray(shortlist.items)
     || !shortlist.items.every(isIdeaReference)
+    || shortlist.items.length > 3
+    || uniqueIdeaReferenceKeys(shortlist.items) === null
     || (shortlist.staleItems !== undefined && (
       !Array.isArray(shortlist.staleItems)
       || !shortlist.staleItems.every((candidate) => {
@@ -305,9 +360,28 @@ export const load: LayoutServerLoad = async ({ params, locals, url, parent }) =>
     throw error(jobResponse.status, payload.error || "Failed to load research");
   }
 
-  const job = (await jobResponse.json()) as Job;
-  let normalizedSolutions = normalizeSolutionPreviews(job.solutionIdeas);
+  const jobPayload = objectRecord(await jobResponse.json());
+  if (!jobPayload || jobPayload.id !== params.jobId) {
+    throw error(502, "The research response does not match this job. Reload and try again.");
+  }
+  const validEntryModes = [
+    "idea", "audience", "discovery", "pain_research", "pain_remix", "deep_idea",
+    "validate_idea",
+  ];
+  if (
+    jobPayload.entryMode !== undefined
+    && jobPayload.entryMode !== null
+    && !isOneOf(jobPayload.entryMode, validEntryModes)
+  ) {
+    throw error(502, "The research response contains an invalid entry mode.");
+  }
+  const job = jobPayload as unknown as Job;
+  // Selection routes use the pool/version-verified projection exclusively. The
+  // generic job payload is compatibility data and must never arm a paid Review
+  // when the authoritative endpoint is absent or unavailable.
+  let normalizedSolutions = normalizeSolutionPreviews([]);
   let solutions: SolutionPreview[] = normalizedSolutions.solutions;
+  let verifiedSelectionDraft: SelectionDraft | null = null;
   let verifiedPreviewReport: PreviewReport | null = null;
   let verifiedPreviewReportKnown = false;
   // The job page already tells the owner when run artifacts are withheld. Every
@@ -349,9 +423,50 @@ export const load: LayoutServerLoad = async ({ params, locals, url, parent }) =>
   ]);
   if (solutionsResponse?.ok) {
     const payload = await solutionsResponse.json().catch(() => null);
-    if (payload && typeof payload === "object" && "solutionIdeas" in payload) {
+    if (
+      payload
+      && typeof payload === "object"
+      && "solutionIdeas" in payload
+      && Array.isArray(payload.solutionIdeas)
+    ) {
       normalizedSolutions = normalizeSolutionPreviews(payload.solutionIdeas);
       solutions = normalizedSolutions.solutions;
+      const nonCanonicalIdentityCount = shouldFetchSampleReport
+        ? payload.solutionIdeas.filter((candidate: unknown) => {
+            const record = objectRecord(candidate);
+            return !record
+              || typeof record.idea_id !== "string"
+              || record.idea_id.length === 0
+              || record.idea_id !== record.idea_id.trim()
+              || !isInteger(record.idea_revision, 1);
+          }).length
+        : 0;
+      if (nonCanonicalIdentityCount > 0) {
+        normalizedSolutions = {
+          ...normalizedSolutions,
+          invalidCount: normalizedSolutions.invalidCount + nonCanonicalIdentityCount,
+        };
+      }
+      const hasStrictValidationSeed = solutions.some(
+        (candidate) => candidate.source_frame === "user_seed"
+          && candidate.generation_operation_id === "validate",
+      );
+      if (shouldFetchSampleReport && hasStrictValidationSeed && job.entryMode !== "validate_idea") {
+        throw error(502, "Validation provenance does not match this research job.");
+      }
+      if (shouldFetchSampleReport && normalizedSolutions.invalidCount > 0) {
+        // Review can start a paid operation. A discarded row could conceal an
+        // exact-reference collision or a second validation seed, so no partial
+        // catalog is authoritative enough to arm that boundary.
+        solutions = [];
+        solutionsUnavailable = true;
+      } else if ("selectionDraft" in payload) {
+        const parsedSelectionDraft = parseSelectionDraft(payload.selectionDraft);
+        if (payload.selectionDraft !== null && parsedSelectionDraft === null) {
+          throw error(502, "The saved shortlist response is invalid. Reload and try again.");
+        }
+        verifiedSelectionDraft = parsedSelectionDraft;
+      }
       const previewReport = "previewReport" in payload
         ? objectRecord(payload.previewReport)
         : null;
@@ -373,8 +488,17 @@ export const load: LayoutServerLoad = async ({ params, locals, url, parent }) =>
   const decisionStatePayload: unknown = decisionStateResponse?.ok
     ? await decisionStateResponse.json().catch(() => null)
     : null;
-  const decisionState = isDecisionStateWithReceipt(decisionStatePayload)
+  const parsedDecisionState = isDecisionStateWithReceipt(decisionStatePayload)
     ? decisionStatePayload
+    : null;
+  const reviewRoute = url.pathname.endsWith("/selection/review");
+  const decisionState = parsedDecisionState
+    && (!reviewRoute || reviewHandoffIsConsistent(
+      parsedDecisionState,
+      job,
+      verifiedSelectionDraft,
+    ))
+    ? parsedDecisionState
     : null;
   const metricExplanations = metricResponse?.ok
     ? await metricResponse.json().catch(() => null) as SelectionMetricExplanationsResponse | null
@@ -382,7 +506,7 @@ export const load: LayoutServerLoad = async ({ params, locals, url, parent }) =>
   // The owner-only decision-state projection carries the complete historical artifact.
   // Reading a receipt therefore survives a revoked decision-tools grant; only the routes
   // that create new founder-fit output remain grant-gated.
-  const founderFit = decisionState?.founderFitReceipt ?? null;
+  const founderFit = parsedDecisionState?.founderFitReceipt ?? null;
   const sampleReportAvailable = sampleReportResponse?.ok
     ? Boolean((await sampleReportResponse.json().catch(() => null))?.url)
     : false;
@@ -400,9 +524,13 @@ export const load: LayoutServerLoad = async ({ params, locals, url, parent }) =>
   const workspaceUrl = url.pathname.endsWith("/selection/review")
     ? new URL(url.pathname, url.origin)
     : url;
+  // The generic job response deliberately omits selection data while selection is
+  // active. Carry the draft from the same verified /solutions projection as the
+  // candidate catalog so Review resolves the saved scope instead of a fallback.
+  const selectionJob: Job = { ...job, selectionDraft: verifiedSelectionDraft };
 
   return {
-    job,
+    job: selectionJob,
     solutions,
     decisionState,
     metricExplanations,
@@ -435,6 +563,6 @@ export const load: LayoutServerLoad = async ({ params, locals, url, parent }) =>
     },
     // Review is the committed saved shortlist. Query refs remain useful on
     // Compare/Evidence, but may never redefine the paid transaction scope.
-    workspace: resolveSelectionWorkspace(workspaceUrl, job, solutions),
+    workspace: resolveSelectionWorkspace(workspaceUrl, selectionJob, solutions),
   };
 };

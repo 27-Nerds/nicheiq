@@ -1,4 +1,5 @@
 import type { Job, SelectionDraftItem, SolutionPreview } from "$lib/types/job";
+import { displayCompositeScore, solutionDisplayTitle } from "$lib/utils/solution-utils";
 
 const MAX_SCOPE_IDEAS = 3;
 
@@ -9,7 +10,7 @@ const ALTERNATIVE_MODES = ["diverge", "resolve_tradeoff", "reshape"] as const;
 export type SelectionWorkspaceLens = (typeof LENSES)[number];
 export type SelectionCompareView = (typeof COMPARE_VIEWS)[number];
 export type SelectionAlternativeMode = (typeof ALTERNATIVE_MODES)[number];
-export type SelectionWorkspaceScopeSource = "url" | "draft" | "preview";
+export type SelectionWorkspaceScopeSource = "url" | "draft" | "preview" | "blocked";
 
 export const SELECTION_LIFECYCLE_CONTEXT = Symbol("selection-workspace-lifecycle");
 
@@ -35,7 +36,7 @@ export interface SelectionWorkspaceState {
 }
 
 function currentRef(idea: SolutionPreview): SelectionWorkspaceRef | null {
-  if (!idea.idea_id) return null;
+  if (!idea.idea_id || idea.idea_id !== idea.idea_id.trim()) return null;
   return {
     ideaId: idea.idea_id,
     ideaRevision: idea.idea_revision ?? 1,
@@ -44,10 +45,12 @@ function currentRef(idea: SolutionPreview): SelectionWorkspaceRef | null {
 
 function parseRef(value: string): SelectionWorkspaceRef | null {
   const token = value.trim();
+  if (token !== value) return null;
   const separator = Math.max(token.lastIndexOf(":"), token.lastIndexOf("@"));
   if (separator <= 0 || separator === token.length - 1) return null;
 
   const ideaId = token.slice(0, separator).trim();
+  if (ideaId !== token.slice(0, separator)) return null;
   const revision = Number(token.slice(separator + 1));
   if (!ideaId || ideaId.length > 200 || !Number.isSafeInteger(revision) || revision < 1) return null;
 
@@ -58,23 +61,53 @@ function findExactIdea(
   solutions: SolutionPreview[],
   ref: SelectionWorkspaceRef,
 ): SolutionPreview | undefined {
-  return solutions.find((idea) => {
+  const matches = solutions.filter((idea) => {
     const candidateRef = currentRef(idea);
     return candidateRef?.ideaId === ref.ideaId && candidateRef.ideaRevision === ref.ideaRevision;
   });
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
+function hasDuplicateExactRefs(solutions: SolutionPreview[]): boolean {
+  const seen = new Set<string>();
+  for (const idea of solutions) {
+    const ref = currentRef(idea);
+    if (!ref) continue;
+    const key = `${ref.ideaId}:${ref.ideaRevision}`;
+    if (seen.has(key)) return true;
+    seen.add(key);
+  }
+  return false;
 }
 
 function resolveFallback(
   job: Job,
   solutions: SolutionPreview[],
-): { ideas: SolutionPreview[]; usedTopCandidates: boolean } {
+): { ideas: SolutionPreview[]; usedTopCandidates: boolean; blockedReason?: string } {
   const draftItems: SelectionDraftItem[] = job.selectionDraft?.items ?? [];
+  const uniqueDraftRefs = new Set(
+    draftItems.map((item) => `${item.ideaId}:${item.ideaRevision}`),
+  );
+  if (draftItems.length > 0 && uniqueDraftRefs.size !== draftItems.length) {
+    return {
+      ideas: [],
+      usedTopCandidates: false,
+      blockedReason: "The saved shortlist contains ambiguous candidate references. Choose the ideas again.",
+    };
+  }
   const drafted = draftItems
     .map((ref) => findExactIdea(solutions, ref))
-    .filter((idea): idea is SolutionPreview => Boolean(idea))
-    .slice(0, MAX_SCOPE_IDEAS);
+    .filter((idea): idea is SolutionPreview => Boolean(idea));
 
-  if (drafted.length > 0) return { ideas: drafted, usedTopCandidates: false };
+  if (draftItems.length > 0) {
+    return drafted.length === draftItems.length
+      ? { ideas: drafted, usedTopCandidates: false }
+      : {
+          ideas: [],
+          usedTopCandidates: false,
+          blockedReason: "The saved shortlist is unavailable or out of date. Choose the ideas again.",
+        };
+  }
   // "Check my idea" runs: a draftless workspace visit must scope THE USER'S IDEA, never
   // pre-scope the top generated ideas (silently substituting the research subject).
   if (job.entryMode === 'validate_idea') {
@@ -83,7 +116,17 @@ function resolveFallback(
     );
     if (seed) return { ideas: [seed], usedTopCandidates: false };
   }
-  return { ideas: solutions.slice(0, 2), usedTopCandidates: solutions.length > 0 };
+  const scored = solutions
+    .map((idea) => ({ idea, score: displayCompositeScore(idea) }))
+    .filter((entry): entry is { idea: SolutionPreview; score: number } => entry.score !== null)
+    .sort((left, right) => (
+      right.score - left.score
+      || solutionDisplayTitle(left.idea).localeCompare(solutionDisplayTitle(right.idea))
+    ));
+  const preview = scored.length > 0
+    ? scored.slice(0, 2).map((entry) => entry.idea)
+    : solutions.slice(0, 2);
+  return { ideas: preview, usedTopCandidates: preview.length > 0 };
 }
 
 function pickEnum<const T extends readonly string[]>(
@@ -167,12 +210,39 @@ export function resolveSelectionWorkspace(
     notices.push("Some candidate references in this link are invalid, unavailable, or out of date.");
   }
 
-  if (requestedTokens.length === 0) {
+  const strictValidationSeeds = job.entryMode === "validate_idea"
+    ? solutions.filter(
+        (idea) => idea.source_frame === "user_seed" && idea.generation_operation_id === "validate",
+      )
+    : [];
+  const catalogBlockedReason = hasDuplicateExactRefs(solutions)
+    ? "Candidate identities are ambiguous. Reload the current shortlist before continuing."
+    : strictValidationSeeds.length > 1
+      ? "More than one current candidate is marked as your submitted idea. Research cannot start until this is resolved."
+      : null;
+
+  if (catalogBlockedReason) {
+    ideas = [];
+    scopeSource = "blocked";
+    notices.push(catalogBlockedReason);
+  } else if (
+    requestedTokens.length === 0
+    && url.pathname.endsWith("/selection/review")
+    && (job.selectionDraft?.items.length ?? 0) === 0
+  ) {
+    ideas = [];
+    scopeSource = "blocked";
+    notices.push("No saved shortlist is available. Choose at least one idea before review.");
+  } else if (requestedTokens.length === 0) {
     const fallback = resolveFallback(job, solutions);
     ideas = fallback.ideas;
-    scopeSource = fallback.usedTopCandidates ? "preview" : "draft";
-    if (fallback.usedTopCandidates) {
-      notices.push("No shortlist is saved yet. Showing the current leading candidates as a preview.");
+    scopeSource = fallback.blockedReason
+      ? "blocked"
+      : fallback.usedTopCandidates ? "preview" : "draft";
+    if (fallback.blockedReason) {
+      notices.push(fallback.blockedReason);
+    } else if (fallback.usedTopCandidates) {
+      notices.push("No shortlist is saved yet. Showing current candidates as a preview.");
     }
   }
 

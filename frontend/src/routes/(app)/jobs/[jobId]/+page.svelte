@@ -372,6 +372,9 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
   // Generic job/SSE payloads may carry solutionIdeas for lifecycle compatibility,
   // but they are never a selection-screen fallback.
   const displaySolutions = $derived(localSolutions ?? []);
+  const currentStageArtifact = $derived(
+    job?.progress?.find((stage) => stage.stageNumber === job?.currentStage)?.artifact ?? null,
+  );
 
   function stopFallbackPolling(): void {
     if (fallbackPoll) clearInterval(fallbackPoll);
@@ -1499,6 +1502,7 @@ import { readIdeaTheses, readUncoveredFamilies } from "$lib/types/ideaThesis";
           totalStages={job.totalStages ?? 0}
           currentStage={job.currentStage}
           currentStageName={job.currentStageName}
+          stageArtifact={currentStageArtifact}
           queuePosition={job.queuePosition ?? undefined}
           catalogPainPoints={isGeneratingP1 ? (data.catalogPainPoints ?? []) : []}
           selectedNames={job.selectedSolutions ?? []}

@@ -182,6 +182,97 @@ beforeEach(() => {
 });
 
 describe("selection layout Discovery navigation", () => {
+  it("resolves Review from the verified saved draft when the generic job omits selection data", async () => {
+    const seed = {
+      idea_id: "idea-seed",
+      idea_revision: 1,
+      solution_name: "AccreditedVetMapper",
+      description: "The submitted idea.",
+      value_proposition: "Validate the submitted workflow.",
+      source_frame: "user_seed",
+      generation_operation_id: "validate",
+    };
+    const alternative = {
+      idea_id: "idea-alt",
+      idea_revision: 2,
+      solution_name: "Same-Day Careboard",
+      description: "A current alternative.",
+      value_proposition: "Coordinate same-day care.",
+    };
+    const shortlist = {
+      version: 8,
+      fingerprint: "alternative-fingerprint",
+      items: [{ ideaId: "idea-alt", ideaRevision: 2, title: "Same-Day Careboard" }],
+      staleItems: [],
+    };
+
+    mocks.fetchBackend.mockImplementation((path: string) => {
+      if (path === "/api/jobs/job-1") {
+        // Production selection shape: the generic endpoint intentionally omits
+        // both solutionIdeas and selectionDraft.
+        return Promise.resolve(response({
+          id: "job-1",
+          status: "AWAITING_SELECTION",
+          entryMode: "validate_idea",
+          assets: [],
+        }));
+      }
+      if (path === "/api/jobs/job-1/solutions") {
+        return Promise.resolve(response({
+          solutionIdeas: [seed, alternative],
+          selectionDraft: {
+            version: 8,
+            items: [{ ideaId: "idea-alt", ideaRevision: 2 }],
+          },
+          artifactVerification: "verified",
+          artifactReason: null,
+          previewReport: { detailed_pain_points: [] },
+        }));
+      }
+      if (path === "/api/jobs/job-1/selection-decision-state") {
+        return Promise.resolve(response(validDecisionState({ shortlist })));
+      }
+      return Promise.resolve(response(null, 404));
+    });
+
+    const result = await load(event("review"));
+    if (!result) throw new Error("Expected selection layout data");
+
+    expect(result.job).not.toHaveProperty("solutionIdeas");
+    expect(result.job.selectionDraft).toEqual({
+      version: 8,
+      items: [{ ideaId: "idea-alt", ideaRevision: 2 }],
+    });
+    expect(result.workspace.scopeSource).toBe("draft");
+    expect(result.workspace.ideas.map(
+      (entry: Record<string, unknown>) => entry.idea_id,
+    )).toEqual(["idea-alt"]);
+  });
+
+  it("fails closed when the authoritative saved draft is malformed", async () => {
+    mocks.fetchBackend.mockImplementation((path: string) => {
+      if (path === "/api/jobs/job-1") {
+        return Promise.resolve(response({
+          id: "job-1",
+          status: "AWAITING_SELECTION",
+          entryMode: "validate_idea",
+          assets: [],
+        }));
+      }
+      if (path === "/api/jobs/job-1/solutions") {
+        return Promise.resolve(response({
+          solutionIdeas: [],
+          selectionDraft: { version: "wrong", items: [] },
+          artifactVerification: "verified",
+          previewReport: { detailed_pain_points: [] },
+        }));
+      }
+      return Promise.resolve(response(null, 404));
+    });
+
+    await expect(load(event("review"))).rejects.toMatchObject({ status: 502 });
+  });
+
   it("prefetches saved directions with the Compare route's parallel data", async () => {
     const sets = [{ id: "set-1" }];
     mocks.fetchBackend.mockImplementation((path: string) => {
@@ -266,6 +357,8 @@ describe("selection layout Discovery navigation", () => {
       if (path === "/api/jobs/job-1/solutions") {
         return Promise.resolve(response({
           solutionIdeas: [{
+            idea_id: "idea-signal",
+            idea_revision: 1,
             solution_name: "Signal desk",
             description: "Watches the queue",
             value_proposition: "Fewer missed handoffs",
@@ -345,6 +438,149 @@ describe("selection layout Discovery navigation", () => {
     if (!result) throw new Error("Expected selection layout data");
 
     expect(result.selectionLoadState.solutionsUnavailable).toBe(true);
+  });
+
+  it("rejects a non-array candidate catalog before accepting its saved draft", async () => {
+    mocks.fetchBackend.mockImplementation((path: string) => {
+      if (path === "/api/jobs/job-1") return Promise.resolve(response(job()));
+      if (path === "/api/jobs/job-1/solutions") {
+        return Promise.resolve(response({
+          solutionIdeas: null,
+          selectionDraft: {
+            version: 7,
+            items: [{ ideaId: "seed-1", ideaRevision: 1 }],
+          },
+        }));
+      }
+      return Promise.resolve(response(null, 404));
+    });
+
+    const result = await load(event("review"));
+    if (!result) throw new Error("Expected selection layout data");
+
+    expect(result.solutions).toEqual([]);
+    expect(result.job.selectionDraft).toBeNull();
+    expect(result.selectionLoadState.solutionsUnavailable).toBe(true);
+  });
+
+  it("blocks Review when normalization discards any authoritative candidate row", async () => {
+    const seed = {
+      idea_id: "seed-1",
+      idea_revision: 1,
+      solution_name: "Submitted Idea",
+      description: "The submitted idea.",
+      source_frame: "user_seed",
+      generation_operation_id: "validate",
+    };
+    mocks.fetchBackend.mockImplementation((path: string) => {
+      if (path === "/api/jobs/job-1") {
+        return Promise.resolve(response({ ...job(), entryMode: "validate_idea" }));
+      }
+      if (path === "/api/jobs/job-1/solutions") {
+        return Promise.resolve(response({
+          solutionIdeas: [
+            seed,
+            { idea_id: "seed-1", idea_revision: 1, description: "Malformed collision." },
+          ],
+          selectionDraft: {
+            version: 7,
+            items: [{ ideaId: "seed-1", ideaRevision: 1 }],
+          },
+        }));
+      }
+      return Promise.resolve(response(null, 404));
+    });
+
+    const result = await load(event("review"));
+    if (!result) throw new Error("Expected selection layout data");
+
+    expect(result.solutions).toEqual([]);
+    expect(result.job.selectionDraft).toBeNull();
+    expect(result.selectionLoadState.invalidSolutionCount).toBe(1);
+    expect(result.selectionLoadState.solutionsUnavailable).toBe(true);
+  });
+
+  it("rejects a generic job projection for a different route identity", async () => {
+    mocks.fetchBackend.mockImplementation((path: string) => {
+      if (path === "/api/jobs/job-1") {
+        return Promise.resolve(response({ ...job(), id: "job-2" }));
+      }
+      return Promise.resolve(response(null, 404));
+    });
+
+    await expect(load(event("review"))).rejects.toMatchObject({ status: 502 });
+  });
+
+  it("rejects a strict validation seed when the job omits validation entry mode", async () => {
+    mocks.fetchBackend.mockImplementation((path: string) => {
+      if (path === "/api/jobs/job-1") return Promise.resolve(response(job()));
+      if (path === "/api/jobs/job-1/solutions") {
+        return Promise.resolve(response({
+          solutionIdeas: [{
+            idea_id: "seed-1",
+            idea_revision: 1,
+            solution_name: "Submitted Idea",
+            source_frame: "user_seed",
+            generation_operation_id: "validate",
+          }],
+          selectionDraft: { version: 7, items: [{ ideaId: "seed-1", ideaRevision: 1 }] },
+        }));
+      }
+      return Promise.resolve(response(null, 404));
+    });
+
+    await expect(load(event("review"))).rejects.toMatchObject({ status: 502 });
+  });
+
+  it("blocks Review instead of trimming whitespace in candidate identity", async () => {
+    mocks.fetchBackend.mockImplementation((path: string) => {
+      if (path === "/api/jobs/job-1") {
+        return Promise.resolve(response({ ...job(), entryMode: "validate_idea" }));
+      }
+      if (path === "/api/jobs/job-1/solutions") {
+        return Promise.resolve(response({
+          solutionIdeas: [
+            { idea_id: "seed-1", idea_revision: 1, solution_name: "Submitted seed" },
+            { idea_id: "seed-1 ", idea_revision: 1, solution_name: "Different product" },
+          ],
+          selectionDraft: { version: 7, items: [{ ideaId: "seed-1 ", ideaRevision: 1 }] },
+        }));
+      }
+      return Promise.resolve(response(null, 404));
+    });
+
+    const result = await load(event("review"));
+    if (!result) throw new Error("Expected selection layout data");
+    expect(result.job.selectionDraft).toBeNull();
+    expect(result.selectionLoadState.solutionsUnavailable).toBe(true);
+    expect(result.selectionLoadState.invalidSolutionCount).toBeGreaterThan(0);
+  });
+
+  it("rejects revisions outside JavaScript's exact integer range", async () => {
+    const unsafeRevision = Number.MAX_SAFE_INTEGER + 1;
+    mocks.fetchBackend.mockImplementation((path: string) => {
+      if (path === "/api/jobs/job-1") return Promise.resolve(response(job()));
+      if (path === "/api/jobs/job-1/solutions") {
+        return Promise.resolve(response({
+          solutionIdeas: [{
+            idea_id: "idea-unsafe",
+            idea_revision: unsafeRevision,
+            solution_name: "Unsafe revision",
+          }],
+          selectionDraft: {
+            version: 7,
+            items: [{ ideaId: "idea-unsafe", ideaRevision: unsafeRevision }],
+          },
+        }));
+      }
+      return Promise.resolve(response(null, 404));
+    });
+
+    const result = await load(event("review"));
+    if (!result) throw new Error("Expected selection layout data");
+    expect(result.job.selectionDraft).toBeNull();
+    expect(result.selectionLoadState.solutionsUnavailable).toBe(true);
+    expect(result.selectionLoadState.invalidSolutionCount).toBeGreaterThan(0);
   });
 
   it("does not treat a failed verified selection request as an empty dossier", async () => {
@@ -455,7 +691,7 @@ describe("selection decision-state boundary validation", () => {
     const payload = validDecisionState();
     mockDecisionStateResponse(payload);
 
-    const result = await load(event("review"));
+    const result = await load(event("compare"));
     if (!result) throw new Error("Expected selection layout data");
 
     expect(result.decisionState).toEqual(payload);
@@ -465,7 +701,7 @@ describe("selection decision-state boundary validation", () => {
   it("marks a malformed non-null payload as a load failure", async () => {
     mockDecisionStateResponse({ schemaVersion: 1, decisionState: "not-a-projection" });
 
-    const result = await load(event("review"));
+    const result = await load(event("compare"));
     if (!result) throw new Error("Expected selection layout data");
 
     expect(

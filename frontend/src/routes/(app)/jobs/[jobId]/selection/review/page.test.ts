@@ -41,6 +41,9 @@ function data(options: {
   balanceUnavailable?: boolean;
   costsUnavailable?: boolean;
   ideas?: Array<Record<string, unknown>>;
+  catalogIdeas?: Array<Record<string, unknown>>;
+  entryMode?: "validate_idea";
+  deepResearchEligible?: boolean;
   challenges?: Array<Record<string, unknown>>;
   assumptions?: Array<Record<string, unknown>>;
   conclusions?: Array<Record<string, unknown>>;
@@ -55,13 +58,23 @@ function data(options: {
   status?: string;
   selectionRationale?: string | null;
   sampleReportAvailable?: boolean;
+  solutionsUnavailable?: boolean;
+  invalidSolutionCount?: number;
 } = {}) {
   const ideas = options.ideas ?? [idea];
+  const draftItems = options.saved === false
+    ? []
+    : ideas.map((entry) => ({
+        ideaId: entry.idea_id,
+        ideaRevision: entry.idea_revision ?? 1,
+      }));
   return {
     job: {
       id: "job-1",
       status: options.status ?? "AWAITING_SELECTION",
+      entryMode: options.entryMode ?? null,
       selectionRationale: options.selectionRationale ?? null,
+      selectionDraft: { version: 7, items: draftItems },
     },
     // The risk-check summary inside /review is a decision tool; /review itself is not.
     decisionTools: options.decisionTools ?? true,
@@ -71,8 +84,10 @@ function data(options: {
       scopeSource: "url",
       canonicalQuery: "?idea=idea-a%3A3",
     },
-    solutions: ideas,
+    solutions: options.catalogIdeas ?? ideas,
     decisionState: {
+      jobId: "job-1",
+      status: options.status ?? "AWAITING_SELECTION",
       shortlist: {
         version: 7,
         fingerprint: "opaque-shortlist-fingerprint",
@@ -102,7 +117,7 @@ function data(options: {
           }
         : null,
       staleCounts: { challenges: 0 },
-      deepResearch: { eligible: true },
+      deepResearch: { eligible: options.deepResearchEligible ?? true, blockers: [] },
     },
     founderFit: options.founderFitResults
       ? {
@@ -120,6 +135,10 @@ function data(options: {
       balanceUnavailable: options.balanceUnavailable ?? false,
       costsUnavailable: options.costsUnavailable ?? false,
     },
+    selectionLoadState: {
+      solutionsUnavailable: options.solutionsUnavailable ?? false,
+      invalidSolutionCount: options.invalidSolutionCount ?? 0,
+    },
   } as never;
 }
 
@@ -130,6 +149,198 @@ afterEach(() => {
 });
 
 describe("selection review page", () => {
+  it("keeps paid start disabled when the authoritative catalog dropped a malformed row", () => {
+    const view = render(ReviewPage, {
+      props: { data: data({ invalidSolutionCount: 1 }) },
+    });
+
+    expect(view.getByRole("button", { name: "Start Deep Research" })).toBeDisabled();
+    expect(mocks.selectSolution).not.toHaveBeenCalled();
+  });
+
+  it("recognizes the current selected validation seed from the verified catalog", async () => {
+    const seed = {
+      idea_id: "idea-seed",
+      idea_revision: 1,
+      solution_name: "AccreditedVetMapper",
+      short_description: "Matches the submitted workflow to verified requirements.",
+      source_frame: "user_seed",
+      generation_operation_id: "validate",
+    };
+    mocks.selectSolution.mockResolvedValue({});
+    const view = render(ReviewPage, {
+      props: {
+        data: data({
+          entryMode: "validate_idea",
+          ideas: [seed],
+          catalogIdeas: [seed],
+        }),
+      },
+    });
+
+    expect(view.getByText("Your idea")).toBeInTheDocument();
+    expect(view.queryByRole("heading", { name: "You're researching a different idea" }))
+      .not.toBeInTheDocument();
+    const start = view.getByRole("button", { name: "Start Deep Research" });
+    expect(start).toBeEnabled();
+    await fireEvent.click(start);
+    await waitFor(() => expect(mocks.selectSolution).toHaveBeenCalledOnce());
+  });
+
+  it("does not identify a selected non-seed object from a colliding reference", () => {
+    const seed = {
+      idea_id: "idea-shared",
+      idea_revision: 1,
+      solution_name: "Submitted workflow",
+      short_description: "The submitted idea.",
+      source_frame: "user_seed",
+      generation_operation_id: "validate",
+    };
+    const collidingAlternative = {
+      idea_id: "idea-shared",
+      idea_revision: 1,
+      solution_name: "Different product",
+      short_description: "A distinct candidate with a corrupt colliding reference.",
+    };
+    const view = render(ReviewPage, {
+      props: {
+        data: data({
+          entryMode: "validate_idea",
+          ideas: [collidingAlternative],
+          catalogIdeas: [seed],
+        }),
+      },
+    });
+
+    expect(view.getByRole("heading", { name: "You're researching a different idea" }))
+      .toBeInTheDocument();
+    expect(view.getByRole("button", { name: "Start Deep Research" })).toBeDisabled();
+  });
+
+  it("blocks Review when more than one strict validation seed is current", () => {
+    const seedV1 = {
+      idea_id: "idea-seed-v1",
+      idea_revision: 1,
+      solution_name: "Submitted workflow v1",
+      short_description: "First strict seed.",
+      source_frame: "user_seed",
+      generation_operation_id: "validate",
+    };
+    const seedV2 = {
+      idea_id: "idea-seed-v2",
+      idea_revision: 2,
+      solution_name: "Submitted workflow v2",
+      short_description: "Second strict seed.",
+      source_frame: "user_seed",
+      generation_operation_id: "validate",
+    };
+    const view = render(ReviewPage, {
+      props: {
+        data: data({
+          entryMode: "validate_idea",
+          ideas: [seedV1],
+          catalogIdeas: [seedV1, seedV2],
+        }),
+      },
+    });
+
+    expect(view.getByRole("heading", {
+      name: "Your submitted idea cannot be identified safely",
+    })).toBeInTheDocument();
+    expect(view.getByRole("button", { name: "Start Deep Research" })).toBeDisabled();
+    expect(view.queryByRole("button", { name: /^Yes, research/ })).not.toBeInTheDocument();
+  });
+
+  it("names the real validation seed when a current alternative is selected", async () => {
+    const seed = {
+      idea_id: "idea-seed",
+      idea_revision: 1,
+      solution_name: "AccreditedVetMapper",
+      short_description: "The submitted idea.",
+      source_frame: "user_seed",
+      generation_operation_id: "validate",
+    };
+    const alternative = {
+      idea_id: "idea-alt",
+      idea_revision: 1,
+      solution_name: "Same-Day Careboard",
+      short_description: "A current alternative.",
+    };
+    const view = render(ReviewPage, {
+      props: {
+        data: data({
+          entryMode: "validate_idea",
+          ideas: [alternative],
+          catalogIdeas: [seed, alternative],
+        }),
+      },
+    });
+
+    const warning = view.getByRole("heading", { name: "You're researching a different idea" })
+      .closest("section");
+    expect(warning).toHaveTextContent("Same-Day Careboard");
+    expect(warning).toHaveTextContent("AccreditedVetMapper");
+    expect(warning).not.toHaveTextContent("isn't available");
+    const start = view.getByRole("button", { name: "Start Deep Research" });
+    expect(start).toBeDisabled();
+    await fireEvent.click(view.getByRole("button", { name: "Yes, research Same-Day Careboard" }));
+    await waitFor(() => expect(start).toBeEnabled());
+  });
+
+  it("uses the neutral acknowledgement when no strict validation seed is current", async () => {
+    const alternative = {
+      idea_id: "idea-alt",
+      idea_revision: 1,
+      solution_name: "Same-Day Careboard",
+      short_description: "A current alternative.",
+    };
+    const view = render(ReviewPage, {
+      props: {
+        data: data({
+          entryMode: "validate_idea",
+          ideas: [alternative],
+          catalogIdeas: [alternative],
+        }),
+      },
+    });
+
+    const warning = view.getByRole("heading", { name: "You're researching a different idea" })
+      .closest("section");
+    expect(warning).toHaveTextContent("submitted idea isn't available");
+    expect(warning).toHaveTextContent("Same-Day Careboard");
+    const start = view.getByRole("button", { name: "Start Deep Research" });
+    expect(start).toBeDisabled();
+    await fireEvent.click(view.getByRole("button", { name: "Yes, research Same-Day Careboard" }));
+    await waitFor(() => expect(start).toBeEnabled());
+  });
+
+  it("keeps a stale or missing shortlist blocked instead of treating the seed fallback as paid scope", () => {
+    const seed = {
+      idea_id: "idea-seed",
+      idea_revision: 1,
+      solution_name: "AccreditedVetMapper",
+      short_description: "The submitted idea.",
+      source_frame: "user_seed",
+      generation_operation_id: "validate",
+    };
+    const view = render(ReviewPage, {
+      props: {
+        data: data({
+          entryMode: "validate_idea",
+          ideas: [],
+          catalogIdeas: [seed],
+          deepResearchEligible: false,
+        }),
+      },
+    });
+
+    expect(view.getByRole("heading", { name: "Select at least one idea first" }))
+      .toBeInTheDocument();
+    expect(view.queryByRole("heading", { name: "You're researching a different idea" }))
+      .not.toBeInTheDocument();
+    expect(view.queryByRole("button", { name: "Start Deep Research" })).not.toBeInTheDocument();
+  });
+
   it("starts Deep Research only for the exact saved revisions", async () => {
     mocks.selectSolution.mockResolvedValue({});
     const view = render(ReviewPage, { props: { data: data() } });

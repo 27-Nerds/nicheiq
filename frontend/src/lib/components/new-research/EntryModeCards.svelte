@@ -3,7 +3,7 @@
 </script>
 
 <script lang="ts">
-  import { Lightbulb, Users, TrendingUp, ClipboardCheck } from "lucide-svelte";
+  import { Lightbulb, Users, ClipboardCheck } from "lucide-svelte";
 
   interface Props {
     selected: EntryMode;
@@ -24,12 +24,6 @@
       title: "Solve for a group",
       description: "You know who you want to build for",
       icon: Users,
-    },
-    {
-      id: "discovery" as EntryMode,
-      title: "Find what's emerging",
-      description: "You want to see what's trending",
-      icon: TrendingUp,
     },
     {
       id: "validate_idea" as EntryMode,
@@ -92,12 +86,7 @@
   }
   @media (min-width: 640px) {
     .mode-group {
-      grid-template-columns: repeat(2, 1fr);
-    }
-  }
-  @media (min-width: 1024px) {
-    .mode-group {
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(3, 1fr);
     }
   }
 
@@ -161,6 +150,19 @@
     font-size: 0.75rem;
     margin-top: 0.125rem;
     color: var(--color-text-muted);
+  }
+
+  @media (max-width: 639px) {
+    .mode-option {
+      align-items: center;
+      padding: 0.75rem 0.875rem;
+    }
+    .mode-option :global(.mode-icon) {
+      margin-top: 0;
+    }
+    .mode-desc {
+      display: none;
+    }
   }
 
   @media (prefers-reduced-motion: reduce) {

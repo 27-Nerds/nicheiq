@@ -170,8 +170,10 @@ function recommendationForAction(
     case "select_candidate":
       return {
         target: "shortlist",
-        title: "Review the strongest candidate",
-        description: "Open the idea, check the evidence, and add it to your shortlist if it holds up.",
+        title: firstIdea ? "Review the strongest candidate" : "Review the candidate pool",
+        description: firstIdea
+          ? "Open the idea, check the evidence, and add it to your shortlist if it holds up."
+          : "Compare the available ideas and choose one only when the evidence supports a clear lead.",
         actionLabel: firstIdea ? `Review ${firstIdea}` : "Review candidates",
         ideas: action.ideas.map((idea) => ({ ...idea })),
       };

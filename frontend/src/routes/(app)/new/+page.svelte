@@ -95,6 +95,7 @@
   let selectedProjectTypes = $state<string[]>(
     PROJECT_TYPES.map((t) => t.value),
   );
+  let showResearchSetup = $state(false);
   let showProjectTypes = $state(false);
   const projectTypeCountLabel = $derived(
     selectedProjectTypes.length === PROJECT_TYPES.length
@@ -644,6 +645,10 @@
 
 <svelte:head>
   <title>New Research - NicheIQ</title>
+  <meta
+    name="description"
+    content="Discover and check product ideas against real market discussions with NicheIQ research."
+  />
 </svelte:head>
 
 <div class="min-h-[calc(100dvh-3.5rem)]">
@@ -662,7 +667,7 @@
     </header>
 
     <!-- Mode cards -->
-    <div class="max-w-3xl mx-auto mb-6 px-4 sm:px-6">
+    <div class="mode-section max-w-3xl mx-auto mb-6 px-4 sm:px-6">
       <SectionDivider label="Starting point" />
       <EntryModeCards selected={entryMode} onselect={(mode) => entryMode = mode} />
     </div>
@@ -697,15 +702,32 @@
         {/if}
 
         <!-- Input card — hairline surface, catalog ink-black focus -->
-        <div class="input-shell mt-4" class:filled={inputFilled}>
-          <div class="input-shell-inner p-6 sm:p-8">
-            <label
-              for="niche"
-              class="flex items-center gap-2 text-sm font-medium text-text-primary mb-3"
-            >
-              <ModeIcon class="w-4 h-4 {modeConfig.colorClass}" />
-              {modeConfig.label}
-            </label>
+        <div class="input-shell mt-4" class:filled={inputFilled} class:validate-shell={isValidateMode}>
+          <div class="input-shell-inner p-6 sm:p-8" class:validate-shell-inner={isValidateMode}>
+            {#if isValidateMode}
+              <div class="validate-brief-header">
+                <span class="validate-brief-icon" aria-hidden="true">
+                  <ModeIcon class="w-5 h-5 {modeConfig.colorClass}" />
+                </span>
+                <div>
+                  <p class="validate-brief-kicker">Your idea brief</p>
+                  <label for="niche" class="validate-brief-title">
+                    Describe what you want to build
+                  </label>
+                  <p id="idea-brief-hint" class="validate-brief-hint">
+                    One clear paragraph is enough. Include the product, who it serves, and the problem it solves.
+                  </p>
+                </div>
+              </div>
+            {:else}
+              <label
+                for="niche"
+                class="flex items-center gap-2 text-sm font-medium text-text-primary mb-3"
+              >
+                <ModeIcon class="w-4 h-4 {modeConfig.colorClass}" />
+                {modeConfig.label}
+              </label>
+            {/if}
 
             <!-- Textarea with pills overlay -->
             <div class="relative">
@@ -713,15 +735,17 @@
                 id="niche"
                 bind:value={niche}
                 bind:this={textareaEl}
-                rows={3}
+                rows={isValidateMode ? 5 : 3}
                 maxlength={maxNicheLength}
                 class="w-full resize-none text-lg sm:text-xl bg-transparent
                        px-0 py-4 min-h-[120px] placeholder:text-text-muted/50
                        focus:outline-none focus-visible:outline-none
                        transition-colors duration-200
                        disabled:opacity-50 disabled:cursor-not-allowed"
+                class:validate-textarea={isValidateMode}
                 style={niche.trim() ? 'padding-right: 4rem' : ''}
                 placeholder={displayedPlaceholder}
+                aria-describedby={isValidateMode ? "idea-brief-hint" : undefined}
                 disabled={loading || showSuccess}
                 onfocus={() => textareaFocused = true}
                 onblur={() => textareaFocused = false}
@@ -729,23 +753,42 @@
               ></textarea>
 
               {#if !niche.trim()}
-                <div class="example-row pointer-events-none">
-                  <p class="text-xs text-text-secondary">
-                    Try:
-                    {#each displayedExamples as example, i}
-                      {#if i > 0}<span class="mx-1 text-text-muted/40">·</span>{/if}
-                      <button
-                        type="button"
-                        onclick={() => { setNiche(example); userEdited = true; }}
-                        disabled={loading || showSuccess}
-                        class="pointer-events-auto hover:text-text-primary underline underline-offset-2 decoration-border/50
-                               hover:decoration-text-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {example}
-                      </button>
-                    {/each}
-                  </p>
-                </div>
+                {#if isValidateMode}
+                  <div class="validate-examples">
+                    <p class="validate-examples-label">Start with an example</p>
+                    <div class="validate-example-list">
+                      {#each displayedExamples as example}
+                        <button
+                          type="button"
+                          onclick={() => { setNiche(example); userEdited = true; }}
+                          disabled={loading || showSuccess}
+                          class="validate-example-button"
+                        >
+                          <span>{example}</span>
+                          <span aria-hidden="true">&rarr;</span>
+                        </button>
+                      {/each}
+                    </div>
+                  </div>
+                {:else}
+                  <div class="example-row pointer-events-none">
+                    <p class="text-xs text-text-secondary">
+                      Try:
+                      {#each displayedExamples as example, i}
+                        {#if i > 0}<span class="mx-1 text-text-muted/40">·</span>{/if}
+                        <button
+                          type="button"
+                          onclick={() => { setNiche(example); userEdited = true; }}
+                          disabled={loading || showSuccess}
+                          class="pointer-events-auto hover:text-text-primary underline underline-offset-2 decoration-border/50
+                                 hover:decoration-text-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {example}
+                        </button>
+                      {/each}
+                    </p>
+                  </div>
+                {/if}
               {:else if !isValidateMode}
                 <!-- Floating text actions inside textarea. Hidden in check mode:
                      both actions REPLACE the text wholesale — one misclick would
@@ -790,7 +833,10 @@
             </div>
 
             <!-- Help text / quality hint (single row, swaps content) -->
-            <div class="flex items-center justify-between mt-1.5">
+            <div class="quality-row flex items-center justify-between mt-1.5" class:validate-quality={isValidateMode}>
+              {#if isValidateMode}
+                <p class="validate-quality-label">A strong brief includes</p>
+              {/if}
               <InputQualityMeter
                 {niche}
                 qualityTiers={modeConfig.qualityTiers}
@@ -854,24 +900,44 @@
         {/if}
 
         <!-- Submit section (outside glow card) -->
-        <div class="mt-4 px-1">
-          <div class="mb-4">
+        <div class="mt-5">
+          <section class="research-setup" aria-labelledby="research-setup-heading">
+            <button
+              type="button"
+              class="research-setup-header"
+              onclick={() => showResearchSetup = !showResearchSetup}
+              aria-expanded={showResearchSetup}
+              aria-controls="research-setup-controls"
+            >
+              <span class="research-setup-copy">
+                <span id="research-setup-heading" class="research-setup-title">Research setup</span>
+                <span class="research-setup-description">Optional controls for how ideas are generated.</span>
+              </span>
+              <span class="research-setup-summary">
+                <span class="research-setup-badge">Optional</span>
+                <ChevronDown class="w-4 h-4 transition-transform duration-200 {showResearchSetup ? 'rotate-180' : ''}" />
+              </span>
+            </button>
+
+          {#if showResearchSetup}
+          <div id="research-setup-controls">
+          <div class="research-setup-row">
             <button
               type="button"
               onclick={() => showProjectTypes = !showProjectTypes}
               aria-expanded={showProjectTypes}
               aria-controls="business-model-panel"
-              class="text-xs text-text-muted hover:text-text-secondary transition-colors flex items-center gap-1"
+              class="research-setup-trigger"
             >
               <span class="font-medium">Business model filter</span>
               <span>·</span>
               <span>{projectTypeCountLabel}</span>
               <ChevronDown class="w-3 h-3 transition-transform duration-200 {showProjectTypes ? 'rotate-180' : ''}" />
             </button>
-            <p class="text-[11px] text-text-muted mt-1">
-              Tip: leave all selected if you're exploring multiple approaches.
-            </p>
             {#if showProjectTypes}
+              <p class="text-[11px] text-text-muted mt-2">
+                Leave all selected if you're exploring multiple approaches.
+              </p>
               {@const allSelected = selectedProjectTypes.length === PROJECT_TYPES.length}
               <div id="business-model-panel" class="flex flex-wrap gap-2 mt-2">
                 <button
@@ -904,13 +970,13 @@
             {/if}
           </div>
 
-          <div class="mb-4">
+          <div class="research-setup-row">
             <button
               type="button"
               onclick={() => showFocus = !showFocus}
               aria-expanded={showFocus}
               aria-controls="idea-focus-panel"
-              class="text-xs text-text-muted hover:text-text-secondary transition-colors flex items-center gap-1"
+              class="research-setup-trigger"
             >
               <span class="font-medium">Idea focus</span>
               <span>·</span>
@@ -942,13 +1008,14 @@
             {/if}
           </div>
 
-          <div class="mb-4">
+          {#if !isValidateMode}
+          <div class="research-setup-row">
             <button
               type="button"
               onclick={() => (showGuided = !showGuided)}
               aria-expanded={showGuided}
               aria-controls="guided-research-panel"
-              class="text-xs text-text-muted hover:text-text-secondary transition-colors flex items-center gap-1"
+              class="research-setup-trigger"
             >
               <span class="font-medium">Guided research</span>
               <span>&middot;</span>
@@ -962,9 +1029,6 @@
                   <p class="text-[11px] text-text-muted mt-1">
                     Research stops after the niche is validated, and again after pain points and audience are mapped &mdash; chat with the analyst or adjust scope before it continues.
                   </p>
-                  {#if isValidateMode}
-                    <p class="text-[11px] text-text-muted mt-1">Not available for idea checks.</p>
-                  {/if}
                 </div>
                 {#if hasAnalystAccess}
                   <button
@@ -973,7 +1037,7 @@
                     aria-checked={chatMode}
                     aria-label="Guided research"
                     onclick={() => (chatMode = !chatMode)}
-                    disabled={loading || showSuccess || isValidateMode}
+                    disabled={loading || showSuccess}
                     class="shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition-colors
                       {chatMode ? 'bg-[color:var(--color-accent)]' : 'bg-border'}
                       disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1001,9 +1065,14 @@
               </div>
             {/if}
           </div>
+          {/if}
+          </div>
+          {/if}
+          </section>
 
           <!-- Process timeline (contextual, near submit) -->
-          <div class="mb-4">
+          <div class="process-summary">
+            <p class="process-summary-label">What happens next</p>
             <ProcessTimeline {stageCosts} guided={chatMode} />
           </div>
 
@@ -1147,12 +1216,227 @@
   .input-shell.filled {
     border-color: var(--color-border-emphasis);
   }
+  .input-shell.validate-shell {
+    border-color: var(--color-border-emphasis);
+  }
   .input-shell:focus-within {
     border-color: var(--color-text-primary);
     box-shadow: 0 0 0 3px var(--color-accent-subtle);
   }
   .input-shell-inner :global(textarea:focus-visible) {
     outline: none;
+  }
+
+  .validate-brief-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.875rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .validate-brief-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    flex-shrink: 0;
+    border: 1px solid var(--color-border-accent);
+    border-radius: 0.625rem;
+    background: var(--color-accent-subtle);
+  }
+  .validate-brief-kicker,
+  .validate-examples-label,
+  .validate-quality-label,
+  .process-summary-label {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+  }
+  .validate-brief-title {
+    display: block;
+    margin-top: 0.25rem;
+    font-family: var(--font-display);
+    font-size: 1.125rem;
+    font-weight: 600;
+    line-height: 1.25;
+    color: var(--color-text-primary);
+  }
+  .validate-brief-hint {
+    max-width: 34rem;
+    margin: 0.375rem 0 0;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    color: var(--color-text-secondary);
+    text-wrap: pretty;
+  }
+  textarea.validate-textarea {
+    min-height: 8.5rem;
+    padding: 1.25rem 0 1rem;
+    font-size: 1rem;
+    line-height: 1.65;
+  }
+  .validate-examples {
+    padding-top: 1rem;
+    border-top: 1px solid var(--color-border);
+  }
+  .validate-example-list {
+    display: grid;
+    gap: 0.5rem;
+    margin-top: 0.625rem;
+  }
+  .validate-example-button {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+    width: 100%;
+    min-height: 3.25rem;
+    padding: 0.625rem 0.75rem;
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    background: var(--color-bg-surface);
+    color: var(--color-text-secondary);
+    font-size: 0.75rem;
+    line-height: 1.4;
+    text-align: left;
+    transition:
+      border-color 0.15s ease,
+      background-color 0.15s ease,
+      color 0.15s ease,
+      transform 0.15s ease;
+  }
+  .validate-example-button > span:last-child {
+    flex-shrink: 0;
+    color: var(--color-text-muted);
+  }
+  .validate-example-button:hover:not(:disabled) {
+    border-color: var(--color-border-emphasis);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
+    transform: translateY(-1px);
+  }
+  .validate-example-button:active:not(:disabled) {
+    transform: translateY(0);
+  }
+  .validate-example-button:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+  .validate-example-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+  .quality-row.validate-quality {
+    display: block;
+    margin-top: 1.25rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--color-border);
+  }
+  .validate-quality-label {
+    margin-bottom: 0.625rem;
+  }
+  .validate-quality > span:last-child {
+    display: block;
+    margin: 0.5rem 0 0;
+    text-align: right;
+  }
+
+  .research-setup {
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    border-radius: 0.625rem;
+    background: var(--color-bg-surface);
+  }
+  .research-setup-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    width: 100%;
+    padding: 0.875rem 1rem;
+    text-align: left;
+    transition: background-color 0.15s ease;
+  }
+  .research-setup-header:hover {
+    background: var(--color-bg-elevated);
+  }
+  .research-setup-header:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: -3px;
+  }
+  .research-setup-copy {
+    display: flex;
+    flex-direction: column;
+  }
+  .research-setup-title {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+  }
+  .research-setup-description {
+    margin-top: 0.1875rem;
+    font-size: 0.6875rem;
+    color: var(--color-text-secondary);
+  }
+  .research-setup-summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+    color: var(--color-text-muted);
+  }
+  .research-setup-badge {
+    padding: 0.1875rem 0.375rem;
+    border: 1px solid var(--color-border);
+    border-radius: 0.25rem;
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--color-text-secondary);
+  }
+  .research-setup-row {
+    padding: 0.75rem 1rem;
+    border-top: 1px solid var(--color-border);
+    background: var(--color-bg-elevated);
+  }
+  .research-setup-trigger {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    width: 100%;
+    color: var(--color-text-muted);
+    font-size: 0.75rem;
+    text-align: left;
+    transition: color 0.15s ease;
+  }
+  .research-setup-trigger:hover {
+    color: var(--color-text-secondary);
+  }
+  .research-setup-trigger:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 3px;
+    border-radius: 0.25rem;
+  }
+  .research-setup-trigger :global(svg) {
+    margin-left: auto;
+  }
+  .process-summary {
+    margin: 1rem 0;
+    padding: 0.875rem 1rem 1rem;
+    border: 1px solid var(--color-border);
+    border-radius: 0.625rem;
+    background: var(--color-bg-surface);
+  }
+  .process-summary-label {
+    margin-bottom: 0.625rem;
+    text-align: center;
+    color: var(--color-text-secondary);
   }
 
   .example-row {
@@ -1164,9 +1448,40 @@
   }
 
   @media (max-width: 640px) {
+    .new-hero {
+      padding-top: 32px;
+      padding-bottom: 12px;
+    }
+    .mode-section :global(.section-divider) {
+      padding-top: 24px;
+    }
+    .validate-shell-inner {
+      padding: 1.25rem;
+    }
+    .validate-brief-header {
+      gap: 0.75rem;
+    }
+    .validate-brief-icon {
+      width: 2.25rem;
+      height: 2.25rem;
+    }
     .example-row {
       position: static;
       margin-top: 0.5rem;
+    }
+  }
+  @media (min-width: 640px) {
+    .validate-example-list {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .validate-example-button {
+      transition: none;
+    }
+    .validate-example-button:hover:not(:disabled),
+    .validate-example-button:active:not(:disabled) {
+      transform: none;
     }
   }
 </style>

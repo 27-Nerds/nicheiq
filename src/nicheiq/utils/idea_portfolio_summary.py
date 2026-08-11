@@ -1,15 +1,11 @@
-"""Run-level idea-portfolio summary — one honest-reviewer LLM narrative assessing the
-STRENGTHS/WEAKNESSES of the whole VISIBLE idea pool, generated at the end of Stage 5 and
-refreshed after a successful visible-pool mutation (see research_flow.py). A
-second, orthogonal prose layer alongside NicheDifficultyVerdict: that verdict judges the
-NICHE, this judges the SPECIFIC ideas the pipeline generated for it.
+"""Run-level idea-portfolio summary grounded in the current visible candidate records.
 
-Deterministic digest -> ONE grounded LLM call -> deterministic name-coverage, visibility,
-and commercial-copy guardrail (retry once with an explicit correction, then fail-soft to None).
-Unlike
-utils/niche_difficulty.py, there is no code-computed fallback prose — a failed/ungrounded
-call means no summary at all (never a fabricated or partial one; the UI card just doesn't
-render).
+The summary used to ask a prose model to infer candidate strengths from a score-only
+digest. That made candidate-specific mechanism claims impossible to verify: the model
+could fluently attach an unrelated workflow to the right candidate name. The current
+summary is therefore extractive and deterministic. Product and mechanism statements are
+copied from the candidate record; ranking language is derived from recorded score bands.
+If either fact is unavailable, the summary fails closed instead of inventing a bridge.
 """
 
 from __future__ import annotations
@@ -83,50 +79,138 @@ def idea_portfolio_fingerprint(ideas: list, *, job_id: str | None = None) -> str
     )
 
 
+def _idea_display_title(idea) -> str:
+    """Mirror the frontend/backend display-title contract."""
+    name = (getattr(idea, "solution_name", None) or "").strip()
+    headline = (getattr(idea, "headline", None) or "").strip()
+    if (
+        getattr(idea, "source_frame", None) == "user_seed"
+        and getattr(idea, "generation_operation_id", None) == "validate"
+    ):
+        return name or headline
+    return headline or name
+
+
 def _name_head(name: str) -> str:
-    """Coverage matches on the name's head — long names carry subtitle tails
-    ("ShipDelayRadar Ops (Risk-Aware Pick/Pack + ...)", "ClosePack Recon: ...")
-    that models rightly shorten in prose; demanding the full string drops
-    otherwise-valid summaries (live-caught on the Etsy run, 2026-07-10)."""
     head = re.split(r"[(:]", name, maxsplit=1)[0].strip()
     return head if len(head) >= 4 else name
 
 
-# Exclusion vocabulary the guard scans for — describing a RANKED, SELECTABLE idea with
-# any of these is state misinformation (the workbench renders it with an enabled
-# selection control). Genuinely ruled-out ideas are not in the visible-name list and
-# stay describable however the model likes.
 _EXCLUSION_TERMS = {"excluded", "removed", "eliminated", "dropped", "cut"}
 _CLAUSE_SPLIT_RE = re.compile(r"[.;\n]+")
 _WORD_RE = re.compile(r"[a-z0-9']+")
-_EXCLUSION_PROXIMITY = 8  # lexical tokens; catches the live "were ultimately excluded" span
+_EXCLUSION_PROXIMITY = 8
 
 
 def _exclusion_conflicts(text: str, names: list[str]) -> list[str]:
-    """Visible ideas the summary describes with exclusion vocabulary — clause-scoped,
-    whole-word, within `_EXCLUSION_PROXIMITY` lexical tokens of the idea's name head.
-    Clause scoping lets "We excluded pricing data. X remains selectable." pass."""
     conflicts: list[str] = []
     for clause in _CLAUSE_SPLIT_RE.split(text.lower()):
         words = _WORD_RE.findall(clause)
-        if not words:
-            continue
-        term_positions = [i for i, w in enumerate(words) if w in _EXCLUSION_TERMS]
-        if not term_positions:
-            continue
+        term_positions = [i for i, word in enumerate(words) if word in _EXCLUSION_TERMS]
         for name in names:
             head_words = _WORD_RE.findall(_name_head(name).lower())
-            if not head_words:
-                continue
             for i in range(len(words) - len(head_words) + 1):
-                if words[i : i + len(head_words)] == head_words:
-                    span = range(i, i + len(head_words))
-                    if any(min(abs(t - h) for h in span) <= _EXCLUSION_PROXIMITY
-                           for t in term_positions):
-                        if name not in conflicts:
-                            conflicts.append(name)
-                    break
+                if words[i : i + len(head_words)] != head_words:
+                    continue
+                span = range(i, i + len(head_words))
+                if term_positions and any(
+                    min(abs(term - position) for position in span) <= _EXCLUSION_PROXIMITY
+                    for term in term_positions
+                ) and name not in conflicts:
+                    conflicts.append(name)
+                break
     return conflicts
+
+
+def _grounded_candidate_sentence(idea) -> str | None:
+    """Render only facts present on the current typed candidate record."""
+    title = _idea_display_title(idea)
+    product = (
+        (getattr(idea, "short_description", None) or "").strip()
+        or (getattr(idea, "description", None) or "").strip()
+    )
+    technical = (getattr(idea, "technical_approach", None) or "").strip()
+    features = [str(value).strip() for value in (getattr(idea, "core_features", None) or [])]
+    mechanism = technical or "; ".join(value for value in features if value)
+    if not title or not product or not mechanism:
+        return None
+
+    codename = (getattr(idea, "solution_name", None) or "").strip()
+    if codename and codename != title:
+        product = product.replace(codename, title)
+        mechanism = mechanism.replace(codename, title)
+
+    market_fit = score_band(getattr(idea, "market_fit_score", None))
+    dev_time = (getattr(idea, "estimated_development_time", None) or "").strip()
+    build_clause = f" Estimated MVP build: {dev_time}." if dev_time else ""
+    return (
+        f"{title}: {product} Recorded mechanism: {mechanism}. "
+        f"Recorded market fit is {market_fit}.{build_clause}"
+    )
+
+
+def _grounded_portfolio_summary(
+    ideas: list,
+    *,
+    niche_wallet_brief: Optional[dict],
+) -> str | None:
+    """Production summary contract: extract current facts or publish nothing."""
+    sentences = [_grounded_candidate_sentence(idea) for idea in ideas]
+    if not sentences or any(sentence is None for sentence in sentences):
+        return None
+
+    eligible = [
+        idea for idea in ideas
+        if (getattr(idea, "red_team_verdict", None) or "").strip() != "killed"
+    ]
+    eligible.sort(
+        key=lambda idea: (
+            getattr(idea, "market_fit_score", None)
+            if isinstance(getattr(idea, "market_fit_score", None), (int, float))
+            else -1
+        ),
+        reverse=True,
+    )
+    recommendation = ""
+    if eligible:
+        title = _idea_display_title(eligible[0])
+        recommendation = (
+            f" Based on the recorded market-fit bands, validate {title} first; "
+            "the candidate-specific mechanism above is copied from its current record."
+        )
+
+    wallet = dict(niche_wallet_brief or {})
+    commercial_contract_copy = paying_wallet_commercial_contract_copy(
+        wallet.get("wallet_class"), wallet.get("evidence")
+    )
+    parts = ["Grounded candidate review:", *sentences]
+    if recommendation:
+        parts.append(recommendation.strip())
+    if commercial_contract_copy:
+        parts.append(commercial_contract_copy)
+    summary = "\n\n".join(str(part) for part in parts)
+
+    violations = (
+        paying_wallet_summary_copy_violations(
+            summary,
+            wallet_class=wallet.get("wallet_class"),
+            wallet_evidence=wallet.get("evidence"),
+            expected_copy=commercial_contract_copy,
+            allow_surrounding_copy=True,
+        )
+        if commercial_contract_copy
+        else priced_wallet_prescription_violations(
+            summary,
+            wallet_class=wallet.get("wallet_class"),
+            wallet_evidence=wallet.get("evidence"),
+        )
+    )
+    if violations:
+        logger.warning(
+            f"[PortfolioSummary] deterministic commercial invariant rejected summary: {violations}"
+        )
+        return None
+    return summary
 
 
 def _idea_digest_line(idea) -> str:
@@ -134,7 +218,7 @@ def _idea_digest_line(idea) -> str:
     quantitative is rendered as a qualitative band (score_band), never a raw decimal — the
     prompt built from these lines must not give the LLM a number to echo. Deliberately
     excludes source_frame (internal generation steer, not yet user-facing)."""
-    name = getattr(idea, "solution_name", "?") or "?"
+    name = _idea_display_title(idea) or "?"
     mf = getattr(idea, "market_fit_score", None)
     mf_raw = getattr(idea, "market_fit_score_raw", None)
     mf_band = score_band(mf)
@@ -183,8 +267,19 @@ def _idea_digest_line(idea) -> str:
     payer_hint = payer_retarget_hint(idea)
     payer_clause = f"; payer note: {payer_hint}" if payer_hint else ""
 
+    product = (
+        (getattr(idea, "short_description", None) or "").strip()
+        or (getattr(idea, "description", None) or "").strip()
+    )
+    technical = (getattr(idea, "technical_approach", None) or "").strip()
+    features = [str(value).strip() for value in (getattr(idea, "core_features", None) or [])]
+    features = [value for value in features if value]
+    mechanism = technical or "; ".join(features)
+
     return (
-        f"- {name}: market fit {mf_band}{corrected}; SEO scalability {seo_band}; "
+        f"- {name}: product fact: {product or 'not recorded'}; "
+        f"mechanism fact: {mechanism or 'not recorded'}; "
+        f"market fit {mf_band}{corrected}; SEO scalability {seo_band}; "
         f"dev time {dev_time}; buyer-segment payability {pay_band} ({pay_class}); "
         f"incumbent parity: {parity}; adjacent-market parity: {adjacent}; "
         f"risk flags: {', '.join(risk_flags) if risk_flags else 'none'}; "
@@ -266,25 +361,34 @@ def generate_idea_portfolio_summary(
     niche_difficulty_narrative: Optional[str] = None,
     niche: Optional[str] = None,
 ) -> tuple[Optional[str], Optional[object]]:
-    """Generate the run-level portfolio summary: one honest-reviewer LLM narrative over the
-    VISIBLE idea pool + run-level context. Fail-soft -> (None, None) whenever there is
-    nothing to summarize or the call fails outright.
+    """Generate a current-record-grounded portfolio summary for production candidates.
 
-    Deterministic post-call guardrail: every visible idea must be named in the text (case-
-    insensitive substring match), visible ideas cannot be described as excluded, and verified
-    paying-wallet copy must include the shared deterministic positive statement. Retry once with
-    an explicit correction, else give up and return None (no JSON-repair, no partial summary).
-    `usage` reflects only the LAST attempt made (the common case is a single call; the retry path
-    is a rare edge case and is not cost-tracked twice)."""
+    ResearchFlow stores Pydantic candidate models; that path is deterministic and cannot
+    author candidate claims absent from those records. Lightweight non-model inputs retain
+    the legacy guarded generator for backwards-compatible library callers. They are never
+    checkpointed or published by ResearchFlow.
+    """
     from ..config.settings import settings
     from ..models.solution_idea import visible_ideas
     from .llm_service import LLMService
 
     visible = visible_ideas(ideas)
-    names = [(getattr(i, "solution_name", "") or "").strip() for i in visible]
+    names = [_idea_display_title(idea) for idea in visible]
     names = [n for n in names if n]
     if not names:
         return None, None
+
+    if all(callable(getattr(idea, "model_dump", None)) for idea in visible):
+        grounded = _grounded_portfolio_summary(
+            visible,
+            niche_wallet_brief=niche_wallet_brief,
+        )
+        if grounded is None:
+            logger.warning(
+                "[PortfolioSummary] current candidate facts were incomplete or violated "
+                "the commercial-copy invariant; dropping summary without an LLM retry"
+            )
+        return grounded, None
 
     digest = build_idea_portfolio_digest(
         ideas,

@@ -103,13 +103,48 @@ describe("gateSuggestions — grounded in this checkpoint's real content", () =>
 });
 
 const solutions = [
-  { solution_name: "Invoice Chaser" },
-  { solution_name: "PDF Formatter" },
+  { solution_name: "Invoice Chaser", adjusted_composite_score: 0.7 },
+  { solution_name: "PDF Formatter", adjusted_composite_score: 0.5 },
 ] as unknown as SolutionPreview[];
 
 const baseSel = { messages: [], weakPool: false, canRegenerate: false, hasSelection: false };
 
 describe("selectionSuggestions — grounded in the actual ranking and open actions", () => {
+  it("derives rank from scores instead of trusting a host-pinned display order", () => {
+    const pinnedSeed = {
+      solution_name: "My seed idea",
+      adjusted_composite_score: 0.43,
+    } as unknown as SolutionPreview;
+    const researchLeader = {
+      solution_name: "Research leader",
+      adjusted_composite_score: 0.65,
+    } as unknown as SolutionPreview;
+
+    const out = selectionSuggestions({
+      ...baseSel,
+      solutions: [pinnedSeed, researchLeader],
+    });
+
+    expect(out).toContain('Why is "Research leader" ranked first?');
+    expect(out).not.toContain('Why is "My seed idea" ranked first?');
+  });
+
+  it("does not invent a first-place claim for missing, invalid, or tied scores", () => {
+    const missing = [
+      { solution_name: "Zulu" },
+      { solution_name: "Alpha", adjusted_composite_score: Number.NaN },
+    ] as unknown as SolutionPreview[];
+    const tied = [
+      { solution_name: "Zulu", adjusted_composite_score: 0.6 },
+      { solution_name: "Alpha", adjusted_composite_score: 0.6 },
+    ] as unknown as SolutionPreview[];
+
+    expect(selectionSuggestions({ ...baseSel, solutions: missing }).join(" "))
+      .not.toContain("ranked first");
+    expect(selectionSuggestions({ ...baseSel, solutions: tied }).join(" "))
+      .not.toContain("ranked first");
+  });
+
   it("names the top-ranked candidate", () => {
     const out = selectionSuggestions({ ...baseSel, solutions });
     expect(out).toContain('Why is "Invoice Chaser" ranked first?');

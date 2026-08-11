@@ -116,7 +116,7 @@ describe("SegmentedLedger", () => {
     // the completed report — it used to call itself "Conversation" in this dock only.
     await findByText(ANALYST_PANEL_TITLE);
     await findByText("Audience research");
-    await findByText(/Stage 3 of 15 · 38%/);
+    await findByText(/Stage 3 of 14 · 38%/);
     // The thread remains visible, but the composer is replaced rather than left
     // as a dead input while the worker owns the run.
     expect(queryByRole("textbox", { name: "Message the analyst" })).toBeNull();
@@ -137,7 +137,7 @@ describe("SegmentedLedger", () => {
     });
 
     await findByText("Competitive validation");
-    await findByText(/Stage 11 of 15 · 70%/);
+    await findByText(/Stage 11 of 14 · 70%/);
   });
 
   it("shows queue position in place of the composer before a worker starts", async () => {

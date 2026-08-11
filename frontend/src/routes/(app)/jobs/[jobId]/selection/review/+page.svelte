@@ -112,6 +112,14 @@
   const scopeMatchesSaved = $derived(
     selectedRefs.size === savedRefs.size && [...selectedRefs].every((reference) => savedRefs.has(reference)),
   );
+  const decisionHandoffCurrent = $derived(
+    data.decisionState?.jobId === data.job.id
+    && data.decisionState?.status === data.job.status
+    && data.decisionState?.shortlist.version === data.job.selectionDraft?.version
+    && recordArray(data.decisionState?.shortlist.staleItems).length === 0
+    && (nonNegativeInteger(data.decisionState?.staleCounts.shortlist) ?? 0) === 0
+    && recordArray(data.decisionState?.deepResearch.blockers).length === 0,
+  );
   const riskChecks = $derived(recordArray(data.decisionState?.challenges).filter((challenge) => (
     referenceIsSelected(objectRecord(challenge)?.idea)
   )).length);
@@ -354,16 +362,26 @@
   // explicit acknowledgement at the money moment (mixed scope needs none, and a run whose
   // seed isn't purchasable gets the neutral wording).
   const isValidation = $derived(data.job.entryMode === "validate_idea");
-  const validationSeed = $derived(
+  const validationSeeds = $derived(
     isValidation
-      ? (data.job.solutionIdeas ?? []).find(
+      ? data.solutions.filter(
           (s) => s.source_frame === "user_seed" && s.generation_operation_id === "validate",
-        ) ?? null
-      : null,
+        )
+      : [],
+  );
+  const validationSeedAmbiguous = $derived(validationSeeds.length > 1);
+  const validationSeed = $derived(validationSeeds.length === 1 ? validationSeeds[0] : null);
+  const selectedValidationSeeds = $derived(
+    selectedIdeas.filter(
+      (s) => s.source_frame === "user_seed" && s.generation_operation_id === "validate",
+    ),
   );
   const scopeIncludesSeed = $derived(
     Boolean(validationSeed?.idea_id)
-    && selectedRefs.has(`${validationSeed?.idea_id}:${validationSeed?.idea_revision ?? 1}`),
+    && selectedValidationSeeds.some(
+      (selected) => selected.idea_id === validationSeed?.idea_id
+        && (selected.idea_revision ?? 1) === (validationSeed?.idea_revision ?? 1),
+    ),
   );
   const validationSubjectSwitch = $derived(
     isValidation && selectedCount > 0 && !scopeIncludesSeed,
@@ -379,13 +397,18 @@
     currentStatus === "AWAITING_SELECTION"
     && canMutate
     && selectedCount > 0
+    && !data.selectionLoadState.solutionsUnavailable
+    && data.selectionLoadState.invalidSolutionCount === 0
     && data.workspace.scopeSource !== "preview"
+    && data.workspace.scopeSource !== "blocked"
     && scopeMatchesSaved
+    && decisionHandoffCurrent
     && Boolean(data.decisionState?.deepResearch.eligible)
     && Boolean(selectionFingerprint)
     && creditDataValid
     && hasEnoughCredits
     && (!confirmationMismatch || mismatchAcknowledged)
+    && !validationSeedAmbiguous
     && (!validationSubjectSwitch || subjectSwitchAcknowledged)
     && !submitting,
   );
@@ -731,7 +754,15 @@
           </section>
         {/if}
 
-        {#if validationSubjectSwitch}
+        {#if validationSeedAmbiguous}
+          <section class="confirmation-change" aria-labelledby="subject-identity-title">
+            <h4 id="subject-identity-title">Your submitted idea cannot be identified safely</h4>
+            <p>
+              More than one current candidate is marked as your submitted idea. Reload the
+              shortlist before starting Deep Research.
+            </p>
+          </section>
+        {:else if validationSubjectSwitch}
           <section class="confirmation-change" aria-labelledby="subject-switch-title">
             <h4 id="subject-switch-title">You're researching a different idea</h4>
             <p>

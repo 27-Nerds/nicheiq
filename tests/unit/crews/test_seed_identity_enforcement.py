@@ -108,6 +108,29 @@ def test_restore_failure_is_fail_soft():
     assert drifted_idea.solution_name == "AnswerDesk"  # untouched on failure
 
 
+def test_residual_drift_rolls_back_corrective_rewrite():
+    crew = _crew()
+    drifted_idea = _idea(
+        solution_name="AnswerDesk",
+        description="A retrieval desk for community managers as a Chrome extension.",
+        value_proposition="Retrieval rather than a reply writer.",
+        technical_approach="Escalation instead of a draft.",
+    )
+    original = vars(drifted_idea).copy()
+
+    def incomplete_restore(self, idea, terms, drifted):
+        idea.solution_name = "EscalationDesk"
+        idea.description = "A Chrome extension that routes repetitive questions to people."
+        idea.value_proposition = "Escalate questions instead of drafting replies."
+        idea.technical_approach = "Never draft a reply."
+        return True
+
+    with patch.object(UnifiedSolutionCrew, "_restore_seed_clauses", incomplete_restore):
+        crew._enforce_seed_identity(drifted_idea, TERMS, [])
+
+    assert vars(drifted_idea) == original
+
+
 # ── corrective rewrite ──
 
 def test_restore_applies_fields_in_place():

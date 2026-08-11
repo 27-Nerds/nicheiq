@@ -119,7 +119,7 @@ describe("ResearchProgressScreen cancel confirm gate", () => {
         currentStage: 2,
         currentStageName: "Search & Discovery",
         stagesCompleted: 1,
-        totalStages: 15,
+        totalStages: 16,
       },
     });
 
@@ -129,5 +129,77 @@ describe("ResearchProgressScreen cancel confirm gate", () => {
     expect(view.queryByText(/Stage 2 \/ 14/)).toBeNull();
     expect(view.queryByText("Build")).toBeNull();
     expect(view.getByText("Pick ideas")).toBeInTheDocument();
+  });
+
+  it("does not present a just-completed callback as the work still running", () => {
+    const view = render(ResearchProgressScreen, {
+      props: {
+        phase: "discovery" as const,
+        jobStatus: "RUNNING",
+        currentStage: 3,
+        currentStageName: "Pain Point Analysis",
+        stagesCompleted: 3,
+        totalStages: 16,
+      },
+    });
+
+    expect(view.queryByText("Pain Point Analysis")).toBeNull();
+    expect(view.getByText("Research worker active")).toBeInTheDocument();
+    expect(view.getByText("2 of 14 stages complete")).toBeInTheDocument();
+  });
+
+  it("folds the hidden audience stage into the combined public stage", () => {
+    const view = render(ResearchProgressScreen, {
+      props: {
+        phase: "discovery" as const,
+        jobStatus: "RUNNING",
+        currentStage: 4,
+        currentStageName: "Audience Mapping",
+        stagesCompleted: 2,
+        totalStages: 16,
+      },
+    });
+
+    expect(view.queryByText("Audience Mapping")).toBeNull();
+    expect(view.getByText("Pain Point & Audience Analysis")).toBeInTheDocument();
+    expect(view.getByText("Stage 3 of 14")).toBeInTheDocument();
+  });
+
+  it("uses neutral progress when a callback has no coherent stage number", () => {
+    const view = render(ResearchProgressScreen, {
+      props: {
+        phase: "discovery" as const,
+        jobStatus: "RUNNING",
+        currentStageName: "Pain Point Analysis",
+        stagesCompleted: 3,
+        totalStages: 16,
+      },
+    });
+
+    expect(view.queryByText("Pain Point Analysis")).toBeNull();
+    expect(view.getByText("Research worker active")).toBeInTheDocument();
+    expect(view.getByText("3 of 14 stages complete")).toBeInTheDocument();
+  });
+
+  it("shows a persisted Stage 5 substep without changing the public stage count", () => {
+    const view = render(ResearchProgressScreen, {
+      props: {
+        phase: "discovery" as const,
+        jobStatus: "RUNNING",
+        currentStage: 5,
+        currentStageName: "Solution Ideation",
+        stagesCompleted: 4,
+        totalStages: 16,
+        stageArtifact: {
+          type: "stage_subprogress",
+          stage: 5,
+          code: "candidate_refinement",
+          label: "Refining candidate solutions",
+        },
+      },
+    });
+
+    expect(view.getByText("Refining candidate solutions")).toBeInTheDocument();
+    expect(view.getByText("Stage 4 of 14")).toBeInTheDocument();
   });
 });

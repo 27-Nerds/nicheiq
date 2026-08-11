@@ -19,11 +19,22 @@ _IDENTITY_FIELDS = (
     "mechanism_tag",
     "why_it_works",
     "innovation_angle",
+    "differentiation_factors",
     "technical_approach",
+    "target_personas",
+    "requires_data_aggregation",
+    "market_fit_claimed_route",
+    "data_route",
+    "data_source_hint",
+    "data_sources",
+    "data_source",
+    "data_source_tag",
+    "data_access_model",
+    "data_acquisition_notes",
 )
 
 _AXIS_IDENTITY_FIELDS = {
-    "buyer": _IDENTITY_FIELDS + ("target_personas",),
+    "buyer": _IDENTITY_FIELDS,
     "job": _IDENTITY_FIELDS,
     "mechanism": _IDENTITY_FIELDS + (
         "data_sources",
@@ -43,6 +54,121 @@ _AXIS_IDENTITY_FIELDS = {
     "scope": _IDENTITY_FIELDS,
     "business_model": _IDENTITY_FIELDS + ("pricing_strategy", "tags"),
 }
+
+# A user-seed may gain implementation detail, but a new external source must not
+# become the product's required route or differentiator. Keep route fields separate
+# from the broad identity corpus: otherwise repeating the original pitch anywhere
+# lets an additive replacement mechanism pass with 100% token coverage.
+_ROUTE_FIELDS = (
+    "market_fit_claimed_route",
+    "data_route",
+    "data_source_hint",
+    "data_sources",
+    "data_source",
+    "data_source_tag",
+)
+
+_CORE_PROMISE_FIELDS = (
+    "concept_name",
+    "one_liner",
+    "solution_name",
+    "headline",
+    "short_description",
+    "value_proposition",
+    "description",
+    "why_it_works",
+    "innovation_angle",
+    "differentiation_factors",
+    "differentiation_locus",
+    "core_features",
+    "mechanism_tag",
+    "project_type",
+    "target_personas",
+)
+
+_FIRST_PARTY_ROUTE_CUES = (
+    "user-provided",
+    "user supplied",
+    "customer-provided",
+    "customer supplied",
+    "clinic-provided",
+    "clinic supplied",
+    "first-party",
+    "uploaded by",
+    "user uploaded",
+    "customer uploaded",
+    "clinic uploaded",
+    "uploaded clinic",
+    "user uploads",
+    "customer uploads",
+    "clinic uploads",
+    "own data",
+)
+
+_EXTERNAL_ROUTE_CUES = (
+    "external",
+    "third-party",
+    "third party",
+    " api",
+    "api ",
+    "feed",
+    "directory",
+    "registry",
+    "database",
+    "credential",
+    "token",
+    "api key",
+)
+
+_REQUIRED_ROUTE_CUES = (
+    "not optional",
+    "require",
+    "requires",
+    "requiring",
+    "required",
+    "must",
+    "depends on",
+    "dependent on",
+    "relies on",
+    "needs",
+    "cannot work without",
+    "cannot operate without",
+    "essential",
+    "indispensable",
+    "primary",
+    "differentiator",
+)
+
+_OPTIONAL_ROUTE_CUES = (
+    "optional",
+    "supporting",
+    "not required",
+    "does not require",
+    "do not require",
+    "not require",
+    "without requiring",
+    "works without",
+    "can work without",
+    "may annotate",
+    "can enrich",
+    "must not depend",
+    "must not use",
+    "does not depend",
+    "cannot depend",
+    "need not",
+    "not primary",
+    "not the primary",
+)
+
+_SUPPORTING_ROUTE_FIELDS = (
+    "technical_approach",
+    "data_acquisition_notes",
+)
+
+_ROUTE_ACCESS_WORDS = (
+    "api credential credentials customer external key provided supplied third party "
+    "token uploaded user clinic"
+)
 
 
 def content_tokens(text: str) -> set[str]:
@@ -72,35 +198,601 @@ def _flatten(value: Any) -> str:
     return str(value)
 
 
+def seed_identity_snapshot(candidate: Any) -> dict[str, str]:
+    """Identity fields that later evaluators may not rewrite or newly populate.
+
+    Scoring and red-team passes may add evidence and scores, but every product-copy
+    field (including a blank one) is fixed once Check-my-idea birth completes.
+    """
+    return {
+        field: " ".join(_flatten(getattr(candidate, field, None)).lower().split())
+        for field in _IDENTITY_FIELDS
+    }
+
+
+def changed_seed_identity_fields(snapshot: dict[str, str], candidate: Any) -> list[str]:
+    """Identity fields whose established non-empty value was rewritten."""
+    return [
+        field
+        for field, original in snapshot.items()
+        if " ".join(_flatten(getattr(candidate, field, None)).lower().split()) != original
+    ]
+
+
+_PROVENANCE_ECHO_CUES = (
+    "original brief",
+    "original research brief",
+    "submitted pitch",
+    "submitted product",
+    "user brief",
+    "user's brief",
+)
+
+
+def _is_provenance_echo(text: str) -> bool:
+    normalized = " ".join((text or "").lower().split())
+    return any(cue in normalized for cue in _PROVENANCE_ECHO_CUES)
+
+
+def _candidate_identity_text(candidate: Any) -> str:
+    """Product assertions only, excluding inert copies of the submitted brief."""
+    import re
+
+    assertions: list[str] = []
+    for field in _IDENTITY_FIELDS:
+        text = _flatten(getattr(candidate, field, None))
+        assertions.extend(
+            segment
+            for segment in re.split(r"[.!?;\n]+", text)
+            if segment.strip()
+            and not _is_provenance_echo(segment)
+        )
+    return " ".join(assertions)
+
+
+def _route_values(candidate: Any) -> list[str]:
+    values: list[str] = []
+    for field in _ROUTE_FIELDS:
+        value = getattr(candidate, field, None)
+        items = value if isinstance(value, (list, tuple, set)) else [value]
+        for item in items:
+            text = _flatten(item).strip()
+            if text and text not in values:
+                values.append(text)
+    return values
+
+
+def _is_first_party_route(route: str) -> bool:
+    import re
+
+    normalized = " ".join(
+        (route or "").lower().replace("_", " ").replace("-", " ").split()
+    )
+    padded = f" {normalized} "
+    normalized_external_cues = (
+        " ".join(cue.replace("-", " ").split()) for cue in _EXTERNAL_ROUTE_CUES
+    )
+    if any(f" {cue} " in padded for cue in normalized_external_cues):
+        return False
+    if re.search(r"\bupload(?:ed|s|ing)?\b", normalized) and re.search(
+        r"\b(?:csv|file|spreadsheet|document|record|dataset|export)\b",
+        normalized,
+    ):
+        return True
+    return any(
+        " ".join(cue.replace("-", " ").split()) in normalized
+        for cue in _FIRST_PARTY_ROUTE_CUES
+    )
+
+
+def _normalize_route_language(text: str) -> str:
+    """Normalize contractions before classifying a route's required role."""
+    import re
+
+    normalized = re.sub(r"[’ʼ`´]", "'", text or "")
+    replacements = {
+        r"\bisn['’]t\b": "is not",
+        r"\baren['’]t\b": "are not",
+        r"\bwasn['’]t\b": "was not",
+        r"\bweren['’]t\b": "were not",
+        r"\bdoesn['’]t\b": "does not",
+        r"\bdon['’]t\b": "do not",
+        r"\bdidn['’]t\b": "did not",
+        r"\bwon['’]t\b": "will not",
+        r"\bwouldn['’]t\b": "would not",
+        r"\bshouldn['’]t\b": "should not",
+        r"\bcouldn['’]t\b": "could not",
+        r"\bcan['’]t\b": "cannot",
+        r"\bmustn['’]t\b": "must not",
+        r"\bneedn['’]t\b": "need not",
+        r"\bain['’]t\b": "is not",
+        r"\bisnt\b": "is not",
+        r"\barent\b": "are not",
+        r"\bdoesnt\b": "does not",
+        r"\bdont\b": "do not",
+        r"\bdidnt\b": "did not",
+        r"\bwont\b": "will not",
+        r"\bwouldnt\b": "would not",
+        r"\bshouldnt\b": "should not",
+        r"\bcouldnt\b": "could not",
+        r"\bcant\b": "cannot",
+        r"\bmustnt\b": "must not",
+        r"\bneednt\b": "need not",
+    }
+    for pattern, replacement in replacements.items():
+        normalized = re.sub(pattern, replacement, normalized, flags=re.IGNORECASE)
+    return " ".join(normalized.lower().split())
+
+
+def _route_role_contexts(
+    candidate: Any,
+    route_terms: set[str],
+    fields: tuple[str, ...],
+) -> list[str]:
+    """Return only clauses that mention this route's distinctive terms."""
+    import re
+
+    threshold = 1 if len(route_terms) == 1 else min(2, len(route_terms))
+    all_route_terms = set().union(*(
+        content_tokens(route) - content_tokens(_ROUTE_ACCESS_WORDS)
+        for route in _route_values(candidate)
+    ))
+    contexts: list[str] = []
+    for field in fields:
+        text = _flatten(getattr(candidate, field, None))
+        clauses = re.split(r"[.!?;\n]+", text)
+        for index, clause in enumerate(clauses):
+            major_units: list[str] = []
+            for major_unit in re.split(
+                r"\s*(?:,\s*\band\b|,?\s*(?:\bwhile\b|\bwhereas\b|"
+                r"(?<!anything )\bbut\b|\byet\b|\bthough\b|\bor\b))\s*",
+                clause,
+                flags=re.IGNORECASE,
+            ):
+                first_and = re.search(r"\band\b", major_unit, flags=re.IGNORECASE)
+                leading = major_unit[:first_and.start()] if first_and else ""
+                normalized_leading = _normalize_route_language(leading)
+                leading_has_role = bool(normalized_leading) and (
+                    _requires_route(normalized_leading)
+                    or any(
+                        _contains_role_cue(normalized_leading, cue)
+                        for cue in _OPTIONAL_ROUTE_CUES
+                    )
+                )
+                if first_and and leading_has_role:
+                    major_units.extend([
+                        leading,
+                        major_unit[first_and.end():],
+                    ])
+                else:
+                    major_units.append(major_unit)
+            matched_clause = False
+            for major_index, major_unit in enumerate(major_units):
+                if len(route_terms & content_tokens(major_unit)) < threshold:
+                    continue
+                matched_clause = True
+                normalized_major = _normalize_route_language(major_unit)
+                grouped_role = re.search(r"\b(?:both|all)\b", normalized_major) and (
+                    _requires_route(normalized_major)
+                    or any(
+                        _contains_role_cue(normalized_major, cue)
+                        for cue in _OPTIONAL_ROUTE_CUES
+                    )
+                )
+                if grouped_role:
+                    contexts.append(normalized_major)
+                    continue
+                role_units = re.split(
+                    r"\s*(?:,|\band\b|\bwith\b)\s*",
+                    major_unit,
+                    flags=re.IGNORECASE,
+                )
+                matching_indexes = [
+                    unit_index
+                    for unit_index, unit in enumerate(role_units)
+                    if len(route_terms & content_tokens(unit)) >= threshold
+                ]
+                for unit_index in matching_indexes:
+                    attached = [role_units[unit_index]]
+                    for continuation in role_units[unit_index + 1:]:
+                        continuation_tokens = content_tokens(continuation)
+                        if continuation_tokens & all_route_terms:
+                            break
+                        attached.append(continuation)
+                    contexts.append(_normalize_route_language(" ".join(attached)))
+                for continuation_major in major_units[major_index + 1:]:
+                    continuation_tokens = content_tokens(continuation_major)
+                    if continuation_tokens & all_route_terms:
+                        break
+                    normalized_continuation = _normalize_route_language(continuation_major)
+                    if _requires_route(normalized_continuation) or any(
+                        _contains_role_cue(normalized_continuation, cue)
+                        for cue in _OPTIONAL_ROUTE_CUES
+                    ):
+                        contexts.append(normalized_continuation)
+            if matched_clause:
+                for followup_clause in clauses[index + 1:index + 3]:
+                    followup = _normalize_route_language(followup_clause)
+                    followup_tokens = content_tokens(followup)
+                    if (followup_tokens & all_route_terms) - route_terms:
+                        break
+                    if re.match(
+                        r"^(?:it|this|that|the (?:source|feed|route|integration|dependency|api))\b",
+                        followup,
+                    ) or _requires_route(followup) or any(
+                        _contains_role_cue(followup, cue) for cue in _OPTIONAL_ROUTE_CUES
+                    ):
+                        contexts.append(followup)
+                    else:
+                        break
+    return contexts
+
+
+def _alias_route_role_contexts(seed_text: str, alias_phrase: str) -> list[str]:
+    """Return role text local to a route alias, not the whole mixed-route sentence."""
+    import re
+
+    alias_pattern = r"\b" + r"[^a-z0-9]+".join(
+        re.escape(word) for word in alias_phrase.split()
+    ) + r"\b"
+    contexts: list[str] = []
+    for clause in re.split(r"[.!?;\n]+", seed_text):
+        major_units: list[str] = []
+        for major_unit in re.split(
+            r"\s*(?:,\s*\band\b|,?\s*(?:\bwhile\b|\bwhereas\b|"
+            r"(?<!anything )\bbut\b|\byet\b|\bthough\b|\bor\b))\s*",
+            clause,
+            flags=re.IGNORECASE,
+        ):
+            first_and = re.search(r"\band\b", major_unit, flags=re.IGNORECASE)
+            leading = major_unit[:first_and.start()] if first_and else ""
+            normalized_leading = _normalize_route_language(leading)
+            leading_has_role = bool(normalized_leading) and (
+                _requires_route(normalized_leading)
+                or any(
+                    _contains_role_cue(normalized_leading, cue)
+                    for cue in _OPTIONAL_ROUTE_CUES
+                )
+            )
+            if first_and and leading_has_role:
+                major_units.extend([leading, major_unit[first_and.end():]])
+            else:
+                major_units.append(major_unit)
+
+        for major_unit in major_units:
+            normalized_major = _normalize_route_language(major_unit)
+            if not re.search(alias_pattern, normalized_major):
+                continue
+            grouped_role = re.search(r"\b(?:both|all)\b", normalized_major) and (
+                _requires_route(normalized_major)
+                or any(
+                    _contains_role_cue(normalized_major, cue)
+                    for cue in _OPTIONAL_ROUTE_CUES
+                )
+            )
+            if grouped_role:
+                contexts.append(normalized_major)
+                continue
+            role_units = re.split(
+                r"\s*(?:,|\band\b|\bwith\b)\s*",
+                major_unit,
+                flags=re.IGNORECASE,
+            )
+            for unit_index, unit in enumerate(role_units):
+                if not re.search(alias_pattern, _normalize_route_language(unit)):
+                    continue
+                attached = [unit]
+                for continuation in role_units[unit_index + 1:]:
+                    normalized_continuation = _normalize_route_language(continuation)
+                    if any(
+                        _contains_role_cue(normalized_continuation, cue)
+                        for cue in _EXTERNAL_ROUTE_CUES
+                    ):
+                        break
+                    attached.append(continuation)
+                contexts.append(_normalize_route_language(" ".join(attached)))
+    return contexts
+
+
+def _contains_role_cue(context: str, cue: str) -> bool:
+    import re
+
+    return bool(re.search(rf"(?<!\w){re.escape(cue)}(?!\w)", context))
+
+
+def _requires_route(context: str) -> bool:
+    """Recognize required-role language without treating its negation as required."""
+    import re
+
+    context = _normalize_route_language(context)
+    if "not optional" in context:
+        return True
+    if re.search(
+        r"(?:\b(?:not|never)\s+not\s+requir(?:e|es|ing|ed)\b|"
+        r"\banything\s+but\s+optional\b|\bfar\s+from\s+optional\b)",
+        context,
+    ):
+        return True
+    optional_role = re.search(
+        r"(?:\bnever\b[^.!?;]*\brequir(?:e|es|ing|ed)\b|"
+        r"^\s*no\b[^.!?;]*\brequir(?:e|es|ing|ed)\b|"
+        r"\bnot\s+(?:mandatory|essential|primary)\b|"
+        r"\bcan\s+(?:work|operate|function|run)\s+without\b|"
+        r"\b(?:do|does|did)\s+not\s+(?:rely|depend)\s+on\b|"
+        r"\bindependent\s+of\b|\bsecondary\b[^.!?;]*\bonly\b)",
+        context,
+    )
+    if optional_role:
+        return False
+    without_negated_required = re.sub(
+        r"(?:not requir(?:e|es|ing|ed)|without[^.!?;]*requir(?:e|es|ing|ed)|"
+        r"must not[^.!?;]*|need not[^.!?;]*|"
+        r"(?:do|does|did|will|would|should|could|can) not[^.!?;]*depend[^.!?;]*|"
+        r"not (?:the )?primary)",
+        "",
+        context,
+    )
+    return any(
+        cue != "not optional" and _contains_role_cue(without_negated_required, cue)
+        for cue in _REQUIRED_ROUTE_CUES
+    )
+
+
+def _required_external_route_assertions(candidate: Any) -> list[str]:
+    """Find required external routes asserted in product copy without metadata."""
+    import re
+
+    assertions: list[str] = []
+    fields = dict.fromkeys((*_CORE_PROMISE_FIELDS, *_SUPPORTING_ROUTE_FIELDS))
+    external_cues = tuple(cue.strip() for cue in _EXTERNAL_ROUTE_CUES)
+    for field in fields:
+        text = _flatten(getattr(candidate, field, None))
+        for clause in re.split(r"[.!?;\n]+", text):
+            context = _normalize_route_language(clause)
+            if not context or not _requires_route(context):
+                continue
+            if not any(_contains_role_cue(context, cue) for cue in external_cues):
+                continue
+            if context not in assertions:
+                assertions.append(context)
+    return assertions
+
+
+def _route_assertion_is_represented(assertion: str, routes: list[str]) -> bool:
+    assertion_tokens = content_tokens(assertion)
+    for route in routes:
+        route_tokens = content_tokens(route) - content_tokens(_ROUTE_ACCESS_WORDS)
+        if not route_tokens:
+            continue
+        threshold = 1 if len(route_tokens) == 1 else min(2, len(route_tokens))
+        if len(assertion_tokens & route_tokens) >= threshold:
+            return True
+    return False
+
+
+def unpitched_core_dependencies(seed_text: str, candidate: Any) -> list[str]:
+    """External routes absent from the pitch that became a required/core mechanism.
+
+    Supporting routes are allowed: a source mentioned only in data/technical fields,
+    or explicitly marked optional, is not product identity. First-party input routes
+    are implementation detail too. A route is core when the independent calibration
+    critic says the mechanism *needs* it (`market_fit_claimed_route`), or when its new
+    distinctive terms are promoted into buyer-facing/differentiation fields.
+
+    This is deliberately provenance/role based, not a regulator or vendor blacklist.
+    """
+    import re
+
+    seed_tokens = content_tokens(seed_text)
+    claimed = _flatten(getattr(candidate, "market_fit_claimed_route", None)).strip()
+    claimed_tokens = content_tokens(claimed)
+    failures: list[str] = []
+    routes = _route_values(candidate)
+    aggregation_required = getattr(candidate, "requires_data_aggregation", False) is True
+    placeholder_routes = {"", "na", "none", "null", "optional", "tbd", "unknown"}
+    if aggregation_required and not routes:
+        failures.append("required data aggregation route is unspecified")
+    elif aggregation_required:
+        failures.extend(
+            f"required data aggregation route is invalid: {route}"
+            for route in routes
+            if (
+                re.sub(r"[^a-z0-9]+", "", _normalize_route_language(route))
+                in placeholder_routes
+                or not content_tokens(route)
+            )
+        )
+    for assertion in _required_external_route_assertions(candidate):
+        if not _route_assertion_is_represented(assertion, routes):
+            routes.append(assertion)
+
+    aggregation_required_route_seen = False
+    for route in routes:
+        if _is_first_party_route(route):
+            if aggregation_required:
+                aggregation_required_route_seen = True
+            continue
+        route_tokens = content_tokens(route)
+        # Match product copy against the route's identity, not generic access
+        # wrappers. Otherwise "Customer-supplied Plaid token" requires two
+        # matches and a required "Plaid" mechanism escapes detection.
+        route_identity_tokens = route_tokens - content_tokens(_ROUTE_ACCESS_WORDS)
+        route_identity_tokens = route_identity_tokens or route_tokens
+        novel = route_identity_tokens - seed_tokens
+        matching_tokens = novel or route_identity_tokens
+        if not matching_tokens:
+            continue
+
+        core_contexts = _route_role_contexts(
+            candidate, matching_tokens, _CORE_PROMISE_FIELDS,
+        )
+        support_contexts = _route_role_contexts(
+            candidate, matching_tokens, _SUPPORTING_ROUTE_FIELDS,
+        )
+        contexts = [*core_contexts, *support_contexts]
+        # A data-source name is not itself a role assertion (for example the
+        # literal vendor name "CORE Registry"). Required/optional semantics must
+        # come from candidate copy that describes how the route is used.
+        role_text = contexts
+        copy_required = any(_requires_route(context) for context in role_text)
+        explicitly_optional = any(
+            any(_contains_role_cue(context, cue) for cue in _OPTIONAL_ROUTE_CUES)
+            for context in role_text
+        )
+        explicitly_required = copy_required or (
+            aggregation_required and not explicitly_optional
+        )
+        if aggregation_required and explicitly_required:
+            aggregation_required_route_seen = True
+        normalized_route = _normalize_route_language(route)
+        route_words = re.findall(r"[a-z0-9]+", normalized_route)
+        seed_word_text = " ".join(
+            re.findall(r"[a-z0-9]+", _normalize_route_language(seed_text))
+        )
+        route_word_text = " ".join(route_words)
+        seed_mentions_exact_route = bool(
+            route_word_text
+            and re.search(rf"\b{re.escape(route_word_text)}\b", seed_word_text)
+        )
+        alias_access_words = {
+            *_ROUTE_ACCESS_WORDS.split(),
+            "database", "directory", "feed", "registry", "route", "source",
+        }
+        alias_leading_words = {"external", "optional", "required", "supporting"}
+        alias_identity_words = list(route_words)
+        while alias_identity_words and alias_identity_words[0] in alias_leading_words:
+            alias_identity_words.pop(0)
+        while alias_identity_words and alias_identity_words[-1] in alias_access_words:
+            alias_identity_words.pop()
+        alias_phrase = ""
+        for prefix_length in range(len(alias_identity_words), 0, -1):
+            prefix = " ".join(alias_identity_words[:prefix_length])
+            if re.search(
+                rf"\b{re.escape(prefix)}\s+"
+                r"(?:api|credential|credentials|database|directory|feed|key|"
+                r"registry|route|source|token)\b",
+                seed_word_text,
+            ):
+                alias_phrase = prefix
+                break
+        if (
+            not alias_phrase
+            and len(alias_identity_words) == 1
+            and re.search(
+                rf"\b(?:require|requires|requiring|required|through|using|via)\s+"
+                rf"(?:the\s+)?{re.escape(alias_identity_words[0])}\b",
+                seed_word_text,
+            )
+        ):
+            alias_phrase = alias_identity_words[0]
+        if alias_phrase and not seed_mentions_exact_route:
+            alias_pattern = r"\b" + r"[^a-z0-9]+".join(
+                re.escape(word) for word in alias_phrase.split()
+            ) + r"\b"
+            alias_match = re.search(alias_pattern, normalized_route)
+            unmatched_tail = (
+                normalized_route[alias_match.end():]
+                if alias_match
+                else normalized_route
+            )
+            if re.match(
+                r"\s*(?:[,|/:;&+]|\b(?:and|plus|with)\b)",
+                unmatched_tail,
+            ):
+                alias_phrase = ""
+        seed_mentions_route = seed_mentions_exact_route or bool(alias_phrase)
+        if alias_phrase and not seed_mentions_exact_route:
+            seed_route_contexts = _alias_route_role_contexts(seed_text, alias_phrase)
+        else:
+            seed_route_contexts = _route_role_contexts(
+                type("SeedRouteContext", (), {"description": seed_text})(),
+                route_identity_tokens,
+                ("description",),
+            )
+        seed_requires_route = seed_mentions_route and any(
+            _requires_route(context) for context in seed_route_contexts
+        )
+        seed_marks_route_optional = seed_mentions_route and not seed_requires_route and any(
+            any(_contains_role_cue(context, cue) for cue in _OPTIONAL_ROUTE_CUES)
+            for context in seed_route_contexts
+        )
+        if seed_marks_route_optional and explicitly_required:
+            failures.append(route)
+            continue
+        if copy_required and seed_mentions_route and not seed_requires_route:
+            failures.append(route)
+            continue
+        if copy_required and seed_requires_route:
+            continue
+        route_threshold = (
+            1 if len(route_identity_tokens) == 1
+            else min(2, len(route_identity_tokens))
+        )
+        claimed_core = bool(
+            claimed_tokens
+            and len(route_identity_tokens & claimed_tokens) >= route_threshold
+        )
+        promoted_core = bool(core_contexts)
+        if not seed_mentions_route and (
+            explicitly_required
+            or ((claimed_core or promoted_core) and not explicitly_optional)
+        ):
+            failures.append(route)
+            continue
+        if not novel:
+            continue
+        threshold = 1 if len(novel) == 1 else min(2, len(novel))
+        claimed_core = bool(
+            claimed_tokens
+            and len(novel & claimed_tokens) >= threshold
+        )
+        if explicitly_required or (
+            (claimed_core or promoted_core) and not explicitly_optional
+        ):
+            failures.append(route)
+
+    if aggregation_required and not aggregation_required_route_seen:
+        failures.append("required data aggregation has no required route")
+
+    return failures
+
+
 def seed_fidelity_score(seed_text: str, candidate: Any) -> float:
     """Return distinctive seed-token coverage across a candidate's identity fields."""
     seed_tokens = _content_tokens(seed_text)
     if not seed_tokens:
         return 1.0
-    candidate_text = " ".join(
-        _flatten(getattr(candidate, field, None))
-        for field in _IDENTITY_FIELDS
-    )
+    candidate_text = _candidate_identity_text(candidate)
     shared = seed_tokens & _content_tokens(candidate_text)
     return len(shared) / len(seed_tokens)
 
 
-def is_seed_faithful(seed_text: str, candidate: Any) -> bool:
-    """Require the candidate to retain up to three distinctive terms from the brief.
+def is_seed_faithful(
+    seed_text: str,
+    candidate: Any,
+    *,
+    exact_terms: bool = False,
+) -> bool:
+    """Require seed-term retention without an unpitched core external dependency.
 
     Prompts require those product-identity terms to remain visible in the product copy.
-    This is a deterministic backstop against an anchor-derived replacement idea, not a
-    semantic judge of product quality.
+    The route-role check catches an additive replacement that repeats every seed term
+    while making a research-derived source the required mechanism. This remains a
+    deterministic identity backstop, not a semantic judge of product quality.
     """
+    if unpitched_core_dependencies(seed_text, candidate):
+        return False
     seed_tokens = _content_tokens(seed_text)
     if not seed_tokens:
         return True
-    candidate_text = " ".join(
-        _flatten(getattr(candidate, field, None))
-        for field in _IDENTITY_FIELDS
-    )
+    candidate_text = _candidate_identity_text(candidate)
     shared = seed_tokens & _content_tokens(candidate_text)
-    return len(shared) >= min(3, len(seed_tokens))
+    minimum_retained = (
+        len(seed_tokens)
+        if exact_terms
+        else max(1, (len(seed_tokens) * 3 + 4) // 5)
+    )
+    return len(shared) >= minimum_retained
 
 
 def structured_synthesis_fidelity_failures(
@@ -268,13 +960,24 @@ def seed_clause_drift(
           contrast cue earlier in the same sentence of an axis-scoped identity
           field), or
       (b) no clause term appears in the axis-scoped identity fields at all.
+      (c) the candidate retains those terms but promotes an unpitched external
+          route into the required mechanism or core differentiation.
 
     Deliberately NOT "≥1 shared token" (passes a seed that repositioned against
     the pitched mechanism while reusing its vocabulary) and NOT "all terms must
-    survive" (a merely-absent term is not repudiation). Warning-only telemetry —
-    consumers disclose, they never reject.
+    survive" (a merely-absent term is not repudiation). Seed-pipeline consumers use
+    this as a fail-closed identity gate before accepting a transformed candidate.
     """
     inferred = set(inferred_fields or [])
+    stated_text = " ".join(
+        term
+        for terms in (identity_terms or {}).values()
+        for term in (terms or [])
+        if isinstance(term, str)
+    )
+    additive_mechanism = bool(
+        stated_text and unpitched_core_dependencies(stated_text, candidate)
+    )
     drifted: list[str] = []
     for clause in _DRIFT_CLAUSES:
         if clause in inferred:
@@ -287,8 +990,9 @@ def seed_clause_drift(
             segment
             for field in _AXIS_IDENTITY_FIELDS[_DRIFT_AXIS_BY_CLAUSE[clause]]
             for segment in _sentence_segments(getattr(candidate, field, None))
+            if not _is_provenance_echo(segment)
         ]
-        any_present = False
+        clean_stems: set[str] = set()
         fully_repudiated = False
         for stem in stems:
             clean = repudiated = 0
@@ -297,9 +1001,13 @@ def seed_clause_drift(
                 clean += c
                 repudiated += r
             if clean or repudiated:
-                any_present = True
+                if clean:
+                    clean_stems.add(stem)
             if repudiated and not clean:
                 fully_repudiated = True
-        if fully_repudiated or not any_present:
+        minimum_retained = len(stems) if clause == "mechanism" else 1
+        if fully_repudiated or len(clean_stems) < minimum_retained or (
+            clause == "mechanism" and additive_mechanism
+        ):
             drifted.append(clause)
     return drifted

@@ -328,6 +328,14 @@ def _review(idea, thread, *, invoke, model, effort):
     return crit, usage
 
 
+def _is_idea_schema_contract_error(error: Exception) -> bool:
+    message = str(error)
+    return "BaseSolutionIdea" in message and (
+        "could not be parsed into the model" in message
+        or "ValidationError" in message
+    )
+
+
 def _improve(crit, thread, prior, *, invoke, model, effort):
     thread.append({"role": "user", "content":
         f"Reviewer feedback. Binding constraint: {crit.binding_constraint}. Directive: {crit.directive}. "
@@ -338,7 +346,30 @@ def _improve(crit, thread, prior, *, invoke, model, effort):
         "if the mechanism, data route, or name changed, rewrite headline, short_description, "
         "value_proposition, why_it_works, innovation_angle, technical_approach, and "
         "differentiation_factors so they describe the revised idea, not the old one."})
-    idea, usage = invoke(thread, BaseSolutionIdea, temperature=0.5, model_name=model, reasoning_effort=effort)
+    try:
+        idea, usage = invoke(
+            thread, BaseSolutionIdea, temperature=0.5,
+            model_name=model, reasoning_effort=effort,
+        )
+    except Exception as error:
+        if not _is_idea_schema_contract_error(error):
+            raise
+        logger.warning(
+            "[v4] BaseSolutionIdea schema violation; retrying once with contract feedback"
+        )
+        thread.append({
+            "role": "user",
+            "content": (
+                "Your previous tool payload violated the BaseSolutionIdea schema. Return one "
+                "complete BaseSolutionIdea payload with every required field present, including "
+                "a non-empty `core_features` list. Do not omit fields to save tokens. Correct "
+                f"this validation error: {str(error)[:500]}"
+            ),
+        })
+        idea, usage = invoke(
+            thread, BaseSolutionIdea, temperature=0.5,
+            model_name=model, reasoning_effort=effort,
+        )
     _relocate_needs_verify_flags(idea)
     _carry_forward_fields(idea, prior)
     thread.append({"role": "assistant", "content": _idea_to_text(idea)})

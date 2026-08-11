@@ -35,7 +35,7 @@
   const priceDetail = $derived(
     stageName === "guided research"
       ? `${creditCost} ${creditCost === 1 ? "credit" : "credits"} · niche checkpoint first`
-      : `${creditCost} ${creditCost === 1 ? "credit" : "credits"} · first ideas ~15 min`,
+      : `${creditCost} ${creditCost === 1 ? "credit" : "credits"} · usually under 1 hour`,
   );
 </script>
 

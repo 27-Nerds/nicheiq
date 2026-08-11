@@ -14,7 +14,7 @@
   import { IDEAS_HUB_PATH, painPointPath } from "$lib/utils/urls";
   import { scaleSeverity, type CatalogTopPainPoint } from "$lib/types/publicCatalog";
   import { IDEA_ICON, PAIN_ICON } from "$lib/config/entity-icons";
-  import { getAdjustedStageCounts } from "$lib/utils/stages";
+  import { getVisibleStageProgress } from "$lib/utils/stages";
   import type { SelectionDraftItem, SolutionPreview } from "$lib/types/job";
 
   interface Props {
@@ -30,6 +30,7 @@
     totalStages?: number;
     currentStage?: number;
     currentStageName?: string | null;
+    stageArtifact?: Record<string, unknown> | null;
     queuePosition?: number;
     catalogPainPoints?: CatalogTopPainPoint[];
     selectedNames?: string[];
@@ -60,6 +61,7 @@
     totalStages = 0,
     currentStage = 0,
     currentStageName = null,
+    stageArtifact = null,
     queuePosition,
     catalogPainPoints = [],
     selectedNames = [],
@@ -109,18 +111,39 @@
 
   // Same hidden-stage adjustment as the dashboard's in-progress rows and the job
   // page, so every surface shows identical "Stage N / M" numbers for the same job.
-  const stageCounts = $derived(
-    getAdjustedStageCounts({ stagesCompleted, totalStages, currentStage, status: jobStatus }),
+  const stageProgress = $derived(
+    getVisibleStageProgress({
+      stagesCompleted,
+      totalStages,
+      currentStage,
+      currentStageName,
+      status: jobStatus,
+    }),
   );
+  const stageSubprogress = $derived.by(() => {
+    if (currentStage !== 5 || !stageProgress.currentName || !stageArtifact) return null;
+    if (
+      stageArtifact.type !== "stage_subprogress"
+      || stageArtifact.stage !== 5
+      || typeof stageArtifact.code !== "string"
+      || typeof stageArtifact.label !== "string"
+    ) return null;
+    const label = stageArtifact.label.trim();
+    return label.length > 0 && label.length <= 100 ? label : null;
+  });
   const liveTitle = $derived(
-    isQueued ? "Waiting for a worker" : currentStageName || "Research worker active",
+    isQueued
+      ? "Waiting for a worker"
+      : stageSubprogress || stageProgress.currentName || "Research worker active",
   );
   const liveDetail = $derived(
     isQueued
       ? queuePosition
         ? `Queue position ${queuePosition}`
         : "The run is queued and will start automatically."
-      : `Stage ${stageCounts.current} of ${stageCounts.total}`,
+      : stageProgress.currentCallbackIsComplete || !stageProgress.currentName
+        ? `${stageProgress.completed} of ${stageProgress.total} stages complete`
+        : `Stage ${stageProgress.current} of ${stageProgress.total}`,
   );
 
   // Purchased lifecycle only. "Build" is an optional post-report deliverable, not

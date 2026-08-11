@@ -104,9 +104,10 @@ describe("dashboard awaiting-decision visibility", () => {
       job({
         status: "RUNNING",
         activeDispatchKind: "CONTINUE",
+        currentStage: 2,
         currentStageName: "Search & Discovery",
         stagesCompleted: 1,
-        totalStages: 15,
+        totalStages: 16,
       }),
     ]);
 
@@ -115,6 +116,24 @@ describe("dashboard awaiting-decision visibility", () => {
       /Search & Discovery\s*· 2\/14/,
     );
     expect(view.queryByRole("main")).toBeNull();
+  });
+
+  it("shows completed callbacks as completed progress instead of the next active stage", () => {
+    const view = renderDashboard([
+      job({
+        status: "RUNNING",
+        activeDispatchKind: "CONTINUE",
+        currentStage: 4,
+        currentStageName: "Audience Mapping",
+        stagesCompleted: 4,
+        totalStages: 16,
+      }),
+    ]);
+
+    expect(view.getByRole("progressbar").parentElement).toHaveTextContent(
+      /Research worker active\s*· 3\/14/,
+    );
+    expect(view.queryByText(/Audience Mapping/)).toBeNull();
   });
 
   it("routes failed runs to recovery context instead of resuming from the dashboard", () => {

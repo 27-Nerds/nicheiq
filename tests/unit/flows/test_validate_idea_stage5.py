@@ -107,7 +107,7 @@ def _flow():
     flow = ResearchFlow.__new__(ResearchFlow)
     flow.entry_mode = "validate_idea"
     flow._state = ResearchState()
-    flow._state.user_idea_brief = "A dashboard that tracks green coffee lots for roasters."
+    flow._state.user_idea_brief = "Tracks green coffee lots for roasters."
     flow._emit_progress = lambda *a, **k: None
     return flow
 
@@ -205,14 +205,14 @@ def test_brief_probe_runs_on_none_parity_and_is_display_only():
     record must be untouched."""
     flow = _flow()
     flow.state.user_idea_identity_terms = {
-        "mechanism": ["drafts", "replies"], "audience": [], "problem": [],
+        "mechanism": ["tracks", "green coffee lots"], "audience": [], "problem": [],
         "delivery": []}
     crew = FakeCrew(brief_probe_result=("substitute (ReplyGuy): drafts AI replies", 2))
     pool = _pool()
     flow._inject_validate_seed(crew, pool)
 
     assert crew.brief_probe_seen == ("Green Lot Freshness Tracker",
-                                     ["drafts", "replies"])
+                                     ["tracks", "green coffee lots"])
     assert flow.state.user_idea_brief_parity == "substitute (ReplyGuy): drafts AI replies"
     seed = pool.solution_ideas[-1]
     assert seed.incumbent_parity == "none found"  # never overwritten
@@ -221,7 +221,7 @@ def test_brief_probe_runs_on_none_parity_and_is_display_only():
 
 def test_brief_probe_not_run_when_seed_parity_hit():
     flow = _flow()
-    flow.state.user_idea_identity_terms = {"mechanism": ["drafts"], "audience": [],
+    flow.state.user_idea_identity_terms = {"mechanism": ["tracks"], "audience": [],
                                            "problem": [], "delivery": []}
     crew = FakeCrew(parity="shipped (Cropster): lot tracking shipped since 2021",
                     brief_probe_result=("shipped by X: y", 2))
@@ -233,7 +233,7 @@ def test_brief_probe_not_run_when_seed_parity_hit():
 
 def test_brief_probe_failure_leaves_state_unchanged():
     flow = _flow()
-    flow.state.user_idea_identity_terms = {"mechanism": ["drafts"], "audience": [],
+    flow.state.user_idea_identity_terms = {"mechanism": ["tracks"], "audience": [],
                                            "problem": [], "delivery": []}
     crew = FakeCrew(brief_probe_result=(None, 1))
     pool = _pool()

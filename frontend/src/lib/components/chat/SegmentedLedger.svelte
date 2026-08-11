@@ -15,7 +15,7 @@
   import ChatThread from "./ChatThread.svelte";
   import LedgerActivityRow from "./LedgerActivityRow.svelte";
   import Sheet from "$lib/components/ui/Sheet.svelte";
-  import { getAdjustedStageCounts } from "$lib/utils/stages";
+  import { getVisibleStageProgress } from "$lib/utils/stages";
 
   /** 'history' = past segments + markers only, no footer — used above a surface
    *  that owns the ACTIVE conversation itself (GateWorkbench / SelectionWorkbench),
@@ -162,16 +162,17 @@
   }
 
   const isQueuedish = $derived(jobStatus === "QUEUED" || jobStatus === "PENDING");
-  const workerStageCounts = $derived(
-    getAdjustedStageCounts({
+  const workerStageProgress = $derived(
+    getVisibleStageProgress({
       stagesCompleted: stagesCompleted ?? 0,
       totalStages: totalStages ?? 0,
       currentStage: currentStage ?? 0,
+      currentStageName,
       status: jobStatus ?? "",
     }),
   );
   const workingTitle = $derived(
-    isQueuedish ? "Research queued" : currentStageName || "Research in progress",
+    isQueuedish ? "Research queued" : workerStageProgress.currentName || "Research in progress",
   );
   const workingDetail = $derived.by(() => {
     if (isQueuedish) {
@@ -179,8 +180,10 @@
         ? `Queue position ${queuePosition}. The analyst unlocks when the worker reaches the next checkpoint.`
         : "Waiting for a worker. The analyst unlocks at the next checkpoint.";
     }
-    const stage = workerStageCounts.total
-      ? `Stage ${workerStageCounts.current} of ${workerStageCounts.total}`
+    const stage = workerStageProgress.total
+      ? workerStageProgress.currentName
+        ? `Stage ${workerStageProgress.current} of ${workerStageProgress.total}`
+        : `${workerStageProgress.completed} of ${workerStageProgress.total} stages complete`
       : "Worker active";
     const percent = progressPercent != null ? ` · ${Math.round(progressPercent)}%` : "";
     return `${stage}${percent}. The conversation stays here and unlocks automatically when research pauses.`;

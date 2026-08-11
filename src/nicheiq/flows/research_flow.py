@@ -461,6 +461,23 @@ class ResearchFlow(Flow[ResearchState]):
                     raise
                 logger.warning(f"Progress callback failed for stage {stage_num}: {e}")
 
+    def _stage5_subprogress_callback(self):
+        """Bridge truthful solution-pipeline substeps onto Stage 5's durable artifact."""
+        def callback(code: str, label: str) -> None:
+            self._emit_progress(
+                5,
+                "Solution Ideation",
+                "running",
+                {
+                    "type": "stage_subprogress",
+                    "stage": 5,
+                    "code": code,
+                    "label": label,
+                },
+            )
+
+        return callback
+
     def resume_from_checkpoint(self, checkpoint_path: Path | None = None,
                                allow_cross_job: bool = False) -> bool:
         """
@@ -3769,16 +3786,27 @@ Return a valid JSON object with this structure (emit the fields in this order):
             # Stash the parsed idea on state (checkpoint-metadata-persisted), then rebuild
             # a CLEAN base NicheContext — the stage_1 checkpoint is restored as the base
             # model, so the subclass-only fields must never reach it.
-            self.state.user_idea_brief = (getattr(context, "idea_brief", "") or "").strip() or None
-            self.state.user_idea_inferred_fields = [
-                f for f in (getattr(context, "idea_inferred_fields", None) or [])
-                if f in ("audience", "problem", "delivery")
-            ]
+            # The submitted text is the product authority. The classifier's
+            # canonical brief is useful prompt assistance but may hallucinate a
+            # different product, so it cannot become the seed pipeline input.
+            self.state.user_idea_brief = " ".join(niche_input.split()).strip() or None
+            from ..utils.validation.dedup import normalize_text
+
+            normalized_pitch = normalize_text(niche_input)
             _identity_terms = {
                 key: [t.strip() for t in (getattr(context, f"idea_{key}_terms", None) or [])
-                      if isinstance(t, str) and t.strip()][:4]
+                      if isinstance(t, str) and t.strip()
+                      and normalize_text(t) in normalized_pitch][:4]
                 for key in ("mechanism", "audience", "problem", "delivery")
             }
+            if not any(_identity_terms.values()):
+                # No model-supplied clause can mean "unknown", never "no identity
+                # lock". Bind the full submitted pitch as a deterministic fallback.
+                _identity_terms["mechanism"] = [" ".join(niche_input.split()).strip()]
+            # Empty term lists already skip clause enforcement. Trusting an LLM
+            # inferred flag as a second bypass let it suppress a stated clause,
+            # so inferred labels are never an identity-security boundary.
+            self.state.user_idea_inferred_fields = []
             self.state.user_idea_identity_terms = (
                 _identity_terms if any(_identity_terms.values()) else None)
             context = NicheContext(**{
@@ -5256,11 +5284,9 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
         from ..crews.unified_solution_crew import SeedRequest
         from ..utils.llm_service import LLMSystemicError
 
-        seed_text = (getattr(self.state, "user_idea_brief", None) or "").strip()
+        seed_text = (getattr(self.state, "user_idea_text", None) or "").strip()
         if not seed_text:
-            # Brief extraction failed at Stage 1 — fall back to the head of the raw pitch
-            # (the fidelity lock is weaker against long text; better than no evaluation).
-            seed_text = (getattr(self.state, "user_idea_text", None) or "").strip()[:300]
+            seed_text = (getattr(self.state, "user_idea_brief", None) or "").strip()
         if not seed_text:
             logger.error("[Idea Check] no idea text on state — skipping seed injection")
             return
@@ -5334,6 +5360,32 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
             ) + ["Idea check: your idea could not be evaluated in this market "
                  "(the seed pipeline returned no result)."]
             logger.error("[Idea Check] seed pipeline produced no idea — degraded")
+            return
+
+        try:
+            from ..utils.seed_fidelity import is_seed_faithful, seed_clause_drift
+
+            final_drift = seed_clause_drift(
+                getattr(self.state, "user_idea_identity_terms", None),
+                seed,
+                getattr(self.state, "user_idea_inferred_fields", None),
+            )
+            if not is_seed_faithful(
+                seed_text,
+                seed,
+                exact_terms=bool(getattr(self.state, "user_idea_identity_terms", None)),
+            ) or final_drift:
+                self.state.pipeline_degradations = list(
+                    getattr(self.state, "pipeline_degradations", None) or []
+                ) + ["Idea check: the evaluated candidate drifted from your submitted product and was withheld."]
+                logger.error(
+                    f"[Idea Check] refusing drifted seed before pool injection: {final_drift}")
+                return
+        except Exception as exc:  # noqa: BLE001
+            self.state.pipeline_degradations = list(
+                getattr(self.state, "pipeline_degradations", None) or []
+            ) + ["Idea check: the submitted-product identity check failed, so the candidate was withheld."]
+            logger.error(f"[Idea Check] final seed identity check failed: {exc}")
             return
 
         seed.generation_operation_id = "validate"
@@ -5579,6 +5631,7 @@ Return JSON: {{"anchor_entities": [...], "disambiguation_exclusions": [...],
                 user_pain_scope=getattr(self.state, "user_pain_scope", None),
                 user_audience_scope=getattr(self.state, "user_audience_scope", None),
             )
+            unified_crew.progress_callback = self._stage5_subprogress_callback()
 
             # Execute complete pipeline
             logger.info("Executing unified solution pipeline...")

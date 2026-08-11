@@ -730,13 +730,13 @@ describe("SelectionWorkbench — ruled-out panel: idea name primary + 'Your idea
     await findByText("Cuts the time spent checking mismatched records");
   });
 
-  it("opens a ranked idea from its shortened analyst-summary name", async () => {
+  it("does not turn a shortened prose recommendation into an idea reference", async () => {
     chatPanel.close();
     const proMatchDesk = solution("ProMatchDesk (CS2+Dota 2)", {
       idea_id: "idea-pro-match-desk",
       idea_revision: 1,
     });
-    const { findByRole } = render(SelectionWorkbench, {
+    const view = render(SelectionWorkbench, {
       props: {
         ...baseProps,
         solutions: [proMatchDesk],
@@ -746,15 +746,15 @@ describe("SelectionWorkbench — ruled-out panel: idea name primary + 'Your idea
       },
     });
 
-    await fireEvent.click(await findByRole(
-      "button", { name: /^ProMatchDesk \(CS2\+Dota 2\) ?, open details$/ },
-    ));
-    await findByRole(
-      "dialog", { name: "Solution details: ProMatchDesk (CS2+Dota 2)" },
+    expect(await view.findByLabelText("Discovery take")).toHaveTextContent(
+      "stored recommendation is not bound to exact current idea revisions",
     );
+    expect(view.queryByRole(
+      "button", { name: /^ProMatchDesk \(CS2\+Dota 2\) ?, open details$/ },
+    )).toBeNull();
   });
 
-  it("keeps the verdict pull-quote visible, marks its idea, and files supporting notes in the collapsed appendix", async () => {
+  it("withholds the entire unbound portfolio narrative from selection guidance", async () => {
     const view = render(SelectionWorkbench, {
       props: {
         ...baseProps,
@@ -766,35 +766,236 @@ describe("SelectionWorkbench — ruled-out panel: idea name primary + 'Your idea
       },
     });
 
-    // The discovery take stays on-screen above the ranked candidates.
-    // (The idea-name chip appends an sr-only ", open details" hint to its text.)
     const verdict = await view.findByLabelText("Discovery take");
-    expect(verdict).toHaveTextContent(
-      /Alpha Idea.*most deserves deeper validation because it has the clearest buyer\./,
-    );
+    expect(verdict).toHaveTextContent("stored recommendation is not bound to exact current idea revisions");
+    expect(verdict).not.toHaveTextContent("most deserves deeper validation");
 
     const alphaRow = document.querySelector('[data-solution-name="Alpha Idea"]');
     const betaRow = document.querySelector('[data-solution-name="Beta Idea"]');
-    expect(alphaRow).toHaveTextContent("Recommended");
+    expect(alphaRow).not.toHaveTextContent("Recommended");
     expect(betaRow).not.toHaveTextContent("Recommended");
 
-    // Supporting notes move to the discovery appendix: collapsed by default,
-    // ONE plain meta line, zero counts omitted.
-    const trigger = await view.findByRole("button", { name: /Discovery appendix/i });
-    expect(trigger).toHaveAttribute("aria-expanded", "false");
-    expect(trigger).toHaveTextContent("2 analyst notes");
-    expect(trigger).not.toHaveTextContent("feedback");
-    expect(trigger).not.toHaveTextContent("ruled out");
-    expect(view.getByText("Free incumbents make willingness to pay the central risk.")).not.toBeVisible();
-
-    await fireEvent.click(trigger);
-    expect(trigger).toHaveAttribute("aria-expanded", "true");
-    const notes = await view.findByLabelText("Analyst notes");
-    expect(notes).toHaveTextContent("The pool has moderate market fit overall.");
-    expect(notes).toHaveTextContent("Free incumbents make willingness to pay the central risk.");
+    expect(view.queryByRole("button", { name: /Discovery appendix/i })).toBeNull();
+    expect(view.queryByText("The pool has moderate market fit overall.")).toBeNull();
+    expect(view.queryByText("Free incumbents make willingness to pay the central risk.")).toBeNull();
   });
 
-  it("renders discovery-take idea links with the display title, not the internal codename", async () => {
+  it("withholds a stored strongest claim when the current review marks its idea premise-unproven", async () => {
+    const killed = solution("Killed Idea", {
+      idea_id: "idea-killed",
+      idea_revision: 1,
+      adjusted_composite_score: 0.9,
+      red_team_verdict: "killed",
+      red_team_caveats: ["No evidence establishes the premise."],
+    });
+    const intact = solution("Intact Idea", {
+      idea_id: "idea-intact",
+      idea_revision: 1,
+      adjusted_composite_score: 0.8,
+    });
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: [killed, intact],
+        ideaPortfolioSummaryFingerprint: portfolioFingerprint([killed, intact]),
+        ideaPortfolioSummary: "Killed Idea is the strongest candidate to validate first.",
+      },
+    });
+
+    const take = await view.findByLabelText("Discovery take");
+    expect(take).toHaveTextContent("stored recommendation is not bound to exact current idea revisions");
+    expect(take).not.toHaveTextContent("strongest candidate");
+    expect(view.queryByText("Recommended")).toBeNull();
+  });
+
+  it("does not promote a runner-up from a sentence whose named winner is premise-unproven", async () => {
+    const killed = solution("Killed A", {
+      idea_id: "idea-killed-a",
+      idea_revision: 1,
+      adjusted_composite_score: 0.9,
+      red_team_verdict: "killed",
+    });
+    const eligible = solution("Eligible B", {
+      idea_id: "idea-eligible-b",
+      idea_revision: 1,
+      adjusted_composite_score: 0.8,
+    });
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: [killed, eligible],
+        ideaPortfolioSummaryFingerprint: portfolioFingerprint([killed, eligible]),
+        ideaPortfolioSummary: "Killed A is the strongest candidate, while Eligible B is a distant runner-up.",
+      },
+    });
+
+    expect(await view.findByLabelText("Discovery take")).not.toHaveTextContent("distant runner-up");
+    expect(view.queryByText("Recommended")).toBeNull();
+    expect(view.queryByRole("note", {
+      name: "Why the top-scoring idea is not the recommendation",
+    })).toBeNull();
+  });
+
+  it("withholds an unbound directive in an earlier summary sentence", async () => {
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        ideaPortfolioSummary: (
+          "Recommend Ghost Candidate over Alpha Idea. The pool remains uncertain."
+        ),
+      },
+    });
+
+    const take = await view.findByLabelText("Discovery take");
+    expect(take).toHaveTextContent(
+      "stored recommendation is not bound to exact current idea revisions",
+    );
+    expect(take).not.toHaveTextContent("Ghost Candidate");
+    expect(document.querySelectorAll(".analyst-pick")).toHaveLength(0);
+  });
+
+  it.each([
+    "Ghost Candidate ranks strongest for validation.",
+    "Alpha Idea is clearly the strongest for validation.",
+    "Alpha Idea — strongest for validation — has a narrow evidence base.",
+    "Alpha Idea ranks first for validation.",
+    "Alpha Idea should be chosen first.",
+    "Alpha Idea: strongest for validation.",
+  ])("withholds alternative recommendation grammar: %s", async (analysis) => {
+    const view = render(SelectionWorkbench, {
+      props: { ...baseProps, ideaPortfolioSummary: analysis },
+    });
+
+    const take = await view.findByLabelText("Discovery take");
+    expect(take).toHaveTextContent(
+      "stored recommendation is not bound to exact current idea revisions",
+    );
+    expect(take).not.toHaveTextContent(analysis);
+    expect(document.querySelectorAll(".analyst-pick")).toHaveLength(0);
+  });
+
+  it.each([
+    "Ghost Candidate ranked first for validation.",
+    "Alpha Idea was ranked first for validation.",
+    "Validate Alpha Idea first.",
+    "Choose Alpha Idea first.",
+    "Alpha Idea is the leading candidate for validation.",
+    "Alpha Idea is the clear winner for validation.",
+    "Ghost Candidate ranked first for validation. The pool remains uncertain.",
+  ])("withholds ranking-role prose regardless of tense or sentence position: %s", async (analysis) => {
+    const view = render(SelectionWorkbench, {
+      props: { ...baseProps, ideaPortfolioSummary: analysis },
+    });
+
+    const take = await view.findByLabelText("Discovery take");
+    expect(take).toHaveTextContent(
+      "stored recommendation is not bound to exact current idea revisions",
+    );
+    expect(take).not.toHaveTextContent("ranked first for validation");
+    expect(take).not.toHaveTextContent("leading candidate for validation");
+    expect(take).not.toHaveTextContent("clear winner for validation");
+    expect(document.querySelectorAll(".analyst-pick")).toHaveLength(0);
+  });
+
+  it("withholds candidate-specific prose whose structured role is unknown", async () => {
+    const analysis = "For Alpha Idea, the evidence remains strongest in billing urgency.";
+    const view = render(SelectionWorkbench, {
+      props: { ...baseProps, ideaPortfolioSummary: analysis },
+    });
+
+    const take = await view.findByLabelText("Discovery take");
+    expect(take).toHaveTextContent("stored recommendation is not bound to exact current idea revisions");
+    expect(take).not.toHaveTextContent("billing urgency");
+    expect(document.querySelectorAll(".analyst-pick")).toHaveLength(0);
+  });
+
+  it("withholds descriptive portfolio prose because its structured role is unknown", async () => {
+    const analysis = "The strongest evidence concerns billing urgency, not candidate preference.";
+    const view = render(SelectionWorkbench, {
+      props: { ...baseProps, ideaPortfolioSummary: analysis },
+    });
+
+    const take = await view.findByLabelText("Discovery take");
+    expect(take).toHaveTextContent("stored recommendation is not bound to exact current idea revisions");
+    expect(take).not.toHaveTextContent(analysis);
+    expect(document.querySelectorAll(".analyst-pick")).toHaveLength(0);
+  });
+
+  it("withholds an explicit recommendation whose candidate name is ambiguous", async () => {
+    const first = solution("Same Name", {
+      idea_id: "idea-same-1",
+      idea_revision: 1,
+      adjusted_composite_score: 0.9,
+    });
+    const second = solution("Same Name", {
+      idea_id: "idea-same-2",
+      idea_revision: 1,
+      adjusted_composite_score: 0.5,
+    });
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        interactive: false,
+        solutions: [first, second],
+        ideaPortfolioSummaryFingerprint: portfolioFingerprint([first, second]),
+        ideaPortfolioSummary: "Same Name is the strongest candidate to validate first.",
+      },
+    });
+
+    const take = await view.findByLabelText("Discovery take");
+    expect(take).toHaveTextContent("stored recommendation is not bound to exact current idea revisions");
+    expect(take).not.toHaveTextContent("strongest candidate");
+    expect(view.queryByText("Recommended")).toBeNull();
+  });
+
+  it("does not promote a real runner-up when the named winner is unknown", async () => {
+    const alpha = solution("Alpha", {
+      idea_id: "idea-alpha-known",
+      idea_revision: 1,
+      adjusted_composite_score: 0.8,
+    });
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: [alpha],
+        ideaPortfolioSummaryFingerprint: portfolioFingerprint([alpha]),
+        ideaPortfolioSummary: "Ghost Candidate is the strongest candidate, while Alpha is a distant runner-up.",
+      },
+    });
+
+    const take = await view.findByLabelText("Discovery take");
+    expect(take).toHaveTextContent("stored recommendation is not bound to exact current idea revisions");
+    expect(take).not.toHaveTextContent("Ghost Candidate");
+    expect(view.queryByText("Recommended")).toBeNull();
+  });
+
+  it("rejects a recommendation name shared by current and ruled-out records", async () => {
+    const collision = solution("Collision", {
+      idea_id: "idea-current-collision",
+      idea_revision: 1,
+      adjusted_composite_score: 0.9,
+    });
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: [collision],
+        examinedRuledOut: [{
+          ...RULED_OUT[0],
+          idea_name: "Collision",
+          reason: "A different historical candidate with the same working name.",
+        }],
+        ideaPortfolioSummaryFingerprint: portfolioFingerprint([collision]),
+        ideaPortfolioSummary: "Collision is the strongest candidate to validate first.",
+      },
+    });
+
+    expect(await view.findByLabelText("Discovery take")).toHaveTextContent(
+      "stored recommendation is not bound to exact current idea revisions",
+    );
+    expect(view.queryByText("Recommended")).toBeNull();
+  });
+
+  it("does not expose a codename from unbound recommendation prose", async () => {
     const codenameIdeas = [
       solution("AlphaIdeaCodename", {
         idea_id: "idea-codename-alpha",
@@ -813,14 +1014,11 @@ describe("SelectionWorkbench — ruled-out panel: idea name primary + 'Your idea
     });
 
     const verdict = await view.findByLabelText("Discovery take");
-    // (The link chip appends an sr-only ", open details" hint mid-sentence.)
-    expect(verdict).toHaveTextContent(
-      /Alpha invoice chaser.*most deserves deeper validation\./,
-    );
+    expect(verdict).toHaveTextContent("stored recommendation is not bound to exact current idea revisions");
     expect(verdict).not.toHaveTextContent("AlphaIdeaCodename");
   });
 
-  it("badges only the explicit recommendation when one paragraph discusses every idea", async () => {
+  it("does not badge any idea from free-form recommendation prose", async () => {
     render(SelectionWorkbench, {
       props: {
         ...baseProps,
@@ -834,12 +1032,12 @@ describe("SelectionWorkbench — ruled-out panel: idea name primary + 'Your idea
 
     const alphaRow = document.querySelector('[data-solution-name="Alpha Idea"]');
     const betaRow = document.querySelector('[data-solution-name="Beta Idea"]');
-    expect(alphaRow).toHaveTextContent("Recommended");
+    expect(alphaRow).not.toHaveTextContent("Recommended");
     expect(betaRow).not.toHaveTextContent("Recommended");
-    expect(document.querySelectorAll(".analyst-pick")).toHaveLength(1);
+    expect(document.querySelectorAll(".analyst-pick")).toHaveLength(0);
   });
 
-  it("uses the explicit Discovery recommendation for order, Suggested next, and display titles", async () => {
+  it("uses score authority for order and Suggested next despite recommendation prose", async () => {
     vi.mocked(getSelectionDecisionState).mockResolvedValueOnce({
       schemaVersion: 1,
       jobId: "job-1",
@@ -904,13 +1102,13 @@ describe("SelectionWorkbench — ruled-out panel: idea name primary + 'Your idea
     await waitFor(() => expect(table.querySelectorAll("[data-solution-name]")).toHaveLength(4));
     const orderedNames = [...table.querySelectorAll<HTMLElement>("[data-solution-name]")]
       .map((row) => row.dataset.solutionName);
-    expect(orderedNames.slice(0, 2)).toEqual([
+    expect(orderedNames).toEqual([
+      "Parts-Ready Dispatch Control",
       "Appliance Ledger",
       "Model-to-Repair Decision Desk",
+      "Parts-Ready Matchboard",
     ]);
-    expect(table.querySelector('[data-solution-name="Appliance Ledger"]')).toHaveTextContent("Recommended");
-    expect(table.querySelector('[data-solution-name="Model-to-Repair Decision Desk"]')).toHaveTextContent("Recommended");
-    expect(table.querySelector('[data-solution-name="Parts-Ready Dispatch Control"]')).not.toHaveTextContent("Recommended");
+    expect(table).not.toHaveTextContent("Recommended");
 
     const suggested = await view.findByRole("button", {
       name: "Review Auditable Appliance Service History Reconciliation",
@@ -922,9 +1120,84 @@ describe("SelectionWorkbench — ruled-out panel: idea name primary + 'Your idea
     })).toBeInTheDocument();
   });
 
-  it("opens a ruled-out idea directly from the analyst summary", async () => {
+  it("keeps a validate seed visually pinned without turning its row position into rank or guidance", async () => {
+    vi.mocked(getSelectionDecisionState).mockResolvedValueOnce({
+      schemaVersion: 1,
+      jobId: "job-1",
+      status: "AWAITING_SELECTION",
+      shortlist: { version: 0, items: [] },
+      profile: null,
+      founderFit: null,
+      challenges: [],
+      ownerEvidence: [],
+      assumptions: [],
+      experiments: [],
+      conclusions: [],
+      staleCounts: { shortlist: 0, profile: 0, founderFit: 0, challenges: 0, ownerEvidence: 0, assumptions: 0, experiments: 0, conclusions: 0, total: 0 },
+      deepResearch: { eligible: false, optionalWorkRequired: false, blockers: ["NO_CURRENT_SHORTLIST"] },
+      nextAction: {
+        kind: "select_candidate",
+        target: "shortlist",
+        reason: "Review the first stored candidate.",
+        required: true,
+        ideas: [{ ideaId: "idea-seed", ideaRevision: 1, title: "My seed idea" }],
+        lens: null,
+        records: [],
+      },
+    } as never);
+    const ideas = [
+      solution("My seed idea", {
+        idea_id: "idea-seed",
+        idea_revision: 1,
+        source_frame: "user_seed",
+        generation_operation_id: "validate",
+        adjusted_composite_score: 0.43,
+      }),
+      solution("Unproven leader", {
+        idea_id: "idea-killed",
+        idea_revision: 1,
+        headline: "Unproven high score",
+        adjusted_composite_score: 0.75,
+        red_team_verdict: "killed",
+      }),
+      solution("Strongest eligible", {
+        idea_id: "idea-strong",
+        idea_revision: 1,
+        headline: "Strongest supported candidate",
+        adjusted_composite_score: 0.65,
+      }),
+      solution("Middle candidate", {
+        idea_id: "idea-middle",
+        idea_revision: 1,
+        adjusted_composite_score: 0.55,
+      }),
+    ];
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        solutions: ideas,
+        groupByThesis: false,
+        pinnedIdeaKeys: ["idea-seed:1"],
+        ideaPortfolioSummaryFingerprint: portfolioFingerprint(ideas),
+      },
+    });
+
+    const table = view.getByRole("table", { name: "Ranked ideas" });
+    await waitFor(() => expect(table.querySelectorAll("[data-solution-name]")).toHaveLength(4));
+    const rows = [...table.querySelectorAll<HTMLElement>("[data-solution-name]")];
+    expect(rows[0]?.dataset.solutionName).toBe("My seed idea");
+    expect(rows[0]?.querySelector(".cell-rank")).toHaveTextContent("4");
+
+    const suggested = await view.findByRole("button", {
+      name: "Review Strongest supported candidate",
+    });
+    expect(suggested).not.toHaveTextContent("My seed idea");
+    expect(suggested).not.toHaveTextContent("Unproven high score");
+  });
+
+  it("does not create idea links from unbound portfolio prose", async () => {
     chatPanel.close();
-    const { findByRole } = render(SelectionWorkbench, {
+    const { findByLabelText } = render(SelectionWorkbench, {
       props: {
         ...baseProps,
         examinedRuledOut: RULED_OUT,
@@ -932,13 +1205,13 @@ describe("SelectionWorkbench — ruled-out panel: idea name primary + 'Your idea
       },
     });
 
-    await fireEvent.click(await findByRole(
-      "button", { name: /^InvoiceChaser ?, open details$/ },
-    ));
-    await findByRole("dialog", { name: "Ruled-out analysis: InvoiceChaser" });
+    expect(await findByLabelText("Discovery take")).toHaveTextContent(
+      "stored recommendation is not bound to exact current idea revisions",
+    );
+    expect(document.querySelector('button[aria-label^="InvoiceChaser"]')).toBeNull();
   });
 
-  it("shows guidance only when its fingerprint matches the live candidate set", async () => {
+  it("withholds an unbound recommendation even when its fingerprint matches", async () => {
     const reversedFingerprint = portfolioFingerprint([...SOLUTIONS].reverse());
     const view = render(SelectionWorkbench, {
       props: {
@@ -949,9 +1222,46 @@ describe("SelectionWorkbench — ruled-out panel: idea name primary + 'Your idea
     });
 
     expect(await view.findByLabelText("Discovery take")).toHaveTextContent(
-      /Alpha Idea.*is the strongest candidate to validate first\./,
+      "stored recommendation is not bound to exact current idea revisions",
     );
-    expect(view.getByText("Recommended")).toBeInTheDocument();
+    expect(view.queryByText("Recommended")).toBeNull();
+  });
+
+  it.each([
+    { interactive: true, decisionTools: true, fingerprint: "stale-fingerprint" },
+    { interactive: true, decisionTools: false, fingerprint: undefined },
+    { interactive: false, decisionTools: false, fingerprint: "stale-fingerprint" },
+    { interactive: false, decisionTools: false, fingerprint: undefined },
+  ])("shows the exact-revision warning for unbound prose: %o", async ({ interactive, decisionTools, fingerprint }) => {
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        interactive,
+        decisionTools,
+        ideaPortfolioSummaryFingerprint: fingerprint,
+        ideaPortfolioSummary: "Ghost Candidate wins the validation ranking.",
+      },
+    });
+
+    const take = await view.findByLabelText("Discovery take");
+    expect(take).toHaveTextContent(
+      "stored recommendation is not bound to exact current idea revisions",
+    );
+    expect(take).not.toHaveTextContent("Ghost Candidate");
+  });
+
+  it("does not create a phantom warning for whitespace-only portfolio prose", () => {
+    const view = render(SelectionWorkbench, {
+      props: {
+        ...baseProps,
+        interactive: true,
+        decisionTools: false,
+        ideaPortfolioSummaryFingerprint: undefined,
+        ideaPortfolioSummary: " \n\t ",
+      },
+    });
+
+    expect(view.queryByLabelText("Discovery take")).toBeNull();
   });
 
   it("degrades when the pool changes without a summary recompute", async () => {
@@ -977,7 +1287,7 @@ describe("SelectionWorkbench — ruled-out panel: idea name primary + 'Your idea
     const take = await view.findByLabelText("Discovery take");
     expect(take).toHaveTextContent("Discovery take unavailable");
     expect(take).toHaveTextContent(
-      "Discovery guidance is unavailable for this candidate set. Review the ranked ideas below using their current scores and evidence.",
+      "stored recommendation is not bound to exact current idea revisions",
     );
     expect(view.queryByText(staleGuidance)).toBeNull();
     expect(document.querySelectorAll(".analyst-pick")).toHaveLength(0);
@@ -985,7 +1295,7 @@ describe("SelectionWorkbench — ruled-out panel: idea name primary + 'Your idea
       .toHaveTextContent("Idea 12");
   });
 
-  it("keeps the guidance when the pool carries demoted and absorbed candidates", async () => {
+  it("recognizes the current pool but still withholds unbound recommendation prose", async () => {
     // The stored fingerprint skips demoted/absorbed (Python's visible_ideas(), mirrored in
     // backend/src/utils/ideaPortfolioFingerprint.ts). normalizeSolutionPreviews does NOT —
     // it keeps them — so a component-local fingerprint that counted them would see a
@@ -1013,7 +1323,7 @@ describe("SelectionWorkbench — ruled-out panel: idea name primary + 'Your idea
     });
 
     expect(await view.findByLabelText("Discovery take")).toHaveTextContent(
-      /Alpha Idea.*is the strongest candidate to validate first\./,
+      "stored recommendation is not bound to exact current idea revisions",
     );
   });
 
@@ -1055,7 +1365,9 @@ describe("SelectionWorkbench — ruled-out panel: idea name primary + 'Your idea
 
     const take = await view.findByLabelText("Discovery take");
     expect(take).toHaveTextContent("Discovery take unavailable");
-    expect(take).toHaveTextContent("Review the ranked ideas below");
+    expect(take).toHaveTextContent(
+      "stored recommendation is not bound to exact current idea revisions",
+    );
     expect(view.queryByText("Alpha Idea is the strongest candidate to validate first.")).toBeNull();
   });
 
@@ -1074,7 +1386,7 @@ describe("SelectionWorkbench — ruled-out panel: idea name primary + 'Your idea
    * collected evidence. Asserted through the RENDER, because the fork happens in the
    * component — a unit test on the function could not have caught a mis-wired `$derived`.
    */
-  it("reads the portfolio summary's `corpus` as the DATASET, not as collected evidence", async () => {
+  it("does not render unbound portfolio vocabulary on the selection surface", async () => {
     const view = render(SelectionWorkbench, {
       props: {
         ...baseProps,
@@ -1084,7 +1396,8 @@ describe("SelectionWorkbench — ruled-out panel: idea name primary + 'Your idea
     });
 
     const take = await view.findByLabelText("Discovery take");
-    expect(take).toHaveTextContent("lacks the recipe dataset");
+    expect(take).toHaveTextContent("stored recommendation is not bound to exact current idea revisions");
+    expect(take).not.toHaveTextContent("recipe dataset");
     expect(take).not.toHaveTextContent("collected evidence");
   });
 });
@@ -1099,7 +1412,7 @@ describe("SelectionWorkbench — stable selection identity", () => {
 
   afterEach(cleanup);
 
-  it("opens the exact candidate revision named by the server projection", async () => {
+  it("opens the exact revision of the deterministic strongest eligible candidate", async () => {
     vi.mocked(getSelectionDecisionState).mockResolvedValueOnce({
       schemaVersion: 1,
       jobId: "job-1",
@@ -1117,9 +1430,9 @@ describe("SelectionWorkbench — stable selection identity", () => {
       nextAction: {
         kind: "select_candidate",
         target: "shortlist",
-        reason: "Review the exact recommended candidate.",
+        reason: "Review the first stored candidate.",
         required: true,
-        ideas: [{ ideaId: "idea-b", ideaRevision: 2, title: "Workflow-led path" }],
+        ideas: [{ ideaId: "idea-a", ideaRevision: 1, title: "Audience-led path" }],
         lens: null,
         records: [],
       },
@@ -1128,8 +1441,8 @@ describe("SelectionWorkbench — stable selection identity", () => {
       props: {
         ...baseProps,
         solutions: [
-          solution("Alpha", { idea_id: "idea-a", idea_revision: 1, headline: "Audience-led path" }),
-          solution("Beta", { idea_id: "idea-b", idea_revision: 2, headline: "Workflow-led path" }),
+          solution("Alpha", { idea_id: "idea-a", idea_revision: 1, headline: "Audience-led path", adjusted_composite_score: 0.5 }),
+          solution("Beta", { idea_id: "idea-b", idea_revision: 2, headline: "Workflow-led path", adjusted_composite_score: 0.7 }),
         ],
       },
     });
@@ -2935,7 +3248,7 @@ describe("SelectionWorkbench — below-table IA (Phase 1b)", () => {
     expect(view.queryByText("Your build limits")).not.toBeInTheDocument();
   });
 
-  it("visitor view keeps the original inline analysis rendering (no appendix regrouping)", async () => {
+  it("visitor view also withholds unbound recommendation prose", async () => {
     const view = render(SelectionWorkbench, {
       props: {
         ...baseProps,
@@ -2948,17 +3261,13 @@ describe("SelectionWorkbench — below-table IA (Phase 1b)", () => {
       },
     });
 
-    // No appendix, no founder row, no verdict pull-quote — the shared view is untouched.
+    // No appendix or founder row on the shared surface.
     expect(view.queryByRole("button", { name: /Discovery appendix/i })).toBeNull();
     expect(view.queryByLabelText("Build limits summary")).toBeNull();
-    expect(view.queryByLabelText("Discovery take")).toBeNull();
-
-    // Analysis content stays inline and immediately accessible. (The idea-name
-    // chip appends an sr-only ", open details" hint to its text.)
-    expect(await view.findByLabelText("Research recommendation")).toHaveTextContent(
-      /Alpha Idea.*most deserves deeper validation because it has the clearest buyer\./,
+    expect(await view.findByLabelText("Discovery take")).toHaveTextContent(
+      "stored recommendation is not bound to exact current idea revisions",
     );
-    expect(view.getByText("Read full analysis")).toBeInTheDocument();
+    expect(view.queryByLabelText("Research recommendation")).toBeNull();
     expect(
       view.getByRole("heading", { name: "Ideas that did not clear the market-fit check" }),
     ).toBeInTheDocument();
@@ -3137,7 +3446,7 @@ describe("SelectionWorkbench — ranked candidates table semantics", () => {
     expect(row).toHaveTextContent(/other scores describe how well it would work if the premise holds/);
   });
 
-  it("explains why the highest-scoring idea is not the recommended one", () => {
+  it("does not invent a score-versus-recommendation split from prose", () => {
     const ideas = [
       solution("FaxCorrectionCache", {
         idea_id: "idea-fax",
@@ -3161,16 +3470,11 @@ describe("SelectionWorkbench — ranked candidates table semantics", () => {
       },
     });
 
-    const note = view.getByRole("note", {
+    expect(view.queryByRole("note", {
       name: "Why the top-scoring idea is not the recommendation",
-    });
-    expect(note).toHaveTextContent("FaxCorrectionCache scores highest");
-    expect(note).toHaveTextContent("could not confirm its premise");
-    expect(note).toHaveTextContent("the recommendation goes to CountPad Vet");
-    expect(note).toHaveTextContent("keeps its rank and you can still shortlist it");
-    // The tutorial step about the split spotlights this note, and only this note.
-    expect(view.container.querySelectorAll('[data-tour="recommendation-split"]')).toHaveLength(1);
-    expect(note).toHaveAttribute("data-tour", "recommendation-split");
+    })).toBeNull();
+    expect(view.container.querySelectorAll('[data-tour="recommendation-split"]')).toHaveLength(0);
+    expect(view.queryByText("Recommended")).toBeNull();
 
     // The withheld recommendation costs the leader nothing else: it keeps its row and
     // its select control.
@@ -3180,7 +3484,7 @@ describe("SelectionWorkbench — ranked candidates table semantics", () => {
     expect(within(row).getByRole("checkbox", { name: "Select FaxCorrectionCache" })).toBeEnabled();
   });
 
-  it("stays silent about the split when the top-scoring idea IS the recommendation", () => {
+  it("does not badge a top-scoring idea from matching recommendation prose", () => {
     const ideas = [
       solution("CountPad Vet", {
         idea_id: "idea-countpad",
@@ -3206,7 +3510,7 @@ describe("SelectionWorkbench — ranked candidates table semantics", () => {
       name: "Why the top-scoring idea is not the recommendation",
     })).toBeNull();
     expect(view.queryByText(/Premise unproven/)).toBeNull();
-    expect(view.getByText("Recommended")).toBeInTheDocument();
+    expect(view.queryByText("Recommended")).toBeNull();
   });
 
   it("chips an idea that serves an adjacent audience, and only when it was judged so", () => {
@@ -3563,9 +3867,8 @@ describe("SelectionWorkbench — thesis partition", () => {
     expect(view.getByText(/DaySmart Vet/)).toHaveTextContent(
       "Willingness-to-pay is not the primary risk.",
     );
-    // The portfolio summary is the same sentence family, sanitised through the same authority.
-    expect(view.getByText(/demonstrably pay for tooling:/)).toHaveTextContent(
-      "Early evidence is limited.",
+    expect(await view.findByLabelText("Discovery take")).toHaveTextContent(
+      "stored recommendation is not bound to exact current idea revisions",
     );
     expect(view.getByText(/Buyers here are small-business operators/)).toHaveTextContent(
       "They are price-aware but used to paying for tools that save time or win customers.",
@@ -4153,14 +4456,14 @@ describe("SelectionWorkbench — thesis partition", () => {
     expect(grouped.container.querySelectorAll(".cell-rank")).toHaveLength(0);
     cleanup();
 
-    // The flat fallback IS a ranking — with no sorting anywhere, "#" there is strictly
-    // sequential and worth keeping.
+    // The flat fallback IS a ranking. These fixtures tie on score, so the shared
+    // verdict formula gives every row rank 1 rather than inventing order from position.
     const flat = render(SelectionWorkbench, {
       props: { ...baseProps, solutions: THESIS_SOLUTIONS },
     });
     await waitFor(() => expect(flat.getByText("Order desk lead")).toBeInTheDocument());
     expect([...flat.container.querySelectorAll(".opp-row:not(.opp-row-head) .cell-rank")]
-      .map((node) => node.textContent)).toEqual(["1", "2", "3"]);
+      .map((node) => node.textContent)).toEqual(["1", "1", "1"]);
   });
 
   it("omits the batch summary when no idea carries batch provenance", async () => {

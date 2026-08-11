@@ -93,13 +93,15 @@ def test_idea_check_branch_parses_brief_and_returns_base_context():
 
     # Parse landed on state; unknown inferred values filtered.
     assert flow.state.user_idea_brief.startswith("A Chrome extension")
-    assert flow.state.user_idea_inferred_fields == ["delivery"]
+    # A model cannot mark a clause inferred while also quoting that clause from
+    # the raw pitch; the raw submission is the identity authority.
+    assert flow.state.user_idea_inferred_fields == []
     assert '"idea_mechanism_terms"' in captured["prompt"]
     assert flow.state.user_idea_identity_terms == {
-        "mechanism": ["drafts", "replies", "answering repetitive questions"],
+        "mechanism": ["drafts", "replies"],
         "audience": ["community managers", "small SaaS companies"],
         "problem": [],
-        "delivery": ["chrome extension", "browser add-on", "extension", "plugin"],
+        "delivery": ["chrome extension", "extension"],
     }
 
     # The returned context is the CLEAN base model (checkpoints restore stage_1 as base).

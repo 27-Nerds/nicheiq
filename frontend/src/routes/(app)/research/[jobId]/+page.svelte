@@ -41,6 +41,9 @@
       ? "deep_research"
       : "discovery",
   );
+  const currentStageArtifact = $derived(
+    job?.progress?.find((stage) => stage.stageNumber === job?.currentStage)?.artifact ?? null,
+  );
 
   function belongsOnCanonicalJobPage(value: Job): boolean {
     return ["AWAITING_SELECTION", "REGENERATING", "RUNNING_PHASE2", ...TERMINAL].includes(value.status)
@@ -225,6 +228,7 @@
             totalStages={job.totalStages ?? 0}
             currentStage={job.currentStage ?? 0}
             currentStageName={job.currentStageName}
+            stageArtifact={currentStageArtifact}
             queuePosition={job.queuePosition ?? undefined}
             selectedNames={job.selectedSolutions ?? []}
             selectedItems={job.selectionDraft?.items ?? []}

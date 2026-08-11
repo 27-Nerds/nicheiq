@@ -15,6 +15,31 @@ const stageCosts = {
 afterEach(cleanup);
 
 describe("guided research pricing", () => {
+  it("sets an honest Discovery time expectation on both standard entry surfaces", () => {
+    const timeline = render(ProcessTimeline, {
+      props: { stageCosts },
+    });
+
+    expect(timeline.getByText("5 credits · usually under 1 hour")).toBeInTheDocument();
+    expect(timeline.queryByText(/15 min/)).toBeNull();
+    cleanup();
+
+    const sticky = render(StickyCtaBar, {
+      props: {
+        visible: true,
+        niche: "Freelance bookkeepers",
+        creditCost: 5,
+        loading: false,
+        disabled: false,
+        hasCredits: true,
+        stageCost: 5,
+      },
+    });
+
+    expect(sticky.getByText("5 credits · usually under 1 hour")).toBeInTheDocument();
+    expect(sticky.queryByText(/15 min/)).toBeNull();
+  });
+
   it("shows each approval-priced Discovery segment instead of the flat Discovery price", () => {
     const view = render(ProcessTimeline, {
       props: { stageCosts, guided: true },

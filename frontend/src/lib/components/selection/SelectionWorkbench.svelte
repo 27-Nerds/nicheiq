@@ -99,7 +99,6 @@
   import { buildCollaboratorFeedbackGroups } from "$lib/utils/collaboratorFeedback";
   import {
     buildIdeaReferences,
-    matchIdeaReferences,
     type IdeaReference,
   } from "$lib/utils/ideaReferences";
   import Tooltip from "$lib/components/ui/Tooltip.svelte";
@@ -325,34 +324,6 @@
       : null,
   );
 
-  // The generator contract puts the recommendation in the final sentence. Keep that
-  // decision separate even when the model returns one long paragraph containing every
-  // idea; paragraph-level matching would incorrectly badge every mentioned candidate.
-  const summarySections = $derived.by(() => {
-    const paragraphs = (currentIdeaPortfolioSummary ?? "")
-      .split(/\n\s*\n/)
-      .map((paragraph) => paragraph.trim())
-      .filter(Boolean);
-    if (!paragraphs.length) return { recommendation: "", supportingNotes: [] as string[] };
-
-    const lastParagraph = paragraphs.at(-1) ?? "";
-    const sentences = lastParagraph
-      .split(/(?<=[.!?])\s+(?=[A-Z0-9])/)
-      .map((sentence) => sentence.trim())
-      .filter(Boolean);
-    const recommendation = sentences.at(-1) ?? lastParagraph;
-    const precedingLastParagraph = sentences.slice(0, -1).join(" ");
-    const supportingNotes = [
-      ...paragraphs.slice(0, -1),
-      ...(precedingLastParagraph ? [precedingLastParagraph] : []),
-    ];
-    return { recommendation, supportingNotes };
-  });
-  const summaryRecommendation = $derived(summarySections.recommendation);
-  const summarySupportingNotes = $derived(summarySections.supportingNotes);
-  const summaryParagraphs = $derived(
-    summaryRecommendation ? [...summarySupportingNotes, summaryRecommendation] : [],
-  );
   // Reference labels carry the DISPLAY title (headline when present): analyst
   // prose cites internal codenames, but the rendered link should not.
   const ideaReferences = $derived.by(() => {
@@ -368,32 +339,16 @@
       return headline ? { ...reference, label: headline } : reference;
     });
   });
-  const hasExplicitRecommendation = $derived(
-    /\b(?:recommend(?:ed|s|ing)?|most deserves?|deserves? (?:further|deeper) validation|strongest|best (?:idea|option|candidate|pick)|top (?:idea|option|candidate|pick)|prioriti[sz]e|validate(?:d|s|ing)? first|first choice)\b/i
-      .test(summaryRecommendation),
-  );
-  // The explicit recommendation sentence is the one page-level recommendation
-  // authority. Resolve it back to exact current records in prose order; an
-  // ambiguous working name is deliberately ignored rather than guessed.
-  const analystRecommendedSolutions = $derived.by(() => {
-    if (!hasExplicitRecommendation) return [] as SolutionPreview[];
-    const picks: SolutionPreview[] = [];
-    const seen = new Set<string>();
-    for (const segment of matchIdeaReferences(summaryRecommendation, ideaReferences)) {
-      const name = segment.reference?.kind === "ranked"
-        ? segment.reference.solutionName
-        : null;
-      if (!name) continue;
-      const matches = solutions.filter((solution) => solution.solution_name === name);
-      if (matches.length !== 1) continue;
-      const key = ideaKey(matches[0]);
-      if (!seen.has(key)) {
-        seen.add(key);
-        picks.push(matches[0]);
-      }
-    }
-    return picks;
-  });
+  // A candidate-set fingerprint does not bind free-form prose to structured roles.
+  // Fail closed instead of trying to enumerate every possible recommendation phrase:
+  // current scores and premise verdicts are the only guidance authority here. Grounded
+  // narrative remains available in the exact-revision Analyst dossier.
+  const hasUnboundPortfolioSummary = $derived(Boolean(ideaPortfolioSummary?.trim()));
+  const recommendationConflictsWithPremiseReview = $derived(hasUnboundPortfolioSummary);
+  const safeSummarySupportingNotes = $derived([] as string[]);
+  const safeSummaryRecommendation = $derived("");
+  const summaryParagraphs = $derived([] as string[]);
+  const analystRecommendedSolutions = $derived([] as SolutionPreview[]);
   const analystPickKeys = $derived(new Set(analystRecommendedSolutions.map(ideaKey)));
 
   // The one case that reads as broken without a sentence of help: the best-scoring idea
@@ -406,18 +361,27 @@
     if (analystRecommendedSolutions.length === 0) return null;
     let top: SolutionPreview | null = null;
     let topScore = Number.NEGATIVE_INFINITY;
+    let topScoreCount = 0;
     for (const candidate of solutions) {
-      const score = displayCompositeScore(candidate) ?? -1;
+      const score = displayCompositeScore(candidate);
+      if (score === null) continue;
       if (score > topScore) {
         topScore = score;
         top = candidate;
+        topScoreCount = 1;
+      } else if (score === topScore) {
+        topScoreCount += 1;
       }
     }
-    if (!top || !isPremiseUnproven(top) || analystPickKeys.has(ideaKey(top))) return null;
+    if (
+      !top
+      || topScoreCount !== 1
+      || !isPremiseUnproven(top)
+      || analystPickKeys.has(ideaKey(top))
+    ) return null;
     // Name the recommendation the user can actually act on: the first pick that itself
     // survived review, falling back to the analyst's leading pick when none did.
-    const pick = analystRecommendedSolutions.find((idea) => !isPremiseUnproven(idea))
-      ?? analystRecommendedSolutions[0];
+    const pick = analystRecommendedSolutions[0];
     return recommendationSplitNote(solutionDisplayTitle(top), solutionDisplayTitle(pick));
   });
 
@@ -487,6 +451,34 @@
       ? `${solution.idea_id}:${solution.idea_revision ?? 1}`
       : `legacy:${solution.solution_name}`;
   }
+
+  // Research rank is a score claim, independent of the presentation order below
+  // (which may pin the user's seed or an analyst pick for visibility).
+  const researchRankedSolutions = $derived.by(() =>
+    [...solutions].sort((a, b) => {
+      const scoreDelta = (displayCompositeScore(b) ?? -1) - (displayCompositeScore(a) ?? -1);
+      return scoreDelta || solutionDisplayTitle(a).localeCompare(solutionDisplayTitle(b));
+    }),
+  );
+  const researchRankByKey = $derived.by(() => {
+    const scores = researchRankedSolutions
+      .map((solution) => displayCompositeScore(solution))
+      .filter((score): score is number => score != null);
+    return new Map(researchRankedSolutions.map((solution) => {
+      const score = displayCompositeScore(solution);
+      const rank = score == null ? null : scores.filter((candidate) => candidate > score).length + 1;
+      return [ideaKey(solution), rank];
+    }));
+  });
+  const uniqueStrongestEligible = $derived.by(() => {
+    const scored = researchRankedSolutions
+      .filter((solution) => !isPremiseUnproven(solution))
+      .map((solution) => ({ solution, score: displayCompositeScore(solution) }))
+      .filter((entry): entry is { solution: SolutionPreview; score: number } => entry.score !== null);
+    return scored[0] && (!scored[1] || scored[0].score > scored[1].score)
+      ? scored[0].solution
+      : null;
+  });
 
   $effect(() => {
     const proposal = page.state.shortlistProposal;
@@ -1523,7 +1515,7 @@
       || marketReality?.incumbents?.length,
   ));
   const appendixMeta = $derived(appendixMetaLine({
-    analystNotes: summarySupportingNotes.length,
+    analystNotes: safeSummarySupportingNotes.length,
     collaborator: collaboratorRationaleCount,
     ruledOut: examinedRuledOut?.length ?? 0,
   }));
@@ -1553,20 +1545,46 @@
       ...selectionDecisionState.nextAction,
       ideas: selectionDecisionState.nextAction.ideas.map(displayRef),
     };
-    // With no shortlist, the analyst's explicit portfolio recommendation owns
-    // the Suggested-next candidate too. The backend's raw pool position is not a
-    // recommendation signal and may point at a different working-name record.
-    if (action.kind === "select_candidate" && selectedIdeas.length === 0) {
-      const recommended = analystRecommendedSolutions.find((idea) => Boolean(idea.idea_id));
-      if (recommended?.idea_id) {
+    // With no shortlist, "strongest" means the highest-scoring candidate whose
+    // premise survived review. Neither raw payload position nor generated prose is
+    // a ranking authority.
+    if (action.kind === "select_candidate") {
+      if (selectedIdeas.length === 0) {
+        const strongest = uniqueStrongestEligible;
         action = {
           ...action,
-          ideas: [{
-            ideaId: recommended.idea_id,
-            ideaRevision: recommended.idea_revision ?? 1,
-            title: solutionDisplayTitle(recommended),
-          }],
+          ideas: strongest?.idea_id
+            ? [{
+                ideaId: strongest.idea_id,
+                ideaRevision: strongest.idea_revision ?? 1,
+                title: solutionDisplayTitle(strongest),
+              }]
+            : [],
         };
+      } else {
+        const localKeys = new Set(selectedIdeas.map(ideaKey));
+        const savedKeys = new Set(
+          selectionDecisionState.shortlist.items.map(
+            (idea) => `${idea.ideaId}:${idea.ideaRevision}`,
+          ),
+        );
+        const shortlistInSync = localKeys.size === savedKeys.size
+          && [...localKeys].every((key) => savedKeys.has(key));
+        action = shortlistInSync && selectionDecisionState.deepResearch.eligible
+          ? {
+              kind: "start_deep_research",
+              target: "deep_research",
+              reason: "The saved shortlist is ready for final review.",
+              required: false,
+              ideas: selectedIdeas.flatMap((idea) => idea.idea_id ? [{
+                ideaId: idea.idea_id,
+                ideaRevision: idea.idea_revision ?? 1,
+                title: solutionDisplayTitle(idea),
+              }] : []),
+              lens: null,
+              records: [],
+            }
+          : { ...action, ideas: [] };
       }
     }
     return action;
@@ -1675,7 +1693,7 @@
    *  counting them here would open an empty appendix on a run whose only
    *  secondary content is its data caveats. */
   const appendixHasContent = $derived(
-    summarySupportingNotes.length > 0
+    safeSummarySupportingNotes.length > 0
       || collaboratorFeedbackGroups.length > 0
       || rejectedOverlapGroups.length > 0
       || (examinedRuledOut?.length ?? 0) > 0,
@@ -2278,7 +2296,7 @@
   // the ranking, the shortlist, and the conversation change.
   const chatSuggestions = $derived(
     selectionSuggestions({
-      solutions: sortedSolutions,
+      solutions: researchRankedSolutions,
       messages: chatLedger.segmentMessages(5),
       weakPool,
       canRegenerate: canRequestBatch && !regenerating && !isRegenerating,
@@ -3324,25 +3342,6 @@
           {/if}
         </section>
 
-        {#if summaryRecommendation}
-          <section class="discovery-take" aria-label="Discovery take">
-            <p class="discovery-take__eyebrow">Discovery take · across all ideas</p>
-            <p class="discovery-take__quote">
-              <IdeaReferenceText
-                content={summaryRecommendation}
-                references={ideaReferences}
-                onOpen={openIdeaReference}
-              />
-            </p>
-          </section>
-        {:else if ideaPortfolioSummary && !portfolioSummaryIsCurrent}
-          <section class="discovery-take" aria-label="Discovery take">
-            <p class="discovery-take__eyebrow">Discovery take unavailable</p>
-            <p class="discovery-take__quote">
-              Discovery guidance is unavailable for this candidate set. Review the ranked ideas below using their current scores and evidence.
-            </p>
-          </section>
-        {/if}
       {/snippet}
 
       {#if interactive && shortlistOverlapWarnings.length > 0}
@@ -3409,7 +3408,8 @@
     </div>
 
     <!-- One row definition, rendered either flat (no thesis partition) or nested
-         under its thesis. `i` stays the rank in the global ranking either way. -->
+         under its thesis. `i` is presentation position; score rank comes from the
+         independent research ranking. -->
     {#snippet oppRow(s: SolutionPreview, i: number)}
       {@const m = rowMeta(s)}
       {@const key = ideaKey(s)}
@@ -3429,7 +3429,7 @@
         data-annotation-anchor={`candidate:${key}`}
       >
         {#if !thesisViewMeaningful}
-          <span class="cell-rank" role="cell">{i + 1}</span>
+          <span class="cell-rank" role="cell">{researchRankByKey.get(key) ?? "—"}</span>
         {/if}
 
         {#if interactive}
@@ -3768,6 +3768,15 @@
         {@render decisionGuideBlock()}
       {/if}
 
+      {#if interactive && hasUnboundPortfolioSummary}
+        <section class="discovery-take" aria-label="Discovery take">
+          <p class="discovery-take__eyebrow">Discovery take unavailable</p>
+          <p class="discovery-take__quote">
+            The stored recommendation is not bound to exact current idea revisions. Use the current scores and evidence below.
+          </p>
+        </section>
+      {/if}
+
       <!-- A receipt for work the user paid for and started, so it stays a first-class
            section: below the candidates it reports on, never inside the collapsed
            "How the shortlist was formed" disclosure where it would be missed. Sitting
@@ -3947,14 +3956,14 @@
 
     {#if appendixHasContent}
       <AnalysisAppendix meta={appendixMeta} bind:expanded={appendixExpanded}>
-        {#if summarySupportingNotes.length}
+        {#if safeSummarySupportingNotes.length}
           <section class="appendix-notes" aria-label="Analyst notes">
             <header class="appendix-notes-heading">
               <span>Analyst synthesis</span>
               <h3>What shaped the shortlist</h3>
             </header>
             <ol class="appendix-note-list">
-              {#each summarySupportingNotes as note, index}
+              {#each safeSummarySupportingNotes as note, index}
                 <li class="appendix-note">
                   <span class="appendix-note-index">{String(index + 1).padStart(2, "0")}</span>
                   <p>
@@ -3993,11 +4002,18 @@
 
     {#if summaryParagraphs.length}
       <AnalystRecommendation
-        recommendation={summaryRecommendation}
-        supportingNotes={summarySupportingNotes}
+        recommendation={safeSummaryRecommendation}
+        supportingNotes={safeSummarySupportingNotes}
         references={ideaReferences}
         onOpen={openIdeaReference}
       />
+    {:else if recommendationConflictsWithPremiseReview}
+      <section class="discovery-take" aria-label="Discovery take">
+        <p class="discovery-take__eyebrow">Discovery take unavailable</p>
+        <p class="discovery-take__quote">
+          The stored recommendation is not bound to exact current idea revisions. Use the current scores and evidence below.
+        </p>
+      </section>
     {/if}
 
     {#if rejectedOverlapGroups.length > 0}

@@ -17,7 +17,7 @@
     toScore100,
     type LifecycleBucket,
   } from "$lib/config/jobStatus";
-  import { getAdjustedStageCounts } from "$lib/utils/stages";
+  import { getVisibleStageProgress } from "$lib/utils/stages";
   import {
     Plus,
     Search,
@@ -140,7 +140,7 @@
     }
     if (isDeepResearchProcessing(job)) {
       return job.status === "RUNNING_PHASE2"
-        ? (job.currentStageName ?? "Deep Research is running…")
+        ? (getVisibleStageProgress(job).currentName ?? "Deep Research is running…")
         : "Deep Research is waiting for a worker…";
     }
     return job.queuePosition
@@ -604,7 +604,7 @@
               <div class="list">
                 {#each fProgress as job (job.id)}
                   {@const meta = statusMeta(job.status)}
-                  {@const counts = getAdjustedStageCounts(job)}
+                  {@const progress = getVisibleStageProgress(job)}
                   <div class="row">
                     <span class="row-dot" class:row-dot-live={isLive(job.status)} style:--rail={meta.color} style:background={meta.color}></span>
                     <div class="row-main">
@@ -623,7 +623,7 @@
                             aria-valuemax="100"
                             aria-label="Research progress for {job.nicheDisplay ?? job.niche}"
                           ><span style:width="{job.progressPercent ?? 0}%" style:background={meta.color}></span></div>
-                          <span class="row-sub row-dim">{job.currentStageName ?? meta.label}{#if counts.total} · {counts.current}/{counts.total}{/if}</span>
+                          <span class="row-sub row-dim">{progress.currentName ?? "Research worker active"}{#if progress.total} · {progress.currentName ? progress.current : progress.completed}/{progress.total}{/if}</span>
                         </div>
                       {:else}
                         <p class="row-sub row-dim">

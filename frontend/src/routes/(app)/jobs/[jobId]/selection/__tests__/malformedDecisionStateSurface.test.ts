@@ -174,7 +174,7 @@ afterEach(() => {
 });
 
 describe("malformed decision-state buyer surface", () => {
-  it("shows the load-failure alert and disables purchase; a boundary cast would hide the alert and enable it", async () => {
+  it("shows the load-failure alert and removes purchase; a boundary cast would hide the alert and enable it", async () => {
     const loaded = await load(event());
     if (!loaded) throw new Error("Expected selection layout data");
 
@@ -195,7 +195,7 @@ describe("malformed decision-state buyer surface", () => {
     expect(alert).toHaveTextContent("Your saved shortlist and decision state could not be loaded.");
     expect(view.queryByText("No saved idea scope is available in this selection record."))
       .not.toBeInTheDocument();
-    expect(view.getByRole("button", { name: "Start Deep Research" })).toBeDisabled();
+    expect(view.queryByRole("button", { name: "Start Deep Research" })).not.toBeInTheDocument();
     expect(mocks.selectSolution).not.toHaveBeenCalled();
   });
 });

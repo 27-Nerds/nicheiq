@@ -51,6 +51,32 @@ def _idea(name, *, status="active", source_frame=None, market_fit=0.6, market_fi
     )
 
 
+def _typed_idea(
+    name: str,
+    *,
+    headline: str,
+    product: str,
+    mechanism: str | None,
+    market_fit: float = 0.6,
+    source_frame: str | None = "pain",
+    generation_operation_id: str | None = None,
+):
+    from nicheiq.models.solution_idea import BaseSolutionIdea
+
+    return BaseSolutionIdea.model_construct(
+        solution_name=name,
+        headline=headline,
+        short_description=product,
+        description=product,
+        core_features=[] if mechanism is None else [mechanism],
+        technical_approach=mechanism,
+        market_fit_score=market_fit,
+        estimated_development_time="6-10 weeks",
+        source_frame=source_frame,
+        generation_operation_id=generation_operation_id,
+    )
+
+
 class TestPortfolioFingerprintContract:
     """The shared cross-language table. Same file, same cases, three implementations."""
 
@@ -194,6 +220,112 @@ class TestDigestBuilder:
 
 
 class TestGenerateSummary:
+    def test_typed_candidates_publish_only_current_record_facts(self, monkeypatch):
+        from nicheiq.utils import llm_service
+
+        def _boom(**kw):
+            raise AssertionError("typed production candidates must not call a prose model")
+
+        monkeypatch.setattr(llm_service.LLMService, "invoke_structured", staticmethod(_boom))
+        ideas = [
+            _typed_idea(
+                "TraumaTap",
+                headline="Emergency Charge Reconciliation Layer",
+                product="Captures trauma-bay actions before billing close.",
+                mechanism="A treatment-event ledger reconciles performed actions to charges",
+                market_fit=0.7,
+            ),
+            _typed_idea(
+                "VetAuditMatch",
+                headline="Controlled Medication Audit Matcher",
+                product="Flags inventory and administration mismatches.",
+                mechanism="Compares current inventory exports with medication logs",
+                market_fit=0.6,
+            ),
+        ]
+
+        summary, usage = generate_idea_portfolio_summary(ideas)
+
+        assert usage is None
+        assert summary is not None
+        assert "Emergency Charge Reconciliation Layer" in summary
+        assert "A treatment-event ledger reconciles performed actions to charges" in summary
+        assert "Controlled Medication Audit Matcher" in summary
+        assert "Compares current inventory exports with medication logs" in summary
+        assert "TraumaTap" not in summary
+        assert "VetAuditMatch" not in summary
+        assert "corporate budgeting" not in summary.lower()
+
+    def test_typed_validate_seed_uses_the_same_title_as_the_ui(self):
+        idea = _typed_idea(
+            "SubmittedStockCheck",
+            headline="Generated Search Headline",
+            product="Reconciles the clinic's controlled-medication inventory.",
+            mechanism="Matches inventory exports to administration records",
+            source_frame="user_seed",
+            generation_operation_id="validate",
+        )
+
+        summary, _ = generate_idea_portfolio_summary([idea])
+
+        assert summary is not None
+        assert "SubmittedStockCheck" in summary
+        assert "Generated Search Headline" not in summary
+
+    def test_typed_candidate_without_mechanism_fails_closed_without_llm(self, monkeypatch):
+        from nicheiq.utils import llm_service
+
+        called = False
+
+        def _boom(**kw):
+            nonlocal called
+            called = True
+            raise AssertionError("an incomplete record must not be retried into prose")
+
+        monkeypatch.setattr(llm_service.LLMService, "invoke_structured", staticmethod(_boom))
+        summary, usage = generate_idea_portfolio_summary([
+            _typed_idea(
+                "ThinRecord",
+                headline="Thin Current Record",
+                product="A recorded product fact.",
+                mechanism=None,
+            )
+        ])
+
+        assert summary is None
+        assert usage is None
+        assert called is False
+
+    def test_commercial_copy_guard_still_rejects_a_bad_deterministic_renderer(
+        self, monkeypatch
+    ):
+        from nicheiq.utils import idea_portfolio_summary as portfolio
+
+        monkeypatch.setattr(
+            portfolio,
+            "_grounded_candidate_sentence",
+            lambda idea: (
+                "Current Display Title: Recorded product. Recorded mechanism: ledger. "
+                "Give the product away and monetise referrals."
+            ),
+        )
+        summary, _ = generate_idea_portfolio_summary(
+            [
+                _typed_idea(
+                    "InternalCode",
+                    headline="Current Display Title",
+                    product="Recorded product.",
+                    mechanism="ledger",
+                )
+            ],
+            niche_wallet_brief={
+                "wallet_class": "paying",
+                "evidence": "$99-399/mo incumbent software",
+            },
+        )
+
+        assert summary is None
+
     def test_empty_pool_skips_llm(self, monkeypatch):
         from nicheiq.utils import llm_service
 

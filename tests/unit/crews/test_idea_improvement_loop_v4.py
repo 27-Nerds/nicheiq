@@ -191,6 +191,56 @@ class TestLoopGate:
         assert best.solution_name == "IdeaA"
         assert calls == {"review": 1, "improve": 0}
 
+    def test_missing_required_idea_field_gets_one_schema_feedback_retry(self):
+        critiques = [
+            _crit(0.6, nov=0.4, clarity=0.5),
+            _crit(0.7, nov=0.7, clarity=0.7),
+        ]
+        improved = _idea("IdeaB")
+        calls = {"review": 0, "improve": 0}
+        retry_messages = []
+
+        def invoke(messages, output_model, *, temperature, model_name, reasoning_effort):
+            if output_model is IdeaCritiqueV4:
+                calls["review"] += 1
+                return critiques.pop(0), None
+            calls["improve"] += 1
+            if calls["improve"] == 1:
+                raise ValueError(
+                    "Structured output for BaseSolutionIdea arrived but could not be "
+                    "parsed into the model. ValidationError: core_features Field required"
+                )
+            retry_messages.extend(messages)
+            return improved, None
+
+        best = tournament_refine_cell_v4(
+            [_idea("IdeaA")], _grounding(), rounds=2, invoke=invoke,
+            ideator_model="m", reviewer_model="m",
+        )
+
+        assert best.solution_name == "IdeaB"
+        assert calls == {"review": 2, "improve": 2}
+        assert "core_features" in retry_messages[-1]["content"]
+        assert "complete BaseSolutionIdea" in retry_messages[-1]["content"]
+
+    def test_unrelated_improve_failure_is_not_retried(self):
+        calls = {"review": 0, "improve": 0}
+
+        def invoke(messages, output_model, *, temperature, model_name, reasoning_effort):
+            if output_model is IdeaCritiqueV4:
+                calls["review"] += 1
+                return _crit(0.6, nov=0.4, clarity=0.5), None
+            calls["improve"] += 1
+            raise RuntimeError("network unavailable")
+
+        best = tournament_refine_cell_v4(
+            [_idea("IdeaA")], _grounding(), rounds=2, invoke=invoke,
+            ideator_model="m", reviewer_model="m",
+        )
+
+        assert best.solution_name == "IdeaA"
+        assert calls == {"review": 1, "improve": 1}
+
 
 class TestBindingConstraintStamp:
     """S4.2: the winner carries the judge's DIRECTIVE (the bear case). The criterion token

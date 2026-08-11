@@ -17,6 +17,7 @@ import type {
 } from "$lib/types/job";
 import type { LedgerMessage } from "$lib/stores/chatLedger.svelte";
 import { isGatePatch, isLedgerEvent } from "$lib/api";
+import { displayCompositeScore, solutionDisplayTitle } from "$lib/utils/solution-utils";
 
 const MAX_SUGGESTIONS = 3;
 
@@ -143,8 +144,22 @@ export interface SelectionSuggestionContext {
 /** G3 (candidate selection) suggestions. */
 export function selectionSuggestions(ctx: SelectionSuggestionContext): string[] {
   const { solutions, messages, weakPool, canRegenerate, hasSelection, collaboratorRationaleCount = 0, poolMutationBusy } = ctx;
-  const top = solutions[0]?.solution_name;
-  const runnerUp = solutions[1]?.solution_name;
+  // Hosts may pin a seed or analyst pick for visibility. A chip that says "ranked"
+  // must derive its own score order instead of turning that presentation order into
+  // a research claim.
+  const ranked = solutions
+    .map((solution) => ({ solution, score: displayCompositeScore(solution) }))
+    .filter((entry): entry is { solution: SolutionPreview; score: number } => entry.score !== null)
+    .sort((a, b) => {
+    const scoreDelta = b.score - a.score;
+    return scoreDelta || solutionDisplayTitle(a.solution).localeCompare(solutionDisplayTitle(b.solution));
+  });
+  const uniqueLeader = ranked[0] && (!ranked[1] || ranked[0].score > ranked[1].score)
+    ? ranked[0].solution
+    : null;
+  const top = uniqueLeader ? solutionDisplayTitle(uniqueLeader) : undefined;
+  const comparisonTop = ranked[0] ? solutionDisplayTitle(ranked[0].solution) : undefined;
+  const runnerUp = ranked[1] ? solutionDisplayTitle(ranked[1].solution) : undefined;
 
   return take(
     [
@@ -153,7 +168,7 @@ export function selectionSuggestions(ctx: SelectionSuggestionContext): string[] 
       ...(collaboratorRationaleCount > 0 ? ["What do collaborators agree or disagree on?"] : []),
       ...(hasSelection && !poolMutationBusy ? ["Is my shortlist the right bet?"] : []),
       ...(top ? [`Why is "${short(top)}" ranked first?`] : []),
-      ...(top && runnerUp ? [`Compare "${short(top, 20)}" and "${short(runnerUp, 20)}"`] : []),
+      ...(comparisonTop && runnerUp ? [`Compare "${short(comparisonTop, 20)}" and "${short(runnerUp, 20)}"`] : []),
       ...(canRegenerate && !poolMutationBusy ? ["What's missing from these ideas?"] : []),
       ...(top && !poolMutationBusy ? [`How would you narrow "${short(top)}"?`] : []),
       "Which of these is easiest to build?",

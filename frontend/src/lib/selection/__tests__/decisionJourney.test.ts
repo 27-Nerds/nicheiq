@@ -90,7 +90,7 @@ describe("buildSelectionJourney", () => {
     expect(journey.shortlist.items).toEqual([]);
     expect(journey.recommendation).toMatchObject({
       target: "shortlist",
-      title: "Review the strongest candidate",
+      title: "Review the candidate pool",
       actionLabel: "Review candidates",
     });
     expect(journey.tasks.find((task) => task.key === "compare")?.status).toBe("not_ready");

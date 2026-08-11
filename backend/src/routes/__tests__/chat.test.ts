@@ -444,7 +444,7 @@ describe('analyst context for ruled-out ideas', () => {
     assertNoInternalKeys(systemPrompt);
   });
 
-  it('includes the full ruled-out brief when generating the opening analysis', async () => {
+  it('builds the opening from current candidate records without a prose-model pass', async () => {
     mockJobFindFirst.mockResolvedValue(makeJob());
     mockGetPreviewReportForJob.mockResolvedValue(makePreviewReport());
     mockChatMessageFindManyTop
@@ -454,25 +454,19 @@ describe('analyst context for ruled-out ideas', () => {
           id: 'opening-ruled-out',
           gateStage: 5,
           role: 'assistant',
-          content: 'Opening analysis.',
+          content: 'Current-record opening.',
           patchJson: null,
           truncated: false,
           createdAt: new Date(),
         },
       ]);
-    mockChatComplete.mockResolvedValue({
-      choices: [{ message: { content: 'Opening analysis.' } }],
-      usage: { prompt_tokens: 40, completion_tokens: 60 },
-    });
-
     await request(app).get(`/api/jobs/${jobId}/chat/history`).set(authHeaders);
 
-    const openingPrompt = mockChatComplete.mock.calls[0][0].messages[1].content as string;
-    expect(openingPrompt).toContain(
-      'What it is: Collects and organizes ticket-drop complaints'
-    );
-    expect(openingPrompt).toContain('Why it was ruled out: Real pain');
-    expect(openingPrompt).toContain('Market fit at decision: 40% (weak)');
+    expect(mockChatComplete).not.toHaveBeenCalled();
+    const content = mockTxChatMessageCreate.mock.calls[0][0].data.content as string;
+    expect(content).toContain('Current-record portfolio briefing:');
+    expect(content).toContain('Sol1: does a thing');
+    expect(content).not.toContain('This pool leans toward workflow tools');
   });
 });
 
@@ -578,6 +572,28 @@ describe('selection context query gating', () => {
     const systemPrompt = mockChatCompleteStream.mock.calls[0][0].messages[0].content as string;
     expect(systemPrompt).toContain(privateNote);
     expect(systemPrompt).toContain('private workspace context, not research evidence');
+  });
+
+  it('names completed-report candidates by their displayed title, never the internal codename', async () => {
+    mockJobFindFirst.mockResolvedValue(makeJob({
+      status: 'COMPLETED',
+      solutionIdeas: [{
+        idea_id: 'idea-1',
+        idea_revision: 1,
+        solution_name: 'InternalLedgerCode',
+        headline: 'Medication Inventory Reconciliation Workflow',
+      }],
+    }));
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/chat`)
+      .set(authHeaders)
+      .send({ message: 'Which candidate is in this report?' });
+
+    expect(response.status).toBe(200);
+    const systemPrompt = mockChatCompleteStream.mock.calls[0][0].messages[0].content as string;
+    expect(systemPrompt).toContain('Medication Inventory Reconciliation Workflow');
+    expect(systemPrompt).not.toContain('InternalLedgerCode');
   });
 
   it('fetches challenge, experiment, assumption, owner-evidence, and collaborator context only for G3', async () => {
@@ -2214,6 +2230,7 @@ describe('POST /api/jobs/:jobId/chat — prompt history hygiene', () => {
       role: 'assistant',
       content: lockedOpening,
       origin: selectionOpeningOrigin('verified:1'),
+      model: 'ccv1|grounded-opening-v1|deterministic',
     }]);
     mockGetPreviewReportForJob.mockResolvedValue({
       alternative_solutions: preLockIdeas,
@@ -2272,7 +2289,8 @@ describe('POST /api/jobs/:jobId/chat — rich G3 dossier from the preview report
     expect(systemPrompt).toContain('Why these tags: Chosen for its narrow, well-defined workflow');
 
     // Run-level blocks
-    expect(systemPrompt).toContain('Portfolio summary: This pool leans toward workflow tools for solo operators.');
+    expect(systemPrompt).toContain('Portfolio summary: Current-record portfolio briefing:');
+    expect(systemPrompt).not.toContain('This pool leans toward workflow tools for solo operators.');
     expect(systemPrompt).toContain('Who pays here:');
     expect(systemPrompt).toContain('community forum says');
     expect(systemPrompt).toContain('Known competitors:');
@@ -2681,21 +2699,38 @@ describe('candidate-derived dossier values', () => {
 });
 
 describe('portfolio-summary fingerprint guard', () => {
-  const liveIdeas = [{ idea_id: 'idea-live', idea_revision: 2, solution_name: 'Live idea' }];
+  const liveIdeas = [{
+    idea_id: 'idea-live',
+    idea_revision: 2,
+    solution_name: 'LiveCodename',
+    headline: 'Live Reconciliation Workflow',
+    short_description: 'Reconciles the current operational records.',
+    technical_approach: 'Matches current exports to the system ledger',
+    market_fit_score: 0.7,
+  }];
   const liveFingerprint = '{"version":1,"ideas":[["idea-live",2]]}';
   const staleGuidance = 'Stale guidance says to build the removed candidate.';
 
-  it('keeps portfolio guidance when its fingerprint matches the canonical live pool', async () => {
-    const { assembleDossierBundle } = await import('../chat.js');
+  it('rebuilds matching-pool guidance from current candidate records', async () => {
+    const { assembleDossierBundle, buildG3Dossier } = await import('../chat.js');
     const bundle = assembleDossierBundle(dossierContext(liveIdeas, {
       alternative_solutions: liveIdeas,
-      idea_portfolio_summary: 'Current guidance covers Live idea.',
+      idea_portfolio_summary: 'LiveCodename is a corporate budgeting workflow.',
       idea_portfolio_summary_fingerprint: liveFingerprint,
     }));
 
     expect(bundle.run.verification).toBe('verified');
-    expect(bundle.run.verification === 'verified' && bundle.run.portfolioSummary)
-      .toBe('Current guidance covers Live idea.');
+    const summary = bundle.run.verification === 'verified' ? bundle.run.portfolioSummary : '';
+    expect(summary).toContain('Live Reconciliation Workflow');
+    expect(summary).toContain('Matches current exports to the system ledger');
+    expect(summary).not.toContain('LiveCodename');
+    expect(summary).not.toContain('corporate budgeting');
+
+    const dossier = buildG3Dossier('job-1', 'current niche', bundle);
+    expect(dossier).toContain('Live Reconciliation Workflow');
+    expect(dossier).toContain('Matches current exports to the system ledger');
+    expect(dossier).not.toContain('LiveCodename');
+    expect(dossier).not.toContain('corporate budgeting');
   });
 
   it('replaces mismatched guidance with explicit degraded copy and never repeats stale prose', async () => {
@@ -2731,7 +2766,7 @@ describe('portfolio-summary fingerprint guard', () => {
 });
 
 describe('GET /api/jobs/:jobId/chat/history — G3 opening message', () => {
-  it('synthesizes and persists ONE LLM-generated opening message when history is empty', async () => {
+  it('persists ONE current-record opening when history is empty', async () => {
     mockJobFindFirst.mockResolvedValue(makeJob());
     mockGetPreviewReportForJob.mockResolvedValue(makePreviewReport());
     mockChatMessageFindManyTop
@@ -2741,22 +2776,17 @@ describe('GET /api/jobs/:jobId/chat/history — G3 opening message', () => {
           id: 'opening-1',
           gateStage: 5,
           role: 'assistant',
-          content: 'Generated opening note with a pivot suggestion.',
+          content: 'Current-record opening.',
           patchJson: null,
           origin: openingOriginForFingerprint(portfolioFingerprint),
           truncated: false,
           createdAt: new Date(),
         },
       ]);
-    mockChatComplete.mockResolvedValue({
-      choices: [{ message: { content: 'Generated opening note with a pivot suggestion.' } }],
-      usage: { prompt_tokens: 40, completion_tokens: 60 },
-    });
-
     const response = await request(app).get(`/api/jobs/${jobId}/chat/history`).set(authHeaders);
 
     expect(response.status).toBe(200);
-    expect(mockChatComplete).toHaveBeenCalledTimes(1);
+    expect(mockChatComplete).not.toHaveBeenCalled();
     // Persisted via the advisory-lock transaction (tx.chatMessage.create), not the bare
     // prisma.chatMessage.create — the race fix moved the check-then-insert inside the lock.
     expect(mockTxChatMessageCreate).toHaveBeenCalledWith(
@@ -2765,12 +2795,14 @@ describe('GET /api/jobs/:jobId/chat/history — G3 opening message', () => {
           jobId,
           gateStage: 5,
           role: 'assistant',
-          content: 'Generated opening note with a pivot suggestion.',
+          content: expect.stringContaining('Current-record portfolio briefing:'),
+          model: 'ccv1|grounded-opening-v1|deterministic',
         }),
       })
     );
     expect(response.body.messages).toHaveLength(1);
-    expect(response.body.messages[0].content).toBe('Generated opening note with a pivot suggestion.');
+    expect(mockTxChatMessageCreate.mock.calls[0][0].data.content)
+      .toContain('Scrapes public data and summarizes it');
   });
 
   it('serves a degraded opening and keeps POST chat usable for a legacy missing pool version', async () => {
@@ -2801,6 +2833,49 @@ describe('GET /api/jobs/:jobId/chat/history — G3 opening message', () => {
     const systemPrompt = mockChatCompleteStream.mock.calls[0][0].messages[0].content as string;
     expect(systemPrompt).toContain(PORTFOLIO_GUIDANCE_DEGRADED_COPY);
     expect(systemPrompt).not.toContain('LEGACY RUN FRAMING');
+  });
+
+  it('replaces a same-origin opening authored before the grounding contract', async () => {
+    const currentIdeas = [{
+      idea_id: 'idea-sol1',
+      idea_revision: 1,
+      solution_name: 'TraumaTap',
+      headline: 'Emergency Charge Reconciliation Layer',
+      short_description: 'Captures performed trauma-bay actions before billing close.',
+      technical_approach: 'Matches treatment events to the current charge ledger',
+      market_fit_score: 0.7,
+    }];
+    const unsafeOpening = 'TraumaTap is a corporate budgeting workflow.';
+    mockJobFindFirst.mockResolvedValue(makeJob({ solutionIdeas: currentIdeas }));
+    mockGetPreviewReportForJob.mockResolvedValue({
+      alternative_solutions: currentIdeas,
+      idea_portfolio_summary: unsafeOpening,
+      idea_portfolio_summary_fingerprint: portfolioFingerprint,
+    });
+    mockChatMessageFindManyTop.mockResolvedValueOnce([{
+      id: 'opening-old-contract',
+      gateStage: 5,
+      role: 'assistant',
+      content: unsafeOpening,
+      origin: selectionOpeningOrigin('verified:1'),
+      candidatePoolVersion: 1,
+      model: 'ccv1|gpt-test',
+      patchJson: null,
+      truncated: false,
+      createdAt: new Date(),
+    }]);
+
+    const response = await request(app).get(`/api/jobs/${jobId}/chat/history`).set(authHeaders);
+
+    expect(response.status).toBe(200);
+    const update = mockTxChatMessageUpdate.mock.calls[0][0];
+    expect(update.where).toEqual({ id: 'opening-old-contract' });
+    expect(update.data.model).toBe('ccv1|grounded-opening-v1|deterministic');
+    expect(update.data.content).toContain('Emergency Charge Reconciliation Layer');
+    expect(update.data.content).toContain('Matches treatment events to the current charge ledger');
+    expect(update.data.content).not.toContain('TraumaTap');
+    expect(update.data.content).not.toContain('corporate budgeting');
+    expect(mockChatComplete).not.toHaveBeenCalled();
   });
 
   it('is idempotent — does not regenerate when the thread already has messages', async () => {
@@ -2995,7 +3070,7 @@ describe('GET /api/jobs/:jobId/chat/history — G3 opening message', () => {
     const response = await request(app).get(`/api/jobs/${jobId}/chat/history`).set(authHeaders);
 
     expect(response.status).toBe(200);
-    expect(mockChatComplete).toHaveBeenCalledTimes(1);
+    expect(mockChatComplete).not.toHaveBeenCalled();
     expect(mockTxChatMessageCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ gateStage: 5, origin: expect.stringMatching(/^opening:/) }),
@@ -3004,7 +3079,7 @@ describe('GET /api/jobs/:jobId/chat/history — G3 opening message', () => {
     expect(response.body.messages).toHaveLength(2);
   });
 
-  it('fails soft to the deterministic composition when the LLM call throws', async () => {
+  it('uses the deterministic composition without consulting the opening LLM', async () => {
     mockJobFindFirst.mockResolvedValue(makeJob());
     mockGetPreviewReportForJob.mockResolvedValue(makePreviewReport());
     mockChatMessageFindManyTop.mockResolvedValueOnce([]).mockResolvedValueOnce([
@@ -3018,18 +3093,18 @@ describe('GET /api/jobs/:jobId/chat/history — G3 opening message', () => {
         createdAt: new Date(),
       },
     ]);
-    mockChatComplete.mockRejectedValueOnce(new Error('LLM unavailable'));
-
     const response = await request(app).get(`/api/jobs/${jobId}/chat/history`).set(authHeaders);
 
     expect(response.status).toBe(200);
     // Persisted via the advisory-lock transaction (tx.chatMessage.create), not the bare
     // prisma.chatMessage.create.
     const createCall = mockTxChatMessageCreate.mock.calls[0][0];
-    // Deterministic fallback: portfolio summary + closing line, never throws to the caller.
-    expect(createCall.data.content).toContain('This pool leans toward workflow tools for solo operators.');
+    expect(createCall.data.content).toContain('Current-record portfolio briefing:');
+    expect(createCall.data.content).toContain('Scrapes public data and summarizes it');
+    expect(createCall.data.content).not.toContain('This pool leans toward workflow tools');
     expect(createCall.data.content).toContain('Ask me about any idea, or tell me what to change.');
     expect(createCall.data.costUsd).toBeUndefined();
+    expect(mockChatComplete).not.toHaveBeenCalled();
   });
 
   it('flags weakPool=true for a free-culture wallet where no idea clears the market-fit bar', async () => {

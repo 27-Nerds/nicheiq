@@ -49,9 +49,7 @@
 </script>
 
 {#if checklist}
-  {#if allChecked}
-    <p class="text-xs font-medium text-[color:var(--color-success-text)]">Ready to check &check;</p>
-  {:else}
+  <div class="coverage-block">
     <ul class="coverage-checklist">
       {#each checklist as item}
         <li class="coverage-row" class:met={item.met}>
@@ -60,16 +58,21 @@
         </li>
       {/each}
     </ul>
-  {/if}
+    {#if allChecked}
+      <p class="coverage-ready">Ready to check <span aria-hidden="true">&check;</span></p>
+    {/if}
+  </div>
 {:else if displayText}
   <p class="text-xs text-text-muted">{displayText}</p>
 {/if}
 
 <style>
+  .coverage-block {
+    width: 100%;
+  }
   .coverage-checklist {
-    display: flex;
-    flex-direction: column;
-    gap: 0.125rem;
+    display: grid;
+    gap: 0.375rem;
     margin: 0;
     padding: 0;
     list-style: none;
@@ -78,19 +81,42 @@
     display: flex;
     align-items: center;
     gap: 0.375rem;
+    min-height: 2.25rem;
+    padding: 0.5rem 0.625rem;
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    background: var(--color-bg-surface);
     font-size: 0.75rem;
-    color: var(--color-text-muted);
+    color: var(--color-text-secondary);
+    transition:
+      border-color 0.15s ease,
+      background-color 0.15s ease,
+      color 0.15s ease;
   }
   .coverage-row.met {
-    color: var(--color-text-secondary);
+    border-color: var(--color-border-accent);
+    background: var(--color-accent-subtle);
+    color: var(--color-text-primary);
   }
   .coverage-mark {
     width: 1rem;
+    flex-shrink: 0;
     font-family: var(--font-mono);
     text-align: center;
-    color: var(--color-text-muted);
+    color: var(--color-text-secondary);
   }
   .coverage-row.met .coverage-mark {
     color: var(--color-success-text);
+  }
+  .coverage-ready {
+    margin: 0.5rem 0 0;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-success-text);
+  }
+  @media (min-width: 640px) {
+    .coverage-checklist {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
   }
 </style>
